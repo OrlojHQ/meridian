@@ -1,0 +1,3 @@
+ALTER TABLE projects ADD COLUMN repository_url TEXT NOT NULL DEFAULT '';
+ALTER TABLE projects ADD COLUMN setup_argv TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE projects ADD COLUMN image_reference TEXT NOT NULL DEFAULT '';

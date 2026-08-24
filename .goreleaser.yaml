@@ -1,0 +1,182 @@
+version: 2
+project_name: meridian
+
+builds:
+  - id: meridian
+    main: ./cmd/meridian
+    binary: meridian
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    flags: [-trimpath, -buildvcs=false]
+    ldflags:
+      - >-
+        -s -w -buildid=
+        -X github.com/OrlojHQ/meridian/internal/buildinfo.Version={{.Version}}
+        -X github.com/OrlojHQ/meridian/internal/buildinfo.Commit={{.FullCommit}}
+        -X github.com/OrlojHQ/meridian/internal/buildinfo.Date={{.CommitDate}}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+  - id: meridiand
+    main: ./cmd/meridiand
+    binary: meridiand
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    flags: [-trimpath, -buildvcs=false]
+    ldflags:
+      - >-
+        -s -w -buildid=
+        -X github.com/OrlojHQ/meridian/internal/buildinfo.Version={{.Version}}
+        -X github.com/OrlojHQ/meridian/internal/buildinfo.Commit={{.FullCommit}}
+        -X github.com/OrlojHQ/meridian/internal/buildinfo.Date={{.CommitDate}}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+  - id: capsuled
+    main: ./cmd/capsuled
+    binary: capsuled
+    env: [CGO_ENABLED=0]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath, -buildvcs=false]
+    ldflags:
+      - >-
+        -s -w -buildid=
+        -X github.com/OrlojHQ/meridian/internal/buildinfo.Version={{.Version}}
+        -X github.com/OrlojHQ/meridian/internal/buildinfo.Commit={{.FullCommit}}
+        -X github.com/OrlojHQ/meridian/internal/buildinfo.Date={{.CommitDate}}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+  - id: meridian-harness-adapter
+    main: ./cmd/meridian-harness-adapter
+    binary: meridian-harness-adapter
+    env: [CGO_ENABLED=0]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath, -buildvcs=false]
+    ldflags:
+      - >-
+        -s -w -buildid=
+        -X github.com/OrlojHQ/meridian/internal/buildinfo.Version={{.Version}}
+        -X github.com/OrlojHQ/meridian/internal/buildinfo.Commit={{.FullCommit}}
+        -X github.com/OrlojHQ/meridian/internal/buildinfo.Date={{.CommitDate}}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: meridian
+    ids: [meridian, meridiand]
+    formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_
+      {{- if eq .Os "darwin" }}macOS{{ else }}{{ .Os }}{{ end }}_
+      {{- .Arch }}
+    files:
+      - LICENSE
+      - README.md
+      - SECURITY.md
+      - docs/operations.md
+  - id: capsule
+    ids: [capsuled, meridian-harness-adapter]
+    formats: [tar.gz]
+    name_template: "meridian-capsule_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - SECURITY.md
+      - docs/operations.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+sboms:
+  - artifacts: archive
+
+changelog:
+  use: git
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^Merge "
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+dockers:
+  - id: meridiand-amd64
+    ids: [meridiand]
+    goos: linux
+    goarch: amd64
+    use: buildx
+    dockerfile: images/meridiand/Dockerfile.release
+    image_templates:
+      - "ghcr.io/orlojhq/meridiand:{{ .Tag }}-amd64"
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--build-arg=VERSION={{.Version}}"
+      - "--build-arg=COMMIT={{.FullCommit}}"
+      - "--build-arg=BUILD_DATE={{.CommitDate}}"
+  - id: meridiand-arm64
+    ids: [meridiand]
+    goos: linux
+    goarch: arm64
+    use: buildx
+    dockerfile: images/meridiand/Dockerfile.release
+    image_templates:
+      - "ghcr.io/orlojhq/meridiand:{{ .Tag }}-arm64"
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--build-arg=VERSION={{.Version}}"
+      - "--build-arg=COMMIT={{.FullCommit}}"
+      - "--build-arg=BUILD_DATE={{.CommitDate}}"
+  - id: capsule-amd64
+    ids: [capsuled, meridian-harness-adapter]
+    goos: linux
+    goarch: amd64
+    use: buildx
+    dockerfile: images/capsule/Dockerfile.release
+    image_templates:
+      - "ghcr.io/orlojhq/meridian-capsule:{{ .Tag }}-amd64"
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--build-arg=VERSION={{.Version}}"
+      - "--build-arg=COMMIT={{.FullCommit}}"
+      - "--build-arg=BUILD_DATE={{.CommitDate}}"
+  - id: capsule-arm64
+    ids: [capsuled, meridian-harness-adapter]
+    goos: linux
+    goarch: arm64
+    use: buildx
+    dockerfile: images/capsule/Dockerfile.release
+    image_templates:
+      - "ghcr.io/orlojhq/meridian-capsule:{{ .Tag }}-arm64"
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--build-arg=VERSION={{.Version}}"
+      - "--build-arg=COMMIT={{.FullCommit}}"
+      - "--build-arg=BUILD_DATE={{.CommitDate}}"
+
+docker_manifests:
+  - name_template: "ghcr.io/orlojhq/meridiand:{{ .Tag }}"
+    image_templates:
+      - "ghcr.io/orlojhq/meridiand:{{ .Tag }}-amd64"
+      - "ghcr.io/orlojhq/meridiand:{{ .Tag }}-arm64"
+  - name_template: "ghcr.io/orlojhq/meridian-capsule:{{ .Tag }}"
+    image_templates:
+      - "ghcr.io/orlojhq/meridian-capsule:{{ .Tag }}-amd64"
+      - "ghcr.io/orlojhq/meridian-capsule:{{ .Tag }}-arm64"
+
+release:
+  github:
+    owner: OrlojHQ
+    name: meridian
+  draft: true
+  prerelease: auto
+  mode: replace

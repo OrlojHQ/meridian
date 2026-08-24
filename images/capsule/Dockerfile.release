@@ -1,0 +1,28 @@
+# syntax=docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e
+# Debian is retained because Capsule setup requires Git and SSH clients.
+FROM debian:bookworm-slim@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241
+ARG TARGETPLATFORM
+ARG VERSION
+ARG COMMIT
+ARG BUILD_DATE
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates git openssh-client \
+    && rm -rf /var/lib/apt/lists/*
+RUN groupadd --gid 10001 capsule \
+    && useradd --uid 10001 --gid 10001 --create-home --home-dir /home/capsule --shell /usr/sbin/nologin capsule \
+    && install -d -o 10001 -g 10001 -m 0750 /workspace /home/capsule/.cache
+COPY capsuled /usr/local/bin/capsuled
+COPY meridian-harness-adapter /usr/local/bin/meridian-harness-adapter
+LABEL org.opencontainers.image.title="Meridian Capsule" \
+      org.opencontainers.image.description="Non-root Meridian Capsule supervisor image" \
+      org.opencontainers.image.source="https://github.com/OrlojHQ/meridian" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${COMMIT}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.licenses="Apache-2.0"
+USER 10001:10001
+WORKDIR /workspace
+EXPOSE 7777
+HEALTHCHECK --interval=5s --timeout=2s --retries=5 CMD ["/usr/local/bin/capsuled", "healthcheck"]
+ENTRYPOINT ["/usr/local/bin/capsuled"]
+CMD ["serve"]

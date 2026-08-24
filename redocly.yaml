@@ -1,0 +1,9 @@
+extends:
+  - recommended
+
+apis:
+  meridian:
+    root: api/openapi.yaml
+
+rules:
+  no-server-example.com: off

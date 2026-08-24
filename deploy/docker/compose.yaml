@@ -1,0 +1,22 @@
+name: meridian-dev
+
+services:
+  meridiand:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.meridiand
+    network_mode: host
+    command:
+      - --provider=docker
+      - --listen=127.0.0.1:8080
+      - --data-dir=/var/lib/meridian
+      - --docker-image=meridian-capsule:dev
+      - --docker-state-dir=/var/lib/meridian/docker-provider
+    volumes:
+      # Trusted control-plane access only. Capsule containers never receive this socket.
+      - /var/run/docker.sock:/var/run/docker.sock
+      - meridian-data:/var/lib/meridian
+    restart: unless-stopped
+
+volumes:
+  meridian-data:

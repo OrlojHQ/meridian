@@ -1,0 +1,1790 @@
+openapi: 3.1.0
+info:
+  title: Meridian API
+  version: 0.5.0
+  description: Control-plane API for fake, trusted-development Docker, and Kubernetes Agent Sandbox Capsules.
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+servers:
+  - url: http://127.0.0.1:8080
+    description: Loopback local development
+security: []
+paths:
+  /healthz:
+    get:
+      operationId: getHealth
+      summary: Report process health
+      security: []
+      tags: [probes]
+      responses:
+        "200":
+          description: Process is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProbeResponse"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /readyz:
+    get:
+      operationId: getReadiness
+      summary: Report service readiness
+      security: []
+      tags: [probes]
+      responses:
+        "200":
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProbeResponse"
+        "503":
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProbeResponse"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /capabilities:
+    get:
+      operationId: getCapabilities
+      summary: Report provider-backed product capabilities
+      description: Clients must treat false capabilities as unsupported and must not construct private provider URLs.
+      security: []
+      tags: [capabilities]
+      responses:
+        "200":
+          description: Effective capabilities for this daemon
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Capabilities"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /projects:
+    post:
+      operationId: createProject
+      summary: Create a project
+      tags: [projects]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProjectRequest"
+      responses:
+        "201":
+          description: Project created
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        default:
+          $ref: "#/components/responses/DefaultError"
+    get:
+      operationId: listProjects
+      summary: List projects
+      tags: [projects]
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Project page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectPage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /projects/{projectId}:
+    get:
+      operationId: getProject
+      summary: Get a project
+      tags: [projects]
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: Project
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /projects/{projectId}/capsules:
+    post:
+      operationId: createCapsule
+      summary: Request Capsule creation
+      tags: [capsules]
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCapsuleRequest"
+      responses:
+        "202":
+          description: Capsule creation accepted
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Capsule"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        default:
+          $ref: "#/components/responses/DefaultError"
+    get:
+      operationId: listCapsules
+      summary: List a project's Capsules
+      tags: [capsules]
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Capsule page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CapsulePage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /capsules/{capsuleId}:
+    get:
+      operationId: getCapsule
+      summary: Get a Capsule
+      tags: [capsules]
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+      responses:
+        "200":
+          description: Capsule
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Capsule"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /capsules/{capsuleId}/harness-profiles:
+    get:
+      operationId: listHarnessProfiles
+      summary: Discover effective native and structured harness profiles
+      description: Provider-independent discovery. A false structured value identifies PTY/native fallback; clients never inspect provider internals.
+      tags: [threads]
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+      responses:
+        "200":
+          description: Effective Capsule-local harness profiles
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HarnessProfilePage" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /capsules/{capsuleId}/threads:
+    post:
+      operationId: createThread
+      summary: Create an encrypted structured Thread, optionally with an atomic first message and session start
+      description: The Thread, encrypted first message, Run intent, and idempotency resource references are committed before runtime side effects.
+      tags: [threads]
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateThreadRequest" }
+      responses:
+        "201":
+          description: Thread created; session status is represented by currentRun when start was requested
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ThreadMutationResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "423": { $ref: "#/components/responses/Locked" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        default: { $ref: "#/components/responses/DefaultError" }
+    get:
+      operationId: listThreads
+      summary: List retained Thread histories for a Capsule
+      tags: [threads]
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Thread history page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ThreadPage" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /threads/{threadId}:
+    get:
+      operationId: getThread
+      summary: Get Thread lifecycle and current session status
+      tags: [threads]
+      parameters:
+        - $ref: "#/components/parameters/ThreadId"
+      responses:
+        "200":
+          description: Thread metadata; transcript content is not included
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Thread" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /threads/{threadId}/archive:
+    post:
+      operationId: archiveThread
+      summary: Archive a Thread history
+      tags: [threads]
+      parameters:
+        - $ref: "#/components/parameters/ThreadId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody: { $ref: "#/components/requestBodies/LifecycleMutation" }
+      responses:
+        "200": { $ref: "#/components/responses/ThreadMutation" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /threads/{threadId}/delete:
+    post:
+      operationId: deleteThread
+      summary: Permanently crypto-shred a Thread transcript
+      description: This removes the wrapped data key but retains ciphertext and content-free lifecycle metadata. It is irreversible and requires an explicit confirmation token.
+      tags: [threads]
+      parameters:
+        - $ref: "#/components/parameters/ThreadId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeleteThreadRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/ThreadMutation" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /threads/{threadId}/start:
+    post:
+      operationId: startThread
+      summary: Start a new structured adapter session for an active Thread
+      tags: [threads]
+      parameters:
+        - $ref: "#/components/parameters/ThreadId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody: { $ref: "#/components/requestBodies/LifecycleMutation" }
+      responses:
+        "202": { $ref: "#/components/responses/ThreadSessionMutation" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /threads/{threadId}/resume:
+    post:
+      operationId: resumeThread
+      summary: Resume a structured adapter session from encrypted adapter state
+      tags: [threads]
+      parameters:
+        - $ref: "#/components/parameters/ThreadId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody: { $ref: "#/components/requestBodies/LifecycleMutation" }
+      responses:
+        "202": { $ref: "#/components/responses/ThreadSessionMutation" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "423": { $ref: "#/components/responses/Locked" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /threads/{threadId}/messages:
+    post:
+      operationId: sendThreadMessage
+      summary: Durably append and send a user message
+      description: The encrypted message and idempotency resource references commit before the adapter side effect.
+      tags: [threads]
+      parameters:
+        - $ref: "#/components/parameters/ThreadId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SendThreadMessageRequest" }
+      responses:
+        "202": { $ref: "#/components/responses/ThreadSessionMutation" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "423": { $ref: "#/components/responses/Locked" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /threads/{threadId}/responses:
+    post:
+      operationId: respondThread
+      summary: Answer one permission or input request
+      tags: [threads]
+      parameters:
+        - $ref: "#/components/parameters/ThreadId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ThreadResponseRequest" }
+      responses:
+        "202": { $ref: "#/components/responses/ThreadSessionMutation" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /threads/{threadId}/cancel:
+    post:
+      operationId: cancelThread
+      summary: Cancel the active structured session
+      tags: [threads]
+      parameters:
+        - $ref: "#/components/parameters/ThreadId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody: { $ref: "#/components/requestBodies/LifecycleMutation" }
+      responses:
+        "202": { $ref: "#/components/responses/ThreadSessionMutation" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /threads/{threadId}/blocks:
+    get:
+      operationId: listThreadBlocks
+      summary: Replay ordered decrypted Thread blocks
+      description: This is an explicit decryption boundary. Deltas are persisted as delta events; a final assistant message is authoritative and clients should replace matching displayed deltas rather than append duplicate text.
+      tags: [threads]
+      parameters:
+        - $ref: "#/components/parameters/ThreadId"
+        - $ref: "#/components/parameters/After"
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 1000, default: 100 }
+      responses:
+        "200":
+          description: Ordered decrypted block page with explicit replay-gap information
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ThreadBlockPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Corrupt" }
+        "423": { $ref: "#/components/responses/Locked" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /threads/{threadId}/blocks/stream:
+    get:
+      operationId: streamThreadBlocks
+      summary: Follow decrypted Thread blocks over Server-Sent Events
+      description: Reconnect with Last-Event-ID or after. Heartbeats carry no content; slow clients are disconnected.
+      tags: [threads]
+      parameters:
+        - $ref: "#/components/parameters/ThreadId"
+        - $ref: "#/components/parameters/After"
+        - name: Last-Event-ID
+          in: header
+          schema: { type: string }
+      responses:
+        "200":
+          description: SSE stream with durable message-sequence event IDs
+          content:
+            text/event-stream:
+              schema: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "423": { $ref: "#/components/responses/Locked" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /capsules/{capsuleId}/pause:
+    post:
+      operationId: pauseCapsule
+      summary: Request Capsule pause
+      tags: [capsules]
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        $ref: "#/components/requestBodies/LifecycleMutation"
+      responses:
+        "202":
+          $ref: "#/components/responses/CapsuleAccepted"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /capsules/{capsuleId}/resume:
+    post:
+      operationId: resumeCapsule
+      summary: Request Capsule resume
+      tags: [capsules]
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        $ref: "#/components/requestBodies/LifecycleMutation"
+      responses:
+        "202":
+          $ref: "#/components/responses/CapsuleAccepted"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /capsules/{capsuleId}/delete:
+    post:
+      operationId: deleteCapsule
+      summary: Request Capsule deletion
+      description: Active Runs and Thread sessions block deletion. Capsule deletion retains encrypted Thread history; use the explicitly confirmed Thread delete endpoint to crypto-shred a transcript.
+      tags: [capsules]
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        $ref: "#/components/requestBodies/LifecycleMutation"
+      responses:
+        "202":
+          $ref: "#/components/responses/CapsuleAccepted"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /capsules/{capsuleId}/runs:
+    post:
+      operationId: startRun
+      summary: Start a Run from a Capsule harness profile
+      tags: [runs]
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartRunRequest"
+      responses:
+        "202":
+          description: Run accepted
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Run"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+        default:
+          $ref: "#/components/responses/DefaultError"
+    get:
+      operationId: listRuns
+      summary: List a Capsule's Runs
+      tags: [runs]
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Run page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunPage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /runs/{runId}:
+    get:
+      operationId: getRun
+      summary: Get a Run
+      tags: [runs]
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200":
+          description: Run
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Run"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /runs/{runId}/cancel:
+    post:
+      operationId: cancelRun
+      summary: Request Run cancellation
+      tags: [runs]
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        $ref: "#/components/requestBodies/LifecycleMutation"
+      responses:
+        "202":
+          description: Cancellation accepted
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Run"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /runs/{runId}/events:
+    get:
+      operationId: listRunEvents
+      summary: Replay ordered, content-free Run events after a stable cursor
+      tags: [runs]
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+        - $ref: "#/components/parameters/After"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+      responses:
+        "200":
+          description: Ordered Run event page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunEventPage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /runs/{runId}/attach-ticket:
+    post:
+      operationId: createRunAttachTicket
+      summary: Mint a short-lived, scoped, in-memory PTY attach ticket
+      tags: [runs]
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+        - name: after
+          in: query
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+            default: 0
+      responses:
+        "201":
+          description: Attach ticket
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttachTicket"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /runs/{runId}/events/stream:
+    get:
+      operationId: streamRunEvents
+      summary: Follow ordered Run events using Server-Sent Events
+      description: Reconnect with Last-Event-ID or the after cursor. Event IDs are stable durable Run event sequences.
+      tags: [runs]
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+        - $ref: "#/components/parameters/After"
+        - name: Last-Event-ID
+          in: header
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Server-Sent Event stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /runs/{runId}/attach:
+    get:
+      operationId: attachRunWebSocket
+      summary: Upgrade to the reconnectable PTY WebSocket
+      description: Binary client frames are PTY input. JSON text frames carry resize controls. Server text frames carry ordered output events with cursors.
+      tags: [runs]
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+        - name: ticket
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 32
+      responses:
+        "101":
+          description: WebSocket protocol switch
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /capsules/{capsuleId}/previews:
+    get:
+      operationId: listCapsulePreviewPorts
+      summary: Discover bounded listening HTTP ports owned by a Capsule
+      description: Available only when the effective preview capability is true.
+      tags: [previews]
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+      responses:
+        "200":
+          description: Discovered Capsule-local preview ports
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreviewPortPage"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /capsules/{capsuleId}/previews/{port}/tickets:
+    post:
+      operationId: createCapsulePreviewTicket
+      summary: Mint a short-lived Capsule and port-scoped preview URL
+      description: URLs are reusable until expiry and are revoked when the Capsule is deleted or sealed.
+      tags: [previews]
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+        - $ref: "#/components/parameters/PreviewPort"
+      responses:
+        "201":
+          description: Short-lived loopback preview URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreviewTicket"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /capsules/{capsuleId}/git/status:
+    get:
+      operationId: getCapsuleGitStatus
+      summary: Get bounded porcelain Git status
+      tags: [capsules]
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+      responses:
+        "200":
+          description: Git status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitResult"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /capsules/{capsuleId}/git/diff:
+    get:
+      operationId: getCapsuleGitDiff
+      summary: Get a bounded unified working-tree diff
+      tags: [capsules]
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+      responses:
+        "200":
+          description: Git diff
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitResult"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /capsules/{capsuleId}/moments:
+    post:
+      operationId: captureMoment
+      summary: Capture an immutable filesystem Moment
+      tags: [moments]
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CaptureMomentRequest"
+      responses:
+        "201":
+          description: Moment captured and published
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Moment"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        default: { $ref: "#/components/responses/DefaultError" }
+    get:
+      operationId: listMoments
+      summary: List a Capsule Timeline's Moments
+      tags: [moments]
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Moment page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MomentPage"
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /moments/{momentId}:
+    get:
+      operationId: getMoment
+      summary: Get an immutable Moment
+      tags: [moments]
+      parameters:
+        - $ref: "#/components/parameters/MomentId"
+      responses:
+        "200":
+          description: Moment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Moment"
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /timelines/{timelineId}:
+    get:
+      operationId: getTimeline
+      summary: Get a Timeline and its ancestry
+      tags: [timelines]
+      parameters:
+        - $ref: "#/components/parameters/TimelineId"
+      responses:
+        "200":
+          description: Timeline and ancestry from current to root
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TimelineView"
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /moments/{momentId}/shards:
+    post:
+      operationId: createShard
+      summary: Create a new Capsule and Timeline from a Moment
+      tags: [timelines]
+      parameters:
+        - $ref: "#/components/parameters/MomentId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDescendantRequest"
+      responses:
+        "202":
+          description: Descendant restore accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DescendantResult"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /capsules/{capsuleId}/rewind:
+    post:
+      operationId: rewindCapsule
+      summary: Create a non-destructive descendant from an earlier Moment
+      tags: [timelines]
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RewindRequest"
+      responses:
+        "202":
+          description: Rewind descendant restore accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DescendantResult"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /capsules/{capsuleId}/seal:
+    post:
+      operationId: sealCapsule
+      summary: Capture a final Moment and permanently seal a Capsule
+      description: Active Runs and Thread sessions block capture/seal. Sealing retains encrypted Thread history and does not crypto-shred transcript keys.
+      tags: [moments]
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        $ref: "#/components/requestBodies/LifecycleMutation"
+      responses:
+        "201":
+          description: Capsule sealed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SealResult"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        default: { $ref: "#/components/responses/DefaultError" }
+components:
+  parameters:
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    CapsuleId:
+      name: capsuleId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    RunId:
+      name: runId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    ThreadId:
+      name: threadId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    MomentId:
+      name: momentId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    TimelineId:
+      name: timelineId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    PreviewPort:
+      name: port
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1024
+        maximum: 65535
+    After:
+      name: after
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
+        default: 0
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 200
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      schema:
+        type: string
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
+  headers:
+    ETag:
+      description: Resource version as a quoted decimal value
+      schema:
+        type: string
+  requestBodies:
+    LifecycleMutation:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/LifecycleMutationRequest"
+  responses:
+    ThreadMutation:
+      description: Thread lifecycle mutation completed
+      headers:
+        ETag: { $ref: "#/components/headers/ETag" }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Thread" }
+    ThreadSessionMutation:
+      description: Structured session mutation accepted
+      headers:
+        ETag: { $ref: "#/components/headers/ETag" }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ThreadMutationResult" }
+    CapsuleAccepted:
+      description: Lifecycle intent accepted
+      headers:
+        ETag:
+          $ref: "#/components/headers/ETag"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Capsule"
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    Conflict:
+      description: Resource version or idempotency conflict
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    Locked:
+      description: Transcript installation key is missing or does not match the encrypted Thread
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    Corrupt:
+      description: Encrypted transcript or ordered event stream is corrupt
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    Unprocessable:
+      description: Unsupported capability or illegal lifecycle transition
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    TooManyRequests:
+      description: Request rate limit exceeded
+      headers:
+        Retry-After:
+          description: Seconds until retry
+          schema:
+            type: integer
+            minimum: 0
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    DefaultError:
+      description: Unexpected error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+  schemas:
+    ProbeResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok, not_ready]
+    Capabilities:
+      type: object
+      required: [providerVersion, attach, run, git, pause, snapshot, clone, preview, resourceMetrics]
+      properties:
+        providerVersion:
+          type: string
+        attach:
+          type: boolean
+        run:
+          type: boolean
+        structured:
+          type: boolean
+          description: True only when the provider and runtime expose meridian.adapter.v1 structured sessions.
+        structuredProtocol:
+          type: string
+          enum: [meridian.adapter.v1]
+        ptyFallback:
+          type: boolean
+          description: True when native Run and PTY attachment remain available independently of structured profiles.
+        git:
+          type: boolean
+        pause:
+          type: boolean
+        snapshot:
+          type: boolean
+          description: False unless the provider and application share a safe Moment storage contract; CSI discovery alone is insufficient.
+        clone:
+          type: boolean
+          description: False unless provider-native restore preserves Meridian lineage and failure semantics.
+        preview:
+          type: boolean
+          description: False unless a provider exposes bounded port discovery and Capsule-scoped proxying.
+        resourceMetrics:
+          type: boolean
+          description: False when provider resource metrics are not exposed by the public API.
+    CreateProjectRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        repositoryUrl:
+          type: string
+          maxLength: 4096
+          description: Public URL or absolute local fixture path visible to the selected provider.
+        setup:
+          type: array
+          maxItems: 128
+          description: Setup executable followed by its arguments; never interpreted by a shell.
+          items:
+            type: string
+            minLength: 1
+            maxLength: 4096
+        imageReference:
+          type: string
+          maxLength: 1024
+          description: Capsule image reference; Docker resolves it to an immutable image identity.
+    CreateCapsuleRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+    LifecycleMutationRequest:
+      type: object
+      required: [expectedResourceVersion]
+      properties:
+        expectedResourceVersion:
+          type: integer
+          format: int64
+          minimum: 1
+    CaptureMomentRequest:
+      type: object
+      required: [name, expectedResourceVersion]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        expectedResourceVersion:
+          type: integer
+          format: int64
+          minimum: 1
+    CreateDescendantRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+    RewindRequest:
+      type: object
+      required: [momentId, name]
+      properties:
+        momentId:
+          type: string
+          minLength: 1
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+    Project:
+      type: object
+      required: [id, name, createdAt, updatedAt, resourceVersion]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        repositoryUrl:
+          type: string
+        setup:
+          type: array
+          items:
+            type: string
+        imageReference:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        resourceVersion:
+          type: integer
+          format: int64
+          minimum: 1
+    Capsule:
+      type: object
+      required:
+        [id, projectId, timelineId, name, state, desiredState, restoreComplete, createdAt, updatedAt, resourceVersion]
+      properties:
+        id:
+          type: string
+        projectId:
+          type: string
+        timelineId:
+          type: string
+        originMomentId:
+          type: string
+        name:
+          type: string
+        state:
+          $ref: "#/components/schemas/CapsuleState"
+        desiredState:
+          $ref: "#/components/schemas/CapsuleIntent"
+        failure:
+          type: string
+        restoreComplete:
+          type: boolean
+        maintenance:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        resourceVersion:
+          type: integer
+          format: int64
+          minimum: 1
+    CapsuleState:
+      type: string
+      enum: [Creating, Preparing, Ready, Paused, Failed, Sealed, Deleting, Deleted]
+    CapsuleIntent:
+      type: string
+      enum: [Ready, Paused, Deleted, Sealed]
+    Moment:
+      type: object
+      required:
+        [id, projectId, capsuleId, timelineId, name, archiveSha256, archiveSize,
+         manifestSha256, imageDigest, projectSetupHash, createdAt, final]
+      properties:
+        id: { type: string }
+        projectId: { type: string }
+        capsuleId: { type: string }
+        timelineId: { type: string }
+        parentMomentId: { type: string }
+        name: { type: string }
+        archiveSha256: { type: string, pattern: "^[0-9a-f]{64}$" }
+        archiveSize: { type: integer, format: int64, minimum: 0 }
+        manifestSha256: { type: string, pattern: "^[0-9a-f]{64}$" }
+        imageDigest: { type: string }
+        projectSetupHash: { type: string }
+        gitBranch: { type: string }
+        gitHead: { type: string }
+        gitDirtySummary: { type: string }
+        createdAt: { type: string, format: date-time }
+        final: { type: boolean }
+    MomentPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Moment" }
+        nextCursor: { type: string }
+    Timeline:
+      type: object
+      required: [id, projectId, capsuleId, reason, createdAt]
+      properties:
+        id: { type: string }
+        projectId: { type: string }
+        capsuleId: { type: string }
+        forkedFromMomentId: { type: string }
+        reason:
+          type: string
+          enum: [root, shard, rewind]
+        createdAt: { type: string, format: date-time }
+    TimelineView:
+      type: object
+      required: [timeline, ancestry]
+      properties:
+        timeline: { $ref: "#/components/schemas/Timeline" }
+        ancestry:
+          type: array
+          items: { $ref: "#/components/schemas/Timeline" }
+    DescendantResult:
+      type: object
+      required: [capsule, timeline, reason]
+      properties:
+        capsule: { $ref: "#/components/schemas/Capsule" }
+        timeline: { $ref: "#/components/schemas/Timeline" }
+        reason:
+          type: string
+          enum: [shard, rewind]
+    SealResult:
+      type: object
+      required: [capsule, moment]
+      properties:
+        capsule: { $ref: "#/components/schemas/Capsule" }
+        moment: { $ref: "#/components/schemas/Moment" }
+    StartRunRequest:
+      type: object
+      required: [harness, prompt]
+      properties:
+        harness:
+          type: string
+          minLength: 1
+          maxLength: 128
+        prompt:
+          type: string
+          maxLength: 262144
+          description: Transient input; never persisted in Run records or normal events.
+        columns:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        rows:
+          type: integer
+          minimum: 1
+          maximum: 65535
+    Run:
+      type: object
+      required: [id, capsuleId, harness, state, createdAt, updatedAt, resourceVersion]
+      properties:
+        id:
+          type: string
+        capsuleId:
+          type: string
+        harness:
+          type: string
+        state:
+          $ref: "#/components/schemas/RunState"
+        exitStatus:
+          type: integer
+        failure:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        resourceVersion:
+          type: integer
+          format: int64
+          minimum: 1
+    RunState:
+      type: string
+      enum: [Queued, Starting, Running, Succeeded, Failed, Cancelling, Cancelled]
+    RunPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Run"
+        nextCursor:
+          type: string
+    RunEvent:
+      type: object
+      required: [sequence, type, timestamp]
+      properties:
+        sequence:
+          type: integer
+          format: int64
+          minimum: 1
+        type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Bounded structured metadata; never prompt text, PTY bytes, full diffs, setup output, or secrets.
+    RunEventPage:
+      type: object
+      required: [items, nextCursor, more]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RunEvent"
+        nextCursor:
+          type: integer
+          format: int64
+          minimum: 0
+        more:
+          type: boolean
+    GitResult:
+      type: object
+      required: [content, truncated]
+      properties:
+        content:
+          type: string
+          maxLength: 1048576
+        truncated:
+          type: boolean
+    AttachTicket:
+      type: object
+      required: [ticket, expiresAt, webSocketPath]
+      properties:
+        ticket:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        webSocketPath:
+          type: string
+    PreviewPort:
+      type: object
+      required: [port]
+      properties:
+        port:
+          type: integer
+          minimum: 1024
+          maximum: 65535
+    PreviewPortPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 32
+          items:
+            $ref: "#/components/schemas/PreviewPort"
+    PreviewTicket:
+      type: object
+      required: [url, expiresAt, reusePolicy]
+      properties:
+        url:
+          type: string
+          format: uri
+          description: Loopback-only URL containing the bearer token in its path.
+        expiresAt:
+          type: string
+          format: date-time
+        reusePolicy:
+          type: string
+          enum: [reusable_until_expiry]
+    HarnessProfile:
+      type: object
+      required: [name, structured, pty]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 128 }
+        structured:
+          type: boolean
+        adapterKind:
+          type: string
+          enum: [opencode, pi, mock, generic, external]
+        protocol:
+          type: string
+          enum: [meridian.adapter.v1]
+        pty:
+          type: boolean
+          description: Native PTY behavior for this profile; structured profiles are always false.
+    HarnessProfilePage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 64
+          items: { $ref: "#/components/schemas/HarnessProfile" }
+    CreateThreadRequest:
+      type: object
+      required: [harness]
+      properties:
+        harness: { type: string, minLength: 1, maxLength: 128 }
+        firstMessage:
+          type: string
+          minLength: 1
+          maxLength: 131072
+          description: Encrypted before SQLite persistence. Prefer stdin in shells to avoid command-history disclosure.
+        start:
+          type: boolean
+          default: false
+          description: Requires firstMessage and atomically creates the initial Run intent before runtime side effects.
+    DeleteThreadRequest:
+      type: object
+      required: [expectedResourceVersion, confirmation]
+      properties:
+        expectedResourceVersion: { type: integer, format: int64, minimum: 1 }
+        confirmation:
+          type: string
+          enum: [crypto-shred]
+    SendThreadMessageRequest:
+      type: object
+      required: [expectedResourceVersion, content]
+      properties:
+        expectedResourceVersion: { type: integer, format: int64, minimum: 1 }
+        content:
+          type: string
+          minLength: 1
+          maxLength: 131072
+          description: Encrypted before SQLite persistence.
+    ThreadResponseRequest:
+      type: object
+      required: [expectedResourceVersion, responseTo]
+      properties:
+        expectedResourceVersion: { type: integer, format: int64, minimum: 1 }
+        responseTo: { type: string, minLength: 1, maxLength: 160 }
+        choice: { type: string, minLength: 1, maxLength: 1024 }
+        input: { type: string, maxLength: 131072 }
+    ThreadState:
+      type: string
+      enum: [active, paused, archived, deleted]
+    Thread:
+      type: object
+      required:
+        [id, capsuleId, state, harness, encryptedAtRest, messageCount, encryptedBytes,
+         createdAt, updatedAt, resourceVersion]
+      properties:
+        id: { type: string }
+        capsuleId: { type: string }
+        state: { $ref: "#/components/schemas/ThreadState" }
+        harness: { type: string }
+        currentRunId: { type: string }
+        currentRunState: { $ref: "#/components/schemas/RunState" }
+        protocol:
+          type: string
+          enum: [meridian.adapter.v1]
+        structuredSupported: { type: boolean }
+        encryptedAtRest:
+          type: boolean
+          const: true
+        messageCount: { type: integer, format: int64, minimum: 0, maximum: 100000 }
+        encryptedBytes: { type: integer, format: int64, minimum: 0, maximum: 268435456 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        deletedAt: { type: string, format: date-time }
+        resourceVersion: { type: integer, format: int64, minimum: 1 }
+    ThreadMutationResult:
+      type: object
+      required: [thread]
+      properties:
+        thread: { $ref: "#/components/schemas/Thread" }
+        currentRun: { $ref: "#/components/schemas/Run" }
+        messageId: { type: string }
+        responseTo: { type: string }
+    ThreadPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Thread" }
+        nextCursor: { type: string }
+    ThreadBlockKind:
+      type: string
+      enum: [text, json, tool_call, tool_result, error]
+    ThreadMessageRole:
+      type: string
+      enum: [system, user, assistant, tool]
+    ThreadMessageKind:
+      type: string
+      enum: [prompt, response, tool_call, tool_result, status]
+    ThreadPermission:
+      type: object
+      required: [kind]
+      properties:
+        kind: { type: string, maxLength: 512 }
+        summary: { type: string, maxLength: 32768 }
+        options:
+          type: array
+          maxItems: 32
+          items: { type: string, maxLength: 1024 }
+        choice: { type: string, maxLength: 1024 }
+    ThreadInput:
+      type: object
+      properties:
+        prompt: { type: string, maxLength: 32768 }
+        value: { type: string, maxLength: 131072 }
+        secret: { type: boolean }
+    ThreadAdapterEvent:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [assistant_delta, assistant_message, tool_start, tool_result, status, error,
+                 permission_request, permission_response, input_request, input_response, gap, end]
+        runtimeSequence: { type: integer, format: int64, minimum: 1 }
+        messageId: { type: string }
+        toolCallId: { type: string }
+        toolName: { type: string, maxLength: 512 }
+        summary: { type: string, maxLength: 131072 }
+        result: { type: string, maxLength: 65536 }
+        status:
+          type: string
+          enum: [starting, running, idle, waiting, succeeded, failed, cancelled, restarting]
+        code: { type: string }
+        retryable: { type: boolean }
+        reason: { type: string, maxLength: 32768 }
+        permission: { $ref: "#/components/schemas/ThreadPermission" }
+        input: { $ref: "#/components/schemas/ThreadInput" }
+        requestedAfter: { type: integer, format: int64, minimum: 0 }
+        availableFrom: { type: integer, format: int64, minimum: 1 }
+    ThreadBlock:
+      type: object
+      required:
+        [id, messageId, messageSequence, sequence, role, messageKind, kind, createdAt]
+      properties:
+        id: { type: string }
+        messageId: { type: string }
+        messageSequence: { type: integer, format: int64, minimum: 1 }
+        sequence: { type: integer, format: int64, minimum: 1, maximum: 128 }
+        role: { $ref: "#/components/schemas/ThreadMessageRole" }
+        messageKind: { $ref: "#/components/schemas/ThreadMessageKind" }
+        kind: { $ref: "#/components/schemas/ThreadBlockKind" }
+        content:
+          type: string
+          maxLength: 1048576
+          description: Present only at explicit read/stream decryption boundaries.
+        event: { $ref: "#/components/schemas/ThreadAdapterEvent" }
+        createdAt: { type: string, format: date-time }
+    ThreadBlockPage:
+      type: object
+      required: [items, nextCursor, more]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ThreadBlock" }
+        nextCursor: { type: integer, format: int64, minimum: 0 }
+        more: { type: boolean }
+        gap: { $ref: "#/components/schemas/ThreadAdapterEvent" }
+    ProjectPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Project"
+        nextCursor:
+          type: string
+    CapsulePage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Capsule"
+        nextCursor:
+          type: string
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          $ref: "#/components/schemas/APIError"
+    APIError:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+tags:
+  - name: probes
+    description: Process health and readiness.
+  - name: capabilities
+    description: Effective provider-backed UI features.
+  - name: projects
+    description: Project metadata.
+  - name: capsules
+    description: Asynchronous Capsule lifecycle.
+  - name: runs
+    description: Harness execution, ordered events, and reconnectable PTY attachment.
+  - name: threads
+    description: Provider-independent encrypted structured harness Threads.
+  - name: previews
+    description: Bounded Capsule-local port discovery and loopback preview tickets.

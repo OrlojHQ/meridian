@@ -1,0 +1,42 @@
+version: v1
+harnesses:
+  - name: mock-jsonl
+    executable: /usr/local/bin/mock-harness
+    arguments: ["--output=jsonl"]
+    workingDirectory: .
+    promptMode: stdin
+    pty: false
+    outputMode: jsonl
+    timeout: 2m
+  - name: mock-pty
+    executable: /usr/local/bin/mock-harness
+    arguments: ["--output=text", "--interactive"]
+    workingDirectory: .
+    promptMode: interactive
+    pty: true
+    outputMode: text
+    timeout: 2m
+  - name: mock-long
+    executable: /usr/local/bin/mock-harness
+    arguments: ["--output=text", "--delay=30s"]
+    workingDirectory: .
+    promptMode: stdin
+    pty: false
+    outputMode: text
+    timeout: 2m
+  - name: mock-preview
+    executable: /usr/local/bin/preview-server
+    workingDirectory: .
+    promptMode: stdin
+    pty: false
+    outputMode: text
+    timeout: 2m
+  - name: mock-structured
+    interactionMode: structured
+    adapter:
+      protocol: meridian.adapter.v1
+      executable: /usr/local/bin/meridian-harness-adapter
+      arguments: ["mock"]
+    workingDirectory: .
+    pty: false
+    timeout: 2m

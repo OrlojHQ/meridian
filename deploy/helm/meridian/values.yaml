@@ -1,0 +1,95 @@
+nameOverride: ""
+fullnameOverride: ""
+
+namespace:
+  create: false
+  name: ""
+
+image:
+  repository: ghcr.io/orlojhq/meridian
+  tag: dev
+  digest: ""
+  pullPolicy: IfNotPresent
+
+capsuleImage:
+  repository: ghcr.io/orlojhq/meridian-capsule
+  tag: dev
+  digest: ""
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+serviceAccount:
+  create: true
+  name: ""
+  automountServiceAccountToken: true
+
+service:
+  type: ClusterIP
+  port: 8080
+
+agentSandbox:
+  namespace: ""
+  class: ""
+  runtimeClassName: ""
+  storageClassName: ""
+  workspaceSize: 10Gi
+  ttl: 24h
+  operationTimeout: 2m
+  setupTimeout: 10m
+  limits:
+    cpu: "2"
+    memory: 2Gi
+    ephemeralStorage: 2Gi
+
+persistence:
+  storageClassName: ""
+  size: 10Gi
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+    ephemeral-storage: 1Gi
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+
+networkPolicy:
+  enabled: true
+  # Kubernetes NetworkPolicy cannot select the API server. Set its routable
+  # CIDR explicitly; the safe empty default denies API access.
+  kubernetesAPIServerCIDRs: []
+  dnsNamespaceSelector:
+    kubernetes.io/metadata.name: kube-system
+  dnsPodSelector:
+    k8s-app: kube-dns
+  # Capsule package/repository egress is denied unless explicitly scoped.
+  capsuleEgressCIDRs: []
+
+resourceQuota:
+  enabled: true
+  hard:
+    requests.cpu: "16"
+    requests.memory: 32Gi
+    limits.cpu: "32"
+    limits.memory: 64Gi
+    persistentvolumeclaims: "50"
+    requests.storage: 500Gi
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1

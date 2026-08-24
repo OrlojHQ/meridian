@@ -1,0 +1,30 @@
+# Go
+/bin/
+/dist/
+/.tools/
+*.test
+coverage.out
+
+# Bun / Vite
+/node_modules/
+/frontend/node_modules/
+/frontend/dist/
+/frontend/.vite/
+*.tsbuildinfo
+
+# Generated-client scratch output
+/.generated/
+
+# Local state and credentials
+.env
+.env.*
+!.env.example
+*.db
+*.db-shm
+*.db-wal
+/data/
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/

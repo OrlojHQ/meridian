@@ -1,0 +1,64 @@
+package main
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestAgentSandboxProviderFlagsAreRegistered(t *testing.T) {
+	command := newRootCommand()
+	for _, name := range []string{
+		"provider",
+		"agentsandbox-kubeconfig",
+		"agentsandbox-context",
+		"agentsandbox-in-cluster",
+		"agentsandbox-namespace",
+		"agentsandbox-name-prefix",
+		"agentsandbox-image",
+		"agentsandbox-runtime-class",
+		"agentsandbox-storage-class",
+		"agentsandbox-volume-size",
+		"agentsandbox-ttl",
+		"agentsandbox-operation-timeout",
+		"agentsandbox-setup-timeout",
+		"metrics-listen",
+		"allow-unsafe-metrics-listen",
+		"otel-otlp-endpoint",
+		"otel-otlp-insecure",
+	} {
+		if command.Flags().Lookup(name) == nil {
+			t.Errorf("flag --%s is not registered", name)
+		}
+	}
+	provider := command.Flags().Lookup("provider")
+	if provider == nil || provider.Usage != "Capsule provider (fake, docker, or agentsandbox)" {
+		t.Fatalf("provider flag does not advertise Agent Sandbox: %#v", provider)
+	}
+}
+
+func TestInitDataDirectoryRejectsSymlink(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	path := filepath.Join(root, "data")
+	command := newRootCommand()
+	command.SetArgs([]string{"init-data-dir", "--path", path})
+	if err := command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil || !info.IsDir() || info.Mode().Perm() != 0o700 {
+		t.Fatalf("initialized directory = %v, %v", info, err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(root, path); err != nil {
+		t.Fatal(err)
+	}
+	command = newRootCommand()
+	command.SetArgs([]string{"init-data-dir", "--path", path})
+	if err := command.Execute(); err == nil {
+		t.Fatal("symlink data directory unexpectedly accepted")
+	}
+}
