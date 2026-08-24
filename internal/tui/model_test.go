@@ -472,7 +472,7 @@ func TestThreadLockedGapUnknownAndBoundedTranscript(t *testing.T) {
 
 func TestRunRejectsNonTTYWithoutEscapes(t *testing.T) {
 	var output bytes.Buffer
-	if err := Run(context.Background(), &fakeAPI{}, "", nil, &output); err == nil {
+	if err := Run(context.Background(), &fakeAPI{}, "", "", nil, &output); err == nil {
 		t.Fatal("non-TTY dashboard unexpectedly started")
 	}
 	if output.Len() != 0 {

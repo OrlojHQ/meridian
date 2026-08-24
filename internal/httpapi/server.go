@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -16,6 +17,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/OrlojHQ/meridian/internal/apiauth"
 	"github.com/OrlojHQ/meridian/internal/app"
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/observability"
@@ -35,20 +37,30 @@ type Server struct {
 	previews     *previewTicketRegistry
 	previewBase  string
 	metrics      *observability.Metrics
+	apiToken     *apiauth.Token
+	browserToken *apiauth.Token
+	browserValue string
 }
 
-func New(service *app.Service) *Server {
-	return NewWithCapabilities(service, ports.ProviderCapabilities{})
+const browserSessionCookie = "meridian_session"
+
+func New(service *app.Service, token *apiauth.Token) *Server {
+	return NewWithCapabilities(service, ports.ProviderCapabilities{}, token)
 }
 
-func NewWithCapabilities(service *app.Service, capabilities ports.ProviderCapabilities) *Server {
-	return NewWithPreview(service, capabilities, "")
+func NewWithCapabilities(
+	service *app.Service,
+	capabilities ports.ProviderCapabilities,
+	token *apiauth.Token,
+) *Server {
+	return NewWithPreview(service, capabilities, "", token)
 }
 
 func NewWithPreview(
 	service *app.Service,
 	capabilities ports.ProviderCapabilities,
 	previewBaseURL string,
+	token *apiauth.Token,
 ) *Server {
 	server := &Server{
 		service:      service,
@@ -58,7 +70,9 @@ func NewWithPreview(
 		tickets:      newAttachTicketRegistry(maxOutstandingAttachTickets),
 		previews:     newPreviewTicketRegistry(maxPreviewTickets),
 		previewBase:  previewBaseURL,
+		apiToken:     token,
 	}
+	server.initializeBrowserSession()
 	server.routes()
 	return server
 }
@@ -85,8 +99,22 @@ func (f snoopHandlerFunc) ServeHTTP(writer http.ResponseWriter, request *http.Re
 func (s *Server) serveHTTP(writer http.ResponseWriter, request *http.Request) {
 	if request.URL.Path == "/" || request.URL.Path == "/ui" ||
 		request.URL.Path == "/ui/" || strings.HasPrefix(request.URL.Path, "/ui/") {
+		s.bootstrapLoopbackBrowser(writer, request)
 		s.ui.ServeHTTP(writer, request)
 		return
+	}
+	if !authExempt(request) {
+		authenticated, browser := s.authenticate(request)
+		if !authenticated {
+			writeUnauthorized(writer)
+			return
+		}
+		if browser && !safeMethod(request.Method) && !sameOrigin(request) {
+			writeJSON(writer, http.StatusForbidden, errorEnvelope{
+				Error: apiError{Code: "forbidden", Message: "same-origin request required"},
+			})
+			return
+		}
 	}
 	s.mux.ServeHTTP(writer, request)
 }
@@ -105,10 +133,16 @@ func (s *Server) SetReady(ready bool) {
 func (s *Server) routes() {
 	s.mux.HandleFunc("GET /healthz", s.health)
 	s.mux.HandleFunc("GET /readyz", s.readiness)
+	s.mux.HandleFunc("POST /auth/browser-session", s.createBrowserSession)
 	s.mux.HandleFunc("GET /capabilities", s.getCapabilities)
 	s.mux.HandleFunc("POST /projects", s.createProject)
 	s.mux.HandleFunc("GET /projects", s.listProjects)
 	s.mux.HandleFunc("GET /projects/{projectId}", s.getProject)
+	s.mux.HandleFunc("POST /projects/{projectId}/threads", s.createProjectThread)
+	s.mux.HandleFunc("GET /project-thread-intents/{intentId}", s.getProjectThreadIntent)
+	s.mux.HandleFunc("PUT /secrets/{secretName}", s.putSecret)
+	s.mux.HandleFunc("GET /secrets", s.listSecrets)
+	s.mux.HandleFunc("DELETE /secrets/{secretName}", s.deleteSecret)
 	s.mux.HandleFunc("POST /projects/{projectId}/capsules", s.createCapsule)
 	s.mux.HandleFunc("GET /projects/{projectId}/capsules", s.listCapsules)
 	s.mux.HandleFunc("GET /capsules/{capsuleId}", s.getCapsule)
@@ -140,6 +174,13 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /runs/{runId}/attach", s.attachRun)
 	s.mux.HandleFunc("GET /capsules/{capsuleId}/git/status", s.gitStatus)
 	s.mux.HandleFunc("GET /capsules/{capsuleId}/git/diff", s.gitDiff)
+	s.mux.HandleFunc("GET /capsules/{capsuleId}/files", s.listCapsuleFiles)
+	s.mux.HandleFunc("GET /capsules/{capsuleId}/files/content", s.readCapsuleFile)
+	s.mux.HandleFunc("GET /capsules/{capsuleId}/workspace", s.exportWorkspace)
+	s.mux.HandleFunc("GET /capsules/{capsuleId}/deliveries/inspection", s.inspectDelivery)
+	s.mux.HandleFunc("POST /capsules/{capsuleId}/deliveries", s.createDelivery)
+	s.mux.HandleFunc("GET /capsules/{capsuleId}/deliveries", s.listDeliveries)
+	s.mux.HandleFunc("GET /deliveries/{deliveryId}", s.getDelivery)
 	s.mux.HandleFunc("POST /capsules/{capsuleId}/moments", s.captureMoment)
 	s.mux.HandleFunc("GET /capsules/{capsuleId}/moments", s.listMoments)
 	s.mux.HandleFunc("GET /moments/{momentId}", s.getMoment)
@@ -147,6 +188,121 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /moments/{momentId}/shards", s.createShard)
 	s.mux.HandleFunc("POST /capsules/{capsuleId}/rewind", s.rewindCapsule)
 	s.mux.HandleFunc("POST /capsules/{capsuleId}/seal", s.sealCapsule)
+}
+
+func (s *Server) initializeBrowserSession() {
+	random := make([]byte, 32)
+	if _, err := rand.Read(random); err != nil {
+		return
+	}
+	value := base64.RawURLEncoding.EncodeToString(random)
+	for index := range random {
+		random[index] = 0
+	}
+	token, err := apiauth.ParseToken(value)
+	if err != nil {
+		return
+	}
+	s.browserToken = token
+	s.browserValue = value
+}
+
+func (s *Server) authenticate(request *http.Request) (authenticated, browser bool) {
+	values := request.Header.Values("Authorization")
+	if len(values) > 0 {
+		if len(values) != 1 {
+			return false, false
+		}
+		scheme, value, ok := strings.Cut(values[0], " ")
+		return ok && strings.EqualFold(scheme, "Bearer") &&
+			value != "" && !strings.ContainsAny(value, " \t\r\n") &&
+			s.apiToken.Matches(value), false
+	}
+	var cookieValue string
+	for _, cookie := range request.Cookies() {
+		if cookie.Name == browserSessionCookie {
+			if cookieValue != "" {
+				return false, false
+			}
+			cookieValue = cookie.Value
+		}
+	}
+	return cookieValue != "" && s.browserToken.Matches(cookieValue), true
+}
+
+func (s *Server) createBrowserSession(writer http.ResponseWriter, request *http.Request) {
+	s.setBrowserCookie(writer, request)
+	writer.Header().Set("Cache-Control", "no-store")
+	writer.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) bootstrapLoopbackBrowser(writer http.ResponseWriter, request *http.Request) {
+	if isLoopbackRequest(request) {
+		s.setBrowserCookie(writer, request)
+	}
+}
+
+func isLoopbackRequest(request *http.Request) bool {
+	host := request.Host
+	if parsedHost, _, err := net.SplitHostPort(host); err == nil {
+		host = parsedHost
+	} else {
+		host = strings.TrimPrefix(strings.TrimSuffix(host, "]"), "[")
+	}
+	remote, _, err := net.SplitHostPort(request.RemoteAddr)
+	if err != nil {
+		return false
+	}
+	remoteIP := net.ParseIP(remote)
+	hostIP := net.ParseIP(host)
+	hostIsLoopback := strings.EqualFold(host, "localhost") ||
+		(hostIP != nil && hostIP.IsLoopback())
+	return remoteIP != nil && remoteIP.IsLoopback() && hostIsLoopback
+}
+
+func (s *Server) setBrowserCookie(writer http.ResponseWriter, request *http.Request) {
+	if s.browserValue == "" {
+		return
+	}
+	http.SetCookie(writer, &http.Cookie{
+		Name: browserSessionCookie, Value: s.browserValue, Path: "/",
+		HttpOnly: true, Secure: request.TLS != nil || !isLoopbackRequest(request),
+		SameSite: http.SameSiteStrictMode,
+	})
+}
+
+func authExempt(request *http.Request) bool {
+	if request.Method == http.MethodGet &&
+		(request.URL.Path == "/healthz" || request.URL.Path == "/readyz") {
+		return true
+	}
+	if request.Method != http.MethodGet {
+		return false
+	}
+	parts := strings.Split(strings.Trim(request.URL.Path, "/"), "/")
+	return len(parts) == 3 && parts[0] == "runs" && parts[1] != "" && parts[2] == "attach"
+}
+
+func safeMethod(method string) bool {
+	return method == http.MethodGet || method == http.MethodHead || method == http.MethodOptions
+}
+
+func sameOrigin(request *http.Request) bool {
+	origin := request.Header.Get("Origin")
+	if origin == "" {
+		return false
+	}
+	parsed, err := url.Parse(origin)
+	return err == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") &&
+		strings.EqualFold(parsed.Host, request.Host)
+}
+
+func writeUnauthorized(writer http.ResponseWriter) {
+	writer.Header().Set("WWW-Authenticate", `Bearer realm="meridian"`)
+	writer.Header().Set("Cache-Control", "no-store")
+	writeJSON(writer, http.StatusUnauthorized, errorEnvelope{
+		Error: apiError{Code: "unauthorized", Message: "authentication required"},
+	})
 }
 
 func (s *Server) listHarnessProfiles(writer http.ResponseWriter, request *http.Request) {
@@ -182,6 +338,40 @@ func (s *Server) createThread(writer http.ResponseWriter, request *http.Request)
 	}
 	writer.Header().Set("ETag", etag(result.Thread.ResourceVersion))
 	writeJSON(writer, http.StatusCreated, s.threadMutationResponse(request.Context(), result))
+}
+
+func (s *Server) createProjectThread(writer http.ResponseWriter, request *http.Request) {
+	var input createProjectThreadRequest
+	if !decode(writer, request, &input) {
+		return
+	}
+	result, err := s.service.CreateProjectThread(
+		request.Context(),
+		app.CreateProjectThreadInput{
+			ProjectID: domain.ProjectID(request.PathValue("projectId")),
+			Name:      input.Name, Harness: input.Harness, Prompt: input.Prompt,
+			IdempotencyKey: request.Header.Get("Idempotency-Key"),
+		},
+	)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	writer.Header().Set("ETag", etag(result.Intent.ResourceVersion))
+	writeJSON(writer, http.StatusAccepted, s.projectThreadIntentResponse(request.Context(), result))
+}
+
+func (s *Server) getProjectThreadIntent(writer http.ResponseWriter, request *http.Request) {
+	result, err := s.service.GetProjectThreadIntent(
+		request.Context(),
+		domain.ProjectThreadIntentID(request.PathValue("intentId")),
+	)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	writer.Header().Set("ETag", etag(result.Intent.ResourceVersion))
+	writeJSON(writer, http.StatusOK, s.projectThreadIntentResponse(request.Context(), result))
 }
 
 func (s *Server) listThreads(writer http.ResponseWriter, request *http.Request) {
@@ -597,6 +787,8 @@ func (s *Server) getCapabilities(writer http.ResponseWriter, _ *http.Request) {
 		Snapshot:        s.capabilities.Snapshot,
 		Clone:           s.capabilities.Clone,
 		Preview:         s.capabilities.Preview && s.previewBase != "" && s.service != nil,
+		Browse:          s.capabilities.Browse,
+		Delivery:        s.capabilities.Delivery,
 		ResourceMetrics: false,
 	})
 }
@@ -611,6 +803,13 @@ func (s *Server) createProject(writer http.ResponseWriter, request *http.Request
 		input.Name,
 		app.ProjectConfiguration{
 			RepositoryURL: input.RepositoryURL, Setup: input.Setup, ImageReference: input.ImageReference,
+			GitSecretName:       input.GitSecretName,
+			HarnessSecretNames:  input.HarnessSecretNames,
+			GitPushSecretName:   input.GitPushSecretName,
+			GitHubAPISecretName: input.GitHubAPISecretName,
+			CommitAuthorName:    input.CommitAuthorName,
+			CommitAuthorEmail:   input.CommitAuthorEmail,
+			DefaultBaseBranch:   input.DefaultBaseBranch,
 		},
 		request.Header.Get("Idempotency-Key"),
 	)
@@ -620,6 +819,67 @@ func (s *Server) createProject(writer http.ResponseWriter, request *http.Request
 	}
 	writer.Header().Set("ETag", etag(project.ResourceVersion))
 	writeJSON(writer, http.StatusCreated, projectResponse(project))
+}
+
+func (s *Server) putSecret(writer http.ResponseWriter, request *http.Request) {
+	var input putSecretRequest
+	if !decode(writer, request, &input) {
+		return
+	}
+	secret, err := s.service.PutSecret(
+		request.Context(), request.PathValue("secretName"),
+		app.SecretInput{
+			Purpose: domain.SecretPurpose(input.Purpose), Value: input.Value,
+			Username: input.Username, Password: input.Password,
+		},
+		domain.ResourceVersion(input.ExpectedResourceVersion),
+		request.Header.Get("Idempotency-Key"),
+	)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	writer.Header().Set("ETag", etag(secret.ResourceVersion))
+	writeJSON(writer, http.StatusOK, secretResponse(secret))
+}
+
+func (s *Server) listSecrets(writer http.ResponseWriter, request *http.Request) {
+	offset, limit, err := pagination(request)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	page, err := s.service.ListSecrets(request.Context(), offset, limit)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	items := make([]secretJSON, len(page.Items))
+	for index := range page.Items {
+		items[index] = secretResponse(page.Items[index])
+	}
+	response := secretPageJSON{Items: items}
+	if page.NextOffset > 0 {
+		response.NextCursor = encodeCursor(page.NextOffset)
+	}
+	writeJSON(writer, http.StatusOK, response)
+}
+
+func (s *Server) deleteSecret(writer http.ResponseWriter, request *http.Request) {
+	var input deleteSecretRequest
+	if !decode(writer, request, &input) {
+		return
+	}
+	secret, err := s.service.DeleteSecret(
+		request.Context(), request.PathValue("secretName"),
+		domain.ResourceVersion(input.ExpectedResourceVersion),
+		request.Header.Get("Idempotency-Key"),
+	)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	writeJSON(writer, http.StatusOK, secretResponse(secret))
 }
 
 func (s *Server) listProjects(writer http.ResponseWriter, request *http.Request) {
@@ -1010,6 +1270,165 @@ func (s *Server) gitDiff(writer http.ResponseWriter, request *http.Request) {
 	writeJSON(writer, http.StatusOK, gitJSON{Content: result.Content, Truncated: result.Truncated})
 }
 
+func (s *Server) listCapsuleFiles(writer http.ResponseWriter, request *http.Request) {
+	if !s.capabilities.Browse {
+		writeError(writer, domain.ErrUnsupported)
+		return
+	}
+	limit := 0
+	if value := request.URL.Query().Get("limit"); value != "" {
+		var err error
+		limit, err = strconv.Atoi(value)
+		if err != nil || limit < 1 || limit > 512 {
+			writeError(writer, fmt.Errorf("%w: file limit must be between 1 and 512", domain.ErrInvalid))
+			return
+		}
+	}
+	result, err := s.service.ListWorkspaceFiles(
+		request.Context(), domain.CapsuleID(request.PathValue("capsuleId")),
+		request.URL.Query().Get("path"), request.URL.Query().Get("after"), limit,
+	)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	items := make([]workspaceFileEntryJSON, len(result.Items))
+	for index, item := range result.Items {
+		items[index] = workspaceFileEntryJSON{
+			Name: item.Name, Type: item.Type, Size: item.Size, Executable: item.Executable,
+		}
+	}
+	writeJSON(writer, http.StatusOK, workspaceFilePageJSON{
+		Path: result.Path, Items: items, NextAfter: result.NextAfter,
+	})
+}
+
+func (s *Server) readCapsuleFile(writer http.ResponseWriter, request *http.Request) {
+	if !s.capabilities.Browse {
+		writeError(writer, domain.ErrUnsupported)
+		return
+	}
+	result, err := s.service.ReadWorkspaceFile(
+		request.Context(), domain.CapsuleID(request.PathValue("capsuleId")),
+		request.URL.Query().Get("path"),
+	)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	writeJSON(writer, http.StatusOK, workspaceFileJSON{
+		Path: result.Path, Content: result.Content, Size: result.Size,
+		Executable: result.Executable,
+	})
+}
+
+func (s *Server) exportWorkspace(writer http.ResponseWriter, request *http.Request) {
+	if !s.capabilities.Snapshot {
+		writeError(writer, domain.ErrUnsupported)
+		return
+	}
+	result, err := s.service.ExportWorkspace(
+		request.Context(), domain.CapsuleID(request.PathValue("capsuleId")),
+	)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	defer result.Archive.Close()
+	encode := func(value string) string {
+		return base64.RawURLEncoding.EncodeToString([]byte(value))
+	}
+	writer.Header().Set("Content-Type", "application/x-tar")
+	writer.Header().Set("Cache-Control", "no-store")
+	writer.Header().Set("Meridian-Repository-URL", encode(result.RepositoryURL))
+	writer.Header().Set("Meridian-Git-Branch", encode(result.Metadata.GitBranch))
+	writer.Header().Set("Meridian-Git-Head", encode(result.Metadata.GitHEAD))
+	writer.Header().Set("Meridian-Git-Dirty", encode(result.Metadata.GitDirtySummary))
+	writer.WriteHeader(http.StatusOK)
+	_, _ = io.Copy(writer, result.Archive)
+}
+
+func (s *Server) inspectDelivery(writer http.ResponseWriter, request *http.Request) {
+	if !s.capabilities.Delivery {
+		writeError(writer, domain.ErrUnsupported)
+		return
+	}
+	result, err := s.service.InspectDelivery(
+		request.Context(), domain.CapsuleID(request.PathValue("capsuleId")),
+	)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	writeJSON(writer, http.StatusOK, deliveryInspectionJSON{
+		CapsuleResourceVersion: int64(result.CapsuleResourceVersion),
+		HEAD:                   result.HEAD, Branch: result.Branch, Dirty: result.Dirty,
+		OriginURL: result.OriginURL, DefaultBranch: result.DefaultBranch, Tree: result.Tree,
+	})
+}
+
+func (s *Server) createDelivery(writer http.ResponseWriter, request *http.Request) {
+	if !s.capabilities.Delivery {
+		writeError(writer, domain.ErrUnsupported)
+		return
+	}
+	var input createDeliveryRequest
+	if !decode(writer, request, &input) {
+		return
+	}
+	result, err := s.service.CreateDelivery(request.Context(), app.CreateDeliveryInput{
+		CapsuleID: domain.CapsuleID(request.PathValue("capsuleId")),
+		Action:    domain.DeliveryAction(input.Action), Approved: input.Approved,
+		ExpectedCapsuleVersion: domain.ResourceVersion(input.ExpectedResourceVersion),
+		ExpectedHEAD:           input.ExpectedHead, ExpectedTree: input.ExpectedTree,
+		RemoteBranch: input.RemoteBranch, CommitMessage: input.CommitMessage,
+		PullRequestTitle: input.PullRequestTitle, PullRequestBody: input.PullRequestBody,
+		BaseBranch: input.BaseBranch, IdempotencyKey: request.Header.Get("Idempotency-Key"),
+	})
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	writer.Header().Set("ETag", etag(result.ResourceVersion))
+	writeJSON(writer, http.StatusCreated, deliveryResponse(result))
+}
+
+func (s *Server) getDelivery(writer http.ResponseWriter, request *http.Request) {
+	result, err := s.service.GetDelivery(
+		request.Context(), domain.DeliveryID(request.PathValue("deliveryId")),
+	)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	writer.Header().Set("ETag", etag(result.ResourceVersion))
+	writeJSON(writer, http.StatusOK, deliveryResponse(result))
+}
+
+func (s *Server) listDeliveries(writer http.ResponseWriter, request *http.Request) {
+	offset, limit, err := pagination(request)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	page, err := s.service.ListDeliveries(
+		request.Context(), domain.CapsuleID(request.PathValue("capsuleId")), offset, limit,
+	)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	items := make([]deliveryJSON, len(page.Items))
+	for index, item := range page.Items {
+		items[index] = deliveryResponse(item)
+	}
+	response := deliveryPageJSON{Items: items}
+	if page.NextOffset > 0 {
+		response.NextCursor = encodeCursor(page.NextOffset)
+	}
+	writeJSON(writer, http.StatusOK, response)
+}
+
 type attachTicket struct {
 	RunID     domain.RunID
 	ExpiresAt time.Time
@@ -1242,6 +1661,8 @@ type capabilitiesJSON struct {
 	Snapshot           bool   `json:"snapshot"`
 	Clone              bool   `json:"clone"`
 	Preview            bool   `json:"preview"`
+	Browse             bool   `json:"browse"`
+	Delivery           bool   `json:"delivery"`
 	ResourceMetrics    bool   `json:"resourceMetrics"`
 }
 
@@ -1250,10 +1671,42 @@ type createRequest struct {
 }
 
 type createProjectRequest struct {
-	Name           string   `json:"name"`
-	RepositoryURL  string   `json:"repositoryUrl,omitempty"`
-	Setup          []string `json:"setup,omitempty"`
-	ImageReference string   `json:"imageReference,omitempty"`
+	Name                string   `json:"name"`
+	RepositoryURL       string   `json:"repositoryUrl,omitempty"`
+	Setup               []string `json:"setup,omitempty"`
+	ImageReference      string   `json:"imageReference,omitempty"`
+	GitSecretName       string   `json:"gitSecretName,omitempty"`
+	HarnessSecretNames  []string `json:"harnessSecretNames,omitempty"`
+	GitPushSecretName   string   `json:"gitPushSecretName,omitempty"`
+	GitHubAPISecretName string   `json:"githubAPISecretName,omitempty"`
+	CommitAuthorName    string   `json:"commitAuthorName,omitempty"`
+	CommitAuthorEmail   string   `json:"commitAuthorEmail,omitempty"`
+	DefaultBaseBranch   string   `json:"defaultBaseBranch,omitempty"`
+}
+
+type createDeliveryRequest struct {
+	Action                  string `json:"action"`
+	Approved                bool   `json:"approved"`
+	ExpectedResourceVersion int64  `json:"expectedResourceVersion"`
+	ExpectedHead            string `json:"expectedHead"`
+	ExpectedTree            string `json:"expectedTree"`
+	RemoteBranch            string `json:"remoteBranch"`
+	CommitMessage           string `json:"commitMessage,omitempty"`
+	PullRequestTitle        string `json:"pullRequestTitle,omitempty"`
+	PullRequestBody         string `json:"pullRequestBody,omitempty"`
+	BaseBranch              string `json:"baseBranch,omitempty"`
+}
+
+type putSecretRequest struct {
+	Purpose                 string `json:"purpose"`
+	Value                   string `json:"value,omitempty"`
+	Username                string `json:"username,omitempty"`
+	Password                string `json:"password,omitempty"`
+	ExpectedResourceVersion int64  `json:"expectedResourceVersion,omitempty"`
+}
+
+type deleteSecretRequest struct {
+	ExpectedResourceVersion int64 `json:"expectedResourceVersion"`
 }
 
 type lifecycleRequest struct {
@@ -1283,6 +1736,12 @@ type createThreadRequest struct {
 	Start        bool   `json:"start,omitempty"`
 }
 
+type createProjectThreadRequest struct {
+	Name    string `json:"name,omitempty"`
+	Harness string `json:"harness"`
+	Prompt  string `json:"prompt"`
+}
+
 type harnessProfileJSON struct {
 	Name        string `json:"name"`
 	Structured  bool   `json:"structured"`
@@ -1309,14 +1768,35 @@ type threadResponseRequest struct {
 }
 
 type projectJSON struct {
-	ID              string   `json:"id"`
-	Name            string   `json:"name"`
-	RepositoryURL   string   `json:"repositoryUrl,omitempty"`
-	Setup           []string `json:"setup,omitempty"`
-	ImageReference  string   `json:"imageReference,omitempty"`
-	CreatedAt       string   `json:"createdAt"`
-	UpdatedAt       string   `json:"updatedAt"`
-	ResourceVersion int64    `json:"resourceVersion"`
+	ID                  string   `json:"id"`
+	Name                string   `json:"name"`
+	RepositoryURL       string   `json:"repositoryUrl,omitempty"`
+	Setup               []string `json:"setup,omitempty"`
+	ImageReference      string   `json:"imageReference,omitempty"`
+	GitSecretName       string   `json:"gitSecretName,omitempty"`
+	HarnessSecretNames  []string `json:"harnessSecretNames,omitempty"`
+	GitPushSecretName   string   `json:"gitPushSecretName,omitempty"`
+	GitHubAPISecretName string   `json:"githubAPISecretName,omitempty"`
+	CommitAuthorName    string   `json:"commitAuthorName,omitempty"`
+	CommitAuthorEmail   string   `json:"commitAuthorEmail,omitempty"`
+	DefaultBaseBranch   string   `json:"defaultBaseBranch,omitempty"`
+	CreatedAt           string   `json:"createdAt"`
+	UpdatedAt           string   `json:"updatedAt"`
+	ResourceVersion     int64    `json:"resourceVersion"`
+}
+
+type secretJSON struct {
+	ID              string `json:"id"`
+	Name            string `json:"name"`
+	Purpose         string `json:"purpose"`
+	CreatedAt       string `json:"createdAt"`
+	UpdatedAt       string `json:"updatedAt"`
+	ResourceVersion int64  `json:"resourceVersion"`
+}
+
+type secretPageJSON struct {
+	Items      []secretJSON `json:"items"`
+	NextCursor string       `json:"nextCursor,omitempty"`
 }
 
 type capsuleJSON struct {
@@ -1431,6 +1911,25 @@ type threadJSON struct {
 	ResourceVersion     int64  `json:"resourceVersion"`
 }
 
+type projectThreadIntentJSON struct {
+	ID              string      `json:"id"`
+	ProjectID       string      `json:"projectId"`
+	CapsuleID       string      `json:"capsuleId"`
+	CapsuleName     string      `json:"capsuleName"`
+	ThreadID        string      `json:"threadId"`
+	RunID           string      `json:"runId"`
+	MessageID       string      `json:"messageId"`
+	Harness         string      `json:"harness"`
+	State           string      `json:"state"`
+	FailureCode     string      `json:"failureCode,omitempty"`
+	FailureMessage  string      `json:"failureMessage,omitempty"`
+	Thread          *threadJSON `json:"thread,omitempty"`
+	CurrentRun      *runJSON    `json:"currentRun,omitempty"`
+	CreatedAt       string      `json:"createdAt"`
+	UpdatedAt       string      `json:"updatedAt"`
+	ResourceVersion int64       `json:"resourceVersion"`
+}
+
 type threadPageJSON struct {
 	Items      []threadJSON `json:"items"`
 	NextCursor string       `json:"nextCursor,omitempty"`
@@ -1458,6 +1957,67 @@ type runEventPageJSON struct {
 type gitJSON struct {
 	Content   string `json:"content"`
 	Truncated bool   `json:"truncated"`
+}
+
+type workspaceFileEntryJSON struct {
+	Name       string `json:"name"`
+	Type       string `json:"type"`
+	Size       int64  `json:"size"`
+	Executable bool   `json:"executable"`
+}
+
+type workspaceFilePageJSON struct {
+	Path      string                   `json:"path,omitempty"`
+	Items     []workspaceFileEntryJSON `json:"items"`
+	NextAfter string                   `json:"nextAfter,omitempty"`
+}
+
+type workspaceFileJSON struct {
+	Path       string `json:"path"`
+	Content    []byte `json:"content"`
+	Size       int64  `json:"size"`
+	Executable bool   `json:"executable"`
+}
+
+type deliveryInspectionJSON struct {
+	CapsuleResourceVersion int64  `json:"capsuleResourceVersion"`
+	HEAD                   string `json:"head"`
+	Branch                 string `json:"branch,omitempty"`
+	Dirty                  bool   `json:"dirty"`
+	OriginURL              string `json:"originUrl,omitempty"`
+	DefaultBranch          string `json:"defaultBranch,omitempty"`
+	Tree                   string `json:"tree"`
+}
+
+type deliveryJSON struct {
+	ID                      string `json:"id"`
+	CapsuleID               string `json:"capsuleId"`
+	ProjectID               string `json:"projectId"`
+	State                   string `json:"state"`
+	Action                  string `json:"action"`
+	Approved                bool   `json:"approved"`
+	ApprovedAt              string `json:"approvedAt"`
+	ExpectedResourceVersion int64  `json:"expectedResourceVersion"`
+	ExpectedHead            string `json:"expectedHead"`
+	ExpectedTree            string `json:"expectedTree"`
+	RemoteBranch            string `json:"remoteBranch"`
+	DestinationRef          string `json:"destinationRef"`
+	BaseBranch              string `json:"baseBranch,omitempty"`
+	CommitMessage           string `json:"commitMessage,omitempty"`
+	PullRequestTitle        string `json:"pullRequestTitle,omitempty"`
+	PullRequestBody         string `json:"pullRequestBody,omitempty"`
+	ResultCommitSHA         string `json:"resultCommitSha,omitempty"`
+	ResultPullRequestURL    string `json:"resultPullRequestUrl,omitempty"`
+	ResultPullRequestNumber int64  `json:"resultPullRequestNumber,omitempty"`
+	Failure                 string `json:"failure,omitempty"`
+	CreatedAt               string `json:"createdAt"`
+	UpdatedAt               string `json:"updatedAt"`
+	ResourceVersion         int64  `json:"resourceVersion"`
+}
+
+type deliveryPageJSON struct {
+	Items      []deliveryJSON `json:"items"`
+	NextCursor string         `json:"nextCursor,omitempty"`
 }
 
 type attachTicketJSON struct {
@@ -1491,14 +2051,50 @@ type errorEnvelope struct {
 
 func projectResponse(project domain.Project) projectJSON {
 	return projectJSON{
-		ID:              string(project.ID),
-		Name:            project.Name,
-		RepositoryURL:   project.RepositoryURL,
-		Setup:           project.Setup,
-		ImageReference:  project.ImageReference,
-		CreatedAt:       project.CreatedAt.UTC().Format(time.RFC3339Nano),
-		UpdatedAt:       project.UpdatedAt.UTC().Format(time.RFC3339Nano),
-		ResourceVersion: int64(project.ResourceVersion),
+		ID:                  string(project.ID),
+		Name:                project.Name,
+		RepositoryURL:       project.RepositoryURL,
+		Setup:               project.Setup,
+		ImageReference:      project.ImageReference,
+		GitSecretName:       project.GitSecretName,
+		HarnessSecretNames:  project.HarnessSecretNames,
+		GitPushSecretName:   project.GitPushSecretName,
+		GitHubAPISecretName: project.GitHubAPISecretName,
+		CommitAuthorName:    project.CommitAuthorName,
+		CommitAuthorEmail:   project.CommitAuthorEmail,
+		DefaultBaseBranch:   project.DefaultBaseBranch,
+		CreatedAt:           project.CreatedAt.UTC().Format(time.RFC3339Nano),
+		UpdatedAt:           project.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		ResourceVersion:     int64(project.ResourceVersion),
+	}
+}
+
+func deliveryResponse(delivery domain.Delivery) deliveryJSON {
+	return deliveryJSON{
+		ID: string(delivery.ID), CapsuleID: string(delivery.CapsuleID),
+		ProjectID: string(delivery.ProjectID), State: string(delivery.State),
+		Action: string(delivery.Action), Approved: delivery.Approved,
+		ApprovedAt:              delivery.ApprovedAt.UTC().Format(time.RFC3339Nano),
+		ExpectedResourceVersion: int64(delivery.ExpectedCapsuleVersion),
+		ExpectedHead:            delivery.ExpectedHEAD, ExpectedTree: delivery.ExpectedTree,
+		RemoteBranch: delivery.RemoteBranch, DestinationRef: delivery.DestinationRef,
+		BaseBranch: delivery.BaseBranch, CommitMessage: delivery.CommitMessage,
+		PullRequestTitle: delivery.PullRequestTitle, PullRequestBody: delivery.PullRequestBody,
+		ResultCommitSHA:         delivery.ResultCommitSHA,
+		ResultPullRequestURL:    delivery.ResultPullRequestURL,
+		ResultPullRequestNumber: delivery.ResultPullRequestNumber,
+		Failure:                 delivery.Failure, CreatedAt: delivery.CreatedAt.UTC().Format(time.RFC3339Nano),
+		UpdatedAt:       delivery.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		ResourceVersion: int64(delivery.ResourceVersion),
+	}
+}
+
+func secretResponse(secret domain.Secret) secretJSON {
+	return secretJSON{
+		ID: string(secret.ID), Name: secret.Name, Purpose: string(secret.Purpose),
+		CreatedAt:       secret.CreatedAt.UTC().Format(time.RFC3339Nano),
+		UpdatedAt:       secret.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		ResourceVersion: int64(secret.ResourceVersion),
 	}
 }
 
@@ -1604,6 +2200,33 @@ func (s *Server) threadMutationResponse(
 ) threadMutationJSON {
 	response := threadMutationJSON{
 		Thread: s.threadResponse(ctx, result.Thread), MessageID: string(result.MessageID),
+	}
+	if result.Run != nil {
+		run := runResponse(*result.Run)
+		response.CurrentRun = &run
+	}
+	return response
+}
+
+func (s *Server) projectThreadIntentResponse(
+	ctx context.Context,
+	result app.ProjectThreadResult,
+) projectThreadIntentJSON {
+	intent := result.Intent
+	response := projectThreadIntentJSON{
+		ID: string(intent.ID), ProjectID: string(intent.ProjectID),
+		CapsuleID: string(intent.CapsuleID), CapsuleName: intent.CapsuleName,
+		ThreadID: string(intent.ThreadID), RunID: string(intent.RunID),
+		MessageID: string(intent.MessageID), Harness: intent.Harness,
+		State: string(intent.State), FailureCode: intent.FailureCode,
+		FailureMessage:  intent.FailureMessage,
+		CreatedAt:       intent.CreatedAt.UTC().Format(time.RFC3339Nano),
+		UpdatedAt:       intent.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		ResourceVersion: int64(intent.ResourceVersion),
+	}
+	if result.Thread != nil {
+		thread := s.threadResponse(ctx, *result.Thread)
+		response.Thread = &thread
 	}
 	if result.Run != nil {
 		run := runResponse(*result.Run)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 
@@ -121,6 +122,54 @@ func (p *Provider) ownedPod(
 	return found, nil
 }
 
+func (p *Provider) CaptureWorkspace(
+	ctx context.Context,
+	resourceID string,
+) (ports.WorkspaceCapture, error) {
+	resource, err := p.Get(ctx, resourceID)
+	if err != nil {
+		return ports.WorkspaceCapture{}, err
+	}
+	if resource.State != ports.ProviderReady {
+		return ports.WorkspaceCapture{}, fmt.Errorf(
+			"%w: Capsule runtime is not Ready", domain.ErrIllegalTransition,
+		)
+	}
+	client, session, err := p.runtimeClient(ctx, resourceID)
+	if err != nil {
+		return ports.WorkspaceCapture{}, err
+	}
+	capture, err := client.CaptureWorkspace(ctx)
+	if err != nil {
+		_ = session.Close()
+		return ports.WorkspaceCapture{}, mapRuntimeError(err)
+	}
+	return ports.WorkspaceCapture{
+		Archive: &forwardedArchive{ReadCloser: capture.Archive, session: session},
+		Metadata: ports.SnapshotMetadata{
+			ImageDigest: resource.ImageDigest, GitBranch: capture.Branch,
+			GitHEAD: capture.HEAD, GitDirtySummary: capture.Dirty,
+		},
+	}, nil
+}
+
+func (p *Provider) RestoreWorkspace(
+	ctx context.Context,
+	resourceID, digest string,
+	size int64,
+	archive io.Reader,
+) error {
+	if size < 0 {
+		return fmt.Errorf("%w: archive size is invalid", domain.ErrInvalid)
+	}
+	client, session, err := p.runtimeClient(ctx, resourceID)
+	if err != nil {
+		return err
+	}
+	defer session.Close()
+	return mapRuntimeError(client.RestoreWorkspace(ctx, digest, io.LimitReader(archive, size+1)))
+}
+
 func (p *Provider) StartRun(ctx context.Context, request ports.RuntimeRunRequest) (ports.RuntimeRun, error) {
 	ctx, cancel := context.WithTimeout(ctx, p.config.OperationTimeout)
 	defer cancel()
@@ -132,6 +181,7 @@ func (p *Provider) StartRun(ctx context.Context, request ports.RuntimeRunRequest
 	result, err := client.StartRun(ctx, capsuleproto.RunStartRequest{
 		RunID: string(request.RunID), Harness: request.Harness, Prompt: request.Prompt,
 		Columns: request.Columns, Rows: request.Rows,
+		Secrets: request.Secrets,
 	})
 	return runtimeRun(result), mapRuntimeError(err)
 }
@@ -149,6 +199,7 @@ func (p *Provider) StartStructured(
 	defer session.Close()
 	result, err := client.StartStructured(ctx, capsuleproto.StructuredStartRequest{
 		RunID: string(request.RunID), Harness: request.Harness, Frame: request.Frame,
+		Secrets: request.Secrets,
 	})
 	return structuredRuntimeRun(result), mapRuntimeError(err)
 }
@@ -350,6 +401,159 @@ func (p *Provider) GitDiff(ctx context.Context, resourceID string) (ports.GitRes
 	return ports.GitResult{Content: result.Content, Truncated: result.Truncated}, mapRuntimeError(err)
 }
 
+func (p *Provider) ListWorkspaceFiles(
+	ctx context.Context, resourceID, filePath, after string, limit int,
+) (ports.WorkspaceFilePage, error) {
+	client, session, err := p.runtimeClient(ctx, resourceID)
+	if err != nil {
+		return ports.WorkspaceFilePage{}, err
+	}
+	defer session.Close()
+	result, err := client.BrowseList(ctx, capsuleproto.BrowseListRequest{
+		Path: filePath, After: after, Limit: limit,
+	})
+	if err != nil {
+		return ports.WorkspaceFilePage{}, mapRuntimeError(err)
+	}
+	output := ports.WorkspaceFilePage{Path: result.Path, NextAfter: result.NextAfter}
+	for _, item := range result.Items {
+		output.Items = append(output.Items, ports.WorkspaceFileEntry{
+			Name: item.Name, Type: item.Type, Size: item.Size, Executable: item.Executable,
+		})
+	}
+	return output, nil
+}
+
+func (p *Provider) ReadWorkspaceFile(
+	ctx context.Context, resourceID, filePath string,
+) (ports.WorkspaceFile, error) {
+	client, session, err := p.runtimeClient(ctx, resourceID)
+	if err != nil {
+		return ports.WorkspaceFile{}, err
+	}
+	defer session.Close()
+	result, err := client.BrowseRead(ctx, capsuleproto.BrowseReadRequest{Path: filePath})
+	if err != nil {
+		return ports.WorkspaceFile{}, mapRuntimeError(err)
+	}
+	return ports.WorkspaceFile{
+		Path: result.Path, Content: result.Content, Size: result.Size,
+		Executable: result.Executable,
+	}, nil
+}
+
+func (p *Provider) InspectDelivery(
+	ctx context.Context, resourceID string,
+) (ports.DeliveryInspection, error) {
+	client, session, err := p.runtimeClient(ctx, resourceID)
+	if err != nil {
+		return ports.DeliveryInspection{}, err
+	}
+	defer session.Close()
+	result, err := client.DeliveryState(ctx)
+	return ports.DeliveryInspection{
+		HEAD: result.HEAD, Branch: result.Branch, Dirty: result.Dirty,
+		OriginURL: result.OriginURL, DefaultBranch: result.DefaultBranch, Tree: result.Tree,
+	}, mapRuntimeError(err)
+}
+
+func (p *Provider) CommitDelivery(
+	ctx context.Context, request ports.DeliveryCommitRequest,
+) (ports.DeliveryCommitResult, error) {
+	client, session, err := p.runtimeClient(ctx, request.ResourceID)
+	if err != nil {
+		return ports.DeliveryCommitResult{}, err
+	}
+	defer session.Close()
+	result, err := client.DeliveryCommit(ctx, capsuleproto.DeliveryCommitRequest{
+		Message: request.Message, AuthorName: request.AuthorName,
+		AuthorEmail: request.AuthorEmail, ExpectedHEAD: request.ExpectedHEAD,
+		ExpectedTree: request.ExpectedTree,
+	})
+	return ports.DeliveryCommitResult{Commit: result.Commit, Tree: result.Tree}, mapRuntimeError(err)
+}
+
+func (p *Provider) PushDelivery(
+	ctx context.Context, request ports.DeliveryPushRequest,
+) (ports.DeliveryPushResult, error) {
+	client, session, err := p.runtimeClient(ctx, request.ResourceID)
+	if err != nil {
+		return ports.DeliveryPushResult{}, err
+	}
+	defer session.Close()
+	credential := &capsuleproto.GitHTTPSCredential{
+		Username: request.GitCredential.Username, Password: request.GitCredential.Password,
+	}
+	defer func() { credential.Username, credential.Password = "", "" }()
+	result, err := client.DeliveryPush(ctx, capsuleproto.DeliveryPushRequest{
+		SourceCommit: request.SourceCommit, DestinationRef: request.DestinationRef,
+		ExpectedOldRef: request.ExpectedOldRef, GitCredential: credential,
+	})
+	return ports.DeliveryPushResult{
+		Commit: result.Commit, DestinationRef: result.DestinationRef,
+	}, mapRuntimeError(err)
+}
+
+func (p *Provider) DiscoverPreviewPorts(
+	ctx context.Context,
+	resourceID string,
+) ([]ports.PreviewPort, error) {
+	client, session, err := p.runtimeClient(ctx, resourceID)
+	if err != nil {
+		return nil, err
+	}
+	defer session.Close()
+	response, err := client.PreviewPorts(ctx)
+	if err != nil {
+		return nil, mapRuntimeError(err)
+	}
+	result := make([]ports.PreviewPort, len(response.Items))
+	for index, item := range response.Items {
+		result[index] = ports.PreviewPort{Port: item.Port}
+	}
+	return result, nil
+}
+
+func (p *Provider) ForwardPreviewHTTP(
+	ctx context.Context,
+	resourceID string,
+	port uint16,
+	request *http.Request,
+) (ports.PreviewResponse, error) {
+	client, session, err := p.runtimeClient(ctx, resourceID)
+	if err != nil {
+		return ports.PreviewResponse{}, err
+	}
+	defer session.Close()
+	status, header, body, err := client.ForwardPreviewHTTP(ctx, port, request)
+	if err != nil {
+		return ports.PreviewResponse{}, mapRuntimeError(err)
+	}
+	return ports.PreviewResponse{StatusCode: status, Header: header, Body: body}, nil
+}
+
+func (p *Provider) AttachPreview(
+	ctx context.Context,
+	resourceID string,
+	port uint16,
+	path string,
+	header http.Header,
+) (ports.RuntimeAttachment, string, error) {
+	client, session, err := p.runtimeClient(ctx, resourceID)
+	if err != nil {
+		return nil, "", err
+	}
+	if header == nil {
+		header = make(http.Header)
+	}
+	connection, err := client.AttachPreview(ctx, port, path, header)
+	if err != nil {
+		_ = session.Close()
+		return nil, "", mapRuntimeError(err)
+	}
+	return &attachment{connection: connection, session: session}, connection.Subprotocol(), nil
+}
+
 func runtimeRun(value capsuleproto.RunStatusResponse) ports.RuntimeRun {
 	result := ports.RuntimeRun{Failure: value.Failure, Cursor: value.Cursor, PTY: value.PTY}
 	switch value.State {
@@ -403,6 +607,15 @@ func mapRuntimeError(err error) error {
 		}
 	}
 	return err
+}
+
+type forwardedArchive struct {
+	io.ReadCloser
+	session ForwardSession
+}
+
+func (a *forwardedArchive) Close() error {
+	return errors.Join(a.ReadCloser.Close(), a.session.Close())
 }
 
 type attachment struct {

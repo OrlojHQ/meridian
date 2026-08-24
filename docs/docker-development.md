@@ -31,7 +31,35 @@ meridian project create example \
   --image=meridian-capsule:dev
 ```
 
-Each `--setup-arg` is one argument. Meridian does not concatenate these values into a shell command. Public repositories and fixture repositories already visible inside the provider environment are supported. Private repository authentication, Git credential helpers, reusable credentials, and long-lived credentials in Capsules are intentionally unsupported.
+Each `--setup-arg` is one argument. Meridian does not concatenate these values
+into a shell command. Public repositories and fixture repositories already
+visible inside the provider environment are supported. For a private HTTPS
+repository, store a `git_https` secret through stdin and authorize its name on
+the Project. `meridiand` sends it only over the authenticated private
+`capsuled` Prepare request; clone disables ambient helpers and uses a temporary
+askpass helper outside `/workspace`, removed on every outcome. SSH, Git, file,
+and local-path repositories cannot use a configured Git secret.
+
+Docker also proxies bounded browse, workspace capture, and Delivery operations
+through the same authenticated private `capsuled` client. It never reads the
+volume from the host or mounts a local worktree. A `git_push` credential is
+decrypted for one exact `refs/heads/...` push and sent only in that private
+request; a `github_api` token remains in `meridiand` and is used only for the
+host-side GitHub API call. Neither secret becomes container environment,
+repository configuration, an archive, or a durable event.
+
+Configure names and commit identity explicitly:
+
+```console
+meridian project create example \
+  --repository-url=https://github.com/example/repository.git \
+  --image=meridian-capsule:dev \
+  --git-push-secret=delivery_push \
+  --github-api-secret=github_api \
+  --commit-author-name="Meridian Delivery" \
+  --commit-author-email=delivery@example.invalid \
+  --default-base-branch=main
+```
 
 ## Resource and credential boundaries
 

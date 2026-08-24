@@ -71,6 +71,7 @@ type Options struct {
 	Context    context.Context
 	API        API
 	Server     string
+	TokenFile  string
 	Executable string
 	Now        func() time.Time
 	Attach     func(runID string, after uint64) tea.Cmd
@@ -81,6 +82,7 @@ type Model struct {
 	ctx        context.Context
 	api        API
 	server     string
+	tokenFile  string
 	executable string
 	now        func() time.Time
 	attach     func(string, uint64) tea.Cmd
@@ -114,7 +116,7 @@ func NewModel(options Options) Model {
 		options.Executable, _ = os.Executable()
 	}
 	model := Model{
-		ctx: options.Context, api: options.API, server: options.Server,
+		ctx: options.Context, api: options.API, server: options.Server, tokenFile: options.TokenFile,
 		executable: options.Executable, now: options.Now, loading: true,
 		narrowPane: 1, unread: make(map[string]int64), seenCursor: make(map[string]int64),
 	}
@@ -220,6 +222,8 @@ func (m Model) updateKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.openCreate()
 	case "t":
 		m.openThreadCreate()
+	case "T":
+		m.openProjectThreadSpawn()
 	case "n":
 		m.openThreadMessage()
 	case "e":
@@ -764,6 +768,31 @@ func (m *Model) openThreadCreate() {
 	}
 }
 
+func (m *Model) openProjectThreadSpawn() {
+	projectID := ""
+	if detail := m.selectedDetail(); detail != nil {
+		projectID = detail.Project.ID
+	} else if len(m.snapshot.Projects) > 0 {
+		projectID = m.snapshot.Projects[0].ID
+	}
+	if projectID == "" {
+		m.status = "Create a project with the scriptable CLI first"
+		return
+	}
+	m.overlay = overlay{
+		kind: overlayForm, title: "Spawn Project Thread",
+		note:      "Always provisions a fresh Capsule, then starts the encrypted Thread when Ready.",
+		multiline: true,
+		action:    ActionRequest{Action: ActionProjectThreadSpawn},
+		fields: []field{
+			{label: "Project ID", value: projectID},
+			{label: "Capsule name", optional: true},
+			{label: "Harness profile"},
+			{label: "First prompt"},
+		},
+	}
+}
+
 func (m *Model) openThreadMessage() {
 	thread := m.selectedThread()
 	if thread == nil || thread.Thread.State != client.ThreadStateActive {
@@ -924,7 +953,8 @@ func (m Model) formRequest() (ActionRequest, error) {
 		}
 		if utf8.RuneCountInString(item.value) > 128 &&
 			item.label != "Project ID" && item.label != "Moment ID" &&
-			item.label != "Message" && item.label != "First message" && item.label != "Input" {
+			item.label != "Message" && item.label != "First message" &&
+			item.label != "First prompt" && item.label != "Input" {
 			return ActionRequest{}, fmt.Errorf("%s exceeds 128 characters", item.label)
 		}
 	}
@@ -947,6 +977,14 @@ func (m Model) formRequest() (ActionRequest, error) {
 		request.Start = start == "yes"
 		if request.Start && request.Content == "" {
 			return ActionRequest{}, errors.New("First message is required when Start is yes")
+		}
+	case ActionProjectThreadSpawn:
+		request.ProjectID = strings.TrimSpace(m.overlay.fields[0].value)
+		request.Name = strings.TrimSpace(m.overlay.fields[1].value)
+		request.Harness = strings.TrimSpace(m.overlay.fields[2].value)
+		request.Content = m.overlay.fields[3].value
+		if request.Content == "" {
+			return ActionRequest{}, errors.New("First prompt is required")
 		}
 	case ActionThreadSend:
 		request.Content = m.overlay.fields[0].value
@@ -1333,7 +1371,8 @@ func (m Model) tickCmd() tea.Cmd {
 
 func (m Model) attachProcess(runID string, after uint64) tea.Cmd {
 	arguments := []string{
-		"--server", m.server, "run", "attach", runID, "--after", strconv.FormatUint(after, 10),
+		"--server", m.server, "--token-file", m.tokenFile,
+		"run", "attach", runID, "--after", strconv.FormatUint(after, 10),
 	}
 	command := exec.CommandContext(m.ctx, m.executable, arguments...)
 	return tea.ExecProcess(command, func(err error) tea.Msg { return attachFinishedMsg{err: err} })
@@ -1387,7 +1426,7 @@ func boxStyle(width int) lipgloss.Style {
 		Width(width)
 }
 
-const footer = "j/k: fleet  tab: pane  t: Thread  n: message  a: PTY  ?: help  q: quit"
+const footer = "j/k: fleet  tab: pane  T: spawn  t: Thread  n: message  a: PTY  ?: help  q: quit"
 
 const helpText = `Navigation
   j/k or arrows  select Capsule or retained Thread
@@ -1397,6 +1436,7 @@ const helpText = `Navigation
   q              quit
 
 Structured Threads
+  T spawn Project Thread in a fresh Capsule
   t create Thread      n send multi-line message (Ctrl-S submits)
   e start/resume       P answer permission or input request
   z cancel session     A archive

@@ -61,7 +61,7 @@ func (s *Service) StartRun(
 		if err != nil {
 			return err
 		}
-		if capsule.State != domain.CapsuleReady {
+		if capsule.State != domain.CapsuleReady || capsule.DesiredState != domain.IntentReady {
 			return fmt.Errorf("%w: Capsule must be Ready to start a Run", domain.ErrIllegalTransition)
 		}
 		if capsule.Maintenance != "" {
@@ -85,6 +85,9 @@ func (s *Service) StartRun(
 		if err := s.appendEvent(ctx, tx, "run", string(result.ID), "run.queued", 1, nil); err != nil {
 			return err
 		}
+		if err := s.touchCapsuleActivityTx(ctx, tx, capsuleID, now); err != nil {
+			return err
+		}
 		return putReplay(ctx, tx, scope, idempotencyKey, result, now)
 	})
 	if err != nil || replayed {
@@ -97,11 +100,24 @@ func (s *Service) StartRun(
 	if err != nil {
 		return domain.Run{}, err
 	}
+	project, err := s.GetProject(ctx, capsule.ProjectID)
+	if err != nil {
+		return domain.Run{}, err
+	}
+	secretValues, err := s.resolveHarnessSecrets(ctx, project)
+	if err != nil {
+		_, _ = s.transitionRun(ctx, result.ID, domain.RunFailed, &runCompletion{
+			Failure: "Capsule runtime rejected Run start",
+		})
+		return domain.Run{}, err
+	}
 	started := time.Now()
 	runtimeRun, err := s.runtime.StartRun(ctx, ports.RuntimeRunRequest{
 		RunID: result.ID, ResourceID: capsule.ProviderResourceID, Harness: harnessName,
 		Prompt: prompt, Columns: columns, Rows: rows,
+		Secrets: cloneStringMap(secretValues),
 	})
+	clearStringMap(secretValues)
 	if s.observer != nil {
 		s.observer.ProviderOperation(s.providerName, "run", operationResult(err), time.Since(started))
 	}
@@ -125,6 +141,11 @@ func (s *Service) GetRun(ctx context.Context, id domain.RunID) (domain.Run, erro
 	capsule, err := s.GetCapsule(ctx, run.CapsuleID)
 	if err != nil {
 		return domain.Run{}, err
+	}
+	if capsule.State != domain.CapsuleReady ||
+		capsule.DesiredState != domain.IntentReady ||
+		capsule.Maintenance != "" {
+		return run, fmt.Errorf("%w: Capsule must be Ready", domain.ErrIllegalTransition)
 	}
 	runtimeRun, err := s.runtime.GetRun(ctx, capsule.ProviderResourceID, id)
 	if err != nil {
@@ -198,6 +219,11 @@ func (s *Service) CancelRun(
 		if err != nil {
 			return err
 		}
+		if capsule.State != domain.CapsuleReady ||
+			capsule.DesiredState != domain.IntentReady ||
+			capsule.Maintenance != "" {
+			return fmt.Errorf("%w: Capsule must be Ready", domain.ErrIllegalTransition)
+		}
 		previous := result.ResourceVersion
 		if err := result.Transition(domain.RunCancelling, s.clock.Now()); err != nil {
 			return err
@@ -206,6 +232,9 @@ func (s *Service) CancelRun(
 			return err
 		}
 		if err := s.appendEvent(ctx, tx, "run", string(id), "run.cancelling", result.ResourceVersion, nil); err != nil {
+			return err
+		}
+		if err := s.touchCapsuleActivityTx(ctx, tx, capsule.ID, result.UpdatedAt); err != nil {
 			return err
 		}
 		return putReplay(ctx, tx, scope, idempotencyKey, result, result.UpdatedAt)
@@ -270,13 +299,20 @@ func (s *Service) git(ctx context.Context, capsuleID domain.CapsuleID, diff bool
 	if err != nil {
 		return ports.GitResult{}, err
 	}
-	if capsule.State != domain.CapsuleReady {
+	if capsule.State != domain.CapsuleReady || capsule.DesiredState != domain.IntentReady ||
+		capsule.Maintenance != "" {
 		return ports.GitResult{}, fmt.Errorf("%w: Capsule must be Ready", domain.ErrIllegalTransition)
 	}
+	var result ports.GitResult
 	if diff {
-		return s.runtime.GitDiff(ctx, capsule.ProviderResourceID)
+		result, err = s.runtime.GitDiff(ctx, capsule.ProviderResourceID)
+	} else {
+		result, err = s.runtime.GitStatus(ctx, capsule.ProviderResourceID)
 	}
-	return s.runtime.GitStatus(ctx, capsule.ProviderResourceID)
+	if err == nil {
+		err = s.TouchCapsuleActivity(ctx, capsuleID)
+	}
+	return result, err
 }
 
 func (s *Service) AttachRun(ctx context.Context, id domain.RunID, after uint64) (ports.RuntimeAttachment, error) {
@@ -291,10 +327,18 @@ func (s *Service) AttachRun(ctx context.Context, id domain.RunID, after uint64) 
 	if err != nil {
 		return nil, err
 	}
+	if capsule.State != domain.CapsuleReady ||
+		capsule.DesiredState != domain.IntentReady ||
+		capsule.Maintenance != "" {
+		return nil, fmt.Errorf("%w: Capsule must be Ready", domain.ErrIllegalTransition)
+	}
 	started := time.Now()
 	attachment, err := s.runtime.AttachRun(ctx, capsule.ProviderResourceID, id, after)
 	if s.observer != nil {
 		s.observer.ProviderOperation(s.providerName, "attach", operationResult(err), time.Since(started))
+	}
+	if err == nil {
+		err = s.TouchCapsuleActivity(ctx, capsule.ID)
 	}
 	return attachment, err
 }
@@ -323,6 +367,11 @@ func (s *Service) RecoverRuns(ctx context.Context) error {
 		capsule, err := s.GetCapsule(ctx, run.CapsuleID)
 		if err != nil {
 			return err
+		}
+		if capsule.State != domain.CapsuleReady ||
+			capsule.DesiredState != domain.IntentReady ||
+			capsule.Maintenance != "" {
+			continue
 		}
 		if run.State == domain.RunCancelling {
 			runtimeRun, cancelErr := s.runtime.CancelRun(ctx, capsule.ProviderResourceID, run.ID)
@@ -406,6 +455,11 @@ func (s *Service) transitionRun(
 		if err := s.appendEvent(
 			ctx, tx, "run", string(id), "run."+strings.ToLower(string(state)),
 			current.ResourceVersion, nil,
+		); err != nil {
+			return err
+		}
+		if err := s.touchCapsuleActivityTx(
+			ctx, tx, current.CapsuleID, current.UpdatedAt,
 		); err != nil {
 			return err
 		}
@@ -495,7 +549,10 @@ func (s *Service) syncRuntimeEvents(ctx context.Context, run domain.Run) error {
 		current.EventCursor = cursor
 		current.UpdatedAt = s.clock.Now().UTC()
 		current.ResourceVersion++
-		return tx.UpdateRun(ctx, current, previous)
+		if err := tx.UpdateRun(ctx, current, previous); err != nil {
+			return err
+		}
+		return s.touchCapsuleActivityTx(ctx, tx, current.CapsuleID, current.UpdatedAt)
 	})
 }
 

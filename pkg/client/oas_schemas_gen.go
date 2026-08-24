@@ -94,6 +94,31 @@ func (s *AttachTicket) SetWebSocketPath(val string) {
 
 func (*AttachTicket) createRunAttachTicketRes() {}
 
+type BearerAuth struct {
+	Token string
+	Roles []string
+}
+
+// GetToken returns the value of Token.
+func (s *BearerAuth) GetToken() string {
+	return s.Token
+}
+
+// GetRoles returns the value of Roles.
+func (s *BearerAuth) GetRoles() []string {
+	return s.Roles
+}
+
+// SetToken sets the value of Token.
+func (s *BearerAuth) SetToken(val string) {
+	s.Token = val
+}
+
+// SetRoles sets the value of Roles.
+func (s *BearerAuth) SetRoles(val []string) {
+	s.Roles = val
+}
+
 type CancelRunBadRequest ErrorEnvelope
 
 func (*CancelRunBadRequest) cancelRunRes() {}
@@ -137,6 +162,10 @@ type Capabilities struct {
 	Clone bool `json:"clone"`
 	// False unless a provider exposes bounded port discovery and Capsule-scoped proxying.
 	Preview bool `json:"preview"`
+	// False unless a provider exposes the authenticated bounded workspace browser.
+	Browse bool `json:"browse"`
+	// False unless a provider exposes authenticated exact-object commit and exact-ref push operations.
+	Delivery bool `json:"delivery"`
 	// False when provider resource metrics are not exposed by the public API.
 	ResourceMetrics bool `json:"resourceMetrics"`
 }
@@ -194,6 +223,16 @@ func (s *Capabilities) GetClone() bool {
 // GetPreview returns the value of Preview.
 func (s *Capabilities) GetPreview() bool {
 	return s.Preview
+}
+
+// GetBrowse returns the value of Browse.
+func (s *Capabilities) GetBrowse() bool {
+	return s.Browse
+}
+
+// GetDelivery returns the value of Delivery.
+func (s *Capabilities) GetDelivery() bool {
+	return s.Delivery
 }
 
 // GetResourceMetrics returns the value of ResourceMetrics.
@@ -254,6 +293,16 @@ func (s *Capabilities) SetClone(val bool) {
 // SetPreview sets the value of Preview.
 func (s *Capabilities) SetPreview(val bool) {
 	s.Preview = val
+}
+
+// SetBrowse sets the value of Browse.
+func (s *Capabilities) SetBrowse(val bool) {
+	s.Browse = val
+}
+
+// SetDelivery sets the value of Delivery.
+func (s *Capabilities) SetDelivery(val bool) {
+	s.Delivery = val
 }
 
 // SetResourceMetrics sets the value of ResourceMetrics.
@@ -713,6 +762,23 @@ type CaptureMomentUnprocessableEntity ErrorEnvelope
 
 func (*CaptureMomentUnprocessableEntity) captureMomentRes() {}
 
+// CreateBrowserSessionNoContent is response for CreateBrowserSession operation.
+type CreateBrowserSessionNoContent struct {
+	SetCookie OptString
+}
+
+// GetSetCookie returns the value of SetCookie.
+func (s *CreateBrowserSessionNoContent) GetSetCookie() OptString {
+	return s.SetCookie
+}
+
+// SetSetCookie sets the value of SetCookie.
+func (s *CreateBrowserSessionNoContent) SetSetCookie(val OptString) {
+	s.SetCookie = val
+}
+
+func (*CreateBrowserSessionNoContent) createBrowserSessionRes() {}
+
 type CreateCapsuleBadRequest ErrorEnvelope
 
 func (*CreateCapsuleBadRequest) createCapsuleRes() {}
@@ -720,6 +786,22 @@ func (*CreateCapsuleBadRequest) createCapsuleRes() {}
 type CreateCapsuleConflict ErrorEnvelope
 
 func (*CreateCapsuleConflict) createCapsuleRes() {}
+
+type CreateCapsuleDeliveryBadRequest ErrorEnvelope
+
+func (*CreateCapsuleDeliveryBadRequest) createCapsuleDeliveryRes() {}
+
+type CreateCapsuleDeliveryConflict ErrorEnvelope
+
+func (*CreateCapsuleDeliveryConflict) createCapsuleDeliveryRes() {}
+
+type CreateCapsuleDeliveryNotFound ErrorEnvelope
+
+func (*CreateCapsuleDeliveryNotFound) createCapsuleDeliveryRes() {}
+
+type CreateCapsuleDeliveryUnprocessableEntity ErrorEnvelope
+
+func (*CreateCapsuleDeliveryUnprocessableEntity) createCapsuleDeliveryRes() {}
 
 type CreateCapsuleNotFound ErrorEnvelope
 
@@ -756,6 +838,161 @@ type CreateCapsuleUnprocessableEntity ErrorEnvelope
 
 func (*CreateCapsuleUnprocessableEntity) createCapsuleRes() {}
 
+// Ref: #/components/schemas/CreateDeliveryRequest
+type CreateDeliveryRequest struct {
+	Action                  CreateDeliveryRequestAction `json:"action"`
+	Approved                bool                        `json:"approved"`
+	ExpectedResourceVersion int64                       `json:"expectedResourceVersion"`
+	ExpectedHead            string                      `json:"expectedHead"`
+	ExpectedTree            string                      `json:"expectedTree"`
+	RemoteBranch            string                      `json:"remoteBranch"`
+	CommitMessage           OptString                   `json:"commitMessage"`
+	PullRequestTitle        OptString                   `json:"pullRequestTitle"`
+	PullRequestBody         OptString                   `json:"pullRequestBody"`
+	BaseBranch              OptString                   `json:"baseBranch"`
+}
+
+// GetAction returns the value of Action.
+func (s *CreateDeliveryRequest) GetAction() CreateDeliveryRequestAction {
+	return s.Action
+}
+
+// GetApproved returns the value of Approved.
+func (s *CreateDeliveryRequest) GetApproved() bool {
+	return s.Approved
+}
+
+// GetExpectedResourceVersion returns the value of ExpectedResourceVersion.
+func (s *CreateDeliveryRequest) GetExpectedResourceVersion() int64 {
+	return s.ExpectedResourceVersion
+}
+
+// GetExpectedHead returns the value of ExpectedHead.
+func (s *CreateDeliveryRequest) GetExpectedHead() string {
+	return s.ExpectedHead
+}
+
+// GetExpectedTree returns the value of ExpectedTree.
+func (s *CreateDeliveryRequest) GetExpectedTree() string {
+	return s.ExpectedTree
+}
+
+// GetRemoteBranch returns the value of RemoteBranch.
+func (s *CreateDeliveryRequest) GetRemoteBranch() string {
+	return s.RemoteBranch
+}
+
+// GetCommitMessage returns the value of CommitMessage.
+func (s *CreateDeliveryRequest) GetCommitMessage() OptString {
+	return s.CommitMessage
+}
+
+// GetPullRequestTitle returns the value of PullRequestTitle.
+func (s *CreateDeliveryRequest) GetPullRequestTitle() OptString {
+	return s.PullRequestTitle
+}
+
+// GetPullRequestBody returns the value of PullRequestBody.
+func (s *CreateDeliveryRequest) GetPullRequestBody() OptString {
+	return s.PullRequestBody
+}
+
+// GetBaseBranch returns the value of BaseBranch.
+func (s *CreateDeliveryRequest) GetBaseBranch() OptString {
+	return s.BaseBranch
+}
+
+// SetAction sets the value of Action.
+func (s *CreateDeliveryRequest) SetAction(val CreateDeliveryRequestAction) {
+	s.Action = val
+}
+
+// SetApproved sets the value of Approved.
+func (s *CreateDeliveryRequest) SetApproved(val bool) {
+	s.Approved = val
+}
+
+// SetExpectedResourceVersion sets the value of ExpectedResourceVersion.
+func (s *CreateDeliveryRequest) SetExpectedResourceVersion(val int64) {
+	s.ExpectedResourceVersion = val
+}
+
+// SetExpectedHead sets the value of ExpectedHead.
+func (s *CreateDeliveryRequest) SetExpectedHead(val string) {
+	s.ExpectedHead = val
+}
+
+// SetExpectedTree sets the value of ExpectedTree.
+func (s *CreateDeliveryRequest) SetExpectedTree(val string) {
+	s.ExpectedTree = val
+}
+
+// SetRemoteBranch sets the value of RemoteBranch.
+func (s *CreateDeliveryRequest) SetRemoteBranch(val string) {
+	s.RemoteBranch = val
+}
+
+// SetCommitMessage sets the value of CommitMessage.
+func (s *CreateDeliveryRequest) SetCommitMessage(val OptString) {
+	s.CommitMessage = val
+}
+
+// SetPullRequestTitle sets the value of PullRequestTitle.
+func (s *CreateDeliveryRequest) SetPullRequestTitle(val OptString) {
+	s.PullRequestTitle = val
+}
+
+// SetPullRequestBody sets the value of PullRequestBody.
+func (s *CreateDeliveryRequest) SetPullRequestBody(val OptString) {
+	s.PullRequestBody = val
+}
+
+// SetBaseBranch sets the value of BaseBranch.
+func (s *CreateDeliveryRequest) SetBaseBranch(val OptString) {
+	s.BaseBranch = val
+}
+
+type CreateDeliveryRequestAction string
+
+const (
+	CreateDeliveryRequestActionPush            CreateDeliveryRequestAction = "push"
+	CreateDeliveryRequestActionOpenPullRequest CreateDeliveryRequestAction = "open_pull_request"
+)
+
+// AllValues returns all CreateDeliveryRequestAction values.
+func (CreateDeliveryRequestAction) AllValues() []CreateDeliveryRequestAction {
+	return []CreateDeliveryRequestAction{
+		CreateDeliveryRequestActionPush,
+		CreateDeliveryRequestActionOpenPullRequest,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s CreateDeliveryRequestAction) MarshalText() ([]byte, error) {
+	switch s {
+	case CreateDeliveryRequestActionPush:
+		return []byte(s), nil
+	case CreateDeliveryRequestActionOpenPullRequest:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *CreateDeliveryRequestAction) UnmarshalText(data []byte) error {
+	switch CreateDeliveryRequestAction(data) {
+	case CreateDeliveryRequestActionPush:
+		*s = CreateDeliveryRequestActionPush
+		return nil
+	case CreateDeliveryRequestActionOpenPullRequest:
+		*s = CreateDeliveryRequestActionOpenPullRequest
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
 // Ref: #/components/schemas/CreateDescendantRequest
 type CreateDescendantRequest struct {
 	Name string `json:"name"`
@@ -788,6 +1025,17 @@ type CreateProjectRequest struct {
 	Setup []string `json:"setup"`
 	// Capsule image reference; Docker resolves it to an immutable image identity.
 	ImageReference OptString `json:"imageReference"`
+	// Name of a git_https secret authorized only for HTTPS clone.
+	GitSecretName OptString `json:"gitSecretName"`
+	// Explicit allowlist of harness_env secret names.
+	HarnessSecretNames []string `json:"harnessSecretNames"`
+	// Name of a git_push secret authorized only for one exact Delivery push.
+	GitPushSecretName OptString `json:"gitPushSecretName"`
+	// Name of a github_api secret used only by meridiand to open a pull request.
+	GithubAPISecretName OptString `json:"githubAPISecretName"`
+	CommitAuthorName    OptString `json:"commitAuthorName"`
+	CommitAuthorEmail   OptString `json:"commitAuthorEmail"`
+	DefaultBaseBranch   OptString `json:"defaultBaseBranch"`
 }
 
 // GetName returns the value of Name.
@@ -810,6 +1058,41 @@ func (s *CreateProjectRequest) GetImageReference() OptString {
 	return s.ImageReference
 }
 
+// GetGitSecretName returns the value of GitSecretName.
+func (s *CreateProjectRequest) GetGitSecretName() OptString {
+	return s.GitSecretName
+}
+
+// GetHarnessSecretNames returns the value of HarnessSecretNames.
+func (s *CreateProjectRequest) GetHarnessSecretNames() []string {
+	return s.HarnessSecretNames
+}
+
+// GetGitPushSecretName returns the value of GitPushSecretName.
+func (s *CreateProjectRequest) GetGitPushSecretName() OptString {
+	return s.GitPushSecretName
+}
+
+// GetGithubAPISecretName returns the value of GithubAPISecretName.
+func (s *CreateProjectRequest) GetGithubAPISecretName() OptString {
+	return s.GithubAPISecretName
+}
+
+// GetCommitAuthorName returns the value of CommitAuthorName.
+func (s *CreateProjectRequest) GetCommitAuthorName() OptString {
+	return s.CommitAuthorName
+}
+
+// GetCommitAuthorEmail returns the value of CommitAuthorEmail.
+func (s *CreateProjectRequest) GetCommitAuthorEmail() OptString {
+	return s.CommitAuthorEmail
+}
+
+// GetDefaultBaseBranch returns the value of DefaultBaseBranch.
+func (s *CreateProjectRequest) GetDefaultBaseBranch() OptString {
+	return s.DefaultBaseBranch
+}
+
 // SetName sets the value of Name.
 func (s *CreateProjectRequest) SetName(val string) {
 	s.Name = val
@@ -829,6 +1112,96 @@ func (s *CreateProjectRequest) SetSetup(val []string) {
 func (s *CreateProjectRequest) SetImageReference(val OptString) {
 	s.ImageReference = val
 }
+
+// SetGitSecretName sets the value of GitSecretName.
+func (s *CreateProjectRequest) SetGitSecretName(val OptString) {
+	s.GitSecretName = val
+}
+
+// SetHarnessSecretNames sets the value of HarnessSecretNames.
+func (s *CreateProjectRequest) SetHarnessSecretNames(val []string) {
+	s.HarnessSecretNames = val
+}
+
+// SetGitPushSecretName sets the value of GitPushSecretName.
+func (s *CreateProjectRequest) SetGitPushSecretName(val OptString) {
+	s.GitPushSecretName = val
+}
+
+// SetGithubAPISecretName sets the value of GithubAPISecretName.
+func (s *CreateProjectRequest) SetGithubAPISecretName(val OptString) {
+	s.GithubAPISecretName = val
+}
+
+// SetCommitAuthorName sets the value of CommitAuthorName.
+func (s *CreateProjectRequest) SetCommitAuthorName(val OptString) {
+	s.CommitAuthorName = val
+}
+
+// SetCommitAuthorEmail sets the value of CommitAuthorEmail.
+func (s *CreateProjectRequest) SetCommitAuthorEmail(val OptString) {
+	s.CommitAuthorEmail = val
+}
+
+// SetDefaultBaseBranch sets the value of DefaultBaseBranch.
+func (s *CreateProjectRequest) SetDefaultBaseBranch(val OptString) {
+	s.DefaultBaseBranch = val
+}
+
+type CreateProjectThreadBadRequest ErrorEnvelope
+
+func (*CreateProjectThreadBadRequest) createProjectThreadRes() {}
+
+type CreateProjectThreadConflict ErrorEnvelope
+
+func (*CreateProjectThreadConflict) createProjectThreadRes() {}
+
+type CreateProjectThreadNotFound ErrorEnvelope
+
+func (*CreateProjectThreadNotFound) createProjectThreadRes() {}
+
+// Ref: #/components/schemas/CreateProjectThreadRequest
+type CreateProjectThreadRequest struct {
+	// Optional name for the fresh Capsule.
+	Name    OptString `json:"name"`
+	Harness string    `json:"harness"`
+	// Encrypted as a transcript envelope before SQLite persistence. Prefer stdin in shells.
+	Prompt string `json:"prompt"`
+}
+
+// GetName returns the value of Name.
+func (s *CreateProjectThreadRequest) GetName() OptString {
+	return s.Name
+}
+
+// GetHarness returns the value of Harness.
+func (s *CreateProjectThreadRequest) GetHarness() string {
+	return s.Harness
+}
+
+// GetPrompt returns the value of Prompt.
+func (s *CreateProjectThreadRequest) GetPrompt() string {
+	return s.Prompt
+}
+
+// SetName sets the value of Name.
+func (s *CreateProjectThreadRequest) SetName(val OptString) {
+	s.Name = val
+}
+
+// SetHarness sets the value of Harness.
+func (s *CreateProjectThreadRequest) SetHarness(val string) {
+	s.Harness = val
+}
+
+// SetPrompt sets the value of Prompt.
+func (s *CreateProjectThreadRequest) SetPrompt(val string) {
+	s.Prompt = val
+}
+
+type CreateProjectThreadUnprocessableEntity ErrorEnvelope
+
+func (*CreateProjectThreadUnprocessableEntity) createProjectThreadRes() {}
 
 type CreateShardBadRequest ErrorEnvelope
 
@@ -947,6 +1320,33 @@ type DeleteCapsuleUnprocessableEntity ErrorEnvelope
 
 func (*DeleteCapsuleUnprocessableEntity) deleteCapsuleRes() {}
 
+type DeleteSecretBadRequest ErrorEnvelope
+
+func (*DeleteSecretBadRequest) deleteSecretRes() {}
+
+type DeleteSecretConflict ErrorEnvelope
+
+func (*DeleteSecretConflict) deleteSecretRes() {}
+
+type DeleteSecretNotFound ErrorEnvelope
+
+func (*DeleteSecretNotFound) deleteSecretRes() {}
+
+// Ref: #/components/schemas/DeleteSecretRequest
+type DeleteSecretRequest struct {
+	ExpectedResourceVersion int64 `json:"expectedResourceVersion"`
+}
+
+// GetExpectedResourceVersion returns the value of ExpectedResourceVersion.
+func (s *DeleteSecretRequest) GetExpectedResourceVersion() int64 {
+	return s.ExpectedResourceVersion
+}
+
+// SetExpectedResourceVersion sets the value of ExpectedResourceVersion.
+func (s *DeleteSecretRequest) SetExpectedResourceVersion(val int64) {
+	s.ExpectedResourceVersion = val
+}
+
 type DeleteThreadBadRequest ErrorEnvelope
 
 func (*DeleteThreadBadRequest) deleteThreadRes() {}
@@ -1009,6 +1409,514 @@ func (s *DeleteThreadRequestConfirmation) UnmarshalText(data []byte) error {
 	switch DeleteThreadRequestConfirmation(data) {
 	case DeleteThreadRequestConfirmationCryptoShred:
 		*s = DeleteThreadRequestConfirmationCryptoShred
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Ref: #/components/schemas/Delivery
+type Delivery struct {
+	ID                      string         `json:"id"`
+	CapsuleId               string         `json:"capsuleId"`
+	ProjectId               string         `json:"projectId"`
+	State                   DeliveryState  `json:"state"`
+	Action                  DeliveryAction `json:"action"`
+	Approved                bool           `json:"approved"`
+	ApprovedAt              time.Time      `json:"approvedAt"`
+	ExpectedResourceVersion int64          `json:"expectedResourceVersion"`
+	ExpectedHead            string         `json:"expectedHead"`
+	ExpectedTree            string         `json:"expectedTree"`
+	RemoteBranch            string         `json:"remoteBranch"`
+	DestinationRef          string         `json:"destinationRef"`
+	BaseBranch              OptString      `json:"baseBranch"`
+	CommitMessage           OptString      `json:"commitMessage"`
+	PullRequestTitle        OptString      `json:"pullRequestTitle"`
+	PullRequestBody         OptString      `json:"pullRequestBody"`
+	ResultCommitSha         OptString      `json:"resultCommitSha"`
+	ResultPullRequestUrl    OptURI         `json:"resultPullRequestUrl"`
+	ResultPullRequestNumber OptInt64       `json:"resultPullRequestNumber"`
+	Failure                 OptString      `json:"failure"`
+	CreatedAt               time.Time      `json:"createdAt"`
+	UpdatedAt               time.Time      `json:"updatedAt"`
+	ResourceVersion         int64          `json:"resourceVersion"`
+}
+
+// GetID returns the value of ID.
+func (s *Delivery) GetID() string {
+	return s.ID
+}
+
+// GetCapsuleId returns the value of CapsuleId.
+func (s *Delivery) GetCapsuleId() string {
+	return s.CapsuleId
+}
+
+// GetProjectId returns the value of ProjectId.
+func (s *Delivery) GetProjectId() string {
+	return s.ProjectId
+}
+
+// GetState returns the value of State.
+func (s *Delivery) GetState() DeliveryState {
+	return s.State
+}
+
+// GetAction returns the value of Action.
+func (s *Delivery) GetAction() DeliveryAction {
+	return s.Action
+}
+
+// GetApproved returns the value of Approved.
+func (s *Delivery) GetApproved() bool {
+	return s.Approved
+}
+
+// GetApprovedAt returns the value of ApprovedAt.
+func (s *Delivery) GetApprovedAt() time.Time {
+	return s.ApprovedAt
+}
+
+// GetExpectedResourceVersion returns the value of ExpectedResourceVersion.
+func (s *Delivery) GetExpectedResourceVersion() int64 {
+	return s.ExpectedResourceVersion
+}
+
+// GetExpectedHead returns the value of ExpectedHead.
+func (s *Delivery) GetExpectedHead() string {
+	return s.ExpectedHead
+}
+
+// GetExpectedTree returns the value of ExpectedTree.
+func (s *Delivery) GetExpectedTree() string {
+	return s.ExpectedTree
+}
+
+// GetRemoteBranch returns the value of RemoteBranch.
+func (s *Delivery) GetRemoteBranch() string {
+	return s.RemoteBranch
+}
+
+// GetDestinationRef returns the value of DestinationRef.
+func (s *Delivery) GetDestinationRef() string {
+	return s.DestinationRef
+}
+
+// GetBaseBranch returns the value of BaseBranch.
+func (s *Delivery) GetBaseBranch() OptString {
+	return s.BaseBranch
+}
+
+// GetCommitMessage returns the value of CommitMessage.
+func (s *Delivery) GetCommitMessage() OptString {
+	return s.CommitMessage
+}
+
+// GetPullRequestTitle returns the value of PullRequestTitle.
+func (s *Delivery) GetPullRequestTitle() OptString {
+	return s.PullRequestTitle
+}
+
+// GetPullRequestBody returns the value of PullRequestBody.
+func (s *Delivery) GetPullRequestBody() OptString {
+	return s.PullRequestBody
+}
+
+// GetResultCommitSha returns the value of ResultCommitSha.
+func (s *Delivery) GetResultCommitSha() OptString {
+	return s.ResultCommitSha
+}
+
+// GetResultPullRequestUrl returns the value of ResultPullRequestUrl.
+func (s *Delivery) GetResultPullRequestUrl() OptURI {
+	return s.ResultPullRequestUrl
+}
+
+// GetResultPullRequestNumber returns the value of ResultPullRequestNumber.
+func (s *Delivery) GetResultPullRequestNumber() OptInt64 {
+	return s.ResultPullRequestNumber
+}
+
+// GetFailure returns the value of Failure.
+func (s *Delivery) GetFailure() OptString {
+	return s.Failure
+}
+
+// GetCreatedAt returns the value of CreatedAt.
+func (s *Delivery) GetCreatedAt() time.Time {
+	return s.CreatedAt
+}
+
+// GetUpdatedAt returns the value of UpdatedAt.
+func (s *Delivery) GetUpdatedAt() time.Time {
+	return s.UpdatedAt
+}
+
+// GetResourceVersion returns the value of ResourceVersion.
+func (s *Delivery) GetResourceVersion() int64 {
+	return s.ResourceVersion
+}
+
+// SetID sets the value of ID.
+func (s *Delivery) SetID(val string) {
+	s.ID = val
+}
+
+// SetCapsuleId sets the value of CapsuleId.
+func (s *Delivery) SetCapsuleId(val string) {
+	s.CapsuleId = val
+}
+
+// SetProjectId sets the value of ProjectId.
+func (s *Delivery) SetProjectId(val string) {
+	s.ProjectId = val
+}
+
+// SetState sets the value of State.
+func (s *Delivery) SetState(val DeliveryState) {
+	s.State = val
+}
+
+// SetAction sets the value of Action.
+func (s *Delivery) SetAction(val DeliveryAction) {
+	s.Action = val
+}
+
+// SetApproved sets the value of Approved.
+func (s *Delivery) SetApproved(val bool) {
+	s.Approved = val
+}
+
+// SetApprovedAt sets the value of ApprovedAt.
+func (s *Delivery) SetApprovedAt(val time.Time) {
+	s.ApprovedAt = val
+}
+
+// SetExpectedResourceVersion sets the value of ExpectedResourceVersion.
+func (s *Delivery) SetExpectedResourceVersion(val int64) {
+	s.ExpectedResourceVersion = val
+}
+
+// SetExpectedHead sets the value of ExpectedHead.
+func (s *Delivery) SetExpectedHead(val string) {
+	s.ExpectedHead = val
+}
+
+// SetExpectedTree sets the value of ExpectedTree.
+func (s *Delivery) SetExpectedTree(val string) {
+	s.ExpectedTree = val
+}
+
+// SetRemoteBranch sets the value of RemoteBranch.
+func (s *Delivery) SetRemoteBranch(val string) {
+	s.RemoteBranch = val
+}
+
+// SetDestinationRef sets the value of DestinationRef.
+func (s *Delivery) SetDestinationRef(val string) {
+	s.DestinationRef = val
+}
+
+// SetBaseBranch sets the value of BaseBranch.
+func (s *Delivery) SetBaseBranch(val OptString) {
+	s.BaseBranch = val
+}
+
+// SetCommitMessage sets the value of CommitMessage.
+func (s *Delivery) SetCommitMessage(val OptString) {
+	s.CommitMessage = val
+}
+
+// SetPullRequestTitle sets the value of PullRequestTitle.
+func (s *Delivery) SetPullRequestTitle(val OptString) {
+	s.PullRequestTitle = val
+}
+
+// SetPullRequestBody sets the value of PullRequestBody.
+func (s *Delivery) SetPullRequestBody(val OptString) {
+	s.PullRequestBody = val
+}
+
+// SetResultCommitSha sets the value of ResultCommitSha.
+func (s *Delivery) SetResultCommitSha(val OptString) {
+	s.ResultCommitSha = val
+}
+
+// SetResultPullRequestUrl sets the value of ResultPullRequestUrl.
+func (s *Delivery) SetResultPullRequestUrl(val OptURI) {
+	s.ResultPullRequestUrl = val
+}
+
+// SetResultPullRequestNumber sets the value of ResultPullRequestNumber.
+func (s *Delivery) SetResultPullRequestNumber(val OptInt64) {
+	s.ResultPullRequestNumber = val
+}
+
+// SetFailure sets the value of Failure.
+func (s *Delivery) SetFailure(val OptString) {
+	s.Failure = val
+}
+
+// SetCreatedAt sets the value of CreatedAt.
+func (s *Delivery) SetCreatedAt(val time.Time) {
+	s.CreatedAt = val
+}
+
+// SetUpdatedAt sets the value of UpdatedAt.
+func (s *Delivery) SetUpdatedAt(val time.Time) {
+	s.UpdatedAt = val
+}
+
+// SetResourceVersion sets the value of ResourceVersion.
+func (s *Delivery) SetResourceVersion(val int64) {
+	s.ResourceVersion = val
+}
+
+type DeliveryAction string
+
+const (
+	DeliveryActionPush            DeliveryAction = "push"
+	DeliveryActionOpenPullRequest DeliveryAction = "open_pull_request"
+)
+
+// AllValues returns all DeliveryAction values.
+func (DeliveryAction) AllValues() []DeliveryAction {
+	return []DeliveryAction{
+		DeliveryActionPush,
+		DeliveryActionOpenPullRequest,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s DeliveryAction) MarshalText() ([]byte, error) {
+	switch s {
+	case DeliveryActionPush:
+		return []byte(s), nil
+	case DeliveryActionOpenPullRequest:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *DeliveryAction) UnmarshalText(data []byte) error {
+	switch DeliveryAction(data) {
+	case DeliveryActionPush:
+		*s = DeliveryActionPush
+		return nil
+	case DeliveryActionOpenPullRequest:
+		*s = DeliveryActionOpenPullRequest
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// DeliveryHeaders wraps Delivery with response headers.
+type DeliveryHeaders struct {
+	ETag     OptString
+	Response Delivery
+}
+
+// GetETag returns the value of ETag.
+func (s *DeliveryHeaders) GetETag() OptString {
+	return s.ETag
+}
+
+// GetResponse returns the value of Response.
+func (s *DeliveryHeaders) GetResponse() Delivery {
+	return s.Response
+}
+
+// SetETag sets the value of ETag.
+func (s *DeliveryHeaders) SetETag(val OptString) {
+	s.ETag = val
+}
+
+// SetResponse sets the value of Response.
+func (s *DeliveryHeaders) SetResponse(val Delivery) {
+	s.Response = val
+}
+
+func (*DeliveryHeaders) createCapsuleDeliveryRes() {}
+func (*DeliveryHeaders) getDeliveryRes()           {}
+
+// Ref: #/components/schemas/DeliveryInspection
+type DeliveryInspection struct {
+	CapsuleResourceVersion int64     `json:"capsuleResourceVersion"`
+	Head                   string    `json:"head"`
+	Branch                 OptString `json:"branch"`
+	Dirty                  bool      `json:"dirty"`
+	OriginUrl              OptString `json:"originUrl"`
+	DefaultBranch          OptString `json:"defaultBranch"`
+	Tree                   string    `json:"tree"`
+}
+
+// GetCapsuleResourceVersion returns the value of CapsuleResourceVersion.
+func (s *DeliveryInspection) GetCapsuleResourceVersion() int64 {
+	return s.CapsuleResourceVersion
+}
+
+// GetHead returns the value of Head.
+func (s *DeliveryInspection) GetHead() string {
+	return s.Head
+}
+
+// GetBranch returns the value of Branch.
+func (s *DeliveryInspection) GetBranch() OptString {
+	return s.Branch
+}
+
+// GetDirty returns the value of Dirty.
+func (s *DeliveryInspection) GetDirty() bool {
+	return s.Dirty
+}
+
+// GetOriginUrl returns the value of OriginUrl.
+func (s *DeliveryInspection) GetOriginUrl() OptString {
+	return s.OriginUrl
+}
+
+// GetDefaultBranch returns the value of DefaultBranch.
+func (s *DeliveryInspection) GetDefaultBranch() OptString {
+	return s.DefaultBranch
+}
+
+// GetTree returns the value of Tree.
+func (s *DeliveryInspection) GetTree() string {
+	return s.Tree
+}
+
+// SetCapsuleResourceVersion sets the value of CapsuleResourceVersion.
+func (s *DeliveryInspection) SetCapsuleResourceVersion(val int64) {
+	s.CapsuleResourceVersion = val
+}
+
+// SetHead sets the value of Head.
+func (s *DeliveryInspection) SetHead(val string) {
+	s.Head = val
+}
+
+// SetBranch sets the value of Branch.
+func (s *DeliveryInspection) SetBranch(val OptString) {
+	s.Branch = val
+}
+
+// SetDirty sets the value of Dirty.
+func (s *DeliveryInspection) SetDirty(val bool) {
+	s.Dirty = val
+}
+
+// SetOriginUrl sets the value of OriginUrl.
+func (s *DeliveryInspection) SetOriginUrl(val OptString) {
+	s.OriginUrl = val
+}
+
+// SetDefaultBranch sets the value of DefaultBranch.
+func (s *DeliveryInspection) SetDefaultBranch(val OptString) {
+	s.DefaultBranch = val
+}
+
+// SetTree sets the value of Tree.
+func (s *DeliveryInspection) SetTree(val string) {
+	s.Tree = val
+}
+
+func (*DeliveryInspection) inspectCapsuleDeliveryRes() {}
+
+// Ref: #/components/schemas/DeliveryPage
+type DeliveryPage struct {
+	Items      []Delivery `json:"items"`
+	NextCursor OptString  `json:"nextCursor"`
+}
+
+// GetItems returns the value of Items.
+func (s *DeliveryPage) GetItems() []Delivery {
+	return s.Items
+}
+
+// GetNextCursor returns the value of NextCursor.
+func (s *DeliveryPage) GetNextCursor() OptString {
+	return s.NextCursor
+}
+
+// SetItems sets the value of Items.
+func (s *DeliveryPage) SetItems(val []Delivery) {
+	s.Items = val
+}
+
+// SetNextCursor sets the value of NextCursor.
+func (s *DeliveryPage) SetNextCursor(val OptString) {
+	s.NextCursor = val
+}
+
+func (*DeliveryPage) listCapsuleDeliveriesRes() {}
+
+// Ref: #/components/schemas/DeliveryState
+type DeliveryState string
+
+const (
+	DeliveryStateQueued     DeliveryState = "queued"
+	DeliveryStateCommitting DeliveryState = "committing"
+	DeliveryStatePushing    DeliveryState = "pushing"
+	DeliveryStateOpeningPr  DeliveryState = "opening_pr"
+	DeliveryStateSucceeded  DeliveryState = "succeeded"
+	DeliveryStateFailed     DeliveryState = "failed"
+)
+
+// AllValues returns all DeliveryState values.
+func (DeliveryState) AllValues() []DeliveryState {
+	return []DeliveryState{
+		DeliveryStateQueued,
+		DeliveryStateCommitting,
+		DeliveryStatePushing,
+		DeliveryStateOpeningPr,
+		DeliveryStateSucceeded,
+		DeliveryStateFailed,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s DeliveryState) MarshalText() ([]byte, error) {
+	switch s {
+	case DeliveryStateQueued:
+		return []byte(s), nil
+	case DeliveryStateCommitting:
+		return []byte(s), nil
+	case DeliveryStatePushing:
+		return []byte(s), nil
+	case DeliveryStateOpeningPr:
+		return []byte(s), nil
+	case DeliveryStateSucceeded:
+		return []byte(s), nil
+	case DeliveryStateFailed:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *DeliveryState) UnmarshalText(data []byte) error {
+	switch DeliveryState(data) {
+	case DeliveryStateQueued:
+		*s = DeliveryStateQueued
+		return nil
+	case DeliveryStateCommitting:
+		*s = DeliveryStateCommitting
+		return nil
+	case DeliveryStatePushing:
+		*s = DeliveryStatePushing
+		return nil
+	case DeliveryStateOpeningPr:
+		*s = DeliveryStateOpeningPr
+		return nil
+	case DeliveryStateSucceeded:
+		*s = DeliveryStateSucceeded
+		return nil
+	case DeliveryStateFailed:
+		*s = DeliveryStateFailed
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)
@@ -1111,17 +2019,108 @@ func (s *ErrorEnvelope) SetError(val APIError) {
 	s.Error = val
 }
 
-func (*ErrorEnvelope) attachRunWebSocketRes()    {}
-func (*ErrorEnvelope) createRunAttachTicketRes() {}
-func (*ErrorEnvelope) getCapsuleRes()            {}
-func (*ErrorEnvelope) getMomentRes()             {}
-func (*ErrorEnvelope) getProjectRes()            {}
-func (*ErrorEnvelope) getRunRes()                {}
-func (*ErrorEnvelope) getThreadRes()             {}
-func (*ErrorEnvelope) getTimelineRes()           {}
-func (*ErrorEnvelope) listMomentsRes()           {}
-func (*ErrorEnvelope) listProjectsRes()          {}
-func (*ErrorEnvelope) listThreadsRes()           {}
+func (*ErrorEnvelope) attachRunWebSocketRes()     {}
+func (*ErrorEnvelope) createRunAttachTicketRes()  {}
+func (*ErrorEnvelope) getCapsuleRes()             {}
+func (*ErrorEnvelope) getDeliveryRes()            {}
+func (*ErrorEnvelope) getMomentRes()              {}
+func (*ErrorEnvelope) getProjectRes()             {}
+func (*ErrorEnvelope) getProjectThreadIntentRes() {}
+func (*ErrorEnvelope) getRunRes()                 {}
+func (*ErrorEnvelope) getThreadRes()              {}
+func (*ErrorEnvelope) getTimelineRes()            {}
+func (*ErrorEnvelope) listCapsuleDeliveriesRes()  {}
+func (*ErrorEnvelope) listMomentsRes()            {}
+func (*ErrorEnvelope) listProjectsRes()           {}
+func (*ErrorEnvelope) listSecretsRes()            {}
+func (*ErrorEnvelope) listThreadsRes()            {}
+
+type ExportCapsuleWorkspaceConflict ErrorEnvelope
+
+func (*ExportCapsuleWorkspaceConflict) exportCapsuleWorkspaceRes() {}
+
+type ExportCapsuleWorkspaceNotFound ErrorEnvelope
+
+func (*ExportCapsuleWorkspaceNotFound) exportCapsuleWorkspaceRes() {}
+
+type ExportCapsuleWorkspaceOK struct {
+	Data io.Reader
+}
+
+// Read reads data from the Data reader.
+//
+// Kept to satisfy the io.Reader interface.
+func (s ExportCapsuleWorkspaceOK) Read(p []byte) (n int, err error) {
+	if s.Data == nil {
+		return 0, io.EOF
+	}
+	return s.Data.Read(p)
+}
+
+// ExportCapsuleWorkspaceOKHeaders wraps ExportCapsuleWorkspaceOK with response headers.
+type ExportCapsuleWorkspaceOKHeaders struct {
+	MeridianGitBranch     OptString
+	MeridianGitDirty      OptString
+	MeridianGitHead       OptString
+	MeridianRepositoryURL OptString
+	Response              ExportCapsuleWorkspaceOK
+}
+
+// GetMeridianGitBranch returns the value of MeridianGitBranch.
+func (s *ExportCapsuleWorkspaceOKHeaders) GetMeridianGitBranch() OptString {
+	return s.MeridianGitBranch
+}
+
+// GetMeridianGitDirty returns the value of MeridianGitDirty.
+func (s *ExportCapsuleWorkspaceOKHeaders) GetMeridianGitDirty() OptString {
+	return s.MeridianGitDirty
+}
+
+// GetMeridianGitHead returns the value of MeridianGitHead.
+func (s *ExportCapsuleWorkspaceOKHeaders) GetMeridianGitHead() OptString {
+	return s.MeridianGitHead
+}
+
+// GetMeridianRepositoryURL returns the value of MeridianRepositoryURL.
+func (s *ExportCapsuleWorkspaceOKHeaders) GetMeridianRepositoryURL() OptString {
+	return s.MeridianRepositoryURL
+}
+
+// GetResponse returns the value of Response.
+func (s *ExportCapsuleWorkspaceOKHeaders) GetResponse() ExportCapsuleWorkspaceOK {
+	return s.Response
+}
+
+// SetMeridianGitBranch sets the value of MeridianGitBranch.
+func (s *ExportCapsuleWorkspaceOKHeaders) SetMeridianGitBranch(val OptString) {
+	s.MeridianGitBranch = val
+}
+
+// SetMeridianGitDirty sets the value of MeridianGitDirty.
+func (s *ExportCapsuleWorkspaceOKHeaders) SetMeridianGitDirty(val OptString) {
+	s.MeridianGitDirty = val
+}
+
+// SetMeridianGitHead sets the value of MeridianGitHead.
+func (s *ExportCapsuleWorkspaceOKHeaders) SetMeridianGitHead(val OptString) {
+	s.MeridianGitHead = val
+}
+
+// SetMeridianRepositoryURL sets the value of MeridianRepositoryURL.
+func (s *ExportCapsuleWorkspaceOKHeaders) SetMeridianRepositoryURL(val OptString) {
+	s.MeridianRepositoryURL = val
+}
+
+// SetResponse sets the value of Response.
+func (s *ExportCapsuleWorkspaceOKHeaders) SetResponse(val ExportCapsuleWorkspaceOK) {
+	s.Response = val
+}
+
+func (*ExportCapsuleWorkspaceOKHeaders) exportCapsuleWorkspaceRes() {}
+
+type ExportCapsuleWorkspaceUnprocessableEntity ErrorEnvelope
+
+func (*ExportCapsuleWorkspaceUnprocessableEntity) exportCapsuleWorkspaceRes() {}
 
 type GetCapsuleGitDiffNotFound ErrorEnvelope
 
@@ -1349,6 +2348,18 @@ func (s *HarnessProfileProtocol) UnmarshalText(data []byte) error {
 	}
 }
 
+type InspectCapsuleDeliveryConflict ErrorEnvelope
+
+func (*InspectCapsuleDeliveryConflict) inspectCapsuleDeliveryRes() {}
+
+type InspectCapsuleDeliveryNotFound ErrorEnvelope
+
+func (*InspectCapsuleDeliveryNotFound) inspectCapsuleDeliveryRes() {}
+
+type InspectCapsuleDeliveryUnprocessableEntity ErrorEnvelope
+
+func (*InspectCapsuleDeliveryUnprocessableEntity) inspectCapsuleDeliveryRes() {}
+
 // Ref: #/components/schemas/LifecycleMutationRequest
 type LifecycleMutationRequest struct {
 	ExpectedResourceVersion int64 `json:"expectedResourceVersion"`
@@ -1363,6 +2374,18 @@ func (s *LifecycleMutationRequest) GetExpectedResourceVersion() int64 {
 func (s *LifecycleMutationRequest) SetExpectedResourceVersion(val int64) {
 	s.ExpectedResourceVersion = val
 }
+
+type ListCapsuleFilesBadRequest ErrorEnvelope
+
+func (*ListCapsuleFilesBadRequest) listCapsuleFilesRes() {}
+
+type ListCapsuleFilesNotFound ErrorEnvelope
+
+func (*ListCapsuleFilesNotFound) listCapsuleFilesRes() {}
+
+type ListCapsuleFilesUnprocessableEntity ErrorEnvelope
+
+func (*ListCapsuleFilesUnprocessableEntity) listCapsuleFilesRes() {}
 
 type ListCapsulePreviewPortsNotFound ErrorEnvelope
 
@@ -2137,6 +3160,52 @@ func (o OptString) Or(d string) string {
 	return d
 }
 
+// NewOptThread returns new OptThread with value set to v.
+func NewOptThread(v Thread) OptThread {
+	return OptThread{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptThread is optional Thread.
+type OptThread struct {
+	Value Thread
+	Set   bool
+}
+
+// IsSet returns true if OptThread was set.
+func (o OptThread) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptThread) Reset() {
+	var v Thread
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptThread) SetTo(v Thread) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptThread) Get() (v Thread, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptThread) Or(d Thread) Thread {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptThreadAdapterEvent returns new OptThreadAdapterEvent with value set to v.
 func NewOptThreadAdapterEvent(v ThreadAdapterEvent) OptThreadAdapterEvent {
 	return OptThreadAdapterEvent{
@@ -2367,6 +3436,52 @@ func (o OptThreadProtocol) Or(d ThreadProtocol) ThreadProtocol {
 	return d
 }
 
+// NewOptURI returns new OptURI with value set to v.
+func NewOptURI(v url.URL) OptURI {
+	return OptURI{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptURI is optional url.URL.
+type OptURI struct {
+	Value url.URL
+	Set   bool
+}
+
+// IsSet returns true if OptURI was set.
+func (o OptURI) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptURI) Reset() {
+	var v url.URL
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptURI) SetTo(v url.URL) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptURI) Get() (v url.URL, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptURI) Or(d url.URL) url.URL {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 type PauseCapsuleBadRequest ErrorEnvelope
 
 func (*PauseCapsuleBadRequest) pauseCapsuleRes() {}
@@ -2549,14 +3664,21 @@ func (s *ProbeResponseStatus) UnmarshalText(data []byte) error {
 
 // Ref: #/components/schemas/Project
 type Project struct {
-	ID              string    `json:"id"`
-	Name            string    `json:"name"`
-	RepositoryUrl   OptString `json:"repositoryUrl"`
-	Setup           []string  `json:"setup"`
-	ImageReference  OptString `json:"imageReference"`
-	CreatedAt       time.Time `json:"createdAt"`
-	UpdatedAt       time.Time `json:"updatedAt"`
-	ResourceVersion int64     `json:"resourceVersion"`
+	ID                  string    `json:"id"`
+	Name                string    `json:"name"`
+	RepositoryUrl       OptString `json:"repositoryUrl"`
+	Setup               []string  `json:"setup"`
+	ImageReference      OptString `json:"imageReference"`
+	GitSecretName       OptString `json:"gitSecretName"`
+	HarnessSecretNames  []string  `json:"harnessSecretNames"`
+	GitPushSecretName   OptString `json:"gitPushSecretName"`
+	GithubAPISecretName OptString `json:"githubAPISecretName"`
+	CommitAuthorName    OptString `json:"commitAuthorName"`
+	CommitAuthorEmail   OptString `json:"commitAuthorEmail"`
+	DefaultBaseBranch   OptString `json:"defaultBaseBranch"`
+	CreatedAt           time.Time `json:"createdAt"`
+	UpdatedAt           time.Time `json:"updatedAt"`
+	ResourceVersion     int64     `json:"resourceVersion"`
 }
 
 // GetID returns the value of ID.
@@ -2582,6 +3704,41 @@ func (s *Project) GetSetup() []string {
 // GetImageReference returns the value of ImageReference.
 func (s *Project) GetImageReference() OptString {
 	return s.ImageReference
+}
+
+// GetGitSecretName returns the value of GitSecretName.
+func (s *Project) GetGitSecretName() OptString {
+	return s.GitSecretName
+}
+
+// GetHarnessSecretNames returns the value of HarnessSecretNames.
+func (s *Project) GetHarnessSecretNames() []string {
+	return s.HarnessSecretNames
+}
+
+// GetGitPushSecretName returns the value of GitPushSecretName.
+func (s *Project) GetGitPushSecretName() OptString {
+	return s.GitPushSecretName
+}
+
+// GetGithubAPISecretName returns the value of GithubAPISecretName.
+func (s *Project) GetGithubAPISecretName() OptString {
+	return s.GithubAPISecretName
+}
+
+// GetCommitAuthorName returns the value of CommitAuthorName.
+func (s *Project) GetCommitAuthorName() OptString {
+	return s.CommitAuthorName
+}
+
+// GetCommitAuthorEmail returns the value of CommitAuthorEmail.
+func (s *Project) GetCommitAuthorEmail() OptString {
+	return s.CommitAuthorEmail
+}
+
+// GetDefaultBaseBranch returns the value of DefaultBaseBranch.
+func (s *Project) GetDefaultBaseBranch() OptString {
+	return s.DefaultBaseBranch
 }
 
 // GetCreatedAt returns the value of CreatedAt.
@@ -2622,6 +3779,41 @@ func (s *Project) SetSetup(val []string) {
 // SetImageReference sets the value of ImageReference.
 func (s *Project) SetImageReference(val OptString) {
 	s.ImageReference = val
+}
+
+// SetGitSecretName sets the value of GitSecretName.
+func (s *Project) SetGitSecretName(val OptString) {
+	s.GitSecretName = val
+}
+
+// SetHarnessSecretNames sets the value of HarnessSecretNames.
+func (s *Project) SetHarnessSecretNames(val []string) {
+	s.HarnessSecretNames = val
+}
+
+// SetGitPushSecretName sets the value of GitPushSecretName.
+func (s *Project) SetGitPushSecretName(val OptString) {
+	s.GitPushSecretName = val
+}
+
+// SetGithubAPISecretName sets the value of GithubAPISecretName.
+func (s *Project) SetGithubAPISecretName(val OptString) {
+	s.GithubAPISecretName = val
+}
+
+// SetCommitAuthorName sets the value of CommitAuthorName.
+func (s *Project) SetCommitAuthorName(val OptString) {
+	s.CommitAuthorName = val
+}
+
+// SetCommitAuthorEmail sets the value of CommitAuthorEmail.
+func (s *Project) SetCommitAuthorEmail(val OptString) {
+	s.CommitAuthorEmail = val
+}
+
+// SetDefaultBaseBranch sets the value of DefaultBaseBranch.
+func (s *Project) SetDefaultBaseBranch(val OptString) {
+	s.DefaultBaseBranch = val
 }
 
 // SetCreatedAt sets the value of CreatedAt.
@@ -2695,6 +3887,407 @@ func (s *ProjectPage) SetNextCursor(val OptString) {
 }
 
 func (*ProjectPage) listProjectsRes() {}
+
+// Ref: #/components/schemas/ProjectThreadIntent
+type ProjectThreadIntent struct {
+	ID          string                   `json:"id"`
+	ProjectId   string                   `json:"projectId"`
+	CapsuleId   string                   `json:"capsuleId"`
+	CapsuleName string                   `json:"capsuleName"`
+	ThreadId    string                   `json:"threadId"`
+	RunId       string                   `json:"runId"`
+	MessageId   string                   `json:"messageId"`
+	Harness     string                   `json:"harness"`
+	State       ProjectThreadIntentState `json:"state"`
+	FailureCode OptString                `json:"failureCode"`
+	// Bounded content-free lifecycle failure summary.
+	FailureMessage  OptString `json:"failureMessage"`
+	Thread          OptThread `json:"thread"`
+	CurrentRun      OptRun    `json:"currentRun"`
+	CreatedAt       time.Time `json:"createdAt"`
+	UpdatedAt       time.Time `json:"updatedAt"`
+	ResourceVersion int64     `json:"resourceVersion"`
+}
+
+// GetID returns the value of ID.
+func (s *ProjectThreadIntent) GetID() string {
+	return s.ID
+}
+
+// GetProjectId returns the value of ProjectId.
+func (s *ProjectThreadIntent) GetProjectId() string {
+	return s.ProjectId
+}
+
+// GetCapsuleId returns the value of CapsuleId.
+func (s *ProjectThreadIntent) GetCapsuleId() string {
+	return s.CapsuleId
+}
+
+// GetCapsuleName returns the value of CapsuleName.
+func (s *ProjectThreadIntent) GetCapsuleName() string {
+	return s.CapsuleName
+}
+
+// GetThreadId returns the value of ThreadId.
+func (s *ProjectThreadIntent) GetThreadId() string {
+	return s.ThreadId
+}
+
+// GetRunId returns the value of RunId.
+func (s *ProjectThreadIntent) GetRunId() string {
+	return s.RunId
+}
+
+// GetMessageId returns the value of MessageId.
+func (s *ProjectThreadIntent) GetMessageId() string {
+	return s.MessageId
+}
+
+// GetHarness returns the value of Harness.
+func (s *ProjectThreadIntent) GetHarness() string {
+	return s.Harness
+}
+
+// GetState returns the value of State.
+func (s *ProjectThreadIntent) GetState() ProjectThreadIntentState {
+	return s.State
+}
+
+// GetFailureCode returns the value of FailureCode.
+func (s *ProjectThreadIntent) GetFailureCode() OptString {
+	return s.FailureCode
+}
+
+// GetFailureMessage returns the value of FailureMessage.
+func (s *ProjectThreadIntent) GetFailureMessage() OptString {
+	return s.FailureMessage
+}
+
+// GetThread returns the value of Thread.
+func (s *ProjectThreadIntent) GetThread() OptThread {
+	return s.Thread
+}
+
+// GetCurrentRun returns the value of CurrentRun.
+func (s *ProjectThreadIntent) GetCurrentRun() OptRun {
+	return s.CurrentRun
+}
+
+// GetCreatedAt returns the value of CreatedAt.
+func (s *ProjectThreadIntent) GetCreatedAt() time.Time {
+	return s.CreatedAt
+}
+
+// GetUpdatedAt returns the value of UpdatedAt.
+func (s *ProjectThreadIntent) GetUpdatedAt() time.Time {
+	return s.UpdatedAt
+}
+
+// GetResourceVersion returns the value of ResourceVersion.
+func (s *ProjectThreadIntent) GetResourceVersion() int64 {
+	return s.ResourceVersion
+}
+
+// SetID sets the value of ID.
+func (s *ProjectThreadIntent) SetID(val string) {
+	s.ID = val
+}
+
+// SetProjectId sets the value of ProjectId.
+func (s *ProjectThreadIntent) SetProjectId(val string) {
+	s.ProjectId = val
+}
+
+// SetCapsuleId sets the value of CapsuleId.
+func (s *ProjectThreadIntent) SetCapsuleId(val string) {
+	s.CapsuleId = val
+}
+
+// SetCapsuleName sets the value of CapsuleName.
+func (s *ProjectThreadIntent) SetCapsuleName(val string) {
+	s.CapsuleName = val
+}
+
+// SetThreadId sets the value of ThreadId.
+func (s *ProjectThreadIntent) SetThreadId(val string) {
+	s.ThreadId = val
+}
+
+// SetRunId sets the value of RunId.
+func (s *ProjectThreadIntent) SetRunId(val string) {
+	s.RunId = val
+}
+
+// SetMessageId sets the value of MessageId.
+func (s *ProjectThreadIntent) SetMessageId(val string) {
+	s.MessageId = val
+}
+
+// SetHarness sets the value of Harness.
+func (s *ProjectThreadIntent) SetHarness(val string) {
+	s.Harness = val
+}
+
+// SetState sets the value of State.
+func (s *ProjectThreadIntent) SetState(val ProjectThreadIntentState) {
+	s.State = val
+}
+
+// SetFailureCode sets the value of FailureCode.
+func (s *ProjectThreadIntent) SetFailureCode(val OptString) {
+	s.FailureCode = val
+}
+
+// SetFailureMessage sets the value of FailureMessage.
+func (s *ProjectThreadIntent) SetFailureMessage(val OptString) {
+	s.FailureMessage = val
+}
+
+// SetThread sets the value of Thread.
+func (s *ProjectThreadIntent) SetThread(val OptThread) {
+	s.Thread = val
+}
+
+// SetCurrentRun sets the value of CurrentRun.
+func (s *ProjectThreadIntent) SetCurrentRun(val OptRun) {
+	s.CurrentRun = val
+}
+
+// SetCreatedAt sets the value of CreatedAt.
+func (s *ProjectThreadIntent) SetCreatedAt(val time.Time) {
+	s.CreatedAt = val
+}
+
+// SetUpdatedAt sets the value of UpdatedAt.
+func (s *ProjectThreadIntent) SetUpdatedAt(val time.Time) {
+	s.UpdatedAt = val
+}
+
+// SetResourceVersion sets the value of ResourceVersion.
+func (s *ProjectThreadIntent) SetResourceVersion(val int64) {
+	s.ResourceVersion = val
+}
+
+// ProjectThreadIntentHeaders wraps ProjectThreadIntent with response headers.
+type ProjectThreadIntentHeaders struct {
+	ETag     OptString
+	Response ProjectThreadIntent
+}
+
+// GetETag returns the value of ETag.
+func (s *ProjectThreadIntentHeaders) GetETag() OptString {
+	return s.ETag
+}
+
+// GetResponse returns the value of Response.
+func (s *ProjectThreadIntentHeaders) GetResponse() ProjectThreadIntent {
+	return s.Response
+}
+
+// SetETag sets the value of ETag.
+func (s *ProjectThreadIntentHeaders) SetETag(val OptString) {
+	s.ETag = val
+}
+
+// SetResponse sets the value of Response.
+func (s *ProjectThreadIntentHeaders) SetResponse(val ProjectThreadIntent) {
+	s.Response = val
+}
+
+func (*ProjectThreadIntentHeaders) createProjectThreadRes()    {}
+func (*ProjectThreadIntentHeaders) getProjectThreadIntentRes() {}
+
+// Ref: #/components/schemas/ProjectThreadIntentState
+type ProjectThreadIntentState string
+
+const (
+	ProjectThreadIntentStateProvisioning ProjectThreadIntentState = "provisioning"
+	ProjectThreadIntentStateReady        ProjectThreadIntentState = "ready"
+	ProjectThreadIntentStateFailed       ProjectThreadIntentState = "failed"
+)
+
+// AllValues returns all ProjectThreadIntentState values.
+func (ProjectThreadIntentState) AllValues() []ProjectThreadIntentState {
+	return []ProjectThreadIntentState{
+		ProjectThreadIntentStateProvisioning,
+		ProjectThreadIntentStateReady,
+		ProjectThreadIntentStateFailed,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s ProjectThreadIntentState) MarshalText() ([]byte, error) {
+	switch s {
+	case ProjectThreadIntentStateProvisioning:
+		return []byte(s), nil
+	case ProjectThreadIntentStateReady:
+		return []byte(s), nil
+	case ProjectThreadIntentStateFailed:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *ProjectThreadIntentState) UnmarshalText(data []byte) error {
+	switch ProjectThreadIntentState(data) {
+	case ProjectThreadIntentStateProvisioning:
+		*s = ProjectThreadIntentStateProvisioning
+		return nil
+	case ProjectThreadIntentStateReady:
+		*s = ProjectThreadIntentStateReady
+		return nil
+	case ProjectThreadIntentStateFailed:
+		*s = ProjectThreadIntentStateFailed
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+type PutSecretBadRequest ErrorEnvelope
+
+func (*PutSecretBadRequest) putSecretRes() {}
+
+type PutSecretConflict ErrorEnvelope
+
+func (*PutSecretConflict) putSecretRes() {}
+
+// Ref: #/components/schemas/PutSecretRequest
+type PutSecretRequest struct {
+	Purpose PutSecretRequestPurpose `json:"purpose"`
+	// Token or harness environment value. Never returned.
+	Value OptString `json:"value"`
+	// Git username, encrypted with the password/token.
+	Username OptString `json:"username"`
+	// Git password or token. Never returned.
+	Password OptString `json:"password"`
+	// Required when replacing an existing name; omit when creating.
+	ExpectedResourceVersion OptInt64 `json:"expectedResourceVersion"`
+}
+
+// GetPurpose returns the value of Purpose.
+func (s *PutSecretRequest) GetPurpose() PutSecretRequestPurpose {
+	return s.Purpose
+}
+
+// GetValue returns the value of Value.
+func (s *PutSecretRequest) GetValue() OptString {
+	return s.Value
+}
+
+// GetUsername returns the value of Username.
+func (s *PutSecretRequest) GetUsername() OptString {
+	return s.Username
+}
+
+// GetPassword returns the value of Password.
+func (s *PutSecretRequest) GetPassword() OptString {
+	return s.Password
+}
+
+// GetExpectedResourceVersion returns the value of ExpectedResourceVersion.
+func (s *PutSecretRequest) GetExpectedResourceVersion() OptInt64 {
+	return s.ExpectedResourceVersion
+}
+
+// SetPurpose sets the value of Purpose.
+func (s *PutSecretRequest) SetPurpose(val PutSecretRequestPurpose) {
+	s.Purpose = val
+}
+
+// SetValue sets the value of Value.
+func (s *PutSecretRequest) SetValue(val OptString) {
+	s.Value = val
+}
+
+// SetUsername sets the value of Username.
+func (s *PutSecretRequest) SetUsername(val OptString) {
+	s.Username = val
+}
+
+// SetPassword sets the value of Password.
+func (s *PutSecretRequest) SetPassword(val OptString) {
+	s.Password = val
+}
+
+// SetExpectedResourceVersion sets the value of ExpectedResourceVersion.
+func (s *PutSecretRequest) SetExpectedResourceVersion(val OptInt64) {
+	s.ExpectedResourceVersion = val
+}
+
+type PutSecretRequestPurpose string
+
+const (
+	PutSecretRequestPurposeGitHTTPS   PutSecretRequestPurpose = "git_https"
+	PutSecretRequestPurposeGitPush    PutSecretRequestPurpose = "git_push"
+	PutSecretRequestPurposeGithubAPI  PutSecretRequestPurpose = "github_api"
+	PutSecretRequestPurposeHarnessEnv PutSecretRequestPurpose = "harness_env"
+)
+
+// AllValues returns all PutSecretRequestPurpose values.
+func (PutSecretRequestPurpose) AllValues() []PutSecretRequestPurpose {
+	return []PutSecretRequestPurpose{
+		PutSecretRequestPurposeGitHTTPS,
+		PutSecretRequestPurposeGitPush,
+		PutSecretRequestPurposeGithubAPI,
+		PutSecretRequestPurposeHarnessEnv,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s PutSecretRequestPurpose) MarshalText() ([]byte, error) {
+	switch s {
+	case PutSecretRequestPurposeGitHTTPS:
+		return []byte(s), nil
+	case PutSecretRequestPurposeGitPush:
+		return []byte(s), nil
+	case PutSecretRequestPurposeGithubAPI:
+		return []byte(s), nil
+	case PutSecretRequestPurposeHarnessEnv:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *PutSecretRequestPurpose) UnmarshalText(data []byte) error {
+	switch PutSecretRequestPurpose(data) {
+	case PutSecretRequestPurposeGitHTTPS:
+		*s = PutSecretRequestPurposeGitHTTPS
+		return nil
+	case PutSecretRequestPurposeGitPush:
+		*s = PutSecretRequestPurposeGitPush
+		return nil
+	case PutSecretRequestPurposeGithubAPI:
+		*s = PutSecretRequestPurposeGithubAPI
+		return nil
+	case PutSecretRequestPurposeHarnessEnv:
+		*s = PutSecretRequestPurposeHarnessEnv
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+type ReadCapsuleFileBadRequest ErrorEnvelope
+
+func (*ReadCapsuleFileBadRequest) readCapsuleFileRes() {}
+
+type ReadCapsuleFileNotFound ErrorEnvelope
+
+func (*ReadCapsuleFileNotFound) readCapsuleFileRes() {}
+
+type ReadCapsuleFileRequestEntityTooLarge ErrorEnvelope
+
+func (*ReadCapsuleFileRequestEntityTooLarge) readCapsuleFileRes() {}
+
+type ReadCapsuleFileUnprocessableEntity ErrorEnvelope
+
+func (*ReadCapsuleFileUnprocessableEntity) readCapsuleFileRes() {}
 
 type RespondThreadBadRequest ErrorEnvelope
 
@@ -3181,6 +4774,190 @@ func (s *SealResult) SetMoment(val Moment) {
 }
 
 func (*SealResult) sealCapsuleRes() {}
+
+// Secret metadata only; plaintext and ciphertext are never returned.
+// Ref: #/components/schemas/Secret
+type Secret struct {
+	ID              string        `json:"id"`
+	Name            string        `json:"name"`
+	Purpose         SecretPurpose `json:"purpose"`
+	CreatedAt       time.Time     `json:"createdAt"`
+	UpdatedAt       time.Time     `json:"updatedAt"`
+	ResourceVersion int64         `json:"resourceVersion"`
+}
+
+// GetID returns the value of ID.
+func (s *Secret) GetID() string {
+	return s.ID
+}
+
+// GetName returns the value of Name.
+func (s *Secret) GetName() string {
+	return s.Name
+}
+
+// GetPurpose returns the value of Purpose.
+func (s *Secret) GetPurpose() SecretPurpose {
+	return s.Purpose
+}
+
+// GetCreatedAt returns the value of CreatedAt.
+func (s *Secret) GetCreatedAt() time.Time {
+	return s.CreatedAt
+}
+
+// GetUpdatedAt returns the value of UpdatedAt.
+func (s *Secret) GetUpdatedAt() time.Time {
+	return s.UpdatedAt
+}
+
+// GetResourceVersion returns the value of ResourceVersion.
+func (s *Secret) GetResourceVersion() int64 {
+	return s.ResourceVersion
+}
+
+// SetID sets the value of ID.
+func (s *Secret) SetID(val string) {
+	s.ID = val
+}
+
+// SetName sets the value of Name.
+func (s *Secret) SetName(val string) {
+	s.Name = val
+}
+
+// SetPurpose sets the value of Purpose.
+func (s *Secret) SetPurpose(val SecretPurpose) {
+	s.Purpose = val
+}
+
+// SetCreatedAt sets the value of CreatedAt.
+func (s *Secret) SetCreatedAt(val time.Time) {
+	s.CreatedAt = val
+}
+
+// SetUpdatedAt sets the value of UpdatedAt.
+func (s *Secret) SetUpdatedAt(val time.Time) {
+	s.UpdatedAt = val
+}
+
+// SetResourceVersion sets the value of ResourceVersion.
+func (s *Secret) SetResourceVersion(val int64) {
+	s.ResourceVersion = val
+}
+
+func (*Secret) deleteSecretRes() {}
+
+// SecretHeaders wraps Secret with response headers.
+type SecretHeaders struct {
+	ETag     OptString
+	Response Secret
+}
+
+// GetETag returns the value of ETag.
+func (s *SecretHeaders) GetETag() OptString {
+	return s.ETag
+}
+
+// GetResponse returns the value of Response.
+func (s *SecretHeaders) GetResponse() Secret {
+	return s.Response
+}
+
+// SetETag sets the value of ETag.
+func (s *SecretHeaders) SetETag(val OptString) {
+	s.ETag = val
+}
+
+// SetResponse sets the value of Response.
+func (s *SecretHeaders) SetResponse(val Secret) {
+	s.Response = val
+}
+
+func (*SecretHeaders) putSecretRes() {}
+
+// Ref: #/components/schemas/SecretPage
+type SecretPage struct {
+	Items      []Secret  `json:"items"`
+	NextCursor OptString `json:"nextCursor"`
+}
+
+// GetItems returns the value of Items.
+func (s *SecretPage) GetItems() []Secret {
+	return s.Items
+}
+
+// GetNextCursor returns the value of NextCursor.
+func (s *SecretPage) GetNextCursor() OptString {
+	return s.NextCursor
+}
+
+// SetItems sets the value of Items.
+func (s *SecretPage) SetItems(val []Secret) {
+	s.Items = val
+}
+
+// SetNextCursor sets the value of NextCursor.
+func (s *SecretPage) SetNextCursor(val OptString) {
+	s.NextCursor = val
+}
+
+func (*SecretPage) listSecretsRes() {}
+
+type SecretPurpose string
+
+const (
+	SecretPurposeGitHTTPS   SecretPurpose = "git_https"
+	SecretPurposeGitPush    SecretPurpose = "git_push"
+	SecretPurposeGithubAPI  SecretPurpose = "github_api"
+	SecretPurposeHarnessEnv SecretPurpose = "harness_env"
+)
+
+// AllValues returns all SecretPurpose values.
+func (SecretPurpose) AllValues() []SecretPurpose {
+	return []SecretPurpose{
+		SecretPurposeGitHTTPS,
+		SecretPurposeGitPush,
+		SecretPurposeGithubAPI,
+		SecretPurposeHarnessEnv,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s SecretPurpose) MarshalText() ([]byte, error) {
+	switch s {
+	case SecretPurposeGitHTTPS:
+		return []byte(s), nil
+	case SecretPurposeGitPush:
+		return []byte(s), nil
+	case SecretPurposeGithubAPI:
+		return []byte(s), nil
+	case SecretPurposeHarnessEnv:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *SecretPurpose) UnmarshalText(data []byte) error {
+	switch SecretPurpose(data) {
+	case SecretPurposeGitHTTPS:
+		*s = SecretPurposeGitHTTPS
+		return nil
+	case SecretPurposeGitPush:
+		*s = SecretPurposeGitPush
+		return nil
+	case SecretPurposeGithubAPI:
+		*s = SecretPurposeGithubAPI
+		return nil
+	case SecretPurposeHarnessEnv:
+		*s = SecretPurposeHarnessEnv
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
 
 type SendThreadMessageBadRequest ErrorEnvelope
 
@@ -4820,16 +6597,242 @@ func (s *TooManyRequestsHeaders) SetResponse(val ErrorEnvelope) {
 func (*TooManyRequestsHeaders) createCapsulePreviewTicketRes() {}
 func (*TooManyRequestsHeaders) createCapsuleRes()              {}
 func (*TooManyRequestsHeaders) createProjectRes()              {}
+func (*TooManyRequestsHeaders) createProjectThreadRes()        {}
 func (*TooManyRequestsHeaders) createRunAttachTicketRes()      {}
 func (*TooManyRequestsHeaders) createThreadRes()               {}
 func (*TooManyRequestsHeaders) deleteCapsuleRes()              {}
+func (*TooManyRequestsHeaders) deleteSecretRes()               {}
 func (*TooManyRequestsHeaders) getCapabilitiesRes()            {}
 func (*TooManyRequestsHeaders) getCapsuleRes()                 {}
 func (*TooManyRequestsHeaders) getHealthRes()                  {}
 func (*TooManyRequestsHeaders) getProjectRes()                 {}
+func (*TooManyRequestsHeaders) getProjectThreadIntentRes()     {}
 func (*TooManyRequestsHeaders) getReadinessRes()               {}
 func (*TooManyRequestsHeaders) listCapsulesRes()               {}
 func (*TooManyRequestsHeaders) listProjectsRes()               {}
+func (*TooManyRequestsHeaders) listSecretsRes()                {}
 func (*TooManyRequestsHeaders) pauseCapsuleRes()               {}
+func (*TooManyRequestsHeaders) putSecretRes()                  {}
 func (*TooManyRequestsHeaders) resumeCapsuleRes()              {}
 func (*TooManyRequestsHeaders) sendThreadMessageRes()          {}
+
+// UnauthorizedHeaders wraps ErrorEnvelope with response headers.
+type UnauthorizedHeaders struct {
+	WWWAuthenticate OptString
+	Response        ErrorEnvelope
+}
+
+// GetWWWAuthenticate returns the value of WWWAuthenticate.
+func (s *UnauthorizedHeaders) GetWWWAuthenticate() OptString {
+	return s.WWWAuthenticate
+}
+
+// GetResponse returns the value of Response.
+func (s *UnauthorizedHeaders) GetResponse() ErrorEnvelope {
+	return s.Response
+}
+
+// SetWWWAuthenticate sets the value of WWWAuthenticate.
+func (s *UnauthorizedHeaders) SetWWWAuthenticate(val OptString) {
+	s.WWWAuthenticate = val
+}
+
+// SetResponse sets the value of Response.
+func (s *UnauthorizedHeaders) SetResponse(val ErrorEnvelope) {
+	s.Response = val
+}
+
+func (*UnauthorizedHeaders) createBrowserSessionRes() {}
+
+// Ref: #/components/schemas/WorkspaceFile
+type WorkspaceFile struct {
+	Path string `json:"path"`
+	// Base64-encoded binary-safe content. Clients must not interpret it as HTML.
+	Content    []byte `json:"content"`
+	Size       int64  `json:"size"`
+	Executable bool   `json:"executable"`
+}
+
+// GetPath returns the value of Path.
+func (s *WorkspaceFile) GetPath() string {
+	return s.Path
+}
+
+// GetContent returns the value of Content.
+func (s *WorkspaceFile) GetContent() []byte {
+	return s.Content
+}
+
+// GetSize returns the value of Size.
+func (s *WorkspaceFile) GetSize() int64 {
+	return s.Size
+}
+
+// GetExecutable returns the value of Executable.
+func (s *WorkspaceFile) GetExecutable() bool {
+	return s.Executable
+}
+
+// SetPath sets the value of Path.
+func (s *WorkspaceFile) SetPath(val string) {
+	s.Path = val
+}
+
+// SetContent sets the value of Content.
+func (s *WorkspaceFile) SetContent(val []byte) {
+	s.Content = val
+}
+
+// SetSize sets the value of Size.
+func (s *WorkspaceFile) SetSize(val int64) {
+	s.Size = val
+}
+
+// SetExecutable sets the value of Executable.
+func (s *WorkspaceFile) SetExecutable(val bool) {
+	s.Executable = val
+}
+
+func (*WorkspaceFile) readCapsuleFileRes() {}
+
+// Ref: #/components/schemas/WorkspaceFileEntry
+type WorkspaceFileEntry struct {
+	Name       string                 `json:"name"`
+	Type       WorkspaceFileEntryType `json:"type"`
+	Size       int64                  `json:"size"`
+	Executable bool                   `json:"executable"`
+}
+
+// GetName returns the value of Name.
+func (s *WorkspaceFileEntry) GetName() string {
+	return s.Name
+}
+
+// GetType returns the value of Type.
+func (s *WorkspaceFileEntry) GetType() WorkspaceFileEntryType {
+	return s.Type
+}
+
+// GetSize returns the value of Size.
+func (s *WorkspaceFileEntry) GetSize() int64 {
+	return s.Size
+}
+
+// GetExecutable returns the value of Executable.
+func (s *WorkspaceFileEntry) GetExecutable() bool {
+	return s.Executable
+}
+
+// SetName sets the value of Name.
+func (s *WorkspaceFileEntry) SetName(val string) {
+	s.Name = val
+}
+
+// SetType sets the value of Type.
+func (s *WorkspaceFileEntry) SetType(val WorkspaceFileEntryType) {
+	s.Type = val
+}
+
+// SetSize sets the value of Size.
+func (s *WorkspaceFileEntry) SetSize(val int64) {
+	s.Size = val
+}
+
+// SetExecutable sets the value of Executable.
+func (s *WorkspaceFileEntry) SetExecutable(val bool) {
+	s.Executable = val
+}
+
+type WorkspaceFileEntryType string
+
+const (
+	WorkspaceFileEntryTypeFile      WorkspaceFileEntryType = "file"
+	WorkspaceFileEntryTypeDirectory WorkspaceFileEntryType = "directory"
+	WorkspaceFileEntryTypeSymlink   WorkspaceFileEntryType = "symlink"
+	WorkspaceFileEntryTypeOther     WorkspaceFileEntryType = "other"
+)
+
+// AllValues returns all WorkspaceFileEntryType values.
+func (WorkspaceFileEntryType) AllValues() []WorkspaceFileEntryType {
+	return []WorkspaceFileEntryType{
+		WorkspaceFileEntryTypeFile,
+		WorkspaceFileEntryTypeDirectory,
+		WorkspaceFileEntryTypeSymlink,
+		WorkspaceFileEntryTypeOther,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s WorkspaceFileEntryType) MarshalText() ([]byte, error) {
+	switch s {
+	case WorkspaceFileEntryTypeFile:
+		return []byte(s), nil
+	case WorkspaceFileEntryTypeDirectory:
+		return []byte(s), nil
+	case WorkspaceFileEntryTypeSymlink:
+		return []byte(s), nil
+	case WorkspaceFileEntryTypeOther:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *WorkspaceFileEntryType) UnmarshalText(data []byte) error {
+	switch WorkspaceFileEntryType(data) {
+	case WorkspaceFileEntryTypeFile:
+		*s = WorkspaceFileEntryTypeFile
+		return nil
+	case WorkspaceFileEntryTypeDirectory:
+		*s = WorkspaceFileEntryTypeDirectory
+		return nil
+	case WorkspaceFileEntryTypeSymlink:
+		*s = WorkspaceFileEntryTypeSymlink
+		return nil
+	case WorkspaceFileEntryTypeOther:
+		*s = WorkspaceFileEntryTypeOther
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Ref: #/components/schemas/WorkspaceFilePage
+type WorkspaceFilePage struct {
+	Path      OptString            `json:"path"`
+	Items     []WorkspaceFileEntry `json:"items"`
+	NextAfter OptString            `json:"nextAfter"`
+}
+
+// GetPath returns the value of Path.
+func (s *WorkspaceFilePage) GetPath() OptString {
+	return s.Path
+}
+
+// GetItems returns the value of Items.
+func (s *WorkspaceFilePage) GetItems() []WorkspaceFileEntry {
+	return s.Items
+}
+
+// GetNextAfter returns the value of NextAfter.
+func (s *WorkspaceFilePage) GetNextAfter() OptString {
+	return s.NextAfter
+}
+
+// SetPath sets the value of Path.
+func (s *WorkspaceFilePage) SetPath(val OptString) {
+	s.Path = val
+}
+
+// SetItems sets the value of Items.
+func (s *WorkspaceFilePage) SetItems(val []WorkspaceFileEntry) {
+	s.Items = val
+}
+
+// SetNextAfter sets the value of NextAfter.
+func (s *WorkspaceFilePage) SetNextAfter(val OptString) {
+	s.NextAfter = val
+}
+
+func (*WorkspaceFilePage) listCapsuleFilesRes() {}

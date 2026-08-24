@@ -36,6 +36,14 @@ export type Capabilities = {
      */
     preview: boolean;
     /**
+     * False unless a provider exposes the authenticated bounded workspace browser.
+     */
+    browse: boolean;
+    /**
+     * False unless a provider exposes authenticated exact-object commit and exact-ref push operations.
+     */
+    delivery: boolean;
+    /**
      * False when provider resource metrics are not exposed by the public API.
      */
     resourceMetrics: boolean;
@@ -55,6 +63,49 @@ export type CreateProjectRequest = {
      * Capsule image reference; Docker resolves it to an immutable image identity.
      */
     imageReference?: string;
+    /**
+     * Name of a git_https secret authorized only for HTTPS clone.
+     */
+    gitSecretName?: string;
+    /**
+     * Explicit allowlist of harness_env secret names.
+     */
+    harnessSecretNames?: Array<string>;
+    /**
+     * Name of a git_push secret authorized only for one exact Delivery push.
+     */
+    gitPushSecretName?: string;
+    /**
+     * Name of a github_api secret used only by meridiand to open a pull request.
+     */
+    githubAPISecretName?: string;
+    commitAuthorName?: string;
+    commitAuthorEmail?: string;
+    defaultBaseBranch?: string;
+};
+
+export type PutSecretRequest = {
+    purpose: 'git_https' | 'git_push' | 'github_api' | 'harness_env';
+    /**
+     * Token or harness environment value. Never returned.
+     */
+    value?: string;
+    /**
+     * Git username, encrypted with the password/token.
+     */
+    username?: string;
+    /**
+     * Git password or token. Never returned.
+     */
+    password?: string;
+    /**
+     * Required when replacing an existing name; omit when creating.
+     */
+    expectedResourceVersion?: number;
+};
+
+export type DeleteSecretRequest = {
+    expectedResourceVersion: number;
 };
 
 export type CreateCapsuleRequest = {
@@ -85,9 +136,33 @@ export type Project = {
     repositoryUrl?: string;
     setup?: Array<string>;
     imageReference?: string;
+    gitSecretName?: string;
+    harnessSecretNames?: Array<string>;
+    gitPushSecretName?: string;
+    githubAPISecretName?: string;
+    commitAuthorName?: string;
+    commitAuthorEmail?: string;
+    defaultBaseBranch?: string;
     createdAt: string;
     updatedAt: string;
     resourceVersion: number;
+};
+
+/**
+ * Secret metadata only; plaintext and ciphertext are never returned.
+ */
+export type Secret = {
+    id: string;
+    name: string;
+    purpose: 'git_https' | 'git_push' | 'github_api' | 'harness_env';
+    createdAt: string;
+    updatedAt: string;
+    resourceVersion: number;
+};
+
+export type SecretPage = {
+    items: Array<Secret>;
+    nextCursor?: string;
 };
 
 export type Capsule = {
@@ -213,6 +288,85 @@ export type GitResult = {
     truncated: boolean;
 };
 
+export type WorkspaceFileEntry = {
+    name: string;
+    type: 'file' | 'directory' | 'symlink' | 'other';
+    size: number;
+    executable: boolean;
+};
+
+export type WorkspaceFilePage = {
+    path?: string;
+    items: Array<WorkspaceFileEntry>;
+    nextAfter?: string;
+};
+
+export type WorkspaceFile = {
+    path: string;
+    /**
+     * Base64-encoded binary-safe content. Clients must not interpret it as HTML.
+     */
+    content: string;
+    size: number;
+    executable: boolean;
+};
+
+export type DeliveryInspection = {
+    capsuleResourceVersion: number;
+    head: string;
+    branch?: string;
+    dirty: boolean;
+    originUrl?: string;
+    defaultBranch?: string;
+    tree: string;
+};
+
+export type CreateDeliveryRequest = {
+    action: 'push' | 'open_pull_request';
+    approved: true;
+    expectedResourceVersion: number;
+    expectedHead: string;
+    expectedTree: string;
+    remoteBranch: string;
+    commitMessage?: string;
+    pullRequestTitle?: string;
+    pullRequestBody?: string;
+    baseBranch?: string;
+};
+
+export type DeliveryState = 'queued' | 'committing' | 'pushing' | 'opening_pr' | 'succeeded' | 'failed';
+
+export type Delivery = {
+    id: string;
+    capsuleId: string;
+    projectId: string;
+    state: DeliveryState;
+    action: 'push' | 'open_pull_request';
+    approved: true;
+    approvedAt: string;
+    expectedResourceVersion: number;
+    expectedHead: string;
+    expectedTree: string;
+    remoteBranch: string;
+    destinationRef: string;
+    baseBranch?: string;
+    commitMessage?: string;
+    pullRequestTitle?: string;
+    pullRequestBody?: string;
+    resultCommitSha?: string;
+    resultPullRequestUrl?: string;
+    resultPullRequestNumber?: number;
+    failure?: string;
+    createdAt: string;
+    updatedAt: string;
+    resourceVersion: number;
+};
+
+export type DeliveryPage = {
+    items: Array<Delivery>;
+    nextCursor?: string;
+};
+
 export type AttachTicket = {
     ticket: string;
     expiresAt: string;
@@ -249,6 +403,42 @@ export type HarnessProfile = {
 
 export type HarnessProfilePage = {
     items: Array<HarnessProfile>;
+};
+
+export type CreateProjectThreadRequest = {
+    /**
+     * Optional name for the fresh Capsule.
+     */
+    name?: string;
+    harness: string;
+    /**
+     * Encrypted as a transcript envelope before SQLite persistence. Prefer stdin in shells.
+     */
+    prompt: string;
+};
+
+export type ProjectThreadIntentState = 'provisioning' | 'ready' | 'failed';
+
+export type ProjectThreadIntent = {
+    id: string;
+    projectId: string;
+    capsuleId: string;
+    capsuleName: string;
+    threadId: string;
+    runId: string;
+    messageId: string;
+    harness: string;
+    state: ProjectThreadIntentState;
+    failureCode?: string;
+    /**
+     * Bounded content-free lifecycle failure summary.
+     */
+    failureMessage?: string;
+    thread?: Thread;
+    currentRun?: Run;
+    createdAt: string;
+    updatedAt: string;
+    resourceVersion: number;
 };
 
 export type CreateThreadRequest = {
@@ -402,9 +592,13 @@ export type RunId = string;
 
 export type ThreadId = string;
 
+export type ProjectThreadIntentId = string;
+
 export type MomentId = string;
 
 export type TimelineId = string;
+
+export type DeliveryId = string;
 
 export type PreviewPort2 = number;
 
@@ -508,6 +702,130 @@ export type GetCapabilitiesResponses = {
 };
 
 export type GetCapabilitiesResponse = GetCapabilitiesResponses[keyof GetCapabilitiesResponses];
+
+export type ListSecretsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        cursor?: string;
+        limit?: number;
+    };
+    url: '/secrets';
+};
+
+export type ListSecretsErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Request rate limit exceeded
+     */
+    429: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ListSecretsError = ListSecretsErrors[keyof ListSecretsErrors];
+
+export type ListSecretsResponses = {
+    /**
+     * Secret metadata page; values are never returned
+     */
+    200: SecretPage;
+};
+
+export type ListSecretsResponse = ListSecretsResponses[keyof ListSecretsResponses];
+
+export type DeleteSecretData = {
+    body: DeleteSecretRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        secretName: string;
+    };
+    query?: never;
+    url: '/secrets/{secretName}';
+};
+
+export type DeleteSecretErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Request rate limit exceeded
+     */
+    429: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type DeleteSecretError = DeleteSecretErrors[keyof DeleteSecretErrors];
+
+export type DeleteSecretResponses = {
+    /**
+     * Deleted secret metadata
+     */
+    200: Secret;
+};
+
+export type DeleteSecretResponse = DeleteSecretResponses[keyof DeleteSecretResponses];
+
+export type PutSecretData = {
+    body: PutSecretRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        secretName: string;
+    };
+    query?: never;
+    url: '/secrets/{secretName}';
+};
+
+export type PutSecretErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Request rate limit exceeded
+     */
+    429: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type PutSecretError = PutSecretErrors[keyof PutSecretErrors];
+
+export type PutSecretResponses = {
+    /**
+     * Stored secret metadata; value is never returned
+     */
+    200: Secret;
+};
+
+export type PutSecretResponse = PutSecretResponses[keyof PutSecretResponses];
 
 export type ListProjectsData = {
     body?: never;
@@ -619,6 +937,91 @@ export type GetProjectResponses = {
 };
 
 export type GetProjectResponse = GetProjectResponses[keyof GetProjectResponses];
+
+export type CreateProjectThreadData = {
+    body: CreateProjectThreadRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        projectId: string;
+    };
+    query?: never;
+    url: '/projects/{projectId}/threads';
+};
+
+export type CreateProjectThreadErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Request rate limit exceeded
+     */
+    429: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type CreateProjectThreadError = CreateProjectThreadErrors[keyof CreateProjectThreadErrors];
+
+export type CreateProjectThreadResponses = {
+    /**
+     * Project Thread session accepted
+     */
+    202: ProjectThreadIntent;
+};
+
+export type CreateProjectThreadResponse = CreateProjectThreadResponses[keyof CreateProjectThreadResponses];
+
+export type GetProjectThreadIntentData = {
+    body?: never;
+    path: {
+        intentId: string;
+    };
+    query?: never;
+    url: '/project-thread-intents/{intentId}';
+};
+
+export type GetProjectThreadIntentErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Request rate limit exceeded
+     */
+    429: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type GetProjectThreadIntentError = GetProjectThreadIntentErrors[keyof GetProjectThreadIntentErrors];
+
+export type GetProjectThreadIntentResponses = {
+    /**
+     * Project Thread intent
+     */
+    200: ProjectThreadIntent;
+};
+
+export type GetProjectThreadIntentResponse = GetProjectThreadIntentResponses[keyof GetProjectThreadIntentResponses];
 
 export type ListCapsulesData = {
     body?: never;
@@ -1885,6 +2288,283 @@ export type GetCapsuleGitDiffResponses = {
 
 export type GetCapsuleGitDiffResponse = GetCapsuleGitDiffResponses[keyof GetCapsuleGitDiffResponses];
 
+export type ListCapsuleFilesData = {
+    body?: never;
+    path: {
+        capsuleId: string;
+    };
+    query?: {
+        path?: string;
+        after?: string;
+        limit?: number;
+    };
+    url: '/capsules/{capsuleId}/files';
+};
+
+export type ListCapsuleFilesErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ListCapsuleFilesError = ListCapsuleFilesErrors[keyof ListCapsuleFilesErrors];
+
+export type ListCapsuleFilesResponses = {
+    /**
+     * Bounded lexicographically ordered directory page
+     */
+    200: WorkspaceFilePage;
+};
+
+export type ListCapsuleFilesResponse = ListCapsuleFilesResponses[keyof ListCapsuleFilesResponses];
+
+export type ReadCapsuleFileData = {
+    body?: never;
+    path: {
+        capsuleId: string;
+    };
+    query: {
+        path: string;
+    };
+    url: '/capsules/{capsuleId}/files/content';
+};
+
+export type ReadCapsuleFileErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * File exceeds the browser read bound
+     */
+    413: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ReadCapsuleFileError = ReadCapsuleFileErrors[keyof ReadCapsuleFileErrors];
+
+export type ReadCapsuleFileResponses = {
+    /**
+     * Bounded file content
+     */
+    200: WorkspaceFile;
+};
+
+export type ReadCapsuleFileResponse = ReadCapsuleFileResponses[keyof ReadCapsuleFileResponses];
+
+export type ExportCapsuleWorkspaceData = {
+    body?: never;
+    path: {
+        capsuleId: string;
+    };
+    query?: never;
+    url: '/capsules/{capsuleId}/workspace';
+};
+
+export type ExportCapsuleWorkspaceErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ExportCapsuleWorkspaceError = ExportCapsuleWorkspaceErrors[keyof ExportCapsuleWorkspaceErrors];
+
+export type ExportCapsuleWorkspaceResponses = {
+    /**
+     * Portable Moment-contract tar stream
+     */
+    200: Blob | File;
+};
+
+export type ExportCapsuleWorkspaceResponse = ExportCapsuleWorkspaceResponses[keyof ExportCapsuleWorkspaceResponses];
+
+export type InspectCapsuleDeliveryData = {
+    body?: never;
+    path: {
+        capsuleId: string;
+    };
+    query?: never;
+    url: '/capsules/{capsuleId}/deliveries/inspection';
+};
+
+export type InspectCapsuleDeliveryErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type InspectCapsuleDeliveryError = InspectCapsuleDeliveryErrors[keyof InspectCapsuleDeliveryErrors];
+
+export type InspectCapsuleDeliveryResponses = {
+    /**
+     * Exact current Git state
+     */
+    200: DeliveryInspection;
+};
+
+export type InspectCapsuleDeliveryResponse = InspectCapsuleDeliveryResponses[keyof InspectCapsuleDeliveryResponses];
+
+export type ListCapsuleDeliveriesData = {
+    body?: never;
+    path: {
+        capsuleId: string;
+    };
+    query?: {
+        cursor?: string;
+        limit?: number;
+    };
+    url: '/capsules/{capsuleId}/deliveries';
+};
+
+export type ListCapsuleDeliveriesErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ListCapsuleDeliveriesError = ListCapsuleDeliveriesErrors[keyof ListCapsuleDeliveriesErrors];
+
+export type ListCapsuleDeliveriesResponses = {
+    /**
+     * Delivery page
+     */
+    200: DeliveryPage;
+};
+
+export type ListCapsuleDeliveriesResponse = ListCapsuleDeliveriesResponses[keyof ListCapsuleDeliveriesResponses];
+
+export type CreateCapsuleDeliveryData = {
+    body: CreateDeliveryRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        capsuleId: string;
+    };
+    query?: never;
+    url: '/capsules/{capsuleId}/deliveries';
+};
+
+export type CreateCapsuleDeliveryErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type CreateCapsuleDeliveryError = CreateCapsuleDeliveryErrors[keyof CreateCapsuleDeliveryErrors];
+
+export type CreateCapsuleDeliveryResponses = {
+    /**
+     * Durable Delivery result
+     */
+    201: Delivery;
+};
+
+export type CreateCapsuleDeliveryResponse = CreateCapsuleDeliveryResponses[keyof CreateCapsuleDeliveryResponses];
+
+export type GetDeliveryData = {
+    body?: never;
+    path: {
+        deliveryId: string;
+    };
+    query?: never;
+    url: '/deliveries/{deliveryId}';
+};
+
+export type GetDeliveryErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type GetDeliveryError = GetDeliveryErrors[keyof GetDeliveryErrors];
+
+export type GetDeliveryResponses = {
+    /**
+     * Delivery resource
+     */
+    200: Delivery;
+};
+
+export type GetDeliveryResponse = GetDeliveryResponses[keyof GetDeliveryResponses];
+
 export type ListMomentsData = {
     body?: never;
     path: {
@@ -2164,3 +2844,32 @@ export type SealCapsuleResponses = {
 };
 
 export type SealCapsuleResponse = SealCapsuleResponses[keyof SealCapsuleResponses];
+
+export type CreateBrowserSessionData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/auth/browser-session';
+};
+
+export type CreateBrowserSessionErrors = {
+    /**
+     * Missing or invalid installation authentication
+     */
+    401: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type CreateBrowserSessionError = CreateBrowserSessionErrors[keyof CreateBrowserSessionErrors];
+
+export type CreateBrowserSessionResponses = {
+    /**
+     * Browser session established
+     */
+    204: void;
+};
+
+export type CreateBrowserSessionResponse = CreateBrowserSessionResponses[keyof CreateBrowserSessionResponses];

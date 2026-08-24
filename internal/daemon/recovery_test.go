@@ -33,6 +33,23 @@ func TestPreviewListenerRequiresLiteralLoopback(t *testing.T) {
 	}
 }
 
+func TestAPIListenerRequiresAuthenticationAndExplicitNonLoopbackOptIn(t *testing.T) {
+	for _, address := range []string{"127.0.0.1:0", "[::1]:0"} {
+		if err := daemon.ValidateAPIListenAddress(address, false, true); err != nil {
+			t.Fatalf("%s rejected: %v", address, err)
+		}
+	}
+	if err := daemon.ValidateAPIListenAddress("0.0.0.0:8080", false, true); err == nil {
+		t.Fatal("non-loopback API accepted without explicit opt-in")
+	}
+	if err := daemon.ValidateAPIListenAddress("0.0.0.0:8080", true, false); err == nil {
+		t.Fatal("non-loopback API accepted without authentication")
+	}
+	if err := daemon.ValidateAPIListenAddress("0.0.0.0:8080", true, true); err != nil {
+		t.Fatalf("authenticated explicit non-loopback API rejected: %v", err)
+	}
+}
+
 type recoveryClock struct{}
 
 func (recoveryClock) Now() time.Time { return time.Now().UTC() }

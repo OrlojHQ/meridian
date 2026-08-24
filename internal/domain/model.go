@@ -13,22 +13,199 @@ type ProjectID string
 type CapsuleID string
 type TimelineID string
 type MomentID string
+type MomentKind string
 type RunID string
 type ThreadID string
+type ProjectThreadIntentID string
 type ThreadMessageID string
 type ThreadBlockID string
 type EventID string
 type ResourceVersion int64
+type SecretID string
+type SecretPurpose string
+type DeliveryID string
+type DeliveryState string
+type DeliveryAction string
+
+const (
+	SecretGitHTTPS   SecretPurpose = "git_https"
+	SecretGitPush    SecretPurpose = "git_push"
+	SecretGitHubAPI  SecretPurpose = "github_api"
+	SecretHarnessEnv SecretPurpose = "harness_env"
+)
 
 type Project struct {
-	ID              ProjectID
+	ID                  ProjectID
+	Name                string
+	RepositoryURL       string
+	Setup               []string
+	ImageReference      string
+	GitSecretName       string
+	HarnessSecretNames  []string
+	GitPushSecretName   string
+	GitHubAPISecretName string
+	CommitAuthorName    string
+	CommitAuthorEmail   string
+	DefaultBaseBranch   string
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+	ResourceVersion     ResourceVersion
+}
+
+const (
+	DeliveryQueued     DeliveryState = "queued"
+	DeliveryCommitting DeliveryState = "committing"
+	DeliveryPushing    DeliveryState = "pushing"
+	DeliveryOpeningPR  DeliveryState = "opening_pr"
+	DeliverySucceeded  DeliveryState = "succeeded"
+	DeliveryFailed     DeliveryState = "failed"
+
+	DeliveryPush            DeliveryAction = "push"
+	DeliveryOpenPullRequest DeliveryAction = "open_pull_request"
+)
+
+// Delivery binds an explicit approval to exact reviewed Git objects. It
+// contains bounded metadata only; credentials, diffs, and source content are
+// deliberately absent.
+type Delivery struct {
+	ID                      DeliveryID
+	CapsuleID               CapsuleID
+	ProjectID               ProjectID
+	State                   DeliveryState
+	Action                  DeliveryAction
+	Approved                bool
+	ApprovedAt              time.Time
+	ExpectedCapsuleVersion  ResourceVersion
+	ExpectedHEAD            string
+	ExpectedTree            string
+	RemoteBranch            string
+	DestinationRef          string
+	BaseBranch              string
+	CommitMessage           string
+	PullRequestTitle        string
+	PullRequestBody         string
+	ResultCommitSHA         string
+	ResultPullRequestURL    string
+	ResultPullRequestNumber int64
+	Failure                 string
+	IdempotencyKey          string
+	CreatedAt               time.Time
+	UpdatedAt               time.Time
+	ResourceVersion         ResourceVersion
+}
+
+func (s DeliveryState) Valid() bool {
+	switch s {
+	case DeliveryQueued, DeliveryCommitting, DeliveryPushing, DeliveryOpeningPR,
+		DeliverySucceeded, DeliveryFailed:
+		return true
+	default:
+		return false
+	}
+}
+
+func (s DeliveryState) Terminal() bool {
+	return s == DeliverySucceeded || s == DeliveryFailed
+}
+
+func (a DeliveryAction) Valid() bool {
+	return a == DeliveryPush || a == DeliveryOpenPullRequest
+}
+
+func CanTransitionDelivery(from, to DeliveryState) bool {
+	if from == to {
+		return true
+	}
+	if to == DeliveryFailed && !from.Terminal() {
+		return true
+	}
+	switch from {
+	case DeliveryQueued:
+		return to == DeliveryCommitting || to == DeliveryPushing
+	case DeliveryCommitting:
+		return to == DeliveryPushing
+	case DeliveryPushing:
+		return to == DeliveryOpeningPR || to == DeliverySucceeded
+	case DeliveryOpeningPR:
+		return to == DeliverySucceeded
+	default:
+		return false
+	}
+}
+
+func (d *Delivery) Transition(to DeliveryState, now time.Time) error {
+	if !to.Valid() || !CanTransitionDelivery(d.State, to) {
+		return fmt.Errorf("%w: Delivery %s to %s", ErrIllegalTransition, d.State, to)
+	}
+	d.State = to
+	d.UpdatedAt = now.UTC()
+	d.ResourceVersion++
+	return nil
+}
+
+func (d Delivery) Validate() error {
+	if d.ID == "" || d.CapsuleID == "" || d.ProjectID == "" || !d.State.Valid() ||
+		!d.Action.Valid() || !d.Approved || d.ApprovedAt.IsZero() ||
+		d.ExpectedCapsuleVersion <= 0 || d.ExpectedHEAD == "" || d.ExpectedTree == "" ||
+		d.RemoteBranch == "" || d.DestinationRef != "refs/heads/"+d.RemoteBranch ||
+		d.IdempotencyKey == "" || d.CreatedAt.IsZero() || d.UpdatedAt.IsZero() ||
+		d.ResourceVersion <= 0 {
+		return fmt.Errorf("%w: invalid Delivery", ErrInvalid)
+	}
+	if len(d.ExpectedHEAD) > 128 || len(d.ExpectedTree) > 128 ||
+		len(d.RemoteBranch) > 255 || len(d.BaseBranch) > 255 ||
+		len(d.CommitMessage) > 16<<10 || len(d.PullRequestTitle) > 512 ||
+		len(d.PullRequestBody) > 64<<10 || len(d.Failure) > 512 ||
+		len(d.IdempotencyKey) > 200 || d.ResultPullRequestNumber < 0 {
+		return fmt.Errorf("%w: Delivery metadata exceeds limits", ErrInvalid)
+	}
+	if d.Action == DeliveryPush &&
+		(d.PullRequestTitle != "" || d.PullRequestBody != "" ||
+			d.ResultPullRequestURL != "" || d.ResultPullRequestNumber != 0) {
+		return fmt.Errorf("%w: push Delivery contains pull request metadata", ErrInvalid)
+	}
+	if d.State == DeliverySucceeded && d.ResultCommitSHA == "" {
+		return fmt.Errorf("%w: succeeded Delivery has no resulting commit", ErrInvalid)
+	}
+	if (d.State == DeliveryFailed) != (d.Failure != "") {
+		return fmt.Errorf("%w: invalid Delivery failure", ErrInvalid)
+	}
+	return nil
+}
+
+// Secret contains only an authenticated ciphertext envelope and metadata.
+// Plaintext values must never cross the persistence port.
+type Secret struct {
+	ID              SecretID
 	Name            string
-	RepositoryURL   string
-	Setup           []string
-	ImageReference  string
+	Purpose         SecretPurpose
+	EnvelopeVersion uint16
+	KEKID           string
+	KEKVersion      uint32
+	Nonce           []byte
+	Ciphertext      []byte
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 	ResourceVersion ResourceVersion
+}
+
+func (p SecretPurpose) Valid() bool {
+	switch p {
+	case SecretGitHTTPS, SecretGitPush, SecretGitHubAPI, SecretHarnessEnv:
+		return true
+	default:
+		return false
+	}
+}
+
+func (s Secret) Validate() error {
+	if s.ID == "" || s.Name == "" || !s.Purpose.Valid() || s.EnvelopeVersion == 0 ||
+		s.KEKID == "" || s.KEKVersion == 0 || len(s.Nonce) != 12 ||
+		len(s.Ciphertext) == 0 || s.CreatedAt.IsZero() || s.UpdatedAt.IsZero() ||
+		s.ResourceVersion <= 0 {
+		return fmt.Errorf("%w: invalid named secret envelope", ErrInvalid)
+	}
+	return nil
 }
 
 type CapsuleState string
@@ -65,6 +242,7 @@ type Capsule struct {
 	RestoreComplete    bool
 	Maintenance        string
 	Failure            string
+	LastActivityAt     time.Time
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
 	ResourceVersion    ResourceVersion
@@ -104,6 +282,22 @@ type Moment struct {
 	GitDirtySummary  string
 	CreatedAt        time.Time
 	Final            bool
+	Kind             MomentKind
+}
+
+const (
+	MomentTimeline   MomentKind = "timeline"
+	MomentSetupCache MomentKind = "setup_cache"
+)
+
+// SetupMomentCache is the single replaceable cache root for a Project.
+// Its Moment is internal and immutable; replacing the root makes the prior
+// internal Moment unreachable by cache lookup and eligible for later CAS GC.
+type SetupMomentCache struct {
+	ProjectID  ProjectID
+	ConfigHash string
+	MomentID   MomentID
+	CreatedAt  time.Time
 }
 
 func (r TimelineReason) Valid() bool {
@@ -124,11 +318,24 @@ func (t Timeline) Validate() error {
 }
 
 func (m Moment) Validate() error {
+	kind := m.Kind
+	if kind == "" {
+		kind = MomentTimeline
+	}
 	if m.ID == "" || m.ProjectID == "" || m.CapsuleID == "" || m.TimelineID == "" ||
 		m.Name == "" || len(m.Name) > 128 || !validSHA256(m.ArchiveSHA256) ||
 		!validSHA256(m.ManifestSHA256) || m.ArchiveSize < 0 || m.ImageDigest == "" ||
-		!validSHA256(m.ProjectSetupHash) {
+		!validSHA256(m.ProjectSetupHash) ||
+		(kind != MomentTimeline && kind != MomentSetupCache) {
 		return fmt.Errorf("%w: invalid Moment", ErrInvalid)
+	}
+	return nil
+}
+
+func (c SetupMomentCache) Validate() error {
+	if c.ProjectID == "" || c.MomentID == "" || !validSHA256(c.ConfigHash) ||
+		c.CreatedAt.IsZero() {
+		return fmt.Errorf("%w: invalid setup Moment cache", ErrInvalid)
 	}
 	return nil
 }
@@ -272,6 +479,81 @@ type ThreadDelivery struct {
 	ControllerID string
 	DeliveredAt  time.Time
 	CreatedAt    time.Time
+}
+
+type ProjectThreadIntentState string
+
+const (
+	ProjectThreadProvisioning ProjectThreadIntentState = "provisioning"
+	ProjectThreadReady        ProjectThreadIntentState = "ready"
+	ProjectThreadFailed       ProjectThreadIntentState = "failed"
+)
+
+// ProjectThreadIntent is the durable bridge between a Project-level session
+// request and the ordinary Capsule-scoped Thread aggregate. PendingMessage is
+// always an authenticated transcript envelope; plaintext never crosses the
+// persistence port.
+type ProjectThreadIntent struct {
+	ID              ProjectThreadIntentID
+	ProjectID       ProjectID
+	CapsuleID       CapsuleID
+	ThreadID        ThreadID
+	RunID           RunID
+	MessageID       ThreadMessageID
+	CapsuleName     string
+	RequestedName   string
+	Harness         string
+	IdempotencyKey  string
+	State           ProjectThreadIntentState
+	FailureCode     string
+	FailureMessage  string
+	WrappedDEK      []byte
+	KEKID           string
+	KEKVersion      uint32
+	EnvelopeVersion uint16
+	PendingMessage  ThreadMessage
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	ResourceVersion ResourceVersion
+}
+
+func (s ProjectThreadIntentState) Valid() bool {
+	return s == ProjectThreadProvisioning || s == ProjectThreadReady || s == ProjectThreadFailed
+}
+
+func (i ProjectThreadIntent) Validate() error {
+	if i.ID == "" || i.ProjectID == "" || i.CapsuleID == "" || i.ThreadID == "" ||
+		i.RunID == "" || i.MessageID == "" || i.CapsuleName == "" ||
+		len(i.CapsuleName) > 128 || len(i.RequestedName) > 128 ||
+		i.Harness == "" || len(i.Harness) > 128 || i.IdempotencyKey == "" ||
+		len(i.IdempotencyKey) > 200 || !i.State.Valid() || i.KEKID == "" ||
+		i.KEKVersion == 0 || i.EnvelopeVersion == 0 || i.CreatedAt.IsZero() ||
+		i.UpdatedAt.IsZero() || i.ResourceVersion <= 0 {
+		return fmt.Errorf("%w: invalid Project Thread intent", ErrInvalid)
+	}
+	if i.PendingMessage.ID != i.MessageID || i.PendingMessage.ThreadID != i.ThreadID ||
+		i.PendingMessage.Sequence != 1 || i.PendingMessage.Role != ThreadRoleUser ||
+		i.PendingMessage.Kind != ThreadMessagePrompt {
+		return fmt.Errorf("%w: invalid Project Thread pending message", ErrInvalid)
+	}
+	if err := i.PendingMessage.Validate(); err != nil {
+		return err
+	}
+	switch i.State {
+	case ProjectThreadProvisioning, ProjectThreadFailed:
+		if len(i.WrappedDEK) != 64 {
+			return fmt.Errorf("%w: missing Project Thread key envelope", ErrInvalid)
+		}
+	case ProjectThreadReady:
+		if len(i.WrappedDEK) != 0 {
+			return fmt.Errorf("%w: promoted Project Thread retained a duplicate key envelope", ErrInvalid)
+		}
+	}
+	if len(i.FailureCode) > 64 || len(i.FailureMessage) > 256 ||
+		(i.State == ProjectThreadFailed) != (i.FailureCode != "") {
+		return fmt.Errorf("%w: invalid Project Thread failure metadata", ErrInvalid)
+	}
+	return nil
 }
 
 var (

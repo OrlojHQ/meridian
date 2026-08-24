@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -34,6 +35,7 @@ const (
 	CapturePath   = "/v1/workspace/capture"
 	RestorePath   = "/v1/workspace/restore"
 	PreviewsPath  = "/v1/previews"
+	DeliveryPath  = "/v1/delivery"
 
 	defaultBodyLimit   = int64(64 << 10)
 	defaultOutputLimit = int64(1 << 20)
@@ -61,9 +63,15 @@ type StatusResponse struct {
 }
 
 type PrepareRequest struct {
-	RepositoryURL string   `json:"repositoryUrl,omitempty"`
-	Destination   string   `json:"destination"`
-	Setup         []string `json:"setup,omitempty"`
+	RepositoryURL string              `json:"repositoryUrl,omitempty"`
+	Destination   string              `json:"destination"`
+	Setup         []string            `json:"setup,omitempty"`
+	GitCredential *GitHTTPSCredential `json:"gitCredential,omitempty"`
+}
+
+type GitHTTPSCredential struct {
+	Username string `json:"username,omitempty"`
+	Password string `json:"password"`
 }
 
 type PrepareResponse struct {
@@ -174,6 +182,11 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET "+GitDiffPath, s.authenticate(http.HandlerFunc(s.gitDiff)))
 	mux.Handle("GET "+CapturePath, s.authenticate(http.HandlerFunc(s.captureWorkspace)))
 	mux.Handle("PUT "+RestorePath, s.authenticate(http.HandlerFunc(s.restoreWorkspace)))
+	mux.Handle("POST "+BrowseListPath, s.authenticate(http.HandlerFunc(s.browseList)))
+	mux.Handle("POST "+BrowseReadPath, s.authenticate(http.HandlerFunc(s.browseRead)))
+	mux.Handle("GET "+DeliveryPath+"/state", s.authenticate(http.HandlerFunc(s.deliveryState)))
+	mux.Handle("POST "+DeliveryPath+"/commit", s.authenticate(http.HandlerFunc(s.deliveryCommit)))
+	mux.Handle("POST "+DeliveryPath+"/push", s.authenticate(http.HandlerFunc(s.deliveryPush)))
 	mux.Handle("GET "+PreviewsPath, s.authenticate(http.HandlerFunc(s.previewPorts)))
 	mux.Handle(PreviewsPath+"/{port}/{path...}", s.authenticate(http.HandlerFunc(s.forwardPreview)))
 	return mux
@@ -377,6 +390,13 @@ func (s *Server) prepare(writer http.ResponseWriter, request *http.Request) {
 		writeProtocolError(writer, http.StatusBadRequest, "invalid_request")
 		return
 	}
+	if input.GitCredential != nil {
+		defer func() {
+			input.GitCredential.Username = ""
+			input.GitCredential.Password = ""
+			input.GitCredential = nil
+		}()
+	}
 
 	s.gate.Lock()
 	defer s.gate.Unlock()
@@ -415,6 +435,14 @@ func (s *Server) validateRequest(input PrepareRequest) error {
 	if len(input.RepositoryURL) > 4096 || len(input.Setup) > 128 {
 		return errors.New("request exceeds argument limits")
 	}
+	if input.GitCredential != nil {
+		parsed, err := url.Parse(input.RepositoryURL)
+		if err != nil || parsed.Scheme != "https" || parsed.User != nil ||
+			input.GitCredential.Password == "" ||
+			strings.ContainsAny(input.GitCredential.Username+input.GitCredential.Password, "\x00\r\n") {
+			return errors.New("Git credential requires a safe HTTPS repository URL")
+		}
+	}
 	for _, argument := range input.Setup {
 		if argument == "" || len(argument) > 4096 || strings.ContainsRune(argument, '\x00') {
 			return errors.New("invalid setup argument")
@@ -431,10 +459,17 @@ func (s *Server) prepareWorkspace(ctx context.Context, input PrepareRequest) err
 		return err
 	}
 	if input.RepositoryURL != "" {
-		if err := s.config.CommandRunner(
-			ctx, "git", []string{"clone", "--", input.RepositoryURL, input.Destination},
-			filepath.Dir(input.Destination), s.config.OutputLimit,
-		); err != nil {
+		var err error
+		if input.GitCredential == nil {
+			err = s.config.CommandRunner(
+				ctx, "git", []string{"clone", "--", input.RepositoryURL, input.Destination},
+				filepath.Dir(input.Destination), s.config.OutputLimit,
+			)
+		} else {
+			err = secureHTTPSClone(ctx, input.RepositoryURL, input.Destination,
+				*input.GitCredential, s.config.OutputLimit)
+		}
+		if err != nil {
 			return fmt.Errorf("clone repository: %w", err)
 		}
 	}
@@ -485,9 +520,100 @@ func markerPath(workspace string) string {
 }
 
 func requestHash(input PrepareRequest) string {
-	value, _ := json.Marshal(input)
+	value, _ := json.Marshal(struct {
+		RepositoryURL string   `json:"repositoryUrl,omitempty"`
+		Destination   string   `json:"destination"`
+		Setup         []string `json:"setup,omitempty"`
+	}{
+		RepositoryURL: input.RepositoryURL, Destination: input.Destination, Setup: input.Setup,
+	})
 	hash := sha256.Sum256(value)
 	return hex.EncodeToString(hash[:])
+}
+
+func secureHTTPSClone(
+	ctx context.Context,
+	repositoryURL, destination string,
+	credential GitHTTPSCredential,
+	outputLimit int64,
+) error {
+	// The Capsule root and /workspace are intentionally not writable places
+	// for credential helpers. The bounded private /tmp tmpfs is outside the
+	// captured workspace and is removed on every outcome.
+	helper, err := os.CreateTemp("", ".meridian-askpass-*")
+	if err != nil {
+		return err
+	}
+	helperPath := helper.Name()
+	defer os.Remove(helperPath)
+	const script = "#!/bin/sh\ncase \"$1\" in\n*Username*) printf '%s\\n' \"$MERIDIAN_GIT_USERNAME\";;\n*) printf '%s\\n' \"$MERIDIAN_GIT_PASSWORD\";;\nesac\n"
+	if err := helper.Chmod(0o700); err == nil {
+		_, err = io.WriteString(helper, script)
+	}
+	if err == nil {
+		err = helper.Sync()
+	}
+	if closeErr := helper.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return err
+	}
+	command := exec.Command("git",
+		"-c", "credential.helper=",
+		"-c", "core.askPass="+helperPath,
+		"clone", "--", repositoryURL, destination)
+	command.Dir = filepath.Dir(destination)
+	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	command.Env = secureGitEnvironment(os.Environ(), helperPath, credential)
+	output := &limitWriter{remaining: outputLimit}
+	command.Stdout, command.Stderr = output, output
+	if err := command.Start(); err != nil {
+		clearEnvironment(command.Env)
+		command.Env = nil
+		return err
+	}
+	clearEnvironment(command.Env)
+	command.Env = nil
+	done := make(chan error, 1)
+	go func() { done <- command.Wait() }()
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		_ = syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
+		<-done
+		return ctx.Err()
+	}
+}
+
+func clearEnvironment(environment []string) {
+	for index, item := range environment {
+		environment[index] = strings.Repeat("\x00", len(item))
+	}
+}
+
+func secureGitEnvironment(
+	host []string, helper string, credential GitHTTPSCredential,
+) []string {
+	result := make([]string, 0, len(host)+7)
+	for _, item := range host {
+		key, _, _ := strings.Cut(item, "=")
+		if strings.HasPrefix(key, "GIT_") || key == "SSH_ASKPASS" ||
+			key == "MERIDIAN_GIT_USERNAME" || key == "MERIDIAN_GIT_PASSWORD" {
+			continue
+		}
+		result = append(result, item)
+	}
+	return append(result,
+		"GIT_ASKPASS="+helper,
+		"SSH_ASKPASS="+helper,
+		"GIT_TERMINAL_PROMPT=0",
+		"GIT_CONFIG_NOSYSTEM=1",
+		"GIT_CONFIG_GLOBAL=/dev/null",
+		"MERIDIAN_GIT_USERNAME="+credential.Username,
+		"MERIDIAN_GIT_PASSWORD="+credential.Password,
+	)
 }
 
 func writeMarker(workspace, hash string) error {

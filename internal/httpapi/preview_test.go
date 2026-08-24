@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/OrlojHQ/meridian/internal/apiauth"
 	"github.com/OrlojHQ/meridian/internal/app"
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/ports"
@@ -204,26 +205,31 @@ func TestPreviewHTTPFlowReuseCrossScopeAndDeletionRevocation(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 
+	apiTokenValue := "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	apiToken, err := apiauth.ParseToken(apiTokenValue)
+	if err != nil {
+		t.Fatal(err)
+	}
 	server := NewWithPreview(service, ports.ProviderCapabilities{
 		Version: "preview/v1", Preview: true,
-	}, "http://127.0.0.1:9191")
+	}, "http://127.0.0.1:9191", apiToken)
 	discovery := httptest.NewRecorder()
-	server.ServeHTTP(
-		discovery,
-		httptest.NewRequest(http.MethodGet, "/capsules/"+string(capsule.ID)+"/previews", nil),
+	discoveryRequest := httptest.NewRequest(
+		http.MethodGet, "/capsules/"+string(capsule.ID)+"/previews", nil,
 	)
+	discoveryRequest.Header.Set("Authorization", "Bearer "+apiTokenValue)
+	server.ServeHTTP(discovery, discoveryRequest)
 	if discovery.Code != http.StatusOK || !strings.Contains(discovery.Body.String(), "3000") {
 		t.Fatalf("discovery = %d %s", discovery.Code, discovery.Body.String())
 	}
 	issued := httptest.NewRecorder()
-	server.ServeHTTP(
-		issued,
-		httptest.NewRequest(
-			http.MethodPost,
-			"/capsules/"+string(capsule.ID)+"/previews/3000/tickets",
-			nil,
-		),
+	issuedRequest := httptest.NewRequest(
+		http.MethodPost,
+		"/capsules/"+string(capsule.ID)+"/previews/3000/tickets",
+		nil,
 	)
+	issuedRequest.Header.Set("Authorization", "Bearer "+apiTokenValue)
+	server.ServeHTTP(issued, issuedRequest)
 	if issued.Code != http.StatusCreated {
 		t.Fatalf("ticket = %d %s", issued.Code, issued.Body.String())
 	}
@@ -298,12 +304,17 @@ func TestPreviewHTTPFlowReuseCrossScopeAndDeletionRevocation(t *testing.T) {
 	assertPreviewStatus(t, server, strings.Join(wrongPort, "/"), http.StatusForbidden)
 	assertPreviewStatus(t, server, "/p/not-a-token/capsule/3000/", http.StatusBadRequest)
 
+	capsule, err = service.GetCapsule(ctx, capsule.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	deleteBody := fmt.Sprintf(`{"expectedResourceVersion":%d}`, capsule.ResourceVersion)
 	deleteRequest := httptest.NewRequest(
 		http.MethodPost, "/capsules/"+string(capsule.ID)+"/delete", bytes.NewBufferString(deleteBody),
 	)
 	deleteRequest.Header.Set("Content-Type", "application/json")
 	deleteRequest.Header.Set("Idempotency-Key", "delete")
+	deleteRequest.Header.Set("Authorization", "Bearer "+apiTokenValue)
 	deleteResponse := httptest.NewRecorder()
 	server.ServeHTTP(deleteResponse, deleteRequest)
 	if deleteResponse.Code != http.StatusAccepted {

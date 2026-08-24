@@ -14,6 +14,7 @@ import (
 
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/ports"
+	"github.com/OrlojHQ/meridian/internal/secrets"
 )
 
 const defaultPageSize = 50
@@ -26,13 +27,22 @@ type Service struct {
 	runtime       ports.CapsuleRuntime
 	preview       ports.PreviewRuntime
 	snapshotter   ports.WorkspaceSnapshotter
+	browser       ports.WorkspaceBrowser
+	delivery      ports.DeliveryRuntime
+	github        GitHubClient
 	artifacts     ports.ArtifactStore
 	observer      ports.Observer
 	providerName  string
 	structured    ports.StructuredRuntime
 	transcriptKey transcriptKey
+	secretKey     *secrets.InstallationKey
 	runSync       [64]sync.Mutex
 	threadSync    [64]sync.Mutex
+	deliverySync  [64]sync.Mutex
+}
+
+func (s *Service) ConfigureSecrets(key *secrets.InstallationKey) {
+	s.secretKey = key
 }
 
 type transcriptKey interface {
@@ -50,6 +60,15 @@ func (s *Service) ConfigureObserver(observer ports.Observer, providerName string
 
 func (s *Service) ConfigurePreview(preview ports.PreviewRuntime) {
 	s.preview = preview
+}
+
+func (s *Service) ConfigureBrowse(browser ports.WorkspaceBrowser) {
+	s.browser = browser
+}
+
+func (s *Service) ConfigureDelivery(runtime ports.DeliveryRuntime, github GitHubClient) {
+	s.delivery = runtime
+	s.github = github
 }
 
 func (s *Service) ConfigureThreads(runtime ports.StructuredRuntime, key transcriptKey) {
@@ -115,9 +134,16 @@ func requireIdempotency(key string) error {
 }
 
 type ProjectConfiguration struct {
-	RepositoryURL  string
-	Setup          []string
-	ImageReference string
+	RepositoryURL       string
+	Setup               []string
+	ImageReference      string
+	GitSecretName       string
+	HarnessSecretNames  []string
+	GitPushSecretName   string
+	GitHubAPISecretName string
+	CommitAuthorName    string
+	CommitAuthorEmail   string
+	DefaultBaseBranch   string
 }
 
 func (s *Service) CreateProject(ctx context.Context, name, idempotencyKey string) (domain.Project, error) {
@@ -151,14 +177,21 @@ func (s *Service) CreateProjectConfigured(
 		}
 		now := s.clock.Now().UTC()
 		result = domain.Project{
-			ID:              domain.ProjectID(s.ids.NewID()),
-			Name:            name,
-			RepositoryURL:   config.RepositoryURL,
-			Setup:           append([]string(nil), config.Setup...),
-			ImageReference:  config.ImageReference,
-			CreatedAt:       now,
-			UpdatedAt:       now,
-			ResourceVersion: 1,
+			ID:                  domain.ProjectID(s.ids.NewID()),
+			Name:                name,
+			RepositoryURL:       config.RepositoryURL,
+			Setup:               append([]string(nil), config.Setup...),
+			ImageReference:      config.ImageReference,
+			GitSecretName:       config.GitSecretName,
+			HarnessSecretNames:  append([]string(nil), config.HarnessSecretNames...),
+			GitPushSecretName:   config.GitPushSecretName,
+			GitHubAPISecretName: config.GitHubAPISecretName,
+			CommitAuthorName:    config.CommitAuthorName,
+			CommitAuthorEmail:   config.CommitAuthorEmail,
+			DefaultBaseBranch:   config.DefaultBaseBranch,
+			CreatedAt:           now,
+			UpdatedAt:           now,
+			ResourceVersion:     1,
 		}
 		if err := tx.InsertProject(ctx, result); err != nil {
 			return err
@@ -189,6 +222,51 @@ func validateProjectConfiguration(config ProjectConfiguration) error {
 		default:
 			return fmt.Errorf("%w: repository URL scheme is unsupported", domain.ErrInvalid)
 		}
+	}
+	if config.GitSecretName != "" {
+		if err := validateSecretName(config.GitSecretName); err != nil {
+			return err
+		}
+		parsed, err := url.Parse(config.RepositoryURL)
+		if err != nil || parsed.Scheme != "https" {
+			return fmt.Errorf("%w: gitSecretName requires an HTTPS repository URL", domain.ErrInvalid)
+		}
+	}
+	if config.GitPushSecretName != "" {
+		if err := validateSecretName(config.GitPushSecretName); err != nil {
+			return err
+		}
+		parsed, err := url.Parse(config.RepositoryURL)
+		if err != nil || parsed.Scheme != "https" || parsed.User != nil {
+			return fmt.Errorf("%w: gitPushSecretName requires a credential-free HTTPS repository URL", domain.ErrInvalid)
+		}
+	}
+	if config.GitHubAPISecretName != "" {
+		if err := validateSecretName(config.GitHubAPISecretName); err != nil {
+			return err
+		}
+	}
+	if (config.CommitAuthorName == "") != (config.CommitAuthorEmail == "") ||
+		len(config.CommitAuthorName) > 320 || len(config.CommitAuthorEmail) > 320 ||
+		strings.ContainsAny(config.CommitAuthorName+config.CommitAuthorEmail, "\x00\r\n<>") {
+		return fmt.Errorf("%w: commit author name and email must be supplied together", domain.ErrInvalid)
+	}
+	if config.DefaultBaseBranch != "" && (!validBranch(config.DefaultBaseBranch) ||
+		strings.HasPrefix(config.DefaultBaseBranch, "refs/")) {
+		return fmt.Errorf("%w: default base branch is invalid", domain.ErrInvalid)
+	}
+	if len(config.HarnessSecretNames) > 64 {
+		return fmt.Errorf("%w: too many authorized harness secrets", domain.ErrInvalid)
+	}
+	seenSecrets := make(map[string]struct{}, len(config.HarnessSecretNames))
+	for _, name := range config.HarnessSecretNames {
+		if err := validateSecretName(name); err != nil {
+			return err
+		}
+		if _, exists := seenSecrets[name]; exists {
+			return fmt.Errorf("%w: duplicate authorized harness secret", domain.ErrInvalid)
+		}
+		seenSecrets[name] = struct{}{}
 	}
 	if len(config.Setup) > 128 {
 		return fmt.Errorf("%w: setup command has too many arguments", domain.ErrInvalid)
@@ -263,6 +341,7 @@ func (s *Service) CreateCapsule(
 			State:           domain.CapsuleCreating,
 			DesiredState:    domain.IntentReady,
 			RestoreComplete: true,
+			LastActivityAt:  now,
 			CreatedAt:       now,
 			UpdatedAt:       now,
 			ResourceVersion: 1,
@@ -397,6 +476,9 @@ func (s *Service) mutateCapsule(
 		previousVersion := current.ResourceVersion
 		current.DesiredState = intent
 		current.UpdatedAt = s.clock.Now().UTC()
+		if operation == "resume" {
+			current.LastActivityAt = current.UpdatedAt
+		}
 		current.ResourceVersion++
 		if err := tx.UpdateCapsule(ctx, current, previousVersion); err != nil {
 			return err

@@ -19,8 +19,11 @@ type Page struct {
 type Reader interface {
 	GetProject(context.Context, domain.ProjectID) (domain.Project, error)
 	ListProjects(context.Context, Page) ([]domain.Project, bool, error)
+	GetSecret(context.Context, string) (domain.Secret, error)
+	ListSecrets(context.Context, Page) ([]domain.Secret, bool, error)
 	GetCapsule(context.Context, domain.CapsuleID) (domain.Capsule, error)
 	ListCapsules(context.Context, domain.ProjectID, Page) ([]domain.Capsule, bool, error)
+	ListIdleCapsules(context.Context, time.Time, int) ([]domain.Capsule, error)
 	ListRecoverableCapsules(context.Context) ([]domain.Capsule, error)
 	GetRun(context.Context, domain.RunID) (domain.Run, error)
 	ListRuns(context.Context, domain.CapsuleID, Page) ([]domain.Run, bool, error)
@@ -33,6 +36,7 @@ type Reader interface {
 	GetMoment(context.Context, domain.MomentID) (domain.Moment, error)
 	ListMoments(context.Context, domain.TimelineID, Page) ([]domain.Moment, bool, error)
 	LatestMoment(context.Context, domain.TimelineID) (domain.Moment, error)
+	GetSetupMomentCache(context.Context, domain.ProjectID, string) (domain.SetupMomentCache, error)
 	HasActiveRun(context.Context, domain.CapsuleID) (bool, error)
 	GetThread(context.Context, domain.ThreadID) (domain.Thread, error)
 	GetActiveThread(context.Context, domain.CapsuleID) (domain.Thread, error)
@@ -41,15 +45,26 @@ type Reader interface {
 	ListThreadMessages(context.Context, domain.ThreadID, int64, int) ([]domain.ThreadMessage, bool, error)
 	GetThreadDelivery(context.Context, domain.ThreadMessageID) (domain.ThreadDelivery, error)
 	FindUndeliveredUserMessage(context.Context, domain.ThreadID) (domain.ThreadMessage, error)
+	GetProjectThreadIntent(context.Context, domain.ProjectThreadIntentID) (domain.ProjectThreadIntent, error)
+	GetProjectThreadIntentByKey(context.Context, domain.ProjectID, string) (domain.ProjectThreadIntent, error)
+	ListProvisioningProjectThreadIntents(context.Context) ([]domain.ProjectThreadIntent, error)
+	GetDelivery(context.Context, domain.DeliveryID) (domain.Delivery, error)
+	ListDeliveries(context.Context, domain.CapsuleID, Page) ([]domain.Delivery, bool, error)
+	ListRecoverableDeliveries(context.Context) ([]domain.Delivery, error)
 }
 
 type Transaction interface {
 	Reader
 	InsertProject(context.Context, domain.Project) error
+	InsertSecret(context.Context, domain.Secret) error
+	UpdateSecret(context.Context, domain.Secret, domain.ResourceVersion) error
+	DeleteSecret(context.Context, string, domain.ResourceVersion) error
 	InsertCapsule(context.Context, domain.Capsule) error
 	UpdateCapsule(context.Context, domain.Capsule, domain.ResourceVersion) error
+	TouchCapsuleActivity(context.Context, domain.CapsuleID, time.Time) error
 	InsertTimeline(context.Context, domain.Timeline) error
 	InsertMoment(context.Context, domain.Moment) error
+	PutSetupMomentCache(context.Context, domain.SetupMomentCache) error
 	InsertRun(context.Context, domain.Run) error
 	UpdateRun(context.Context, domain.Run, domain.ResourceVersion) error
 	AppendEvent(context.Context, domain.Event) error
@@ -69,6 +84,14 @@ type Transaction interface {
 		time.Time,
 	) error
 	CryptoShredThread(context.Context, domain.ThreadID, domain.ResourceVersion, time.Time) error
+	InsertProjectThreadIntent(context.Context, domain.ProjectThreadIntent) error
+	UpdateProjectThreadIntent(
+		context.Context,
+		domain.ProjectThreadIntent,
+		domain.ResourceVersion,
+	) error
+	InsertDelivery(context.Context, domain.Delivery) error
+	UpdateDelivery(context.Context, domain.Delivery, domain.ResourceVersion) error
 }
 
 type Store interface {
@@ -120,6 +143,8 @@ type ProviderCapabilities struct {
 	Clone      bool
 	Preview    bool
 	Structured bool
+	Browse     bool
+	Delivery   bool
 }
 
 type RuntimeRunRequest struct {
@@ -129,6 +154,7 @@ type RuntimeRunRequest struct {
 	Prompt     string
 	Columns    uint16
 	Rows       uint16
+	Secrets    map[string]string
 }
 
 type RuntimeRun struct {
@@ -146,6 +172,7 @@ type RuntimeStructuredStartRequest struct {
 	ResourceID string
 	Harness    string
 	Frame      adapterproto.Frame
+	Secrets    map[string]string
 }
 
 type RuntimeStructuredSendRequest struct {
@@ -188,6 +215,78 @@ type RuntimeEvents struct {
 type GitResult struct {
 	Content   string
 	Truncated bool
+}
+
+type WorkspaceFileEntry struct {
+	Name       string
+	Type       string
+	Size       int64
+	Executable bool
+}
+
+type WorkspaceFilePage struct {
+	Path      string
+	Items     []WorkspaceFileEntry
+	NextAfter string
+}
+
+type WorkspaceFile struct {
+	Path       string
+	Content    []byte
+	Size       int64
+	Executable bool
+}
+
+// WorkspaceBrowser is optional and exposes only the bounded, supervisor-owned
+// browser. Implementations must not access provider filesystems directly.
+type WorkspaceBrowser interface {
+	ListWorkspaceFiles(context.Context, string, string, string, int) (WorkspaceFilePage, error)
+	ReadWorkspaceFile(context.Context, string, string) (WorkspaceFile, error)
+}
+
+type DeliveryInspection struct {
+	CapsuleResourceVersion domain.ResourceVersion
+	HEAD                   string
+	Branch                 string
+	Dirty                  bool
+	OriginURL              string
+	DefaultBranch          string
+	Tree                   string
+}
+
+type DeliveryCommitRequest struct {
+	ResourceID   string
+	Message      string
+	AuthorName   string
+	AuthorEmail  string
+	ExpectedHEAD string
+	ExpectedTree string
+}
+
+type DeliveryCommitResult struct {
+	Commit string
+	Tree   string
+}
+
+type DeliveryPushRequest struct {
+	ResourceID     string
+	SourceCommit   string
+	DestinationRef string
+	ExpectedOldRef *string
+	GitCredential  GitHTTPSCredential
+}
+
+type DeliveryPushResult struct {
+	Commit         string
+	DestinationRef string
+}
+
+// DeliveryRuntime is optional. Credentials are supplied for one exact push
+// operation and must never be retained by an implementation.
+type DeliveryRuntime interface {
+	InspectDelivery(context.Context, string) (DeliveryInspection, error)
+	CommitDelivery(context.Context, DeliveryCommitRequest) (DeliveryCommitResult, error)
+	PushDelivery(context.Context, DeliveryPushRequest) (DeliveryPushResult, error)
 }
 
 type RuntimeAttachment interface {
@@ -287,6 +386,12 @@ type CreateCapsuleRequest struct {
 	Setup          []string
 	ImageReference string
 	Restore        bool
+	GitCredential  *GitHTTPSCredential
+}
+
+type GitHTTPSCredential struct {
+	Username string
+	Password string
 }
 
 type CapsuleProvider interface {

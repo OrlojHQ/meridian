@@ -134,7 +134,7 @@ func (s *Service) CreateThread(ctx context.Context, input CreateThreadInput) (Th
 		if err != nil {
 			return err
 		}
-		if capsule.State != domain.CapsuleReady {
+		if capsule.State != domain.CapsuleReady || capsule.DesiredState != domain.IntentReady {
 			return fmt.Errorf("%w: Capsule must be Ready", domain.ErrIllegalTransition)
 		}
 		if capsule.Maintenance != "" {
@@ -228,6 +228,9 @@ func (s *Service) CreateThread(ctx context.Context, input CreateThreadInput) (Th
 			}
 		}
 		outcome.ThreadID = threadID
+		if err := s.touchCapsuleActivityTx(ctx, tx, input.CapsuleID, now); err != nil {
+			return err
+		}
 		return putReplay(ctx, tx, scope, input.IdempotencyKey, outcome, now)
 	})
 	if err != nil {
@@ -465,7 +468,9 @@ func (s *Service) beginThreadSession(
 		if err != nil {
 			return err
 		}
-		if capsule.State != domain.CapsuleReady || capsule.Maintenance != "" {
+		if capsule.State != domain.CapsuleReady ||
+			capsule.DesiredState != domain.IntentReady ||
+			capsule.Maintenance != "" {
 			return fmt.Errorf("%w: Capsule is not available for a Thread session", domain.ErrIllegalTransition)
 		}
 		active, err := tx.HasActiveRun(ctx, thread.CapsuleID)
@@ -515,6 +520,9 @@ func (s *Service) beginThreadSession(
 		}
 		result.Thread, result.Run = thread, &run
 		result.MessageID = messageID
+		if err := s.touchCapsuleActivityTx(ctx, tx, thread.CapsuleID, now); err != nil {
+			return err
+		}
 		return putReplay(ctx, tx, scope, key,
 			threadOutcome{ThreadID: id, RunID: run.ID, MessageID: messageID}, now)
 	})
@@ -689,6 +697,9 @@ func (s *Service) appendAndSend(
 			return err
 		}
 		result.Run, result.MessageID = &run, messageID
+		if err := s.touchCapsuleActivityTx(ctx, tx, thread.CapsuleID, now); err != nil {
+			return err
+		}
 		return putReplay(ctx, tx, scope, key,
 			threadOutcome{ThreadID: id, RunID: run.ID, MessageID: messageID}, now)
 	})
@@ -893,6 +904,11 @@ func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
 	if err != nil {
 		return err
 	}
+	if capsule.State != domain.CapsuleReady ||
+		capsule.DesiredState != domain.IntentReady ||
+		capsule.Maintenance != "" {
+		return fmt.Errorf("%w: Capsule must be Ready", domain.ErrIllegalTransition)
+	}
 	events, err := s.structured.StructuredEvents(
 		ctx, capsule.ProviderResourceID, run.ID, run.EventCursor)
 	if err != nil {
@@ -990,7 +1006,10 @@ func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
 		currentRun.EventCursor = cursor
 		currentRun.UpdatedAt = now
 		currentRun.ResourceVersion++
-		return tx.UpdateRun(ctx, currentRun, previous)
+		if err := tx.UpdateRun(ctx, currentRun, previous); err != nil {
+			return err
+		}
+		return s.touchCapsuleActivityTx(ctx, tx, currentThread.CapsuleID, now)
 	})
 	if err != nil {
 		return err
@@ -1028,7 +1047,9 @@ func (s *Service) RecoverThreads(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		if capsule.State != domain.CapsuleReady || capsule.Maintenance != "" {
+		if capsule.State != domain.CapsuleReady ||
+			capsule.DesiredState != domain.IntentReady ||
+			capsule.Maintenance != "" {
 			continue
 		}
 		run, err := s.GetRunStored(ctx, thread.CurrentRunID)
@@ -1076,7 +1097,9 @@ func (s *Service) ListHarnessProfiles(
 	if err != nil {
 		return nil, err
 	}
-	if capsule.State != domain.CapsuleReady {
+	if capsule.State != domain.CapsuleReady ||
+		capsule.DesiredState != domain.IntentReady ||
+		capsule.Maintenance != "" {
 		return nil, fmt.Errorf("%w: Capsule must be Ready", domain.ErrIllegalTransition)
 	}
 	return s.structured.StructuredProfiles(ctx, capsule.ProviderResourceID)
@@ -1106,9 +1129,22 @@ func (s *Service) startStructuredRuntime(
 	if err != nil {
 		return run, err
 	}
+	if capsule.State != domain.CapsuleReady ||
+		capsule.DesiredState != domain.IntentReady ||
+		capsule.Maintenance != "" {
+		return run, fmt.Errorf("%w: Capsule must be Ready", domain.ErrIllegalTransition)
+	}
 	frame := adapterproto.Frame{
 		Protocol: adapterproto.Version, Type: adapterproto.KindStart,
 		ID: "start-" + string(thread.ID), SessionID: string(thread.ID),
+	}
+	project, err := s.GetProject(ctx, capsule.ProjectID)
+	if err != nil {
+		return run, err
+	}
+	secretValues, err := s.resolveHarnessSecrets(ctx, project)
+	if err != nil {
+		return run, err
 	}
 	if resume {
 		state, sessionID, err := s.latestResumeState(ctx, thread)
@@ -1122,7 +1158,9 @@ func (s *Service) startStructuredRuntime(
 	}
 	runtimeRun, err := s.structured.StartStructured(ctx, ports.RuntimeStructuredStartRequest{
 		RunID: run.ID, ResourceID: capsule.ProviderResourceID, Harness: thread.AdapterID, Frame: frame,
+		Secrets: cloneStringMap(secretValues),
 	})
+	clearStringMap(secretValues)
 	if err != nil {
 		failed, transitionErr := s.transitionRun(ctx, run.ID, domain.RunFailed, &runCompletion{
 			Failure: "Capsule runtime rejected structured session start",
@@ -1186,13 +1224,22 @@ func (s *Service) deliverThreadMessage(
 	if err != nil {
 		return err
 	}
+	if capsule.State != domain.CapsuleReady ||
+		capsule.DesiredState != domain.IntentReady ||
+		capsule.Maintenance != "" {
+		return fmt.Errorf("%w: Capsule must be Ready", domain.ErrIllegalTransition)
+	}
 	if err := s.structured.SendStructured(ctx, ports.RuntimeStructuredSendRequest{
 		ResourceID: capsule.ProviderResourceID, RunID: run.ID, Frame: frame,
 	}); err != nil {
 		return err
 	}
 	return s.store.Transact(ctx, func(tx ports.Transaction) error {
-		return tx.AcknowledgeThreadDelivery(ctx, message.ID, s.clock.Now().UTC())
+		now := s.clock.Now().UTC()
+		if err := tx.AcknowledgeThreadDelivery(ctx, message.ID, now); err != nil {
+			return err
+		}
+		return s.touchCapsuleActivityTx(ctx, tx, thread.CapsuleID, now)
 	})
 }
 

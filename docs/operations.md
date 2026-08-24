@@ -11,9 +11,11 @@ hostile workloads require an independently validated gVisor or Kata
 `RuntimeClass`, dedicated infrastructure where appropriate, storage and network
 policy, admission controls, and external review.
 
-The public API, previews, and Prometheus endpoint are unauthenticated. Keep them
-on literal loopback unless an operator-controlled authenticated proxy provides
-the missing boundary. The metrics listener is disabled by default and rejects a
+The REST and SSE API requires one installation bearer token. Health/readiness,
+static UI assets, scoped PTY ticket redemption, and scoped preview URL
+redemption do not require that bearer. Prometheus remains unauthenticated. The
+API defaults to literal loopback; a non-loopback bind additionally requires
+`--allow-non-loopback-listen`. Metrics is disabled by default and rejects a
 non-loopback bind unless `--allow-unsafe-metrics-listen` is explicitly set.
 
 ## Verify a release
@@ -83,9 +85,62 @@ meridiand --provider=fake \
 Startup atomically creates the structured-transcript installation key at
 `<data-dir>/transcript-keys/installation.key` in a mode-0700 directory with a
 mode-0600 file. `--transcript-key-file` selects a separately managed location.
+
+The credential broker uses an independent AES-256-GCM installation key at
+`<data-dir>/secret-keys/installation.key`, with the same 0700/0600 ownership
+requirements. `--secret-key-file` selects a separately managed location.
+SQLite contains only authenticated ciphertext envelopes. If ciphertext exists
+and this key is absent, startup does not silently generate a replacement.
 The path must be a real restrictive directory and regular file, not a symlink.
 Back up this key through a separate encrypted, access-controlled key-custody
 process. Meridian backup intentionally never copies it.
+
+Startup separately creates a 256-bit API token at
+`<data-dir>/api-auth/installation.token`, also using a mode-0700 directory,
+mode-0600 regular file, and atomic no-replace publication. `--api-token-file`
+selects a separately managed restrictive path. This token is not the transcript
+key and is not a Capsule supervisor token. The CLI reads it from `--token-file`,
+then `MERIDIAN_TOKEN_FILE`, then the default local daemon path, and attaches it
+as an HTTP bearer without printing it.
+
+The embedded UI never puts the installation token in HTML, URLs,
+localStorage/sessionStorage, or console output. Literal loopback UI access gets
+a separate HttpOnly SameSite=Strict daemon-lifetime cookie automatically.
+Non-loopback users enter the token once; a bearer-authenticated same-origin
+bootstrap endpoint exchanges it for that cookie and the form is cleared. The
+cookie is Secure under HTTPS; plain HTTP cookie bootstrap is limited to verified
+loopback source and Host addresses. Cookie-authenticated mutations additionally
+require an exact same-origin `Origin`.
+
+## Workspace export and Delivery operations
+
+File browse, workspace export, Delivery inspection, and Delivery mutations use
+the same installation authentication. Export streams with `Authorization`; no
+API, provider, or supervisor token appears in its URL. A shared Capsule
+maintenance lease serializes export, Moment capture, Seal, restore, and
+Delivery, and active Runs block export and Delivery. Closing an export stream
+releases its lease.
+
+Delivery rows are durable and contain approval, expected Capsule version,
+reviewed HEAD/tree, exact destination ref, bounded commit/PR metadata, result
+commit/PR identity, state, and a bounded content-free failure. They contain no
+token, diff, or source bytes. Startup resumes queued/committing/pushing/PR
+states; an exact ref push is retry-safe and GitHub recovery first queries the
+exact head/base pair to avoid duplicate pull requests.
+
+Store purpose-scoped credentials through stdin:
+
+```console
+printf '%s' "$GIT_PUSH_TOKEN" | meridian secret put delivery_push \
+  --purpose=git_push --username=git --stdin
+printf '%s' "$GITHUB_TOKEN" | meridian secret put github_api \
+  --purpose=github_api --stdin
+```
+
+Authorize only their names on the Project. Rotate or crypto-shred the secrets
+after revoking them at the upstream provider. Ordinary logs, metrics, traces,
+events, Delivery rows, archives, and API error envelopes must not contain their
+plaintext.
 
 Transcript encryption is an at-rest boundary. The local daemon necessarily
 holds the installation key and decrypts explicit Thread reads for the local
@@ -119,7 +174,7 @@ docker run --rm --name meridiand \
   -p 127.0.0.1:8080:8080 \
   -v "$PWD/meridian-data:/var/lib/meridian" \
   "ghcr.io/orlojhq/meridiand@sha256:VERIFIED_DIGEST" \
-  --provider=fake --listen=0.0.0.0:8080 \
+  --provider=fake --listen=0.0.0.0:8080 --allow-non-loopback-listen \
   --preview-listen=127.0.0.1:8081 --data-dir=/var/lib/meridian
 ```
 
@@ -146,6 +201,11 @@ helm upgrade --install meridian deploy/helm/meridian \
   --set-json 'networkPolicy.kubernetesAPIServerCIDRs=["192.0.2.10/32"]'
 ```
 
+The chart explicitly opts into its authenticated wildcard pod listener and
+persists the generated API token on the control-plane PVC. It adds no Ingress.
+Copy the token through an operator-authorized `kubectl exec`, store the copy as
+mode 0600, and point `MERIDIAN_TOKEN_FILE` at it when using a port-forwarded CLI.
+
 Back up the control-plane PVC and Capsule PVC/PV state consistently. A local
 Meridian backup does not capture Kubernetes PVC contents or reconstruct
 provider-owned Secrets.
@@ -157,9 +217,9 @@ operation is running. Backups are published atomically as mode-restricted
 directories containing a SQLite `VACUUM INTO` image, the artifact CAS, and a
 checksummed manifest. Runtime supervisor tokens and provider credential state
 are deliberately excluded and must be recreated. Structured transcript
-ciphertext and wrapped per-Thread keys are included. The installation
-transcript key is excluded; the manifest records only each required key ID and
-version.
+ciphertext, wrapped per-Thread keys, and named-secret ciphertext are included.
+Installation transcript and credential keys are excluded; the manifest records
+each required key ID and version.
 
 ```console
 meridian --json admin backup create \
@@ -192,7 +252,8 @@ meridian admin backup verify --backup=/offline/backup/meridian-TIMESTAMP
 meridian admin restore \
   --backup=/offline/backup/meridian-TIMESTAMP \
   --data-dir="$HOME/.local/state/meridian" \
-  --transcript-key-file=/separate/key-custody/installation.key
+  --transcript-key-file=/separate/key-custody/transcript.key \
+  --secret-key-file=/separate/key-custody/credential.key
 # Existing non-empty destination:
 meridian admin restore --backup=/offline/backup/meridian-TIMESTAMP \
   --data-dir="$HOME/.local/state/meridian" --replace --yes
@@ -212,6 +273,16 @@ authenticates all retained transcript envelopes before replacing existing
 state, then installs the supplied key at the destination default path. A
 mismatch leaves the destination untouched. There is no recovery path when the
 matching key and every separately protected copy have been lost.
+
+When required credential key metadata is present, restore likewise requires
+the matching existing default key or `--secret-key-file`. Every named-secret
+envelope is authenticated before the destination is published.
+
+`meridian secret delete NAME --expected-version N --confirm-crypto-shred`
+deletes the live row, including ciphertext, nonce, and envelope metadata. Its
+durable audit event contains identity and outcome metadata only. This does not
+erase older backups, filesystem snapshots, SQLite remnants, swap, or physical
+media; expire or destroy those copies under the installation retention policy.
 
 ## Transcript key rotation and deletion
 

@@ -159,6 +159,7 @@ func (p *Provider) Capabilities(context.Context) (ports.ProviderCapabilities, er
 	return ports.ProviderCapabilities{
 		Version: "docker/v2", Pause: true, Attach: true, Run: true, Git: true,
 		Snapshot: true, Clone: true, Preview: true, Structured: true,
+		Browse: true, Delivery: true,
 	}, nil
 }
 
@@ -214,11 +215,21 @@ func (p *Provider) Create(
 	if request.Restore {
 		repositoryURL, setup = "", nil
 	}
-	_, err = supervisor.Prepare(setupContext, capsuleproto.PrepareRequest{
+	prepareRequest := capsuleproto.PrepareRequest{
 		RepositoryURL: repositoryURL,
 		Destination:   workspace,
 		Setup:         setup,
-	})
+	}
+	if request.GitCredential != nil && !request.Restore {
+		prepareRequest.GitCredential = &capsuleproto.GitHTTPSCredential{
+			Username: request.GitCredential.Username, Password: request.GitCredential.Password,
+		}
+	}
+	_, err = supervisor.Prepare(setupContext, prepareRequest)
+	if prepareRequest.GitCredential != nil {
+		prepareRequest.GitCredential.Username = ""
+		prepareRequest.GitCredential.Password = ""
+	}
 	if err != nil {
 		status, statusErr := supervisor.Status(context.Background())
 		if statusErr == nil && status.Error != "" {

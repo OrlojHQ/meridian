@@ -28,9 +28,31 @@ Fields are strict:
 - `pty` requests a real reconnectable PTY.
 - `outputMode` is `text` or `jsonl`. JSONL records are parsed into bounded metadata; malformed or oversized lines produce bounded parse-error events.
 - `timeout` is positive and no greater than 24 hours.
-- `secretReferences` contains opaque metadata names only.
+- `secretReferences` contains opaque `harness_env` names only.
 
-Unknown fields, malformed YAML, duplicate names, inline secret-like values, unsafe paths, unreasonable sizes, and invalid modes fail closed. Secret references are not resolved: a profile containing any reference fails explicitly when started. Do not put plaintext credentials in this file.
+Unknown fields, malformed YAML, duplicate names, inline secret-like values,
+unsafe paths, unreasonable sizes, and invalid modes fail closed. The Project,
+not repository YAML, must explicitly authorize every referenced name. At Run
+or Thread start the host resolves only that allowlist; `capsuled` requires every
+selected profile reference, passes exactly those entries to the child
+environment, and then discards its copy. Missing, unallowed, or wrong-purpose
+references fail as `secrets_unresolved`. Do not put plaintext credentials in
+this file.
+
+Delivery settings are host-owned Project configuration, not repository YAML:
+
+- `gitPushSecretName` names exactly one stored `git_push` secret for an
+  approved exact-ref push;
+- `githubAPISecretName` names one `github_api` token used by `meridiand` only;
+- `commitAuthorName` and `commitAuthorEmail` provide commit identity when a
+  reviewed dirty tree is committed; and
+- `defaultBaseBranch` selects the pull-request base and is always protected as
+  a Delivery destination.
+
+Only these names and identity strings are persisted on the Project. Delivery
+settings are not passed to harnesses and do not invalidate the setup Moment
+cache. Repository configuration cannot authorize a secret, approve Delivery,
+select a force push, or override protected-branch policy.
 
 Structured profiles use the same `v1` configuration schema and select a
 separate, non-PTY adapter process:
@@ -55,8 +77,8 @@ A structured profile cannot set native `executable`, `arguments`,
 `promptMode`, or `outputMode` fields and cannot request a PTY. Its adapter is
 executed directly, with the configured argument array and validated
 workspace-contained working directory. Only `meridian.adapter.v1` is accepted.
-Inline credential-shaped adapter arguments are rejected; unresolved
-`secretReferences` fail closed when the session starts.
+Inline credential-shaped adapter arguments are rejected; unresolved or
+unauthorized `secretReferences` fail closed when the session starts.
 
 The adapter protocol is bounded LF-delimited JSON, not generic JSONL:
 frames require the exact protocol version and a known frame type, CRLF and

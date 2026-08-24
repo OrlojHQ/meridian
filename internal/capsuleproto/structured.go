@@ -34,6 +34,7 @@ type StructuredStartRequest struct {
 	RunID   string             `json:"runId"`
 	Harness string             `json:"harness"`
 	Frame   adapterproto.Frame `json:"frame"`
+	Secrets map[string]string  `json:"secrets,omitempty"`
 }
 
 type StructuredStatusResponse struct {
@@ -169,6 +170,7 @@ type structuredSession struct {
 	controllerIDs map[string]bool
 	ready         chan struct{}
 	done          chan struct{}
+	secrets       map[string]string
 }
 
 func (s *Server) startStructured(writer http.ResponseWriter, request *http.Request) {
@@ -190,7 +192,7 @@ func (s *Server) startStructured(writer http.ResponseWriter, request *http.Reque
 		return
 	}
 
-	profile, directory, status, code := s.structuredProfile(input.Harness)
+	profile, directory, resolved, status, code := s.structuredProfile(input.Harness, input.Secrets)
 	if code != "" {
 		writeProtocolError(writer, status, code)
 		return
@@ -228,6 +230,7 @@ func (s *Server) startStructured(writer http.ResponseWriter, request *http.Reque
 		eventLimit: s.config.EventLimit, outputLimit: s.config.OutputLimit,
 		controllerIDs: make(map[string]bool),
 		notify:        make(chan struct{}), ready: make(chan struct{}), done: make(chan struct{}),
+		secrets: resolved,
 	}
 	run.cancel = session.requestCancel
 	s.runs[input.RunID] = run
@@ -244,34 +247,37 @@ func validRunIdentity(runID, profile string) bool {
 		profile != "" && len(profile) <= 128 && !strings.ContainsAny(profile, "/\\\x00\r\n")
 }
 
-func (s *Server) structuredProfile(name string) (harness.Profile, string, int, string) {
+func (s *Server) structuredProfile(
+	name string, supplied map[string]string,
+) (harness.Profile, string, map[string]string, int, string) {
 	configFile, err := os.Open(filepath.Join(s.config.Workspace, ".meridian", "project.yaml"))
 	if err != nil {
-		return harness.Profile{}, "", http.StatusUnprocessableEntity, "harness_configuration_unavailable"
+		return harness.Profile{}, "", nil, http.StatusUnprocessableEntity, "harness_configuration_unavailable"
 	}
 	config, parseErr := harness.Parse(configFile)
 	_ = configFile.Close()
 	if parseErr != nil {
-		return harness.Profile{}, "", http.StatusUnprocessableEntity, "harness_configuration_invalid"
+		return harness.Profile{}, "", nil, http.StatusUnprocessableEntity, "harness_configuration_invalid"
 	}
 	profile, err := config.Profile(name)
 	if err != nil {
-		return harness.Profile{}, "", http.StatusNotFound, "harness_not_found"
+		return harness.Profile{}, "", nil, http.StatusNotFound, "harness_not_found"
 	}
 	if profile.Interaction != harness.InteractionStructured || profile.Adapter == nil {
-		return harness.Profile{}, "", http.StatusUnprocessableEntity, "structured_interaction_unavailable"
+		return harness.Profile{}, "", nil, http.StatusUnprocessableEntity, "structured_interaction_unavailable"
 	}
-	if len(profile.SecretRefs) != 0 {
-		return harness.Profile{}, "", http.StatusUnprocessableEntity, "secrets_unresolved"
+	resolved, ok := resolveProfileSecrets(profile.SecretRefs, supplied)
+	if !ok {
+		return harness.Profile{}, "", nil, http.StatusUnprocessableEntity, "secrets_unresolved"
 	}
 	directory, err := workspacePath(s.config.Workspace, profile.Workdir)
 	if err != nil {
-		return harness.Profile{}, "", http.StatusBadRequest, "unsafe_working_directory"
+		return harness.Profile{}, "", nil, http.StatusBadRequest, "unsafe_working_directory"
 	}
 	if err := validateWorkspaceDirectory(s.config.Workspace, directory); err != nil {
-		return harness.Profile{}, "", http.StatusUnprocessableEntity, "working_directory_unavailable"
+		return harness.Profile{}, "", nil, http.StatusUnprocessableEntity, "working_directory_unavailable"
 	}
-	return profile, directory, 0, ""
+	return profile, directory, resolved, 0, ""
 }
 
 func (s *Server) structuredStatus(writer http.ResponseWriter, request *http.Request) {
@@ -382,6 +388,9 @@ func (s *structuredSession) execute() {
 	command := exec.Command(adapter.Executable, append([]string(nil), adapter.Arguments...)...)
 	command.Dir = s.directory
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	command.Env = childEnvironment(s.secrets)
+	clearSecretValues(s.secrets)
+	s.secrets = nil
 	stdin, err := command.StdinPipe()
 	if err != nil {
 		s.run.finish(RunFailed, nil, "structured adapter input setup failed")
@@ -394,9 +403,11 @@ func (s *structuredSession) execute() {
 	}
 	command.Stderr = io.Discard
 	if err := command.Start(); err != nil {
+		command.Env = nil
 		s.run.finish(RunFailed, nil, "structured adapter failed to start")
 		return
 	}
+	command.Env = nil
 	s.mu.Lock()
 	s.command = command
 	s.mu.Unlock()

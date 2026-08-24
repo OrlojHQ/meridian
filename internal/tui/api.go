@@ -86,14 +86,15 @@ const (
 	ActionSeal   Action = "seal"
 	ActionDelete Action = "delete"
 
-	ActionThreadCreate  Action = "thread-create"
-	ActionThreadStart   Action = "thread-start"
-	ActionThreadResume  Action = "thread-resume"
-	ActionThreadSend    Action = "thread-send"
-	ActionThreadRespond Action = "thread-respond"
-	ActionThreadCancel  Action = "thread-cancel"
-	ActionThreadArchive Action = "thread-archive"
-	ActionThreadDelete  Action = "thread-delete"
+	ActionThreadCreate       Action = "thread-create"
+	ActionThreadStart        Action = "thread-start"
+	ActionThreadResume       Action = "thread-resume"
+	ActionThreadSend         Action = "thread-send"
+	ActionThreadRespond      Action = "thread-respond"
+	ActionThreadCancel       Action = "thread-cancel"
+	ActionThreadArchive      Action = "thread-archive"
+	ActionThreadDelete       Action = "thread-delete"
+	ActionProjectThreadSpawn Action = "project-thread-spawn"
 )
 
 type ActionRequest struct {
@@ -122,8 +123,8 @@ type generatedAPI struct {
 	client *client.Client
 }
 
-func NewAPI(server string) (API, error) {
-	value, err := client.NewClient(server)
+func NewAPI(server string, security client.SecuritySource) (API, error) {
+	value, err := client.NewClient(server, security)
 	if err != nil {
 		return nil, err
 	}
@@ -583,6 +584,29 @@ func (a *generatedAPI) Execute(ctx context.Context, request ActionRequest) (Acti
 		}
 		return ActionResult{
 			Message: "Thread created", ThreadID: success.Response.Thread.ID,
+		}, nil
+	case ActionProjectThreadSpawn:
+		input := &client.CreateProjectThreadRequest{
+			Harness: request.Harness, Prompt: request.Content,
+		}
+		if request.Name != "" {
+			input.Name = client.NewOptString(request.Name)
+		}
+		response, err := a.client.CreateProjectThread(
+			ctx, input, client.CreateProjectThreadParams{
+				ProjectId: request.ProjectID, IdempotencyKey: key,
+			},
+		)
+		if err != nil {
+			return ActionResult{}, transportError(err)
+		}
+		success, ok := response.(*client.ProjectThreadIntentHeaders)
+		if !ok {
+			return ActionResult{}, responseError(response)
+		}
+		return ActionResult{
+			Message:  "Project Thread provisioning requested",
+			ThreadID: success.Response.ThreadId,
 		}, nil
 	case ActionThreadStart, ActionThreadResume, ActionThreadCancel:
 		input := &client.LifecycleMutationRequest{ExpectedResourceVersion: request.ResourceVersion}

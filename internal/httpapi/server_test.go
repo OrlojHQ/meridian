@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/OrlojHQ/meridian/internal/adapterproto"
+	"github.com/OrlojHQ/meridian/internal/apiauth"
 	"github.com/OrlojHQ/meridian/internal/app"
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/httpapi"
@@ -33,6 +35,17 @@ func (clock) Now() time.Time { return time.Now().UTC() }
 type ids struct {
 	mu   sync.Mutex
 	next int
+}
+
+type testSecuritySource struct {
+	token string
+}
+
+func (s testSecuritySource) BearerAuth(
+	context.Context,
+	client.OperationName,
+) (client.BearerAuth, error) {
+	return client.BearerAuth{Token: s.token}, nil
 }
 
 type runtime struct {
@@ -166,13 +179,19 @@ func TestGeneratedClientLifecycle(t *testing.T) {
 	}
 	defer key.Zero()
 	service.ConfigureThreads(runtime, key)
+	reconciler.ConfigureProjectThreads(service.ReconcileProjectThreadCapsule)
+	apiTokenValue := "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	apiToken, err := apiauth.ParseToken(apiTokenValue)
+	if err != nil {
+		t.Fatal(err)
+	}
 	handler := httpapi.NewWithCapabilities(service, ports.ProviderCapabilities{
 		Run: true, Attach: true, Structured: true,
-	})
+	}, apiToken)
 	handler.SetReady(true)
 	server := httptest.NewServer(handler)
 	defer server.Close()
-	api, err := client.NewClient(server.URL)
+	api, err := client.NewClient(server.URL, testSecuritySource{token: apiTokenValue})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,6 +230,55 @@ func TestGeneratedClientLifecycle(t *testing.T) {
 	if replay.ID != projectResponse.Response.ID {
 		t.Fatalf("idempotent project ID = %q, want %q", replay.ID, projectResponse.Response.ID)
 	}
+	unauthenticatedSpawn := httptest.NewRecorder()
+	handlerRequest := httptest.NewRequest(
+		http.MethodPost, "/projects/"+projectResponse.Response.ID+"/threads",
+		strings.NewReader(`{"harness":"mock","prompt":"prompt"}`),
+	)
+	handlerRequest.Header.Set("Idempotency-Key", "unauthenticated-spawn")
+	handler.ServeHTTP(unauthenticatedSpawn, handlerRequest)
+	if unauthenticatedSpawn.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated Project Thread status = %d", unauthenticatedSpawn.Code)
+	}
+	spawnResponse, err := api.CreateProjectThread(
+		ctx,
+		&client.CreateProjectThreadRequest{Harness: "mock", Prompt: "project prompt"},
+		client.CreateProjectThreadParams{
+			ProjectId: projectResponse.Response.ID, IdempotencyKey: "project-thread-key",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spawned, ok := spawnResponse.(*client.ProjectThreadIntentHeaders)
+	if !ok || spawned.Response.State != client.ProjectThreadIntentStateProvisioning {
+		t.Fatalf("spawn response = %#v (%T)", spawnResponse, spawnResponse)
+	}
+	var spawnedIntent client.ProjectThreadIntent
+	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); {
+		current, getErr := api.GetProjectThreadIntent(
+			ctx, client.GetProjectThreadIntentParams{IntentId: spawned.Response.ID},
+		)
+		if getErr != nil {
+			t.Fatal(getErr)
+		}
+		spawnedIntent = current.(*client.ProjectThreadIntentHeaders).Response
+		if spawnedIntent.State == client.ProjectThreadIntentStateReady {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if spawnedIntent.State != client.ProjectThreadIntentStateReady ||
+		spawnedIntent.CapsuleId == "" || spawnedIntent.ThreadId == "" ||
+		spawnedIntent.RunId == "" {
+		t.Fatalf("ready Project Thread intent = %#v", spawnedIntent)
+	}
+	runtime.mu.Lock()
+	if len(runtime.sends) != 1 || runtime.sends[0].Content != "project prompt" {
+		t.Fatalf("Project Thread delivery = %#v", runtime.sends)
+	}
+	runtime.sends = nil
+	runtime.mu.Unlock()
 
 	createResult, err := api.CreateCapsule(
 		ctx,
@@ -279,6 +347,7 @@ func TestGeneratedClientLifecycle(t *testing.T) {
 		"/threads/"+threadStarted.Response.Thread.ID+"/blocks/stream?after=0",
 		nil,
 	)
+	slowRequest.Header.Set("Authorization", "Bearer "+apiTokenValue)
 	slowDone := make(chan struct{})
 	go func() {
 		handler.ServeHTTP(&slowThreadWriter{}, slowRequest)
@@ -305,6 +374,7 @@ func TestGeneratedClientLifecycle(t *testing.T) {
 		server.URL+"/threads/"+threadStarted.Response.Thread.ID+"/blocks/stream", nil,
 	)
 	threadStreamRequest.Header.Set("Last-Event-ID", "1")
+	threadStreamRequest.Header.Set("Authorization", "Bearer "+apiTokenValue)
 	threadStreamResponse, err := http.DefaultClient.Do(threadStreamRequest)
 	if err != nil {
 		t.Fatal(err)
@@ -367,9 +437,16 @@ func TestGeneratedClientLifecycle(t *testing.T) {
 		t.Fatalf("explicit HTTP deleted Thread = %#v, %v", explicitDeleted, err)
 	}
 
+	latestCapsuleResult, err := api.GetCapsule(
+		ctx, client.GetCapsuleParams{CapsuleId: ready.ID},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	latestCapsule := latestCapsuleResult.(*client.CapsuleHeaders).Response
 	conflictResult, err := api.PauseCapsule(
 		ctx,
-		&client.LifecycleMutationRequest{ExpectedResourceVersion: ready.ResourceVersion + 1},
+		&client.LifecycleMutationRequest{ExpectedResourceVersion: latestCapsule.ResourceVersion + 100},
 		client.PauseCapsuleParams{CapsuleId: ready.ID, IdempotencyKey: "bad-version"},
 	)
 	if err != nil {
@@ -381,7 +458,7 @@ func TestGeneratedClientLifecycle(t *testing.T) {
 
 	pauseResult, err := api.PauseCapsule(
 		ctx,
-		&client.LifecycleMutationRequest{ExpectedResourceVersion: ready.ResourceVersion},
+		&client.LifecycleMutationRequest{ExpectedResourceVersion: latestCapsule.ResourceVersion},
 		client.PauseCapsuleParams{CapsuleId: ready.ID, IdempotencyKey: "pause-key"},
 	)
 	if err != nil {
@@ -413,6 +490,39 @@ func TestGeneratedClientLifecycle(t *testing.T) {
 	if !ok || started.Response.State != client.RunStateRunning {
 		t.Fatalf("start Run response = %#v (%T)", runResult, runResult)
 	}
+	unauthenticatedStream := httptest.NewRecorder()
+	handler.ServeHTTP(unauthenticatedStream, httptest.NewRequest(
+		http.MethodGet, "/runs/"+started.Response.ID+"/events/stream", nil,
+	))
+	if unauthenticatedStream.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated SSE status = %d", unauthenticatedStream.Code)
+	}
+	unauthenticatedTicket := httptest.NewRecorder()
+	handler.ServeHTTP(unauthenticatedTicket, httptest.NewRequest(
+		http.MethodPost, "/runs/"+started.Response.ID+"/attach-ticket", nil,
+	))
+	if unauthenticatedTicket.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated ticket mint status = %d", unauthenticatedTicket.Code)
+	}
+	ticketResult, err := api.CreateRunAttachTicket(ctx, client.CreateRunAttachTicketParams{
+		RunId: started.Response.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ticket, ok := ticketResult.(*client.AttachTicket)
+	if !ok {
+		t.Fatalf("attach ticket response = %T", ticketResult)
+	}
+	redeemed := httptest.NewRecorder()
+	handler.ServeHTTP(redeemed, httptest.NewRequest(
+		http.MethodGet,
+		"/runs/"+started.Response.ID+"/attach?ticket="+url.QueryEscape(ticket.Ticket),
+		nil,
+	))
+	if redeemed.Code == http.StatusUnauthorized {
+		t.Fatal("ticket redemption incorrectly required installation bearer")
+	}
 	eventResult, err := api.ListRunEvents(ctx, client.ListRunEventsParams{
 		RunId: started.Response.ID, After: client.NewOptInt64(0), Limit: client.NewOptInt(100),
 	})
@@ -429,6 +539,7 @@ func TestGeneratedClientLifecycle(t *testing.T) {
 		server.URL+"/runs/"+started.Response.ID+"/events/stream", nil,
 	)
 	streamRequest.Header.Set("Last-Event-ID", strconv.FormatInt(events.Items[0].Sequence-1, 10))
+	streamRequest.Header.Set("Authorization", "Bearer "+apiTokenValue)
 	streamResponse, err := http.DefaultClient.Do(streamRequest)
 	if err != nil {
 		t.Fatal(err)
@@ -465,9 +576,16 @@ func TestGeneratedClientLifecycle(t *testing.T) {
 		t.Fatalf("cancel Run = %#v", cancelResult)
 	}
 
+	deleteCapsuleResult, err := api.GetCapsule(
+		ctx, client.GetCapsuleParams{CapsuleId: resumed.ID},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deleteCapsuleVersion := deleteCapsuleResult.(*client.CapsuleHeaders).Response.ResourceVersion
 	if _, err := api.DeleteCapsule(
 		ctx,
-		&client.LifecycleMutationRequest{ExpectedResourceVersion: resumed.ResourceVersion},
+		&client.LifecycleMutationRequest{ExpectedResourceVersion: deleteCapsuleVersion},
 		client.DeleteCapsuleParams{CapsuleId: resumed.ID, IdempotencyKey: "delete-key"},
 	); err != nil {
 		t.Fatal(err)

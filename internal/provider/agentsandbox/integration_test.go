@@ -1,7 +1,11 @@
 package agentsandbox
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"io"
 	"os"
 	"testing"
 	"time"
@@ -45,6 +49,28 @@ func TestIntegrationLifecycle(t *testing.T) {
 	if err != nil || replayed.ID != resource.ID {
 		t.Fatalf("idempotent create = %#v, %v", replayed, err)
 	}
+	capabilities, err := provider.Capabilities(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !capabilities.Snapshot || !capabilities.Clone || !capabilities.Preview {
+		t.Fatalf("capsuled transport capabilities = %#v", capabilities)
+	}
+	capture, err := provider.CaptureWorkspace(ctx, resource.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive, readErr := io.ReadAll(capture.Archive)
+	closeErr := capture.Archive.Close()
+	if readErr != nil || closeErr != nil {
+		t.Fatalf("read captured workspace = %v; close = %v", readErr, closeErr)
+	}
+	digest := sha256.Sum256(archive)
+	if err := provider.RestoreWorkspace(
+		ctx, resource.ID, hex.EncodeToString(digest[:]), int64(len(archive)), bytes.NewReader(archive),
+	); err != nil {
+		t.Fatalf("restore captured workspace: %v", err)
+	}
 	paused, err := provider.Pause(ctx, resource.ID)
 	if err != nil || paused.State != ports.ProviderPaused {
 		t.Fatalf("pause = %#v, %v", paused, err)
@@ -61,6 +87,6 @@ func TestIntegrationLifecycle(t *testing.T) {
 		t.Fatalf("deleted get = %#v, %v", deleted, err)
 	}
 	if _, err := provider.CaptureWorkspace(ctx, resource.ID); err == nil {
-		t.Fatal("unsupported CSI Moment capture unexpectedly succeeded")
+		t.Fatal("capture of deleted Sandbox unexpectedly succeeded")
 	}
 }

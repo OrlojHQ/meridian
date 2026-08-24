@@ -38,6 +38,12 @@ type CreateCapsuleParams struct {
 	IdempotencyKey string
 }
 
+// CreateCapsuleDeliveryParams is parameters of createCapsuleDelivery operation.
+type CreateCapsuleDeliveryParams struct {
+	CapsuleId      string
+	IdempotencyKey string
+}
+
 // CreateCapsulePreviewTicketParams is parameters of createCapsulePreviewTicket operation.
 type CreateCapsulePreviewTicketParams struct {
 	CapsuleId string
@@ -46,6 +52,12 @@ type CreateCapsulePreviewTicketParams struct {
 
 // CreateProjectParams is parameters of createProject operation.
 type CreateProjectParams struct {
+	IdempotencyKey string
+}
+
+// CreateProjectThreadParams is parameters of createProjectThread operation.
+type CreateProjectThreadParams struct {
+	ProjectId      string
 	IdempotencyKey string
 }
 
@@ -73,10 +85,21 @@ type DeleteCapsuleParams struct {
 	IdempotencyKey string
 }
 
+// DeleteSecretParams is parameters of deleteSecret operation.
+type DeleteSecretParams struct {
+	IdempotencyKey string
+	SecretName     string
+}
+
 // DeleteThreadParams is parameters of deleteThread operation.
 type DeleteThreadParams struct {
 	ThreadId       string
 	IdempotencyKey string
+}
+
+// ExportCapsuleWorkspaceParams is parameters of exportCapsuleWorkspace operation.
+type ExportCapsuleWorkspaceParams struct {
+	CapsuleId string
 }
 
 // GetCapsuleParams is parameters of getCapsule operation.
@@ -94,6 +117,11 @@ type GetCapsuleGitStatusParams struct {
 	CapsuleId string
 }
 
+// GetDeliveryParams is parameters of getDelivery operation.
+type GetDeliveryParams struct {
+	DeliveryId string
+}
+
 // GetMomentParams is parameters of getMoment operation.
 type GetMomentParams struct {
 	MomentId string
@@ -102,6 +130,11 @@ type GetMomentParams struct {
 // GetProjectParams is parameters of getProject operation.
 type GetProjectParams struct {
 	ProjectId string
+}
+
+// GetProjectThreadIntentParams is parameters of getProjectThreadIntent operation.
+type GetProjectThreadIntentParams struct {
+	IntentId string
 }
 
 // GetRunParams is parameters of getRun operation.
@@ -117,6 +150,26 @@ type GetThreadParams struct {
 // GetTimelineParams is parameters of getTimeline operation.
 type GetTimelineParams struct {
 	TimelineId string
+}
+
+// InspectCapsuleDeliveryParams is parameters of inspectCapsuleDelivery operation.
+type InspectCapsuleDeliveryParams struct {
+	CapsuleId string
+}
+
+// ListCapsuleDeliveriesParams is parameters of listCapsuleDeliveries operation.
+type ListCapsuleDeliveriesParams struct {
+	CapsuleId string
+	Cursor    OptString `json:",omitempty,omitzero"`
+	Limit     OptInt    `json:",omitempty,omitzero"`
+}
+
+// ListCapsuleFilesParams is parameters of listCapsuleFiles operation.
+type ListCapsuleFilesParams struct {
+	CapsuleId string
+	Path      OptString `json:",omitempty,omitzero"`
+	After     OptString `json:",omitempty,omitzero"`
+	Limit     OptInt    `json:",omitempty,omitzero"`
 }
 
 // ListCapsulePreviewPortsParams is parameters of listCapsulePreviewPorts operation.
@@ -163,6 +216,12 @@ type ListRunsParams struct {
 	Limit     OptInt    `json:",omitempty,omitzero"`
 }
 
+// ListSecretsParams is parameters of listSecrets operation.
+type ListSecretsParams struct {
+	Cursor OptString `json:",omitempty,omitzero"`
+	Limit  OptInt    `json:",omitempty,omitzero"`
+}
+
 // ListThreadBlocksParams is parameters of listThreadBlocks operation.
 type ListThreadBlocksParams struct {
 	ThreadId string
@@ -181,6 +240,18 @@ type ListThreadsParams struct {
 type PauseCapsuleParams struct {
 	CapsuleId      string
 	IdempotencyKey string
+}
+
+// PutSecretParams is parameters of putSecret operation.
+type PutSecretParams struct {
+	IdempotencyKey string
+	SecretName     string
+}
+
+// ReadCapsuleFileParams is parameters of readCapsuleFile operation.
+type ReadCapsuleFileParams struct {
+	CapsuleId string
+	Path      string
 }
 
 // RespondThreadParams is parameters of respondThread operation.

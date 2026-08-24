@@ -160,6 +160,61 @@ func RestoreWorkspaceArchive(ctx context.Context, workspace string, input io.Rea
 	return restoreWorkspaceArchive(ctx, workspace, input, limits, syncDirectoryPath)
 }
 
+// ExtractWorkspaceArchive validates the complete portable archive before
+// extracting it into an existing empty staging directory. It never mutates a
+// live workspace and is used by local sync before a separate atomic mirror.
+func ExtractWorkspaceArchive(
+	ctx context.Context, stage string, input io.Reader, limits ArchiveLimits,
+) error {
+	limits = limits.defaults()
+	info, err := os.Lstat(stage)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return errors.New("archive staging path must be a real directory")
+	}
+	entries, err := os.ReadDir(stage)
+	if err != nil || len(entries) != 0 {
+		return errors.New("archive staging directory must be empty")
+	}
+	archive, err := os.CreateTemp(filepath.Dir(stage), ".meridian-sync-archive-*")
+	if err != nil {
+		return err
+	}
+	name := archive.Name()
+	defer os.Remove(name)
+	if err := archive.Chmod(0o600); err != nil {
+		_ = archive.Close()
+		return err
+	}
+	written, err := io.Copy(
+		archive,
+		io.LimitReader(&archiveContextReader{ctx: ctx, reader: input}, limits.MaxArchiveBytes+1),
+	)
+	if err != nil || written > limits.MaxArchiveBytes {
+		_ = archive.Close()
+		if err != nil {
+			return err
+		}
+		return errors.New("archive exceeds compressed-size limit")
+	}
+	if _, err := archive.Seek(0, io.SeekStart); err != nil {
+		_ = archive.Close()
+		return err
+	}
+	if err := validateTar(ctx, archive, limits); err != nil {
+		_ = archive.Close()
+		return err
+	}
+	if _, err := archive.Seek(0, io.SeekStart); err != nil {
+		_ = archive.Close()
+		return err
+	}
+	if err := extractTar(ctx, archive, stage, limits); err != nil {
+		_ = archive.Close()
+		return err
+	}
+	return archive.Close()
+}
+
 func restoreWorkspaceArchive(
 	ctx context.Context,
 	workspace string,

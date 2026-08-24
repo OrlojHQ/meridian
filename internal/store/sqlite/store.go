@@ -32,7 +32,7 @@ type Store struct {
 }
 
 // CurrentSchemaVersion is the newest migration this binary understands.
-const CurrentSchemaVersion = 5
+const CurrentSchemaVersion = 9
 
 func Open(ctx context.Context, dataDir string) (*Store, error) {
 	if strings.TrimSpace(dataDir) == "" {
@@ -222,12 +222,22 @@ func (r *repository) InsertProject(ctx context.Context, project domain.Project) 
 	if err != nil {
 		return fmt.Errorf("encode setup arguments: %w", err)
 	}
+	harnessSecrets, err := json.Marshal(project.HarnessSecretNames)
+	if err != nil {
+		return fmt.Errorf("encode harness secret names: %w", err)
+	}
 	_, err = r.q.ExecContext(ctx, `
 		INSERT INTO projects(
 			id, name, repository_url, setup_argv, image_reference,
+			git_secret_name, harness_secret_names,
+			git_push_secret_name, github_api_secret_name, commit_author_name,
+			commit_author_email, default_base_branch,
 			created_at, updated_at, resource_version
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		project.ID, project.Name, project.RepositoryURL, string(setup), project.ImageReference,
+		project.GitSecretName, string(harnessSecrets), project.GitPushSecretName,
+		project.GitHubAPISecretName, project.CommitAuthorName, project.CommitAuthorEmail,
+		project.DefaultBaseBranch,
 		formatTime(project.CreatedAt), formatTime(project.UpdatedAt), project.ResourceVersion,
 	)
 	return mapError(err)
@@ -236,6 +246,9 @@ func (r *repository) InsertProject(ctx context.Context, project domain.Project) 
 func (r *repository) GetProject(ctx context.Context, id domain.ProjectID) (domain.Project, error) {
 	return scanProject(r.q.QueryRowContext(ctx, `
 		SELECT id, name, repository_url, setup_argv, image_reference,
+			git_secret_name, harness_secret_names,
+			git_push_secret_name, github_api_secret_name, commit_author_name,
+			commit_author_email, default_base_branch,
 			created_at, updated_at, resource_version
 		FROM projects WHERE id = ?`, id,
 	))
@@ -247,6 +260,9 @@ func (r *repository) ListProjects(
 ) ([]domain.Project, bool, error) {
 	rows, err := r.q.QueryContext(ctx, `
 		SELECT id, name, repository_url, setup_argv, image_reference,
+			git_secret_name, harness_secret_names,
+			git_push_secret_name, github_api_secret_name, commit_author_name,
+			commit_author_email, default_base_branch,
 			created_at, updated_at, resource_version
 		FROM projects ORDER BY created_at, id LIMIT ? OFFSET ?`,
 		page.Limit+1, page.Offset,
@@ -275,9 +291,12 @@ func (r *repository) ListProjects(
 
 func scanProject(row scanner) (domain.Project, error) {
 	var project domain.Project
-	var setup, created, updated string
+	var setup, harnessSecrets, created, updated string
 	err := row.Scan(
 		&project.ID, &project.Name, &project.RepositoryURL, &setup, &project.ImageReference,
+		&project.GitSecretName, &harnessSecrets,
+		&project.GitPushSecretName, &project.GitHubAPISecretName,
+		&project.CommitAuthorName, &project.CommitAuthorEmail, &project.DefaultBaseBranch,
 		&created, &updated, &project.ResourceVersion,
 	)
 	if err != nil {
@@ -285,6 +304,9 @@ func scanProject(row scanner) (domain.Project, error) {
 	}
 	if err := json.Unmarshal([]byte(setup), &project.Setup); err != nil {
 		return domain.Project{}, fmt.Errorf("decode setup arguments: %w", err)
+	}
+	if err := json.Unmarshal([]byte(harnessSecrets), &project.HarnessSecretNames); err != nil {
+		return domain.Project{}, fmt.Errorf("decode harness secret names: %w", err)
 	}
 	project.CreatedAt, err = parseTime(created)
 	if err != nil {
@@ -294,20 +316,133 @@ func scanProject(row scanner) (domain.Project, error) {
 	return project, err
 }
 
+func (r *repository) InsertSecret(ctx context.Context, secret domain.Secret) error {
+	if err := secret.Validate(); err != nil {
+		return err
+	}
+	_, err := r.q.ExecContext(ctx, `
+		INSERT INTO secrets(
+			id, name, purpose, envelope_version, kek_id, kek_version, nonce,
+			ciphertext, created_at, updated_at, resource_version
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		secret.ID, secret.Name, secret.Purpose, secret.EnvelopeVersion, secret.KEKID,
+		secret.KEKVersion, secret.Nonce, secret.Ciphertext, formatTime(secret.CreatedAt),
+		formatTime(secret.UpdatedAt), secret.ResourceVersion,
+	)
+	return mapError(err)
+}
+
+func (r *repository) UpdateSecret(
+	ctx context.Context, secret domain.Secret, expected domain.ResourceVersion,
+) error {
+	if err := secret.Validate(); err != nil {
+		return err
+	}
+	result, err := r.q.ExecContext(ctx, `
+		UPDATE secrets SET purpose = ?, envelope_version = ?, kek_id = ?, kek_version = ?,
+			nonce = ?, ciphertext = ?, updated_at = ?, resource_version = ?
+		WHERE name = ? AND resource_version = ?`,
+		secret.Purpose, secret.EnvelopeVersion, secret.KEKID, secret.KEKVersion,
+		secret.Nonce, secret.Ciphertext, formatTime(secret.UpdatedAt), secret.ResourceVersion,
+		secret.Name, expected,
+	)
+	if err != nil {
+		return mapError(err)
+	}
+	affected, _ := result.RowsAffected()
+	if affected != 1 {
+		return domain.ErrConflict
+	}
+	return nil
+}
+
+func (r *repository) DeleteSecret(
+	ctx context.Context, name string, expected domain.ResourceVersion,
+) error {
+	result, err := r.q.ExecContext(ctx,
+		"DELETE FROM secrets WHERE name = ? AND resource_version = ?", name, expected)
+	if err != nil {
+		return mapError(err)
+	}
+	affected, _ := result.RowsAffected()
+	if affected != 1 {
+		return domain.ErrConflict
+	}
+	return nil
+}
+
+func (r *repository) GetSecret(ctx context.Context, name string) (domain.Secret, error) {
+	return scanSecret(r.q.QueryRowContext(ctx, `
+		SELECT id, name, purpose, envelope_version, kek_id, kek_version, nonce,
+			ciphertext, created_at, updated_at, resource_version
+		FROM secrets WHERE name = ?`, name))
+}
+
+func (r *repository) ListSecrets(
+	ctx context.Context, page ports.Page,
+) ([]domain.Secret, bool, error) {
+	rows, err := r.q.QueryContext(ctx, `
+		SELECT id, name, purpose, envelope_version, kek_id, kek_version, nonce,
+			ciphertext, created_at, updated_at, resource_version
+		FROM secrets ORDER BY name LIMIT ? OFFSET ?`, page.Limit+1, page.Offset)
+	if err != nil {
+		return nil, false, err
+	}
+	defer rows.Close()
+	items := make([]domain.Secret, 0, page.Limit)
+	for rows.Next() {
+		item, err := scanSecret(rows)
+		if err != nil {
+			return nil, false, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+	more := len(items) > page.Limit
+	if more {
+		items = items[:page.Limit]
+	}
+	return items, more, nil
+}
+
+func scanSecret(row scanner) (domain.Secret, error) {
+	var secret domain.Secret
+	var created, updated string
+	err := row.Scan(
+		&secret.ID, &secret.Name, &secret.Purpose, &secret.EnvelopeVersion,
+		&secret.KEKID, &secret.KEKVersion, &secret.Nonce, &secret.Ciphertext,
+		&created, &updated, &secret.ResourceVersion,
+	)
+	if err != nil {
+		return domain.Secret{}, mapError(err)
+	}
+	secret.CreatedAt, err = parseTime(created)
+	if err == nil {
+		secret.UpdatedAt, err = parseTime(updated)
+	}
+	return secret, err
+}
+
 func (r *repository) InsertCapsule(ctx context.Context, capsule domain.Capsule) error {
 	implicitRoot := capsule.TimelineID == ""
 	if implicitRoot {
 		capsule.TimelineID = domain.TimelineID("root-" + string(capsule.ID))
 		capsule.RestoreComplete = true
 	}
+	if capsule.LastActivityAt.IsZero() {
+		capsule.LastActivityAt = capsule.CreatedAt
+	}
 	_, err := r.q.ExecContext(ctx, `
 		INSERT INTO capsules(
 			id, project_id, timeline_id, name, state, desired_state, provider_resource_id,
-			origin_moment_id, restore_complete, maintenance, failure, created_at, updated_at, resource_version
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			origin_moment_id, restore_complete, maintenance, failure, last_activity_at,
+			created_at, updated_at, resource_version
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		capsule.ID, capsule.ProjectID, capsule.TimelineID, capsule.Name, capsule.State, capsule.DesiredState,
 		capsule.ProviderResourceID, nullableString(string(capsule.OriginMomentID)), capsule.RestoreComplete,
-		capsule.Maintenance, capsule.Failure, formatTime(capsule.CreatedAt),
+		capsule.Maintenance, capsule.Failure, formatTime(capsule.LastActivityAt), formatTime(capsule.CreatedAt),
 		formatTime(capsule.UpdatedAt), capsule.ResourceVersion,
 	)
 	if err != nil {
@@ -331,11 +466,11 @@ func (r *repository) UpdateCapsule(
 		UPDATE capsules SET
 			name = ?, state = ?, desired_state = ?, provider_resource_id = ?,
 			origin_moment_id = ?, restore_complete = ?, maintenance = ?,
-			failure = ?, updated_at = ?, resource_version = ?
+			failure = ?, last_activity_at = ?, updated_at = ?, resource_version = ?
 		WHERE id = ? AND resource_version = ?`,
 		capsule.Name, capsule.State, capsule.DesiredState, capsule.ProviderResourceID,
 		nullableString(string(capsule.OriginMomentID)), capsule.RestoreComplete, capsule.Maintenance,
-		capsule.Failure, formatTime(capsule.UpdatedAt), capsule.ResourceVersion,
+		capsule.Failure, formatTime(capsule.LastActivityAt), formatTime(capsule.UpdatedAt), capsule.ResourceVersion,
 		capsule.ID, expected,
 	)
 	if err != nil {
@@ -360,10 +495,22 @@ func (r *repository) UpdateCapsule(
 	return nil
 }
 
+func (r *repository) TouchCapsuleActivity(
+	ctx context.Context, id domain.CapsuleID, at time.Time,
+) error {
+	_, err := r.q.ExecContext(ctx, `
+		UPDATE capsules SET last_activity_at = ?
+		WHERE id = ? AND last_activity_at < ?`,
+		formatTime(at), id, formatTime(at),
+	)
+	return mapError(err)
+}
+
 func (r *repository) GetCapsule(ctx context.Context, id domain.CapsuleID) (domain.Capsule, error) {
 	return scanCapsule(r.q.QueryRowContext(ctx, `
 		SELECT id, project_id, timeline_id, name, state, desired_state, provider_resource_id,
-			origin_moment_id, restore_complete, maintenance, failure, created_at, updated_at, resource_version
+			origin_moment_id, restore_complete, maintenance, failure, last_activity_at,
+			created_at, updated_at, resource_version
 		FROM capsules WHERE id = ?`, id,
 	))
 }
@@ -375,7 +522,8 @@ func (r *repository) ListCapsules(
 ) ([]domain.Capsule, bool, error) {
 	rows, err := r.q.QueryContext(ctx, `
 		SELECT id, project_id, timeline_id, name, state, desired_state, provider_resource_id,
-			origin_moment_id, restore_complete, maintenance, failure, created_at, updated_at, resource_version
+			origin_moment_id, restore_complete, maintenance, failure, last_activity_at,
+			created_at, updated_at, resource_version
 		FROM capsules WHERE project_id = ?
 		ORDER BY created_at, id LIMIT ? OFFSET ?`,
 		projectID, page.Limit+1, page.Offset,
@@ -402,10 +550,43 @@ func (r *repository) ListCapsules(
 	return capsules, more, nil
 }
 
+func (r *repository) ListIdleCapsules(
+	ctx context.Context,
+	before time.Time,
+	limit int,
+) ([]domain.Capsule, error) {
+	if before.IsZero() || limit <= 0 || limit > 1000 {
+		return nil, fmt.Errorf("%w: invalid idle Capsule scan", domain.ErrInvalid)
+	}
+	rows, err := r.q.QueryContext(ctx, `
+		SELECT id, project_id, timeline_id, name, state, desired_state, provider_resource_id,
+			origin_moment_id, restore_complete, maintenance, failure, last_activity_at,
+			created_at, updated_at, resource_version
+		FROM capsules
+		WHERE state = ? AND desired_state = ? AND maintenance = ''
+			AND last_activity_at <= ?
+		ORDER BY last_activity_at, id LIMIT ?`,
+		domain.CapsuleReady, domain.IntentReady, formatTime(before), limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	capsules := make([]domain.Capsule, 0, limit)
+	for rows.Next() {
+		capsule, err := scanCapsule(rows)
+		if err != nil {
+			return nil, err
+		}
+		capsules = append(capsules, capsule)
+	}
+	return capsules, rows.Err()
+}
+
 func (r *repository) ListRecoverableCapsules(ctx context.Context) ([]domain.Capsule, error) {
 	rows, err := r.q.QueryContext(ctx, `
 		SELECT id, project_id, timeline_id, name, state, desired_state, provider_resource_id,
-			origin_moment_id, restore_complete, maintenance, failure, created_at, updated_at, resource_version
+			origin_moment_id, restore_complete, maintenance, failure, last_activity_at,
+			created_at, updated_at, resource_version
 		FROM capsules WHERE state NOT IN (?, ?)
 		ORDER BY created_at, id`, domain.CapsuleSealed, domain.CapsuleDeleted,
 	)
@@ -430,18 +611,22 @@ type scanner interface {
 
 func scanCapsule(row scanner) (domain.Capsule, error) {
 	var capsule domain.Capsule
-	var created, updated string
+	var activity, created, updated string
 	var origin sql.NullString
 	err := row.Scan(
 		&capsule.ID, &capsule.ProjectID, &capsule.TimelineID, &capsule.Name, &capsule.State,
 		&capsule.DesiredState, &capsule.ProviderResourceID, &origin, &capsule.RestoreComplete,
 		&capsule.Maintenance, &capsule.Failure,
-		&created, &updated, &capsule.ResourceVersion,
+		&activity, &created, &updated, &capsule.ResourceVersion,
 	)
 	if err != nil {
 		return domain.Capsule{}, mapError(err)
 	}
 	capsule.OriginMomentID = domain.MomentID(origin.String)
+	capsule.LastActivityAt, err = parseTime(activity)
+	if err != nil {
+		return domain.Capsule{}, err
+	}
 	capsule.CreatedAt, err = parseTime(created)
 	if err != nil {
 		return domain.Capsule{}, err
@@ -529,17 +714,20 @@ func (r *repository) InsertMoment(ctx context.Context, moment domain.Moment) err
 	if err := moment.Validate(); err != nil {
 		return err
 	}
+	if moment.Kind == "" {
+		moment.Kind = domain.MomentTimeline
+	}
 	_, err := r.q.ExecContext(ctx, `
 		INSERT INTO moments(
 			id, project_id, capsule_id, timeline_id, parent_moment_id, name,
 			archive_sha256, archive_size, manifest_sha256, image_digest,
-			project_setup_hash, git_branch, git_head, git_dirty_summary, created_at, final
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			project_setup_hash, git_branch, git_head, git_dirty_summary, created_at, final, kind
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		moment.ID, moment.ProjectID, moment.CapsuleID, moment.TimelineID,
 		nullableString(string(moment.ParentMomentID)), moment.Name, moment.ArchiveSHA256,
 		moment.ArchiveSize, moment.ManifestSHA256, moment.ImageDigest, moment.ProjectSetupHash,
 		moment.GitBranch, moment.GitHEAD, moment.GitDirtySummary,
-		formatTime(moment.CreatedAt), moment.Final,
+		formatTime(moment.CreatedAt), moment.Final, moment.Kind,
 	)
 	return mapError(err)
 }
@@ -551,7 +739,7 @@ func (r *repository) GetMoment(ctx context.Context, id domain.MomentID) (domain.
 const momentSelect = `
 	SELECT id, project_id, capsule_id, timeline_id, parent_moment_id, name,
 		archive_sha256, archive_size, manifest_sha256, image_digest,
-		project_setup_hash, git_branch, git_head, git_dirty_summary, created_at, final
+		project_setup_hash, git_branch, git_head, git_dirty_summary, created_at, final, kind
 	FROM moments`
 
 func scanMoment(row scanner) (domain.Moment, error) {
@@ -562,7 +750,7 @@ func scanMoment(row scanner) (domain.Moment, error) {
 		&moment.ID, &moment.ProjectID, &moment.CapsuleID, &moment.TimelineID, &parent,
 		&moment.Name, &moment.ArchiveSHA256, &moment.ArchiveSize, &moment.ManifestSHA256,
 		&moment.ImageDigest, &moment.ProjectSetupHash, &moment.GitBranch, &moment.GitHEAD,
-		&moment.GitDirtySummary, &created, &moment.Final,
+		&moment.GitDirtySummary, &created, &moment.Final, &moment.Kind,
 	); err != nil {
 		return domain.Moment{}, mapError(err)
 	}
@@ -578,7 +766,8 @@ func (r *repository) ListMoments(
 	page ports.Page,
 ) ([]domain.Moment, bool, error) {
 	rows, err := r.q.QueryContext(ctx, momentSelect+`
-		WHERE timeline_id = ? ORDER BY created_at, id LIMIT ? OFFSET ?`,
+		WHERE timeline_id = ? AND kind = 'timeline'
+		ORDER BY created_at, id LIMIT ? OFFSET ?`,
 		timelineID, page.Limit+1, page.Offset)
 	if err != nil {
 		return nil, false, err
@@ -607,7 +796,46 @@ func (r *repository) LatestMoment(
 	timelineID domain.TimelineID,
 ) (domain.Moment, error) {
 	return scanMoment(r.q.QueryRowContext(ctx, momentSelect+`
-		WHERE timeline_id = ? ORDER BY created_at DESC, id DESC LIMIT 1`, timelineID))
+		WHERE timeline_id = ? AND kind = 'timeline'
+		ORDER BY created_at DESC, id DESC LIMIT 1`, timelineID))
+}
+
+func (r *repository) GetSetupMomentCache(
+	ctx context.Context,
+	projectID domain.ProjectID,
+	configHash string,
+) (domain.SetupMomentCache, error) {
+	var cache domain.SetupMomentCache
+	var created string
+	err := r.q.QueryRowContext(ctx, `
+		SELECT project_id, config_hash, moment_id, created_at
+		FROM setup_moment_cache
+		WHERE project_id = ? AND config_hash = ?`,
+		projectID, configHash,
+	).Scan(&cache.ProjectID, &cache.ConfigHash, &cache.MomentID, &created)
+	if err != nil {
+		return domain.SetupMomentCache{}, mapError(err)
+	}
+	cache.CreatedAt, err = parseTime(created)
+	return cache, err
+}
+
+func (r *repository) PutSetupMomentCache(
+	ctx context.Context,
+	cache domain.SetupMomentCache,
+) error {
+	if err := cache.Validate(); err != nil {
+		return err
+	}
+	_, err := r.q.ExecContext(ctx, `
+		INSERT INTO setup_moment_cache(project_id, config_hash, moment_id, created_at)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(project_id) DO UPDATE SET
+			config_hash = excluded.config_hash,
+			moment_id = excluded.moment_id,
+			created_at = excluded.created_at`,
+		cache.ProjectID, cache.ConfigHash, cache.MomentID, formatTime(cache.CreatedAt))
+	return mapError(err)
 }
 
 func (r *repository) HasActiveRun(ctx context.Context, capsuleID domain.CapsuleID) (bool, error) {
@@ -1248,6 +1476,168 @@ func (r *repository) AcknowledgeThreadDelivery(
 	return nil
 }
 
+const projectThreadIntentSelect = `
+	SELECT id, project_id, capsule_id, thread_id, run_id, message_id, block_id,
+		capsule_name, requested_name, harness, idempotency_key, state,
+		failure_code, failure_message, wrapped_dek, kek_id, kek_version,
+		envelope_version, ciphertext, created_at, updated_at, resource_version
+	FROM project_thread_intents`
+
+func (r *repository) InsertProjectThreadIntent(
+	ctx context.Context,
+	intent domain.ProjectThreadIntent,
+) error {
+	if err := intent.Validate(); err != nil {
+		return err
+	}
+	if intent.State != domain.ProjectThreadProvisioning || len(intent.PendingMessage.Blocks) != 1 {
+		return fmt.Errorf("%w: new Project Thread intent must be provisioning", domain.ErrInvalid)
+	}
+	block := intent.PendingMessage.Blocks[0]
+	if err := transcripts.ValidateEnvelope(block.Ciphertext); err != nil {
+		return err
+	}
+	_, err := r.q.ExecContext(ctx, `
+		INSERT INTO project_thread_intents(
+			id, project_id, capsule_id, thread_id, run_id, message_id, block_id,
+			capsule_name, requested_name, harness, idempotency_key, state,
+			failure_code, failure_message, wrapped_dek, kek_id, kek_version,
+			envelope_version, ciphertext, created_at, updated_at, resource_version
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		intent.ID, intent.ProjectID, intent.CapsuleID, intent.ThreadID, intent.RunID,
+		intent.MessageID, block.ID, intent.CapsuleName, intent.RequestedName,
+		intent.Harness, intent.IdempotencyKey, intent.State, intent.FailureCode,
+		intent.FailureMessage, intent.WrappedDEK, intent.KEKID, intent.KEKVersion,
+		intent.EnvelopeVersion, block.Ciphertext, formatTime(intent.CreatedAt),
+		formatTime(intent.UpdatedAt), intent.ResourceVersion,
+	)
+	return mapError(err)
+}
+
+func (r *repository) GetProjectThreadIntent(
+	ctx context.Context,
+	id domain.ProjectThreadIntentID,
+) (domain.ProjectThreadIntent, error) {
+	return scanProjectThreadIntent(r.q.QueryRowContext(
+		ctx, projectThreadIntentSelect+" WHERE id = ?", id,
+	))
+}
+
+func (r *repository) GetProjectThreadIntentByKey(
+	ctx context.Context,
+	projectID domain.ProjectID,
+	key string,
+) (domain.ProjectThreadIntent, error) {
+	return scanProjectThreadIntent(r.q.QueryRowContext(
+		ctx, projectThreadIntentSelect+" WHERE project_id = ? AND idempotency_key = ?",
+		projectID, key,
+	))
+}
+
+func (r *repository) ListProvisioningProjectThreadIntents(
+	ctx context.Context,
+) ([]domain.ProjectThreadIntent, error) {
+	rows, err := r.q.QueryContext(ctx, projectThreadIntentSelect+
+		" WHERE state = 'provisioning' ORDER BY created_at, id")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var intents []domain.ProjectThreadIntent
+	for rows.Next() {
+		intent, err := scanProjectThreadIntent(rows)
+		if err != nil {
+			return nil, err
+		}
+		intents = append(intents, intent)
+	}
+	return intents, rows.Err()
+}
+
+func (r *repository) UpdateProjectThreadIntent(
+	ctx context.Context,
+	intent domain.ProjectThreadIntent,
+	expected domain.ResourceVersion,
+) error {
+	if err := intent.Validate(); err != nil {
+		return err
+	}
+	if intent.ResourceVersion != expected+1 {
+		return fmt.Errorf("%w: invalid Project Thread intent resource version", domain.ErrInvalid)
+	}
+	result, err := r.q.ExecContext(ctx, `
+		UPDATE project_thread_intents
+		SET state = ?, failure_code = ?, failure_message = ?, wrapped_dek = ?,
+			updated_at = ?, resource_version = ?
+		WHERE id = ? AND resource_version = ?`,
+		intent.State, intent.FailureCode, intent.FailureMessage,
+		nullableBytes(intent.WrappedDEK), formatTime(intent.UpdatedAt),
+		intent.ResourceVersion, intent.ID, expected,
+	)
+	if err != nil {
+		return mapError(err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 1 {
+		return nil
+	}
+	var exists int
+	if err := r.q.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM project_thread_intents WHERE id = ?", intent.ID,
+	).Scan(&exists); err != nil {
+		return err
+	}
+	if exists == 0 {
+		return domain.ErrNotFound
+	}
+	return domain.ErrConflict
+}
+
+func scanProjectThreadIntent(row scanner) (domain.ProjectThreadIntent, error) {
+	var intent domain.ProjectThreadIntent
+	var blockID domain.ThreadBlockID
+	var ciphertext []byte
+	var created, updated string
+	if err := row.Scan(
+		&intent.ID, &intent.ProjectID, &intent.CapsuleID, &intent.ThreadID,
+		&intent.RunID, &intent.MessageID, &blockID, &intent.CapsuleName,
+		&intent.RequestedName, &intent.Harness, &intent.IdempotencyKey,
+		&intent.State, &intent.FailureCode, &intent.FailureMessage,
+		&intent.WrappedDEK, &intent.KEKID, &intent.KEKVersion,
+		&intent.EnvelopeVersion, &ciphertext, &created, &updated,
+		&intent.ResourceVersion,
+	); err != nil {
+		return domain.ProjectThreadIntent{}, mapError(err)
+	}
+	var err error
+	intent.CreatedAt, err = parseTime(created)
+	if err != nil {
+		return domain.ProjectThreadIntent{}, domain.ErrTranscriptCorrupt
+	}
+	intent.UpdatedAt, err = parseTime(updated)
+	if err != nil {
+		return domain.ProjectThreadIntent{}, domain.ErrTranscriptCorrupt
+	}
+	intent.PendingMessage = domain.ThreadMessage{
+		ID: intent.MessageID, ThreadID: intent.ThreadID, Sequence: 1,
+		Role: domain.ThreadRoleUser, Kind: domain.ThreadMessagePrompt,
+		CreatedAt: intent.CreatedAt,
+		Blocks: []domain.ThreadBlock{{
+			ID: blockID, ThreadID: intent.ThreadID, MessageID: intent.MessageID,
+			MessageSequence: 1, Sequence: 1, Kind: domain.ThreadBlockText,
+			EnvelopeVersion: intent.EnvelopeVersion, Ciphertext: ciphertext,
+			CreatedAt: intent.CreatedAt,
+		}},
+	}
+	if err := intent.Validate(); err != nil {
+		return domain.ProjectThreadIntent{}, err
+	}
+	return intent, nil
+}
+
 func (r *repository) listThreadBlocks(
 	ctx context.Context,
 	message domain.ThreadMessage,
@@ -1356,6 +1746,168 @@ func ensureThreadAffected(
 		return domain.ErrNotFound
 	}
 	return domain.ErrConflict
+}
+
+const deliverySelect = `
+	SELECT id, capsule_id, project_id, state, action, approved, approved_at,
+		expected_capsule_version, expected_head, expected_tree, remote_branch,
+		destination_ref, base_branch, commit_message, pr_title, pr_body,
+		result_commit_sha, result_pr_url, result_pr_number, failure,
+		idempotency_key, created_at, updated_at, resource_version
+	FROM deliveries`
+
+func (r *repository) InsertDelivery(ctx context.Context, delivery domain.Delivery) error {
+	if err := delivery.Validate(); err != nil {
+		return err
+	}
+	if delivery.State != domain.DeliveryQueued {
+		return fmt.Errorf("%w: new Delivery must be queued", domain.ErrInvalid)
+	}
+	_, err := r.q.ExecContext(ctx, `
+		INSERT INTO deliveries(
+			id, capsule_id, project_id, state, action, approved, approved_at,
+			expected_capsule_version, expected_head, expected_tree, remote_branch,
+			destination_ref, base_branch, commit_message, pr_title, pr_body,
+			result_commit_sha, result_pr_url, result_pr_number, failure,
+			idempotency_key, created_at, updated_at, resource_version
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		delivery.ID, delivery.CapsuleID, delivery.ProjectID, delivery.State, delivery.Action,
+		delivery.Approved, formatTime(delivery.ApprovedAt), delivery.ExpectedCapsuleVersion,
+		delivery.ExpectedHEAD, delivery.ExpectedTree, delivery.RemoteBranch,
+		delivery.DestinationRef, delivery.BaseBranch, delivery.CommitMessage,
+		delivery.PullRequestTitle, delivery.PullRequestBody, delivery.ResultCommitSHA,
+		delivery.ResultPullRequestURL, delivery.ResultPullRequestNumber, delivery.Failure,
+		delivery.IdempotencyKey, formatTime(delivery.CreatedAt), formatTime(delivery.UpdatedAt),
+		delivery.ResourceVersion,
+	)
+	return mapError(err)
+}
+
+func (r *repository) UpdateDelivery(
+	ctx context.Context,
+	delivery domain.Delivery,
+	expected domain.ResourceVersion,
+) error {
+	if err := delivery.Validate(); err != nil {
+		return err
+	}
+	if delivery.ResourceVersion != expected+1 {
+		return fmt.Errorf("%w: invalid Delivery resource version", domain.ErrInvalid)
+	}
+	result, err := r.q.ExecContext(ctx, `
+		UPDATE deliveries SET state = ?, result_commit_sha = ?, result_pr_url = ?,
+			result_pr_number = ?, failure = ?, updated_at = ?, resource_version = ?
+		WHERE id = ? AND resource_version = ?`,
+		delivery.State, delivery.ResultCommitSHA, delivery.ResultPullRequestURL,
+		delivery.ResultPullRequestNumber, delivery.Failure, formatTime(delivery.UpdatedAt),
+		delivery.ResourceVersion, delivery.ID, expected,
+	)
+	if err != nil {
+		return mapError(err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 1 {
+		return nil
+	}
+	var exists int
+	if err := r.q.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM deliveries WHERE id = ?", delivery.ID).Scan(&exists); err != nil {
+		return err
+	}
+	if exists == 0 {
+		return domain.ErrNotFound
+	}
+	return domain.ErrConflict
+}
+
+func (r *repository) GetDelivery(
+	ctx context.Context,
+	id domain.DeliveryID,
+) (domain.Delivery, error) {
+	return scanDelivery(r.q.QueryRowContext(ctx, deliverySelect+" WHERE id = ?", id))
+}
+
+func (r *repository) ListDeliveries(
+	ctx context.Context,
+	capsuleID domain.CapsuleID,
+	page ports.Page,
+) ([]domain.Delivery, bool, error) {
+	if page.Limit <= 0 || page.Limit > 1000 {
+		page.Limit = 100
+	}
+	rows, err := r.q.QueryContext(ctx, deliverySelect+`
+		WHERE capsule_id = ? ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
+		capsuleID, page.Limit+1, page.Offset)
+	if err != nil {
+		return nil, false, err
+	}
+	defer rows.Close()
+	var items []domain.Delivery
+	for rows.Next() {
+		item, err := scanDelivery(rows)
+		if err != nil {
+			return nil, false, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+	more := len(items) > page.Limit
+	if more {
+		items = items[:page.Limit]
+	}
+	return items, more, nil
+}
+
+func (r *repository) ListRecoverableDeliveries(ctx context.Context) ([]domain.Delivery, error) {
+	rows, err := r.q.QueryContext(ctx, deliverySelect+`
+		WHERE state NOT IN ('succeeded', 'failed') ORDER BY created_at, id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []domain.Delivery
+	for rows.Next() {
+		item, err := scanDelivery(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func scanDelivery(row scanner) (domain.Delivery, error) {
+	var delivery domain.Delivery
+	var approvedAt, createdAt, updatedAt string
+	if err := row.Scan(
+		&delivery.ID, &delivery.CapsuleID, &delivery.ProjectID, &delivery.State,
+		&delivery.Action, &delivery.Approved, &approvedAt,
+		&delivery.ExpectedCapsuleVersion, &delivery.ExpectedHEAD, &delivery.ExpectedTree,
+		&delivery.RemoteBranch, &delivery.DestinationRef, &delivery.BaseBranch,
+		&delivery.CommitMessage, &delivery.PullRequestTitle, &delivery.PullRequestBody,
+		&delivery.ResultCommitSHA, &delivery.ResultPullRequestURL,
+		&delivery.ResultPullRequestNumber, &delivery.Failure, &delivery.IdempotencyKey,
+		&createdAt, &updatedAt, &delivery.ResourceVersion,
+	); err != nil {
+		return domain.Delivery{}, mapError(err)
+	}
+	var err error
+	delivery.ApprovedAt, err = parseTime(approvedAt)
+	if err == nil {
+		delivery.CreatedAt, err = parseTime(createdAt)
+	}
+	if err == nil {
+		delivery.UpdatedAt, err = parseTime(updatedAt)
+	}
+	if err != nil {
+		return domain.Delivery{}, err
+	}
+	return delivery, delivery.Validate()
 }
 
 func formatTime(value time.Time) string {

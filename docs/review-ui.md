@@ -23,8 +23,10 @@ for deterministic jsdom component tests.
 
 The production routes are:
 
-- `/ui/` — Capsule list across local projects;
-- `/ui/capsules/:id` and `/ui/capsules/:id/diff` — detail and bounded Git review;
+- `/ui/` — Capsule list across local projects plus a Project picker for
+  starting a first prompt in a freshly provisioned Capsule and Timeline;
+- `/ui/capsules/:id` and `/ui/capsules/:id/diff` — detail, bounded Git review,
+  workspace file browsing, and an explicitly confirmed Ship panel;
 - `/ui/threads` and `/ui/threads/:id` — retained structured Thread fleet,
   decrypted typed-block timeline, composer, permissions, and session actions;
 - `/ui/runs/:id` and `/ui/runs/:id/terminal` — ordered activity and PTY;
@@ -34,6 +36,11 @@ The production routes are:
 API routes remain at their existing root paths. Keeping browser routes beneath
 `/ui/` prevents SPA fallback from shadowing scriptable API resources.
 
+The project-level form posts the harness, optional Capsule name, and first
+prompt once and displays the stable provisioning intent, Capsule, and Thread
+references. It does not attempt to select or reuse an existing Ready Capsule.
+Capsule-scoped Thread controls remain available on Capsule detail pages.
+
 ## Browser and content security
 
 Static and SPA responses include a restrictive Content Security Policy,
@@ -41,6 +48,18 @@ clickjacking, MIME-sniffing, referrer, opener, and permissions headers. Diffs
 are rendered as text in `<pre>` elements, never injected as HTML. The UI does
 not write API bodies, diffs, terminal frames, prompts, or ticket values to
 browser logs or storage.
+
+Workspace file content uses base64 in JSON and is decoded only for text
+rendering. Valid UTF-8 without binary control content is placed in `<pre>`;
+binary, symlink, special, and over-1-MiB content is labeled unsupported. File
+bytes and paths are not interpreted as HTML, written to browser storage, or
+logged.
+
+The Ship panel displays the exact inspected HEAD/tree and dirty state. It
+requires the operator to type `ship`, a non-protected destination branch, a
+commit message for dirty trees, and pull-request fields when requested. The
+mutation carries the current Capsule resource version and exact reviewed Git
+objects; repository or agent output cannot supply the confirmation.
 
 Thread transcript routes replay a bounded ordered page and then follow SSE with
 an `AbortController`, durable sequence cursor, ID deduplication, and bounded
@@ -104,6 +123,8 @@ cookies, redirects, absolute root paths, ports below 1024, and bodies over 8 MiB
 are intentionally unsupported. Preview ingress remains part of the trusted
 single-user Docker development profile, not an untrusted multi-tenant boundary.
 
-The public API is still unauthenticated and local single-user only. Keep
-`meridiand` on loopback. Docker remains a trusted-development provider and is
-not an untrusted multi-tenant isolation boundary.
+The API and browser session are authenticated, but Meridian remains
+single-principal and local-first. Keep `meridiand` on loopback unless an
+operator supplies TLS and a reviewed network boundary. Docker remains a
+trusted-development provider and is not an untrusted multi-tenant isolation
+boundary.

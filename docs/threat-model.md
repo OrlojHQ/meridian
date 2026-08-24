@@ -12,14 +12,24 @@ an untrusted multi-tenant claim.
 
 The initial deployment assumption is one trusted human operator on a dedicated or personally controlled host. The code, repositories, dependencies, and agent actions executed in a future Capsule remain untrusted even under that assumption.
 
+ADRs 0014 through 0020 add target requirements for the orb product plan. They
+are not claims that API authentication, brokered named secrets, private clone,
+local sync, file browsing, Agent Sandbox Moments/previews, idle pause, setup
+cache, or delivery have shipped. Where current behavior differs, it is called
+out explicitly and must fail closed until the complete target path is
+implemented.
+
 ## Assets
 
 Assets requiring protection include:
 
 - host files, devices, processes, credentials, and network identity;
-- control-plane signing keys, provider credentials, database, and configuration;
+- the installation API bearer, credential and transcript KEKs, encrypted named
+  secrets, control-plane signing keys, provider credentials, database, and
+  configuration;
 - source repositories, uncommitted work, private dependencies, and Git identity;
-- temporary repository, model-provider, cloud, and package-registry credentials;
+- temporary clone, harness, push, pull-request, model-provider, cloud, and
+  package-registry credentials;
 - Capsule filesystems, Moments, lineage, explicit structured Thread
   transcripts and installation transcript keys, logs, events, terminal data,
   and artifacts;
@@ -30,7 +40,8 @@ Assets requiring protection include:
 
 The principal boundaries are between:
 
-1. the user's browser or CLI and authenticated control-plane APIs;
+1. the single trusted operator's browser or CLI and the installation-bearer
+   authenticated control-plane APIs;
 2. the control plane and its SQLite database/local artifact storage;
 3. the control plane and the credential broker;
 4. the control plane and a Capsule provider;
@@ -39,7 +50,11 @@ The principal boundaries are between:
 7. a Capsule and external networks, source hosts, registries, and model services; and
 8. authenticated ingress and terminal or preview services inside a Capsule.
 
-Crossing a boundary requires authenticated identity, explicit authorization, bounded input, and auditable outcomes. A provider's advertised isolation class is a security property and must not be silently downgraded.
+Crossing a boundary requires authenticated identity, explicit authorization,
+bounded input, and auditable outcomes. Meridian's initial API has one
+installation principal, not per-user RBAC or a tenant boundary. A provider's
+advertised isolation class is a security property and must not be silently
+downgraded.
 
 ## Hostile inputs and actors
 
@@ -51,6 +66,8 @@ Meridian assumes the following may be malicious or compromised:
 - web content, issues, pull requests, documentation, logs, and other prompt-injection sources;
 - coding-agent harnesses, MCP servers, plugins, browser automation, and tools installed in a Capsule;
 - files, archives, terminal escape sequences, HTTP headers, event payloads, and generated diffs returned by a Capsule;
+- local-sync archives and remote metadata, browsed filenames and file bytes,
+  setup-cache archives, and pull-request fields;
 - external services reached over the network and credentials returned by integrations; and
 - another tenant or operator in deployment modes that exceed the initial single-user assumption.
 
@@ -83,6 +100,22 @@ of those controls.
 ### Credential theft and persistence
 
 Untrusted processes may read environment variables, command arguments, config files, shell history, process metadata, logs, swap, or snapshots. They may trick tools into forwarding credentials. Reusable credentials remain outside Capsules. The broker issues short-lived, narrowly scoped credentials or performs a constrained operation on behalf of the Capsule. Plaintext credentials must not be persisted in SQLite, local artifacts, Moments, logs, events, crash dumps, or generated configuration. Redact known secret forms, prevent command-line disclosure, support revocation, and audit issuance and use.
+
+The target named-secret store uses authenticated envelope encryption under a
+dedicated installation credential KEK. That KEK is distinct from the
+transcript KEK, held outside SQLite, artifacts, Moments, and backups, and
+protected and rotated independently. Database theft still reveals secret
+names, purposes, and metadata; compromise of both the daemon and KEK defeats
+at-rest protection. Losing the KEK makes the ciphertext unrecoverable.
+
+Every secret is bound to exactly one of `git_https`, `git_push`, `github_api`,
+or `harness_env`. Private clone receives only a repository-bound, clone-time
+one-shot Git grant. A harness secret is resolved only for its approved session
+and may be exposed to that hostile process and its descendants, but must not be
+written to the workspace or retained in a Moment. Push receives an
+exact-repository, exact-ref, one-shot grant; GitHub pull-request API authority
+stays host-side. Temporary material is revoked or discarded after its single
+operation and omitted from command arguments and ambient credential helpers.
 
 Kubernetes Capsules use one high-entropy immutable namespaced Secret solely for
 the private supervisor token. It is owner-referenced and projected with mode
@@ -123,9 +156,15 @@ time, and metadata limits apply at both proxy hops. Authorization, cookies,
 Meridian-private headers, redirects, and hop-by-hop headers do not cross into or
 out of preview applications.
 
+The Agent Sandbox target uses those same discovery, destination, ticket,
+header, body, frame, expiry, and revocation rules through an owned,
+operation-scoped pod port-forward. It creates no Service, Ingress, LoadBalancer,
+public pod-IP route, or shared proxy. Agent Sandbox preview is currently
+unsupported and must remain unadvertised until that complete route exists.
+
 ### Harness execution and content-bearing responses
 
-Repository-controlled harness configuration and executables are hostile. Configuration is parsed only inside the Capsule with strict fields, bounded sizes, direct argument arrays, workspace-contained working directories, explicit modes, and process-group timeouts. No shell concatenation is used. Inline credentials are rejected and secret references are not resolved.
+Repository-controlled harness configuration and executables are hostile. Configuration is parsed only inside the Capsule with strict fields, bounded sizes, direct argument arrays, workspace-contained working directories, explicit modes, and process-group timeouts. No shell concatenation is used. Inline credentials are rejected. Today, `secretReferences` are unresolved and fail closed; the target broker resolves only purpose-checked `harness_env` references into session-only process material without persisting values.
 
 Structured adapters use a separate non-PTY process supervisor and the closed
 `meridian.adapter.v1` LF-delimited JSON protocol. Exact version negotiation,
@@ -162,6 +201,17 @@ Package managers, install scripts, binaries, actions, generated code, and update
 
 Attackers may forge identifiers, replay requests, exploit parser differences, enumerate Capsules, inject events, or exhaust long-lived connections. Validate all input against bounded schemas, use opaque identifiers, authorize every object access, apply idempotency and replay protection to mutations, cap request and stream sizes, and rate-limit by identity. Events require stable ordering/cursors and tenant binding; clients must not infer authorization from event possession.
 
+The target public API authenticates REST, SSE, and PTY/preview ticket minting
+with one high-entropy installation bearer token in the `Authorization` header.
+Only content-free liveness and readiness probes remain open. Tokens in URLs,
+cookies, or bodies are rejected and bearer values never enter logs. PTY and
+preview redemption continue to require their short-lived scoped tickets; the
+installation token is never forwarded to a Capsule or preview. This is a
+single-principal boundary with installation-wide authority, not RBAC or
+multi-tenancy. Until this is implemented, the current unauthenticated public
+API must remain inside a trusted local or independently authenticated
+boundary.
+
 ### Provider compromise and capability confusion
 
 A provider or adapter can lie about lifecycle completion, isolation, snapshot durability, or cleanup. Pin and authenticate adapters, validate callback identity, reconcile observed state, and audit privileged calls. Scheduling must match declared requirements to versioned provider capabilities and fail closed when a required capability is absent. High-assurance deployments must evaluate provider personnel, control planes, images, firmware, and jurisdiction in addition to Meridian software.
@@ -172,10 +222,15 @@ Moments can retain deleted source, tokens, build caches, and malicious files. Th
 
 CSI VolumeSnapshots are storage-provider artifacts with reclaim, topology,
 backup, consistency, and deletion semantics unlike portable Meridian Moment
-archives. Agent Sandbox discovers prerequisites but advertises Snapshot/Clone
-false because Moment v1 cannot represent those semantics. Back up SQLite with
-WAL state and Kubernetes PVC/PV/CRD state consistently; the database alone
-does not preserve Capsule workspaces.
+archives. Agent Sandbox currently discovers prerequisites but advertises
+Snapshot/Clone false because Moment v1 cannot represent those semantics. The
+target Agent Sandbox implementation carries the same bounded deterministic tar
+archive and manifest used by Docker over an authenticated, ownership-checked
+pod port-forward to `capsuled`. It does not use `kubectl exec`, host/PVC mounts,
+or CSI as a Moment substitute. CSI remains a distinct provider artifact even
+after portable Agent Sandbox Moments ship. Back up SQLite with WAL state and
+Kubernetes PVC/PV/CRD state consistently; the database alone does not preserve
+Capsule workspaces.
 
 The local CAS verifies digests, rejects symlink/non-regular paths, and publishes
 through same-filesystem temporary files before inserting Moment metadata.
@@ -239,6 +294,41 @@ causes irreversible loss.
 
 Malicious repositories may alter remotes, hooks, authorship, signatures, or generated diffs. Delivery must pin the intended repository identity, inspect destination ref and remote, avoid host Git credential helpers, and require authorization for pushes and pull requests. Do not rely on a clean diff as proof that no external side effect occurred. Preserve auditable verification results without claiming they establish code safety.
 
+Private HTTPS clone is a target brokered operation, not ambient Git
+authentication: validate canonical repository identity, disable credential
+helpers and hooks where applicable, provide one clone-time grant, and destroy
+it after the process. Current private Git remains unsupported until this flow
+is implemented end to end.
+
+Delivery requires an explicit approved intent. Optional commit creation runs
+through bounded `capsuled` Git operations without hooks or shell
+concatenation. Push is one exact source-commit-to-destination-ref update under
+a one-shot `git_push` grant with expected-old-ref checking. Direct default
+branch updates, deletes, tags, wildcard refspecs, and non-fast-forward or force
+updates fail closed by default. `meridiand`, not the Capsule, uses the
+purpose-bound `github_api` secret to create or update a pull request for the
+verified repository and refs. No standing GitHub token enters a Capsule.
+Stable step identities, observed commit/ref/PR state, and content-free audit
+make retries idempotent; divergent state is a conflict, not permission to
+repeat an ambiguous side effect.
+
+### Local sync and file browsing
+
+Local sync archives may contain traversal, symlink attacks, special files,
+decompression bombs, `.git` replacement, unrelated repository content, or
+secrets. The target client validates its canonical remote against the Project;
+the control plane independently checks the Capsule clone identity. A bounded
+archive overlay rejects unsafe entries and preserves the Capsule clone's
+`.git`. It is staged and validated before publication. Remote equality reduces
+repository confusion but does not make local bytes or history trustworthy.
+
+File list and read operations are rooted, normalized, paginated, byte- and
+time-bounded `capsuled` RPCs. They do not follow escaping links or interpret
+returned names and bytes as HTML, terminal control, configuration, or
+authorization. Sync and browse use only the authenticated private Capsule
+transport: no host path, bind mount, Docker `cp`, Docker archive extraction,
+`kubectl exec`, or direct PVC mount is allowed.
+
 ### Local persistence and filesystem attacks
 
 SQLite, WAL files, and local artifacts may expose metadata or be replaced through symlink and path traversal attacks. Use explicit directories with restrictive permissions, canonicalize paths, avoid following attacker-controlled links, use atomic writes, and keep database and artifacts out of Capsule mounts. Back up SQLite consistently with its WAL state. Local storage is not suitable for mutually untrusted host users without OS-level separation and encryption.
@@ -271,6 +361,22 @@ isolation, or hosted multi-tenancy fitness.
 
 Fork bombs, disk filling, log flooding, decompression bombs, network loops, runaway model calls, excessive snapshots, and abandoned resources can exhaust capacity or incur cost. Enforce resource and concurrency quotas outside the Capsule, bound logs/artifacts/events, validate archive expansion, set deadlines, meter provider usage, and reconcile and destroy orphaned resources. Administrative cancellation must not depend on a responsive Capsule.
 
+The target idle policy pauses only a quiescent Capsule using a durable activity
+clock. Authenticated Thread/Run progress and PTY, preview, sync, browse, setup,
+archive, or delivery work count as activity; probes, reconciliation polls, and
+passive reads do not. Runtime use wakes a paused Capsule through an idempotent
+resume. Idle pause, absolute provider/Capsule deletion TTL, reusable setup
+Moment retention, user Moment retention, and ticket/credential expiry remain
+separate clocks: pause cannot renew an absolute TTL or turn destruction into
+retention.
+
+Reusable setup Moments are keyed by a versioned prepare hash covering canonical
+repository and exact revision, immutable image, setup arguments, relevant
+Project configuration, platform, and protocol version. They are verified on
+restore and exclude grants, secret material, runtime tokens, transcripts,
+local overlays, sessions, and post-setup work. Undeclared mutable setup inputs
+remain a staleness risk, so reuse can be disabled and a mismatch runs setup.
+
 ### Audit tampering and repudiation
 
 A Capsule must not be able to modify control-plane audit records. Record authenticated lifecycle, credential, policy, ingress, and delivery actions with timestamps and stable object identities in append-oriented storage. Minimize secret and source content in audit records. Clock, retention, export, and integrity controls must match deployment assurance requirements.
@@ -281,10 +387,17 @@ Stopped processes, volumes, snapshots, caches, logs, IP addresses, credentials, 
 
 ## Security invariants
 
+These are architecture requirements, including accepted target requirements;
+they are not a statement that every planned path is already implemented.
+
 - Untrusted Capsule code never receives the host container-runtime socket or control-plane/provider administrator credentials.
-- Authorization is checked at the control plane for every object and privileged action.
+- The target public REST/SSE and ticket-mint surface requires the
+  single-principal installation bearer; only content-free probes are open, and
+  PTY/preview redemption remains ticket-scoped.
+- Authorization and policy are checked at the control plane for every object and privileged action; Meridian does not claim RBAC or multi-tenant isolation.
 - Security and durability requirements fail closed when a provider lacks a capability.
-- Reusable credential plaintext is not persisted.
+- Reusable credential plaintext is not persisted; encrypted named secrets use
+  a dedicated externally custodied credential KEK and cannot cross purpose.
 - Per-Capsule supervisor bearer tokens are high entropy, stored outside SQLite in mode-0600 provider state, omitted from labels/logs/public APIs, and removed after owned-resource cleanup.
 - Kubernetes supervisor tokens exist only in immutable namespaced,
   owner-referenced Secrets with private 0400/0440 projection; cluster/node/backup
@@ -302,6 +415,16 @@ Stopped processes, volumes, snapshots, caches, logs, IP addresses, credentials, 
 - Agent Sandbox lifecycle management is never represented as a sandboxing or
   untrusted multi-tenancy guarantee.
 - Moments are filesystem-only, immutable, and restored through non-destructive lineage.
+- Agent Sandbox portable Moments and previews use owned pod port-forwards to
+  the same bounded capsuled archive/loopback semantics as Docker; CSI,
+  Ingress, Services, and public pod IPs are not substitutes.
+- Local sync preserves `.git`, and sync/file browsing expose neither host paths
+  nor provider exec/copy authority.
+- Setup-Moment reuse excludes secrets and mutable session state; idle pause,
+  absolute lifetime, cache retention, and artifact retention remain distinct.
+- Delivery requires explicit approval, exact-ref one-shot push authority,
+  default-branch protection, host-side pull-request API use, and idempotent
+  content-free audit.
 - Destruction is reconciled to completion and credential revocation does not depend on Capsule cooperation.
 - Metrics and trace attributes contain no user content, object identifiers,
   paths, tokens, terminal bytes, diffs, or arbitrary error text.
@@ -313,6 +436,6 @@ Stopped processes, volumes, snapshots, caches, logs, IP addresses, credentials, 
 
 ## Residual risks
 
-An allowed coding agent or network destination can intentionally exfiltrate any data it can read. A kernel or hardware vulnerability may defeat even a strong sandbox. A compromised control plane or provider can subvert isolation and audit. The trusted single-user deployment profile reduces operational complexity; it does not make untrusted code safe or support hostile multi-tenancy.
+An allowed coding agent or network destination can intentionally exfiltrate any data it can read, including session-only harness or Git grants during their valid operation. A kernel or hardware vulnerability may defeat even a strong sandbox. A compromised control plane, installation bearer, credential KEK, or provider can subvert isolation and audit. The trusted single-user deployment profile reduces operational complexity; it does not make untrusted code safe or support hostile multi-tenancy.
 
-These risks must be stated in deployment documentation and revisited before implementing a provider, credentials, PTY access, Moments, multi-user access, or internet-facing operation.
+These risks must be stated in deployment documentation and revisited before implementing a provider, credentials, PTY access, Moments, delivery, multi-user access, or internet-facing operation.

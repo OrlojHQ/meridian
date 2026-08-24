@@ -5,11 +5,14 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  AuthenticationState,
   CapsuleDetail,
   CapsuleList,
   DiffReview,
   Lineage,
   PreviewCard,
+  ShipPanel,
+  WorkspaceBrowser,
 } from "../App";
 import { MeridianAPIError, api } from "../api/client";
 import type { Capsule, TimelineView } from "../api/generated/types.gen";
@@ -71,6 +74,22 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("Browser authentication", () => {
+  it("exchanges and clears the token without browser storage", async () => {
+    const storage = vi.spyOn(Storage.prototype, "setItem");
+    const authenticate = vi
+      .spyOn(api, "authenticateBrowser")
+      .mockRejectedValue(new MeridianAPIError("Invalid token", "unauthorized", 401));
+    wrapper(<AuthenticationState />);
+    const input = screen.getByLabelText("Installation token");
+    await userEvent.type(input, "installation-secret");
+    await userEvent.click(screen.getByRole("button", { name: "Authenticate" }));
+    await waitFor(() => expect(authenticate).toHaveBeenCalledWith("installation-secret"));
+    expect(input).toHaveValue("");
+    expect(storage).not.toHaveBeenCalled();
+  });
+});
+
 describe("Capsule list states", () => {
   it("renders loading, empty, and API errors clearly", async () => {
     let resolveProjects: ((value: { items: typeof project[] }) => void) | undefined;
@@ -103,6 +122,39 @@ describe("Capsule list states", () => {
       "Unavailable",
     );
     expect(screen.getByText("Ready", { selector: ".badge" })).toBeInTheDocument();
+  });
+
+  it("starts a project Thread in a fresh Capsule", async () => {
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
+    vi.spyOn(api, "capsules").mockResolvedValue({ items: [] });
+    const spawn = vi.spyOn(api, "createProjectThread").mockResolvedValue({
+      id: "intent-1",
+      projectId: project.id,
+      capsuleId: "capsule-new",
+      capsuleName: "new-session",
+      threadId: "thread-new",
+      runId: "run-new",
+      messageId: "message-new",
+      harness: "mock",
+      state: "provisioning",
+      createdAt: "2026-08-24T12:00:00Z",
+      updatedAt: "2026-08-24T12:00:00Z",
+      resourceVersion: 1,
+    });
+    wrapper(<CapsuleList />);
+    await userEvent.type(await screen.findByLabelText("Harness"), "mock");
+    await userEvent.type(screen.getByLabelText("Capsule name (optional)"), "new-session");
+    await userEvent.type(screen.getByLabelText("First prompt"), "inspect");
+    await userEvent.click(screen.getByRole("button", { name: "Start Thread" }));
+    await waitFor(() =>
+      expect(spawn).toHaveBeenCalledWith(
+        project.id,
+        "mock",
+        "inspect",
+        "new-session",
+      ),
+    );
+    expect(await screen.findByRole("status")).toHaveTextContent("thread-new");
   });
 });
 
@@ -144,6 +196,8 @@ describe("Capsule detail states", () => {
       pause: true,
       snapshot: false,
       clone: false,
+      browse: false,
+      delivery: false,
       preview: false,
       resourceMetrics: false,
     });
@@ -190,6 +244,80 @@ describe("Untrusted review content", () => {
   });
 });
 
+describe("Workspace browsing and shipping", () => {
+  it("renders safe text without interpreting HTML and labels binary content", async () => {
+    vi.spyOn(api, "workspaceFiles").mockResolvedValue({
+      items: [
+        { name: "review.txt", type: "file", size: 25, executable: false },
+        { name: "image.bin", type: "file", size: 3, executable: false },
+      ],
+    });
+    vi.spyOn(api, "workspaceFile").mockImplementation(async (_capsuleId, path) => ({
+      path,
+      content: path === "review.txt" ? btoa("<script>unsafe()</script>") : btoa("\0\u0001\u0002"),
+      size: path === "review.txt" ? 25 : 3,
+      executable: false,
+    }));
+    const { container } = wrapper(<WorkspaceBrowser capsuleId={capsule.id} />);
+    await userEvent.click(await screen.findByRole("button", { name: "review.txt" }));
+    expect(await screen.findByLabelText("Contents of review.txt")).toHaveTextContent(
+      "<script>unsafe()</script>",
+    );
+    expect(container.querySelector("script")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "image.bin" }));
+    expect(await screen.findByText("Binary content is unsupported.")).toBeInTheDocument();
+  });
+
+  it("requires typed ship approval and binds inspected Git objects", async () => {
+    vi.spyOn(api, "deliveryInspection").mockResolvedValue({
+      capsuleResourceVersion: capsule.resourceVersion,
+      head: "a".repeat(40),
+      tree: "b".repeat(40),
+      branch: "feature/local",
+      defaultBranch: "main",
+      dirty: true,
+    });
+    const delivery = vi.spyOn(api, "createDelivery").mockResolvedValue({
+      id: "delivery-1",
+      capsuleId: capsule.id,
+      projectId: project.id,
+      state: "succeeded",
+      action: "push",
+      approved: true,
+      approvedAt: "2026-08-24T00:00:00Z",
+      expectedResourceVersion: capsule.resourceVersion,
+      expectedHead: "a".repeat(40),
+      expectedTree: "b".repeat(40),
+      remoteBranch: "feature/remote",
+      destinationRef: "refs/heads/feature/remote",
+      resultCommitSha: "c".repeat(40),
+      createdAt: "2026-08-24T00:00:00Z",
+      updatedAt: "2026-08-24T00:00:00Z",
+      resourceVersion: 4,
+    });
+    wrapper(<ShipPanel capsule={capsule} />);
+    const ship = await screen.findByRole("button", { name: "Ship" });
+    expect(ship).toBeDisabled();
+    await userEvent.type(screen.getByLabelText("Destination branch"), "feature/remote");
+    await userEvent.type(screen.getByLabelText("Commit message"), "Ship reviewed work");
+    await userEvent.type(screen.getByLabelText("Ship confirmation"), "ship");
+    expect(ship).toBeEnabled();
+    await userEvent.click(ship);
+    await waitFor(() =>
+      expect(delivery).toHaveBeenCalledWith(
+        capsule.id,
+        expect.objectContaining({
+          approved: true,
+          expectedResourceVersion: capsule.resourceVersion,
+          expectedHead: "a".repeat(40),
+          expectedTree: "b".repeat(40),
+          remoteBranch: "feature/remote",
+        }),
+      ),
+    );
+  });
+});
+
 it("provides a text alternative for Timeline lineage", () => {
   wrapper(<Lineage view={timeline} />);
   expect(
@@ -207,6 +335,8 @@ it("reports preview capability as unavailable", async () => {
     pause: true,
     snapshot: true,
     clone: true,
+      browse: true,
+      delivery: true,
     preview: false,
     resourceMetrics: false,
   });
@@ -225,6 +355,8 @@ it("discovers previews and exposes expiry and revocation states", async () => {
     pause: true,
     snapshot: true,
     clone: true,
+      browse: true,
+      delivery: true,
     preview: true,
     resourceMetrics: false,
   });

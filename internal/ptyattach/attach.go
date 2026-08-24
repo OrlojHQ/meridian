@@ -77,6 +77,7 @@ type Options struct {
 	Terminal Terminal
 	Signals  Signals
 	Dial     DialFunc
+	Security client.SecuritySource
 }
 
 type nativeTerminal struct{}
@@ -147,7 +148,9 @@ func Run(parent context.Context, options Options) (resultErr error) {
 		options.Signals = nativeSignals{}
 	}
 	if options.Dial == nil {
-		options.Dial = dial
+		options.Dial = func(ctx context.Context, server, runID string, after uint64) (Socket, error) {
+			return dial(ctx, server, runID, after, options.Security)
+		}
 	}
 	if options.RunID == "" {
 		return errors.New("Run ID is required")
@@ -387,8 +390,13 @@ func indexDetach(value []byte) int {
 	return -1
 }
 
-func dial(ctx context.Context, server, runID string, after uint64) (Socket, error) {
-	api, err := client.NewClient(server)
+func dial(
+	ctx context.Context,
+	server, runID string,
+	after uint64,
+	security client.SecuritySource,
+) (Socket, error) {
+	api, err := client.NewClient(server, security)
 	if err != nil {
 		return nil, fmt.Errorf("create API client: %w", err)
 	}

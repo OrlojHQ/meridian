@@ -9,7 +9,8 @@ info:
 servers:
   - url: http://127.0.0.1:8080
     description: Loopback local development
-security: []
+security:
+  - bearerAuth: []
 paths:
   /healthz:
     get:
@@ -56,7 +57,6 @@ paths:
       operationId: getCapabilities
       summary: Report provider-backed product capabilities
       description: Clients must treat false capabilities as unsupported and must not construct private provider URLs.
-      security: []
       tags: [capabilities]
       responses:
         "200":
@@ -65,6 +65,94 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Capabilities"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /secrets:
+    get:
+      operationId: listSecrets
+      summary: List named secret metadata
+      tags: [secrets]
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Secret metadata page; values are never returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecretPage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /secrets/{secretName}:
+    parameters:
+      - name: secretName
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: "^[A-Za-z_][A-Za-z0-9_.-]{0,127}$"
+    put:
+      operationId: putSecret
+      summary: Create or replace an encrypted named secret
+      tags: [secrets]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PutSecretRequest"
+      responses:
+        "200":
+          description: Stored secret metadata; value is never returned
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Secret"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        default:
+          $ref: "#/components/responses/DefaultError"
+    delete:
+      operationId: deleteSecret
+      summary: Crypto-shred a named secret by deleting its envelope
+      tags: [secrets]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteSecretRequest"
+      responses:
+        "200":
+          description: Deleted secret metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Secret"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "429":
           $ref: "#/components/responses/TooManyRequests"
         default:
@@ -143,6 +231,52 @@ paths:
           $ref: "#/components/responses/TooManyRequests"
         default:
           $ref: "#/components/responses/DefaultError"
+  /projects/{projectId}/threads:
+    post:
+      operationId: createProjectThread
+      summary: Provision a fresh Capsule and start its first structured Thread
+      description: Persists a durable encrypted session intent before asynchronously provisioning a new Capsule. Idempotent replay returns the same intent and resource IDs.
+      tags: [threads]
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateProjectThreadRequest" }
+      responses:
+        "202":
+          description: Project Thread session accepted
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectThreadIntent" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /project-thread-intents/{intentId}:
+    get:
+      operationId: getProjectThreadIntent
+      summary: Get deterministic Project Thread provisioning status
+      tags: [threads]
+      parameters:
+        - $ref: "#/components/parameters/ProjectThreadIntentId"
+      responses:
+        "200":
+          description: Project Thread intent
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectThreadIntent" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        default: { $ref: "#/components/responses/DefaultError" }
   /projects/{projectId}/capsules:
     post:
       operationId: createCapsule
@@ -735,6 +869,7 @@ paths:
       operationId: attachRunWebSocket
       summary: Upgrade to the reconnectable PTY WebSocket
       description: Binary client frames are PTY input. JSON text frames carry resize controls. Server text frames carry ordered output events with cursors.
+      security: []
       tags: [runs]
       parameters:
         - $ref: "#/components/parameters/RunId"
@@ -838,6 +973,165 @@ paths:
           $ref: "#/components/responses/Unprocessable"
         default:
           $ref: "#/components/responses/DefaultError"
+  /capsules/{capsuleId}/files:
+    get:
+      operationId: listCapsuleFiles
+      summary: List a bounded Capsule workspace directory
+      description: Available only for a Ready Capsule. Private Git metadata and the supervisor marker are never exposed.
+      tags: [files]
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+        - name: path
+          in: query
+          schema: { type: string, maxLength: 4096 }
+        - name: after
+          in: query
+          schema: { type: string, maxLength: 255 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 512, default: 128 }
+      responses:
+        "200":
+          description: Bounded lexicographically ordered directory page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkspaceFilePage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /capsules/{capsuleId}/files/content:
+    get:
+      operationId: readCapsuleFile
+      summary: Read one bounded regular workspace file
+      description: Content is base64 encoded in JSON and is binary-safe. Symlinks and files over the supervisor bound are rejected.
+      tags: [files]
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+        - name: path
+          in: query
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 4096 }
+      responses:
+        "200":
+          description: Bounded file content
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkspaceFile" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413":
+          description: File exceeds the browser read bound
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /capsules/{capsuleId}/workspace:
+    get:
+      operationId: exportCapsuleWorkspace
+      summary: Stream a bounded portable Capsule workspace archive
+      description: Uses installation authentication in the Authorization header. The archive is never addressed by a token in the URL and is serialized against Moment and Delivery maintenance.
+      tags: [files]
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+      responses:
+        "200":
+          description: Portable Moment-contract tar stream
+          headers:
+            Meridian-Repository-URL:
+              description: Base64url-encoded Project repository URL used for fail-closed local worktree verification.
+              schema: { type: string }
+            Meridian-Git-Branch:
+              schema: { type: string }
+            Meridian-Git-Head:
+              schema: { type: string }
+            Meridian-Git-Dirty:
+              schema: { type: string }
+          content:
+            application/x-tar:
+              schema: { type: string, format: binary }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /capsules/{capsuleId}/deliveries/inspection:
+    get:
+      operationId: inspectCapsuleDelivery
+      summary: Inspect exact Git objects for Delivery approval
+      tags: [deliveries]
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+      responses:
+        "200":
+          description: Exact current Git state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeliveryInspection" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /capsules/{capsuleId}/deliveries:
+    post:
+      operationId: createCapsuleDelivery
+      summary: Commit and push an explicitly approved reviewed Git state
+      description: Approval binds the exact Capsule resource version, HEAD, and worktree tree. Only one exact non-protected refs/heads destination is pushed.
+      tags: [deliveries]
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateDeliveryRequest" }
+      responses:
+        "201":
+          description: Durable Delivery result
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Delivery" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        default: { $ref: "#/components/responses/DefaultError" }
+    get:
+      operationId: listCapsuleDeliveries
+      summary: List durable Delivery resources
+      tags: [deliveries]
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Delivery page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeliveryPage" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /deliveries/{deliveryId}:
+    get:
+      operationId: getDelivery
+      summary: Get a durable Delivery
+      tags: [deliveries]
+      parameters:
+        - $ref: "#/components/parameters/DeliveryId"
+      responses:
+        "200":
+          description: Delivery resource
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Delivery" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/DefaultError" }
   /capsules/{capsuleId}/moments:
     post:
       operationId: captureMoment
@@ -988,7 +1282,30 @@ paths:
         "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/Unprocessable" }
         default: { $ref: "#/components/responses/DefaultError" }
+  /auth/browser-session:
+    post:
+      operationId: createBrowserSession
+      summary: Exchange installation bearer authentication for an HttpOnly same-origin browser session
+      description: The installation token is accepted only in the Authorization header and is never returned. The session cookie is scoped to this origin and daemon lifetime. Remote bootstrap requires HTTPS; plain HTTP is accepted only for verified loopback source and Host addresses.
+      tags: [authentication]
+      responses:
+        "204":
+          description: Browser session established
+          headers:
+            Set-Cookie:
+              description: HttpOnly SameSite=Strict browser session cookie
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/DefaultError"
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Meridian installation token
   parameters:
     ProjectId:
       name: projectId
@@ -1018,6 +1335,13 @@ components:
       schema:
         type: string
         minLength: 1
+    ProjectThreadIntentId:
+      name: intentId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
     MomentId:
       name: momentId
       in: path
@@ -1027,6 +1351,13 @@ components:
         minLength: 1
     TimelineId:
       name: timelineId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    DeliveryId:
+      name: deliveryId
       in: path
       required: true
       schema:
@@ -1085,6 +1416,17 @@ components:
           schema:
             $ref: "#/components/schemas/LifecycleMutationRequest"
   responses:
+    Unauthorized:
+      description: Missing or invalid installation authentication
+      headers:
+        WWW-Authenticate:
+          description: Bearer authentication challenge
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
     ThreadMutation:
       description: Thread lifecycle mutation completed
       headers:
@@ -1170,7 +1512,7 @@ components:
           enum: [ok, not_ready]
     Capabilities:
       type: object
-      required: [providerVersion, attach, run, git, pause, snapshot, clone, preview, resourceMetrics]
+      required: [providerVersion, attach, run, git, pause, snapshot, clone, preview, browse, delivery, resourceMetrics]
       properties:
         providerVersion:
           type: string
@@ -1200,6 +1542,12 @@ components:
         preview:
           type: boolean
           description: False unless a provider exposes bounded port discovery and Capsule-scoped proxying.
+        browse:
+          type: boolean
+          description: False unless a provider exposes the authenticated bounded workspace browser.
+        delivery:
+          type: boolean
+          description: False unless a provider exposes authenticated exact-object commit and exact-ref push operations.
         resourceMetrics:
           type: boolean
           description: False when provider resource metrics are not exposed by the public API.
@@ -1227,6 +1575,67 @@ components:
           type: string
           maxLength: 1024
           description: Capsule image reference; Docker resolves it to an immutable image identity.
+        gitSecretName:
+          type: string
+          pattern: "^[A-Za-z_][A-Za-z0-9_.-]{0,127}$"
+          description: Name of a git_https secret authorized only for HTTPS clone.
+        harnessSecretNames:
+          type: array
+          maxItems: 64
+          uniqueItems: true
+          description: Explicit allowlist of harness_env secret names.
+          items:
+            type: string
+            pattern: "^[A-Za-z_][A-Za-z0-9_.-]{0,127}$"
+        gitPushSecretName:
+          type: string
+          pattern: "^[A-Za-z_][A-Za-z0-9_.-]{0,127}$"
+          description: Name of a git_push secret authorized only for one exact Delivery push.
+        githubAPISecretName:
+          type: string
+          pattern: "^[A-Za-z_][A-Za-z0-9_.-]{0,127}$"
+          description: Name of a github_api secret used only by meridiand to open a pull request.
+        commitAuthorName:
+          type: string
+          maxLength: 320
+        commitAuthorEmail:
+          type: string
+          maxLength: 320
+        defaultBaseBranch:
+          type: string
+          maxLength: 255
+    PutSecretRequest:
+      type: object
+      required: [purpose]
+      properties:
+        purpose:
+          type: string
+          enum: [git_https, git_push, github_api, harness_env]
+        value:
+          type: string
+          maxLength: 262144
+          description: Token or harness environment value. Never returned.
+        username:
+          type: string
+          maxLength: 4096
+          description: Git username, encrypted with the password/token.
+        password:
+          type: string
+          maxLength: 262144
+          description: Git password or token. Never returned.
+        expectedResourceVersion:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Required when replacing an existing name; omit when creating.
+    DeleteSecretRequest:
+      type: object
+      required: [expectedResourceVersion]
+      properties:
+        expectedResourceVersion:
+          type: integer
+          format: int64
+          minimum: 1
     CreateCapsuleRequest:
       type: object
       required: [name]
@@ -1290,6 +1699,17 @@ components:
             type: string
         imageReference:
           type: string
+        gitSecretName:
+          type: string
+        harnessSecretNames:
+          type: array
+          items:
+            type: string
+        gitPushSecretName: { type: string }
+        githubAPISecretName: { type: string }
+        commitAuthorName: { type: string }
+        commitAuthorEmail: { type: string }
+        defaultBaseBranch: { type: string }
         createdAt:
           type: string
           format: date-time
@@ -1300,6 +1720,29 @@ components:
           type: integer
           format: int64
           minimum: 1
+    Secret:
+      type: object
+      required: [id, name, purpose, createdAt, updatedAt, resourceVersion]
+      description: Secret metadata only; plaintext and ciphertext are never returned.
+      properties:
+        id: { type: string }
+        name: { type: string }
+        purpose:
+          type: string
+          enum: [git_https, git_push, github_api, harness_env]
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        resourceVersion: { type: integer, format: int64, minimum: 1 }
+    SecretPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Secret"
+        nextCursor:
+          type: string
     Capsule:
       type: object
       required:
@@ -1511,6 +1954,111 @@ components:
           maxLength: 1048576
         truncated:
           type: boolean
+    WorkspaceFileEntry:
+      type: object
+      required: [name, type, size, executable]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 255 }
+        type:
+          type: string
+          enum: [file, directory, symlink, other]
+        size: { type: integer, format: int64, minimum: 0 }
+        executable: { type: boolean }
+    WorkspaceFilePage:
+      type: object
+      required: [items]
+      properties:
+        path: { type: string, maxLength: 4096 }
+        items:
+          type: array
+          maxItems: 512
+          items: { $ref: "#/components/schemas/WorkspaceFileEntry" }
+        nextAfter: { type: string, maxLength: 255 }
+    WorkspaceFile:
+      type: object
+      required: [path, content, size, executable]
+      properties:
+        path: { type: string, minLength: 1, maxLength: 4096 }
+        content:
+          type: string
+          format: byte
+          maxLength: 1398104
+          description: Base64-encoded binary-safe content. Clients must not interpret it as HTML.
+        size: { type: integer, format: int64, minimum: 0, maximum: 1048576 }
+        executable: { type: boolean }
+    DeliveryInspection:
+      type: object
+      required: [capsuleResourceVersion, head, dirty, tree]
+      properties:
+        capsuleResourceVersion: { type: integer, format: int64, minimum: 1 }
+        head: { type: string, pattern: "^[0-9a-f]{40}([0-9a-f]{24})?$" }
+        branch: { type: string, maxLength: 255 }
+        dirty: { type: boolean }
+        originUrl: { type: string, maxLength: 4096 }
+        defaultBranch: { type: string, maxLength: 255 }
+        tree: { type: string, pattern: "^[0-9a-f]{40}([0-9a-f]{24})?$" }
+    CreateDeliveryRequest:
+      type: object
+      required:
+        [action, approved, expectedResourceVersion, expectedHead, expectedTree, remoteBranch]
+      properties:
+        action:
+          type: string
+          enum: [push, open_pull_request]
+        approved:
+          type: boolean
+          const: true
+        expectedResourceVersion: { type: integer, format: int64, minimum: 1 }
+        expectedHead: { type: string, pattern: "^[0-9a-f]{40}([0-9a-f]{24})?$" }
+        expectedTree: { type: string, pattern: "^[0-9a-f]{40}([0-9a-f]{24})?$" }
+        remoteBranch: { type: string, minLength: 1, maxLength: 255 }
+        commitMessage: { type: string, maxLength: 16384 }
+        pullRequestTitle: { type: string, maxLength: 512 }
+        pullRequestBody: { type: string, maxLength: 65536 }
+        baseBranch: { type: string, maxLength: 255 }
+    DeliveryState:
+      type: string
+      enum: [queued, committing, pushing, opening_pr, succeeded, failed]
+    Delivery:
+      type: object
+      required:
+        [id, capsuleId, projectId, state, action, approved, approvedAt,
+         expectedResourceVersion, expectedHead, expectedTree, remoteBranch,
+         destinationRef, createdAt, updatedAt, resourceVersion]
+      properties:
+        id: { type: string }
+        capsuleId: { type: string }
+        projectId: { type: string }
+        state: { $ref: "#/components/schemas/DeliveryState" }
+        action:
+          type: string
+          enum: [push, open_pull_request]
+        approved: { type: boolean, const: true }
+        approvedAt: { type: string, format: date-time }
+        expectedResourceVersion: { type: integer, format: int64, minimum: 1 }
+        expectedHead: { type: string }
+        expectedTree: { type: string }
+        remoteBranch: { type: string }
+        destinationRef: { type: string }
+        baseBranch: { type: string }
+        commitMessage: { type: string }
+        pullRequestTitle: { type: string }
+        pullRequestBody: { type: string }
+        resultCommitSha: { type: string }
+        resultPullRequestUrl: { type: string, format: uri }
+        resultPullRequestNumber: { type: integer, format: int64, minimum: 1 }
+        failure: { type: string, maxLength: 512 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        resourceVersion: { type: integer, format: int64, minimum: 1 }
+    DeliveryPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Delivery" }
+        nextCursor: { type: string }
     AttachTicket:
       type: object
       required: [ticket, expiresAt, webSocketPath]
@@ -1577,6 +2125,49 @@ components:
           type: array
           maxItems: 64
           items: { $ref: "#/components/schemas/HarnessProfile" }
+    CreateProjectThreadRequest:
+      type: object
+      required: [harness, prompt]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Optional name for the fresh Capsule.
+        harness: { type: string, minLength: 1, maxLength: 128 }
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 131072
+          description: Encrypted as a transcript envelope before SQLite persistence. Prefer stdin in shells.
+    ProjectThreadIntentState:
+      type: string
+      enum: [provisioning, ready, failed]
+    ProjectThreadIntent:
+      type: object
+      required:
+        [id, projectId, capsuleId, capsuleName, threadId, runId, messageId,
+         harness, state, createdAt, updatedAt, resourceVersion]
+      properties:
+        id: { type: string }
+        projectId: { type: string }
+        capsuleId: { type: string }
+        capsuleName: { type: string }
+        threadId: { type: string }
+        runId: { type: string }
+        messageId: { type: string }
+        harness: { type: string }
+        state: { $ref: "#/components/schemas/ProjectThreadIntentState" }
+        failureCode: { type: string, maxLength: 64 }
+        failureMessage:
+          type: string
+          maxLength: 256
+          description: Bounded content-free lifecycle failure summary.
+        thread: { $ref: "#/components/schemas/Thread" }
+        currentRun: { $ref: "#/components/schemas/Run" }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        resourceVersion: { type: integer, format: int64, minimum: 1 }
     CreateThreadRequest:
       type: object
       required: [harness]
@@ -1778,6 +2369,8 @@ tags:
     description: Process health and readiness.
   - name: capabilities
     description: Effective provider-backed UI features.
+  - name: secrets
+    description: Encrypted purpose-scoped named secret metadata and mutation.
   - name: projects
     description: Project metadata.
   - name: capsules
@@ -1788,3 +2381,7 @@ tags:
     description: Provider-independent encrypted structured harness Threads.
   - name: previews
     description: Bounded Capsule-local port discovery and loopback preview tickets.
+  - name: files
+    description: Bounded workspace browsing and authenticated portable export.
+  - name: deliveries
+    description: Explicitly approved exact-object commit, push, and GitHub pull request delivery.

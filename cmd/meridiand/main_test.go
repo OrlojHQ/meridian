@@ -10,6 +10,10 @@ func TestAgentSandboxProviderFlagsAreRegistered(t *testing.T) {
 	command := newRootCommand()
 	for _, name := range []string{
 		"provider",
+		"api-token-file",
+		"allow-non-loopback-listen",
+		"capsule-idle-pause",
+		"capsule-idle-scan-interval",
 		"agentsandbox-kubeconfig",
 		"agentsandbox-context",
 		"agentsandbox-in-cluster",

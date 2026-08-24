@@ -69,13 +69,27 @@ Namespace before namespaced release resources. Do not combine it with Helm's
 
 The chart exposes only a ClusterIP control-plane Service. It creates no public
 preview or PTY ingress. Put any user-facing API behind independently configured
-authentication, authorization, TLS, origin checks, and rate limits; Meridian's
-current public API itself remains unauthenticated.
+TLS, network authorization, origin checks, and rate limits. Meridian's API
+requires its installation bearer, but is a single-principal interface rather
+than a multi-user authorization system.
 
 ## Runtime profiles
 
 Agent Sandbox manages a singleton pod and PVC. It does **not** supply a kernel,
 VM, or multi-tenant isolation boundary.
+
+Private HTTPS clone and authorized `harness_env` references use the same
+authenticated `capsuled` protocol as Docker. Meridian does not create
+Kubernetes Secrets for user credentials and does not place those values in the
+Sandbox Pod specification or provider environment. The control-plane
+credential key remains in the protected Meridian data volume (or the
+`--secret-key-file` override) and must be backed up separately.
+
+When pod port-forward transport is available, bounded browsing, portable
+workspace export, and exact-ref Delivery use that same private protocol.
+`git_push` plaintext exists only for one private push request. `github_api`
+plaintext never enters the Sandbox; the control plane performs GitHub lookup
+and pull-request creation host-side.
 
 ### Validated gVisor profile
 
@@ -151,10 +165,11 @@ storage-system-consistent process. A Kubernetes backup must preserve CRD,
 Sandbox, PVC/PV, Secret, RuntimeClass references, and storage topology; restoring
 only SQLite does not restore Capsules.
 
-Meridian currently detects CSI snapshot prerequisites but reports Snapshot and
-Clone false. Moment v1 requires portable archive artifacts and cannot safely
-encode a CSI VolumeSnapshot. No CSI snapshot is silently replaced by a tar
-capture. Docker filesystem Moments remain unchanged.
+Agent Sandbox portable Moments, local-sync export, and Clone restore use the
+bounded `capsuled` archive contract over authenticated port-forward. Meridian
+still does not claim CSI VolumeSnapshot compatibility: provider-native CSI
+snapshots are not silently substituted for the portable archive and the chart
+grants no VolumeSnapshot verbs.
 
 ## Verification
 

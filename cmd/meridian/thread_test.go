@@ -10,24 +10,32 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/OrlojHQ/meridian/internal/apiauth"
 	"github.com/OrlojHQ/meridian/internal/store/sqlite"
 	"github.com/OrlojHQ/meridian/internal/transcripts"
 	"github.com/spf13/cobra"
 )
 
 func TestThreadCreateJSONReadsPromptFromStdin(t *testing.T) {
-	var received string
+	var received, authorization string
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		value, _ := io.ReadAll(request.Body)
 		received = string(value)
+		authorization = request.Header.Get("Authorization")
 		writer.Header().Set("Content-Type", "application/json")
 		writer.WriteHeader(http.StatusCreated)
 		_, _ = io.WriteString(writer, `{"thread":{"id":"thread-1","capsuleId":"capsule-1","state":"active","harness":"mock","protocol":"meridian.adapter.v1","structuredSupported":true,"encryptedAtRest":true,"messageCount":1,"encryptedBytes":64,"createdAt":"2026-08-24T12:00:00Z","updatedAt":"2026-08-24T12:00:00Z","resourceVersion":3},"currentRun":{"id":"run-1","capsuleId":"capsule-1","harness":"mock","state":"Running","createdAt":"2026-08-24T12:00:00Z","updatedAt":"2026-08-24T12:00:00Z","resourceVersion":2},"messageId":"message-1"}`)
 	}))
 	defer server.Close()
 	var output bytes.Buffer
+	tokenFile := testAPITokenFile(t)
+	tokenValue, err := apiauth.ReadTokenFile(tokenFile)
+	if err != nil {
+		t.Fatal(err)
+	}
 	config := &cliConfig{
-		server: server.URL, json: true, stdout: &output, stdin: strings.NewReader("stdin secret"),
+		server: server.URL, tokenFile: tokenFile,
+		json: true, stdout: &output, stdin: strings.NewReader("stdin secret"),
 	}
 	command := threadTestRoot(config)
 	command.SetArgs([]string{
@@ -41,9 +49,49 @@ func TestThreadCreateJSONReadsPromptFromStdin(t *testing.T) {
 		!strings.Contains(received, `"start":true`) {
 		t.Fatalf("create request = %s", received)
 	}
+	if authorization != "Bearer "+tokenValue {
+		t.Fatalf("authorization header was not sourced from token file")
+	}
 	if !strings.Contains(output.String(), `"id":"thread-1"`) ||
 		!strings.Contains(output.String(), `"messageId":"message-1"`) {
 		t.Fatalf("JSON output = %s", output.String())
+	}
+}
+
+func TestThreadSpawnParsesProjectPromptAndName(t *testing.T) {
+	var path, received, idempotency string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		path = request.URL.Path
+		value, _ := io.ReadAll(request.Body)
+		received = string(value)
+		idempotency = request.Header.Get("Idempotency-Key")
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusAccepted)
+		_, _ = io.WriteString(writer, `{"id":"intent-1","projectId":"project-1","capsuleId":"capsule-1","capsuleName":"named","threadId":"thread-1","runId":"run-1","messageId":"message-1","harness":"mock","state":"provisioning","createdAt":"2026-08-24T12:00:00Z","updatedAt":"2026-08-24T12:00:00Z","resourceVersion":1}`)
+	}))
+	defer server.Close()
+	var output bytes.Buffer
+	config := &cliConfig{
+		server: server.URL, tokenFile: testAPITokenFile(t), json: true,
+		stdout: &output, stdin: strings.NewReader("spawn prompt"),
+	}
+	command := threadTestRoot(config)
+	command.SetArgs([]string{
+		"thread", "spawn", "project-1", "--harness", "mock",
+		"--prompt-stdin", "--name", "named", "--idempotency-key", "spawn-key",
+	})
+	if err := command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if path != "/projects/project-1/threads" ||
+		!strings.Contains(received, `"prompt":"spawn prompt"`) ||
+		!strings.Contains(received, `"name":"named"`) ||
+		idempotency != "spawn-key" {
+		t.Fatalf("spawn request = %s %s key=%q", path, received, idempotency)
+	}
+	if !strings.Contains(output.String(), `"id":"intent-1"`) ||
+		!strings.Contains(output.String(), `"threadId":"thread-1"`) {
+		t.Fatalf("spawn JSON = %s", output.String())
 	}
 }
 
@@ -53,7 +101,10 @@ func TestThreadDeleteRequiresExplicitConfirmationAndVersion(t *testing.T) {
 		requests++
 	}))
 	defer server.Close()
-	config := &cliConfig{server: server.URL, stdout: io.Discard, stdin: strings.NewReader("")}
+	config := &cliConfig{
+		server: server.URL, tokenFile: testAPITokenFile(t),
+		stdout: io.Discard, stdin: strings.NewReader(""),
+	}
 	command := threadTestRoot(config)
 	command.SetArgs([]string{"thread", "delete", "thread-1", "--expected-version", "2"})
 	if err := command.Execute(); err == nil || !strings.Contains(err.Error(), "confirm-crypto-shred") {
@@ -66,6 +117,23 @@ func TestThreadDeleteRequiresExplicitConfirmationAndVersion(t *testing.T) {
 	command.SetArgs([]string{"thread", "send", "thread-1", "--prompt", "value"})
 	if err := command.Execute(); err == nil || !strings.Contains(err.Error(), "expected-version") {
 		t.Fatalf("send without version error = %v", err)
+	}
+}
+
+func testAPITokenFile(t *testing.T) string {
+	t.Helper()
+	path := apiauth.DefaultTokenPath(t.TempDir())
+	if _, err := apiauth.OpenOrCreateToken(path); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestDefaultAPITokenFileUsesEnvironment(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "custom.token")
+	t.Setenv("MERIDIAN_TOKEN_FILE", path)
+	if got := defaultAPITokenFile(); got != path {
+		t.Fatalf("default token file = %q, want %q", got, path)
 	}
 }
 
@@ -87,7 +155,10 @@ func TestThreadDeferredCreateStartAndCancelFailureCLI(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	config := &cliConfig{server: server.URL, stdout: io.Discard, stdin: strings.NewReader("")}
+	config := &cliConfig{
+		server: server.URL, tokenFile: testAPITokenFile(t),
+		stdout: io.Discard, stdin: strings.NewReader(""),
+	}
 	command := threadTestRoot(config)
 	command.SetArgs([]string{
 		"thread", "create", "--capsule", "capsule-1", "--harness", "mock",

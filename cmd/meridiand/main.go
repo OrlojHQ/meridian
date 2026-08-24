@@ -33,6 +33,12 @@ func newRootCommand() *cobra.Command {
 	command.SetVersionTemplate("meridiand {{.Version}}\n")
 	command.Flags().StringVar(&config.Provider, "provider", "fake", "Capsule provider (fake, docker, or agentsandbox)")
 	command.Flags().StringVar(&config.Listen, "listen", "127.0.0.1:8080", "HTTP listen address")
+	command.Flags().BoolVar(
+		&config.AllowNonLoopback,
+		"allow-non-loopback-listen",
+		false,
+		"explicitly allow authenticated API listening on a non-loopback address",
+	)
 	command.Flags().StringVar(
 		&config.Observability.MetricsListen,
 		"metrics-listen",
@@ -65,10 +71,34 @@ func newRootCommand() *cobra.Command {
 	)
 	command.Flags().StringVar(&config.DataDir, "data-dir", defaultDataDir(), "local state directory")
 	command.Flags().StringVar(
+		&config.APITokenFile,
+		"api-token-file",
+		"",
+		"installation API token file (default under data-dir)",
+	)
+	command.Flags().StringVar(
 		&config.TranscriptKeyFile,
 		"transcript-key-file",
 		"",
 		"installation transcript key file (default under data-dir; excluded from backups)",
+	)
+	command.Flags().StringVar(
+		&config.SecretKeyFile,
+		"secret-key-file",
+		"",
+		"installation credential key file (default under data-dir; excluded from backups)",
+	)
+	command.Flags().DurationVar(
+		&config.IdlePause,
+		"capsule-idle-pause",
+		30*time.Minute,
+		"pause Ready inactive Capsules after this duration (0 disables)",
+	)
+	command.Flags().DurationVar(
+		&config.IdleScanInterval,
+		"capsule-idle-scan-interval",
+		time.Minute,
+		"interval for bounded inactive Capsule scans",
 	)
 	command.Flags().StringVar(&config.Docker.Host, "docker-host", "", "Docker endpoint (empty uses official client environment)")
 	command.Flags().StringVar(&config.Docker.Image, "docker-image", "meridian-capsule:dev", "default Capsule image reference")

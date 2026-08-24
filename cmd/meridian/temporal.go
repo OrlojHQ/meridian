@@ -19,7 +19,7 @@ func newMomentCommand(config *cliConfig) *cobra.Command {
 			if expected <= 0 {
 				return errors.New("--expected-version must be greater than zero")
 			}
-			api, err := newAPI(config.server)
+			api, err := newAPI(config)
 			if err != nil {
 				return err
 			}
@@ -50,7 +50,7 @@ func newMomentCommand(config *cliConfig) *cobra.Command {
 	list := &cobra.Command{
 		Use: "list CAPSULE_ID", Args: cobra.ExactArgs(1), Short: "List Timeline Moments",
 		RunE: func(command *cobra.Command, args []string) error {
-			api, err := newAPI(config.server)
+			api, err := newAPI(config)
 			if err != nil {
 				return err
 			}
@@ -83,7 +83,7 @@ func newMomentCommand(config *cliConfig) *cobra.Command {
 	get := &cobra.Command{
 		Use: "get MOMENT_ID", Args: cobra.ExactArgs(1), Short: "Get a Moment",
 		RunE: func(command *cobra.Command, args []string) error {
-			api, err := newAPI(config.server)
+			api, err := newAPI(config)
 			if err != nil {
 				return err
 			}
@@ -107,7 +107,7 @@ func newTimelineCommand(config *cliConfig) *cobra.Command {
 	get := &cobra.Command{
 		Use: "get TIMELINE_ID", Args: cobra.ExactArgs(1), Short: "Get a Timeline with ancestry",
 		RunE: func(command *cobra.Command, args []string) error {
-			api, err := newAPI(config.server)
+			api, err := newAPI(config)
 			if err != nil {
 				return err
 			}
@@ -141,7 +141,7 @@ func newShardCommand(config *cliConfig) *cobra.Command {
 			if from == "" || name == "" {
 				return errors.New("--from and --name are required")
 			}
-			api, err := newAPI(config.server)
+			api, err := newAPI(config)
 			if err != nil {
 				return err
 			}
@@ -179,7 +179,7 @@ func newRewindCommand(config *cliConfig) *cobra.Command {
 			if to == "" || name == "" {
 				return errors.New("--to and --name are required")
 			}
-			api, err := newAPI(config.server)
+			api, err := newAPI(config)
 			if err != nil {
 				return err
 			}
@@ -216,7 +216,7 @@ func newSealCommand(config *cliConfig) *cobra.Command {
 			if expected <= 0 {
 				return errors.New("--expected-version must be greater than zero")
 			}
-			api, err := newAPI(config.server)
+			api, err := newAPI(config)
 			if err != nil {
 				return err
 			}

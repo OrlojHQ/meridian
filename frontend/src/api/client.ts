@@ -3,7 +3,10 @@ import {
   archiveThread,
   cancelRun,
   cancelThread,
+  createBrowserSession,
+  createCapsuleDelivery,
   createCapsulePreviewTicket,
+  createProjectThread,
   createRunAttachTicket,
   createThread,
   deleteCapsule,
@@ -12,12 +15,14 @@ import {
   getCapsule,
   getCapsuleGitDiff,
   getCapsuleGitStatus,
+  inspectCapsuleDelivery,
   getMoment,
   getRun,
   getThread,
   getTimeline,
   listCapsules,
   listCapsulePreviewPorts,
+  listCapsuleFiles,
   listMoments,
   listProjects,
   listRunEvents,
@@ -32,6 +37,7 @@ import {
   sendThreadMessage,
   startThread,
   respondThread,
+  readCapsuleFile,
 } from "./generated/sdk.gen";
 import type {
   AttachTicket,
@@ -44,6 +50,7 @@ import type {
   Moment,
   MomentPage,
   ProjectPage,
+  ProjectThreadIntent,
   PreviewPortPage,
   PreviewTicket,
   Run,
@@ -51,11 +58,16 @@ import type {
   RunPage,
   SealResult,
   TimelineView,
+  CreateDeliveryRequest,
+  Delivery,
+  DeliveryInspection,
   Thread,
   ThreadBlockPage,
   ThreadMutationResult,
   ThreadPage,
   ThreadResponseRequest,
+  WorkspaceFile,
+  WorkspaceFilePage,
 } from "./generated/types.gen";
 
 const baseUrl =
@@ -94,6 +106,8 @@ export function normalizeAPIError(value: unknown): MeridianAPIError {
               ? 422
               : envelope.error.code === "not_found"
                 ? 404
+                : envelope.error.code === "unauthorized"
+                  ? 401
                 : undefined;
       return new MeridianAPIError(envelope.error.message, envelope.error.code, status);
     }
@@ -126,6 +140,13 @@ const idempotencyHeaders = () => ({
 
 export const api = {
   baseUrl,
+  authenticateBrowser: (token: string, signal?: AbortSignal) =>
+    call<void>(
+      createBrowserSession({
+        ...generatedOptions(signal),
+        auth: token,
+      }),
+    ),
   capabilities: (signal?: AbortSignal) =>
     call<Capabilities>(getCapabilities(generatedOptions(signal))),
   projects: (signal?: AbortSignal) =>
@@ -138,6 +159,21 @@ export const api = {
         ...generatedOptions(signal),
         path: { projectId },
         query: { limit: 100 },
+      }),
+    ),
+  createProjectThread: (
+    projectId: string,
+    harness: string,
+    prompt: string,
+    name?: string,
+    signal?: AbortSignal,
+  ) =>
+    call<ProjectThreadIntent>(
+      createProjectThread({
+        ...generatedOptions(signal),
+        path: { projectId },
+        headers: idempotencyHeaders(),
+        body: { harness, prompt, ...(name ? { name } : {}) },
       }),
     ),
   capsule: (capsuleId: string, signal?: AbortSignal) =>
@@ -321,6 +357,42 @@ export const api = {
       getCapsuleGitDiff({
         ...generatedOptions(signal),
         path: { capsuleId },
+      }),
+    ),
+  workspaceFiles: (capsuleId: string, path = "", signal?: AbortSignal) =>
+    call<WorkspaceFilePage>(
+      listCapsuleFiles({
+        ...generatedOptions(signal),
+        path: { capsuleId },
+        query: { path, limit: 256 },
+      }),
+    ),
+  workspaceFile: (capsuleId: string, path: string, signal?: AbortSignal) =>
+    call<WorkspaceFile>(
+      readCapsuleFile({
+        ...generatedOptions(signal),
+        path: { capsuleId },
+        query: { path },
+      }),
+    ),
+  deliveryInspection: (capsuleId: string, signal?: AbortSignal) =>
+    call<DeliveryInspection>(
+      inspectCapsuleDelivery({
+        ...generatedOptions(signal),
+        path: { capsuleId },
+      }),
+    ),
+  createDelivery: (
+    capsuleId: string,
+    body: CreateDeliveryRequest,
+    signal?: AbortSignal,
+  ) =>
+    call<Delivery>(
+      createCapsuleDelivery({
+        ...generatedOptions(signal),
+        path: { capsuleId },
+        headers: idempotencyHeaders(),
+        body,
       }),
     ),
   moments: (capsuleId: string, signal?: AbortSignal) =>

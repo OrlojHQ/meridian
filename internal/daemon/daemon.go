@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/OrlojHQ/meridian/internal/apiauth"
 	"github.com/OrlojHQ/meridian/internal/app"
 	"github.com/OrlojHQ/meridian/internal/artifacts"
 	"github.com/OrlojHQ/meridian/internal/domain"
@@ -22,6 +23,7 @@ import (
 	agentsandboxprovider "github.com/OrlojHQ/meridian/internal/provider/agentsandbox"
 	dockerprovider "github.com/OrlojHQ/meridian/internal/provider/docker"
 	"github.com/OrlojHQ/meridian/internal/provider/fake"
+	"github.com/OrlojHQ/meridian/internal/secrets"
 	"github.com/OrlojHQ/meridian/internal/store/sqlite"
 	"github.com/OrlojHQ/meridian/internal/system"
 	"github.com/OrlojHQ/meridian/internal/transcripts"
@@ -32,7 +34,12 @@ type Config struct {
 	Listen            string
 	PreviewListen     string
 	DataDir           string
+	APITokenFile      string
+	AllowNonLoopback  bool
 	TranscriptKeyFile string
+	SecretKeyFile     string
+	IdlePause         time.Duration
+	IdleScanInterval  time.Duration
 	Logger            *log.Logger
 	Docker            dockerprovider.Config
 	DockerCPUs        float64
@@ -46,6 +53,17 @@ func Run(ctx context.Context, config Config) error {
 	}
 	if config.Listen == "" {
 		return fmt.Errorf("listen address is required")
+	}
+	apiTokenPath := config.APITokenFile
+	if apiTokenPath == "" {
+		apiTokenPath = apiauth.DefaultTokenPath(config.DataDir)
+	}
+	apiToken, err := apiauth.OpenOrCreateToken(apiTokenPath)
+	if err != nil {
+		return fmt.Errorf("initialize API authentication: %w", err)
+	}
+	if err := ValidateAPIListenAddress(config.Listen, config.AllowNonLoopback, apiToken != nil); err != nil {
+		return err
 	}
 	if config.PreviewListen == "" {
 		config.PreviewListen = "127.0.0.1:8081"
@@ -158,6 +176,25 @@ func Run(ctx context.Context, config Config) error {
 		return err
 	}
 	defer store.Close()
+	secretKeyPath := config.SecretKeyFile
+	if secretKeyPath == "" {
+		secretKeyPath = secrets.DefaultKeyPath(config.DataDir)
+	}
+	allowSecretKeyCreate := true
+	if err := store.View(ctx, func(reader ports.Reader) error {
+		items, _, err := reader.ListSecrets(ctx, ports.Page{Limit: 1})
+		if err == nil && len(items) > 0 {
+			allowSecretKeyCreate = false
+		}
+		return err
+	}); err != nil {
+		return fmt.Errorf("inspect stored credentials: %w", err)
+	}
+	secretKey, err := secrets.OpenOrCreateKey(secretKeyPath, allowSecretKeyCreate)
+	if err != nil {
+		return fmt.Errorf("initialize credential encryption: %w", err)
+	}
+	defer secretKey.Zero()
 	transcriptKeyPath := config.TranscriptKeyFile
 	if transcriptKeyPath == "" {
 		transcriptKeyPath = transcripts.DefaultKeyPath(config.DataDir)
@@ -219,6 +256,7 @@ func Run(ctx context.Context, config Config) error {
 	clock := system.Clock{}
 	ids := system.IDs{}
 	reconciler := app.NewReconciler(store, provider, clock, ids)
+	reconciler.ConfigureSecrets(secretKey)
 	reconciler.ConfigureObserver(metrics, config.Provider)
 	var snapshotter ports.WorkspaceSnapshotter
 	if capabilities.Snapshot {
@@ -230,13 +268,12 @@ func Run(ctx context.Context, config Config) error {
 		}
 		reconciler.ConfigureTemporal(snapshotter, artifactStore)
 	}
-	reconciler.Start(ctx)
-	defer reconciler.Close()
 	var runtime ports.CapsuleRuntime
 	if capabilities.Run || capabilities.Git || capabilities.Attach {
 		runtime, _ = provider.(ports.CapsuleRuntime)
 	}
 	service := app.NewService(store, clock, ids, reconciler, runtime)
+	service.ConfigureSecrets(secretKey)
 	service.ConfigureObserver(metrics, config.Provider)
 	if capabilities.Structured {
 		structuredRuntime, _ := provider.(ports.StructuredRuntime)
@@ -246,6 +283,7 @@ func Run(ctx context.Context, config Config) error {
 			return errors.New("provider advertises Structured without implementing it")
 		}
 		service.ConfigureThreads(structuredRuntime, transcriptKey)
+		reconciler.ConfigureProjectThreads(service.ReconcileProjectThreadCapsule)
 	}
 	if capabilities.Preview {
 		previewRuntime, _ := provider.(ports.PreviewRuntime)
@@ -256,15 +294,45 @@ func Run(ctx context.Context, config Config) error {
 		}
 		service.ConfigurePreview(previewRuntime)
 	}
+	if capabilities.Browse {
+		browser, _ := provider.(ports.WorkspaceBrowser)
+		if browser == nil {
+			_ = httpServer.Close()
+			_ = previewHTTPServer.Close()
+			return errors.New("provider advertises Browse without implementing it")
+		}
+		service.ConfigureBrowse(browser)
+	}
+	if capabilities.Delivery {
+		deliveryRuntime, _ := provider.(ports.DeliveryRuntime)
+		if deliveryRuntime == nil {
+			_ = httpServer.Close()
+			_ = previewHTTPServer.Close()
+			return errors.New("provider advertises Delivery without implementing it")
+		}
+		service.ConfigureDelivery(deliveryRuntime, app.NewGitHubHTTPClient(nil))
+	}
 	if snapshotter != nil {
 		service.ConfigureTemporal(snapshotter, artifactStore)
 	}
 	previewBaseURL := "http://" + previewListener.Addr().String()
-	api := httpapi.NewWithPreview(service, capabilities, previewBaseURL)
+	api := httpapi.NewWithPreview(service, capabilities, previewBaseURL, apiToken)
 	api.ConfigureObservability(metrics)
 	handler.set(api)
 	previewHandler.set(api.PreviewHandler())
 	recoveryStarted := time.Now()
+	if capabilities.Structured {
+		if err := service.RecoverProjectThreads(ctx); err != nil {
+			metrics.StartupRecovery("project_threads", "error", time.Since(recoveryStarted))
+			_ = httpServer.Close()
+			_ = previewHTTPServer.Close()
+			return fmt.Errorf("Project Thread startup recovery: %w", err)
+		}
+		metrics.StartupRecovery("project_threads", "ok", time.Since(recoveryStarted))
+	}
+	reconciler.Start(ctx)
+	defer reconciler.Close()
+	recoveryStarted = time.Now()
 	if err := reconciler.Recover(ctx); err != nil {
 		metrics.StartupRecovery("capsules", "error", time.Since(recoveryStarted))
 		_ = httpServer.Close()
@@ -288,6 +356,24 @@ func Run(ctx context.Context, config Config) error {
 		return fmt.Errorf("Run startup recovery: %w", err)
 	}
 	metrics.StartupRecovery("runs", "ok", time.Since(recoveryStarted))
+	if capabilities.Delivery {
+		recoveryStarted = time.Now()
+		if err := service.RecoverDeliveries(ctx); err != nil {
+			metrics.StartupRecovery("deliveries", "error", time.Since(recoveryStarted))
+			_ = httpServer.Close()
+			_ = previewHTTPServer.Close()
+			return fmt.Errorf("Delivery startup recovery: %w", err)
+		}
+		metrics.StartupRecovery("deliveries", "ok", time.Since(recoveryStarted))
+	}
+	if config.IdlePause > 0 {
+		if config.IdleScanInterval <= 0 {
+			return fmt.Errorf("idle scan interval must be positive when idle pause is enabled")
+		}
+		if err := reconciler.StartIdleScanner(ctx, config.IdleScanInterval, config.IdlePause); err != nil {
+			return fmt.Errorf("start idle Capsule scanner: %w", err)
+		}
+	}
 	api.SetReady(true)
 	config.Logger.Printf(
 		"meridiand ready on %s (previews %s) with %s provider",
@@ -352,6 +438,24 @@ func ValidatePreviewListenAddress(address string) error {
 	ip := net.ParseIP(host)
 	if ip == nil || !ip.IsLoopback() {
 		return errors.New("preview listener must use a literal loopback IP address")
+	}
+	return nil
+}
+
+func ValidateAPIListenAddress(address string, allowNonLoopback, authConfigured bool) error {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return fmt.Errorf("invalid API listen address: %w", err)
+	}
+	ip := net.ParseIP(host)
+	if ip != nil && ip.IsLoopback() {
+		return nil
+	}
+	if !authConfigured {
+		return errors.New("non-loopback API listener requires configured authentication")
+	}
+	if !allowNonLoopback {
+		return errors.New("non-loopback API listener requires --allow-non-loopback-listen")
 	}
 	return nil
 }

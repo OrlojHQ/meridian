@@ -1,9 +1,12 @@
 package agentsandbox
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,6 +17,7 @@ import (
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/ports"
 	"github.com/OrlojHQ/meridian/internal/provider/contract"
+	"github.com/coder/websocket"
 	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v8/apis/volumesnapshot/v1"
 	snapshotfake "github.com/kubernetes-csi/external-snapshotter/client/v8/clientset/versioned/fake"
 	corev1 "k8s.io/api/core/v1"
@@ -67,6 +71,52 @@ func runtimeServer(t *testing.T) *httptest.Server {
 			_ = json.NewEncoder(writer).Encode(map[string]any{"content": "clean", "truncated": false})
 		case "/v1/git/diff":
 			_, _ = writer.Write([]byte("{"))
+		case "/v1/workspace/capture":
+			writer.Header().Set(
+				"Meridian-Git-Branch",
+				base64.RawURLEncoding.EncodeToString([]byte("feature/portable-moments")),
+			)
+			writer.Header().Set(
+				"Meridian-Git-Head",
+				base64.RawURLEncoding.EncodeToString([]byte("0123456789abcdef")),
+			)
+			writer.Header().Set(
+				"Meridian-Git-Dirty",
+				base64.RawURLEncoding.EncodeToString([]byte("M runtime.go")),
+			)
+			writer.Header().Set("Content-Type", "application/x-tar")
+			_, _ = writer.Write([]byte("workspace-archive"))
+		case "/v1/workspace/restore":
+			body, _ := io.ReadAll(request.Body)
+			if request.Header.Get("Content-Type") != "application/x-tar" ||
+				request.Header.Get("Meridian-Archive-SHA256") != "restore-digest" ||
+				!bytes.Equal(body, []byte("restore-archive")) {
+				http.Error(writer, "invalid restore request", http.StatusBadRequest)
+				return
+			}
+			writer.WriteHeader(http.StatusNoContent)
+		case "/v1/previews":
+			_ = json.NewEncoder(writer).Encode(map[string]any{
+				"items": []map[string]any{{"port": 3000}},
+			})
+		case "/v1/previews/3000/health":
+			writer.Header().Set("X-Preview", "forwarded")
+			writer.WriteHeader(http.StatusCreated)
+			_, _ = writer.Write([]byte("preview-ok"))
+		case "/v1/previews/3000/socket":
+			connection, err := websocket.Accept(writer, request, &websocket.AcceptOptions{
+				Subprotocols: []string{"preview.v1"},
+			})
+			if err != nil {
+				return
+			}
+			defer connection.CloseNow()
+			messageType, value, err := connection.Read(request.Context())
+			if err == nil {
+				_ = connection.Write(
+					request.Context(), messageType, append([]byte("echo:"), value...),
+				)
+			}
 		case "/v1/structured/sessions":
 			_ = json.NewEncoder(writer).Encode(map[string]any{
 				"runId": "structured-run", "state": "Running",
@@ -359,11 +409,18 @@ func TestReadinessFailureAndUnsupportedSnapshots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if capabilities.Snapshot || capabilities.Clone || capabilities.Preview {
-		t.Fatalf("unsupported capabilities advertised: %#v", capabilities)
+	if !capabilities.Snapshot || !capabilities.Clone || !capabilities.Preview ||
+		!capabilities.Browse || !capabilities.Delivery {
+		t.Fatalf("portable runtime capabilities not advertised: %#v", capabilities)
 	}
 	if !capabilities.Structured {
 		t.Fatalf("configured private transport did not advertise structured support: %#v", capabilities)
+	}
+	ready, err := provider.Create(context.Background(), ports.CreateCapsuleRequest{
+		CapsuleID: "capsule-ready",
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 	provider.forwarder = nil
 	withoutTransport, err := provider.Capabilities(context.Background())
@@ -371,10 +428,13 @@ func TestReadinessFailureAndUnsupportedSnapshots(t *testing.T) {
 		t.Fatal(err)
 	}
 	if withoutTransport.Structured || withoutTransport.Run || withoutTransport.Attach ||
-		withoutTransport.Git {
+		withoutTransport.Git || withoutTransport.Snapshot || withoutTransport.Clone ||
+		withoutTransport.Preview || withoutTransport.Browse || withoutTransport.Delivery {
 		t.Fatalf("runtime capabilities advertised without port-forward transport: %#v", withoutTransport)
 	}
-	if _, err := provider.CaptureWorkspace(context.Background(), sandbox.Name); !errors.Is(err, domain.ErrUnsupported) {
+	if _, err := provider.CaptureWorkspace(
+		context.Background(), ready.ID,
+	); !errors.Is(err, domain.ErrUnsupported) {
 		t.Fatalf("snapshot error = %v", err)
 	}
 }
@@ -525,6 +585,134 @@ func TestStructuredRuntimeTransportPreservesTypedFrames(t *testing.T) {
 		if !session.closed {
 			t.Fatal("structured port-forward session leaked")
 		}
+	}
+}
+
+func TestPortableMomentUsesCapsuledAndOwnsCaptureTunnel(t *testing.T) {
+	provider, _, _ := testProvider(t)
+	resource, err := provider.Create(context.Background(), ports.CreateCapsuleRequest{
+		CapsuleID: "capsule-portable-moment",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	forwarder := provider.forwarder.(*recordingForwarder)
+	capture, err := provider.CaptureWorkspace(context.Background(), resource.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	captureSession := forwarder.sessions[len(forwarder.sessions)-1]
+	if captureSession.closed {
+		t.Fatal("capture port-forward closed before archive consumption")
+	}
+	if capture.Metadata.ImageDigest != "containerd://sha256:"+strings.Repeat("a", 64) ||
+		capture.Metadata.GitBranch != "feature/portable-moments" ||
+		capture.Metadata.GitHEAD != "0123456789abcdef" ||
+		capture.Metadata.GitDirtySummary != "M runtime.go" {
+		t.Fatalf("capture metadata = %#v", capture.Metadata)
+	}
+	archive, err := io.ReadAll(capture.Archive)
+	if err != nil || string(archive) != "workspace-archive" {
+		t.Fatalf("capture archive = %q, %v", archive, err)
+	}
+	if captureSession.closed {
+		t.Fatal("capture port-forward closed before archive close")
+	}
+	if err := capture.Archive.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if !captureSession.closed {
+		t.Fatal("capture archive close did not close port-forward")
+	}
+
+	beforeRestore := len(forwarder.sessions)
+	if err := provider.RestoreWorkspace(
+		context.Background(), resource.ID, "restore-digest",
+		int64(len("restore-archive")), strings.NewReader("restore-archive"),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if len(forwarder.sessions) != beforeRestore+1 ||
+		!forwarder.sessions[len(forwarder.sessions)-1].closed {
+		t.Fatal("restore port-forward was not closed")
+	}
+	beforeInvalid := len(forwarder.sessions)
+	if err := provider.RestoreWorkspace(
+		context.Background(), resource.ID, "restore-digest", -1, strings.NewReader(""),
+	); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("negative restore size error = %v", err)
+	}
+	if len(forwarder.sessions) != beforeInvalid {
+		t.Fatal("invalid restore unexpectedly opened a port-forward")
+	}
+}
+
+func TestPreviewRuntimeUsesCapsuledAndOwnsAttachTunnel(t *testing.T) {
+	provider, _, _ := testProvider(t)
+	resource, err := provider.Create(context.Background(), ports.CreateCapsuleRequest{
+		CapsuleID: "capsule-preview",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	forwarder := provider.forwarder.(*recordingForwarder)
+	discovered, err := provider.DiscoverPreviewPorts(context.Background(), resource.ID)
+	if err != nil || len(discovered) != 1 || discovered[0].Port != 3000 {
+		t.Fatalf("discovered previews = %#v, %v", discovered, err)
+	}
+	if !forwarder.sessions[len(forwarder.sessions)-1].closed {
+		t.Fatal("preview discovery port-forward was not closed")
+	}
+	request, _ := http.NewRequest(http.MethodGet, "http://preview.invalid/health", nil)
+	response, err := provider.ForwardPreviewHTTP(
+		context.Background(), resource.ID, 3000, request,
+	)
+	if err != nil || response.StatusCode != http.StatusCreated ||
+		response.Header.Get("X-Preview") != "forwarded" ||
+		string(response.Body) != "preview-ok" {
+		t.Fatalf("preview HTTP response = %#v, %v", response, err)
+	}
+	if !forwarder.sessions[len(forwarder.sessions)-1].closed {
+		t.Fatal("preview HTTP port-forward was not closed")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	attached, subprotocol, err := provider.AttachPreview(
+		ctx, resource.ID, 3000, "/socket",
+		http.Header{"Sec-Websocket-Protocol": []string{"preview.v1"}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attachSession := forwarder.sessions[len(forwarder.sessions)-1]
+	if attachSession.closed {
+		t.Fatal("preview attach port-forward closed while duplex stream is active")
+	}
+	if subprotocol != "preview.v1" {
+		t.Fatalf("preview subprotocol = %q", subprotocol)
+	}
+	if err := attached.Write(ctx, false, []byte("hello")); err != nil {
+		t.Fatal(err)
+	}
+	binary, value, err := attached.Read(ctx)
+	if err != nil || binary || string(value) != "echo:hello" {
+		t.Fatalf("preview echo = binary:%t %q, %v", binary, value, err)
+	}
+	_ = attached.Close()
+	if !attachSession.closed {
+		t.Fatal("preview attachment close did not close port-forward")
+	}
+
+	beforeFailure := len(forwarder.sessions)
+	if _, _, err := provider.AttachPreview(
+		context.Background(), resource.ID, 3001, "/socket", nil,
+	); err == nil {
+		t.Fatal("missing preview endpoint unexpectedly attached")
+	}
+	if len(forwarder.sessions) != beforeFailure+1 ||
+		!forwarder.sessions[len(forwarder.sessions)-1].closed {
+		t.Fatal("failed preview attach leaked its port-forward")
 	}
 }
 

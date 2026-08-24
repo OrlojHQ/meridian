@@ -419,9 +419,44 @@ pre.thread-content {
 
 .thread-create,
 .thread-composer form,
-.permission-panel form {
+.permission-panel form,
+.ship-form {
   display: grid;
   gap: 0.85rem;
+}
+
+.workspace-browser {
+  display: grid;
+  grid-template-columns: minmax(12rem, 0.7fr) minmax(0, 2fr);
+  gap: 1rem;
+}
+
+.file-tree {
+  min-height: 12rem;
+  border-right: 1px solid var(--border);
+  padding-right: 1rem;
+}
+
+.file-tree li {
+  padding: 0.35rem 0;
+  overflow-wrap: anywhere;
+}
+
+button.file-entry {
+  border: 0;
+  padding: 0;
+  color: var(--accent);
+  background: transparent;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-weight: 650;
+  text-align: left;
+}
+
+.file-viewer {
+  min-width: 0;
+  min-height: 12rem;
+  max-height: 40rem;
+  overflow: auto;
 }
 
 .thread-fast-path {
@@ -606,6 +641,17 @@ pre {
 }
 
 @media (max-width: 700px) {
+  .workspace-browser {
+    grid-template-columns: 1fr;
+  }
+
+  .file-tree {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    padding-right: 0;
+    padding-bottom: 1rem;
+  }
+
   .app-header {
     gap: 0.6rem;
   }

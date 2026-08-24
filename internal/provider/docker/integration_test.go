@@ -179,6 +179,10 @@ func TestDockerProviderIntegrationMomentsLineageAndSeal(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
+	source, err = service.GetCapsule(ctx, source.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	moment, err := service.CaptureMoment(
 		ctx, source.ID, "clean fixture", source.ResourceVersion, "moments-capture",
 	)

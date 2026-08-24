@@ -114,6 +114,18 @@ export const queries = {
       queryFn: ({ signal }) => api.gitDiff(capsuleId, signal),
       enabled: Boolean(capsuleId),
     }),
+  workspaceFiles: (capsuleId: string, path = "") =>
+    queryOptions({
+      queryKey: ["workspace-files", capsuleId, path],
+      queryFn: ({ signal }) => api.workspaceFiles(capsuleId, path, signal),
+      enabled: Boolean(capsuleId),
+    }),
+  deliveryInspection: (capsuleId: string) =>
+    queryOptions({
+      queryKey: ["delivery-inspection", capsuleId],
+      queryFn: ({ signal }) => api.deliveryInspection(capsuleId, signal),
+      enabled: Boolean(capsuleId),
+    }),
   moments: (capsuleId: string) =>
     queryOptions({
       queryKey: ["moments", capsuleId],

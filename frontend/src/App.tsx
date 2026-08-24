@@ -4,7 +4,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   Link,
   NavLink,
@@ -18,9 +18,13 @@ import { api, normalizeAPIError } from "./api/client";
 import { followRunEvents, type StreamStatus } from "./api/events";
 import type {
   Capsule,
+  CreateDeliveryRequest,
+  Delivery,
   GitResult,
   Moment,
   PreviewTicket,
+  Project,
+  ProjectThreadIntent,
   Run,
   RunEvent,
   TimelineView,
@@ -51,6 +55,7 @@ function StateBadge({ state }: { state: string }) {
 
 function ErrorState({ error }: { error: unknown }) {
   const normalized = normalizeAPIError(error);
+  if (normalized.status === 401) return <AuthenticationState />;
   return (
     <section className="error-state" role="alert">
       <h2>Request failed</h2>
@@ -58,6 +63,71 @@ function ErrorState({ error }: { error: unknown }) {
       <button type="button" onClick={() => window.location.reload()}>
         Retry
       </button>
+    </section>
+  );
+}
+
+export function AuthenticationState() {
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const hostname = window.location.hostname;
+  const safeOrigin =
+    window.location.protocol === "https:" ||
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "::1" ||
+    hostname === "[::1]";
+  if (!safeOrigin) {
+    return (
+      <section className="error-state" role="alert">
+        <h2>HTTPS required</h2>
+        <p>
+          Remote browser authentication is available only over HTTPS. Use a
+          loopback port-forward or configure an operator-controlled TLS proxy.
+        </p>
+      </section>
+    );
+  }
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setSubmitting(true);
+    const form = event.currentTarget;
+    const token = new FormData(form).get("token");
+    try {
+      if (typeof token !== "string" || token === "") {
+        throw new Error("Enter the installation API token");
+      }
+      await api.authenticateBrowser(token);
+      form.reset();
+      window.location.reload();
+    } catch (value) {
+      form.reset();
+      setError(normalizeAPIError(value).message);
+      setSubmitting(false);
+    }
+  }
+  return (
+    <section className="error-state" role="alert">
+      <h2>Authentication required</h2>
+      <p>
+        Enter the installation API token. Meridian exchanges it for an HttpOnly
+        same-origin session and does not store it in browser storage.
+      </p>
+      <form onSubmit={submit}>
+        <label htmlFor="installation-token">Installation token</label>
+        <input
+          id="installation-token"
+          name="token"
+          type="password"
+          autoComplete="off"
+          required
+        />
+        <button type="submit" disabled={submitting}>
+          {submitting ? "Authenticating…" : "Authenticate"}
+        </button>
+      </form>
+      {error ? <p>{error}</p> : null}
     </section>
   );
 }
@@ -176,6 +246,72 @@ function CapsuleSummary({
   );
 }
 
+function ProjectThreadSpawn({ projects }: { projects: Project[] }) {
+  const queryClient = useQueryClient();
+  const [result, setResult] = useState<ProjectThreadIntent>();
+  const mutation = useMutation({
+    mutationFn: ({
+      projectId,
+      harness,
+      prompt,
+      name,
+    }: {
+      projectId: string;
+      harness: string;
+      prompt: string;
+      name?: string;
+    }) => api.createProjectThread(projectId, harness, prompt, name),
+    onSuccess: async (value) => {
+      setResult(value);
+      await queryClient.invalidateQueries({ queryKey: ["capsules", value.projectId] });
+    },
+  });
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    mutation.mutate({
+      projectId: String(data.get("projectId") ?? ""),
+      harness: String(data.get("harness") ?? ""),
+      prompt: String(data.get("prompt") ?? ""),
+      name: String(data.get("name") ?? "") || undefined,
+    });
+    form.reset();
+  }
+  return (
+    <section className="card">
+      <h2>Start a project Thread</h2>
+      <p>A fresh Capsule and Timeline are provisioned for every session.</p>
+      <form onSubmit={submit}>
+        <label htmlFor="spawn-project">Project</label>
+        <select id="spawn-project" name="projectId" required defaultValue={projects[0]?.id}>
+          {projects.map((project) => (
+            <option key={project.id} value={project.id}>
+              {project.name}
+            </option>
+          ))}
+        </select>
+        <label htmlFor="spawn-harness">Harness</label>
+        <input id="spawn-harness" name="harness" required maxLength={128} />
+        <label htmlFor="spawn-name">Capsule name (optional)</label>
+        <input id="spawn-name" name="name" maxLength={128} />
+        <label htmlFor="spawn-prompt">First prompt</label>
+        <textarea id="spawn-prompt" name="prompt" required maxLength={131072} />
+        <button type="submit" disabled={mutation.isPending}>
+          {mutation.isPending ? "Starting…" : "Start Thread"}
+        </button>
+      </form>
+      {mutation.isError ? <p role="alert">{normalizeAPIError(mutation.error).message}</p> : null}
+      {result ? (
+        <p role="status">
+          Session {result.state}: Capsule <span className="mono">{result.capsuleId}</span>,
+          Thread <span className="mono">{result.threadId}</span>
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 export function CapsuleList() {
   const projects = useQuery(queries.projects());
   const projectItems = projects.data?.items ?? [];
@@ -207,14 +343,18 @@ export function CapsuleList() {
   if (capsuleError) return <ErrorState error={capsuleError.error} />;
   if (capsules.length === 0) {
     return (
-      <section className="empty-state">
-        <h1>Capsules</h1>
-        <p>No Capsules are available in {projectItems.length} project(s).</p>
-      </section>
+      <>
+        <ProjectThreadSpawn projects={projectItems} />
+        <section className="empty-state">
+          <h1>Capsules</h1>
+          <p>No Capsules are available in {projectItems.length} project(s).</p>
+        </section>
+      </>
     );
   }
   return (
     <section>
+      <ProjectThreadSpawn projects={projectItems} />
       <div className="page-heading">
         <div>
           <p className="eyebrow">Review workspace</p>
@@ -373,6 +513,174 @@ function CapsuleActions({ capsule }: { capsule: Capsule }) {
   );
 }
 
+function decodeWorkspaceText(content: string): string | undefined {
+  try {
+    const binary = Uint8Array.from(atob(content), (value) => value.charCodeAt(0));
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(binary);
+    const controls = Array.from(text).filter((value) => {
+      const code = value.charCodeAt(0);
+      return code === 0 || (code < 32 && value !== "\n" && value !== "\r" && value !== "\t");
+    }).length;
+    return text.includes("\0") || controls > Math.max(4, text.length / 100) ? undefined : text;
+  } catch {
+    return undefined;
+  }
+}
+
+export function WorkspaceBrowser({
+  capsuleId,
+  ready = true,
+}: {
+  capsuleId: string;
+  ready?: boolean;
+}) {
+  const [directory, setDirectory] = useState("");
+  const [selected, setSelected] = useState("");
+  const files = useQuery({
+    ...queries.workspaceFiles(capsuleId, directory),
+    enabled: ready && Boolean(capsuleId),
+  });
+  const content = useQuery({
+    queryKey: ["workspace-file", capsuleId, selected],
+    queryFn: ({ signal }) => api.workspaceFile(capsuleId, selected, signal),
+    enabled: ready && Boolean(selected),
+  });
+  const text = content.data ? decodeWorkspaceText(content.data.content) : undefined;
+  const enter = (name: string) => {
+    setDirectory(directory ? `${directory}/${name}` : name);
+    setSelected("");
+  };
+  const up = () => {
+    setDirectory(directory.split("/").slice(0, -1).join("/"));
+    setSelected("");
+  };
+  return (
+    <section className="panel">
+      <div className="section-heading">
+        <div>
+          <h2>Workspace files</h2>
+          <span className="mono">/{directory}</span>
+        </div>
+        {directory ? <button type="button" className="secondary" onClick={up}>Up</button> : null}
+      </div>
+      {!ready ? <p>File browsing is available only while the Capsule is Ready.</p> :
+        files.isPending ? <p role="status">Loading workspace files…</p> :
+          files.isError ? <ErrorState error={files.error} /> :
+            <div className="workspace-browser">
+              <ul className="file-tree" aria-label="Workspace file tree">
+                {files.data.items.map((entry) => (
+                  <li key={entry.name}>
+                    {entry.type === "directory" ? (
+                      <button type="button" className="file-entry" onClick={() => enter(entry.name)}>
+                        {entry.name}/
+                      </button>
+                    ) : entry.type === "file" ? (
+                      <button
+                        type="button"
+                        className="file-entry"
+                        onClick={() => setSelected(directory ? `${directory}/${entry.name}` : entry.name)}
+                      >
+                        {entry.name}
+                      </button>
+                    ) : (
+                      <span>{entry.name} <small>({entry.type} unsupported)</small></span>
+                    )}
+                    {entry.type === "file" && entry.size > 1_048_576 ?
+                      <small> (too large; unsupported)</small> : null}
+                  </li>
+                ))}
+              </ul>
+              <div className="file-viewer" aria-live="polite">
+                {!selected ? <p>Select a text file to review it.</p> :
+                  content.isPending ? <p role="status">Loading file…</p> :
+                    content.isError ? <p role="alert">This file is too large or unsupported.</p> :
+                      text === undefined ? <p role="status">Binary content is unsupported.</p> :
+                        <pre aria-label={`Contents of ${selected}`}>{text}</pre>}
+              </div>
+            </div>}
+    </section>
+  );
+}
+
+export function ShipPanel({ capsule }: { capsule: Capsule }) {
+  const [confirmation, setConfirmation] = useState("");
+  const [result, setResult] = useState<Delivery>();
+  const inspection = useQuery({
+    ...queries.deliveryInspection(capsule.id),
+    enabled: capsule.state === "Ready",
+  });
+  const mutation = useMutation({
+    mutationFn: (input: CreateDeliveryRequest) => api.createDelivery(capsule.id, input),
+    onSuccess: setResult,
+  });
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!inspection.data || confirmation !== "ship") return;
+    const data = new FormData(event.currentTarget);
+    const branch = String(data.get("branch") ?? "").trim();
+    const message = String(data.get("message") ?? "").trim();
+    const title = String(data.get("title") ?? "").trim();
+    const body = String(data.get("body") ?? "");
+    const base = String(data.get("base") ?? "").trim();
+    const openPullRequest = data.get("openPullRequest") === "on";
+    mutation.mutate({
+      action: openPullRequest ? "open_pull_request" : "push",
+      approved: true,
+      expectedResourceVersion: inspection.data.capsuleResourceVersion,
+      expectedHead: inspection.data.head,
+      expectedTree: inspection.data.tree,
+      remoteBranch: branch,
+      ...(message ? { commitMessage: message } : {}),
+      ...(title ? { pullRequestTitle: title } : {}),
+      ...(body ? { pullRequestBody: body } : {}),
+      ...(base ? { baseBranch: base } : {}),
+    });
+  }
+  return (
+    <section className="panel">
+      <h2>Ship reviewed changes</h2>
+      {capsule.state !== "Ready" ? <p>Shipping requires a Ready Capsule.</p> :
+        inspection.isPending ? <p role="status">Inspecting exact Git state…</p> :
+          inspection.isError ? <ErrorState error={inspection.error} /> :
+            <form className="ship-form" onSubmit={submit}>
+              <dl className="facts compact">
+                <div><dt>HEAD</dt><dd className="mono">{inspection.data.head}</dd></div>
+                <div><dt>Tree</dt><dd className="mono">{inspection.data.tree}</dd></div>
+                <div><dt>Working tree</dt><dd>{inspection.data.dirty ? "Dirty" : "Clean"}</dd></div>
+                <div><dt>Current branch</dt><dd>{inspection.data.branch || "Detached"}</dd></div>
+              </dl>
+              <label>Destination branch<input name="branch" required /></label>
+              <label>Commit message<input name="message" required={inspection.data.dirty} /></label>
+              <label className="check-label">
+                <input name="openPullRequest" type="checkbox" /> Open GitHub pull request
+              </label>
+              <label>Pull request title<input name="title" /></label>
+              <label>Base branch<input name="base" placeholder={inspection.data.defaultBranch} /></label>
+              <label>Pull request body<textarea name="body" rows={5} /></label>
+              <label>
+                Type <span className="mono">ship</span> to approve this exact HEAD and tree
+                <input
+                  aria-label="Ship confirmation"
+                  autoComplete="off"
+                  value={confirmation}
+                  onChange={(event) => setConfirmation(event.target.value)}
+                />
+              </label>
+              <button type="submit" disabled={confirmation !== "ship" || mutation.isPending}>
+                {mutation.isPending ? "Shipping…" : "Ship"}
+              </button>
+            </form>}
+      {mutation.isError ? <ErrorState error={mutation.error} /> : null}
+      {result ? (
+        <p role="status">
+          Delivery {result.id} is {result.state}.
+          {result.resultPullRequestUrl ? <> <a href={result.resultPullRequestUrl}>Open pull request</a>.</> : null}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 export function EventActivity({ runId }: { runId: string }) {
   const replay = useQuery(queries.events(runId));
   const [live, setLive] = useState<RunEvent[]>([]);
@@ -472,6 +780,7 @@ export function CapsuleDetail() {
       {value.failure && <p className="error-state" role="alert">{value.failure}</p>}
       <CapsuleActions capsule={value} />
       <CapsuleThreads capsule={value} />
+      <WorkspaceBrowser capsuleId={value.id} ready={value.state === "Ready"} />
       <section className="panel" id="runs">
         <div className="section-heading">
           <h2>Runs</h2>
@@ -491,6 +800,7 @@ export function CapsuleDetail() {
           </ul>
         )}
       </section>
+      <ShipPanel capsule={value} />
       {runs.data?.items[0] && <EventActivity runId={runs.data.items[0].id} />}
       <section className="panel">
         <div className="section-heading">

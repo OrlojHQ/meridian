@@ -51,7 +51,7 @@ func newRunStartCommand(config *cliConfig) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			api, err := newAPI(config.server)
+			api, err := newAPI(config)
 			if err != nil {
 				return err
 			}
@@ -80,7 +80,7 @@ func newRunGetCommand(config *cliConfig) *cobra.Command {
 	return &cobra.Command{
 		Use: "get RUN_ID", Short: "Get a Run", Args: cobra.ExactArgs(1),
 		RunE: func(command *cobra.Command, args []string) error {
-			api, err := newAPI(config.server)
+			api, err := newAPI(config)
 			if err != nil {
 				return err
 			}
@@ -106,7 +106,7 @@ func newRunListCommand(config *cliConfig) *cobra.Command {
 			if capsuleID == "" {
 				return errors.New("--capsule is required")
 			}
-			api, err := newAPI(config.server)
+			api, err := newAPI(config)
 			if err != nil {
 				return err
 			}
@@ -152,7 +152,7 @@ func newRunCancelCommand(config *cliConfig) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			api, err := newAPI(config.server)
+			api, err := newAPI(config)
 			if err != nil {
 				return err
 			}
@@ -180,7 +180,7 @@ func newRunEventsCommand(config *cliConfig) *cobra.Command {
 	command := &cobra.Command{
 		Use: "events RUN_ID", Short: "Replay ordered Run events", Args: cobra.ExactArgs(1),
 		RunE: func(command *cobra.Command, args []string) error {
-			api, err := newAPI(config.server)
+			api, err := newAPI(config)
 			if err != nil {
 				return err
 			}
@@ -220,7 +220,7 @@ func newCapsuleGitCommand(config *cliConfig, diff bool) *cobra.Command {
 		Use: name + " CAPSULE_ID", Short: "Get Capsule Git " + strings.TrimPrefix(name, "git-"),
 		Args: cobra.ExactArgs(1),
 		RunE: func(command *cobra.Command, args []string) error {
-			api, err := newAPI(config.server)
+			api, err := newAPI(config)
 			if err != nil {
 				return err
 			}
@@ -261,9 +261,14 @@ func newRunAttachCommand(config *cliConfig) *cobra.Command {
 			if !inputOK || !outputOK {
 				return errors.New("PTY attachment requires terminal stdin and stdout")
 			}
+			security, err := newSecuritySource(config.tokenFile)
+			if err != nil {
+				return err
+			}
 			return ptyattach.Run(command.Context(), ptyattach.Options{
 				Server: config.server, RunID: args[0], After: cursor,
 				Stdin: input, Stdout: output, Stderr: command.ErrOrStderr(),
+				Security: security,
 			})
 		},
 	}

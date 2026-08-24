@@ -9,6 +9,7 @@ import (
 
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/ports"
+	"github.com/OrlojHQ/meridian/internal/secrets"
 	"go.opentelemetry.io/otel"
 )
 
@@ -25,10 +26,23 @@ type Reconciler struct {
 	artifacts    ports.ArtifactStore
 	observer     ports.Observer
 	providerName string
+	secretKey    *secrets.InstallationKey
+	sessionReady func(context.Context, domain.Capsule) error
 
-	mu      sync.Mutex
-	pending map[domain.CapsuleID]struct{}
-	wg      sync.WaitGroup
+	mu          sync.Mutex
+	pending     map[domain.CapsuleID]struct{}
+	idleStarted bool
+	wg          sync.WaitGroup
+}
+
+func (r *Reconciler) ConfigureSecrets(key *secrets.InstallationKey) {
+	r.secretKey = key
+}
+
+func (r *Reconciler) ConfigureProjectThreads(
+	coordinator func(context.Context, domain.Capsule) error,
+) {
+	r.sessionReady = coordinator
 }
 
 func (r *Reconciler) ConfigureObserver(observer ports.Observer, providerName string) {
@@ -168,8 +182,19 @@ func (r *Reconciler) process(ctx context.Context, id domain.CapsuleID) {
 
 func (r *Reconciler) reconcile(ctx context.Context, id domain.CapsuleID) error {
 	capsule, err := r.getCapsule(ctx, id)
-	if err != nil || capsule.State.Terminal() {
+	if err != nil {
 		return err
+	}
+	if r.sessionReady != nil {
+		switch capsule.State {
+		case domain.CapsuleReady, domain.CapsuleFailed, domain.CapsuleSealed, domain.CapsuleDeleted:
+			if err := r.sessionReady(ctx, capsule); err != nil {
+				return err
+			}
+		}
+	}
+	if capsule.State.Terminal() {
+		return nil
 	}
 	if capsule.State == domain.CapsuleReady &&
 		(capsule.Maintenance == "capture" || capsule.Maintenance == "seal") {
@@ -191,11 +216,36 @@ func (r *Reconciler) reconcile(ctx context.Context, id domain.CapsuleID) error {
 		}); err != nil {
 			return err
 		}
+		if selected, err := r.prepareSetupCacheRestore(ctx, capsule, project); err != nil {
+			return err
+		} else if selected {
+			return r.Enqueue(ctx, id)
+		}
 		createRequest := ports.CreateCapsuleRequest{
 			CapsuleID:      capsule.ID,
 			RepositoryURL:  project.RepositoryURL,
 			Setup:          append([]string(nil), project.Setup...),
 			ImageReference: project.ImageReference,
+		}
+		if project.GitSecretName != "" {
+			var secret domain.Secret
+			if err := r.store.View(ctx, func(reader ports.Reader) error {
+				var err error
+				secret, err = reader.GetSecret(ctx, project.GitSecretName)
+				return err
+			}); err != nil {
+				return fmt.Errorf("resolve project Git secret: %w", err)
+			}
+			if secret.Purpose != domain.SecretGitHTTPS || r.secretKey == nil {
+				return fmt.Errorf("%w: project Git secret purpose mismatch", domain.ErrInvalid)
+			}
+			payload, err := r.secretKey.Open(secret)
+			if err != nil {
+				return fmt.Errorf("resolve project Git secret: %w", err)
+			}
+			createRequest.GitCredential = &ports.GitHTTPSCredential{
+				Username: payload.Username, Password: payload.Password,
+			}
 		}
 		if capsule.OriginMomentID != "" {
 			var origin domain.Moment
@@ -216,6 +266,11 @@ func (r *Reconciler) reconcile(ctx context.Context, id domain.CapsuleID) error {
 		}
 		started := time.Now()
 		resource, err := r.provider.Create(ctx, createRequest)
+		if createRequest.GitCredential != nil {
+			createRequest.GitCredential.Username = ""
+			createRequest.GitCredential.Password = ""
+			createRequest.GitCredential = nil
+		}
 		r.observeProvider("create", started, err)
 		if err != nil {
 			return err
@@ -258,6 +313,12 @@ func (r *Reconciler) reconcile(ctx context.Context, id domain.CapsuleID) error {
 			return r.reconcileRestore(ctx, capsule)
 		}
 		if capsule.State != domain.CapsuleReady {
+			if capsule.State == domain.CapsulePreparing && capsule.OriginMomentID == "" {
+				// Setup caching is an optimization. Publication or persistence
+				// failure must not prevent an otherwise healthy Capsule from
+				// becoming Ready.
+				_ = r.captureSetupMomentCache(ctx, capsule)
+			}
 			previous := capsule.ResourceVersion
 			if err := capsule.Transition(domain.CapsuleReady, r.clock.Now()); err != nil {
 				return err
@@ -398,7 +459,7 @@ func (r *Reconciler) saveCapsule(
 	expected domain.ResourceVersion,
 	eventType string,
 ) error {
-	return r.store.Transact(ctx, func(tx ports.Transaction) error {
+	if err := r.store.Transact(ctx, func(tx ports.Transaction) error {
 		if err := tx.UpdateCapsule(ctx, capsule, expected); err != nil {
 			return err
 		}
@@ -410,7 +471,13 @@ func (r *Reconciler) saveCapsule(
 			Timestamp:       r.clock.Now().UTC(),
 			ResourceVersion: capsule.ResourceVersion,
 		})
-	})
+	}); err != nil {
+		return err
+	}
+	if r.sessionReady != nil {
+		return r.sessionReady(ctx, capsule)
+	}
+	return nil
 }
 
 func (r *Reconciler) recordFailure(ctx context.Context, id domain.CapsuleID, cause error) error {

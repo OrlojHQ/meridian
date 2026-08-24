@@ -21,6 +21,14 @@ type CaptureMomentRes interface {
 	captureMomentRes()
 }
 
+type CreateBrowserSessionRes interface {
+	createBrowserSessionRes()
+}
+
+type CreateCapsuleDeliveryRes interface {
+	createCapsuleDeliveryRes()
+}
+
 type CreateCapsulePreviewTicketRes interface {
 	createCapsulePreviewTicketRes()
 }
@@ -31,6 +39,10 @@ type CreateCapsuleRes interface {
 
 type CreateProjectRes interface {
 	createProjectRes()
+}
+
+type CreateProjectThreadRes interface {
+	createProjectThreadRes()
 }
 
 type CreateRunAttachTicketRes interface {
@@ -49,8 +61,16 @@ type DeleteCapsuleRes interface {
 	deleteCapsuleRes()
 }
 
+type DeleteSecretRes interface {
+	deleteSecretRes()
+}
+
 type DeleteThreadRes interface {
 	deleteThreadRes()
+}
+
+type ExportCapsuleWorkspaceRes interface {
+	exportCapsuleWorkspaceRes()
 }
 
 type GetCapabilitiesRes interface {
@@ -69,6 +89,10 @@ type GetCapsuleRes interface {
 	getCapsuleRes()
 }
 
+type GetDeliveryRes interface {
+	getDeliveryRes()
+}
+
 type GetHealthRes interface {
 	getHealthRes()
 }
@@ -79,6 +103,10 @@ type GetMomentRes interface {
 
 type GetProjectRes interface {
 	getProjectRes()
+}
+
+type GetProjectThreadIntentRes interface {
+	getProjectThreadIntentRes()
 }
 
 type GetReadinessRes interface {
@@ -95,6 +123,18 @@ type GetThreadRes interface {
 
 type GetTimelineRes interface {
 	getTimelineRes()
+}
+
+type InspectCapsuleDeliveryRes interface {
+	inspectCapsuleDeliveryRes()
+}
+
+type ListCapsuleDeliveriesRes interface {
+	listCapsuleDeliveriesRes()
+}
+
+type ListCapsuleFilesRes interface {
+	listCapsuleFilesRes()
 }
 
 type ListCapsulePreviewPortsRes interface {
@@ -125,6 +165,10 @@ type ListRunsRes interface {
 	listRunsRes()
 }
 
+type ListSecretsRes interface {
+	listSecretsRes()
+}
+
 type ListThreadBlocksRes interface {
 	listThreadBlocksRes()
 }
@@ -135,6 +179,14 @@ type ListThreadsRes interface {
 
 type PauseCapsuleRes interface {
 	pauseCapsuleRes()
+}
+
+type PutSecretRes interface {
+	putSecretRes()
+}
+
+type ReadCapsuleFileRes interface {
+	readCapsuleFileRes()
 }
 
 type RespondThreadRes interface {

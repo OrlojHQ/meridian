@@ -24,8 +24,79 @@ meridian --json capsule list PROJECT_ID
 meridian --json run list --capsule CAPSULE_ID
 ```
 
-`--server` applies to both the dashboard and scriptable commands. Keep the
-server on loopback: the current public API is unauthenticated.
+`--server` and the installation token apply to both the dashboard and
+scriptable commands.
+
+## Browse, local sync, and Delivery
+
+Ready Capsules expose the supervisor's bounded workspace browser:
+
+```console
+meridian capsule files list CAPSULE_ID [PATH] [--after NAME] [--limit N]
+meridian capsule files read CAPSULE_ID PATH
+```
+
+Private `.git` data, `.meridian-prepared`, symlinks, oversized files, traversal,
+and unsupported file types are not readable. `read` writes binary-safe bytes to
+stdout; callers decide whether to save or render them.
+
+Local sync streams an authenticated portable archive without putting any token
+in the URL:
+
+```console
+meridian capsule sync CAPSULE_ID --to /existing/git/worktree
+meridian capsule sync CAPSULE_ID --to /existing/git/worktree --force
+```
+
+The CLI prints the remote Capsule Git status and bounded diff before mutation.
+The target must be the root of an existing Git worktree whose `origin` matches
+the Project repository; equivalent GitHub HTTPS/SSH forms are normalized.
+Without `--force`, the target must be clean and replacements must already
+match. Force mode mirrors non-Git content and deletions, but both modes stage
+and validate the full archive in a private sibling directory before publishing,
+preserve executable bits and safe relative symlinks, reject special files and
+expansion abuse, and never write or remove `.git` or `.meridian-prepared`.
+
+Delivery requires an explicit branch and local approval:
+
+```console
+meridian capsule ship CAPSULE_ID \
+  --branch feature/reviewed \
+  --commit-message "Ship reviewed changes" \
+  --yes
+
+meridian capsule ship CAPSULE_ID \
+  --branch feature/reviewed \
+  --commit-message "Ship reviewed changes" \
+  --open-pull-request --title "Reviewed changes" --base main --yes
+```
+
+The CLI refuses before API access when `--yes` is absent, prints status/diff,
+and binds approval to the freshly inspected Capsule resource version, HEAD, and
+tree. Dirty trees require a commit message. Delivery credentials come only from
+the Project's named purpose-scoped secrets. TUI browse, sync, and ship controls
+are intentionally deferred; use these scriptable commands or the browser review
+UI.
+
+## Project-first sessions
+
+The primary session command accepts a Project, structured harness, and first
+prompt in one authenticated action:
+
+```console
+printf '%s' 'inspect this project' | meridian thread spawn PROJECT_ID \
+  --harness opencode \
+  --prompt-stdin \
+  --name review-session \
+  --follow
+```
+
+Each accepted mutation reserves stable intent, Capsule, Thread, Run, and
+message IDs, then provisions a fresh Capsule and Timeline. `--follow` polls the
+durable intent and attaches to the encrypted Thread after promotion. Retry an
+ambiguous mutation with the same `--idempotency-key`; a replay never allocates
+a second Capsule. Capsule-scoped `thread create` remains available for
+power-user workflows.
 
 ## Fleet and Thread layout
 
@@ -48,6 +119,7 @@ keeps native PTY Runs available as a separate fallback.
 - `?`: help
 - `q` or `Ctrl-C`: leave the dashboard
 - `c`: create a Capsule
+- `T`: start a Project Thread in a fresh Capsule
 - `t`: create a Thread from the selected Capsule and structured harness; an
   optional first message can start the session atomically
 - `n`: compose a multi-line Thread message (`Enter` inserts a newline,

@@ -56,6 +56,9 @@ func (s *Service) ForwardPreviewHTTP(
 	if err := s.requireDiscoveredPreviewPort(ctx, capsule.ProviderResourceID, port); err != nil {
 		return ports.PreviewResponse{}, err
 	}
+	if err := s.TouchCapsuleActivity(ctx, capsuleID); err != nil {
+		return ports.PreviewResponse{}, err
+	}
 	started := time.Now()
 	response, err := s.preview.ForwardPreviewHTTP(ctx, capsule.ProviderResourceID, port, request)
 	if s.observer != nil {
@@ -84,6 +87,9 @@ func (s *Service) AttachPreview(
 	if err := s.requireDiscoveredPreviewPort(ctx, capsule.ProviderResourceID, port); err != nil {
 		return nil, "", err
 	}
+	if err := s.TouchCapsuleActivity(ctx, capsuleID); err != nil {
+		return nil, "", err
+	}
 	started := time.Now()
 	attachment, protocol, err := s.preview.AttachPreview(ctx, capsule.ProviderResourceID, port, path, header)
 	if s.observer != nil {
@@ -107,7 +113,9 @@ func (s *Service) previewCapsule(
 	if err != nil {
 		return domain.Capsule{}, err
 	}
-	if capsule.State != domain.CapsuleReady || capsule.Maintenance != "" {
+	if capsule.State != domain.CapsuleReady ||
+		capsule.DesiredState != domain.IntentReady ||
+		capsule.Maintenance != "" {
 		return domain.Capsule{}, fmt.Errorf("%w: Capsule must be Ready", domain.ErrIllegalTransition)
 	}
 	if capsule.ProviderResourceID == "" {

@@ -47,8 +47,9 @@ func newTranscriptKeyCommand(config *cliConfig) *cobra.Command {
 				return writeJSON(config.stdout, report)
 			}
 			_, err = fmt.Fprintf(config.stdout,
-				"rotated key-id=%s key-version=%d threads=%d\n",
-				report.KeyID, report.KeyVersion, report.ThreadsRewrapped)
+				"rotated key-id=%s key-version=%d threads=%d intents=%d\n",
+				report.KeyID, report.KeyVersion, report.ThreadsRewrapped,
+				report.IntentEnvelopesRewrapped)
 			return err
 		},
 	}
@@ -139,7 +140,7 @@ func newBackupCommand(config *cliConfig) *cobra.Command {
 }
 
 func newRestoreCommand(config *cliConfig) *cobra.Command {
-	var backup, dataDir, transcriptKeyFile string
+	var backup, dataDir, transcriptKeyFile, secretKeyFile string
 	var replace, yes bool
 	command := &cobra.Command{
 		Use:   "restore",
@@ -159,6 +160,7 @@ func newRestoreCommand(config *cliConfig) *cobra.Command {
 				maintenance.RestoreOptions{
 					Replace:           replace,
 					TranscriptKeyFile: transcriptKeyFile,
+					SecretKeyFile:     secretKeyFile,
 				},
 			)
 			if err != nil {
@@ -180,6 +182,12 @@ func newRestoreCommand(config *cliConfig) *cobra.Command {
 		"transcript-key-file",
 		"",
 		"separately protected installation transcript key required by encrypted transcripts",
+	)
+	command.Flags().StringVar(
+		&secretKeyFile,
+		"secret-key-file",
+		"",
+		"separately protected installation credential key required by encrypted secrets",
 	)
 	return command
 }

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -134,6 +135,94 @@ func TestMigrationsPersistenceEventsAndConflicts(t *testing.T) {
 	}
 	if foreignKeys != 1 {
 		t.Fatalf("foreign keys = %d", foreignKeys)
+	}
+}
+
+func TestCapsuleActivityAndSetupMomentCachePersistence(t *testing.T) {
+	ctx := context.Background()
+	store, err := Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	now := time.Date(2026, 8, 24, 13, 0, 0, 0, time.UTC)
+	hash := strings.Repeat("a", 64)
+	var capsule domain.Capsule
+	var moment domain.Moment
+	if err := store.Transact(ctx, func(tx ports.Transaction) error {
+		project := domain.Project{
+			ID: "project-cache", Name: "cache",
+			CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
+		}
+		if err := tx.InsertProject(ctx, project); err != nil {
+			return err
+		}
+		if err := tx.InsertCapsule(ctx, domain.Capsule{
+			ID: "capsule-cache", ProjectID: project.ID, Name: "capsule",
+			State: domain.CapsulePreparing, DesiredState: domain.IntentReady,
+			LastActivityAt: now, CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
+		}); err != nil {
+			return err
+		}
+		var err error
+		capsule, err = tx.GetCapsule(ctx, "capsule-cache")
+		if err != nil {
+			return err
+		}
+		moment = domain.Moment{
+			ID: "moment-cache", ProjectID: project.ID, CapsuleID: capsule.ID,
+			TimelineID: capsule.TimelineID, Name: "Internal setup cache",
+			ArchiveSHA256: strings.Repeat("b", 64), ArchiveSize: 42,
+			ManifestSHA256:   strings.Repeat("c", 64),
+			ImageDigest:      "sha256:" + strings.Repeat("d", 64),
+			ProjectSetupHash: hash, CreatedAt: now, Kind: domain.MomentSetupCache,
+		}
+		if err := tx.InsertMoment(ctx, moment); err != nil {
+			return err
+		}
+		return tx.PutSetupMomentCache(ctx, domain.SetupMomentCache{
+			ProjectID: project.ID, ConfigHash: hash, MomentID: moment.ID, CreatedAt: now,
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.View(ctx, func(reader ports.Reader) error {
+		got, err := reader.GetCapsule(ctx, capsule.ID)
+		if err != nil {
+			return err
+		}
+		if !got.LastActivityAt.Equal(now) {
+			t.Fatalf("last activity = %s, want %s", got.LastActivityAt, now)
+		}
+		cache, err := reader.GetSetupMomentCache(ctx, capsule.ProjectID, hash)
+		if err != nil {
+			return err
+		}
+		if cache.MomentID != moment.ID {
+			t.Fatalf("cache = %#v", cache)
+		}
+		if _, err := reader.GetSetupMomentCache(
+			ctx, capsule.ProjectID, strings.Repeat("e", 64),
+		); !errors.Is(err, domain.ErrNotFound) {
+			t.Fatalf("hash mismatch cache lookup = %v", err)
+		}
+		gotMoment, err := reader.GetMoment(ctx, cache.MomentID)
+		if err != nil {
+			return err
+		}
+		if gotMoment.Kind != domain.MomentSetupCache {
+			t.Fatalf("Moment kind = %q", gotMoment.Kind)
+		}
+		listed, more, err := reader.ListMoments(ctx, capsule.TimelineID, ports.Page{Limit: 10})
+		if err != nil {
+			return err
+		}
+		if more || len(listed) != 0 {
+			t.Fatalf("setup cache leaked into timeline: %#v", listed)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
 	}
 }
 

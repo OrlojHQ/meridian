@@ -65,6 +65,7 @@ func (p *Provider) StartRun(ctx context.Context, request ports.RuntimeRunRequest
 	result, err := supervisor.StartRun(ctx, capsuleproto.RunStartRequest{
 		RunID: string(request.RunID), Harness: request.Harness, Prompt: request.Prompt,
 		Columns: request.Columns, Rows: request.Rows,
+		Secrets: request.Secrets,
 	})
 	return runtimeRun(result), mapRuntimeError(err)
 }
@@ -79,6 +80,7 @@ func (p *Provider) StartStructured(
 	}
 	result, err := supervisor.StartStructured(ctx, capsuleproto.StructuredStartRequest{
 		RunID: string(request.RunID), Harness: request.Harness, Frame: request.Frame,
+		Secrets: request.Secrets,
 	})
 	return structuredRuntimeRun(result), mapRuntimeError(err)
 }
@@ -247,6 +249,94 @@ func (p *Provider) GitDiff(ctx context.Context, resourceID string) (ports.GitRes
 	}
 	result, err := supervisor.GitDiff(ctx)
 	return ports.GitResult{Content: result.Content, Truncated: result.Truncated}, mapRuntimeError(err)
+}
+
+func (p *Provider) ListWorkspaceFiles(
+	ctx context.Context, resourceID, filePath, after string, limit int,
+) (ports.WorkspaceFilePage, error) {
+	supervisor, err := p.runtimeClient(ctx, resourceID)
+	if err != nil {
+		return ports.WorkspaceFilePage{}, err
+	}
+	result, err := supervisor.BrowseList(ctx, capsuleproto.BrowseListRequest{
+		Path: filePath, After: after, Limit: limit,
+	})
+	if err != nil {
+		return ports.WorkspaceFilePage{}, mapRuntimeError(err)
+	}
+	output := ports.WorkspaceFilePage{Path: result.Path, NextAfter: result.NextAfter}
+	for _, item := range result.Items {
+		output.Items = append(output.Items, ports.WorkspaceFileEntry{
+			Name: item.Name, Type: item.Type, Size: item.Size, Executable: item.Executable,
+		})
+	}
+	return output, nil
+}
+
+func (p *Provider) ReadWorkspaceFile(
+	ctx context.Context, resourceID, filePath string,
+) (ports.WorkspaceFile, error) {
+	supervisor, err := p.runtimeClient(ctx, resourceID)
+	if err != nil {
+		return ports.WorkspaceFile{}, err
+	}
+	result, err := supervisor.BrowseRead(ctx, capsuleproto.BrowseReadRequest{Path: filePath})
+	if err != nil {
+		return ports.WorkspaceFile{}, mapRuntimeError(err)
+	}
+	return ports.WorkspaceFile{
+		Path: result.Path, Content: result.Content, Size: result.Size,
+		Executable: result.Executable,
+	}, nil
+}
+
+func (p *Provider) InspectDelivery(
+	ctx context.Context, resourceID string,
+) (ports.DeliveryInspection, error) {
+	supervisor, err := p.runtimeClient(ctx, resourceID)
+	if err != nil {
+		return ports.DeliveryInspection{}, err
+	}
+	result, err := supervisor.DeliveryState(ctx)
+	return ports.DeliveryInspection{
+		HEAD: result.HEAD, Branch: result.Branch, Dirty: result.Dirty,
+		OriginURL: result.OriginURL, DefaultBranch: result.DefaultBranch, Tree: result.Tree,
+	}, mapRuntimeError(err)
+}
+
+func (p *Provider) CommitDelivery(
+	ctx context.Context, request ports.DeliveryCommitRequest,
+) (ports.DeliveryCommitResult, error) {
+	supervisor, err := p.runtimeClient(ctx, request.ResourceID)
+	if err != nil {
+		return ports.DeliveryCommitResult{}, err
+	}
+	result, err := supervisor.DeliveryCommit(ctx, capsuleproto.DeliveryCommitRequest{
+		Message: request.Message, AuthorName: request.AuthorName,
+		AuthorEmail: request.AuthorEmail, ExpectedHEAD: request.ExpectedHEAD,
+		ExpectedTree: request.ExpectedTree,
+	})
+	return ports.DeliveryCommitResult{Commit: result.Commit, Tree: result.Tree}, mapRuntimeError(err)
+}
+
+func (p *Provider) PushDelivery(
+	ctx context.Context, request ports.DeliveryPushRequest,
+) (ports.DeliveryPushResult, error) {
+	supervisor, err := p.runtimeClient(ctx, request.ResourceID)
+	if err != nil {
+		return ports.DeliveryPushResult{}, err
+	}
+	credential := &capsuleproto.GitHTTPSCredential{
+		Username: request.GitCredential.Username, Password: request.GitCredential.Password,
+	}
+	defer func() { credential.Username, credential.Password = "", "" }()
+	result, err := supervisor.DeliveryPush(ctx, capsuleproto.DeliveryPushRequest{
+		SourceCommit: request.SourceCommit, DestinationRef: request.DestinationRef,
+		ExpectedOldRef: request.ExpectedOldRef, GitCredential: credential,
+	})
+	return ports.DeliveryPushResult{
+		Commit: result.Commit, DestinationRef: result.DestinationRef,
+	}, mapRuntimeError(err)
 }
 
 func (p *Provider) DiscoverPreviewPorts(

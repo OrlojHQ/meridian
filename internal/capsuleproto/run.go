@@ -42,11 +42,12 @@ const (
 )
 
 type RunStartRequest struct {
-	RunID   string `json:"runId"`
-	Harness string `json:"harness"`
-	Prompt  string `json:"prompt"`
-	Columns uint16 `json:"columns,omitempty"`
-	Rows    uint16 `json:"rows,omitempty"`
+	RunID   string            `json:"runId"`
+	Harness string            `json:"harness"`
+	Prompt  string            `json:"prompt"`
+	Columns uint16            `json:"columns,omitempty"`
+	Rows    uint16            `json:"rows,omitempty"`
+	Secrets map[string]string `json:"secrets,omitempty"`
 }
 
 type RunStatusResponse struct {
@@ -73,6 +74,50 @@ type RunEventsResponse struct {
 	Gap        bool       `json:"gap,omitempty"`
 }
 
+func resolveProfileSecrets(references []string, supplied map[string]string) (map[string]string, bool) {
+	if len(references) == 0 {
+		return nil, true
+	}
+	result := make(map[string]string, len(references))
+	for _, name := range references {
+		value, exists := supplied[name]
+		if !exists {
+			clearSecretValues(result)
+			return nil, false
+		}
+		result[name] = value
+	}
+	return result, true
+}
+
+func childEnvironment(secretValues map[string]string) []string {
+	blocked := make(map[string]bool, len(secretValues))
+	for name := range secretValues {
+		blocked[name] = true
+	}
+	result := make([]string, 0, len(os.Environ())+len(secretValues))
+	for _, item := range os.Environ() {
+		key, _, _ := strings.Cut(item, "=")
+		if blocked[key] || key == "MERIDIAN_CAPSULE_TOKEN" ||
+			key == "MERIDIAN_GIT_USERNAME" || key == "MERIDIAN_GIT_PASSWORD" ||
+			key == "GIT_ASKPASS" || key == "SSH_ASKPASS" {
+			continue
+		}
+		result = append(result, item)
+	}
+	for name, value := range secretValues {
+		result = append(result, name+"="+value)
+	}
+	return result
+}
+
+func clearSecretValues(values map[string]string) {
+	for name, value := range values {
+		values[name] = strings.Repeat("\x00", len(value))
+		delete(values, name)
+	}
+}
+
 type GitResponse struct {
 	Content   string `json:"content"`
 	Truncated bool   `json:"truncated,omitempty"`
@@ -97,6 +142,7 @@ type supervisedRun struct {
 	outputLimit int64
 	outputBytes int64
 	attachments int
+	secrets     map[string]string
 }
 
 func (s *Server) startRun(writer http.ResponseWriter, request *http.Request) {
@@ -171,7 +217,8 @@ func (s *Server) startRun(writer http.ResponseWriter, request *http.Request) {
 		writeProtocolError(writer, http.StatusUnprocessableEntity, "native_interaction_unavailable")
 		return
 	}
-	if len(profile.SecretRefs) != 0 {
+	resolved, ok := resolveProfileSecrets(profile.SecretRefs, input.Secrets)
+	if !ok {
 		writeProtocolError(writer, http.StatusUnprocessableEntity, "secrets_unresolved")
 		return
 	}
@@ -188,6 +235,7 @@ func (s *Server) startRun(writer http.ResponseWriter, request *http.Request) {
 		id: input.RunID, state: RunStarting, startedAt: time.Now().UTC(),
 		pty: profile.PTY, profile: profile, eventLimit: s.config.EventLimit,
 		outputLimit: s.config.OutputLimit,
+		secrets:     resolved,
 	}
 	s.mu.Lock()
 	if existing := s.runs[input.RunID]; existing != nil {
@@ -292,6 +340,9 @@ func (r *supervisedRun) execute(directory, prompt string, columns, rows uint16) 
 	}
 	command := exec.Command(r.profile.Executable, arguments...)
 	command.Dir = directory
+	command.Env = childEnvironment(r.secrets)
+	clearSecretValues(r.secrets)
+	r.secrets = nil
 	r.mu.Lock()
 	r.command = command
 	r.mu.Unlock()
@@ -305,6 +356,7 @@ func (r *supervisedRun) execute(directory, prompt string, columns, rows uint16) 
 			rows = 24
 		}
 		terminal, err := pty.StartWithSize(command, &pty.Winsize{Cols: columns, Rows: rows})
+		command.Env = nil
 		if err != nil {
 			r.finish(RunFailed, nil, "run process failed to start")
 			return
@@ -343,9 +395,11 @@ func (r *supervisedRun) execute(directory, prompt string, columns, rows uint16) 
 			}
 		}
 		if err := command.Start(); err != nil {
+			command.Env = nil
 			r.finish(RunFailed, nil, "run process failed to start")
 			return
 		}
+		command.Env = nil
 		r.mu.Lock()
 		r.state = RunRunning
 		r.mu.Unlock()

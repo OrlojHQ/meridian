@@ -11,8 +11,9 @@ model, choose tools, interpret model output, or implement an agent loop.
 > [!IMPORTANT]
 > Meridian is currently a source-complete pre-release with no published stable
 > release. The local Docker provider is for one trusted user and is not a
-> hostile multi-tenant isolation boundary. Keep the unauthenticated public API
-> on loopback.
+> hostile multi-tenant isolation boundary. The API requires the installation
+> bearer token, but should still remain on loopback unless an operator supplies
+> TLS and an independently reviewed network boundary.
 
 ## What you can do today
 
@@ -22,6 +23,8 @@ With Meridian you can:
 - run any executable described by the repository's harness configuration;
 - attach to an interactive PTY and reconnect without losing bounded output;
 - stream ordered Run events and inspect Git status or unified diffs;
+- browse bounded workspace files, safely sync a reviewed workspace into a
+  matching local Git worktree, and ship an approved exact Git state;
 - retain encrypted structured agent Threads with typed messages, tool summaries,
   permission responses, and resumable sessions;
 - open a terminal dashboard or browser-based review interface;
@@ -52,6 +55,8 @@ safety semantics.
 - **Shard** — a new writable Capsule and Timeline created from a Moment.
 - **Rewind** — a non-destructive Shard from an earlier Moment.
 - **Seal** — capture a final Moment and permanently block further mutation.
+- **Delivery** — a durable, explicitly approved exact-ref push, optionally
+  followed by a host-side GitHub pull request.
 
 ## Five-minute local demo
 
@@ -85,7 +90,7 @@ Start the Docker-backed control plane:
   --docker-image=meridian-capsule-integration:dev
 ```
 
-In another terminal, create a Project and Capsule:
+In another terminal, create a Project:
 
 ```console
 ./bin/meridian project create demo \
@@ -93,22 +98,19 @@ In another terminal, create a Project and Capsule:
   --image=meridian-capsule-integration:dev
 
 ./bin/meridian project list
-./bin/meridian capsule create PROJECT_ID workspace
-./bin/meridian capsule get CAPSULE_ID
 ```
 
-Creation is asynchronous. Poll `capsule get` until the observed state is
-`Ready`, then create a durable encrypted Thread with the deterministic
-`mock-structured` adapter:
+Start a project session with one action. Meridian durably encrypts the first
+prompt, provisions a fresh Capsule and Timeline asynchronously, then creates
+and starts the Thread when the Capsule is Ready:
 
 ```console
-printf '%s' 'inspect the fixture' | ./bin/meridian thread create \
-  --capsule CAPSULE_ID \
+printf '%s' 'inspect the fixture' | ./bin/meridian thread spawn PROJECT_ID \
   --harness mock-structured \
   --prompt-stdin \
-  --start
+  --name workspace \
+  --follow
 
-./bin/meridian thread follow THREAD_ID --after 0
 ./bin/meridian thread get THREAD_ID
 
 printf '%s' 'second turn' | ./bin/meridian thread send THREAD_ID \
@@ -120,6 +122,8 @@ The mock's `permission...` and `input...` messages exercise explicit response
 controls without credentials. Use `thread respond`, `thread cancel`,
 `thread archive`, and the explicitly confirmed `thread delete` crypto-shred
 operation for the remaining lifecycle.
+`capsule create` and Capsule-scoped `thread create` remain available for
+power-user workflows that intentionally assemble those resources separately.
 
 The image also includes the native deterministic Run harness:
 
@@ -133,7 +137,38 @@ The image also includes the native deterministic Run harness:
 ./bin/meridian run events RUN_ID --after 0
 ./bin/meridian capsule git-status CAPSULE_ID
 ./bin/meridian capsule diff CAPSULE_ID
+./bin/meridian capsule files list CAPSULE_ID
+./bin/meridian capsule files read CAPSULE_ID README.md
 ```
+
+To bring the reviewed workspace into an existing matching Git worktree, inspect
+the printed Capsule status/diff and run:
+
+```console
+./bin/meridian capsule sync CAPSULE_ID --to /path/to/worktree
+# Explicitly mirror non-Git content, including deletions:
+./bin/meridian capsule sync CAPSULE_ID --to /path/to/worktree --force
+```
+
+Sync never writes or removes `.git` or `.meridian-prepared`. The default mode
+requires a clean target and refuses replacement conflicts; `--force` still
+rejects traversal, special files, and symlink escapes.
+
+Delivery Projects name separate `git_push` and `github_api` secrets and commit
+identity; secret plaintext is never Project configuration. After reviewing the
+status, diff, HEAD, and tree, ship only a non-protected branch:
+
+```console
+./bin/meridian capsule ship CAPSULE_ID \
+  --branch feature/reviewed \
+  --commit-message "Ship reviewed changes" \
+  --open-pull-request --title "Reviewed changes" --base main --yes
+```
+
+`--yes` is mandatory and binds the request to the freshly inspected Capsule
+resource version, HEAD, and tree. Meridian refuses `main`, `master`, `trunk`,
+the discovered/configured default destination, tags, deletion, wildcard, and
+force pushes.
 
 The demo image also includes an interactive harness:
 
@@ -240,11 +275,15 @@ adapter:
 # Pi: ["pi-rpc", "--session-dir", "/home/capsule/.pi-sessions", "--", "/usr/local/bin/pi"]
 ```
 
-Meridian does not install these harnesses or model providers and does not
-resolve credentials from project YAML. Private Git authentication and
-long-lived credential injection are not implemented; credentials must be
-provided through a separately controlled project-image/runtime mechanism, not
-arguments or repository configuration. See [Harness
+Meridian does not install these harnesses or model providers. Operators store
+purpose-scoped values with `meridian secret put NAME --purpose ... --stdin`;
+values are encrypted under the separate installation credential key and are
+never returned. A Project must explicitly authorize a `git_https` name with
+`--git-secret` or `harness_env` names with repeated `--harness-secret` flags.
+Repository YAML can reference only those authorized harness names. Private
+HTTPS clone uses a one-shot private askpass grant, and native and structured
+harnesses receive exactly their referenced environment values for process
+startup. See [Harness
 configuration](docs/harness-configuration.md) and [structured adapter
 guidance](docs/harness-adapters.md).
 
@@ -342,13 +381,15 @@ artifact store. Stop `meridiand` before offline maintenance:
 ```
 
 CAS garbage collection is a dry run unless deletion is explicitly requested.
-Backups contain no runtime plaintext tokens and deliberately exclude the
-installation transcript key. Retained encrypted Threads cannot be restored
-without a separately protected matching key; key loss is unrecoverable.
+Backups contain credential ciphertext but no credential plaintext and
+deliberately exclude both installation transcript and credential keys. The
+manifest records required key IDs and versions. Restore requires separately
+protected matching keys (`--transcript-key-file` and `--secret-key-file`);
+key loss is unrecoverable.
 Transcript-key rotation is coordinated and offline: stop the daemon, use the
-command above to transactionally re-wrap every retained non-deleted Thread,
-then create and deep-verify a fresh backup. The command never prints key
-material.
+command above to transactionally re-wrap every retained non-deleted Thread and
+pending Project Thread intent, then create and deep-verify a fresh backup. The
+command never prints key material.
 
 Thread message/start/respond mutations are client-idempotent. After an
 ambiguous failure, retry with the same idempotency key: one pending persisted
@@ -376,7 +417,8 @@ terminal output, previews, and Capsule processes as hostile inputs.
 
 Important boundaries:
 
-- the public API is currently unauthenticated and loopback-only by default;
+- the public API requires one installation bearer principal and defaults to a
+  loopback listener;
 - only `meridiand` can access the host Docker socket;
 - Capsules never receive the Docker socket, host paths, provider credentials,
   or control-plane state;

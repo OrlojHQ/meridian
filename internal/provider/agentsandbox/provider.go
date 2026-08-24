@@ -9,7 +9,6 @@ import (
 	"encoding/base32"
 	"encoding/base64"
 	"fmt"
-	"io"
 	"strings"
 	"time"
 
@@ -260,13 +259,14 @@ func (p *Provider) Capabilities(ctx context.Context) (ports.ProviderCapabilities
 			)
 		}
 	}
-	// CSI snapshots intentionally remain unavailable to the application. Meridian
-	// Moments currently require a portable archive and manifest; claiming CSI
-	// while silently producing a tar archive would violate that contract.
+	transportAvailable := p.forwarder != nil
 	return ports.ProviderCapabilities{
 		Version: "agentsandbox/v1beta1@v0.5.6",
-		Pause:   true, Run: p.forwarder != nil, Git: p.forwarder != nil,
-		Attach: p.forwarder != nil, Structured: p.forwarder != nil,
+		Pause:   true, Run: transportAvailable, Git: transportAvailable,
+		Attach: transportAvailable, Structured: transportAvailable,
+		Snapshot: transportAvailable, Clone: transportAvailable,
+		Preview: transportAvailable, Browse: transportAvailable,
+		Delivery: transportAvailable,
 	}, nil
 }
 
@@ -308,14 +308,6 @@ func (p *Provider) SnapshotSupport(ctx context.Context) SnapshotSupport {
 		}
 	}
 	return result
-}
-
-func (p *Provider) CaptureWorkspace(context.Context, string) (ports.WorkspaceCapture, error) {
-	return ports.WorkspaceCapture{}, domain.ErrUnsupported
-}
-
-func (p *Provider) RestoreWorkspace(context.Context, string, string, int64, io.Reader) error {
-	return domain.ErrUnsupported
 }
 
 func (p *Provider) Create(
@@ -368,9 +360,19 @@ func (p *Provider) Create(
 		repositoryURL, setup = "", nil
 	}
 	_ = token // token is consumed by runtimeClient from the Secret after restart, too.
-	_, err = client.Prepare(setupContext, capsuleproto.PrepareRequest{
+	prepareRequest := capsuleproto.PrepareRequest{
 		RepositoryURL: repositoryURL, Destination: workspace, Setup: setup,
-	})
+	}
+	if request.GitCredential != nil && !request.Restore {
+		prepareRequest.GitCredential = &capsuleproto.GitHTTPSCredential{
+			Username: request.GitCredential.Username, Password: request.GitCredential.Password,
+		}
+	}
+	_, err = client.Prepare(setupContext, prepareRequest)
+	if prepareRequest.GitCredential != nil {
+		prepareRequest.GitCredential.Username = ""
+		prepareRequest.GitCredential.Password = ""
+	}
 	if err != nil {
 		return ports.ProviderResource{}, fmt.Errorf("prepare Capsule workspace: %w", mapRuntimeError(err))
 	}
@@ -887,3 +889,4 @@ func bounded(value string, limit int) string {
 var _ ports.CapsuleProvider = (*Provider)(nil)
 var _ ports.CapsuleRuntime = (*Provider)(nil)
 var _ ports.WorkspaceSnapshotter = (*Provider)(nil)
+var _ ports.PreviewRuntime = (*Provider)(nil)

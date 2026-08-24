@@ -23,6 +23,19 @@ releases begin.
   Rewind, Seal, and a verified content-addressed artifact store.
 - OpenAPI-generated Go and TypeScript clients, SQLite WAL persistence,
   idempotent mutations, optimistic concurrency, and ordered event streams.
+- AES-256-GCM encrypted named secrets with purpose binding, Project
+  authorization, private HTTPS clone grants, and native/structured harness
+  environment references across Docker and Agent Sandbox.
+- Thread-first Project sessions with durable encrypted provisioning intents,
+  fresh Capsule and Timeline allocation, Ready-state promotion, restart
+  recovery, and CLI, TUI, and browser entry points.
+- Authenticated bounded workspace browsing and binary-safe review rendering
+  through Docker and Agent Sandbox private supervisor clients.
+- Safe local worktree sync with matching-origin verification, staged archive
+  validation, protected Git metadata, conflict refusal, and explicit force
+  mirroring.
+- Durable explicitly approved Delivery resources for exact-ref HTTPS pushes and
+  host-side idempotent GitHub pull requests, with CLI and browser Ship flows.
 - Offline backup, restore, artifact verification and retention, transcript-key
   rotation, Prometheus metrics, optional OpenTelemetry tracing, and hardened
   release automation.
@@ -35,13 +48,16 @@ releases begin.
 - Capsules run non-root with bounded resources and never receive the host
   Docker socket, provider credentials, or control-plane state.
 - Attach and preview access use short-lived scoped credentials; Capsule
-  supervisor and transcript keys are kept outside SQLite.
+  supervisor, transcript, and credential keys are kept outside SQLite.
 - Structured transcripts are encrypted with per-Thread data keys and
   authenticated metadata. Ordinary Run prompts, PTY bytes, diffs, and secret
   values remain excluded from durable events and observability.
 - Workspace archives reject traversal, link escapes, special files, expansion
   abuse, corruption, and unsafe replacement; restore and backup publication are
   atomic.
+- Local sync never writes or deletes `.git` or `.meridian-prepared`; Delivery
+  binds approval to exact reviewed Git objects and supplies purpose-scoped
+  credentials only to one narrow operation.
 - Telemetry is content-free and bounded. The unauthenticated API and Docker
   previews default to loopback.
 - Docker and Agent Sandbox are not claimed as hostile multi-tenant isolation

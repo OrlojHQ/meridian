@@ -357,7 +357,7 @@ func TestStructuredRuntimeUsesProtectedLoopbackTransport(t *testing.T) {
 		t.Fatal(err)
 	}
 	capabilities, err := provider.Capabilities(context.Background())
-	if err != nil || !capabilities.Structured {
+	if err != nil || !capabilities.Structured || !capabilities.Browse || !capabilities.Delivery {
 		t.Fatalf("capabilities = %#v, %v", capabilities, err)
 	}
 	run, err := provider.StartStructured(context.Background(), ports.RuntimeStructuredStartRequest{

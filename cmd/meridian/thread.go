@@ -11,7 +11,9 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/OrlojHQ/meridian/internal/apiauth"
 	"github.com/OrlojHQ/meridian/pkg/client"
 	"github.com/spf13/cobra"
 )
@@ -21,6 +23,7 @@ const maxThreadInputBytes = 128 << 10
 func newThreadCommand(config *cliConfig) *cobra.Command {
 	thread := &cobra.Command{Use: "thread", Short: "Manage encrypted structured agent Threads"}
 	thread.AddCommand(
+		newThreadSpawnCommand(config),
 		newThreadCreateCommand(config), newThreadListCommand(config), newThreadGetCommand(config),
 		newThreadSessionCommand(config, "start"), newThreadSessionCommand(config, "resume"),
 		newThreadSendCommand(config), newThreadRespondCommand(config),
@@ -28,6 +31,96 @@ func newThreadCommand(config *cliConfig) *cobra.Command {
 		newThreadArchiveCommand(config), newThreadDeleteCommand(config),
 	)
 	return thread
+}
+
+func newThreadSpawnCommand(config *cliConfig) *cobra.Command {
+	var harness, prompt, name, key string
+	var promptStdin, follow bool
+	command := &cobra.Command{
+		Use: "spawn PROJECT_ID", Short: "Provision a fresh Capsule and start its first Thread",
+		Args: cobra.ExactArgs(1),
+		RunE: func(command *cobra.Command, args []string) error {
+			if harness == "" {
+				return errors.New("--harness is required")
+			}
+			content, supplied, err := readOptionalThreadInput(
+				command, config.stdin, prompt, promptStdin, "prompt")
+			if err != nil {
+				return err
+			}
+			if !supplied || content == "" {
+				return errors.New("provide a non-empty --prompt or --prompt-stdin")
+			}
+			idempotency, err := idempotencyKey(key)
+			if err != nil {
+				return err
+			}
+			api, err := newAPI(config)
+			if err != nil {
+				return err
+			}
+			input := &client.CreateProjectThreadRequest{Harness: harness, Prompt: content}
+			if name != "" {
+				input.Name = client.NewOptString(name)
+			}
+			response, err := api.CreateProjectThread(
+				command.Context(), input,
+				client.CreateProjectThreadParams{
+					ProjectId: args[0], IdempotencyKey: idempotency,
+				},
+			)
+			if err != nil {
+				return apiCallError(err)
+			}
+			success, ok := response.(*client.ProjectThreadIntentHeaders)
+			if !ok {
+				return responseError(response)
+			}
+			intent := success.Response
+			if err := config.writeProjectThreadIntent(intent); err != nil {
+				return err
+			}
+			if !follow {
+				return nil
+			}
+			ticker := time.NewTicker(500 * time.Millisecond)
+			defer ticker.Stop()
+			for intent.State == client.ProjectThreadIntentStateProvisioning {
+				select {
+				case <-command.Context().Done():
+					return command.Context().Err()
+				case <-ticker.C:
+				}
+				current, err := api.GetProjectThreadIntent(
+					command.Context(),
+					client.GetProjectThreadIntentParams{IntentId: intent.ID},
+				)
+				if err != nil {
+					return apiCallError(err)
+				}
+				headers, ok := current.(*client.ProjectThreadIntentHeaders)
+				if !ok {
+					return responseError(current)
+				}
+				intent = headers.Response
+			}
+			if intent.State == client.ProjectThreadIntentStateFailed {
+				message, _ := intent.FailureMessage.Get()
+				if message == "" {
+					message = "Project Thread provisioning failed"
+				}
+				return errors.New(message)
+			}
+			return followThread(command, config, intent.ThreadId, 0)
+		},
+	}
+	command.Flags().StringVar(&harness, "harness", "", "structured harness profile name")
+	command.Flags().StringVar(&prompt, "prompt", "", "first prompt (may be retained in shell history; prefer --prompt-stdin)")
+	command.Flags().BoolVar(&promptStdin, "prompt-stdin", false, "read the first prompt from stdin")
+	command.Flags().StringVar(&name, "name", "", "optional fresh Capsule name")
+	command.Flags().BoolVar(&follow, "follow", false, "wait for provisioning and follow the Thread")
+	command.Flags().StringVar(&key, "idempotency-key", "", "mutation replay key (generated if omitted)")
+	return command
 }
 
 func newThreadCreateCommand(config *cliConfig) *cobra.Command {
@@ -51,7 +144,7 @@ func newThreadCreateCommand(config *cliConfig) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			api, err := newAPI(config.server)
+			api, err := newAPI(config)
 			if err != nil {
 				return err
 			}
@@ -90,7 +183,7 @@ func newThreadListCommand(config *cliConfig) *cobra.Command {
 			if capsuleID == "" {
 				return errors.New("--capsule is required")
 			}
-			api, err := newAPI(config.server)
+			api, err := newAPI(config)
 			if err != nil {
 				return err
 			}
@@ -132,7 +225,7 @@ func newThreadGetCommand(config *cliConfig) *cobra.Command {
 	return &cobra.Command{
 		Use: "get THREAD_ID", Short: "Get Thread lifecycle and status", Args: cobra.ExactArgs(1),
 		RunE: func(command *cobra.Command, args []string) error {
-			api, err := newAPI(config.server)
+			api, err := newAPI(config)
 			if err != nil {
 				return err
 			}
@@ -163,7 +256,7 @@ func newThreadSessionCommand(config *cliConfig, operation string) *cobra.Command
 			if err != nil {
 				return err
 			}
-			api, err := newAPI(config.server)
+			api, err := newAPI(config)
 			if err != nil {
 				return err
 			}
@@ -220,7 +313,7 @@ func newThreadSendCommand(config *cliConfig) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			api, err := newAPI(config.server)
+			api, err := newAPI(config)
 			if err != nil {
 				return err
 			}
@@ -266,7 +359,7 @@ func newThreadRespondCommand(config *cliConfig) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			api, err := newAPI(config.server)
+			api, err := newAPI(config)
 			if err != nil {
 				return err
 			}
@@ -313,7 +406,7 @@ func newThreadArchiveCommand(config *cliConfig) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			api, err := newAPI(config.server)
+			api, err := newAPI(config)
 			if err != nil {
 				return err
 			}
@@ -352,7 +445,7 @@ func newThreadDeleteCommand(config *cliConfig) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			api, err := newAPI(config.server)
+			api, err := newAPI(config)
 			if err != nil {
 				return err
 			}
@@ -381,31 +474,45 @@ func newThreadFollowCommand(config *cliConfig) *cobra.Command {
 	command := &cobra.Command{
 		Use: "follow THREAD_ID", Short: "Follow ordered decrypted Thread blocks", Args: cobra.ExactArgs(1),
 		RunE: func(command *cobra.Command, args []string) error {
-			endpoint := strings.TrimRight(config.server, "/") + "/threads/" +
-				url.PathEscape(args[0]) + "/blocks/stream?after=" + strconv.FormatInt(after, 10)
-			request, err := http.NewRequestWithContext(command.Context(), http.MethodGet, endpoint, nil)
-			if err != nil {
-				return err
-			}
-			request.Header.Set("Accept", "text/event-stream")
-			httpClient := &http.Client{Timeout: 0}
-			response, err := httpClient.Do(request)
-			if err != nil {
-				return fmt.Errorf("follow Thread: %w", err)
-			}
-			defer response.Body.Close()
-			if response.StatusCode != http.StatusOK {
-				var envelope client.ErrorEnvelope
-				if json.NewDecoder(io.LimitReader(response.Body, 64<<10)).Decode(&envelope) == nil {
-					return fmt.Errorf("%s: %s", envelope.Error.Code, envelope.Error.Message)
-				}
-				return fmt.Errorf("follow Thread returned %s", response.Status)
-			}
-			return streamThreadSSE(response.Body, config)
+			return followThread(command, config, args[0], after)
 		},
 	}
 	command.Flags().Int64Var(&after, "after", 0, "resume after durable message sequence")
 	return command
+}
+
+func followThread(
+	command *cobra.Command,
+	config *cliConfig,
+	threadID string,
+	after int64,
+) error {
+	endpoint := strings.TrimRight(config.server, "/") + "/threads/" +
+		url.PathEscape(threadID) + "/blocks/stream?after=" + strconv.FormatInt(after, 10)
+	request, err := http.NewRequestWithContext(command.Context(), http.MethodGet, endpoint, nil)
+	if err != nil {
+		return err
+	}
+	token, err := apiauth.ReadTokenFile(config.tokenFile)
+	if err != nil {
+		return fmt.Errorf("read API token: %w", err)
+	}
+	request.Header.Set("Authorization", "Bearer "+token)
+	request.Header.Set("Accept", "text/event-stream")
+	httpClient := &http.Client{Timeout: 0}
+	response, err := httpClient.Do(request)
+	if err != nil {
+		return fmt.Errorf("follow Thread: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		var envelope client.ErrorEnvelope
+		if json.NewDecoder(io.LimitReader(response.Body, 64<<10)).Decode(&envelope) == nil {
+			return fmt.Errorf("%s: %s", envelope.Error.Code, envelope.Error.Message)
+		}
+		return fmt.Errorf("follow Thread returned %s", response.Status)
+	}
+	return streamThreadSSE(response.Body, config)
 }
 
 func streamThreadSSE(reader io.Reader, config *cliConfig) error {
@@ -491,4 +598,15 @@ func (c *cliConfig) writeThreadMutation(result client.ThreadMutationResult) erro
 		return err
 	}
 	return nil
+}
+
+func (c *cliConfig) writeProjectThreadIntent(intent client.ProjectThreadIntent) error {
+	if c.json {
+		return writeJSON(c.stdout, &intent)
+	}
+	_, err := fmt.Fprintf(
+		c.stdout, "%s\tstate=%s\tcapsule=%s\tthread=%s\trun=%s\n",
+		intent.ID, intent.State, intent.CapsuleId, intent.ThreadId, intent.RunId,
+	)
+	return err
 }

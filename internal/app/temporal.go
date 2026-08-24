@@ -160,7 +160,7 @@ func (s *Service) acquireMaintenance(
 		if capsule.ResourceVersion != expected {
 			return domain.ErrConflict
 		}
-		if capsule.State != domain.CapsuleReady {
+		if capsule.State != domain.CapsuleReady || capsule.DesiredState != domain.IntentReady {
 			return fmt.Errorf("%w: Capsule must be Ready", domain.ErrIllegalTransition)
 		}
 		if capsule.Maintenance != "" {
@@ -222,6 +222,28 @@ func (s *Service) captureArtifacts(
 	if err != nil && !errors.Is(err, domain.ErrNotFound) {
 		return domain.Moment{}, err
 	}
+	return s.captureArtifactsWithParent(ctx, capsule, project, name, final, parent, domain.MomentTimeline)
+}
+
+func (s *Service) captureSetupArtifacts(
+	ctx context.Context,
+	capsule domain.Capsule,
+	project domain.Project,
+) (domain.Moment, error) {
+	return s.captureArtifactsWithParent(
+		ctx, capsule, project, "Internal setup cache", false, domain.Moment{}, domain.MomentSetupCache,
+	)
+}
+
+func (s *Service) captureArtifactsWithParent(
+	ctx context.Context,
+	capsule domain.Capsule,
+	project domain.Project,
+	name string,
+	final bool,
+	parent domain.Moment,
+	kind domain.MomentKind,
+) (domain.Moment, error) {
 	capturedAt := s.clock.Now().UTC()
 	providerStarted := time.Now()
 	capture, err := s.snapshotter.CaptureWorkspace(ctx, capsule.ProviderResourceID)
@@ -281,17 +303,24 @@ func (s *Service) captureArtifacts(
 		ImageDigest: metadata.ImageDigest, ProjectSetupHash: projectHash,
 		GitBranch: metadata.GitBranch, GitHEAD: metadata.GitHEAD,
 		GitDirtySummary: metadata.GitDirtySummary, CreatedAt: capturedAt,
-		Final: final,
+		Final: final, Kind: kind,
 	}
 	return moment, moment.Validate()
 }
 
 func hashProjectConfiguration(project domain.Project) (string, error) {
 	value, err := json.Marshal(struct {
-		RepositoryURL  string   `json:"repositoryUrl"`
-		Setup          []string `json:"setup"`
-		ImageReference string   `json:"imageReference"`
-	}{project.RepositoryURL, project.Setup, project.ImageReference})
+		RepositoryURL      string   `json:"repositoryUrl"`
+		Setup              []string `json:"setup"`
+		ImageReference     string   `json:"imageReference"`
+		GitSecretName      string   `json:"gitSecretName"`
+		HarnessSecretNames []string `json:"harnessSecretNames,omitempty"`
+	}{
+		RepositoryURL: project.RepositoryURL, Setup: project.Setup,
+		ImageReference:     project.ImageReference,
+		GitSecretName:      project.GitSecretName,
+		HarnessSecretNames: project.HarnessSecretNames,
+	})
 	if err != nil {
 		return "", err
 	}
@@ -314,6 +343,9 @@ func (s *Service) GetMoment(ctx context.Context, id domain.MomentID) (domain.Mom
 		result, err = reader.GetMoment(ctx, id)
 		return err
 	})
+	if err == nil && result.Kind != domain.MomentTimeline {
+		return domain.Moment{}, domain.ErrNotFound
+	}
 	return result, err
 }
 
@@ -413,6 +445,9 @@ func (s *Service) createDescendant(
 		if err != nil {
 			return err
 		}
+		if moment.Kind != domain.MomentTimeline {
+			return domain.ErrNotFound
+		}
 		if reason == domain.TimelineRewind && moment.CapsuleID != source {
 			return fmt.Errorf("%w: Rewind Moment does not belong to source Capsule", domain.ErrIllegalTransition)
 		}
@@ -433,7 +468,7 @@ func (s *Service) createDescendant(
 				ID: capsuleID, ProjectID: moment.ProjectID, TimelineID: timelineID,
 				Name: name, State: domain.CapsuleCreating, DesiredState: domain.IntentReady,
 				OriginMomentID: moment.ID, RestoreComplete: false, Maintenance: "restore",
-				CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
+				LastActivityAt: now, CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
 			},
 			Timeline: domain.Timeline{
 				ID: timelineID, ProjectID: moment.ProjectID, CapsuleID: capsuleID,

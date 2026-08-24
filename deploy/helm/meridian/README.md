@@ -13,6 +13,12 @@ The restricted UID-10001 init container creates a private data subdirectory on
 the fsGroup-mounted PVC; it does not run as root or change the volume root's
 ownership.
 
+The daemon explicitly opts into its authenticated wildcard pod listener. Its
+256-bit installation API token is atomically generated in the private data
+directory and persists on the control-plane PVC. The chart adds no Ingress;
+operators can retrieve the token through authorized `kubectl exec` for a
+port-forwarded CLI or the UI's one-time bearer-to-HttpOnly-cookie bootstrap.
+
 Follow [`docs/operations.md`](../../../docs/operations.md) for
 signature/SBOM/checksum verification, backup-before-upgrade, rollback limits,
 deterministic smoke, and uninstall cleanup. The chart supports only the

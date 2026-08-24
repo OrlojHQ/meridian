@@ -49,6 +49,7 @@ spec:
           args:
             - --provider=agentsandbox
             - --listen=0.0.0.0:8080
+            - --allow-non-loopback-listen
             - --preview-listen=127.0.0.1:8081
             - --data-dir=/var/lib/meridian-volume/data
             - --agentsandbox-in-cluster

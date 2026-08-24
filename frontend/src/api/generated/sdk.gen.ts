@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, ServerSentEventsResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { ArchiveThreadData, ArchiveThreadErrors, ArchiveThreadResponses, AttachRunWebSocketData, AttachRunWebSocketErrors, AttachRunWebSocketResponses, CancelRunData, CancelRunErrors, CancelRunResponses, CancelThreadData, CancelThreadErrors, CancelThreadResponses, CaptureMomentData, CaptureMomentErrors, CaptureMomentResponses, CreateCapsuleData, CreateCapsuleErrors, CreateCapsulePreviewTicketData, CreateCapsulePreviewTicketErrors, CreateCapsulePreviewTicketResponses, CreateCapsuleResponses, CreateProjectData, CreateProjectErrors, CreateProjectResponses, CreateRunAttachTicketData, CreateRunAttachTicketErrors, CreateRunAttachTicketResponses, CreateShardData, CreateShardErrors, CreateShardResponses, CreateThreadData, CreateThreadErrors, CreateThreadResponses, DeleteCapsuleData, DeleteCapsuleErrors, DeleteCapsuleResponses, DeleteThreadData, DeleteThreadErrors, DeleteThreadResponses, GetCapabilitiesData, GetCapabilitiesErrors, GetCapabilitiesResponses, GetCapsuleData, GetCapsuleErrors, GetCapsuleGitDiffData, GetCapsuleGitDiffErrors, GetCapsuleGitDiffResponses, GetCapsuleGitStatusData, GetCapsuleGitStatusErrors, GetCapsuleGitStatusResponses, GetCapsuleResponses, GetHealthData, GetHealthErrors, GetHealthResponses, GetMomentData, GetMomentErrors, GetMomentResponses, GetProjectData, GetProjectErrors, GetProjectResponses, GetReadinessData, GetReadinessErrors, GetReadinessResponses, GetRunData, GetRunErrors, GetRunResponses, GetThreadData, GetThreadErrors, GetThreadResponses, GetTimelineData, GetTimelineErrors, GetTimelineResponses, ListCapsulePreviewPortsData, ListCapsulePreviewPortsErrors, ListCapsulePreviewPortsResponses, ListCapsulesData, ListCapsulesErrors, ListCapsulesResponses, ListHarnessProfilesData, ListHarnessProfilesErrors, ListHarnessProfilesResponses, ListMomentsData, ListMomentsErrors, ListMomentsResponses, ListProjectsData, ListProjectsErrors, ListProjectsResponses, ListRunEventsData, ListRunEventsErrors, ListRunEventsResponses, ListRunsData, ListRunsErrors, ListRunsResponses, ListThreadBlocksData, ListThreadBlocksErrors, ListThreadBlocksResponses, ListThreadsData, ListThreadsErrors, ListThreadsResponses, PauseCapsuleData, PauseCapsuleErrors, PauseCapsuleResponses, RespondThreadData, RespondThreadErrors, RespondThreadResponses, ResumeCapsuleData, ResumeCapsuleErrors, ResumeCapsuleResponses, ResumeThreadData, ResumeThreadErrors, ResumeThreadResponses, RewindCapsuleData, RewindCapsuleErrors, RewindCapsuleResponses, SealCapsuleData, SealCapsuleErrors, SealCapsuleResponses, SendThreadMessageData, SendThreadMessageErrors, SendThreadMessageResponses, StartRunData, StartRunErrors, StartRunResponses, StartThreadData, StartThreadErrors, StartThreadResponses, StreamRunEventsData, StreamRunEventsErrors, StreamRunEventsResponse, StreamRunEventsResponses, StreamThreadBlocksData, StreamThreadBlocksErrors, StreamThreadBlocksResponse, StreamThreadBlocksResponses } from './types.gen';
+import type { ArchiveThreadData, ArchiveThreadErrors, ArchiveThreadResponses, AttachRunWebSocketData, AttachRunWebSocketErrors, AttachRunWebSocketResponses, CancelRunData, CancelRunErrors, CancelRunResponses, CancelThreadData, CancelThreadErrors, CancelThreadResponses, CaptureMomentData, CaptureMomentErrors, CaptureMomentResponses, CreateBrowserSessionData, CreateBrowserSessionErrors, CreateBrowserSessionResponses, CreateCapsuleData, CreateCapsuleDeliveryData, CreateCapsuleDeliveryErrors, CreateCapsuleDeliveryResponses, CreateCapsuleErrors, CreateCapsulePreviewTicketData, CreateCapsulePreviewTicketErrors, CreateCapsulePreviewTicketResponses, CreateCapsuleResponses, CreateProjectData, CreateProjectErrors, CreateProjectResponses, CreateProjectThreadData, CreateProjectThreadErrors, CreateProjectThreadResponses, CreateRunAttachTicketData, CreateRunAttachTicketErrors, CreateRunAttachTicketResponses, CreateShardData, CreateShardErrors, CreateShardResponses, CreateThreadData, CreateThreadErrors, CreateThreadResponses, DeleteCapsuleData, DeleteCapsuleErrors, DeleteCapsuleResponses, DeleteSecretData, DeleteSecretErrors, DeleteSecretResponses, DeleteThreadData, DeleteThreadErrors, DeleteThreadResponses, ExportCapsuleWorkspaceData, ExportCapsuleWorkspaceErrors, ExportCapsuleWorkspaceResponses, GetCapabilitiesData, GetCapabilitiesErrors, GetCapabilitiesResponses, GetCapsuleData, GetCapsuleErrors, GetCapsuleGitDiffData, GetCapsuleGitDiffErrors, GetCapsuleGitDiffResponses, GetCapsuleGitStatusData, GetCapsuleGitStatusErrors, GetCapsuleGitStatusResponses, GetCapsuleResponses, GetDeliveryData, GetDeliveryErrors, GetDeliveryResponses, GetHealthData, GetHealthErrors, GetHealthResponses, GetMomentData, GetMomentErrors, GetMomentResponses, GetProjectData, GetProjectErrors, GetProjectResponses, GetProjectThreadIntentData, GetProjectThreadIntentErrors, GetProjectThreadIntentResponses, GetReadinessData, GetReadinessErrors, GetReadinessResponses, GetRunData, GetRunErrors, GetRunResponses, GetThreadData, GetThreadErrors, GetThreadResponses, GetTimelineData, GetTimelineErrors, GetTimelineResponses, InspectCapsuleDeliveryData, InspectCapsuleDeliveryErrors, InspectCapsuleDeliveryResponses, ListCapsuleDeliveriesData, ListCapsuleDeliveriesErrors, ListCapsuleDeliveriesResponses, ListCapsuleFilesData, ListCapsuleFilesErrors, ListCapsuleFilesResponses, ListCapsulePreviewPortsData, ListCapsulePreviewPortsErrors, ListCapsulePreviewPortsResponses, ListCapsulesData, ListCapsulesErrors, ListCapsulesResponses, ListHarnessProfilesData, ListHarnessProfilesErrors, ListHarnessProfilesResponses, ListMomentsData, ListMomentsErrors, ListMomentsResponses, ListProjectsData, ListProjectsErrors, ListProjectsResponses, ListRunEventsData, ListRunEventsErrors, ListRunEventsResponses, ListRunsData, ListRunsErrors, ListRunsResponses, ListSecretsData, ListSecretsErrors, ListSecretsResponses, ListThreadBlocksData, ListThreadBlocksErrors, ListThreadBlocksResponses, ListThreadsData, ListThreadsErrors, ListThreadsResponses, PauseCapsuleData, PauseCapsuleErrors, PauseCapsuleResponses, PutSecretData, PutSecretErrors, PutSecretResponses, ReadCapsuleFileData, ReadCapsuleFileErrors, ReadCapsuleFileResponses, RespondThreadData, RespondThreadErrors, RespondThreadResponses, ResumeCapsuleData, ResumeCapsuleErrors, ResumeCapsuleResponses, ResumeThreadData, ResumeThreadErrors, ResumeThreadResponses, RewindCapsuleData, RewindCapsuleErrors, RewindCapsuleResponses, SealCapsuleData, SealCapsuleErrors, SealCapsuleResponses, SendThreadMessageData, SendThreadMessageErrors, SendThreadMessageResponses, StartRunData, StartRunErrors, StartRunResponses, StartThreadData, StartThreadErrors, StartThreadResponses, StreamRunEventsData, StreamRunEventsErrors, StreamRunEventsResponse, StreamRunEventsResponses, StreamThreadBlocksData, StreamThreadBlocksErrors, StreamThreadBlocksResponse, StreamThreadBlocksResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -33,17 +33,61 @@ export const getReadiness = <ThrowOnError extends boolean = false>(options?: Opt
  *
  * Clients must treat false capabilities as unsupported and must not construct private provider URLs.
  */
-export const getCapabilities = <ThrowOnError extends boolean = false>(options?: Options<GetCapabilitiesData, ThrowOnError>): RequestResult<GetCapabilitiesResponses, GetCapabilitiesErrors, ThrowOnError> => (options?.client ?? client).get<GetCapabilitiesResponses, GetCapabilitiesErrors, ThrowOnError>({ url: '/capabilities', ...options });
+export const getCapabilities = <ThrowOnError extends boolean = false>(options?: Options<GetCapabilitiesData, ThrowOnError>): RequestResult<GetCapabilitiesResponses, GetCapabilitiesErrors, ThrowOnError> => (options?.client ?? client).get<GetCapabilitiesResponses, GetCapabilitiesErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/capabilities',
+    ...options
+});
+
+/**
+ * List named secret metadata
+ */
+export const listSecrets = <ThrowOnError extends boolean = false>(options?: Options<ListSecretsData, ThrowOnError>): RequestResult<ListSecretsResponses, ListSecretsErrors, ThrowOnError> => (options?.client ?? client).get<ListSecretsResponses, ListSecretsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/secrets',
+    ...options
+});
+
+/**
+ * Crypto-shred a named secret by deleting its envelope
+ */
+export const deleteSecret = <ThrowOnError extends boolean = false>(options: Options<DeleteSecretData, ThrowOnError>): RequestResult<DeleteSecretResponses, DeleteSecretErrors, ThrowOnError> => (options.client ?? client).delete<DeleteSecretResponses, DeleteSecretErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/secrets/{secretName}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Create or replace an encrypted named secret
+ */
+export const putSecret = <ThrowOnError extends boolean = false>(options: Options<PutSecretData, ThrowOnError>): RequestResult<PutSecretResponses, PutSecretErrors, ThrowOnError> => (options.client ?? client).put<PutSecretResponses, PutSecretErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/secrets/{secretName}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
 
 /**
  * List projects
  */
-export const listProjects = <ThrowOnError extends boolean = false>(options?: Options<ListProjectsData, ThrowOnError>): RequestResult<ListProjectsResponses, ListProjectsErrors, ThrowOnError> => (options?.client ?? client).get<ListProjectsResponses, ListProjectsErrors, ThrowOnError>({ url: '/projects', ...options });
+export const listProjects = <ThrowOnError extends boolean = false>(options?: Options<ListProjectsData, ThrowOnError>): RequestResult<ListProjectsResponses, ListProjectsErrors, ThrowOnError> => (options?.client ?? client).get<ListProjectsResponses, ListProjectsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/projects',
+    ...options
+});
 
 /**
  * Create a project
  */
 export const createProject = <ThrowOnError extends boolean = false>(options: Options<CreateProjectData, ThrowOnError>): RequestResult<CreateProjectResponses, CreateProjectErrors, ThrowOnError> => (options.client ?? client).post<CreateProjectResponses, CreateProjectErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
     url: '/projects',
     ...options,
     headers: {
@@ -55,17 +99,50 @@ export const createProject = <ThrowOnError extends boolean = false>(options: Opt
 /**
  * Get a project
  */
-export const getProject = <ThrowOnError extends boolean = false>(options: Options<GetProjectData, ThrowOnError>): RequestResult<GetProjectResponses, GetProjectErrors, ThrowOnError> => (options.client ?? client).get<GetProjectResponses, GetProjectErrors, ThrowOnError>({ url: '/projects/{projectId}', ...options });
+export const getProject = <ThrowOnError extends boolean = false>(options: Options<GetProjectData, ThrowOnError>): RequestResult<GetProjectResponses, GetProjectErrors, ThrowOnError> => (options.client ?? client).get<GetProjectResponses, GetProjectErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/projects/{projectId}',
+    ...options
+});
+
+/**
+ * Provision a fresh Capsule and start its first structured Thread
+ *
+ * Persists a durable encrypted session intent before asynchronously provisioning a new Capsule. Idempotent replay returns the same intent and resource IDs.
+ */
+export const createProjectThread = <ThrowOnError extends boolean = false>(options: Options<CreateProjectThreadData, ThrowOnError>): RequestResult<CreateProjectThreadResponses, CreateProjectThreadErrors, ThrowOnError> => (options.client ?? client).post<CreateProjectThreadResponses, CreateProjectThreadErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/projects/{projectId}/threads',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Get deterministic Project Thread provisioning status
+ */
+export const getProjectThreadIntent = <ThrowOnError extends boolean = false>(options: Options<GetProjectThreadIntentData, ThrowOnError>): RequestResult<GetProjectThreadIntentResponses, GetProjectThreadIntentErrors, ThrowOnError> => (options.client ?? client).get<GetProjectThreadIntentResponses, GetProjectThreadIntentErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/project-thread-intents/{intentId}',
+    ...options
+});
 
 /**
  * List a project's Capsules
  */
-export const listCapsules = <ThrowOnError extends boolean = false>(options: Options<ListCapsulesData, ThrowOnError>): RequestResult<ListCapsulesResponses, ListCapsulesErrors, ThrowOnError> => (options.client ?? client).get<ListCapsulesResponses, ListCapsulesErrors, ThrowOnError>({ url: '/projects/{projectId}/capsules', ...options });
+export const listCapsules = <ThrowOnError extends boolean = false>(options: Options<ListCapsulesData, ThrowOnError>): RequestResult<ListCapsulesResponses, ListCapsulesErrors, ThrowOnError> => (options.client ?? client).get<ListCapsulesResponses, ListCapsulesErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/projects/{projectId}/capsules',
+    ...options
+});
 
 /**
  * Request Capsule creation
  */
 export const createCapsule = <ThrowOnError extends boolean = false>(options: Options<CreateCapsuleData, ThrowOnError>): RequestResult<CreateCapsuleResponses, CreateCapsuleErrors, ThrowOnError> => (options.client ?? client).post<CreateCapsuleResponses, CreateCapsuleErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
     url: '/projects/{projectId}/capsules',
     ...options,
     headers: {
@@ -77,19 +154,31 @@ export const createCapsule = <ThrowOnError extends boolean = false>(options: Opt
 /**
  * Get a Capsule
  */
-export const getCapsule = <ThrowOnError extends boolean = false>(options: Options<GetCapsuleData, ThrowOnError>): RequestResult<GetCapsuleResponses, GetCapsuleErrors, ThrowOnError> => (options.client ?? client).get<GetCapsuleResponses, GetCapsuleErrors, ThrowOnError>({ url: '/capsules/{capsuleId}', ...options });
+export const getCapsule = <ThrowOnError extends boolean = false>(options: Options<GetCapsuleData, ThrowOnError>): RequestResult<GetCapsuleResponses, GetCapsuleErrors, ThrowOnError> => (options.client ?? client).get<GetCapsuleResponses, GetCapsuleErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/capsules/{capsuleId}',
+    ...options
+});
 
 /**
  * Discover effective native and structured harness profiles
  *
  * Provider-independent discovery. A false structured value identifies PTY/native fallback; clients never inspect provider internals.
  */
-export const listHarnessProfiles = <ThrowOnError extends boolean = false>(options: Options<ListHarnessProfilesData, ThrowOnError>): RequestResult<ListHarnessProfilesResponses, ListHarnessProfilesErrors, ThrowOnError> => (options.client ?? client).get<ListHarnessProfilesResponses, ListHarnessProfilesErrors, ThrowOnError>({ url: '/capsules/{capsuleId}/harness-profiles', ...options });
+export const listHarnessProfiles = <ThrowOnError extends boolean = false>(options: Options<ListHarnessProfilesData, ThrowOnError>): RequestResult<ListHarnessProfilesResponses, ListHarnessProfilesErrors, ThrowOnError> => (options.client ?? client).get<ListHarnessProfilesResponses, ListHarnessProfilesErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/capsules/{capsuleId}/harness-profiles',
+    ...options
+});
 
 /**
  * List retained Thread histories for a Capsule
  */
-export const listThreads = <ThrowOnError extends boolean = false>(options: Options<ListThreadsData, ThrowOnError>): RequestResult<ListThreadsResponses, ListThreadsErrors, ThrowOnError> => (options.client ?? client).get<ListThreadsResponses, ListThreadsErrors, ThrowOnError>({ url: '/capsules/{capsuleId}/threads', ...options });
+export const listThreads = <ThrowOnError extends boolean = false>(options: Options<ListThreadsData, ThrowOnError>): RequestResult<ListThreadsResponses, ListThreadsErrors, ThrowOnError> => (options.client ?? client).get<ListThreadsResponses, ListThreadsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/capsules/{capsuleId}/threads',
+    ...options
+});
 
 /**
  * Create an encrypted structured Thread, optionally with an atomic first message and session start
@@ -97,6 +186,7 @@ export const listThreads = <ThrowOnError extends boolean = false>(options: Optio
  * The Thread, encrypted first message, Run intent, and idempotency resource references are committed before runtime side effects.
  */
 export const createThread = <ThrowOnError extends boolean = false>(options: Options<CreateThreadData, ThrowOnError>): RequestResult<CreateThreadResponses, CreateThreadErrors, ThrowOnError> => (options.client ?? client).post<CreateThreadResponses, CreateThreadErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
     url: '/capsules/{capsuleId}/threads',
     ...options,
     headers: {
@@ -108,12 +198,17 @@ export const createThread = <ThrowOnError extends boolean = false>(options: Opti
 /**
  * Get Thread lifecycle and current session status
  */
-export const getThread = <ThrowOnError extends boolean = false>(options: Options<GetThreadData, ThrowOnError>): RequestResult<GetThreadResponses, GetThreadErrors, ThrowOnError> => (options.client ?? client).get<GetThreadResponses, GetThreadErrors, ThrowOnError>({ url: '/threads/{threadId}', ...options });
+export const getThread = <ThrowOnError extends boolean = false>(options: Options<GetThreadData, ThrowOnError>): RequestResult<GetThreadResponses, GetThreadErrors, ThrowOnError> => (options.client ?? client).get<GetThreadResponses, GetThreadErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/threads/{threadId}',
+    ...options
+});
 
 /**
  * Archive a Thread history
  */
 export const archiveThread = <ThrowOnError extends boolean = false>(options: Options<ArchiveThreadData, ThrowOnError>): RequestResult<ArchiveThreadResponses, ArchiveThreadErrors, ThrowOnError> => (options.client ?? client).post<ArchiveThreadResponses, ArchiveThreadErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
     url: '/threads/{threadId}/archive',
     ...options,
     headers: {
@@ -128,6 +223,7 @@ export const archiveThread = <ThrowOnError extends boolean = false>(options: Opt
  * This removes the wrapped data key but retains ciphertext and content-free lifecycle metadata. It is irreversible and requires an explicit confirmation token.
  */
 export const deleteThread = <ThrowOnError extends boolean = false>(options: Options<DeleteThreadData, ThrowOnError>): RequestResult<DeleteThreadResponses, DeleteThreadErrors, ThrowOnError> => (options.client ?? client).post<DeleteThreadResponses, DeleteThreadErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
     url: '/threads/{threadId}/delete',
     ...options,
     headers: {
@@ -140,6 +236,7 @@ export const deleteThread = <ThrowOnError extends boolean = false>(options: Opti
  * Start a new structured adapter session for an active Thread
  */
 export const startThread = <ThrowOnError extends boolean = false>(options: Options<StartThreadData, ThrowOnError>): RequestResult<StartThreadResponses, StartThreadErrors, ThrowOnError> => (options.client ?? client).post<StartThreadResponses, StartThreadErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
     url: '/threads/{threadId}/start',
     ...options,
     headers: {
@@ -152,6 +249,7 @@ export const startThread = <ThrowOnError extends boolean = false>(options: Optio
  * Resume a structured adapter session from encrypted adapter state
  */
 export const resumeThread = <ThrowOnError extends boolean = false>(options: Options<ResumeThreadData, ThrowOnError>): RequestResult<ResumeThreadResponses, ResumeThreadErrors, ThrowOnError> => (options.client ?? client).post<ResumeThreadResponses, ResumeThreadErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
     url: '/threads/{threadId}/resume',
     ...options,
     headers: {
@@ -166,6 +264,7 @@ export const resumeThread = <ThrowOnError extends boolean = false>(options: Opti
  * The encrypted message and idempotency resource references commit before the adapter side effect.
  */
 export const sendThreadMessage = <ThrowOnError extends boolean = false>(options: Options<SendThreadMessageData, ThrowOnError>): RequestResult<SendThreadMessageResponses, SendThreadMessageErrors, ThrowOnError> => (options.client ?? client).post<SendThreadMessageResponses, SendThreadMessageErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
     url: '/threads/{threadId}/messages',
     ...options,
     headers: {
@@ -178,6 +277,7 @@ export const sendThreadMessage = <ThrowOnError extends boolean = false>(options:
  * Answer one permission or input request
  */
 export const respondThread = <ThrowOnError extends boolean = false>(options: Options<RespondThreadData, ThrowOnError>): RequestResult<RespondThreadResponses, RespondThreadErrors, ThrowOnError> => (options.client ?? client).post<RespondThreadResponses, RespondThreadErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
     url: '/threads/{threadId}/responses',
     ...options,
     headers: {
@@ -190,6 +290,7 @@ export const respondThread = <ThrowOnError extends boolean = false>(options: Opt
  * Cancel the active structured session
  */
 export const cancelThread = <ThrowOnError extends boolean = false>(options: Options<CancelThreadData, ThrowOnError>): RequestResult<CancelThreadResponses, CancelThreadErrors, ThrowOnError> => (options.client ?? client).post<CancelThreadResponses, CancelThreadErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
     url: '/threads/{threadId}/cancel',
     ...options,
     headers: {
@@ -203,19 +304,28 @@ export const cancelThread = <ThrowOnError extends boolean = false>(options: Opti
  *
  * This is an explicit decryption boundary. Deltas are persisted as delta events; a final assistant message is authoritative and clients should replace matching displayed deltas rather than append duplicate text.
  */
-export const listThreadBlocks = <ThrowOnError extends boolean = false>(options: Options<ListThreadBlocksData, ThrowOnError>): RequestResult<ListThreadBlocksResponses, ListThreadBlocksErrors, ThrowOnError> => (options.client ?? client).get<ListThreadBlocksResponses, ListThreadBlocksErrors, ThrowOnError>({ url: '/threads/{threadId}/blocks', ...options });
+export const listThreadBlocks = <ThrowOnError extends boolean = false>(options: Options<ListThreadBlocksData, ThrowOnError>): RequestResult<ListThreadBlocksResponses, ListThreadBlocksErrors, ThrowOnError> => (options.client ?? client).get<ListThreadBlocksResponses, ListThreadBlocksErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/threads/{threadId}/blocks',
+    ...options
+});
 
 /**
  * Follow decrypted Thread blocks over Server-Sent Events
  *
  * Reconnect with Last-Event-ID or after. Heartbeats carry no content; slow clients are disconnected.
  */
-export const streamThreadBlocks = <ThrowOnError extends boolean = false>(options: Options<StreamThreadBlocksData, ThrowOnError, StreamThreadBlocksResponse>): Promise<ServerSentEventsResult<StreamThreadBlocksResponses>> => (options.client ?? client).sse.get<StreamThreadBlocksResponses, StreamThreadBlocksErrors, ThrowOnError>({ url: '/threads/{threadId}/blocks/stream', ...options });
+export const streamThreadBlocks = <ThrowOnError extends boolean = false>(options: Options<StreamThreadBlocksData, ThrowOnError, StreamThreadBlocksResponse>): Promise<ServerSentEventsResult<StreamThreadBlocksResponses>> => (options.client ?? client).sse.get<StreamThreadBlocksResponses, StreamThreadBlocksErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/threads/{threadId}/blocks/stream',
+    ...options
+});
 
 /**
  * Request Capsule pause
  */
 export const pauseCapsule = <ThrowOnError extends boolean = false>(options: Options<PauseCapsuleData, ThrowOnError>): RequestResult<PauseCapsuleResponses, PauseCapsuleErrors, ThrowOnError> => (options.client ?? client).post<PauseCapsuleResponses, PauseCapsuleErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
     url: '/capsules/{capsuleId}/pause',
     ...options,
     headers: {
@@ -228,6 +338,7 @@ export const pauseCapsule = <ThrowOnError extends boolean = false>(options: Opti
  * Request Capsule resume
  */
 export const resumeCapsule = <ThrowOnError extends boolean = false>(options: Options<ResumeCapsuleData, ThrowOnError>): RequestResult<ResumeCapsuleResponses, ResumeCapsuleErrors, ThrowOnError> => (options.client ?? client).post<ResumeCapsuleResponses, ResumeCapsuleErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
     url: '/capsules/{capsuleId}/resume',
     ...options,
     headers: {
@@ -242,6 +353,7 @@ export const resumeCapsule = <ThrowOnError extends boolean = false>(options: Opt
  * Active Runs and Thread sessions block deletion. Capsule deletion retains encrypted Thread history; use the explicitly confirmed Thread delete endpoint to crypto-shred a transcript.
  */
 export const deleteCapsule = <ThrowOnError extends boolean = false>(options: Options<DeleteCapsuleData, ThrowOnError>): RequestResult<DeleteCapsuleResponses, DeleteCapsuleErrors, ThrowOnError> => (options.client ?? client).post<DeleteCapsuleResponses, DeleteCapsuleErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
     url: '/capsules/{capsuleId}/delete',
     ...options,
     headers: {
@@ -253,12 +365,17 @@ export const deleteCapsule = <ThrowOnError extends boolean = false>(options: Opt
 /**
  * List a Capsule's Runs
  */
-export const listRuns = <ThrowOnError extends boolean = false>(options: Options<ListRunsData, ThrowOnError>): RequestResult<ListRunsResponses, ListRunsErrors, ThrowOnError> => (options.client ?? client).get<ListRunsResponses, ListRunsErrors, ThrowOnError>({ url: '/capsules/{capsuleId}/runs', ...options });
+export const listRuns = <ThrowOnError extends boolean = false>(options: Options<ListRunsData, ThrowOnError>): RequestResult<ListRunsResponses, ListRunsErrors, ThrowOnError> => (options.client ?? client).get<ListRunsResponses, ListRunsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/capsules/{capsuleId}/runs',
+    ...options
+});
 
 /**
  * Start a Run from a Capsule harness profile
  */
 export const startRun = <ThrowOnError extends boolean = false>(options: Options<StartRunData, ThrowOnError>): RequestResult<StartRunResponses, StartRunErrors, ThrowOnError> => (options.client ?? client).post<StartRunResponses, StartRunErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
     url: '/capsules/{capsuleId}/runs',
     ...options,
     headers: {
@@ -270,12 +387,17 @@ export const startRun = <ThrowOnError extends boolean = false>(options: Options<
 /**
  * Get a Run
  */
-export const getRun = <ThrowOnError extends boolean = false>(options: Options<GetRunData, ThrowOnError>): RequestResult<GetRunResponses, GetRunErrors, ThrowOnError> => (options.client ?? client).get<GetRunResponses, GetRunErrors, ThrowOnError>({ url: '/runs/{runId}', ...options });
+export const getRun = <ThrowOnError extends boolean = false>(options: Options<GetRunData, ThrowOnError>): RequestResult<GetRunResponses, GetRunErrors, ThrowOnError> => (options.client ?? client).get<GetRunResponses, GetRunErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/runs/{runId}',
+    ...options
+});
 
 /**
  * Request Run cancellation
  */
 export const cancelRun = <ThrowOnError extends boolean = false>(options: Options<CancelRunData, ThrowOnError>): RequestResult<CancelRunResponses, CancelRunErrors, ThrowOnError> => (options.client ?? client).post<CancelRunResponses, CancelRunErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
     url: '/runs/{runId}/cancel',
     ...options,
     headers: {
@@ -287,19 +409,31 @@ export const cancelRun = <ThrowOnError extends boolean = false>(options: Options
 /**
  * Replay ordered, content-free Run events after a stable cursor
  */
-export const listRunEvents = <ThrowOnError extends boolean = false>(options: Options<ListRunEventsData, ThrowOnError>): RequestResult<ListRunEventsResponses, ListRunEventsErrors, ThrowOnError> => (options.client ?? client).get<ListRunEventsResponses, ListRunEventsErrors, ThrowOnError>({ url: '/runs/{runId}/events', ...options });
+export const listRunEvents = <ThrowOnError extends boolean = false>(options: Options<ListRunEventsData, ThrowOnError>): RequestResult<ListRunEventsResponses, ListRunEventsErrors, ThrowOnError> => (options.client ?? client).get<ListRunEventsResponses, ListRunEventsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/runs/{runId}/events',
+    ...options
+});
 
 /**
  * Mint a short-lived, scoped, in-memory PTY attach ticket
  */
-export const createRunAttachTicket = <ThrowOnError extends boolean = false>(options: Options<CreateRunAttachTicketData, ThrowOnError>): RequestResult<CreateRunAttachTicketResponses, CreateRunAttachTicketErrors, ThrowOnError> => (options.client ?? client).post<CreateRunAttachTicketResponses, CreateRunAttachTicketErrors, ThrowOnError>({ url: '/runs/{runId}/attach-ticket', ...options });
+export const createRunAttachTicket = <ThrowOnError extends boolean = false>(options: Options<CreateRunAttachTicketData, ThrowOnError>): RequestResult<CreateRunAttachTicketResponses, CreateRunAttachTicketErrors, ThrowOnError> => (options.client ?? client).post<CreateRunAttachTicketResponses, CreateRunAttachTicketErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/runs/{runId}/attach-ticket',
+    ...options
+});
 
 /**
  * Follow ordered Run events using Server-Sent Events
  *
  * Reconnect with Last-Event-ID or the after cursor. Event IDs are stable durable Run event sequences.
  */
-export const streamRunEvents = <ThrowOnError extends boolean = false>(options: Options<StreamRunEventsData, ThrowOnError, StreamRunEventsResponse>): Promise<ServerSentEventsResult<StreamRunEventsResponses>> => (options.client ?? client).sse.get<StreamRunEventsResponses, StreamRunEventsErrors, ThrowOnError>({ url: '/runs/{runId}/events/stream', ...options });
+export const streamRunEvents = <ThrowOnError extends boolean = false>(options: Options<StreamRunEventsData, ThrowOnError, StreamRunEventsResponse>): Promise<ServerSentEventsResult<StreamRunEventsResponses>> => (options.client ?? client).sse.get<StreamRunEventsResponses, StreamRunEventsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/runs/{runId}/events/stream',
+    ...options
+});
 
 /**
  * Upgrade to the reconnectable PTY WebSocket
@@ -313,34 +447,130 @@ export const attachRunWebSocket = <ThrowOnError extends boolean = false>(options
  *
  * Available only when the effective preview capability is true.
  */
-export const listCapsulePreviewPorts = <ThrowOnError extends boolean = false>(options: Options<ListCapsulePreviewPortsData, ThrowOnError>): RequestResult<ListCapsulePreviewPortsResponses, ListCapsulePreviewPortsErrors, ThrowOnError> => (options.client ?? client).get<ListCapsulePreviewPortsResponses, ListCapsulePreviewPortsErrors, ThrowOnError>({ url: '/capsules/{capsuleId}/previews', ...options });
+export const listCapsulePreviewPorts = <ThrowOnError extends boolean = false>(options: Options<ListCapsulePreviewPortsData, ThrowOnError>): RequestResult<ListCapsulePreviewPortsResponses, ListCapsulePreviewPortsErrors, ThrowOnError> => (options.client ?? client).get<ListCapsulePreviewPortsResponses, ListCapsulePreviewPortsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/capsules/{capsuleId}/previews',
+    ...options
+});
 
 /**
  * Mint a short-lived Capsule and port-scoped preview URL
  *
  * URLs are reusable until expiry and are revoked when the Capsule is deleted or sealed.
  */
-export const createCapsulePreviewTicket = <ThrowOnError extends boolean = false>(options: Options<CreateCapsulePreviewTicketData, ThrowOnError>): RequestResult<CreateCapsulePreviewTicketResponses, CreateCapsulePreviewTicketErrors, ThrowOnError> => (options.client ?? client).post<CreateCapsulePreviewTicketResponses, CreateCapsulePreviewTicketErrors, ThrowOnError>({ url: '/capsules/{capsuleId}/previews/{port}/tickets', ...options });
+export const createCapsulePreviewTicket = <ThrowOnError extends boolean = false>(options: Options<CreateCapsulePreviewTicketData, ThrowOnError>): RequestResult<CreateCapsulePreviewTicketResponses, CreateCapsulePreviewTicketErrors, ThrowOnError> => (options.client ?? client).post<CreateCapsulePreviewTicketResponses, CreateCapsulePreviewTicketErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/capsules/{capsuleId}/previews/{port}/tickets',
+    ...options
+});
 
 /**
  * Get bounded porcelain Git status
  */
-export const getCapsuleGitStatus = <ThrowOnError extends boolean = false>(options: Options<GetCapsuleGitStatusData, ThrowOnError>): RequestResult<GetCapsuleGitStatusResponses, GetCapsuleGitStatusErrors, ThrowOnError> => (options.client ?? client).get<GetCapsuleGitStatusResponses, GetCapsuleGitStatusErrors, ThrowOnError>({ url: '/capsules/{capsuleId}/git/status', ...options });
+export const getCapsuleGitStatus = <ThrowOnError extends boolean = false>(options: Options<GetCapsuleGitStatusData, ThrowOnError>): RequestResult<GetCapsuleGitStatusResponses, GetCapsuleGitStatusErrors, ThrowOnError> => (options.client ?? client).get<GetCapsuleGitStatusResponses, GetCapsuleGitStatusErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/capsules/{capsuleId}/git/status',
+    ...options
+});
 
 /**
  * Get a bounded unified working-tree diff
  */
-export const getCapsuleGitDiff = <ThrowOnError extends boolean = false>(options: Options<GetCapsuleGitDiffData, ThrowOnError>): RequestResult<GetCapsuleGitDiffResponses, GetCapsuleGitDiffErrors, ThrowOnError> => (options.client ?? client).get<GetCapsuleGitDiffResponses, GetCapsuleGitDiffErrors, ThrowOnError>({ url: '/capsules/{capsuleId}/git/diff', ...options });
+export const getCapsuleGitDiff = <ThrowOnError extends boolean = false>(options: Options<GetCapsuleGitDiffData, ThrowOnError>): RequestResult<GetCapsuleGitDiffResponses, GetCapsuleGitDiffErrors, ThrowOnError> => (options.client ?? client).get<GetCapsuleGitDiffResponses, GetCapsuleGitDiffErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/capsules/{capsuleId}/git/diff',
+    ...options
+});
+
+/**
+ * List a bounded Capsule workspace directory
+ *
+ * Available only for a Ready Capsule. Private Git metadata and the supervisor marker are never exposed.
+ */
+export const listCapsuleFiles = <ThrowOnError extends boolean = false>(options: Options<ListCapsuleFilesData, ThrowOnError>): RequestResult<ListCapsuleFilesResponses, ListCapsuleFilesErrors, ThrowOnError> => (options.client ?? client).get<ListCapsuleFilesResponses, ListCapsuleFilesErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/capsules/{capsuleId}/files',
+    ...options
+});
+
+/**
+ * Read one bounded regular workspace file
+ *
+ * Content is base64 encoded in JSON and is binary-safe. Symlinks and files over the supervisor bound are rejected.
+ */
+export const readCapsuleFile = <ThrowOnError extends boolean = false>(options: Options<ReadCapsuleFileData, ThrowOnError>): RequestResult<ReadCapsuleFileResponses, ReadCapsuleFileErrors, ThrowOnError> => (options.client ?? client).get<ReadCapsuleFileResponses, ReadCapsuleFileErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/capsules/{capsuleId}/files/content',
+    ...options
+});
+
+/**
+ * Stream a bounded portable Capsule workspace archive
+ *
+ * Uses installation authentication in the Authorization header. The archive is never addressed by a token in the URL and is serialized against Moment and Delivery maintenance.
+ */
+export const exportCapsuleWorkspace = <ThrowOnError extends boolean = false>(options: Options<ExportCapsuleWorkspaceData, ThrowOnError>): RequestResult<ExportCapsuleWorkspaceResponses, ExportCapsuleWorkspaceErrors, ThrowOnError> => (options.client ?? client).get<ExportCapsuleWorkspaceResponses, ExportCapsuleWorkspaceErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/capsules/{capsuleId}/workspace',
+    ...options
+});
+
+/**
+ * Inspect exact Git objects for Delivery approval
+ */
+export const inspectCapsuleDelivery = <ThrowOnError extends boolean = false>(options: Options<InspectCapsuleDeliveryData, ThrowOnError>): RequestResult<InspectCapsuleDeliveryResponses, InspectCapsuleDeliveryErrors, ThrowOnError> => (options.client ?? client).get<InspectCapsuleDeliveryResponses, InspectCapsuleDeliveryErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/capsules/{capsuleId}/deliveries/inspection',
+    ...options
+});
+
+/**
+ * List durable Delivery resources
+ */
+export const listCapsuleDeliveries = <ThrowOnError extends boolean = false>(options: Options<ListCapsuleDeliveriesData, ThrowOnError>): RequestResult<ListCapsuleDeliveriesResponses, ListCapsuleDeliveriesErrors, ThrowOnError> => (options.client ?? client).get<ListCapsuleDeliveriesResponses, ListCapsuleDeliveriesErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/capsules/{capsuleId}/deliveries',
+    ...options
+});
+
+/**
+ * Commit and push an explicitly approved reviewed Git state
+ *
+ * Approval binds the exact Capsule resource version, HEAD, and worktree tree. Only one exact non-protected refs/heads destination is pushed.
+ */
+export const createCapsuleDelivery = <ThrowOnError extends boolean = false>(options: Options<CreateCapsuleDeliveryData, ThrowOnError>): RequestResult<CreateCapsuleDeliveryResponses, CreateCapsuleDeliveryErrors, ThrowOnError> => (options.client ?? client).post<CreateCapsuleDeliveryResponses, CreateCapsuleDeliveryErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/capsules/{capsuleId}/deliveries',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Get a durable Delivery
+ */
+export const getDelivery = <ThrowOnError extends boolean = false>(options: Options<GetDeliveryData, ThrowOnError>): RequestResult<GetDeliveryResponses, GetDeliveryErrors, ThrowOnError> => (options.client ?? client).get<GetDeliveryResponses, GetDeliveryErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/deliveries/{deliveryId}',
+    ...options
+});
 
 /**
  * List a Capsule Timeline's Moments
  */
-export const listMoments = <ThrowOnError extends boolean = false>(options: Options<ListMomentsData, ThrowOnError>): RequestResult<ListMomentsResponses, ListMomentsErrors, ThrowOnError> => (options.client ?? client).get<ListMomentsResponses, ListMomentsErrors, ThrowOnError>({ url: '/capsules/{capsuleId}/moments', ...options });
+export const listMoments = <ThrowOnError extends boolean = false>(options: Options<ListMomentsData, ThrowOnError>): RequestResult<ListMomentsResponses, ListMomentsErrors, ThrowOnError> => (options.client ?? client).get<ListMomentsResponses, ListMomentsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/capsules/{capsuleId}/moments',
+    ...options
+});
 
 /**
  * Capture an immutable filesystem Moment
  */
 export const captureMoment = <ThrowOnError extends boolean = false>(options: Options<CaptureMomentData, ThrowOnError>): RequestResult<CaptureMomentResponses, CaptureMomentErrors, ThrowOnError> => (options.client ?? client).post<CaptureMomentResponses, CaptureMomentErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
     url: '/capsules/{capsuleId}/moments',
     ...options,
     headers: {
@@ -352,17 +582,26 @@ export const captureMoment = <ThrowOnError extends boolean = false>(options: Opt
 /**
  * Get an immutable Moment
  */
-export const getMoment = <ThrowOnError extends boolean = false>(options: Options<GetMomentData, ThrowOnError>): RequestResult<GetMomentResponses, GetMomentErrors, ThrowOnError> => (options.client ?? client).get<GetMomentResponses, GetMomentErrors, ThrowOnError>({ url: '/moments/{momentId}', ...options });
+export const getMoment = <ThrowOnError extends boolean = false>(options: Options<GetMomentData, ThrowOnError>): RequestResult<GetMomentResponses, GetMomentErrors, ThrowOnError> => (options.client ?? client).get<GetMomentResponses, GetMomentErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/moments/{momentId}',
+    ...options
+});
 
 /**
  * Get a Timeline and its ancestry
  */
-export const getTimeline = <ThrowOnError extends boolean = false>(options: Options<GetTimelineData, ThrowOnError>): RequestResult<GetTimelineResponses, GetTimelineErrors, ThrowOnError> => (options.client ?? client).get<GetTimelineResponses, GetTimelineErrors, ThrowOnError>({ url: '/timelines/{timelineId}', ...options });
+export const getTimeline = <ThrowOnError extends boolean = false>(options: Options<GetTimelineData, ThrowOnError>): RequestResult<GetTimelineResponses, GetTimelineErrors, ThrowOnError> => (options.client ?? client).get<GetTimelineResponses, GetTimelineErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/timelines/{timelineId}',
+    ...options
+});
 
 /**
  * Create a new Capsule and Timeline from a Moment
  */
 export const createShard = <ThrowOnError extends boolean = false>(options: Options<CreateShardData, ThrowOnError>): RequestResult<CreateShardResponses, CreateShardErrors, ThrowOnError> => (options.client ?? client).post<CreateShardResponses, CreateShardErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
     url: '/moments/{momentId}/shards',
     ...options,
     headers: {
@@ -375,6 +614,7 @@ export const createShard = <ThrowOnError extends boolean = false>(options: Optio
  * Create a non-destructive descendant from an earlier Moment
  */
 export const rewindCapsule = <ThrowOnError extends boolean = false>(options: Options<RewindCapsuleData, ThrowOnError>): RequestResult<RewindCapsuleResponses, RewindCapsuleErrors, ThrowOnError> => (options.client ?? client).post<RewindCapsuleResponses, RewindCapsuleErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
     url: '/capsules/{capsuleId}/rewind',
     ...options,
     headers: {
@@ -389,10 +629,22 @@ export const rewindCapsule = <ThrowOnError extends boolean = false>(options: Opt
  * Active Runs and Thread sessions block capture/seal. Sealing retains encrypted Thread history and does not crypto-shred transcript keys.
  */
 export const sealCapsule = <ThrowOnError extends boolean = false>(options: Options<SealCapsuleData, ThrowOnError>): RequestResult<SealCapsuleResponses, SealCapsuleErrors, ThrowOnError> => (options.client ?? client).post<SealCapsuleResponses, SealCapsuleErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
     url: '/capsules/{capsuleId}/seal',
     ...options,
     headers: {
         'Content-Type': 'application/json',
         ...options.headers
     }
+});
+
+/**
+ * Exchange installation bearer authentication for an HttpOnly same-origin browser session
+ *
+ * The installation token is accepted only in the Authorization header and is never returned. The session cookie is scoped to this origin and daemon lifetime. Remote bootstrap requires HTTPS; plain HTTP is accepted only for verified loopback source and Host addresses.
+ */
+export const createBrowserSession = <ThrowOnError extends boolean = false>(options?: Options<CreateBrowserSessionData, ThrowOnError>): RequestResult<CreateBrowserSessionResponses, CreateBrowserSessionErrors, ThrowOnError> => (options?.client ?? client).post<CreateBrowserSessionResponses, CreateBrowserSessionErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/auth/browser-session',
+    ...options
 });

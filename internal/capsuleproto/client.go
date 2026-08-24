@@ -265,6 +265,58 @@ func (c *Client) RestoreWorkspace(ctx context.Context, digest string, archive io
 	return err
 }
 
+func (c *Client) BrowseList(
+	ctx context.Context,
+	request BrowseListRequest,
+) (BrowseListResponse, error) {
+	var response BrowseListResponse
+	err := c.callLimit(
+		ctx, http.MethodPost, BrowseListPath, request, &response, true,
+		int64(maxBrowseEntries)*(maxBrowseNameBytes*6+128),
+	)
+	return response, err
+}
+
+func (c *Client) BrowseRead(
+	ctx context.Context,
+	request BrowseReadRequest,
+) (BrowseReadResponse, error) {
+	var response BrowseReadResponse
+	err := c.callLimit(
+		ctx, http.MethodPost, BrowseReadPath, request, &response, true,
+		2*maxBrowseFileBytes,
+	)
+	return response, err
+}
+
+func (c *Client) DeliveryState(ctx context.Context) (DeliveryStateResponse, error) {
+	var response DeliveryStateResponse
+	err := c.call(ctx, http.MethodGet, DeliveryPath+"/state", nil, &response, true)
+	return response, err
+}
+
+func (c *Client) DeliveryCommit(
+	ctx context.Context,
+	request DeliveryCommitRequest,
+) (DeliveryCommitResponse, error) {
+	var response DeliveryCommitResponse
+	err := c.call(
+		ctx, http.MethodPost, DeliveryPath+"/commit", request, &response, true,
+	)
+	return response, err
+}
+
+func (c *Client) DeliveryPush(
+	ctx context.Context,
+	request DeliveryPushRequest,
+) (DeliveryPushResponse, error) {
+	var response DeliveryPushResponse
+	err := c.call(
+		ctx, http.MethodPost, DeliveryPath+"/push", request, &response, true,
+	)
+	return response, err
+}
+
 func (c *Client) Attach(ctx context.Context, runID string, after uint64) (*websocket.Conn, error) {
 	endpoint := strings.Replace(c.baseURL, "http://", "ws://", 1) +
 		"/v1/runs/" + url.PathEscape(runID) + "/attach?after=" + strconv.FormatUint(after, 10)

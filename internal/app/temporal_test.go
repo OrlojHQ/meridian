@@ -3,11 +3,14 @@ package app_test
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -21,11 +24,20 @@ import (
 )
 
 type temporalRuntime struct {
-	mu       sync.Mutex
-	restores map[string][]byte
+	mu         sync.Mutex
+	restores   map[string][]byte
+	captures   int
+	captureErr error
+	restoreErr error
 }
 
 func (r *temporalRuntime) CaptureWorkspace(context.Context, string) (ports.WorkspaceCapture, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.captures++
+	if r.captureErr != nil {
+		return ports.WorkspaceCapture{}, r.captureErr
+	}
 	return ports.WorkspaceCapture{
 		Archive: io.NopCloser(bytes.NewReader([]byte("deterministic-workspace"))),
 		Metadata: ports.SnapshotMetadata{
@@ -41,6 +53,13 @@ func (r *temporalRuntime) RestoreWorkspace(
 	_ int64,
 	reader io.Reader,
 ) error {
+	r.mu.Lock()
+	if r.restoreErr != nil {
+		err := r.restoreErr
+		r.mu.Unlock()
+		return err
+	}
+	r.mu.Unlock()
 	value, err := io.ReadAll(reader)
 	if err != nil {
 		return err
@@ -52,6 +71,33 @@ func (r *temporalRuntime) RestoreWorkspace(
 	}
 	r.restores[resourceID] = value
 	return nil
+}
+
+type setupCacheProvider struct {
+	*fake.Provider
+	mu       sync.Mutex
+	requests map[domain.CapsuleID]ports.CreateCapsuleRequest
+}
+
+func newSetupCacheProvider() *setupCacheProvider {
+	return &setupCacheProvider{
+		Provider: fake.New(fake.Options{}),
+		requests: make(map[domain.CapsuleID]ports.CreateCapsuleRequest),
+	}
+}
+
+func (p *setupCacheProvider) Capabilities(context.Context) (ports.ProviderCapabilities, error) {
+	return ports.ProviderCapabilities{Pause: true, Snapshot: true}, nil
+}
+
+func (p *setupCacheProvider) Create(
+	ctx context.Context,
+	request ports.CreateCapsuleRequest,
+) (ports.ProviderResource, error) {
+	p.mu.Lock()
+	p.requests[request.CapsuleID] = request
+	p.mu.Unlock()
+	return p.Provider.Create(ctx, request)
 }
 
 func TestTemporalCaptureDescendantsRewindAndSeal(t *testing.T) {
@@ -187,6 +233,165 @@ func TestTemporalCaptureDescendantsRewindAndSeal(t *testing.T) {
 	); err == nil {
 		t.Fatal("sealed Capsule accepted deletion")
 	}
+}
+
+func TestSetupMomentCacheReuseIsolationAndFailureSemantics(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	store, err := sqlite.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	artifactStore, err := artifacts.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	clock := &testClock{now: time.Date(2026, 8, 24, 14, 0, 0, 0, time.UTC)}
+	ids := &testIDs{}
+	provider := newSetupCacheProvider()
+	snapshotter := &temporalRuntime{}
+	reconciler := app.NewReconciler(store, provider, clock, ids)
+	reconciler.ConfigureTemporal(snapshotter, artifactStore)
+	reconciler.Start(ctx)
+	defer reconciler.Close()
+	service := app.NewService(store, clock, ids, reconciler)
+	service.ConfigureTemporal(snapshotter, artifactStore)
+
+	config := app.ProjectConfiguration{
+		RepositoryURL:  "https://example.test/repository.git",
+		Setup:          []string{"sh", "-c", "make setup"},
+		ImageReference: "example/image:stable",
+	}
+	project, err := service.CreateProjectConfigured(ctx, "cached", config, "project-cache")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := service.CreateCapsule(ctx, project.ID, "first", "capsule-first")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first = waitReady(t, service, first.ID)
+	configHash := testProjectConfigurationHash(t, project)
+	var cache domain.SetupMomentCache
+	var internal domain.Moment
+	if err := store.View(ctx, func(reader ports.Reader) error {
+		var err error
+		cache, err = reader.GetSetupMomentCache(ctx, project.ID, configHash)
+		if err != nil {
+			return err
+		}
+		internal, err = reader.GetMoment(ctx, cache.MomentID)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if internal.Kind != domain.MomentSetupCache || internal.CapsuleID != first.ID {
+		t.Fatalf("setup cache Moment = %#v", internal)
+	}
+	if _, err := service.GetMoment(ctx, internal.ID); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("internal Moment lookup = %v", err)
+	}
+	page, err := service.ListMoments(ctx, first.ID, 0, 10)
+	if err != nil || len(page.Items) != 0 {
+		t.Fatalf("timeline exposed setup cache: %#v, %v", page, err)
+	}
+
+	second, err := service.CreateCapsule(ctx, project.ID, "second", "capsule-second")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second = waitReady(t, service, second.ID)
+	provider.mu.Lock()
+	firstRequest := provider.requests[first.ID]
+	secondRequest := provider.requests[second.ID]
+	provider.mu.Unlock()
+	if firstRequest.Restore || firstRequest.RepositoryURL != config.RepositoryURL ||
+		!secondRequest.Restore || secondRequest.RepositoryURL != "" ||
+		len(secondRequest.Setup) != 0 || secondRequest.ImageReference != internal.ImageDigest {
+		t.Fatalf("setup cache create requests: first=%#v second=%#v", firstRequest, secondRequest)
+	}
+	snapshotter.mu.Lock()
+	captures := snapshotter.captures
+	restored := append([]byte(nil), snapshotter.restores["fake-"+string(second.ID)]...)
+	snapshotter.mu.Unlock()
+	if captures != 1 || string(restored) != "deterministic-workspace" {
+		t.Fatalf("cache captures=%d restored=%q", captures, restored)
+	}
+
+	snapshotter.mu.Lock()
+	snapshotter.restoreErr = errors.New("restore rejected")
+	snapshotter.mu.Unlock()
+	failing, err := service.CreateCapsule(ctx, project.ID, "restore-fails", "capsule-restore-fails")
+	if err != nil {
+		t.Fatal(err)
+	}
+	failing = waitFailed(t, service, failing.ID)
+	if !strings.Contains(failing.Failure, "restore rejected") {
+		t.Fatalf("restore failure = %q", failing.Failure)
+	}
+
+	snapshotter.mu.Lock()
+	snapshotter.restoreErr = nil
+	snapshotter.captureErr = errors.New("capture unavailable")
+	snapshotter.mu.Unlock()
+	other, err := service.CreateProjectConfigured(ctx, "isolated", config, "project-isolated")
+	if err != nil {
+		t.Fatal(err)
+	}
+	uncached, err := service.CreateCapsule(ctx, other.ID, "uncached", "capsule-uncached")
+	if err != nil {
+		t.Fatal(err)
+	}
+	uncached = waitReady(t, service, uncached.ID)
+	provider.mu.Lock()
+	uncachedRequest := provider.requests[uncached.ID]
+	provider.mu.Unlock()
+	if uncachedRequest.Restore {
+		t.Fatal("setup cache was reused across Projects")
+	}
+	if err := store.View(ctx, func(reader ports.Reader) error {
+		_, err := reader.GetSetupMomentCache(ctx, other.ID, testProjectConfigurationHash(t, other))
+		return err
+	}); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("capture failure unexpectedly installed cache: %v", err)
+	}
+}
+
+func testProjectConfigurationHash(t *testing.T, project domain.Project) string {
+	t.Helper()
+	value, err := json.Marshal(struct {
+		RepositoryURL  string   `json:"repositoryUrl"`
+		Setup          []string `json:"setup"`
+		ImageReference string   `json:"imageReference"`
+		GitSecretName  string   `json:"gitSecretName"`
+	}{
+		RepositoryURL:  project.RepositoryURL,
+		Setup:          project.Setup,
+		ImageReference: project.ImageReference,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(value)
+	return hex.EncodeToString(sum[:])
+}
+
+func waitFailed(t *testing.T, service *app.Service, id domain.CapsuleID) domain.Capsule {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		capsule, err := service.GetCapsule(context.Background(), id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if capsule.State == domain.CapsuleFailed {
+			return capsule
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("Capsule %s did not fail", id)
+	return domain.Capsule{}
 }
 
 type decodedMomentManifest struct {

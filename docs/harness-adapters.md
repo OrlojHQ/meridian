@@ -69,8 +69,10 @@ harnesses:
 ```
 
 Do not put API keys, server passwords, or bearer tokens in these arguments.
-Harness/provider credential discovery is owned by each project image and its
-runtime environment; Meridian secret-reference resolution is not implemented.
+Use Project-authorized `harness_env` named secrets and profile
+`secretReferences` for process-start environment values. Meridian does not
+perform ambient provider credential discovery, and it never injects
+`git_https`, `git_push`, or `github_api` values into adapters.
 
 ## Tested upstream contracts
 

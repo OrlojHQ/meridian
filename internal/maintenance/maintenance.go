@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/OrlojHQ/meridian/internal/domain"
+	credentialsecrets "github.com/OrlojHQ/meridian/internal/secrets"
 	"github.com/OrlojHQ/meridian/internal/store/sqlite"
 	"github.com/OrlojHQ/meridian/internal/transcripts"
 	_ "modernc.org/sqlite"
@@ -43,6 +44,7 @@ type Manifest struct {
 	CreatedAt              time.Time                  `json:"createdAt"`
 	SchemaVersion          int                        `json:"schemaVersion"`
 	RequiredTranscriptKeys []TranscriptKeyRequirement `json:"requiredTranscriptKeys,omitempty"`
+	RequiredSecretKeys     []TranscriptKeyRequirement `json:"requiredSecretKeys,omitempty"`
 	Files                  []File                     `json:"files"`
 }
 
@@ -61,9 +63,10 @@ type CASReport struct {
 }
 
 type TranscriptKeyRotationReport struct {
-	KeyID            string `json:"keyId"`
-	KeyVersion       uint32 `json:"keyVersion"`
-	ThreadsRewrapped int    `json:"threadsRewrapped"`
+	KeyID                    string `json:"keyId"`
+	KeyVersion               uint32 `json:"keyVersion"`
+	ThreadsRewrapped         int    `json:"threadsRewrapped"`
+	IntentEnvelopesRewrapped int    `json:"intentEnvelopesRewrapped"`
 }
 
 var rotationTestHook func(int) error
@@ -105,7 +108,7 @@ func RotateTranscriptKey(
 		if err := deepVerifyTranscripts(ctx, databasePath, oldKey); err != nil {
 			return TranscriptKeyRotationReport{}, err
 		}
-		count, err := rewrapTranscriptKeys(ctx, databasePath, oldKey, oldKey)
+		counts, err := rewrapTranscriptKeys(ctx, databasePath, oldKey, oldKey)
 		if err != nil {
 			return TranscriptKeyRotationReport{}, fmt.Errorf(
 				"resume transcript key transition (transitional key retained): %w", err,
@@ -122,7 +125,8 @@ func RotateTranscriptKey(
 			)
 		}
 		return TranscriptKeyRotationReport{
-			KeyID: oldKey.ID, KeyVersion: oldKey.Version, ThreadsRewrapped: count,
+			KeyID: oldKey.ID, KeyVersion: oldKey.Version,
+			ThreadsRewrapped: counts.threads, IntentEnvelopesRewrapped: counts.intents,
 		}, nil
 	}
 	var newKey *transcripts.InstallationKey
@@ -150,7 +154,7 @@ func RotateTranscriptKey(
 		}
 		return operationErr
 	}
-	count, err := rewrapTranscriptKeys(ctx, databasePath, oldKey, newKey)
+	counts, err := rewrapTranscriptKeys(ctx, databasePath, oldKey, newKey)
 	if err != nil {
 		oldOnly, inspectErr := databaseUsesOnlyTranscriptKey(
 			ctx, databasePath, oldKey.ID, oldKey.Version,
@@ -184,7 +188,8 @@ func RotateTranscriptKey(
 		return TranscriptKeyRotationReport{}, restoreOld(err)
 	}
 	return TranscriptKeyRotationReport{
-		KeyID: newKey.ID, KeyVersion: newKey.Version, ThreadsRewrapped: count,
+		KeyID: newKey.ID, KeyVersion: newKey.Version,
+		ThreadsRewrapped: counts.threads, IntentEnvelopesRewrapped: counts.intents,
 	}, nil
 }
 
@@ -324,9 +329,14 @@ func CreateBackup(ctx context.Context, dataDir, destination string) (Manifest, e
 	if err != nil {
 		return Manifest{}, err
 	}
+	requiredSecretKeys, err := requiredSecretKeys(ctx, databaseDestination)
+	if err != nil {
+		return Manifest{}, err
+	}
 	manifest := Manifest{
 		Format: backupFormat, CreatedAt: time.Now().UTC(),
-		SchemaVersion: schemaVersion, RequiredTranscriptKeys: requiredKeys, Files: files,
+		SchemaVersion: schemaVersion, RequiredTranscriptKeys: requiredKeys,
+		RequiredSecretKeys: requiredSecretKeys, Files: files,
 	}
 	if err := writeManifest(temp, manifest); err != nil {
 		return Manifest{}, err
@@ -400,6 +410,9 @@ func VerifyBackup(ctx context.Context, backupDir string) (Manifest, error) {
 	if err := validateTranscriptKeyRequirements(manifest.RequiredTranscriptKeys); err != nil {
 		return Manifest{}, err
 	}
+	if err := validateTranscriptKeyRequirements(manifest.RequiredSecretKeys); err != nil {
+		return Manifest{}, fmt.Errorf("backup credential key requirement is invalid: %w", err)
+	}
 	seen := make(map[string]struct{}, len(manifest.Files))
 	for _, expected := range manifest.Files {
 		if !validBackupPath(expected.Path) {
@@ -469,6 +482,13 @@ func VerifyBackup(ctx context.Context, backupDir string) (Manifest, error) {
 	if !sameTranscriptKeyRequirements(requiredKeys, manifest.RequiredTranscriptKeys) {
 		return Manifest{}, fmt.Errorf("backup transcript key requirements do not match database")
 	}
+	requiredSecretKeys, err := requiredSecretKeys(ctx, filepath.Join(backupDir, "meridian.db"))
+	if err != nil {
+		return Manifest{}, err
+	}
+	if !sameTranscriptKeyRequirements(requiredSecretKeys, manifest.RequiredSecretKeys) {
+		return Manifest{}, fmt.Errorf("backup credential key requirements do not match database")
+	}
 	return manifest, nil
 }
 
@@ -505,6 +525,7 @@ func RestoreBackup(ctx context.Context, backupDir, dataDir string, replace bool)
 type RestoreOptions struct {
 	Replace           bool
 	TranscriptKeyFile string
+	SecretKeyFile     string
 }
 
 // RestoreBackupWithOptions preserves a separately supplied installation key
@@ -561,6 +582,28 @@ func RestoreBackupWithOptions(
 			return Manifest{}, verifyErr
 		}
 	}
+	secretKeyPath := options.SecretKeyFile
+	defaultSecretKeyPath := credentialsecrets.DefaultKeyPath(dataDir)
+	if secretKeyPath == "" {
+		if info, statErr := os.Lstat(defaultSecretKeyPath); statErr == nil &&
+			info.Mode().IsRegular() && info.Mode()&os.ModeSymlink == 0 {
+			secretKeyPath = defaultSecretKeyPath
+		}
+	}
+	if len(manifest.RequiredSecretKeys) != 0 {
+		if secretKeyPath == "" {
+			return Manifest{}, errors.New("restore requires the separately protected credential key")
+		}
+		key, err := credentialsecrets.LoadKey(secretKeyPath)
+		if err != nil {
+			return Manifest{}, fmt.Errorf("load separately protected credential key: %w", err)
+		}
+		verifyErr := deepVerifySecrets(ctx, filepath.Join(backupDir, "meridian.db"), key)
+		key.Zero()
+		if verifyErr != nil {
+			return Manifest{}, verifyErr
+		}
+	}
 	temp, err := os.MkdirTemp(parent, "."+base+".restore-")
 	if err != nil {
 		return Manifest{}, err
@@ -581,6 +624,11 @@ func RestoreBackupWithOptions(
 	if keyPath != "" {
 		if err := copyRegular(keyPath, transcripts.DefaultKeyPath(temp)); err != nil {
 			return Manifest{}, fmt.Errorf("install separately protected transcript key: %w", err)
+		}
+	}
+	if secretKeyPath != "" {
+		if err := copyRegular(secretKeyPath, credentialsecrets.DefaultKeyPath(temp)); err != nil {
+			return Manifest{}, fmt.Errorf("install separately protected credential key: %w", err)
 		}
 	}
 	if _, err := inspectDatabase(ctx, filepath.Join(temp, "meridian.db"), false); err != nil {
@@ -741,6 +789,79 @@ func requiredTranscriptKeys(
 	if err != nil {
 		return nil, err
 	}
+	requirementsByKey := make(map[TranscriptKeyRequirement]struct{})
+	for rows.Next() {
+		var requirement TranscriptKeyRequirement
+		if err := rows.Scan(&requirement.ID, &requirement.Version); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		requirementsByKey[requirement] = struct{}{}
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM sqlite_master
+		WHERE type = 'table' AND name = 'project_thread_intents'`,
+	).Scan(&exists); err != nil {
+		return nil, err
+	}
+	if exists != 0 {
+		rows, err = db.QueryContext(ctx, `
+			SELECT DISTINCT kek_id, kek_version
+			FROM project_thread_intents WHERE wrapped_dek IS NOT NULL`)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var requirement TranscriptKeyRequirement
+			if err := rows.Scan(&requirement.ID, &requirement.Version); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			requirementsByKey[requirement] = struct{}{}
+		}
+		if err := rows.Close(); err != nil {
+			return nil, err
+		}
+	}
+	requirements := make([]TranscriptKeyRequirement, 0, len(requirementsByKey))
+	for requirement := range requirementsByKey {
+		requirements = append(requirements, requirement)
+	}
+	sort.Slice(requirements, func(i, j int) bool {
+		return requirements[i].ID < requirements[j].ID ||
+			(requirements[i].ID == requirements[j].ID &&
+				requirements[i].Version < requirements[j].Version)
+	})
+	return requirements, nil
+}
+
+func requiredSecretKeys(
+	ctx context.Context,
+	databasePath string,
+) ([]TranscriptKeyRequirement, error) {
+	db, err := openDatabase(databasePath)
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+	var exists int
+	if err := db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'secrets'`,
+	).Scan(&exists); err != nil {
+		return nil, err
+	}
+	if exists == 0 {
+		return nil, nil
+	}
+	rows, err := db.QueryContext(ctx, `
+		SELECT DISTINCT kek_id, kek_version
+		FROM secrets ORDER BY kek_id, kek_version`)
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 	var requirements []TranscriptKeyRequirement
 	for rows.Next() {
@@ -753,18 +874,66 @@ func requiredTranscriptKeys(
 	return requirements, rows.Err()
 }
 
+func deepVerifySecrets(
+	ctx context.Context,
+	databasePath string,
+	key *credentialsecrets.InstallationKey,
+) error {
+	db, err := openDatabase(databasePath)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	rows, err := db.QueryContext(ctx, `
+		SELECT id, name, purpose, envelope_version, kek_id, kek_version, nonce,
+			ciphertext, created_at, updated_at, resource_version
+		FROM secrets ORDER BY name`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var secret domain.Secret
+		var created, updated string
+		if err := rows.Scan(
+			&secret.ID, &secret.Name, &secret.Purpose, &secret.EnvelopeVersion,
+			&secret.KEKID, &secret.KEKVersion, &secret.Nonce, &secret.Ciphertext,
+			&created, &updated, &secret.ResourceVersion,
+		); err != nil {
+			return err
+		}
+		secret.CreatedAt, err = time.Parse(time.RFC3339Nano, created)
+		if err == nil {
+			secret.UpdatedAt, err = time.Parse(time.RFC3339Nano, updated)
+		}
+		if err != nil {
+			return domain.ErrCorrupt
+		}
+		if _, err := key.Open(secret); err != nil {
+			return fmt.Errorf("credential deep verification failed: %w", err)
+		}
+	}
+	return rows.Err()
+}
+
 type wrappedThreadKey struct {
 	id      domain.ThreadID
 	wrapped []byte
 	keyID   string
 	version uint32
+	intent  bool
+}
+
+type rotationCounts struct {
+	threads int
+	intents int
 }
 
 func rewrapTranscriptKeys(
 	ctx context.Context,
 	databasePath string,
 	oldKey, newKey *transcripts.InstallationKey,
-) (int, error) {
+) (rotationCounts, error) {
 	return rewrapTranscriptKeysWithHook(ctx, databasePath, oldKey, newKey, rotationTestHook)
 }
 
@@ -782,76 +951,124 @@ func rewrapTranscriptKeysWithHook(
 	databasePath string,
 	oldKey, newKey *transcripts.InstallationKey,
 	hook func(int) error,
-) (int, error) {
+) (rotationCounts, error) {
 	db, err := openWritableDatabase(databasePath)
 	if err != nil {
-		return 0, err
+		return rotationCounts{}, err
 	}
 	defer db.Close()
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
-		return 0, err
+		return rotationCounts{}, err
 	}
 	defer tx.Rollback()
 	rows, err := tx.QueryContext(ctx, `
 		SELECT id, wrapped_dek, kek_id, kek_version
 		FROM threads WHERE state <> 'deleted' ORDER BY id`)
 	if err != nil {
-		return 0, err
+		return rotationCounts{}, err
 	}
 	var keys []wrappedThreadKey
 	for rows.Next() {
 		var item wrappedThreadKey
 		if err := rows.Scan(&item.id, &item.wrapped, &item.keyID, &item.version); err != nil {
 			rows.Close()
-			return 0, err
+			return rotationCounts{}, err
 		}
 		keys = append(keys, item)
 	}
 	if err := rows.Close(); err != nil {
-		return 0, err
+		return rotationCounts{}, err
+	}
+	var intentTable int
+	if err := tx.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM sqlite_master
+		WHERE type = 'table' AND name = 'project_thread_intents'`,
+	).Scan(&intentTable); err != nil {
+		return rotationCounts{}, err
+	}
+	if intentTable != 0 {
+		rows, err = tx.QueryContext(ctx, `
+			SELECT thread_id, wrapped_dek, kek_id, kek_version
+			FROM project_thread_intents
+			WHERE wrapped_dek IS NOT NULL ORDER BY thread_id`)
+		if err != nil {
+			return rotationCounts{}, err
+		}
+		for rows.Next() {
+			var item wrappedThreadKey
+			item.intent = true
+			if err := rows.Scan(&item.id, &item.wrapped, &item.keyID, &item.version); err != nil {
+				rows.Close()
+				return rotationCounts{}, err
+			}
+			keys = append(keys, item)
+		}
+		if err := rows.Close(); err != nil {
+			return rotationCounts{}, err
+		}
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
+	var counts rotationCounts
 	for index, item := range keys {
 		dek, err := oldKey.UnwrapDEK(item.id, item.keyID, item.version, item.wrapped)
 		if err != nil {
-			return 0, fmt.Errorf("authenticate Thread key before rotation: %w", err)
+			return rotationCounts{}, fmt.Errorf("authenticate Thread key before rotation: %w", err)
 		}
 		rewrapped, wrapErr := newKey.WrapDEK(item.id, dek)
 		zeroBytes(dek)
 		if wrapErr != nil {
-			return 0, wrapErr
+			return rotationCounts{}, wrapErr
 		}
-		result, updateErr := tx.ExecContext(ctx, `
-			UPDATE threads
-			SET wrapped_dek = ?, kek_id = ?, kek_version = ?,
-				updated_at = ?, resource_version = resource_version + 1
-			WHERE id = ? AND state <> 'deleted' AND wrapped_dek = ?
-				AND kek_id = ? AND kek_version = ?`,
-			rewrapped, newKey.ID, newKey.Version, now, item.id,
-			item.wrapped, item.keyID, item.version,
-		)
+		var result sql.Result
+		var updateErr error
+		if item.intent {
+			result, updateErr = tx.ExecContext(ctx, `
+				UPDATE project_thread_intents
+				SET wrapped_dek = ?, kek_id = ?, kek_version = ?,
+					updated_at = ?, resource_version = resource_version + 1
+				WHERE thread_id = ? AND wrapped_dek = ?
+					AND kek_id = ? AND kek_version = ?`,
+				rewrapped, newKey.ID, newKey.Version, now, item.id,
+				item.wrapped, item.keyID, item.version,
+			)
+		} else {
+			result, updateErr = tx.ExecContext(ctx, `
+				UPDATE threads
+				SET wrapped_dek = ?, kek_id = ?, kek_version = ?,
+					updated_at = ?, resource_version = resource_version + 1
+				WHERE id = ? AND state <> 'deleted' AND wrapped_dek = ?
+					AND kek_id = ? AND kek_version = ?`,
+				rewrapped, newKey.ID, newKey.Version, now, item.id,
+				item.wrapped, item.keyID, item.version,
+			)
+		}
 		zeroBytes(rewrapped)
 		if updateErr != nil {
-			return 0, updateErr
+			return rotationCounts{}, updateErr
 		}
 		affected, affectedErr := result.RowsAffected()
 		if affectedErr != nil || affected != 1 {
 			if affectedErr != nil {
-				return 0, affectedErr
+				return rotationCounts{}, affectedErr
 			}
-			return 0, domain.ErrConflict
+			return rotationCounts{}, domain.ErrConflict
+		}
+		if item.intent {
+			counts.intents++
+		} else {
+			counts.threads++
 		}
 		if hook != nil {
 			if err := hook(index + 1); err != nil {
-				return 0, err
+				return rotationCounts{}, err
 			}
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return 0, fmt.Errorf("commit transcript key rotation: %w", err)
+		return rotationCounts{}, fmt.Errorf("commit transcript key rotation: %w", err)
 	}
-	return len(keys), nil
+	return counts, nil
 }
 
 func openWritableDatabase(path string) (*sql.DB, error) {
@@ -983,7 +1200,65 @@ func deepVerifyTranscripts(
 			return fmt.Errorf("transcript deep verification failed: %w", domain.ErrTranscriptCorrupt)
 		}
 	}
-	return rows.Err()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	var exists int
+	if err := db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM sqlite_master
+		WHERE type = 'table' AND name = 'project_thread_intents'`,
+	).Scan(&exists); err != nil {
+		return err
+	}
+	if exists == 0 {
+		return nil
+	}
+	intentRows, err := db.QueryContext(ctx, `
+		SELECT thread_id, message_id, wrapped_dek, kek_id, kek_version,
+			envelope_version, ciphertext, created_at
+		FROM project_thread_intents
+		WHERE wrapped_dek IS NOT NULL
+		ORDER BY thread_id`)
+	if err != nil {
+		return err
+	}
+	defer intentRows.Close()
+	for intentRows.Next() {
+		var threadID domain.ThreadID
+		var messageID domain.ThreadMessageID
+		var wrappedDEK, ciphertext []byte
+		var keyID, createdAt string
+		var keyVersion uint32
+		var envelopeVersion int64
+		if err := intentRows.Scan(
+			&threadID, &messageID, &wrappedDEK, &keyID, &keyVersion,
+			&envelopeVersion, &ciphertext, &createdAt,
+		); err != nil {
+			return err
+		}
+		if envelopeVersion != int64(transcripts.EnvelopeVersion) {
+			return domain.ErrTranscriptCorrupt
+		}
+		dek, err := key.UnwrapDEK(threadID, keyID, keyVersion, wrappedDEK)
+		if err != nil {
+			return fmt.Errorf("Project Thread intent verification failed: %w", err)
+		}
+		plaintext, openErr := transcripts.Open(dek, transcripts.FrameMetadata{
+			ThreadID: threadID, MessageID: messageID, MessageSequence: 1,
+			BlockSequence: 1, Role: domain.ThreadRoleUser,
+			MessageKind: domain.ThreadMessagePrompt, BlockKind: domain.ThreadBlockText,
+			CreatedAt: createdAt,
+		}, ciphertext)
+		zeroBytes(dek)
+		zeroBytes(plaintext)
+		if openErr != nil {
+			return fmt.Errorf("Project Thread intent verification failed: %w", domain.ErrTranscriptCorrupt)
+		}
+	}
+	return intentRows.Err()
 }
 
 func zeroBytes(value []byte) {
