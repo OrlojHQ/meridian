@@ -348,8 +348,17 @@ func TestOpenCodeContractHelper(t *testing.T) {
 				flusher.Flush()
 			}
 		case request.URL.Path == "/session/ses_contract/prompt_async":
+			var prompt map[string]json.RawMessage
+			if json.NewDecoder(request.Body).Decode(&prompt) != nil || prompt["messageID"] != nil {
+				http.Error(writer, "caller-supplied messageID is incompatible", http.StatusBadRequest)
+				return
+			}
 			writer.WriteHeader(http.StatusNoContent)
 			events := []map[string]any{
+				{"type": "plugin.added", "properties": map[string]any{}},
+				{"type": "catalog.updated", "properties": map[string]any{}},
+				{"type": "reference.updated", "properties": map[string]any{}},
+				{"type": "integration.updated", "properties": map[string]any{}},
 				{"type": "message.part.delta", "properties": map[string]any{
 					"sessionID": "ses_contract", "messageID": "msg_contract",
 					"field": "text", "delta": "hello",

@@ -599,7 +599,7 @@ func responseError(response any) error {
 
 func (c *cliConfig) writeProject(project client.Project) error {
 	if c.json {
-		return writeJSON(c.stdout, project)
+		return writeJSON(c.stdout, &project)
 	}
 	_, err := fmt.Fprintf(c.stdout, "%s\t%s\tversion=%d\n", project.ID, project.Name, project.ResourceVersion)
 	return err

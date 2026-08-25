@@ -213,8 +213,7 @@ func RunOpenCode(
 			switch frame.Type {
 			case adapterproto.KindUserMessage:
 				body := map[string]any{
-					"messageID": frame.ID,
-					"parts":     []map[string]string{{"type": "text", "text": frame.Content}},
+					"parts": []map[string]string{{"type": "text", "text": frame.Content}},
 				}
 				if err := api.json(ctx, http.MethodPost,
 					"/session/"+url.PathEscape(sessionID)+"/prompt_async",
@@ -768,6 +767,7 @@ func (s *openCodeState) handleEvent(ctx context.Context, event openCodeEvent) er
 		"session.created", "session.deleted", "session.diff", "session.compacted",
 		"permission.replied", "todo.updated", "file.edited", "file.watcher.updated",
 		"installation.updated", "installation.update-available", "project.updated",
+		"plugin.added", "catalog.updated", "reference.updated", "integration.updated",
 		"server.instance.disposed", "global.disposed", "lsp.client.diagnostics",
 		"lsp.updated", "vcs.branch.updated", "mcp.tools.changed",
 		"mcp.browser.open.failed", "command.executed", "workspace.ready",
