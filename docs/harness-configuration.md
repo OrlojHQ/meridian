@@ -1,9 +1,14 @@
 # Harness configuration
 
-Generic executable profiles live in
-`/workspace/.meridian/project.yaml`. `capsuled` reads and validates this file
-inside the Capsule; `meridiand` never parses repository-controlled YAML on the
-host.
+`capsuled` loads generic executable profiles from two Capsule-local sources:
+
+1. trusted image manifests, sorted by filename under
+   `/etc/meridian/harnesses.d/*.yaml`; then
+2. the optional repository file `/workspace/.meridian/project.yaml`.
+
+Both sources use the same strict `v1` parser. Duplicate names across files fail
+closed, so a repository cannot shadow an image-owned executable. `meridiand`
+never parses either source on the host.
 
 ```yaml
 version: v1
@@ -30,7 +35,8 @@ Fields are strict:
 - `timeout` is positive and no greater than 24 hours.
 - `secretReferences` contains opaque `harness_env` names only.
 
-Unknown fields, malformed YAML, duplicate names, inline secret-like values,
+Unknown fields, malformed YAML, duplicate names within or across sources,
+non-regular trusted manifest entries, inline secret-like values,
 unsafe paths, unreasonable sizes, and invalid modes fail closed. The Project,
 not repository YAML, must explicitly authorize every referenced name. At Run
 or Thread start the host resolves only that allowlist; `capsuled` requires every
@@ -38,6 +44,12 @@ selected profile reference, passes exactly those entries to the child
 environment, and then discards its copy. Missing, unallowed, or wrong-purpose
 references fail as `secrets_unresolved`. Do not put plaintext credentials in
 this file.
+
+Official harness-pack images use the trusted source because pack selection and
+image provisioning happen before the repository is cloned. For example, the
+OpenCode pack includes a native `opencode` profile with
+`/usr/local/bin/opencode`, `promptMode: interactive`, and `pty: true`.
+Repositories can add other non-conflicting profiles but cannot replace it.
 
 Delivery settings are host-owned Project configuration, not repository YAML:
 
@@ -90,8 +102,8 @@ never share the PTY WebSocket.
 
 The packaged adapter binary does not install OpenCode, Pi, model providers, or
 credentials. Those remain responsibilities of the selected project image and
-its controlled runtime environment. Adapter command arguments and repository
-YAML are not credential channels.
+its controlled runtime environment. Trusted manifests and repository YAML are
+executable metadata, not credential channels.
 
 Harnesses and repository setup code are hostile. They run as UID 10001 inside the selected trusted-development Capsule and can modify its workspace. Output, terminal bytes, and Git diffs are also hostile and may contain secrets or terminal escape sequences. Meridian bounds these streams and omits their content from normal durable events and logs, but an attached client or explicit diff caller receives the content and must handle it safely.
 

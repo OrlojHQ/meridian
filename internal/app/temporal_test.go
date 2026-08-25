@@ -262,6 +262,9 @@ func TestSetupMomentCacheReuseIsolationAndFailureSemantics(t *testing.T) {
 		RepositoryURL:  "https://example.test/repository.git",
 		Setup:          []string{"sh", "-c", "make setup"},
 		ImageReference: "example/image:stable",
+		HarnessImages: []domain.HarnessImage{{
+			Name: "opencode", ImageReference: "example/image:stable",
+		}},
 	}
 	project, err := service.CreateProjectConfigured(ctx, "cached", config, "project-cache")
 	if err != nil {
@@ -317,6 +320,22 @@ func TestSetupMomentCacheReuseIsolationAndFailureSemantics(t *testing.T) {
 	snapshotter.mu.Unlock()
 	if captures != 1 || string(restored) != "deterministic-workspace" {
 		t.Fatalf("cache captures=%d restored=%q", captures, restored)
+	}
+
+	launcher, err := service.CreateCapsuleForHarness(
+		ctx, project.ID, "launcher", "opencode", "capsule-launcher",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	launcher = waitReady(t, service, launcher.ID)
+	provider.mu.Lock()
+	launcherRequest := provider.requests[launcher.ID]
+	provider.mu.Unlock()
+	if launcherRequest.Restore || launcherRequest.RepositoryURL != config.RepositoryURL ||
+		len(launcherRequest.Setup) != len(config.Setup) ||
+		launcherRequest.ImageReference != config.ImageReference {
+		t.Fatalf("launcher reused setup cache image: %#v", launcherRequest)
 	}
 
 	snapshotter.mu.Lock()

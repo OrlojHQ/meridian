@@ -12,7 +12,7 @@ an untrusted multi-tenant claim.
 
 The initial deployment assumption is one trusted human operator on a dedicated or personally controlled host. The code, repositories, dependencies, and agent actions executed in a future Capsule remain untrusted even under that assumption.
 
-ADRs 0014 through 0020 add target requirements for the orb product plan. They
+ADRs 0014 through 0022 add target requirements for the orb product plan. They
 are not claims that API authentication, brokered named secrets, private clone,
 local sync, file browsing, Agent Sandbox Moments/previews, idle pause, setup
 cache, or delivery have shipped. Where current behavior differs, it is called
@@ -87,7 +87,7 @@ Mounting `/var/run/docker.sock` into a Capsule, forwarding an unprotected Docker
 
 Meridian must never expose the host Docker socket or equivalent runtime API to untrusted Capsule code. A socket proxy with a reduced verb list is still a high-risk privileged component and is not a general isolation boundary. If nested image builds are required later, use an isolated builder with a narrow API, separate credentials and cache, no host mounts, and its own resource and network policy. Remote Docker endpoints require mutual TLS, authorization, network restriction, and separate tenancy, but even authenticated API access still grants the authority exposed by that daemon.
 
-In the Docker deployment, only `meridiand` accesses Docker. Each Capsule receives one owned volume at `/workspace`, one bridge network, and one non-root container with dropped capabilities, `no-new-privileges`, a read-only root filesystem, bounded tmpfs paths, CPU/memory/PID limits, and a supervisor port published to host loopback. Workspace capture and restore use only that loopback-bound, versioned, bearer-authenticated endpoint; no Docker archive extraction or host path is exposed to the Capsule. A Docker or kernel escape can still compromise the host.
+In the Docker deployment, only `meridiand` accesses Docker. Each Capsule receives one owned volume at `/workspace`, one bridge network, and one non-root container with dropped capabilities, `no-new-privileges`, a read-only root filesystem, bounded tmpfs paths, CPU/memory/PID limits, and a supervisor port published to host loopback. The general `/tmp` tmpfs is `noexec`; the private `/home/capsule` tmpfs remains executable because native harness runtimes such as Bun must load generated libraries there. This does not expand the trust boundary: Capsule code can already execute from its owned workspace, and container isolation is not a hostile multi-tenant boundary. Workspace capture and restore use only that loopback-bound, versioned, bearer-authenticated endpoint; no Docker archive extraction or host path is exposed to the Capsule. A Docker or kernel escape can still compromise the host.
 
 Agent Sandbox creates the pod and PVC but does not strengthen
 the container runtime. Capsule pods remain non-root, capability-free,
@@ -139,7 +139,7 @@ boundary; high-assurance deployments need infrastructure-level egress controls.
 
 Terminal and preview URLs can expose command execution, cookies, source, or vulnerable development servers. Require authenticated, authorized, short-lived sessions; origin and host validation; TLS; anti-CSRF protections where cookies are used; and explicit port publication. Do not place preview applications on the control-plane origin or share privileged cookies. WebSocket PTY sessions require authorization at connection and reauthorization or expiration during long sessions. Treat terminal output and escape sequences as untrusted.
 
-Public PTY attachment uses random, short-lived, scoped, in-memory tickets and never exposes the Capsule supervisor bearer token. Tickets are small-use and omitted from normal logs. Browser origins fail closed unless loopback; loopback CLI clients may omit `Origin`. PTY input/frame size, concurrent attachments, sessions, output memory, and replay events are bounded. Detaching does not terminate the Run. The CLI restores local terminal state; `capsuled` does not attempt to restore client terminals.
+Public PTY attachment uses random, short-lived, scoped, in-memory tickets and never exposes the Capsule supervisor bearer token. Tickets are small-use and omitted from normal logs. Browser origins fail closed unless loopback; loopback CLI clients may omit `Origin`. PTY input/frame size, concurrent attachments, sessions, output memory, and replay events are bounded. Detaching does not terminate the Run. The CLI restores local terminal state; `capsuled` does not attempt to restore client terminals. Best-effort Meridian terminal-title OSC writes are local attachment metadata; title text is control-stripped and bounded. The client writes each remote frame unchanged and then reasserts its local title. Remote title escapes remain untrusted PTY output and are neither filtered nor interpreted by the control plane.
 
 The daemon stores public attach- and preview-ticket digests rather than
 plaintext values. The review UI validates same-origin, Run-scoped WebSocket
@@ -164,7 +164,28 @@ unsupported and must remain unadvertised until that complete route exists.
 
 ### Harness execution and content-bearing responses
 
-Repository-controlled harness configuration and executables are hostile. Configuration is parsed only inside the Capsule with strict fields, bounded sizes, direct argument arrays, workspace-contained working directories, explicit modes, and process-group timeouts. No shell concatenation is used. Inline credentials are rejected. Today, `secretReferences` are unresolved and fail closed; the target broker resolves only purpose-checked `harness_env` references into session-only process material without persisting values.
+Repository-controlled harness configuration and executables are hostile.
+Configuration is parsed only inside the Capsule with strict fields, bounded
+sizes, direct argument arrays, workspace-contained working directories,
+explicit modes, and process-group timeouts. No shell concatenation is used.
+Inline credentials are rejected. The broker resolves only purpose-checked
+`harness_env` references into session-only process material without persisting
+values.
+
+Official images may add trusted profiles under
+`/etc/meridian/harnesses.d/*.yaml`. Trust comes from the operator-authorized
+image, not the repository. `capsuled` applies the same strict parser to trusted
+and repository sources, accepts only regular trusted manifest files, and rejects
+duplicate names across all sources so repository content cannot replace an
+image-owned executable. These manifests carry no plaintext credentials.
+
+A harness-selected Capsule freezes its allowlisted profile name and image.
+Readiness starts at most one initial native PTY Run with a stable idempotency
+key; any Run history prevents recovery from restarting a process that exited or
+failed. The existing active-session conflict prevents a native Run and
+structured Thread from simultaneously owning the Capsule. Missing,
+structured-only, and non-PTY launcher profiles fail closed rather than falling
+back to a different command or Meridian chat.
 
 Structured adapters use a separate non-PTY process supervisor and the closed
 `meridian.adapter.v1` LF-delimited JSON protocol. Exact version negotiation,
@@ -374,8 +395,17 @@ Reusable setup Moments are keyed by a versioned prepare hash covering canonical
 repository and exact revision, immutable image, setup arguments, relevant
 Project configuration, platform, and protocol version. They are verified on
 restore and exclude grants, secret material, runtime tokens, transcripts,
-local overlays, sessions, and post-setup work. Undeclared mutable setup inputs
-remain a staleness risk, so reuse can be disabled and a mismatch runs setup.
+local overlays, sessions, and post-setup work. When a Project allowlists
+named harness images, the hash uses the image frozen on that Capsule at
+spawn, not only the Project default, so OpenCode and mock do not share a
+prepare archive. Undeclared mutable setup inputs remain a staleness risk, so
+reuse can be disabled and a mismatch runs setup.
+
+Project Thread spawn selects a Capsule image only from the Project's stored
+default or allowlisted `harnessImages`. The spawn request carries a harness
+name, not an arbitrary image reference. Those references are accepted only
+from operator-authored Project create or apply, and apply copies a pack from
+the installation catalog advertised by the daemon.
 
 ### Audit tampering and repudiation
 
@@ -422,6 +452,10 @@ they are not a statement that every planned path is already implemented.
   nor provider exec/copy authority.
 - Setup-Moment reuse excludes secrets and mutable session state; idle pause,
   absolute lifetime, cache retention, and artifact retention remain distinct.
+  Distinct Project harness images use distinct prepare hashes.
+- Project Thread spawn uses only the Project default image or an allowlisted
+  harness image stored at Project create; clients cannot introduce a new
+  image at spawn time.
 - Delivery requires explicit approval, exact-ref one-shot push authority,
   default-branch protection, host-side pull-request API use, and idempotent
   content-free audit.

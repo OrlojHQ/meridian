@@ -185,6 +185,53 @@ func TestProjectThreadRecoveryPromotesWithoutSending(t *testing.T) {
 	}
 }
 
+func TestCreateProjectThreadAllowlistsHarnessImage(t *testing.T) {
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
+	key, err := transcripts.NewInstallationKey("project-thread-images", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer key.Zero()
+	service := app.NewService(store, &testClock{now: now}, &testIDs{}, &recordingQueue{})
+	service.ConfigureThreads(&structuredRuntime{}, key)
+	if err := store.Transact(ctx, func(tx ports.Transaction) error {
+		return tx.InsertProject(ctx, domain.Project{
+			ID: "project-images", Name: "project", ImageReference: "meridian-capsule:dev",
+			HarnessImages: []domain.HarnessImage{
+				{Name: "opencode", ImageReference: "meridian-capsule-opencode:dev"},
+				{Name: "mock", ImageReference: "meridian-capsule:dev"},
+			},
+			CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	created, err := service.CreateProjectThread(ctx, app.CreateProjectThreadInput{
+		ProjectID: "project-images", Harness: "opencode", Prompt: "use the allowlisted image",
+		IdempotencyKey: "spawn-opencode",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	capsule, err := service.GetCapsule(ctx, created.Intent.CapsuleID)
+	if err != nil || capsule.ImageReference != "meridian-capsule-opencode:dev" {
+		t.Fatalf("frozen image = %#v, %v", capsule, err)
+	}
+	if _, err := service.CreateProjectThread(ctx, app.CreateProjectThreadInput{
+		ProjectID: "project-images", Harness: "pi", Prompt: "not allowlisted",
+		IdempotencyKey: "spawn-pi",
+	}); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("unknown harness error = %v", err)
+	}
+}
+
 func setProjectThreadCapsuleState(
 	t *testing.T,
 	ctx context.Context,

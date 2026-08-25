@@ -98,46 +98,67 @@ ambiguous mutation with the same `--idempotency-key`; a replay never allocates
 a second Capsule. Capsule-scoped `thread create` remains available for
 power-user workflows.
 
-## Fleet and Thread layout
+## Sessions and Capsules
 
-The dashboard is a unified Capsule and retained-Thread fleet. At 100 columns or
-more the navigator and selected detail/transcript are side by side. On narrower
-terminals, `Tab` switches between navigator and detail without losing the
-selected Thread, transcript position, or unread count.
+The dashboard is a Project and Capsule launcher, not a wrapper around each
+harness. Its stable header, Capsule fleet, contextual footer, and temporary
+command surface use the terminal as one composed screen. Enter hands the
+terminal to the selected Capsule's native harness TUI. Deleted Capsules stay
+off the fleet unless you show them from the action palette.
 
-Thread rows expose lifecycle/session state, harness, structured adapter
-protocol, latest activity, replay gaps, and transcript lock/corruption. A
-Capsule with no structured harness profile reports Threads as unsupported and
-keeps native PTY Runs available as a separate fallback.
+At 80 columns the fleet uses the full content width. At 100 columns and wider,
+a compact inspector appears beside it with the selected Capsule's harness,
+lifecycle, active Run, activity, Moments, failure, and primary Enter action.
+At 140 columns the page gains wider gutters rather than filling the space with
+more operational chrome. Loading, empty, disconnected, and attach-wait states
+keep the same header, body, command slot, and footer anchors. `NO_COLOR`
+preserves labels, borders, selection markers, and readable state text without
+ANSI color.
+
+`/project` creates a Project (name, repository URL, harness). ← → picks a pack
+from the installation catalog. `/switch` chooses the active Project when more
+than one exists, and `/harness` applies more packs later. `/new` asks for a
+Capsule name and one applied harness; no first prompt is required.
+The daemon creates the Capsule with that pack's allowlisted image, starts its
+native PTY profile when Ready, and the dashboard attaches as soon as the Run is
+available.
+
+The scriptable equivalent creates and auto-starts without attaching:
+
+```console
+meridian capsule create PROJECT_ID review --harness opencode
+```
+
+Enter on an existing Capsule attaches its active native Run. If the Capsule is
+Ready and idle, Enter starts a new Run from its frozen launcher harness and
+attaches. Creating/Preparing Capsules wait for their initial Run. A legacy
+Capsule without a frozen launcher harness, or a selected profile that is
+missing, structured-only, or non-PTY, fails closed instead of opening Meridian
+chat.
+
+`/` opens an ephemeral bordered command component; there is no idle chat
+composer. `/help` and `/refresh` are the other everyday commands. `:` opens
+grouped Capsule, structured Thread, history, Project, and view actions.
+Selecting history leaves the launcher for an explicitly labeled structured
+history view; Esc returns to the same Capsule. Only one native Run or structured
+Thread session can be live in a Capsule at a time. Arrow keys move command
+menus; Esc closes them.
 
 ## Keybindings
 
-- `j`/`k` or arrow keys: select a Capsule or retained Thread
-- `Tab`: switch navigator/detail on narrow terminals
-- `PageUp` / `PageDown`: scroll a bounded transcript
+- `j`/`k` or arrow keys: move in the focused list
+- `Enter`: open the selected Capsule's native harness
+- `Esc`: close command entry, a modal, or structured history
+- `/`: temporary launcher commands (`/new`, `/project`, `/switch`, `/harness`, `/help`, `/refresh`)
+- `:`: grouped actions, including encrypted structured history
+- `PageUp` / `PageDown`: scroll a bounded structured transcript
 - `r`: refresh immediately
-- `?`: help
+- `Ctrl-O` or `?`: help
 - `q` or `Ctrl-C`: leave the dashboard
-- `c`: create a Capsule
-- `T`: start a Project Thread in a fresh Capsule
-- `t`: create a Thread from the selected Capsule and structured harness; an
-  optional first message can start the session atomically
-- `n`: compose a multi-line Thread message (`Enter` inserts a newline,
-  `Ctrl-S` submits)
-- `e`: start or resume the selected structured Thread
-- `P`: answer the latest pending select, confirm, or input request
-- `z`: cancel the active structured session
-- `A`: archive a retained Thread
-- `D`: crypto-shred a Thread after typing `crypto-shred`
-- `p` / `u`: pause or resume
-- `a`: attach the latest active PTY Run
-- `g`: show bounded Git diff
-- `m`: capture a Moment
-- `s`: create a Shard from a Moment
-- `w`: create a non-destructive Rewind descendant and new Timeline
-- `S`: Seal after confirmation
-- `x`: delete after confirmation
-- `Esc`: cancel a form or close an overlay
+
+Single-letter operator keys from earlier builds still work as hidden aliases
+on the launcher for one release. They are not advertised in the contextual
+footer; prefer `:`. They never steal keys from structured input.
 
 Forms validate required fields before sending an API mutation and use the
 Capsule resource version shown by the latest dashboard refresh. A conflict
@@ -179,12 +200,24 @@ authorization boundary against local daemon/API access.
 ## Native PTY attach
 
 The dashboard releases the terminal and starts the existing native
-`meridian run attach` command. Bubble Tea does not proxy or render PTY bytes.
-When attachment ends, the dashboard reacquires and redraws the terminal.
+`meridian run attach` command after `/new` or Enter. Bubble Tea does not proxy
+or render PTY bytes. When attachment ends, the dashboard reacquires and redraws
+the terminal, restores the selected Capsule, and briefly reports
+`Detached · Run still active`.
 This path remains independent from structured Threads: structured text is
 consumed only through Thread block APIs and is never PTY-scraped.
 
-Press `Ctrl-]` to detach locally. `Ctrl-C` remains a byte sent to the remote PTY
+Before handoff, Meridian identifies the Capsule and harness in the local
+terminal title when the terminal supports OSC titles. It restores a Meridian
+Project title on detach, disconnect, and attach errors. If a harness emits its
+own title, attach reasserts the Meridian title after the complete output frame.
+The remote frame is written unchanged and Meridian does not parse or filter it.
+Standalone callers can set `--title` and `--restore-title`, or disable this
+local metadata with `MERIDIAN_TERMINAL_TITLE=0`. `NO_COLOR` does not disable
+terminal titles.
+
+Press `Ctrl-P`, release it, then press `Ctrl-Q` to detach locally. `Ctrl-\` and
+`Ctrl-]` are alternatives. `Ctrl-C` remains a byte sent to the remote PTY
 while attached. On an abnormal disconnect, attach reports the highest rendered
 output cursor:
 

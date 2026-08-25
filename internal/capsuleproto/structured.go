@@ -6,7 +6,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -107,14 +106,12 @@ func validateStructuredEvents(response StructuredEventsResponse, after uint64) e
 }
 
 func (s *Server) harnessProfiles(writer http.ResponseWriter, _ *http.Request) {
-	configFile, err := os.Open(filepath.Join(s.config.Workspace, ".meridian", "project.yaml"))
-	if err != nil {
+	config, err := s.loadHarnessConfig()
+	if errors.Is(err, errHarnessConfigurationUnavailable) {
 		writeProtocolError(writer, http.StatusUnprocessableEntity, "harness_configuration_unavailable")
 		return
 	}
-	config, parseErr := harness.Parse(configFile)
-	_ = configFile.Close()
-	if parseErr != nil {
+	if err != nil {
 		writeProtocolError(writer, http.StatusUnprocessableEntity, "harness_configuration_invalid")
 		return
 	}
@@ -250,13 +247,11 @@ func validRunIdentity(runID, profile string) bool {
 func (s *Server) structuredProfile(
 	name string, supplied map[string]string,
 ) (harness.Profile, string, map[string]string, int, string) {
-	configFile, err := os.Open(filepath.Join(s.config.Workspace, ".meridian", "project.yaml"))
-	if err != nil {
+	config, err := s.loadHarnessConfig()
+	if errors.Is(err, errHarnessConfigurationUnavailable) {
 		return harness.Profile{}, "", nil, http.StatusUnprocessableEntity, "harness_configuration_unavailable"
 	}
-	config, parseErr := harness.Parse(configFile)
-	_ = configFile.Close()
-	if parseErr != nil {
+	if err != nil {
 		return harness.Profile{}, "", nil, http.StatusUnprocessableEntity, "harness_configuration_invalid"
 	}
 	profile, err := config.Profile(name)

@@ -13,14 +13,14 @@ import (
 	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 
 	"github.com/OrlojHQ/meridian/pkg/client"
 )
 
 const (
-	pollCadence = 3 * time.Second
-	callTimeout = 5 * time.Second
+	pollCadence  = 3 * time.Second
+	callTimeout  = 5 * time.Second
+	blinkCadence = 530 * time.Millisecond
 )
 
 type loadMsg struct {
@@ -29,10 +29,12 @@ type loadMsg struct {
 }
 
 type tickMsg time.Time
+type blinkMsg time.Time
 
 type actionMsg struct {
 	result ActionResult
 	err    error
+	action Action
 }
 
 type attachFinishedMsg struct{ err error }
@@ -45,14 +47,41 @@ const (
 	overlayConfirm
 	overlayContent
 	overlayHelp
+	overlayPalette
+	overlayHarness
+)
+
+type place int
+
+const (
+	placeProject place = iota
+	placeCapsule
+	placeThread
+)
+
+type focusPane int
+
+const (
+	focusMain focusPane = iota
+	focusCapsules
+)
+
+type navigationMode int
+
+const (
+	modeLauncher navigationMode = iota
+	modeCommand
+	modeHistory
 )
 
 type field struct {
-	label    string
-	value    string
-	optional bool
-	options  []string
-	secret   bool
+	label        string
+	value        string
+	optional     bool
+	options      []string
+	optionValues []string
+	optionIndex  int
+	secret       bool
 }
 
 type overlay struct {
@@ -64,6 +93,20 @@ type overlay struct {
 	focus     int
 	content   string
 	multiline bool
+	choices   []harnessChoice
+}
+
+type harnessChoice struct {
+	Name           string
+	ImageReference string
+	Applied        bool
+}
+
+type AttachRequest struct {
+	RunID        string
+	After        uint64
+	Title        string
+	RestoreTitle string
 }
 
 // Options configures a dashboard model.
@@ -74,7 +117,7 @@ type Options struct {
 	TokenFile  string
 	Executable string
 	Now        func() time.Time
-	Attach     func(runID string, after uint64) tea.Cmd
+	Attach     func(AttachRequest) tea.Cmd
 }
 
 // Model is the Bubble Tea dashboard state.
@@ -85,14 +128,35 @@ type Model struct {
 	tokenFile  string
 	executable string
 	now        func() time.Time
-	attach     func(string, uint64) tea.Cmd
+	attach     func(AttachRequest) tea.Cmd
 
 	width            int
 	height           int
 	selected         int
 	selectedID       string
 	selectedThreadID string
-	narrowPane       int
+	threadCursor     int
+	place            place
+	focus            focusPane
+	mode             navigationMode
+	projectID        string
+	showDeleted      bool
+	stayOnList       bool
+	composer         string
+	composerFocus    bool
+	cursorOn         bool
+	blinkStarted     bool
+	pendingSend      string
+	pendingNew       bool
+	newName          string
+	newNameFocus     bool
+	newHarness       string
+	newHarnesses     []string
+	pendingAttachID  string
+	sendInFlight     bool
+	sendRetries      int
+	paletteQuery     string
+	paletteIndex     int
 	scroll           int
 	unread           map[string]int64
 	seenCursor       map[string]int64
@@ -118,7 +182,8 @@ func NewModel(options Options) Model {
 	model := Model{
 		ctx: options.Context, api: options.API, server: options.Server, tokenFile: options.TokenFile,
 		executable: options.Executable, now: options.Now, loading: true,
-		narrowPane: 1, unread: make(map[string]int64), seenCursor: make(map[string]int64),
+		focus: focusCapsules, mode: modeLauncher, stayOnList: true, cursorOn: true,
+		unread: make(map[string]int64), seenCursor: make(map[string]int64),
 	}
 	if options.Attach != nil {
 		model.attach = options.Attach
@@ -131,7 +196,24 @@ func NewModel(options Options) Model {
 func (m Model) Init() tea.Cmd { return m.loadCmd() }
 
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+	next, cmd := m.dispatch(message)
+	model, ok := next.(Model)
+	if !ok {
+		return next, cmd
+	}
+	if _, blink := message.(blinkMsg); blink || model.blinkStarted {
+		return model, cmd
+	}
+	model.blinkStarted = true
+	model.cursorOn = true
+	return model, tea.Batch(cmd, model.blinkCmd())
+}
+
+func (m Model) dispatch(message tea.Msg) (tea.Model, tea.Cmd) {
 	switch value := message.(type) {
+	case blinkMsg:
+		m.cursorOn = !m.cursorOn
+		return m, m.blinkCmd()
 	case tea.WindowSizeMsg:
 		m.width, m.height = value.Width, value.Height
 		return m, nil
@@ -148,6 +230,16 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.trackUnread(value.snapshot)
 		m.snapshot = value.snapshot
 		m.restoreSelection()
+		if next, cmd, ok := m.advancePendingAttach(); ok {
+			return next, cmd
+		}
+		if m.sendInFlight {
+			return m, m.tickCmd()
+		}
+		if next, cmd, ok := m.flushPendingSend(); ok {
+			return next, cmd
+		}
+		m.settleStatus()
 		return m, m.tickCmd()
 	case tickMsg:
 		if m.loading {
@@ -157,18 +249,59 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.loadCmd()
 	case actionMsg:
 		m.loading = false
+		m.sendInFlight = false
 		if value.err != nil {
+			if value.action == ActionRunStart {
+				m.pendingAttachID = ""
+			}
+			if isVersionConflict(value.err) && m.pendingSend != "" && m.sendRetries < 1 {
+				m.sendRetries++
+				m.status = "Sending…"
+				m.loading = true
+				return m, m.loadCmd()
+			}
+			if m.pendingSend != "" {
+				m.composer = m.pendingSend
+				m.pendingSend = ""
+			}
+			m.sendRetries = 0
 			m.status = "Action failed: " + safeInline(value.err.Error())
-			if strings.Contains(strings.ToLower(value.err.Error()), "conflict") {
+			if isVersionConflict(value.err) {
 				m.status += " · refreshing current resource version"
 				m.loading = true
 				return m, m.loadCmd()
 			}
 			return m, nil
 		}
-		m.status = safeInline(value.result.Message)
-		if value.result.ThreadID != "" {
-			m.selectedThreadID = value.result.ThreadID
+		m.sendRetries = 0
+		m.status = friendlyStatus(value.result.Message)
+		if value.action == ActionDelete {
+			m.goToCapsuleList()
+		}
+		if value.result.ProjectID != "" {
+			m.projectID = value.result.ProjectID
+			m.goToCapsuleList()
+		}
+		if value.action == ActionCreate && value.result.CapsuleID != "" {
+			m.pendingNew = false
+			m.newName = ""
+			m.newNameFocus = false
+			m.newHarness = ""
+			m.newHarnesses = nil
+			m.pendingAttachID = value.result.CapsuleID
+			m.selectedID = value.result.CapsuleID
+			m.selectedThreadID = ""
+			m.stayOnList = true
+			m.place = placeProject
+			m.focus = focusCapsules
+			m.mode = modeLauncher
+			m.composerFocus = false
+			m.status = "Waiting for the native harness…"
+		} else if value.action == ActionRunStart && value.result.CapsuleID != "" {
+			m.pendingAttachID = value.result.CapsuleID
+			m.status = "Waiting for the native harness…"
+		} else if value.result.CapsuleID != "" || value.result.ThreadID != "" {
+			m.openCreatedSession(value.result.CapsuleID, value.result.ThreadID)
 		}
 		if value.result.Content != "" {
 			m.overlay = overlay{
@@ -176,17 +309,27 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		if value.result.Message == "Message sent" || value.result.Message == "Thread created" ||
+			value.result.Message == "Project Thread provisioning requested" {
+			m.pendingSend = ""
+		}
 		m.loading = true
 		return m, m.loadCmd()
 	case attachFinishedMsg:
+		m.mode = modeLauncher
+		m.stayOnList = true
+		m.place = placeProject
+		m.focus = focusCapsules
+		m.composerFocus = false
 		if value.err != nil {
 			m.status = "Attach failed: " + safeInline(value.err.Error())
 		} else {
-			m.status = "Attach ended; dashboard resumed"
+			m.status = "Detached · Run still active"
 		}
 		m.loading = true
 		return m, m.loadCmd()
 	case tea.KeyMsg:
+		m.cursorOn = true
 		if m.overlay.kind != overlayNone {
 			return m.updateOverlay(value)
 		}
@@ -195,115 +338,292 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m Model) composing() bool {
+	if m.mode == modeCommand || m.composerFocus || m.pendingNew {
+		return true
+	}
+	return m.mode == modeHistory && m.focus == focusMain &&
+		(m.place == placeThread || m.place == placeCapsule)
+}
+
+func (m Model) slashQuery() (string, bool) {
+	if m.mode != modeCommand || !strings.HasPrefix(m.composer, "/") {
+		return "", false
+	}
+	return strings.ToLower(strings.TrimSpace(m.composer[1:])), true
+}
+
+func (m Model) openHelp() (tea.Model, tea.Cmd) {
+	m.overlay = overlay{kind: overlayHelp, title: "Help", content: helpText}
+	return m, nil
+}
+
 func (m Model) updateKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if !m.composing() {
+		if key.String() == "/" {
+			m.mode = modeCommand
+			m.composerFocus = true
+			m.composer = "/"
+			m.paletteIndex = 0
+			return m, nil
+		}
+		if text := composerTyped(key); strings.HasPrefix(text, "/") {
+			m.mode = modeCommand
+			m.composerFocus = true
+			m.composer = text
+			m.paletteIndex = 0
+			return m, nil
+		}
+	}
+	if m.composing() {
+		return m.updateComposer(key)
+	}
 	switch key.String() {
 	case "q", "ctrl+c":
 		return m, tea.Quit
-	case "j", "down":
-		m.move(1)
-	case "k", "up":
-		m.move(-1)
+	case "esc":
+		return m.goBack()
 	case "tab":
-		if m.width < 100 {
-			m.narrowPane = 1 - m.narrowPane
+		if m.mode == modeHistory && m.focus == focusMain {
+			m.focus = focusCapsules
+			m.composerFocus = false
 		}
+		return m, nil
 	case "pgup":
 		m.scroll += max(3, m.height/2)
+		return m, nil
 	case "pgdown":
 		m.scroll = max(0, m.scroll-max(3, m.height/2))
+		return m, nil
 	case "r":
 		if !m.loading {
 			m.loading = true
 			return m, m.loadCmd()
 		}
-	case "?":
-		m.overlay = overlay{kind: overlayHelp, title: "Dashboard help", content: helpText}
-	case "c":
+		return m, nil
+	case "?", "ctrl+o":
+		return m.openHelp()
+	case ":":
+		m.openPalette()
+		return m, nil
+	case "enter":
+		return m.enterSelection()
+	case "n", "c":
 		m.openCreate()
+		return m, nil
 	case "t":
 		m.openThreadCreate()
+		return m, nil
 	case "T":
-		m.openProjectThreadSpawn()
-	case "n":
-		m.openThreadMessage()
-	case "e":
-		if thread := m.selectedThread(); thread != nil {
-			supported, known := thread.Thread.StructuredSupported.Get()
-			if known && !supported {
-				m.status = "Structured session unsupported; use a native PTY Run"
-				return m, nil
-			}
-			switch thread.Thread.State {
-			case client.ThreadStateActive:
-				if threadActiveRun(thread.Thread) {
-					m.status = "Thread session is already active"
-					return m, nil
-				}
-				return m.execute(m.threadLifecycleRequest(ActionThreadStart))
-			case client.ThreadStatePaused:
-				return m.execute(m.threadLifecycleRequest(ActionThreadResume))
-			default:
-				m.status = "Start/resume is unavailable for this Thread state"
-			}
-		}
+		m.beginNewCapsule()
+		return m, nil
 	case "P":
 		m.openThreadResponse()
-	case "z":
-		if thread := m.selectedThread(); thread != nil && threadActiveRun(thread.Thread) {
-			m.openThreadConfirm(ActionThreadCancel, "Cancel Thread session", "Cancel the active structured adapter session?")
+		return m, nil
+	case "j", "down":
+		m.move(1)
+		return m, nil
+	case "k", "up":
+		m.move(-1)
+		return m, nil
+	}
+	if next, cmd, ok := m.runHiddenAlias(key.String()); ok {
+		return next, cmd
+	}
+	return m, nil
+}
+
+func (m Model) updateComposer(key tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.pendingNew && m.newNameFocus {
+		return m.updateNewName(key)
+	}
+	switch key.String() {
+	case "ctrl+c":
+		return m, tea.Quit
+	case "ctrl+o":
+		return m.openHelp()
+	case "esc":
+		if m.mode == modeCommand {
+			m.mode = modeLauncher
+			m.composer = ""
+			m.composerFocus = false
+			m.paletteIndex = 0
+			return m, nil
 		}
-	case "A":
-		m.openThreadConfirm(ActionThreadArchive, "Archive Thread", "Archive this retained Thread history?")
-	case "D":
-		m.openThreadDelete()
-	case "p":
-		if detail := m.selectedDetail(); detail != nil && detail.Capsule.State == "Ready" {
-			return m.execute(m.lifecycleRequest(ActionPause))
+		if m.composer != "" {
+			m.composer = ""
+			m.paletteIndex = 0
+			return m, nil
 		}
-	case "u":
-		if detail := m.selectedDetail(); detail != nil && detail.Capsule.State == "Paused" {
-			return m.execute(m.lifecycleRequest(ActionResume))
+		m.composerFocus = false
+		return m.goBack()
+	case "tab":
+		if m.pendingNew {
+			m.newNameFocus = true
+			return m, nil
 		}
-	case "a":
-		if detail := m.selectedDetail(); detail != nil {
-			if run := detail.ActiveRun(); run != nil {
-				for _, profile := range detail.Profiles {
-					if profile.Name == run.Harness && profile.Structured {
-						m.status = "Selected Run is structured; choose a native PTY profile instead"
-						return m, nil
-					}
-				}
-				m.status = "Handing terminal to Run " + safeInline(run.ID)
-				return m, m.attach(run.ID, 0)
+		if m.place == placeProject {
+			m.composer = ""
+			m.paletteIndex = 0
+			m.mode = modeLauncher
+		}
+		m.composerFocus = false
+		m.focus = focusCapsules
+		return m, nil
+	case "left":
+		if m.pendingNew {
+			m.cycleNewHarness(-1)
+			return m, nil
+		}
+	case "right":
+		if m.pendingNew {
+			m.cycleNewHarness(1)
+			return m, nil
+		}
+	case "enter":
+		if _, slash := m.slashQuery(); slash {
+			return m.applySlash()
+		}
+		if m.pendingNew {
+			return m.sendComposer()
+		}
+		if m.place == placeProject {
+			if strings.TrimSpace(m.composer) == "" {
+				m.composerFocus = false
+				m.focus = focusCapsules
+				return m.enterSelection()
 			}
-			m.status = "No active PTY Run to attach"
+			m.status = "Project home accepts / commands; press Tab to return to Capsules"
+			return m, nil
 		}
-	case "g":
-		if detail := m.selectedDetail(); detail != nil && detail.Capsule.State == "Ready" {
-			return m.execute(ActionRequest{Action: ActionDiff, CapsuleID: detail.Capsule.ID})
+		return m.sendComposer()
+	case "ctrl+j":
+		if _, slash := m.slashQuery(); slash {
+			return m, nil
 		}
-	case "m":
-		m.openNamed(ActionMoment, "Capture Moment", "Moment name", "")
-	case "s":
-		m.openDescendant(ActionShard, "Create Shard", "")
-	case "w":
-		m.openDescendant(
-			ActionRewind,
-			"Rewind Capsule",
-			"Rewind creates a new Timeline and does not destroy history.",
-		)
-	case "S":
-		m.openConfirm(ActionSeal, "Seal Capsule", "Seal is permanent and captures a final Moment.")
-	case "x":
-		m.openConfirm(ActionDelete, "Delete Capsule", "Delete this Capsule?")
+		m.composer += "\n"
+		return m, nil
+	case "backspace":
+		if m.composer != "" {
+			_, size := utf8.DecodeLastRuneInString(m.composer)
+			m.composer = m.composer[:len(m.composer)-size]
+			m.paletteIndex = 0
+		}
+		return m, nil
+	case "pgup":
+		m.scroll += max(3, m.height/2)
+		return m, nil
+	case "pgdown":
+		m.scroll = max(0, m.scroll-max(3, m.height/2))
+		return m, nil
+	case "down":
+		if _, slash := m.slashQuery(); slash {
+			if items := m.filteredSlash(); len(items) > 0 {
+				m.paletteIndex = (m.paletteIndex + 1) % len(items)
+			}
+			return m, nil
+		}
+	case "up":
+		if _, slash := m.slashQuery(); slash {
+			if items := m.filteredSlash(); len(items) > 0 {
+				m.paletteIndex = (m.paletteIndex - 1 + len(items)) % len(items)
+			}
+			return m, nil
+		}
+	case ":":
+		if strings.TrimSpace(m.composer) == "" {
+			m.openPalette()
+			return m, nil
+		}
+		m.composer += ":"
+		return m, nil
+	}
+	if text := composerTyped(key); text != "" {
+		m.composer += text
+		m.paletteIndex = 0
+	}
+	return m, nil
+}
+
+func composerTyped(key tea.KeyMsg) string {
+	if len(key.Runes) > 0 {
+		return string(key.Runes)
+	}
+	switch key.String() {
+	case "space":
+		return " "
+	default:
+		if value := key.String(); utf8.RuneCountInString(value) == 1 && !unicode.IsControl([]rune(value)[0]) {
+			return value
+		}
+	}
+	return ""
+}
+
+func (m Model) updateNewName(key tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.newName == "" {
+		if key.String() == "/" || strings.HasPrefix(composerTyped(key), "/") {
+			m.pendingNew = false
+			m.newNameFocus = false
+			m.mode = modeCommand
+			m.composerFocus = true
+			m.composer = "/"
+			m.paletteIndex = 0
+			return m, nil
+		}
+	}
+	switch key.String() {
+	case "ctrl+c":
+		return m, tea.Quit
+	case "ctrl+o":
+		return m.openHelp()
+	case "esc":
+		if m.newName != "" {
+			m.newName = ""
+			return m, nil
+		}
+		return m.goBack()
+	case "tab":
+		m.newNameFocus = false
+		return m, nil
+	case "enter":
+		if strings.TrimSpace(m.newName) == "" {
+			m.status = "Name this Capsule first"
+			return m, nil
+		}
+		m.newNameFocus = false
+		return m, nil
+	case "left":
+		m.cycleNewHarness(-1)
+		return m, nil
+	case "right":
+		m.cycleNewHarness(1)
+		return m, nil
+	case "backspace":
+		if m.newName != "" {
+			_, size := utf8.DecodeLastRuneInString(m.newName)
+			m.newName = m.newName[:len(m.newName)-size]
+		}
+		return m, nil
+	}
+	if text := composerTyped(key); text != "" && !strings.ContainsAny(text, "\n\r") {
+		if utf8.RuneCountInString(m.newName)+utf8.RuneCountInString(text) > 128 {
+			m.status = "Capsule name exceeds 128 characters"
+			return m, nil
+		}
+		m.newName += text
 	}
 	return m, nil
 }
 
 func (m Model) updateOverlay(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch m.overlay.kind {
+	case overlayHarness:
+		return m.updateHarnessOverlay(key)
+	case overlayPalette:
+		return m.updatePalette(key)
 	case overlayHelp, overlayContent:
-		if key.String() == "esc" || key.String() == "q" || key.String() == "enter" {
+		if key.String() == "esc" || key.String() == "q" || key.String() == "enter" || key.String() == "ctrl+o" {
 			m.overlay = overlay{}
 		}
 		return m, nil
@@ -334,18 +654,23 @@ func (m Model) updateOverlay(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if len(m.overlay.fields) > 0 {
 				current := &m.overlay.fields[m.overlay.focus]
 				if len(current.options) > 0 {
-					index := 0
-					for optionIndex, option := range current.options {
-						if option == current.value {
-							index = optionIndex
-							break
+					index := current.optionIndex
+					if index < 0 || index >= len(current.options) ||
+						current.options[index] != current.value {
+						index = 0
+						for optionIndex, option := range current.options {
+							if option == current.value {
+								index = optionIndex
+								break
+							}
 						}
 					}
 					delta := 1
 					if key.String() == "left" {
 						delta = -1
 					}
-					current.value = current.options[(index+delta+len(current.options))%len(current.options)]
+					current.optionIndex = (index + delta + len(current.options)) % len(current.options)
+					current.value = current.options[current.optionIndex]
 				}
 			}
 		case "backspace":
@@ -356,22 +681,30 @@ func (m Model) updateOverlay(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 					*current = (*current)[:len(*current)-size]
 				}
 			}
-		case "enter", "ctrl+s":
-			if key.String() == "enter" && m.overlay.multiline {
+		case "ctrl+j":
+			if m.overlay.multiline && len(m.overlay.fields) > 0 {
 				current := &m.overlay.fields[m.overlay.focus]
-				if len(current.options) > 0 {
-					m.overlay.focus = (m.overlay.focus + 1) % len(m.overlay.fields)
-				} else {
+				if len(current.options) == 0 {
 					current.value += "\n"
 				}
-				return m, nil
 			}
+			return m, nil
+		case "enter", "ctrl+s":
 			request, err := m.formRequest()
 			if err != nil {
 				m.status = err.Error()
 				return m, nil
 			}
 			m.overlay = overlay{}
+			if request.Action == Action("switch-project") {
+				m.projectID = request.ProjectID
+				m.selectedID = ""
+				m.selectedThreadID = ""
+				m.place = placeProject
+				m.focus = focusCapsules
+				m.restoreSelection()
+				return m, nil
+			}
 			return m.execute(request)
 		default:
 			if len(m.overlay.fields) > 0 && len(key.Runes) > 0 {
@@ -385,305 +718,281 @@ func (m Model) updateOverlay(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) View() string {
-	if m.overlay.kind != overlayNone {
-		return m.overlayView()
-	}
-	title := m.titleView()
-	if !m.connected && m.loading && len(m.snapshot.Capsules) == 0 {
-		return title + "\n\nLoading Capsules…\n\n" + footer
-	}
-	if !m.connected && m.lastErr != nil {
-		return title + "\n\nDisconnected: " + safeInline(m.lastErr.Error()) +
-			"\nReconnecting automatically; press r to retry now.\n\n" + footer
-	}
-	if len(m.snapshot.Capsules) == 0 {
-		status := "No Capsules. Press c to create one."
-		if len(m.snapshot.Projects) == 0 {
-			status = "No projects. Create one with `meridian project create`, then press r."
+func (m Model) updatePalette(key tea.KeyMsg) (tea.Model, tea.Cmd) {
+	items := m.filteredPalette()
+	switch key.String() {
+	case "esc":
+		m.overlay = overlay{}
+		return m, nil
+	case "enter":
+		return m.applyPalette()
+	case "j", "down":
+		if len(items) > 0 {
+			m.paletteIndex = (m.paletteIndex + 1) % len(items)
 		}
-		return title + "\n\n" + status + "\n\n" + footer
-	}
-
-	list := m.listView()
-	detail := m.detailView(*m.selectedDetail())
-	var body string
-	if m.width >= 100 {
-		listWidth := 34
-		body = lipgloss.JoinHorizontal(
-			lipgloss.Top,
-			boxStyle(listWidth).Render(list),
-			boxStyle(max(40, m.width-listWidth-6)).Render(detail),
-		)
-	} else {
-		if m.narrowPane == 0 {
-			body = boxStyle(max(30, m.width-4)).Render(list)
-		} else {
-			body = boxStyle(max(30, m.width-4)).Render(detail)
+	case "k", "up":
+		if len(items) > 0 {
+			m.paletteIndex = (m.paletteIndex - 1 + len(items)) % len(items)
+		}
+	case "backspace":
+		if m.paletteQuery != "" {
+			_, size := utf8.DecodeLastRuneInString(m.paletteQuery)
+			m.paletteQuery = m.paletteQuery[:len(m.paletteQuery)-size]
+			m.paletteIndex = 0
+		}
+	default:
+		if len(key.Runes) > 0 {
+			m.paletteQuery += string(key.Runes)
+			m.paletteIndex = 0
 		}
 	}
-	return title + "\n" + body + "\n" + footer
+	return m, nil
 }
 
-func (m Model) titleView() string {
-	state := "connected"
-	if m.reconnect {
-		state = "reconnecting"
-	} else if !m.connected {
-		state = "disconnected"
+func (m *Model) settleStatus() {
+	if m.sendInFlight || m.pendingAttachID != "" || keepStatusAfterRefresh(m.status) {
+		return
 	}
-	if m.loading && m.connected {
-		state = "refreshing"
-	}
-	line := "Meridian  •  " + state
-	if m.status != "" {
-		line += "  •  " + m.status
-	}
-	if m.lastErr != nil && m.connected {
-		line += "  •  " + safeInline(m.lastErr.Error())
-	}
-	if os.Getenv("NO_COLOR") == "" {
-		return lipgloss.NewStyle().Bold(true).Render(line)
-	}
-	return line
+	m.status = ""
 }
 
-func (m Model) listView() string {
-	lines := []string{"Capsules / Threads"}
-	for index, detail := range m.snapshot.Capsules {
-		prefix := "  "
-		if index == m.selected && m.selectedThreadID == "" {
-			prefix = "> "
-		}
-		lines = append(lines, fmt.Sprintf(
-			"%s%s / %s  [%s]",
-			prefix, safeInline(detail.Project.Name), safeInline(detail.Capsule.Name), detail.Capsule.State,
-		))
-		for _, thread := range detail.Threads {
-			prefix = "    "
-			if thread.Thread.ID == m.selectedThreadID {
-				prefix = "  > "
-			}
-			unread := ""
-			if count := m.unread[thread.Thread.ID]; count > 0 {
-				unread = fmt.Sprintf(" unread=%d", count)
-			}
-			lines = append(lines, fmt.Sprintf(
-				"%sThread %s  [%s]%s",
-				prefix, shortID(thread.Thread.ID), threadStateLabel(thread), unread,
-			))
-		}
+func keepStatusAfterRefresh(status string) bool {
+	if status == "" {
+		return false
 	}
-	return strings.Join(lines, "\n")
+	if strings.HasPrefix(status, "Action failed") || strings.HasPrefix(status, "Attach failed") ||
+		strings.HasPrefix(status, "Launch failed") {
+		return true
+	}
+	return false
 }
 
-func (m Model) detailView(detail CapsuleDetail) string {
-	if thread := m.selectedThread(); thread != nil {
-		return m.threadView(detail, *thread)
+func (m Model) advancePendingAttach() (tea.Model, tea.Cmd, bool) {
+	if m.pendingAttachID == "" {
+		return m, nil, false
 	}
-	capsule := detail.Capsule
-	maintenance, hasMaintenance := capsule.Maintenance.Get()
-	if !hasMaintenance {
-		maintenance = "none"
-	}
-	sealed := "no"
-	if capsule.State == "Sealed" || capsule.DesiredState == "Sealed" {
-		sealed = "yes"
-	}
-	lines := []string{
-		safeInline(capsule.Name),
-		"Project: " + safeInline(detail.Project.Name) + " (" + safeInline(detail.Project.ID) + ")",
-		"State: " + string(capsule.State) + "  Desired: " + string(capsule.DesiredState),
-		"Age: " + humanAge(m.now().Sub(capsule.CreatedAt)),
-		"Provider: unavailable (not exposed by API)",
-		"Maintenance: " + safeInline(maintenance),
-		"Restore complete: " + strconv.FormatBool(capsule.RestoreComplete),
-		"Sealed: " + sealed,
-		"Resource version: " + strconv.FormatInt(capsule.ResourceVersion, 10),
-		"Resources: unavailable (provider metrics not implemented)",
-		"",
-		"Runs",
-	}
-	if active := detail.ActiveRun(); active != nil {
-		lines = append(lines, fmt.Sprintf("Active: %s  %s  harness=%s", safeInline(active.ID), active.State, safeInline(active.Harness)))
-	} else {
-		lines = append(lines, "Active: none")
-	}
-	if latest := detail.LatestRun(); latest != nil {
-		lines = append(lines, fmt.Sprintf("Latest: %s  %s  age=%s", safeInline(latest.ID), latest.State, humanAge(m.now().Sub(latest.CreatedAt))))
-	} else {
-		lines = append(lines, "Latest: none")
-	}
-	lines = append(lines, "", "Recent Run events")
-	if len(detail.Events) == 0 {
-		lines = append(lines, "none")
-	} else {
-		for _, event := range detail.Events {
-			lines = append(lines, fmt.Sprintf("#%d %s  %s", event.Sequence, safeInline(event.Type), humanAge(m.now().Sub(event.Timestamp))))
+	var detail *CapsuleDetail
+	for index := range m.snapshot.Capsules {
+		if m.snapshot.Capsules[index].Capsule.ID == m.pendingAttachID {
+			detail = &m.snapshot.Capsules[index]
+			m.selected = index
+			m.selectedID = m.pendingAttachID
+			break
 		}
 	}
-	lines = append(lines, "Lifecycle events: unavailable (not exposed by API)")
-	lines = append(lines, "", "Timeline / Moments")
-	if detail.Timeline == nil {
-		lines = append(lines, "Timeline unavailable")
-	} else {
-		lines = append(lines, fmt.Sprintf(
-			"%s  reason=%s  ancestry=%d",
-			safeInline(detail.Timeline.Timeline.ID),
-			detail.Timeline.Timeline.Reason,
-			len(detail.Timeline.Ancestry),
-		))
+	if detail == nil {
+		m.status = "Provisioning the Capsule…"
+		return m, nil, false
 	}
-	if moment := detail.LatestMoment(); moment != nil {
-		lines = append(lines, fmt.Sprintf(
-			"Latest Moment: %s (%s, %d bytes, final=%t)",
-			safeInline(moment.Name), safeInline(moment.ID), moment.ArchiveSize, moment.Final,
-		))
-	} else {
-		lines = append(lines, "Latest Moment: none")
+	if detail.Capsule.State == client.CapsuleStateFailed {
+		m.pendingAttachID = ""
+		failure, _ := detail.Capsule.Failure.Get()
+		if failure == "" {
+			failure = "Capsule provisioning failed"
+		}
+		m.status = "Launch failed: " + safeInline(failure)
+		return m, nil, false
 	}
-	lines = append(lines, "", "Actions: "+m.actions(detail))
-	return strings.Join(lines, "\n")
-}
-
-func (m Model) actions(detail CapsuleDetail) string {
-	actions := []string{"c create Capsule"}
-	structured := false
-	pty := false
-	for _, profile := range detail.Profiles {
-		structured = structured || profile.Structured
-		pty = pty || profile.Pty
-	}
-	if structured {
-		actions = append(actions, "t create Thread")
-	} else {
-		actions = append(actions, "Thread unsupported")
-	}
-	if pty && detail.ActiveRun() == nil {
-		actions = append(actions, "PTY profile available")
-	}
-	maintenance := detail.Capsule.Maintenance.IsSet()
-	if detail.Capsule.State == "Ready" {
-		actions = append(actions, "g diff")
-	}
-	if detail.Capsule.State == "Ready" && !maintenance {
-		actions = append(actions, "p pause")
-	}
-	if detail.Capsule.State == "Paused" && !maintenance {
-		actions = append(actions, "u resume")
+	if run := detail.RunningRun(); run != nil {
+		m.pendingAttachID = ""
+		next, cmd := m.attachRun(*detail, *run)
+		return next, cmd, cmd != nil
 	}
 	if detail.ActiveRun() != nil {
-		actions = append(actions, "a attach")
+		m.status = "Starting the native harness…"
+		return m, nil, false
 	}
-	if detail.Capsule.State == "Ready" && !maintenance && detail.ActiveRun() == nil {
-		actions = append(actions, "m moment", "S seal")
+	if latest := detail.LatestRun(); latest != nil && latest.State != client.RunStateQueued &&
+		latest.State != client.RunStateStarting && latest.State != client.RunStateRunning &&
+		latest.State != client.RunStateCancelling {
+		m.pendingAttachID = ""
+		failure, _ := latest.Failure.Get()
+		if failure == "" {
+			failure = "native harness exited before attachment"
+		}
+		m.status = "Launch failed: " + safeInline(failure)
+		return m, nil, false
 	}
-	if mutable(string(detail.Capsule.State)) && !maintenance {
-		actions = append(actions, "x delete")
+	switch detail.Capsule.State {
+	case client.CapsuleStateCreating, client.CapsuleStatePreparing:
+		m.status = "Provisioning the Capsule…"
+	case client.CapsuleStateReady:
+		m.status = "Waiting for the native harness…"
+	default:
+		m.status = "Waiting for the Capsule to become Ready…"
 	}
-	if detail.LatestMoment() != nil {
-		actions = append(actions, "s shard", "w rewind")
-	}
-	return strings.Join(actions, "  ")
+	return m, nil, false
 }
 
-func (m Model) overlayView() string {
-	lines := []string{m.overlay.title}
-	if m.overlay.note != "" {
-		lines = append(lines, "", m.overlay.note)
+func (m *Model) openCreatedSession(capsuleID, threadID string) {
+	m.stayOnList = false
+	m.mode = modeHistory
+	m.pendingNew = false
+	m.newName = ""
+	m.newNameFocus = false
+	m.focus = focusMain
+	m.composerFocus = true
+	m.scroll = 0
+	if capsuleID != "" {
+		m.selectedID = capsuleID
 	}
-	switch m.overlay.kind {
-	case overlayForm:
-		lines = append(lines, "")
-		for index, item := range m.overlay.fields {
-			prefix := "  "
-			if index == m.overlay.focus {
-				prefix = "> "
-			}
-			suffix := ""
-			if len(item.options) > 0 {
-				suffix = "  (←/→ select)"
-			}
-			value := safeBlock(item.value)
-			if item.secret && value != "" {
-				value = strings.Repeat("•", utf8.RuneCountInString(value))
-			}
-			lines = append(lines, prefix+item.label+": "+value+suffix)
-		}
-		if m.overlay.multiline {
-			lines = append(lines, "", "tab: next  enter: newline  ctrl+s: submit  esc: cancel")
-		} else {
-			lines = append(lines, "", "tab: next  enter: submit  esc: cancel")
-		}
-	case overlayConfirm:
-		lines = append(lines, "", "y/enter: confirm  n/esc: cancel")
-	case overlayHelp, overlayContent:
-		lines = append(lines, "", m.overlay.content, "", "enter/esc: close")
+	if threadID != "" {
+		m.selectedThreadID = threadID
+		m.place = placeThread
+		return
 	}
-	width := max(40, min(90, m.width-4))
-	return boxStyle(width).Render(strings.Join(lines, "\n"))
+	m.selectedThreadID = ""
+	m.place = placeCapsule
+}
+
+func (m *Model) goToCapsuleList() {
+	m.stayOnList = true
+	m.mode = modeLauncher
+	m.place = placeProject
+	m.focus = focusCapsules
+	m.composerFocus = false
+	m.pendingNew = false
+	m.newName = ""
+	m.newNameFocus = false
+	m.newHarness = ""
+	m.newHarnesses = nil
+	m.selectedThreadID = ""
+	m.selectedID = ""
+	m.scroll = 0
 }
 
 func (m *Model) restoreSelection() {
-	if m.selectedThreadID != "" {
-		for capsuleIndex := range m.snapshot.Capsules {
-			for _, thread := range m.snapshot.Capsules[capsuleIndex].Threads {
-				if thread.Thread.ID == m.selectedThreadID {
-					m.selected = capsuleIndex
-					m.selectedID = m.snapshot.Capsules[capsuleIndex].Capsule.ID
-					m.markThreadRead(thread)
+	if m.projectID == "" && len(m.snapshot.Projects) > 0 {
+		m.projectID = m.snapshot.Projects[0].ID
+	}
+	if m.stayOnList {
+		m.selectedThreadID = ""
+		m.place = placeProject
+		if m.mode != modeCommand {
+			m.mode = modeLauncher
+		}
+		if !m.composerFocus && m.composer == "" && !m.pendingNew {
+			m.focus = focusCapsules
+			m.composerFocus = false
+		}
+		if m.selectedID != "" {
+			for index := range m.snapshot.Capsules {
+				if m.snapshot.Capsules[index].Capsule.ID == m.selectedID && m.capsuleVisible(index) {
+					m.selected = index
+					m.projectID = m.snapshot.Capsules[index].Project.ID
 					return
 				}
 			}
 		}
-		m.selectedThreadID = ""
+		visible := m.visibleCapsules()
+		if len(visible) == 0 {
+			m.selected = 0
+			m.selectedID = ""
+			return
+		}
+		m.selected = visible[0]
+		m.selectedID = m.snapshot.Capsules[m.selected].Capsule.ID
+		m.projectID = m.snapshot.Capsules[m.selected].Project.ID
+		return
+	}
+	if m.selectedThreadID != "" {
+		m.mode = modeHistory
+		for capsuleIndex := range m.snapshot.Capsules {
+			if !m.capsuleVisible(capsuleIndex) {
+				continue
+			}
+			for threadIndex, thread := range m.snapshot.Capsules[capsuleIndex].Threads {
+				if thread.Thread.ID == m.selectedThreadID {
+					m.selected = capsuleIndex
+					m.selectedID = m.snapshot.Capsules[capsuleIndex].Capsule.ID
+					m.projectID = m.snapshot.Capsules[capsuleIndex].Project.ID
+					m.threadCursor = threadIndex
+					m.markThreadRead(thread)
+					if m.place == placeProject {
+						m.place = placeThread
+						m.focus = focusMain
+					}
+					return
+				}
+			}
+		}
+		if m.selectedID != "" {
+			for index := range m.snapshot.Capsules {
+				if m.snapshot.Capsules[index].Capsule.ID == m.selectedID && m.capsuleVisible(index) {
+					m.selected = index
+					m.projectID = m.snapshot.Capsules[index].Project.ID
+					m.focus = focusMain
+					m.composerFocus = true
+					return
+				}
+			}
+		}
+		return
 	}
 	if m.selectedID != "" {
 		for index := range m.snapshot.Capsules {
-			if m.snapshot.Capsules[index].Capsule.ID == m.selectedID {
+			if m.snapshot.Capsules[index].Capsule.ID == m.selectedID && m.capsuleVisible(index) {
 				m.selected = index
+				m.projectID = m.snapshot.Capsules[index].Project.ID
+				if m.place == placeProject {
+					m.showCapsuleSession()
+				}
 				return
 			}
 		}
 	}
-	if len(m.snapshot.Capsules) == 0 {
+	visible := m.visibleCapsules()
+	if len(visible) == 0 {
 		m.selected = 0
 		m.selectedID = ""
+		m.place = placeProject
+		m.focus = focusMain
+		m.composerFocus = true
 		return
 	}
-	if m.selected >= len(m.snapshot.Capsules) {
-		m.selected = len(m.snapshot.Capsules) - 1
-	}
+	m.selected = m.newestVisibleCapsule()
 	m.selectedID = m.snapshot.Capsules[m.selected].Capsule.ID
+	m.projectID = m.snapshot.Capsules[m.selected].Project.ID
+	m.showCapsuleSession()
 }
 
 func (m *Model) move(delta int) {
-	items := m.navigation()
-	if len(items) == 0 {
+	if m.mode == modeHistory && (m.place == placeThread || m.place == placeCapsule) {
+		if delta > 0 {
+			m.scroll = max(0, m.scroll-max(3, m.height/2))
+		} else {
+			m.scroll += max(3, m.height/2)
+		}
+		return
+	}
+	visible := m.visibleCapsules()
+	if len(visible) == 0 {
 		return
 	}
 	current := 0
-	for index, item := range items {
-		if item.capsule == m.selected && item.threadID == m.selectedThreadID {
+	for index, capsuleIndex := range visible {
+		if capsuleIndex == m.selected {
 			current = index
 			break
 		}
 	}
-	item := items[(current+delta+len(items))%len(items)]
-	m.selected = item.capsule
-	m.selectedID = m.snapshot.Capsules[item.capsule].Capsule.ID
-	m.selectedThreadID = item.threadID
+	m.selected = visible[(current+delta+len(visible))%len(visible)]
+	m.selectedID = m.snapshot.Capsules[m.selected].Capsule.ID
+	m.projectID = m.snapshot.Capsules[m.selected].Project.ID
+	m.threadCursor = 0
 	m.scroll = 0
-	if thread := m.selectedThread(); thread != nil {
-		m.markThreadRead(*thread)
-	}
 }
 
 func (m *Model) selectedDetail() *CapsuleDetail {
-	if m.selected < 0 || m.selected >= len(m.snapshot.Capsules) {
+	if m.selectedID == "" || m.selected < 0 || m.selected >= len(m.snapshot.Capsules) {
 		return nil
 	}
-	return &m.snapshot.Capsules[m.selected]
+	detail := &m.snapshot.Capsules[m.selected]
+	if detail.Capsule.ID != m.selectedID ||
+		(m.projectID != "" && detail.Project.ID != m.projectID) {
+		return nil
+	}
+	return detail
 }
 
 func (m *Model) selectedThread() *ThreadDetail {
@@ -702,36 +1011,827 @@ func (m *Model) selectedThread() *ThreadDetail {
 	return nil
 }
 
-type navigationItem struct {
-	capsule  int
-	threadID string
-}
-
-func (m Model) navigation() []navigationItem {
-	var output []navigationItem
-	for capsuleIndex, detail := range m.snapshot.Capsules {
-		output = append(output, navigationItem{capsule: capsuleIndex})
-		for _, thread := range detail.Threads {
-			output = append(output, navigationItem{capsule: capsuleIndex, threadID: thread.Thread.ID})
+func (m Model) visibleCapsules() []int {
+	var output []int
+	for index, detail := range m.snapshot.Capsules {
+		if m.projectID != "" && detail.Project.ID != m.projectID {
+			continue
 		}
+		if !m.showDeleted && detail.Capsule.State == client.CapsuleStateDeleted {
+			continue
+		}
+		output = append(output, index)
 	}
 	return output
 }
 
-func (m *Model) openCreate() {
-	projectID := ""
-	if detail := m.selectedDetail(); detail != nil {
-		projectID = detail.Project.ID
-	} else if len(m.snapshot.Projects) > 0 {
-		projectID = m.snapshot.Projects[0].ID
+func (m Model) capsuleVisible(index int) bool {
+	for _, visible := range m.visibleCapsules() {
+		if visible == index {
+			return true
+		}
 	}
+	return false
+}
+
+func (m Model) visibleThreads(detail CapsuleDetail) []ThreadDetail {
+	var output []ThreadDetail
+	for _, thread := range detail.Threads {
+		if thread.Thread.State == client.ThreadStateDeleted {
+			continue
+		}
+		output = append(output, thread)
+	}
+	return output
+}
+
+func (m Model) capsuleHasStructured(detail CapsuleDetail) bool {
+	for _, profile := range detail.Profiles {
+		if profile.Structured {
+			return true
+		}
+	}
+	return false
+}
+
+func (m Model) projectName() string {
+	for _, project := range m.snapshot.Projects {
+		if project.ID == m.projectID {
+			return safeInline(project.Name)
+		}
+	}
+	if detail := m.selectedDetail(); detail != nil {
+		return safeInline(detail.Project.Name)
+	}
+	if len(m.snapshot.Projects) == 1 {
+		return safeInline(m.snapshot.Projects[0].Name)
+	}
+	return ""
+}
+
+func (m Model) goBack() (tea.Model, tea.Cmd) {
+	if m.mode == modeCommand {
+		m.mode = modeLauncher
+		m.composer = ""
+		m.composerFocus = false
+		m.paletteIndex = 0
+		return m, nil
+	}
+	if m.mode == modeHistory {
+		m.mode = modeLauncher
+		m.stayOnList = true
+		m.place = placeProject
+		m.selectedThreadID = ""
+		m.composer = ""
+		m.scroll = 0
+	}
+	m.pendingNew = false
+	m.newName = ""
+	m.newNameFocus = false
+	m.newHarness = ""
+	m.newHarnesses = nil
+	m.composerFocus = false
+	m.focus = focusCapsules
+	return m, nil
+}
+
+func (m Model) enterSelection() (tea.Model, tea.Cmd) {
+	detail := m.selectedDetail()
+	if detail == nil {
+		return m, nil
+	}
+	if run := detail.RunningRun(); run != nil {
+		return m.attachRun(*detail, *run)
+	}
+	if detail.ActiveRun() != nil {
+		m.pendingAttachID = detail.Capsule.ID
+		m.status = "Starting the native harness…"
+		return m, nil
+	}
+	harness, ok := detail.Capsule.Harness.Get()
+	if !ok || strings.TrimSpace(harness) == "" {
+		m.status = "Launch failed: this Capsule has no native launcher harness"
+		return m, nil
+	}
+	switch detail.Capsule.State {
+	case client.CapsuleStateCreating, client.CapsuleStatePreparing:
+		m.pendingAttachID = detail.Capsule.ID
+		m.status = "Provisioning the Capsule…"
+		return m, nil
+	case client.CapsuleStateReady:
+		for _, profile := range detail.Profiles {
+			if profile.Name != harness {
+				continue
+			}
+			if profile.Structured || !profile.Pty {
+				m.status = "Launch failed: selected harness is not a native PTY profile"
+				return m, nil
+			}
+			m.pendingAttachID = detail.Capsule.ID
+			m.status = "Starting the native harness…"
+			return m.execute(ActionRequest{
+				Action: ActionRunStart, CapsuleID: detail.Capsule.ID, Harness: harness,
+			})
+		}
+		m.status = "Launch failed: selected harness profile is unavailable"
+		return m, nil
+	case client.CapsuleStateFailed:
+		failure, _ := detail.Capsule.Failure.Get()
+		if failure == "" {
+			failure = "Capsule provisioning failed"
+		}
+		m.status = "Launch failed: " + safeInline(failure)
+		return m, nil
+	default:
+		m.status = "Launch failed: Capsule must be Ready"
+		return m, nil
+	}
+}
+
+func (m *Model) showCapsuleSession() {
+	m.stayOnList = false
+	m.mode = modeHistory
+	detail := m.selectedDetail()
+	if detail == nil {
+		return
+	}
+	m.scroll = 0
+	m.threadCursor = 0
+	if thread := m.primaryThread(*detail); thread != nil {
+		m.selectedThreadID = thread.Thread.ID
+		m.place = placeThread
+		m.markThreadRead(*thread)
+		return
+	}
+	m.selectedThreadID = ""
+	m.place = placeCapsule
+}
+
+func (m *Model) openCapsuleSession() {
+	m.showCapsuleSession()
+	m.focus = focusMain
+	m.composerFocus = true
+}
+
+func (m Model) newestVisibleCapsule() int {
+	visible := m.visibleCapsules()
+	if len(visible) == 0 {
+		return 0
+	}
+	best := visible[0]
+	bestTime := capsuleActivity(m.snapshot.Capsules[best])
+	for _, index := range visible[1:] {
+		if when := capsuleActivity(m.snapshot.Capsules[index]); when.After(bestTime) {
+			best = index
+			bestTime = when
+		}
+	}
+	return best
+}
+
+func capsuleActivity(detail CapsuleDetail) time.Time {
+	latest := detail.Capsule.UpdatedAt
+	if detail.Capsule.CreatedAt.After(latest) {
+		latest = detail.Capsule.CreatedAt
+	}
+	for _, thread := range detail.Threads {
+		if thread.Thread.UpdatedAt.After(latest) {
+			latest = thread.Thread.UpdatedAt
+		}
+		if thread.Thread.CreatedAt.After(latest) {
+			latest = thread.Thread.CreatedAt
+		}
+	}
+	return latest
+}
+
+func (m *Model) bindThread(thread ThreadDetail) {
+	m.stayOnList = false
+	m.mode = modeHistory
+	m.selectedThreadID = thread.Thread.ID
+	m.place = placeThread
+	m.focus = focusMain
+	m.composerFocus = true
+	m.scroll = 0
+	m.markThreadRead(thread)
+}
+
+func (m *Model) openHistoryThread(threadID string) {
+	detail := m.selectedDetail()
+	if detail == nil {
+		m.status = "Select a Capsule first"
+		return
+	}
+	for _, thread := range detail.Threads {
+		if thread.Thread.ID == threadID && thread.Thread.State != client.ThreadStateDeleted {
+			m.bindThread(thread)
+			return
+		}
+	}
+	m.status = "That conversation is gone"
+}
+
+func (m Model) liveThread(detail CapsuleDetail) *ThreadDetail {
+	var paused *ThreadDetail
+	for index := range detail.Threads {
+		thread := &detail.Threads[index]
+		switch thread.Thread.State {
+		case client.ThreadStateActive:
+			return thread
+		case client.ThreadStatePaused:
+			if paused == nil {
+				paused = thread
+			}
+		}
+	}
+	return paused
+}
+
+func (m Model) primaryThread(detail CapsuleDetail) *ThreadDetail {
+	if live := m.liveThread(detail); live != nil {
+		return live
+	}
+	for index := range detail.Threads {
+		if detail.Threads[index].Thread.State != client.ThreadStateDeleted {
+			return &detail.Threads[index]
+		}
+	}
+	return nil
+}
+
+func (m *Model) sessionThread() *ThreadDetail {
+	if thread := m.selectedThread(); thread != nil {
+		if thread.Thread.State != client.ThreadStateArchived &&
+			thread.Thread.State != client.ThreadStateDeleted {
+			return thread
+		}
+	}
+	detail := m.selectedDetail()
+	if detail == nil {
+		return nil
+	}
+	if live := m.liveThread(*detail); live != nil {
+		m.bindThread(*live)
+		return live
+	}
+	return nil
+}
+
+func (m Model) sendComposer() (tea.Model, tea.Cmd) {
+	if m.sendInFlight {
+		return m, nil
+	}
+	content := strings.TrimRight(m.composer, " \t")
+	if m.pendingNew || m.selectedDetail() == nil {
+		return m.startFreshWorkspace(content)
+	}
+	thread := m.sessionThread()
+	if thread == nil {
+		if strings.TrimSpace(content) == "" {
+			if m.pendingSend == "" {
+				return m, nil
+			}
+			return m.startWorkspaceChat(m.pendingSend)
+		}
+		m.pendingSend = content
+		m.composer = ""
+		return m.startWorkspaceChat(content)
+	}
+	if thread.Thread.State == client.ThreadStateArchived || thread.Thread.State == client.ThreadStateDeleted {
+		m.status = "This conversation is closed"
+		return m, nil
+	}
+	supported, present := thread.Thread.StructuredSupported.Get()
+	if present && !supported {
+		m.status = "This harness is PTY-only. Use : to attach."
+		return m, nil
+	}
+	if strings.TrimSpace(content) == "" {
+		if m.pendingSend == "" {
+			return m, nil
+		}
+		if sessionNeedsStart(thread) {
+			m.status = "Starting the session…"
+			return m.startOrResumeThread()
+		}
+		if next, cmd, ok := m.flushPendingSend(); ok {
+			return next, cmd
+		}
+		return m, nil
+	}
+	m.pendingSend = content
+	m.composer = ""
+	if sessionNeedsStart(thread) {
+		m.status = "Starting the session…"
+		return m.startOrResumeThread()
+	}
+	m.status = "Sending…"
+	return m.dispatchSend(content, thread.Thread.ResourceVersion)
+}
+
+func isResourceConflict(err error) bool {
+	return err != nil && strings.Contains(strings.ToLower(err.Error()), "conflict")
+}
+
+func isVersionConflict(err error) bool {
+	if !isResourceConflict(err) {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "resource version") || strings.Contains(message, "stale")
+}
+
+func (m Model) flushPendingSend() (Model, tea.Cmd, bool) {
+	if m.pendingSend == "" || m.sendInFlight {
+		return m, nil, false
+	}
+	thread := m.selectedThread()
+	if thread == nil || sessionNeedsStart(thread) || thread.Thread.State != client.ThreadStateActive {
+		return m, nil, false
+	}
+	m.status = "Sending…"
+	next, cmd := m.dispatchSend(m.pendingSend, thread.Thread.ResourceVersion)
+	return next.(Model), cmd, true
+}
+
+func (m Model) dispatchSend(content string, resourceVersion int64) (tea.Model, tea.Cmd) {
+	thread := m.selectedThread()
+	if thread == nil {
+		return m, nil
+	}
+	m.sendInFlight = true
+	return m.execute(ActionRequest{
+		Action: ActionThreadSend, ThreadID: thread.Thread.ID,
+		ResourceVersion: resourceVersion, Content: content,
+	})
+}
+
+func sessionNeedsStart(thread *ThreadDetail) bool {
+	if thread == nil {
+		return false
+	}
+	if thread.Thread.State == client.ThreadStatePaused {
+		return true
+	}
+	if thread.Thread.State != client.ThreadStateActive {
+		return false
+	}
+	state, ok := thread.Thread.CurrentRunState.Get()
+	if !ok {
+		return false
+	}
+	switch state {
+	case client.RunStateFailed, client.RunStateSucceeded, client.RunStateCancelled:
+		return true
+	default:
+		return false
+	}
+}
+
+func (m Model) startOrResumeThread() (tea.Model, tea.Cmd) {
+	thread := m.selectedThread()
+	if thread == nil {
+		m.status = "Open a conversation first"
+		return m, nil
+	}
+	supported, known := thread.Thread.StructuredSupported.Get()
+	if known && !supported {
+		m.status = "This harness is PTY-only. Use : to attach."
+		return m, nil
+	}
+	switch thread.Thread.State {
+	case client.ThreadStateActive:
+		if threadActiveRun(thread.Thread) {
+			if m.pendingSend != "" {
+				return m.dispatchSend(m.pendingSend, thread.Thread.ResourceVersion)
+			}
+			m.status = "This conversation is already running"
+			return m, nil
+		}
+		return m.execute(m.threadLifecycleRequest(ActionThreadStart))
+	case client.ThreadStatePaused:
+		return m.execute(m.threadLifecycleRequest(ActionThreadResume))
+	default:
+		m.status = "This conversation cannot start right now"
+		return m, nil
+	}
+}
+
+func (m Model) attachSelectedRun() (tea.Model, tea.Cmd) {
+	detail := m.selectedDetail()
+	if detail == nil {
+		m.status = "Select a Capsule first"
+		return m, nil
+	}
+	if run := detail.RunningRun(); run != nil {
+		return m.attachRun(*detail, *run)
+	}
+	m.status = "No active PTY Run to attach"
+	return m, nil
+}
+
+func (m Model) attachRun(detail CapsuleDetail, run client.Run) (tea.Model, tea.Cmd) {
+	for _, profile := range detail.Profiles {
+		if profile.Name != run.Harness {
+			continue
+		}
+		if profile.Structured || !profile.Pty {
+			m.status = "Launch failed: that Run is not a native PTY session"
+			return m, nil
+		}
+		m.status = "Handing terminal to " + safeInline(run.Harness)
+		title := "Meridian · " + safeInline(detail.Capsule.Name) + " · " + safeInline(run.Harness)
+		restoreTitle := "Meridian"
+		if project := safeInline(detail.Project.Name); project != "" {
+			restoreTitle += " · " + project
+		}
+		return m, m.attach(AttachRequest{
+			RunID: run.ID, Title: title, RestoreTitle: restoreTitle,
+		})
+	}
+	m.status = "Launch failed: Run profile metadata is unavailable"
+	return m, nil
+}
+
+func (m *Model) openCreateProject() {
+	fields := []field{
+		{label: "Name"},
+		{label: "Repository URL", optional: true},
+	}
+	if names := m.installationHarnessNames(); len(names) > 0 {
+		fields = append(fields, field{label: "Harness", value: names[0], options: names})
+	}
+	m.overlay = overlay{
+		kind: overlayForm, title: "New Project",
+		note:   "A Project is the recipe: a repo and a harness. ← → picks a pack. /new starts Capsules with it. Secrets stay in the scriptable CLI.",
+		action: ActionRequest{Action: ActionProjectCreate},
+		fields: fields,
+	}
+}
+
+func (m *Model) openSwitchProject() {
+	if len(m.snapshot.Projects) == 0 {
+		m.openCreateProject()
+		return
+	}
+	currentID := m.currentProjectID()
+	currentIndex := 0
+	options := make([]string, 0, len(m.snapshot.Projects))
+	values := make([]string, 0, len(m.snapshot.Projects))
+	for index, project := range m.snapshot.Projects {
+		options = append(options, safeInline(project.Name))
+		values = append(values, project.ID)
+		if project.ID == currentID {
+			currentIndex = index
+		}
+	}
+	m.overlay = overlay{
+		kind: overlayForm, title: "Switch project",
+		action: ActionRequest{Action: "switch-project"},
+		fields: []field{{
+			label: "Project", value: options[currentIndex], options: options,
+			optionValues: values, optionIndex: currentIndex,
+		}},
+	}
+}
+
+func (m *Model) openCreate() {
+	projectID := m.currentProjectID()
 	if projectID == "" {
-		m.status = "Create a project with the scriptable CLI first"
+		m.openCreateProject()
+		return
+	}
+	harnesses := m.projectHarnessNames()
+	if len(harnesses) == 0 {
+		m.status = "Apply a harness to this Project before creating a Capsule"
 		return
 	}
 	m.overlay = overlay{
 		kind: overlayForm, title: "Create Capsule", action: ActionRequest{Action: ActionCreate},
-		fields: []field{{label: "Project ID", value: projectID}, {label: "Capsule name"}},
+		fields: []field{
+			{label: "Project ID", value: projectID},
+			{label: "Capsule name"},
+			{label: "Harness", value: harnesses[0], options: harnesses},
+		},
+	}
+}
+
+func (m Model) startWorkspaceChat(content string) (tea.Model, tea.Cmd) {
+	detail := m.selectedDetail()
+	if detail == nil {
+		m.status = "Select a Capsule first"
+		if content != "" {
+			m.composer = content
+			m.pendingSend = ""
+		}
+		return m, nil
+	}
+	harness := ""
+	for _, profile := range detail.Profiles {
+		if profile.Structured {
+			harness = profile.Name
+			break
+		}
+	}
+	if harness == "" {
+		m.status = "This Capsule has no structured harness. Use : to attach a native PTY if one is running."
+		if content != "" {
+			m.composer = content
+			m.pendingSend = ""
+		}
+		return m, nil
+	}
+	if strings.TrimSpace(content) == "" {
+		return m, nil
+	}
+	m.pendingSend = content
+	m.composer = ""
+	m.place = placeCapsule
+	m.focus = focusMain
+	m.composerFocus = true
+	m.status = "Starting the session…"
+	return m.execute(ActionRequest{
+		Action: ActionThreadCreate, CapsuleID: detail.Capsule.ID,
+		Harness: harness, Content: content, Start: true,
+	})
+}
+
+func (m *Model) beginNewCapsule() {
+	if m.currentProjectID() == "" {
+		m.openCreateProject()
+		return
+	}
+	m.stayOnList = true
+	m.mode = modeLauncher
+	m.pendingNew = true
+	m.newHarnesses = m.projectHarnessNames()
+	m.newHarness = ""
+	if m.newHarness == "" && len(m.newHarnesses) > 0 {
+		m.newHarness = m.newHarnesses[0]
+	}
+	m.newName = ""
+	m.newNameFocus = true
+	m.composer = ""
+	m.composerFocus = true
+	m.focus = focusMain
+	m.paletteIndex = 0
+	m.status = "Name this Capsule and pick a harness"
+}
+
+func (m *Model) cycleNewHarness(delta int) {
+	if len(m.newHarnesses) == 0 {
+		return
+	}
+	index := 0
+	for i, name := range m.newHarnesses {
+		if name == m.newHarness {
+			index = i
+			break
+		}
+	}
+	m.newHarness = m.newHarnesses[(index+delta+len(m.newHarnesses))%len(m.newHarnesses)]
+}
+
+func (m Model) currentProjectID() string {
+	if m.projectID != "" {
+		return m.projectID
+	}
+	if detail := m.selectedDetail(); detail != nil {
+		return detail.Project.ID
+	}
+	if len(m.snapshot.Projects) > 0 {
+		return m.snapshot.Projects[0].ID
+	}
+	return ""
+}
+
+func (m Model) currentProject() *client.Project {
+	id := m.currentProjectID()
+	if id == "" {
+		return nil
+	}
+	for index := range m.snapshot.Projects {
+		if m.snapshot.Projects[index].ID == id {
+			return &m.snapshot.Projects[index]
+		}
+	}
+	return nil
+}
+
+func (m *Model) openApplyHarness() {
+	project := m.currentProject()
+	if project == nil {
+		m.status = "Create a Project first"
+		return
+	}
+	applied := map[string]bool{}
+	for _, item := range project.HarnessImages {
+		applied[item.Name] = true
+	}
+	choices := make([]harnessChoice, 0, len(m.snapshot.HarnessImages))
+	for _, item := range m.snapshot.HarnessImages {
+		if item.Name == "" || item.ImageReference == "" {
+			continue
+		}
+		choices = append(choices, harnessChoice{
+			Name: item.Name, ImageReference: item.ImageReference, Applied: applied[item.Name],
+		})
+	}
+	if len(choices) == 0 {
+		m.status = "This installation does not advertise harness packs"
+		return
+	}
+	m.overlay = overlay{
+		kind: overlayHarness, title: "Apply harnesses",
+		note: "Space applies or removes a pack. Enter saves. /new then picks among the applied names.",
+		action: ActionRequest{
+			Action: ActionProjectApplyHarnesses, ProjectID: project.ID,
+			ResourceVersion: project.ResourceVersion,
+		},
+		choices: choices,
+	}
+}
+
+func (m Model) updateHarnessOverlay(key tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch key.String() {
+	case "esc":
+		m.overlay = overlay{}
+		return m, nil
+	case "up", "k":
+		if len(m.overlay.choices) > 0 {
+			m.overlay.focus = (m.overlay.focus - 1 + len(m.overlay.choices)) % len(m.overlay.choices)
+		}
+	case "down", "j":
+		if len(m.overlay.choices) > 0 {
+			m.overlay.focus = (m.overlay.focus + 1) % len(m.overlay.choices)
+		}
+	case " ", "space":
+		if m.overlay.focus >= 0 && m.overlay.focus < len(m.overlay.choices) {
+			m.overlay.choices[m.overlay.focus].Applied = !m.overlay.choices[m.overlay.focus].Applied
+		}
+	case "enter":
+		request := m.overlay.action
+		kept := map[string]bool{}
+		for _, choice := range m.overlay.choices {
+			kept[choice.Name] = true
+			if choice.Applied {
+				request.HarnessImages = append(
+					request.HarnessImages, choice.Name+"="+choice.ImageReference,
+				)
+			}
+		}
+		if project := m.currentProject(); project != nil {
+			for _, item := range project.HarnessImages {
+				if kept[item.Name] {
+					continue
+				}
+				request.HarnessImages = append(
+					request.HarnessImages, item.Name+"="+item.ImageReference,
+				)
+			}
+		}
+		m.overlay = overlay{}
+		return m.execute(request)
+	}
+	return m, nil
+}
+
+func (m Model) installationHarnessNames() []string {
+	names := make([]string, 0, len(m.snapshot.HarnessImages))
+	for _, item := range m.snapshot.HarnessImages {
+		if item.Name != "" && item.ImageReference != "" {
+			names = append(names, item.Name)
+		}
+	}
+	return names
+}
+
+func (m Model) installationHarness(name string) (client.HarnessImage, bool) {
+	for _, item := range m.snapshot.HarnessImages {
+		if item.Name == name && item.ImageReference != "" {
+			return item, true
+		}
+	}
+	return client.HarnessImage{}, false
+}
+
+func (m Model) projectHarnessNames() []string {
+	project := m.currentProject()
+	if project == nil || len(project.HarnessImages) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(project.HarnessImages))
+	for _, item := range project.HarnessImages {
+		if item.Name != "" {
+			names = append(names, item.Name)
+		}
+	}
+	return names
+}
+
+func (m Model) defaultStructuredHarness() string {
+	allowed := m.projectHarnessNames()
+	if detail := m.selectedDetail(); detail != nil {
+		for _, profile := range detail.Profiles {
+			if profile.Structured && (len(allowed) == 0 || containsString(allowed, profile.Name)) {
+				return profile.Name
+			}
+		}
+	}
+	if len(allowed) > 0 {
+		return allowed[0]
+	}
+	for _, detail := range m.snapshot.Capsules {
+		if m.projectID != "" && detail.Project.ID != m.projectID {
+			continue
+		}
+		for _, profile := range detail.Profiles {
+			if profile.Structured {
+				return profile.Name
+			}
+		}
+	}
+	return ""
+}
+
+func (m Model) knownStructuredHarnesses() []string {
+	if names := m.projectHarnessNames(); len(names) > 0 {
+		return names
+	}
+	seen := map[string]bool{}
+	var names []string
+	for _, detail := range m.snapshot.Capsules {
+		for _, profile := range detail.Profiles {
+			if !profile.Structured || seen[profile.Name] {
+				continue
+			}
+			seen[profile.Name] = true
+			names = append(names, profile.Name)
+		}
+	}
+	return names
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
+func (m Model) startFreshWorkspace(_ string) (tea.Model, tea.Cmd) {
+	name := strings.TrimSpace(m.newName)
+	if name == "" {
+		if !m.pendingNew {
+			m.beginNewCapsule()
+		}
+		m.newNameFocus = true
+		m.status = "Name this Capsule first"
+		return m, nil
+	}
+	projectID := m.currentProjectID()
+	if projectID == "" {
+		m.openCreateProject()
+		return m, nil
+	}
+	harness := m.newHarness
+	if harness == "" {
+		m.status = "Apply a harness to this Project before creating a Capsule"
+		return m, nil
+	}
+	m.pendingNew = false
+	m.newName = ""
+	m.newNameFocus = false
+	m.pendingSend = ""
+	m.composer = ""
+	m.sendInFlight = true
+	m.status = "Starting a new Capsule…"
+	return m.execute(ActionRequest{
+		Action: ActionCreate, ProjectID: projectID, Name: name, Harness: harness,
+	})
+}
+
+func (m *Model) openNewCapsuleForm(_ string) {
+	harnesses := m.projectHarnessNames()
+	harness := ""
+	if harness == "" && len(harnesses) > 0 {
+		harness = harnesses[0]
+	}
+	name := strings.TrimSpace(m.newName)
+	m.overlay = overlay{
+		kind: overlayForm, title: "New Capsule",
+		note:   "Name this Capsule and choose its native harness.",
+		action: ActionRequest{Action: ActionCreate, ProjectID: m.currentProjectID()},
+		fields: []field{
+			{label: "Capsule name", value: name},
+			{label: "Harness profile", value: harness, options: harnesses},
+		},
+		focus: 0,
+	}
+	if name != "" && harness != "" {
+		m.overlay.focus = 1
 	}
 }
 
@@ -764,31 +1864,6 @@ func (m *Model) openThreadCreate() {
 			{label: "Harness profile", value: harness, options: harnesses},
 			{label: "First message", optional: true},
 			{label: "Start", value: "yes", options: []string{"yes", "no"}},
-		},
-	}
-}
-
-func (m *Model) openProjectThreadSpawn() {
-	projectID := ""
-	if detail := m.selectedDetail(); detail != nil {
-		projectID = detail.Project.ID
-	} else if len(m.snapshot.Projects) > 0 {
-		projectID = m.snapshot.Projects[0].ID
-	}
-	if projectID == "" {
-		m.status = "Create a project with the scriptable CLI first"
-		return
-	}
-	m.overlay = overlay{
-		kind: overlayForm, title: "Spawn Project Thread",
-		note:      "Always provisions a fresh Capsule, then starts the encrypted Thread when Ready.",
-		multiline: true,
-		action:    ActionRequest{Action: ActionProjectThreadSpawn},
-		fields: []field{
-			{label: "Project ID", value: projectID},
-			{label: "Capsule name", optional: true},
-			{label: "Harness profile"},
-			{label: "First prompt"},
 		},
 	}
 }
@@ -954,14 +2029,47 @@ func (m Model) formRequest() (ActionRequest, error) {
 		if utf8.RuneCountInString(item.value) > 128 &&
 			item.label != "Project ID" && item.label != "Moment ID" &&
 			item.label != "Message" && item.label != "First message" &&
-			item.label != "First prompt" && item.label != "Input" {
+			item.label != "First prompt" && item.label != "Input" &&
+			item.label != "Repository URL" && item.label != "Image" &&
+			item.label != "Harness" {
 			return ActionRequest{}, fmt.Errorf("%s exceeds 128 characters", item.label)
 		}
 	}
 	switch request.Action {
+	case Action("switch-project"):
+		project := m.overlay.fields[0]
+		if project.optionIndex >= 0 && project.optionIndex < len(project.optionValues) {
+			request.ProjectID = project.optionValues[project.optionIndex]
+		}
+		if request.ProjectID == "" {
+			return ActionRequest{}, errors.New("selected Project is unavailable")
+		}
+	case ActionProjectCreate:
+		request.Name = strings.TrimSpace(m.overlay.fields[0].value)
+		request.RepositoryURL = strings.TrimSpace(m.overlay.fields[1].value)
+		if utf8.RuneCountInString(request.RepositoryURL) > 4096 {
+			return ActionRequest{}, errors.New("Repository URL exceeds 4096 characters")
+		}
+		if len(m.overlay.fields) > 2 {
+			harness := strings.TrimSpace(m.overlay.fields[2].value)
+			pack, ok := m.installationHarness(harness)
+			if !ok {
+				return ActionRequest{}, fmt.Errorf("unknown harness %q", harness)
+			}
+			request.Image = pack.ImageReference
+			request.HarnessImages = []string{pack.Name + "=" + pack.ImageReference}
+		}
 	case ActionCreate:
-		request.ProjectID = strings.TrimSpace(m.overlay.fields[0].value)
-		request.Name = strings.TrimSpace(m.overlay.fields[1].value)
+		if request.ProjectID != "" {
+			request.Name = strings.TrimSpace(m.overlay.fields[0].value)
+			request.Harness = strings.TrimSpace(m.overlay.fields[1].value)
+		} else {
+			request.ProjectID = strings.TrimSpace(m.overlay.fields[0].value)
+			request.Name = strings.TrimSpace(m.overlay.fields[1].value)
+			if len(m.overlay.fields) > 2 {
+				request.Harness = strings.TrimSpace(m.overlay.fields[2].value)
+			}
+		}
 	case ActionMoment:
 		request.Name = strings.TrimSpace(m.overlay.fields[0].value)
 	case ActionShard, ActionRewind:
@@ -979,10 +2087,23 @@ func (m Model) formRequest() (ActionRequest, error) {
 			return ActionRequest{}, errors.New("First message is required when Start is yes")
 		}
 	case ActionProjectThreadSpawn:
-		request.ProjectID = strings.TrimSpace(m.overlay.fields[0].value)
-		request.Name = strings.TrimSpace(m.overlay.fields[1].value)
-		request.Harness = strings.TrimSpace(m.overlay.fields[2].value)
-		request.Content = m.overlay.fields[3].value
+		if request.ProjectID == "" {
+			request.ProjectID = m.currentProjectID()
+		}
+		switch len(m.overlay.fields) {
+		case 3:
+			request.Name = strings.TrimSpace(m.overlay.fields[0].value)
+			request.Harness = strings.TrimSpace(m.overlay.fields[1].value)
+			request.Content = m.overlay.fields[2].value
+		default:
+			request.ProjectID = strings.TrimSpace(m.overlay.fields[0].value)
+			request.Name = strings.TrimSpace(m.overlay.fields[1].value)
+			request.Harness = strings.TrimSpace(m.overlay.fields[2].value)
+			request.Content = m.overlay.fields[3].value
+		}
+		if request.Name == "" {
+			return ActionRequest{}, errors.New("Capsule name is required")
+		}
 		if request.Content == "" {
 			return ActionRequest{}, errors.New("First prompt is required")
 		}
@@ -1029,112 +2150,6 @@ func (m Model) threadLifecycleRequest(action Action) ActionRequest {
 	}
 }
 
-func (m Model) threadView(capsule CapsuleDetail, detail ThreadDetail) string {
-	thread := detail.Thread
-	runID, _ := thread.CurrentRunId.Get()
-	runState := "none"
-	if value, ok := thread.CurrentRunState.Get(); ok {
-		runState = string(value)
-	}
-	protocol := "unsupported"
-	if value, ok := thread.Protocol.Get(); ok {
-		protocol = string(value)
-	}
-	supported := "unknown"
-	if value, ok := thread.StructuredSupported.Get(); ok {
-		supported = strconv.FormatBool(value)
-	}
-	adapter := "unknown"
-	for _, profile := range capsule.Profiles {
-		if profile.Name != thread.Harness {
-			continue
-		}
-		if value, ok := profile.AdapterKind.Get(); ok {
-			adapter = string(value)
-		} else if profile.Pty {
-			adapter = "native PTY"
-		}
-		break
-	}
-	lines := []string{
-		"Thread " + safeInline(shortID(thread.ID)),
-		"Capsule: " + safeInline(capsule.Capsule.Name),
-		"State: " + string(thread.State) + "  Run: " + safeInline(runState),
-		"Harness: " + safeInline(thread.Harness) + "  Adapter: " + safeInline(adapter),
-		"Protocol: " + safeInline(protocol) + "  structured=" + supported,
-		"Run ID: " + safeInline(runID),
-		"Age: " + humanAge(m.now().Sub(thread.CreatedAt)) +
-			"  latest activity: " + humanAge(m.now().Sub(thread.UpdatedAt)),
-		"Messages: " + strconv.FormatInt(thread.MessageCount, 10) +
-			"  encrypted at rest: " + strconv.FormatBool(thread.EncryptedAtRest),
-		"Resource version: " + strconv.FormatInt(thread.ResourceVersion, 10),
-	}
-	if value, ok := thread.StructuredSupported.Get(); ok && !value {
-		lines = append(lines, "", "Unsupported: this harness is PTY-only. Use a native Run and attach.")
-	}
-	if detail.TranscriptCode == "transcript_locked" {
-		lines = append(lines, "", "TRANSCRIPT LOCKED",
-			"The installation key is missing or does not match. Restore the correct operator key; no ciphertext details are shown.")
-	} else if detail.TranscriptCode == "transcript_corrupt" {
-		lines = append(lines, "", "TRANSCRIPT CORRUPT",
-			"Stop using this Thread and restore from a trusted backup. No key or ciphertext details are shown.")
-	} else if detail.TranscriptError != "" {
-		lines = append(lines, "", "Transcript unavailable: "+safeInline(detail.TranscriptError))
-	}
-	if detail.Gap != nil {
-		requested, _ := detail.Gap.RequestedAfter.Get()
-		available, _ := detail.Gap.AvailableFrom.Get()
-		lines = append(lines, "", fmt.Sprintf(
-			"Replay gap: requested after %d; available from %d. Earlier blocks cannot be reconstructed.",
-			requested, available,
-		))
-	}
-	if detail.More || detail.Truncated {
-		lines = append(lines, "", "Transcript truncated to the newest retained rendering bound.")
-	}
-	lines = append(lines, "", "Transcript")
-	rendered := renderThreadBlocks(detail.Blocks)
-	if len(rendered) == 0 && detail.TranscriptError == "" {
-		lines = append(lines, "No messages yet.")
-	} else {
-		lines = append(lines, rendered...)
-	}
-	lines = append(lines, "", "Actions: "+m.threadActions(detail))
-	if m.scroll > 0 && len(lines) > 12 {
-		end := max(0, len(lines)-m.scroll)
-		start := max(0, end-max(8, m.height-15))
-		lines = append([]string{"… scrolled …"}, lines[start:end]...)
-	}
-	return strings.Join(lines, "\n")
-}
-
-func (m Model) threadActions(detail ThreadDetail) string {
-	thread := detail.Thread
-	actions := []string{"t new Thread"}
-	if thread.State == client.ThreadStateActive {
-		actions = append(actions, "n message")
-		if threadActiveRun(thread) {
-			actions = append(actions, "z cancel")
-		} else {
-			actions = append(actions, "e start")
-		}
-		if block, _ := pendingRequest(detail.Blocks); block != nil {
-			actions = append(actions, "P answer request")
-		}
-	}
-	if thread.State == client.ThreadStatePaused {
-		actions = append(actions, "e resume")
-	}
-	if thread.State != client.ThreadStateArchived && thread.State != client.ThreadStateDeleted {
-		actions = append(actions, "A archive")
-	}
-	if thread.State != client.ThreadStateDeleted {
-		actions = append(actions, "D crypto-shred")
-	}
-	actions = append(actions, "a PTY fallback")
-	return strings.Join(actions, "  ")
-}
-
 func threadActiveRun(thread client.Thread) bool {
 	state, ok := thread.CurrentRunState.Get()
 	if !ok {
@@ -1161,7 +2176,38 @@ func renderThreadBlocks(blocks []client.ThreadBlock) []string {
 		}
 	}
 	var lines []string
-	deltaStarted := make(map[string]bool)
+	var toolName, toolSummary string
+	flushTool := func(done bool) {
+		if toolName == "" && toolSummary == "" {
+			return
+		}
+		label := toolName
+		if label == "" {
+			label = toolSummary
+			toolSummary = ""
+		}
+		line := "  Used " + safeInline(label)
+		if !done {
+			line = "  Using " + safeInline(label) + "…"
+		} else if toolSummary != "" && toolSummary != toolName && !trivialToolResult(toolSummary) {
+			line += "  " + safeInline(toolSummary)
+		}
+		lines = append(lines, transcriptTool+line)
+		toolName, toolSummary = "", ""
+	}
+	appendTurn := func(kind, content string) {
+		flushTool(true)
+		content = strings.TrimRight(content, "\n")
+		if content == "" {
+			return
+		}
+		if len(lines) > 0 && lines[len(lines)-1] != "" {
+			lines = append(lines, "")
+		}
+		for _, line := range strings.Split(content, "\n") {
+			lines = append(lines, kind+line)
+		}
+	}
 	for _, block := range blocks {
 		content, _ := block.Content.Get()
 		content = boundedText(content, 16<<10)
@@ -1174,63 +2220,75 @@ func renderThreadBlocks(blocks []client.ThreadBlock) []string {
 			if summary, ok := event.Summary.Get(); ok {
 				content = boundedText(summary, 16<<10)
 			}
-			prefix := ""
-			if !deltaStarted[key] {
-				prefix = "assistant (streaming): "
-				deltaStarted[key] = true
-			}
-			lines = append(lines, prefix+safeBlock(content))
+			appendTurn(transcriptAssistant, safeBlock(content))
 			continue
 		}
 		if hasEvent {
 			switch event.Type {
 			case client.ThreadAdapterEventTypeAssistantMessage:
-				lines = append(lines, "assistant: "+safeBlock(content))
+				appendTurn(transcriptAssistant, safeBlock(content))
 			case client.ThreadAdapterEventTypeToolStart:
-				name, _ := event.ToolName.Get()
-				summary, _ := event.Summary.Get()
-				lines = append(lines, "tool start · "+safeInline(name)+": "+safeBlock(boundedText(summary, 4096)))
+				flushTool(true)
+				toolName, _ = event.ToolName.Get()
+				toolSummary, _ = event.Summary.Get()
 			case client.ThreadAdapterEventTypeToolResult:
-				result, _ := event.Result.Get()
-				lines = append(lines, "tool result: "+safeBlock(boundedText(result, 4096)))
+				if result, ok := event.Result.Get(); ok && !trivialToolResult(result) && toolSummary == "" {
+					toolSummary = boundedText(result, 120)
+				}
+				flushTool(true)
 			case client.ThreadAdapterEventTypeStatus:
-				status, _ := event.Status.Get()
-				lines = append(lines, "status: "+safeInline(string(status)))
+				continue
 			case client.ThreadAdapterEventTypeError:
 				code, _ := event.Code.Get()
 				reason, _ := event.Reason.Get()
-				lines = append(lines, "error · "+safeInline(code)+": "+safeBlock(boundedText(reason, 4096)))
+				appendTurn(transcriptError, "error · "+safeInline(code)+": "+safeBlock(boundedText(reason, 4096)))
 			case client.ThreadAdapterEventTypePermissionRequest:
 				permission, _ := event.Permission.Get()
 				summary, _ := permission.Summary.Get()
-				lines = append(lines, "permission requested · "+safeInline(permission.Kind)+": "+
+				appendTurn(transcriptError, "Need permission · "+safeInline(permission.Kind)+": "+
 					safeBlock(boundedText(summary, 4096)))
 			case client.ThreadAdapterEventTypeInputRequest:
 				input, _ := event.Input.Get()
 				prompt, _ := input.Prompt.Get()
-				lines = append(lines, "input requested: "+safeBlock(boundedText(prompt, 4096)))
-			case client.ThreadAdapterEventTypePermissionResponse, client.ThreadAdapterEventTypeInputResponse:
-				lines = append(lines, "request answered")
-			case client.ThreadAdapterEventTypeGap:
-				lines = append(lines, "stream gap reported")
-			case client.ThreadAdapterEventTypeEnd:
-				lines = append(lines, "session ended")
+				appendTurn(transcriptError, "Needs input: "+safeBlock(boundedText(prompt, 4096)))
+			case client.ThreadAdapterEventTypePermissionResponse, client.ThreadAdapterEventTypeInputResponse,
+				client.ThreadAdapterEventTypeGap, client.ThreadAdapterEventTypeEnd:
+				continue
 			default:
-				lines = append(lines, "unknown event "+safeInline(string(event.Type))+": "+safeBlock(content))
+				appendTurn(transcriptError, "unknown event "+safeInline(string(event.Type))+": "+safeBlock(content))
 			}
 			continue
 		}
 		if content != "" {
 			if !knownThreadBlockKind(block.Kind) {
-				lines = append(lines, "unknown block · "+safeInline(string(block.Kind))+": "+safeBlock(content))
+				appendTurn(transcriptError, "unknown block · "+safeInline(string(block.Kind))+": "+safeBlock(content))
+			} else if block.Role == client.ThreadMessageRoleUser {
+				appendTurn(transcriptUser, safeBlock(content))
 			} else {
-				lines = append(lines, string(block.Role)+": "+safeBlock(content))
+				appendTurn(transcriptAssistant, safeBlock(content))
 			}
-		} else {
-			lines = append(lines, "unknown block · "+safeInline(string(block.Kind)))
+		} else if !knownThreadBlockKind(block.Kind) {
+			appendTurn(transcriptError, "unknown block · "+safeInline(string(block.Kind)))
 		}
 	}
+	flushTool(false)
 	return lines
+}
+
+const (
+	transcriptUser      = "you|"
+	transcriptAssistant = "ai|"
+	transcriptTool      = "tool|"
+	transcriptError     = "err|"
+)
+
+func trivialToolResult(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "ok", "done", "success", "succeeded", "completed":
+		return true
+	default:
+		return false
+	}
 }
 
 func threadMessageKey(block client.ThreadBlock, event client.ThreadAdapterEvent) string {
@@ -1349,7 +2407,7 @@ func (m Model) execute(request ActionRequest) (tea.Model, tea.Cmd) {
 		ctx, cancel := context.WithTimeout(m.ctx, callTimeout)
 		defer cancel()
 		result, err := m.api.Execute(ctx, request)
-		return actionMsg{result: result, err: err}
+		return actionMsg{result: result, err: err, action: request.Action}
 	}
 }
 
@@ -1369,10 +2427,17 @@ func (m Model) tickCmd() tea.Cmd {
 	return tea.Tick(pollCadence, func(value time.Time) tea.Msg { return tickMsg(value) })
 }
 
-func (m Model) attachProcess(runID string, after uint64) tea.Cmd {
+func (m Model) blinkCmd() tea.Cmd {
+	return tea.Tick(blinkCadence, func(value time.Time) tea.Msg { return blinkMsg(value) })
+}
+
+func (m Model) attachProcess(request AttachRequest) tea.Cmd {
 	arguments := []string{
 		"--server", m.server, "--token-file", m.tokenFile,
-		"run", "attach", runID, "--after", strconv.FormatUint(after, 10),
+		"run", "attach", request.RunID,
+		"--after", strconv.FormatUint(request.After, 10),
+		"--title", request.Title,
+		"--restore-title", request.RestoreTitle,
 	}
 	command := exec.CommandContext(m.ctx, m.executable, arguments...)
 	return tea.ExecProcess(command, func(err error) tea.Msg { return attachFinishedMsg{err: err} })
@@ -1380,22 +2445,6 @@ func (m Model) attachProcess(runID string, after uint64) tea.Cmd {
 
 func mutable(state string) bool {
 	return state != "Deleted" && state != "Deleting" && state != "Sealed"
-}
-
-func humanAge(duration time.Duration) string {
-	if duration < 0 {
-		duration = 0
-	}
-	switch {
-	case duration < time.Minute:
-		return strconv.Itoa(int(duration.Seconds())) + "s"
-	case duration < time.Hour:
-		return strconv.Itoa(int(duration.Minutes())) + "m"
-	case duration < 24*time.Hour:
-		return strconv.Itoa(int(duration.Hours())) + "h"
-	default:
-		return strconv.Itoa(int(duration/(24*time.Hour))) + "d"
-	}
 }
 
 func safeInline(value string) string {
@@ -1419,36 +2468,39 @@ func safeBlock(value string) string {
 	}, value)
 }
 
-func boxStyle(width int) lipgloss.Style {
-	return lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		Padding(0, 1).
-		Width(width)
-}
+const footer = "ctrl-o help"
+const composerHint = "Enter send  Ctrl-J nl  / cmds"
 
-const footer = "j/k: fleet  tab: pane  T: spawn  t: Thread  n: message  a: PTY  ?: help  q: quit"
+const helpText = `Launcher
+  j/k or arrows  move in the focused list
+  enter          open the selected Capsule's native harness
+  /              open the temporary command surface
+  :              actions, structured history, and maintenance
+  esc            close a command, modal, or history view
+  r              refresh now
+  /project       create a Project (repo + harness)
+  /switch        switch the active Project
+  /harness       apply official harness packs on this Project
+  Ctrl-O         this help
+  ?              this help
+  q / Ctrl-C     quit
 
-const helpText = `Navigation
-  j/k or arrows  select Capsule or retained Thread
-  tab            switch fleet/detail pane on narrow terminals
-  PgUp/PgDown    scroll transcript
-  r              refresh
-  q              quit
+Structured history
+  Select a history entry from :. It opens outside the launcher.
+  PageUp/PageDown scroll the bounded transcript.
+  Ctrl-J inserts a newline while writing structured input.
+  Esc returns to the same Capsule in the launcher.
 
-Structured Threads
-  T spawn Project Thread in a fresh Capsule
-  t create Thread      n send multi-line message (Ctrl-S submits)
-  e start/resume       P answer permission or input request
-  z cancel session     A archive
-  D crypto-shred after typing the irreversible confirmation
+/project creates a Project and picks its first harness pack. /harness applies
+more packs. /new creates a Capsule and opens the selected harness when Ready.
+Only one harness session can be live in a Capsule.
 
-Capsule / PTY
-  c create Capsule     p pause       u resume
-  a native PTY attach  g Git diff    m capture Moment
-  s create Shard       w Rewind      S Seal
-  x delete
+Operator actions and encrypted structured Thread history remain behind :.
+Delete and Seal require confirmation. Rewind creates a new Timeline and does
+not destroy history.
 
-Delete and Seal require confirmation. Rewind creates a new Timeline and
-does not destroy history. Native PTY attach temporarily owns the terminal;
-press Ctrl-] to detach and return to the dashboard. Structured text is read
-only through encrypted Thread block APIs and is never scraped from a PTY.`
+Native session
+Meridian identifies the handoff in the terminal title when supported. The
+native harness then owns the terminal. Press Ctrl-P then Ctrl-Q to detach
+(Ctrl-\ and Ctrl-] are alternatives). PTY bytes are never treated as Thread
+transcripts.`

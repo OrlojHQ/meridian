@@ -14,20 +14,21 @@ import (
 )
 
 type Reconciler struct {
-	store        ports.Store
-	provider     ports.CapsuleProvider
-	clock        ports.Clock
-	ids          ports.IDSource
-	queue        chan domain.CapsuleID
-	done         chan struct{}
-	retryDelay   time.Duration
-	maxRetries   int
-	snapshotter  ports.WorkspaceSnapshotter
-	artifacts    ports.ArtifactStore
-	observer     ports.Observer
-	providerName string
-	secretKey    *secrets.InstallationKey
-	sessionReady func(context.Context, domain.Capsule) error
+	store         ports.Store
+	provider      ports.CapsuleProvider
+	clock         ports.Clock
+	ids           ports.IDSource
+	queue         chan domain.CapsuleID
+	done          chan struct{}
+	retryDelay    time.Duration
+	maxRetries    int
+	snapshotter   ports.WorkspaceSnapshotter
+	artifacts     ports.ArtifactStore
+	observer      ports.Observer
+	providerName  string
+	secretKey     *secrets.InstallationKey
+	sessionReady  func(context.Context, domain.Capsule) error
+	launcherReady func(context.Context, domain.Capsule) error
 
 	mu          sync.Mutex
 	pending     map[domain.CapsuleID]struct{}
@@ -43,6 +44,12 @@ func (r *Reconciler) ConfigureProjectThreads(
 	coordinator func(context.Context, domain.Capsule) error,
 ) {
 	r.sessionReady = coordinator
+}
+
+func (r *Reconciler) ConfigureLauncher(
+	coordinator func(context.Context, domain.Capsule) error,
+) {
+	r.launcherReady = coordinator
 }
 
 func (r *Reconciler) ConfigureObserver(observer ports.Observer, providerName string) {
@@ -193,6 +200,11 @@ func (r *Reconciler) reconcile(ctx context.Context, id domain.CapsuleID) error {
 			}
 		}
 	}
+	if r.launcherReady != nil && capsule.State == domain.CapsuleReady {
+		if err := r.launcherReady(ctx, capsule); err != nil {
+			return err
+		}
+	}
 	if capsule.State.Terminal() {
 		return nil
 	}
@@ -225,7 +237,7 @@ func (r *Reconciler) reconcile(ctx context.Context, id domain.CapsuleID) error {
 			CapsuleID:      capsule.ID,
 			RepositoryURL:  project.RepositoryURL,
 			Setup:          append([]string(nil), project.Setup...),
-			ImageReference: project.ImageReference,
+			ImageReference: capsule.WorkspaceImage(project),
 		}
 		if project.GitSecretName != "" {
 			var secret domain.Secret
@@ -475,7 +487,12 @@ func (r *Reconciler) saveCapsule(
 		return err
 	}
 	if r.sessionReady != nil {
-		return r.sessionReady(ctx, capsule)
+		if err := r.sessionReady(ctx, capsule); err != nil {
+			return err
+		}
+	}
+	if r.launcherReady != nil && capsule.State == domain.CapsuleReady {
+		return r.launcherReady(ctx, capsule)
 	}
 	return nil
 }

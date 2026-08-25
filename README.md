@@ -95,7 +95,8 @@ In another terminal, create a Project:
 ```console
 ./bin/meridian project create demo \
   --repository-url=file:///fixture \
-  --image=meridian-capsule-integration:dev
+  --image=meridian-capsule-integration:dev \
+  --harness-image=mock=meridian-capsule-integration:dev
 
 ./bin/meridian project list
 ```
@@ -181,7 +182,11 @@ The demo image also includes an interactive harness:
 ./bin/meridian run attach RUN_ID
 ```
 
-Press `Ctrl-]` to detach locally. `Ctrl-C` is sent to the remote PTY.
+Press `Ctrl-P`, release it, then press `Ctrl-Q` to detach locally. `Ctrl-\` and
+`Ctrl-]` are alternatives. `Ctrl-C` is sent to the remote PTY. Meridian sets a
+best-effort local terminal title during attachment, keeps it after harness
+output frames, and restores the Project title afterward;
+set `MERIDIAN_TERMINAL_TITLE=0` to disable that metadata.
 
 Open the terminal dashboard:
 
@@ -263,9 +268,20 @@ generic executable that speaks the private bounded `meridian.adapter.v1`
 protocol. Docker and Agent Sandbox carry that transport without exposing their
 runtime APIs to clients. The public Thread API, encrypted transcript clients,
 deterministic mock adapter, OpenCode server adapter, and Pi RPC adapter all use
-the same typed protocol; native PTY Runs remain a separate fallback.
+the same typed protocol. The terminal dashboard instead launches and attaches
+the selected harness's native PTY TUI.
 
-Project images can install OpenCode or Pi and select the packaged bridge:
+An optional in-repo image installs a pinned OpenCode binary on the thin
+Capsule base:
+
+```console
+make capsule-opencode-image
+# tag: meridian-capsule-opencode:dev
+# trusted profile: /etc/meridian/harnesses.d/opencode.yaml
+```
+
+Project images can install OpenCode or Pi the same way and select the packaged
+bridge:
 
 ```yaml
 adapter:
@@ -293,9 +309,9 @@ Meridian exposes the same control plane through three clients:
 
 - **CLI** — scriptable lifecycle, Run, Git, Moment, lineage, and maintenance
   commands with stable `--json` output.
-- **TUI** — a responsive Capsule/Thread fleet with bounded typed transcripts,
-  permission controls, and lifecycle actions. Native PTY harnesses are handed
-  off to the separate raw-terminal attach client.
+- **TUI** — a Project/Capsule launcher that creates a harness-selected Capsule
+  and hands the terminal to its native PTY TUI. Existing encrypted Thread
+  history and lifecycle actions remain available from the command palette.
 - **Web UI** — Capsule, Thread, and Run review; resumable SSE Thread timelines;
   bounded text-only diffs; separate xterm.js terminal attachment; Moments; and
   Timeline lineage.

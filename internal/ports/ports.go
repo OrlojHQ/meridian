@@ -56,6 +56,7 @@ type Reader interface {
 type Transaction interface {
 	Reader
 	InsertProject(context.Context, domain.Project) error
+	UpdateProject(context.Context, domain.Project, domain.ResourceVersion) error
 	InsertSecret(context.Context, domain.Secret) error
 	UpdateSecret(context.Context, domain.Secret, domain.ResourceVersion) error
 	DeleteSecret(context.Context, string, domain.ResourceVersion) error
@@ -306,16 +307,22 @@ type CapsuleRuntime interface {
 	GitDiff(context.Context, string) (GitResult, error)
 }
 
+// HarnessProfileRuntime exposes validated Capsule-local profile metadata
+// independently from either native or structured session execution.
+type HarnessProfileRuntime interface {
+	HarnessProfiles(context.Context, string) ([]RuntimeHarnessProfile, error)
+}
+
 // StructuredRuntime is optional and deliberately separate from PTY attachment.
 // Frames retain their typed metadata for the later application/API boundary;
 // callers must not copy frame content into lifecycle events or logs.
 type StructuredRuntime interface {
+	HarnessProfileRuntime
 	StartStructured(context.Context, RuntimeStructuredStartRequest) (RuntimeRun, error)
 	GetStructured(context.Context, string, domain.RunID) (RuntimeRun, error)
 	SendStructured(context.Context, RuntimeStructuredSendRequest) error
 	StructuredEvents(context.Context, string, domain.RunID, uint64) (RuntimeStructuredEvents, error)
 	CancelStructured(context.Context, string, domain.RunID) (RuntimeRun, error)
-	StructuredProfiles(context.Context, string) ([]RuntimeHarnessProfile, error)
 }
 
 type PreviewPort struct {

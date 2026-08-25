@@ -14,6 +14,7 @@ import (
 
 	"github.com/OrlojHQ/meridian/internal/apiauth"
 	"github.com/OrlojHQ/meridian/internal/buildinfo"
+	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/tui"
 	"github.com/OrlojHQ/meridian/pkg/client"
 	"github.com/spf13/cobra"
@@ -90,7 +91,7 @@ func newProjectCommand(config *cliConfig) *cobra.Command {
 	var createKey, repositoryURL, imageReference, gitSecretName string
 	var gitPushSecretName, githubAPISecretName, commitAuthorName string
 	var commitAuthorEmail, defaultBaseBranch string
-	var setup, harnessSecretNames []string
+	var setup, harnessSecretNames, harnessImages []string
 	create := &cobra.Command{
 		Use:   "create NAME",
 		Short: "Create a project",
@@ -112,6 +113,18 @@ func newProjectCommand(config *cliConfig) *cobra.Command {
 			}
 			if imageReference != "" {
 				input.ImageReference = client.NewOptString(imageReference)
+			}
+			if len(harnessImages) > 0 {
+				input.HarnessImages = make([]client.HarnessImage, 0, len(harnessImages))
+				for _, spec := range harnessImages {
+					item, err := domain.ParseHarnessImageSpec(spec)
+					if err != nil {
+						return err
+					}
+					input.HarnessImages = append(input.HarnessImages, client.HarnessImage{
+						Name: item.Name, ImageReference: item.ImageReference,
+					})
+				}
 			}
 			if gitSecretName != "" {
 				input.GitSecretName = client.NewOptString(gitSecretName)
@@ -149,7 +162,11 @@ func newProjectCommand(config *cliConfig) *cobra.Command {
 	create.Flags().StringVar(&createKey, "idempotency-key", "", "mutation replay key (generated if omitted)")
 	create.Flags().StringVar(&repositoryURL, "repository-url", "", "public URL or absolute local fixture repository path")
 	create.Flags().StringArrayVar(&setup, "setup-arg", nil, "setup argv element; repeat in executable-first order")
-	create.Flags().StringVar(&imageReference, "image", "", "project Capsule image reference")
+	create.Flags().StringVar(&imageReference, "image", "", "default Capsule image reference")
+	create.Flags().StringArrayVar(
+		&harnessImages, "harness-image", nil,
+		"allowlisted harness image as name=image; repeat for each harness",
+	)
 	create.Flags().StringVar(&gitSecretName, "git-secret", "", "authorized git_https secret name")
 	create.Flags().StringVar(&gitPushSecretName, "git-push-secret", "", "authorized git_push secret name")
 	create.Flags().StringVar(&githubAPISecretName, "github-api-secret", "", "authorized github_api secret name")
@@ -212,7 +229,75 @@ func newProjectCommand(config *cliConfig) *cobra.Command {
 			return config.writeProject(success.Response)
 		},
 	}
-	project.AddCommand(create, list, get)
+	apply := &cobra.Command{
+		Use:   "apply-harness PROJECT_ID NAME",
+		Short: "Apply an installation harness pack to a Project",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(command *cobra.Command, args []string) error {
+			api, err := newAPI(config)
+			if err != nil {
+				return err
+			}
+			got, err := api.GetProject(
+				command.Context(), client.GetProjectParams{ProjectId: args[0]},
+			)
+			if err != nil {
+				return apiCallError(err)
+			}
+			project, ok := got.(*client.ProjectHeaders)
+			if !ok {
+				return responseError(got)
+			}
+			capabilities, err := api.GetCapabilities(command.Context())
+			if err != nil {
+				return apiCallError(err)
+			}
+			catalog, ok := capabilities.(*client.Capabilities)
+			if !ok {
+				return responseError(capabilities)
+			}
+			var pack client.HarnessImage
+			for _, item := range catalog.HarnessImages {
+				if item.Name == args[1] {
+					pack = item
+					break
+				}
+			}
+			if pack.Name == "" {
+				return fmt.Errorf("installation has no harness pack %q", args[1])
+			}
+			images := append([]client.HarnessImage(nil), project.Response.HarnessImages...)
+			replaced := false
+			for index, item := range images {
+				if item.Name == pack.Name {
+					images[index] = pack
+					replaced = true
+					break
+				}
+			}
+			if !replaced {
+				images = append(images, pack)
+			}
+			patched, err := api.PatchProject(
+				command.Context(),
+				&client.PatchProjectRequest{
+					ExpectedResourceVersion: project.Response.ResourceVersion,
+					HarnessImages:           images,
+				},
+				client.PatchProjectParams{ProjectId: args[0]},
+			)
+			if err != nil {
+				return apiCallError(err)
+			}
+			success, ok := patched.(*client.ProjectHeaders)
+			if !ok {
+				return responseError(patched)
+			}
+			return config.writeProject(success.Response)
+		},
+	}
+
+	project.AddCommand(create, list, get, apply)
 	return project
 }
 
@@ -378,7 +463,7 @@ func (c *cliConfig) writeSecret(secret client.Secret) error {
 func newCapsuleCommand(config *cliConfig) *cobra.Command {
 	capsule := &cobra.Command{Use: "capsule", Short: "Manage Capsules"}
 
-	var createKey string
+	var createKey, createHarness string
 	create := &cobra.Command{
 		Use:   "create PROJECT_ID NAME",
 		Short: "Request Capsule creation",
@@ -392,9 +477,13 @@ func newCapsuleCommand(config *cliConfig) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			input := &client.CreateCapsuleRequest{Name: args[1]}
+			if createHarness != "" {
+				input.Harness = client.NewOptString(createHarness)
+			}
 			result, err := api.CreateCapsule(
 				command.Context(),
-				&client.CreateCapsuleRequest{Name: args[1]},
+				input,
 				client.CreateCapsuleParams{ProjectId: args[0], IdempotencyKey: key},
 			)
 			if err != nil {
@@ -408,6 +497,7 @@ func newCapsuleCommand(config *cliConfig) *cobra.Command {
 		},
 	}
 	create.Flags().StringVar(&createKey, "idempotency-key", "", "mutation replay key (generated if omitted)")
+	create.Flags().StringVar(&createHarness, "harness", "", "Project-allowlisted native harness to launch")
 
 	var listCursor string
 	var listLimit int
@@ -675,6 +765,7 @@ type capsuleJSON struct {
 	ID              string               `json:"id"`
 	ProjectID       string               `json:"projectId"`
 	Name            string               `json:"name"`
+	Harness         string               `json:"harness,omitempty"`
 	State           client.CapsuleState  `json:"state"`
 	DesiredState    client.CapsuleIntent `json:"desiredState"`
 	Failure         string               `json:"failure,omitempty"`
@@ -685,10 +776,12 @@ type capsuleJSON struct {
 
 func capsuleOutput(capsule client.Capsule) capsuleJSON {
 	failure, _ := capsule.Failure.Get()
+	harness, _ := capsule.Harness.Get()
 	return capsuleJSON{
 		ID:              capsule.ID,
 		ProjectID:       capsule.ProjectId,
 		Name:            capsule.Name,
+		Harness:         harness,
 		State:           capsule.State,
 		DesiredState:    capsule.DesiredState,
 		Failure:         failure,

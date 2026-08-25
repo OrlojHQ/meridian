@@ -176,6 +176,13 @@ func TestContainerRequestIsHardenedAndLoopbackOnly(t *testing.T) {
 	if len(options.HostConfig.Binds) != 0 || len(options.HostConfig.Mounts) != 1 {
 		t.Fatalf("mounts = %#v, binds = %#v", options.HostConfig.Mounts, options.HostConfig.Binds)
 	}
+	if tmp := options.HostConfig.Tmpfs["/tmp"]; !strings.Contains(tmp, "noexec") {
+		t.Fatalf("/tmp tmpfs is not noexec: %q", tmp)
+	}
+	if home := options.HostConfig.Tmpfs["/home/capsule"]; !strings.Contains(home, "exec") ||
+		strings.Contains(home, "noexec") {
+		t.Fatalf("private home tmpfs cannot load harness-native libraries: %q", home)
+	}
 	mounted := options.HostConfig.Mounts[0]
 	if mounted.Source != names.volume || mounted.Target != workspace ||
 		strings.HasPrefix(mounted.Source, "/") {

@@ -48,9 +48,20 @@ type recordingQueue struct {
 }
 
 type runRuntime struct {
-	mu     sync.Mutex
-	starts int
-	runs   map[domain.RunID]ports.RuntimeRun
+	mu         sync.Mutex
+	starts     int
+	startState domain.RunState
+	runs       map[domain.RunID]ports.RuntimeRun
+	eventCalls int
+	eventErr   error
+}
+
+type nativeProfiles struct{}
+
+func (nativeProfiles) HarnessProfiles(
+	context.Context, string,
+) ([]ports.RuntimeHarnessProfile, error) {
+	return []ports.RuntimeHarnessProfile{{Name: "opencode", PTY: true}}, nil
 }
 
 type concurrentEventRuntime struct {
@@ -85,7 +96,11 @@ func (r *runRuntime) StartRun(_ context.Context, request ports.RuntimeRunRequest
 	if r.runs == nil {
 		r.runs = make(map[domain.RunID]ports.RuntimeRun)
 	}
-	value := ports.RuntimeRun{State: domain.RunRunning, Cursor: 2}
+	state := r.startState
+	if state == "" {
+		state = domain.RunRunning
+	}
+	value := ports.RuntimeRun{State: state, Cursor: 2, PTY: true}
 	r.runs[request.RunID] = value
 	return value, nil
 }
@@ -109,6 +124,13 @@ func (r *runRuntime) CancelRun(_ context.Context, _ string, id domain.RunID) (po
 }
 
 func (r *runRuntime) RunEvents(_ context.Context, _ string, _ domain.RunID, after uint64) (ports.RuntimeEvents, error) {
+	r.mu.Lock()
+	r.eventCalls++
+	eventErr := r.eventErr
+	r.mu.Unlock()
+	if eventErr != nil {
+		return ports.RuntimeEvents{}, eventErr
+	}
 	if after >= 2 {
 		return ports.RuntimeEvents{NextCursor: after}, nil
 	}
@@ -162,12 +184,17 @@ func TestServiceIdempotencyConflictsAndIllegalMutations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	capsuleReplay, err := service.CreateCapsule(ctx, project.ID, "ignored", "capsule-key")
+	capsuleReplay, err := service.CreateCapsule(ctx, project.ID, "capsule", "capsule-key")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if capsuleReplay != capsule {
 		t.Fatalf("capsule replay = %#v, want %#v", capsuleReplay, capsule)
+	}
+	if _, err := service.CreateCapsule(
+		ctx, project.ID, "different", "capsule-key",
+	); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("Capsule replay mismatch = %v", err)
 	}
 	if _, err := service.PauseCapsule(ctx, capsule.ID, 99, "conflict"); !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("pause conflict = %v", err)
@@ -303,6 +330,18 @@ func TestRunUseCasesIdempotencyExclusivityEventsAndCancellation(t *testing.T) {
 	if err != nil || cancelled.State != domain.RunCancelled {
 		t.Fatalf("cancel = %#v, %v", cancelled, err)
 	}
+	runtime.mu.Lock()
+	eventCalls := runtime.eventCalls
+	runtime.eventErr = errors.New("terminal runtime events unavailable")
+	runtime.mu.Unlock()
+	if _, err := service.RunEvents(ctx, run.ID, 0, 100); err != nil {
+		t.Fatalf("durable terminal Run events = %v", err)
+	}
+	runtime.mu.Lock()
+	if runtime.eventCalls != eventCalls {
+		t.Fatal("terminal Run events unexpectedly contacted the runtime")
+	}
+	runtime.mu.Unlock()
 	status, err := service.GitStatus(ctx, capsule.ID)
 	if err != nil || status.Content == "" {
 		t.Fatalf("Git status = %#v, %v", status, err)
@@ -421,5 +460,103 @@ func TestRuntimeEventSynchronizationIsConcurrentMonotonicAndIdempotent(t *testin
 	}
 	if gaps != 1 {
 		t.Fatalf("gap event count = %d", gaps)
+	}
+}
+
+func TestCreateProjectConfiguredHarnessImages(t *testing.T) {
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	service := app.NewService(store, &testClock{now: time.Date(2026, 8, 25, 0, 0, 0, 0, time.UTC)}, &testIDs{}, &recordingQueue{})
+	if _, err := service.CreateProjectConfigured(ctx, "dupes", app.ProjectConfiguration{
+		HarnessImages: []domain.HarnessImage{
+			{Name: "mock", ImageReference: "meridian-capsule:dev"},
+			{Name: "mock", ImageReference: "meridian-capsule:other"},
+		},
+	}, "project-dupes"); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("duplicate harness image error = %v", err)
+	}
+	project, err := service.CreateProjectConfigured(ctx, "images", app.ProjectConfiguration{
+		ImageReference: "meridian-capsule:dev",
+		HarnessImages: []domain.HarnessImage{
+			{Name: "opencode", ImageReference: "meridian-capsule-opencode:dev"},
+		},
+	}, "project-images")
+	if err != nil || len(project.HarnessImages) != 1 || project.HarnessImages[0].Name != "opencode" {
+		t.Fatalf("created project = %#v, %v", project, err)
+	}
+	capsule, err := service.CreateCapsuleForHarness(
+		ctx, project.ID, "native", "opencode", "capsule-opencode",
+	)
+	if err != nil || capsule.LauncherHarness != "opencode" ||
+		capsule.ImageReference != "meridian-capsule-opencode:dev" {
+		t.Fatalf("harness-selected Capsule = %#v, %v", capsule, err)
+	}
+	if _, err := service.CreateCapsuleForHarness(
+		ctx, project.ID, "native", "", "capsule-opencode",
+	); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("launcher harness replay mismatch = %v", err)
+	}
+	if _, err := service.CreateCapsuleForHarness(
+		ctx, project.ID, "unknown", "pi", "capsule-pi",
+	); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("unallowlisted Capsule harness error = %v", err)
+	}
+	updated, err := service.UpdateProjectHarnessImages(ctx, project.ID, []domain.HarnessImage{
+		{Name: "mock", ImageReference: "meridian-capsule:dev"},
+		{Name: "opencode", ImageReference: "meridian-capsule-opencode:dev"},
+	}, project.ResourceVersion)
+	if err != nil || len(updated.HarnessImages) != 2 || updated.ResourceVersion != project.ResourceVersion+1 {
+		t.Fatalf("updated project = %#v, %v", updated, err)
+	}
+	if _, err := service.UpdateProjectHarnessImages(ctx, project.ID, nil, project.ResourceVersion); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("stale apply error = %v", err)
+	}
+}
+
+func TestCapsuleLauncherStartsOnceAndDoesNotRestartFailedRun(t *testing.T) {
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	now := time.Date(2026, 8, 25, 0, 0, 0, 0, time.UTC)
+	capsule := domain.Capsule{
+		ID: "launcher-capsule", ProjectID: "launcher-project", Name: "launcher",
+		LauncherHarness: "opencode", State: domain.CapsuleReady, DesiredState: domain.IntentReady,
+		ProviderResourceID: "resource", RestoreComplete: true, LastActivityAt: now,
+		CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
+	}
+	if err := store.Transact(ctx, func(tx ports.Transaction) error {
+		if err := tx.InsertProject(ctx, domain.Project{
+			ID: "launcher-project", Name: "project", CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
+		}); err != nil {
+			return err
+		}
+		return tx.InsertCapsule(ctx, capsule)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	runtime := &runRuntime{startState: domain.RunFailed}
+	service := app.NewService(
+		store, &testClock{now: now}, &testIDs{}, &recordingQueue{}, runtime,
+	)
+	service.ConfigureHarnessProfiles(nativeProfiles{})
+	if err := service.ReconcileCapsuleLauncher(ctx, capsule); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.ReconcileCapsuleLauncher(ctx, capsule); err != nil {
+		t.Fatal(err)
+	}
+	if runtime.starts != 1 {
+		t.Fatalf("launcher starts = %d, want 1", runtime.starts)
+	}
+	runs, err := service.ListRuns(ctx, capsule.ID, 0, 10)
+	if err != nil || len(runs.Items) != 1 || runs.Items[0].State != domain.RunFailed {
+		t.Fatalf("launcher Run = %#v, %v", runs.Items, err)
 	}
 }

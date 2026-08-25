@@ -1,0 +1,16 @@
+# Copy this file into a repository as .meridian/project.yaml.
+# The Capsule image must contain /usr/local/bin/opencode
+# (make capsule-opencode-image → meridian-capsule-opencode:dev).
+# Authorize model credentials on the Project with --harness-secret, then list
+# those names under secretReferences.
+version: v1
+harnesses:
+  - name: opencode
+    interactionMode: native
+    executable: /usr/local/bin/opencode
+    workingDirectory: .
+    promptMode: interactive
+    outputMode: text
+    pty: true
+    timeout: 2h
+    secretReferences: []

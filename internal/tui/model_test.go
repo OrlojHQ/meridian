@@ -11,12 +11,18 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/OrlojHQ/meridian/pkg/client"
 )
 
 func threadTestSnapshot() Snapshot {
 	snapshot := testSnapshot()
+	snapshot.Projects[0].HarnessImages = []client.HarnessImage{{
+		Name: "native", ImageReference: "meridian-capsule-native:dev",
+	}}
+	snapshot.Capsules[0].Project = snapshot.Projects[0]
+	snapshot.Capsules[0].Capsule.Harness = client.NewOptString("native")
 	snapshot.Capsules[0].Profiles = []client.HarnessProfile{
 		{
 			Name: "structured", Structured: true,
@@ -105,8 +111,10 @@ func TestModelLoadingNavigationResizeAndSelection(t *testing.T) {
 	loaded := runCmd(t, model.Init())
 	updated, _ := model.Update(loaded)
 	model = updated.(Model)
-	if !strings.Contains(model.View(), "alpha") || !strings.Contains(model.View(), "connected") {
-		t.Fatalf("loaded view = %q", model.View())
+	if view := model.View(); !strings.Contains(view, "alpha") ||
+		!strings.Contains(view, "connected") ||
+		!strings.Contains(view, "/ commands") {
+		t.Fatalf("loaded view = %q", view)
 	}
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyDown})
 	model = updated.(Model)
@@ -117,8 +125,8 @@ func TestModelLoadingNavigationResizeAndSelection(t *testing.T) {
 	wide := updated.(Model).View()
 	updated, _ = updated.(Model).Update(tea.WindowSizeMsg{Width: 70, Height: 40})
 	narrow := updated.(Model).View()
-	if wide == narrow || !strings.Contains(narrow, "Resources: unavailable") {
-		t.Fatal("responsive views did not retain explicit unavailable metrics")
+	if wide == narrow || !strings.Contains(wide, "alpha") || !strings.Contains(narrow, "alpha") {
+		t.Fatal("responsive views lost the Capsule list")
 	}
 
 	refresh := testSnapshot()
@@ -135,8 +143,11 @@ func TestModelEmptyDisconnectedAndReconnecting(t *testing.T) {
 	model := NewModel(Options{API: api})
 	updated, _ := model.Update(runCmd(t, model.Init()))
 	model = updated.(Model)
-	if !strings.Contains(model.View(), "No Capsules") {
+	if !strings.Contains(model.View(), "Capsules") || !strings.Contains(model.View(), "/new") {
 		t.Fatalf("empty view = %q", model.View())
+	}
+	if model.focus != focusCapsules || model.composerFocus || model.composing() {
+		t.Fatalf("empty Project should not focus command entry: focus=%d composer=%q", model.focus, model.composer)
 	}
 	api.loadErr = errors.New("connection refused")
 	updated, _ = model.Update(loadMsg{err: api.loadErr})
@@ -154,13 +165,39 @@ func TestModelEmptyDisconnectedAndReconnecting(t *testing.T) {
 	}
 }
 
+func TestEmptyProjectShowsAppliedHarnessesOnly(t *testing.T) {
+	project := client.Project{
+		ID: "project-1", Name: "opencode test",
+		HarnessImages: []client.HarnessImage{{
+			Name: "opencode", ImageReference: "meridian-capsule-opencode:dev",
+		}},
+	}
+	snapshot := Snapshot{
+		Projects: []client.Project{project},
+		HarnessImages: []client.HarnessImage{
+			{Name: "mock", ImageReference: "meridian-capsule:dev"},
+			{Name: "opencode", ImageReference: "meridian-capsule-opencode:dev"},
+		},
+	}
+	model := NewModel(Options{API: &fakeAPI{snapshot: snapshot}})
+	updated, _ := model.Update(loadMsg{snapshot: snapshot})
+	view := updated.(Model).View()
+	if !strings.Contains(view, "Capsules") || !strings.Contains(view, "opencode") {
+		t.Fatalf("empty Project view = %q", view)
+	}
+	if strings.Contains(view, "New Capsule") || strings.Contains(view, "mock") ||
+		strings.Contains(view, "not applied") || strings.Contains(view, "applied") {
+		t.Fatalf("empty Project view includes catalog state: %q", view)
+	}
+}
+
 func TestModelActionsConfirmationConflictAndAttachHandoff(t *testing.T) {
 	api := &fakeAPI{snapshot: testSnapshot()}
 	var attached string
 	model := NewModel(Options{
 		API: api,
-		Attach: func(runID string, _ uint64) tea.Cmd {
-			attached = runID
+		Attach: func(request AttachRequest) tea.Cmd {
+			attached = request.RunID
 			return func() tea.Msg { return attachFinishedMsg{} }
 		},
 	})
@@ -174,7 +211,7 @@ func TestModelActionsConfirmationConflictAndAttachHandoff(t *testing.T) {
 	}
 	updated, _ = model.Update(runCmd(t, cmd))
 	model = updated.(Model)
-	if !strings.Contains(model.status, "dashboard resumed") {
+	if !strings.Contains(model.status, "Detached") {
 		t.Fatalf("attach status = %q", model.status)
 	}
 	model.snapshot.Capsules[0].Runs[0].State = client.RunStateSucceeded
@@ -242,6 +279,23 @@ func TestModelFormsValidationRewindWarningAndHelp(t *testing.T) {
 	}
 }
 
+func TestModelShowsCapsuleFailure(t *testing.T) {
+	snapshot := testSnapshot()
+	snapshot.Capsules[0].Capsule.State = client.CapsuleStateFailed
+	snapshot.Capsules[0].Capsule.Failure = client.NewOptString("permission denied while trying to connect to the docker API")
+	model := NewModel(Options{API: &fakeAPI{snapshot: snapshot}, Now: fixedNow})
+	updated, _ := model.Update(loadMsg{snapshot: snapshot})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	if view := model.View(); !strings.Contains(view, "Failure:") ||
+		!strings.Contains(view, "permission denied") {
+		t.Fatalf("failed capsule view = %q", view)
+	}
+}
+
 func TestActionAvailability(t *testing.T) {
 	model := NewModel(Options{API: &fakeAPI{}})
 	snapshot := testSnapshot()
@@ -261,8 +315,7 @@ func TestThreadFleetRenderingNavigationAndSafety(t *testing.T) {
 	model := NewModel(Options{API: &fakeAPI{snapshot: snapshot}, Now: fixedNow})
 	updated, _ := model.Update(loadMsg{snapshot: snapshot})
 	model = updated.(Model)
-	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyDown})
-	model = updated.(Model)
+	model = openFirstConversation(t, model)
 	updated, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	model = updated.(Model)
 	view := model.View()
@@ -270,14 +323,13 @@ func TestThreadFleetRenderingNavigationAndSafety(t *testing.T) {
 		!strings.Contains(view, "authoritative") ||
 		strings.Contains(view, "partial") ||
 		strings.Contains(view, "\x1b") ||
-		!strings.Contains(view, "permission requested") ||
-		!strings.Contains(view, "Harness: structured") {
+		!strings.Contains(view, "Need permission") {
 		t.Fatalf("Thread view = %q", view)
 	}
 	updated, _ = model.Update(tea.WindowSizeMsg{Width: 70, Height: 30})
 	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
-	if !strings.Contains(updated.(Model).View(), "Capsules / Threads") {
+	if !strings.Contains(updated.(Model).View(), "alpha") {
 		t.Fatalf("narrow fleet pane = %q", updated.(Model).View())
 	}
 }
@@ -302,11 +354,14 @@ func TestThreadCreateSendPermissionAndLifecycleActions(t *testing.T) {
 	}
 
 	model.overlay = overlay{}
-	model.move(1)
-	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	model = openFirstConversation(t, model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("next")})
 	model = updated.(Model)
-	model.overlay.fields[0].value = "next\nmessage"
-	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyCtrlJ})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("message")})
+	model = updated.(Model)
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	model = updated.(Model)
 	runCmd(t, cmd)
 	if got := api.requests[len(api.requests)-1]; got.Action != ActionThreadSend ||
@@ -314,6 +369,7 @@ func TestThreadCreateSendPermissionAndLifecycleActions(t *testing.T) {
 		t.Fatalf("send request = %#v", got)
 	}
 
+	model = focusCapsuleList(t, model)
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'P'}})
 	model = updated.(Model)
 	if model.overlay.action.ResponseTo != "adapter-permission-1" {
@@ -325,6 +381,7 @@ func TestThreadCreateSendPermissionAndLifecycleActions(t *testing.T) {
 	}
 
 	model.overlay = overlay{}
+	model = focusCapsuleList(t, model)
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'A'}})
 	model = updated.(Model)
 	if model.overlay.kind != overlayConfirm || model.overlay.action.Action != ActionThreadArchive {
@@ -348,16 +405,19 @@ func TestThreadUnreadTrackingAndSecretInputMasking(t *testing.T) {
 	model := NewModel(Options{API: &fakeAPI{snapshot: snapshot}, Now: fixedNow})
 	updated, _ := model.Update(loadMsg{snapshot: snapshot})
 	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model = updated.(Model)
 
 	refresh := threadTestSnapshot()
 	refresh.Capsules[0].Threads[0].Cursor = 5
 	refresh.Capsules[0].Threads[0].Thread.MessageCount = 5
 	updated, _ = model.Update(loadMsg{snapshot: refresh})
 	model = updated.(Model)
-	if model.unread["thread-1"] != 2 || !strings.Contains(model.listView(), "unread=2") {
+	if model.unread["thread-1"] != 2 || !strings.Contains(model.listView(), "2 new") {
 		t.Fatalf("unread state = %d / %q", model.unread["thread-1"], model.listView())
 	}
-	model.move(1)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyUp})
+	model = openFirstConversation(t, updated.(Model))
 	if model.unread["thread-1"] != 0 {
 		t.Fatalf("selected Thread unread = %d", model.unread["thread-1"])
 	}
@@ -376,6 +436,7 @@ func TestThreadUnreadTrackingAndSecretInputMasking(t *testing.T) {
 		Kind: client.ThreadBlockKindJSON, Event: client.NewOptThreadAdapterEvent(inputEvent),
 		CreatedAt: fixedNow(),
 	}}
+	model = focusCapsuleList(t, model)
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'P'}})
 	model = updated.(Model)
 	if !model.overlay.fields[0].secret {
@@ -399,14 +460,13 @@ func TestThreadPTYHandoffRejectsStructuredRun(t *testing.T) {
 	var attached string
 	model := NewModel(Options{
 		API: api,
-		Attach: func(runID string, _ uint64) tea.Cmd {
-			attached = runID
+		Attach: func(request AttachRequest) tea.Cmd {
+			attached = request.RunID
 			return func() tea.Msg { return attachFinishedMsg{} }
 		},
 	})
 	updated, _ := model.Update(loadMsg{snapshot: snapshot})
 	model = updated.(Model)
-	model.move(1)
 	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
 	model = updated.(Model)
 	if attached != "run-active" || cmd == nil {
@@ -418,8 +478,50 @@ func TestThreadPTYHandoffRejectsStructuredRun(t *testing.T) {
 	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
 	model = updated.(Model)
 	if attached != "" || cmd != nil ||
-		!strings.Contains(model.status, "structured") {
+		!strings.Contains(model.status, "native PTY") {
 		t.Fatalf("structured Run attach = %q / %v / %q", attached, cmd, model.status)
+	}
+}
+
+func TestTranscriptRendersAsChatTurns(t *testing.T) {
+	blocks := []client.ThreadBlock{
+		threadBlock("idle", "status-1", 1, "", client.ThreadAdapterEventTypeStatus),
+		{
+			ID: "user-1", MessageId: "user-1", MessageSequence: 2, Sequence: 1,
+			Role: client.ThreadMessageRoleUser, MessageKind: client.ThreadMessageKindPrompt,
+			Kind: client.ThreadBlockKindText, Content: client.NewOptString("hello"),
+			CreatedAt: fixedNow(),
+		},
+		threadBlock("run", "status-2", 3, "", client.ThreadAdapterEventTypeStatus),
+		func() client.ThreadBlock {
+			block := threadBlock("tool", "tool-1", 4, "", client.ThreadAdapterEventTypeToolStart)
+			event, _ := block.Event.Get()
+			event.ToolName = client.NewOptString("mock deterministic tool")
+			block.Event = client.NewOptThreadAdapterEvent(event)
+			return block
+		}(),
+		func() client.ThreadBlock {
+			block := threadBlock("result", "tool-1", 5, "", client.ThreadAdapterEventTypeToolResult)
+			event, _ := block.Event.Get()
+			event.Result = client.NewOptString("ok")
+			block.Event = client.NewOptThreadAdapterEvent(event)
+			return block
+		}(),
+		threadBlock("reply", "assistant-1", 6, "mock:hello", client.ThreadAdapterEventTypeAssistantMessage),
+		threadBlock("idle-2", "status-3", 7, "", client.ThreadAdapterEventTypeStatus),
+	}
+	event, _ := blocks[0].Event.Get()
+	event.Status = client.NewOptThreadAdapterEventStatus(client.ThreadAdapterEventStatusIdle)
+	blocks[0].Event = client.NewOptThreadAdapterEvent(event)
+	got := strings.Join(renderThreadBlocks(blocks), "\n")
+	if strings.Contains(got, "idle") || strings.Contains(got, "running") ||
+		strings.Contains(got, transcriptTool+"  ·") || strings.Contains(got, "you|›") {
+		t.Fatalf("transcript still looks like a run log: %q", got)
+	}
+	if !strings.Contains(got, transcriptUser+"hello") ||
+		!strings.Contains(got, "Used mock deterministic tool") ||
+		!strings.Contains(got, transcriptAssistant+"mock:hello") {
+		t.Fatalf("chat turns = %q", got)
 	}
 }
 
@@ -445,7 +547,7 @@ func TestThreadLockedGapUnknownAndBoundedTranscript(t *testing.T) {
 	special := renderThreadBlocks(append(thread.Blocks, tool))
 	specialView := strings.Join(special, "\n")
 	if !strings.Contains(specialView, "unknown block") ||
-		!strings.Contains(specialView, "tool start · shell") ||
+		!strings.Contains(specialView, "Using shell") ||
 		strings.Contains(specialView, "\x9b") {
 		t.Fatalf("special block rendering = %q", specialView)
 	}
@@ -462,7 +564,7 @@ func TestThreadLockedGapUnknownAndBoundedTranscript(t *testing.T) {
 	model := NewModel(Options{API: &fakeAPI{snapshot: snapshot}, Now: fixedNow})
 	model.snapshot = snapshot
 	model.selectedThreadID = "thread-1"
-	view := model.threadView(snapshot.Capsules[0], *thread)
+	view := model.threadView(snapshot.Capsules[0], *thread, 16)
 	if !strings.Contains(view, "TRANSCRIPT LOCKED") ||
 		!strings.Contains(view, "Replay gap") ||
 		strings.Contains(view, "\x9b") {
@@ -478,6 +580,899 @@ func TestRunRejectsNonTTYWithoutEscapes(t *testing.T) {
 	if output.Len() != 0 {
 		t.Fatalf("non-TTY output = %q", output.String())
 	}
+}
+
+func TestHiddenDeletedCapsulesAndPalette(t *testing.T) {
+	snapshot := testSnapshot()
+	snapshot.Capsules[1].Capsule.State = client.CapsuleStateDeleted
+	model := NewModel(Options{API: &fakeAPI{snapshot: snapshot}, Now: fixedNow})
+	updated, _ := model.Update(loadMsg{snapshot: snapshot})
+	model = updated.(Model)
+	if strings.Contains(model.View(), "beta") {
+		t.Fatalf("deleted Capsule shown by default: %q", model.View())
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{':'}})
+	model = updated.(Model)
+	if model.overlay.kind != overlayPalette {
+		t.Fatal("colon did not open the command palette")
+	}
+	model.paletteQuery = "show deleted"
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	if !model.showDeleted || !strings.Contains(model.View(), "beta") {
+		t.Fatalf("show deleted = %v / %q", model.showDeleted, model.View())
+	}
+}
+
+func TestDeleteReturnsToCapsuleList(t *testing.T) {
+	snapshot := threadTestSnapshot()
+	model := NewModel(Options{API: &fakeAPI{snapshot: snapshot}, Now: fixedNow})
+	updated, _ := model.Update(loadMsg{snapshot: snapshot})
+	model = openFirstConversation(t, updated.(Model))
+	updated, _ = model.Update(actionMsg{
+		action: ActionDelete,
+		result: ActionResult{Message: "delete requested"},
+	})
+	model = updated.(Model)
+	if !model.stayOnList || model.place != placeProject || model.focus != focusCapsules {
+		t.Fatalf("delete should return to the list: stay=%v place=%d focus=%d", model.stayOnList, model.place, model.focus)
+	}
+
+	remaining := testSnapshot()
+	updated, _ = model.Update(loadMsg{snapshot: remaining})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.WindowSizeMsg{Width: 70, Height: 40})
+	model = updated.(Model)
+	if model.place != placeProject || model.focus != focusCapsules {
+		t.Fatalf("refresh reopened a chat: place=%d focus=%d", model.place, model.focus)
+	}
+	if view := model.View(); strings.Contains(view, "authoritative") || strings.Contains(view, "Need permission") {
+		t.Fatalf("delete left the conversation open: %q", view)
+	}
+	if !strings.Contains(model.View(), "alpha") {
+		t.Fatalf("list missing after delete: %q", model.View())
+	}
+}
+
+func TestWideLayoutPutsFleetBesideInspectorWithoutIdleComposer(t *testing.T) {
+	snapshot := testSnapshot()
+	model := NewModel(Options{API: &fakeAPI{snapshot: snapshot}, Now: fixedNow})
+	updated, _ := model.Update(loadMsg{snapshot: snapshot})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	view := updated.(Model).View()
+	fleet := strings.Index(view, "FLEET")
+	inspector := strings.Index(view, "CAPSULE")
+	if fleet < 0 || inspector < 0 || fleet > inspector || strings.Contains(view, "Type / for commands") {
+		t.Fatalf("wide layout fleet=%d inspector=%d view=%q", fleet, inspector, view)
+	}
+}
+
+func TestLauncherResponsiveContractsAndNoColor(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	snapshot := threadTestSnapshot()
+	model := NewModel(Options{API: &fakeAPI{snapshot: snapshot}, Now: fixedNow})
+	updated, _ := model.Update(loadMsg{snapshot: snapshot})
+	model = updated.(Model)
+
+	for _, size := range []tea.WindowSizeMsg{
+		{Width: 80, Height: 24},
+		{Width: 100, Height: 30},
+		{Width: 140, Height: 40},
+	} {
+		updated, _ = model.Update(size)
+		model = updated.(Model)
+		view := model.View()
+		if !strings.Contains(view, "MERIDIAN") || !strings.Contains(view, "CAPSULES") ||
+			!strings.Contains(view, "native") || !strings.Contains(view, "RUNNING") {
+			t.Fatalf("%dx%d launcher contract = %q", size.Width, size.Height, view)
+		}
+		if strings.Contains(view, "\x1b[") || strings.Contains(view, "authoritative") ||
+			strings.Contains(view, "Type / for commands") {
+			t.Fatalf("%dx%d launcher leaked color/history/composer = %q", size.Width, size.Height, view)
+		}
+		if size.Width >= 100 && (!strings.Contains(view, "FLEET") ||
+			!strings.Contains(view, "PRIMARY ACTION")) {
+			t.Fatalf("%dx%d wide inspector missing = %q", size.Width, size.Height, view)
+		}
+	}
+}
+
+func TestLauncherBoundsLongNamesAndBorderLabels(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	snapshot := testSnapshot()
+	snapshot.Capsules[0].Capsule.Name = strings.Repeat("capsule-", 30)
+	snapshot.Capsules[0].Capsule.Harness = client.NewOptString(strings.Repeat("harness-", 20))
+	model := NewModel(Options{API: &fakeAPI{snapshot: snapshot}, Now: fixedNow})
+	updated, _ := model.Update(loadMsg{snapshot: snapshot})
+	model = updated.(Model)
+
+	for _, size := range []tea.WindowSizeMsg{{Width: 80, Height: 24}, {Width: 100, Height: 30}} {
+		updated, _ = model.Update(size)
+		model = updated.(Model)
+		for lineNumber, line := range strings.Split(model.View(), "\n") {
+			if got := lipgloss.Width(line); got > size.Width {
+				t.Fatalf("%dx%d line %d width=%d: %q", size.Width, size.Height, lineNumber, got, line)
+			}
+		}
+	}
+	component := panel(currentTheme(), strings.Repeat("VERY LONG LABEL ", 20), "body", 40, 6, true)
+	for lineNumber, line := range strings.Split(component, "\n") {
+		if got := lipgloss.Width(line); got > 40 {
+			t.Fatalf("component line %d width=%d: %q", lineNumber, got, line)
+		}
+	}
+}
+
+func TestCommandSurfaceKeepsLauncherAnchor(t *testing.T) {
+	snapshot := threadTestSnapshot()
+	model := NewModel(Options{API: &fakeAPI{snapshot: snapshot}, Now: fixedNow})
+	updated, _ := model.Update(loadMsg{snapshot: snapshot})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
+	model = updated.(Model)
+	before := model.View()
+	beforeRow := strings.Index(before, "alpha")
+
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	model = updated.(Model)
+	after := model.View()
+	if model.mode != modeCommand || beforeRow < 0 || strings.Index(after, "alpha") != beforeRow ||
+		!strings.Contains(after, "/new") || !strings.Contains(after, "COMMAND") {
+		t.Fatalf("command surface shifted launcher: before=%q after=%q", before, after)
+	}
+}
+
+func TestLoadFocusesCapsuleLauncher(t *testing.T) {
+	snapshot := threadTestSnapshot()
+	model := NewModel(Options{API: &fakeAPI{snapshot: snapshot}, Now: fixedNow})
+	updated, _ := model.Update(loadMsg{snapshot: snapshot})
+	model = updated.(Model)
+	if model.place != placeProject || model.selectedThreadID != "" {
+		t.Fatalf("load should stay on the launcher: place=%d thread=%q", model.place, model.selectedThreadID)
+	}
+	if model.focus != focusCapsules || model.composerFocus {
+		t.Fatal("Capsule list should stay focused after load")
+	}
+	updated, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	model = updated.(Model)
+	if view := model.View(); !strings.Contains(view, "Enter open harness") {
+		t.Fatalf("loaded launcher view = %q", view)
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	model = updated.(Model)
+	if model.mode != modeCommand || !model.composing() || model.composer != "/" ||
+		model.focus != focusCapsules {
+		t.Fatalf("slash did not open command entry: mode=%d composer=%q focus=%d", model.mode, model.composer, model.focus)
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model = updated.(Model)
+	if model.mode != modeLauncher || model.composing() || model.composer != "" ||
+		model.focus != focusCapsules {
+		t.Fatalf("Esc did not return to Capsules: mode=%d composer=%q focus=%d", model.mode, model.composer, model.focus)
+	}
+}
+
+func TestEscReturnsHistoryToLauncher(t *testing.T) {
+	snapshot := threadTestSnapshot()
+	model := NewModel(Options{API: &fakeAPI{snapshot: snapshot}, Now: fixedNow})
+	updated, _ := model.Update(loadMsg{snapshot: snapshot})
+	model = openFirstConversation(t, updated.(Model))
+	updated, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model = updated.(Model)
+	if model.mode != modeLauncher || model.place != placeProject || model.focus != focusCapsules {
+		t.Fatalf("Esc should return to launcher: mode=%d place=%d focus=%d", model.mode, model.place, model.focus)
+	}
+	if view := model.View(); strings.Contains(view, "authoritative") || !strings.Contains(view, "alpha") {
+		t.Fatalf("history remained visible after Esc: %q", view)
+	}
+}
+
+func TestEmptyProjectRequiresAppliedHarnessForNewCapsule(t *testing.T) {
+	snapshot := Snapshot{Projects: []client.Project{{ID: "project-1", Name: "project"}}}
+	model := NewModel(Options{API: &fakeAPI{snapshot: snapshot}})
+	updated, _ := model.Update(loadMsg{snapshot: snapshot})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/new")})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	if model.overlay.kind != overlayNone || !model.pendingNew {
+		t.Fatalf("/new should enter launcher form: kind=%v pending=%v", model.overlay.kind, model.pendingNew)
+	}
+	if !strings.Contains(model.View(), "No harness pack is applied") {
+		t.Fatalf("missing harness guidance = %q", model.View())
+	}
+}
+
+func TestEnterAttachesNativeHarnessAndHistoryRemainsInPalette(t *testing.T) {
+	snapshot := threadTestSnapshot()
+	snapshot.Capsules[0].Runs[0].Harness = "native"
+	second := snapshot.Capsules[0].Threads[0]
+	second.Thread.ID = "thread-2"
+	second.Thread.State = client.ThreadStatePaused
+	second.Thread.MessageCount = 1
+	second.Blocks = []client.ThreadBlock{
+		threadBlock("user-2", "user-2", 1, "second hello", client.ThreadAdapterEventTypeAssistantMessage),
+	}
+	snapshot.Capsules[0].Threads = append(snapshot.Capsules[0].Threads, second)
+	var attached AttachRequest
+	model := NewModel(Options{
+		API: &fakeAPI{snapshot: snapshot}, Now: fixedNow,
+		Attach: func(request AttachRequest) tea.Cmd {
+			attached = request
+			return func() tea.Msg { return attachFinishedMsg{} }
+		},
+	})
+	updated, _ := model.Update(loadMsg{snapshot: snapshot})
+	model = updated.(Model)
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	if attached.RunID != "run-active" || !strings.Contains(attached.Title, "alpha") ||
+		!strings.Contains(attached.Title, "native") ||
+		!strings.Contains(attached.RestoreTitle, "project") || cmd == nil {
+		t.Fatalf("Enter attach = %#v / %v", attached, cmd)
+	}
+	updated, _ = model.Update(runCmd(t, cmd))
+	model = updated.(Model)
+
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{':'}})
+	model = updated.(Model)
+	if model.overlay.kind != overlayPalette {
+		t.Fatal("colon did not open history palette")
+	}
+	view := model.View()
+	if !strings.Contains(view, "thread-2") || !strings.Contains(view, "second hello") {
+		t.Fatalf("earlier chat should be in : %q", view)
+	}
+	model.paletteQuery = "thread-2"
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	if model.selectedThreadID != "thread-2" || model.mode != modeHistory ||
+		!strings.Contains(model.View(), "STRUCTURED HISTORY") {
+		t.Fatalf("history pick = %q mode=%d", model.selectedThreadID, model.mode)
+	}
+}
+
+func TestEmptyProjectState(t *testing.T) {
+	model := NewModel(Options{API: &fakeAPI{}})
+	updated, _ := model.Update(loadMsg{snapshot: Snapshot{}})
+	model = updated.(Model)
+	if !strings.Contains(model.View(), "No projects yet") {
+		t.Fatalf("empty projects view = %q", model.View())
+	}
+}
+
+func TestComposerOwnsCommandLetters(t *testing.T) {
+	snapshot := threadTestSnapshot()
+	api := &fakeAPI{snapshot: snapshot}
+	model := NewModel(Options{API: api})
+	updated, _ := model.Update(loadMsg{snapshot: snapshot})
+	model = openFirstConversation(t, updated.(Model))
+
+	for _, letter := range []rune{'q', 'n', 't', 'c', 'P', 'j', '?'} {
+		updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{letter}})
+		model = updated.(Model)
+		if cmd != nil {
+			t.Fatalf("letter %q returned a command", string(letter))
+		}
+		if model.overlay.kind != overlayNone {
+			t.Fatalf("letter %q opened overlay %v", string(letter), model.overlay.kind)
+		}
+	}
+	if model.composer != "qntcPj?" {
+		t.Fatalf("composer = %q", model.composer)
+	}
+	if view := model.View(); !strings.Contains(view, composerHint) ||
+		!strings.Contains(view, "qntcPj?") ||
+		strings.Contains(view, "n new") {
+		t.Fatalf("composer chrome = %q", view)
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyCtrlO})
+	model = updated.(Model)
+	if model.overlay.kind != overlayHelp {
+		t.Fatal("ctrl-o did not open help from the composer")
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model = updated.(Model)
+
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{':'}})
+	model = updated.(Model)
+	if model.overlay.kind != overlayNone || !strings.HasSuffix(model.composer, ":") {
+		t.Fatalf("colon with text opened palette: overlay=%v composer=%q", model.overlay.kind, model.composer)
+	}
+
+	model.composer = ""
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{':'}})
+	model = updated.(Model)
+	if model.overlay.kind != overlayPalette {
+		t.Fatal("empty composer colon did not open the palette")
+	}
+}
+
+func TestComposerShowsCursorAndPendingSend(t *testing.T) {
+	snapshot := threadTestSnapshot()
+	model := NewModel(Options{API: &fakeAPI{snapshot: snapshot}})
+	updated, _ := model.Update(loadMsg{snapshot: snapshot})
+	model = openFirstConversation(t, updated.(Model))
+	if !strings.Contains(model.View(), caretGlyph) {
+		t.Fatalf("composing view missing cursor: %q", model.View())
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("hello")})
+	model = updated.(Model)
+	if !strings.Contains(model.View(), "hello"+caretGlyph) {
+		t.Fatalf("typed text not visible: %q", model.View())
+	}
+}
+
+func TestSendRestartsEndedSessionThenDelivers(t *testing.T) {
+	snapshot := threadTestSnapshot()
+	snapshot.Capsules[0].Threads[0].Thread.CurrentRunState = client.NewOptRunState(client.RunStateFailed)
+	api := &fakeAPI{snapshot: snapshot}
+	model := NewModel(Options{API: api})
+	updated, _ := model.Update(loadMsg{snapshot: snapshot})
+	model = openFirstConversation(t, updated.(Model))
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("hello")})
+	model = updated.(Model)
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	if model.pendingSend != "hello" || !strings.Contains(model.View(), "hello") {
+		t.Fatalf("pending send not shown: pending=%q view=%q", model.pendingSend, model.View())
+	}
+	runCmd(t, cmd)
+	if got := api.requests[len(api.requests)-1]; got.Action != ActionThreadStart {
+		t.Fatalf("ended session send = %#v", got)
+	}
+
+	updated, _ = model.Update(actionMsg{result: ActionResult{Message: "thread-start requested", ThreadID: "thread-1"}})
+	model = updated.(Model)
+	ready := threadTestSnapshot()
+	ready.Capsules[0].Threads[0].Thread.CurrentRunState = client.NewOptRunState(client.RunStateRunning)
+	ready.Capsules[0].Threads[0].Thread.ResourceVersion = 8
+	updated, cmd = model.Update(loadMsg{snapshot: ready})
+	model = updated.(Model)
+	runCmd(t, cmd)
+	if got := api.requests[len(api.requests)-1]; got.Action != ActionThreadSend ||
+		got.Content != "hello" || got.ResourceVersion != 8 {
+		t.Fatalf("follow-up send = %#v", got)
+	}
+}
+
+func TestFailedSendRestoresComposer(t *testing.T) {
+	snapshot := threadTestSnapshot()
+	api := &fakeAPI{snapshot: snapshot, actionErr: errors.New("illegal_transition: Thread session is not accepting input")}
+	model := NewModel(Options{API: api})
+	updated, _ := model.Update(loadMsg{snapshot: snapshot})
+	model = openFirstConversation(t, updated.(Model))
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("hello")})
+	model = updated.(Model)
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	updated, _ = model.Update(runCmd(t, cmd))
+	model = updated.(Model)
+	if model.composer != "hello" || model.pendingSend != "" {
+		t.Fatalf("composer after failure = %q pending=%q", model.composer, model.pendingSend)
+	}
+	if !strings.Contains(model.View(), "hello"+caretGlyph) {
+		t.Fatalf("restored draft not visible: %q", model.View())
+	}
+}
+
+func TestSendConflictRetriesWithFreshVersion(t *testing.T) {
+	snapshot := threadTestSnapshot()
+	api := &fakeAPI{snapshot: snapshot}
+	model := NewModel(Options{API: api})
+	updated, _ := model.Update(loadMsg{snapshot: snapshot})
+	model = openFirstConversation(t, updated.(Model))
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("hello")})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	updated, cmd := model.Update(actionMsg{err: errors.New("conflict: resource version conflict")})
+	model = updated.(Model)
+	if model.pendingSend != "hello" || model.composer != "" || model.sendRetries != 1 {
+		t.Fatalf("conflict retry state pending=%q composer=%q retries=%d", model.pendingSend, model.composer, model.sendRetries)
+	}
+	if !strings.Contains(model.status, "Sending") {
+		t.Fatalf("conflict status = %q", model.status)
+	}
+	fresh := threadTestSnapshot()
+	fresh.Capsules[0].Threads[0].Thread.ResourceVersion = 9
+	updated, cmd = model.Update(loadMsg{snapshot: fresh})
+	model = updated.(Model)
+	runCmd(t, cmd)
+	if got := api.requests[len(api.requests)-1]; got.Action != ActionThreadSend ||
+		got.Content != "hello" || got.ResourceVersion != 9 {
+		t.Fatalf("retried send = %#v", got)
+	}
+}
+
+func TestInFlightSendIgnoresStaleRefresh(t *testing.T) {
+	snapshot := threadTestSnapshot()
+	api := &fakeAPI{snapshot: snapshot}
+	model := NewModel(Options{API: api})
+	updated, _ := model.Update(loadMsg{snapshot: snapshot})
+	model = openFirstConversation(t, updated.(Model))
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("hello")})
+	model = updated.(Model)
+	updated, sendCmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	if !model.sendInFlight || sendCmd == nil {
+		t.Fatal("expected an in-flight send")
+	}
+	updated, _ = model.Update(loadMsg{snapshot: snapshot})
+	model = updated.(Model)
+	if !model.sendInFlight {
+		t.Fatal("refresh cleared the in-flight send")
+	}
+	runCmd(t, sendCmd)
+	if api.requestCount() != 1 {
+		t.Fatalf("stale refresh double-sent: %d", api.requestCount())
+	}
+}
+
+func TestCursorBlinks(t *testing.T) {
+	snapshot := threadTestSnapshot()
+	model := NewModel(Options{API: &fakeAPI{snapshot: snapshot}})
+	updated, _ := model.Update(loadMsg{snapshot: snapshot})
+	model = openFirstConversation(t, updated.(Model))
+	if !strings.Contains(model.View(), caretGlyph) {
+		t.Fatal("expected a visible caret")
+	}
+	updated, _ = model.Update(blinkMsg(fixedNow()))
+	model = updated.(Model)
+	if model.cursorOn || strings.Contains(model.View(), caretGlyph) {
+		t.Fatalf("caret should blink off: on=%v view=%q", model.cursorOn, model.View())
+	}
+}
+
+func TestSlashKeepsCapsuleList(t *testing.T) {
+	snapshot := threadTestSnapshot()
+	model := NewModel(Options{API: &fakeAPI{snapshot: snapshot}, Now: fixedNow})
+	updated, _ := model.Update(loadMsg{snapshot: snapshot})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.WindowSizeMsg{Width: 70, Height: 40})
+	model = updated.(Model)
+	if model.focus != focusCapsules {
+		t.Fatal("expected the Capsule list after load")
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	model = updated.(Model)
+	if model.focus != focusCapsules || !model.composing() || model.composer != "/" {
+		t.Fatalf("slash should stay on the list: focus=%d composing=%v composer=%q", model.focus, model.composing(), model.composer)
+	}
+	view := model.View()
+	if !strings.Contains(view, "alpha") || !strings.Contains(view, "/new") {
+		t.Fatalf("slash menu on list missing: %q", view)
+	}
+	if strings.Contains(view, "Need permission") {
+		t.Fatalf("slash opened the conversation pane: %q", view)
+	}
+}
+
+func TestSlashSurvivesRefreshOnList(t *testing.T) {
+	snapshot := threadTestSnapshot()
+	model := NewModel(Options{API: &fakeAPI{snapshot: snapshot}, Now: fixedNow})
+	updated, _ := model.Update(loadMsg{snapshot: snapshot})
+	model = updated.(Model)
+	updated, _ = model.Update(actionMsg{
+		action: ActionDelete,
+		result: ActionResult{Message: "delete requested"},
+	})
+	model = updated.(Model)
+	updated, _ = model.Update(loadMsg{snapshot: testSnapshot()})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	model = updated.(Model)
+	updated, _ = model.Update(loadMsg{snapshot: testSnapshot()})
+	model = updated.(Model)
+	if !model.composing() || model.composer != "/" {
+		t.Fatalf("refresh stole the slash draft: composing=%v composer=%q focus=%d",
+			model.composing(), model.composer, model.focus)
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("new")})
+	model = updated.(Model)
+	if model.composer != "/new" {
+		t.Fatalf("could not type after refresh: composer=%q", model.composer)
+	}
+}
+
+func TestSlashCommandsFromProjectHome(t *testing.T) {
+	snapshot := testSnapshot()
+	api := &fakeAPI{snapshot: snapshot}
+	model := NewModel(Options{API: api})
+	updated, _ := model.Update(loadMsg{snapshot: snapshot})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	model = updated.(Model)
+	if !model.composing() || model.composer != "/" {
+		t.Fatalf("slash did not focus composer: focus=%v composer=%q", model.composing(), model.composer)
+	}
+	if !strings.Contains(model.View(), "/new") || !strings.Contains(model.View(), "/help") ||
+		!strings.Contains(model.View(), "/project") || !strings.Contains(model.View(), "/harness") {
+		t.Fatalf("slash menu missing: %q", model.View())
+	}
+	if strings.Contains(model.View(), "/capsule") || strings.Contains(model.View(), "/spawn") ||
+		strings.Contains(model.View(), "/pause") {
+		t.Fatalf("slash menu still lists duplicate creates: %q", model.View())
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("hel")})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	if model.overlay.kind != overlayHelp {
+		t.Fatalf(" /help did not open help: overlay=%v composer=%q", model.overlay.kind, model.composer)
+	}
+}
+
+func TestSlashProjectCreatesProject(t *testing.T) {
+	snapshot := Snapshot{Projects: nil}
+	api := &fakeAPI{snapshot: snapshot}
+	model := NewModel(Options{API: api})
+	updated, _ := model.Update(loadMsg{snapshot: snapshot})
+	model = updated.(Model)
+	if !strings.Contains(model.View(), "/project") && !strings.Contains(model.View(), "No projects") {
+		t.Fatalf("empty project home = %q", model.View())
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/project")})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	if model.overlay.kind != overlayForm || model.overlay.action.Action != ActionProjectCreate {
+		t.Fatalf(" /project should open a form: overlay=%v action=%q", model.overlay.kind, model.overlay.action.Action)
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("demo")})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("https://github.com/you/app.git")})
+	model = updated.(Model)
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	runCmd(t, cmd)
+	if got := api.requests[len(api.requests)-1]; got.Action != ActionProjectCreate ||
+		got.Name != "demo" || got.RepositoryURL != "https://github.com/you/app.git" {
+		t.Fatalf("create project = %#v", got)
+	}
+
+	updated, _ = model.Update(actionMsg{
+		action: ActionProjectCreate,
+		result: ActionResult{Message: "Project created", ProjectID: "project-new"},
+	})
+	model = updated.(Model)
+	if model.projectID != "project-new" || model.place != placeProject {
+		t.Fatalf("create did not select the Project: project=%q place=%d", model.projectID, model.place)
+	}
+}
+
+func TestSlashSwitchChangesProjectWithoutStaleCapsule(t *testing.T) {
+	snapshot := testSnapshot()
+	nextProject := client.Project{
+		ID: "project-new", Name: "new project",
+		HarnessImages: []client.HarnessImage{{Name: "mock", ImageReference: "meridian-capsule:dev"}},
+	}
+	snapshot.Projects = append(snapshot.Projects, nextProject)
+	api := &fakeAPI{snapshot: snapshot}
+	model := NewModel(Options{API: api})
+	updated, _ := model.Update(loadMsg{snapshot: snapshot})
+	model = updated.(Model)
+
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/switch")})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	if model.overlay.kind != overlayForm || model.overlay.action.Action != Action("switch-project") {
+		t.Fatalf(" /switch should open the switcher: %#v", model.overlay)
+	}
+	if got := model.overlay.fields[0].value; got != snapshot.Projects[0].Name {
+		t.Fatalf("initial project choice = %q", got)
+	}
+	for _, option := range model.overlay.fields[0].options {
+		if strings.Contains(option, "project-") {
+			t.Fatalf("switcher exposed a Project ID: %q", option)
+		}
+	}
+
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRight})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	if model.projectID != nextProject.ID || model.projectName() != nextProject.Name {
+		t.Fatalf("switched project = %q / %q", model.projectID, model.projectName())
+	}
+	if model.selectedDetail() != nil || strings.Contains(model.View(), "alpha") {
+		t.Fatalf("new Project retained a stale Capsule: %q", model.View())
+	}
+	model.openCreate()
+	if got := model.overlay.fields[0].value; got != nextProject.ID {
+		t.Fatalf("new Capsule form targets Project %q", got)
+	}
+}
+
+func TestCreateProjectPicksHarness(t *testing.T) {
+	snapshot := Snapshot{
+		HarnessImages: []client.HarnessImage{
+			{Name: "mock", ImageReference: "meridian-capsule:dev"},
+			{Name: "opencode", ImageReference: "meridian-capsule-opencode:dev"},
+		},
+	}
+	api := &fakeAPI{snapshot: snapshot}
+	model := NewModel(Options{API: api})
+	updated, _ := model.Update(loadMsg{snapshot: snapshot})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/project")})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	if model.overlay.kind != overlayForm || len(model.overlay.fields) != 3 ||
+		model.overlay.fields[2].label != "Harness" || model.overlay.fields[2].value != "mock" {
+		t.Fatalf("create form = %#v", model.overlay.fields)
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("demo")})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRight})
+	model = updated.(Model)
+	if model.overlay.fields[2].value != "opencode" {
+		t.Fatalf("harness = %q", model.overlay.fields[2].value)
+	}
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	runCmd(t, cmd)
+	got := api.requests[len(api.requests)-1]
+	if got.Action != ActionProjectCreate || got.Name != "demo" ||
+		got.Image != "meridian-capsule-opencode:dev" ||
+		len(got.HarnessImages) != 1 || got.HarnessImages[0] != "opencode=meridian-capsule-opencode:dev" {
+		t.Fatalf("create = %#v", got)
+	}
+}
+
+func TestApplyHarnessSavesAllowlist(t *testing.T) {
+	snapshot := testSnapshot()
+	snapshot.HarnessImages = []client.HarnessImage{
+		{Name: "mock", ImageReference: "meridian-capsule:dev"},
+		{Name: "opencode", ImageReference: "meridian-capsule-opencode:dev"},
+	}
+	api := &fakeAPI{snapshot: snapshot}
+	model := NewModel(Options{API: api})
+	updated, _ := model.Update(loadMsg{snapshot: snapshot})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/harness")})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	if model.overlay.kind != overlayHarness {
+		t.Fatalf(" /harness overlay = %v", model.overlay.kind)
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+	model = updated.(Model)
+	if !model.overlay.choices[0].Applied {
+		t.Fatal("space should apply the selected pack")
+	}
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	runCmd(t, cmd)
+	got := api.requests[len(api.requests)-1]
+	if got.Action != ActionProjectApplyHarnesses || len(got.HarnessImages) != 1 ||
+		got.HarnessImages[0] != "mock=meridian-capsule:dev" {
+		t.Fatalf("apply = %#v", got)
+	}
+}
+
+func TestSlashNewSpawnsWorkspace(t *testing.T) {
+	snapshot := threadTestSnapshot()
+	api := &fakeAPI{snapshot: snapshot}
+	model := NewModel(Options{API: api})
+	updated, _ := model.Update(loadMsg{snapshot: snapshot})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/new")})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	if model.overlay.kind != overlayNone || !model.pendingNew || model.focus != focusMain {
+		t.Fatalf("/new should open a new Capsule: overlay=%v pending=%v focus=%d", model.overlay.kind, model.pendingNew, model.focus)
+	}
+	if model.newHarness != "native" {
+		t.Fatalf("harness = %q", model.newHarness)
+	}
+	if view := model.View(); !strings.Contains(view, "New Capsule") ||
+		!strings.Contains(view, "native") || !strings.Contains(view, "Capsule name") ||
+		!strings.Contains(view, "Enter creates and opens") {
+		t.Fatalf("/new view = %q", view)
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("hello")})
+	model = updated.(Model)
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	if cmd != nil || api.requestCount() != 0 || !model.newNameFocus {
+		t.Fatalf("prompt without a name should not spawn: cmd=%v requests=%d nameFocus=%v",
+			cmd, api.requestCount(), model.newNameFocus)
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("review")})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	if model.newNameFocus || strings.TrimSpace(model.newName) != "review" {
+		t.Fatalf("name should stick after Enter: name=%q focus=%v", model.newName, model.newNameFocus)
+	}
+	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	runCmd(t, cmd)
+	if got := api.requests[len(api.requests)-1]; got.Action != ActionCreate ||
+		got.Content != "" || got.Harness != "native" || got.Name != "review" {
+		t.Fatalf("/new send = %#v", got)
+	}
+	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	if cmd != nil {
+		t.Fatal("second Enter should not spawn again")
+	}
+	if api.requestCount() != 1 {
+		t.Fatalf("spawned %d Capsules", api.requestCount())
+	}
+}
+
+func TestEmptyCommandEntryEnterOpensSelectedCapsule(t *testing.T) {
+	snapshot := threadTestSnapshot()
+	snapshot.Capsules[0].Runs[0].Harness = "native"
+	var attached string
+	model := NewModel(Options{
+		API: &fakeAPI{snapshot: snapshot},
+		Attach: func(request AttachRequest) tea.Cmd {
+			attached = request.RunID
+			return func() tea.Msg { return attachFinishedMsg{} }
+		},
+	})
+	updated, _ := model.Update(loadMsg{snapshot: snapshot})
+	model = updated.(Model)
+	model.focus = focusMain
+	model.composerFocus = true
+	model.composer = ""
+
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	if attached != "run-active" || cmd == nil || model.focus != focusCapsules ||
+		model.composerFocus {
+		t.Fatalf("empty command Enter = attach %q cmd=%v focus=%d composing=%v",
+			attached, cmd, model.focus, model.composerFocus)
+	}
+}
+
+func TestCreateWaitsForNativeRunAndAutoAttaches(t *testing.T) {
+	snapshot := threadTestSnapshot()
+	var attached string
+	model := NewModel(Options{
+		API: &fakeAPI{snapshot: snapshot}, Now: fixedNow,
+		Attach: func(request AttachRequest) tea.Cmd {
+			attached = request.RunID
+			return func() tea.Msg { return attachFinishedMsg{} }
+		},
+	})
+	updated, _ := model.Update(loadMsg{snapshot: snapshot})
+	model = updated.(Model)
+	updated, _ = model.Update(actionMsg{
+		action: ActionCreate,
+		result: ActionResult{Message: "Capsule creation requested", CapsuleID: "capsule-new"},
+	})
+	model = updated.(Model)
+	if model.pendingAttachID != "capsule-new" || model.selectedID != "capsule-new" ||
+		model.place != placeProject {
+		t.Fatalf("create wait state: pending=%q id=%q place=%d",
+			model.pendingAttachID, model.selectedID, model.place)
+	}
+
+	created := threadTestSnapshot()
+	newbie := created.Capsules[0]
+	newbie.Capsule.ID = "capsule-new"
+	newbie.Capsule.Name = "review"
+	newbie.Capsule.Harness = client.NewOptString("native")
+	newbie.Runs = []client.Run{{
+		ID: "run-new", CapsuleId: "capsule-new", Harness: "native", State: client.RunStateRunning,
+	}}
+	created.Capsules = append(created.Capsules, newbie)
+	updated, cmd := model.Update(loadMsg{snapshot: created})
+	model = updated.(Model)
+	if attached != "run-new" || cmd == nil || model.pendingAttachID != "" {
+		t.Fatalf("auto attach = %q / %v / pending=%q", attached, cmd, model.pendingAttachID)
+	}
+}
+
+func TestNewCapsuleCyclesHarness(t *testing.T) {
+	snapshot := threadTestSnapshot()
+	snapshot.Projects[0].HarnessImages = append(snapshot.Projects[0].HarnessImages, client.HarnessImage{
+		Name: "other", ImageReference: "meridian-capsule-other:dev",
+	})
+	snapshot.Capsules[0].Project = snapshot.Projects[0]
+	model := NewModel(Options{API: &fakeAPI{snapshot: snapshot}})
+	updated, _ := model.Update(loadMsg{snapshot: snapshot})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/new")})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	if model.newHarness != "native" {
+		t.Fatalf("initial harness = %q", model.newHarness)
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRight})
+	model = updated.(Model)
+	if model.newHarness != "other" {
+		t.Fatalf("cycled harness = %q", model.newHarness)
+	}
+}
+
+func TestNewCapsuleUsesProjectHarnessImages(t *testing.T) {
+	snapshot := threadTestSnapshot()
+	snapshot.Projects[0].HarnessImages = []client.HarnessImage{
+		{Name: "opencode", ImageReference: "meridian-capsule-opencode:dev"},
+		{Name: "mock", ImageReference: "meridian-capsule:dev"},
+	}
+	model := NewModel(Options{API: &fakeAPI{snapshot: snapshot}})
+	updated, _ := model.Update(loadMsg{snapshot: snapshot})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/new")})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	if model.newHarness != "opencode" {
+		t.Fatalf("allowlisted harness = %q", model.newHarness)
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRight})
+	model = updated.(Model)
+	if model.newHarness != "mock" {
+		t.Fatalf("cycled allowlisted harness = %q", model.newHarness)
+	}
+	if view := model.View(); !strings.Contains(view, "opencode") || !strings.Contains(view, "mock") {
+		t.Fatalf("/new allowlist view = %q", view)
+	}
+}
+
+func TestEnterOnIdleCapsuleStartsFrozenNativeHarness(t *testing.T) {
+	snapshot := threadTestSnapshot()
+	snapshot.Capsules[0].Threads = nil
+	snapshot.Capsules[0].Runs = nil
+	api := &fakeAPI{snapshot: snapshot}
+	model := NewModel(Options{API: api})
+	updated, _ := model.Update(loadMsg{snapshot: snapshot})
+	model = updated.(Model)
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	runCmd(t, cmd)
+	if got := api.requests[len(api.requests)-1]; got.Action != ActionRunStart ||
+		got.CapsuleID != "capsule-1" || got.Harness != "native" {
+		t.Fatalf("idle native start = %#v", got)
+	}
+	if model.pendingAttachID != "capsule-1" {
+		t.Fatalf("pending attach = %q", model.pendingAttachID)
+	}
+}
+
+func focusCapsuleList(t *testing.T, model Model) Model {
+	t.Helper()
+	if model.focus == focusCapsules {
+		return model
+	}
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model = updated.(Model)
+	if model.focus != focusCapsules {
+		t.Fatal("did not move focus to the Capsule list")
+	}
+	return model
+}
+
+func openFirstConversation(t *testing.T, model Model) Model {
+	t.Helper()
+	model.openCapsuleSession()
+	if model.place != placeThread {
+		t.Fatalf("did not enter conversation: place=%d thread=%q", model.place, model.selectedThreadID)
+	}
+	return model
 }
 
 func runCmd(t *testing.T, command tea.Cmd) tea.Msg {
@@ -514,9 +1509,11 @@ func testSnapshot() Snapshot {
 				Capsule: client.Capsule{
 					ID: "capsule-1", ProjectId: project.ID, TimelineId: "timeline-1",
 					Name: "alpha", State: client.CapsuleStateReady, DesiredState: client.CapsuleIntentReady,
+					Harness:         client.NewOptString("mock"),
 					RestoreComplete: true, CreatedAt: now.Add(-time.Hour), ResourceVersion: 7,
 				},
-				Runs: []client.Run{active},
+				Profiles: []client.HarnessProfile{{Name: "mock", Pty: true}},
+				Runs:     []client.Run{active},
 				Events: []client.RunEvent{{
 					Sequence: 1, Type: "started", Timestamp: now.Add(-time.Minute),
 				}},

@@ -23,6 +23,7 @@ coverage.out
 *.db-shm
 *.db-wal
 /data/
+/.local/
 
 # Editors and operating systems
 .DS_Store

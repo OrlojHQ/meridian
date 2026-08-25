@@ -1,9 +1,21 @@
 # Structured harness adapters
 
 `meridian-harness-adapter` is installed in the development and release Capsule
-images. It never installs Pi, OpenCode, model providers, or credentials. Project
-images must install the selected harness, and credentials remain external to
-repository YAML.
+images. It never installs Pi, OpenCode, model providers, or credentials. The
+thin `meridian-capsule` image stays supervisor-only. Optional official images
+`FROM` that base and add one pinned harness binary. Project images may do the
+same. Credentials remain external to repository YAML.
+
+`make capsule-opencode-image` builds `meridian-capsule-opencode:dev` with a
+pinned OpenCode release at `/usr/local/bin/opencode` and a trusted native PTY
+profile at `/etc/meridian/harnesses.d/opencode.yaml`. Repositories do not copy
+that profile. Keep a thin Project default image and allowlist the pack with
+`--harness-image=opencode=meridian-capsule-opencode:dev`; `/new` selects it,
+the daemon freezes that image and profile name on the Capsule, and the
+dashboard hands the terminal to OpenCode when Ready. That layout is the
+contributor example: keep the base image thin, add a Dockerfile and trusted
+manifest to an official pack, and leave other harnesses out unless they are
+official.
 
 The binary has four drivers:
 
@@ -15,7 +27,8 @@ The binary has four drivers:
   `--session-dir` are adapter flags. A user-message metadata object may select
   an upstream queue primitive explicitly:
   `{"pi":{"command":"prompt|steer|follow_up"}}`. The default is `prompt`.
-- `opencode-server -- <opencode> [args...]` starts `opencode serve` on a random
+- `opencode-server -- <opencode> [args...]` remains available for explicit
+  structured API/CLI integrations. It starts `opencode serve` on a random
   `127.0.0.1` port with a fresh 256-bit Basic Auth password, mDNS disabled, no
   CORS origins, and no public bind. `--permissions=false` disables permission
   capability and rejects permission events.
@@ -37,7 +50,7 @@ harnesses:
     pty: false
     timeout: 2h
 
-  - name: opencode
+  - name: opencode-structured
     interactionMode: structured
     adapter:
       protocol: meridian.adapter.v1
@@ -103,7 +116,8 @@ Harness adapters own upstream session, compaction, tool, permission, and model
 semantics. Meridian validates and transports typed frames, persists an encrypted
 Thread transcript (including bounded frame metadata inside ciphertext), and
 presents explicit user controls; it does not implement, infer, or recover an
-agent loop. Daemon recovery never auto-sends transcript input. Clients retry
+agent loop. The TUI launcher uses native PTY profiles and does not translate
+harness commands into this protocol. Daemon recovery never auto-sends transcript input. Clients retry
 ambiguous mutations with the same idempotency key; durable content-free
 delivery acknowledgement prevents successful replay from resending.
 

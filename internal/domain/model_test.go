@@ -168,3 +168,35 @@ func TestThreadMessageSequenceShape(t *testing.T) {
 		}
 	}
 }
+
+func TestImageForHarnessAllowlist(t *testing.T) {
+	project := Project{ImageReference: "meridian-capsule:dev"}
+	image, err := project.ImageForHarness("mock")
+	if err != nil || image != "meridian-capsule:dev" {
+		t.Fatalf("default image = %q, %v", image, err)
+	}
+
+	project.HarnessImages = []HarnessImage{
+		{Name: "opencode", ImageReference: "meridian-capsule-opencode:dev"},
+		{Name: "mock", ImageReference: "meridian-capsule:dev"},
+	}
+	image, err = project.ImageForHarness("opencode")
+	if err != nil || image != "meridian-capsule-opencode:dev" {
+		t.Fatalf("allowlisted image = %q, %v", image, err)
+	}
+	if _, err := project.ImageForHarness("pi"); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("unknown harness error = %v", err)
+	}
+	if _, err := ParseHarnessImageSpec("opencode"); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("bare name error = %v", err)
+	}
+	items, err := ParseHarnessImageSpecs("opencode=meridian-capsule-opencode:dev, mock=meridian-capsule:dev")
+	if err != nil || len(items) != 2 || items[0].Name != "opencode" {
+		t.Fatalf("specs = %#v, %v", items, err)
+	}
+	catalog := InstallationHarnessImages("meridian-capsule:dev")
+	if len(catalog) != 2 || catalog[0].Name != "mock" || catalog[0].ImageReference != "meridian-capsule:dev" ||
+		catalog[1].Name != "opencode" || catalog[1].ImageReference != "meridian-capsule-opencode:dev" {
+		t.Fatalf("catalog = %#v", catalog)
+	}
+}

@@ -28,18 +28,19 @@ import (
 )
 
 type Server struct {
-	service      *app.Service
-	capabilities ports.ProviderCapabilities
-	ready        atomic.Bool
-	mux          *http.ServeMux
-	ui           http.Handler
-	tickets      *attachTicketRegistry
-	previews     *previewTicketRegistry
-	previewBase  string
-	metrics      *observability.Metrics
-	apiToken     *apiauth.Token
-	browserToken *apiauth.Token
-	browserValue string
+	service       *app.Service
+	capabilities  ports.ProviderCapabilities
+	ready         atomic.Bool
+	mux           *http.ServeMux
+	ui            http.Handler
+	tickets       *attachTicketRegistry
+	previews      *previewTicketRegistry
+	previewBase   string
+	metrics       *observability.Metrics
+	apiToken      *apiauth.Token
+	browserToken  *apiauth.Token
+	browserValue  string
+	harnessImages []domain.HarnessImage
 }
 
 const browserSessionCookie = "meridian_session"
@@ -123,6 +124,10 @@ func (s *Server) ConfigureObservability(metrics *observability.Metrics) {
 	s.metrics = metrics
 }
 
+func (s *Server) SetHarnessImages(items []domain.HarnessImage) {
+	s.harnessImages = append([]domain.HarnessImage(nil), items...)
+}
+
 func (s *Server) SetReady(ready bool) {
 	s.ready.Store(ready)
 	if s.metrics != nil {
@@ -138,6 +143,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /projects", s.createProject)
 	s.mux.HandleFunc("GET /projects", s.listProjects)
 	s.mux.HandleFunc("GET /projects/{projectId}", s.getProject)
+	s.mux.HandleFunc("PATCH /projects/{projectId}", s.patchProject)
 	s.mux.HandleFunc("POST /projects/{projectId}/threads", s.createProjectThread)
 	s.mux.HandleFunc("GET /project-thread-intents/{intentId}", s.getProjectThreadIntent)
 	s.mux.HandleFunc("PUT /secrets/{secretName}", s.putSecret)
@@ -790,6 +796,7 @@ func (s *Server) getCapabilities(writer http.ResponseWriter, _ *http.Request) {
 		Browse:          s.capabilities.Browse,
 		Delivery:        s.capabilities.Delivery,
 		ResourceMetrics: false,
+		HarnessImages:   harnessImagesToJSON(s.harnessImages),
 	})
 }
 
@@ -803,6 +810,7 @@ func (s *Server) createProject(writer http.ResponseWriter, request *http.Request
 		input.Name,
 		app.ProjectConfiguration{
 			RepositoryURL: input.RepositoryURL, Setup: input.Setup, ImageReference: input.ImageReference,
+			HarnessImages:       harnessImagesFromRequest(input.HarnessImages),
 			GitSecretName:       input.GitSecretName,
 			HarnessSecretNames:  input.HarnessSecretNames,
 			GitPushSecretName:   input.GitPushSecretName,
@@ -916,15 +924,35 @@ func (s *Server) getProject(writer http.ResponseWriter, request *http.Request) {
 	writeJSON(writer, http.StatusOK, projectResponse(project))
 }
 
+func (s *Server) patchProject(writer http.ResponseWriter, request *http.Request) {
+	var input patchProjectRequest
+	if !decode(writer, request, &input) {
+		return
+	}
+	project, err := s.service.UpdateProjectHarnessImages(
+		request.Context(),
+		domain.ProjectID(request.PathValue("projectId")),
+		harnessImagesFromRequest(input.HarnessImages),
+		domain.ResourceVersion(input.ExpectedResourceVersion),
+	)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	writer.Header().Set("ETag", etag(project.ResourceVersion))
+	writeJSON(writer, http.StatusOK, projectResponse(project))
+}
+
 func (s *Server) createCapsule(writer http.ResponseWriter, request *http.Request) {
 	var input createRequest
 	if !decode(writer, request, &input) {
 		return
 	}
-	capsule, err := s.service.CreateCapsule(
+	capsule, err := s.service.CreateCapsuleForHarness(
 		request.Context(),
 		domain.ProjectID(request.PathValue("projectId")),
 		input.Name,
+		input.Harness,
 		request.Header.Get("Idempotency-Key"),
 	)
 	if err != nil {
@@ -1650,38 +1678,51 @@ type probeResponse struct {
 }
 
 type capabilitiesJSON struct {
-	ProviderVersion    string `json:"providerVersion"`
-	Attach             bool   `json:"attach"`
-	Run                bool   `json:"run"`
-	Structured         bool   `json:"structured"`
-	StructuredProtocol string `json:"structuredProtocol,omitempty"`
-	PTYFallback        bool   `json:"ptyFallback"`
-	Git                bool   `json:"git"`
-	Pause              bool   `json:"pause"`
-	Snapshot           bool   `json:"snapshot"`
-	Clone              bool   `json:"clone"`
-	Preview            bool   `json:"preview"`
-	Browse             bool   `json:"browse"`
-	Delivery           bool   `json:"delivery"`
-	ResourceMetrics    bool   `json:"resourceMetrics"`
+	ProviderVersion    string             `json:"providerVersion"`
+	Attach             bool               `json:"attach"`
+	Run                bool               `json:"run"`
+	Structured         bool               `json:"structured"`
+	StructuredProtocol string             `json:"structuredProtocol,omitempty"`
+	PTYFallback        bool               `json:"ptyFallback"`
+	Git                bool               `json:"git"`
+	Pause              bool               `json:"pause"`
+	Snapshot           bool               `json:"snapshot"`
+	Clone              bool               `json:"clone"`
+	Preview            bool               `json:"preview"`
+	Browse             bool               `json:"browse"`
+	Delivery           bool               `json:"delivery"`
+	ResourceMetrics    bool               `json:"resourceMetrics"`
+	HarnessImages      []harnessImageJSON `json:"harnessImages,omitempty"`
 }
 
 type createRequest struct {
-	Name string `json:"name"`
+	Name    string `json:"name"`
+	Harness string `json:"harness,omitempty"`
 }
 
 type createProjectRequest struct {
-	Name                string   `json:"name"`
-	RepositoryURL       string   `json:"repositoryUrl,omitempty"`
-	Setup               []string `json:"setup,omitempty"`
-	ImageReference      string   `json:"imageReference,omitempty"`
-	GitSecretName       string   `json:"gitSecretName,omitempty"`
-	HarnessSecretNames  []string `json:"harnessSecretNames,omitempty"`
-	GitPushSecretName   string   `json:"gitPushSecretName,omitempty"`
-	GitHubAPISecretName string   `json:"githubAPISecretName,omitempty"`
-	CommitAuthorName    string   `json:"commitAuthorName,omitempty"`
-	CommitAuthorEmail   string   `json:"commitAuthorEmail,omitempty"`
-	DefaultBaseBranch   string   `json:"defaultBaseBranch,omitempty"`
+	Name                string             `json:"name"`
+	RepositoryURL       string             `json:"repositoryUrl,omitempty"`
+	Setup               []string           `json:"setup,omitempty"`
+	ImageReference      string             `json:"imageReference,omitempty"`
+	HarnessImages       []harnessImageJSON `json:"harnessImages,omitempty"`
+	GitSecretName       string             `json:"gitSecretName,omitempty"`
+	HarnessSecretNames  []string           `json:"harnessSecretNames,omitempty"`
+	GitPushSecretName   string             `json:"gitPushSecretName,omitempty"`
+	GitHubAPISecretName string             `json:"githubAPISecretName,omitempty"`
+	CommitAuthorName    string             `json:"commitAuthorName,omitempty"`
+	CommitAuthorEmail   string             `json:"commitAuthorEmail,omitempty"`
+	DefaultBaseBranch   string             `json:"defaultBaseBranch,omitempty"`
+}
+
+type harnessImageJSON struct {
+	Name           string `json:"name"`
+	ImageReference string `json:"imageReference"`
+}
+
+type patchProjectRequest struct {
+	ExpectedResourceVersion int64              `json:"expectedResourceVersion"`
+	HarnessImages           []harnessImageJSON `json:"harnessImages"`
 }
 
 type createDeliveryRequest struct {
@@ -1768,21 +1809,22 @@ type threadResponseRequest struct {
 }
 
 type projectJSON struct {
-	ID                  string   `json:"id"`
-	Name                string   `json:"name"`
-	RepositoryURL       string   `json:"repositoryUrl,omitempty"`
-	Setup               []string `json:"setup,omitempty"`
-	ImageReference      string   `json:"imageReference,omitempty"`
-	GitSecretName       string   `json:"gitSecretName,omitempty"`
-	HarnessSecretNames  []string `json:"harnessSecretNames,omitempty"`
-	GitPushSecretName   string   `json:"gitPushSecretName,omitempty"`
-	GitHubAPISecretName string   `json:"githubAPISecretName,omitempty"`
-	CommitAuthorName    string   `json:"commitAuthorName,omitempty"`
-	CommitAuthorEmail   string   `json:"commitAuthorEmail,omitempty"`
-	DefaultBaseBranch   string   `json:"defaultBaseBranch,omitempty"`
-	CreatedAt           string   `json:"createdAt"`
-	UpdatedAt           string   `json:"updatedAt"`
-	ResourceVersion     int64    `json:"resourceVersion"`
+	ID                  string             `json:"id"`
+	Name                string             `json:"name"`
+	RepositoryURL       string             `json:"repositoryUrl,omitempty"`
+	Setup               []string           `json:"setup,omitempty"`
+	ImageReference      string             `json:"imageReference,omitempty"`
+	HarnessImages       []harnessImageJSON `json:"harnessImages,omitempty"`
+	GitSecretName       string             `json:"gitSecretName,omitempty"`
+	HarnessSecretNames  []string           `json:"harnessSecretNames,omitempty"`
+	GitPushSecretName   string             `json:"gitPushSecretName,omitempty"`
+	GitHubAPISecretName string             `json:"githubAPISecretName,omitempty"`
+	CommitAuthorName    string             `json:"commitAuthorName,omitempty"`
+	CommitAuthorEmail   string             `json:"commitAuthorEmail,omitempty"`
+	DefaultBaseBranch   string             `json:"defaultBaseBranch,omitempty"`
+	CreatedAt           string             `json:"createdAt"`
+	UpdatedAt           string             `json:"updatedAt"`
+	ResourceVersion     int64              `json:"resourceVersion"`
 }
 
 type secretJSON struct {
@@ -1805,6 +1847,7 @@ type capsuleJSON struct {
 	TimelineID      string `json:"timelineId"`
 	OriginMomentID  string `json:"originMomentId,omitempty"`
 	Name            string `json:"name"`
+	Harness         string `json:"harness,omitempty"`
 	State           string `json:"state"`
 	DesiredState    string `json:"desiredState"`
 	Failure         string `json:"failure,omitempty"`
@@ -2056,6 +2099,7 @@ func projectResponse(project domain.Project) projectJSON {
 		RepositoryURL:       project.RepositoryURL,
 		Setup:               project.Setup,
 		ImageReference:      project.ImageReference,
+		HarnessImages:       harnessImagesToJSON(project.HarnessImages),
 		GitSecretName:       project.GitSecretName,
 		HarnessSecretNames:  project.HarnessSecretNames,
 		GitPushSecretName:   project.GitPushSecretName,
@@ -2105,6 +2149,7 @@ func capsuleResponse(capsule domain.Capsule) capsuleJSON {
 		TimelineID:      string(capsule.TimelineID),
 		OriginMomentID:  string(capsule.OriginMomentID),
 		Name:            capsule.Name,
+		Harness:         capsule.LauncherHarness,
 		State:           string(capsule.State),
 		DesiredState:    string(capsule.DesiredState),
 		Failure:         capsule.Failure,
@@ -2233,4 +2278,30 @@ func (s *Server) projectThreadIntentResponse(
 		response.CurrentRun = &run
 	}
 	return response
+}
+
+func harnessImagesFromRequest(items []harnessImageJSON) []domain.HarnessImage {
+	if len(items) == 0 {
+		return nil
+	}
+	result := make([]domain.HarnessImage, 0, len(items))
+	for _, item := range items {
+		result = append(result, domain.HarnessImage{
+			Name: item.Name, ImageReference: item.ImageReference,
+		})
+	}
+	return result
+}
+
+func harnessImagesToJSON(items []domain.HarnessImage) []harnessImageJSON {
+	if len(items) == 0 {
+		return nil
+	}
+	result := make([]harnessImageJSON, 0, len(items))
+	for _, item := range items {
+		result = append(result, harnessImageJSON{
+			Name: item.Name, ImageReference: item.ImageReference,
+		})
+	}
+	return result
 }

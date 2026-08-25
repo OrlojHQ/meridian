@@ -34,12 +34,20 @@ const (
 	SecretHarnessEnv SecretPurpose = "harness_env"
 )
 
+const MaxHarnessImages = 16
+
+type HarnessImage struct {
+	Name           string `json:"name"`
+	ImageReference string `json:"imageReference"`
+}
+
 type Project struct {
 	ID                  ProjectID
 	Name                string
 	RepositoryURL       string
 	Setup               []string
 	ImageReference      string
+	HarnessImages       []HarnessImage
 	GitSecretName       string
 	HarnessSecretNames  []string
 	GitPushSecretName   string
@@ -50,6 +58,107 @@ type Project struct {
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 	ResourceVersion     ResourceVersion
+}
+
+func ValidHarnessName(name string) bool {
+	return name != "" && len(name) <= 128 && !strings.ContainsAny(name, "/\\\x00\r\n")
+}
+
+func ValidImageReference(image string) bool {
+	return image != "" && len(image) <= 1024 && !strings.ContainsAny(image, "\x00\r\n")
+}
+
+func ParseHarnessImageSpec(spec string) (HarnessImage, error) {
+	spec = strings.TrimSpace(spec)
+	name, image, ok := strings.Cut(spec, "=")
+	item := HarnessImage{Name: strings.TrimSpace(name), ImageReference: strings.TrimSpace(image)}
+	if !ok || !ValidHarnessName(item.Name) || !ValidImageReference(item.ImageReference) {
+		return HarnessImage{}, fmt.Errorf("%w: harness image must be name=image", ErrInvalid)
+	}
+	return item, nil
+}
+
+func ParseHarnessImageSpecs(raw string) ([]HarnessImage, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	parts := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == '\n'
+	})
+	items := make([]HarnessImage, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		item, err := ParseHarnessImageSpec(part)
+		if err != nil {
+			return nil, err
+		}
+		if _, exists := seen[item.Name]; exists {
+			return nil, fmt.Errorf("%w: duplicate harness image %q", ErrInvalid, item.Name)
+		}
+		seen[item.Name] = struct{}{}
+		items = append(items, item)
+	}
+	if len(items) > MaxHarnessImages {
+		return nil, fmt.Errorf("%w: too many harness images", ErrInvalid)
+	}
+	return items, nil
+}
+
+func (p Project) ImageForHarness(harness string) (string, error) {
+	harness = strings.TrimSpace(harness)
+	if !ValidHarnessName(harness) {
+		return "", fmt.Errorf("%w: harness pack is invalid", ErrInvalid)
+	}
+	if len(p.HarnessImages) == 0 {
+		if len(p.ImageReference) > 1024 || strings.ContainsAny(p.ImageReference, "\x00\r\n") {
+			return "", fmt.Errorf("%w: image reference is invalid", ErrInvalid)
+		}
+		return p.ImageReference, nil
+	}
+	for _, item := range p.HarnessImages {
+		if item.Name == harness {
+			return item.ImageReference, nil
+		}
+	}
+	return "", fmt.Errorf("%w: harness %q is not allowlisted on this Project", ErrInvalid, harness)
+}
+
+func (p Project) HarnessNames() []string {
+	names := make([]string, 0, len(p.HarnessImages))
+	for _, item := range p.HarnessImages {
+		names = append(names, item.Name)
+	}
+	return names
+}
+
+// InstallationHarnessImages is the daemon-advertised catalog of official
+// harness packs. Spawn still uses only names applied on a Project.
+func InstallationHarnessImages(defaultImage string) []HarnessImage {
+	defaultImage = strings.TrimSpace(defaultImage)
+	if defaultImage == "" {
+		defaultImage = "meridian-capsule:dev"
+	}
+	return []HarnessImage{
+		{Name: "mock", ImageReference: defaultImage},
+		{Name: "opencode", ImageReference: officialPackImage(defaultImage, "meridian-capsule-opencode")},
+	}
+}
+
+func officialPackImage(defaultImage, repository string) string {
+	ref := defaultImage
+	if index := strings.LastIndex(ref, "@"); index >= 0 {
+		ref = ref[:index]
+	}
+	tag := "dev"
+	if index := strings.LastIndex(ref, ":"); index >= 0 && !strings.Contains(ref[index:], "/") {
+		tag = ref[index+1:]
+	}
+	return repository + ":" + tag
 }
 
 const (
@@ -235,6 +344,7 @@ type Capsule struct {
 	ProjectID          ProjectID
 	TimelineID         TimelineID
 	Name               string
+	LauncherHarness    string
 	State              CapsuleState
 	DesiredState       CapsuleIntent
 	ProviderResourceID string
@@ -242,10 +352,18 @@ type Capsule struct {
 	RestoreComplete    bool
 	Maintenance        string
 	Failure            string
+	ImageReference     string
 	LastActivityAt     time.Time
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
 	ResourceVersion    ResourceVersion
+}
+
+func (c Capsule) WorkspaceImage(project Project) string {
+	if strings.TrimSpace(c.ImageReference) != "" {
+		return c.ImageReference
+	}
+	return project.ImageReference
 }
 
 type TimelineReason string

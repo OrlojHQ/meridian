@@ -79,19 +79,20 @@ type PrepareResponse struct {
 }
 
 type ServerConfig struct {
-	Token                string
-	Workspace            string
-	SetupTimeout         time.Duration
-	BodyLimit            int64
-	OutputLimit          int64
-	CommandRunner        func(context.Context, string, []string, string, int64) error
-	RunLimit             int
-	EventLimit           int
-	DiffLimit            int64
-	PreviewTimeout       time.Duration
-	PreviewBodyLimit     int64
-	PreviewPortDiscovery func() ([]uint16, error)
-	ArchiveLimits        ArchiveLimits
+	Token                   string
+	Workspace               string
+	TrustedHarnessDirectory string
+	SetupTimeout            time.Duration
+	BodyLimit               int64
+	OutputLimit             int64
+	CommandRunner           func(context.Context, string, []string, string, int64) error
+	RunLimit                int
+	EventLimit              int
+	DiffLimit               int64
+	PreviewTimeout          time.Duration
+	PreviewBodyLimit        int64
+	PreviewPortDiscovery    func() ([]uint16, error)
+	ArchiveLimits           ArchiveLimits
 }
 
 type Server struct {
@@ -111,6 +112,13 @@ func NewServer(config ServerConfig) (*Server, error) {
 	}
 	if !filepath.IsAbs(config.Workspace) || filepath.Clean(config.Workspace) != config.Workspace {
 		return nil, errors.New("workspace must be an absolute clean path")
+	}
+	if config.TrustedHarnessDirectory == "" {
+		config.TrustedHarnessDirectory = defaultTrustedHarnessDirectory
+	}
+	if !filepath.IsAbs(config.TrustedHarnessDirectory) ||
+		filepath.Clean(config.TrustedHarnessDirectory) != config.TrustedHarnessDirectory {
+		return nil, errors.New("trusted harness directory must be an absolute clean path")
 	}
 	if config.SetupTimeout <= 0 {
 		config.SetupTimeout = 10 * time.Minute

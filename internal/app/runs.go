@@ -264,7 +264,7 @@ func (s *Service) RunEvents(
 	if err != nil {
 		return RunEventPage{}, err
 	}
-	if s.runtime != nil {
+	if s.runtime != nil && !run.State.Terminal() {
 		if err := s.syncRuntimeEvents(ctx, run); err != nil && !errors.Is(err, domain.ErrNotFound) {
 			return RunEventPage{}, err
 		}

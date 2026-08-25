@@ -8,10 +8,16 @@ LDFLAGS := -X github.com/OrlojHQ/meridian/internal/buildinfo.Version=$(VERSION) 
 	-X github.com/OrlojHQ/meridian/internal/buildinfo.Date=$(BUILD_DATE)
 GO_FILES := $(shell git ls-files --cached --others --exclude-standard '*.go')
 
+COMPOSE := docker compose -f deploy/docker/compose.yaml
+MERIDIAN_DATA ?= $(CURDIR)/.local/meridian-data
+MERIDIAN_TOKEN_FILE ?= $(MERIDIAN_DATA)/api-auth/installation.token
+CAPSULE_IMAGE ?= meridian-capsule-integration:dev
+
 .PHONY: bootstrap build test tui-test ui-test lint ui-build generate check-generated api-lint \
-	format-check vet frontend-typecheck capsule-image capsule-integration-image \
-	docker-integration helm-tool helm-test agentsandbox-integration clean \
-	release-check release-snapshot release-smoke meridiand-image release-docker-validate
+	format-check vet frontend-typecheck capsule-image capsule-opencode-image \
+	capsule-integration-image docker-integration helm-tool helm-test \
+	agentsandbox-integration clean release-check release-snapshot release-smoke \
+	meridiand-image release-docker-validate meridiand-up meridiand-down tui
 
 bootstrap:
 	go mod download
@@ -85,6 +91,10 @@ meridiand-image:
 		-t meridiand:dev \
 		-f images/meridiand/Dockerfile .
 
+capsule-opencode-image: capsule-image
+	docker build -t meridian-capsule-opencode:dev \
+		-f images/capsule-opencode/Dockerfile .
+
 capsule-integration-image: capsule-image
 	docker build -t meridian-capsule-integration:dev \
 		-f internal/provider/docker/testdata/Dockerfile .
@@ -92,6 +102,43 @@ capsule-integration-image: capsule-image
 docker-integration: capsule-integration-image
 	MERIDIAN_DOCKER_TEST=1 MERIDIAN_CAPSULE_IMAGE=meridian-capsule-integration:dev \
 		go test ./internal/provider/docker -run Integration -count=1 -v
+
+meridiand-up: build capsule-integration-image
+	./bin/meridiand init-data-dir --path "$(MERIDIAN_DATA)"
+	MERIDIAN_DATA_DIR="$(MERIDIAN_DATA)" \
+	MERIDIAN_CAPSULE_IMAGE="$(CAPSULE_IMAGE)" \
+		$(COMPOSE) up --build -d
+	@ok=0; \
+	for _ in $$(seq 1 60); do \
+		if ./bin/meridiand healthcheck --address=http://127.0.0.1:8080 \
+			&& [[ -f "$(MERIDIAN_TOKEN_FILE)" ]]; then \
+			ok=1; \
+			break; \
+		fi; \
+		sleep 1; \
+	done; \
+	if [[ "$$ok" -ne 1 ]]; then \
+		echo "meridiand did not become ready" >&2; \
+		$(COMPOSE) logs >&2; \
+		exit 1; \
+	fi
+	@chown -R "$$(id -u):$$(id -g)" "$(MERIDIAN_DATA)/api-auth"
+	@chmod 0700 "$(MERIDIAN_DATA)/api-auth"
+	@chmod 0600 "$(MERIDIAN_TOKEN_FILE)"
+	@echo "meridiand is ready at http://127.0.0.1:8080"
+	@echo "TUI: make tui"
+	@echo "CLI token: export MERIDIAN_TOKEN_FILE=$(MERIDIAN_TOKEN_FILE)"
+
+meridiand-down:
+	$(COMPOSE) down
+
+tui: build
+	@if [[ ! -f "$(MERIDIAN_TOKEN_FILE)" ]]; then \
+		echo "No installation token at $(MERIDIAN_TOKEN_FILE)." >&2; \
+		echo "Start the daemon with: make meridiand-up" >&2; \
+		exit 1; \
+	fi
+	MERIDIAN_TOKEN_FILE="$(MERIDIAN_TOKEN_FILE)" ./bin/meridian tui
 
 .tools/helm:
 	mkdir -p .tools

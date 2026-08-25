@@ -267,7 +267,7 @@ func (s *Service) captureArtifactsWithParent(
 	if closeErr != nil {
 		return domain.Moment{}, closeErr
 	}
-	projectHash, err := hashProjectConfiguration(project)
+	projectHash, err := hashPreparedWorkspace(project, capsule.WorkspaceImage(project))
 	if err != nil {
 		return domain.Moment{}, err
 	}
@@ -309,6 +309,10 @@ func (s *Service) captureArtifactsWithParent(
 }
 
 func hashProjectConfiguration(project domain.Project) (string, error) {
+	return hashPreparedWorkspace(project, project.ImageReference)
+}
+
+func hashPreparedWorkspace(project domain.Project, imageReference string) (string, error) {
 	value, err := json.Marshal(struct {
 		RepositoryURL      string   `json:"repositoryUrl"`
 		Setup              []string `json:"setup"`
@@ -317,7 +321,7 @@ func hashProjectConfiguration(project domain.Project) (string, error) {
 		HarnessSecretNames []string `json:"harnessSecretNames,omitempty"`
 	}{
 		RepositoryURL: project.RepositoryURL, Setup: project.Setup,
-		ImageReference:     project.ImageReference,
+		ImageReference:     imageReference,
 		GitSecretName:      project.GitSecretName,
 		HarnessSecretNames: project.HarnessSecretNames,
 	})

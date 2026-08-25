@@ -1,6 +1,7 @@
 package ptyattach
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -206,6 +207,12 @@ func TestRunRestoresTerminalOnExitPaths(t *testing.T) {
 			},
 		},
 		{
+			name: "alternate detach",
+			start: func(h *attachmentHarness, _ context.CancelFunc) {
+				_, _ = h.write.Write([]byte{alternateDetachByte})
+			},
+		},
+		{
 			name: "server failure",
 			start: func(h *attachmentHarness, _ context.CancelFunc) {
 				h.socket.reads <- socketRead{err: errors.New("server failed")}
@@ -243,6 +250,8 @@ func TestRunRestoresTerminalOnExitPaths(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			harness := newHarness(t)
+			harness.options.AttachTitle = "Meridian · attached"
+			harness.options.RestoreTitle = "Meridian · dashboard"
 			ctx, cancel := context.WithCancel(context.Background())
 			done := make(chan error, 1)
 			go func() { done <- Run(ctx, harness.options) }()
@@ -254,6 +263,11 @@ func TestRunRestoresTerminalOnExitPaths(t *testing.T) {
 			}
 			if got := harness.term.restores(); got != 1 {
 				t.Fatalf("restore calls = %d, want 1", got)
+			}
+			output := readTemp(t, harness.output)
+			if !contains(output, string(terminalTitleSequence(harness.options.AttachTitle))) ||
+				!contains(output, string(terminalTitleSequence(harness.options.RestoreTitle))) {
+				t.Fatalf("title lifecycle output = %q", output)
 			}
 		})
 	}
@@ -293,7 +307,10 @@ func TestRunResizeDetachAndInputSerialization(t *testing.T) {
 	waitForSignals(t, harness.signals)
 	harness.signals.emit(syscall.SIGWINCH)
 	_, _ = harness.write.Write([]byte("abc"))
-	_, _ = harness.write.Write([]byte{detachByte})
+	_, _ = harness.write.Write([]byte("\x1b[112;5u"))
+	_, _ = harness.write.Write([]byte("x"))
+	_, _ = harness.write.Write([]byte("\x1b[27;5;112"))
+	_, _ = harness.write.Write([]byte("~\x1b[27;5;113~"))
 	select {
 	case err := <-done:
 		if err != nil {
@@ -321,8 +338,23 @@ func TestRunResizeDetachAndInputSerialization(t *testing.T) {
 			input += string(write.value)
 		}
 	}
-	if resizeCount < 1 || input != "abc" {
+	if resizeCount < 1 || input != "abc"+string(detachPrefixByte)+"x" {
 		t.Fatalf("resize count=%d input=%q", resizeCount, input)
+	}
+}
+
+func TestNormalizeEnhancedControlKeysAcrossReads(t *testing.T) {
+	var pending []byte
+	if output := normalizeEnhancedControlKeys(&pending, []byte("abc\x1b[92;")); string(output) != "abc" {
+		t.Fatalf("first output = %q", output)
+	}
+	if string(pending) != "\x1b[92;" {
+		t.Fatalf("pending = %q", pending)
+	}
+	output := normalizeEnhancedControlKeys(&pending, []byte("5u\x1b[27;5;93~z"))
+	want := []byte{alternateDetachByte, detachByte, 'z'}
+	if !bytes.Equal(output, want) || len(pending) != 0 {
+		t.Fatalf("normalized = %q, pending = %q", output, pending)
 	}
 }
 

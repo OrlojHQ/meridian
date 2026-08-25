@@ -22,10 +22,11 @@ func (r *Reconciler) prepareSetupCacheRestore(
 	capsule domain.Capsule,
 	project domain.Project,
 ) (bool, error) {
-	if capsule.OriginMomentID != "" || !r.setupCacheEnabled(ctx) {
+	if capsule.OriginMomentID != "" || capsule.LauncherHarness != "" ||
+		!r.setupCacheEnabled(ctx) {
 		return false, nil
 	}
-	configHash, err := hashProjectConfiguration(project)
+	configHash, err := hashPreparedWorkspace(project, capsule.WorkspaceImage(project))
 	if err != nil {
 		return false, err
 	}
@@ -69,7 +70,7 @@ func (r *Reconciler) captureSetupMomentCache(
 	ctx context.Context,
 	capsule domain.Capsule,
 ) error {
-	if !r.setupCacheEnabled(ctx) {
+	if capsule.LauncherHarness != "" || !r.setupCacheEnabled(ctx) {
 		return nil
 	}
 	var project domain.Project
@@ -80,7 +81,7 @@ func (r *Reconciler) captureSetupMomentCache(
 	}); err != nil {
 		return err
 	}
-	configHash, err := hashProjectConfiguration(project)
+	configHash, err := hashPreparedWorkspace(project, capsule.WorkspaceImage(project))
 	if err != nil {
 		return err
 	}

@@ -168,6 +168,9 @@ type Capabilities struct {
 	Delivery bool `json:"delivery"`
 	// False when provider resource metrics are not exposed by the public API.
 	ResourceMetrics bool `json:"resourceMetrics"`
+	// Installation-known harness packs the operator may apply on a Project. Not a boolean capability.
+	// Spawn still uses only names stored on that Project.
+	HarnessImages []HarnessImage `json:"harnessImages"`
 }
 
 // GetProviderVersion returns the value of ProviderVersion.
@@ -240,6 +243,11 @@ func (s *Capabilities) GetResourceMetrics() bool {
 	return s.ResourceMetrics
 }
 
+// GetHarnessImages returns the value of HarnessImages.
+func (s *Capabilities) GetHarnessImages() []HarnessImage {
+	return s.HarnessImages
+}
+
 // SetProviderVersion sets the value of ProviderVersion.
 func (s *Capabilities) SetProviderVersion(val string) {
 	s.ProviderVersion = val
@@ -310,6 +318,11 @@ func (s *Capabilities) SetResourceMetrics(val bool) {
 	s.ResourceMetrics = val
 }
 
+// SetHarnessImages sets the value of HarnessImages.
+func (s *Capabilities) SetHarnessImages(val []HarnessImage) {
+	s.HarnessImages = val
+}
+
 func (*Capabilities) getCapabilitiesRes() {}
 
 type CapabilitiesStructuredProtocol string
@@ -348,11 +361,13 @@ func (s *CapabilitiesStructuredProtocol) UnmarshalText(data []byte) error {
 
 // Ref: #/components/schemas/Capsule
 type Capsule struct {
-	ID              string        `json:"id"`
-	ProjectId       string        `json:"projectId"`
-	TimelineId      string        `json:"timelineId"`
-	OriginMomentId  OptString     `json:"originMomentId"`
-	Name            string        `json:"name"`
+	ID             string    `json:"id"`
+	ProjectId      string    `json:"projectId"`
+	TimelineId     string    `json:"timelineId"`
+	OriginMomentId OptString `json:"originMomentId"`
+	Name           string    `json:"name"`
+	// Immutable native launcher harness selected when the Capsule was created.
+	Harness         OptString     `json:"harness"`
 	State           CapsuleState  `json:"state"`
 	DesiredState    CapsuleIntent `json:"desiredState"`
 	Failure         OptString     `json:"failure"`
@@ -386,6 +401,11 @@ func (s *Capsule) GetOriginMomentId() OptString {
 // GetName returns the value of Name.
 func (s *Capsule) GetName() string {
 	return s.Name
+}
+
+// GetHarness returns the value of Harness.
+func (s *Capsule) GetHarness() OptString {
+	return s.Harness
 }
 
 // GetState returns the value of State.
@@ -451,6 +471,11 @@ func (s *Capsule) SetOriginMomentId(val OptString) {
 // SetName sets the value of Name.
 func (s *Capsule) SetName(val string) {
 	s.Name = val
+}
+
+// SetHarness sets the value of Harness.
+func (s *Capsule) SetHarness(val OptString) {
+	s.Harness = val
 }
 
 // SetState sets the value of State.
@@ -822,6 +847,8 @@ func (*CreateCapsulePreviewTicketUnprocessableEntity) createCapsulePreviewTicket
 // Ref: #/components/schemas/CreateCapsuleRequest
 type CreateCapsuleRequest struct {
 	Name string `json:"name"`
+	// Optional Project-allowlisted native harness pack to freeze on the Capsule and launch when Ready.
+	Harness OptString `json:"harness"`
 }
 
 // GetName returns the value of Name.
@@ -829,9 +856,19 @@ func (s *CreateCapsuleRequest) GetName() string {
 	return s.Name
 }
 
+// GetHarness returns the value of Harness.
+func (s *CreateCapsuleRequest) GetHarness() OptString {
+	return s.Harness
+}
+
 // SetName sets the value of Name.
 func (s *CreateCapsuleRequest) SetName(val string) {
 	s.Name = val
+}
+
+// SetHarness sets the value of Harness.
+func (s *CreateCapsuleRequest) SetHarness(val OptString) {
+	s.Harness = val
 }
 
 type CreateCapsuleUnprocessableEntity ErrorEnvelope
@@ -1023,8 +1060,12 @@ type CreateProjectRequest struct {
 	RepositoryUrl OptString `json:"repositoryUrl"`
 	// Setup executable followed by its arguments; never interpreted by a shell.
 	Setup []string `json:"setup"`
-	// Capsule image reference; Docker resolves it to an immutable image identity.
+	// Default Capsule image reference; Docker resolves it to an immutable image identity.
 	ImageReference OptString `json:"imageReference"`
+	// Named harness-pack images allowlisted on this Project. Capsule creation and Project Thread spawn
+	// resolve a selected name to one of these images; clients never supply a free image reference at spawn
+	// time.
+	HarnessImages []HarnessImage `json:"harnessImages"`
 	// Name of a git_https secret authorized only for HTTPS clone.
 	GitSecretName OptString `json:"gitSecretName"`
 	// Explicit allowlist of harness_env secret names.
@@ -1056,6 +1097,11 @@ func (s *CreateProjectRequest) GetSetup() []string {
 // GetImageReference returns the value of ImageReference.
 func (s *CreateProjectRequest) GetImageReference() OptString {
 	return s.ImageReference
+}
+
+// GetHarnessImages returns the value of HarnessImages.
+func (s *CreateProjectRequest) GetHarnessImages() []HarnessImage {
+	return s.HarnessImages
 }
 
 // GetGitSecretName returns the value of GitSecretName.
@@ -1111,6 +1157,11 @@ func (s *CreateProjectRequest) SetSetup(val []string) {
 // SetImageReference sets the value of ImageReference.
 func (s *CreateProjectRequest) SetImageReference(val OptString) {
 	s.ImageReference = val
+}
+
+// SetHarnessImages sets the value of HarnessImages.
+func (s *CreateProjectRequest) SetHarnessImages(val []HarnessImage) {
+	s.HarnessImages = val
 }
 
 // SetGitSecretName sets the value of GitSecretName.
@@ -2174,6 +2225,34 @@ func (s *GitResult) SetTruncated(val bool) {
 
 func (*GitResult) getCapsuleGitDiffRes()   {}
 func (*GitResult) getCapsuleGitStatusRes() {}
+
+// Ref: #/components/schemas/HarnessImage
+type HarnessImage struct {
+	// Harness pack/profile name selected by Capsule creation or Thread spawn.
+	Name string `json:"name"`
+	// Capsule image that contains that harness; Docker resolves it to an immutable identity.
+	ImageReference string `json:"imageReference"`
+}
+
+// GetName returns the value of Name.
+func (s *HarnessImage) GetName() string {
+	return s.Name
+}
+
+// GetImageReference returns the value of ImageReference.
+func (s *HarnessImage) GetImageReference() string {
+	return s.ImageReference
+}
+
+// SetName sets the value of Name.
+func (s *HarnessImage) SetName(val string) {
+	s.Name = val
+}
+
+// SetImageReference sets the value of ImageReference.
+func (s *HarnessImage) SetImageReference(val string) {
+	s.ImageReference = val
+}
 
 // Ref: #/components/schemas/HarnessProfile
 type HarnessProfile struct {
@@ -3482,6 +3561,45 @@ func (o OptURI) Or(d url.URL) url.URL {
 	return d
 }
 
+type PatchProjectBadRequest ErrorEnvelope
+
+func (*PatchProjectBadRequest) patchProjectRes() {}
+
+type PatchProjectConflict ErrorEnvelope
+
+func (*PatchProjectConflict) patchProjectRes() {}
+
+type PatchProjectNotFound ErrorEnvelope
+
+func (*PatchProjectNotFound) patchProjectRes() {}
+
+// Ref: #/components/schemas/PatchProjectRequest
+type PatchProjectRequest struct {
+	ExpectedResourceVersion int64 `json:"expectedResourceVersion"`
+	// Replacement allowlist. Empty clears it and spawn uses the default image.
+	HarnessImages []HarnessImage `json:"harnessImages"`
+}
+
+// GetExpectedResourceVersion returns the value of ExpectedResourceVersion.
+func (s *PatchProjectRequest) GetExpectedResourceVersion() int64 {
+	return s.ExpectedResourceVersion
+}
+
+// GetHarnessImages returns the value of HarnessImages.
+func (s *PatchProjectRequest) GetHarnessImages() []HarnessImage {
+	return s.HarnessImages
+}
+
+// SetExpectedResourceVersion sets the value of ExpectedResourceVersion.
+func (s *PatchProjectRequest) SetExpectedResourceVersion(val int64) {
+	s.ExpectedResourceVersion = val
+}
+
+// SetHarnessImages sets the value of HarnessImages.
+func (s *PatchProjectRequest) SetHarnessImages(val []HarnessImage) {
+	s.HarnessImages = val
+}
+
 type PauseCapsuleBadRequest ErrorEnvelope
 
 func (*PauseCapsuleBadRequest) pauseCapsuleRes() {}
@@ -3664,21 +3782,22 @@ func (s *ProbeResponseStatus) UnmarshalText(data []byte) error {
 
 // Ref: #/components/schemas/Project
 type Project struct {
-	ID                  string    `json:"id"`
-	Name                string    `json:"name"`
-	RepositoryUrl       OptString `json:"repositoryUrl"`
-	Setup               []string  `json:"setup"`
-	ImageReference      OptString `json:"imageReference"`
-	GitSecretName       OptString `json:"gitSecretName"`
-	HarnessSecretNames  []string  `json:"harnessSecretNames"`
-	GitPushSecretName   OptString `json:"gitPushSecretName"`
-	GithubAPISecretName OptString `json:"githubAPISecretName"`
-	CommitAuthorName    OptString `json:"commitAuthorName"`
-	CommitAuthorEmail   OptString `json:"commitAuthorEmail"`
-	DefaultBaseBranch   OptString `json:"defaultBaseBranch"`
-	CreatedAt           time.Time `json:"createdAt"`
-	UpdatedAt           time.Time `json:"updatedAt"`
-	ResourceVersion     int64     `json:"resourceVersion"`
+	ID                  string         `json:"id"`
+	Name                string         `json:"name"`
+	RepositoryUrl       OptString      `json:"repositoryUrl"`
+	Setup               []string       `json:"setup"`
+	ImageReference      OptString      `json:"imageReference"`
+	HarnessImages       []HarnessImage `json:"harnessImages"`
+	GitSecretName       OptString      `json:"gitSecretName"`
+	HarnessSecretNames  []string       `json:"harnessSecretNames"`
+	GitPushSecretName   OptString      `json:"gitPushSecretName"`
+	GithubAPISecretName OptString      `json:"githubAPISecretName"`
+	CommitAuthorName    OptString      `json:"commitAuthorName"`
+	CommitAuthorEmail   OptString      `json:"commitAuthorEmail"`
+	DefaultBaseBranch   OptString      `json:"defaultBaseBranch"`
+	CreatedAt           time.Time      `json:"createdAt"`
+	UpdatedAt           time.Time      `json:"updatedAt"`
+	ResourceVersion     int64          `json:"resourceVersion"`
 }
 
 // GetID returns the value of ID.
@@ -3704,6 +3823,11 @@ func (s *Project) GetSetup() []string {
 // GetImageReference returns the value of ImageReference.
 func (s *Project) GetImageReference() OptString {
 	return s.ImageReference
+}
+
+// GetHarnessImages returns the value of HarnessImages.
+func (s *Project) GetHarnessImages() []HarnessImage {
+	return s.HarnessImages
 }
 
 // GetGitSecretName returns the value of GitSecretName.
@@ -3779,6 +3903,11 @@ func (s *Project) SetSetup(val []string) {
 // SetImageReference sets the value of ImageReference.
 func (s *Project) SetImageReference(val OptString) {
 	s.ImageReference = val
+}
+
+// SetHarnessImages sets the value of HarnessImages.
+func (s *Project) SetHarnessImages(val []HarnessImage) {
+	s.HarnessImages = val
 }
 
 // SetGitSecretName sets the value of GitSecretName.
@@ -3859,6 +3988,7 @@ func (s *ProjectHeaders) SetResponse(val Project) {
 
 func (*ProjectHeaders) createProjectRes() {}
 func (*ProjectHeaders) getProjectRes()    {}
+func (*ProjectHeaders) patchProjectRes()  {}
 
 // Ref: #/components/schemas/ProjectPage
 type ProjectPage struct {
@@ -6611,6 +6741,7 @@ func (*TooManyRequestsHeaders) getReadinessRes()               {}
 func (*TooManyRequestsHeaders) listCapsulesRes()               {}
 func (*TooManyRequestsHeaders) listProjectsRes()               {}
 func (*TooManyRequestsHeaders) listSecretsRes()                {}
+func (*TooManyRequestsHeaders) patchProjectRes()               {}
 func (*TooManyRequestsHeaders) pauseCapsuleRes()               {}
 func (*TooManyRequestsHeaders) putSecretRes()                  {}
 func (*TooManyRequestsHeaders) resumeCapsuleRes()              {}

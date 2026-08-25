@@ -177,6 +177,10 @@ type ListThreadsRes interface {
 	listThreadsRes()
 }
 
+type PatchProjectRes interface {
+	patchProjectRes()
+}
+
 type PauseCapsuleRes interface {
 	pauseCapsuleRes()
 }

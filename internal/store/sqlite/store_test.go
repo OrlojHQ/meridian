@@ -29,7 +29,7 @@ func TestMigrationsPersistenceEventsAndConflicts(t *testing.T) {
 		ID: "project-1", Name: "project", CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
 	}
 	capsule := domain.Capsule{
-		ID: "capsule-1", ProjectID: project.ID, Name: "capsule",
+		ID: "capsule-1", ProjectID: project.ID, Name: "capsule", LauncherHarness: "opencode",
 		State: domain.CapsuleCreating, DesiredState: domain.IntentReady,
 		CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
 	}
@@ -94,7 +94,7 @@ func TestMigrationsPersistenceEventsAndConflicts(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if gotCapsule.State != domain.CapsuleCreating {
+		if gotCapsule.State != domain.CapsuleCreating || gotCapsule.LauncherHarness != "opencode" {
 			t.Fatalf("rolled back capsule = %#v", gotCapsule)
 		}
 		events, err := reader.ListEvents(ctx, "capsule", string(capsule.ID))
@@ -522,5 +522,57 @@ func TestOpenRejectsUnsafeDatabasePathAndEscapesFileURL(t *testing.T) {
 	}
 	if _, err := Open(ctx, unsafeDirectory); err == nil {
 		t.Fatal("expected database symlink rejection")
+	}
+}
+
+func TestProjectHarnessImagesAndCapsuleImage(t *testing.T) {
+	ctx := context.Background()
+	store, err := Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	now := time.Date(2026, 8, 25, 9, 0, 0, 0, time.UTC)
+	project := domain.Project{
+		ID: "project-images", Name: "project", ImageReference: "meridian-capsule:dev",
+		HarnessImages: []domain.HarnessImage{
+			{Name: "opencode", ImageReference: "meridian-capsule-opencode:dev"},
+		},
+		CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
+	}
+	capsule := domain.Capsule{
+		ID: "capsule-images", ProjectID: project.ID, Name: "capsule",
+		State: domain.CapsuleCreating, DesiredState: domain.IntentReady,
+		ImageReference: "meridian-capsule-opencode:dev",
+		CreatedAt:      now, UpdatedAt: now, ResourceVersion: 1,
+	}
+	if err := store.Transact(ctx, func(tx ports.Transaction) error {
+		if err := tx.InsertProject(ctx, project); err != nil {
+			return err
+		}
+		return tx.InsertCapsule(ctx, capsule)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.View(ctx, func(reader ports.Reader) error {
+		gotProject, err := reader.GetProject(ctx, project.ID)
+		if err != nil {
+			return err
+		}
+		if len(gotProject.HarnessImages) != 1 ||
+			gotProject.HarnessImages[0].Name != "opencode" ||
+			gotProject.HarnessImages[0].ImageReference != "meridian-capsule-opencode:dev" {
+			t.Fatalf("project images = %#v", gotProject.HarnessImages)
+		}
+		gotCapsule, err := reader.GetCapsule(ctx, capsule.ID)
+		if err != nil {
+			return err
+		}
+		if gotCapsule.ImageReference != capsule.ImageReference {
+			t.Fatalf("capsule image = %q", gotCapsule.ImageReference)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -1,5 +1,4 @@
-// Package harness parses the untrusted, versioned harness configuration stored
-// inside a Capsule workspace.
+// Package harness parses strict, versioned harness configuration inside a Capsule.
 package harness
 
 import (
@@ -73,8 +72,8 @@ type Adapter struct {
 	Arguments  []string `yaml:"arguments,omitempty"`
 }
 
-// Parse decodes strict YAML. It must be called by capsuled against ConfigPath;
-// the host control plane intentionally never parses project configuration.
+// Parse decodes strict YAML. It is called only by capsuled for trusted image
+// manifests and repository configuration; the host control plane never parses either.
 func Parse(reader io.Reader) (Config, error) {
 	limited := io.LimitReader(reader, maxConfigBytes+1)
 	value, err := io.ReadAll(limited)

@@ -250,6 +250,8 @@ func newCapsuleGitCommand(config *cliConfig, diff bool) *cobra.Command {
 
 func newRunAttachCommand(config *cliConfig) *cobra.Command {
 	var cursor uint64
+	var attachTitle string
+	var restoreTitle string
 	command := &cobra.Command{
 		Use: "attach RUN_ID", Short: "Attach to a Run PTY", Args: cobra.ExactArgs(1),
 		RunE: func(command *cobra.Command, args []string) error {
@@ -265,14 +267,20 @@ func newRunAttachCommand(config *cliConfig) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			title := attachTitle
+			if title == "" {
+				title = "Meridian · " + args[0]
+			}
 			return ptyattach.Run(command.Context(), ptyattach.Options{
 				Server: config.server, RunID: args[0], After: cursor,
 				Stdin: input, Stdout: output, Stderr: command.ErrOrStderr(),
-				Security: security,
+				Security: security, AttachTitle: title, RestoreTitle: restoreTitle,
 			})
 		},
 	}
 	command.Flags().Uint64Var(&cursor, "after", 0, "replay output after cursor")
+	command.Flags().StringVar(&attachTitle, "title", "", "terminal title while attached")
+	command.Flags().StringVar(&restoreTitle, "restore-title", "Meridian", "terminal title after attachment")
 	return command
 }
 

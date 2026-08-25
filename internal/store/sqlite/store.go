@@ -32,7 +32,7 @@ type Store struct {
 }
 
 // CurrentSchemaVersion is the newest migration this binary understands.
-const CurrentSchemaVersion = 9
+const CurrentSchemaVersion = 11
 
 func Open(ctx context.Context, dataDir string) (*Store, error) {
 	if strings.TrimSpace(dataDir) == "" {
@@ -226,15 +226,24 @@ func (r *repository) InsertProject(ctx context.Context, project domain.Project) 
 	if err != nil {
 		return fmt.Errorf("encode harness secret names: %w", err)
 	}
+	images := project.HarnessImages
+	if images == nil {
+		images = []domain.HarnessImage{}
+	}
+	harnessImages, err := json.Marshal(images)
+	if err != nil {
+		return fmt.Errorf("encode harness images: %w", err)
+	}
 	_, err = r.q.ExecContext(ctx, `
 		INSERT INTO projects(
-			id, name, repository_url, setup_argv, image_reference,
+			id, name, repository_url, setup_argv, image_reference, harness_images,
 			git_secret_name, harness_secret_names,
 			git_push_secret_name, github_api_secret_name, commit_author_name,
 			commit_author_email, default_base_branch,
 			created_at, updated_at, resource_version
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		project.ID, project.Name, project.RepositoryURL, string(setup), project.ImageReference,
+		string(harnessImages),
 		project.GitSecretName, string(harnessSecrets), project.GitPushSecretName,
 		project.GitHubAPISecretName, project.CommitAuthorName, project.CommitAuthorEmail,
 		project.DefaultBaseBranch,
@@ -243,9 +252,50 @@ func (r *repository) InsertProject(ctx context.Context, project domain.Project) 
 	return mapError(err)
 }
 
+func (r *repository) UpdateProject(
+	ctx context.Context,
+	project domain.Project,
+	expected domain.ResourceVersion,
+) error {
+	images := project.HarnessImages
+	if images == nil {
+		images = []domain.HarnessImage{}
+	}
+	harnessImages, err := json.Marshal(images)
+	if err != nil {
+		return fmt.Errorf("encode harness images: %w", err)
+	}
+	result, err := r.q.ExecContext(ctx, `
+		UPDATE projects SET harness_images = ?, updated_at = ?, resource_version = ?
+		WHERE id = ? AND resource_version = ?`,
+		string(harnessImages), formatTime(project.UpdatedAt), project.ResourceVersion,
+		project.ID, expected,
+	)
+	if err != nil {
+		return mapError(err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		var exists int
+		if err := r.q.QueryRowContext(
+			ctx, "SELECT COUNT(*) FROM projects WHERE id = ?", project.ID,
+		).Scan(&exists); err != nil {
+			return err
+		}
+		if exists == 0 {
+			return domain.ErrNotFound
+		}
+		return domain.ErrConflict
+	}
+	return nil
+}
+
 func (r *repository) GetProject(ctx context.Context, id domain.ProjectID) (domain.Project, error) {
 	return scanProject(r.q.QueryRowContext(ctx, `
-		SELECT id, name, repository_url, setup_argv, image_reference,
+		SELECT id, name, repository_url, setup_argv, image_reference, harness_images,
 			git_secret_name, harness_secret_names,
 			git_push_secret_name, github_api_secret_name, commit_author_name,
 			commit_author_email, default_base_branch,
@@ -259,7 +309,7 @@ func (r *repository) ListProjects(
 	page ports.Page,
 ) ([]domain.Project, bool, error) {
 	rows, err := r.q.QueryContext(ctx, `
-		SELECT id, name, repository_url, setup_argv, image_reference,
+		SELECT id, name, repository_url, setup_argv, image_reference, harness_images,
 			git_secret_name, harness_secret_names,
 			git_push_secret_name, github_api_secret_name, commit_author_name,
 			commit_author_email, default_base_branch,
@@ -291,9 +341,10 @@ func (r *repository) ListProjects(
 
 func scanProject(row scanner) (domain.Project, error) {
 	var project domain.Project
-	var setup, harnessSecrets, created, updated string
+	var setup, harnessImages, harnessSecrets, created, updated string
 	err := row.Scan(
 		&project.ID, &project.Name, &project.RepositoryURL, &setup, &project.ImageReference,
+		&harnessImages,
 		&project.GitSecretName, &harnessSecrets,
 		&project.GitPushSecretName, &project.GitHubAPISecretName,
 		&project.CommitAuthorName, &project.CommitAuthorEmail, &project.DefaultBaseBranch,
@@ -304,6 +355,9 @@ func scanProject(row scanner) (domain.Project, error) {
 	}
 	if err := json.Unmarshal([]byte(setup), &project.Setup); err != nil {
 		return domain.Project{}, fmt.Errorf("decode setup arguments: %w", err)
+	}
+	if err := json.Unmarshal([]byte(harnessImages), &project.HarnessImages); err != nil {
+		return domain.Project{}, fmt.Errorf("decode harness images: %w", err)
 	}
 	if err := json.Unmarshal([]byte(harnessSecrets), &project.HarnessSecretNames); err != nil {
 		return domain.Project{}, fmt.Errorf("decode harness secret names: %w", err)
@@ -436,14 +490,15 @@ func (r *repository) InsertCapsule(ctx context.Context, capsule domain.Capsule) 
 	}
 	_, err := r.q.ExecContext(ctx, `
 		INSERT INTO capsules(
-			id, project_id, timeline_id, name, state, desired_state, provider_resource_id,
-			origin_moment_id, restore_complete, maintenance, failure, last_activity_at,
-			created_at, updated_at, resource_version
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		capsule.ID, capsule.ProjectID, capsule.TimelineID, capsule.Name, capsule.State, capsule.DesiredState,
+			id, project_id, timeline_id, name, launcher_harness, state, desired_state, provider_resource_id,
+			origin_moment_id, restore_complete, maintenance, failure, image_reference,
+			last_activity_at, created_at, updated_at, resource_version
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		capsule.ID, capsule.ProjectID, capsule.TimelineID, capsule.Name, capsule.LauncherHarness,
+		capsule.State, capsule.DesiredState,
 		capsule.ProviderResourceID, nullableString(string(capsule.OriginMomentID)), capsule.RestoreComplete,
-		capsule.Maintenance, capsule.Failure, formatTime(capsule.LastActivityAt), formatTime(capsule.CreatedAt),
-		formatTime(capsule.UpdatedAt), capsule.ResourceVersion,
+		capsule.Maintenance, capsule.Failure, capsule.ImageReference, formatTime(capsule.LastActivityAt),
+		formatTime(capsule.CreatedAt), formatTime(capsule.UpdatedAt), capsule.ResourceVersion,
 	)
 	if err != nil {
 		return mapError(err)
@@ -508,9 +563,9 @@ func (r *repository) TouchCapsuleActivity(
 
 func (r *repository) GetCapsule(ctx context.Context, id domain.CapsuleID) (domain.Capsule, error) {
 	return scanCapsule(r.q.QueryRowContext(ctx, `
-		SELECT id, project_id, timeline_id, name, state, desired_state, provider_resource_id,
-			origin_moment_id, restore_complete, maintenance, failure, last_activity_at,
-			created_at, updated_at, resource_version
+		SELECT id, project_id, timeline_id, name, launcher_harness, state, desired_state, provider_resource_id,
+			origin_moment_id, restore_complete, maintenance, failure, image_reference,
+			last_activity_at, created_at, updated_at, resource_version
 		FROM capsules WHERE id = ?`, id,
 	))
 }
@@ -521,9 +576,9 @@ func (r *repository) ListCapsules(
 	page ports.Page,
 ) ([]domain.Capsule, bool, error) {
 	rows, err := r.q.QueryContext(ctx, `
-		SELECT id, project_id, timeline_id, name, state, desired_state, provider_resource_id,
-			origin_moment_id, restore_complete, maintenance, failure, last_activity_at,
-			created_at, updated_at, resource_version
+		SELECT id, project_id, timeline_id, name, launcher_harness, state, desired_state, provider_resource_id,
+			origin_moment_id, restore_complete, maintenance, failure, image_reference,
+			last_activity_at, created_at, updated_at, resource_version
 		FROM capsules WHERE project_id = ?
 		ORDER BY created_at, id LIMIT ? OFFSET ?`,
 		projectID, page.Limit+1, page.Offset,
@@ -559,9 +614,9 @@ func (r *repository) ListIdleCapsules(
 		return nil, fmt.Errorf("%w: invalid idle Capsule scan", domain.ErrInvalid)
 	}
 	rows, err := r.q.QueryContext(ctx, `
-		SELECT id, project_id, timeline_id, name, state, desired_state, provider_resource_id,
-			origin_moment_id, restore_complete, maintenance, failure, last_activity_at,
-			created_at, updated_at, resource_version
+		SELECT id, project_id, timeline_id, name, launcher_harness, state, desired_state, provider_resource_id,
+			origin_moment_id, restore_complete, maintenance, failure, image_reference,
+			last_activity_at, created_at, updated_at, resource_version
 		FROM capsules
 		WHERE state = ? AND desired_state = ? AND maintenance = ''
 			AND last_activity_at <= ?
@@ -584,9 +639,9 @@ func (r *repository) ListIdleCapsules(
 
 func (r *repository) ListRecoverableCapsules(ctx context.Context) ([]domain.Capsule, error) {
 	rows, err := r.q.QueryContext(ctx, `
-		SELECT id, project_id, timeline_id, name, state, desired_state, provider_resource_id,
-			origin_moment_id, restore_complete, maintenance, failure, last_activity_at,
-			created_at, updated_at, resource_version
+		SELECT id, project_id, timeline_id, name, launcher_harness, state, desired_state, provider_resource_id,
+			origin_moment_id, restore_complete, maintenance, failure, image_reference,
+			last_activity_at, created_at, updated_at, resource_version
 		FROM capsules WHERE state NOT IN (?, ?)
 		ORDER BY created_at, id`, domain.CapsuleSealed, domain.CapsuleDeleted,
 	)
@@ -614,9 +669,10 @@ func scanCapsule(row scanner) (domain.Capsule, error) {
 	var activity, created, updated string
 	var origin sql.NullString
 	err := row.Scan(
-		&capsule.ID, &capsule.ProjectID, &capsule.TimelineID, &capsule.Name, &capsule.State,
+		&capsule.ID, &capsule.ProjectID, &capsule.TimelineID, &capsule.Name, &capsule.LauncherHarness,
+		&capsule.State,
 		&capsule.DesiredState, &capsule.ProviderResourceID, &origin, &capsule.RestoreComplete,
-		&capsule.Maintenance, &capsule.Failure,
+		&capsule.Maintenance, &capsule.Failure, &capsule.ImageReference,
 		&activity, &created, &updated, &capsule.ResourceVersion,
 	)
 	if err != nil {

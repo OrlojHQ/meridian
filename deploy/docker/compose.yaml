@@ -5,18 +5,23 @@ services:
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile.meridiand
+    # Root is required to use the mounted Docker socket. `make meridiand-up`
+    # chowns api-auth so the host TUI can read the installation token.
+    user: "0:0"
     network_mode: host
     command:
       - --provider=docker
       - --listen=127.0.0.1:8080
       - --data-dir=/var/lib/meridian
-      - --docker-image=meridian-capsule:dev
+      - --docker-image=${MERIDIAN_CAPSULE_IMAGE:-meridian-capsule:dev}
       - --docker-state-dir=/var/lib/meridian/docker-provider
     volumes:
       # Trusted control-plane access only. Capsule containers never receive this socket.
       - /var/run/docker.sock:/var/run/docker.sock
-      - meridian-data:/var/lib/meridian
+      - ${MERIDIAN_DATA_DIR:-../../.local/meridian-data}:/var/lib/meridian
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/meridiand", "healthcheck", "--address", "http://127.0.0.1:8080"]
+      interval: 5s
+      timeout: 2s
+      retries: 12
     restart: unless-stopped
-
-volumes:
-  meridian-data:

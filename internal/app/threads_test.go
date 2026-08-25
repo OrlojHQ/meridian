@@ -94,7 +94,7 @@ func (r *structuredRuntime) CancelStructured(
 	return run, nil
 }
 
-func (*structuredRuntime) StructuredProfiles(
+func (*structuredRuntime) HarnessProfiles(
 	context.Context, string,
 ) ([]ports.RuntimeHarnessProfile, error) {
 	return []ports.RuntimeHarnessProfile{{

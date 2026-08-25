@@ -108,7 +108,7 @@ func (p *Provider) CancelStructured(
 	return ports.RuntimeRun{}, domain.ErrUnsupported
 }
 
-func (p *Provider) StructuredProfiles(
+func (p *Provider) HarnessProfiles(
 	context.Context,
 	string,
 ) ([]ports.RuntimeHarnessProfile, error) {

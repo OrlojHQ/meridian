@@ -1090,7 +1090,7 @@ func (s *Service) RecoverThreads(ctx context.Context) error {
 func (s *Service) ListHarnessProfiles(
 	ctx context.Context, capsuleID domain.CapsuleID,
 ) ([]ports.RuntimeHarnessProfile, error) {
-	if s.structured == nil {
+	if s.profiles == nil {
 		return nil, domain.ErrUnsupported
 	}
 	capsule, err := s.GetCapsule(ctx, capsuleID)
@@ -1102,7 +1102,7 @@ func (s *Service) ListHarnessProfiles(
 		capsule.Maintenance != "" {
 		return nil, fmt.Errorf("%w: Capsule must be Ready", domain.ErrIllegalTransition)
 	}
-	return s.structured.StructuredProfiles(ctx, capsule.ProviderResourceID)
+	return s.profiles.HarnessProfiles(ctx, capsule.ProviderResourceID)
 }
 
 func (s *Service) GetRunStored(ctx context.Context, id domain.RunID) (domain.Run, error) {

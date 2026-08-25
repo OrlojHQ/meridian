@@ -231,6 +231,38 @@ paths:
           $ref: "#/components/responses/TooManyRequests"
         default:
           $ref: "#/components/responses/DefaultError"
+    patch:
+      operationId: patchProject
+      summary: Replace the Project harness-image allowlist
+      tags: [projects]
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchProjectRequest"
+      responses:
+        "200":
+          description: Project updated
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        default:
+          $ref: "#/components/responses/DefaultError"
   /projects/{projectId}/threads:
     post:
       operationId: createProjectThread
@@ -1551,6 +1583,14 @@ components:
         resourceMetrics:
           type: boolean
           description: False when provider resource metrics are not exposed by the public API.
+        harnessImages:
+          type: array
+          description: >
+            Installation-known harness packs the operator may apply on a
+            Project. Not a boolean capability. Spawn still uses only names
+            stored on that Project.
+          items:
+            $ref: "#/components/schemas/HarnessImage"
     CreateProjectRequest:
       type: object
       required: [name]
@@ -1574,7 +1614,17 @@ components:
         imageReference:
           type: string
           maxLength: 1024
-          description: Capsule image reference; Docker resolves it to an immutable image identity.
+          description: Default Capsule image reference; Docker resolves it to an immutable image identity.
+        harnessImages:
+          type: array
+          maxItems: 16
+          description: >
+            Named harness-pack images allowlisted on this Project. Capsule
+            creation and Project Thread spawn resolve a selected name to one
+            of these images; clients never supply a free image reference at
+            spawn time.
+          items:
+            $ref: "#/components/schemas/HarnessImage"
         gitSecretName:
           type: string
           pattern: "^[A-Za-z_][A-Za-z0-9_.-]{0,127}$"
@@ -1604,6 +1654,34 @@ components:
         defaultBaseBranch:
           type: string
           maxLength: 255
+    PatchProjectRequest:
+      type: object
+      required: [expectedResourceVersion, harnessImages]
+      properties:
+        expectedResourceVersion:
+          type: integer
+          format: int64
+          minimum: 1
+        harnessImages:
+          type: array
+          maxItems: 16
+          description: Replacement allowlist. Empty clears it and spawn uses the default image.
+          items:
+            $ref: "#/components/schemas/HarnessImage"
+    HarnessImage:
+      type: object
+      required: [name, imageReference]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Harness pack/profile name selected by Capsule creation or Thread spawn.
+        imageReference:
+          type: string
+          minLength: 1
+          maxLength: 1024
+          description: Capsule image that contains that harness; Docker resolves it to an immutable identity.
     PutSecretRequest:
       type: object
       required: [purpose]
@@ -1644,6 +1722,11 @@ components:
           type: string
           minLength: 1
           maxLength: 128
+        harness:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Optional Project-allowlisted native harness pack to freeze on the Capsule and launch when Ready.
     LifecycleMutationRequest:
       type: object
       required: [expectedResourceVersion]
@@ -1699,6 +1782,10 @@ components:
             type: string
         imageReference:
           type: string
+        harnessImages:
+          type: array
+          items:
+            $ref: "#/components/schemas/HarnessImage"
         gitSecretName:
           type: string
         harnessSecretNames:
@@ -1758,6 +1845,9 @@ components:
           type: string
         name:
           type: string
+        harness:
+          type: string
+          description: Immutable native launcher harness selected when the Capsule was created.
         state:
           $ref: "#/components/schemas/CapsuleState"
         desiredState:

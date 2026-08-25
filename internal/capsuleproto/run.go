@@ -197,14 +197,12 @@ func (s *Server) startRun(writer http.ResponseWriter, request *http.Request) {
 	}
 	s.mu.Unlock()
 
-	configFile, err := os.Open(filepath.Join(s.config.Workspace, ".meridian", "project.yaml"))
-	if err != nil {
+	config, err := s.loadHarnessConfig()
+	if errors.Is(err, errHarnessConfigurationUnavailable) {
 		writeProtocolError(writer, http.StatusUnprocessableEntity, "harness_configuration_unavailable")
 		return
 	}
-	config, parseErr := harness.Parse(configFile)
-	_ = configFile.Close()
-	if parseErr != nil {
+	if err != nil {
 		writeProtocolError(writer, http.StatusUnprocessableEntity, "harness_configuration_invalid")
 		return
 	}

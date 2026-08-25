@@ -10,6 +10,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/pkg/client"
 )
 
@@ -20,9 +21,10 @@ type API interface {
 }
 
 type Snapshot struct {
-	Projects []client.Project
-	Capsules []CapsuleDetail
-	LoadedAt time.Time
+	Projects      []client.Project
+	Capsules      []CapsuleDetail
+	HarnessImages []client.HarnessImage
+	LoadedAt      time.Time
 }
 
 type CapsuleDetail struct {
@@ -66,6 +68,15 @@ func (d CapsuleDetail) ActiveRun() *client.Run {
 	return nil
 }
 
+func (d CapsuleDetail) RunningRun() *client.Run {
+	for index := range d.Runs {
+		if d.Runs[index].State == client.RunStateRunning {
+			return &d.Runs[index]
+		}
+	}
+	return nil
+}
+
 func (d CapsuleDetail) LatestMoment() *client.Moment {
 	if len(d.Moments) == 0 {
 		return nil
@@ -76,25 +87,28 @@ func (d CapsuleDetail) LatestMoment() *client.Moment {
 type Action string
 
 const (
-	ActionCreate Action = "create"
-	ActionPause  Action = "pause"
-	ActionResume Action = "resume"
-	ActionDiff   Action = "diff"
-	ActionMoment Action = "moment"
-	ActionShard  Action = "shard"
-	ActionRewind Action = "rewind"
-	ActionSeal   Action = "seal"
-	ActionDelete Action = "delete"
+	ActionCreate   Action = "create"
+	ActionPause    Action = "pause"
+	ActionResume   Action = "resume"
+	ActionDiff     Action = "diff"
+	ActionMoment   Action = "moment"
+	ActionShard    Action = "shard"
+	ActionRewind   Action = "rewind"
+	ActionSeal     Action = "seal"
+	ActionDelete   Action = "delete"
+	ActionRunStart Action = "run-start"
 
-	ActionThreadCreate       Action = "thread-create"
-	ActionThreadStart        Action = "thread-start"
-	ActionThreadResume       Action = "thread-resume"
-	ActionThreadSend         Action = "thread-send"
-	ActionThreadRespond      Action = "thread-respond"
-	ActionThreadCancel       Action = "thread-cancel"
-	ActionThreadArchive      Action = "thread-archive"
-	ActionThreadDelete       Action = "thread-delete"
-	ActionProjectThreadSpawn Action = "project-thread-spawn"
+	ActionThreadCreate          Action = "thread-create"
+	ActionThreadStart           Action = "thread-start"
+	ActionThreadResume          Action = "thread-resume"
+	ActionThreadSend            Action = "thread-send"
+	ActionThreadRespond         Action = "thread-respond"
+	ActionThreadCancel          Action = "thread-cancel"
+	ActionThreadArchive         Action = "thread-archive"
+	ActionThreadDelete          Action = "thread-delete"
+	ActionProjectThreadSpawn    Action = "project-thread-spawn"
+	ActionProjectCreate         Action = "project-create"
+	ActionProjectApplyHarnesses Action = "project-apply-harnesses"
 )
 
 type ActionRequest struct {
@@ -111,12 +125,18 @@ type ActionRequest struct {
 	Choice          string
 	Input           string
 	Start           bool
+	RepositoryURL   string
+	Image           string
+	HarnessImages   []string
 }
 
 type ActionResult struct {
-	Message  string
-	Content  string
-	ThreadID string
+	Message   string
+	Content   string
+	ThreadID  string
+	RunID     string
+	CapsuleID string
+	ProjectID string
 }
 
 type generatedAPI struct {
@@ -137,6 +157,11 @@ func (a *generatedAPI) Snapshot(ctx context.Context) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 	result := Snapshot{Projects: projects, LoadedAt: time.Now()}
+	if capabilities, err := a.client.GetCapabilities(ctx); err == nil {
+		if body, ok := capabilities.(*client.Capabilities); ok {
+			result.HarnessImages = body.HarnessImages
+		}
+	}
 	for _, project := range projects {
 		capsules, err := a.capsules(ctx, project)
 		if err != nil {
@@ -458,19 +483,102 @@ func (a *generatedAPI) Execute(ctx context.Context, request ActionRequest) (Acti
 		return ActionResult{}, err
 	}
 	switch request.Action {
+	case ActionProjectCreate:
+		input := &client.CreateProjectRequest{Name: request.Name}
+		if request.RepositoryURL != "" {
+			input.RepositoryUrl = client.NewOptString(request.RepositoryURL)
+		}
+		if request.Image != "" {
+			input.ImageReference = client.NewOptString(request.Image)
+		}
+		if len(request.HarnessImages) > 0 {
+			input.HarnessImages = make([]client.HarnessImage, 0, len(request.HarnessImages))
+			for _, spec := range request.HarnessImages {
+				item, err := domain.ParseHarnessImageSpec(spec)
+				if err != nil {
+					return ActionResult{}, err
+				}
+				input.HarnessImages = append(input.HarnessImages, client.HarnessImage{
+					Name: item.Name, ImageReference: item.ImageReference,
+				})
+			}
+		}
+		response, err := a.client.CreateProject(
+			ctx, input, client.CreateProjectParams{IdempotencyKey: key},
+		)
+		if err != nil {
+			return ActionResult{}, transportError(err)
+		}
+		created, ok := response.(*client.ProjectHeaders)
+		if !ok {
+			return ActionResult{}, responseError(response)
+		}
+		return ActionResult{Message: "Project created", ProjectID: created.Response.ID}, nil
+	case ActionProjectApplyHarnesses:
+		if request.ProjectID == "" {
+			return ActionResult{}, errors.New("Project ID is required")
+		}
+		images := make([]client.HarnessImage, 0, len(request.HarnessImages))
+		for _, spec := range request.HarnessImages {
+			item, err := domain.ParseHarnessImageSpec(spec)
+			if err != nil {
+				return ActionResult{}, err
+			}
+			images = append(images, client.HarnessImage{
+				Name: item.Name, ImageReference: item.ImageReference,
+			})
+		}
+		response, err := a.client.PatchProject(
+			ctx,
+			&client.PatchProjectRequest{
+				ExpectedResourceVersion: request.ResourceVersion,
+				HarnessImages:           images,
+			},
+			client.PatchProjectParams{ProjectId: request.ProjectID},
+		)
+		if err != nil {
+			return ActionResult{}, transportError(err)
+		}
+		updated, ok := response.(*client.ProjectHeaders)
+		if !ok {
+			return ActionResult{}, responseError(response)
+		}
+		return ActionResult{Message: "Project harnesses updated", ProjectID: updated.Response.ID}, nil
 	case ActionCreate:
+		input := &client.CreateCapsuleRequest{Name: request.Name}
+		if request.Harness != "" {
+			input.Harness = client.NewOptString(request.Harness)
+		}
 		response, err := a.client.CreateCapsule(
 			ctx,
-			&client.CreateCapsuleRequest{Name: request.Name},
+			input,
 			client.CreateCapsuleParams{ProjectId: request.ProjectID, IdempotencyKey: key},
 		)
 		if err != nil {
 			return ActionResult{}, transportError(err)
 		}
-		if _, ok := response.(*client.CapsuleHeaders); !ok {
+		created, ok := response.(*client.CapsuleHeaders)
+		if !ok {
 			return ActionResult{}, responseError(response)
 		}
-		return ActionResult{Message: "Capsule creation requested"}, nil
+		return ActionResult{Message: "Capsule creation requested", CapsuleID: created.Response.ID}, nil
+	case ActionRunStart:
+		response, err := a.client.StartRun(
+			ctx,
+			&client.StartRunRequest{Harness: request.Harness, Prompt: ""},
+			client.StartRunParams{CapsuleId: request.CapsuleID, IdempotencyKey: key},
+		)
+		if err != nil {
+			return ActionResult{}, transportError(err)
+		}
+		started, ok := response.(*client.RunHeaders)
+		if !ok {
+			return ActionResult{}, responseError(response)
+		}
+		return ActionResult{
+			Message: "Native harness starting", RunID: started.Response.ID,
+			CapsuleID: request.CapsuleID,
+		}, nil
 	case ActionPause, ActionResume, ActionDelete:
 		input := &client.LifecycleMutationRequest{ExpectedResourceVersion: request.ResourceVersion}
 		var response any
@@ -605,8 +713,9 @@ func (a *generatedAPI) Execute(ctx context.Context, request ActionRequest) (Acti
 			return ActionResult{}, responseError(response)
 		}
 		return ActionResult{
-			Message:  "Project Thread provisioning requested",
-			ThreadID: success.Response.ThreadId,
+			Message:   "Project Thread provisioning requested",
+			ThreadID:  success.Response.ThreadId,
+			CapsuleID: success.Response.CapsuleId,
 		}, nil
 	case ActionThreadStart, ActionThreadResume, ActionThreadCancel:
 		input := &client.LifecycleMutationRequest{ExpectedResourceVersion: request.ResourceVersion}

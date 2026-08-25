@@ -2,6 +2,7 @@
 package ptyattach
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -22,11 +23,28 @@ import (
 )
 
 const (
-	maxFrameSize = 64 << 10
-	detachByte   = byte(0x1d) // Ctrl-]
+	maxFrameSize        = 64 << 10
+	detachByte          = byte(0x1d) // Ctrl-]
+	alternateDetachByte = byte(0x1c) // Ctrl-\
+	detachPrefixByte    = byte(0x10) // Ctrl-P
+	detachSuffixByte    = byte(0x11) // Ctrl-Q
 )
 
 var errDetached = errors.New("detached")
+
+var enhancedControlKeys = []struct {
+	sequence   []byte
+	normalized byte
+}{
+	{sequence: []byte("\x1b[92;5u"), normalized: alternateDetachByte},
+	{sequence: []byte("\x1b[93;5u"), normalized: detachByte},
+	{sequence: []byte("\x1b[112;5u"), normalized: detachPrefixByte},
+	{sequence: []byte("\x1b[113;5u"), normalized: detachSuffixByte},
+	{sequence: []byte("\x1b[27;5;92~"), normalized: alternateDetachByte},
+	{sequence: []byte("\x1b[27;5;93~"), normalized: detachByte},
+	{sequence: []byte("\x1b[27;5;112~"), normalized: detachPrefixByte},
+	{sequence: []byte("\x1b[27;5;113~"), normalized: detachSuffixByte},
+}
 
 // DisconnectError reports the last output cursor that was rendered.
 type DisconnectError struct {
@@ -70,9 +88,13 @@ type Options struct {
 	Server string
 	RunID  string
 	After  uint64
-	Stdin  *os.File
-	Stdout *os.File
-	Stderr io.Writer
+	// AttachTitle and RestoreTitle are local terminal metadata. They are
+	// written outside the PTY relay and never sent to the remote Run.
+	AttachTitle  string
+	RestoreTitle string
+	Stdin        *os.File
+	Stdout       *os.File
+	Stderr       io.Writer
 
 	Terminal Terminal
 	Signals  Signals
@@ -196,6 +218,16 @@ func Run(parent context.Context, options Options) (resultErr error) {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	titleApplied := false
+	defer func() {
+		if titleApplied {
+			restore := options.RestoreTitle
+			if restore == "" {
+				restore = "Meridian"
+			}
+			writeTerminalTitle(options.Stdout, restore)
+		}
+	}()
 	state, err := options.Terminal.MakeRaw(int(options.Stdin.Fd()))
 	if err != nil {
 		return fmt.Errorf("enter raw terminal mode: %w", err)
@@ -205,6 +237,11 @@ func Run(parent context.Context, options Options) (resultErr error) {
 			resultErr = errors.Join(resultErr, fmt.Errorf("restore terminal: %w", restoreErr))
 		}
 	}()
+	titleApplied = writeTerminalTitle(options.Stdout, options.AttachTitle)
+	outputWriter := io.Writer(options.Stdout)
+	if titleApplied {
+		outputWriter = keepTerminalTitle(options.Stdout, options.AttachTitle)
+	}
 
 	reader, err := cancelreader.NewReader(options.Stdin)
 	if err != nil {
@@ -232,7 +269,7 @@ func Run(parent context.Context, options Options) (resultErr error) {
 	cursor := options.After
 	go func() {
 		defer wait.Done()
-		results <- readOutput(ctx, socket, options.Stdout, options.Stderr, &cursorMu, &cursor)
+		results <- readOutput(ctx, socket, outputWriter, options.Stderr, &cursorMu, &cursor)
 	}()
 
 	go func() {
@@ -288,29 +325,101 @@ func Run(parent context.Context, options Options) (resultErr error) {
 
 func readInput(ctx context.Context, input io.Reader, socket *lockedSocket) loopResult {
 	buffer := make([]byte, 16<<10)
+	pendingDetachPrefix := false
+	var pendingEnhancedKey []byte
 	for {
 		count, err := input.Read(buffer)
 		if count > 0 {
-			value := buffer[:count]
-			if index := indexDetach(value); index >= 0 {
-				if index > 0 {
-					if writeErr := socket.write(ctx, websocket.MessageBinary, value[:index]); writeErr != nil {
-						return loopResult{err: writeErr, disconnect: true}
+			normalized := normalizeEnhancedControlKeys(&pendingEnhancedKey, buffer[:count])
+			output := make([]byte, 0, len(normalized)+1)
+			for _, current := range normalized {
+				if pendingDetachPrefix {
+					if current == detachSuffixByte {
+						if len(output) > 0 {
+							if writeErr := socket.write(ctx, websocket.MessageBinary, output); writeErr != nil {
+								return loopResult{err: writeErr, disconnect: true}
+							}
+						}
+						return loopResult{err: errDetached}
 					}
+					output = append(output, detachPrefixByte)
+					pendingDetachPrefix = false
 				}
-				return loopResult{err: errDetached}
+				if current == detachByte || current == alternateDetachByte {
+					if len(output) > 0 {
+						if writeErr := socket.write(ctx, websocket.MessageBinary, output); writeErr != nil {
+							return loopResult{err: writeErr, disconnect: true}
+						}
+					}
+					return loopResult{err: errDetached}
+				}
+				if current == detachPrefixByte {
+					pendingDetachPrefix = true
+					continue
+				}
+				output = append(output, current)
 			}
-			if writeErr := socket.write(ctx, websocket.MessageBinary, value); writeErr != nil {
-				return loopResult{err: writeErr, disconnect: true}
+			if len(output) > 0 {
+				if writeErr := socket.write(ctx, websocket.MessageBinary, output); writeErr != nil {
+					return loopResult{err: writeErr, disconnect: true}
+				}
 			}
 		}
 		if err != nil {
+			output := make([]byte, 0, len(pendingEnhancedKey)+1)
+			if pendingDetachPrefix {
+				output = append(output, detachPrefixByte)
+			}
+			output = append(output, pendingEnhancedKey...)
+			if len(output) > 0 {
+				if writeErr := socket.write(
+					ctx, websocket.MessageBinary, output,
+				); writeErr != nil && !errors.Is(writeErr, context.Canceled) {
+					return loopResult{err: writeErr, disconnect: true}
+				}
+			}
 			if errors.Is(err, io.EOF) || errors.Is(err, context.Canceled) {
 				return loopResult{}
 			}
 			return loopResult{err: err}
 		}
 	}
+}
+
+func normalizeEnhancedControlKeys(pending *[]byte, input []byte) []byte {
+	data := make([]byte, 0, len(*pending)+len(input))
+	data = append(data, *pending...)
+	data = append(data, input...)
+	*pending = (*pending)[:0]
+	output := make([]byte, 0, len(data))
+	for len(data) > 0 {
+		matched := false
+		for _, key := range enhancedControlKeys {
+			if bytes.HasPrefix(data, key.sequence) {
+				output = append(output, key.normalized)
+				data = data[len(key.sequence):]
+				matched = true
+				break
+			}
+		}
+		if matched {
+			continue
+		}
+		partial := false
+		for _, key := range enhancedControlKeys {
+			if bytes.HasPrefix(key.sequence, data) {
+				partial = true
+				break
+			}
+		}
+		if partial {
+			*pending = append(*pending, data...)
+			break
+		}
+		output = append(output, data[0])
+		data = data[1:]
+	}
+	return output
 }
 
 func readOutput(
@@ -379,15 +488,6 @@ func sendSize(ctx context.Context, socket *lockedSocket, terminal Terminal, fd i
 		return err
 	}
 	return socket.write(ctx, websocket.MessageText, value)
-}
-
-func indexDetach(value []byte) int {
-	for index, current := range value {
-		if current == detachByte {
-			return index
-		}
-	}
-	return -1
 }
 
 func dial(

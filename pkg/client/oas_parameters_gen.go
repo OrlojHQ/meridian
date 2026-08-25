@@ -236,6 +236,11 @@ type ListThreadsParams struct {
 	Limit     OptInt    `json:",omitempty,omitzero"`
 }
 
+// PatchProjectParams is parameters of patchProject operation.
+type PatchProjectParams struct {
+	ProjectId string
+}
+
 // PauseCapsuleParams is parameters of pauseCapsule operation.
 type PauseCapsuleParams struct {
 	CapsuleId      string

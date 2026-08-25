@@ -42,8 +42,7 @@ func (s *Service) CreateProjectThread(
 		}
 	}
 	input.Harness = strings.TrimSpace(input.Harness)
-	if input.ProjectID == "" || input.Harness == "" || len(input.Harness) > 128 ||
-		strings.ContainsAny(input.Harness, "/\\\x00\r\n") {
+	if input.ProjectID == "" || !domain.ValidHarnessName(input.Harness) {
 		return ProjectThreadResult{}, fmt.Errorf("%w: structured harness is invalid", domain.ErrInvalid)
 	}
 	if input.Prompt == "" {
@@ -72,7 +71,12 @@ func (s *Service) CreateProjectThread(
 		if !errors.Is(err, domain.ErrNotFound) {
 			return err
 		}
-		if _, err := tx.GetProject(ctx, input.ProjectID); err != nil {
+		project, err := tx.GetProject(ctx, input.ProjectID)
+		if err != nil {
+			return err
+		}
+		image, err := project.ImageForHarness(input.Harness)
+		if err != nil {
 			return err
 		}
 		now := s.clock.Now().UTC()
@@ -118,7 +122,8 @@ func (s *Service) CreateProjectThread(
 			ID: capsuleID, ProjectID: input.ProjectID, TimelineID: timelineID,
 			Name: capsuleName, State: domain.CapsuleCreating,
 			DesiredState: domain.IntentReady, RestoreComplete: true,
-			LastActivityAt: now, CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
+			ImageReference: image, LastActivityAt: now, CreatedAt: now, UpdatedAt: now,
+			ResourceVersion: 1,
 		}
 		if err := tx.InsertCapsule(ctx, capsule); err != nil {
 			return err

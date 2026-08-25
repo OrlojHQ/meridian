@@ -144,7 +144,7 @@ func (r *runtime) CancelStructured(
 	}
 	return r.CancelRun(ctx, resource, id)
 }
-func (*runtime) StructuredProfiles(
+func (*runtime) HarnessProfiles(
 	context.Context, string,
 ) ([]ports.RuntimeHarnessProfile, error) {
 	return []ports.RuntimeHarnessProfile{{
@@ -203,6 +203,10 @@ func TestGeneratedClientLifecycle(t *testing.T) {
 			RepositoryUrl:  client.NewOptString("https://example.invalid/repository.git"),
 			Setup:          []string{"/usr/bin/make", "bootstrap"},
 			ImageReference: client.NewOptString("example@sha256:" + strings.Repeat("a", 64)),
+			HarnessImages: []client.HarnessImage{
+				{Name: "opencode", ImageReference: "example-opencode@sha256:" + strings.Repeat("b", 64)},
+				{Name: "mock", ImageReference: "example@sha256:" + strings.Repeat("a", 64)},
+			},
 		},
 		client.CreateProjectParams{IdempotencyKey: "project-key"},
 	)
@@ -215,7 +219,10 @@ func TestGeneratedClientLifecycle(t *testing.T) {
 	}
 	if repositoryURL, ok := projectResponse.Response.RepositoryUrl.Get(); !ok ||
 		repositoryURL != "https://example.invalid/repository.git" ||
-		len(projectResponse.Response.Setup) != 2 {
+		len(projectResponse.Response.Setup) != 2 ||
+		len(projectResponse.Response.HarnessImages) != 2 ||
+		projectResponse.Response.HarnessImages[0].Name != "opencode" ||
+		projectResponse.Response.HarnessImages[1].Name != "mock" {
 		t.Fatalf("project configuration = %#v", projectResponse.Response)
 	}
 	replayResult, err := api.CreateProject(
@@ -282,7 +289,7 @@ func TestGeneratedClientLifecycle(t *testing.T) {
 
 	createResult, err := api.CreateCapsule(
 		ctx,
-		&client.CreateCapsuleRequest{Name: "capsule"},
+		&client.CreateCapsuleRequest{Name: "capsule", Harness: client.NewOptString("mock")},
 		client.CreateCapsuleParams{
 			ProjectId:      projectResponse.Response.ID,
 			IdempotencyKey: "capsule-key",
@@ -292,7 +299,12 @@ func TestGeneratedClientLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	created, ok := createResult.(*client.CapsuleHeaders)
-	if !ok || created.Response.State != client.CapsuleStateCreating {
+	if !ok {
+		t.Fatalf("create capsule response = %#v (%T)", createResult, createResult)
+	}
+	harness, hasHarness := created.Response.Harness.Get()
+	if created.Response.State != client.CapsuleStateCreating ||
+		!hasHarness || harness != "mock" {
 		t.Fatalf("create capsule response = %#v (%T)", createResult, createResult)
 	}
 	ready := waitState(t, ctx, api, created.Response.ID, client.CapsuleStateReady)

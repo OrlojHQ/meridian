@@ -145,7 +145,7 @@ func (p *Provider) CancelStructured(
 	return structuredRuntimeRun(result), mapRuntimeError(err)
 }
 
-func (p *Provider) StructuredProfiles(
+func (p *Provider) HarnessProfiles(
 	ctx context.Context,
 	resourceID string,
 ) ([]ports.RuntimeHarnessProfile, error) {

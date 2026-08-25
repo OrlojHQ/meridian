@@ -631,9 +631,19 @@ func (s *Capabilities) encodeFields(e *jx.Encoder) {
 		e.FieldStart("resourceMetrics")
 		e.Bool(s.ResourceMetrics)
 	}
+	{
+		if s.HarnessImages != nil {
+			e.FieldStart("harnessImages")
+			e.ArrStart()
+			for _, elem := range s.HarnessImages {
+				elem.Encode(e)
+			}
+			e.ArrEnd()
+		}
+	}
 }
 
-var jsonFieldsNameOfCapabilities = [14]string{
+var jsonFieldsNameOfCapabilities = [15]string{
 	0:  "providerVersion",
 	1:  "attach",
 	2:  "run",
@@ -648,6 +658,7 @@ var jsonFieldsNameOfCapabilities = [14]string{
 	11: "browse",
 	12: "delivery",
 	13: "resourceMetrics",
+	14: "harnessImages",
 }
 
 // Decode decodes Capabilities from json.
@@ -821,6 +832,23 @@ func (s *Capabilities) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"resourceMetrics\"")
 			}
+		case "harnessImages":
+			if err := func() error {
+				s.HarnessImages = make([]HarnessImage, 0)
+				if err := d.Arr(func(d *jx.Decoder) error {
+					var elem HarnessImage
+					if err := elem.Decode(d); err != nil {
+						return err
+					}
+					s.HarnessImages = append(s.HarnessImages, elem)
+					return nil
+				}); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"harnessImages\"")
+			}
 		default:
 			return d.Skip()
 		}
@@ -948,6 +976,12 @@ func (s *Capsule) encodeFields(e *jx.Encoder) {
 		e.Str(s.Name)
 	}
 	{
+		if s.Harness.Set {
+			e.FieldStart("harness")
+			s.Harness.Encode(e)
+		}
+	}
+	{
 		e.FieldStart("state")
 		s.State.Encode(e)
 	}
@@ -985,20 +1019,21 @@ func (s *Capsule) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfCapsule = [13]string{
+var jsonFieldsNameOfCapsule = [14]string{
 	0:  "id",
 	1:  "projectId",
 	2:  "timelineId",
 	3:  "originMomentId",
 	4:  "name",
-	5:  "state",
-	6:  "desiredState",
-	7:  "failure",
-	8:  "restoreComplete",
-	9:  "maintenance",
-	10: "createdAt",
-	11: "updatedAt",
-	12: "resourceVersion",
+	5:  "harness",
+	6:  "state",
+	7:  "desiredState",
+	8:  "failure",
+	9:  "restoreComplete",
+	10: "maintenance",
+	11: "createdAt",
+	12: "updatedAt",
+	13: "resourceVersion",
 }
 
 // Decode decodes Capsule from json.
@@ -1068,8 +1103,18 @@ func (s *Capsule) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"name\"")
 			}
+		case "harness":
+			if err := func() error {
+				s.Harness.Reset()
+				if err := s.Harness.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"harness\"")
+			}
 		case "state":
-			requiredBitSet[0] |= 1 << 5
+			requiredBitSet[0] |= 1 << 6
 			if err := func() error {
 				if err := s.State.Decode(d); err != nil {
 					return err
@@ -1079,7 +1124,7 @@ func (s *Capsule) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"state\"")
 			}
 		case "desiredState":
-			requiredBitSet[0] |= 1 << 6
+			requiredBitSet[0] |= 1 << 7
 			if err := func() error {
 				if err := s.DesiredState.Decode(d); err != nil {
 					return err
@@ -1099,7 +1144,7 @@ func (s *Capsule) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"failure\"")
 			}
 		case "restoreComplete":
-			requiredBitSet[1] |= 1 << 0
+			requiredBitSet[1] |= 1 << 1
 			if err := func() error {
 				v, err := d.Bool()
 				s.RestoreComplete = bool(v)
@@ -1121,7 +1166,7 @@ func (s *Capsule) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"maintenance\"")
 			}
 		case "createdAt":
-			requiredBitSet[1] |= 1 << 2
+			requiredBitSet[1] |= 1 << 3
 			if err := func() error {
 				v, err := json.DecodeDateTime(d)
 				s.CreatedAt = v
@@ -1133,7 +1178,7 @@ func (s *Capsule) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"createdAt\"")
 			}
 		case "updatedAt":
-			requiredBitSet[1] |= 1 << 3
+			requiredBitSet[1] |= 1 << 4
 			if err := func() error {
 				v, err := json.DecodeDateTime(d)
 				s.UpdatedAt = v
@@ -1145,7 +1190,7 @@ func (s *Capsule) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"updatedAt\"")
 			}
 		case "resourceVersion":
-			requiredBitSet[1] |= 1 << 4
+			requiredBitSet[1] |= 1 << 5
 			if err := func() error {
 				v, err := d.Int64()
 				s.ResourceVersion = int64(v)
@@ -1166,8 +1211,8 @@ func (s *Capsule) Decode(d *jx.Decoder) error {
 	// Validate required fields.
 	var failures []validate.FieldError
 	for i, mask := range [2]uint8{
-		0b01110111,
-		0b00011101,
+		0b11010111,
+		0b00111010,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.
@@ -2090,10 +2135,17 @@ func (s *CreateCapsuleRequest) encodeFields(e *jx.Encoder) {
 		e.FieldStart("name")
 		e.Str(s.Name)
 	}
+	{
+		if s.Harness.Set {
+			e.FieldStart("harness")
+			s.Harness.Encode(e)
+		}
+	}
 }
 
-var jsonFieldsNameOfCreateCapsuleRequest = [1]string{
+var jsonFieldsNameOfCreateCapsuleRequest = [2]string{
 	0: "name",
+	1: "harness",
 }
 
 // Decode decodes CreateCapsuleRequest from json.
@@ -2116,6 +2168,16 @@ func (s *CreateCapsuleRequest) Decode(d *jx.Decoder) error {
 				return nil
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"name\"")
+			}
+		case "harness":
+			if err := func() error {
+				s.Harness.Reset()
+				if err := s.Harness.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"harness\"")
 			}
 		default:
 			return d.Skip()
@@ -2707,6 +2769,16 @@ func (s *CreateProjectRequest) encodeFields(e *jx.Encoder) {
 		}
 	}
 	{
+		if s.HarnessImages != nil {
+			e.FieldStart("harnessImages")
+			e.ArrStart()
+			for _, elem := range s.HarnessImages {
+				elem.Encode(e)
+			}
+			e.ArrEnd()
+		}
+	}
+	{
 		if s.GitSecretName.Set {
 			e.FieldStart("gitSecretName")
 			s.GitSecretName.Encode(e)
@@ -2754,18 +2826,19 @@ func (s *CreateProjectRequest) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfCreateProjectRequest = [11]string{
+var jsonFieldsNameOfCreateProjectRequest = [12]string{
 	0:  "name",
 	1:  "repositoryUrl",
 	2:  "setup",
 	3:  "imageReference",
-	4:  "gitSecretName",
-	5:  "harnessSecretNames",
-	6:  "gitPushSecretName",
-	7:  "githubAPISecretName",
-	8:  "commitAuthorName",
-	9:  "commitAuthorEmail",
-	10: "defaultBaseBranch",
+	4:  "harnessImages",
+	5:  "gitSecretName",
+	6:  "harnessSecretNames",
+	7:  "gitPushSecretName",
+	8:  "githubAPISecretName",
+	9:  "commitAuthorName",
+	10: "commitAuthorEmail",
+	11: "defaultBaseBranch",
 }
 
 // Decode decodes CreateProjectRequest from json.
@@ -2827,6 +2900,23 @@ func (s *CreateProjectRequest) Decode(d *jx.Decoder) error {
 				return nil
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"imageReference\"")
+			}
+		case "harnessImages":
+			if err := func() error {
+				s.HarnessImages = make([]HarnessImage, 0)
+				if err := d.Arr(func(d *jx.Decoder) error {
+					var elem HarnessImage
+					if err := elem.Decode(d); err != nil {
+						return err
+					}
+					s.HarnessImages = append(s.HarnessImages, elem)
+					return nil
+				}); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"harnessImages\"")
 			}
 		case "gitSecretName":
 			if err := func() error {
@@ -5897,6 +5987,119 @@ func (s *GitResult) UnmarshalJSON(data []byte) error {
 }
 
 // Encode implements json.Marshaler.
+func (s *HarnessImage) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *HarnessImage) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("name")
+		e.Str(s.Name)
+	}
+	{
+		e.FieldStart("imageReference")
+		e.Str(s.ImageReference)
+	}
+}
+
+var jsonFieldsNameOfHarnessImage = [2]string{
+	0: "name",
+	1: "imageReference",
+}
+
+// Decode decodes HarnessImage from json.
+func (s *HarnessImage) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode HarnessImage to nil")
+	}
+	var requiredBitSet [1]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "name":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				v, err := d.Str()
+				s.Name = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"name\"")
+			}
+		case "imageReference":
+			requiredBitSet[0] |= 1 << 1
+			if err := func() error {
+				v, err := d.Str()
+				s.ImageReference = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"imageReference\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode HarnessImage")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [1]uint8{
+		0b00000011,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfHarnessImage) {
+					name = jsonFieldsNameOfHarnessImage[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *HarnessImage) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *HarnessImage) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
 func (s *HarnessProfile) Encode(e *jx.Encoder) {
 	e.ObjStart()
 	s.encodeFields(e)
@@ -8188,6 +8391,243 @@ func (s *OptURI) UnmarshalJSON(data []byte) error {
 	return s.Decode(d)
 }
 
+// Encode encodes PatchProjectBadRequest as json.
+func (s *PatchProjectBadRequest) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes PatchProjectBadRequest from json.
+func (s *PatchProjectBadRequest) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode PatchProjectBadRequest to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = PatchProjectBadRequest(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *PatchProjectBadRequest) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *PatchProjectBadRequest) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes PatchProjectConflict as json.
+func (s *PatchProjectConflict) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes PatchProjectConflict from json.
+func (s *PatchProjectConflict) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode PatchProjectConflict to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = PatchProjectConflict(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *PatchProjectConflict) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *PatchProjectConflict) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes PatchProjectNotFound as json.
+func (s *PatchProjectNotFound) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes PatchProjectNotFound from json.
+func (s *PatchProjectNotFound) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode PatchProjectNotFound to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = PatchProjectNotFound(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *PatchProjectNotFound) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *PatchProjectNotFound) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s *PatchProjectRequest) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *PatchProjectRequest) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("expectedResourceVersion")
+		e.Int64(s.ExpectedResourceVersion)
+	}
+	{
+		e.FieldStart("harnessImages")
+		e.ArrStart()
+		for _, elem := range s.HarnessImages {
+			elem.Encode(e)
+		}
+		e.ArrEnd()
+	}
+}
+
+var jsonFieldsNameOfPatchProjectRequest = [2]string{
+	0: "expectedResourceVersion",
+	1: "harnessImages",
+}
+
+// Decode decodes PatchProjectRequest from json.
+func (s *PatchProjectRequest) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode PatchProjectRequest to nil")
+	}
+	var requiredBitSet [1]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "expectedResourceVersion":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				v, err := d.Int64()
+				s.ExpectedResourceVersion = int64(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"expectedResourceVersion\"")
+			}
+		case "harnessImages":
+			requiredBitSet[0] |= 1 << 1
+			if err := func() error {
+				s.HarnessImages = make([]HarnessImage, 0)
+				if err := d.Arr(func(d *jx.Decoder) error {
+					var elem HarnessImage
+					if err := elem.Decode(d); err != nil {
+						return err
+					}
+					s.HarnessImages = append(s.HarnessImages, elem)
+					return nil
+				}); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"harnessImages\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode PatchProjectRequest")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [1]uint8{
+		0b00000011,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfPatchProjectRequest) {
+					name = jsonFieldsNameOfPatchProjectRequest[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *PatchProjectRequest) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *PatchProjectRequest) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
 // Encode encodes PauseCapsuleBadRequest as json.
 func (s *PauseCapsuleBadRequest) Encode(e *jx.Encoder) {
 	unwrapped := (*ErrorEnvelope)(s)
@@ -8882,6 +9322,16 @@ func (s *Project) encodeFields(e *jx.Encoder) {
 		}
 	}
 	{
+		if s.HarnessImages != nil {
+			e.FieldStart("harnessImages")
+			e.ArrStart()
+			for _, elem := range s.HarnessImages {
+				elem.Encode(e)
+			}
+			e.ArrEnd()
+		}
+	}
+	{
 		if s.GitSecretName.Set {
 			e.FieldStart("gitSecretName")
 			s.GitSecretName.Encode(e)
@@ -8941,22 +9391,23 @@ func (s *Project) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfProject = [15]string{
+var jsonFieldsNameOfProject = [16]string{
 	0:  "id",
 	1:  "name",
 	2:  "repositoryUrl",
 	3:  "setup",
 	4:  "imageReference",
-	5:  "gitSecretName",
-	6:  "harnessSecretNames",
-	7:  "gitPushSecretName",
-	8:  "githubAPISecretName",
-	9:  "commitAuthorName",
-	10: "commitAuthorEmail",
-	11: "defaultBaseBranch",
-	12: "createdAt",
-	13: "updatedAt",
-	14: "resourceVersion",
+	5:  "harnessImages",
+	6:  "gitSecretName",
+	7:  "harnessSecretNames",
+	8:  "gitPushSecretName",
+	9:  "githubAPISecretName",
+	10: "commitAuthorName",
+	11: "commitAuthorEmail",
+	12: "defaultBaseBranch",
+	13: "createdAt",
+	14: "updatedAt",
+	15: "resourceVersion",
 }
 
 // Decode decodes Project from json.
@@ -9030,6 +9481,23 @@ func (s *Project) Decode(d *jx.Decoder) error {
 				return nil
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"imageReference\"")
+			}
+		case "harnessImages":
+			if err := func() error {
+				s.HarnessImages = make([]HarnessImage, 0)
+				if err := d.Arr(func(d *jx.Decoder) error {
+					var elem HarnessImage
+					if err := elem.Decode(d); err != nil {
+						return err
+					}
+					s.HarnessImages = append(s.HarnessImages, elem)
+					return nil
+				}); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"harnessImages\"")
 			}
 		case "gitSecretName":
 			if err := func() error {
@@ -9111,7 +9579,7 @@ func (s *Project) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"defaultBaseBranch\"")
 			}
 		case "createdAt":
-			requiredBitSet[1] |= 1 << 4
+			requiredBitSet[1] |= 1 << 5
 			if err := func() error {
 				v, err := json.DecodeDateTime(d)
 				s.CreatedAt = v
@@ -9123,7 +9591,7 @@ func (s *Project) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"createdAt\"")
 			}
 		case "updatedAt":
-			requiredBitSet[1] |= 1 << 5
+			requiredBitSet[1] |= 1 << 6
 			if err := func() error {
 				v, err := json.DecodeDateTime(d)
 				s.UpdatedAt = v
@@ -9135,7 +9603,7 @@ func (s *Project) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"updatedAt\"")
 			}
 		case "resourceVersion":
-			requiredBitSet[1] |= 1 << 6
+			requiredBitSet[1] |= 1 << 7
 			if err := func() error {
 				v, err := d.Int64()
 				s.ResourceVersion = int64(v)
@@ -9157,7 +9625,7 @@ func (s *Project) Decode(d *jx.Decoder) error {
 	var failures []validate.FieldError
 	for i, mask := range [2]uint8{
 		0b00000011,
-		0b01110000,
+		0b11100000,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.

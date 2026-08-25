@@ -50,6 +50,7 @@ const (
 	ListSecretsOperation                OperationName = "ListSecrets"
 	ListThreadBlocksOperation           OperationName = "ListThreadBlocks"
 	ListThreadsOperation                OperationName = "ListThreads"
+	PatchProjectOperation               OperationName = "PatchProject"
 	PauseCapsuleOperation               OperationName = "PauseCapsule"
 	PutSecretOperation                  OperationName = "PutSecret"
 	ReadCapsuleFileOperation            OperationName = "ReadCapsuleFile"

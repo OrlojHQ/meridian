@@ -34,6 +34,7 @@ type Service struct {
 	observer      ports.Observer
 	providerName  string
 	structured    ports.StructuredRuntime
+	profiles      ports.HarnessProfileRuntime
 	transcriptKey transcriptKey
 	secretKey     *secrets.InstallationKey
 	runSync       [64]sync.Mutex
@@ -73,7 +74,12 @@ func (s *Service) ConfigureDelivery(runtime ports.DeliveryRuntime, github GitHub
 
 func (s *Service) ConfigureThreads(runtime ports.StructuredRuntime, key transcriptKey) {
 	s.structured = runtime
+	s.profiles = runtime
 	s.transcriptKey = key
+}
+
+func (s *Service) ConfigureHarnessProfiles(runtime ports.HarnessProfileRuntime) {
+	s.profiles = runtime
 }
 
 func (s *Service) ConfigureTemporal(
@@ -137,6 +143,7 @@ type ProjectConfiguration struct {
 	RepositoryURL       string
 	Setup               []string
 	ImageReference      string
+	HarnessImages       []domain.HarnessImage
 	GitSecretName       string
 	HarnessSecretNames  []string
 	GitPushSecretName   string
@@ -182,6 +189,7 @@ func (s *Service) CreateProjectConfigured(
 			RepositoryURL:       config.RepositoryURL,
 			Setup:               append([]string(nil), config.Setup...),
 			ImageReference:      config.ImageReference,
+			HarnessImages:       append([]domain.HarnessImage(nil), config.HarnessImages...),
 			GitSecretName:       config.GitSecretName,
 			HarnessSecretNames:  append([]string(nil), config.HarnessSecretNames...),
 			GitPushSecretName:   config.GitPushSecretName,
@@ -279,7 +287,63 @@ func validateProjectConfiguration(config ProjectConfiguration) error {
 	if len(config.ImageReference) > 1024 || strings.ContainsAny(config.ImageReference, "\x00\r\n") {
 		return fmt.Errorf("%w: image reference is invalid", domain.ErrInvalid)
 	}
+	if len(config.HarnessImages) > domain.MaxHarnessImages {
+		return fmt.Errorf("%w: too many harness images", domain.ErrInvalid)
+	}
+	seenImages := make(map[string]struct{}, len(config.HarnessImages))
+	for _, item := range config.HarnessImages {
+		if !domain.ValidHarnessName(item.Name) {
+			return fmt.Errorf("%w: harness image name is invalid", domain.ErrInvalid)
+		}
+		if !domain.ValidImageReference(item.ImageReference) {
+			return fmt.Errorf("%w: harness image reference is invalid", domain.ErrInvalid)
+		}
+		if _, exists := seenImages[item.Name]; exists {
+			return fmt.Errorf("%w: duplicate harness image %q", domain.ErrInvalid, item.Name)
+		}
+		seenImages[item.Name] = struct{}{}
+	}
 	return nil
+}
+
+func (s *Service) UpdateProjectHarnessImages(
+	ctx context.Context,
+	id domain.ProjectID,
+	images []domain.HarnessImage,
+	expected domain.ResourceVersion,
+) (domain.Project, error) {
+	if err := validateProjectConfiguration(ProjectConfiguration{HarnessImages: images}); err != nil {
+		return domain.Project{}, err
+	}
+	if expected <= 0 {
+		return domain.Project{}, fmt.Errorf("%w: expected resource version is required", domain.ErrInvalid)
+	}
+	var result domain.Project
+	err := s.store.Transact(ctx, func(tx ports.Transaction) error {
+		project, err := tx.GetProject(ctx, id)
+		if err != nil {
+			return err
+		}
+		if project.ResourceVersion != expected {
+			return domain.ErrConflict
+		}
+		now := s.clock.Now().UTC()
+		project.HarnessImages = append([]domain.HarnessImage(nil), images...)
+		project.UpdatedAt = now
+		project.ResourceVersion++
+		if err := tx.UpdateProject(ctx, project, expected); err != nil {
+			return err
+		}
+		if err := s.appendEvent(
+			ctx, tx, "project", string(project.ID), "project.harness_images_updated",
+			project.ResourceVersion, nil,
+		); err != nil {
+			return err
+		}
+		result = project
+		return nil
+	})
+	return result, err
 }
 
 func (s *Service) GetProject(ctx context.Context, id domain.ProjectID) (domain.Project, error) {
@@ -312,9 +376,21 @@ func (s *Service) CreateCapsule(
 	projectID domain.ProjectID,
 	name, idempotencyKey string,
 ) (domain.Capsule, error) {
+	return s.CreateCapsuleForHarness(ctx, projectID, name, "", idempotencyKey)
+}
+
+func (s *Service) CreateCapsuleForHarness(
+	ctx context.Context,
+	projectID domain.ProjectID,
+	name, harness, idempotencyKey string,
+) (domain.Capsule, error) {
 	name, err := requireName(name)
 	if err != nil {
 		return domain.Capsule{}, err
+	}
+	harness = strings.TrimSpace(harness)
+	if harness != "" && !domain.ValidHarnessName(harness) {
+		return domain.Capsule{}, fmt.Errorf("%w: harness pack is invalid", domain.ErrInvalid)
 	}
 	if err := requireIdempotency(idempotencyKey); err != nil {
 		return domain.Capsule{}, err
@@ -325,11 +401,31 @@ func (s *Service) CreateCapsule(
 		if replay, ok, err := getReplay[domain.Capsule](ctx, tx, scope, idempotencyKey); err != nil {
 			return err
 		} else if ok {
+			if replay.Name != name || replay.LauncherHarness != harness {
+				return fmt.Errorf(
+					"%w: Idempotency-Key was used with a different request",
+					domain.ErrConflict,
+				)
+			}
 			result = replay
 			return nil
 		}
-		if _, err := tx.GetProject(ctx, projectID); err != nil {
+		project, err := tx.GetProject(ctx, projectID)
+		if err != nil {
 			return err
+		}
+		image := ""
+		if harness != "" {
+			if len(project.HarnessImages) == 0 {
+				return fmt.Errorf(
+					"%w: Project has no allowlisted harness packs",
+					domain.ErrInvalid,
+				)
+			}
+			image, err = project.ImageForHarness(harness)
+			if err != nil {
+				return err
+			}
 		}
 		now := s.clock.Now().UTC()
 		timelineID := domain.TimelineID(s.ids.NewID())
@@ -338,9 +434,11 @@ func (s *Service) CreateCapsule(
 			ProjectID:       projectID,
 			TimelineID:      timelineID,
 			Name:            name,
+			LauncherHarness: harness,
 			State:           domain.CapsuleCreating,
 			DesiredState:    domain.IntentReady,
 			RestoreComplete: true,
+			ImageReference:  image,
 			LastActivityAt:  now,
 			CreatedAt:       now,
 			UpdatedAt:       now,

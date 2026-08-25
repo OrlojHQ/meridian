@@ -47,6 +47,11 @@ export type Capabilities = {
      * False when provider resource metrics are not exposed by the public API.
      */
     resourceMetrics: boolean;
+    /**
+     * Installation-known harness packs the operator may apply on a Project. Not a boolean capability. Spawn still uses only names stored on that Project.
+     *
+     */
+    harnessImages?: Array<HarnessImage>;
 };
 
 export type CreateProjectRequest = {
@@ -60,9 +65,14 @@ export type CreateProjectRequest = {
      */
     setup?: Array<string>;
     /**
-     * Capsule image reference; Docker resolves it to an immutable image identity.
+     * Default Capsule image reference; Docker resolves it to an immutable image identity.
      */
     imageReference?: string;
+    /**
+     * Named harness-pack images allowlisted on this Project. Capsule creation and Project Thread spawn resolve a selected name to one of these images; clients never supply a free image reference at spawn time.
+     *
+     */
+    harnessImages?: Array<HarnessImage>;
     /**
      * Name of a git_https secret authorized only for HTTPS clone.
      */
@@ -82,6 +92,25 @@ export type CreateProjectRequest = {
     commitAuthorName?: string;
     commitAuthorEmail?: string;
     defaultBaseBranch?: string;
+};
+
+export type PatchProjectRequest = {
+    expectedResourceVersion: number;
+    /**
+     * Replacement allowlist. Empty clears it and spawn uses the default image.
+     */
+    harnessImages: Array<HarnessImage>;
+};
+
+export type HarnessImage = {
+    /**
+     * Harness pack/profile name selected by Capsule creation or Thread spawn.
+     */
+    name: string;
+    /**
+     * Capsule image that contains that harness; Docker resolves it to an immutable identity.
+     */
+    imageReference: string;
 };
 
 export type PutSecretRequest = {
@@ -110,6 +139,10 @@ export type DeleteSecretRequest = {
 
 export type CreateCapsuleRequest = {
     name: string;
+    /**
+     * Optional Project-allowlisted native harness pack to freeze on the Capsule and launch when Ready.
+     */
+    harness?: string;
 };
 
 export type LifecycleMutationRequest = {
@@ -136,6 +169,7 @@ export type Project = {
     repositoryUrl?: string;
     setup?: Array<string>;
     imageReference?: string;
+    harnessImages?: Array<HarnessImage>;
     gitSecretName?: string;
     harnessSecretNames?: Array<string>;
     gitPushSecretName?: string;
@@ -171,6 +205,10 @@ export type Capsule = {
     timelineId: string;
     originMomentId?: string;
     name: string;
+    /**
+     * Immutable native launcher harness selected when the Capsule was created.
+     */
+    harness?: string;
     state: CapsuleState;
     desiredState: CapsuleIntent;
     failure?: string;
@@ -937,6 +975,49 @@ export type GetProjectResponses = {
 };
 
 export type GetProjectResponse = GetProjectResponses[keyof GetProjectResponses];
+
+export type PatchProjectData = {
+    body: PatchProjectRequest;
+    path: {
+        projectId: string;
+    };
+    query?: never;
+    url: '/projects/{projectId}';
+};
+
+export type PatchProjectErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Request rate limit exceeded
+     */
+    429: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type PatchProjectError = PatchProjectErrors[keyof PatchProjectErrors];
+
+export type PatchProjectResponses = {
+    /**
+     * Project updated
+     */
+    200: Project;
+};
+
+export type PatchProjectResponse = PatchProjectResponses[keyof PatchProjectResponses];
 
 export type CreateProjectThreadData = {
     body: CreateProjectThreadRequest;

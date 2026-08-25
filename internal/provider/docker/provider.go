@@ -616,7 +616,7 @@ func (p *Provider) ContainerCreateOptions(
 			},
 			Tmpfs: map[string]string{
 				"/tmp":          "rw,noexec,nosuid,nodev,size=64m,mode=1777",
-				"/home/capsule": "rw,nosuid,nodev,size=256m,uid=10001,gid=10001,mode=0700",
+				"/home/capsule": "rw,exec,nosuid,nodev,size=256m,uid=10001,gid=10001,mode=0700",
 			},
 			Resources: container.Resources{
 				Memory: p.config.MemoryBytes, MemorySwap: p.config.MemoryBytes,

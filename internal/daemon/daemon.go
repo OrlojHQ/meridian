@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -275,6 +276,21 @@ func Run(ctx context.Context, config Config) error {
 	service := app.NewService(store, clock, ids, reconciler, runtime)
 	service.ConfigureSecrets(secretKey)
 	service.ConfigureObserver(metrics, config.Provider)
+	if capabilities.Run {
+		if runtime == nil {
+			_ = httpServer.Close()
+			_ = previewHTTPServer.Close()
+			return errors.New("provider advertises Run without implementing it")
+		}
+		profiles, _ := provider.(ports.HarnessProfileRuntime)
+		if profiles == nil {
+			_ = httpServer.Close()
+			_ = previewHTTPServer.Close()
+			return errors.New("provider advertises Run without harness profile discovery")
+		}
+		service.ConfigureHarnessProfiles(profiles)
+		reconciler.ConfigureLauncher(service.ReconcileCapsuleLauncher)
+	}
 	if capabilities.Structured {
 		structuredRuntime, _ := provider.(ports.StructuredRuntime)
 		if structuredRuntime == nil {
@@ -317,6 +333,7 @@ func Run(ctx context.Context, config Config) error {
 	}
 	previewBaseURL := "http://" + previewListener.Addr().String()
 	api := httpapi.NewWithPreview(service, capabilities, previewBaseURL, apiToken)
+	api.SetHarnessImages(domain.InstallationHarnessImages(installationDefaultImage(config)))
 	api.ConfigureObservability(metrics)
 	handler.set(api)
 	previewHandler.set(api.PreviewHandler())
@@ -479,6 +496,20 @@ func newSwitchHandler() *switchHandler {
 			http.NotFound(writer, request)
 		}
 	})}
+}
+
+func installationDefaultImage(config Config) string {
+	switch config.Provider {
+	case "agentsandbox":
+		if strings.TrimSpace(config.AgentSandbox.Image) != "" {
+			return config.AgentSandbox.Image
+		}
+	default:
+		if strings.TrimSpace(config.Docker.Image) != "" {
+			return config.Docker.Image
+		}
+	}
+	return "meridian-capsule:dev"
 }
 
 func (h *switchHandler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
