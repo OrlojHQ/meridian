@@ -2,7 +2,10 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"os/exec"
+	"path/filepath"
 	"testing"
 
 	"github.com/OrlojHQ/meridian/pkg/client"
@@ -43,5 +46,46 @@ func TestWriteCapsuleJSONIncludesLauncherHarness(t *testing.T) {
 	}
 	if value["harness"] != "opencode" {
 		t.Fatalf("launcher harness output = %#v", value)
+	}
+}
+
+func TestProjectCreateDefaultsFromCurrentWorktree(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "sample-project")
+	runMainGit(t, "", "init", "-q", root)
+	runMainGit(t, root, "remote", "add", "origin", "git@github.com:Example/sample-project.git")
+	t.Chdir(root)
+
+	name, repositoryURL, err := projectCreateDefaults(
+		context.Background(), nil, "", false,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name != "sample-project" ||
+		repositoryURL != "https://github.com/Example/sample-project.git" {
+		t.Fatalf("defaults = %q, %q", name, repositoryURL)
+	}
+}
+
+func TestProjectCreateDefaultsRespectExplicitValues(t *testing.T) {
+	name, repositoryURL, err := projectCreateDefaults(
+		context.Background(), []string{"custom"}, "Example/project", true,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name != "custom" || repositoryURL != "https://github.com/Example/project" {
+		t.Fatalf("defaults = %q, %q", name, repositoryURL)
+	}
+}
+
+func runMainGit(t *testing.T, directory string, arguments ...string) {
+	t.Helper()
+	command := exec.Command("git", arguments...)
+	if directory != "" {
+		command.Dir = directory
+	}
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v: %s", arguments, err, output)
 	}
 }

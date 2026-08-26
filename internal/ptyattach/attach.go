@@ -461,16 +461,27 @@ func readOutput(
 			}
 			cursorMu.Unlock()
 		}
-		if event.Data == "" {
-			continue
+		if event.Data != "" {
+			decoded, err := base64.StdEncoding.DecodeString(event.Data)
+			if err != nil {
+				return loopResult{err: errors.New("invalid PTY output encoding"), disconnect: true}
+			}
+			if _, err := stdout.Write(decoded); err != nil {
+				return loopResult{err: err}
+			}
 		}
-		decoded, err := base64.StdEncoding.DecodeString(event.Data)
-		if err != nil {
-			return loopResult{err: errors.New("invalid PTY output encoding"), disconnect: true}
+		if terminalRunEvent(event.Type) {
+			return loopResult{}
 		}
-		if _, err := stdout.Write(decoded); err != nil {
-			return loopResult{err: err}
-		}
+	}
+}
+
+func terminalRunEvent(eventType string) bool {
+	switch eventType {
+	case "run.succeeded", "run.failed", "run.cancelled":
+		return true
+	default:
+		return false
 	}
 }
 

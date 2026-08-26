@@ -69,6 +69,9 @@ harnesses:
 	if !strings.Contains(output, "prefix task") {
 		t.Fatalf("output = %q", output)
 	}
+	if len(events.Events) == 0 || events.Events[len(events.Events)-1].Type != "run.succeeded" {
+		t.Fatalf("terminal event was not last: %#v", events.Events)
+	}
 }
 
 func TestRunCancellationAndGitBounds(t *testing.T) {

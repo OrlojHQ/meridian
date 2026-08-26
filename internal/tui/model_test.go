@@ -110,7 +110,7 @@ func TestModelLoadingNavigationResizeAndSelection(t *testing.T) {
 	}
 	loaded := runCmd(t, model.Init())
 	updated, _ := model.Update(loaded)
-	model = updated.(Model)
+	model = enterSelectedProject(t, updated.(Model))
 	if view := model.View(); !strings.Contains(view, "alpha") ||
 		!strings.Contains(view, "connected") ||
 		!strings.Contains(view, "/ commands") {
@@ -142,7 +142,7 @@ func TestModelEmptyDisconnectedAndReconnecting(t *testing.T) {
 	api := &fakeAPI{snapshot: Snapshot{Projects: []client.Project{{ID: "project-1"}}}}
 	model := NewModel(Options{API: api})
 	updated, _ := model.Update(runCmd(t, model.Init()))
-	model = updated.(Model)
+	model = enterSelectedProject(t, updated.(Model))
 	if !strings.Contains(model.View(), "Capsules") || !strings.Contains(model.View(), "/new") {
 		t.Fatalf("empty view = %q", model.View())
 	}
@@ -181,7 +181,7 @@ func TestEmptyProjectShowsAppliedHarnessesOnly(t *testing.T) {
 	}
 	model := NewModel(Options{API: &fakeAPI{snapshot: snapshot}})
 	updated, _ := model.Update(loadMsg{snapshot: snapshot})
-	view := updated.(Model).View()
+	view := enterSelectedProject(t, updated.(Model)).View()
 	if !strings.Contains(view, "Capsules") || !strings.Contains(view, "opencode") {
 		t.Fatalf("empty Project view = %q", view)
 	}
@@ -202,7 +202,7 @@ func TestModelActionsConfirmationConflictAndAttachHandoff(t *testing.T) {
 		},
 	})
 	updated, _ := model.Update(loadMsg{snapshot: api.snapshot})
-	model = updated.(Model)
+	model = enterSelectedProject(t, updated.(Model))
 
 	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
 	model = updated.(Model)
@@ -253,7 +253,7 @@ func TestModelFormsValidationRewindWarningAndHelp(t *testing.T) {
 	api := &fakeAPI{snapshot: testSnapshot()}
 	model := NewModel(Options{API: api})
 	updated, _ := model.Update(loadMsg{snapshot: api.snapshot})
-	model = updated.(Model)
+	model = enterSelectedProject(t, updated.(Model))
 	model.snapshot.Capsules[0].Runs[0].State = client.RunStateSucceeded
 
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
@@ -339,7 +339,7 @@ func TestThreadCreateSendPermissionAndLifecycleActions(t *testing.T) {
 	api := &fakeAPI{snapshot: snapshot}
 	model := NewModel(Options{API: api})
 	updated, _ := model.Update(loadMsg{snapshot: snapshot})
-	model = updated.(Model)
+	model = enterSelectedProject(t, updated.(Model))
 
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}})
 	model = updated.(Model)
@@ -466,7 +466,7 @@ func TestThreadPTYHandoffRejectsStructuredRun(t *testing.T) {
 		},
 	})
 	updated, _ := model.Update(loadMsg{snapshot: snapshot})
-	model = updated.(Model)
+	model = enterSelectedProject(t, updated.(Model))
 	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
 	model = updated.(Model)
 	if attached != "run-active" || cmd == nil {
@@ -587,7 +587,7 @@ func TestHiddenDeletedCapsulesAndPalette(t *testing.T) {
 	snapshot.Capsules[1].Capsule.State = client.CapsuleStateDeleted
 	model := NewModel(Options{API: &fakeAPI{snapshot: snapshot}, Now: fixedNow})
 	updated, _ := model.Update(loadMsg{snapshot: snapshot})
-	model = updated.(Model)
+	model = enterSelectedProject(t, updated.(Model))
 	if strings.Contains(model.View(), "beta") {
 		t.Fatalf("deleted Capsule shown by default: %q", model.View())
 	}
@@ -638,7 +638,7 @@ func TestWideLayoutPutsFleetBesideInspectorWithoutIdleComposer(t *testing.T) {
 	snapshot := testSnapshot()
 	model := NewModel(Options{API: &fakeAPI{snapshot: snapshot}, Now: fixedNow})
 	updated, _ := model.Update(loadMsg{snapshot: snapshot})
-	model = updated.(Model)
+	model = enterSelectedProject(t, updated.(Model))
 	updated, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	view := updated.(Model).View()
 	fleet := strings.Index(view, "FLEET")
@@ -653,7 +653,7 @@ func TestLauncherResponsiveContractsAndNoColor(t *testing.T) {
 	snapshot := threadTestSnapshot()
 	model := NewModel(Options{API: &fakeAPI{snapshot: snapshot}, Now: fixedNow})
 	updated, _ := model.Update(loadMsg{snapshot: snapshot})
-	model = updated.(Model)
+	model = enterSelectedProject(t, updated.(Model))
 
 	for _, size := range []tea.WindowSizeMsg{
 		{Width: 80, Height: 24},
@@ -685,7 +685,7 @@ func TestLauncherBoundsLongNamesAndBorderLabels(t *testing.T) {
 	snapshot.Capsules[0].Capsule.Harness = client.NewOptString(strings.Repeat("harness-", 20))
 	model := NewModel(Options{API: &fakeAPI{snapshot: snapshot}, Now: fixedNow})
 	updated, _ := model.Update(loadMsg{snapshot: snapshot})
-	model = updated.(Model)
+	model = enterSelectedProject(t, updated.(Model))
 
 	for _, size := range []tea.WindowSizeMsg{{Width: 80, Height: 24}, {Width: 100, Height: 30}} {
 		updated, _ = model.Update(size)
@@ -708,7 +708,7 @@ func TestCommandSurfaceKeepsLauncherAnchor(t *testing.T) {
 	snapshot := threadTestSnapshot()
 	model := NewModel(Options{API: &fakeAPI{snapshot: snapshot}, Now: fixedNow})
 	updated, _ := model.Update(loadMsg{snapshot: snapshot})
-	model = updated.(Model)
+	model = enterSelectedProject(t, updated.(Model))
 	updated, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
 	model = updated.(Model)
 	before := model.View()
@@ -723,11 +723,49 @@ func TestCommandSurfaceKeepsLauncherAnchor(t *testing.T) {
 	}
 }
 
-func TestLoadFocusesCapsuleLauncher(t *testing.T) {
+func TestLoadOpensProjectHome(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
 	snapshot := threadTestSnapshot()
 	model := NewModel(Options{API: &fakeAPI{snapshot: snapshot}, Now: fixedNow})
 	updated, _ := model.Update(loadMsg{snapshot: snapshot})
 	model = updated.(Model)
+	if model.place != placeHome || model.projectID != "" || model.selectedThreadID != "" {
+		t.Fatalf("load should stay on Projects: place=%d project=%q thread=%q",
+			model.place, model.projectID, model.selectedThreadID)
+	}
+	updated, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	model = updated.(Model)
+	view := model.View()
+	if !strings.Contains(view, "│●│ MERIDIAN") || !strings.Contains(view, "Choose a Project") ||
+		!strings.Contains(view, "project") || !strings.Contains(view, "2 Capsules") ||
+		!strings.Contains(view, "·   │   ·") || strings.Contains(view, "alpha") {
+		t.Fatalf("project home view = %q", view)
+	}
+
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	if model.place != placeProject || model.projectID != "project-1" {
+		t.Fatalf("enter should open the Project: place=%d project=%q", model.place, model.projectID)
+	}
+	updated, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	model = updated.(Model)
+	if view := model.View(); !strings.Contains(view, "Enter open harness") ||
+		!strings.Contains(view, "alpha") {
+		t.Fatalf("opened Project view = %q", view)
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model = updated.(Model)
+	if model.place != placeHome || model.projectID != "" || !strings.Contains(model.View(), "Choose a Project") {
+		t.Fatalf("Esc should return to Projects: place=%d project=%q view=%q",
+			model.place, model.projectID, model.View())
+	}
+}
+
+func TestLoadFocusesCapsuleLauncher(t *testing.T) {
+	snapshot := threadTestSnapshot()
+	model := NewModel(Options{API: &fakeAPI{snapshot: snapshot}, Now: fixedNow})
+	updated, _ := model.Update(loadMsg{snapshot: snapshot})
+	model = enterSelectedProject(t, updated.(Model))
 	if model.place != placeProject || model.selectedThreadID != "" {
 		t.Fatalf("load should stay on the launcher: place=%d thread=%q", model.place, model.selectedThreadID)
 	}
@@ -807,7 +845,7 @@ func TestEnterAttachesNativeHarnessAndHistoryRemainsInPalette(t *testing.T) {
 		},
 	})
 	updated, _ := model.Update(loadMsg{snapshot: snapshot})
-	model = updated.(Model)
+	model = enterSelectedProject(t, updated.(Model))
 	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	model = updated.(Model)
 	if attached.RunID != "run-active" || !strings.Contains(attached.Title, "alpha") ||
@@ -837,11 +875,14 @@ func TestEnterAttachesNativeHarnessAndHistoryRemainsInPalette(t *testing.T) {
 }
 
 func TestEmptyProjectState(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
 	model := NewModel(Options{API: &fakeAPI{}})
 	updated, _ := model.Update(loadMsg{snapshot: Snapshot{}})
 	model = updated.(Model)
-	if !strings.Contains(model.View(), "No projects yet") {
-		t.Fatalf("empty projects view = %q", model.View())
+	view := model.View()
+	if !strings.Contains(view, "│●│ MERIDIAN") || !strings.Contains(view, "No projects yet") ||
+		!strings.Contains(view, "·   │   ·") {
+		t.Fatalf("empty projects view = %q", view)
 	}
 }
 
@@ -1032,7 +1073,7 @@ func TestSlashKeepsCapsuleList(t *testing.T) {
 	snapshot := threadTestSnapshot()
 	model := NewModel(Options{API: &fakeAPI{snapshot: snapshot}, Now: fixedNow})
 	updated, _ := model.Update(loadMsg{snapshot: snapshot})
-	model = updated.(Model)
+	model = enterSelectedProject(t, updated.(Model))
 	updated, _ = model.Update(tea.WindowSizeMsg{Width: 70, Height: 40})
 	model = updated.(Model)
 	if model.focus != focusCapsules {
@@ -1056,7 +1097,7 @@ func TestSlashSurvivesRefreshOnList(t *testing.T) {
 	snapshot := threadTestSnapshot()
 	model := NewModel(Options{API: &fakeAPI{snapshot: snapshot}, Now: fixedNow})
 	updated, _ := model.Update(loadMsg{snapshot: snapshot})
-	model = updated.(Model)
+	model = enterSelectedProject(t, updated.(Model))
 	updated, _ = model.Update(actionMsg{
 		action: ActionDelete,
 		result: ActionResult{Message: "delete requested"},
@@ -1123,11 +1164,13 @@ func TestSlashProjectCreatesProject(t *testing.T) {
 	if model.overlay.kind != overlayForm || model.overlay.action.Action != ActionProjectCreate {
 		t.Fatalf(" /project should open a form: overlay=%v action=%q", model.overlay.kind, model.overlay.action.Action)
 	}
-	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("demo")})
-	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
 	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("https://github.com/you/app.git")})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("demo")})
 	model = updated.(Model)
 	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	model = updated.(Model)
@@ -1144,6 +1187,57 @@ func TestSlashProjectCreatesProject(t *testing.T) {
 	model = updated.(Model)
 	if model.projectID != "project-new" || model.place != placeProject {
 		t.Fatalf("create did not select the Project: project=%q place=%d", model.projectID, model.place)
+	}
+}
+
+func TestProjectFormPrefillsCurrentRepository(t *testing.T) {
+	model := NewModel(Options{
+		SuggestedProjectName:   "meridian",
+		SuggestedRepositoryURL: "https://github.com/OrlojHQ/meridian.git",
+	})
+	model.openCreateProject()
+	if got := model.overlayField("Name").value; got != "meridian" {
+		t.Fatalf("suggested Project name = %q", got)
+	}
+	if got := model.overlayField("Repository").value; got != "https://github.com/OrlojHQ/meridian.git" {
+		t.Fatalf("suggested repository = %q", got)
+	}
+	if got := selectedOptionValue(model.overlayField("Repository source")); got != "current" {
+		t.Fatalf("repository source = %q", got)
+	}
+	if !strings.Contains(model.overlay.note, "current Git origin") {
+		t.Fatalf("Project note = %q", model.overlay.note)
+	}
+
+	model.overlayField("Repository source").optionIndex = 1
+	model.syncProjectRepositorySource()
+	model.overlayField("Repository").value = "OrlojHQ/compass"
+	request, err := model.formRequest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if request.RepositoryURL != "https://github.com/OrlojHQ/compass" {
+		t.Fatalf("normalized repository = %q", request.RepositoryURL)
+	}
+}
+
+func TestProjectFormExplainsMissingOrigin(t *testing.T) {
+	model := NewModel(Options{SuggestedProjectName: "meridian"})
+	model.openCreateProject()
+
+	if got := selectedOptionValue(model.overlayField("Repository source")); got != "manual" {
+		t.Fatalf("repository source = %q", got)
+	}
+	if got := model.overlayField("Name").value; got != "meridian" {
+		t.Fatalf("suggested Project name = %q", got)
+	}
+	if !strings.Contains(model.overlay.note, "No Git origin was found") {
+		t.Fatalf("Project note = %q", model.overlay.note)
+	}
+	view := model.View()
+	if !strings.Contains(view, "GitHub") ||
+		!strings.Contains(view, "No Git origin was found") {
+		t.Fatalf("Project form = %q", view)
 	}
 }
 
@@ -1177,8 +1271,11 @@ func TestSlashSwitchChangesProjectWithoutStaleCapsule(t *testing.T) {
 
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRight})
 	model = updated.(Model)
-	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated, titleCmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	model = updated.(Model)
+	if titleCmd == nil {
+		t.Fatal("switching Projects did not update the terminal title")
+	}
 	if model.projectID != nextProject.ID || model.projectName() != nextProject.Name {
 		t.Fatalf("switched project = %q / %q", model.projectID, model.projectName())
 	}
@@ -1206,20 +1303,22 @@ func TestCreateProjectPicksHarness(t *testing.T) {
 	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	model = updated.(Model)
-	if model.overlay.kind != overlayForm || len(model.overlay.fields) != 3 ||
-		model.overlay.fields[2].label != "Harness" || model.overlay.fields[2].value != "mock" {
+	if model.overlay.kind != overlayForm || len(model.overlay.fields) != 4 ||
+		model.overlayField("Harness").value != "mock" {
 		t.Fatalf("create form = %#v", model.overlay.fields)
 	}
-	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("demo")})
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRight})
 	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("demo")})
 	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
 	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRight})
 	model = updated.(Model)
-	if model.overlay.fields[2].value != "opencode" {
-		t.Fatalf("harness = %q", model.overlay.fields[2].value)
+	if model.overlayField("Harness").value != "opencode" {
+		t.Fatalf("harness = %q", model.overlayField("Harness").value)
 	}
 	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	model = updated.(Model)
@@ -1331,7 +1430,7 @@ func TestEmptyCommandEntryEnterOpensSelectedCapsule(t *testing.T) {
 		},
 	})
 	updated, _ := model.Update(loadMsg{snapshot: snapshot})
-	model = updated.(Model)
+	model = enterSelectedProject(t, updated.(Model))
 	model.focus = focusMain
 	model.composerFocus = true
 	model.composer = ""
@@ -1440,7 +1539,7 @@ func TestEnterOnIdleCapsuleStartsFrozenNativeHarness(t *testing.T) {
 	api := &fakeAPI{snapshot: snapshot}
 	model := NewModel(Options{API: api})
 	updated, _ := model.Update(loadMsg{snapshot: snapshot})
-	model = updated.(Model)
+	model = enterSelectedProject(t, updated.(Model))
 	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	model = updated.(Model)
 	runCmd(t, cmd)
@@ -1466,8 +1565,22 @@ func focusCapsuleList(t *testing.T, model Model) Model {
 	return model
 }
 
+func enterSelectedProject(t *testing.T, model Model) Model {
+	t.Helper()
+	if model.place != placeHome {
+		return model
+	}
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	if model.place != placeProject {
+		t.Fatalf("enter did not open Project: place=%d project=%q", model.place, model.projectID)
+	}
+	return model
+}
+
 func openFirstConversation(t *testing.T, model Model) Model {
 	t.Helper()
+	model = enterSelectedProject(t, model)
 	model.openCapsuleSession()
 	if model.place != placeThread {
 		t.Fatalf("did not enter conversation: place=%d thread=%q", model.place, model.selectedThreadID)

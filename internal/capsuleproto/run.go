@@ -125,6 +125,7 @@ type GitResponse struct {
 
 type supervisedRun struct {
 	mu          sync.Mutex
+	capture     sync.WaitGroup
 	id          string
 	state       RunState
 	exitCode    *int
@@ -370,7 +371,7 @@ func (r *supervisedRun) execute(directory, prompt string, columns, rows uint16) 
 				_, _ = io.WriteString(terminal, "\n")
 			}
 		}
-		go r.captureText(terminal)
+		r.captureTextAsync(terminal)
 		wait = command.Wait
 	} else {
 		command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -407,11 +408,11 @@ func (r *supervisedRun) execute(directory, prompt string, columns, rows uint16) 
 			_ = stdin.Close()
 		}
 		if r.profile.Output == harness.OutputJSONL {
-			go r.captureJSONL(stdout, "stdout")
-			go r.captureJSONL(stderr, "stderr")
+			r.captureJSONLAsync(stdout, "stdout")
+			r.captureJSONLAsync(stderr, "stderr")
 		} else {
-			go r.captureText(stdout)
-			go r.captureText(stderr)
+			r.captureTextAsync(stdout)
+			r.captureTextAsync(stderr)
 		}
 		wait = command.Wait
 	}
@@ -477,7 +478,24 @@ func (r *supervisedRun) finish(state RunState, code *int, failure string) {
 		_ = r.terminal.Close()
 	}
 	r.mu.Unlock()
+	r.capture.Wait()
 	r.addEvent("run."+strings.ToLower(string(state)), nil, nil)
+}
+
+func (r *supervisedRun) captureTextAsync(reader io.Reader) {
+	r.capture.Add(1)
+	go func() {
+		defer r.capture.Done()
+		r.captureText(reader)
+	}()
+}
+
+func (r *supervisedRun) captureJSONLAsync(reader io.Reader, stream string) {
+	r.capture.Add(1)
+	go func() {
+		defer r.capture.Done()
+		r.captureJSONL(reader, stream)
+	}()
 }
 
 func (r *supervisedRun) captureText(reader io.Reader) {

@@ -232,6 +232,18 @@ A Project points at a public repository and a Meridian-compatible Capsule
 image:
 
 ```console
+cd /path/to/project
+./bin/meridian project create \
+  --image=example/meridian-project@sha256:... \
+  --setup-arg=/usr/bin/make \
+  --setup-arg=bootstrap
+```
+
+When run inside a Git worktree, `project create` uses the directory name and
+`origin` by default. GitHub SSH origins are converted to cloneable HTTPS URLs.
+An explicit name or repository still overrides discovery:
+
+```console
 ./bin/meridian project create my-project \
   --repository-url=https://github.com/example/project.git \
   --image=example/meridian-project@sha256:... \
@@ -240,7 +252,9 @@ image:
 ```
 
 Each `--setup-arg` is a separate executable argument; Meridian never joins
-setup values into a shell command.
+setup values into a shell command. `--repository-url=owner/repository` expands
+GitHub shorthand. Pass an explicit empty `--repository-url=` to create a
+Project without discovering the current worktree.
 
 The repository defines harnesses in `.meridian/project.yaml`:
 

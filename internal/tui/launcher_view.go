@@ -113,6 +113,12 @@ func (m Model) launcherInspector(width, height int) string {
 			theme.error.Render(truncateWidth("Failure: "+safeInline(failure), width-2)),
 		)
 	}
+	if detail.EventError != "" {
+		rows = append(
+			rows, "", divider(theme, "RUNTIME WARNING", width-2),
+			theme.error.Render(truncateWidth("Events: "+safeInline(detail.EventError), width-2)),
+		)
+	}
 	rows = append(rows, "", divider(theme, "PRIMARY ACTION", width-2))
 	if detail.RunningRun() != nil {
 		rows = append(rows, keyHint(theme, "Enter", "open harness"))

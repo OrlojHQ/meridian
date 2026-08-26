@@ -92,6 +92,58 @@ func modal(t theme, title, body string, width int) string {
 	return panel(t, title, body, width, 0, true)
 }
 
+func blockWidth(value string) int {
+	width := 0
+	for _, line := range strings.Split(value, "\n") {
+		if got := lipgloss.Width(line); got > width {
+			width = got
+		}
+	}
+	return width
+}
+
+func centerBlock(value string, width int) string {
+	if width < 1 {
+		return value
+	}
+	pad := max(0, (width-blockWidth(value))/2)
+	prefix := strings.Repeat(" ", pad)
+	lines := strings.Split(value, "\n")
+	for index, line := range lines {
+		line = prefix + line
+		lines[index] = line + strings.Repeat(" ", max(0, width-lipgloss.Width(line)))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func splash(t theme, mark, title, copy, action string, contract viewContract) string {
+	copy = t.muted.Render(copy)
+	title = t.title.Render(title)
+	cardWidth := min(contract.contentWidth, max(
+		24, blockWidth(mark), blockWidth(title), blockWidth(copy), blockWidth(action),
+	))
+	var parts []string
+	if mark != "" {
+		parts = append(parts, centerBlock(mark, cardWidth))
+	}
+	if title != "" {
+		if len(parts) > 0 {
+			parts = append(parts, "")
+		}
+		parts = append(parts, centerBlock(title, cardWidth))
+	}
+	if copy != "" {
+		parts = append(parts, centerBlock(copy, cardWidth))
+	}
+	if action != "" {
+		parts = append(parts, "", centerBlock(action, cardWidth))
+	}
+	return lipgloss.Place(
+		contract.contentWidth, contract.bodyHeight,
+		lipgloss.Center, lipgloss.Center, strings.Join(parts, "\n"),
+	)
+}
+
 func emptyState(t theme, mark, title, copy, action string, width int) string {
 	text := t.title.Render(title)
 	if copy != "" {
@@ -125,23 +177,42 @@ func divider(t theme, label string, width int) string {
 	return t.border.Render(label + strings.Repeat("─", fill))
 }
 
-func orbitalMark(t theme) string {
-	lines := []string{
-		"          · · ·",
-		"      · ● ● ● · ·",
-		"   · ● ● ● ● · · ·",
-		"  · ● ● ● · · ·",
-		"   · ● ● · ·",
-		"      · ·",
-	}
+func transitMark(t theme) string {
+	return colorTransit(t, []string{
+		"    ●",
+		"   ·│·",
+		"  · │ ·",
+		" ·  │  ·",
+		"·   │   ·",
+	})
+}
+
+func transitMarkCompact(t theme) string {
+	return colorTransit(t, []string{"│●│"})
+}
+
+func colorTransit(t theme, lines []string) string {
 	if !t.color {
 		return strings.Join(lines, "\n")
 	}
-	styles := []lipgloss.Style{t.wordmark, t.wordmarkSoft, t.accent, t.muted}
-	for index := range lines {
-		lines[index] = styles[min(index/2, len(styles)-1)].Render(lines[index])
+	out := make([]string, len(lines))
+	for index, line := range lines {
+		var builder strings.Builder
+		for _, current := range line {
+			switch current {
+			case '●':
+				builder.WriteString(t.wordmark.Render(string(current)))
+			case '│':
+				builder.WriteString(t.wordmarkSoft.Render(string(current)))
+			case '·':
+				builder.WriteString(t.muted.Render(string(current)))
+			default:
+				builder.WriteRune(current)
+			}
+		}
+		out[index] = builder.String()
 	}
-	return strings.Join(lines, "\n")
+	return strings.Join(out, "\n")
 }
 
 func pageLine(left, right string, width int) string {

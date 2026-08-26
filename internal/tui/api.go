@@ -28,14 +28,15 @@ type Snapshot struct {
 }
 
 type CapsuleDetail struct {
-	Project  client.Project
-	Capsule  client.Capsule
-	Profiles []client.HarnessProfile
-	Threads  []ThreadDetail
-	Runs     []client.Run
-	Events   []client.RunEvent
-	Moments  []client.Moment
-	Timeline *client.TimelineView
+	Project    client.Project
+	Capsule    client.Capsule
+	Profiles   []client.HarnessProfile
+	Threads    []ThreadDetail
+	Runs       []client.Run
+	Events     []client.RunEvent
+	EventError string
+	Moments    []client.Moment
+	Timeline   *client.TimelineView
 }
 
 // ThreadDetail keeps decrypted transcript content at the generated API
@@ -170,7 +171,9 @@ func (a *generatedAPI) Snapshot(ctx context.Context) (Snapshot, error) {
 		for index := range capsules {
 			detail, err := a.detail(ctx, project, capsules[index])
 			if err != nil {
-				return Snapshot{}, err
+				return Snapshot{}, fmt.Errorf(
+					"load Capsule %q: %w", safeInline(capsules[index].Name), err,
+				)
 			}
 			result.Capsules = append(result.Capsules, detail)
 		}
@@ -238,53 +241,58 @@ func (a *generatedAPI) detail(
 	detail := CapsuleDetail{Project: project, Capsule: capsule}
 	runs, err := a.runs(ctx, capsule.ID)
 	if err != nil {
-		return detail, err
+		return detail, fmt.Errorf("load Runs: %w", err)
 	}
 	detail.Runs = runs
 	if latest := detail.LatestRun(); latest != nil {
 		events, err := a.events(ctx, latest.ID)
 		if err != nil {
-			return detail, err
-		}
-		if len(events) > 8 {
-			detail.Events = events[len(events)-8:]
+			detail.EventError = err.Error()
 		} else {
-			detail.Events = events
+			if len(events) > 8 {
+				detail.Events = events[len(events)-8:]
+			} else {
+				detail.Events = events
+			}
 		}
 	}
 	moments, err := a.moments(ctx, capsule.ID)
 	if err != nil {
-		return detail, err
+		return detail, fmt.Errorf("load Moments: %w", err)
 	}
 	detail.Moments = moments
 	timelineResponse, err := a.client.GetTimeline(ctx, client.GetTimelineParams{
 		TimelineId: capsule.TimelineId,
 	})
 	if err != nil {
-		return detail, transportError(err)
+		return detail, fmt.Errorf("load Timeline: %w", transportError(err))
 	}
 	timeline, ok := timelineResponse.(*client.TimelineView)
 	if !ok {
 		return detail, responseError(timelineResponse)
 	}
 	detail.Timeline = timeline
-	profileResponse, err := a.client.ListHarnessProfiles(
-		ctx, client.ListHarnessProfilesParams{CapsuleId: capsule.ID},
-	)
-	if err != nil {
-		return detail, transportError(err)
-	}
-	profiles, ok := profileResponse.(*client.HarnessProfilePage)
-	if !ok {
-		if _, unsupported := profileResponse.(*client.ListHarnessProfilesUnprocessableEntity); !unsupported {
-			return detail, responseError(profileResponse)
+	// Deleted Capsules no longer have a provider resource to query. Their
+	// persisted history remains available, but runtime profile discovery does not.
+	if capsule.State != client.CapsuleStateDeleted {
+		profileResponse, err := a.client.ListHarnessProfiles(
+			ctx, client.ListHarnessProfilesParams{CapsuleId: capsule.ID},
+		)
+		if err != nil {
+			return detail, fmt.Errorf("load harness profiles: %w", transportError(err))
 		}
-	} else {
-		detail.Profiles = profiles.Items
+		profiles, ok := profileResponse.(*client.HarnessProfilePage)
+		if !ok {
+			if _, unsupported := profileResponse.(*client.ListHarnessProfilesUnprocessableEntity); !unsupported {
+				return detail, responseError(profileResponse)
+			}
+		} else {
+			detail.Profiles = profiles.Items
+		}
 	}
 	threads, err := a.threads(ctx, capsule.ID)
 	if err != nil {
-		return detail, err
+		return detail, fmt.Errorf("load Threads: %w", err)
 	}
 	detail.Threads = threads
 	return detail, nil

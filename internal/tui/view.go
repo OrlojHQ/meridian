@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/OrlojHQ/meridian/pkg/client"
 )
 
 func (m Model) View() string {
@@ -20,10 +22,10 @@ func (m Model) View() string {
 	title := m.titleViewWidth(contract.contentWidth)
 	var body string
 	if !m.connected && m.loading && len(m.snapshot.Capsules) == 0 {
-		body = emptyState(
-			theme, orbitalMark(theme), "Loading Meridian",
+		body = splash(
+			theme, transitMark(theme), "Loading Meridian",
 			"Connecting to the local daemon and reading Capsules.", "",
-			contract.contentWidth,
+			contract,
 		)
 	} else if !m.connected && m.lastErr != nil {
 		body = emptyState(
@@ -32,11 +34,13 @@ func (m Model) View() string {
 			keyHint(theme, "r", "retry now"), contract.contentWidth,
 		)
 	} else if len(m.snapshot.Projects) == 0 {
-		body = emptyState(
-			theme, orbitalMark(theme), "No projects yet",
+		body = splash(
+			theme, transitMark(theme), "No projects yet",
 			"Create a Project to connect a repository and choose its harness.",
-			keyHint(theme, "/project", "create Project"), contract.contentWidth,
+			keyHint(theme, "/project", "create Project"), contract,
 		)
+	} else if m.place == placeHome {
+		body = m.homeBody(contract)
 	} else if len(m.visibleCapsules()) == 0 && !m.pendingNew {
 		message := "Use /new to name a Capsule and choose its harness."
 		if m.projectName() != "" {
@@ -47,7 +51,7 @@ func (m Model) View() string {
 			copy += "\n\n" + harness
 		}
 		body = emptyState(
-			theme, orbitalMark(theme), "Capsules", copy,
+			theme, transitMark(theme), "Capsules", copy,
 			keyHint(theme, "/new", "create Capsule"), contract.contentWidth,
 		)
 	} else if m.mode == modeHistory && m.place == placeThread && m.selectedThreadID != "" {
@@ -100,7 +104,7 @@ func (m Model) titleView() string {
 
 func (m Model) titleViewWidth(width int) string {
 	theme := currentTheme()
-	left := theme.wordmark.Render("MERIDIAN")
+	left := transitMarkCompact(theme) + " " + theme.wordmark.Render("MERIDIAN")
 	right := ""
 	if name := m.projectName(); name != "" {
 		right = theme.muted.Render(safeInline(name))
@@ -126,11 +130,94 @@ func (m Model) footerViewWidth(width int) string {
 	if m.lastErr != nil && m.connected {
 		status += "  ·  " + safeInline(m.lastErr.Error())
 	}
-	hints := keyHint(theme, "Enter", "open") + "   " +
+	open := "open"
+	if m.place == placeHome {
+		open = "open Project"
+	}
+	hints := keyHint(theme, "Enter", open) + "   " +
 		keyHint(theme, "/", "commands") + "   " +
 		keyHint(theme, ":", "actions") + "   " +
 		keyHint(theme, "?", "help")
 	return pageLine(hints, theme.footer.Render(status), width)
+}
+
+func (m Model) homeBody(contract viewContract) string {
+	theme := currentTheme()
+	mark := transitMark(theme)
+	title := theme.title.Render("Choose a Project")
+	list := m.projectListView()
+	hints := keyHint(theme, "Enter", "open") + "   " + keyHint(theme, "/project", "create")
+	cardWidth := min(contract.contentWidth, max(
+		24, blockWidth(mark), blockWidth(title), blockWidth(list), blockWidth(hints),
+	))
+	card := strings.Join([]string{
+		centerBlock(mark, cardWidth),
+		"",
+		centerBlock(title, cardWidth),
+		"",
+		centerBlock(list, cardWidth),
+		"",
+		centerBlock(hints, cardWidth),
+	}, "\n")
+	return lipgloss.Place(
+		contract.contentWidth, contract.bodyHeight,
+		lipgloss.Center, lipgloss.Center, card,
+	)
+}
+
+func (m Model) projectListView() string {
+	theme := currentTheme()
+	if len(m.snapshot.Projects) == 0 {
+		return theme.muted.Render("None yet")
+	}
+	type row struct {
+		marker string
+		name   string
+		meta   string
+	}
+	rows := make([]row, 0, len(m.snapshot.Projects))
+	nameWidth := 0
+	for index, project := range m.snapshot.Projects {
+		item := row{marker: "  ", name: safeInline(project.Name)}
+		if index == m.projectPicker {
+			item.marker = theme.primary.Render("● ")
+			item.name = theme.selected.Render(item.name)
+		}
+		count := m.projectCapsuleCount(project.ID)
+		label := "Capsule"
+		if count != 1 {
+			label = "Capsules"
+		}
+		item.meta = theme.muted.Render(fmt.Sprintf("%d %s", count, label))
+		if width := lipgloss.Width(item.name); width > nameWidth {
+			nameWidth = width
+		}
+		rows = append(rows, item)
+	}
+	nameWidth = min(28, nameWidth)
+	lines := make([]string, 0, len(rows))
+	for _, item := range rows {
+		name := item.name
+		if lipgloss.Width(name) > nameWidth {
+			name = truncateWidth(name, nameWidth)
+		}
+		lines = append(lines, item.marker+padCell(name, nameWidth)+"  "+item.meta)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (m Model) projectCapsuleCount(id string) int {
+	count := 0
+	for _, detail := range m.snapshot.Capsules {
+		if detail.Project.ID != id {
+			continue
+		}
+		if !m.showDeleted && detail.Capsule.State == client.CapsuleStateDeleted {
+			continue
+		}
+		count++
+	}
+	return count
 }
 
 func (m Model) capsuleListView() string {
@@ -441,34 +528,91 @@ func truncateWidth(value string, width int) string {
 	return string(runes) + "…"
 }
 
+func wrapText(value string, width int) string {
+	if width < 1 {
+		return value
+	}
+	var lines []string
+	for _, paragraph := range strings.Split(value, "\n") {
+		words := strings.Fields(paragraph)
+		if len(words) == 0 {
+			lines = append(lines, "")
+			continue
+		}
+		line := ""
+		for _, word := range words {
+			if line == "" {
+				line = word
+				continue
+			}
+			if lipgloss.Width(line+" "+word) <= width {
+				line += " " + word
+				continue
+			}
+			lines = append(lines, line)
+			line = word
+		}
+		lines = append(lines, line)
+	}
+	return strings.Join(lines, "\n")
+}
+
 func (m Model) overlayView() string {
 	theme := currentTheme()
 	if m.overlay.kind == overlayPalette {
 		return m.paletteView()
 	}
+	width := max(40, min(72, m.width-4))
+	if m.overlay.kind == overlayHelp || m.overlay.kind == overlayContent {
+		width = max(40, min(90, m.width-4))
+	}
+	if width < 40 {
+		width = 40
+	}
+	contentWidth := width - 6
 	var lines []string
 	if m.overlay.note != "" {
-		lines = append(lines, theme.muted.Render(m.overlay.note), "")
+		lines = append(lines, theme.muted.Render(wrapText(safeBlock(m.overlay.note), contentWidth)), "")
 	}
 	switch m.overlay.kind {
 	case overlayForm:
-		lines = append(lines, "")
+		if m.overlay.action.Action == ActionProjectCreate {
+			lines = append(lines, theme.section.Render("REPOSITORY"))
+		}
 		for index, item := range m.overlay.fields {
+			if m.overlay.action.Action == ActionProjectCreate && item.label == "Name" {
+				lines = append(lines, "", theme.section.Render("PROJECT"))
+			}
 			prefix := "  "
 			if index == m.overlay.focus {
 				prefix = "> "
 			}
 			suffix := ""
 			if len(item.options) > 0 {
-				suffix = "  (←/→ select)"
+				suffix = "  ←/→"
+			} else if item.readOnly {
+				suffix = "  detected"
 			}
 			value := safeBlock(item.value)
+			placeholder := value == "" && item.placeholder != ""
+			if placeholder {
+				value = item.placeholder
+			}
 			if item.secret && value != "" {
 				value = strings.Repeat("•", runeCount(value))
 			}
-			row := prefix + item.label + ": " + value + suffix
+			if index == m.overlay.focus && !item.readOnly && len(item.options) == 0 {
+				if placeholder {
+					value = caret(m.cursorOn) + value
+				} else {
+					value += caret(m.cursorOn)
+				}
+			}
+			row := truncateWidth(prefix+item.label+": "+value+suffix, contentWidth)
 			if index == m.overlay.focus {
 				row = theme.selected.Render(row)
+			} else if item.readOnly || placeholder {
+				row = theme.muted.Render(row)
 			}
 			lines = append(lines, row)
 		}
@@ -497,10 +641,6 @@ func (m Model) overlayView() string {
 		lines = append(lines, "", theme.muted.Render("y/enter confirm  n/esc cancel"))
 	case overlayHelp, overlayContent:
 		lines = append(lines, "", m.overlay.content, "", theme.muted.Render("enter/esc close"))
-	}
-	width := max(40, min(90, m.width-4))
-	if width < 40 {
-		width = 40
 	}
 	return m.placeModal(modal(theme, strings.ToUpper(m.overlay.title), strings.Join(lines, "\n"), width))
 }

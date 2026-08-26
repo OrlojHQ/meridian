@@ -101,10 +101,12 @@ power-user workflows.
 ## Sessions and Capsules
 
 The dashboard is a Project and Capsule launcher, not a wrapper around each
-harness. Its stable header, Capsule fleet, contextual footer, and temporary
-command surface use the terminal as one composed screen. Enter hands the
-terminal to the selected Capsule's native harness TUI. Deleted Capsules stay
-off the fleet unless you show them from the action palette.
+harness. It opens on a Projects home with the transit mark. Enter opens the
+selected Project's Capsule fleet; Esc returns to Projects. The stable header,
+contextual footer, and temporary command surface use the terminal as one
+composed screen. Inside a Project, Enter hands the terminal to the selected
+Capsule's native harness TUI. Deleted Capsules stay off the fleet unless you
+show them from the action palette.
 
 At 80 columns the fleet uses the full content width. At 100 columns and wider,
 a compact inspector appears beside it with the selected Capsule's harness,
@@ -115,10 +117,14 @@ keep the same header, body, command slot, and footer anchors. `NO_COLOR`
 preserves labels, borders, selection markers, and readable state text without
 ANSI color.
 
-`/project` creates a Project (name, repository URL, harness). ← → picks a pack
-from the installation catalog. `/switch` chooses the active Project when more
-than one exists, and `/harness` applies more packs later. `/new` asks for a
-Capsule name and one applied harness; no first prompt is required.
+`/project` creates a Project (name, repository, harness). When the dashboard
+starts inside a Git worktree with an `origin`, the form proposes its directory
+name and a portable clone URL; GitHub SSH origins become HTTPS. The fields stay
+editable, and `owner/repository` GitHub shorthand is accepted. ← → picks a pack
+from the installation catalog. `/switch` opens a Project when more than one
+exists, and `/harness` applies more packs later. `/new` asks for a Capsule name
+and one applied harness; from Projects home it opens the highlighted Project
+first. No first prompt is required.
 The daemon creates the Capsule with that pack's allowlisted image, starts its
 native PTY profile when Ready, and the dashboard attaches as soon as the Run is
 available.
@@ -147,8 +153,8 @@ menus; Esc closes them.
 ## Keybindings
 
 - `j`/`k` or arrow keys: move in the focused list
-- `Enter`: open the selected Capsule's native harness
-- `Esc`: close command entry, a modal, or structured history
+- `Enter`: open the selected Project, or the selected Capsule's native harness
+- `Esc`: return to Projects, or close command entry, a modal, or structured history
 - `/`: temporary launcher commands (`/new`, `/project`, `/switch`, `/harness`, `/help`, `/refresh`)
 - `:`: grouped actions, including encrypted structured history
 - `PageUp` / `PageDown`: scroll a bounded structured transcript
@@ -218,8 +224,9 @@ terminal titles.
 
 Press `Ctrl-P`, release it, then press `Ctrl-Q` to detach locally. `Ctrl-\` and
 `Ctrl-]` are alternatives. `Ctrl-C` remains a byte sent to the remote PTY
-while attached. On an abnormal disconnect, attach reports the highest rendered
-output cursor:
+while attached. When the remote Run exits, attachment returns to the dashboard
+after rendering its final output. On an abnormal disconnect, attach reports the
+highest rendered output cursor:
 
 ```console
 meridian run attach RUN_ID --after CURSOR

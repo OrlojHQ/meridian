@@ -14,6 +14,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/OrlojHQ/meridian/internal/localrepo"
 	"github.com/OrlojHQ/meridian/pkg/client"
 )
 
@@ -54,7 +55,8 @@ const (
 type place int
 
 const (
-	placeProject place = iota
+	placeHome place = iota
+	placeProject
 	placeCapsule
 	placeThread
 )
@@ -82,6 +84,8 @@ type field struct {
 	optionValues []string
 	optionIndex  int
 	secret       bool
+	readOnly     bool
+	placeholder  string
 }
 
 type overlay struct {
@@ -118,6 +122,9 @@ type Options struct {
 	Executable string
 	Now        func() time.Time
 	Attach     func(AttachRequest) tea.Cmd
+
+	SuggestedProjectName   string
+	SuggestedRepositoryURL string
 }
 
 // Model is the Bubble Tea dashboard state.
@@ -130,6 +137,9 @@ type Model struct {
 	now        func() time.Time
 	attach     func(AttachRequest) tea.Cmd
 
+	suggestedProjectName   string
+	suggestedRepositoryURL string
+
 	width            int
 	height           int
 	selected         int
@@ -140,6 +150,7 @@ type Model struct {
 	focus            focusPane
 	mode             navigationMode
 	projectID        string
+	projectPicker    int
 	showDeleted      bool
 	stayOnList       bool
 	composer         string
@@ -182,7 +193,9 @@ func NewModel(options Options) Model {
 	model := Model{
 		ctx: options.Context, api: options.API, server: options.Server, tokenFile: options.TokenFile,
 		executable: options.Executable, now: options.Now, loading: true,
-		focus: focusCapsules, mode: modeLauncher, stayOnList: true, cursorOn: true,
+		suggestedProjectName:   options.SuggestedProjectName,
+		suggestedRepositoryURL: options.SuggestedRepositoryURL,
+		focus:                  focusMain, mode: modeLauncher, place: placeHome, stayOnList: true, cursorOn: true,
 		unread: make(map[string]int64), seenCursor: make(map[string]int64),
 	}
 	if options.Attach != nil {
@@ -224,6 +237,7 @@ func (m Model) dispatch(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.reconnect = m.connected
 			return m, m.tickCmd()
 		}
+		firstConnection := !m.connected
 		m.connected = true
 		m.reconnect = false
 		m.lastErr = nil
@@ -240,6 +254,9 @@ func (m Model) dispatch(message tea.Msg) (tea.Model, tea.Cmd) {
 			return next, cmd
 		}
 		m.settleStatus()
+		if firstConnection {
+			return m, tea.Batch(m.tickCmd(), tea.SetWindowTitle("Meridian"))
+		}
 		return m, m.tickCmd()
 	case tickMsg:
 		if m.loading {
@@ -275,12 +292,12 @@ func (m Model) dispatch(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.sendRetries = 0
 		m.status = friendlyStatus(value.result.Message)
+		var titleCmd tea.Cmd
 		if value.action == ActionDelete {
 			m.goToCapsuleList()
 		}
 		if value.result.ProjectID != "" {
-			m.projectID = value.result.ProjectID
-			m.goToCapsuleList()
+			titleCmd = m.enterProject(value.result.ProjectID)
 		}
 		if value.action == ActionCreate && value.result.CapsuleID != "" {
 			m.pendingNew = false
@@ -314,7 +331,7 @@ func (m Model) dispatch(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.pendingSend = ""
 		}
 		m.loading = true
-		return m, m.loadCmd()
+		return m, tea.Batch(m.loadCmd(), titleCmd)
 	case attachFinishedMsg:
 		m.mode = modeLauncher
 		m.stayOnList = true
@@ -415,8 +432,7 @@ func (m Model) updateKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.openThreadCreate()
 		return m, nil
 	case "T":
-		m.beginNewCapsule()
-		return m, nil
+		return m, m.beginNewCapsule()
 	case "P":
 		m.openThreadResponse()
 		return m, nil
@@ -487,14 +503,20 @@ func (m Model) updateComposer(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.pendingNew {
 			return m.sendComposer()
 		}
-		if m.place == placeProject {
+		if m.place == placeHome || m.place == placeProject {
 			if strings.TrimSpace(m.composer) == "" {
 				m.composerFocus = false
-				m.focus = focusCapsules
+				if m.place == placeHome {
+					m.focus = focusMain
+				} else {
+					m.focus = focusCapsules
+				}
 				return m.enterSelection()
 			}
-			m.status = "Project home accepts / commands; press Tab to return to Capsules"
-			return m, nil
+			if m.place == placeProject {
+				m.status = "Project home accepts / commands; press Tab to return to Capsules"
+				return m, nil
+			}
 		}
 		return m.sendComposer()
 	case "ctrl+j":
@@ -643,13 +665,9 @@ func (m Model) updateOverlay(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.overlay = overlay{}
 			return m, nil
 		case "tab", "down":
-			if len(m.overlay.fields) > 0 {
-				m.overlay.focus = (m.overlay.focus + 1) % len(m.overlay.fields)
-			}
+			m.moveOverlayFocus(1)
 		case "shift+tab", "up":
-			if len(m.overlay.fields) > 0 {
-				m.overlay.focus = (m.overlay.focus - 1 + len(m.overlay.fields)) % len(m.overlay.fields)
-			}
+			m.moveOverlayFocus(-1)
 		case "left", "right":
 			if len(m.overlay.fields) > 0 {
 				current := &m.overlay.fields[m.overlay.focus]
@@ -671,14 +689,15 @@ func (m Model) updateOverlay(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 					}
 					current.optionIndex = (index + delta + len(current.options)) % len(current.options)
 					current.value = current.options[current.optionIndex]
+					m.syncProjectRepositorySource()
 				}
 			}
 		case "backspace":
 			if len(m.overlay.fields) > 0 {
-				current := &m.overlay.fields[m.overlay.focus].value
-				if len(*current) > 0 {
-					_, size := utf8.DecodeLastRuneInString(*current)
-					*current = (*current)[:len(*current)-size]
+				current := &m.overlay.fields[m.overlay.focus]
+				if !current.readOnly && len(current.options) == 0 && len(current.value) > 0 {
+					_, size := utf8.DecodeLastRuneInString(current.value)
+					current.value = current.value[:len(current.value)-size]
 				}
 			}
 		case "ctrl+j":
@@ -697,25 +716,56 @@ func (m Model) updateOverlay(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			m.overlay = overlay{}
 			if request.Action == Action("switch-project") {
-				m.projectID = request.ProjectID
-				m.selectedID = ""
-				m.selectedThreadID = ""
-				m.place = placeProject
-				m.focus = focusCapsules
-				m.restoreSelection()
-				return m, nil
+				return m, m.enterProject(request.ProjectID)
 			}
 			return m.execute(request)
 		default:
 			if len(m.overlay.fields) > 0 && len(key.Runes) > 0 {
 				current := &m.overlay.fields[m.overlay.focus]
-				if len(current.options) == 0 {
+				if !current.readOnly && len(current.options) == 0 {
 					current.value += string(key.Runes)
 				}
 			}
 		}
 	}
 	return m, nil
+}
+
+func (m *Model) moveOverlayFocus(delta int) {
+	count := len(m.overlay.fields)
+	if count == 0 {
+		return
+	}
+	for range count {
+		m.overlay.focus = (m.overlay.focus + delta + count) % count
+		if !m.overlay.fields[m.overlay.focus].readOnly {
+			return
+		}
+	}
+}
+
+func (m *Model) syncProjectRepositorySource() {
+	if m.overlay.action.Action != ActionProjectCreate {
+		return
+	}
+	source := m.overlayField("Repository source")
+	repository := m.overlayField("Repository")
+	if source == nil || repository == nil {
+		return
+	}
+	switch selectedOptionValue(source) {
+	case "current":
+		repository.value = m.suggestedRepositoryURL
+		repository.readOnly = true
+	case "none":
+		repository.value = ""
+		repository.readOnly = true
+	default:
+		if repository.readOnly {
+			repository.value = ""
+		}
+		repository.readOnly = false
+	}
 }
 
 func (m Model) updatePalette(key tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -845,6 +895,33 @@ func (m *Model) openCreatedSession(capsuleID, threadID string) {
 	m.place = placeCapsule
 }
 
+func (m *Model) goToHome() tea.Cmd {
+	if m.projectID != "" {
+		for index, project := range m.snapshot.Projects {
+			if project.ID == m.projectID {
+				m.projectPicker = index
+				break
+			}
+		}
+	}
+	m.projectID = ""
+	m.stayOnList = true
+	m.mode = modeLauncher
+	m.place = placeHome
+	m.focus = focusMain
+	m.composerFocus = false
+	m.pendingNew = false
+	m.newName = ""
+	m.newNameFocus = false
+	m.newHarness = ""
+	m.newHarnesses = nil
+	m.selectedThreadID = ""
+	m.selectedID = ""
+	m.scroll = 0
+	m.clampProjectPicker()
+	return tea.SetWindowTitle("Meridian")
+}
+
 func (m *Model) goToCapsuleList() {
 	m.stayOnList = true
 	m.mode = modeLauncher
@@ -861,9 +938,70 @@ func (m *Model) goToCapsuleList() {
 	m.scroll = 0
 }
 
+func (m *Model) enterProject(id string) tea.Cmd {
+	m.projectID = id
+	title := "Meridian"
+	for index, project := range m.snapshot.Projects {
+		if project.ID == id {
+			m.projectPicker = index
+			if name := safeInline(project.Name); name != "" {
+				title += " · " + name
+			}
+			break
+		}
+	}
+	m.goToCapsuleList()
+	visible := m.visibleCapsules()
+	if len(visible) == 0 {
+		m.selected = 0
+		m.selectedID = ""
+		return tea.SetWindowTitle(title)
+	}
+	m.selected = visible[0]
+	m.selectedID = m.snapshot.Capsules[m.selected].Capsule.ID
+	return tea.SetWindowTitle(title)
+}
+
+func (m *Model) enterHighlightedProject() (bool, tea.Cmd) {
+	project := m.highlightedProject()
+	if project == nil {
+		return false, nil
+	}
+	return true, m.enterProject(project.ID)
+}
+
+func (m *Model) clampProjectPicker() {
+	if n := len(m.snapshot.Projects); n == 0 {
+		m.projectPicker = 0
+		return
+	} else if m.projectPicker < 0 || m.projectPicker >= n {
+		m.projectPicker = 0
+	}
+}
+
+func (m Model) highlightedProject() *client.Project {
+	if len(m.snapshot.Projects) == 0 {
+		return nil
+	}
+	index := m.projectPicker
+	if index < 0 || index >= len(m.snapshot.Projects) {
+		index = 0
+	}
+	return &m.snapshot.Projects[index]
+}
+
 func (m *Model) restoreSelection() {
-	if m.projectID == "" && len(m.snapshot.Projects) > 0 {
-		m.projectID = m.snapshot.Projects[0].ID
+	m.clampProjectPicker()
+	if m.place == placeHome {
+		m.selectedThreadID = ""
+		if m.mode != modeCommand {
+			m.mode = modeLauncher
+		}
+		if !m.composerFocus && m.composer == "" && !m.pendingNew {
+			m.focus = focusMain
+			m.composerFocus = false
+		}
+		return
 	}
 	if m.stayOnList {
 		m.selectedThreadID = ""
@@ -957,6 +1095,12 @@ func (m *Model) restoreSelection() {
 }
 
 func (m *Model) move(delta int) {
+	if m.place == placeHome {
+		if n := len(m.snapshot.Projects); n > 0 {
+			m.projectPicker = (m.projectPicker + delta + n) % n
+		}
+		return
+	}
 	if m.mode == modeHistory && (m.place == placeThread || m.place == placeCapsule) {
 		if delta > 0 {
 			m.scroll = max(0, m.scroll-max(3, m.height/2))
@@ -1055,6 +1199,9 @@ func (m Model) capsuleHasStructured(detail CapsuleDetail) bool {
 }
 
 func (m Model) projectName() string {
+	if m.place == placeHome || m.projectID == "" {
+		return ""
+	}
 	for _, project := range m.snapshot.Projects {
 		if project.ID == m.projectID {
 			return safeInline(project.Name)
@@ -1062,9 +1209,6 @@ func (m Model) projectName() string {
 	}
 	if detail := m.selectedDetail(); detail != nil {
 		return safeInline(detail.Project.Name)
-	}
-	if len(m.snapshot.Projects) == 1 {
-		return safeInline(m.snapshot.Projects[0].Name)
 	}
 	return ""
 }
@@ -1084,18 +1228,39 @@ func (m Model) goBack() (tea.Model, tea.Cmd) {
 		m.selectedThreadID = ""
 		m.composer = ""
 		m.scroll = 0
+		m.pendingNew = false
+		m.newName = ""
+		m.newNameFocus = false
+		m.newHarness = ""
+		m.newHarnesses = nil
+		m.composerFocus = false
+		m.focus = focusCapsules
+		return m, nil
 	}
-	m.pendingNew = false
-	m.newName = ""
-	m.newNameFocus = false
-	m.newHarness = ""
-	m.newHarnesses = nil
-	m.composerFocus = false
-	m.focus = focusCapsules
+	if m.pendingNew {
+		m.pendingNew = false
+		m.newName = ""
+		m.newNameFocus = false
+		m.newHarness = ""
+		m.newHarnesses = nil
+		m.composerFocus = false
+		m.focus = focusCapsules
+		return m, nil
+	}
+	if m.place == placeProject || m.place == placeCapsule {
+		return m, m.goToHome()
+	}
 	return m, nil
 }
 
 func (m Model) enterSelection() (tea.Model, tea.Cmd) {
+	if m.place == placeHome {
+		entered, cmd := m.enterHighlightedProject()
+		if !entered {
+			m.status = "Create a Project first"
+		}
+		return m, cmd
+	}
 	detail := m.selectedDetail()
 	if detail == nil {
 		return m, nil
@@ -1454,16 +1619,36 @@ func (m Model) attachRun(detail CapsuleDetail, run client.Run) (tea.Model, tea.C
 }
 
 func (m *Model) openCreateProject() {
+	source := field{
+		label:        "Repository source",
+		value:        "GitHub / clone URL",
+		options:      []string{"GitHub / clone URL", "No repository"},
+		optionValues: []string{"manual", "none"},
+	}
+	repository := field{
+		label: "Repository", optional: true,
+		placeholder: "owner/repository or clone URL",
+	}
+	note := "No Git origin was found. Enter GitHub owner/repository, paste a clone URL, or choose No repository."
+	if m.suggestedRepositoryURL != "" {
+		source.value = "Current origin"
+		source.options = append([]string{"Current origin"}, source.options...)
+		source.optionValues = append([]string{"current"}, source.optionValues...)
+		repository.value = m.suggestedRepositoryURL
+		repository.readOnly = true
+		note = "Using the current Git origin. Local uncommitted changes are not included."
+	}
 	fields := []field{
-		{label: "Name"},
-		{label: "Repository URL", optional: true},
+		source,
+		repository,
+		{label: "Name", value: m.suggestedProjectName, placeholder: "project name"},
 	}
 	if names := m.installationHarnessNames(); len(names) > 0 {
 		fields = append(fields, field{label: "Harness", value: names[0], options: names})
 	}
 	m.overlay = overlay{
 		kind: overlayForm, title: "New Project",
-		note:   "A Project is the recipe: a repo and a harness. ← → picks a pack. /new starts Capsules with it. Secrets stay in the scriptable CLI.",
+		note:   note,
 		action: ActionRequest{Action: ActionProjectCreate},
 		fields: fields,
 	}
@@ -1556,10 +1741,19 @@ func (m Model) startWorkspaceChat(content string) (tea.Model, tea.Cmd) {
 	})
 }
 
-func (m *Model) beginNewCapsule() {
+func (m *Model) beginNewCapsule() tea.Cmd {
+	var titleCmd tea.Cmd
+	if m.place == placeHome {
+		var entered bool
+		entered, titleCmd = m.enterHighlightedProject()
+		if !entered {
+			m.openCreateProject()
+			return nil
+		}
+	}
 	if m.currentProjectID() == "" {
 		m.openCreateProject()
-		return
+		return titleCmd
 	}
 	m.stayOnList = true
 	m.mode = modeLauncher
@@ -1576,6 +1770,7 @@ func (m *Model) beginNewCapsule() {
 	m.focus = focusMain
 	m.paletteIndex = 0
 	m.status = "Name this Capsule and pick a harness"
+	return titleCmd
 }
 
 func (m *Model) cycleNewHarness(delta int) {
@@ -1599,8 +1794,8 @@ func (m Model) currentProjectID() string {
 	if detail := m.selectedDetail(); detail != nil {
 		return detail.Project.ID
 	}
-	if len(m.snapshot.Projects) > 0 {
-		return m.snapshot.Projects[0].ID
+	if project := m.highlightedProject(); project != nil {
+		return project.ID
 	}
 	return ""
 }
@@ -1784,12 +1979,13 @@ func containsString(values []string, want string) bool {
 func (m Model) startFreshWorkspace(_ string) (tea.Model, tea.Cmd) {
 	name := strings.TrimSpace(m.newName)
 	if name == "" {
+		var titleCmd tea.Cmd
 		if !m.pendingNew {
-			m.beginNewCapsule()
+			titleCmd = m.beginNewCapsule()
 		}
 		m.newNameFocus = true
 		m.status = "Name this Capsule first"
-		return m, nil
+		return m, titleCmd
 	}
 	projectID := m.currentProjectID()
 	if projectID == "" {
@@ -2030,7 +2226,7 @@ func (m Model) formRequest() (ActionRequest, error) {
 			item.label != "Project ID" && item.label != "Moment ID" &&
 			item.label != "Message" && item.label != "First message" &&
 			item.label != "First prompt" && item.label != "Input" &&
-			item.label != "Repository URL" && item.label != "Image" &&
+			item.label != "Repository URL" && item.label != "Repository" && item.label != "Image" &&
 			item.label != "Harness" {
 			return ActionRequest{}, fmt.Errorf("%s exceeds 128 characters", item.label)
 		}
@@ -2045,13 +2241,28 @@ func (m Model) formRequest() (ActionRequest, error) {
 			return ActionRequest{}, errors.New("selected Project is unavailable")
 		}
 	case ActionProjectCreate:
-		request.Name = strings.TrimSpace(m.overlay.fields[0].value)
-		request.RepositoryURL = strings.TrimSpace(m.overlay.fields[1].value)
+		name := m.overlayField("Name")
+		repository := m.overlayField("Repository")
+		source := m.overlayField("Repository source")
+		if name == nil || repository == nil || source == nil {
+			return ActionRequest{}, errors.New("Project form is unavailable")
+		}
+		request.Name = strings.TrimSpace(name.value)
+		var err error
+		if selectedOptionValue(source) == "manual" && strings.TrimSpace(repository.value) == "" {
+			return ActionRequest{}, errors.New("Repository is required for this source")
+		}
+		if selectedOptionValue(source) != "none" {
+			request.RepositoryURL, err = localrepo.Normalize(repository.value)
+		}
+		if err != nil {
+			return ActionRequest{}, err
+		}
 		if utf8.RuneCountInString(request.RepositoryURL) > 4096 {
 			return ActionRequest{}, errors.New("Repository URL exceeds 4096 characters")
 		}
-		if len(m.overlay.fields) > 2 {
-			harness := strings.TrimSpace(m.overlay.fields[2].value)
+		if harnessField := m.overlayField("Harness"); harnessField != nil {
+			harness := strings.TrimSpace(harnessField.value)
 			pack, ok := m.installationHarness(harness)
 			if !ok {
 				return ActionRequest{}, fmt.Errorf("unknown harness %q", harness)
@@ -2129,6 +2340,25 @@ func (m Model) formRequest() (ActionRequest, error) {
 		}
 	}
 	return request, nil
+}
+
+func (m *Model) overlayField(label string) *field {
+	for index := range m.overlay.fields {
+		if m.overlay.fields[index].label == label {
+			return &m.overlay.fields[index]
+		}
+	}
+	return nil
+}
+
+func selectedOptionValue(item *field) string {
+	if item == nil {
+		return ""
+	}
+	if item.optionIndex >= 0 && item.optionIndex < len(item.optionValues) {
+		return item.optionValues[item.optionIndex]
+	}
+	return item.value
 }
 
 func (m Model) lifecycleRequest(action Action) ActionRequest {
@@ -2473,10 +2703,10 @@ const composerHint = "Enter send  Ctrl-J nl  / cmds"
 
 const helpText = `Launcher
   j/k or arrows  move in the focused list
-  enter          open the selected Capsule's native harness
+  enter          open a Project, or the selected Capsule's native harness
   /              open the temporary command surface
   :              actions, structured history, and maintenance
-  esc            close a command, modal, or history view
+  esc            return to Projects, or close a command, modal, or history
   r              refresh now
   /project       create a Project (repo + harness)
   /switch        switch the active Project

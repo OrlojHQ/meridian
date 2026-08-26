@@ -15,6 +15,7 @@ import (
 	"github.com/OrlojHQ/meridian/internal/apiauth"
 	"github.com/OrlojHQ/meridian/internal/buildinfo"
 	"github.com/OrlojHQ/meridian/internal/domain"
+	"github.com/OrlojHQ/meridian/internal/localrepo"
 	"github.com/OrlojHQ/meridian/internal/tui"
 	"github.com/OrlojHQ/meridian/pkg/client"
 	"github.com/spf13/cobra"
@@ -85,6 +86,40 @@ func newTUICommand(config *cliConfig) *cobra.Command {
 	}
 }
 
+func projectCreateDefaults(
+	ctx context.Context,
+	args []string,
+	repositoryURL string,
+	repositoryFlagSet bool,
+) (string, string, error) {
+	var discovered localrepo.Repository
+	var err error
+	if repositoryFlagSet {
+		repositoryURL, err = localrepo.Normalize(repositoryURL)
+		if err != nil {
+			return "", "", err
+		}
+	} else {
+		discovered, err = localrepo.Discover(ctx, "")
+		if err == nil {
+			repositoryURL = discovered.OriginURL
+		}
+	}
+
+	name := ""
+	if len(args) > 0 {
+		name = args[0]
+	} else if discovered.Name != "" {
+		name = discovered.Name
+	} else {
+		name = localrepo.Name(repositoryURL)
+	}
+	if name == "" {
+		return "", "", errors.New("project NAME is required outside a Git worktree with an origin")
+	}
+	return name, repositoryURL, nil
+}
+
 func newProjectCommand(config *cliConfig) *cobra.Command {
 	project := &cobra.Command{Use: "project", Short: "Manage projects"}
 
@@ -93,10 +128,17 @@ func newProjectCommand(config *cliConfig) *cobra.Command {
 	var commitAuthorEmail, defaultBaseBranch string
 	var setup, harnessSecretNames, harnessImages []string
 	create := &cobra.Command{
-		Use:   "create NAME",
+		Use:   "create [NAME]",
 		Short: "Create a project",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(command *cobra.Command, args []string) error {
+			name, resolvedRepositoryURL, err := projectCreateDefaults(
+				command.Context(), args, repositoryURL,
+				command.Flags().Changed("repository-url"),
+			)
+			if err != nil {
+				return err
+			}
 			api, err := newAPI(config)
 			if err != nil {
 				return err
@@ -106,10 +148,10 @@ func newProjectCommand(config *cliConfig) *cobra.Command {
 				return err
 			}
 			input := &client.CreateProjectRequest{
-				Name: args[0], Setup: setup, HarnessSecretNames: harnessSecretNames,
+				Name: name, Setup: setup, HarnessSecretNames: harnessSecretNames,
 			}
-			if repositoryURL != "" {
-				input.RepositoryUrl = client.NewOptString(repositoryURL)
+			if resolvedRepositoryURL != "" {
+				input.RepositoryUrl = client.NewOptString(resolvedRepositoryURL)
 			}
 			if imageReference != "" {
 				input.ImageReference = client.NewOptString(imageReference)
@@ -160,7 +202,10 @@ func newProjectCommand(config *cliConfig) *cobra.Command {
 		},
 	}
 	create.Flags().StringVar(&createKey, "idempotency-key", "", "mutation replay key (generated if omitted)")
-	create.Flags().StringVar(&repositoryURL, "repository-url", "", "public URL or absolute local fixture repository path")
+	create.Flags().StringVar(
+		&repositoryURL, "repository-url", "",
+		"repository URL or GitHub owner/repo (default current Git origin; pass empty to disable)",
+	)
 	create.Flags().StringArrayVar(&setup, "setup-arg", nil, "setup argv element; repeat in executable-first order")
 	create.Flags().StringVar(&imageReference, "image", "", "default Capsule image reference")
 	create.Flags().StringArrayVar(

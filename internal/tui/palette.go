@@ -258,7 +258,7 @@ func (m Model) runPaletteID(id string) (tea.Model, tea.Cmd) {
 		m.showDeleted = false
 		m.restoreSelection()
 	case "new", "spawn":
-		m.beginNewCapsule()
+		return m, m.beginNewCapsule()
 	case "capsule":
 		m.openCreate()
 	case "help":

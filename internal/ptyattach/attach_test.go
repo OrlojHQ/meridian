@@ -380,6 +380,19 @@ func TestRunCursorAndReplayGap(t *testing.T) {
 	}
 }
 
+func TestRunReturnsWhenRemoteRunCompletes(t *testing.T) {
+	harness := newHarness(t)
+	frame, _ := json.Marshal(outputEvent{Sequence: 8, Type: "run.succeeded"})
+	harness.socket.reads <- socketRead{messageType: websocket.MessageText, value: frame}
+
+	if err := Run(context.Background(), harness.options); err != nil {
+		t.Fatal(err)
+	}
+	if got := harness.term.restores(); got != 1 {
+		t.Fatalf("restore calls = %d, want 1", got)
+	}
+}
+
 func TestSendSizeFallsBackForInvalidDimensions(t *testing.T) {
 	harness := newHarness(t)
 	harness.term.columns, harness.term.rows = 0, -1
