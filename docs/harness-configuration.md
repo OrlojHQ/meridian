@@ -48,8 +48,10 @@ this file.
 Official harness-pack images use the trusted source because pack selection and
 image provisioning happen before the repository is cloned. For example, the
 OpenCode pack includes a native `opencode` profile with
-`/usr/local/bin/opencode`, `promptMode: interactive`, and `pty: true`.
-Repositories can add other non-conflicting profiles but cannot replace it.
+`/usr/local/bin/opencode`, `promptMode: interactive`, and `pty: true`. The
+Pi, Claude Code, and Codex packs do the same with `/usr/local/bin/pi`,
+`/usr/local/bin/claude`, and `/usr/local/bin/codex`. Repositories can add
+other non-conflicting profiles but cannot replace them.
 
 Delivery settings are host-owned Project configuration, not repository YAML:
 

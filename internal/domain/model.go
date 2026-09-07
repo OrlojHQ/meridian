@@ -36,6 +36,45 @@ const (
 
 const MaxHarnessImages = 16
 
+const (
+	LocalCapsuleImage         = "meridian-capsule:dev"
+	OfficialCapsuleRepository = "ghcr.io/orlojhq/meridian-capsule"
+)
+
+// DefaultCapsuleImage is the installation Capsule image for a meridiand binary.
+// Release versions advertise the matching GHCR tag so operators do not build
+// pack images locally. Development and snapshot builds keep the local :dev tag.
+func DefaultCapsuleImage(version string) string {
+	if tag := OfficialImageTag(version); tag != "" {
+		return OfficialCapsuleRepository + ":" + tag
+	}
+	return LocalCapsuleImage
+}
+
+// OfficialImageTag is the GHCR tag for a stamped meridiand version, or empty
+// when the binary is not a published release.
+func OfficialImageTag(version string) string {
+	version = strings.TrimPrefix(strings.TrimSpace(version), "v")
+	if version == "" || version == "dev" || strings.HasSuffix(version, "-next") {
+		return ""
+	}
+	if version[0] < '0' || version[0] > '9' || strings.ContainsAny(version, "/@ \t\r\n") {
+		return ""
+	}
+	return "v" + version
+}
+
+// RegistryQualifiedImage is a reference Docker may pull. Short local names such
+// as meridian-capsule:dev are never fetched from Docker Hub.
+func RegistryQualifiedImage(ref string) bool {
+	registry, _, _, _ := splitImageRef(ref)
+	if registry == "" {
+		return false
+	}
+	host, _, _ := strings.Cut(registry, "/")
+	return strings.ContainsAny(host, ".:") || host == "localhost"
+}
+
 type HarnessImage struct {
 	Name           string `json:"name"`
 	ImageReference string `json:"imageReference"`
@@ -138,27 +177,51 @@ func (p Project) HarnessNames() []string {
 
 // InstallationHarnessImages is the daemon-advertised catalog of official
 // harness packs. Spawn still uses only names applied on a Project.
-func InstallationHarnessImages(defaultImage string) []HarnessImage {
+// packTag overrides the tag copied from defaultImage so a digest-pinned
+// Capsule image can still advertise release-tagged official packs.
+func InstallationHarnessImages(defaultImage, packTag string) []HarnessImage {
 	defaultImage = strings.TrimSpace(defaultImage)
 	if defaultImage == "" {
-		defaultImage = "meridian-capsule:dev"
+		defaultImage = LocalCapsuleImage
 	}
 	return []HarnessImage{
 		{Name: "mock", ImageReference: defaultImage},
-		{Name: "opencode", ImageReference: officialPackImage(defaultImage, "meridian-capsule-opencode")},
+		{Name: "opencode", ImageReference: officialPackImage(defaultImage, "meridian-capsule-opencode", packTag)},
+		{Name: "pi", ImageReference: officialPackImage(defaultImage, "meridian-capsule-pi", packTag)},
+		{Name: "claude", ImageReference: officialPackImage(defaultImage, "meridian-capsule-claude", packTag)},
+		{Name: "codex", ImageReference: officialPackImage(defaultImage, "meridian-capsule-codex", packTag)},
 	}
 }
 
-func officialPackImage(defaultImage, repository string) string {
-	ref := defaultImage
-	if index := strings.LastIndex(ref, "@"); index >= 0 {
-		ref = ref[:index]
+func officialPackImage(defaultImage, repository, packTag string) string {
+	registry, _, derivedTag, _ := splitImageRef(defaultImage)
+	tag := strings.TrimSpace(packTag)
+	if tag == "" {
+		tag = derivedTag
 	}
-	tag := "dev"
-	if index := strings.LastIndex(ref, ":"); index >= 0 && !strings.Contains(ref[index:], "/") {
-		tag = ref[index+1:]
+	if tag == "" {
+		tag = "dev"
+	}
+	if registry != "" {
+		return registry + "/" + repository + ":" + tag
 	}
 	return repository + ":" + tag
+}
+
+func splitImageRef(ref string) (registry, name, tag, digest string) {
+	ref = strings.TrimSpace(ref)
+	if index := strings.LastIndex(ref, "@"); index >= 0 {
+		digest = ref[index+1:]
+		ref = ref[:index]
+	}
+	if index := strings.LastIndex(ref, ":"); index >= 0 && !strings.Contains(ref[index+1:], "/") {
+		tag = ref[index+1:]
+		ref = ref[:index]
+	}
+	if index := strings.LastIndex(ref, "/"); index >= 0 {
+		return ref[:index], ref[index+1:], tag, digest
+	}
+	return "", ref, tag, digest
 }
 
 const (
@@ -340,6 +403,7 @@ const (
 )
 
 type Capsule struct {
+	Preparation        *PreparationProgress
 	ID                 CapsuleID
 	ProjectID          ProjectID
 	TimelineID         TimelineID

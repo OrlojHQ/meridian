@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+
+# Bun extracts native libraries before loading them. Meridian keeps /tmp mounted
+# noexec, so use the Capsule's private, bounded home tmpfs instead.
+BUN_TMPDIR="${BUN_TMPDIR:-/home/capsule/.cache/pi/bun-tmp}"
+mkdir -p "$BUN_TMPDIR"
+chmod 0700 "$BUN_TMPDIR"
+export BUN_TMPDIR
+
+exec /usr/local/libexec/pi/pi "$@"

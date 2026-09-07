@@ -98,6 +98,10 @@ func (f snoopHandlerFunc) ServeHTTP(writer http.ResponseWriter, request *http.Re
 }
 
 func (s *Server) serveHTTP(writer http.ResponseWriter, request *http.Request) {
+	if strings.HasPrefix(request.URL.Path, "/provider-gateway/") && s.service.ProviderGatewayEnabled() {
+		s.service.ProviderGateway().ServeHTTP(writer, request)
+		return
+	}
 	if request.URL.Path == "/" || request.URL.Path == "/ui" ||
 		request.URL.Path == "/ui/" || strings.HasPrefix(request.URL.Path, "/ui/") {
 		s.bootstrapLoopbackBrowser(writer, request)
@@ -136,6 +140,19 @@ func (s *Server) SetReady(ready bool) {
 }
 
 func (s *Server) routes() {
+	s.mux.HandleFunc("GET /projects/{projectId}/harnesses/{harness}/setup", s.projectHarnessSetup)
+	s.mux.HandleFunc("PUT /projects/{projectId}/harnesses/{harness}/setup", s.projectHarnessSetup)
+	s.mux.HandleFunc("GET /provider-connections", s.listProviderConnections)
+	s.mux.HandleFunc("POST /provider-connections", s.putProviderConnection)
+	s.mux.HandleFunc("PUT /provider-connections/{connectionId}", s.putProviderConnection)
+	s.mux.HandleFunc("GET /projects/{projectId}/harnesses/{harness}/connection", s.projectProviderConnection)
+	s.mux.HandleFunc("PUT /projects/{projectId}/harnesses/{harness}/connection", s.projectProviderConnection)
+	s.mux.HandleFunc("GET /harness-setups/{setupId}/contents", s.harnessSetupContents)
+	s.mux.HandleFunc("GET /harness-setups", s.listHarnessSetups)
+	s.mux.HandleFunc("POST /harness-setups", s.importHarnessSetup)
+	s.mux.HandleFunc("POST /harness-setups/preview", s.previewHarnessSetup)
+	s.mux.HandleFunc("PATCH /harness-setups/{setupId}", s.mutateHarnessSetup)
+	s.mux.HandleFunc("GET /harness-setups/{setupId}/revisions", s.listHarnessSetupRevisions)
 	s.mux.HandleFunc("GET /healthz", s.health)
 	s.mux.HandleFunc("GET /readyz", s.readiness)
 	s.mux.HandleFunc("POST /auth/browser-session", s.createBrowserSession)
@@ -167,8 +184,11 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /threads/{threadId}/blocks/stream", s.streamThreadBlocks)
 	s.mux.HandleFunc("GET /capsules/{capsuleId}/previews", s.listPreviewPorts)
 	s.mux.HandleFunc("POST /capsules/{capsuleId}/previews/{port}/tickets", s.createPreviewTicket)
+	s.mux.HandleFunc("GET /projects/{projectId}/environment", s.projectEnvironment)
+	s.mux.HandleFunc("PUT /projects/{projectId}/environment", s.projectEnvironment)
 	s.mux.HandleFunc("POST /capsules/{capsuleId}/pause", s.pauseCapsule)
 	s.mux.HandleFunc("POST /capsules/{capsuleId}/resume", s.resumeCapsule)
+	s.mux.HandleFunc("POST /capsules/{capsuleId}/retry", func(w http.ResponseWriter, r *http.Request) { s.lifecycle(w, r, s.service.RetryCapsule) })
 	s.mux.HandleFunc("POST /capsules/{capsuleId}/delete", s.deleteCapsule)
 	s.mux.HandleFunc("POST /capsules/{capsuleId}/runs", s.startRun)
 	s.mux.HandleFunc("GET /capsules/{capsuleId}/runs", s.listRuns)
@@ -954,6 +974,7 @@ func (s *Server) createCapsule(writer http.ResponseWriter, request *http.Request
 		input.Name,
 		input.Harness,
 		request.Header.Get("Idempotency-Key"),
+		input.Setup,
 	)
 	if err != nil {
 		writeError(writer, err)
@@ -1593,7 +1614,10 @@ func writeCapsule(writer http.ResponseWriter, status int, capsule domain.Capsule
 }
 
 func decode(writer http.ResponseWriter, request *http.Request, output any) bool {
-	request.Body = http.MaxBytesReader(writer, request.Body, 1<<20)
+	return decodeLimit(writer, request, output, 1<<20)
+}
+func decodeLimit(writer http.ResponseWriter, request *http.Request, output any, limit int64) bool {
+	request.Body = http.MaxBytesReader(writer, request.Body, limit)
 	decoder := json.NewDecoder(request.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(output); err != nil {
@@ -1696,6 +1720,7 @@ type capabilitiesJSON struct {
 }
 
 type createRequest struct {
+	Setup   string `json:"setup,omitempty"`
 	Name    string `json:"name"`
 	Harness string `json:"harness,omitempty"`
 }
@@ -1842,20 +1867,21 @@ type secretPageJSON struct {
 }
 
 type capsuleJSON struct {
-	ID              string `json:"id"`
-	ProjectID       string `json:"projectId"`
-	TimelineID      string `json:"timelineId"`
-	OriginMomentID  string `json:"originMomentId,omitempty"`
-	Name            string `json:"name"`
-	Harness         string `json:"harness,omitempty"`
-	State           string `json:"state"`
-	DesiredState    string `json:"desiredState"`
-	Failure         string `json:"failure,omitempty"`
-	RestoreComplete bool   `json:"restoreComplete"`
-	Maintenance     string `json:"maintenance,omitempty"`
-	CreatedAt       string `json:"createdAt"`
-	UpdatedAt       string `json:"updatedAt"`
-	ResourceVersion int64  `json:"resourceVersion"`
+	Preparation     *domain.PreparationProgress `json:"preparation,omitempty"`
+	ID              string                      `json:"id"`
+	ProjectID       string                      `json:"projectId"`
+	TimelineID      string                      `json:"timelineId"`
+	OriginMomentID  string                      `json:"originMomentId,omitempty"`
+	Name            string                      `json:"name"`
+	Harness         string                      `json:"harness,omitempty"`
+	State           string                      `json:"state"`
+	DesiredState    string                      `json:"desiredState"`
+	Failure         string                      `json:"failure,omitempty"`
+	RestoreComplete bool                        `json:"restoreComplete"`
+	Maintenance     string                      `json:"maintenance,omitempty"`
+	CreatedAt       string                      `json:"createdAt"`
+	UpdatedAt       string                      `json:"updatedAt"`
+	ResourceVersion int64                       `json:"resourceVersion"`
 }
 
 type momentJSON struct {
@@ -2144,6 +2170,7 @@ func secretResponse(secret domain.Secret) secretJSON {
 
 func capsuleResponse(capsule domain.Capsule) capsuleJSON {
 	return capsuleJSON{
+		Preparation:     capsule.Preparation,
 		ID:              string(capsule.ID),
 		ProjectID:       string(capsule.ProjectID),
 		TimelineID:      string(capsule.TimelineID),

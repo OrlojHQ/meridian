@@ -4,6 +4,7 @@
   "additionalProperties": false,
   "required": ["image", "capsuleImage", "agentSandbox", "persistence", "networkPolicy"],
   "properties": {
+    "providerGatewayURL": {"type": "string", "pattern": "^(https://[^/?#]+/?)?$"},
     "nameOverride": {"type": "string"},
     "fullnameOverride": {"type": "string"},
     "replicaCount": {"type": "integer", "const": 1},

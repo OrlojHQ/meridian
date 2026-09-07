@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+
+# Bun extracts native libraries before loading them. Meridian keeps /tmp mounted
+# noexec, so use the Capsule's private, bounded home tmpfs instead.
+BUN_TMPDIR="${BUN_TMPDIR:-/home/capsule/.cache/claude/bun-tmp}"
+mkdir -p "$BUN_TMPDIR"
+chmod 0700 "$BUN_TMPDIR"
+export BUN_TMPDIR
+
+# The image pins Claude Code on a read-only root. Block self-update paths that
+# would try to replace that binary.
+export DISABLE_UPDATES="${DISABLE_UPDATES:-1}"
+
+exec /usr/local/libexec/claude "$@"

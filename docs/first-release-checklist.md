@@ -23,8 +23,9 @@ No step in this checklist authorizes a release from an unreviewed working tree.
       job and no pull-request job receives signing or package-write authority.
 - [ ] Inspect the draft GitHub release, archives, checksums, SPDX SBOMs,
       provenance attestations, Sigstore bundles, and multi-architecture manifests.
-- [ ] Independently verify at least one archive and both OCI images using the
-      exact commands in `docs/operations.md`.
+- [ ] Independently verify at least one archive, the daemon and thin Capsule
+      images, and each official harness pack image using the exact commands
+      in `docs/operations.md`.
 - [ ] Exercise install, upgrade from every migration boundary, backup, restore,
       cleanup, and uninstall on disposable infrastructure.
 - [ ] Confirm hosted hostile multi-tenancy remains explicitly unsupported

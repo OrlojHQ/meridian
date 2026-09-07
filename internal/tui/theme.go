@@ -130,6 +130,9 @@ func capsuleStatus(detail CapsuleDetail) string {
 		state = "Failed"
 	case client.CapsuleStateCreating, client.CapsuleStatePreparing:
 		state = "Starting"
+		if p, ok := detail.Capsule.Preparation.Get(); ok {
+			state = preparationLabel(string(p.Stage))
+		}
 	}
 	if failure, ok := detail.Capsule.Failure.Get(); ok && failure != "" {
 		return state + " · " + compactFailure(failure)

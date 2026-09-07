@@ -9,6 +9,9 @@ Safe defaults deny API-server and Capsule internet egress until CIDRs are
 configured, keep preview/PTY without public ingress, use the Restricted Pod
 Security shape, and run the control plane non-root with a read-only root
 filesystem. Pin both images with `image.digest` and `capsuleImage.digest`.
+When the Capsule image is digest-pinned, set `capsuleImage.tag` to the
+verified release version so official harness packs advertise
+`ghcr.io/orlojhq/meridian-capsule-{opencode,pi,claude,codex}:<tag>`.
 The restricted UID-10001 init container creates a private data subdirectory on
 the fsGroup-mounted PVC; it does not run as root or change the volume root's
 ownership.

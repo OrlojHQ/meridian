@@ -56,3 +56,22 @@ so policy may disable reuse and cache identity must remain visible.
 This ADR defines target behavior; existing provider TTL and preparation-marker
 behavior do not by themselves implement the activity clock or setup-Moment
 cache.
+
+## Prepared-workspace implementation revision
+
+Native and structured Capsules use staged preparation when supported by the
+provider: allocate the approved image and clone source, inspect the exact checkout
+and running image, then restore matching workspace artifacts or execute setup.
+The initial implementation still clones on cache hits, keeping source resolution
+inside the Capsule and avoiding a second privileged repository resolver.
+
+Preparation v2 freezes repository, image selection, clone-secret reference and setup
+arguments durably before runtime creation. Reuse binds exact source HEAD, actual
+image digest, OS/architecture, setup arguments and protocol version; repository
+script contents are covered by the exact commit. Personal setup is applied only
+after preparation. Legacy cache entries are invalidated by migration. Entries are
+project-scoped, bounded, and expire after 72 hours. Providers without staged
+preparation prepare fresh and do not reuse the old insufficiently keyed cache.
+
+Workspace artifacts do not capture installed system packages or private homes.
+This change does not imply whole-machine snapshots or a microVM backend.

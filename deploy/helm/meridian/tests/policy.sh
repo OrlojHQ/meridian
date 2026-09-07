@@ -23,6 +23,7 @@ rg -q 'runAsNonRoot: true' "$rendered"
 rg -q 'seccompProfile:' "$rendered"
 rg -q 'resources: \["pods/portforward"\]' "$rendered"
 rg -q 'apiGroups: \["agents.x-k8s.io"\]' "$rendered"
+rg -q -- '--official-pack-tag=dev' "$rendered"
 rg -q 'policyTypes: \[Ingress, Egress\]' "$rendered"
 if rg -q 'resources: \["pods/exec"\]|verbs: \[[^]]*"list"[^]]*\].*secrets' "$rendered"; then
   echo "chart rendered forbidden exec or Secret-list authority" >&2

@@ -1,0 +1,13 @@
+# Test-only config reader; this image does not contain the real Codex harness.
+version: v1
+harnesses:
+  - name: codex
+    executable: /bin/sh
+    arguments:
+      - -c
+      - 'test "$HOME" != /home/capsule && test "$(cat "$CODEX_HOME/AGENTS.md")" = personal-setup-integration && /opt/meridian-node/bin/npx --offline --yes cowsay@1.6.0 setup-ready'
+    workingDirectory: .
+    promptMode: stdin
+    pty: false
+    outputMode: text
+    timeout: 1m

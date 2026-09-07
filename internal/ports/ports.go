@@ -3,6 +3,7 @@ package ports
 
 import (
 	"context"
+	"github.com/OrlojHQ/meridian/internal/harnesssetup"
 	"io"
 	"net/http"
 	"time"
@@ -17,6 +18,17 @@ type Page struct {
 }
 
 type Reader interface {
+	GetPreparationPolicy(context.Context, domain.ProjectID) (domain.PreparationPolicy, error)
+	GetProjectThreadIntentByCapsule(context.Context, domain.CapsuleID) (domain.ProjectThreadIntent, error)
+	GetPreparation(context.Context, domain.CapsuleID) (domain.Preparation, error)
+	ProjectHarnessSetups(context.Context, domain.ProjectID) (map[string]string, error)
+	ListProviderConnections(context.Context) ([]domain.ProviderConnection, error)
+	GetProviderConnection(context.Context, string) (domain.ProviderConnection, error)
+	GetProjectProviderConnection(context.Context, domain.ProjectID, string) (string, error)
+	ListHarnessSetups(context.Context) ([]domain.HarnessSetup, error)
+	GetHarnessSetupRevision(context.Context, string) (domain.HarnessSetupRevision, error)
+	ListHarnessSetupRevisions(context.Context, string) ([]domain.HarnessSetupRevision, error)
+	GetPinnedHarnessSetup(context.Context, domain.CapsuleID, string) (string, error)
 	GetProject(context.Context, domain.ProjectID) (domain.Project, error)
 	ListProjects(context.Context, Page) ([]domain.Project, bool, error)
 	GetSecret(context.Context, string) (domain.Secret, error)
@@ -54,6 +66,15 @@ type Reader interface {
 }
 
 type Transaction interface {
+	PutPreparationPolicy(context.Context, domain.ProjectID, domain.PreparationPolicy) error
+	PutPreparation(context.Context, domain.Preparation) error
+	CollectDeletedHarnessSetups(context.Context) error
+	SetProjectHarnessSetup(context.Context, domain.ProjectID, string, string) error
+	PutProviderConnection(context.Context, domain.ProviderConnection) error
+	GrantProviderConnection(context.Context, domain.ProjectID, string, string) error
+	PutHarnessSetup(context.Context, domain.HarnessSetup) error
+	InsertHarnessSetupRevision(context.Context, domain.HarnessSetupRevision) error
+	PinHarnessSetup(context.Context, domain.CapsuleID, string, string) error
 	Reader
 	InsertProject(context.Context, domain.Project) error
 	UpdateProject(context.Context, domain.Project, domain.ResourceVersion) error
@@ -149,6 +170,8 @@ type ProviderCapabilities struct {
 }
 
 type RuntimeRunRequest struct {
+	Connection *harnesssetup.Connection   `json:"connection,omitempty"`
+	Setup      *harnesssetup.RuntimeSetup `json:"setup,omitempty"`
 	RunID      domain.RunID
 	ResourceID string
 	Harness    string
@@ -169,6 +192,8 @@ type RuntimeRun struct {
 }
 
 type RuntimeStructuredStartRequest struct {
+	Connection *harnesssetup.Connection   `json:"connection,omitempty"`
+	Setup      *harnesssetup.RuntimeSetup `json:"setup,omitempty"`
 	RunID      domain.RunID
 	ResourceID string
 	Harness    string
@@ -388,12 +413,13 @@ type ProviderResource struct {
 }
 
 type CreateCapsuleRequest struct {
-	CapsuleID      domain.CapsuleID
-	RepositoryURL  string
-	Setup          []string
-	ImageReference string
-	Restore        bool
-	GitCredential  *GitHTTPSCredential
+	ForcePreparation bool
+	CapsuleID        domain.CapsuleID
+	RepositoryURL    string
+	Setup            []string
+	ImageReference   string
+	Restore          bool
+	GitCredential    *GitHTTPSCredential
 }
 
 type GitHTTPSCredential struct {
@@ -408,4 +434,15 @@ type CapsuleProvider interface {
 	Pause(context.Context, string) (ProviderResource, error)
 	Resume(context.Context, string) (ProviderResource, error)
 	Delete(context.Context, string) error
+}
+
+// WorkspacePreparer separates source checkout from dependency setup. Calls execute
+// only inside the provider-owned Capsule and never receive harness credentials.
+type WorkspacePreparer interface {
+	PreparationIdentity(context.Context, string) (PreparationIdentity, error)
+	FinishPreparation(context.Context, string, []string, string, string) error
+}
+type PreparationIdentity struct {
+	SourceRevision string
+	Platform       string
 }

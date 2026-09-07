@@ -111,11 +111,21 @@ func (s *Service) StartRun(
 		})
 		return domain.Run{}, err
 	}
+	setup, err := s.runtimeHarnessSetup(ctx, capsuleID, harnessName)
+	if err != nil {
+		clearStringMap(secretValues)
+		return s.transitionRun(ctx, result.ID, domain.RunFailed, &runCompletion{Failure: "Saved harness setup could not be prepared"})
+	}
+	connection, err := s.runtimeProviderConnection(ctx, capsule, harnessName)
+	if err != nil {
+		clearStringMap(secretValues)
+		return s.transitionRun(ctx, result.ID, domain.RunFailed, &runCompletion{Failure: "Provider connection unavailable; reconnect in Harness settings"})
+	}
 	started := time.Now()
 	runtimeRun, err := s.runtime.StartRun(ctx, ports.RuntimeRunRequest{
 		RunID: result.ID, ResourceID: capsule.ProviderResourceID, Harness: harnessName,
 		Prompt: prompt, Columns: columns, Rows: rows,
-		Secrets: cloneStringMap(secretValues),
+		Secrets: cloneStringMap(secretValues), Setup: setup, Connection: connection,
 	})
 	clearStringMap(secretValues)
 	if s.observer != nil {
@@ -123,6 +133,9 @@ func (s *Service) StartRun(
 	}
 	if err != nil {
 		failure := "Capsule runtime rejected Run start"
+		if errors.Is(err, domain.ErrHarnessDependencies) {
+			failure = "Tool installation failed; check Capsule access to registry.npmjs.org, package versions, and available storage, then retry"
+		}
 		return s.transitionRun(ctx, result.ID, domain.RunFailed, &runCompletion{Failure: failure})
 	}
 	return s.applyRuntimeState(ctx, result.ID, runtimeRun)

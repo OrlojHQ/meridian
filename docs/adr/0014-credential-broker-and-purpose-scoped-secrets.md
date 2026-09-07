@@ -50,6 +50,5 @@ process can exfiltrate any temporary grant it receives during its valid
 window. Short lifetime and purpose binding reduce that authority but do not
 make credential delivery safe against arbitrary egress.
 
-This decision defines target architecture. Existing unresolved
-`secretReferences` continue to fail closed until the broker and each
-purpose-specific flow are implemented end to end.
+Named secrets and the purpose-specific flows are implemented. Unresolved or
+unauthorized `secretReferences` fail closed.

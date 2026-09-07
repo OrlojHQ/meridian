@@ -6,6 +6,9 @@ import { BrowserRouter } from "react-router-dom";
 import { App } from "./App";
 import { queryClient } from "./api/queries";
 import "./styles.css";
+import "./styles/tokens.css";
+import "./styles/shell.css";
+import "./styles/features.css";
 
 const root = document.getElementById("root");
 if (!root) {

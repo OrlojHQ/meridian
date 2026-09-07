@@ -1,8 +1,9 @@
 # Copy this file into a repository as .meridian/project.yaml.
 # The Capsule image must contain /usr/local/bin/opencode
 # (make capsule-opencode-image → meridian-capsule-opencode:dev).
-# Authorize model credentials on the Project with --harness-secret, then list
-# those names under secretReferences.
+# Sign in inside the OpenCode TUI. This trusted profile does not inject
+# provider credentials; a repository cannot add secretReferences under the
+# same name.
 version: v1
 harnesses:
   - name: opencode
@@ -12,5 +13,5 @@ harnesses:
     promptMode: interactive
     outputMode: text
     pty: true
-    timeout: 2h
+    timeout: 24h
     secretReferences: []

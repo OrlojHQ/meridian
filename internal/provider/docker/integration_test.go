@@ -2,8 +2,11 @@ package docker
 
 import (
 	"archive/tar"
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -19,6 +22,7 @@ import (
 	"github.com/OrlojHQ/meridian/internal/artifacts"
 	"github.com/OrlojHQ/meridian/internal/capsuleproto"
 	"github.com/OrlojHQ/meridian/internal/domain"
+	"github.com/OrlojHQ/meridian/internal/harnesssetup"
 	"github.com/OrlojHQ/meridian/internal/ports"
 	"github.com/OrlojHQ/meridian/internal/provider/contract"
 	"github.com/OrlojHQ/meridian/internal/store/sqlite"
@@ -858,5 +862,194 @@ func readRuntimeOutput(t *testing.T, attachment ports.RuntimeAttachment, want st
 		if strings.Contains(string(output), want) {
 			return event.Sequence
 		}
+	}
+}
+
+func TestDockerProviderIntegrationPersonalSetup(t *testing.T) {
+	if os.Getenv("MERIDIAN_DOCKER_TEST") != "1" {
+		t.Skip("MERIDIAN_DOCKER_TEST=1 is not set")
+	}
+	image := os.Getenv("MERIDIAN_CAPSULE_IMAGE")
+	if image == "" {
+		image = "meridian-capsule-integration:dev"
+	}
+	provider, err := New(Config{Image: image, StateDir: t.TempDir(), OperationTimeout: 30 * time.Second, SetupTimeout: time.Minute})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer provider.Close()
+	ctx := context.Background()
+	resource, err := provider.Create(ctx, ports.CreateCapsuleRequest{CapsuleID: domain.CapsuleID(fmt.Sprintf("setup-integration-%d", time.Now().UnixNano())), RepositoryURL: "file:///fixture", ImageReference: image})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := provider.Delete(ctx, resource.ID); err != nil {
+			t.Error(err)
+		}
+	}()
+	setup := &harnesssetup.RuntimeSetup{Revision: "integration-revision", Bundle: harnesssetup.Bundle{Harness: "codex", Dependencies: []string{"cowsay@1.6.0"}, Files: []harnesssetup.File{{Path: ".codex/AGENTS.md", Content: "personal-setup-integration"}}}}
+	for i := 0; i < 2; i++ {
+		id := domain.RunID(fmt.Sprintf("setup-run-%d", i))
+		if _, err := provider.StartRun(ctx, ports.RuntimeRunRequest{RunID: id, ResourceID: resource.ID, Harness: "codex", Setup: setup}); err != nil {
+			t.Fatal(err)
+		}
+		run := waitRuntimeRun(t, provider, resource.ID, id)
+		if run.State != domain.RunSucceeded {
+			t.Fatalf("setup run failed: %#v", run)
+		}
+	}
+}
+
+func TestDockerProviderIntegrationStagedPreparation(t *testing.T) {
+	if os.Getenv("MERIDIAN_DOCKER_TEST") != "1" {
+		t.Skip("MERIDIAN_DOCKER_TEST=1 is not set")
+	}
+	image := os.Getenv("MERIDIAN_CAPSULE_IMAGE")
+	if image == "" {
+		image = "meridian-capsule-integration:dev"
+	}
+	provider, err := New(Config{Image: image, StateDir: t.TempDir(), OperationTimeout: 30 * time.Second, SetupTimeout: time.Minute})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer provider.Close()
+	ctx := context.Background()
+	create := func(suffix string) ports.ProviderResource {
+		resource, err := provider.Create(ctx, ports.CreateCapsuleRequest{CapsuleID: domain.CapsuleID(fmt.Sprintf("staged-%s-%d", suffix, time.Now().UnixNano())), RepositoryURL: "file:///fixture", ImageReference: image})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := provider.Delete(context.Background(), resource.ID); err != nil {
+				t.Error(err)
+			}
+		})
+		return resource
+	}
+	first := create("first")
+	identity, err := provider.PreparationIdentity(ctx, first.ID)
+	if err != nil || len(identity.SourceRevision) != 40 || identity.Platform == "" {
+		t.Fatalf("identity=%#v err=%v", identity, err)
+	}
+	setup := []string{"sh", "-c", "test -z \"$MERIDIAN_CAPSULE_TOKEN\" && printf prepared >> /workspace/setup-result"}
+	key := strings.Repeat("a", 64)
+	for i := 0; i < 2; i++ {
+		if err := provider.FinishPreparation(ctx, first.ID, setup, identity.SourceRevision, key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	captured, err := provider.CaptureWorkspace(ctx, first.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive, err := io.ReadAll(captured.Archive)
+	_ = captured.Archive.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := create("second")
+	sum := sha256.Sum256(archive)
+	if err := provider.RestoreWorkspace(ctx, second.ID, hex.EncodeToString(sum[:]), int64(len(archive)), bytes.NewReader(archive)); err != nil {
+		t.Fatal(err)
+	}
+	// A successful marker prevents repeating setup after restart/retry, and a
+	// separate runtime can mutate its restored workspace without changing the first.
+	if err := provider.FinishPreparation(ctx, second.ID, []string{"sh", "-c", "test \"$(cat /workspace/setup-result)\" = prepared && printf second >> /workspace/setup-result"}, identity.SourceRevision, strings.Repeat("b", 64)); err != nil {
+		t.Fatal(err)
+	}
+	if err := provider.FinishPreparation(ctx, first.ID, []string{"sh", "-c", "test \"$(cat /workspace/setup-result)\" = prepared"}, identity.SourceRevision, strings.Repeat("c", 64)); err != nil {
+		t.Fatal(err)
+	}
+	if err := provider.FinishPreparation(ctx, first.ID, []string{"true"}, strings.Repeat("f", 40), strings.Repeat("d", 64)); err == nil {
+		t.Fatal("changed source accepted")
+	}
+	cancelCtx, cancel := context.WithTimeout(ctx, 250*time.Millisecond)
+	started := time.Now()
+	err = provider.FinishPreparation(cancelCtx, first.ID, []string{"sh", "-c", "sleep 30"}, identity.SourceRevision, strings.Repeat("e", 64))
+	cancel()
+	if err == nil {
+		t.Fatal("canceled setup succeeded")
+	}
+	checkCtx, checkCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer checkCancel()
+	if _, err := provider.PreparationIdentity(checkCtx, first.ID); err != nil {
+		t.Fatalf("setup did not release runtime after cancellation: %v", err)
+	}
+	if time.Since(started) > 5*time.Second {
+		t.Fatal("setup cancellation was not bounded")
+	}
+
+}
+
+func TestDockerProviderIntegrationPreparedNativeCapsules(t *testing.T) {
+	if os.Getenv("MERIDIAN_DOCKER_TEST") != "1" {
+		t.Skip("MERIDIAN_DOCKER_TEST=1 is not set")
+	}
+	image := os.Getenv("MERIDIAN_CAPSULE_IMAGE")
+	if image == "" {
+		image = "meridian-capsule-integration:dev"
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	root := t.TempDir()
+	store, err := sqlite.Open(ctx, path.Join(root, "data"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	artifactStore, err := artifacts.Open(path.Join(root, "data"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider, err := New(Config{Image: image, StateDir: path.Join(root, "provider"), OperationTimeout: 30 * time.Second, SetupTimeout: time.Minute})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer provider.Close()
+	reconciler := app.NewReconciler(store, provider, system.Clock{}, system.IDs{})
+	reconciler.ConfigureTemporal(provider, artifactStore)
+	reconciler.Start(ctx)
+	defer reconciler.Close()
+	service := app.NewService(store, system.Clock{}, system.IDs{}, reconciler, provider)
+	service.ConfigureTemporal(provider, artifactStore)
+	project, err := service.CreateProjectConfigured(ctx, "prepared", app.ProjectConfiguration{RepositoryURL: "file:///fixture", ImageReference: image, HarnessImages: []domain.HarnessImage{{Name: "codex", ImageReference: image}}, Setup: []string{"sh", "-c", "printf prepared > /workspace/setup-result"}}, "prepared-project")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var capsules []domain.Capsule
+	for i := 0; i < 2; i++ {
+		started := time.Now()
+		c, err := service.CreateCapsuleForHarness(ctx, project.ID, fmt.Sprintf("native-%d", i), "codex", fmt.Sprintf("native-key-%d", i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = provider.Delete(context.Background(), provider.resourceNames(c.ID).container) })
+		c = waitCapsuleReady(t, service, c.ID)
+		capsules = append(capsules, c)
+		if c.Preparation == nil || c.Preparation.Reused != (i == 1) {
+			t.Fatalf("launch %d preparation=%#v", i, c.Preparation)
+		}
+		t.Logf("launch %d ready in %s (reused=%t)", i, time.Since(started), c.Preparation.Reused)
+	}
+	if capsules[0].ProviderResourceID == capsules[1].ProviderResourceID {
+		t.Fatal("Capsules share mutable runtime")
+	}
+	// Invalidate preparation without replacing a user's existing Capsule.
+	environment, err := service.ProjectEnvironment(ctx, project.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.UpdateProjectEnvironment(ctx, project.ID, app.EnvironmentMutation{Rebuild: true, ExpectedResourceVersion: environment.ResourceVersion}, "rebuild-project"); err != nil {
+		t.Fatal(err)
+	}
+	c, err := service.CreateCapsuleForHarness(ctx, project.ID, "rebuilt", "codex", "rebuilt-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = provider.Delete(context.Background(), provider.resourceNames(c.ID).container) })
+	c = waitCapsuleReady(t, service, c.ID)
+	if c.Preparation == nil || c.Preparation.Reused {
+		t.Fatalf("rebuild incorrectly reused: %#v", c.Preparation)
 	}
 }

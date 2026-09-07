@@ -1,4 +1,4 @@
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -32,6 +32,13 @@ vi.mock("@xterm/addon-fit", () => ({
     fit() {
       mocks.fit();
     }
+  },
+}));
+
+vi.mock("@xterm/addon-webgl", () => ({
+  WebglAddon: class {
+    onContextLoss() {}
+    dispose() {}
   },
 }));
 
@@ -137,7 +144,11 @@ it("fits, resizes, and disposes every terminal resource", async () => {
     webSocketPath: "/runs/run-1/attach",
   });
   const view = render(
-    <TerminalView runId="run-1" reconnect={true} supported={true} />,
+    <TerminalView
+      runId="run-1"
+      reconnect={true}
+      supported={true}
+    />,
   );
   await waitFor(() => expect(mocks.socketSend).toHaveBeenCalled());
   mocks.observerCallback?.([], {} as ResizeObserver);
@@ -145,6 +156,9 @@ it("fits, resizes, and disposes every terminal resource", async () => {
   expect(mocks.socketSend).toHaveBeenCalledWith(
     JSON.stringify({ type: "resize", columns: 80, rows: 24 }),
   );
+  expect(screen.getByRole("status")).toHaveTextContent("Connected");
+  expect(screen.queryByText(/Cursor \d+/)).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Detach" })).not.toBeInTheDocument();
   view.unmount();
   expect(mocks.observerDisconnect).toHaveBeenCalledOnce();
   expect(mocks.inputDispose).toHaveBeenCalledOnce();

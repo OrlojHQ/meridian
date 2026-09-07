@@ -280,12 +280,23 @@ func TestGeneratedClientLifecycle(t *testing.T) {
 		spawnedIntent.RunId == "" {
 		t.Fatalf("ready Project Thread intent = %#v", spawnedIntent)
 	}
-	runtime.mu.Lock()
-	if len(runtime.sends) != 1 || runtime.sends[0].Content != "project prompt" {
-		t.Fatalf("Project Thread delivery = %#v", runtime.sends)
+	// Intent readiness and asynchronous prompt delivery are separate transitions.
+	var delivered []adapterproto.Frame
+	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); {
+		runtime.mu.Lock()
+		delivered = append([]adapterproto.Frame(nil), runtime.sends...)
+		if len(delivered) > 0 {
+			runtime.sends = nil
+		}
+		runtime.mu.Unlock()
+		if len(delivered) > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
-	runtime.sends = nil
-	runtime.mu.Unlock()
+	if len(delivered) != 1 || delivered[0].Content != "project prompt" {
+		t.Fatalf("Project Thread delivery = %#v", delivered)
+	}
 
 	createResult, err := api.CreateCapsule(
 		ctx,

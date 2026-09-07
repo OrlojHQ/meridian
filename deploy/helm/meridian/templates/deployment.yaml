@@ -48,6 +48,9 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - --provider=agentsandbox
+            {{- if .Values.providerGatewayURL }}
+            - --provider-gateway-url={{ .Values.providerGatewayURL }}
+            {{- end }}
             - --listen=0.0.0.0:8080
             - --allow-non-loopback-listen
             - --preview-listen=127.0.0.1:8081
@@ -55,6 +58,7 @@ spec:
             - --agentsandbox-in-cluster
             - --agentsandbox-namespace={{ default (include "meridian.namespace" .) .Values.agentSandbox.namespace }}
             - --agentsandbox-image={{ include "meridian.capsuleImage" . }}
+            - --official-pack-tag={{ .Values.capsuleImage.tag }}
             - --agentsandbox-class={{ .Values.agentSandbox.class }}
             - --agentsandbox-runtime-class={{ .Values.agentSandbox.runtimeClassName }}
             - --agentsandbox-storage-class={{ .Values.agentSandbox.storageClassName }}

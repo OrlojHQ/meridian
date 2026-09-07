@@ -32,7 +32,7 @@ type Store struct {
 }
 
 // CurrentSchemaVersion is the newest migration this binary understands.
-const CurrentSchemaVersion = 11
+const CurrentSchemaVersion = 13
 
 func Open(ctx context.Context, dataDir string) (*Store, error) {
 	if strings.TrimSpace(dataDir) == "" {
@@ -265,10 +265,14 @@ func (r *repository) UpdateProject(
 	if err != nil {
 		return fmt.Errorf("encode harness images: %w", err)
 	}
+	setup, err := json.Marshal(project.Setup)
+	if err != nil {
+		return err
+	}
 	result, err := r.q.ExecContext(ctx, `
-		UPDATE projects SET harness_images = ?, updated_at = ?, resource_version = ?
+		UPDATE projects SET harness_images = ?, setup_argv = ?, updated_at = ?, resource_version = ?
 		WHERE id = ? AND resource_version = ?`,
-		string(harnessImages), formatTime(project.UpdatedAt), project.ResourceVersion,
+		string(harnessImages), string(setup), formatTime(project.UpdatedAt), project.ResourceVersion,
 		project.ID, expected,
 	)
 	if err != nil {
@@ -546,6 +550,9 @@ func (r *repository) UpdateCapsule(
 			return domain.ErrNotFound
 		}
 		return domain.ErrConflict
+	}
+	if capsule.State == domain.CapsuleDeleted {
+		return r.CollectDeletedHarnessSetups(ctx)
 	}
 	return nil
 }
@@ -886,11 +893,15 @@ func (r *repository) PutSetupMomentCache(
 	_, err := r.q.ExecContext(ctx, `
 		INSERT INTO setup_moment_cache(project_id, config_hash, moment_id, created_at)
 		VALUES (?, ?, ?, ?)
-		ON CONFLICT(project_id) DO UPDATE SET
+		ON CONFLICT(project_id, config_hash) DO UPDATE SET
 			config_hash = excluded.config_hash,
 			moment_id = excluded.moment_id,
 			created_at = excluded.created_at`,
 		cache.ProjectID, cache.ConfigHash, cache.MomentID, formatTime(cache.CreatedAt))
+	if err != nil {
+		return mapError(err)
+	}
+	_, err = r.q.ExecContext(ctx, `DELETE FROM setup_moment_cache WHERE project_id=? AND config_hash NOT IN (SELECT config_hash FROM setup_moment_cache WHERE project_id=? ORDER BY created_at DESC, config_hash DESC LIMIT 8)`, cache.ProjectID, cache.ProjectID)
 	return mapError(err)
 }
 

@@ -1,0 +1,53 @@
+name: Bug report
+description: Report unexpected Meridian behavior
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not paste API tokens, installation credentials, PTY dumps, or repository secrets.
+        For suspected vulnerabilities, use [private reporting](https://github.com/OrlojHQ/meridian/security/advisories/new).
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Release tag (for example v0.1.0) or git commit SHA.
+      placeholder: v0.1.0 or abcdef1
+    validations:
+      required: true
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Capsule provider
+      options:
+        - Docker
+        - Agent Sandbox
+        - Fake / tests
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: harness
+    attributes:
+      label: Harness
+      description: Official pack or custom profile name, if relevant.
+      placeholder: opencode, pi, claude, codex, or mock
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Commands, UI path, and whether the daemon was a local build or a published image.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Redact tokens, secrets, prompts, and terminal output. Include meridiand flags and error messages only.

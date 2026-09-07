@@ -148,6 +148,9 @@ func launcherState(detail CapsuleDetail) (string, string) {
 	case client.CapsuleStateFailed:
 		return "Failed", "failed"
 	case client.CapsuleStateCreating, client.CapsuleStatePreparing:
+		if p, ok := detail.Capsule.Preparation.Get(); ok {
+			return preparationLabel(string(p.Stage)), "waiting"
+		}
 		return "Starting", "waiting"
 	default:
 		return string(detail.Capsule.State), ""
@@ -186,4 +189,22 @@ func padCell(value string, width int) string {
 		return value
 	}
 	return value + strings.Repeat(" ", padding)
+}
+
+func preparationLabel(stage string) string {
+	switch stage {
+	case "checkout":
+		return "Checking out"
+	case "preparing":
+		return "Installing"
+	case "restoring":
+		return "Restoring"
+	case "reclone":
+		return "Refreshing"
+	case "saving":
+		return "Saving setup"
+	case "ready":
+		return "Connecting"
+	}
+	return "Starting"
 }

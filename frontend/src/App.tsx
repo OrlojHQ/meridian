@@ -1,3 +1,4 @@
+import { HarnessSetups } from "./components/HarnessSetups";
 import {
   useMutation,
   useQueries,
@@ -7,8 +8,6 @@ import {
 import { lazy, Suspense, useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   Link,
-  NavLink,
-  Outlet,
   Route,
   Routes,
   useParams,
@@ -23,8 +22,6 @@ import type {
   GitResult,
   Moment,
   PreviewTicket,
-  Project,
-  ProjectThreadIntent,
   Run,
   RunEvent,
   TimelineView,
@@ -35,6 +32,9 @@ import {
   ThreadDetail,
   ThreadFleet,
 } from "./components/Threads";
+import { CodeViewer } from "./components/SyntaxCode";
+import { StateBadge } from "./components/ui/StateBadge";
+import { AppShell } from "./shell/AppShell";
 const TerminalView = lazy(() =>
   import("./components/Terminal").then((module) => ({
     default: module.TerminalView,
@@ -47,10 +47,6 @@ function age(value: string) {
   if (seconds < 3_600) return `${Math.floor(seconds / 60)}m`;
   if (seconds < 86_400) return `${Math.floor(seconds / 3_600)}h`;
   return `${Math.floor(seconds / 86_400)}d`;
-}
-
-function StateBadge({ state }: { state: string }) {
-  return <span className={`badge state-${state.toLowerCase()}`}>{state}</span>;
 }
 
 function ErrorState({ error }: { error: unknown }) {
@@ -129,41 +125,6 @@ export function AuthenticationState() {
       </form>
       {error ? <p>{error}</p> : null}
     </section>
-  );
-}
-
-function AppShell() {
-  const [online, setOnline] = useState(navigator.onLine);
-  useEffect(() => {
-    const update = () => setOnline(navigator.onLine);
-    window.addEventListener("online", update);
-    window.addEventListener("offline", update);
-    return () => {
-      window.removeEventListener("online", update);
-      window.removeEventListener("offline", update);
-    };
-  }, []);
-  return (
-    <div className="app-shell">
-      <a className="skip-link" href="#content">
-        Skip to content
-      </a>
-      <header className="app-header">
-        <Link className="brand" to="/ui/">
-          Meridian
-        </Link>
-        <nav aria-label="Primary">
-          <NavLink to="/ui/">Capsules</NavLink>
-          <NavLink to="/ui/threads">Threads</NavLink>
-        </nav>
-        <span className={online ? "connection online" : "connection offline"} role="status">
-          {online ? "Online" : "Offline"}
-        </span>
-      </header>
-      <main id="content" tabIndex={-1}>
-        <Outlet />
-      </main>
-    </div>
   );
 }
 
@@ -246,79 +207,15 @@ function CapsuleSummary({
   );
 }
 
-function ProjectThreadSpawn({ projects }: { projects: Project[] }) {
-  const queryClient = useQueryClient();
-  const [result, setResult] = useState<ProjectThreadIntent>();
-  const mutation = useMutation({
-    mutationFn: ({
-      projectId,
-      harness,
-      prompt,
-      name,
-    }: {
-      projectId: string;
-      harness: string;
-      prompt: string;
-      name?: string;
-    }) => api.createProjectThread(projectId, harness, prompt, name),
-    onSuccess: async (value) => {
-      setResult(value);
-      await queryClient.invalidateQueries({ queryKey: ["capsules", value.projectId] });
-    },
-  });
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const data = new FormData(form);
-    mutation.mutate({
-      projectId: String(data.get("projectId") ?? ""),
-      harness: String(data.get("harness") ?? ""),
-      prompt: String(data.get("prompt") ?? ""),
-      name: String(data.get("name") ?? "") || undefined,
-    });
-    form.reset();
-  }
-  return (
-    <section className="card">
-      <h2>Start a project Thread</h2>
-      <p>A fresh Capsule and Timeline are provisioned for every session.</p>
-      <form onSubmit={submit}>
-        <label htmlFor="spawn-project">Project</label>
-        <select id="spawn-project" name="projectId" required defaultValue={projects[0]?.id}>
-          {projects.map((project) => (
-            <option key={project.id} value={project.id}>
-              {project.name}
-            </option>
-          ))}
-        </select>
-        <label htmlFor="spawn-harness">Harness</label>
-        <input id="spawn-harness" name="harness" required maxLength={128} />
-        <label htmlFor="spawn-name">Capsule name (optional)</label>
-        <input id="spawn-name" name="name" maxLength={128} />
-        <label htmlFor="spawn-prompt">First prompt</label>
-        <textarea id="spawn-prompt" name="prompt" required maxLength={131072} />
-        <button type="submit" disabled={mutation.isPending}>
-          {mutation.isPending ? "Starting…" : "Start Thread"}
-        </button>
-      </form>
-      {mutation.isError ? <p role="alert">{normalizeAPIError(mutation.error).message}</p> : null}
-      {result ? (
-        <p role="status">
-          Session {result.state}: Capsule <span className="mono">{result.capsuleId}</span>,
-          Thread <span className="mono">{result.threadId}</span>
-        </p>
-      ) : null}
-    </section>
-  );
-}
-
 export function CapsuleList() {
   const projects = useQuery(queries.projects());
   const projectItems = projects.data?.items ?? [];
   const capsuleResults = useQueries({
     queries: projectItems.map((project) => queries.capsules(project.id)),
   });
-  const capsules = capsuleResults.flatMap((result) => result.data?.items ?? []);
+  const capsules = capsuleResults
+    .flatMap((result) => result.data?.items ?? [])
+    .filter((capsule) => capsule.state !== "Deleted");
   const runResults = useQueries({
     queries: capsules.map((capsule) => queries.runs(capsule.id)),
   });
@@ -343,26 +240,37 @@ export function CapsuleList() {
   if (capsuleError) return <ErrorState error={capsuleError.error} />;
   if (capsules.length === 0) {
     return (
-      <>
-        <ProjectThreadSpawn projects={projectItems} />
-        <section className="empty-state">
-          <h1>Capsules</h1>
-          <p>No Capsules are available in {projectItems.length} project(s).</p>
-        </section>
-      </>
+      <section className="fleet-view">
+        <header className="workspace-view-header">
+          <div>
+            <p className="eyebrow">Activity</p>
+            <h1>Nothing running yet</h1>
+          </div>
+        </header>
+        <div className="empty-state">
+          <p>
+            Use <strong>New</strong> in the activity sidebar to start a native
+            harness or structured Thread.
+          </p>
+          <span>{projectItems.length} Project(s) ready</span>
+        </div>
+      </section>
     );
   }
   return (
-    <section>
-      <ProjectThreadSpawn projects={projectItems} />
-      <div className="page-heading">
+    <section className="fleet-view">
+      <header className="workspace-view-header">
         <div>
-          <p className="eyebrow">Review workspace</p>
-          <h1>Capsules</h1>
+          <p className="eyebrow">Activity</p>
+          <h1>Your working set</h1>
+          <p className="view-description">
+            Watch active harnesses, return to paused work, and review recent
+            Capsules.
+          </p>
         </div>
-        <span>{capsules.length} total</span>
-      </div>
-      <div className="card-grid">
+        <span className="count-label">{capsules.length} Capsules</span>
+      </header>
+      <div className="fleet-list">
         {capsules.map((capsule, index) => {
           const runs = runResults[index]?.data?.items ?? [];
           const moments = momentResults[index]?.data?.items ?? [];
@@ -465,8 +373,17 @@ export function PreviewCard({
   );
 }
 
-function CapsuleActions({ capsule }: { capsule: Capsule }) {
+function CapsuleActions({
+  capsule,
+  pauseSupported = true,
+  snapshotSupported = true,
+}: {
+  capsule: Capsule;
+  pauseSupported?: boolean;
+  snapshotSupported?: boolean;
+}) {
   const queryClient = useQueryClient();
+  const [pendingAction, setPendingAction] = useState<"delete" | "seal">();
   const mutation = useMutation<unknown, Error, "pause" | "resume" | "delete" | "seal">({
     mutationFn: (action: "pause" | "resume" | "delete" | "seal") => {
       if (action === "seal") {
@@ -488,7 +405,10 @@ function CapsuleActions({ capsule }: { capsule: Capsule }) {
       className={danger ? "danger" : undefined}
       disabled={mutation.isPending}
       onClick={() => {
-        if (danger && !window.confirm(`${label} ${capsule.name}?`)) return;
+        if (danger) {
+          setPendingAction(action as "delete" | "seal");
+          return;
+        }
         mutation.mutate(action);
       }}
     >
@@ -496,12 +416,13 @@ function CapsuleActions({ capsule }: { capsule: Capsule }) {
     </button>
   );
   return (
-    <section className="panel">
-      <h2>Actions</h2>
+    <section className="capsule-actions">
       <div className="actions">
-        {capsule.state === "Ready" && button("pause", "Pause")}
-        {capsule.state === "Paused" && button("resume", "Resume")}
-        {["Ready", "Paused"].includes(capsule.state) && button("seal", "Seal", true)}
+        {pauseSupported && capsule.state === "Ready" && button("pause", "Pause")}
+        {pauseSupported && capsule.state === "Paused" && button("resume", "Resume")}
+        {snapshotSupported &&
+          ["Ready", "Paused"].includes(capsule.state) &&
+          button("seal", "Seal", true)}
         {!["Sealed", "Deleting", "Deleted"].includes(capsule.state) &&
           button("delete", "Delete", true)}
       </div>
@@ -509,6 +430,46 @@ function CapsuleActions({ capsule }: { capsule: Capsule }) {
         <p className="notice">This Capsule is immutable and permanently sealed.</p>
       )}
       {mutation.isError && <ErrorState error={mutation.error} />}
+      {pendingAction && (
+        <section
+          className="confirm-dialog"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="capsule-action-title"
+        >
+          <h2 id="capsule-action-title">
+            {pendingAction === "seal"
+              ? `Seal ${capsule.name}?`
+              : `Delete ${capsule.name}?`}
+          </h2>
+          <p>
+            {pendingAction === "seal"
+              ? "Sealing captures a final Moment and makes this Capsule immutable."
+              : "Deletion stops the Capsule and revokes its active preview links."}
+          </p>
+          <div className="actions">
+            <button
+              type="button"
+              className="danger"
+              disabled={mutation.isPending}
+              onClick={() => {
+                const action = pendingAction;
+                setPendingAction(undefined);
+                mutation.mutate(action);
+              }}
+            >
+              Confirm {pendingAction}
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => setPendingAction(undefined)}
+            >
+              Keep Capsule
+            </button>
+          </div>
+        </section>
+      )}
     </section>
   );
 }
@@ -595,7 +556,7 @@ export function WorkspaceBrowser({
                   content.isPending ? <p role="status">Loading file…</p> :
                     content.isError ? <p role="alert">This file is too large or unsupported.</p> :
                       text === undefined ? <p role="status">Binary content is unsupported.</p> :
-                        <pre aria-label={`Contents of ${selected}`}>{text}</pre>}
+                        <CodeViewer content={text} path={selected} />}
               </div>
             </div>}
     </section>
@@ -749,72 +710,132 @@ export function EventActivity({ runId }: { runId: string }) {
 
 export function CapsuleDetail() {
   const { capsuleId = "" } = useParams();
+  const queryClient = useQueryClient();
   const capsule = useQuery(queries.capsule(capsuleId));
   const runs = useQuery(queries.runs(capsuleId));
-  const status = useQuery(queries.gitStatus(capsuleId));
-  const moments = useQuery(queries.moments(capsuleId));
-  const timeline = useQuery(
-    queries.timeline(capsule.data?.timelineId ?? ""),
-  );
+  const capabilities = useQuery(queries.capabilities());
+  const moments = useQuery({
+    ...queries.moments(capsuleId),
+    enabled: Boolean(capsuleId) && capabilities.data?.snapshot === true,
+  });
+  const startNative = useMutation({
+    mutationFn: () => {
+      if (!capsule.data?.harness) {
+        throw new Error("This Capsule has no native launcher harness");
+      }
+      return api.startRun(capsule.data.id, capsule.data.harness);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["runs", capsuleId] });
+    },
+  });
   if (capsule.isPending) return <p className="loading" role="status">Loading Capsule…</p>;
   if (capsule.isError) return <ErrorState error={capsule.error} />;
   const value = capsule.data;
+  const currentRun = runs.data?.items.find((run) =>
+    ["Queued", "Starting", "Running", "Cancelling"].includes(run.state),
+  ) ?? runs.data?.items[0];
+  const reconnect = currentRun
+    ? ["Queued", "Starting", "Running", "Cancelling"].includes(currentRun.state)
+    : false;
+  const canStartNative =
+    value.state === "Ready" &&
+    capabilities.data?.run === true &&
+    !reconnect;
   return (
-    <article>
-      <div className="page-heading">
+    <article className="capsule-workspace">
+      <header className="workspace-view-header">
         <div>
-          <p className="eyebrow">Capsule</p>
+          <p className="eyebrow">
+            {value.harness ? `${value.harness} Capsule` : "Structured Capsule"}
+          </p>
           <h1>{value.name}</h1>
-          <p className="mono">{value.id}</p>
         </div>
-        <StateBadge state={value.state} />
-      </div>
-      <dl className="facts panel">
-        <div><dt>Desired</dt><dd>{value.desiredState}</dd></div>
-        <div><dt>Timeline</dt><dd><Link to={`/ui/timelines/${value.timelineId}`}>{value.timelineId}</Link></dd></div>
-        <div><dt>Resource version</dt><dd>{value.resourceVersion}</dd></div>
-        <div><dt>Restore complete</dt><dd>{value.restoreComplete ? "Yes" : "No"}</dd></div>
-        <div><dt>Maintenance</dt><dd>{value.maintenance || "None"}</dd></div>
-        <div><dt>Updated</dt><dd>{new Date(value.updatedAt).toLocaleString()}</dd></div>
-      </dl>
+        <div className="workspace-header-meta">
+          <StateBadge state={value.state} />
+        </div>
+      </header>
       {value.failure && <p className="error-state" role="alert">{value.failure}</p>}
-      <CapsuleActions capsule={value} />
-      <CapsuleThreads capsule={value} />
-      <WorkspaceBrowser capsuleId={value.id} ready={value.state === "Ready"} />
-      <section className="panel" id="runs">
+      <CapsuleActions
+        capsule={value}
+        pauseSupported={capabilities.data?.pause === true}
+        snapshotSupported={capabilities.data?.snapshot === true}
+      />
+      {value.harness ? (
+        <section className="primary-session" aria-label="Native harness terminal">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Live session</p>
+              <h2>{currentRun ? currentRun.harness : value.harness}</h2>
+            </div>
+            <div className="session-heading-actions">
+              {currentRun && <StateBadge state={currentRun.state} />}
+              {canStartNative && (
+                <button
+                  type="button"
+                  className="primary-button"
+                  disabled={startNative.isPending}
+                  onClick={() => startNative.mutate()}
+                >
+                  {startNative.isPending
+                    ? `Starting ${value.harness}…`
+                    : `Start ${value.harness}`}
+                </button>
+              )}
+            </div>
+          </div>
+          {runs.isPending || capabilities.isPending ? (
+            <p className="tool-loading" role="status">Preparing terminal…</p>
+          ) : runs.isError ? (
+            <ErrorState error={runs.error} />
+          ) : capabilities.isError ? (
+            <ErrorState error={capabilities.error} />
+          ) : !currentRun ? (
+            <p className="tool-empty">
+              No native Run is active. Start {value.harness} to open its
+              interactive terminal.
+            </p>
+          ) : !reconnect ? (
+            <div className="run-ended-state" role={currentRun.failure ? "alert" : "status"}>
+              <strong>{currentRun.harness} is not running.</strong>
+              <span>
+                {currentRun.failure ||
+                  `The previous Run ended with state ${currentRun.state}.`}
+              </span>
+              {currentRun.finishedAt && (
+                <time dateTime={currentRun.finishedAt}>
+                  Ended {new Date(currentRun.finishedAt).toLocaleString()}
+                </time>
+              )}
+            </div>
+          ) : (
+            <Suspense fallback={<p role="status">Loading terminal renderer…</p>}>
+              <TerminalView
+                runId={currentRun.id}
+                reconnect={reconnect}
+                supported={capabilities.data.attach}
+              />
+            </Suspense>
+          )}
+          {startNative.isError && <ErrorState error={startNative.error} />}
+        </section>
+      ) : (
+        <CapsuleThreads capsule={value} />
+      )}
+      {capabilities.data?.delivery === true && (
+        <details className="workspace-drawer">
+          <summary>Ship reviewed changes</summary>
+          <ShipPanel capsule={value} />
+        </details>
+      )}
+      <section className="workspace-section">
         <div className="section-heading">
-          <h2>Runs</h2>
-          <span>Sequence-ordered activity is shown per Run.</span>
+          <h2>Moments</h2>
+          <Link to={`/ui/timelines/${value.timelineId}`}>Open lineage</Link>
         </div>
-        {runs.isPending ? <p role="status">Loading Runs…</p> : runs.isError ? (
-          <ErrorState error={runs.error} />
-        ) : runs.data.items.length === 0 ? <p>No Runs yet.</p> : (
-          <ul className="resource-list">
-            {runs.data.items.map((run) => (
-              <li key={run.id}>
-                <Link to={`/ui/runs/${run.id}`}>{run.harness}</Link>
-                <StateBadge state={run.state} />
-                <time dateTime={run.createdAt}>{new Date(run.createdAt).toLocaleString()}</time>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-      <ShipPanel capsule={value} />
-      {runs.data?.items[0] && <EventActivity runId={runs.data.items[0].id} />}
-      <section className="panel">
-        <div className="section-heading">
-          <h2>Git review</h2>
-          <Link to={`/ui/capsules/${value.id}/diff`}>Review diff</Link>
-        </div>
-        {status.isPending ? <p role="status">Loading Git status…</p> : status.isError ? (
-          <ErrorState error={status.error} />
-        ) : status.data.content ? <pre>{status.data.content}</pre> : <p>Working tree is clean.</p>}
-        {status.data?.truncated && <p className="warning">Git status was truncated.</p>}
-      </section>
-      <section className="panel">
-        <h2>Moments</h2>
-        {moments.isPending ? <p role="status">Loading Moments…</p> : moments.isError ? (
+        {capabilities.data?.snapshot !== true ? (
+          <p className="tool-empty">Filesystem Moments are unsupported by this provider.</p>
+        ) : moments.isPending ? <p role="status">Loading Moments…</p> : moments.isError ? (
           <ErrorState error={moments.error} />
         ) : moments.data.items.length === 0 ? <p>No filesystem Moments.</p> : (
           <ul className="resource-list">
@@ -827,13 +848,6 @@ export function CapsuleDetail() {
           </ul>
         )}
       </section>
-      <section className="panel">
-        <h2>Current ancestry</h2>
-        {timeline.isPending ? <p role="status">Loading lineage…</p> : timeline.isError ? (
-          <ErrorState error={timeline.error} />
-        ) : <Lineage view={timeline.data} />}
-      </section>
-      <PreviewCard capsuleId={value.id} capsuleState={value.state} />
     </article>
   );
 }
@@ -895,21 +909,36 @@ export function DiffReview({ result }: { result: GitResult }) {
 
 function DiffPage() {
   const { capsuleId = "" } = useParams();
-  const diff = useQuery(queries.gitDiff(capsuleId));
-  if (diff.isPending) return <p className="loading" role="status">Loading diff…</p>;
-  if (diff.isError) return <ErrorState error={diff.error} />;
+  const capabilities = useQuery(queries.capabilities());
+  const capsule = useQuery(queries.capsule(capsuleId));
+  if (capabilities.isPending || capsule.isPending) {
+    return <p className="loading" role="status">Checking review capability…</p>;
+  }
+  if (capabilities.isError) return <ErrorState error={capabilities.error} />;
+  if (capsule.isError) return <ErrorState error={capsule.error} />;
+  if (!capabilities.data.git) {
+    return <p className="notice">Git review is unsupported by this provider.</p>;
+  }
   return (
-    <article>
-      <div className="page-heading">
+    <article className="inspector-page diff-page">
+      <header className="workspace-view-header">
         <div><p className="eyebrow">Capsule review</p><h1>Working-tree diff</h1></div>
         <Link to={`/ui/capsules/${capsuleId}`}>Back to Capsule</Link>
-      </div>
-      <DiffReview result={diff.data} />
+      </header>
+      <p className="notice">
+        Changes are open in the Capsule tools pane. Inspect the exact Git state
+        here before shipping.
+      </p>
+      {capabilities.data.delivery ? (
+        <ShipPanel capsule={capsule.data} />
+      ) : (
+        <p className="tool-empty">Delivery is unsupported by this provider.</p>
+      )}
     </article>
   );
 }
 
-function RunDetail() {
+export function RunDetail() {
   const { runId = "" } = useParams();
   const run = useQuery(queries.run(runId));
   const capabilities = useQuery(queries.capabilities());
@@ -923,11 +952,19 @@ function RunDetail() {
   const value = run.data;
   const active = ["Queued", "Starting", "Running"].includes(value.state);
   return (
-    <article>
-      <div className="page-heading">
+    <article className="inspector-page run-page">
+      <header className="workspace-view-header">
         <div><p className="eyebrow">Run</p><h1>{value.harness}</h1><p className="mono">{value.id}</p></div>
-        <StateBadge state={value.state} />
-      </div>
+        <div className="workspace-header-meta">
+          <Link
+            className="button-link secondary"
+            to={`/ui/capsules/${encodeURIComponent(value.capsuleId)}`}
+          >
+            Back to workspace
+          </Link>
+          <StateBadge state={value.state} />
+        </div>
+      </header>
       <dl className="facts panel">
         <div><dt>Created</dt><dd>{new Date(value.createdAt).toLocaleString()}</dd></div>
         <div><dt>Started</dt><dd>{value.startedAt ? new Date(value.startedAt).toLocaleString() : "Pending"}</dd></div>
@@ -955,11 +992,11 @@ function MomentDetail() {
   if (moment.isError) return <ErrorState error={moment.error} />;
   const value = moment.data;
   return (
-    <article>
-      <div className="page-heading">
+    <article className="inspector-page">
+      <header className="workspace-view-header">
         <div><p className="eyebrow">Immutable filesystem Moment</p><h1>{value.name}</h1></div>
         <span>{value.final ? "Final" : "Checkpoint"}</span>
-      </div>
+      </header>
       <p className="notice">A Moment captures filesystem state only. It does not capture RAM, processes, sockets, or live terminal state.</p>
       <dl className="facts panel">
         <div><dt>Created</dt><dd>{new Date(value.createdAt).toLocaleString()}</dd></div>
@@ -1017,10 +1054,10 @@ function TimelinePage() {
   if (timeline.isPending) return <p className="loading" role="status">Loading lineage…</p>;
   if (timeline.isError) return <ErrorState error={timeline.error} />;
   return (
-    <article>
-      <div className="page-heading">
+    <article className="inspector-page">
+      <header className="workspace-view-header">
         <div><p className="eyebrow">Timeline</p><h1>Lineage</h1><p className="mono">{timeline.data.timeline.id}</p></div>
-      </div>
+      </header>
       <p className="notice">Fork and rewind create descendants; they never overwrite earlier filesystem history or imply process continuity.</p>
       <Lineage view={timeline.data} />
     </article>
@@ -1036,13 +1073,25 @@ function TerminalPage() {
   if (capabilities.isError) return <ErrorState error={capabilities.error} />;
   const reconnect = ["Queued", "Starting", "Running", "Cancelling"].includes(run.data.state);
   return (
-    <article>
-      <div className="page-heading">
+    <article className="terminal-page">
+      <header className="workspace-view-header">
         <div><p className="eyebrow">Run terminal</p><h1>{run.data.harness}</h1></div>
-        <Link to={`/ui/runs/${runId}`}>Back to Run</Link>
-      </div>
+        <div className="workspace-header-meta">
+          <Link to={`/ui/runs/${runId}`}>Run details</Link>
+          <Link
+            className="button-link secondary"
+            to={`/ui/capsules/${encodeURIComponent(run.data.capsuleId)}`}
+          >
+            Back to workspace
+          </Link>
+        </div>
+      </header>
       <Suspense fallback={<p role="status">Loading terminal renderer…</p>}>
-        <TerminalView runId={runId} reconnect={reconnect} supported={capabilities.data.attach} />
+        <TerminalView
+          runId={runId}
+          reconnect={reconnect}
+          supported={capabilities.data.attach}
+        />
       </Suspense>
     </article>
   );
@@ -1057,6 +1106,7 @@ export function App() {
     <Routes>
       <Route path="/ui" element={<AppShell />}>
         <Route index element={<CapsuleList />} />
+        <Route path="settings/harnesses" element={<HarnessSetups />} />
         <Route path="capsules/:capsuleId" element={<CapsuleDetail />} />
         <Route path="capsules/:capsuleId/diff" element={<DiffPage />} />
         <Route path="threads" element={<ThreadFleet />} />

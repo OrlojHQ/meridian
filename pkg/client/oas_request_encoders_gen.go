@@ -122,6 +122,20 @@ func encodeCreateProjectThreadRequest(
 	return nil
 }
 
+func encodeCreateProviderConnectionRequest(
+	req *ProviderConnectionRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodeCreateShardRequest(
 	req *CreateDescendantRequest,
 	r *http.Request,
@@ -192,6 +206,48 @@ func encodeDeleteThreadRequest(
 	return nil
 }
 
+func encodeGrantProjectProviderConnectionRequest(
+	req *ProjectProviderConnection,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeImportHarnessSetupRequest(
+	req *ImportHarnessSetupRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeMutateHarnessSetupRequest(
+	req *MutateHarnessSetupRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodePatchProjectRequest(
 	req *PatchProjectRequest,
 	r *http.Request,
@@ -208,6 +264,34 @@ func encodePatchProjectRequest(
 
 func encodePauseCapsuleRequest(
 	req *LifecycleMutationRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodePreviewHarnessSetupRequest(
+	req *HarnessSetupUpload,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeProxyProviderInferenceRequest(
+	req ProxyProviderInferenceReq,
 	r *http.Request,
 ) error {
 	const contentType = "application/json"
@@ -276,6 +360,20 @@ func encodeResumeThreadRequest(
 	return nil
 }
 
+func encodeRetryCapsuleRequest(
+	req *LifecycleMutationRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodeRewindCapsuleRequest(
 	req *RewindRequest,
 	r *http.Request,
@@ -318,6 +416,20 @@ func encodeSendThreadMessageRequest(
 	return nil
 }
 
+func encodeSetProjectHarnessSetupRequest(
+	req *ProjectHarnessSetup,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodeStartRunRequest(
 	req *StartRunRequest,
 	r *http.Request,
@@ -334,6 +446,34 @@ func encodeStartRunRequest(
 
 func encodeStartThreadRequest(
 	req *LifecycleMutationRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeUpdateProjectEnvironmentRequest(
+	req *EnvironmentMutation,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeUpdateProviderConnectionRequest(
+	req *ProviderConnectionRequest,
 	r *http.Request,
 ) error {
 	const contentType = "application/json"

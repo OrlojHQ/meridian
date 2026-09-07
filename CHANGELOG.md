@@ -10,6 +10,17 @@ releases begin.
 
 ### Added
 
+- Browser application shell with Project-grouped Capsule activity, unified
+  native and structured launch, primary Thread or PTY workspaces, and
+  capability-gated Changes, Preview, Files, Terminal, and Activity tools.
+- Tag-only releases publish and Cosign-sign official harness pack images
+  (`ghcr.io/orlojhq/meridian-capsule-{opencode,pi,claude,codex}`) from the
+  thin Capsule image. The installation catalog keeps the Capsule registry and
+  tag, or `--official-pack-tag` when the Capsule image is digest-only.
+  Released `meridiand` binaries default to those GHCR tags and Docker pulls a
+  missing registry image on first Capsule create. Local `:dev` names are never
+  fetched from Docker Hub. `deploy/docker/compose.release.yaml` runs a
+  published `meridiand` image on the host Docker engine.
 - Self-hosted control plane, scriptable CLI, terminal dashboard, and browser
   review interface for coding workspaces.
 - Trusted-local Docker and Kubernetes Agent Sandbox providers with owned

@@ -14,12 +14,15 @@ import (
 
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/ports"
+	"github.com/OrlojHQ/meridian/internal/providergateway"
 	"github.com/OrlojHQ/meridian/internal/secrets"
 )
 
 const defaultPageSize = 50
 
 type Service struct {
+	gateway       *providergateway.Gateway
+	gatewayURL    string
 	store         ports.Store
 	clock         ports.Clock
 	ids           ports.IDSource
@@ -383,7 +386,12 @@ func (s *Service) CreateCapsuleForHarness(
 	ctx context.Context,
 	projectID domain.ProjectID,
 	name, harness, idempotencyKey string,
+	setupSelection ...string,
 ) (domain.Capsule, error) {
+	selection := ""
+	if len(setupSelection) > 0 {
+		selection = setupSelection[0]
+	}
 	name, err := requireName(name)
 	if err != nil {
 		return domain.Capsule{}, err
@@ -401,7 +409,11 @@ func (s *Service) CreateCapsuleForHarness(
 		if replay, ok, err := getReplay[domain.Capsule](ctx, tx, scope, idempotencyKey); err != nil {
 			return err
 		} else if ok {
-			if replay.Name != name || replay.LauncherHarness != harness {
+			savedSelection, _, selectionErr := getReplay[string](ctx, tx, scope+":setup", idempotencyKey)
+			if selectionErr != nil {
+				return selectionErr
+			}
+			if replay.Name != name || replay.LauncherHarness != harness || savedSelection != selection {
 				return fmt.Errorf(
 					"%w: Idempotency-Key was used with a different request",
 					domain.ErrConflict,
@@ -447,6 +459,10 @@ func (s *Service) CreateCapsuleForHarness(
 		if err := tx.InsertCapsule(ctx, result); err != nil {
 			return err
 		}
+
+		if err := s.pinHarnessSetups(ctx, tx, result.ID, selection); err != nil {
+			return err
+		}
 		if err := tx.InsertTimeline(ctx, domain.Timeline{
 			ID: timelineID, ProjectID: projectID, CapsuleID: result.ID,
 			Reason: domain.TimelineRoot, CreatedAt: now,
@@ -454,6 +470,9 @@ func (s *Service) CreateCapsuleForHarness(
 			return err
 		}
 		if err := s.appendEvent(ctx, tx, "capsule", string(result.ID), "capsule.create_requested", 1, nil); err != nil {
+			return err
+		}
+		if err := putReplay(ctx, tx, scope+":setup", idempotencyKey, selection, now); err != nil {
 			return err
 		}
 		return putReplay(ctx, tx, scope, idempotencyKey, result, now)
@@ -469,6 +488,13 @@ func (s *Service) GetCapsule(ctx context.Context, id domain.CapsuleID) (domain.C
 	err := s.store.View(ctx, func(reader ports.Reader) error {
 		var err error
 		result, err = reader.GetCapsule(ctx, id)
+		if err == nil {
+			if p, loadErr := reader.GetPreparation(ctx, id); loadErr == nil {
+				result.Preparation = p.Progress()
+			} else if !errors.Is(loadErr, domain.ErrNotFound) {
+				return loadErr
+			}
+		}
 		return err
 	})
 	return result, err
@@ -485,6 +511,16 @@ func (s *Service) ListCapsules(
 		var more bool
 		var err error
 		result.Items, more, err = reader.ListCapsules(ctx, projectID, page)
+		if err == nil {
+			for i := range result.Items {
+				p, loadErr := reader.GetPreparation(ctx, result.Items[i].ID)
+				if loadErr == nil {
+					result.Items[i].Preparation = p.Progress()
+				} else if !errors.Is(loadErr, domain.ErrNotFound) {
+					return loadErr
+				}
+			}
+		}
 		if more {
 			result.NextOffset = page.Offset + len(result.Items)
 		}
@@ -509,6 +545,10 @@ func (s *Service) ResumeCapsule(
 	key string,
 ) (domain.Capsule, error) {
 	return s.mutateCapsule(ctx, id, expected, key, "resume", domain.IntentReady, domain.CapsulePaused)
+}
+
+func (s *Service) RetryCapsule(ctx context.Context, id domain.CapsuleID, expected domain.ResourceVersion, key string) (domain.Capsule, error) {
+	return s.mutateCapsule(ctx, id, expected, key, "retry", domain.IntentReady, domain.CapsuleFailed)
 }
 
 func (s *Service) DeleteCapsule(
@@ -570,6 +610,52 @@ func (s *Service) mutateCapsule(
 			if !allowed {
 				return fmt.Errorf("%w: cannot %s capsule in %s", domain.ErrIllegalTransition, operation, current.State)
 			}
+		}
+		if operation == "retry" {
+			preparation, err := tx.GetPreparation(ctx, id)
+			if err != nil {
+				return err
+			}
+			if preparation.Stage == "ready" {
+				return fmt.Errorf("%w: only failed preparation can be retried", domain.ErrIllegalTransition)
+			}
+			active, err := tx.HasActiveRun(ctx, id)
+			if err != nil {
+				return err
+			}
+			if active {
+				return domain.ErrConflict
+			}
+			intent, err := tx.GetProjectThreadIntentByCapsule(ctx, id)
+			if err == nil && intent.State == domain.ProjectThreadFailed && intent.FailureCode == "capsule_failed" {
+				previous := intent.ResourceVersion
+				intent.State = domain.ProjectThreadProvisioning
+				intent.FailureCode = ""
+				intent.FailureMessage = ""
+				intent.UpdatedAt = s.clock.Now().UTC()
+				intent.ResourceVersion++
+				if err := tx.UpdateProjectThreadIntent(ctx, intent, previous); err != nil {
+					return err
+				}
+			} else if err != nil && !errors.Is(err, domain.ErrNotFound) {
+				return err
+			}
+			if current.ProviderResourceID != "" {
+				preparation.Stage = "reclone"
+				if preparation.Legacy {
+					preparation.Stage = "preparing"
+				}
+				preparation.CacheMiss = "Retry requested; preparing fresh"
+				preparation.UpdatedAt = s.clock.Now().UTC()
+				if err := tx.PutPreparation(ctx, preparation); err != nil {
+					return err
+				}
+			}
+			current.State = domain.CapsulePreparing
+			if current.ProviderResourceID == "" {
+				current.State = domain.CapsuleCreating
+			}
+			current.Failure = ""
 		}
 		previousVersion := current.ResourceVersion
 		current.DesiredState = intent

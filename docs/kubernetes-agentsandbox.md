@@ -43,14 +43,20 @@ helm upgrade --install meridian deploy/helm/meridian \
   --namespace meridian \
   --create-namespace \
   --set namespace.create=false \
-  --set image.repository=ghcr.io/orlojhq/meridian \
+  --set image.repository=ghcr.io/orlojhq/meridiand \
   --set image.digest=sha256:CONTROL_PLANE_DIGEST \
   --set capsuleImage.repository=ghcr.io/orlojhq/meridian-capsule \
+  --set capsuleImage.tag=v0.1.0 \
   --set capsuleImage.digest=sha256:CAPSULE_DIGEST \
   --set agentSandbox.runtimeClassName=gvisor \
   --set agentSandbox.storageClassName=WORKSPACE_CLASS \
   --set 'networkPolicy.kubernetesAPIServerCIDRs[0]=10.96.0.1/32'
 ```
+
+Set `capsuleImage.tag` to the verified release version even when pinning the
+thin Capsule image by digest. The chart passes that tag as
+`--official-pack-tag` so official harness packs advertise
+`ghcr.io/orlojhq/meridian-capsule-{opencode,pi,claude,codex}:<tag>`.
 
 Helm must create the release namespace before it can store release state;
 `--create-namespace` handles that bootstrap. Label it for Restricted Pod

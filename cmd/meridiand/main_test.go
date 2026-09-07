@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/OrlojHQ/meridian/internal/domain"
 )
 
 func TestAgentSandboxProviderFlagsAreRegistered(t *testing.T) {
@@ -20,6 +22,7 @@ func TestAgentSandboxProviderFlagsAreRegistered(t *testing.T) {
 		"agentsandbox-namespace",
 		"agentsandbox-name-prefix",
 		"agentsandbox-image",
+		"official-pack-tag",
 		"agentsandbox-runtime-class",
 		"agentsandbox-storage-class",
 		"agentsandbox-volume-size",
@@ -38,6 +41,10 @@ func TestAgentSandboxProviderFlagsAreRegistered(t *testing.T) {
 	provider := command.Flags().Lookup("provider")
 	if provider == nil || provider.Usage != "Capsule provider (fake, docker, or agentsandbox)" {
 		t.Fatalf("provider flag does not advertise Agent Sandbox: %#v", provider)
+	}
+	image := command.Flags().Lookup("docker-image")
+	if image == nil || image.DefValue != domain.LocalCapsuleImage {
+		t.Fatalf("development docker-image default = %#v", image)
 	}
 }
 

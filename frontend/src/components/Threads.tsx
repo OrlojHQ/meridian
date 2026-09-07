@@ -24,6 +24,7 @@ import {
   followThreadBlocks,
   type ThreadStreamStatus,
 } from "../api/threadEvents";
+import { StateBadge } from "./ui/StateBadge";
 
 const MAX_BLOCKS = 400;
 const MAX_CONTENT = 64 * 1024;
@@ -62,14 +63,6 @@ function finalMessageIds(blocks: ThreadBlock[]) {
     blocks
       .filter((block) => block.event?.type === "assistant_message")
       .map((block) => block.event?.messageId ?? block.messageId),
-  );
-}
-
-function StateBadge({ state }: { state: string }) {
-  return (
-    <span className={`badge state-${state.toLowerCase()}`}>
-      {safeInline(state)}
-    </span>
   );
 }
 
@@ -161,14 +154,17 @@ export function ThreadFleet() {
 
   const threads = threadResults.flatMap((result) => result.data?.items ?? []);
   return (
-    <section>
-      <div className="page-heading">
+    <section className="thread-fleet">
+      <header className="workspace-view-header">
         <div>
-          <p className="eyebrow">Structured agent fleet</p>
-          <h1>Threads</h1>
+          <p className="eyebrow">Activity</p>
+          <h1>Structured Threads</h1>
+          <p className="view-description">
+            Retained conversations across every active Capsule.
+          </p>
         </div>
-        <span>{threads.length} retained</span>
-      </div>
+        <span className="count-label">{threads.length} retained</span>
+      </header>
       {threads.length === 0 ? (
         <div className="empty-state">
           <h2>No Threads yet</h2>
@@ -631,27 +627,34 @@ export function ThreadDetail() {
   const canCompose = thread.state === "active" && thread.structuredSupported !== false;
 
   return (
-    <article className="thread-detail">
-      <div className="page-heading">
+    <article className="thread-detail thread-workspace">
+      <header className="workspace-view-header">
         <div>
           <p className="eyebrow">Structured Thread</p>
           <h1>{safeInline(thread.harness)}</h1>
-          <p className="mono">{safeInline(thread.id)}</p>
+          <p className="view-description">
+            Retained encrypted conversation in Capsule{" "}
+            <Link to={`/ui/capsules/${encodeURIComponent(thread.capsuleId)}`}>
+              {safeInline(thread.capsuleId)}
+            </Link>
+          </p>
         </div>
-        <StateBadge state={thread.state} />
-      </div>
-      <dl className="facts panel">
-        <div><dt>Capsule</dt><dd><Link to={`/ui/capsules/${encodeURIComponent(thread.capsuleId)}`}>{safeInline(thread.capsuleId)}</Link></dd></div>
-        <div><dt>Harness</dt><dd>{safeInline(thread.harness)}</dd></div>
-        <div><dt>Adapter</dt><dd>{safeInline(profile?.adapterKind ?? (profile?.pty ? "Native PTY" : "Unknown"))}</dd></div>
-        <div><dt>Protocol</dt><dd>{safeInline(thread.protocol ?? "Unsupported")}</dd></div>
-        <div><dt>Session</dt><dd>{safeInline(thread.currentRunState ?? "Idle")}</dd></div>
-        <div><dt>Run</dt><dd>{safeInline(thread.currentRunId ?? "None")}</dd></div>
-        <div><dt>Messages</dt><dd>{thread.messageCount}</dd></div>
-        <div><dt>Encryption</dt><dd>{thread.encryptedAtRest ? "Encrypted at rest" : "Unavailable"}</dd></div>
-        <div><dt>Latest activity</dt><dd>{new Date(thread.updatedAt).toLocaleString()}</dd></div>
-        <div><dt>Resource version</dt><dd>{thread.resourceVersion}</dd></div>
-      </dl>
+        <div className="workspace-header-meta">
+          <StateBadge state={thread.state} />
+          <span className="mono">{safeInline(thread.id)}</span>
+        </div>
+      </header>
+      <details className="thread-metadata">
+        <summary>Thread details</summary>
+        <dl className="facts">
+          <div><dt>Harness</dt><dd>{safeInline(thread.harness)}</dd></div>
+          <div><dt>Adapter</dt><dd>{safeInline(profile?.adapterKind ?? (profile?.pty ? "Native PTY" : "Unknown"))}</dd></div>
+          <div><dt>Protocol</dt><dd>{safeInline(thread.protocol ?? "Unsupported")}</dd></div>
+          <div><dt>Session</dt><dd>{safeInline(thread.currentRunState ?? "Idle")}</dd></div>
+          <div><dt>Messages</dt><dd>{thread.messageCount}</dd></div>
+          <div><dt>Encryption</dt><dd>{thread.encryptedAtRest ? "Encrypted at rest" : "Unavailable"}</dd></div>
+        </dl>
+      </details>
       {thread.structuredSupported === false && (
         <p className="notice" role="status">
           This profile does not support structured sessions. Use a native Run and
@@ -681,7 +684,7 @@ export function ThreadDetail() {
         )}
         <Link
           className="button-link secondary"
-          to={`/ui/capsules/${thread.capsuleId}#runs`}
+          to={`/ui/capsules/${thread.capsuleId}#terminal`}
         >
           Native PTY fallback
         </Link>
@@ -761,7 +764,7 @@ export function ThreadDetail() {
           onConflict={refresh}
         />
       )}
-      <section className="panel">
+      <section className="thread-surface">
         <div className="section-heading">
           <h2>Transcript</h2>
           <span className="connection" role="status">

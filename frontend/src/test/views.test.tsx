@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   AuthenticationState,
@@ -15,7 +15,14 @@ import {
   WorkspaceBrowser,
 } from "../App";
 import { MeridianAPIError, api } from "../api/client";
-import type { Capsule, TimelineView } from "../api/generated/types.gen";
+import type {
+  Capsule,
+  Project,
+  Run,
+  TimelineView,
+} from "../api/generated/types.gen";
+import { NativeLauncher } from "../components/NativeLauncher";
+import { StructuredLauncher } from "../components/StructuredLauncher";
 
 const project = {
   id: "project-1",
@@ -23,6 +30,20 @@ const project = {
   createdAt: "2026-08-23T00:00:00Z",
   updatedAt: "2026-08-23T00:00:00Z",
   resourceVersion: 1,
+};
+
+const launcherProject: Project = {
+  ...project,
+  harnessImages: [
+    {
+      name: "opencode",
+      imageReference: "ghcr.io/orlojhq/meridian-capsule-opencode:v1",
+    },
+    {
+      name: "pi",
+      imageReference: "ghcr.io/orlojhq/meridian-capsule-pi:v1",
+    },
+  ],
 };
 
 const capsule: Capsule = {
@@ -125,8 +146,15 @@ describe("Capsule list states", () => {
   });
 
   it("starts a project Thread in a fresh Capsule", async () => {
-    vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
-    vi.spyOn(api, "capsules").mockResolvedValue({ items: [] });
+    const structuredProject: Project = {
+      ...project,
+      harnessImages: [
+        {
+          name: "mock",
+          imageReference: "ghcr.io/orlojhq/meridian-capsule-mock:v1",
+        },
+      ],
+    };
     const spawn = vi.spyOn(api, "createProjectThread").mockResolvedValue({
       id: "intent-1",
       projectId: project.id,
@@ -141,10 +169,10 @@ describe("Capsule list states", () => {
       updatedAt: "2026-08-24T12:00:00Z",
       resourceVersion: 1,
     });
-    wrapper(<CapsuleList />);
-    await userEvent.type(await screen.findByLabelText("Harness"), "mock");
-    await userEvent.type(screen.getByLabelText("Capsule name (optional)"), "new-session");
-    await userEvent.type(screen.getByLabelText("First prompt"), "inspect");
+    wrapper(<StructuredLauncher project={structuredProject} />);
+    expect(await screen.findByLabelText("Structured harness")).toHaveValue("mock");
+    await userEvent.type(screen.getByLabelText(/Capsule name/), "new-session");
+    await userEvent.type(screen.getByLabelText("First task"), "inspect");
     await userEvent.click(screen.getByRole("button", { name: "Start Thread" }));
     await waitFor(() =>
       expect(spawn).toHaveBeenCalledWith(
@@ -154,7 +182,90 @@ describe("Capsule list states", () => {
         "new-session",
       ),
     );
-    expect(await screen.findByRole("status")).toHaveTextContent("thread-new");
+    expect(await screen.findByRole("status")).toHaveTextContent("Preparing your session");
+    expect(screen.queryByRole("link", { name: "Open Thread" })).not.toBeInTheDocument();
+  });
+});
+
+describe("Native harness launcher", () => {
+ beforeEach(()=>{
+  vi.spyOn(api,"harnessSetups").mockResolvedValue({items:[]});
+  vi.spyOn(api,"providerConnections").mockResolvedValue({items:[],enabled:false});
+  vi.spyOn(api,"projectConnection").mockResolvedValue({connectionId:""});
+  vi.spyOn(api,"projectHarnessSetup").mockResolvedValue({setup:""});
+ });
+  it("creates an allowlisted launcher Capsule and opens its first Run", async () => {
+    const launchedCapsule: Capsule = {
+      ...capsule,
+      id: "capsule-native",
+      name: "native-work",
+      harness: "opencode",
+      state: "Creating",
+    };
+    const launchedRun: Run = {
+      id: "run-native",
+      capsuleId: launchedCapsule.id,
+      harness: "opencode",
+      state: "Running",
+      createdAt: "2026-08-26T12:00:00Z",
+      startedAt: "2026-08-26T12:00:01Z",
+      updatedAt: "2026-08-26T12:00:01Z",
+      resourceVersion: 2,
+    };
+    const create = vi
+      .spyOn(api, "createCapsule")
+      .mockResolvedValue(launchedCapsule);
+    vi.spyOn(api, "capsule").mockResolvedValue({
+      ...launchedCapsule,
+      state: "Ready",
+    });
+    vi.spyOn(api, "runs").mockResolvedValue({ items: [launchedRun] });
+
+    wrapper(
+      <Routes>
+        <Route
+          path="/ui"
+          element={<NativeLauncher project={launcherProject} />}
+        />
+        <Route
+          path="/ui/runs/:runId/terminal"
+          element={<p>Native terminal opened</p>}
+        />
+      </Routes>,
+    );
+
+    expect(
+      await screen.findByRole("option", { name: "opencode" }),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByText("Customize"));
+    await userEvent.type(screen.getByLabelText("Capsule name"), "native-work");
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: "Create Capsule",
+      }),
+    );
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith(
+        launcherProject.id,
+        "native-work",
+        "opencode",
+        undefined,
+        "",
+      ),
+    );
+    expect(await screen.findByText("Native terminal opened")).toBeInTheDocument();
+  });
+
+  it("requires a harness pack applied to the selected Project", () => {
+    wrapper(<NativeLauncher project={project} />);
+    expect(
+      screen.getByText(/no applied harness packs/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "Create Capsule",
+      }),
+    ).toBeDisabled();
   });
 });
 
@@ -207,8 +318,61 @@ describe("Capsule detail states", () => {
       </Routes>,
       "/ui/capsules/capsule-1",
     );
-    expect(await screen.findByText("No Runs yet.")).toBeInTheDocument();
-    expect(screen.getByText("No filesystem Moments.")).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Filesystem Moments are unsupported/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Runs" })).not.toBeInTheDocument();
+  });
+
+  it("explains a failed native Run and starts another one", async () => {
+    const nativeCapsule: Capsule = {
+      ...capsule,
+      harness: "opencode",
+    };
+    const failedRun: Run = {
+      id: "run-failed",
+      capsuleId: nativeCapsule.id,
+      harness: "opencode",
+      state: "Failed",
+      exitStatus: -1,
+      failure: "run timed out",
+      createdAt: "2026-08-26T00:00:00Z",
+      startedAt: "2026-08-26T00:00:01Z",
+      finishedAt: "2026-08-26T02:00:01Z",
+      updatedAt: "2026-08-26T02:00:01Z",
+      resourceVersion: 3,
+    };
+    vi.spyOn(api, "capsule").mockResolvedValue(nativeCapsule);
+    vi.spyOn(api, "runs").mockResolvedValue({ items: [failedRun] });
+    vi.spyOn(api, "capabilities").mockResolvedValue({
+      providerVersion: "fake/v1",
+      attach: true,
+      run: true,
+      git: false,
+      pause: false,
+      snapshot: false,
+      clone: false,
+      browse: false,
+      delivery: false,
+      preview: false,
+      resourceMetrics: false,
+    });
+    const start = vi
+      .spyOn(api, "startRun")
+      .mockReturnValue(new Promise(() => undefined));
+
+    wrapper(
+      <Routes>
+        <Route path="/ui/capsules/:capsuleId" element={<CapsuleDetail />} />
+      </Routes>,
+      "/ui/capsules/capsule-1",
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("run timed out");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Start opencode" }),
+    );
+    expect(start).toHaveBeenCalledWith(nativeCapsule.id, "opencode");
   });
 });
 

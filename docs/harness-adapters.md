@@ -1,21 +1,34 @@
 # Structured harness adapters
 
 `meridian-harness-adapter` is installed in the development and release Capsule
-images. It never installs Pi, OpenCode, model providers, or credentials. The
+images. It never installs Pi, OpenCode, Claude Code, Codex, model providers, or credentials. The
 thin `meridian-capsule` image stays supervisor-only. Optional official images
 `FROM` that base and add one pinned harness binary. Project images may do the
 same. Credentials remain external to repository YAML.
 
-`make capsule-opencode-image` builds `meridian-capsule-opencode:dev` with a
-pinned OpenCode release at `/usr/local/bin/opencode` and a trusted native PTY
-profile at `/etc/meridian/harnesses.d/opencode.yaml`. Repositories do not copy
-that profile. Keep a thin Project default image and allowlist the pack with
-`--harness-image=opencode=meridian-capsule-opencode:dev`; `/new` selects it,
-the daemon freezes that image and profile name on the Capsule, and the
-dashboard hands the terminal to OpenCode when Ready. That layout is the
-contributor example: keep the base image thin, add a Dockerfile and trusted
-manifest to an official pack, and leave other harnesses out unless they are
-official.
+`make try-opencode` is the first-run path: it builds the OpenCode pack, starts
+the local Docker daemon if needed, and opens the dashboard on New Project with
+OpenCode selected. `make try-pi`, `make try-claude`, and `make try-codex` do
+the same for those packs.
+
+Official pack images start from the thin supervisor (`CAPSULE_BASE`) and add
+one pinned harness binary plus a trusted native PTY profile. Tag-only releases
+publish and Cosign-sign `ghcr.io/orlojhq/meridian-capsule-<pack>:<tag>` from
+the published thin Capsule image. Local make targets still build `:dev`.
+
+| Make target | Image | Profile |
+| --- | --- | --- |
+| `capsule-opencode-image` | `meridian-capsule-opencode:dev` | `/etc/meridian/harnesses.d/opencode.yaml` |
+| `capsule-pi-image` | `meridian-capsule-pi:dev` | `/etc/meridian/harnesses.d/pi.yaml` |
+| `capsule-claude-image` | `meridian-capsule-claude:dev` | `/etc/meridian/harnesses.d/claude.yaml` |
+| `capsule-codex-image` | `meridian-capsule-codex:dev` | `/etc/meridian/harnesses.d/codex.yaml` |
+
+Repositories do not copy those profiles. Keep a thin Project default image and
+allowlist a pack with `--harness-image=NAME=IMAGE`; `/new` selects it, the
+daemon freezes that image and profile name on the Capsule, and the dashboard
+hands the terminal to the harness when Ready. That layout is the contributor
+example: keep the base image thin, add a Dockerfile and trusted manifest to
+an official pack, and leave other harnesses out unless they are official.
 
 The binary has four drivers:
 

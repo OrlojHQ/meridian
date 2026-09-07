@@ -361,11 +361,12 @@ func (s *CapabilitiesStructuredProtocol) UnmarshalText(data []byte) error {
 
 // Ref: #/components/schemas/Capsule
 type Capsule struct {
-	ID             string    `json:"id"`
-	ProjectId      string    `json:"projectId"`
-	TimelineId     string    `json:"timelineId"`
-	OriginMomentId OptString `json:"originMomentId"`
-	Name           string    `json:"name"`
+	Preparation    OptPreparationProgress `json:"preparation"`
+	ID             string                 `json:"id"`
+	ProjectId      string                 `json:"projectId"`
+	TimelineId     string                 `json:"timelineId"`
+	OriginMomentId OptString              `json:"originMomentId"`
+	Name           string                 `json:"name"`
 	// Immutable native launcher harness selected when the Capsule was created.
 	Harness         OptString     `json:"harness"`
 	State           CapsuleState  `json:"state"`
@@ -376,6 +377,11 @@ type Capsule struct {
 	CreatedAt       time.Time     `json:"createdAt"`
 	UpdatedAt       time.Time     `json:"updatedAt"`
 	ResourceVersion int64         `json:"resourceVersion"`
+}
+
+// GetPreparation returns the value of Preparation.
+func (s *Capsule) GetPreparation() OptPreparationProgress {
+	return s.Preparation
 }
 
 // GetID returns the value of ID.
@@ -446,6 +452,11 @@ func (s *Capsule) GetUpdatedAt() time.Time {
 // GetResourceVersion returns the value of ResourceVersion.
 func (s *Capsule) GetResourceVersion() int64 {
 	return s.ResourceVersion
+}
+
+// SetPreparation sets the value of Preparation.
+func (s *Capsule) SetPreparation(val OptPreparationProgress) {
+	s.Preparation = val
 }
 
 // SetID sets the value of ID.
@@ -547,6 +558,7 @@ func (s *CapsuleAcceptedHeaders) SetResponse(val Capsule) {
 func (*CapsuleAcceptedHeaders) deleteCapsuleRes() {}
 func (*CapsuleAcceptedHeaders) pauseCapsuleRes()  {}
 func (*CapsuleAcceptedHeaders) resumeCapsuleRes() {}
+func (*CapsuleAcceptedHeaders) retryCapsuleRes()  {}
 
 // CapsuleHeaders wraps Capsule with response headers.
 type CapsuleHeaders struct {
@@ -846,9 +858,16 @@ func (*CreateCapsulePreviewTicketUnprocessableEntity) createCapsulePreviewTicket
 
 // Ref: #/components/schemas/CreateCapsuleRequest
 type CreateCapsuleRequest struct {
-	Name string `json:"name"`
+	// Saved setup ID, clean to omit personal setups, or omitted to pin current defaults.
+	Setup OptString `json:"setup"`
+	Name  string    `json:"name"`
 	// Optional Project-allowlisted native harness pack to freeze on the Capsule and launch when Ready.
 	Harness OptString `json:"harness"`
+}
+
+// GetSetup returns the value of Setup.
+func (s *CreateCapsuleRequest) GetSetup() OptString {
+	return s.Setup
 }
 
 // GetName returns the value of Name.
@@ -859,6 +878,11 @@ func (s *CreateCapsuleRequest) GetName() string {
 // GetHarness returns the value of Harness.
 func (s *CreateCapsuleRequest) GetHarness() OptString {
 	return s.Harness
+}
+
+// SetSetup sets the value of Setup.
+func (s *CreateCapsuleRequest) SetSetup(val OptString) {
+	s.Setup = val
 }
 
 // SetName sets the value of Name.
@@ -2055,6 +2079,54 @@ func (s *DescendantResultReason) UnmarshalText(data []byte) error {
 	}
 }
 
+// Ref: #/components/schemas/EnvironmentMutation
+type EnvironmentMutation struct {
+	Enabled                 OptBool  `json:"enabled"`
+	Setup                   []string `json:"setup"`
+	Rebuild                 OptBool  `json:"rebuild"`
+	ExpectedResourceVersion int64    `json:"expectedResourceVersion"`
+}
+
+// GetEnabled returns the value of Enabled.
+func (s *EnvironmentMutation) GetEnabled() OptBool {
+	return s.Enabled
+}
+
+// GetSetup returns the value of Setup.
+func (s *EnvironmentMutation) GetSetup() []string {
+	return s.Setup
+}
+
+// GetRebuild returns the value of Rebuild.
+func (s *EnvironmentMutation) GetRebuild() OptBool {
+	return s.Rebuild
+}
+
+// GetExpectedResourceVersion returns the value of ExpectedResourceVersion.
+func (s *EnvironmentMutation) GetExpectedResourceVersion() int64 {
+	return s.ExpectedResourceVersion
+}
+
+// SetEnabled sets the value of Enabled.
+func (s *EnvironmentMutation) SetEnabled(val OptBool) {
+	s.Enabled = val
+}
+
+// SetSetup sets the value of Setup.
+func (s *EnvironmentMutation) SetSetup(val []string) {
+	s.Setup = val
+}
+
+// SetRebuild sets the value of Rebuild.
+func (s *EnvironmentMutation) SetRebuild(val OptBool) {
+	s.Rebuild = val
+}
+
+// SetExpectedResourceVersion sets the value of ExpectedResourceVersion.
+func (s *EnvironmentMutation) SetExpectedResourceVersion(val int64) {
+	s.ExpectedResourceVersion = val
+}
+
 // Ref: #/components/schemas/ErrorEnvelope
 type ErrorEnvelope struct {
 	Error APIError `json:"error"`
@@ -2427,6 +2499,582 @@ func (s *HarnessProfileProtocol) UnmarshalText(data []byte) error {
 	}
 }
 
+// Ref: #/components/schemas/HarnessSetup
+type HarnessSetup struct {
+	ID              string    `json:"id"`
+	Name            string    `json:"name"`
+	Harness         string    `json:"harness"`
+	Revision        string    `json:"revision"`
+	Default         bool      `json:"default"`
+	Deleted         bool      `json:"deleted"`
+	CreatedAt       time.Time `json:"createdAt"`
+	ResourceVersion int64     `json:"resourceVersion"`
+}
+
+// GetID returns the value of ID.
+func (s *HarnessSetup) GetID() string {
+	return s.ID
+}
+
+// GetName returns the value of Name.
+func (s *HarnessSetup) GetName() string {
+	return s.Name
+}
+
+// GetHarness returns the value of Harness.
+func (s *HarnessSetup) GetHarness() string {
+	return s.Harness
+}
+
+// GetRevision returns the value of Revision.
+func (s *HarnessSetup) GetRevision() string {
+	return s.Revision
+}
+
+// GetDefault returns the value of Default.
+func (s *HarnessSetup) GetDefault() bool {
+	return s.Default
+}
+
+// GetDeleted returns the value of Deleted.
+func (s *HarnessSetup) GetDeleted() bool {
+	return s.Deleted
+}
+
+// GetCreatedAt returns the value of CreatedAt.
+func (s *HarnessSetup) GetCreatedAt() time.Time {
+	return s.CreatedAt
+}
+
+// GetResourceVersion returns the value of ResourceVersion.
+func (s *HarnessSetup) GetResourceVersion() int64 {
+	return s.ResourceVersion
+}
+
+// SetID sets the value of ID.
+func (s *HarnessSetup) SetID(val string) {
+	s.ID = val
+}
+
+// SetName sets the value of Name.
+func (s *HarnessSetup) SetName(val string) {
+	s.Name = val
+}
+
+// SetHarness sets the value of Harness.
+func (s *HarnessSetup) SetHarness(val string) {
+	s.Harness = val
+}
+
+// SetRevision sets the value of Revision.
+func (s *HarnessSetup) SetRevision(val string) {
+	s.Revision = val
+}
+
+// SetDefault sets the value of Default.
+func (s *HarnessSetup) SetDefault(val bool) {
+	s.Default = val
+}
+
+// SetDeleted sets the value of Deleted.
+func (s *HarnessSetup) SetDeleted(val bool) {
+	s.Deleted = val
+}
+
+// SetCreatedAt sets the value of CreatedAt.
+func (s *HarnessSetup) SetCreatedAt(val time.Time) {
+	s.CreatedAt = val
+}
+
+// SetResourceVersion sets the value of ResourceVersion.
+func (s *HarnessSetup) SetResourceVersion(val int64) {
+	s.ResourceVersion = val
+}
+
+// Ref: #/components/schemas/HarnessSetupBundle
+type HarnessSetupBundle struct {
+	// Exact npm package versions installed inside the Capsule before harness startup.
+	Dependencies []string                  `json:"dependencies"`
+	Harness      HarnessSetupBundleHarness `json:"harness"`
+	Files        []HarnessSetupFile        `json:"files"`
+}
+
+// GetDependencies returns the value of Dependencies.
+func (s *HarnessSetupBundle) GetDependencies() []string {
+	return s.Dependencies
+}
+
+// GetHarness returns the value of Harness.
+func (s *HarnessSetupBundle) GetHarness() HarnessSetupBundleHarness {
+	return s.Harness
+}
+
+// GetFiles returns the value of Files.
+func (s *HarnessSetupBundle) GetFiles() []HarnessSetupFile {
+	return s.Files
+}
+
+// SetDependencies sets the value of Dependencies.
+func (s *HarnessSetupBundle) SetDependencies(val []string) {
+	s.Dependencies = val
+}
+
+// SetHarness sets the value of Harness.
+func (s *HarnessSetupBundle) SetHarness(val HarnessSetupBundleHarness) {
+	s.Harness = val
+}
+
+// SetFiles sets the value of Files.
+func (s *HarnessSetupBundle) SetFiles(val []HarnessSetupFile) {
+	s.Files = val
+}
+
+type HarnessSetupBundleHarness string
+
+const (
+	HarnessSetupBundleHarnessClaude   HarnessSetupBundleHarness = "claude"
+	HarnessSetupBundleHarnessCodex    HarnessSetupBundleHarness = "codex"
+	HarnessSetupBundleHarnessOpencode HarnessSetupBundleHarness = "opencode"
+	HarnessSetupBundleHarnessPi       HarnessSetupBundleHarness = "pi"
+)
+
+// AllValues returns all HarnessSetupBundleHarness values.
+func (HarnessSetupBundleHarness) AllValues() []HarnessSetupBundleHarness {
+	return []HarnessSetupBundleHarness{
+		HarnessSetupBundleHarnessClaude,
+		HarnessSetupBundleHarnessCodex,
+		HarnessSetupBundleHarnessOpencode,
+		HarnessSetupBundleHarnessPi,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s HarnessSetupBundleHarness) MarshalText() ([]byte, error) {
+	switch s {
+	case HarnessSetupBundleHarnessClaude:
+		return []byte(s), nil
+	case HarnessSetupBundleHarnessCodex:
+		return []byte(s), nil
+	case HarnessSetupBundleHarnessOpencode:
+		return []byte(s), nil
+	case HarnessSetupBundleHarnessPi:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *HarnessSetupBundleHarness) UnmarshalText(data []byte) error {
+	switch HarnessSetupBundleHarness(data) {
+	case HarnessSetupBundleHarnessClaude:
+		*s = HarnessSetupBundleHarnessClaude
+		return nil
+	case HarnessSetupBundleHarnessCodex:
+		*s = HarnessSetupBundleHarnessCodex
+		return nil
+	case HarnessSetupBundleHarnessOpencode:
+		*s = HarnessSetupBundleHarnessOpencode
+		return nil
+	case HarnessSetupBundleHarnessPi:
+		*s = HarnessSetupBundleHarnessPi
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Ref: #/components/schemas/HarnessSetupFile
+type HarnessSetupFile struct {
+	Path       string  `json:"path"`
+	Content    string  `json:"content"`
+	Executable OptBool `json:"executable"`
+}
+
+// GetPath returns the value of Path.
+func (s *HarnessSetupFile) GetPath() string {
+	return s.Path
+}
+
+// GetContent returns the value of Content.
+func (s *HarnessSetupFile) GetContent() string {
+	return s.Content
+}
+
+// GetExecutable returns the value of Executable.
+func (s *HarnessSetupFile) GetExecutable() OptBool {
+	return s.Executable
+}
+
+// SetPath sets the value of Path.
+func (s *HarnessSetupFile) SetPath(val string) {
+	s.Path = val
+}
+
+// SetContent sets the value of Content.
+func (s *HarnessSetupFile) SetContent(val string) {
+	s.Content = val
+}
+
+// SetExecutable sets the value of Executable.
+func (s *HarnessSetupFile) SetExecutable(val OptBool) {
+	s.Executable = val
+}
+
+// Ref: #/components/schemas/HarnessSetupPage
+type HarnessSetupPage struct {
+	Items []HarnessSetup `json:"items"`
+}
+
+// GetItems returns the value of Items.
+func (s *HarnessSetupPage) GetItems() []HarnessSetup {
+	return s.Items
+}
+
+// SetItems sets the value of Items.
+func (s *HarnessSetupPage) SetItems(val []HarnessSetup) {
+	s.Items = val
+}
+
+// Ref: #/components/schemas/HarnessSetupPreview
+type HarnessSetupPreview struct {
+	Bundle HarnessSetupBundle              `json:"bundle"`
+	Digest string                          `json:"digest"`
+	Issues []HarnessSetupPreviewIssuesItem `json:"issues"`
+	// Retained settings that may require Capsule-specific files, tools, or network access.
+	Warnings []HarnessSetupPreviewWarningsItem `json:"warnings"`
+}
+
+// GetBundle returns the value of Bundle.
+func (s *HarnessSetupPreview) GetBundle() HarnessSetupBundle {
+	return s.Bundle
+}
+
+// GetDigest returns the value of Digest.
+func (s *HarnessSetupPreview) GetDigest() string {
+	return s.Digest
+}
+
+// GetIssues returns the value of Issues.
+func (s *HarnessSetupPreview) GetIssues() []HarnessSetupPreviewIssuesItem {
+	return s.Issues
+}
+
+// GetWarnings returns the value of Warnings.
+func (s *HarnessSetupPreview) GetWarnings() []HarnessSetupPreviewWarningsItem {
+	return s.Warnings
+}
+
+// SetBundle sets the value of Bundle.
+func (s *HarnessSetupPreview) SetBundle(val HarnessSetupBundle) {
+	s.Bundle = val
+}
+
+// SetDigest sets the value of Digest.
+func (s *HarnessSetupPreview) SetDigest(val string) {
+	s.Digest = val
+}
+
+// SetIssues sets the value of Issues.
+func (s *HarnessSetupPreview) SetIssues(val []HarnessSetupPreviewIssuesItem) {
+	s.Issues = val
+}
+
+// SetWarnings sets the value of Warnings.
+func (s *HarnessSetupPreview) SetWarnings(val []HarnessSetupPreviewWarningsItem) {
+	s.Warnings = val
+}
+
+// HarnessSetupPreviewHeaders wraps HarnessSetupPreview with response headers.
+type HarnessSetupPreviewHeaders struct {
+	CacheControl OptString
+	Response     HarnessSetupPreview
+}
+
+// GetCacheControl returns the value of CacheControl.
+func (s *HarnessSetupPreviewHeaders) GetCacheControl() OptString {
+	return s.CacheControl
+}
+
+// GetResponse returns the value of Response.
+func (s *HarnessSetupPreviewHeaders) GetResponse() HarnessSetupPreview {
+	return s.Response
+}
+
+// SetCacheControl sets the value of CacheControl.
+func (s *HarnessSetupPreviewHeaders) SetCacheControl(val OptString) {
+	s.CacheControl = val
+}
+
+// SetResponse sets the value of Response.
+func (s *HarnessSetupPreviewHeaders) SetResponse(val HarnessSetupPreview) {
+	s.Response = val
+}
+
+type HarnessSetupPreviewIssuesItem struct {
+	Path   string `json:"path"`
+	Reason string `json:"reason"`
+}
+
+// GetPath returns the value of Path.
+func (s *HarnessSetupPreviewIssuesItem) GetPath() string {
+	return s.Path
+}
+
+// GetReason returns the value of Reason.
+func (s *HarnessSetupPreviewIssuesItem) GetReason() string {
+	return s.Reason
+}
+
+// SetPath sets the value of Path.
+func (s *HarnessSetupPreviewIssuesItem) SetPath(val string) {
+	s.Path = val
+}
+
+// SetReason sets the value of Reason.
+func (s *HarnessSetupPreviewIssuesItem) SetReason(val string) {
+	s.Reason = val
+}
+
+type HarnessSetupPreviewWarningsItem struct {
+	Path   string `json:"path"`
+	Reason string `json:"reason"`
+}
+
+// GetPath returns the value of Path.
+func (s *HarnessSetupPreviewWarningsItem) GetPath() string {
+	return s.Path
+}
+
+// GetReason returns the value of Reason.
+func (s *HarnessSetupPreviewWarningsItem) GetReason() string {
+	return s.Reason
+}
+
+// SetPath sets the value of Path.
+func (s *HarnessSetupPreviewWarningsItem) SetPath(val string) {
+	s.Path = val
+}
+
+// SetReason sets the value of Reason.
+func (s *HarnessSetupPreviewWarningsItem) SetReason(val string) {
+	s.Reason = val
+}
+
+// Ref: #/components/schemas/HarnessSetupRevision
+type HarnessSetupRevision struct {
+	ID        string    `json:"id"`
+	SetupId   string    `json:"setupId"`
+	Digest    string    `json:"digest"`
+	Files     []string  `json:"files"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+// GetID returns the value of ID.
+func (s *HarnessSetupRevision) GetID() string {
+	return s.ID
+}
+
+// GetSetupId returns the value of SetupId.
+func (s *HarnessSetupRevision) GetSetupId() string {
+	return s.SetupId
+}
+
+// GetDigest returns the value of Digest.
+func (s *HarnessSetupRevision) GetDigest() string {
+	return s.Digest
+}
+
+// GetFiles returns the value of Files.
+func (s *HarnessSetupRevision) GetFiles() []string {
+	return s.Files
+}
+
+// GetCreatedAt returns the value of CreatedAt.
+func (s *HarnessSetupRevision) GetCreatedAt() time.Time {
+	return s.CreatedAt
+}
+
+// SetID sets the value of ID.
+func (s *HarnessSetupRevision) SetID(val string) {
+	s.ID = val
+}
+
+// SetSetupId sets the value of SetupId.
+func (s *HarnessSetupRevision) SetSetupId(val string) {
+	s.SetupId = val
+}
+
+// SetDigest sets the value of Digest.
+func (s *HarnessSetupRevision) SetDigest(val string) {
+	s.Digest = val
+}
+
+// SetFiles sets the value of Files.
+func (s *HarnessSetupRevision) SetFiles(val []string) {
+	s.Files = val
+}
+
+// SetCreatedAt sets the value of CreatedAt.
+func (s *HarnessSetupRevision) SetCreatedAt(val time.Time) {
+	s.CreatedAt = val
+}
+
+// Ref: #/components/schemas/HarnessSetupRevisionPage
+type HarnessSetupRevisionPage struct {
+	Items []HarnessSetupRevision `json:"items"`
+}
+
+// GetItems returns the value of Items.
+func (s *HarnessSetupRevisionPage) GetItems() []HarnessSetupRevision {
+	return s.Items
+}
+
+// SetItems sets the value of Items.
+func (s *HarnessSetupRevisionPage) SetItems(val []HarnessSetupRevision) {
+	s.Items = val
+}
+
+// Ref: #/components/schemas/HarnessSetupUpload
+type HarnessSetupUpload struct {
+	Harness HarnessSetupUploadHarness `json:"harness"`
+	Files   []HarnessSetupFile        `json:"files"`
+}
+
+// GetHarness returns the value of Harness.
+func (s *HarnessSetupUpload) GetHarness() HarnessSetupUploadHarness {
+	return s.Harness
+}
+
+// GetFiles returns the value of Files.
+func (s *HarnessSetupUpload) GetFiles() []HarnessSetupFile {
+	return s.Files
+}
+
+// SetHarness sets the value of Harness.
+func (s *HarnessSetupUpload) SetHarness(val HarnessSetupUploadHarness) {
+	s.Harness = val
+}
+
+// SetFiles sets the value of Files.
+func (s *HarnessSetupUpload) SetFiles(val []HarnessSetupFile) {
+	s.Files = val
+}
+
+type HarnessSetupUploadHarness string
+
+const (
+	HarnessSetupUploadHarnessClaude   HarnessSetupUploadHarness = "claude"
+	HarnessSetupUploadHarnessCodex    HarnessSetupUploadHarness = "codex"
+	HarnessSetupUploadHarnessOpencode HarnessSetupUploadHarness = "opencode"
+	HarnessSetupUploadHarnessPi       HarnessSetupUploadHarness = "pi"
+)
+
+// AllValues returns all HarnessSetupUploadHarness values.
+func (HarnessSetupUploadHarness) AllValues() []HarnessSetupUploadHarness {
+	return []HarnessSetupUploadHarness{
+		HarnessSetupUploadHarnessClaude,
+		HarnessSetupUploadHarnessCodex,
+		HarnessSetupUploadHarnessOpencode,
+		HarnessSetupUploadHarnessPi,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s HarnessSetupUploadHarness) MarshalText() ([]byte, error) {
+	switch s {
+	case HarnessSetupUploadHarnessClaude:
+		return []byte(s), nil
+	case HarnessSetupUploadHarnessCodex:
+		return []byte(s), nil
+	case HarnessSetupUploadHarnessOpencode:
+		return []byte(s), nil
+	case HarnessSetupUploadHarnessPi:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *HarnessSetupUploadHarness) UnmarshalText(data []byte) error {
+	switch HarnessSetupUploadHarness(data) {
+	case HarnessSetupUploadHarnessClaude:
+		*s = HarnessSetupUploadHarnessClaude
+		return nil
+	case HarnessSetupUploadHarnessCodex:
+		*s = HarnessSetupUploadHarnessCodex
+		return nil
+	case HarnessSetupUploadHarnessOpencode:
+		*s = HarnessSetupUploadHarnessOpencode
+		return nil
+	case HarnessSetupUploadHarnessPi:
+		*s = HarnessSetupUploadHarnessPi
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Ref: #/components/schemas/ImportHarnessSetupRequest
+type ImportHarnessSetupRequest struct {
+	ID                      OptString          `json:"id"`
+	Name                    string             `json:"name"`
+	Bundle                  HarnessSetupBundle `json:"bundle"`
+	Default                 bool               `json:"default"`
+	ExpectedResourceVersion int64              `json:"expectedResourceVersion"`
+}
+
+// GetID returns the value of ID.
+func (s *ImportHarnessSetupRequest) GetID() OptString {
+	return s.ID
+}
+
+// GetName returns the value of Name.
+func (s *ImportHarnessSetupRequest) GetName() string {
+	return s.Name
+}
+
+// GetBundle returns the value of Bundle.
+func (s *ImportHarnessSetupRequest) GetBundle() HarnessSetupBundle {
+	return s.Bundle
+}
+
+// GetDefault returns the value of Default.
+func (s *ImportHarnessSetupRequest) GetDefault() bool {
+	return s.Default
+}
+
+// GetExpectedResourceVersion returns the value of ExpectedResourceVersion.
+func (s *ImportHarnessSetupRequest) GetExpectedResourceVersion() int64 {
+	return s.ExpectedResourceVersion
+}
+
+// SetID sets the value of ID.
+func (s *ImportHarnessSetupRequest) SetID(val OptString) {
+	s.ID = val
+}
+
+// SetName sets the value of Name.
+func (s *ImportHarnessSetupRequest) SetName(val string) {
+	s.Name = val
+}
+
+// SetBundle sets the value of Bundle.
+func (s *ImportHarnessSetupRequest) SetBundle(val HarnessSetupBundle) {
+	s.Bundle = val
+}
+
+// SetDefault sets the value of Default.
+func (s *ImportHarnessSetupRequest) SetDefault(val bool) {
+	s.Default = val
+}
+
+// SetExpectedResourceVersion sets the value of ExpectedResourceVersion.
+func (s *ImportHarnessSetupRequest) SetExpectedResourceVersion(val int64) {
+	s.ExpectedResourceVersion = val
+}
+
 type InspectCapsuleDeliveryConflict ErrorEnvelope
 
 func (*InspectCapsuleDeliveryConflict) inspectCapsuleDeliveryRes() {}
@@ -2732,6 +3380,65 @@ func (s *MomentPage) SetNextCursor(val OptString) {
 }
 
 func (*MomentPage) listMomentsRes() {}
+
+// Ref: #/components/schemas/MutateHarnessSetupRequest
+type MutateHarnessSetupRequest struct {
+	Name                    OptString `json:"name"`
+	Revision                OptString `json:"revision"`
+	Default                 OptBool   `json:"default"`
+	Deleted                 OptBool   `json:"deleted"`
+	ExpectedResourceVersion int64     `json:"expectedResourceVersion"`
+}
+
+// GetName returns the value of Name.
+func (s *MutateHarnessSetupRequest) GetName() OptString {
+	return s.Name
+}
+
+// GetRevision returns the value of Revision.
+func (s *MutateHarnessSetupRequest) GetRevision() OptString {
+	return s.Revision
+}
+
+// GetDefault returns the value of Default.
+func (s *MutateHarnessSetupRequest) GetDefault() OptBool {
+	return s.Default
+}
+
+// GetDeleted returns the value of Deleted.
+func (s *MutateHarnessSetupRequest) GetDeleted() OptBool {
+	return s.Deleted
+}
+
+// GetExpectedResourceVersion returns the value of ExpectedResourceVersion.
+func (s *MutateHarnessSetupRequest) GetExpectedResourceVersion() int64 {
+	return s.ExpectedResourceVersion
+}
+
+// SetName sets the value of Name.
+func (s *MutateHarnessSetupRequest) SetName(val OptString) {
+	s.Name = val
+}
+
+// SetRevision sets the value of Revision.
+func (s *MutateHarnessSetupRequest) SetRevision(val OptString) {
+	s.Revision = val
+}
+
+// SetDefault sets the value of Default.
+func (s *MutateHarnessSetupRequest) SetDefault(val OptBool) {
+	s.Default = val
+}
+
+// SetDeleted sets the value of Deleted.
+func (s *MutateHarnessSetupRequest) SetDeleted(val OptBool) {
+	s.Deleted = val
+}
+
+// SetExpectedResourceVersion sets the value of ExpectedResourceVersion.
+func (s *MutateHarnessSetupRequest) SetExpectedResourceVersion(val int64) {
+	s.ExpectedResourceVersion = val
+}
 
 // NewOptBool returns new OptBool with value set to v.
 func NewOptBool(v bool) OptBool {
@@ -3049,6 +3756,52 @@ func (o OptInt64) Get() (v int64, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptInt64) Or(d int64) int64 {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptPreparationProgress returns new OptPreparationProgress with value set to v.
+func NewOptPreparationProgress(v PreparationProgress) OptPreparationProgress {
+	return OptPreparationProgress{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptPreparationProgress is optional PreparationProgress.
+type OptPreparationProgress struct {
+	Value PreparationProgress
+	Set   bool
+}
+
+// IsSet returns true if OptPreparationProgress was set.
+func (o OptPreparationProgress) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptPreparationProgress) Reset() {
+	var v PreparationProgress
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptPreparationProgress) SetTo(v PreparationProgress) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptPreparationProgress) Get() (v PreparationProgress, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptPreparationProgress) Or(d PreparationProgress) PreparationProgress {
 	if v, ok := o.Get(); ok {
 		return v
 	}
@@ -3616,6 +4369,134 @@ type PauseCapsuleUnprocessableEntity ErrorEnvelope
 
 func (*PauseCapsuleUnprocessableEntity) pauseCapsuleRes() {}
 
+// Ref: #/components/schemas/PreparationProgress
+type PreparationProgress struct {
+	Stage          PreparationProgressStage `json:"stage"`
+	Reused         bool                     `json:"reused"`
+	Detail         OptString                `json:"detail"`
+	SourceRevision OptString                `json:"sourceRevision"`
+	UpdatedAt      time.Time                `json:"updatedAt"`
+}
+
+// GetStage returns the value of Stage.
+func (s *PreparationProgress) GetStage() PreparationProgressStage {
+	return s.Stage
+}
+
+// GetReused returns the value of Reused.
+func (s *PreparationProgress) GetReused() bool {
+	return s.Reused
+}
+
+// GetDetail returns the value of Detail.
+func (s *PreparationProgress) GetDetail() OptString {
+	return s.Detail
+}
+
+// GetSourceRevision returns the value of SourceRevision.
+func (s *PreparationProgress) GetSourceRevision() OptString {
+	return s.SourceRevision
+}
+
+// GetUpdatedAt returns the value of UpdatedAt.
+func (s *PreparationProgress) GetUpdatedAt() time.Time {
+	return s.UpdatedAt
+}
+
+// SetStage sets the value of Stage.
+func (s *PreparationProgress) SetStage(val PreparationProgressStage) {
+	s.Stage = val
+}
+
+// SetReused sets the value of Reused.
+func (s *PreparationProgress) SetReused(val bool) {
+	s.Reused = val
+}
+
+// SetDetail sets the value of Detail.
+func (s *PreparationProgress) SetDetail(val OptString) {
+	s.Detail = val
+}
+
+// SetSourceRevision sets the value of SourceRevision.
+func (s *PreparationProgress) SetSourceRevision(val OptString) {
+	s.SourceRevision = val
+}
+
+// SetUpdatedAt sets the value of UpdatedAt.
+func (s *PreparationProgress) SetUpdatedAt(val time.Time) {
+	s.UpdatedAt = val
+}
+
+type PreparationProgressStage string
+
+const (
+	PreparationProgressStageCheckout  PreparationProgressStage = "checkout"
+	PreparationProgressStagePreparing PreparationProgressStage = "preparing"
+	PreparationProgressStageRestoring PreparationProgressStage = "restoring"
+	PreparationProgressStageReclone   PreparationProgressStage = "reclone"
+	PreparationProgressStageSaving    PreparationProgressStage = "saving"
+	PreparationProgressStageReady     PreparationProgressStage = "ready"
+)
+
+// AllValues returns all PreparationProgressStage values.
+func (PreparationProgressStage) AllValues() []PreparationProgressStage {
+	return []PreparationProgressStage{
+		PreparationProgressStageCheckout,
+		PreparationProgressStagePreparing,
+		PreparationProgressStageRestoring,
+		PreparationProgressStageReclone,
+		PreparationProgressStageSaving,
+		PreparationProgressStageReady,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s PreparationProgressStage) MarshalText() ([]byte, error) {
+	switch s {
+	case PreparationProgressStageCheckout:
+		return []byte(s), nil
+	case PreparationProgressStagePreparing:
+		return []byte(s), nil
+	case PreparationProgressStageRestoring:
+		return []byte(s), nil
+	case PreparationProgressStageReclone:
+		return []byte(s), nil
+	case PreparationProgressStageSaving:
+		return []byte(s), nil
+	case PreparationProgressStageReady:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *PreparationProgressStage) UnmarshalText(data []byte) error {
+	switch PreparationProgressStage(data) {
+	case PreparationProgressStageCheckout:
+		*s = PreparationProgressStageCheckout
+		return nil
+	case PreparationProgressStagePreparing:
+		*s = PreparationProgressStagePreparing
+		return nil
+	case PreparationProgressStageRestoring:
+		*s = PreparationProgressStageRestoring
+		return nil
+	case PreparationProgressStageReclone:
+		*s = PreparationProgressStageReclone
+		return nil
+	case PreparationProgressStageSaving:
+		*s = PreparationProgressStageSaving
+		return nil
+	case PreparationProgressStageReady:
+		*s = PreparationProgressStageReady
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
 // Ref: #/components/schemas/PreviewPort
 type PreviewPort struct {
 	Port int `json:"port"`
@@ -3960,6 +4841,92 @@ func (s *Project) SetResourceVersion(val int64) {
 	s.ResourceVersion = val
 }
 
+// Ref: #/components/schemas/ProjectEnvironment
+type ProjectEnvironment struct {
+	Enabled         bool                   `json:"enabled"`
+	Generation      int64                  `json:"generation"`
+	Setup           []string               `json:"setup"`
+	ImageReference  string                 `json:"imageReference"`
+	ResourceVersion int64                  `json:"resourceVersion"`
+	Latest          OptPreparationProgress `json:"latest"`
+}
+
+// GetEnabled returns the value of Enabled.
+func (s *ProjectEnvironment) GetEnabled() bool {
+	return s.Enabled
+}
+
+// GetGeneration returns the value of Generation.
+func (s *ProjectEnvironment) GetGeneration() int64 {
+	return s.Generation
+}
+
+// GetSetup returns the value of Setup.
+func (s *ProjectEnvironment) GetSetup() []string {
+	return s.Setup
+}
+
+// GetImageReference returns the value of ImageReference.
+func (s *ProjectEnvironment) GetImageReference() string {
+	return s.ImageReference
+}
+
+// GetResourceVersion returns the value of ResourceVersion.
+func (s *ProjectEnvironment) GetResourceVersion() int64 {
+	return s.ResourceVersion
+}
+
+// GetLatest returns the value of Latest.
+func (s *ProjectEnvironment) GetLatest() OptPreparationProgress {
+	return s.Latest
+}
+
+// SetEnabled sets the value of Enabled.
+func (s *ProjectEnvironment) SetEnabled(val bool) {
+	s.Enabled = val
+}
+
+// SetGeneration sets the value of Generation.
+func (s *ProjectEnvironment) SetGeneration(val int64) {
+	s.Generation = val
+}
+
+// SetSetup sets the value of Setup.
+func (s *ProjectEnvironment) SetSetup(val []string) {
+	s.Setup = val
+}
+
+// SetImageReference sets the value of ImageReference.
+func (s *ProjectEnvironment) SetImageReference(val string) {
+	s.ImageReference = val
+}
+
+// SetResourceVersion sets the value of ResourceVersion.
+func (s *ProjectEnvironment) SetResourceVersion(val int64) {
+	s.ResourceVersion = val
+}
+
+// SetLatest sets the value of Latest.
+func (s *ProjectEnvironment) SetLatest(val OptPreparationProgress) {
+	s.Latest = val
+}
+
+// Ref: #/components/schemas/ProjectHarnessSetup
+type ProjectHarnessSetup struct {
+	// Saved setup ID, clean, or empty to inherit the personal default.
+	Setup string `json:"setup"`
+}
+
+// GetSetup returns the value of Setup.
+func (s *ProjectHarnessSetup) GetSetup() string {
+	return s.Setup
+}
+
+// SetSetup sets the value of Setup.
+func (s *ProjectHarnessSetup) SetSetup(val string) {
+	s.Setup = val
+}
+
 // ProjectHeaders wraps Project with response headers.
 type ProjectHeaders struct {
 	ETag     OptString
@@ -4017,6 +4984,22 @@ func (s *ProjectPage) SetNextCursor(val OptString) {
 }
 
 func (*ProjectPage) listProjectsRes() {}
+
+// Ref: #/components/schemas/ProjectProviderConnection
+type ProjectProviderConnection struct {
+	// Connection to authorize for this Project and harness; empty revokes access.
+	ConnectionId string `json:"connectionId"`
+}
+
+// GetConnectionId returns the value of ConnectionId.
+func (s *ProjectProviderConnection) GetConnectionId() string {
+	return s.ConnectionId
+}
+
+// SetConnectionId sets the value of ConnectionId.
+func (s *ProjectProviderConnection) SetConnectionId(val string) {
+	s.ConnectionId = val
+}
 
 // Ref: #/components/schemas/ProjectThreadIntent
 type ProjectThreadIntent struct {
@@ -4277,6 +5260,324 @@ func (s *ProjectThreadIntentState) UnmarshalText(data []byte) error {
 	}
 }
 
+// Ref: #/components/schemas/ProviderConnection
+type ProviderConnection struct {
+	ID              string                     `json:"id"`
+	Provider        ProviderConnectionProvider `json:"provider"`
+	Name            string                     `json:"name"`
+	CreatedAt       time.Time                  `json:"createdAt"`
+	ResourceVersion int64                      `json:"resourceVersion"`
+	Revoked         bool                       `json:"revoked"`
+}
+
+// GetID returns the value of ID.
+func (s *ProviderConnection) GetID() string {
+	return s.ID
+}
+
+// GetProvider returns the value of Provider.
+func (s *ProviderConnection) GetProvider() ProviderConnectionProvider {
+	return s.Provider
+}
+
+// GetName returns the value of Name.
+func (s *ProviderConnection) GetName() string {
+	return s.Name
+}
+
+// GetCreatedAt returns the value of CreatedAt.
+func (s *ProviderConnection) GetCreatedAt() time.Time {
+	return s.CreatedAt
+}
+
+// GetResourceVersion returns the value of ResourceVersion.
+func (s *ProviderConnection) GetResourceVersion() int64 {
+	return s.ResourceVersion
+}
+
+// GetRevoked returns the value of Revoked.
+func (s *ProviderConnection) GetRevoked() bool {
+	return s.Revoked
+}
+
+// SetID sets the value of ID.
+func (s *ProviderConnection) SetID(val string) {
+	s.ID = val
+}
+
+// SetProvider sets the value of Provider.
+func (s *ProviderConnection) SetProvider(val ProviderConnectionProvider) {
+	s.Provider = val
+}
+
+// SetName sets the value of Name.
+func (s *ProviderConnection) SetName(val string) {
+	s.Name = val
+}
+
+// SetCreatedAt sets the value of CreatedAt.
+func (s *ProviderConnection) SetCreatedAt(val time.Time) {
+	s.CreatedAt = val
+}
+
+// SetResourceVersion sets the value of ResourceVersion.
+func (s *ProviderConnection) SetResourceVersion(val int64) {
+	s.ResourceVersion = val
+}
+
+// SetRevoked sets the value of Revoked.
+func (s *ProviderConnection) SetRevoked(val bool) {
+	s.Revoked = val
+}
+
+// Ref: #/components/schemas/ProviderConnectionPage
+type ProviderConnectionPage struct {
+	Items   []ProviderConnection `json:"items"`
+	Enabled bool                 `json:"enabled"`
+}
+
+// GetItems returns the value of Items.
+func (s *ProviderConnectionPage) GetItems() []ProviderConnection {
+	return s.Items
+}
+
+// GetEnabled returns the value of Enabled.
+func (s *ProviderConnectionPage) GetEnabled() bool {
+	return s.Enabled
+}
+
+// SetItems sets the value of Items.
+func (s *ProviderConnectionPage) SetItems(val []ProviderConnection) {
+	s.Items = val
+}
+
+// SetEnabled sets the value of Enabled.
+func (s *ProviderConnectionPage) SetEnabled(val bool) {
+	s.Enabled = val
+}
+
+type ProviderConnectionProvider string
+
+const (
+	ProviderConnectionProviderOpenai    ProviderConnectionProvider = "openai"
+	ProviderConnectionProviderAnthropic ProviderConnectionProvider = "anthropic"
+)
+
+// AllValues returns all ProviderConnectionProvider values.
+func (ProviderConnectionProvider) AllValues() []ProviderConnectionProvider {
+	return []ProviderConnectionProvider{
+		ProviderConnectionProviderOpenai,
+		ProviderConnectionProviderAnthropic,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s ProviderConnectionProvider) MarshalText() ([]byte, error) {
+	switch s {
+	case ProviderConnectionProviderOpenai:
+		return []byte(s), nil
+	case ProviderConnectionProviderAnthropic:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *ProviderConnectionProvider) UnmarshalText(data []byte) error {
+	switch ProviderConnectionProvider(data) {
+	case ProviderConnectionProviderOpenai:
+		*s = ProviderConnectionProviderOpenai
+		return nil
+	case ProviderConnectionProviderAnthropic:
+		*s = ProviderConnectionProviderAnthropic
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Ref: #/components/schemas/ProviderConnectionRequest
+type ProviderConnectionRequest struct {
+	Name                    string                            `json:"name"`
+	Provider                ProviderConnectionRequestProvider `json:"provider"`
+	ApiKey                  string                            `json:"apiKey"`
+	ExpectedResourceVersion int64                             `json:"expectedResourceVersion"`
+	Revoked                 OptBool                           `json:"revoked"`
+}
+
+// GetName returns the value of Name.
+func (s *ProviderConnectionRequest) GetName() string {
+	return s.Name
+}
+
+// GetProvider returns the value of Provider.
+func (s *ProviderConnectionRequest) GetProvider() ProviderConnectionRequestProvider {
+	return s.Provider
+}
+
+// GetApiKey returns the value of ApiKey.
+func (s *ProviderConnectionRequest) GetApiKey() string {
+	return s.ApiKey
+}
+
+// GetExpectedResourceVersion returns the value of ExpectedResourceVersion.
+func (s *ProviderConnectionRequest) GetExpectedResourceVersion() int64 {
+	return s.ExpectedResourceVersion
+}
+
+// GetRevoked returns the value of Revoked.
+func (s *ProviderConnectionRequest) GetRevoked() OptBool {
+	return s.Revoked
+}
+
+// SetName sets the value of Name.
+func (s *ProviderConnectionRequest) SetName(val string) {
+	s.Name = val
+}
+
+// SetProvider sets the value of Provider.
+func (s *ProviderConnectionRequest) SetProvider(val ProviderConnectionRequestProvider) {
+	s.Provider = val
+}
+
+// SetApiKey sets the value of ApiKey.
+func (s *ProviderConnectionRequest) SetApiKey(val string) {
+	s.ApiKey = val
+}
+
+// SetExpectedResourceVersion sets the value of ExpectedResourceVersion.
+func (s *ProviderConnectionRequest) SetExpectedResourceVersion(val int64) {
+	s.ExpectedResourceVersion = val
+}
+
+// SetRevoked sets the value of Revoked.
+func (s *ProviderConnectionRequest) SetRevoked(val OptBool) {
+	s.Revoked = val
+}
+
+type ProviderConnectionRequestProvider string
+
+const (
+	ProviderConnectionRequestProviderOpenai    ProviderConnectionRequestProvider = "openai"
+	ProviderConnectionRequestProviderAnthropic ProviderConnectionRequestProvider = "anthropic"
+)
+
+// AllValues returns all ProviderConnectionRequestProvider values.
+func (ProviderConnectionRequestProvider) AllValues() []ProviderConnectionRequestProvider {
+	return []ProviderConnectionRequestProvider{
+		ProviderConnectionRequestProviderOpenai,
+		ProviderConnectionRequestProviderAnthropic,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s ProviderConnectionRequestProvider) MarshalText() ([]byte, error) {
+	switch s {
+	case ProviderConnectionRequestProviderOpenai:
+		return []byte(s), nil
+	case ProviderConnectionRequestProviderAnthropic:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *ProviderConnectionRequestProvider) UnmarshalText(data []byte) error {
+	switch ProviderConnectionRequestProvider(data) {
+	case ProviderConnectionRequestProviderOpenai:
+		*s = ProviderConnectionRequestProviderOpenai
+		return nil
+	case ProviderConnectionRequestProviderAnthropic:
+		*s = ProviderConnectionRequestProviderAnthropic
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+type ProxyProviderInferenceOKApplicationJSON map[string]jx.Raw
+
+func (s *ProxyProviderInferenceOKApplicationJSON) init() ProxyProviderInferenceOKApplicationJSON {
+	m := *s
+	if m == nil {
+		m = map[string]jx.Raw{}
+		*s = m
+	}
+	return m
+}
+
+func (*ProxyProviderInferenceOKApplicationJSON) proxyProviderInferenceRes() {}
+
+type ProxyProviderInferenceOKTextEventStream struct {
+	Data io.Reader
+}
+
+// Read reads data from the Data reader.
+//
+// Kept to satisfy the io.Reader interface.
+func (s ProxyProviderInferenceOKTextEventStream) Read(p []byte) (n int, err error) {
+	if s.Data == nil {
+		return 0, io.EOF
+	}
+	return s.Data.Read(p)
+}
+
+func (*ProxyProviderInferenceOKTextEventStream) proxyProviderInferenceRes() {}
+
+type ProxyProviderInferenceProvider string
+
+const (
+	ProxyProviderInferenceProviderOpenai    ProxyProviderInferenceProvider = "openai"
+	ProxyProviderInferenceProviderAnthropic ProxyProviderInferenceProvider = "anthropic"
+)
+
+// AllValues returns all ProxyProviderInferenceProvider values.
+func (ProxyProviderInferenceProvider) AllValues() []ProxyProviderInferenceProvider {
+	return []ProxyProviderInferenceProvider{
+		ProxyProviderInferenceProviderOpenai,
+		ProxyProviderInferenceProviderAnthropic,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s ProxyProviderInferenceProvider) MarshalText() ([]byte, error) {
+	switch s {
+	case ProxyProviderInferenceProviderOpenai:
+		return []byte(s), nil
+	case ProxyProviderInferenceProviderAnthropic:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *ProxyProviderInferenceProvider) UnmarshalText(data []byte) error {
+	switch ProxyProviderInferenceProvider(data) {
+	case ProxyProviderInferenceProviderOpenai:
+		*s = ProxyProviderInferenceProviderOpenai
+		return nil
+	case ProxyProviderInferenceProviderAnthropic:
+		*s = ProxyProviderInferenceProviderAnthropic
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+type ProxyProviderInferenceReq map[string]jx.Raw
+
+func (s *ProxyProviderInferenceReq) init() ProxyProviderInferenceReq {
+	m := *s
+	if m == nil {
+		m = map[string]jx.Raw{}
+		*s = m
+	}
+	return m
+}
+
 type PutSecretBadRequest ErrorEnvelope
 
 func (*PutSecretBadRequest) putSecretRes() {}
@@ -4458,6 +5759,22 @@ func (*ResumeThreadLocked) resumeThreadRes() {}
 type ResumeThreadUnprocessableEntity ErrorEnvelope
 
 func (*ResumeThreadUnprocessableEntity) resumeThreadRes() {}
+
+type RetryCapsuleBadRequest ErrorEnvelope
+
+func (*RetryCapsuleBadRequest) retryCapsuleRes() {}
+
+type RetryCapsuleConflict ErrorEnvelope
+
+func (*RetryCapsuleConflict) retryCapsuleRes() {}
+
+type RetryCapsuleNotFound ErrorEnvelope
+
+func (*RetryCapsuleNotFound) retryCapsuleRes() {}
+
+type RetryCapsuleUnprocessableEntity ErrorEnvelope
+
+func (*RetryCapsuleUnprocessableEntity) retryCapsuleRes() {}
 
 type RewindCapsuleBadRequest ErrorEnvelope
 
@@ -6745,6 +8062,7 @@ func (*TooManyRequestsHeaders) patchProjectRes()               {}
 func (*TooManyRequestsHeaders) pauseCapsuleRes()               {}
 func (*TooManyRequestsHeaders) putSecretRes()                  {}
 func (*TooManyRequestsHeaders) resumeCapsuleRes()              {}
+func (*TooManyRequestsHeaders) retryCapsuleRes()               {}
 func (*TooManyRequestsHeaders) sendThreadMessageRes()          {}
 
 // UnauthorizedHeaders wraps ErrorEnvelope with response headers.

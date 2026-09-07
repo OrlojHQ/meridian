@@ -15,9 +15,11 @@ CAPSULE_IMAGE ?= meridian-capsule-integration:dev
 
 .PHONY: bootstrap build test tui-test ui-test lint ui-build generate check-generated api-lint \
 	format-check vet frontend-typecheck capsule-image capsule-opencode-image \
+	capsule-pi-image capsule-claude-image capsule-codex-image \
 	capsule-integration-image docker-integration helm-tool helm-test \
 	agentsandbox-integration clean release-check release-snapshot release-smoke \
-	meridiand-image release-docker-validate meridiand-up meridiand-down tui
+	meridiand-image release-docker-validate meridiand-up meridiand-down \
+	meridiand-ready tui try try-opencode try-pi try-claude try-codex
 
 bootstrap:
 	go mod download
@@ -93,7 +95,23 @@ meridiand-image:
 
 capsule-opencode-image: capsule-image
 	docker build -t meridian-capsule-opencode:dev \
+		--build-arg CAPSULE_BASE=meridian-capsule:dev \
 		-f images/capsule-opencode/Dockerfile .
+
+capsule-pi-image: capsule-image
+	docker build -t meridian-capsule-pi:dev \
+		--build-arg CAPSULE_BASE=meridian-capsule:dev \
+		-f images/capsule-pi/Dockerfile .
+
+capsule-claude-image: capsule-image
+	docker build -t meridian-capsule-claude:dev \
+		--build-arg CAPSULE_BASE=meridian-capsule:dev \
+		-f images/capsule-claude/Dockerfile .
+
+capsule-codex-image: capsule-image
+	docker build -t meridian-capsule-codex:dev \
+		--build-arg CAPSULE_BASE=meridian-capsule:dev \
+		-f images/capsule-codex/Dockerfile .
 
 capsule-integration-image: capsule-image
 	docker build -t meridian-capsule-integration:dev \
@@ -103,7 +121,12 @@ docker-integration: capsule-integration-image
 	MERIDIAN_DOCKER_TEST=1 MERIDIAN_CAPSULE_IMAGE=meridian-capsule-integration:dev \
 		go test ./internal/provider/docker -run Integration -count=1 -v
 
-meridiand-up: build capsule-integration-image
+meridiand-up: capsule-integration-image meridiand-ready
+	@echo "TUI: make tui"
+	@echo "First OpenCode run: make try-opencode"
+	@echo "CLI token: export MERIDIAN_TOKEN_FILE=$(MERIDIAN_TOKEN_FILE)"
+
+meridiand-ready: build
 	./bin/meridiand init-data-dir --path "$(MERIDIAN_DATA)"
 	MERIDIAN_DATA_DIR="$(MERIDIAN_DATA)" \
 	MERIDIAN_CAPSULE_IMAGE="$(CAPSULE_IMAGE)" \
@@ -126,8 +149,6 @@ meridiand-up: build capsule-integration-image
 	@chmod 0700 "$(MERIDIAN_DATA)/api-auth"
 	@chmod 0600 "$(MERIDIAN_TOKEN_FILE)"
 	@echo "meridiand is ready at http://127.0.0.1:8080"
-	@echo "TUI: make tui"
-	@echo "CLI token: export MERIDIAN_TOKEN_FILE=$(MERIDIAN_TOKEN_FILE)"
 
 meridiand-down:
 	$(COMPOSE) down
@@ -135,10 +156,41 @@ meridiand-down:
 tui: build
 	@if [[ ! -f "$(MERIDIAN_TOKEN_FILE)" ]]; then \
 		echo "No installation token at $(MERIDIAN_TOKEN_FILE)." >&2; \
-		echo "Start the daemon with: make meridiand-up" >&2; \
+		echo "Start the daemon with: make try-opencode" >&2; \
 		exit 1; \
 	fi
-	MERIDIAN_TOKEN_FILE="$(MERIDIAN_TOKEN_FILE)" ./bin/meridian tui
+	MERIDIAN_TOKEN_FILE="$(MERIDIAN_TOKEN_FILE)" ./bin/meridian tui \
+		$(if $(HARNESS),--harness $(HARNESS),)
+
+try-opencode:
+	$(MAKE) try HARNESS=opencode
+
+try-pi:
+	$(MAKE) try HARNESS=pi
+
+try-claude:
+	$(MAKE) try HARNESS=claude
+
+try-codex:
+	$(MAKE) try HARNESS=codex
+
+try: build
+	@harness="$(or $(HARNESS),opencode)"; \
+	case "$$harness" in \
+		opencode) $(MAKE) capsule-opencode-image ;; \
+		pi) $(MAKE) capsule-pi-image ;; \
+		claude) $(MAKE) capsule-claude-image ;; \
+		codex) $(MAKE) capsule-codex-image ;; \
+		mock) $(MAKE) capsule-image ;; \
+		*) echo "unknown HARNESS=$$harness; expected opencode, pi, claude, codex, or mock" >&2; exit 1 ;; \
+	esac; \
+	if ./bin/meridiand healthcheck --address=http://127.0.0.1:8080 >/dev/null 2>&1 && \
+		[[ -f "$(MERIDIAN_TOKEN_FILE)" ]]; then \
+		echo "meridiand is already ready at http://127.0.0.1:8080"; \
+	else \
+		$(MAKE) meridiand-ready CAPSULE_IMAGE=meridian-capsule:dev; \
+	fi; \
+	$(MAKE) tui HARNESS="$$harness"
 
 .tools/helm:
 	mkdir -p .tools
@@ -180,6 +232,10 @@ release-docker-validate:
 			--build-arg VERSION="$(VERSION)" --build-arg COMMIT="$(COMMIT)" \
 			--build-arg BUILD_DATE="$(BUILD_DATE)" \
 			-f images/capsule/Dockerfile.release "$$tmp/capsule-$$arch"; \
+	done; \
+	for pack in opencode pi claude codex; do \
+		rg -qF 'ARG CAPSULE_BASE=meridian-capsule:dev' "images/capsule-$$pack/Dockerfile"; \
+		rg -qF 'FROM $${CAPSULE_BASE}' "images/capsule-$$pack/Dockerfile"; \
 	done
 
 release-smoke:

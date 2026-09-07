@@ -574,7 +574,7 @@ func TestThreadLockedGapUnknownAndBoundedTranscript(t *testing.T) {
 
 func TestRunRejectsNonTTYWithoutEscapes(t *testing.T) {
 	var output bytes.Buffer
-	if err := Run(context.Background(), &fakeAPI{}, "", "", nil, &output); err == nil {
+	if err := Run(context.Background(), &fakeAPI{}, "", "", nil, &output, ""); err == nil {
 		t.Fatal("non-TTY dashboard unexpectedly started")
 	}
 	if output.Len() != 0 {
@@ -1285,6 +1285,64 @@ func TestSlashSwitchChangesProjectWithoutStaleCapsule(t *testing.T) {
 	model.openCreate()
 	if got := model.overlay.fields[0].value; got != nextProject.ID {
 		t.Fatalf("new Capsule form targets Project %q", got)
+	}
+}
+
+func TestPreferredHarnessOpensCreateProjectOnFirstConnect(t *testing.T) {
+	snapshot := Snapshot{
+		HarnessImages: []client.HarnessImage{
+			{Name: "mock", ImageReference: "meridian-capsule:dev"},
+			{Name: "opencode", ImageReference: "meridian-capsule-opencode:dev"},
+		},
+	}
+	model := NewModel(Options{API: &fakeAPI{snapshot: snapshot}, PreferredHarness: "opencode"})
+	updated, _ := model.Update(loadMsg{snapshot: snapshot})
+	model = updated.(Model)
+	if model.overlay.kind != overlayForm || model.overlay.action.Action != ActionProjectCreate ||
+		model.overlayField("Harness").value != "opencode" {
+		t.Fatalf("first-run form = %#v", model.overlay)
+	}
+
+	updated, _ = model.Update(loadMsg{snapshot: snapshot})
+	model = updated.(Model)
+	if model.overlay.kind != overlayForm || model.overlayField("Harness").value != "opencode" {
+		t.Fatalf("reconnect should keep the first-run form: %#v", model.overlay)
+	}
+}
+
+func TestPreferredHarnessLeavesExistingProjectsAlone(t *testing.T) {
+	snapshot := testSnapshot()
+	snapshot.HarnessImages = []client.HarnessImage{
+		{Name: "mock", ImageReference: "meridian-capsule:dev"},
+		{Name: "opencode", ImageReference: "meridian-capsule-opencode:dev"},
+	}
+	model := NewModel(Options{API: &fakeAPI{snapshot: snapshot}, PreferredHarness: "opencode"})
+	updated, _ := model.Update(loadMsg{snapshot: snapshot})
+	model = updated.(Model)
+	if model.overlay.kind != overlayNone {
+		t.Fatalf("existing Projects should not open New Project: %#v", model.overlay)
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/project")})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	if model.overlayField("Harness").value != "opencode" {
+		t.Fatalf("preferred harness = %q", model.overlayField("Harness").value)
+	}
+}
+
+func TestUnknownPreferredHarnessFailsClosed(t *testing.T) {
+	snapshot := Snapshot{
+		HarnessImages: []client.HarnessImage{
+			{Name: "mock", ImageReference: "meridian-capsule:dev"},
+		},
+	}
+	model := NewModel(Options{API: &fakeAPI{snapshot: snapshot}, PreferredHarness: "opencode"})
+	updated, _ := model.Update(loadMsg{snapshot: snapshot})
+	model = updated.(Model)
+	if model.overlay.kind != overlayNone || model.lastErr == nil ||
+		!strings.Contains(model.lastErr.Error(), `harness "opencode"`) {
+		t.Fatalf("unknown preferred harness = overlay %#v err %v", model.overlay, model.lastErr)
 	}
 }
 

@@ -73,7 +73,7 @@ func (c Config) withDefaults() (Config, error) {
 		c.NamePrefix = "meridian"
 	}
 	if c.Image == "" {
-		c.Image = "meridian-capsule:dev"
+		c.Image = domain.LocalCapsuleImage
 	}
 	if c.VolumeSize == "" {
 		c.VolumeSize = "10Gi"
@@ -361,6 +361,7 @@ func (p *Provider) Create(
 	}
 	_ = token // token is consumed by runtimeClient from the Secret after restart, too.
 	prepareRequest := capsuleproto.PrepareRequest{
+		Force:         request.ForcePreparation,
 		RepositoryURL: repositoryURL, Destination: workspace, Setup: setup,
 	}
 	if request.GitCredential != nil && !request.Restore {

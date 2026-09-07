@@ -271,6 +271,17 @@ func (s *Service) captureArtifactsWithParent(
 	if err != nil {
 		return domain.Moment{}, err
 	}
+	if kind == domain.MomentSetupCache {
+		var preparation domain.Preparation
+		if err := s.store.View(ctx, func(reader ports.Reader) error {
+			var err error
+			preparation, err = reader.GetPreparation(ctx, capsule.ID)
+			return err
+		}); err != nil {
+			return domain.Moment{}, err
+		}
+		projectHash = preparation.CacheKey
+	}
 	metadata := capture.Metadata
 	metadata.GitBranch = bounded(metadata.GitBranch, 512)
 	metadata.GitHEAD = bounded(metadata.GitHEAD, 128)
@@ -481,6 +492,9 @@ func (s *Service) createDescendant(
 			Reason: reason,
 		}
 		if err := tx.InsertCapsule(ctx, result.Capsule); err != nil {
+			return err
+		}
+		if err := s.pinHarnessSetups(ctx, tx, result.Capsule.ID, ""); err != nil {
 			return err
 		}
 		if err := tx.InsertTimeline(ctx, result.Timeline); err != nil {

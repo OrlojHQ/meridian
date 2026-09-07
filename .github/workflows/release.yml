@@ -112,3 +112,34 @@ jobs:
             cosign sign-blob --yes --bundle "${artifact}.sigstore.json" "${artifact}"
           done
           gh release upload "${TAG}" dist/*.sigstore.json --clobber
+
+  harness-images:
+    name: Publish official harness pack images
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - name: Checkout complete history
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Authenticate to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install pinned Cosign
+        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3.9.1
+        with:
+          cosign-release: v3.1.1
+      - name: Build, publish, and keyless-sign official pack images
+        env:
+          COMMIT: ${{ github.sha }}
+        run: scripts/publish-harness-images.sh "${{ github.ref_name }}"

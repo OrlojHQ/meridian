@@ -14,6 +14,7 @@ import (
 
 	"github.com/OrlojHQ/meridian/internal/buildinfo"
 	"github.com/OrlojHQ/meridian/internal/daemon"
+	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/spf13/cobra"
 )
 
@@ -31,6 +32,7 @@ func newRootCommand() *cobra.Command {
 		},
 	}
 	command.SetVersionTemplate("meridiand {{.Version}}\n")
+	command.Flags().StringVar(&config.ProviderGatewayURL, "provider-gateway-url", "", "HTTPS Meridian origin reachable from Capsules; enables reusable API connections")
 	command.Flags().StringVar(&config.Provider, "provider", "fake", "Capsule provider (fake, docker, or agentsandbox)")
 	command.Flags().StringVar(&config.Listen, "listen", "127.0.0.1:8080", "HTTP listen address")
 	command.Flags().BoolVar(
@@ -101,7 +103,14 @@ func newRootCommand() *cobra.Command {
 		"interval for bounded inactive Capsule scans",
 	)
 	command.Flags().StringVar(&config.Docker.Host, "docker-host", "", "Docker endpoint (empty uses official client environment)")
-	command.Flags().StringVar(&config.Docker.Image, "docker-image", "meridian-capsule:dev", "default Capsule image reference")
+	defaultCapsule := domain.DefaultCapsuleImage(buildinfo.Version)
+	command.Flags().StringVar(&config.Docker.Image, "docker-image", defaultCapsule, "default Capsule image (release binaries use the matching GHCR tag)")
+	command.Flags().StringVar(
+		&config.OfficialPackTag,
+		"official-pack-tag",
+		"",
+		"tag advertised for official harness packs (default: tag from the installation Capsule image)",
+	)
 	command.Flags().StringVar(&config.Docker.StateDir, "docker-state-dir", "", "protected provider state directory (default under data-dir)")
 	command.Flags().StringVar(&config.Docker.NamePrefix, "docker-name-prefix", "meridian", "owned Docker resource name prefix")
 	command.Flags().StringVar(&config.Docker.LabelPrefix, "docker-label-prefix", "io.orloj.meridian", "owned Docker label prefix")
@@ -117,7 +126,7 @@ func newRootCommand() *cobra.Command {
 	command.Flags().StringVar(&config.AgentSandbox.NamePrefix, "agentsandbox-name-prefix", "meridian", "owned Sandbox DNS name prefix")
 	command.Flags().StringVar(&config.AgentSandbox.Class, "agentsandbox-class", "", "Meridian workload class annotation (policy metadata only)")
 	command.Flags().StringVar(&config.AgentSandbox.Template, "agentsandbox-template", "", "reserved SandboxTemplate name (unsupported by direct v1beta1 Sandbox)")
-	command.Flags().StringVar(&config.AgentSandbox.Image, "agentsandbox-image", "meridian-capsule:dev", "default non-root Capsule image")
+	command.Flags().StringVar(&config.AgentSandbox.Image, "agentsandbox-image", defaultCapsule, "default non-root Capsule image")
 	command.Flags().StringVar(&config.AgentSandbox.RuntimeClass, "agentsandbox-runtime-class", "", "Kubernetes RuntimeClass name (gVisor/Kata recommended)")
 	command.Flags().StringVar(&config.AgentSandbox.StorageClass, "agentsandbox-storage-class", "", "workspace StorageClass (empty uses cluster default)")
 	command.Flags().StringVar(&config.AgentSandbox.VolumeSize, "agentsandbox-volume-size", "10Gi", "workspace PVC request")

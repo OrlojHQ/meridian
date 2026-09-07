@@ -1,7 +1,16 @@
 # Optional official OpenCode Capsule image.
 # Starts FROM the thin supervisor image and adds a pinned OpenCode release.
 # Other harness images should follow this pattern instead of bloating meridian-capsule.
-FROM meridian-capsule:dev
+ARG CAPSULE_BASE=meridian-capsule:dev
+FROM debian:bookworm-slim@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241 AS harness-node
+ARG TARGETARCH
+COPY images/harness-node/install /tmp/install-node
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates xz-utils \
+    && sh /tmp/install-node
+
+FROM ${CAPSULE_BASE}
+COPY --from=harness-node /opt/meridian-node /opt/meridian-node
+ENV PATH="/opt/meridian-node/bin:${PATH}"
 
 ARG TARGETARCH
 ARG OPENCODE_VERSION=1.18.23

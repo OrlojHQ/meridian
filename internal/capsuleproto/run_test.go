@@ -19,6 +19,28 @@ import (
 	"github.com/coder/websocket"
 )
 
+func TestPTYEnvironmentDefaults(t *testing.T) {
+	environment := withPTYEnvironment([]string{
+		"PATH=/usr/bin",
+		"TERM=",
+		"LANG=en_US.UTF-8",
+	})
+	values := make(map[string]string, len(environment))
+	for _, item := range environment {
+		name, value, _ := strings.Cut(item, "=")
+		values[name] = value
+	}
+	if values["TERM"] != "xterm-256color" {
+		t.Fatalf("TERM = %q", values["TERM"])
+	}
+	if values["COLORTERM"] != "truecolor" {
+		t.Fatalf("COLORTERM = %q", values["COLORTERM"])
+	}
+	if values["LANG"] != "en_US.UTF-8" {
+		t.Fatalf("LANG override = %q", values["LANG"])
+	}
+}
+
 func TestRunStartIsIdempotentAndOutputIsOrdered(t *testing.T) {
 	workspace := runWorkspace(t, `
 version: v1

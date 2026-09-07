@@ -1,4 +1,5 @@
 import { FitAddon } from "@xterm/addon-fit";
+import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { useEffect, useRef, useState } from "react";
@@ -10,9 +11,16 @@ type TerminalStatus =
   | "connecting"
   | "attached"
   | "reconnecting"
-  | "detached"
   | "closed"
   | "expired";
+
+const terminalStatusLabel: Record<TerminalStatus, string> = {
+  connecting: "Connecting…",
+  attached: "Connected",
+  reconnecting: "Reconnecting…",
+  closed: "Connection closed",
+  expired: "Connection expired",
+};
 
 export function ticketExpired(ticket: AttachTicket, now = Date.now()) {
   return Date.parse(ticket.expiresAt) <= now;
@@ -42,7 +50,11 @@ interface TerminalViewProps {
   supported: boolean;
 }
 
-export function TerminalView({ runId, reconnect, supported }: TerminalViewProps) {
+export function TerminalView({
+  runId,
+  reconnect,
+  supported,
+}: TerminalViewProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const cursorRef = useRef(0);
   const activeRef = useRef(true);
@@ -60,6 +72,9 @@ export function TerminalView({ runId, reconnect, supported }: TerminalViewProps)
     const terminal = new Terminal({
       cursorBlink: true,
       convertEol: false,
+      customGlyphs: true,
+      fontFamily:
+        '"SFMono-Regular", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace',
       scrollback: 2_000,
       theme: {
         background: "#111315",
@@ -69,6 +84,18 @@ export function TerminalView({ runId, reconnect, supported }: TerminalViewProps)
     const fit = new FitAddon();
     terminal.loadAddon(fit);
     terminal.open(hostRef.current);
+    let webgl: WebglAddon | undefined;
+    try {
+      webgl = new WebglAddon();
+      terminal.loadAddon(webgl);
+      webgl.onContextLoss(() => {
+        webgl?.dispose();
+        webgl = undefined;
+      });
+    } catch {
+      webgl?.dispose();
+      webgl = undefined;
+    }
     fit.fit();
 
     let timer: number | undefined;
@@ -205,18 +232,7 @@ export function TerminalView({ runId, reconnect, supported }: TerminalViewProps)
   return (
     <section aria-label="Run terminal">
       <div className="terminal-toolbar">
-        <span role="status">Terminal: {status}</span>
-        <span>Cursor {cursorRef.current}</span>
-        <button
-          type="button"
-          onClick={() => {
-            activeRef.current = false;
-            socketRef.current?.close(1000, "detached by user");
-            setStatus("detached");
-          }}
-        >
-          Detach
-        </button>
+        <span role="status">{terminalStatusLabel[status]}</span>
       </div>
       {gap !== undefined && (
         <p className="warning" role="alert">

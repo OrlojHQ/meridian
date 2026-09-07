@@ -138,6 +138,10 @@ export type DeleteSecretRequest = {
 };
 
 export type CreateCapsuleRequest = {
+    /**
+     * Saved setup ID, clean to omit personal setups, or omitted to pin current defaults.
+     */
+    setup?: string;
     name: string;
     /**
      * Optional Project-allowlisted native harness pack to freeze on the Capsule and launch when Ready.
@@ -199,7 +203,32 @@ export type SecretPage = {
     nextCursor?: string;
 };
 
+export type ProjectEnvironment = {
+    enabled: boolean;
+    generation: number;
+    setup: Array<string>;
+    imageReference: string;
+    resourceVersion: number;
+    latest?: PreparationProgress;
+};
+
+export type EnvironmentMutation = {
+    enabled?: boolean;
+    setup?: Array<string>;
+    rebuild?: boolean;
+    expectedResourceVersion: number;
+};
+
+export type PreparationProgress = {
+    stage: 'checkout' | 'preparing' | 'restoring' | 'reclone' | 'saving' | 'ready';
+    reused: boolean;
+    detail?: string;
+    sourceRevision?: string;
+    updatedAt: string;
+};
+
 export type Capsule = {
+    preparation?: PreparationProgress;
     id: string;
     projectId: string;
     timelineId: string;
@@ -622,6 +651,128 @@ export type ApiError = {
     message: string;
 };
 
+export type HarnessSetupFile = {
+    path: string;
+    content: string;
+    executable?: boolean;
+};
+
+export type HarnessSetupUpload = {
+    harness: 'claude' | 'codex' | 'opencode' | 'pi';
+    files: Array<HarnessSetupFile>;
+};
+
+export type HarnessSetupPreview = {
+    bundle: HarnessSetupBundle;
+    digest: string;
+    issues: Array<{
+        path: string;
+        reason: string;
+    }>;
+    /**
+     * Retained settings that may require Capsule-specific files, tools, or network access.
+     */
+    warnings?: Array<{
+        path: string;
+        reason: string;
+    }>;
+};
+
+export type HarnessSetupBundle = {
+    /**
+     * Exact npm package versions installed inside the Capsule before harness startup.
+     */
+    dependencies?: Array<string>;
+    harness: 'claude' | 'codex' | 'opencode' | 'pi';
+    files: Array<HarnessSetupFile>;
+};
+
+export type HarnessSetup = {
+    id: string;
+    name: string;
+    harness: string;
+    revision: string;
+    default: boolean;
+    deleted: boolean;
+    createdAt: string;
+    resourceVersion: number;
+};
+
+export type HarnessSetupPage = {
+    items: Array<HarnessSetup>;
+};
+
+export type HarnessSetupRevision = {
+    id: string;
+    setupId: string;
+    digest: string;
+    files: Array<string>;
+    createdAt: string;
+};
+
+export type HarnessSetupRevisionPage = {
+    items: Array<HarnessSetupRevision>;
+};
+
+export type ImportHarnessSetupRequest = {
+    id?: string;
+    name: string;
+    bundle: HarnessSetupBundle;
+    default: boolean;
+    expectedResourceVersion: number;
+};
+
+export type MutateHarnessSetupRequest = {
+    name?: string;
+    revision?: string;
+    default?: boolean;
+    deleted?: boolean;
+    expectedResourceVersion: number;
+};
+
+export type ProviderConnection = {
+    id: string;
+    provider: 'openai' | 'anthropic';
+    name: string;
+    createdAt: string;
+    resourceVersion: number;
+    revoked: boolean;
+};
+
+export type ProviderConnectionPage = {
+    items: Array<ProviderConnection>;
+    enabled: boolean;
+};
+
+export type ProviderConnectionRequest = {
+    name: string;
+    provider: 'openai' | 'anthropic';
+    expectedResourceVersion: number;
+    revoked?: boolean;
+};
+
+export type ProjectProviderConnection = {
+    /**
+     * Connection to authorize for this Project and harness; empty revokes access.
+     */
+    connectionId: string;
+};
+
+export type ProjectHarnessSetup = {
+    /**
+     * Saved setup ID, clean, or empty to inherit the personal default.
+     */
+    setup: string;
+};
+
+export type ProviderConnectionRequestWritable = {
+    name: string;
+    provider: 'openai' | 'anthropic';
+    apiKey: string;
+    expectedResourceVersion: number;
+    revoked?: boolean;
+};
+
 export type ProjectId = string;
 
 export type CapsuleId = string;
@@ -649,6 +800,403 @@ export type Cursor = string;
 export type Limit = number;
 
 export type LifecycleMutation = LifecycleMutationRequest;
+
+export type ProxyProviderInferenceData = {
+    body: {
+        [key: string]: unknown;
+    };
+    headers?: {
+        /**
+         * Bearer Capsule lease; required unless X-Api-Key supplies the lease.
+         */
+        Authorization?: string;
+        /**
+         * Capsule lease for Anthropic native clients.
+         */
+        'X-Api-Key'?: string;
+        'Anthropic-Beta'?: string;
+    };
+    path: {
+        provider: 'openai' | 'anthropic';
+        /**
+         * responses, chat/completions, messages, or messages/count_tokens.
+         */
+        operation: string;
+    };
+    query?: never;
+    url: '/provider-gateway/{provider}/v1/{operation}';
+};
+
+export type ProxyProviderInferenceErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ProxyProviderInferenceError = ProxyProviderInferenceErrors[keyof ProxyProviderInferenceErrors];
+
+export type ProxyProviderInferenceResponses = {
+    /**
+     * Native provider JSON or bounded event stream.
+     */
+    200: {
+        [key: string]: unknown;
+    };
+};
+
+export type ProxyProviderInferenceResponse = ProxyProviderInferenceResponses[keyof ProxyProviderInferenceResponses];
+
+export type ListProviderConnectionsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/provider-connections';
+};
+
+export type ListProviderConnectionsErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ListProviderConnectionsError = ListProviderConnectionsErrors[keyof ListProviderConnectionsErrors];
+
+export type ListProviderConnectionsResponses = {
+    /**
+     * Successful operation
+     */
+    200: ProviderConnectionPage;
+};
+
+export type ListProviderConnectionsResponse = ListProviderConnectionsResponses[keyof ListProviderConnectionsResponses];
+
+export type CreateProviderConnectionData = {
+    body: ProviderConnectionRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/provider-connections';
+};
+
+export type CreateProviderConnectionErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type CreateProviderConnectionError = CreateProviderConnectionErrors[keyof CreateProviderConnectionErrors];
+
+export type CreateProviderConnectionResponses = {
+    /**
+     * Successful operation
+     */
+    200: ProviderConnection;
+};
+
+export type CreateProviderConnectionResponse = CreateProviderConnectionResponses[keyof CreateProviderConnectionResponses];
+
+export type UpdateProviderConnectionData = {
+    body: ProviderConnectionRequestWritable;
+    path: {
+        connectionId: string;
+    };
+    query?: never;
+    url: '/provider-connections/{connectionId}';
+};
+
+export type UpdateProviderConnectionErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type UpdateProviderConnectionError = UpdateProviderConnectionErrors[keyof UpdateProviderConnectionErrors];
+
+export type UpdateProviderConnectionResponses = {
+    /**
+     * Successful operation
+     */
+    200: ProviderConnection;
+};
+
+export type UpdateProviderConnectionResponse = UpdateProviderConnectionResponses[keyof UpdateProviderConnectionResponses];
+
+export type GetProjectProviderConnectionData = {
+    body?: never;
+    path: {
+        projectId: string;
+        harness: string;
+    };
+    query?: never;
+    url: '/projects/{projectId}/harnesses/{harness}/connection';
+};
+
+export type GetProjectProviderConnectionErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type GetProjectProviderConnectionError = GetProjectProviderConnectionErrors[keyof GetProjectProviderConnectionErrors];
+
+export type GetProjectProviderConnectionResponses = {
+    /**
+     * Successful operation
+     */
+    200: ProjectProviderConnection;
+};
+
+export type GetProjectProviderConnectionResponse = GetProjectProviderConnectionResponses[keyof GetProjectProviderConnectionResponses];
+
+export type GrantProjectProviderConnectionData = {
+    body: ProjectProviderConnection;
+    path: {
+        projectId: string;
+        harness: string;
+    };
+    query?: never;
+    url: '/projects/{projectId}/harnesses/{harness}/connection';
+};
+
+export type GrantProjectProviderConnectionErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type GrantProjectProviderConnectionError = GrantProjectProviderConnectionErrors[keyof GrantProjectProviderConnectionErrors];
+
+export type GrantProjectProviderConnectionResponses = {
+    /**
+     * Successful operation
+     */
+    200: ProjectProviderConnection;
+};
+
+export type GrantProjectProviderConnectionResponse = GrantProjectProviderConnectionResponses[keyof GrantProjectProviderConnectionResponses];
+
+export type GetProjectHarnessSetupData = {
+    body?: never;
+    path: {
+        projectId: string;
+        harness: string;
+    };
+    query?: never;
+    url: '/projects/{projectId}/harnesses/{harness}/setup';
+};
+
+export type GetProjectHarnessSetupErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type GetProjectHarnessSetupError = GetProjectHarnessSetupErrors[keyof GetProjectHarnessSetupErrors];
+
+export type GetProjectHarnessSetupResponses = {
+    /**
+     * Successful operation
+     */
+    200: ProjectHarnessSetup;
+};
+
+export type GetProjectHarnessSetupResponse = GetProjectHarnessSetupResponses[keyof GetProjectHarnessSetupResponses];
+
+export type SetProjectHarnessSetupData = {
+    body: ProjectHarnessSetup;
+    path: {
+        projectId: string;
+        harness: string;
+    };
+    query?: never;
+    url: '/projects/{projectId}/harnesses/{harness}/setup';
+};
+
+export type SetProjectHarnessSetupErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type SetProjectHarnessSetupError = SetProjectHarnessSetupErrors[keyof SetProjectHarnessSetupErrors];
+
+export type SetProjectHarnessSetupResponses = {
+    /**
+     * Successful operation
+     */
+    200: ProjectHarnessSetup;
+};
+
+export type SetProjectHarnessSetupResponse = SetProjectHarnessSetupResponses[keyof SetProjectHarnessSetupResponses];
+
+export type PreviewHarnessSetupData = {
+    body: HarnessSetupUpload;
+    path?: never;
+    query?: never;
+    url: '/harness-setups/preview';
+};
+
+export type PreviewHarnessSetupErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type PreviewHarnessSetupError = PreviewHarnessSetupErrors[keyof PreviewHarnessSetupErrors];
+
+export type PreviewHarnessSetupResponses = {
+    /**
+     * Reviewed import, not yet saved
+     */
+    200: HarnessSetupPreview;
+};
+
+export type PreviewHarnessSetupResponse = PreviewHarnessSetupResponses[keyof PreviewHarnessSetupResponses];
+
+export type ListHarnessSetupsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/harness-setups';
+};
+
+export type ListHarnessSetupsErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ListHarnessSetupsError = ListHarnessSetupsErrors[keyof ListHarnessSetupsErrors];
+
+export type ListHarnessSetupsResponses = {
+    /**
+     * Successful operation
+     */
+    200: HarnessSetupPage;
+};
+
+export type ListHarnessSetupsResponse = ListHarnessSetupsResponses[keyof ListHarnessSetupsResponses];
+
+export type ImportHarnessSetupData = {
+    body: ImportHarnessSetupRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/harness-setups';
+};
+
+export type ImportHarnessSetupErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ImportHarnessSetupError = ImportHarnessSetupErrors[keyof ImportHarnessSetupErrors];
+
+export type ImportHarnessSetupResponses = {
+    /**
+     * Successful operation
+     */
+    201: HarnessSetup;
+};
+
+export type ImportHarnessSetupResponse = ImportHarnessSetupResponses[keyof ImportHarnessSetupResponses];
+
+export type MutateHarnessSetupData = {
+    body: MutateHarnessSetupRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        setupId: string;
+    };
+    query?: never;
+    url: '/harness-setups/{setupId}';
+};
+
+export type MutateHarnessSetupErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type MutateHarnessSetupError = MutateHarnessSetupErrors[keyof MutateHarnessSetupErrors];
+
+export type MutateHarnessSetupResponses = {
+    /**
+     * Successful operation
+     */
+    200: HarnessSetup;
+};
+
+export type MutateHarnessSetupResponse = MutateHarnessSetupResponses[keyof MutateHarnessSetupResponses];
+
+export type GetHarnessSetupContentsData = {
+    body?: never;
+    path: {
+        setupId: string;
+    };
+    query?: never;
+    url: '/harness-setups/{setupId}/contents';
+};
+
+export type GetHarnessSetupContentsErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type GetHarnessSetupContentsError = GetHarnessSetupContentsErrors[keyof GetHarnessSetupContentsErrors];
+
+export type GetHarnessSetupContentsResponses = {
+    /**
+     * Current setup content and version; never cached
+     */
+    200: ImportHarnessSetupRequest;
+};
+
+export type GetHarnessSetupContentsResponse = GetHarnessSetupContentsResponses[keyof GetHarnessSetupContentsResponses];
+
+export type ListHarnessSetupRevisionsData = {
+    body?: never;
+    path: {
+        setupId: string;
+    };
+    query?: never;
+    url: '/harness-setups/{setupId}/revisions';
+};
+
+export type ListHarnessSetupRevisionsErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ListHarnessSetupRevisionsError = ListHarnessSetupRevisionsErrors[keyof ListHarnessSetupRevisionsErrors];
+
+export type ListHarnessSetupRevisionsResponses = {
+    /**
+     * Successful operation
+     */
+    200: HarnessSetupRevisionPage;
+};
+
+export type ListHarnessSetupRevisionsResponse = ListHarnessSetupRevisionsResponses[keyof ListHarnessSetupRevisionsResponses];
 
 export type GetHealthData = {
     body?: never;
@@ -1811,6 +2359,63 @@ export type PauseCapsuleResponses = {
 
 export type PauseCapsuleResponse = PauseCapsuleResponses[keyof PauseCapsuleResponses];
 
+export type GetProjectEnvironmentData = {
+    body?: never;
+    path: {
+        projectId: string;
+    };
+    query?: never;
+    url: '/projects/{projectId}/environment';
+};
+
+export type GetProjectEnvironmentErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type GetProjectEnvironmentError = GetProjectEnvironmentErrors[keyof GetProjectEnvironmentErrors];
+
+export type GetProjectEnvironmentResponses = {
+    /**
+     * Project environment
+     */
+    200: ProjectEnvironment;
+};
+
+export type GetProjectEnvironmentResponse = GetProjectEnvironmentResponses[keyof GetProjectEnvironmentResponses];
+
+export type UpdateProjectEnvironmentData = {
+    body: EnvironmentMutation;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        projectId: string;
+    };
+    query?: never;
+    url: '/projects/{projectId}/environment';
+};
+
+export type UpdateProjectEnvironmentErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type UpdateProjectEnvironmentError = UpdateProjectEnvironmentErrors[keyof UpdateProjectEnvironmentErrors];
+
+export type UpdateProjectEnvironmentResponses = {
+    /**
+     * Updated project environment
+     */
+    200: ProjectEnvironment;
+};
+
+export type UpdateProjectEnvironmentResponse = UpdateProjectEnvironmentResponses[keyof UpdateProjectEnvironmentResponses];
+
 export type ResumeCapsuleData = {
     body: LifecycleMutation;
     headers: {
@@ -1860,6 +2465,56 @@ export type ResumeCapsuleResponses = {
 };
 
 export type ResumeCapsuleResponse = ResumeCapsuleResponses[keyof ResumeCapsuleResponses];
+
+export type RetryCapsuleData = {
+    body: LifecycleMutation;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        capsuleId: string;
+    };
+    query?: never;
+    url: '/capsules/{capsuleId}/retry';
+};
+
+export type RetryCapsuleErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Request rate limit exceeded
+     */
+    429: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type RetryCapsuleError = RetryCapsuleErrors[keyof RetryCapsuleErrors];
+
+export type RetryCapsuleResponses = {
+    /**
+     * Lifecycle intent accepted
+     */
+    202: Capsule;
+};
+
+export type RetryCapsuleResponse = RetryCapsuleResponses[keyof RetryCapsuleResponses];
 
 export type DeleteCapsuleData = {
     body: LifecycleMutation;

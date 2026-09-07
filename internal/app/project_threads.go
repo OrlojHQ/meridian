@@ -128,6 +128,9 @@ func (s *Service) CreateProjectThread(
 		if err := tx.InsertCapsule(ctx, capsule); err != nil {
 			return err
 		}
+		if err := s.pinHarnessSetups(ctx, tx, capsule.ID, ""); err != nil {
+			return err
+		}
 		if err := tx.InsertTimeline(ctx, domain.Timeline{
 			ID: timelineID, ProjectID: input.ProjectID, CapsuleID: capsuleID,
 			Reason: domain.TimelineRoot, CreatedAt: now,

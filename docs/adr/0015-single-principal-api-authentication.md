@@ -41,12 +41,10 @@ different product and security model.
 
 ## Consequences
 
-Possession of the installation token gives full control-plane authority, so
-its compromise has installation-wide impact. TLS or an equivalently protected
-local transport remains required wherever bearer traffic can be observed.
-Ticket scoping limits exposure at terminal and preview ingress without
-creating a second user identity system.
-
-This is target architecture. Until it is implemented, the current public API
-must be treated as unauthenticated and confined to a trusted local or
-independently authenticated boundary.
+The installation bearer is implemented. Possession of that token gives full
+control-plane authority, so its compromise has installation-wide impact. TLS or
+an equivalently protected local transport remains required wherever bearer
+traffic can be observed. The API stays on loopback unless the operator supplies
+TLS and a reviewed network edge; this is a single principal, not per-user RBAC.
+Ticket scoping limits exposure at terminal and preview ingress without creating
+a second user identity system.

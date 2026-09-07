@@ -236,7 +236,7 @@ describe("Thread detail transcript and controls", () => {
     );
     expect(screen.getByRole("link", { name: "Native PTY fallback" })).toHaveAttribute(
       "href",
-      "/ui/capsules/capsule-1#runs",
+      "/ui/capsules/capsule-1#terminal",
     );
     await user.click(screen.getByRole("button", { name: "Cancel session" }));
     expect(session).not.toHaveBeenCalled();

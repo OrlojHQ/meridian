@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, ServerSentEventsResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { ArchiveThreadData, ArchiveThreadErrors, ArchiveThreadResponses, AttachRunWebSocketData, AttachRunWebSocketErrors, AttachRunWebSocketResponses, CancelRunData, CancelRunErrors, CancelRunResponses, CancelThreadData, CancelThreadErrors, CancelThreadResponses, CaptureMomentData, CaptureMomentErrors, CaptureMomentResponses, CreateBrowserSessionData, CreateBrowserSessionErrors, CreateBrowserSessionResponses, CreateCapsuleData, CreateCapsuleDeliveryData, CreateCapsuleDeliveryErrors, CreateCapsuleDeliveryResponses, CreateCapsuleErrors, CreateCapsulePreviewTicketData, CreateCapsulePreviewTicketErrors, CreateCapsulePreviewTicketResponses, CreateCapsuleResponses, CreateProjectData, CreateProjectErrors, CreateProjectResponses, CreateProjectThreadData, CreateProjectThreadErrors, CreateProjectThreadResponses, CreateRunAttachTicketData, CreateRunAttachTicketErrors, CreateRunAttachTicketResponses, CreateShardData, CreateShardErrors, CreateShardResponses, CreateThreadData, CreateThreadErrors, CreateThreadResponses, DeleteCapsuleData, DeleteCapsuleErrors, DeleteCapsuleResponses, DeleteSecretData, DeleteSecretErrors, DeleteSecretResponses, DeleteThreadData, DeleteThreadErrors, DeleteThreadResponses, ExportCapsuleWorkspaceData, ExportCapsuleWorkspaceErrors, ExportCapsuleWorkspaceResponses, GetCapabilitiesData, GetCapabilitiesErrors, GetCapabilitiesResponses, GetCapsuleData, GetCapsuleErrors, GetCapsuleGitDiffData, GetCapsuleGitDiffErrors, GetCapsuleGitDiffResponses, GetCapsuleGitStatusData, GetCapsuleGitStatusErrors, GetCapsuleGitStatusResponses, GetCapsuleResponses, GetDeliveryData, GetDeliveryErrors, GetDeliveryResponses, GetHealthData, GetHealthErrors, GetHealthResponses, GetMomentData, GetMomentErrors, GetMomentResponses, GetProjectData, GetProjectErrors, GetProjectResponses, GetProjectThreadIntentData, GetProjectThreadIntentErrors, GetProjectThreadIntentResponses, GetReadinessData, GetReadinessErrors, GetReadinessResponses, GetRunData, GetRunErrors, GetRunResponses, GetThreadData, GetThreadErrors, GetThreadResponses, GetTimelineData, GetTimelineErrors, GetTimelineResponses, InspectCapsuleDeliveryData, InspectCapsuleDeliveryErrors, InspectCapsuleDeliveryResponses, ListCapsuleDeliveriesData, ListCapsuleDeliveriesErrors, ListCapsuleDeliveriesResponses, ListCapsuleFilesData, ListCapsuleFilesErrors, ListCapsuleFilesResponses, ListCapsulePreviewPortsData, ListCapsulePreviewPortsErrors, ListCapsulePreviewPortsResponses, ListCapsulesData, ListCapsulesErrors, ListCapsulesResponses, ListHarnessProfilesData, ListHarnessProfilesErrors, ListHarnessProfilesResponses, ListMomentsData, ListMomentsErrors, ListMomentsResponses, ListProjectsData, ListProjectsErrors, ListProjectsResponses, ListRunEventsData, ListRunEventsErrors, ListRunEventsResponses, ListRunsData, ListRunsErrors, ListRunsResponses, ListSecretsData, ListSecretsErrors, ListSecretsResponses, ListThreadBlocksData, ListThreadBlocksErrors, ListThreadBlocksResponses, ListThreadsData, ListThreadsErrors, ListThreadsResponses, PatchProjectData, PatchProjectErrors, PatchProjectResponses, PauseCapsuleData, PauseCapsuleErrors, PauseCapsuleResponses, PutSecretData, PutSecretErrors, PutSecretResponses, ReadCapsuleFileData, ReadCapsuleFileErrors, ReadCapsuleFileResponses, RespondThreadData, RespondThreadErrors, RespondThreadResponses, ResumeCapsuleData, ResumeCapsuleErrors, ResumeCapsuleResponses, ResumeThreadData, ResumeThreadErrors, ResumeThreadResponses, RewindCapsuleData, RewindCapsuleErrors, RewindCapsuleResponses, SealCapsuleData, SealCapsuleErrors, SealCapsuleResponses, SendThreadMessageData, SendThreadMessageErrors, SendThreadMessageResponses, StartRunData, StartRunErrors, StartRunResponses, StartThreadData, StartThreadErrors, StartThreadResponses, StreamRunEventsData, StreamRunEventsErrors, StreamRunEventsResponse, StreamRunEventsResponses, StreamThreadBlocksData, StreamThreadBlocksErrors, StreamThreadBlocksResponse, StreamThreadBlocksResponses } from './types.gen';
+import type { ArchiveThreadData, ArchiveThreadErrors, ArchiveThreadResponses, AttachRunWebSocketData, AttachRunWebSocketErrors, AttachRunWebSocketResponses, CancelRunData, CancelRunErrors, CancelRunResponses, CancelThreadData, CancelThreadErrors, CancelThreadResponses, CaptureMomentData, CaptureMomentErrors, CaptureMomentResponses, CreateBrowserSessionData, CreateBrowserSessionErrors, CreateBrowserSessionResponses, CreateCapsuleData, CreateCapsuleDeliveryData, CreateCapsuleDeliveryErrors, CreateCapsuleDeliveryResponses, CreateCapsuleErrors, CreateCapsulePreviewTicketData, CreateCapsulePreviewTicketErrors, CreateCapsulePreviewTicketResponses, CreateCapsuleResponses, CreateProjectData, CreateProjectErrors, CreateProjectResponses, CreateProjectThreadData, CreateProjectThreadErrors, CreateProjectThreadResponses, CreateProviderConnectionData, CreateProviderConnectionErrors, CreateProviderConnectionResponses, CreateRunAttachTicketData, CreateRunAttachTicketErrors, CreateRunAttachTicketResponses, CreateShardData, CreateShardErrors, CreateShardResponses, CreateThreadData, CreateThreadErrors, CreateThreadResponses, DeleteCapsuleData, DeleteCapsuleErrors, DeleteCapsuleResponses, DeleteSecretData, DeleteSecretErrors, DeleteSecretResponses, DeleteThreadData, DeleteThreadErrors, DeleteThreadResponses, ExportCapsuleWorkspaceData, ExportCapsuleWorkspaceErrors, ExportCapsuleWorkspaceResponses, GetCapabilitiesData, GetCapabilitiesErrors, GetCapabilitiesResponses, GetCapsuleData, GetCapsuleErrors, GetCapsuleGitDiffData, GetCapsuleGitDiffErrors, GetCapsuleGitDiffResponses, GetCapsuleGitStatusData, GetCapsuleGitStatusErrors, GetCapsuleGitStatusResponses, GetCapsuleResponses, GetDeliveryData, GetDeliveryErrors, GetDeliveryResponses, GetHarnessSetupContentsData, GetHarnessSetupContentsErrors, GetHarnessSetupContentsResponses, GetHealthData, GetHealthErrors, GetHealthResponses, GetMomentData, GetMomentErrors, GetMomentResponses, GetProjectData, GetProjectEnvironmentData, GetProjectEnvironmentErrors, GetProjectEnvironmentResponses, GetProjectErrors, GetProjectHarnessSetupData, GetProjectHarnessSetupErrors, GetProjectHarnessSetupResponses, GetProjectProviderConnectionData, GetProjectProviderConnectionErrors, GetProjectProviderConnectionResponses, GetProjectResponses, GetProjectThreadIntentData, GetProjectThreadIntentErrors, GetProjectThreadIntentResponses, GetReadinessData, GetReadinessErrors, GetReadinessResponses, GetRunData, GetRunErrors, GetRunResponses, GetThreadData, GetThreadErrors, GetThreadResponses, GetTimelineData, GetTimelineErrors, GetTimelineResponses, GrantProjectProviderConnectionData, GrantProjectProviderConnectionErrors, GrantProjectProviderConnectionResponses, ImportHarnessSetupData, ImportHarnessSetupErrors, ImportHarnessSetupResponses, InspectCapsuleDeliveryData, InspectCapsuleDeliveryErrors, InspectCapsuleDeliveryResponses, ListCapsuleDeliveriesData, ListCapsuleDeliveriesErrors, ListCapsuleDeliveriesResponses, ListCapsuleFilesData, ListCapsuleFilesErrors, ListCapsuleFilesResponses, ListCapsulePreviewPortsData, ListCapsulePreviewPortsErrors, ListCapsulePreviewPortsResponses, ListCapsulesData, ListCapsulesErrors, ListCapsulesResponses, ListHarnessProfilesData, ListHarnessProfilesErrors, ListHarnessProfilesResponses, ListHarnessSetupRevisionsData, ListHarnessSetupRevisionsErrors, ListHarnessSetupRevisionsResponses, ListHarnessSetupsData, ListHarnessSetupsErrors, ListHarnessSetupsResponses, ListMomentsData, ListMomentsErrors, ListMomentsResponses, ListProjectsData, ListProjectsErrors, ListProjectsResponses, ListProviderConnectionsData, ListProviderConnectionsErrors, ListProviderConnectionsResponses, ListRunEventsData, ListRunEventsErrors, ListRunEventsResponses, ListRunsData, ListRunsErrors, ListRunsResponses, ListSecretsData, ListSecretsErrors, ListSecretsResponses, ListThreadBlocksData, ListThreadBlocksErrors, ListThreadBlocksResponses, ListThreadsData, ListThreadsErrors, ListThreadsResponses, MutateHarnessSetupData, MutateHarnessSetupErrors, MutateHarnessSetupResponses, PatchProjectData, PatchProjectErrors, PatchProjectResponses, PauseCapsuleData, PauseCapsuleErrors, PauseCapsuleResponses, PreviewHarnessSetupData, PreviewHarnessSetupErrors, PreviewHarnessSetupResponses, ProxyProviderInferenceData, ProxyProviderInferenceErrors, ProxyProviderInferenceResponses, PutSecretData, PutSecretErrors, PutSecretResponses, ReadCapsuleFileData, ReadCapsuleFileErrors, ReadCapsuleFileResponses, RespondThreadData, RespondThreadErrors, RespondThreadResponses, ResumeCapsuleData, ResumeCapsuleErrors, ResumeCapsuleResponses, ResumeThreadData, ResumeThreadErrors, ResumeThreadResponses, RetryCapsuleData, RetryCapsuleErrors, RetryCapsuleResponses, RewindCapsuleData, RewindCapsuleErrors, RewindCapsuleResponses, SealCapsuleData, SealCapsuleErrors, SealCapsuleResponses, SendThreadMessageData, SendThreadMessageErrors, SendThreadMessageResponses, SetProjectHarnessSetupData, SetProjectHarnessSetupErrors, SetProjectHarnessSetupResponses, StartRunData, StartRunErrors, StartRunResponses, StartThreadData, StartThreadErrors, StartThreadResponses, StreamRunEventsData, StreamRunEventsErrors, StreamRunEventsResponse, StreamRunEventsResponses, StreamThreadBlocksData, StreamThreadBlocksErrors, StreamThreadBlocksResponse, StreamThreadBlocksResponses, UpdateProjectEnvironmentData, UpdateProjectEnvironmentErrors, UpdateProjectEnvironmentResponses, UpdateProviderConnectionData, UpdateProviderConnectionErrors, UpdateProviderConnectionResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -17,6 +17,167 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
      */
     meta?: keyof ClientMeta extends never ? Record<string, unknown> : ClientMeta;
 };
+
+/**
+ * Forward an inference request using a scoped Capsule lease
+ *
+ * Requires a live Capsule gateway lease in Authorization (Bearer) or X-Api-Key. Installation API tokens and browser sessions do not authorize this operation. Only OpenAI responses/chat completions and Anthropic messages/token counting are supported; unsupported provider/operation combinations return 404. The origin must be enabled explicitly by the deployment operator.
+ */
+export const proxyProviderInference = <ThrowOnError extends boolean = false>(options: Options<ProxyProviderInferenceData, ThrowOnError>): RequestResult<ProxyProviderInferenceResponses, ProxyProviderInferenceErrors, ThrowOnError> => (options.client ?? client).post<ProxyProviderInferenceResponses, ProxyProviderInferenceErrors, ThrowOnError>({
+    url: '/provider-gateway/{provider}/v1/{operation}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * listProviderConnections
+ */
+export const listProviderConnections = <ThrowOnError extends boolean = false>(options?: Options<ListProviderConnectionsData, ThrowOnError>): RequestResult<ListProviderConnectionsResponses, ListProviderConnectionsErrors, ThrowOnError> => (options?.client ?? client).get<ListProviderConnectionsResponses, ListProviderConnectionsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/provider-connections',
+    ...options
+});
+
+/**
+ * createProviderConnection
+ */
+export const createProviderConnection = <ThrowOnError extends boolean = false>(options: Options<CreateProviderConnectionData, ThrowOnError>): RequestResult<CreateProviderConnectionResponses, CreateProviderConnectionErrors, ThrowOnError> => (options.client ?? client).post<CreateProviderConnectionResponses, CreateProviderConnectionErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/provider-connections',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * updateProviderConnection
+ */
+export const updateProviderConnection = <ThrowOnError extends boolean = false>(options: Options<UpdateProviderConnectionData, ThrowOnError>): RequestResult<UpdateProviderConnectionResponses, UpdateProviderConnectionErrors, ThrowOnError> => (options.client ?? client).put<UpdateProviderConnectionResponses, UpdateProviderConnectionErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/provider-connections/{connectionId}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * getProjectProviderConnection
+ */
+export const getProjectProviderConnection = <ThrowOnError extends boolean = false>(options: Options<GetProjectProviderConnectionData, ThrowOnError>): RequestResult<GetProjectProviderConnectionResponses, GetProjectProviderConnectionErrors, ThrowOnError> => (options.client ?? client).get<GetProjectProviderConnectionResponses, GetProjectProviderConnectionErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/projects/{projectId}/harnesses/{harness}/connection',
+    ...options
+});
+
+/**
+ * grantProjectProviderConnection
+ */
+export const grantProjectProviderConnection = <ThrowOnError extends boolean = false>(options: Options<GrantProjectProviderConnectionData, ThrowOnError>): RequestResult<GrantProjectProviderConnectionResponses, GrantProjectProviderConnectionErrors, ThrowOnError> => (options.client ?? client).put<GrantProjectProviderConnectionResponses, GrantProjectProviderConnectionErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/projects/{projectId}/harnesses/{harness}/connection',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * getProjectHarnessSetup
+ */
+export const getProjectHarnessSetup = <ThrowOnError extends boolean = false>(options: Options<GetProjectHarnessSetupData, ThrowOnError>): RequestResult<GetProjectHarnessSetupResponses, GetProjectHarnessSetupErrors, ThrowOnError> => (options.client ?? client).get<GetProjectHarnessSetupResponses, GetProjectHarnessSetupErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/projects/{projectId}/harnesses/{harness}/setup',
+    ...options
+});
+
+/**
+ * setProjectHarnessSetup
+ */
+export const setProjectHarnessSetup = <ThrowOnError extends boolean = false>(options: Options<SetProjectHarnessSetupData, ThrowOnError>): RequestResult<SetProjectHarnessSetupResponses, SetProjectHarnessSetupErrors, ThrowOnError> => (options.client ?? client).put<SetProjectHarnessSetupResponses, SetProjectHarnessSetupErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/projects/{projectId}/harnesses/{harness}/setup',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Review explicitly selected configuration files without saving
+ *
+ * Original file content is processed in memory only. Returns sanitized portable files and exclusions. Does not read server filesystem paths or execute imported code.
+ */
+export const previewHarnessSetup = <ThrowOnError extends boolean = false>(options: Options<PreviewHarnessSetupData, ThrowOnError>): RequestResult<PreviewHarnessSetupResponses, PreviewHarnessSetupErrors, ThrowOnError> => (options.client ?? client).post<PreviewHarnessSetupResponses, PreviewHarnessSetupErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/harness-setups/preview',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * listHarnessSetups
+ */
+export const listHarnessSetups = <ThrowOnError extends boolean = false>(options?: Options<ListHarnessSetupsData, ThrowOnError>): RequestResult<ListHarnessSetupsResponses, ListHarnessSetupsErrors, ThrowOnError> => (options?.client ?? client).get<ListHarnessSetupsResponses, ListHarnessSetupsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/harness-setups',
+    ...options
+});
+
+/**
+ * importHarnessSetup
+ */
+export const importHarnessSetup = <ThrowOnError extends boolean = false>(options: Options<ImportHarnessSetupData, ThrowOnError>): RequestResult<ImportHarnessSetupResponses, ImportHarnessSetupErrors, ThrowOnError> => (options.client ?? client).post<ImportHarnessSetupResponses, ImportHarnessSetupErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/harness-setups',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * mutateHarnessSetup
+ */
+export const mutateHarnessSetup = <ThrowOnError extends boolean = false>(options: Options<MutateHarnessSetupData, ThrowOnError>): RequestResult<MutateHarnessSetupResponses, MutateHarnessSetupErrors, ThrowOnError> => (options.client ?? client).patch<MutateHarnessSetupResponses, MutateHarnessSetupErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/harness-setups/{setupId}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Read saved configuration for editing
+ */
+export const getHarnessSetupContents = <ThrowOnError extends boolean = false>(options: Options<GetHarnessSetupContentsData, ThrowOnError>): RequestResult<GetHarnessSetupContentsResponses, GetHarnessSetupContentsErrors, ThrowOnError> => (options.client ?? client).get<GetHarnessSetupContentsResponses, GetHarnessSetupContentsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/harness-setups/{setupId}/contents',
+    ...options
+});
+
+/**
+ * listHarnessSetupRevisions
+ */
+export const listHarnessSetupRevisions = <ThrowOnError extends boolean = false>(options: Options<ListHarnessSetupRevisionsData, ThrowOnError>): RequestResult<ListHarnessSetupRevisionsResponses, ListHarnessSetupRevisionsErrors, ThrowOnError> => (options.client ?? client).get<ListHarnessSetupRevisionsResponses, ListHarnessSetupRevisionsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/harness-setups/{setupId}/revisions',
+    ...options
+});
 
 /**
  * Report process health
@@ -348,11 +509,46 @@ export const pauseCapsule = <ThrowOnError extends boolean = false>(options: Opti
 });
 
 /**
+ * Inspect project preparation settings and recent progress
+ */
+export const getProjectEnvironment = <ThrowOnError extends boolean = false>(options: Options<GetProjectEnvironmentData, ThrowOnError>): RequestResult<GetProjectEnvironmentResponses, GetProjectEnvironmentErrors, ThrowOnError> => (options.client ?? client).get<GetProjectEnvironmentResponses, GetProjectEnvironmentErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/projects/{projectId}/environment',
+    ...options
+});
+
+/**
+ * Configure preparation or rebuild on next launch
+ */
+export const updateProjectEnvironment = <ThrowOnError extends boolean = false>(options: Options<UpdateProjectEnvironmentData, ThrowOnError>): RequestResult<UpdateProjectEnvironmentResponses, UpdateProjectEnvironmentErrors, ThrowOnError> => (options.client ?? client).put<UpdateProjectEnvironmentResponses, UpdateProjectEnvironmentErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/projects/{projectId}/environment',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
  * Request Capsule resume
  */
 export const resumeCapsule = <ThrowOnError extends boolean = false>(options: Options<ResumeCapsuleData, ThrowOnError>): RequestResult<ResumeCapsuleResponses, ResumeCapsuleErrors, ThrowOnError> => (options.client ?? client).post<ResumeCapsuleResponses, ResumeCapsuleErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/capsules/{capsuleId}/resume',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Retry failed preparation in the same Capsule
+ */
+export const retryCapsule = <ThrowOnError extends boolean = false>(options: Options<RetryCapsuleData, ThrowOnError>): RequestResult<RetryCapsuleResponses, RetryCapsuleErrors, ThrowOnError> => (options.client ?? client).post<RetryCapsuleResponses, RetryCapsuleErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/capsules/{capsuleId}/retry',
     ...options,
     headers: {
         'Content-Type': 'application/json',

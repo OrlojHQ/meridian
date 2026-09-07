@@ -1,11 +1,17 @@
 import { client } from "./generated/client.gen";
 import {
+  getProjectEnvironment, updateProjectEnvironment,
+  getProjectHarnessSetup, setProjectHarnessSetup,
+  listProviderConnections, createProviderConnection, updateProviderConnection, getProjectProviderConnection, grantProjectProviderConnection,
+  getHarnessSetupContents, listHarnessSetups, mutateHarnessSetup, listHarnessSetupRevisions, previewHarnessSetup, importHarnessSetup,
   archiveThread,
   cancelRun,
   cancelThread,
   createBrowserSession,
+  createCapsule,
   createCapsuleDelivery,
   createCapsulePreviewTicket,
+  createProject,
   createProjectThread,
   createRunAttachTicket,
   createThread,
@@ -31,24 +37,30 @@ import {
   listThreadBlocks,
   listThreads,
   pauseCapsule,
-  resumeCapsule,
+  resumeCapsule, retryCapsule, getProjectThreadIntent,
   resumeThread,
   sealCapsule,
   sendThreadMessage,
+  startRun,
   startThread,
   respondThread,
   readCapsuleFile,
 } from "./generated/sdk.gen";
-import type {
+import type { HarnessSetupUpload, HarnessSetupPreview, ImportHarnessSetupRequest, EnvironmentMutation, ProjectEnvironment,
+  ProjectHarnessSetup,
+  ProviderConnection, ProviderConnectionPage, ProviderConnectionRequestWritable, ProjectProviderConnection,
+  HarnessSetup, HarnessSetupPage, HarnessSetupRevisionPage, MutateHarnessSetupRequest,
   AttachTicket,
   Capabilities,
   Capsule,
   CapsulePage,
+  CreateProjectRequest,
   ErrorEnvelope,
   GitResult,
   HarnessProfilePage,
   Moment,
   MomentPage,
+  Project,
   ProjectPage,
   ProjectThreadIntent,
   PreviewPortPage,
@@ -139,6 +151,16 @@ const idempotencyHeaders = () => ({
 });
 
 export const api = {
+ projectHarnessSetup:(projectId:string,harness:string)=>call<ProjectHarnessSetup>(getProjectHarnessSetup({...generatedOptions(),path:{projectId,harness}})),
+ setProjectHarnessSetup:(projectId:string,harness:string,setup:string)=>call<ProjectHarnessSetup>(setProjectHarnessSetup({...generatedOptions(),path:{projectId,harness},body:{setup}})),
+ providerConnections:()=>call<ProviderConnectionPage>(listProviderConnections({...generatedOptions()})),
+ saveProviderConnection:(body:ProviderConnectionRequestWritable,id?:string)=>call<ProviderConnection>(id ? updateProviderConnection({...generatedOptions(),path:{connectionId:id},body}) : createProviderConnection({...generatedOptions(),body})),
+ projectConnection:(projectId:string,harness:string)=>call<ProjectProviderConnection>(getProjectProviderConnection({...generatedOptions(),path:{projectId,harness}})),
+ grantConnection:(projectId:string,harness:string,connectionId:string)=>call<ProjectProviderConnection>(grantProjectProviderConnection({...generatedOptions(),path:{projectId,harness},body:{connectionId}})),
+ harnessSetups: () => call<HarnessSetupPage>(listHarnessSetups({...generatedOptions()})),
+ harnessSetupContents: (setupId: string) => call<ImportHarnessSetupRequest>(getHarnessSetupContents({...generatedOptions(), path:{setupId}})),
+ harnessSetupRevisions: (setupId: string) => call<HarnessSetupRevisionPage>(listHarnessSetupRevisions({...generatedOptions(), path:{setupId}})),
+ mutateHarnessSetup: (setupId:string, body:MutateHarnessSetupRequest) => call<HarnessSetup>(mutateHarnessSetup({...generatedOptions(),path:{setupId},headers:idempotencyHeaders(),body})),
   baseUrl,
   authenticateBrowser: (token: string, signal?: AbortSignal) =>
     call<void>(
@@ -153,12 +175,35 @@ export const api = {
     call<ProjectPage>(
       listProjects({ ...generatedOptions(signal), query: { limit: 100 } }),
     ),
+  createProject: (request: CreateProjectRequest, signal?: AbortSignal) =>
+    call<Project>(
+      createProject({
+        ...generatedOptions(signal),
+        headers: idempotencyHeaders(),
+        body: request,
+      }),
+    ),
   capsules: (projectId: string, signal?: AbortSignal) =>
     call<CapsulePage>(
       listCapsules({
         ...generatedOptions(signal),
         path: { projectId },
         query: { limit: 100 },
+      }),
+    ),
+  createCapsule: (
+    projectId: string,
+    name: string,
+    harness: string,
+    signal?: AbortSignal,
+    setup?: string,
+  ) =>
+    call<Capsule>(
+      createCapsule({
+        ...generatedOptions(signal),
+        path: { projectId },
+        headers: idempotencyHeaders(),
+        body: { name, harness, ...(setup ? {setup} : {}) },
       }),
     ),
   createProjectThread: (
@@ -176,6 +221,11 @@ export const api = {
         body: { harness, prompt, ...(name ? { name } : {}) },
       }),
     ),
+  previewHarnessSetup: (body: HarnessSetupUpload) => call<HarnessSetupPreview>(previewHarnessSetup({...generatedOptions(), body})),
+  importHarnessSetup: (body: ImportHarnessSetupRequest, key?: string) => call<HarnessSetup>(importHarnessSetup({...generatedOptions(), headers: key ? {"Idempotency-Key":key} : idempotencyHeaders(), body})),
+  projectEnvironment: (projectId: string, signal?: AbortSignal) => call<ProjectEnvironment>(getProjectEnvironment({...generatedOptions(signal), path: {projectId}})),
+  updateProjectEnvironment: (projectId: string, body: EnvironmentMutation) => call<ProjectEnvironment>(updateProjectEnvironment({...generatedOptions(), path: {projectId}, headers: idempotencyHeaders(), body})),
+  projectThreadIntent: (intentId: string, signal?: AbortSignal) => call<ProjectThreadIntent>(getProjectThreadIntent({...generatedOptions(signal), path: {intentId}})),
   capsule: (capsuleId: string, signal?: AbortSignal) =>
     call<Capsule>(
       getCapsule({ ...generatedOptions(signal), path: { capsuleId } }),
@@ -412,7 +462,7 @@ export const api = {
       getTimeline({ ...generatedOptions(signal), path: { timelineId } }),
     ),
   lifecycle: (
-    action: "pause" | "resume" | "delete",
+    action: "pause" | "resume" | "delete" | "retry",
     capsuleId: string,
     expectedResourceVersion: number,
     signal?: AbortSignal,
@@ -428,7 +478,7 @@ export const api = {
         ? pauseCapsule(options)
         : action === "resume"
           ? resumeCapsule(options)
-          : deleteCapsule(options);
+          : action === "retry" ? retryCapsule(options) : deleteCapsule(options);
     return call<Capsule>(operation);
   },
   seal: (
@@ -455,6 +505,19 @@ export const api = {
         path: { runId },
         headers: idempotencyHeaders(),
         body: { expectedResourceVersion },
+      }),
+    ),
+  startRun: (
+    capsuleId: string,
+    harness: string,
+    signal?: AbortSignal,
+  ) =>
+    call<Run>(
+      startRun({
+        ...generatedOptions(signal),
+        path: { capsuleId },
+        headers: idempotencyHeaders(),
+        body: { harness, prompt: "" },
       }),
     ),
   attachTicket: (runId: string, after: number, signal?: AbortSignal) =>

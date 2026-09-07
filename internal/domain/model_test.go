@@ -194,9 +194,50 @@ func TestImageForHarnessAllowlist(t *testing.T) {
 	if err != nil || len(items) != 2 || items[0].Name != "opencode" {
 		t.Fatalf("specs = %#v, %v", items, err)
 	}
-	catalog := InstallationHarnessImages("meridian-capsule:dev")
-	if len(catalog) != 2 || catalog[0].Name != "mock" || catalog[0].ImageReference != "meridian-capsule:dev" ||
-		catalog[1].Name != "opencode" || catalog[1].ImageReference != "meridian-capsule-opencode:dev" {
+	catalog := InstallationHarnessImages("meridian-capsule:dev", "")
+	if len(catalog) != 5 || catalog[0].Name != "mock" || catalog[0].ImageReference != "meridian-capsule:dev" ||
+		catalog[1].Name != "opencode" || catalog[1].ImageReference != "meridian-capsule-opencode:dev" ||
+		catalog[2].Name != "pi" || catalog[2].ImageReference != "meridian-capsule-pi:dev" ||
+		catalog[3].Name != "claude" || catalog[3].ImageReference != "meridian-capsule-claude:dev" ||
+		catalog[4].Name != "codex" || catalog[4].ImageReference != "meridian-capsule-codex:dev" {
 		t.Fatalf("catalog = %#v", catalog)
+	}
+	published := InstallationHarnessImages("ghcr.io/orlojhq/meridian-capsule:v1.2.3", "")
+	if published[0].ImageReference != "ghcr.io/orlojhq/meridian-capsule:v1.2.3" ||
+		published[1].ImageReference != "ghcr.io/orlojhq/meridian-capsule-opencode:v1.2.3" ||
+		published[2].ImageReference != "ghcr.io/orlojhq/meridian-capsule-pi:v1.2.3" ||
+		published[3].ImageReference != "ghcr.io/orlojhq/meridian-capsule-claude:v1.2.3" ||
+		published[4].ImageReference != "ghcr.io/orlojhq/meridian-capsule-codex:v1.2.3" {
+		t.Fatalf("published catalog = %#v", published)
+	}
+	pinned := InstallationHarnessImages(
+		"ghcr.io/orlojhq/meridian-capsule@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"v1.2.3",
+	)
+	if pinned[0].ImageReference != "ghcr.io/orlojhq/meridian-capsule@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" ||
+		pinned[1].ImageReference != "ghcr.io/orlojhq/meridian-capsule-opencode:v1.2.3" {
+		t.Fatalf("digest-pinned catalog = %#v", pinned)
+	}
+	digestOnly := InstallationHarnessImages(
+		"ghcr.io/orlojhq/meridian-capsule@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"",
+	)
+	if digestOnly[1].ImageReference != "ghcr.io/orlojhq/meridian-capsule-opencode:dev" {
+		t.Fatalf("digest-only catalog = %#v", digestOnly)
+	}
+	mirror := InstallationHarnessImages("localhost:5000/orloj/meridian-capsule:v9", "")
+	if mirror[1].ImageReference != "localhost:5000/orloj/meridian-capsule-opencode:v9" {
+		t.Fatalf("mirrored catalog = %#v", mirror)
+	}
+	if DefaultCapsuleImage("dev") != LocalCapsuleImage ||
+		DefaultCapsuleImage("1.2.3-next") != LocalCapsuleImage ||
+		DefaultCapsuleImage("1.2.3") != "ghcr.io/orlojhq/meridian-capsule:v1.2.3" ||
+		DefaultCapsuleImage("v1.2.3") != "ghcr.io/orlojhq/meridian-capsule:v1.2.3" {
+		t.Fatalf("defaults = %q %q %q %q", DefaultCapsuleImage("dev"), DefaultCapsuleImage("1.2.3-next"), DefaultCapsuleImage("1.2.3"), DefaultCapsuleImage("v1.2.3"))
+	}
+	if RegistryQualifiedImage("meridian-capsule:dev") ||
+		!RegistryQualifiedImage("ghcr.io/orlojhq/meridian-capsule:v1.2.3") ||
+		!RegistryQualifiedImage("localhost:5000/orloj/meridian-capsule:v9") {
+		t.Fatal("registry qualification mismatch")
 	}
 }

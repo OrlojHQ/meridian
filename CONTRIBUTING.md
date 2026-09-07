@@ -1,6 +1,9 @@
 # Contributing to Meridian
 
-Meridian is at repository-foundation stage. Discuss large product or architecture changes before implementation, and record durable decisions in an ADR.
+Meridian is pre-release: there is no published stable version yet. Discuss large
+product or architecture changes before implementation, and record durable
+decisions in an ADR. By participating, you agree to the
+[code of conduct](CODE_OF_CONDUCT.md).
 
 ## Prerequisites
 

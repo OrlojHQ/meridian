@@ -1,0 +1,17 @@
+# Copy this file into a repository as .meridian/project.yaml.
+# The Capsule image must contain /usr/local/bin/claude
+# (make capsule-claude-image → meridian-capsule-claude:dev).
+# Sign in inside the Claude Code TUI. This trusted profile does not inject
+# provider credentials; a repository cannot add secretReferences under the
+# same name.
+version: v1
+harnesses:
+  - name: claude
+    interactionMode: native
+    executable: /usr/local/bin/claude
+    workingDirectory: .
+    promptMode: interactive
+    outputMode: text
+    pty: true
+    timeout: 24h
+    secretReferences: []

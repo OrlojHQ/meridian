@@ -31,21 +31,23 @@ import (
 )
 
 type Config struct {
-	Provider          string
-	Listen            string
-	PreviewListen     string
-	DataDir           string
-	APITokenFile      string
-	AllowNonLoopback  bool
-	TranscriptKeyFile string
-	SecretKeyFile     string
-	IdlePause         time.Duration
-	IdleScanInterval  time.Duration
-	Logger            *log.Logger
-	Docker            dockerprovider.Config
-	DockerCPUs        float64
-	AgentSandbox      agentsandboxprovider.Config
-	Observability     observability.Config
+	ProviderGatewayURL string
+	Provider           string
+	Listen             string
+	PreviewListen      string
+	DataDir            string
+	APITokenFile       string
+	AllowNonLoopback   bool
+	TranscriptKeyFile  string
+	SecretKeyFile      string
+	IdlePause          time.Duration
+	IdleScanInterval   time.Duration
+	OfficialPackTag    string
+	Logger             *log.Logger
+	Docker             dockerprovider.Config
+	DockerCPUs         float64
+	AgentSandbox       agentsandboxprovider.Config
+	Observability      observability.Config
 }
 
 func Run(ctx context.Context, config Config) error {
@@ -183,6 +185,20 @@ func Run(ctx context.Context, config Config) error {
 	}
 	allowSecretKeyCreate := true
 	if err := store.View(ctx, func(reader ports.Reader) error {
+		connections, connectionErr := reader.ListProviderConnections(ctx)
+		if connectionErr != nil {
+			return connectionErr
+		}
+		if len(connections) > 0 {
+			allowSecretKeyCreate = false
+		}
+		setups, setupErr := reader.ListHarnessSetups(ctx)
+		if setupErr != nil {
+			return setupErr
+		}
+		if len(setups) > 0 {
+			allowSecretKeyCreate = false
+		}
 		items, _, err := reader.ListSecrets(ctx, ports.Page{Limit: 1})
 		if err == nil && len(items) > 0 {
 			allowSecretKeyCreate = false
@@ -275,6 +291,10 @@ func Run(ctx context.Context, config Config) error {
 	}
 	service := app.NewService(store, clock, ids, reconciler, runtime)
 	service.ConfigureSecrets(secretKey)
+	if err := service.ConfigureProviderGateway(config.ProviderGatewayURL); err != nil {
+		return err
+	}
+	defer service.CloseProviderGateway()
 	service.ConfigureObserver(metrics, config.Provider)
 	if capabilities.Run {
 		if runtime == nil {
@@ -333,7 +353,7 @@ func Run(ctx context.Context, config Config) error {
 	}
 	previewBaseURL := "http://" + previewListener.Addr().String()
 	api := httpapi.NewWithPreview(service, capabilities, previewBaseURL, apiToken)
-	api.SetHarnessImages(domain.InstallationHarnessImages(installationDefaultImage(config)))
+	api.SetHarnessImages(domain.InstallationHarnessImages(installationDefaultImage(config), config.OfficialPackTag))
 	api.ConfigureObservability(metrics)
 	handler.set(api)
 	previewHandler.set(api.PreviewHandler())
@@ -509,7 +529,7 @@ func installationDefaultImage(config Config) string {
 			return config.Docker.Image
 		}
 	}
-	return "meridian-capsule:dev"
+	return domain.LocalCapsuleImage
 }
 
 func (h *switchHandler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {

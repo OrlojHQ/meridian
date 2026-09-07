@@ -24,6 +24,8 @@ coverage.out
 *.db-wal
 /data/
 /.local/
+/meridian-data/
+/deploy/docker/meridian-data/
 
 # Editors and operating systems
 .DS_Store

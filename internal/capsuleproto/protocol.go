@@ -63,6 +63,7 @@ type StatusResponse struct {
 }
 
 type PrepareRequest struct {
+	Force         bool                `json:"force,omitempty"`
 	RepositoryURL string              `json:"repositoryUrl,omitempty"`
 	Destination   string              `json:"destination"`
 	Setup         []string            `json:"setup,omitempty"`
@@ -79,6 +80,7 @@ type PrepareResponse struct {
 }
 
 type ServerConfig struct {
+	HarnessHome             string
 	Token                   string
 	Workspace               string
 	TrustedHarnessDirectory string
@@ -174,6 +176,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET "+HealthPath, s.health)
 	mux.Handle("GET "+ReadinessPath, s.authenticate(http.HandlerFunc(s.readiness)))
 	mux.Handle("GET "+StatusPath, s.authenticate(http.HandlerFunc(s.status)))
+	mux.Handle("GET /v1/preparation/identity", s.authenticate(http.HandlerFunc(s.preparationIdentity)))
+	mux.Handle("POST /v1/preparation/finish", s.authenticate(http.HandlerFunc(s.finishPreparation)))
 	mux.Handle("POST "+PreparePath, s.authenticate(http.HandlerFunc(s.prepare)))
 	mux.Handle("POST "+RunStartPath, s.authenticate(http.HandlerFunc(s.startRun)))
 	mux.Handle("GET /v1/runs/{runID}", s.authenticate(http.HandlerFunc(s.runStatus)))
@@ -310,7 +314,8 @@ func (s *Server) hasActiveRunLocked() bool {
 
 func gitSnapshotMetadata(ctx context.Context, workspace string) (string, string, string) {
 	run := func(arguments ...string) string {
-		command := exec.CommandContext(ctx, "git", append([]string{"-C", workspace}, arguments...)...)
+		command := exec.CommandContext(ctx, "git", append([]string{"-c", "core.fsmonitor=false", "-C", workspace}, arguments...)...)
+		command.Env = childEnvironment(nil)
 		value, err := command.Output()
 		if err != nil {
 			return ""
@@ -416,7 +421,7 @@ func (s *Server) prepare(writer http.ResponseWriter, request *http.Request) {
 		writeProtocolError(writer, http.StatusUnprocessableEntity, "workspace_invalid")
 		return
 	}
-	if prepared {
+	if prepared && !input.Force {
 		s.state, s.err = StateReady, ""
 		writeJSON(writer, http.StatusOK, PrepareResponse{Status: StateReady})
 		return
@@ -697,6 +702,8 @@ func (w *limitWriter) Write(value []byte) (int, error) {
 
 func runCommand(ctx context.Context, name string, arguments []string, directory string, outputLimit int64) error {
 	command := exec.Command(name, arguments...)
+	command.Env = childEnvironment(nil)
+	command.WaitDelay = 2 * time.Second
 	command.Dir = directory
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	output := &limitWriter{remaining: outputLimit}
@@ -704,6 +711,7 @@ func runCommand(ctx context.Context, name string, arguments []string, directory 
 	if err := command.Start(); err != nil {
 		return err
 	}
+	defer syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
 	done := make(chan error, 1)
 	go func() { done <- command.Wait() }()
 	select {

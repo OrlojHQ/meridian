@@ -185,6 +185,10 @@ type PauseCapsuleRes interface {
 	pauseCapsuleRes()
 }
 
+type ProxyProviderInferenceRes interface {
+	proxyProviderInferenceRes()
+}
+
 type PutSecretRes interface {
 	putSecretRes()
 }
@@ -203,6 +207,10 @@ type ResumeCapsuleRes interface {
 
 type ResumeThreadRes interface {
 	resumeThreadRes()
+}
+
+type RetryCapsuleRes interface {
+	retryCapsuleRes()
 }
 
 type RewindCapsuleRes interface {

@@ -1,0 +1,31 @@
+# Published-release Compose for one trusted local operator.
+# Capsules are not Compose services; meridiand starts them on the host Docker engine.
+#
+#   MERIDIAN_VERSION=v0.1.0 MERIDIAN_DATA_DIR="$PWD/meridian-data" \
+#     docker compose -f deploy/docker/compose.release.yaml up -d
+#
+# Host networking is required so meridiand can reach Capsule supervisor ports
+# bound only to 127.0.0.1. Root is required for the Docker socket. Capsules
+# never receive that socket.
+name: meridian
+
+services:
+  meridiand:
+    image: ghcr.io/orlojhq/meridiand:${MERIDIAN_VERSION:?Set MERIDIAN_VERSION to a verified release tag such as v0.1.0}
+    user: "0:0"
+    network_mode: host
+    command:
+      - --provider=docker
+      - --listen=127.0.0.1:8080
+      - --data-dir=/var/lib/meridian
+      - --docker-image=ghcr.io/orlojhq/meridian-capsule:${MERIDIAN_VERSION}
+      - --docker-state-dir=/var/lib/meridian/docker-provider
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${MERIDIAN_DATA_DIR:-./meridian-data}:/var/lib/meridian
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/meridiand", "healthcheck", "--address", "http://127.0.0.1:8080"]
+      interval: 5s
+      timeout: 2s
+      retries: 12
+    restart: unless-stopped

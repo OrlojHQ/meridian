@@ -125,6 +125,7 @@ type Options struct {
 
 	SuggestedProjectName   string
 	SuggestedRepositoryURL string
+	PreferredHarness       string
 }
 
 // Model is the Bubble Tea dashboard state.
@@ -139,6 +140,7 @@ type Model struct {
 
 	suggestedProjectName   string
 	suggestedRepositoryURL string
+	preferredHarness       string
 
 	width            int
 	height           int
@@ -195,6 +197,7 @@ func NewModel(options Options) Model {
 		executable: options.Executable, now: options.Now, loading: true,
 		suggestedProjectName:   options.SuggestedProjectName,
 		suggestedRepositoryURL: options.SuggestedRepositoryURL,
+		preferredHarness:       strings.TrimSpace(options.PreferredHarness),
 		focus:                  focusMain, mode: modeLauncher, place: placeHome, stayOnList: true, cursorOn: true,
 		unread: make(map[string]int64), seenCursor: make(map[string]int64),
 	}
@@ -255,6 +258,7 @@ func (m Model) dispatch(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.settleStatus()
 		if firstConnection {
+			m.applyPreferredHarnessOnConnect()
 			return m, tea.Batch(m.tickCmd(), tea.SetWindowTitle("Meridian"))
 		}
 		return m, m.tickCmd()
@@ -1644,7 +1648,7 @@ func (m *Model) openCreateProject() {
 		{label: "Name", value: m.suggestedProjectName, placeholder: "project name"},
 	}
 	if names := m.installationHarnessNames(); len(names) > 0 {
-		fields = append(fields, field{label: "Harness", value: names[0], options: names})
+		fields = append(fields, m.installationHarnessField(names))
 	}
 	m.overlay = overlay{
 		kind: overlayForm, title: "New Project",
@@ -1889,6 +1893,32 @@ func (m Model) updateHarnessOverlay(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.execute(request)
 	}
 	return m, nil
+}
+
+func (m *Model) applyPreferredHarnessOnConnect() {
+	if m.preferredHarness == "" {
+		return
+	}
+	if _, ok := m.installationHarness(m.preferredHarness); !ok {
+		m.lastErr = fmt.Errorf("installation catalog does not include harness %q", m.preferredHarness)
+		return
+	}
+	if len(m.snapshot.Projects) == 0 {
+		m.openCreateProject()
+	}
+}
+
+func (m Model) installationHarnessField(names []string) field {
+	index := 0
+	if m.preferredHarness != "" {
+		for i, name := range names {
+			if name == m.preferredHarness {
+				index = i
+				break
+			}
+		}
+	}
+	return field{label: "Harness", value: names[index], options: names, optionIndex: index}
 }
 
 func (m Model) installationHarnessNames() []string {
@@ -2721,7 +2751,8 @@ Structured history
   Ctrl-J inserts a newline while writing structured input.
   Esc returns to the same Capsule in the launcher.
 
-/project creates a Project and picks its first harness pack. /harness applies
+/project creates a Project and picks a harness pack. meridian tui --harness
+preselects one and opens this form when no Projects exist. /harness applies
 more packs. /new creates a Capsule and opens the selected harness when Ready.
 Only one harness session can be live in a Capsule.
 

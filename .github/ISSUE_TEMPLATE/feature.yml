@@ -1,0 +1,43 @@
+name: Feature request
+description: Propose a change within Meridian's coding-workspace boundary
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Meridian is coding-workspace infrastructure, not a model API, an agent
+        loop, or a hosted multi-tenant product. Large architecture changes belong
+        in an ADR discussion first. See [CONTRIBUTING.md](https://github.com/OrlojHQ/meridian/blob/main/CONTRIBUTING.md).
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What can you not do today, and who is blocked?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: The smallest change that would help. Link related ADRs or docs if you have them.
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      options:
+        - CLI / TUI
+        - Browser UI
+        - Docker provider
+        - Agent Sandbox
+        - Harness setup / provider connections
+        - Docs
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds or approaches you already rejected, if any.

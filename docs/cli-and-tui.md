@@ -11,7 +11,13 @@ Start `meridiand` on its default loopback listener, then run:
 
 ```console
 meridian tui
+meridian tui --harness opencode
 ```
+
+`--harness` selects that installation pack on New Project. When the
+installation has no Projects yet, the dashboard opens that form immediately.
+`make try-opencode` builds the OpenCode image, starts the local daemon if
+needed, and launches the dashboard with `--harness opencode`.
 
 The dashboard requires terminal stdin and stdout. It fails without emitting
 terminal escape sequences when invoked from a pipe, redirected output, or

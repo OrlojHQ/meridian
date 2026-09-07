@@ -53,6 +53,26 @@ cosign verify \
 docker buildx imagetools inspect "ghcr.io/orlojhq/meridiand:v${VERSION}"
 ```
 
+Official harness packs are published on the same tag as
+`ghcr.io/orlojhq/meridian-capsule`. Verify each pack the same way:
+
+```console
+for pack in opencode pi claude codex; do
+  cosign verify \
+    --certificate-identity "https://github.com/OrlojHQ/meridian/.github/workflows/release.yml@refs/tags/v${VERSION}" \
+    --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+    "ghcr.io/orlojhq/meridian-capsule-${pack}:v${VERSION}"
+  docker buildx imagetools inspect \
+    "ghcr.io/orlojhq/meridian-capsule-${pack}:v${VERSION}"
+done
+```
+
+Prefer the inspected digest when applying a pack. The daemon catalog
+advertises these registry-qualified tags; Docker still freezes `sha256` at
+Capsule create. A released `meridiand` defaults to this tag and pulls a
+missing registry image on first Capsule create. Publishing pack images is not
+a hosted Capsule service.
+
 The release workflow is tag-only, uses GitHub OIDC keyless signing, records
 GitHub build provenance, and leaves the GitHub release in draft state for human
 review. A signature proves workflow identity and artifact integrity, not code
@@ -111,6 +131,25 @@ bootstrap endpoint exchanges it for that cookie and the form is cleared. The
 cookie is Secure under HTTPS; plain HTTP cookie bootstrap is limited to verified
 loopback source and Host addresses. Cookie-authenticated mutations additionally
 require an exact same-origin `Origin`.
+
+## Docker Compose (published images)
+
+For one trusted local Docker host, `deploy/docker/compose.release.yaml` pulls
+`ghcr.io/orlojhq/meridiand` and leaves Capsule images to the daemon. Set
+`MERIDIAN_VERSION` to the same verified tag you checked above. Host networking
+and the Docker socket are required; Capsules never receive the socket.
+
+```console
+export MERIDIAN_VERSION=v0.1.0
+export MERIDIAN_DATA_DIR="$PWD/meridian-data"
+mkdir -p "$MERIDIAN_DATA_DIR"
+docker compose -f deploy/docker/compose.release.yaml up -d
+```
+
+The UI is `http://127.0.0.1:8080/ui/`. The installation token is created under
+`$MERIDIAN_DATA_DIR/api-auth/`. The host `meridian` CLI still comes from the
+release archive. Contributor Compose that builds from source is
+`deploy/docker/compose.yaml`; see [Docker development](docker-development.md).
 
 ## Workspace export and Delivery operations
 
@@ -196,10 +235,17 @@ helm upgrade --install meridian deploy/helm/meridian \
   --set image.repository=ghcr.io/orlojhq/meridiand \
   --set image.digest="sha256:VERIFIED_DAEMON_DIGEST" \
   --set capsuleImage.repository=ghcr.io/orlojhq/meridian-capsule \
+  --set capsuleImage.tag=v0.1.0 \
   --set capsuleImage.digest="sha256:VERIFIED_CAPSULE_DIGEST" \
   --set agentSandbox.runtimeClassName=gvisor \
   --set-json 'networkPolicy.kubernetesAPIServerCIDRs=["192.0.2.10/32"]'
 ```
+
+Set `capsuleImage.tag` to the verified release version even when pinning the
+thin Capsule image by digest. The chart passes that tag as
+`--official-pack-tag` so `GET /capabilities` advertises
+`ghcr.io/orlojhq/meridian-capsule-{opencode,pi,claude,codex}:<tag>` instead of
+unpublished `:dev` tags.
 
 The chart explicitly opts into its authenticated wildcard pod listener and
 persists the generated API token on the control-plane PVC. It adds no Ingress.

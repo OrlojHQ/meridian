@@ -12,6 +12,346 @@ servers:
 security:
   - bearerAuth: []
 paths:
+  /provider-gateway/{provider}/v1/{operation}:
+    post:
+      operationId: proxyProviderInference
+      summary: Forward an inference request using a scoped Capsule lease
+      description: >-
+        Requires a live Capsule gateway lease in Authorization (Bearer) or X-Api-Key.
+        Installation API tokens and browser sessions do not authorize this operation.
+        Only OpenAI responses/chat completions and Anthropic messages/token counting
+        are supported; unsupported provider/operation combinations return 404.
+        The origin must be enabled explicitly by the deployment operator.
+      security: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [openai, anthropic]
+        - name: operation
+          in: path
+          required: true
+          schema:
+            type: string
+          description: responses, chat/completions, messages, or messages/count_tokens.
+        - name: Authorization
+          in: header
+          schema:
+            type: string
+          description: Bearer Capsule lease; required unless X-Api-Key supplies the lease.
+        - name: X-Api-Key
+          in: header
+          schema:
+            type: string
+          description: Capsule lease for Anthropic native clients.
+        - name: Anthropic-Beta
+          in: header
+          schema:
+            type: string
+            maxLength: 2048
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Native provider JSON or bounded event stream.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+            text/event-stream:
+              schema:
+                type: string
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /provider-connections:
+    get:
+      operationId: listProviderConnections
+      summary: listProviderConnections
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderConnectionPage"
+        default:
+          $ref: "#/components/responses/DefaultError"
+    post:
+      operationId: createProviderConnection
+      summary: createProviderConnection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProviderConnectionRequest"
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderConnection"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /provider-connections/{connectionId}:
+    put:
+      operationId: updateProviderConnection
+      summary: updateProviderConnection
+      parameters:
+        - name: connectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProviderConnectionRequest"
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderConnection"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /projects/{projectId}/harnesses/{harness}/connection:
+    get:
+      operationId: getProjectProviderConnection
+      summary: getProjectProviderConnection
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: harness
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectProviderConnection"
+        default:
+          $ref: "#/components/responses/DefaultError"
+    put:
+      operationId: grantProjectProviderConnection
+      summary: grantProjectProviderConnection
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: harness
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectProviderConnection"
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectProviderConnection"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /projects/{projectId}/harnesses/{harness}/setup:
+    get:
+      operationId: getProjectHarnessSetup
+      summary: getProjectHarnessSetup
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: harness
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectHarnessSetup"
+        default:
+          $ref: "#/components/responses/DefaultError"
+    put:
+      operationId: setProjectHarnessSetup
+      summary: setProjectHarnessSetup
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: harness
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectHarnessSetup"
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectHarnessSetup"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /harness-setups/preview:
+    post:
+      operationId: previewHarnessSetup
+      summary: Review explicitly selected configuration files without saving
+      description: Original file content is processed in memory only. Returns sanitized portable files and exclusions. Does not read server filesystem paths or execute imported code.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HarnessSetupUpload"
+      responses:
+        "200":
+          description: Reviewed import, not yet saved
+          headers:
+            Cache-Control:
+              schema: {type: string}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/HarnessSetupPreview"}
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /harness-setups:
+    get:
+      operationId: listHarnessSetups
+      summary: listHarnessSetups
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HarnessSetupPage"
+        default:
+          $ref: "#/components/responses/DefaultError"
+    post:
+      operationId: importHarnessSetup
+      summary: importHarnessSetup
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportHarnessSetupRequest"
+      responses:
+        "201":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HarnessSetup"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /harness-setups/{setupId}:
+    patch:
+      operationId: mutateHarnessSetup
+      summary: mutateHarnessSetup
+      parameters:
+        - name: setupId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MutateHarnessSetupRequest"
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HarnessSetup"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /harness-setups/{setupId}/contents:
+    get:
+      operationId: getHarnessSetupContents
+      summary: Read saved configuration for editing
+      parameters:
+        - name: setupId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Current setup content and version; never cached
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportHarnessSetupRequest'
+        default:
+          $ref: '#/components/responses/DefaultError'
+  /harness-setups/{setupId}/revisions:
+    get:
+      operationId: listHarnessSetupRevisions
+      summary: listHarnessSetupRevisions
+      parameters:
+        - name: setupId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HarnessSetupRevisionPage"
+        default:
+          $ref: "#/components/responses/DefaultError"
   /healthz:
     get:
       operationId: getHealth
@@ -657,10 +997,70 @@ paths:
           $ref: "#/components/responses/TooManyRequests"
         default:
           $ref: "#/components/responses/DefaultError"
+  /projects/{projectId}/environment:
+    get:
+      operationId: getProjectEnvironment
+      summary: Inspect project preparation settings and recent progress
+      tags: [projects]
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: Project environment
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectEnvironment" }
+        default:
+          $ref: "#/components/responses/DefaultError"
+    put:
+      operationId: updateProjectEnvironment
+      summary: Configure preparation or rebuild on next launch
+      tags: [projects]
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EnvironmentMutation" }
+      responses:
+        "200":
+          description: Updated project environment
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectEnvironment" }
+        default:
+          $ref: "#/components/responses/DefaultError"
   /capsules/{capsuleId}/resume:
     post:
       operationId: resumeCapsule
       summary: Request Capsule resume
+      tags: [capsules]
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        $ref: "#/components/requestBodies/LifecycleMutation"
+      responses:
+        "202":
+          $ref: "#/components/responses/CapsuleAccepted"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /capsules/{capsuleId}/retry:
+    post:
+      operationId: retryCapsule
+      summary: Retry failed preparation in the same Capsule
       tags: [capsules]
       parameters:
         - $ref: "#/components/parameters/CapsuleId"
@@ -1718,6 +2118,9 @@ components:
       type: object
       required: [name]
       properties:
+        setup:
+          type: string
+          description: Saved setup ID, clean to omit personal setups, or omitted to pin current defaults.
         name:
           type: string
           minLength: 1
@@ -1830,11 +2233,40 @@ components:
             $ref: "#/components/schemas/Secret"
         nextCursor:
           type: string
+    ProjectEnvironment:
+      type: object
+      required: [enabled, generation, setup, imageReference, resourceVersion]
+      properties:
+        enabled: {type: boolean}
+        generation: {type: integer, format: int64}
+        setup: {type: array, items: {type: string}}
+        imageReference: {type: string}
+        resourceVersion: {type: integer, format: int64}
+        latest: {$ref: "#/components/schemas/PreparationProgress"}
+    EnvironmentMutation:
+      type: object
+      required: [expectedResourceVersion]
+      properties:
+        enabled: {type: boolean}
+        setup: {type: array, maxItems: 128, items: {type: string, maxLength: 4096}}
+        rebuild: {type: boolean}
+        expectedResourceVersion: {type: integer, format: int64, minimum: 1}
+    PreparationProgress:
+      type: object
+      required: [stage, reused, updatedAt]
+      properties:
+        stage: {type: string, enum: [checkout, preparing, restoring, reclone, saving, ready]}
+        reused: {type: boolean}
+        detail: {type: string}
+        sourceRevision: {type: string}
+        updatedAt: {type: string, format: date-time}
     Capsule:
       type: object
       required:
         [id, projectId, timelineId, name, state, desiredState, restoreComplete, createdAt, updatedAt, resourceVersion]
       properties:
+        preparation:
+          $ref: "#/components/schemas/PreparationProgress"
         id:
           type: string
         projectId:
@@ -2454,6 +2886,214 @@ components:
           type: string
         message:
           type: string
+    HarnessSetupFile:
+      type: object
+      required: [path, content]
+      properties:
+        path:
+          type: string
+        content:
+          type: string
+        executable:
+          type: boolean
+    HarnessSetupUpload:
+      type: object
+      required: [harness, files]
+      properties:
+        harness: {type: string, enum: [claude, codex, opencode, pi]}
+        files:
+          type: array
+          maxItems: 256
+          items: {$ref: "#/components/schemas/HarnessSetupFile"}
+    HarnessSetupPreview:
+      type: object
+      required: [bundle, issues, digest]
+      properties:
+        bundle: {$ref: "#/components/schemas/HarnessSetupBundle"}
+        digest: {type: string}
+        issues:
+          type: array
+          items:
+            type: object
+            required: [path, reason]
+            properties:
+              path: {type: string}
+              reason: {type: string}
+        warnings:
+          type: array
+          description: Retained settings that may require Capsule-specific files, tools, or network access.
+          items:
+            type: object
+            required: [path, reason]
+            properties:
+              path: {type: string}
+              reason: {type: string}
+    HarnessSetupBundle:
+      type: object
+      required: [harness, files]
+      properties:
+        dependencies:
+          type: array
+          maxItems: 16
+          items:
+            type: string
+          description: Exact npm package versions installed inside the Capsule before harness startup.
+        harness:
+          type: string
+          enum: [claude, codex, opencode, pi]
+        files:
+          type: array
+          maxItems: 256
+          items:
+            $ref: '#/components/schemas/HarnessSetupFile'
+    HarnessSetup:
+      type: object
+      required: [id, name, harness, revision, default, deleted, createdAt, resourceVersion]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        harness:
+          type: string
+        revision:
+          type: string
+        default:
+          type: boolean
+        deleted:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        resourceVersion:
+          type: integer
+          format: int64
+    HarnessSetupPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/HarnessSetup'
+    HarnessSetupRevision:
+      type: object
+      required: [id, setupId, digest, files, createdAt]
+      properties:
+        id:
+          type: string
+        setupId:
+          type: string
+        digest:
+          type: string
+        files:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+    HarnessSetupRevisionPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/HarnessSetupRevision'
+    ImportHarnessSetupRequest:
+      type: object
+      required: [name, bundle, default, expectedResourceVersion]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        bundle:
+          $ref: '#/components/schemas/HarnessSetupBundle'
+        default:
+          type: boolean
+        expectedResourceVersion:
+          type: integer
+          format: int64
+    MutateHarnessSetupRequest:
+      type: object
+      required: [expectedResourceVersion]
+      properties:
+        name:
+          type: string
+        revision:
+          type: string
+        default:
+          type: boolean
+        deleted:
+          type: boolean
+        expectedResourceVersion:
+          type: integer
+          format: int64
+    ProviderConnection:
+      type: object
+      required: [id, provider, name, createdAt, resourceVersion, revoked]
+      properties:
+        id:
+          type: string
+        provider:
+          type: string
+          enum: [openai, anthropic]
+        name:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        resourceVersion:
+          type: integer
+          format: int64
+        revoked:
+          type: boolean
+    ProviderConnectionPage:
+      type: object
+      required: [items, enabled]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProviderConnection'
+        enabled:
+          type: boolean
+    ProviderConnectionRequest:
+      type: object
+      required: [name, provider, apiKey, expectedResourceVersion]
+      properties:
+        name:
+          type: string
+        provider:
+          type: string
+          enum: [openai, anthropic]
+        apiKey:
+          type: string
+          writeOnly: true
+          maxLength: 4096
+        expectedResourceVersion:
+          type: integer
+          format: int64
+        revoked:
+          type: boolean
+    ProjectProviderConnection:
+      type: object
+      required: [connectionId]
+      properties:
+        connectionId:
+          type: string
+          description: Connection to authorize for this Project and harness; empty revokes access.
+    ProjectHarnessSetup:
+      type: object
+      required: [setup]
+      properties:
+        setup:
+          type: string
+          description: Saved setup ID, clean, or empty to inherit the personal default.
 tags:
   - name: probes
     description: Process health and readiness.

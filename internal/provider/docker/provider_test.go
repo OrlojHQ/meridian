@@ -3,6 +3,8 @@ package docker
 import (
 	"context"
 	"errors"
+	"io"
+	"iter"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -20,6 +22,7 @@ import (
 	"github.com/containerd/errdefs"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/image"
+	"github.com/moby/moby/api/types/jsonstream"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/api/types/volume"
 	"github.com/moby/moby/client"
@@ -33,6 +36,8 @@ type fakeEngine struct {
 	created     *client.ContainerCreateOptions
 	volumeFails int
 	imageWait   <-chan struct{}
+	missing     bool
+	pulled      []string
 }
 
 func newFakeEngine() *fakeEngine {
@@ -52,7 +57,25 @@ func (e *fakeEngine) ImageInspect(ctx context.Context, _ string, _ ...client.Ima
 			return client.ImageInspectResult{}, ctx.Err()
 		}
 	}
+	if e.missing {
+		return client.ImageInspectResult{}, errdefs.ErrNotFound
+	}
 	return client.ImageInspectResult{InspectResponse: e.image}, nil
+}
+
+type nopPull struct{}
+
+func (nopPull) Read([]byte) (int, error) { return 0, io.EOF }
+func (nopPull) Close() error             { return nil }
+func (nopPull) JSONMessages(context.Context) iter.Seq2[jsonstream.Message, error] {
+	return func(func(jsonstream.Message, error) bool) {}
+}
+func (nopPull) Wait(context.Context) error { return nil }
+
+func (e *fakeEngine) ImagePull(_ context.Context, reference string, _ client.ImagePullOptions) (client.ImagePullResponse, error) {
+	e.pulled = append(e.pulled, reference)
+	e.missing = false
+	return nopPull{}, nil
 }
 func (e *fakeEngine) VolumeInspect(_ context.Context, id string, _ client.VolumeInspectOptions) (client.VolumeInspectResult, error) {
 	value, ok := e.volumes[id]
@@ -215,6 +238,32 @@ func TestImageResolutionRecordsImmutableIdentity(t *testing.T) {
 	engine.image.ID = "mutable:tag"
 	if _, err := provider.resolveImage(context.Background(), "mutable:tag"); err == nil {
 		t.Fatal("expected unresolved mutable image rejection")
+	}
+}
+
+func TestRegistryImageIsPulledWhenMissing(t *testing.T) {
+	engine := newFakeEngine()
+	engine.missing = true
+	provider := testProvider(t, engine)
+	reference := "ghcr.io/orlojhq/meridian-capsule-opencode:v1.2.3"
+	resolved, err := provider.resolveImage(context.Background(), reference)
+	if err != nil || resolved != engine.image.ID {
+		t.Fatalf("resolve = %q, %v", resolved, err)
+	}
+	if len(engine.pulled) != 1 || engine.pulled[0] != reference {
+		t.Fatalf("pulled = %#v", engine.pulled)
+	}
+}
+
+func TestLocalImageIsNotPulledFromDockerHub(t *testing.T) {
+	engine := newFakeEngine()
+	engine.missing = true
+	provider := testProvider(t, engine)
+	if _, err := provider.resolveImage(context.Background(), "meridian-capsule-opencode:dev"); err == nil {
+		t.Fatal("expected local missing image to fail without a pull")
+	}
+	if len(engine.pulled) != 0 {
+		t.Fatalf("pulled = %#v", engine.pulled)
 	}
 }
 

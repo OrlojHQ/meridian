@@ -42,7 +42,7 @@ func (r *temporalRuntime) CaptureWorkspace(context.Context, string) (ports.Works
 		Archive: io.NopCloser(bytes.NewReader([]byte("deterministic-workspace"))),
 		Metadata: ports.SnapshotMetadata{
 			ImageDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-			GitBranch:   "main", GitHEAD: "0123456789abcdef", GitDirtySummary: " M file",
+			GitBranch:   "main", GitHEAD: strings.Repeat("a", 40), GitDirtySummary: " M file",
 		},
 	}, nil
 }
@@ -75,8 +75,10 @@ func (r *temporalRuntime) RestoreWorkspace(
 
 type setupCacheProvider struct {
 	*fake.Provider
-	mu       sync.Mutex
-	requests map[domain.CapsuleID]ports.CreateCapsuleRequest
+	mu        sync.Mutex
+	requests  map[domain.CapsuleID]ports.CreateCapsuleRequest
+	setups    int
+	failSetup bool
 }
 
 func newSetupCacheProvider() *setupCacheProvider {
@@ -98,6 +100,24 @@ func (p *setupCacheProvider) Create(
 	p.requests[request.CapsuleID] = request
 	p.mu.Unlock()
 	return p.Provider.Create(ctx, request)
+}
+
+func (p *setupCacheProvider) PreparationIdentity(context.Context, string) (ports.PreparationIdentity, error) {
+	return ports.PreparationIdentity{SourceRevision: strings.Repeat("a", 40), Platform: "linux/amd64"}, nil
+}
+func (p *setupCacheProvider) FinishPreparation(context.Context, string, []string, string, string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.setups++
+	if p.failSetup {
+		return errors.New("setup failed")
+	}
+	return nil
+}
+func (p *setupCacheProvider) Get(ctx context.Context, id string) (ports.ProviderResource, error) {
+	resource, err := p.Provider.Get(ctx, id)
+	resource.ImageDigest = "sha256:" + strings.Repeat("a", 64)
+	return resource, err
 }
 
 func TestTemporalCaptureDescendantsRewindAndSeal(t *testing.T) {
@@ -275,7 +295,11 @@ func TestSetupMomentCacheReuseIsolationAndFailureSemantics(t *testing.T) {
 		t.Fatal(err)
 	}
 	first = waitReady(t, service, first.ID)
-	configHash := testProjectConfigurationHash(t, project)
+	preparation, err := service.GetPreparation(ctx, first.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	configHash := preparation.CacheKey
 	var cache domain.SetupMomentCache
 	var internal domain.Moment
 	if err := store.View(ctx, func(reader ports.Reader) error {
@@ -310,8 +334,8 @@ func TestSetupMomentCacheReuseIsolationAndFailureSemantics(t *testing.T) {
 	secondRequest := provider.requests[second.ID]
 	provider.mu.Unlock()
 	if firstRequest.Restore || firstRequest.RepositoryURL != config.RepositoryURL ||
-		!secondRequest.Restore || secondRequest.RepositoryURL != "" ||
-		len(secondRequest.Setup) != 0 || secondRequest.ImageReference != internal.ImageDigest {
+		secondRequest.Restore || secondRequest.RepositoryURL != config.RepositoryURL ||
+		len(secondRequest.Setup) != 0 || secondRequest.ImageReference != config.ImageReference {
 		t.Fatalf("setup cache create requests: first=%#v second=%#v", firstRequest, secondRequest)
 	}
 	snapshotter.mu.Lock()
@@ -333,11 +357,17 @@ func TestSetupMomentCacheReuseIsolationAndFailureSemantics(t *testing.T) {
 	launcherRequest := provider.requests[launcher.ID]
 	provider.mu.Unlock()
 	if launcherRequest.Restore || launcherRequest.RepositoryURL != config.RepositoryURL ||
-		len(launcherRequest.Setup) != len(config.Setup) ||
+		len(launcherRequest.Setup) != 0 ||
 		launcherRequest.ImageReference != config.ImageReference {
 		t.Fatalf("launcher reused setup cache image: %#v", launcherRequest)
 	}
 
+	provider.mu.Lock()
+	setups := provider.setups
+	provider.mu.Unlock()
+	if setups != 1 {
+		t.Fatalf("native and structured-compatible launches repeated setup: %d", setups)
+	}
 	snapshotter.mu.Lock()
 	snapshotter.restoreErr = errors.New("restore rejected")
 	snapshotter.mu.Unlock()
@@ -345,9 +375,10 @@ func TestSetupMomentCacheReuseIsolationAndFailureSemantics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	failing = waitFailed(t, service, failing.ID)
-	if !strings.Contains(failing.Failure, "restore rejected") {
-		t.Fatalf("restore failure = %q", failing.Failure)
+	failing = waitReady(t, service, failing.ID)
+	recovered, err := service.GetPreparation(ctx, failing.ID)
+	if err != nil || recovered.Reused || recovered.CacheMiss == "" {
+		t.Fatalf("fallback=%#v err=%v", recovered, err)
 	}
 
 	snapshotter.mu.Lock()
@@ -375,6 +406,66 @@ func TestSetupMomentCacheReuseIsolationAndFailureSemantics(t *testing.T) {
 	}); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("capture failure unexpectedly installed cache: %v", err)
 	}
+	snapshotter.mu.Lock()
+	snapshotter.captureErr = nil
+	snapshotter.mu.Unlock()
+	provider.mu.Lock()
+	provider.failSetup = true
+	provider.mu.Unlock()
+	broken, err := service.CreateCapsule(ctx, other.ID, "broken", "broken-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	broken = waitFailed(t, service, broken.ID)
+	provider.mu.Lock()
+	provider.failSetup = false
+	provider.mu.Unlock()
+	retried, err := service.RetryCapsule(ctx, broken.ID, broken.ResourceVersion, "retry-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	replay, err := service.RetryCapsule(ctx, broken.ID, broken.ResourceVersion, "retry-key")
+	if err != nil || replay.ID != retried.ID {
+		t.Fatalf("retry replay=%#v err=%v", replay, err)
+	}
+	ready := waitReady(t, service, retried.ID)
+	if ready.ID != broken.ID {
+		t.Fatal("retry replaced Capsule")
+	}
+
+	env, err := service.ProjectEnvironment(ctx, other.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	disabled := false
+	newSetup := []string{"sh", "-c", "make new-setup"}
+	mutation := app.EnvironmentMutation{Enabled: &disabled, Setup: &newSetup, ExpectedResourceVersion: env.ResourceVersion}
+	updated, err := service.UpdateProjectEnvironment(ctx, other.ID, mutation, "environment-change")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Enabled || updated.Generation != env.Generation+1 || strings.Join(updated.Setup, " ") != "sh -c make new-setup" {
+		t.Fatalf("environment=%#v", updated)
+	}
+	changed := mutation
+	changed.Rebuild = true
+	if _, err := service.UpdateProjectEnvironment(ctx, other.ID, changed, "environment-change"); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("changed replay=%v", err)
+	}
+	frozen, err := service.GetPreparation(ctx, ready.ID)
+	if err != nil || strings.Join(frozen.Setup, " ") != "sh -c make setup" {
+		t.Fatalf("existing spec changed: %#v %v", frozen, err)
+	}
+	fresh, err := service.CreateCapsule(ctx, other.ID, "disabled", "disabled-cache-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh = waitReady(t, service, fresh.ID)
+	spec, err := service.GetPreparation(ctx, fresh.ID)
+	if err != nil || !spec.ReuseDisabled || spec.Reused || strings.Join(spec.Setup, " ") != "sh -c make new-setup" {
+		t.Fatalf("disabled cache=%#v err=%v", spec, err)
+	}
+
 }
 
 func testProjectConfigurationHash(t *testing.T, project domain.Project) string {

@@ -10,6 +10,7 @@ import (
 
 	"github.com/OrlojHQ/meridian/internal/adapterproto"
 	"github.com/OrlojHQ/meridian/internal/domain"
+	"github.com/OrlojHQ/meridian/internal/harnesssetup"
 	"github.com/OrlojHQ/meridian/internal/ports"
 	"github.com/OrlojHQ/meridian/internal/transcripts"
 )
@@ -1156,14 +1157,26 @@ func (s *Service) startStructuredRuntime(
 			frame.SessionID = sessionID
 		}
 	}
-	runtimeRun, err := s.structured.StartStructured(ctx, ports.RuntimeStructuredStartRequest{
-		RunID: run.ID, ResourceID: capsule.ProviderResourceID, Harness: thread.AdapterID, Frame: frame,
-		Secrets: cloneStringMap(secretValues),
-	})
+	setup, err := s.runtimeHarnessSetup(ctx, capsule.ID, thread.AdapterID)
+	var connection *harnesssetup.Connection
+	if err == nil {
+		connection, err = s.runtimeProviderConnection(ctx, capsule, thread.AdapterID)
+	}
+	var runtimeRun ports.RuntimeRun
+	if err == nil {
+		runtimeRun, err = s.structured.StartStructured(ctx, ports.RuntimeStructuredStartRequest{
+			RunID: run.ID, ResourceID: capsule.ProviderResourceID, Harness: thread.AdapterID, Frame: frame,
+			Secrets: cloneStringMap(secretValues), Setup: setup, Connection: connection,
+		})
+	}
 	clearStringMap(secretValues)
 	if err != nil {
+		failure := "Capsule runtime rejected structured session start"
+		if errors.Is(err, domain.ErrHarnessDependencies) {
+			failure = "Tool installation failed; check Capsule access to registry.npmjs.org, package versions, and available storage, then retry"
+		}
 		failed, transitionErr := s.transitionRun(ctx, run.ID, domain.RunFailed, &runCompletion{
-			Failure: "Capsule runtime rejected structured session start",
+			Failure: failure,
 		})
 		if transitionErr != nil {
 			return run, transitionErr

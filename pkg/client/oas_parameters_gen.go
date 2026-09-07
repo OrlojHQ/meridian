@@ -122,6 +122,11 @@ type GetDeliveryParams struct {
 	DeliveryId string
 }
 
+// GetHarnessSetupContentsParams is parameters of getHarnessSetupContents operation.
+type GetHarnessSetupContentsParams struct {
+	SetupId string
+}
+
 // GetMomentParams is parameters of getMoment operation.
 type GetMomentParams struct {
 	MomentId string
@@ -130,6 +135,23 @@ type GetMomentParams struct {
 // GetProjectParams is parameters of getProject operation.
 type GetProjectParams struct {
 	ProjectId string
+}
+
+// GetProjectEnvironmentParams is parameters of getProjectEnvironment operation.
+type GetProjectEnvironmentParams struct {
+	ProjectId string
+}
+
+// GetProjectHarnessSetupParams is parameters of getProjectHarnessSetup operation.
+type GetProjectHarnessSetupParams struct {
+	ProjectId string
+	Harness   string
+}
+
+// GetProjectProviderConnectionParams is parameters of getProjectProviderConnection operation.
+type GetProjectProviderConnectionParams struct {
+	ProjectId string
+	Harness   string
 }
 
 // GetProjectThreadIntentParams is parameters of getProjectThreadIntent operation.
@@ -150,6 +172,17 @@ type GetThreadParams struct {
 // GetTimelineParams is parameters of getTimeline operation.
 type GetTimelineParams struct {
 	TimelineId string
+}
+
+// GrantProjectProviderConnectionParams is parameters of grantProjectProviderConnection operation.
+type GrantProjectProviderConnectionParams struct {
+	ProjectId string
+	Harness   string
+}
+
+// ImportHarnessSetupParams is parameters of importHarnessSetup operation.
+type ImportHarnessSetupParams struct {
+	IdempotencyKey string
 }
 
 // InspectCapsuleDeliveryParams is parameters of inspectCapsuleDelivery operation.
@@ -187,6 +220,11 @@ type ListCapsulesParams struct {
 // ListHarnessProfilesParams is parameters of listHarnessProfiles operation.
 type ListHarnessProfilesParams struct {
 	CapsuleId string
+}
+
+// ListHarnessSetupRevisionsParams is parameters of listHarnessSetupRevisions operation.
+type ListHarnessSetupRevisionsParams struct {
+	SetupId string
 }
 
 // ListMomentsParams is parameters of listMoments operation.
@@ -236,6 +274,12 @@ type ListThreadsParams struct {
 	Limit     OptInt    `json:",omitempty,omitzero"`
 }
 
+// MutateHarnessSetupParams is parameters of mutateHarnessSetup operation.
+type MutateHarnessSetupParams struct {
+	SetupId        string
+	IdempotencyKey string
+}
+
 // PatchProjectParams is parameters of patchProject operation.
 type PatchProjectParams struct {
 	ProjectId string
@@ -245,6 +289,16 @@ type PatchProjectParams struct {
 type PauseCapsuleParams struct {
 	CapsuleId      string
 	IdempotencyKey string
+}
+
+// ProxyProviderInferenceParams is parameters of proxyProviderInference operation.
+type ProxyProviderInferenceParams struct {
+	Provider ProxyProviderInferenceProvider
+	// Responses, chat/completions, messages, or messages/count_tokens.
+	Operation string
+	// Capsule lease for Anthropic native clients.
+	XAPIKey       OptString `json:",omitempty,omitzero"`
+	AnthropicBeta OptString `json:",omitempty,omitzero"`
 }
 
 // PutSecretParams is parameters of putSecret operation.
@@ -277,6 +331,12 @@ type ResumeThreadParams struct {
 	IdempotencyKey string
 }
 
+// RetryCapsuleParams is parameters of retryCapsule operation.
+type RetryCapsuleParams struct {
+	CapsuleId      string
+	IdempotencyKey string
+}
+
 // RewindCapsuleParams is parameters of rewindCapsule operation.
 type RewindCapsuleParams struct {
 	CapsuleId      string
@@ -293,6 +353,12 @@ type SealCapsuleParams struct {
 type SendThreadMessageParams struct {
 	ThreadId       string
 	IdempotencyKey string
+}
+
+// SetProjectHarnessSetupParams is parameters of setProjectHarnessSetup operation.
+type SetProjectHarnessSetupParams struct {
+	ProjectId string
+	Harness   string
 }
 
 // StartRunParams is parameters of startRun operation.
@@ -319,4 +385,15 @@ type StreamThreadBlocksParams struct {
 	ThreadId    string
 	After       OptInt64  `json:",omitempty,omitzero"`
 	LastEventID OptString `json:",omitempty,omitzero"`
+}
+
+// UpdateProjectEnvironmentParams is parameters of updateProjectEnvironment operation.
+type UpdateProjectEnvironmentParams struct {
+	ProjectId      string
+	IdempotencyKey string
+}
+
+// UpdateProviderConnectionParams is parameters of updateProviderConnection operation.
+type UpdateProviderConnectionParams struct {
+	ConnectionId string
 }

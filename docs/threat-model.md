@@ -12,12 +12,11 @@ an untrusted multi-tenant claim.
 
 The initial deployment assumption is one trusted human operator on a dedicated or personally controlled host. The code, repositories, dependencies, and agent actions executed in a future Capsule remain untrusted even under that assumption.
 
-ADRs 0014 through 0022 add target requirements for the orb product plan. They
-are not claims that API authentication, brokered named secrets, private clone,
-local sync, file browsing, Agent Sandbox Moments/previews, idle pause, setup
-cache, or delivery have shipped. Where current behavior differs, it is called
-out explicitly and must fail closed until the complete target path is
-implemented.
+ADRs 0014 through 0022 are requirements for this architecture. API
+authentication, brokered named secrets, private clone, local sync, file
+browsing, idle pause, setup cache, and delivery are implemented. Agent Sandbox
+Moments and previews remain unimplemented (ADR 0018). Where current behavior
+differs, it is called out explicitly and must fail closed.
 
 ## Assets
 
@@ -397,15 +396,22 @@ Project configuration, platform, and protocol version. They are verified on
 restore and exclude grants, secret material, runtime tokens, transcripts,
 local overlays, sessions, and post-setup work. When a Project allowlists
 named harness images, the hash uses the image frozen on that Capsule at
-spawn, not only the Project default, so OpenCode and mock do not share a
-prepare archive. Undeclared mutable setup inputs remain a staleness risk, so
+spawn, not only the Project default, so official harness packs and mock do
+not share a prepare archive. Undeclared mutable setup inputs remain a staleness risk, so
 reuse can be disabled and a mismatch runs setup.
 
 Project Thread spawn selects a Capsule image only from the Project's stored
 default or allowlisted `harnessImages`. The spawn request carries a harness
 name, not an arbitrary image reference. Those references are accepted only
 from operator-authored Project create or apply, and apply copies a pack from
-the installation catalog advertised by the daemon.
+the installation catalog advertised by the daemon. Official pack images are
+published and Cosign-signed on the same tag-only release as the thin Capsule
+image. The catalog advertises registry-qualified tags, or `--official-pack-tag`
+when the installation Capsule image is digest-only; it does not copy a Capsule
+digest onto a pack reference. Docker still freezes `sha256` at Capsule create.
+Operators verify pack images by digest and Cosign like other release images.
+Publishing packs is not a hosted Capsule service, and pack images contain no
+credentials.
 
 ### Audit tampering and repudiation
 
@@ -455,7 +461,8 @@ they are not a statement that every planned path is already implemented.
   Distinct Project harness images use distinct prepare hashes.
 - Project Thread spawn uses only the Project default image or an allowlisted
   harness image stored at Project create; clients cannot introduce a new
-  image at spawn time.
+  image at spawn time. Official pack images are signed release artifacts,
+  not a hosted Capsule runtime, and contain no credentials.
 - Delivery requires explicit approval, exact-ref one-shot push authority,
   default-branch protection, host-side pull-request API use, and idempotent
   content-free audit.
@@ -473,3 +480,74 @@ they are not a statement that every planned path is already implemented.
 An allowed coding agent or network destination can intentionally exfiltrate any data it can read, including session-only harness or Git grants during their valid operation. A kernel or hardware vulnerability may defeat even a strong sandbox. A compromised control plane, installation bearer, credential KEK, or provider can subvert isolation and audit. The trusted single-user deployment profile reduces operational complexity; it does not make untrusted code safe or support hostile multi-tenancy.
 
 These risks must be stated in deployment documentation and revisited before implementing a provider, credentials, PTY access, Moments, delivery, multi-user access, or internet-facing operation.
+
+## Personal harness setup and provider gateway boundary
+
+Personal imports are hostile, bounded configuration bundles. Known config fields
+are parsed and classified, authentication caches are excluded, and unknown or
+machine-specific settings require exclusion. Arbitrary instruction and extension
+text can still contain sensitive material: heuristics are not a secret detector.
+All persisted bundle content uses an authenticated encrypted envelope distinct
+from named secrets. Revision metadata contains paths and digests only. The
+importer never executes user files or credential helpers on the control plane.
+
+Capsule-owned homes are populated with rooted filesystem operations, bounded
+files, and atomic revision installation. No host configuration directory is
+mounted. Configuration pins are resolved transactionally; runtime edits cannot
+modify saved defaults. Personal homes stay outside workspace snapshot/archive
+roots. Installed hooks and extensions have the same hostile-code status as the
+repository and inherit the selected provider's isolation limitations.
+
+Provider connections store encrypted upstream keys with a separate authenticated
+context. A project/harness grant is required to issue a Capsule gateway lease.
+Every gateway request rechecks the connection, grant, Capsule ownership and
+Ready state. Tokens are held only in memory and injected into the child
+process environment; they expire in 24 hours. Revocation cancels active streams.
+The gateway fixes upstream hosts and operation paths, strips caller credentials
+and cookies, rejects redirects and query strings, bounds requests/responses,
+and imposes request deadlines. It does not log inference payloads. TLS and
+Capsule-to-gateway routing are explicit deployment prerequisites. Compromised
+Capsule code can spend against its authorized provider connection until revoked
+or expired; a scoped gateway is not a guarantee against abusive inference use.
+
+Subscription credentials and MCP account tokens are not imported or managed by
+this feature. Native login state remains ephemeral Capsule-local state. Backup
+and recovery must retain the database and installation encryption key together;
+a missing key must not silently be replaced when saved setups or connections
+exist. A daemon restart invalidates gateway leases and requires active harness
+sessions to restart. See ADR 0024 and personal-harness-setups.md.
+
+Portable npx MCP dependency preparation executes npm only inside the Capsule,
+using exact top-level package versions, a fixed HTTPS registry, disabled lifecycle
+scripts, and a two-minute timeout. npm output is discarded. Package contents and
+transitive dependencies remain hostile and inherit Capsule isolation and resource
+limits. Imported npx tools resolve offline after preparation; this does not impose
+an egress policy on arbitrary Capsule processes.
+
+Prepared workspace reuse resolves source identity after cloning inside a fresh
+Capsule and binds the cache to the actual image and platform. Project settings are
+frozen before preparation; source scripts, dependencies and archives remain hostile.
+The private staged setup endpoint accepts no provider/harness credentials. Imported
+personal homes and runtime identities are applied after preparation and excluded
+from reusable workspace artifacts. Legacy cache keys cannot select new entries.
+
+Browser setup imports are untrusted file content. The authenticated preview route
+accepts at most a 4 MiB JSON body and enforces the 256-file, 128 KiB-per-file and
+512 KiB aggregate content bounds. It never opens uploaded paths on the server,
+executes imports, persists originals, or logs request bodies. No-store preview
+responses contain only the sanitized bundle and exclusion reasons. Client-side
+filename filtering is a convenience, not an authorization or validation boundary.
+Browser-provided files do not expose symlink targets or original executable bits;
+selected contents are validated as uploads, rather than claims about local paths.
+Sanitization cannot certify arbitrary prose or scripts free of all secrets.
+
+Saved configuration editing exposes decrypted setup content only through the
+installation-authenticated, no-store contents endpoint. Read responses include a
+consistent resource version; edits retain optimistic concurrency and immutable
+Capsule revision pins. The UI does not put contents in persistent browser storage
+or its query cache. As with import review, arbitrary prose can contain secrets
+that heuristic checks do not detect; the endpoint must not be logged or cached
+by deployment intermediaries. Directory handles remain ephemeral and read-only;
+allowlisted traversal skips dependency subtrees before enumeration. Browser file
+input fallback still enumerates the selected folder before filtering, and the UI
+explains this difference. Both paths use the same authoritative server validation.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/OrlojHQ/meridian/internal/harnesssetup"
 	"io"
 	"net/http"
 	"os/exec"
@@ -30,10 +31,12 @@ const (
 var errAdapterEnd = errors.New("adapter ended session")
 
 type StructuredStartRequest struct {
-	RunID   string             `json:"runId"`
-	Harness string             `json:"harness"`
-	Frame   adapterproto.Frame `json:"frame"`
-	Secrets map[string]string  `json:"secrets,omitempty"`
+	Connection *harnesssetup.Connection   `json:"connection,omitempty"`
+	Setup      *harnesssetup.RuntimeSetup `json:"setup,omitempty"`
+	RunID      string                     `json:"runId"`
+	Harness    string                     `json:"harness"`
+	Frame      adapterproto.Frame         `json:"frame"`
+	Secrets    map[string]string          `json:"secrets,omitempty"`
 }
 
 type StructuredStatusResponse struct {
@@ -147,6 +150,7 @@ type frameWrite struct {
 }
 
 type structuredSession struct {
+	setupEnv      map[string]string
 	mu            sync.Mutex
 	run           *supervisedRun
 	profile       harness.Profile
@@ -172,7 +176,7 @@ type structuredSession struct {
 
 func (s *Server) startStructured(writer http.ResponseWriter, request *http.Request) {
 	var input StructuredStartRequest
-	if !decodeRequest(writer, request, structuredHTTPBodyLimit, &input) {
+	if !decodeRequest(writer, request, structuredHTTPBodyLimit+2<<20, &input) {
 		return
 	}
 	if !validRunIdentity(input.RunID, input.Harness) ||
@@ -195,6 +199,18 @@ func (s *Server) startStructured(writer http.ResponseWriter, request *http.Reque
 		return
 	}
 
+	setupEnv, err := s.prepareHarnessSetup(request.Context(), input.Setup, input.Harness)
+	if err == nil {
+		setupEnv, err = s.prepareProviderConnection(request.Context(), input.Connection, input.Setup, input.Harness, setupEnv)
+	}
+	if err != nil {
+		code := "harness_setup_unavailable"
+		if errors.Is(err, errSetupDependencies) {
+			code = "harness_dependency_install_failed"
+		}
+		writeProtocolError(writer, http.StatusUnprocessableEntity, code)
+		return
+	}
 	s.mu.Lock()
 	active := 0
 	for _, existing := range s.runs {
@@ -222,7 +238,7 @@ func (s *Server) startStructured(writer http.ResponseWriter, request *http.Reque
 		outputLimit: s.config.OutputLimit,
 	}
 	session := &structuredSession{
-		run: run, profile: profile, directory: directory, initial: input.Frame,
+		run: run, profile: profile, directory: directory, initial: input.Frame, setupEnv: setupEnv,
 		writes:     make(chan frameWrite, structuredWriteQueue),
 		eventLimit: s.config.EventLimit, outputLimit: s.config.OutputLimit,
 		controllerIDs: make(map[string]bool),
@@ -383,7 +399,7 @@ func (s *structuredSession) execute() {
 	command := exec.Command(adapter.Executable, append([]string(nil), adapter.Arguments...)...)
 	command.Dir = s.directory
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	command.Env = childEnvironment(s.secrets)
+	command.Env = setupEnvironment(childEnvironment(s.secrets), s.setupEnv)
 	clearSecretValues(s.secrets)
 	s.secrets = nil
 	stdin, err := command.StdinPipe()

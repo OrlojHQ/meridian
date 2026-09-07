@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/OrlojHQ/meridian/internal/harnesssetup"
 	"io"
 	"net/http"
 	"os"
@@ -42,12 +43,14 @@ const (
 )
 
 type RunStartRequest struct {
-	RunID   string            `json:"runId"`
-	Harness string            `json:"harness"`
-	Prompt  string            `json:"prompt"`
-	Columns uint16            `json:"columns,omitempty"`
-	Rows    uint16            `json:"rows,omitempty"`
-	Secrets map[string]string `json:"secrets,omitempty"`
+	Connection *harnesssetup.Connection   `json:"connection,omitempty"`
+	Setup      *harnesssetup.RuntimeSetup `json:"setup,omitempty"`
+	RunID      string                     `json:"runId"`
+	Harness    string                     `json:"harness"`
+	Prompt     string                     `json:"prompt"`
+	Columns    uint16                     `json:"columns,omitempty"`
+	Rows       uint16                     `json:"rows,omitempty"`
+	Secrets    map[string]string          `json:"secrets,omitempty"`
 }
 
 type RunStatusResponse struct {
@@ -111,6 +114,36 @@ func childEnvironment(secretValues map[string]string) []string {
 	return result
 }
 
+func withPTYEnvironment(environment []string) []string {
+	defaults := []struct {
+		name  string
+		value string
+	}{
+		{name: "TERM", value: "xterm-256color"},
+		{name: "COLORTERM", value: "truecolor"},
+		{name: "LANG", value: "C.UTF-8"},
+	}
+	result := append([]string(nil), environment...)
+	for _, fallback := range defaults {
+		found := false
+		for index, item := range result {
+			name, value, _ := strings.Cut(item, "=")
+			if name != fallback.name {
+				continue
+			}
+			found = true
+			if value == "" {
+				result[index] = fallback.name + "=" + fallback.value
+			}
+			break
+		}
+		if !found {
+			result = append(result, fallback.name+"="+fallback.value)
+		}
+	}
+	return result
+}
+
 func clearSecretValues(values map[string]string) {
 	for name, value := range values {
 		values[name] = strings.Repeat("\x00", len(value))
@@ -124,6 +157,7 @@ type GitResponse struct {
 }
 
 type supervisedRun struct {
+	setupEnv    map[string]string
 	mu          sync.Mutex
 	capture     sync.WaitGroup
 	id          string
@@ -148,7 +182,7 @@ type supervisedRun struct {
 
 func (s *Server) startRun(writer http.ResponseWriter, request *http.Request) {
 	var input RunStartRequest
-	if !decodeRequest(writer, request, s.config.BodyLimit, &input) {
+	if !decodeRequest(writer, request, s.config.BodyLimit+2<<20, &input) {
 		return
 	}
 	if input.RunID == "" || len(input.RunID) > 200 || strings.ContainsAny(input.RunID, "/\\\x00\r\n") ||
@@ -230,8 +264,20 @@ func (s *Server) startRun(writer http.ResponseWriter, request *http.Request) {
 		writeProtocolError(writer, http.StatusUnprocessableEntity, "working_directory_unavailable")
 		return
 	}
+	setupEnv, err := s.prepareHarnessSetup(request.Context(), input.Setup, input.Harness)
+	if err == nil {
+		setupEnv, err = s.prepareProviderConnection(request.Context(), input.Connection, input.Setup, input.Harness, setupEnv)
+	}
+	if err != nil {
+		code := "harness_setup_unavailable"
+		if errors.Is(err, errSetupDependencies) {
+			code = "harness_dependency_install_failed"
+		}
+		writeProtocolError(writer, http.StatusUnprocessableEntity, code)
+		return
+	}
 	run := &supervisedRun{
-		id: input.RunID, state: RunStarting, startedAt: time.Now().UTC(),
+		setupEnv: setupEnv, id: input.RunID, state: RunStarting, startedAt: time.Now().UTC(),
 		pty: profile.PTY, profile: profile, eventLimit: s.config.EventLimit,
 		outputLimit: s.config.OutputLimit,
 		secrets:     resolved,
@@ -339,7 +385,7 @@ func (r *supervisedRun) execute(directory, prompt string, columns, rows uint16) 
 	}
 	command := exec.Command(r.profile.Executable, arguments...)
 	command.Dir = directory
-	command.Env = childEnvironment(r.secrets)
+	command.Env = setupEnvironment(childEnvironment(r.secrets), r.setupEnv)
 	clearSecretValues(r.secrets)
 	r.secrets = nil
 	r.mu.Lock()
@@ -348,6 +394,7 @@ func (r *supervisedRun) execute(directory, prompt string, columns, rows uint16) 
 
 	var wait func() error
 	if r.profile.PTY {
+		command.Env = withPTYEnvironment(command.Env)
 		if columns == 0 {
 			columns = 80
 		}

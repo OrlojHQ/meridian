@@ -30,9 +30,12 @@ operator policy: only names the Project already allowlisted.
   name=image`) and on later apply (`PATCH /projects/{id}`, TUI `/harness`,
   CLI `project apply-harness`). `/new` picks among applied names.
 - Advertise official packs on `GET /capabilities` (`mock` = the daemon
-  default image, `opencode` = `meridian-capsule-opencode` with the same tag).
-  Applying a pack copies that name and image onto the Project. Clients still
-  cannot invent an image at spawn time.
+  default image; `opencode`, `pi`, `claude`, and `codex` reuse that
+  registry, organization, and tag on `meridian-capsule-opencode`,
+  `meridian-capsule-pi`, `meridian-capsule-claude`, and
+  `meridian-capsule-codex`). ADR 0023 publishes those pack images on the
+  same release tag. Applying a pack copies that name and image onto the
+  Project. Clients still cannot invent an image at spawn time.
 
 ## Consequences
 

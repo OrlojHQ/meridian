@@ -167,6 +167,9 @@ func (r *Reconciler) process(ctx context.Context, id domain.CapsuleID) {
 		if err == nil || errors.Is(err, domain.ErrNotFound) {
 			return
 		}
+		if errors.Is(err, errProjectSetup) {
+			break
+		}
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return
 		}
@@ -219,6 +222,11 @@ func (r *Reconciler) reconcile(ctx context.Context, id domain.CapsuleID) error {
 	if capsule.DesiredState == domain.IntentDeleted {
 		return r.reconcileDelete(ctx, capsule)
 	}
+	if capsule.State == domain.CapsuleCreating || capsule.State == domain.CapsulePreparing {
+		var cancel context.CancelFunc
+		ctx, cancel = r.preparationContext(ctx, capsule.ID)
+		defer cancel()
+	}
 	if capsule.ProviderResourceID == "" {
 		var project domain.Project
 		if err := r.store.View(ctx, func(reader ports.Reader) error {
@@ -228,10 +236,15 @@ func (r *Reconciler) reconcile(ctx context.Context, id domain.CapsuleID) error {
 		}); err != nil {
 			return err
 		}
-		if selected, err := r.prepareSetupCacheRestore(ctx, capsule, project); err != nil {
-			return err
-		} else if selected {
-			return r.Enqueue(ctx, id)
+		_, staged := r.provider.(ports.WorkspacePreparer)
+		if staged && capsule.OriginMomentID == "" {
+			spec, err := r.preparationSpec(ctx, capsule, project)
+			if err != nil {
+				return err
+			}
+			project.RepositoryURL, project.ImageReference, project.GitSecretName = spec.RepositoryURL, spec.ImageReference, spec.GitSecretName
+			capsule.ImageReference = spec.ImageReference
+			project.Setup = nil // Checkout first; setup runs after exact identity and cache lookup.
 		}
 		createRequest := ports.CreateCapsuleRequest{
 			CapsuleID:      capsule.ID,
@@ -325,11 +338,10 @@ func (r *Reconciler) reconcile(ctx context.Context, id domain.CapsuleID) error {
 			return r.reconcileRestore(ctx, capsule)
 		}
 		if capsule.State != domain.CapsuleReady {
-			if capsule.State == domain.CapsulePreparing && capsule.OriginMomentID == "" {
-				// Setup caching is an optimization. Publication or persistence
-				// failure must not prevent an otherwise healthy Capsule from
-				// becoming Ready.
-				_ = r.captureSetupMomentCache(ctx, capsule)
+			if completed, err := r.completePreparation(ctx, capsule, resource); err != nil {
+				return err
+			} else if completed {
+				return r.Enqueue(ctx, id)
 			}
 			previous := capsule.ResourceVersion
 			if err := capsule.Transition(domain.CapsuleReady, r.clock.Now()); err != nil {

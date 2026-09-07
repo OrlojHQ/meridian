@@ -40,6 +40,7 @@ const (
 
 type Engine interface {
 	ImageInspect(context.Context, string, ...client.ImageInspectOption) (client.ImageInspectResult, error)
+	ImagePull(context.Context, string, client.ImagePullOptions) (client.ImagePullResponse, error)
 	VolumeInspect(context.Context, string, client.VolumeInspectOptions) (client.VolumeInspectResult, error)
 	VolumeCreate(context.Context, client.VolumeCreateOptions) (client.VolumeCreateResult, error)
 	VolumeRemove(context.Context, string, client.VolumeRemoveOptions) (client.VolumeRemoveResult, error)
@@ -70,7 +71,7 @@ type Config struct {
 
 func (c Config) withDefaults() (Config, error) {
 	if c.Image == "" {
-		c.Image = "meridian-capsule:dev"
+		c.Image = domain.LocalCapsuleImage
 	}
 	if c.NamePrefix == "" {
 		c.NamePrefix = "meridian"
@@ -177,7 +178,7 @@ func (p *Provider) Create(
 	if imageReference == "" {
 		imageReference = p.config.Image
 	}
-	imageID, err := p.resolveImage(operationContext, imageReference)
+	imageID, err := p.resolveImage(ctx, imageReference)
 	if err != nil {
 		return ports.ProviderResource{}, err
 	}
@@ -216,6 +217,7 @@ func (p *Provider) Create(
 		repositoryURL, setup = "", nil
 	}
 	prepareRequest := capsuleproto.PrepareRequest{
+		Force:         request.ForcePreparation,
 		RepositoryURL: repositoryURL,
 		Destination:   workspace,
 		Setup:         setup,
@@ -495,7 +497,13 @@ func (p *Provider) resolveImage(ctx context.Context, reference string) (string, 
 	if strings.TrimSpace(reference) == "" || strings.ContainsAny(reference, "\x00\r\n") {
 		return "", fmt.Errorf("%w: image reference is invalid", domain.ErrInvalid)
 	}
-	inspection, err := p.engine.ImageInspect(ctx, reference)
+	inspection, err := p.inspectImage(ctx, reference)
+	if err != nil && errdefs.IsNotFound(err) && domain.RegistryQualifiedImage(reference) {
+		if err := p.pullImage(ctx, reference); err != nil {
+			return "", fmt.Errorf("pull Capsule image %q: %w", reference, err)
+		}
+		inspection, err = p.inspectImage(ctx, reference)
+	}
 	if err != nil {
 		return "", fmt.Errorf("resolve Capsule image %q: %w", reference, err)
 	}
@@ -503,6 +511,23 @@ func (p *Provider) resolveImage(ctx context.Context, reference string) (string, 
 		return "", fmt.Errorf("Docker did not resolve image %q to an immutable ID", reference)
 	}
 	return inspection.ID, nil
+}
+
+func (p *Provider) inspectImage(ctx context.Context, reference string) (client.ImageInspectResult, error) {
+	inspectCtx, cancel := context.WithTimeout(ctx, p.config.OperationTimeout)
+	defer cancel()
+	return p.engine.ImageInspect(inspectCtx, reference)
+}
+
+func (p *Provider) pullImage(ctx context.Context, reference string) error {
+	pullCtx, cancel := context.WithTimeout(ctx, p.config.SetupTimeout)
+	defer cancel()
+	response, err := p.engine.ImagePull(pullCtx, reference, client.ImagePullOptions{})
+	if err != nil {
+		return err
+	}
+	defer response.Close()
+	return response.Wait(pullCtx)
 }
 
 func (p *Provider) ensureVolume(

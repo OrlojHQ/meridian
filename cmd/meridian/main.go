@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/OrlojHQ/meridian/internal/apiauth"
@@ -49,7 +51,7 @@ func newRootCommand() *cobra.Command {
 	command.PersistentFlags().BoolVar(&config.json, "json", false, "write stable API JSON")
 	command.AddCommand(
 		newProjectCommand(config), newCapsuleCommand(config), newRunCommand(config),
-		newSecretCommand(config),
+		newSecretCommand(config), newHarnessCommand(config),
 		newThreadCommand(config),
 		newMomentCommand(config), newTimelineCommand(config), newShardCommand(config),
 		newRewindCommand(config), newSealCommand(config), newTUICommand(config),
@@ -59,7 +61,8 @@ func newRootCommand() *cobra.Command {
 }
 
 func newTUICommand(config *cliConfig) *cobra.Command {
-	return &cobra.Command{
+	var harness string
+	command := &cobra.Command{
 		Use:   "tui",
 		Short: "Launch the interactive Capsule dashboard",
 		Args:  cobra.NoArgs,
@@ -81,9 +84,15 @@ func newTUICommand(config *cliConfig) *cobra.Command {
 			}
 			return tui.Run(
 				command.Context(), api, config.server, config.tokenFile, input, config.stdout,
+				strings.TrimSpace(harness),
 			)
 		},
 	}
+	command.Flags().StringVar(
+		&harness, "harness", "",
+		"select this installation pack on New Project; opens that form when no Projects exist",
+	)
+	return command
 }
 
 func projectCreateDefaults(
@@ -508,11 +517,11 @@ func (c *cliConfig) writeSecret(secret client.Secret) error {
 func newCapsuleCommand(config *cliConfig) *cobra.Command {
 	capsule := &cobra.Command{Use: "capsule", Short: "Manage Capsules"}
 
-	var createKey, createHarness string
+	var createKey, createHarness, createSetup string
 	create := &cobra.Command{
-		Use:   "create PROJECT_ID NAME",
+		Use:   "create PROJECT_ID [NAME]",
 		Short: "Request Capsule creation",
-		Args:  cobra.ExactArgs(2),
+		Args:  cobra.RangeArgs(1, 2),
 		RunE: func(command *cobra.Command, args []string) error {
 			api, err := newAPI(config)
 			if err != nil {
@@ -522,7 +531,20 @@ func newCapsuleCommand(config *cliConfig) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			input := &client.CreateCapsuleRequest{Name: args[1]}
+			nameHash := sha256.Sum256([]byte(key))
+			name := fmt.Sprintf("capsule-%x", nameHash[:4])
+			if len(args) > 1 {
+				name = args[1]
+			}
+			input := &client.CreateCapsuleRequest{Name: name}
+			if createSetup != "" {
+				input.Setup = client.NewOptString(createSetup)
+			}
+			if createSetup == "" {
+				if err := offerHarnessSetupUpdate(command.Context(), config, createHarness); err != nil {
+					return err
+				}
+			}
 			if createHarness != "" {
 				input.Harness = client.NewOptString(createHarness)
 			}
@@ -541,6 +563,7 @@ func newCapsuleCommand(config *cliConfig) *cobra.Command {
 			return config.writeCapsule(success.Response)
 		},
 	}
+	create.Flags().StringVar(&createSetup, "setup", "", "saved setup ID, or clean to omit personal configuration")
 	create.Flags().StringVar(&createKey, "idempotency-key", "", "mutation replay key (generated if omitted)")
 	create.Flags().StringVar(&createHarness, "harness", "", "Project-allowlisted native harness to launch")
 
@@ -601,7 +624,7 @@ func newCapsuleCommand(config *cliConfig) *cobra.Command {
 
 	capsule.AddCommand(create, list, get)
 	capsule.AddCommand(newLifecycleCommand(config, "pause"), newLifecycleCommand(config, "resume"))
-	capsule.AddCommand(newLifecycleCommand(config, "delete"))
+	capsule.AddCommand(newLifecycleCommand(config, "delete"), newLifecycleCommand(config, "retry"))
 	capsule.AddCommand(newCapsuleGitCommand(config, false), newCapsuleGitCommand(config, true))
 	capsule.AddCommand(
 		newCapsuleFilesCommand(config), newCapsuleSyncCommand(config), newCapsuleShipCommand(config),
@@ -641,6 +664,8 @@ func newLifecycleCommand(config *cliConfig, operation string) *cobra.Command {
 					command.Context(), request,
 					client.ResumeCapsuleParams{CapsuleId: args[0], IdempotencyKey: key},
 				)
+			case "retry":
+				result, err = api.RetryCapsule(command.Context(), request, client.RetryCapsuleParams{CapsuleId: args[0], IdempotencyKey: key})
 			case "delete":
 				result, err = api.DeleteCapsule(
 					command.Context(), request,
@@ -744,9 +769,13 @@ func (c *cliConfig) writeCapsule(capsule client.Capsule) error {
 	if c.json {
 		return writeJSON(c.stdout, capsuleOutput(capsule))
 	}
+	preparation := ""
+	if p, ok := capsule.Preparation.Get(); ok {
+		preparation = fmt.Sprintf("\tpreparation=%s\treused=%t", p.Stage, p.Reused)
+	}
 	_, err := fmt.Fprintf(
-		c.stdout, "%s\t%s\tstate=%s\tdesired=%s\tversion=%d\n",
-		capsule.ID, capsule.Name, capsule.State, capsule.DesiredState, capsule.ResourceVersion,
+		c.stdout, "%s\t%s\tstate=%s\tdesired=%s\tversion=%d%s\n",
+		capsule.ID, capsule.Name, capsule.State, capsule.DesiredState, capsule.ResourceVersion, preparation,
 	)
 	return err
 }
@@ -807,22 +836,28 @@ type capsulePageOutput struct {
 }
 
 type capsuleJSON struct {
-	ID              string               `json:"id"`
-	ProjectID       string               `json:"projectId"`
-	Name            string               `json:"name"`
-	Harness         string               `json:"harness,omitempty"`
-	State           client.CapsuleState  `json:"state"`
-	DesiredState    client.CapsuleIntent `json:"desiredState"`
-	Failure         string               `json:"failure,omitempty"`
-	CreatedAt       time.Time            `json:"createdAt"`
-	UpdatedAt       time.Time            `json:"updatedAt"`
-	ResourceVersion int64                `json:"resourceVersion"`
+	Preparation     *client.PreparationProgress `json:"preparation,omitempty"`
+	ID              string                      `json:"id"`
+	ProjectID       string                      `json:"projectId"`
+	Name            string                      `json:"name"`
+	Harness         string                      `json:"harness,omitempty"`
+	State           client.CapsuleState         `json:"state"`
+	DesiredState    client.CapsuleIntent        `json:"desiredState"`
+	Failure         string                      `json:"failure,omitempty"`
+	CreatedAt       time.Time                   `json:"createdAt"`
+	UpdatedAt       time.Time                   `json:"updatedAt"`
+	ResourceVersion int64                       `json:"resourceVersion"`
 }
 
 func capsuleOutput(capsule client.Capsule) capsuleJSON {
 	failure, _ := capsule.Failure.Get()
 	harness, _ := capsule.Harness.Get()
+	var preparation *client.PreparationProgress
+	if p, ok := capsule.Preparation.Get(); ok {
+		preparation = &p
+	}
 	return capsuleJSON{
+		Preparation:     preparation,
 		ID:              capsule.ID,
 		ProjectID:       capsule.ProjectId,
 		Name:            capsule.Name,

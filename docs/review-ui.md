@@ -1,8 +1,52 @@
-# Review UI, terminal, and previews
+# Application UI, terminal, and previews
 
-The responsive React review interface at `/ui/` consumes only the TypeScript
-client generated from `api/openapi.yaml`; lifecycle transitions remain
-server-owned.
+The responsive React application at `/ui/` consumes only the TypeScript client
+generated from `api/openapi.yaml`; lifecycle transitions remain server-owned.
+
+## Application shell
+
+The UI uses a full-height, Capsule-centered workspace:
+
+- the persistent Activity sidebar groups Capsules by Project and shows lifecycle
+  state and selected harness without requiring a dashboard round trip;
+- the primary surface presents the active structured Thread, native PTY, or
+  resource inspector; and
+- the contextual tool pane provides capability-gated Changes, Preview, Files,
+  Terminal, and Activity tabs for the selected Capsule.
+
+The Terminal tool appears only when the primary surface is not already showing
+that native PTY, avoiding duplicate attachments while keeping PTY access beside
+structured Threads and inspectors.
+
+Run history lives in the Activity tool instead of repeating beneath the primary
+workspace. Run inspectors and historical terminal routes remain directly
+addressable from that list. Every Run inspector and focused terminal provides a
+direct return to its owning Capsule workspace.
+
+Desktop layouts show all three surfaces. On narrower viewports the Activity
+sidebar becomes a drawer and Capsule tools become an independently dismissible
+full-screen surface. Each pane owns its scrolling; the browser document does
+not become an unbounded stack of Capsule panels.
+
+The Changes tool parses the bounded unified diff into collapsible file sections,
+old/new line-number gutters, hunk headers, and semantic addition/deletion rows.
+Changes and Files share an extension-aware source renderer with line numbers.
+Highlighting is loaded only when supported source opens and is skipped for large
+or unknown files without preventing plain-text review. It uses Shiki's JavaScript
+regular-expression engine rather than WebAssembly and maps the local GitHub
+token palette to bundled CSS classes, preserving the UI's strict CSP. Repository
+text is always rendered as React text nodes, never injected HTML.
+
+`New project` creates the top-level Project boundary and can apply one
+installation-known harness pack without accepting a free image reference. Each
+Project heading owns its own `+` launcher with separate native-harness and
+structured Thread modes, so Capsule creation is already scoped and does not ask
+for a Project again. Native launch lists only harness packs applied to that
+Project, follows provisioning, and opens the first PTY Run. Structured launch
+retains the encrypted Thread intent workflow. Keyboard shortcuts `n`, `/`,
+`j`/`k`, and the arrow keys open Project creation, focus filtering, and move
+through the Capsule working set only while focus is outside terminals and form
+controls.
 
 ## Development and production assets
 
@@ -23,23 +67,37 @@ for deterministic jsdom component tests.
 
 The production routes are:
 
-- `/ui/` — Capsule list across local projects plus a Project picker for
-  starting a first prompt in a freshly provisioned Capsule and Timeline;
-- `/ui/capsules/:id` and `/ui/capsules/:id/diff` — detail, bounded Git review,
-  workspace file browsing, and an explicitly confirmed Ship panel;
+- `/ui/` — Activity view for the Capsule working set;
+- `/ui/capsules/:id` — unified Capsule workspace, with native PTY or structured
+  Thread controls in the primary surface and review tools beside it;
+- `/ui/capsules/:id/diff` — exact-state Delivery approval in the primary
+  surface while the contextual Changes tab shows the bounded Git diff;
 - `/ui/threads` and `/ui/threads/:id` — retained structured Thread fleet,
-  decrypted typed-block timeline, composer, permissions, and session actions;
-- `/ui/runs/:id` and `/ui/runs/:id/terminal` — ordered activity and PTY;
+  decrypted typed-block timeline, pinned composer, permissions, and session
+  actions;
+- `/ui/runs/:id` and `/ui/runs/:id/terminal` — ordered activity and focused PTY;
 - `/ui/moments/:id` — immutable filesystem Moment metadata; and
 - `/ui/timelines/:id` — visual lineage with an accessible text alternative.
 
 API routes remain at their existing root paths. Keeping browser routes beneath
 `/ui/` prevents SPA fallback from shadowing scriptable API resources.
 
-The project-level form posts the harness, optional Capsule name, and first
-prompt once and displays the stable provisioning intent, Capsule, and Thread
-references. It does not attempt to select or reuse an existing Ready Capsule.
-Capsule-scoped Thread controls remain available on Capsule detail pages.
+The native launch mode lists only harness packs applied to the selected Project.
+It creates a Capsule with the selected pack frozen, follows Capsule and Run
+provisioning, and opens the existing PTY Terminal route when the daemon creates
+the initial Run. Leaving the terminal closes only the browser attachment and
+does not terminate the Run. The Capsule workspace presents the active launcher
+Run, while Activity retains links to historical Runs. A terminal Run remains
+bounded by its harness profile timeout. Official native
+packs use the schema's 24-hour maximum; when a Run exits, fails, or times out,
+the workspace shows its bounded failure reason and requires an explicit
+`Start <harness>` action instead of silently restarting a process.
+
+The separate structured form posts the harness, optional Capsule name, and
+first prompt once and displays the stable provisioning intent, Capsule, and
+Thread references. It does not attempt to select or reuse an existing Ready
+Capsule. Capsule-scoped Thread controls remain available on Capsule detail
+pages.
 
 ## Browser and content security
 
@@ -92,7 +150,12 @@ The daemon keeps only its SHA-256 digest in bounded memory. The browser rejects
 cross-origin and cross-Run WebSocket paths, sends binary-safe PTY input, tracks
 output cursors and replay gaps, reconnects only while the Run is active, and
 disposes its socket, resize observer, xterm listeners, and terminal instance on
-unmount or detach. PTY bytes remain sensitive untrusted content.
+unmount. Replay cursors remain internal unless a gap must be diagnosed. The
+browser prefers xterm.js WebGL rendering so block and
+box-drawing glyphs used by native harness TUIs remain cell-aligned, with the DOM
+renderer as a compatibility fallback. `capsuled` supplies conservative
+`xterm-256color`, true-color, and UTF-8 defaults when the Capsule image does not
+set terminal environment values. PTY bytes remain sensitive untrusted content.
 The Terminal route remains a native Run/PTY fallback and is not a structured
 Thread transport.
 

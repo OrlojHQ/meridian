@@ -20,6 +20,7 @@ func Run(
 	server, tokenFile string,
 	input *os.File,
 	output io.Writer,
+	preferredHarness string,
 ) error {
 	if input == nil {
 		input = os.Stdin
@@ -35,6 +36,7 @@ func Run(
 	model := NewModel(Options{
 		Context: ctx, API: api, Server: server, TokenFile: tokenFile,
 		SuggestedProjectName: current.Name, SuggestedRepositoryURL: current.OriginURL,
+		PreferredHarness: preferredHarness,
 	})
 	program := tea.NewProgram(model, tea.WithAltScreen(), tea.WithInput(input), tea.WithOutput(output))
 	_, err := program.Run()

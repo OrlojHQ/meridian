@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+# Official Node.js LTS archives; one pin shared by all optional harness packs.
+version=v24.20.0
+case "$TARGETARCH" in
+  amd64) arch=x64; checksum=2f2c0da162318f0de47665410c7c8c2ed3d36c8f3105de4bbc61176c70a7cbf2 ;;
+  arm64) arch=arm64; checksum=5f4ddab610c1ab2016b3c227cebdbf6d9495161487e4739c7b90090595f465f7 ;;
+  *) echo 'unsupported Node architecture' >&2; exit 1 ;;
+esac
+curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+  "https://nodejs.org/dist/$version/node-$version-linux-$arch.tar.xz" -o /tmp/node.tar.xz
+printf '%s  /tmp/node.tar.xz\n' "$checksum" | sha256sum -c -
+mkdir -p /opt/meridian-node
+tar -xJf /tmp/node.tar.xz --strip-components=1 -C /opt/meridian-node
+rm /tmp/node.tar.xz
