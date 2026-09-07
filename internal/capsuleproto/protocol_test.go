@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-const testToken = "0123456789abcdef0123456789abcdef0123456789abcdef"
+const testToken = "meridian-test-token-not-a-secret"
 
 func TestProtocolAuthenticationVersionAndBodyLimit(t *testing.T) {
 	workspace := filepath.Join(t.TempDir(), "workspace")
