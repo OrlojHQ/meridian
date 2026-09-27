@@ -5,6 +5,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { api, normalizeAPIError } from "../api/client";
 import type { Capsule, Project } from "../api/generated/types.gen";
 import { queries } from "../api/queries";
+import { harnessName } from "../shell/capsuleActivity";
 
 import { HarnessSetupImport } from "./HarnessSetupImport";
 import { PreparationProgress } from "./PreparationProgress";
@@ -14,14 +15,15 @@ type PendingLaunch = {
   harness: string;
 };
 
-export function NativeLauncher({ project }: { project: Project }) {
+export function NativeLauncher({
+  project,
+  harness,
+}: {
+  project: Project;
+  harness: string;
+}) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const packs = project.harnessImages ?? [];
-  const [harness, setHarness] = useState(() => {
-    const saved=localStorage.getItem(`meridian.harness.${project.id}`);
-    return packs.find(pack=>pack.name===saved)?.name ?? packs[0]?.name ?? "";
-  });
   const [name, setName] = useState("");
   const [importing, setImporting] = useState(false);
   const [setup, setSetup] = useState("");
@@ -79,40 +81,10 @@ export function NativeLauncher({ project }: { project: Project }) {
 
   return (
     <section className="launcher-pane">
-      <header className="launcher-pane-heading">
-        <div>
-          <p className="eyebrow">Native session</p>
-          <h2>Open a harness</h2>
-        </div>
-        <span className="launcher-kind">Terminal</span>
-      </header>
       <p className="muted-copy">
-        Create a Capsule from a Project-approved pack and enter its real terminal
-        UI.
+        Start {harnessName(harness)} in a fresh Capsule and open its terminal.
       </p>
       <form className="launcher-form" onSubmit={submit}>
-        <label htmlFor="launcher-harness">
-          Native harness pack
-          <select
-            id="launcher-harness"
-            value={harness}
-            required
-            disabled={busy || packs.length === 0}
-            onChange={(event) => {localStorage.setItem(`meridian.harness.${project.id}`,event.target.value);setHarness(event.target.value); setSetup("");setConnection(undefined);}}
-          >
-            {packs.map((pack) => (
-              <option key={pack.name} value={pack.name}>
-                {pack.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        {packs.length === 0 && (
-          <p className="notice">
-            This Project has no applied harness packs. Apply one with the CLI
-            before launching a native Capsule.
-          </p>
-        )}
         {setups.isError ? <p role="alert">Saved setups could not be loaded. <button type="button" onClick={() => void setups.refetch()}>Retry</button></p> :
           <p>{shownSetup ? `Using ${shownSetup.name}` : "Using harness defaults"}. Native account login is separate.</p>}
         {!defaultSetup && ["opencode", "codex", "claude", "pi"].includes(harness) && <button type="button" disabled={busy || setups.isPending || setups.isError} onClick={() => setImporting(true)}>Import my setup</button>}
@@ -144,7 +116,7 @@ export function NativeLauncher({ project }: { project: Project }) {
           type="submit"
           disabled={busy || !harness || setups.isPending || setups.isError || grant.isPending || grant.isError || connections.isPending || connections.isError || projectSetup.isPending || projectSetup.isError}
         >
-          {busy ? "Opening…" : "Create Capsule"}
+          {busy ? "Opening…" : `Start ${harnessName(harness)}`}
         </button>
       </form>
       {mutation.isError && (

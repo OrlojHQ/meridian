@@ -523,8 +523,14 @@ function ThreadComposer({
   );
 }
 
-export function ThreadDetail() {
-  const { threadId = "" } = useParams();
+// ThreadDetail renders the /ui/threads/:threadId route, or one session tab
+// inside a Capsule workspace when embedded with an explicit threadId.
+export function ThreadDetail({
+  threadId: embeddedThreadId,
+}: { threadId?: string } = {}) {
+  const params = useParams();
+  const threadId = embeddedThreadId ?? params.threadId ?? "";
+  const embedded = embeddedThreadId !== undefined;
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const threadQuery = useQuery(queries.thread(threadId));
@@ -602,7 +608,11 @@ export function ThreadDetail() {
       api.deleteThread(threadId, threadQuery.data?.resourceVersion ?? 0),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["threads"] });
-      navigate("/ui/threads");
+      navigate(
+        embedded
+          ? `/ui/capsules/${encodeURIComponent(threadQuery.data?.capsuleId ?? "")}`
+          : "/ui/threads",
+      );
     },
     onError: async (error) => {
       if (normalizeAPIError(error).code === "conflict") await refresh();
@@ -627,23 +637,25 @@ export function ThreadDetail() {
   const canCompose = thread.state === "active" && thread.structuredSupported !== false;
 
   return (
-    <article className="thread-detail thread-workspace">
-      <header className="workspace-view-header">
-        <div>
-          <p className="eyebrow">Structured Thread</p>
-          <h1>{safeInline(thread.harness)}</h1>
-          <p className="view-description">
-            Retained encrypted conversation in Capsule{" "}
-            <Link to={`/ui/capsules/${encodeURIComponent(thread.capsuleId)}`}>
-              {safeInline(thread.capsuleId)}
-            </Link>
-          </p>
-        </div>
-        <div className="workspace-header-meta">
-          <StateBadge state={thread.state} />
-          <span className="mono">{safeInline(thread.id)}</span>
-        </div>
-      </header>
+    <article className={`thread-detail thread-workspace ${embedded ? "embedded" : ""}`}>
+      {!embedded && (
+        <header className="workspace-view-header">
+          <div>
+            <p className="eyebrow">Structured Thread</p>
+            <h1>{safeInline(thread.harness)}</h1>
+            <p className="view-description">
+              Retained encrypted conversation in Capsule{" "}
+              <Link to={`/ui/capsules/${encodeURIComponent(thread.capsuleId)}?session=${encodeURIComponent(thread.id)}`}>
+                {safeInline(thread.capsuleId)}
+              </Link>
+            </p>
+          </div>
+          <div className="workspace-header-meta">
+            <StateBadge state={thread.state} />
+            <span className="mono">{safeInline(thread.id)}</span>
+          </div>
+        </header>
+      )}
       <details className="thread-metadata">
         <summary>Thread details</summary>
         <dl className="facts">
@@ -791,46 +803,5 @@ export function ThreadDetail() {
         />
       )}
     </article>
-  );
-}
-
-export function CapsuleThreads({ capsule }: { capsule: Capsule }) {
-  const threads = useQuery(queries.threads(capsule.id));
-  const queryClient = useQueryClient();
-  const navigate = useNavigate();
-  return (
-    <section className="panel">
-      <div className="section-heading">
-        <h2>Structured Threads</h2>
-        <Link to="/ui/threads">Open fleet</Link>
-      </div>
-      {threads.isPending ? (
-        <p role="status">Loading Threads…</p>
-      ) : threads.isError ? (
-        <ThreadError error={threads.error} />
-      ) : threads.data.items.length === 0 ? (
-        <p>No retained Threads for this Capsule.</p>
-      ) : (
-        <ul className="thread-list compact" aria-label="Capsule Threads">
-          {threads.data.items.map((thread) => (
-            <ThreadSummary key={thread.id} thread={thread} />
-          ))}
-        </ul>
-      )}
-      {capsule.state === "Ready" ? (
-        <details className="thread-fast-path">
-          <summary>Create Thread and send first task</summary>
-          <ThreadCreate
-            capsule={capsule}
-            onCreated={async (thread) => {
-              await queryClient.invalidateQueries({ queryKey: ["threads", capsule.id] });
-              navigate(`/ui/threads/${thread.id}`);
-            }}
-          />
-        </details>
-      ) : (
-        <p className="notice">The Capsule must be Ready to create a Thread.</p>
-      )}
-    </section>
   );
 }

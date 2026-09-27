@@ -7,6 +7,21 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- The New Capsule dialog starts with an agent picker. A Project with no agents
+  lists the installed harness packs and adds one in place instead of sending
+  the operator to the CLI. Choosing between a terminal and a written task is a
+  secondary option under the picker.
+- Activity sidebar rows show the Capsule's harness, and the selected Capsule
+  lists its sessions (native terminal and structured Threads) with their state.
+  Idle and paused status dots are hollow; attention pulses.
+- The Capsule workspace has a one-line header with the harness, state, Project,
+  and an actions menu that holds Pause, Resume, Seal, and Delete. Sessions open
+  as tabs in the primary surface, and a Capsule without sessions opens on the
+  new-session form. Moments moved to the Activity tool.
+- The Capsule tools toggle no longer overlaps the header's state badge.
+
 ## [0.1.1] - 2026-09-27
 
 ### Changed

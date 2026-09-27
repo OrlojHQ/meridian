@@ -22,6 +22,7 @@ import type {
   TimelineView,
 } from "../api/generated/types.gen";
 import { NativeLauncher } from "../components/NativeLauncher";
+import { NewWorkspaceDialog } from "../components/NewWorkspaceDialog";
 import { StructuredLauncher } from "../components/StructuredLauncher";
 
 const project = {
@@ -222,11 +223,10 @@ describe("Capsule list states", () => {
       updatedAt: "2026-08-24T12:00:00Z",
       resourceVersion: 1,
     });
-    wrapper(<StructuredLauncher project={structuredProject} />);
-    expect(await screen.findByLabelText("Structured harness")).toHaveValue("mock");
+    wrapper(<StructuredLauncher project={structuredProject} harness="mock" />);
     await userEvent.type(screen.getByLabelText(/Capsule name/), "new-session");
-    await userEvent.type(screen.getByLabelText("First task"), "inspect");
-    await userEvent.click(screen.getByRole("button", { name: "Start Thread" }));
+    await userEvent.type(screen.getByLabelText("Task"), "inspect");
+    await userEvent.click(screen.getByRole("button", { name: "Start task" }));
     await waitFor(() =>
       expect(spawn).toHaveBeenCalledWith(
         project.id,
@@ -278,7 +278,7 @@ describe("Native harness launcher", () => {
       <Routes>
         <Route
           path="/ui"
-          element={<NativeLauncher project={launcherProject} />}
+          element={<NativeLauncher project={launcherProject} harness="opencode" />}
         />
         <Route
           path="/ui/runs/:runId/terminal"
@@ -287,14 +287,14 @@ describe("Native harness launcher", () => {
       </Routes>,
     );
 
-    expect(
-      await screen.findByRole("option", { name: "opencode" }),
-    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Start OpenCode" })).toBeEnabled(),
+    );
     await userEvent.click(screen.getByText("Customize"));
     await userEvent.type(screen.getByLabelText("Capsule name"), "native-work");
     await userEvent.click(
       screen.getByRole("button", {
-        name: "Create Capsule",
+        name: "Start OpenCode",
       }),
     );
     await waitFor(() =>
@@ -309,16 +309,37 @@ describe("Native harness launcher", () => {
     expect(await screen.findByText("Native terminal opened")).toBeInTheDocument();
   });
 
-  it("requires a harness pack applied to the selected Project", () => {
-    wrapper(<NativeLauncher project={project} />);
-    expect(
-      screen.getByText(/no applied harness packs/i),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", {
-        name: "Create Capsule",
-      }),
-    ).toBeDisabled();
+  it("adds an installed agent to a Project without leaving the launcher", async () => {
+    const opencode = launcherProject.harnessImages![0]!;
+    vi.spyOn(api, "capabilities").mockResolvedValue({
+      providerVersion: "fake/v1",
+      attach: true,
+      run: true,
+      structured: false,
+      git: false,
+      pause: false,
+      snapshot: false,
+      clone: false,
+      browse: false,
+      delivery: false,
+      preview: false,
+      resourceMetrics: false,
+      harnessImages: launcherProject.harnessImages,
+    });
+    const apply = vi.spyOn(api, "applyProjectHarness").mockResolvedValue({
+      ...project,
+      resourceVersion: 2,
+      harnessImages: [opencode],
+    });
+    wrapper(<NewWorkspaceDialog open project={project} onClose={() => undefined} />);
+
+    expect(await screen.findByText(/Project has no agents yet/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Start / })).not.toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("button", { name: "Add OpenCode" }));
+    expect(apply).toHaveBeenCalledWith(project.id, opencode);
+    expect(await screen.findByRole("radio", { name: "OpenCode" })).toBeChecked();
+    expect(screen.getByRole("button", { name: "Start OpenCode" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Give it a task" })).not.toBeInTheDocument();
   });
 });
 
@@ -346,16 +367,18 @@ describe("Capsule detail states", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Capsule missing");
   });
 
-  it("shows empty Run and Moment states", async () => {
+  it("opens a Capsule without sessions on a new session", async () => {
     vi.spyOn(api, "capsule").mockResolvedValue(capsule);
     vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
-    vi.spyOn(api, "gitStatus").mockResolvedValue({ content: "", truncated: false });
-    vi.spyOn(api, "moments").mockResolvedValue({ items: [] });
-    vi.spyOn(api, "timeline").mockResolvedValue(timeline);
+    vi.spyOn(api, "threads").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
+    vi.spyOn(api, "harnessProfiles").mockResolvedValue({ items: [] });
+    const moments = vi.spyOn(api, "moments").mockResolvedValue({ items: [] });
     vi.spyOn(api, "capabilities").mockResolvedValue({
       providerVersion: "fake/v1",
       attach: false,
       run: false,
+      structured: true,
       git: false,
       pause: true,
       snapshot: false,
@@ -371,10 +394,20 @@ describe("Capsule detail states", () => {
       </Routes>,
       "/ui/capsules/capsule-1",
     );
+    expect(await screen.findByRole("heading", { name: "Start a session" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "New session" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByText(/Project · updated/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Pause" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Capsule actions" }));
+    expect(screen.getByRole("menuitem", { name: "Pause" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("menuitem", { name: "Delete…" }));
     expect(
-      await screen.findByText(/Filesystem Moments are unsupported/),
+      screen.getByRole("alertdialog", { name: `Delete ${capsule.name}?` }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Runs" })).not.toBeInTheDocument();
+    expect(moments).not.toHaveBeenCalled();
   });
 
   it("explains a failed native Run and starts another one", async () => {

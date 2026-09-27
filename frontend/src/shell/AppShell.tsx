@@ -17,6 +17,7 @@ import type { Project } from "../api/generated/types.gen";
 import { queries } from "../api/queries";
 import { NewProjectDialog } from "../components/NewProjectDialog";
 import { NewWorkspaceDialog } from "../components/NewWorkspaceDialog";
+import { HarnessMark } from "../components/ui/HarnessMark";
 import {
   ActivityIcon,
   ChevronIcon,
@@ -25,7 +26,13 @@ import {
   SearchIcon,
   ThreadIcon,
 } from "../components/ui/Icons";
-import { relativeTime, type ActivityGroup } from "./capsuleActivity";
+import {
+  defaultSession,
+  harnessName,
+  relativeTime,
+  type ActivityGroup,
+  type CapsuleSession,
+} from "./capsuleActivity";
 import { useWorkingSet } from "./useWorkingSet";
 import { WorkspaceContext } from "./WorkspaceContext";
 
@@ -48,6 +55,45 @@ export function ActivityDot({ group }: { group: ActivityGroup }) {
   return <span className={`state-dot activity-dot-${group}`} aria-hidden="true" />;
 }
 
+export const sessionPath = (capsuleId: string, sessionId?: string) =>
+  `/ui/capsules/${encodeURIComponent(capsuleId)}${
+    sessionId ? `?session=${encodeURIComponent(sessionId)}` : ""
+  }`;
+
+function SessionList({
+  capsuleId,
+  sessions,
+  selected,
+  now,
+}: {
+  capsuleId: string;
+  sessions: CapsuleSession[];
+  selected: string;
+  now: number;
+}) {
+  return (
+    <ul className="session-list" aria-label="Sessions">
+      {sessions.map((session) => (
+        <li key={session.id}>
+          <Link
+            to={sessionPath(capsuleId, session.id)}
+            className={session.id === selected ? "selected" : undefined}
+            aria-current={session.id === selected ? "page" : undefined}
+          >
+            <ActivityDot group={session.group} />
+            <HarnessMark harness={session.harness} />
+            <span className="session-list-label">
+              {harnessName(session.harness)}
+              <small>{session.label}</small>
+            </span>
+            <time dateTime={session.since}>{relativeTime(session.since, now)}</time>
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -57,6 +103,12 @@ export function AppShell() {
   const [contextOpen, setContextOpen] = useState(true);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [launchProject, setLaunchProject] = useState<Project>();
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     setLaunchProject(undefined);
@@ -69,6 +121,7 @@ export function AppShell() {
   const momentId = pathID(location.pathname, "moments");
   const timelineId = pathID(location.pathname, "timelines");
   const directCapsuleId = pathID(location.pathname, "capsules");
+  const sessionId = new URLSearchParams(location.search).get("session") ?? "";
   const thread = useQuery(queries.thread(threadId));
   const run = useQuery(queries.run(runId));
   const moment = useQuery(queries.moment(momentId));
@@ -157,7 +210,9 @@ export function AppShell() {
 
   return (
     <div
-      className={`app-shell ${hasContext && contextOpen ? "has-context" : "no-context"}`}
+      className={`app-shell ${hasContext && contextOpen ? "has-context" : "no-context"}${
+        hasContext ? " with-context-toggle" : ""
+      }`}
     >
       <a className="skip-link" href="#content">
         Skip to workspace
@@ -239,29 +294,53 @@ export function AppShell() {
                   </p>
                 ) : (
                   <ul>
-                    {projectCapsules.map(({ capsule, activity }) => (
-                      <li key={capsule.id}>
-                        <NavLink
-                          to={`/ui/capsules/${encodeURIComponent(capsule.id)}`}
-                          className={
-                            capsule.id === capsuleId ? "selected" : undefined
-                          }
-                          title={activity.detail}
-                        >
-                          <ActivityDot group={activity.group} />
-                          <span className="activity-item-copy">
-                            <strong>{capsule.name}</strong>
-                            <small>{activity.label}</small>
-                          </span>
-                          <time
-                            className="activity-item-time"
-                            dateTime={activity.since}
+                    {projectCapsules.map(({ capsule, activity, sessions }) => {
+                      const selected = capsule.id === capsuleId;
+                      const live = sessions.filter((session) => !session.archived);
+                      const harness = capsule.harness || live[0]?.harness;
+                      return (
+                        <li key={capsule.id}>
+                          <NavLink
+                            to={sessionPath(capsule.id)}
+                            className={selected ? "selected" : undefined}
+                            title={activity.detail}
                           >
-                            {relativeTime(activity.since)}
-                          </time>
-                        </NavLink>
-                      </li>
-                    ))}
+                            <ActivityDot group={activity.group} />
+                            <span className="activity-item-copy">
+                              <strong>{capsule.name}</strong>
+                              <small>
+                                {harness && <HarnessMark harness={harness} />}
+                                {activity.label}
+                              </small>
+                            </span>
+                            <span className="activity-item-side">
+                              <time
+                                className="activity-item-time"
+                                dateTime={activity.since}
+                              >
+                                {relativeTime(activity.since, now)}
+                              </time>
+                              {!selected && live.length > 1 && (
+                                <small
+                                  className="session-count"
+                                  aria-label={`${live.length} sessions`}
+                                >
+                                  {live.length}
+                                </small>
+                              )}
+                            </span>
+                          </NavLink>
+                          {selected && live.length > 1 && (
+                            <SessionList
+                              capsuleId={capsule.id}
+                              sessions={live}
+                              selected={sessionId || defaultSession(live)?.id || ""}
+                              now={now}
+                            />
+                          )}
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </section>
@@ -314,6 +393,7 @@ export function AppShell() {
             <WorkspaceContext
               capsuleId={capsuleId}
               pathname={`${location.pathname}${location.hash}`}
+              session={sessionId}
               capabilities={capabilities.data}
             />
           )}

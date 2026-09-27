@@ -312,7 +312,19 @@ function TerminalPane({
   );
 }
 
-function ActivityPane({ capsule, runs }: { capsule: Capsule; runs: Run[] }) {
+function ActivityPane({
+  capsule,
+  runs,
+  snapshotSupported,
+}: {
+  capsule: Capsule;
+  runs: Run[];
+  snapshotSupported: boolean;
+}) {
+  const moments = useQuery({
+    ...queries.moments(capsule.id),
+    enabled: snapshotSupported,
+  });
   return (
     <div className="tool-pane-content">
       <dl className="context-facts">
@@ -339,6 +351,30 @@ function ActivityPane({ capsule, runs }: { capsule: Capsule; runs: Run[] }) {
           ))}
         </ul>
       )}
+      <h3>Moments</h3>
+      {!snapshotSupported ? (
+        <p className="tool-empty">Filesystem Moments are unsupported by this provider.</p>
+      ) : moments.isPending ? (
+        <p className="tool-loading" role="status">Loading Moments…</p>
+      ) : moments.isError ? (
+        <InlineError error={moments.error} />
+      ) : moments.data.items.length === 0 ? (
+        <p className="tool-empty">No Moments captured yet.</p>
+      ) : (
+        <ul className="context-resource-list">
+          {moments.data.items.map((moment) => (
+            <li key={moment.id}>
+              <Link to={`/ui/moments/${encodeURIComponent(moment.id)}`}>
+                <strong>{moment.name}</strong>
+                <small>{moment.final ? "Final" : "Checkpoint"}</small>
+              </Link>
+              <time dateTime={moment.createdAt}>
+                {new Date(moment.createdAt).toLocaleTimeString()}
+              </time>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -346,10 +382,12 @@ function ActivityPane({ capsule, runs }: { capsule: Capsule; runs: Run[] }) {
 export function WorkspaceContext({
   capsuleId,
   pathname,
+  session = "",
   capabilities,
 }: {
   capsuleId: string;
   pathname: string;
+  session?: string;
   capabilities?: Capabilities;
 }) {
   const [tab, setTab] = useState<ContextTab>(() => tabFromPath(pathname));
@@ -384,7 +422,8 @@ export function WorkspaceContext({
       !(
         pathname.endsWith("/terminal") ||
         (Boolean(capsule.data.harness) &&
-          /^\/ui\/capsules\/[^/]+\/?$/.test(pathname))
+          /^\/ui\/capsules\/[^/]+\/?$/.test(pathname) &&
+          (session === "" || session === "terminal"))
       ),
   );
 
@@ -430,7 +469,11 @@ export function WorkspaceContext({
           />
         )}
         {tab === "activity" && (
-          <ActivityPane capsule={capsule.data} runs={runs.data.items} />
+          <ActivityPane
+            capsule={capsule.data}
+            runs={runs.data.items}
+            snapshotSupported={capabilities?.snapshot === true}
+          />
         )}
       </section>
     </aside>

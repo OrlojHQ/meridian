@@ -34,6 +34,7 @@ const harnessNames: Record<string, string> = {
   codex: "Codex",
   opencode: "OpenCode",
   pi: "Pi",
+  mock: "Mock (test)",
 };
 
 export function harnessName(harness?: string) {
@@ -64,7 +65,8 @@ export function describeCapsule(
   threads: Thread[] = [],
 ): CapsuleActivity {
   const run = latestRun(runs);
-  const agent = harnessName(capsule.harness || run?.harness) || "Thread";
+  const agent = harnessName(capsule.harness || run?.harness || threads[0]?.harness);
+  const who = agent || "Agent";
 
   if (capsule.state === "Sealed") {
     return { group: "sealed", label: "Sealed", agent, since: capsule.updatedAt };
@@ -133,26 +135,95 @@ export function describeCapsule(
   if (activeRunStates.has(run.state)) {
     const label =
       run.state === "Running"
-        ? `${agent} working`
+        ? `${who} working`
         : run.state === "Cancelling"
-          ? `Stopping ${agent}`
-          : `Starting ${agent}`;
+          ? `Stopping ${who}`
+          : `Starting ${who}`;
     return { group: "working", label, agent, since: run.startedAt ?? run.createdAt };
   }
   const finishedAt = run.finishedAt ?? run.updatedAt;
   if (run.state === "Failed") {
     return {
       group: "attention",
-      label: `${agent} failed`,
+      label: `${who} failed`,
       agent,
       since: finishedAt,
       detail: run.failure,
     };
   }
   if (run.state === "Cancelled") {
-    return { group: "finished", label: `${agent} stopped`, agent, since: finishedAt };
+    return { group: "finished", label: `${who} stopped`, agent, since: finishedAt };
   }
-  return { group: "finished", label: `${agent} finished`, agent, since: finishedAt };
+  return { group: "finished", label: `${who} finished`, agent, since: finishedAt };
+}
+
+// A session is one agent conversation inside a Capsule: the native terminal
+// of a launcher Capsule, or a retained structured Thread. Like Capsule
+// activity, sessions are derived only from content-free summaries.
+export type CapsuleSession = {
+  id: string;
+  kind: "terminal" | "thread";
+  harness: string;
+  group: ActivityGroup;
+  label: string;
+  since?: string;
+  archived?: boolean;
+};
+
+export const TERMINAL_SESSION = "terminal";
+
+function terminalSession(harness: string, runs: Run[]): CapsuleSession {
+  const run = latestRun(runs);
+  const base = { id: TERMINAL_SESSION, kind: "terminal" as const, harness };
+  if (!run) return { ...base, group: "idle", label: "Not started" };
+  if (activeRunStates.has(run.state)) {
+    return {
+      ...base,
+      group: "working",
+      label: run.state === "Running" ? "Working" : run.state === "Cancelling" ? "Stopping" : "Starting",
+      since: run.startedAt ?? run.createdAt,
+    };
+  }
+  const since = run.finishedAt ?? run.updatedAt;
+  if (run.state === "Failed") return { ...base, group: "attention", label: "Failed", since };
+  return { ...base, group: "finished", label: run.state === "Cancelled" ? "Stopped" : "Finished", since };
+}
+
+function threadSession(thread: Thread): CapsuleSession {
+  const base = {
+    id: thread.id,
+    kind: "thread" as const,
+    harness: thread.harness,
+    since: thread.updatedAt,
+    archived: thread.state === "archived",
+  };
+  if (thread.state === "active" && thread.awaiting) {
+    return {
+      ...base,
+      group: "attention",
+      label: thread.awaiting.kind === "permission" ? "Waiting for permission" : "Waiting for input",
+      since: thread.awaiting.since,
+    };
+  }
+  if (thread.currentRunState === "Failed") return { ...base, group: "attention", label: "Failed" };
+  if (thread.currentRunState && activeRunStates.has(thread.currentRunState)) {
+    return { ...base, group: "working", label: "Working" };
+  }
+  if (thread.state === "paused") return { ...base, group: "paused", label: "Paused" };
+  if (thread.state === "archived") return { ...base, group: "sealed", label: "Archived" };
+  return { ...base, group: "idle", label: "Idle" };
+}
+
+export function capsuleSessions(
+  capsule: Capsule,
+  runs: Run[] = [],
+  threads: Thread[] = [],
+): CapsuleSession[] {
+  const sessions = threads
+    .filter((thread) => thread.state !== "deleted")
+    .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
+    .map(threadSession);
+  return capsule.harness ? [terminalSession(capsule.harness, runs), ...sessions] : sessions;
 }
 
 export function relativeTime(value?: string, now = Date.now()) {
@@ -163,4 +234,21 @@ export function relativeTime(value?: string, now = Date.now()) {
   if (seconds < 3_600) return `${Math.floor(seconds / 60)}m`;
   if (seconds < 86_400) return `${Math.floor(seconds / 3_600)}h`;
   return `${Math.floor(seconds / 86_400)}d`;
+}
+
+// The session a Capsule opens on when none is named: whatever needs the
+// operator, then whatever is working, then the native terminal, then the
+// most recently updated conversation.
+export function defaultSession(sessions: CapsuleSession[]) {
+  const live = sessions.filter((session) => !session.archived);
+  const recent = [...live].sort(
+    (a, b) => Date.parse(b.since ?? "") - Date.parse(a.since ?? ""),
+  );
+  return (
+    live.find((session) => session.group === "attention") ??
+    live.find((session) => session.group === "working") ??
+    live.find((session) => session.kind === "terminal") ??
+    recent[0] ??
+    sessions[0]
+  );
 }

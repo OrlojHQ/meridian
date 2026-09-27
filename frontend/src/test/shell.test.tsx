@@ -115,7 +115,12 @@ describe("application shell", () => {
       ],
     });
     vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
-    vi.spyOn(api, "capabilities").mockResolvedValue(capabilities);
+    vi.spyOn(api, "threads").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "capabilities").mockResolvedValue({ ...capabilities, structured: true });
+    vi.spyOn(api, "harnessSetups").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "providerConnections").mockResolvedValue({ items: [], enabled: false });
+    vi.spyOn(api, "projectHarnessSetup").mockResolvedValue({ setup: "" });
+    vi.spyOn(api, "projectConnection").mockResolvedValue({ connectionId: "" });
     const createProject = vi.spyOn(api, "createProject").mockResolvedValue({
       ...project,
       id: "project-2",
@@ -158,15 +163,14 @@ describe("application shell", () => {
     expect(
       screen.getByRole("dialog", { name: "Start work in Meridian" }),
     ).toBeInTheDocument();
+    expect(await screen.findByRole("radio", { name: "OpenCode" })).toBeChecked();
     expect(
-      screen.getByRole("tab", { name: "Native harness" }),
+      await screen.findByRole("tab", { name: "Open terminal" }),
     ).toHaveAttribute("aria-selected", "true");
     await userEvent.click(
-      screen.getByRole("tab", { name: "Structured Thread" }),
+      screen.getByRole("tab", { name: "Give it a task" }),
     );
-    expect(
-      screen.getByLabelText("Structured harness"),
-    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Task")).toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
     await waitFor(() =>
       expect(
@@ -261,6 +265,95 @@ describe("application shell", () => {
     expect(screen.getByLabelText("1 need attention")).toBeInTheDocument();
     expect(threads).toHaveBeenCalledWith(capsule.id, expect.anything());
     expect(blocks).not.toHaveBeenCalled();
+  });
+
+  it("nests the selected Capsule's sessions beneath it", async () => {
+    const thread = {
+      capsuleId: capsule.id,
+      state: "active" as const,
+      harness: "claude",
+      encryptedAtRest: true as const,
+      messageCount: 3,
+      encryptedBytes: 256,
+      createdAt: "2026-08-26T00:02:00Z",
+      updatedAt: "2026-08-26T00:03:00Z",
+      resourceVersion: 2,
+    };
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
+    vi.spyOn(api, "capsules").mockResolvedValue({
+      items: [capsule, { ...capsule, id: "capsule-2", name: "Other work" }],
+    });
+    vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "capsule").mockResolvedValue(capsule);
+    vi.spyOn(api, "capabilities").mockResolvedValue({ ...capabilities, structured: true });
+    vi.spyOn(api, "threads").mockImplementation(async (capsuleId) => ({
+      items: [
+        { ...thread, id: `${capsuleId}-a`, capsuleId },
+        {
+          ...thread,
+          id: `${capsuleId}-b`,
+          capsuleId,
+          awaiting: { kind: "permission", since: "2026-08-26T00:04:00Z" },
+        },
+      ],
+    }));
+
+    wrapper(
+      <Routes>
+        <Route path="/ui" element={<AppShell />}>
+          <Route path="capsules/:capsuleId" element={<p>Capsule page</p>} />
+        </Route>
+      </Routes>,
+      `/ui/capsules/${capsule.id}`,
+    );
+
+    const sessions = await screen.findByRole("list", { name: "Sessions" });
+    await waitFor(() => expect(sessions.querySelectorAll("li")).toHaveLength(3));
+    expect(sessions).toHaveTextContent("Waiting for permission");
+    const waiting = screen.getByRole("link", { name: /Claude Code\s*Waiting for permission/ });
+    expect(waiting).toHaveAttribute("aria-current", "page");
+    expect(waiting).toHaveAttribute(
+      "href",
+      `/ui/capsules/${capsule.id}?session=${capsule.id}-b`,
+    );
+    expect(screen.getByLabelText("3 sessions")).toBeInTheDocument();
+  });
+
+  it("lists Moments in the Activity tool", async () => {
+    vi.spyOn(api, "capsule").mockResolvedValue(capsule);
+    vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "moments").mockResolvedValue({
+      items: [
+        {
+          id: "moment-1",
+          projectId: project.id,
+          capsuleId: capsule.id,
+          timelineId: capsule.timelineId,
+          name: "before refactor",
+          archiveSha256: "a",
+          archiveSize: 1,
+          manifestSha256: "b",
+          imageDigest: "c",
+          projectSetupHash: "d",
+          createdAt: "2026-08-26T00:05:00Z",
+          final: false,
+        },
+      ],
+    });
+
+    wrapper(
+      <WorkspaceContext
+        capsuleId={capsule.id}
+        pathname={`/ui/capsules/${capsule.id}`}
+        capabilities={{ ...capabilities, snapshot: true }}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole("tab", { name: "Activity" }));
+    expect(await screen.findByRole("link", { name: /before refactor/ })).toHaveAttribute(
+      "href",
+      "/ui/moments/moment-1",
+    );
   });
 
   it("gates unsupported context tools without issuing their requests", async () => {

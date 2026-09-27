@@ -11,6 +11,7 @@ import type {
   ThreadBlock,
 } from "../api/generated/types.gen";
 import * as threadEvents from "../api/threadEvents";
+import { CapsuleDetail } from "../App";
 import {
   ThreadCreate,
   ThreadDetail,
@@ -232,7 +233,7 @@ describe("Thread detail transcript and controls", () => {
     expect(view.container.textContent).not.toMatch(/[\u001b\u009b]/);
     expect(screen.getByRole("link", { name: capsule.id })).toHaveAttribute(
       "href",
-      "/ui/capsules/capsule-1",
+      "/ui/capsules/capsule-1?session=thread-1",
     );
     expect(screen.getByRole("link", { name: "Native PTY fallback" })).toHaveAttribute(
       "href",
@@ -296,6 +297,62 @@ describe("Thread detail transcript and controls", () => {
     await user.click(await screen.findByRole("button", { name: "Resume session" }));
     await waitFor(() =>
       expect(session).toHaveBeenCalledWith("resume", thread.id, thread.resourceVersion),
+    );
+  });
+
+  it("opens Capsule sessions as tabs with the Thread embedded", async () => {
+    const second = {
+      ...thread,
+      id: "thread-2",
+      currentRunState: undefined,
+      createdAt: "2026-08-23T00:02:00Z",
+    };
+    vi.spyOn(api, "capsule").mockResolvedValue(capsule);
+    vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "capabilities").mockResolvedValue({
+      providerVersion: "fake/v1",
+      attach: false,
+      run: false,
+      structured: true,
+      git: false,
+      pause: false,
+      snapshot: false,
+      clone: false,
+      browse: false,
+      delivery: false,
+      preview: false,
+      resourceMetrics: false,
+    });
+    vi.spyOn(api, "threads").mockResolvedValue({ items: [thread, second] });
+    vi.spyOn(api, "thread").mockImplementation(async (id) =>
+      id === second.id ? second : thread,
+    );
+    const blocks = vi.spyOn(api, "threadBlocks").mockResolvedValue({
+      items: [],
+      nextCursor: 0,
+      more: false,
+    });
+    vi.spyOn(threadEvents, "followThreadBlocks").mockResolvedValue();
+    const user = userEvent.setup();
+    wrapper(
+      <Routes>
+        <Route path="/ui/capsules/:capsuleId" element={<CapsuleDetail />} />
+      </Routes>,
+      `/ui/capsules/${capsule.id}`,
+    );
+
+    const working = await screen.findByRole("tab", { name: /Mock \(test\)\s*Working/ });
+    expect(working).toHaveAttribute("aria-selected", "true");
+    await waitFor(() => expect(blocks.mock.calls.map((call) => call[0])).toContain(thread.id));
+    expect(await screen.findByRole("heading", { name: "Transcript" })).toBeInTheDocument();
+    expect(screen.queryByText("Structured Thread")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: /Mock \(test\)\s*Idle/ }));
+    await waitFor(() => expect(blocks.mock.calls.map((call) => call[0])).toContain(second.id));
+    expect(screen.getByRole("tab", { name: /Mock \(test\)\s*Idle/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
     );
   });
 

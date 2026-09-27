@@ -4,19 +4,23 @@ import {
   useQueries,
   useQuery,
   useQueryClient,
+  type UseQueryResult,
 } from "@tanstack/react-query";
 import { lazy, Suspense, useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   Link,
   Route,
   Routes,
+  useNavigate,
   useOutletContext,
   useParams,
+  useSearchParams,
 } from "react-router-dom";
 
 import { api, normalizeAPIError } from "./api/client";
 import { followRunEvents, type StreamStatus } from "./api/events";
 import type {
+  Capabilities,
   Capsule,
   CreateDeliveryRequest,
   Delivery,
@@ -25,18 +29,34 @@ import type {
   PreviewTicket,
   Run,
   RunEvent,
+  RunPage,
   TimelineView,
 } from "./api/generated/types.gen";
 import { queries } from "./api/queries";
 import {
-  CapsuleThreads,
+  ThreadCreate,
   ThreadDetail,
   ThreadFleet,
 } from "./components/Threads";
 import { CodeViewer } from "./components/SyntaxCode";
+import { ActionsMenu, type ActionsMenuItem } from "./components/ui/ActionsMenu";
+import { HarnessMark } from "./components/ui/HarnessMark";
+import { PlusIcon } from "./components/ui/Icons";
 import { StateBadge } from "./components/ui/StateBadge";
-import { ActivityDot, AppShell, type ShellOutletContext } from "./shell/AppShell";
-import { activityGroups, relativeTime } from "./shell/capsuleActivity";
+import {
+  ActivityDot,
+  AppShell,
+  sessionPath,
+  type ShellOutletContext,
+} from "./shell/AppShell";
+import {
+  activityGroups,
+  capsuleSessions,
+  defaultSession,
+  harnessName,
+  relativeTime,
+  TERMINAL_SESSION,
+} from "./shell/capsuleActivity";
 import { useWorkingSet, type WorkingSetItem } from "./shell/useWorkingSet";
 const TerminalView = lazy(() =>
   import("./components/Terminal").then((module) => ({
@@ -366,7 +386,7 @@ export function PreviewCard({
   );
 }
 
-function CapsuleActions({
+function CapsuleMenu({
   capsule,
   pauseSupported = true,
   snapshotSupported = true,
@@ -376,6 +396,7 @@ function CapsuleActions({
   snapshotSupported?: boolean;
 }) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [pendingAction, setPendingAction] = useState<"delete" | "seal">();
   const mutation = useMutation<unknown, Error, "pause" | "resume" | "delete" | "seal">({
     mutationFn: (action: "pause" | "resume" | "delete" | "seal") => {
@@ -388,82 +409,75 @@ function CapsuleActions({
       await queryClient.invalidateQueries({ queryKey: ["capsule", capsule.id] });
     },
   });
-  const button = (
-    action: "pause" | "resume" | "delete" | "seal",
-    label: string,
-    danger = false,
-  ) => (
-    <button
-      type="button"
-      className={danger ? "danger" : undefined}
-      disabled={mutation.isPending}
-      onClick={() => {
-        if (danger) {
-          setPendingAction(action as "delete" | "seal");
-          return;
-        }
-        mutation.mutate(action);
-      }}
-    >
-      {label}
-    </button>
-  );
+  const items: ActionsMenuItem[] = [];
+  if (pauseSupported && capsule.state === "Ready") {
+    items.push({ label: "Pause", onSelect: () => mutation.mutate("pause") });
+  }
+  if (pauseSupported && capsule.state === "Paused") {
+    items.push({ label: "Resume", onSelect: () => mutation.mutate("resume") });
+  }
+  items.push({
+    label: "Open lineage",
+    onSelect: () => navigate(`/ui/timelines/${encodeURIComponent(capsule.timelineId)}`),
+  });
+  if (snapshotSupported && ["Ready", "Paused"].includes(capsule.state)) {
+    items.push({ label: "Seal…", danger: true, onSelect: () => setPendingAction("seal") });
+  }
+  if (!["Sealed", "Deleting", "Deleted"].includes(capsule.state)) {
+    items.push({ label: "Delete…", danger: true, onSelect: () => setPendingAction("delete") });
+  }
   return (
-    <section className="capsule-actions">
-      <div className="actions">
-        {pauseSupported && capsule.state === "Ready" && button("pause", "Pause")}
-        {pauseSupported && capsule.state === "Paused" && button("resume", "Resume")}
-        {snapshotSupported &&
-          ["Ready", "Paused"].includes(capsule.state) &&
-          button("seal", "Seal", true)}
-        {!["Sealed", "Deleting", "Deleted"].includes(capsule.state) &&
-          button("delete", "Delete", true)}
-      </div>
-      {capsule.state === "Sealed" && (
-        <p className="notice">This Capsule is immutable and permanently sealed.</p>
-      )}
-      {mutation.isError && <ErrorState error={mutation.error} />}
-      {pendingAction && (
-        <section
-          className="confirm-dialog"
-          role="alertdialog"
-          aria-modal="true"
-          aria-labelledby="capsule-action-title"
-        >
-          <h2 id="capsule-action-title">
-            {pendingAction === "seal"
-              ? `Seal ${capsule.name}?`
-              : `Delete ${capsule.name}?`}
-          </h2>
-          <p>
-            {pendingAction === "seal"
-              ? "Sealing captures a final Moment and makes this Capsule immutable."
-              : "Deletion stops the Capsule and revokes its active preview links."}
-          </p>
-          <div className="actions">
-            <button
-              type="button"
-              className="danger"
-              disabled={mutation.isPending}
-              onClick={() => {
-                const action = pendingAction;
-                setPendingAction(undefined);
-                mutation.mutate(action);
-              }}
+    <>
+      <ActionsMenu
+        label="Capsule actions"
+        items={items.map((item) => ({ ...item, disabled: mutation.isPending }))}
+      />
+      {(mutation.isError || pendingAction) && (
+        <div className="capsule-bar-notice">
+          {mutation.isError && <ErrorState error={mutation.error} />}
+          {pendingAction && (
+            <section
+              className="confirm-dialog"
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="capsule-action-title"
             >
-              Confirm {pendingAction}
-            </button>
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => setPendingAction(undefined)}
-            >
-              Keep Capsule
-            </button>
-          </div>
-        </section>
+              <h2 id="capsule-action-title">
+                {pendingAction === "seal"
+                  ? `Seal ${capsule.name}?`
+                  : `Delete ${capsule.name}?`}
+              </h2>
+              <p>
+                {pendingAction === "seal"
+                  ? "Sealing captures a final Moment and makes this Capsule immutable."
+                  : "Deletion stops the Capsule and revokes its active preview links."}
+              </p>
+              <div className="actions">
+                <button
+                  type="button"
+                  className="danger"
+                  disabled={mutation.isPending}
+                  onClick={() => {
+                    const action = pendingAction;
+                    setPendingAction(undefined);
+                    mutation.mutate(action);
+                  }}
+                >
+                  Confirm {pendingAction}
+                </button>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => setPendingAction(undefined)}
+                >
+                  Keep Capsule
+                </button>
+              </div>
+            </section>
+          )}
+        </div>
       )}
-    </section>
+    </>
   );
 }
 
@@ -701,30 +715,23 @@ export function EventActivity({ runId }: { runId: string }) {
   );
 }
 
-export function CapsuleDetail() {
-  const { capsuleId = "" } = useParams();
+function TerminalSession({
+  capsule,
+  runs,
+  capabilities,
+}: {
+  capsule: Capsule;
+  runs: UseQueryResult<RunPage>;
+  capabilities: UseQueryResult<Capabilities>;
+}) {
   const queryClient = useQueryClient();
-  const capsule = useQuery(queries.capsule(capsuleId));
-  const runs = useQuery(queries.runs(capsuleId));
-  const capabilities = useQuery(queries.capabilities());
-  const moments = useQuery({
-    ...queries.moments(capsuleId),
-    enabled: Boolean(capsuleId) && capabilities.data?.snapshot === true,
-  });
+  const harness = capsule.harness ?? "";
   const startNative = useMutation({
-    mutationFn: () => {
-      if (!capsule.data?.harness) {
-        throw new Error("This Capsule has no native launcher harness");
-      }
-      return api.startRun(capsule.data.id, capsule.data.harness);
-    },
+    mutationFn: () => api.startRun(capsule.id, harness),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["runs", capsuleId] });
+      await queryClient.invalidateQueries({ queryKey: ["runs", capsule.id] });
     },
   });
-  if (capsule.isPending) return <p className="loading" role="status">Loading Capsule…</p>;
-  if (capsule.isError) return <ErrorState error={capsule.error} />;
-  const value = capsule.data;
   const currentRun = runs.data?.items.find((run) =>
     ["Queued", "Starting", "Running", "Cancelling"].includes(run.state),
   ) ?? runs.data?.items[0];
@@ -732,113 +739,211 @@ export function CapsuleDetail() {
     ? ["Queued", "Starting", "Running", "Cancelling"].includes(currentRun.state)
     : false;
   const canStartNative =
-    value.state === "Ready" &&
+    capsule.state === "Ready" &&
     capabilities.data?.run === true &&
     !reconnect;
   return (
-    <article className="capsule-workspace">
-      <header className="workspace-view-header">
-        <div>
-          <p className="eyebrow">
-            {value.harness ? `${value.harness} Capsule` : "Structured Capsule"}
-          </p>
-          <h1>{value.name}</h1>
+    <section className="primary-session" aria-label="Native harness terminal">
+      <div className="section-heading">
+        <div className="session-heading-title">
+          <h2>{harnessName(currentRun?.harness ?? harness)} terminal</h2>
+          {currentRun && <StateBadge state={currentRun.state} />}
         </div>
-        <div className="workspace-header-meta">
+        <div className="session-heading-actions">
+          {canStartNative && (
+            <button
+              type="button"
+              className="primary-button"
+              disabled={startNative.isPending}
+              onClick={() => startNative.mutate()}
+            >
+              {startNative.isPending ? `Starting ${harness}…` : `Start ${harness}`}
+            </button>
+          )}
+        </div>
+      </div>
+      {runs.isPending || capabilities.isPending ? (
+        <p className="tool-loading" role="status">Preparing terminal…</p>
+      ) : runs.isError ? (
+        <ErrorState error={runs.error} />
+      ) : capabilities.isError ? (
+        <ErrorState error={capabilities.error} />
+      ) : !currentRun ? (
+        <p className="tool-empty">
+          {harnessName(harness)} is not running yet. Start it to open its
+          interactive terminal.
+        </p>
+      ) : !reconnect ? (
+        <div className="run-ended-state" role={currentRun.failure ? "alert" : "status"}>
+          <strong>{currentRun.harness} is not running.</strong>
+          <span>
+            {currentRun.failure ||
+              `The previous Run ended with state ${currentRun.state}.`}
+          </span>
+          {currentRun.finishedAt && (
+            <time dateTime={currentRun.finishedAt}>
+              Ended {new Date(currentRun.finishedAt).toLocaleString()}
+            </time>
+          )}
+        </div>
+      ) : (
+        <Suspense fallback={<p role="status">Loading terminal renderer…</p>}>
+          <TerminalView
+            runId={currentRun.id}
+            reconnect={reconnect}
+            supported={capabilities.data.attach}
+          />
+        </Suspense>
+      )}
+      {startNative.isError && <ErrorState error={startNative.error} />}
+    </section>
+  );
+}
+
+const NEW_SESSION = "new";
+
+export function CapsuleDetail() {
+  const { capsuleId = "" } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const [shipOpen, setShipOpen] = useState(false);
+  const capsule = useQuery(queries.capsule(capsuleId));
+  const runs = useQuery(queries.runs(capsuleId));
+  const capabilities = useQuery(queries.capabilities());
+  const projects = useQuery(queries.projects());
+  const structured =
+    capabilities.data?.structured === true || (capsule.isSuccess && !capsule.data.harness);
+  const threads = useQuery({
+    ...queries.threads(capsuleId),
+    enabled: Boolean(capsuleId) && structured,
+  });
+  if (capsule.isPending) return <p className="loading" role="status">Loading Capsule…</p>;
+  if (capsule.isError) return <ErrorState error={capsule.error} />;
+  const value = capsule.data;
+  const sessions = capsuleSessions(value, runs.data?.items, threads.data?.items);
+  const canCreateThread = structured && value.state === "Ready";
+  const requested = searchParams.get("session") ?? "";
+  const selected =
+    (requested === NEW_SESSION && canCreateThread
+      ? NEW_SESSION
+      : sessions.find((session) => session.id === requested)?.id) ??
+    defaultSession(sessions)?.id ??
+    (canCreateThread ? NEW_SESSION : "");
+  const selectSession = (id: string) =>
+    setSearchParams({ session: id }, { replace: true });
+  const projectName = projects.data?.items.find(
+    (project) => project.id === value.projectId,
+  )?.name;
+  const harness = value.harness || sessions[0]?.harness;
+
+  return (
+    <article className="capsule-workspace">
+      <header className="capsule-bar">
+        <div className="capsule-bar-title">
+          {harness && <HarnessMark harness={harness} size="md" />}
+          <h1>{value.name}</h1>
           <StateBadge state={value.state} />
+          <span className="capsule-bar-meta">
+            {[projectName, `updated ${relativeTime(value.updatedAt)}`]
+              .filter(Boolean)
+              .join(" · ")}
+          </span>
+        </div>
+        <div className="capsule-bar-actions">
+          {capabilities.data?.delivery === true && (
+            <button
+              type="button"
+              aria-expanded={shipOpen}
+              onClick={() => setShipOpen((current) => !current)}
+            >
+              Ship…
+            </button>
+          )}
+          <CapsuleMenu
+            capsule={value}
+            pauseSupported={capabilities.data?.pause === true}
+            snapshotSupported={capabilities.data?.snapshot === true}
+          />
         </div>
       </header>
       {value.failure && <p className="error-state" role="alert">{value.failure}</p>}
-      <CapsuleActions
-        capsule={value}
-        pauseSupported={capabilities.data?.pause === true}
-        snapshotSupported={capabilities.data?.snapshot === true}
-      />
-      {value.harness ? (
-        <section className="primary-session" aria-label="Native harness terminal">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">Live session</p>
-              <h2>{currentRun ? currentRun.harness : value.harness}</h2>
-            </div>
-            <div className="session-heading-actions">
-              {currentRun && <StateBadge state={currentRun.state} />}
-              {canStartNative && (
-                <button
-                  type="button"
-                  className="primary-button"
-                  disabled={startNative.isPending}
-                  onClick={() => startNative.mutate()}
-                >
-                  {startNative.isPending
-                    ? `Starting ${value.harness}…`
-                    : `Start ${value.harness}`}
-                </button>
-              )}
-            </div>
-          </div>
-          {runs.isPending || capabilities.isPending ? (
-            <p className="tool-loading" role="status">Preparing terminal…</p>
-          ) : runs.isError ? (
-            <ErrorState error={runs.error} />
-          ) : capabilities.isError ? (
-            <ErrorState error={capabilities.error} />
-          ) : !currentRun ? (
-            <p className="tool-empty">
-              No native Run is active. Start {value.harness} to open its
-              interactive terminal.
-            </p>
-          ) : !reconnect ? (
-            <div className="run-ended-state" role={currentRun.failure ? "alert" : "status"}>
-              <strong>{currentRun.harness} is not running.</strong>
-              <span>
-                {currentRun.failure ||
-                  `The previous Run ended with state ${currentRun.state}.`}
-              </span>
-              {currentRun.finishedAt && (
-                <time dateTime={currentRun.finishedAt}>
-                  Ended {new Date(currentRun.finishedAt).toLocaleString()}
-                </time>
-              )}
-            </div>
-          ) : (
-            <Suspense fallback={<p role="status">Loading terminal renderer…</p>}>
-              <TerminalView
-                runId={currentRun.id}
-                reconnect={reconnect}
-                supported={capabilities.data.attach}
-              />
-            </Suspense>
-          )}
-          {startNative.isError && <ErrorState error={startNative.error} />}
-        </section>
-      ) : (
-        <CapsuleThreads capsule={value} />
-      )}
-      {capabilities.data?.delivery === true && (
-        <details className="workspace-drawer">
-          <summary>Ship reviewed changes</summary>
+      {shipOpen && (
+        <section className="workspace-drawer" aria-label="Ship reviewed changes">
           <ShipPanel capsule={value} />
-        </details>
+        </section>
       )}
-      <section className="workspace-section">
-        <div className="section-heading">
-          <h2>Moments</h2>
-          <Link to={`/ui/timelines/${value.timelineId}`}>Open lineage</Link>
+      {(sessions.length > 0 || canCreateThread) && (
+        <div className="session-tabs" role="tablist" aria-label="Sessions">
+          {sessions.map((session) => (
+            <button
+              key={session.id}
+              type="button"
+              role="tab"
+              id={`session-tab-${session.id}`}
+              aria-selected={selected === session.id}
+              aria-controls="session-panel"
+              className={session.archived ? "archived" : undefined}
+              onClick={() => selectSession(session.id)}
+            >
+              <ActivityDot group={session.group} />
+              <HarnessMark harness={session.harness} />
+              <span>{harnessName(session.harness)}</span>
+              <small>{session.kind === "terminal" ? "Terminal" : session.label}</small>
+            </button>
+          ))}
+          {canCreateThread && (
+            <button
+              type="button"
+              role="tab"
+              id={`session-tab-${NEW_SESSION}`}
+              aria-selected={selected === NEW_SESSION}
+              aria-controls="session-panel"
+              aria-label="New session"
+              title="New session"
+              className="session-tab-new"
+              onClick={() => selectSession(NEW_SESSION)}
+            >
+              <PlusIcon />
+            </button>
+          )}
         </div>
-        {capabilities.data?.snapshot !== true ? (
-          <p className="tool-empty">Filesystem Moments are unsupported by this provider.</p>
-        ) : moments.isPending ? <p role="status">Loading Moments…</p> : moments.isError ? (
-          <ErrorState error={moments.error} />
-        ) : moments.data.items.length === 0 ? <p>No filesystem Moments.</p> : (
-          <ul className="resource-list">
-            {moments.data.items.map((moment) => (
-              <li key={moment.id}>
-                <Link to={`/ui/moments/${moment.id}`}>{moment.name}</Link>
-                <span>{moment.final ? "Final" : "Checkpoint"}</span>
-              </li>
-            ))}
-          </ul>
+      )}
+      <section
+        id="session-panel"
+        className="session-panel"
+        role={selected ? "tabpanel" : undefined}
+        aria-labelledby={selected ? `session-tab-${selected}` : undefined}
+      >
+        {selected === TERMINAL_SESSION ? (
+          <TerminalSession capsule={value} runs={runs} capabilities={capabilities} />
+        ) : selected === NEW_SESSION ? (
+          <div className="session-new">
+            <h2>Start a session</h2>
+            <p className="muted-copy">
+              Send the agent a task. The conversation runs in this Capsule and
+              is kept encrypted.
+            </p>
+            <ThreadCreate
+              capsule={value}
+              onCreated={async (thread) => {
+                await queryClient.invalidateQueries({ queryKey: ["threads", value.id] });
+                navigate(sessionPath(value.id, thread.id), { replace: true });
+              }}
+            />
+          </div>
+        ) : selected ? (
+          <ThreadDetail key={selected} threadId={selected} />
+        ) : threads.isPending && structured ? (
+          <p className="tool-loading" role="status">Loading sessions…</p>
+        ) : threads.isError ? (
+          <ErrorState error={threads.error} />
+        ) : (
+          <p className="tool-empty">
+            {value.state === "Ready"
+              ? "No sessions in this Capsule."
+              : `Sessions can start once the Capsule is Ready. It is ${value.state}.`}
+          </p>
         )}
       </section>
     </article>

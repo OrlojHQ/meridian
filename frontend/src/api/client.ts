@@ -21,6 +21,8 @@ import {
   getCapsule,
   getCapsuleGitDiff,
   getCapsuleGitStatus,
+  getProject,
+  patchProject,
   inspectCapsuleDelivery,
   getMoment,
   getRun,
@@ -55,6 +57,7 @@ import type { HarnessSetupUpload, HarnessSetupPreview, ImportHarnessSetupRequest
   Capsule,
   CapsulePage,
   CreateProjectRequest,
+  HarnessImage,
   ErrorEnvelope,
   GitResult,
   HarnessProfilePage,
@@ -183,6 +186,26 @@ export const api = {
         body: request,
       }),
     ),
+  // Adds one installation-known harness pack to the Project allowlist,
+  // replacing a pack of the same name, against the current resource version.
+  applyProjectHarness: async (projectId: string, pack: HarnessImage) => {
+    const current = await call<Project>(
+      getProject({ ...generatedOptions(), path: { projectId } }),
+    );
+    const images = (current.harnessImages ?? []).filter(
+      (item) => item.name !== pack.name,
+    );
+    return call<Project>(
+      patchProject({
+        ...generatedOptions(),
+        path: { projectId },
+        body: {
+          expectedResourceVersion: current.resourceVersion,
+          harnessImages: [...images, pack],
+        },
+      }),
+    );
+  },
   capsules: (projectId: string, signal?: AbortSignal) =>
     call<CapsulePage>(
       listCapsules({
