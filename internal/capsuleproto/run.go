@@ -320,10 +320,16 @@ func (s *Server) startRun(writer http.ResponseWriter, request *http.Request) {
 		}
 		delete(s.runs, oldest.id)
 	}
+	// Create the cancel function before the Run is visible, so a cancel that
+	// arrives before execute is scheduled is never dropped.
+	ctx, cancel := context.WithTimeout(context.Background(), run.profile.Timeout)
+	run.mu.Lock()
+	run.cancel = cancel
+	run.mu.Unlock()
 	s.runs[input.RunID] = run
 	s.mu.Unlock()
 	run.addEvent("run.starting", nil, nil)
-	go run.execute(directory, input.Prompt, input.Columns, input.Rows)
+	go run.execute(ctx, cancel, directory, input.Prompt, input.Columns, input.Rows)
 	writeJSON(writer, http.StatusAccepted, run.status())
 }
 
@@ -372,11 +378,9 @@ func (s *Server) lookupRun(id string) *supervisedRun {
 	return s.runs[id]
 }
 
-func (r *supervisedRun) execute(directory, prompt string, columns, rows uint16) {
-	ctx, cancel := context.WithTimeout(context.Background(), r.profile.Timeout)
-	r.mu.Lock()
-	r.cancel = cancel
-	r.mu.Unlock()
+func (r *supervisedRun) execute(
+	ctx context.Context, cancel context.CancelFunc, directory, prompt string, columns, rows uint16,
+) {
 	defer cancel()
 
 	arguments := append([]string(nil), r.profile.Arguments...)
