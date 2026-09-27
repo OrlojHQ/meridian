@@ -422,26 +422,30 @@ func (r *supervisedRun) execute(directory, prompt string, columns, rows uint16) 
 		wait = command.Wait
 	} else {
 		command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-		stdout, err := command.StdoutPipe()
-		if err != nil {
-			r.finish(RunFailed, nil, "run output setup failed")
-			return
-		}
-		stderr, err := command.StderrPipe()
-		if err != nil {
-			r.finish(RunFailed, nil, "run output setup failed")
-			return
+		// StdoutPipe/StderrPipe are closed by Wait as soon as the process
+		// exits, discarding unread output. Non-File writers make Wait finish
+		// copying first; WaitDelay bounds descendants that keep pipes open.
+		stdout, stdoutWriter := io.Pipe()
+		stderr, stderrWriter := io.Pipe()
+		command.Stdout, command.Stderr = stdoutWriter, stderrWriter
+		command.WaitDelay = 2 * time.Second
+		closeOutput := func() {
+			_ = stdoutWriter.Close()
+			_ = stderrWriter.Close()
 		}
 		var stdin io.WriteCloser
+		var err error
 		if r.profile.Prompt == harness.PromptStdin {
 			stdin, err = command.StdinPipe()
 			if err != nil {
+				closeOutput()
 				r.finish(RunFailed, nil, "run input setup failed")
 				return
 			}
 		}
 		if err := command.Start(); err != nil {
 			command.Env = nil
+			closeOutput()
 			r.finish(RunFailed, nil, "run process failed to start")
 			return
 		}
@@ -450,10 +454,6 @@ func (r *supervisedRun) execute(directory, prompt string, columns, rows uint16) 
 		r.state = RunRunning
 		r.mu.Unlock()
 		r.addEvent("run.running", nil, nil)
-		if stdin != nil {
-			_, _ = io.WriteString(stdin, prompt)
-			_ = stdin.Close()
-		}
 		if r.profile.Output == harness.OutputJSONL {
 			r.captureJSONLAsync(stdout, "stdout")
 			r.captureJSONLAsync(stderr, "stderr")
@@ -461,7 +461,19 @@ func (r *supervisedRun) execute(directory, prompt string, columns, rows uint16) 
 			r.captureTextAsync(stdout)
 			r.captureTextAsync(stderr)
 		}
-		wait = command.Wait
+		if stdin != nil {
+			_, _ = io.WriteString(stdin, prompt)
+			_ = stdin.Close()
+		}
+		wait = func() error {
+			err := command.Wait()
+			closeOutput()
+			if errors.Is(err, exec.ErrWaitDelay) {
+				// The process exited cleanly; a descendant held output open.
+				return nil
+			}
+			return err
+		}
 	}
 
 	done := make(chan error, 1)
@@ -519,14 +531,18 @@ func exitCode(err error) *int {
 
 func (r *supervisedRun) finish(state RunState, code *int, failure string) {
 	r.mu.Lock()
-	r.state, r.exitCode, r.failure = state, code, failure
-	r.endedAt = time.Now().UTC()
 	if r.terminal != nil {
 		_ = r.terminal.Close()
 	}
 	r.mu.Unlock()
+	// Publish the terminal state only after every output event is recorded,
+	// so a client that observes it can read complete output.
 	r.capture.Wait()
 	r.addEvent("run."+strings.ToLower(string(state)), nil, nil)
+	r.mu.Lock()
+	r.state, r.exitCode, r.failure = state, code, failure
+	r.endedAt = time.Now().UTC()
+	r.mu.Unlock()
 }
 
 func (r *supervisedRun) captureTextAsync(reader io.Reader) {
@@ -573,6 +589,8 @@ func (r *supervisedRun) captureJSONL(reader io.Reader, stream string) {
 	}
 	if scanner.Err() != nil {
 		r.addEvent("parse_error", nil, map[string]any{"stream": stream, "reason": "line_too_large"})
+		// Keep draining so the process is not blocked on a full pipe.
+		_, _ = io.Copy(io.Discard, reader)
 	}
 }
 
