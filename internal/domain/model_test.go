@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -194,40 +195,43 @@ func TestImageForHarnessAllowlist(t *testing.T) {
 	if err != nil || len(items) != 2 || items[0].Name != "opencode" {
 		t.Fatalf("specs = %#v, %v", items, err)
 	}
+	byName := func(items []HarnessImage) map[string]string {
+		images := make(map[string]string, len(items))
+		for _, item := range items {
+			images[item.Name] = item.ImageReference
+		}
+		return images
+	}
 	catalog := InstallationHarnessImages("meridian-capsule:dev", "")
-	if len(catalog) != 5 || catalog[0].Name != "mock" || catalog[0].ImageReference != "meridian-capsule:dev" ||
-		catalog[1].Name != "opencode" || catalog[1].ImageReference != "meridian-capsule-opencode:dev" ||
-		catalog[2].Name != "pi" || catalog[2].ImageReference != "meridian-capsule-pi:dev" ||
-		catalog[3].Name != "claude" || catalog[3].ImageReference != "meridian-capsule-claude:dev" ||
-		catalog[4].Name != "codex" || catalog[4].ImageReference != "meridian-capsule-codex:dev" {
+	var order []string
+	for _, item := range catalog {
+		order = append(order, item.Name)
+	}
+	if strings.Join(order, ",") != "opencode,pi,claude,codex,mock" {
+		t.Fatalf("catalog order = %v; clients preselect the first entry, so mock must be last", order)
+	}
+	if got := byName(catalog); got["mock"] != "meridian-capsule:dev" ||
+		got["opencode"] != "meridian-capsule-opencode:dev" || got["pi"] != "meridian-capsule-pi:dev" ||
+		got["claude"] != "meridian-capsule-claude:dev" || got["codex"] != "meridian-capsule-codex:dev" {
 		t.Fatalf("catalog = %#v", catalog)
 	}
-	published := InstallationHarnessImages("ghcr.io/orlojhq/meridian-capsule:v1.2.3", "")
-	if published[0].ImageReference != "ghcr.io/orlojhq/meridian-capsule:v1.2.3" ||
-		published[1].ImageReference != "ghcr.io/orlojhq/meridian-capsule-opencode:v1.2.3" ||
-		published[2].ImageReference != "ghcr.io/orlojhq/meridian-capsule-pi:v1.2.3" ||
-		published[3].ImageReference != "ghcr.io/orlojhq/meridian-capsule-claude:v1.2.3" ||
-		published[4].ImageReference != "ghcr.io/orlojhq/meridian-capsule-codex:v1.2.3" {
-		t.Fatalf("published catalog = %#v", published)
+	if got := byName(InstallationHarnessImages("ghcr.io/orlojhq/meridian-capsule:v1.2.3", "")); got["mock"] != "ghcr.io/orlojhq/meridian-capsule:v1.2.3" ||
+		got["opencode"] != "ghcr.io/orlojhq/meridian-capsule-opencode:v1.2.3" ||
+		got["pi"] != "ghcr.io/orlojhq/meridian-capsule-pi:v1.2.3" ||
+		got["claude"] != "ghcr.io/orlojhq/meridian-capsule-claude:v1.2.3" ||
+		got["codex"] != "ghcr.io/orlojhq/meridian-capsule-codex:v1.2.3" {
+		t.Fatalf("published catalog = %#v", got)
 	}
-	pinned := InstallationHarnessImages(
-		"ghcr.io/orlojhq/meridian-capsule@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-		"v1.2.3",
-	)
-	if pinned[0].ImageReference != "ghcr.io/orlojhq/meridian-capsule@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" ||
-		pinned[1].ImageReference != "ghcr.io/orlojhq/meridian-capsule-opencode:v1.2.3" {
-		t.Fatalf("digest-pinned catalog = %#v", pinned)
+	const pinnedCapsule = "ghcr.io/orlojhq/meridian-capsule@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	if got := byName(InstallationHarnessImages(pinnedCapsule, "v1.2.3")); got["mock"] != pinnedCapsule ||
+		got["opencode"] != "ghcr.io/orlojhq/meridian-capsule-opencode:v1.2.3" {
+		t.Fatalf("digest-pinned catalog = %#v", got)
 	}
-	digestOnly := InstallationHarnessImages(
-		"ghcr.io/orlojhq/meridian-capsule@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-		"",
-	)
-	if digestOnly[1].ImageReference != "ghcr.io/orlojhq/meridian-capsule-opencode:dev" {
-		t.Fatalf("digest-only catalog = %#v", digestOnly)
+	if got := byName(InstallationHarnessImages(pinnedCapsule, "")); got["opencode"] != "ghcr.io/orlojhq/meridian-capsule-opencode:dev" {
+		t.Fatalf("digest-only catalog = %#v", got)
 	}
-	mirror := InstallationHarnessImages("localhost:5000/orloj/meridian-capsule:v9", "")
-	if mirror[1].ImageReference != "localhost:5000/orloj/meridian-capsule-opencode:v9" {
-		t.Fatalf("mirrored catalog = %#v", mirror)
+	if got := byName(InstallationHarnessImages("localhost:5000/orloj/meridian-capsule:v9", "")); got["opencode"] != "localhost:5000/orloj/meridian-capsule-opencode:v9" {
+		t.Fatalf("mirrored catalog = %#v", got)
 	}
 	if DefaultCapsuleImage("dev") != LocalCapsuleImage ||
 		DefaultCapsuleImage("1.2.3-next") != LocalCapsuleImage ||

@@ -125,6 +125,18 @@ func New(config Config) (*Provider, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create Docker client: %w", err)
 	}
+	// Fail at startup, not on the first Capsule, when Docker is unreachable.
+	pingCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	_, err = engine.Ping(pingCtx, client.PingOptions{})
+	cancel()
+	if err != nil {
+		host := engine.DaemonHost()
+		_ = engine.Close()
+		return nil, fmt.Errorf(
+			"cannot reach Docker at %s (is Docker running? set --docker-host or DOCKER_HOST to override): %w",
+			host, err,
+		)
+	}
 	provider, err := NewWithEngine(resolved, engine)
 	if err != nil {
 		_ = engine.Close()

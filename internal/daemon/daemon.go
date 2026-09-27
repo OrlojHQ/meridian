@@ -235,6 +235,10 @@ func Run(ctx context.Context, config Config) error {
 	var closeProvider func() error
 	switch config.Provider {
 	case "fake":
+		config.Logger.Printf(
+			"WARNING: --provider=fake simulates Capsules for tests and UI development; " +
+				"no containers or agents run. Use --provider=docker for real workspaces.",
+		)
 		provider = fake.New(fake.Options{})
 		closeProvider = func() error { return nil }
 	case "docker":

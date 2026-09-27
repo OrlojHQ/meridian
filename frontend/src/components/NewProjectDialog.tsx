@@ -128,7 +128,9 @@ export function NewProjectDialog({
                 >
                   {harnessImages.map((harness) => (
                     <option key={harness.name} value={harness.name}>
-                      {harness.name}
+                      {harness.name === "mock"
+                        ? "mock (test harness, no agent)"
+                        : harness.name}
                     </option>
                   ))}
                 </select>

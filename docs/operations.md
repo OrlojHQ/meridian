@@ -97,10 +97,14 @@ default API and preview listeners are loopback-only:
 
 ```console
 install -d -m 0700 "$HOME/.local/state/meridian"
-meridiand --provider=fake \
+meridiand --provider=docker \
   --data-dir="$HOME/.local/state/meridian" \
   --metrics-listen=127.0.0.1:9090
 ```
+
+`docker` is the default provider, and `meridiand` exits at startup if it cannot
+reach Docker. `--provider=fake` simulates Capsules for tests and UI development
+only; no containers or agents run.
 
 Startup atomically creates the structured-transcript installation key at
 `<data-dir>/transcript-keys/installation.key` in a mode-0700 directory with a
@@ -204,7 +208,10 @@ attributes.
 
 Pin the verified multi-platform image digest and mount a dedicated writable
 directory. The image is non-root, shell-free, and compatible with a read-only
-root filesystem:
+root filesystem. This example uses the simulated `fake` provider to show the
+hardened container settings; it starts no real Capsules. For real Capsules on
+one Docker host, use [Docker Compose](#docker-compose-published-images), which
+gives `meridiand` the Docker socket and host networking:
 
 ```console
 install -d -m 0700 "$PWD/meridian-data"

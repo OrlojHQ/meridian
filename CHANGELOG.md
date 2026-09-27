@@ -7,6 +7,18 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- `meridiand` defaults to `--provider=docker` and exits at startup with a clear
+  error when it cannot reach Docker. `--provider=fake` simulates Capsules for
+  tests and UI development only, must be requested explicitly, and logs a
+  warning. The `meridiand` image's default command uses the Docker provider.
+- The installation harness catalog lists the official agents first and `mock`
+  last, so the browser and terminal dashboard preselect a real agent. The
+  browser labels `mock` as a test harness with no agent.
+
+## [0.1.0] - 2026-09-27
+
 ### Added
 
 - Activity sidebar rows show what each Capsule is doing and for how long, and
@@ -17,16 +29,6 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   memory and never persisted in plaintext (ADR 0025).
 - `meridiand --runtime-refresh-interval` (default 5s) refreshes live Run state
   and ingests structured Thread output while no client is watching.
-
-### Fixed
-
-- The Activity view reported each Capsule's oldest Run as its latest.
-- Adapter heartbeats no longer count as Capsule activity for idle pausing.
-
-## [0.1.0] - 2026-09-27
-
-### Added
-
 - Browser application shell with Project-grouped Capsule activity, unified
   native and structured launch, primary Thread or PTY workspaces, and
   capability-gated Changes, Preview, Files, Terminal, and Activity tools.
@@ -70,6 +72,11 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - Helm deployment, provider contract tests, deterministic Docker and Kind
   integration suites, SBOM/checksum/signing policy, and operational
   documentation.
+
+### Fixed
+
+- The Activity view reported each Capsule's oldest Run as its latest.
+- Adapter heartbeats no longer count as Capsule activity for idle pausing.
 
 ### Security
 
