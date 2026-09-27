@@ -11,6 +11,12 @@ on:
   push:
     branches:
       - main
+    paths:
+      - "go.mod"
+      - "go.sum"
+      - "frontend/package.json"
+      - "frontend/bun.lock"
+      - ".github/workflows/trivy.yml"
   schedule:
     - cron: "0 6 * * 1"
 

@@ -14,8 +14,52 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect code changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.classify.outputs.code }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      # Docs-only changes skip the build. A job skipped by `if:` reports
+      # success, so the required "Build, test, and lint" check still passes.
+      # Deletions always build: releases package README, SECURITY, and
+      # docs/operations.md. An unknown base (new branch, force push) builds.
+      - name: Classify changed files
+        id: classify
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT" == "pull_request" ]]; then base="$PR_BASE"; else base="$PUSH_BEFORE"; fi
+          code=true
+          if [[ -n "$base" && ! "$base" =~ ^0+$ ]] && git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            code=false
+            if [[ -n "$(git diff --name-only --no-renames --diff-filter=D "$base" HEAD)" ]]; then
+              code=true
+            fi
+            while IFS= read -r path; do
+              case "$path" in
+                */testdata/*) code=true ;;
+                ''|*.md|docs/*|LICENSE|.github/ISSUE_TEMPLATE/*) ;;
+                *) code=true ;;
+              esac
+            done <<<"$(git diff --name-only --no-renames "$base" HEAD)"
+          fi
+          echo "code=$code" >>"$GITHUB_OUTPUT"
+          echo "Run full build: $code"
+
   build-test-lint:
     name: Build, test, and lint
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
