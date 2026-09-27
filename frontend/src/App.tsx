@@ -10,6 +10,7 @@ import {
   Link,
   Route,
   Routes,
+  useOutletContext,
   useParams,
 } from "react-router-dom";
 
@@ -34,20 +35,14 @@ import {
 } from "./components/Threads";
 import { CodeViewer } from "./components/SyntaxCode";
 import { StateBadge } from "./components/ui/StateBadge";
-import { AppShell } from "./shell/AppShell";
+import { ActivityDot, AppShell, type ShellOutletContext } from "./shell/AppShell";
+import { activityGroups, relativeTime } from "./shell/capsuleActivity";
+import { useWorkingSet, type WorkingSetItem } from "./shell/useWorkingSet";
 const TerminalView = lazy(() =>
   import("./components/Terminal").then((module) => ({
     default: module.TerminalView,
   })),
 );
-
-function age(value: string) {
-  const seconds = Math.max(0, Math.floor((Date.now() - Date.parse(value)) / 1_000));
-  if (seconds < 60) return `${seconds}s`;
-  if (seconds < 3_600) return `${Math.floor(seconds / 60)}m`;
-  if (seconds < 86_400) return `${Math.floor(seconds / 3_600)}h`;
-  return `${Math.floor(seconds / 86_400)}d`;
-}
 
 function ErrorState({ error }: { error: unknown }) {
   const normalized = normalizeAPIError(error);
@@ -128,108 +123,74 @@ export function AuthenticationState() {
   );
 }
 
-function CapsuleSummary({
-  capsule,
-  run,
-  moment,
+function WorkingSetRow({
+  item,
+  projectName,
+  momentCount,
 }: {
-  capsule: Capsule;
-  run?: Run;
-  moment?: Moment;
+  item: WorkingSetItem;
+  projectName?: string;
+  momentCount?: number;
 }) {
-  const active = run && ["Queued", "Starting", "Running", "Cancelling"].includes(run.state);
+  const { capsule, activity } = item;
   return (
-    <article className="card capsule-card">
-      <header>
-        <div>
-          <h2>
-            <Link to={`/ui/capsules/${encodeURIComponent(capsule.id)}`}>
-              {capsule.name}
-            </Link>
-          </h2>
-          <p className="mono">{capsule.id}</p>
-        </div>
-        <StateBadge state={capsule.state} />
-      </header>
-      <dl className="facts compact">
-        <div>
-          <dt>Desired state</dt>
-          <dd>{capsule.desiredState}</dd>
-        </div>
-        <div>
-          <dt>Age</dt>
-          <dd>{age(capsule.createdAt)}</dd>
-        </div>
-        <div>
-          <dt>Immutable</dt>
-          <dd>{capsule.state === "Sealed" ? "Sealed" : "No"}</dd>
-        </div>
-        <div>
-          <dt>Maintenance</dt>
-          <dd>{capsule.maintenance || "None"}</dd>
-        </div>
-        <div>
-          <dt>{active ? "Active Run" : "Latest Run"}</dt>
-          <dd>
-            {run ? (
-              <Link to={`/ui/runs/${encodeURIComponent(run.id)}`}>{run.state}</Link>
-            ) : (
-              "None"
-            )}
-          </dd>
-        </div>
-        <div>
-          <dt>Latest Moment</dt>
-          <dd>
-            {moment ? (
-              <Link to={`/ui/moments/${encodeURIComponent(moment.id)}`}>
-                {moment.name}
+    <li className="working-set-row">
+      <ActivityDot group={activity.group} />
+      <div className="working-set-main">
+        <Link
+          className="working-set-name"
+          to={`/ui/capsules/${encodeURIComponent(capsule.id)}`}
+        >
+          {capsule.name}
+        </Link>
+        <p className="working-set-meta">
+          {[projectName, activity.agent].filter(Boolean).join(" · ")}
+          {momentCount ? (
+            <>
+              {" · "}
+              <Link to={`/ui/timelines/${encodeURIComponent(capsule.timelineId)}`}>
+                {momentCount === 1 ? "1 Moment" : `${momentCount} Moments`}
               </Link>
-            ) : (
-              "None"
-            )}
-          </dd>
-        </div>
-        <div>
-          <dt>Timeline</dt>
-          <dd>
-            <Link to={`/ui/timelines/${encodeURIComponent(capsule.timelineId)}`}>
-              View lineage
-            </Link>
-          </dd>
-        </div>
-        <div>
-          <dt>Provider metrics</dt>
-          <dd>Unavailable</dd>
-        </div>
-      </dl>
-    </article>
+            </>
+          ) : null}
+        </p>
+        {activity.detail && <p className="working-set-detail">{activity.detail}</p>}
+      </div>
+      <span className="working-set-status">{activity.label}</span>
+      <time className="working-set-time" dateTime={activity.since}>
+        {relativeTime(activity.since)}
+      </time>
+    </li>
   );
 }
 
 export function CapsuleList() {
-  const projects = useQuery(queries.projects());
-  const projectItems = projects.data?.items ?? [];
-  const capsuleResults = useQueries({
-    queries: projectItems.map((project) => queries.capsules(project.id)),
-  });
-  const capsules = capsuleResults
-    .flatMap((result) => result.data?.items ?? [])
-    .filter((capsule) => capsule.state !== "Deleted");
-  const runResults = useQueries({
-    queries: capsules.map((capsule) => queries.runs(capsule.id)),
-  });
+  const openNewProject = useOutletContext<ShellOutletContext | undefined>()?.openNewProject;
+  const { projects, projectItems, capsuleResults, items } = useWorkingSet();
+  const capabilities = useQuery(queries.capabilities());
   const momentResults = useQueries({
-    queries: capsules.map((capsule) => queries.moments(capsule.id)),
+    queries: items.map(({ capsule }) => ({
+      ...queries.moments(capsule.id),
+      enabled: capabilities.data?.snapshot === true,
+    })),
   });
+  const projectNames = new Map(projectItems.map((project) => [project.id, project.name]));
 
   if (projects.isPending) return <p className="loading" role="status">Loading Capsules…</p>;
   if (projects.isError) return <ErrorState error={projects.error} />;
   if (projectItems.length === 0) {
     return (
       <section className="empty-state">
-        <h1>Capsules</h1>
-        <p>No projects exist yet. Create one with the scriptable Meridian CLI.</p>
+        <h1>No projects yet</h1>
+        <p>
+          A Project points Meridian at a repository. Every agent session then
+          runs in its own disposable Capsule with a fresh clone.
+        </p>
+        {openNewProject && (
+          <button type="button" onClick={openNewProject}>
+            New project
+          </button>
+        )}
       </section>
     );
   }
@@ -238,7 +199,7 @@ export function CapsuleList() {
   }
   const capsuleError = capsuleResults.find((result) => result.isError);
   if (capsuleError) return <ErrorState error={capsuleError.error} />;
-  if (capsules.length === 0) {
+  if (items.length === 0) {
     return (
       <section className="fleet-view">
         <header className="workspace-view-header">
@@ -249,41 +210,73 @@ export function CapsuleList() {
         </header>
         <div className="empty-state">
           <p>
-            Use <strong>New</strong> in the activity sidebar to start a native
-            harness or structured Thread.
+            Use <strong>+</strong> next to a project in the sidebar to start an
+            agent in a new Capsule.
           </p>
-          <span>{projectItems.length} Project(s) ready</span>
+          <span>
+            {projectItems.length === 1
+              ? "1 project ready"
+              : `${projectItems.length} projects ready`}
+          </span>
         </div>
       </section>
     );
   }
+  const momentCounts = new Map(
+    items.map(({ capsule }, index) => [
+      capsule.id,
+      momentResults[index]?.data?.items.length ?? 0,
+    ]),
+  );
+  const attention = items.filter((item) => item.activity.group === "attention").length;
+  const working = items.filter((item) => item.activity.group === "working").length;
   return (
     <section className="fleet-view">
       <header className="workspace-view-header">
         <div>
           <p className="eyebrow">Activity</p>
-          <h1>Your working set</h1>
-          <p className="view-description">
-            Watch active harnesses, return to paused work, and review recent
-            Capsules.
-          </p>
+          <h1>
+            {attention > 0
+              ? `${attention} need${attention === 1 ? "s" : ""} attention`
+              : working > 0
+                ? `${working} agent${working === 1 ? "" : "s"} working`
+                : "All quiet"}
+          </h1>
         </div>
-        <span className="count-label">{capsules.length} Capsules</span>
+        <span className="count-label">
+          {items.length === 1 ? "1 Capsule" : `${items.length} Capsules`}
+        </span>
       </header>
-      <div className="fleet-list">
-        {capsules.map((capsule, index) => {
-          const runs = runResults[index]?.data?.items ?? [];
-          const moments = momentResults[index]?.data?.items ?? [];
-          return (
-            <CapsuleSummary
-              key={capsule.id}
-              capsule={capsule}
-              run={runs[0]}
-              moment={moments[0]}
-            />
+      {activityGroups.map(({ group, title }) => {
+        const groupItems = items
+          .filter((item) => item.activity.group === group)
+          .sort(
+            (a, b) =>
+              Date.parse(b.activity.since ?? "") - Date.parse(a.activity.since ?? ""),
           );
-        })}
-      </div>
+        if (groupItems.length === 0) return null;
+        return (
+          <section
+            key={group}
+            className="working-set-group"
+            aria-labelledby={`working-set-${group}`}
+          >
+            <h2 id={`working-set-${group}`}>
+              {title} <small>{groupItems.length}</small>
+            </h2>
+            <ul>
+              {groupItems.map((item) => (
+                <WorkingSetRow
+                  key={item.capsule.id}
+                  item={item}
+                  projectName={projectNames.get(item.capsule.projectId)}
+                  momentCount={momentCounts.get(item.capsule.id)}
+                />
+              ))}
+            </ul>
+          </section>
+        );
+      })}
     </section>
   );
 }

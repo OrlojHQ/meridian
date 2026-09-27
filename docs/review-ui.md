@@ -7,12 +7,23 @@ generated from `api/openapi.yaml`; lifecycle transitions remain server-owned.
 
 The UI uses a full-height, Capsule-centered workspace:
 
-- the persistent Activity sidebar groups Capsules by Project and shows lifecycle
-  state and selected harness without requiring a dashboard round trip;
+- the persistent Activity sidebar groups Capsules by Project and shows what
+  each is doing and for how long (for example "Claude Code working", "Waiting
+  for permission", or "Capsule failed") without requiring a dashboard round
+  trip;
 - the primary surface presents the active structured Thread, native PTY, or
   resource inspector; and
 - the contextual tool pane provides capability-gated Changes, Preview, Files,
   Terminal, and Activity tabs for the selected Capsule.
+
+The Activity view groups the working set by what it needs from the operator:
+Needs attention, Working, Ready for review, Idle, Paused, and Sealed. Status is
+derived only from Capsule, Run, and Thread summaries, including the Thread's
+content-free `awaiting` flag. The working set never polls Git status, files,
+or previews, because those count as Capsule activity and would defeat idle
+pausing, and never fetches transcripts. `meridiand --runtime-refresh-interval`
+keeps Run state and structured Thread output current while no client is
+watching (ADR 0025).
 
 The Terminal tool appears only when the primary surface is not already showing
 that native PTY, avoiding duplicate attachments while keeping PTY access beside

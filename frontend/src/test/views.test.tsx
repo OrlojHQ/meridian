@@ -122,7 +122,7 @@ describe("Capsule list states", () => {
     const loading = wrapper(<CapsuleList />);
     expect(screen.getByRole("status")).toHaveTextContent("Loading Capsules");
     resolveProjects?.({ items: [] });
-    expect(await screen.findByText(/No projects exist yet/)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "No projects yet" })).toBeInTheDocument();
     loading.unmount();
 
     vi.spyOn(api, "projects").mockRejectedValue(
@@ -132,17 +132,70 @@ describe("Capsule list states", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("API unavailable");
   });
 
-  it("renders status and unavailable provider metrics", async () => {
+  it("groups Capsules by what they need from the operator", async () => {
     vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
-    vi.spyOn(api, "capsules").mockResolvedValue({ items: [capsule] });
-    vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
-    vi.spyOn(api, "moments").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "capabilities").mockResolvedValue({
+      providerVersion: "fake/v1",
+      attach: false,
+      run: false,
+      structured: false,
+      git: false,
+      pause: false,
+      snapshot: false,
+      clone: false,
+      preview: false,
+      browse: false,
+      delivery: false,
+      resourceMetrics: false,
+    });
+    vi.spyOn(api, "capsules").mockResolvedValue({
+      items: [
+        { ...capsule, harness: "claude" },
+        { ...capsule, id: "capsule-2", name: "Broken", state: "Failed", failure: "clone failed" },
+        { ...capsule, id: "capsule-3", name: "Parked", state: "Paused", desiredState: "Paused" },
+      ],
+    });
+    vi.spyOn(api, "runs").mockImplementation(async (capsuleId) => ({
+      items:
+        capsuleId === capsule.id
+          ? [
+              {
+                id: "run-new",
+                capsuleId,
+                harness: "claude",
+                state: "Running",
+                createdAt: "2026-08-23T02:00:00Z",
+                startedAt: "2026-08-23T02:00:01Z",
+                updatedAt: "2026-08-23T02:00:01Z",
+                resourceVersion: 2,
+              },
+              {
+                id: "run-old",
+                capsuleId,
+                harness: "claude",
+                state: "Succeeded",
+                createdAt: "2026-08-23T01:00:00Z",
+                updatedAt: "2026-08-23T01:30:00Z",
+                resourceVersion: 3,
+              },
+            ]
+          : [],
+    }));
+    const moments = vi.spyOn(api, "moments");
     wrapper(<CapsuleList />);
-    expect(await screen.findByRole("heading", { name: "Workspace" })).toBeInTheDocument();
-    expect(screen.getByText("Provider metrics").nextSibling).toHaveTextContent(
-      "Unavailable",
+
+    expect(await screen.findByRole("heading", { name: "1 needs attention" })).toBeInTheDocument();
+    const attention = screen.getByRole("region", { name: /Needs attention/ });
+    expect(attention).toHaveTextContent("Broken");
+    expect(attention).toHaveTextContent("Capsule failed");
+    expect(attention).toHaveTextContent("clone failed");
+    expect(await screen.findByRole("region", { name: /Working/ })).toHaveTextContent(
+      "Claude Code working",
     );
-    expect(screen.getByText("Ready", { selector: ".badge" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /Paused/ })).toHaveTextContent("Parked");
+    expect(screen.queryByText("Desired state")).not.toBeInTheDocument();
+    expect(screen.queryByText(capsule.id)).not.toBeInTheDocument();
+    expect(moments).not.toHaveBeenCalled();
   });
 
   it("starts a project Thread in a fresh Capsule", async () => {

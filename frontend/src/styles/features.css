@@ -65,45 +65,93 @@
   background: var(--surface-hover);
 }
 
-.capsule-card {
-  display: grid;
-  grid-template-columns: minmax(13rem, 1.3fr) minmax(22rem, 2fr);
-  gap: 1rem;
+.working-set-group > h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
   margin: 0;
-  border: 0;
   border-bottom: 1px solid var(--border);
-  border-radius: 0;
-  padding: 0.85rem 1.1rem;
-  background: var(--surface);
-  box-shadow: none;
+  padding: 0.9rem 1.1rem 0.4rem;
+  color: var(--muted);
+  font-size: 0.65rem;
+  font-weight: 680;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
 }
 
-.capsule-card:hover {
+.working-set-group > h2 small {
+  color: var(--faint);
+  font-size: inherit;
+}
+
+.working-set-group ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.working-set-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(8rem, auto) 2.5rem;
+  align-items: baseline;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--border);
+  padding: 0.7rem 1.1rem;
+  background: var(--surface);
+}
+
+.working-set-row:hover {
   background: var(--surface-hover);
 }
 
-.capsule-card header {
-  align-items: flex-start;
+.working-set-row > .state-dot {
+  align-self: center;
 }
 
-.capsule-card h2 {
-  margin: 0;
-  font-size: 0.84rem;
+.working-set-main {
+  min-width: 0;
 }
 
-.capsule-card h2 a {
+.working-set-name {
   color: var(--text);
+  font-size: 0.84rem;
+  font-weight: 630;
   text-decoration: none;
 }
 
-.capsule-card .facts.compact {
-  grid-template-columns: repeat(4, minmax(6rem, 1fr));
-  gap: 0.7rem;
-  margin: 0;
+.working-set-name:hover {
+  text-decoration: underline;
 }
 
-.capsule-card .facts.compact > div:nth-child(n + 5) {
-  display: none;
+.working-set-meta,
+.working-set-detail {
+  margin: 0.15rem 0 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.working-set-meta a {
+  color: inherit;
+}
+
+.working-set-detail {
+  color: var(--danger);
+}
+
+.working-set-status {
+  color: var(--text);
+  font-size: 0.74rem;
+  text-align: right;
+}
+
+.working-set-time {
+  color: var(--faint);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .capsule-actions {
@@ -1062,12 +1110,15 @@
 }
 
 @media (max-width: 800px) {
-  .capsule-card {
-    grid-template-columns: 1fr;
+  .working-set-row {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    row-gap: 0.3rem;
   }
 
-  .capsule-card .facts.compact {
-    grid-template-columns: repeat(2, 1fr);
+  .working-set-status {
+    grid-row: 2;
+    grid-column: 2;
+    text-align: left;
   }
 
   .workspace-view-header,

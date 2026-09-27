@@ -7,6 +7,22 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Activity sidebar rows show what each Capsule is doing and for how long, and
+  the Activity view groups Capsules into Needs attention, Working, Ready for
+  review, Idle, Paused, and Sealed instead of listing internal resource fields.
+- Threads report a content-free `awaiting` flag (`permission` or `input`) while
+  an active structured session is blocked on the operator. It is derived in
+  memory and never persisted in plaintext (ADR 0025).
+- `meridiand --runtime-refresh-interval` (default 5s) refreshes live Run state
+  and ingests structured Thread output while no client is watching.
+
+### Fixed
+
+- The Activity view reported each Capsule's oldest Run as its latest.
+- Adapter heartbeats no longer count as Capsule activity for idle pausing.
+
 ## [0.1.0] - 2026-09-27
 
 ### Added

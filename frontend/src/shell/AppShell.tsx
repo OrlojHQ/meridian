@@ -1,4 +1,4 @@
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import {
   useEffect,
   useMemo,
@@ -13,7 +13,7 @@ import {
   useNavigate,
 } from "react-router-dom";
 
-import type { Capsule, Project } from "../api/generated/types.gen";
+import type { Project } from "../api/generated/types.gen";
 import { queries } from "../api/queries";
 import { NewProjectDialog } from "../components/NewProjectDialog";
 import { NewWorkspaceDialog } from "../components/NewWorkspaceDialog";
@@ -25,6 +25,8 @@ import {
   SearchIcon,
   ThreadIcon,
 } from "../components/ui/Icons";
+import { relativeTime, type ActivityGroup } from "./capsuleActivity";
+import { useWorkingSet } from "./useWorkingSet";
 import { WorkspaceContext } from "./WorkspaceContext";
 
 const pathID = (pathname: string, resource: string) => {
@@ -40,14 +42,10 @@ const isTypingTarget = (target: EventTarget | null) => {
   );
 };
 
-function StateDot({ state }: { state: string }) {
-  return (
-    <span
-      className={`state-dot state-dot-${state.toLowerCase()}`}
-      title={state}
-      aria-label={state}
-    />
-  );
+export type ShellOutletContext = { openNewProject: () => void };
+
+export function ActivityDot({ group }: { group: ActivityGroup }) {
+  return <span className={`state-dot activity-dot-${group}`} aria-hidden="true" />;
 }
 
 export function AppShell() {
@@ -64,18 +62,7 @@ export function AppShell() {
     setLaunchProject(undefined);
   }, [location.key]);
 
-  const projects = useQuery(queries.projects());
-  const projectItems = projects.data?.items ?? [];
-  const capsuleResults = useQueries({
-    queries: projectItems.map((project) => queries.capsules(project.id)),
-  });
-  const allCapsules = useMemo(
-    () =>
-      capsuleResults
-        .flatMap((result) => result.data?.items ?? [])
-        .filter((capsule) => capsule.state !== "Deleted"),
-    [capsuleResults],
-  );
+  const { projects, projectItems, items } = useWorkingSet();
 
   const threadId = pathID(location.pathname, "threads");
   const runId = pathID(location.pathname, "runs");
@@ -95,15 +82,21 @@ export function AppShell() {
     timeline.data?.timeline.capsuleId ||
     "";
 
-  const visibleCapsules = useMemo(() => {
+  const visibleItems = useMemo(() => {
     const query = filter.trim().toLowerCase();
-    if (!query) return allCapsules;
-    return allCapsules.filter((capsule) =>
-      [capsule.name, capsule.harness, capsule.state]
-        .filter(Boolean)
-        .some((value) => value?.toLowerCase().includes(query)),
+    if (!query) return items;
+    return items.filter(({ capsule, activity }) =>
+      [capsule.name, activity.agent, activity.label]
+        .some((value) => value.toLowerCase().includes(query)),
     );
-  }, [allCapsules, filter]);
+  }, [items, filter]);
+  const visibleCapsules = useMemo(
+    () => visibleItems.map((item) => item.capsule),
+    [visibleItems],
+  );
+  const attentionCount = items.filter(
+    (item) => item.activity.group === "attention",
+  ).length;
 
   useEffect(() => {
     const update = () => setOnline(navigator.onLine);
@@ -158,9 +151,7 @@ export function AppShell() {
 
   const grouped = projectItems.map((project) => ({
     project,
-    capsules: visibleCapsules.filter(
-      (capsule) => capsule.projectId === project.id,
-    ),
+    items: visibleItems.filter((item) => item.capsule.projectId === project.id),
   }));
   const hasContext = Boolean(capsuleId);
 
@@ -225,12 +216,12 @@ export function AppShell() {
           ) : grouped.length === 0 ? (
             <p className="sidebar-status">No Projects</p>
           ) : (
-            grouped.map(({ project, capsules }) => (
+            grouped.map(({ project, items: projectCapsules }) => (
               <section className="project-group" key={project.id}>
                 <header>
                   <span>{project.name}</span>
                   <span className="project-group-actions">
-                    <small>{capsules.length}</small>
+                    <small>{projectCapsules.length}</small>
                     <button
                       type="button"
                       className="project-add-button"
@@ -242,28 +233,32 @@ export function AppShell() {
                     </button>
                   </span>
                 </header>
-                {capsules.length === 0 ? (
+                {projectCapsules.length === 0 ? (
                   <p className="project-empty">
                     {filter ? "No matches" : "No Capsules"}
                   </p>
                 ) : (
                   <ul>
-                    {capsules.map((capsule: Capsule) => (
+                    {projectCapsules.map(({ capsule, activity }) => (
                       <li key={capsule.id}>
                         <NavLink
                           to={`/ui/capsules/${encodeURIComponent(capsule.id)}`}
                           className={
                             capsule.id === capsuleId ? "selected" : undefined
                           }
+                          title={activity.detail}
                         >
-                          <StateDot state={capsule.state} />
+                          <ActivityDot group={activity.group} />
                           <span className="activity-item-copy">
                             <strong>{capsule.name}</strong>
-                            <small>
-                              {capsule.harness || "Structured"} · {capsule.state}
-                            </small>
+                            <small>{activity.label}</small>
                           </span>
-                          <ChevronIcon />
+                          <time
+                            className="activity-item-time"
+                            dateTime={activity.since}
+                          >
+                            {relativeTime(activity.since)}
+                          </time>
                         </NavLink>
                       </li>
                     ))}
@@ -278,6 +273,14 @@ export function AppShell() {
           <NavLink to="/ui/" end>
             <ActivityIcon />
             Activity
+            {attentionCount > 0 && (
+              <span
+                className="attention-count"
+                aria-label={`${attentionCount} need attention`}
+              >
+                {attentionCount}
+              </span>
+            )}
           </NavLink>
           <NavLink to="/ui/threads">
             <ThreadIcon />
@@ -294,7 +297,7 @@ export function AppShell() {
       </aside>
 
       <main id="content" className="workspace-main" tabIndex={-1}>
-        <Outlet />
+        <Outlet context={{ openNewProject: () => setNewProjectOpen(true) } satisfies ShellOutletContext} />
       </main>
 
       {hasContext && (
