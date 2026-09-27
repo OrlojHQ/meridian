@@ -286,7 +286,7 @@ func newRunAttachCommand(config *cliConfig) *cobra.Command {
 
 func (c *cliConfig) writeRun(run client.Run) error {
 	if c.json {
-		return writeJSON(c.stdout, run)
+		return writeJSON(c.stdout, &run)
 	}
 	_, err := fmt.Fprintf(c.stdout, "%s\t%s\tstate=%s\tversion=%d\n",
 		run.ID, run.Harness, run.State, run.ResourceVersion)

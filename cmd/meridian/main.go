@@ -12,7 +12,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/OrlojHQ/meridian/internal/apiauth"
 	"github.com/OrlojHQ/meridian/internal/buildinfo"
@@ -507,7 +506,7 @@ func newSecretCommand(config *cliConfig) *cobra.Command {
 
 func (c *cliConfig) writeSecret(secret client.Secret) error {
 	if c.json {
-		return writeJSON(c.stdout, secret)
+		return writeJSON(c.stdout, &secret)
 	}
 	_, err := fmt.Fprintf(c.stdout, "%s\t%s\tpurpose=%s\tversion=%d\n",
 		secret.ID, secret.Name, secret.Purpose, secret.ResourceVersion)
@@ -767,7 +766,7 @@ func (c *cliConfig) writeProject(project client.Project) error {
 
 func (c *cliConfig) writeCapsule(capsule client.Capsule) error {
 	if c.json {
-		return writeJSON(c.stdout, capsuleOutput(capsule))
+		return writeJSON(c.stdout, &capsule)
 	}
 	preparation := ""
 	if p, ok := capsule.Preparation.Get(); ok {
@@ -782,9 +781,7 @@ func (c *cliConfig) writeCapsule(capsule client.Capsule) error {
 
 func (c *cliConfig) writeProjectPage(page client.ProjectPage) error {
 	if c.json {
-		output := projectPageOutput{Items: page.Items}
-		output.NextCursor, _ = page.NextCursor.Get()
-		return writeJSON(c.stdout, output)
+		return writeJSON(c.stdout, &page)
 	}
 	for _, project := range page.Items {
 		if err := c.writeProject(project); err != nil {
@@ -800,12 +797,7 @@ func (c *cliConfig) writeProjectPage(page client.ProjectPage) error {
 
 func (c *cliConfig) writeCapsulePage(page client.CapsulePage) error {
 	if c.json {
-		output := capsulePageOutput{Items: make([]capsuleJSON, len(page.Items))}
-		for i := range page.Items {
-			output.Items[i] = capsuleOutput(page.Items[i])
-		}
-		output.NextCursor, _ = page.NextCursor.Get()
-		return writeJSON(c.stdout, output)
+		return writeJSON(c.stdout, &page)
 	}
 	for _, capsule := range page.Items {
 		if err := c.writeCapsule(capsule); err != nil {
@@ -819,56 +811,14 @@ func (c *cliConfig) writeCapsulePage(page client.CapsulePage) error {
 	return nil
 }
 
-func writeJSON(writer io.Writer, value any) error {
+// writeJSON takes a pointer so encoding/json reaches the generated client's
+// pointer-receiver MarshalJSON methods. Encoding a generated struct by value
+// falls back to reflection, where an unset Opt field marshals to no bytes and
+// fails the whole document.
+func writeJSON[T any](writer io.Writer, value *T) error {
 	encoder := json.NewEncoder(writer)
 	encoder.SetEscapeHTML(false)
 	return encoder.Encode(value)
-}
-
-type projectPageOutput struct {
-	Items      []client.Project `json:"items"`
-	NextCursor string           `json:"nextCursor,omitempty"`
-}
-
-type capsulePageOutput struct {
-	Items      []capsuleJSON `json:"items"`
-	NextCursor string        `json:"nextCursor,omitempty"`
-}
-
-type capsuleJSON struct {
-	Preparation     *client.PreparationProgress `json:"preparation,omitempty"`
-	ID              string                      `json:"id"`
-	ProjectID       string                      `json:"projectId"`
-	Name            string                      `json:"name"`
-	Harness         string                      `json:"harness,omitempty"`
-	State           client.CapsuleState         `json:"state"`
-	DesiredState    client.CapsuleIntent        `json:"desiredState"`
-	Failure         string                      `json:"failure,omitempty"`
-	CreatedAt       time.Time                   `json:"createdAt"`
-	UpdatedAt       time.Time                   `json:"updatedAt"`
-	ResourceVersion int64                       `json:"resourceVersion"`
-}
-
-func capsuleOutput(capsule client.Capsule) capsuleJSON {
-	failure, _ := capsule.Failure.Get()
-	harness, _ := capsule.Harness.Get()
-	var preparation *client.PreparationProgress
-	if p, ok := capsule.Preparation.Get(); ok {
-		preparation = &p
-	}
-	return capsuleJSON{
-		Preparation:     preparation,
-		ID:              capsule.ID,
-		ProjectID:       capsule.ProjectId,
-		Name:            capsule.Name,
-		Harness:         harness,
-		State:           capsule.State,
-		DesiredState:    capsule.DesiredState,
-		Failure:         failure,
-		CreatedAt:       capsule.CreatedAt,
-		UpdatedAt:       capsule.UpdatedAt,
-		ResourceVersion: capsule.ResourceVersion,
-	}
 }
 
 func main() {
