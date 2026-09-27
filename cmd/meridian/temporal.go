@@ -249,7 +249,7 @@ func newSealCommand(config *cliConfig) *cobra.Command {
 
 func (c *cliConfig) writeMoment(moment client.Moment) error {
 	if c.json {
-		return writeJSON(c.stdout, moment)
+		return writeJSON(c.stdout, &moment)
 	}
 	_, err := fmt.Fprintf(c.stdout, "%s\t%s\tsha256=%s\tsize=%d\n", moment.ID, moment.Name, moment.ArchiveSha256, moment.ArchiveSize)
 	return err
@@ -257,7 +257,7 @@ func (c *cliConfig) writeMoment(moment client.Moment) error {
 
 func (c *cliConfig) writeDescendant(result client.DescendantResult) error {
 	if c.json {
-		return writeJSON(c.stdout, result)
+		return writeJSON(c.stdout, &result)
 	}
 	_, err := fmt.Fprintf(c.stdout, "%s\ttimeline=%s\treason=%s\n", result.Capsule.ID, result.Timeline.ID, result.Reason)
 	return err

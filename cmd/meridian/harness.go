@@ -36,7 +36,7 @@ func newHarnessCommand(config *cliConfig) *cobra.Command {
 				return err
 			}
 			if config.json {
-				if err := writeJSON(config.stdout, preview); err != nil {
+				if err := writeJSON(config.stdout, &preview); err != nil {
 					return err
 				}
 			} else {

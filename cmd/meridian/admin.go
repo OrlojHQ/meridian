@@ -44,7 +44,7 @@ func newTranscriptKeyCommand(config *cliConfig) *cobra.Command {
 				return err
 			}
 			if config.json {
-				return writeJSON(config.stdout, report)
+				return writeJSON(config.stdout, &report)
 			}
 			_, err = fmt.Fprintf(config.stdout,
 				"rotated key-id=%s key-version=%d threads=%d intents=%d\n",
@@ -83,7 +83,7 @@ func newBackupCommand(config *cliConfig) *cobra.Command {
 				return err
 			}
 			if config.json {
-				return writeJSON(config.stdout, manifest)
+				return writeJSON(config.stdout, &manifest)
 			}
 			_, err = fmt.Fprintf(
 				config.stdout, "backup=%s schema=%d files=%d\n",
@@ -121,7 +121,7 @@ func newBackupCommand(config *cliConfig) *cobra.Command {
 				return err
 			}
 			if config.json {
-				return writeJSON(config.stdout, manifest)
+				return writeJSON(config.stdout, &manifest)
 			}
 			_, err = fmt.Fprintf(config.stdout, "verified schema=%d files=%d\n", manifest.SchemaVersion, len(manifest.Files))
 			return err
@@ -167,7 +167,7 @@ func newRestoreCommand(config *cliConfig) *cobra.Command {
 				return err
 			}
 			if config.json {
-				return writeJSON(config.stdout, manifest)
+				return writeJSON(config.stdout, &manifest)
 			}
 			_, err = fmt.Fprintf(config.stdout, "restored schema=%d files=%d\n", manifest.SchemaVersion, len(manifest.Files))
 			return err
@@ -241,7 +241,7 @@ func newCASCommand(config *cliConfig) *cobra.Command {
 
 func writeCASReport(config *cliConfig, report maintenance.CASReport) error {
 	if config.json {
-		return writeJSON(config.stdout, report)
+		return writeJSON(config.stdout, &report)
 	}
 	_, err := fmt.Fprintf(
 		config.stdout,

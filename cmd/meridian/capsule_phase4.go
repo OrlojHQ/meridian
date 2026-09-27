@@ -172,7 +172,7 @@ func newCapsuleShipCommand(config *cliConfig) *cobra.Command {
 				return responseError(response)
 			}
 			if config.json {
-				return writeJSON(config.stdout, result.Response)
+				return writeJSON(config.stdout, &result.Response)
 			}
 			commit, _ := result.Response.ResultCommitSha.Get()
 			pr, _ := result.Response.ResultPullRequestUrl.Get()
