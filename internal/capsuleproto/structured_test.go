@@ -96,7 +96,16 @@ func TestStructuredReplayGapCrashAndCancellation(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		events := waitStructuredEvents(t, client, "gap-run", 0, 1)
+		// The adapter echoes asynchronously; wait until the 3-event buffer
+		// has actually overflowed rather than for the first event.
+		var events StructuredEventsResponse
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			events = waitStructuredEvents(t, client, "gap-run", 0, 1)
+			if events.Gap || time.Now().After(deadline) {
+				break
+			}
+		}
 		if !events.Gap || events.AvailableFrom <= 1 || len(events.Events) > 3 {
 			t.Fatalf("gap response = %#v", events)
 		}

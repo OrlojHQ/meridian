@@ -1,0 +1,44 @@
+name: images
+
+on:
+  pull_request:
+    paths:
+      - "images/**"
+      - "Makefile"
+      - "scripts/publish-harness-images.sh"
+      - ".github/workflows/images.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "images/**"
+      - "Makefile"
+      - "scripts/publish-harness-images.sh"
+      - ".github/workflows/images.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pack:
+    name: Build ${{ matrix.pack }} pack image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        pack: [opencode, pi, claude, codex]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      # Builds the thin Capsule image, then the pack FROM it. The pack
+      # Dockerfile verifies the pinned harness checksum and runs --version.
+      # Nothing is pushed; release.yml publishes on tags.
+      - name: Build Capsule and pack images
+        run: make capsule-${{ matrix.pack }}-image

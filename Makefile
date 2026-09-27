@@ -234,8 +234,8 @@ release-docker-validate:
 			-f images/capsule/Dockerfile.release "$$tmp/capsule-$$arch"; \
 	done; \
 	for pack in opencode pi claude codex; do \
-		rg -qF 'ARG CAPSULE_BASE=meridian-capsule:dev' "images/capsule-$$pack/Dockerfile"; \
-		rg -qF 'FROM $${CAPSULE_BASE}' "images/capsule-$$pack/Dockerfile"; \
+		grep -qF 'ARG CAPSULE_BASE=meridian-capsule:dev' "images/capsule-$$pack/Dockerfile"; \
+		grep -qF 'FROM $${CAPSULE_BASE}' "images/capsule-$$pack/Dockerfile"; \
 	done
 
 release-smoke:

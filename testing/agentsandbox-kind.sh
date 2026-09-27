@@ -26,7 +26,7 @@ fi
 cluster="${MERIDIAN_AGENTSANDBOX_CLUSTER:-meridian-agentsandbox}"
 namespace="${MERIDIAN_AGENTSANDBOX_NAMESPACE:-meridian-agentsandbox-test}"
 created=0
-if ! kind get clusters | rg -qx "$cluster"; then
+if ! kind get clusters | grep -qxF "$cluster"; then
   kind create cluster \
     --name "$cluster" \
     --image "kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5"
@@ -82,12 +82,12 @@ MERIDIAN_CAPSULE_IMAGE=meridian-capsule:agentsandbox-it \
   go test ./internal/provider/agentsandbox -run Integration -count=1 -v -timeout=10m
 
 if kubectl -n "$namespace" get sandboxes.agents.x-k8s.io \
-  -l app.kubernetes.io/managed-by=meridian -o name | rg -q .; then
+  -l app.kubernetes.io/managed-by=meridian -o name | grep -q .; then
   echo "owned Sandbox resources remained after the integration flow" >&2
   exit 1
 fi
 if kubectl -n "$namespace" get secrets \
-  -l app.kubernetes.io/managed-by=meridian -o name | rg -q .; then
+  -l app.kubernetes.io/managed-by=meridian -o name | grep -q .; then
   echo "owned token Secrets remained after the integration flow" >&2
   exit 1
 fi
