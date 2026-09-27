@@ -1,0 +1,2 @@
+# Deterministic hex test token in the initial commit; not a credential.
+b35022c3fef0a4559fa976c07bec22d1c3af9a65:internal/capsuleproto/protocol_test.go:generic-api-key:19
