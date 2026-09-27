@@ -43,6 +43,8 @@ type Service struct {
 	runSync       [64]sync.Mutex
 	threadSync    [64]sync.Mutex
 	deliverySync  [64]sync.Mutex
+	attentionMu   sync.Mutex
+	attention     map[domain.ThreadID]cachedThreadAttention
 }
 
 func (s *Service) ConfigureSecrets(key *secrets.InstallationKey) {
@@ -100,7 +102,10 @@ func NewService(
 	queue ports.ReconcileQueue,
 	runtime ...ports.CapsuleRuntime,
 ) *Service {
-	service := &Service{store: store, clock: clock, ids: ids, queue: queue}
+	service := &Service{
+		store: store, clock: clock, ids: ids, queue: queue,
+		attention: make(map[domain.ThreadID]cachedThreadAttention),
+	}
 	if len(runtime) > 0 {
 		service.runtime = runtime[0]
 	}

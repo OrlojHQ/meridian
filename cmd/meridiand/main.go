@@ -102,6 +102,12 @@ func newRootCommand() *cobra.Command {
 		time.Minute,
 		"interval for bounded inactive Capsule scans",
 	)
+	command.Flags().DurationVar(
+		&config.RuntimeRefresh,
+		"runtime-refresh-interval",
+		5*time.Second,
+		"refresh live Run state and structured Thread output while unwatched (0 disables)",
+	)
 	command.Flags().StringVar(&config.Docker.Host, "docker-host", "", "Docker endpoint (empty uses official client environment)")
 	defaultCapsule := domain.DefaultCapsuleImage(buildinfo.Version)
 	command.Flags().StringVar(&config.Docker.Image, "docker-image", defaultCapsule, "default Capsule image (release binaries use the matching GHCR tag)")

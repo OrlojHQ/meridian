@@ -16,6 +16,7 @@ func TestAgentSandboxProviderFlagsAreRegistered(t *testing.T) {
 		"allow-non-loopback-listen",
 		"capsule-idle-pause",
 		"capsule-idle-scan-interval",
+		"runtime-refresh-interval",
 		"agentsandbox-kubeconfig",
 		"agentsandbox-context",
 		"agentsandbox-in-cluster",

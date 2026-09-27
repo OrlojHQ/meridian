@@ -2745,6 +2745,7 @@ components:
         harness: { type: string }
         currentRunId: { type: string }
         currentRunState: { $ref: "#/components/schemas/RunState" }
+        awaiting: { $ref: "#/components/schemas/ThreadAwaiting" }
         protocol:
           type: string
           enum: [meridian.adapter.v1]
@@ -2758,6 +2759,19 @@ components:
         updatedAt: { type: string, format: date-time }
         deletedAt: { type: string, format: date-time }
         resourceVersion: { type: integer, format: int64, minimum: 1 }
+    ThreadAwaiting:
+      type: object
+      description: >-
+        Present while the active structured session has an unanswered
+        permission or input request. Derived in memory from the encrypted
+        transcript and never persisted in plaintext; it carries no request
+        summary, options, or prompt text.
+      required: [kind, since]
+      properties:
+        kind:
+          type: string
+          enum: [permission, input]
+        since: { type: string, format: date-time }
     ThreadMutationResult:
       type: object
       required: [thread]

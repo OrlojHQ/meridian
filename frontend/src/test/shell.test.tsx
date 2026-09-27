@@ -77,6 +77,7 @@ describe("application shell", () => {
   it.each(["/ui/", "/ui/settings/harnesses"])("closes the launcher when navigating to provider settings from %s", async (initial) => {
     vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
     vi.spyOn(api, "capsules").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
     vi.spyOn(api, "capabilities").mockResolvedValue(capabilities);
     vi.spyOn(api, "harnessSetups").mockResolvedValue({ items: [] });
     vi.spyOn(api, "providerConnections").mockResolvedValue({ items: [], enabled: true });
@@ -113,6 +114,7 @@ describe("application shell", () => {
         },
       ],
     });
+    vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
     vi.spyOn(api, "capabilities").mockResolvedValue(capabilities);
     const createProject = vi.spyOn(api, "createProject").mockResolvedValue({
       ...project,
@@ -171,6 +173,94 @@ describe("application shell", () => {
         screen.queryByRole("dialog", { name: "Start work in Meridian" }),
       ).not.toBeInTheDocument(),
     );
+  });
+
+  it("shows what each Capsule is doing and filters by activity", async () => {
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
+    vi.spyOn(api, "capsules").mockResolvedValue({
+      items: [
+        capsule,
+        { ...capsule, id: "capsule-2", name: "Setup broke", state: "Failed" },
+      ],
+    });
+    vi.spyOn(api, "runs").mockImplementation(async (capsuleId) => ({
+      items:
+        capsuleId === capsule.id
+          ? [
+              {
+                id: "run-1",
+                capsuleId,
+                harness: "opencode",
+                state: "Running",
+                createdAt: "2026-08-26T00:02:00Z",
+                startedAt: "2026-08-26T00:02:01Z",
+                updatedAt: "2026-08-26T00:02:01Z",
+                resourceVersion: 1,
+              },
+            ]
+          : [],
+    }));
+    vi.spyOn(api, "capabilities").mockResolvedValue(capabilities);
+    const gitStatus = vi.spyOn(api, "gitStatus");
+
+    wrapper(
+      <Routes>
+        <Route path="/ui" element={<AppShell />}>
+          <Route index element={<p>Activity home</p>} />
+        </Route>
+      </Routes>,
+    );
+
+    const working = await screen.findByRole("link", { name: /Review the launcher/ });
+    await waitFor(() => expect(working).toHaveTextContent("OpenCode working"));
+    expect(
+      screen.getByRole("link", { name: /Setup broke/ }),
+    ).toHaveTextContent("Capsule failed");
+    expect(screen.getByLabelText("1 need attention")).toBeInTheDocument();
+
+    await userEvent.type(screen.getByPlaceholderText("Filter work"), "failed");
+    expect(screen.queryByRole("link", { name: /Review the launcher/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Setup broke/ })).toBeInTheDocument();
+    expect(gitStatus).not.toHaveBeenCalled();
+  });
+
+  it("flags Capsules whose Thread is waiting for the operator", async () => {
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
+    vi.spyOn(api, "capsules").mockResolvedValue({ items: [capsule] });
+    vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "capabilities").mockResolvedValue({ ...capabilities, structured: true });
+    const threads = vi.spyOn(api, "threads").mockResolvedValue({
+      items: [
+        {
+          id: "thread-1",
+          capsuleId: capsule.id,
+          state: "active",
+          harness: "opencode",
+          encryptedAtRest: true,
+          messageCount: 3,
+          encryptedBytes: 256,
+          awaiting: { kind: "permission", since: "2026-08-26T00:03:00Z" },
+          createdAt: "2026-08-26T00:02:00Z",
+          updatedAt: "2026-08-26T00:03:00Z",
+          resourceVersion: 2,
+        },
+      ],
+    });
+    const blocks = vi.spyOn(api, "threadBlocks");
+
+    wrapper(
+      <Routes>
+        <Route path="/ui" element={<AppShell />}>
+          <Route index element={<p>Activity home</p>} />
+        </Route>
+      </Routes>,
+    );
+
+    const row = await screen.findByRole("link", { name: /Review the launcher/ });
+    await waitFor(() => expect(row).toHaveTextContent("Waiting for permission"));
+    expect(screen.getByLabelText("1 need attention")).toBeInTheDocument();
+    expect(threads).toHaveBeenCalledWith(capsule.id, expect.anything());
+    expect(blocks).not.toHaveBeenCalled();
   });
 
   it("gates unsupported context tools without issuing their requests", async () => {

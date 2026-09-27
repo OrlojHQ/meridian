@@ -564,11 +564,18 @@ func threadService(
 	t *testing.T, ctx context.Context,
 ) (*sqlite.Store, *app.Service, *structuredRuntime, *transcripts.InstallationKey, domain.CapsuleID) {
 	t.Helper()
+	return threadServiceWithClock(t, ctx, &testClock{now: time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)})
+}
+
+func threadServiceWithClock(
+	t *testing.T, ctx context.Context, clock *testClock,
+) (*sqlite.Store, *app.Service, *structuredRuntime, *transcripts.InstallationKey, domain.CapsuleID) {
+	t.Helper()
 	store, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	now := time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)
+	now := clock.now
 	capsuleID := domain.CapsuleID("capsule-thread")
 	if err := store.Transact(ctx, func(tx ports.Transaction) error {
 		project := domain.Project{
@@ -590,8 +597,7 @@ func threadService(
 		t.Fatal(err)
 	}
 	runtime := &structuredRuntime{}
-	service := app.NewService(
-		store, &testClock{now: now}, &testIDs{}, &recordingQueue{})
+	service := app.NewService(store, clock, &testIDs{}, &recordingQueue{})
 	service.ConfigureThreads(runtime, key)
 	return store, service, runtime, key, capsuleID
 }

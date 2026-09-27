@@ -213,17 +213,6 @@
   background: var(--surface-selected);
 }
 
-.project-group a > svg {
-  width: 0.78rem;
-  color: var(--faint);
-  opacity: 0;
-}
-
-.project-group a:hover > svg,
-.project-group a.selected > svg {
-  opacity: 1;
-}
-
 .activity-item-copy {
   display: grid;
   min-width: 0;
@@ -258,23 +247,51 @@
   box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 12%, transparent);
 }
 
-.state-dot-ready,
-.state-dot-running,
-.state-dot-succeeded {
-  color: #4c9a70;
+.activity-dot-working {
+  color: var(--status-working);
+  animation: activity-pulse 1.6s ease-in-out infinite;
 }
 
-.state-dot-creating,
-.state-dot-preparing,
-.state-dot-starting,
-.state-dot-queued {
-  color: #b38a3d;
+.activity-dot-finished {
+  color: var(--status-review);
 }
 
-.state-dot-failed,
-.state-dot-deleted,
-.state-dot-cancelled {
+.activity-dot-attention {
   color: var(--danger);
+}
+
+.activity-dot-paused {
+  color: var(--warning);
+}
+
+.activity-dot-idle,
+.activity-dot-sealed {
+  color: var(--faint);
+}
+
+@keyframes activity-pulse {
+  50% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 22%, transparent);
+  }
+}
+
+.activity-item-time {
+  align-self: start;
+  padding-top: 0.12rem;
+  color: var(--faint);
+  font-size: 0.62rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.attention-count {
+  margin-left: auto;
+  border-radius: 999px;
+  padding: 0.05rem 0.4rem;
+  color: var(--accent-contrast);
+  background: var(--danger);
+  font-size: 0.6rem;
+  font-weight: 700;
 }
 
 .project-empty,
@@ -322,7 +339,7 @@
   width: 0.38rem;
   height: 0.38rem;
   border-radius: 50%;
-  background: #4c9a70;
+  background: var(--status-working);
 }
 
 .sidebar-footer .connection.offline i {

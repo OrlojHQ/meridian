@@ -19,6 +19,8 @@
   --danger-soft: #f3dfdc;
   --warning: #88621e;
   --warning-soft: #f3ead4;
+  --status-working: #3f8c62;
+  --status-review: #2f6fb3;
   --diff-add-bg: #e6ffec;
   --diff-add-gutter: #ccffd8;
   --diff-delete-bg: #ffebe9;
@@ -217,6 +219,8 @@ pre {
     --danger: #e1857d;
     --danger-soft: #452b28;
     --warning: #dfbb72;
+    --status-working: #5fb887;
+    --status-review: #79a9e0;
     --warning-soft: #44391f;
     --diff-add-bg: #12261d;
     --diff-add-gutter: #193b2a;

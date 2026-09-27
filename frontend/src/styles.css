@@ -234,10 +234,6 @@ pre {
   padding: 1.2rem;
 }
 
-.capsule-card h2 {
-  margin: 0;
-}
-
 .facts {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));

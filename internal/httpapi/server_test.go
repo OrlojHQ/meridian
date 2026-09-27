@@ -129,8 +129,13 @@ func (*runtime) StructuredEvents(
 		Items: []ports.RuntimeStructuredEvent{{Sequence: 1, Frame: adapterproto.Frame{
 			Protocol: adapterproto.Version, Type: adapterproto.KindAssistantMessage,
 			Role: adapterproto.RoleAssistant, MessageID: "http-message", Content: "http-final",
+		}}, {Sequence: 2, Frame: adapterproto.Frame{
+			Protocol: adapterproto.Version, Type: adapterproto.KindPermissionRequest,
+			ID: "http-permission", Permission: &adapterproto.Permission{
+				Kind: "shell", Summary: "http-permission-secret", Options: []string{"allow"},
+			},
 		}}},
-		NextCursor: 1,
+		NextCursor: 2,
 	}, nil
 }
 func (r *runtime) CancelStructured(
@@ -357,7 +362,7 @@ func TestGeneratedClientLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	blocks, ok := blockResult.(*client.ThreadBlockPage)
-	if !ok || len(blocks.Items) != 2 {
+	if !ok || len(blocks.Items) != 3 {
 		t.Fatalf("Thread blocks = %#v (%T)", blockResult, blockResult)
 	}
 	if content, ok := blocks.Items[0].Content.Get(); !ok || content != "http-secret" {
@@ -413,6 +418,24 @@ func TestGeneratedClientLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	currentThread := threadGet.(*client.ThreadHeaders).Response
+	if awaiting, ok := currentThread.Awaiting.Get(); !ok ||
+		awaiting.Kind != client.ThreadAwaitingKindPermission || awaiting.Since.IsZero() {
+		t.Fatalf("Thread awaiting = %#v", currentThread.Awaiting)
+	}
+	for _, path := range []string{
+		"/threads/" + currentThread.ID,
+		"/capsules/" + ready.ID + "/threads",
+	} {
+		rawRequest := httptest.NewRequest(http.MethodGet, path, nil)
+		rawRequest.Header.Set("Authorization", "Bearer "+apiTokenValue)
+		rawResponse := httptest.NewRecorder()
+		handler.ServeHTTP(rawResponse, rawRequest)
+		if rawResponse.Code != http.StatusOK ||
+			!strings.Contains(rawResponse.Body.String(), `"awaiting":{"kind":"permission"`) ||
+			strings.Contains(rawResponse.Body.String(), "http-permission-secret") {
+			t.Fatalf("%s = %d %s", path, rawResponse.Code, rawResponse.Body.String())
+		}
+	}
 	runtime.mu.Lock()
 	runtime.cancelErr = errors.New("injected runtime cancel failure")
 	runtime.mu.Unlock()

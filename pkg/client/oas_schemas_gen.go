@@ -4130,6 +4130,52 @@ func (o OptThreadAdapterEventStatus) Or(d ThreadAdapterEventStatus) ThreadAdapte
 	return d
 }
 
+// NewOptThreadAwaiting returns new OptThreadAwaiting with value set to v.
+func NewOptThreadAwaiting(v ThreadAwaiting) OptThreadAwaiting {
+	return OptThreadAwaiting{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptThreadAwaiting is optional ThreadAwaiting.
+type OptThreadAwaiting struct {
+	Value ThreadAwaiting
+	Set   bool
+}
+
+// IsSet returns true if OptThreadAwaiting was set.
+func (o OptThreadAwaiting) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptThreadAwaiting) Reset() {
+	var v ThreadAwaiting
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptThreadAwaiting) SetTo(v ThreadAwaiting) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptThreadAwaiting) Get() (v ThreadAwaiting, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptThreadAwaiting) Or(d ThreadAwaiting) ThreadAwaiting {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptThreadInput returns new OptThreadInput with value set to v.
 func NewOptThreadInput(v ThreadInput) OptThreadInput {
 	return OptThreadInput{
@@ -6582,6 +6628,7 @@ type Thread struct {
 	Harness             string            `json:"harness"`
 	CurrentRunId        OptString         `json:"currentRunId"`
 	CurrentRunState     OptRunState       `json:"currentRunState"`
+	Awaiting            OptThreadAwaiting `json:"awaiting"`
 	Protocol            OptThreadProtocol `json:"protocol"`
 	StructuredSupported OptBool           `json:"structuredSupported"`
 	EncryptedAtRest     bool              `json:"encryptedAtRest"`
@@ -6621,6 +6668,11 @@ func (s *Thread) GetCurrentRunId() OptString {
 // GetCurrentRunState returns the value of CurrentRunState.
 func (s *Thread) GetCurrentRunState() OptRunState {
 	return s.CurrentRunState
+}
+
+// GetAwaiting returns the value of Awaiting.
+func (s *Thread) GetAwaiting() OptThreadAwaiting {
+	return s.Awaiting
 }
 
 // GetProtocol returns the value of Protocol.
@@ -6696,6 +6748,11 @@ func (s *Thread) SetCurrentRunId(val OptString) {
 // SetCurrentRunState sets the value of CurrentRunState.
 func (s *Thread) SetCurrentRunState(val OptRunState) {
 	s.CurrentRunState = val
+}
+
+// SetAwaiting sets the value of Awaiting.
+func (s *Thread) SetAwaiting(val OptThreadAwaiting) {
+	s.Awaiting = val
 }
 
 // SetProtocol sets the value of Protocol.
@@ -7100,6 +7157,76 @@ func (s *ThreadAdapterEventType) UnmarshalText(data []byte) error {
 		return nil
 	case ThreadAdapterEventTypeEnd:
 		*s = ThreadAdapterEventTypeEnd
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Present while the active structured session has an unanswered permission or input request. Derived
+// in memory from the encrypted transcript and never persisted in plaintext; it carries no request
+// summary, options, or prompt text.
+// Ref: #/components/schemas/ThreadAwaiting
+type ThreadAwaiting struct {
+	Kind  ThreadAwaitingKind `json:"kind"`
+	Since time.Time          `json:"since"`
+}
+
+// GetKind returns the value of Kind.
+func (s *ThreadAwaiting) GetKind() ThreadAwaitingKind {
+	return s.Kind
+}
+
+// GetSince returns the value of Since.
+func (s *ThreadAwaiting) GetSince() time.Time {
+	return s.Since
+}
+
+// SetKind sets the value of Kind.
+func (s *ThreadAwaiting) SetKind(val ThreadAwaitingKind) {
+	s.Kind = val
+}
+
+// SetSince sets the value of Since.
+func (s *ThreadAwaiting) SetSince(val time.Time) {
+	s.Since = val
+}
+
+type ThreadAwaitingKind string
+
+const (
+	ThreadAwaitingKindPermission ThreadAwaitingKind = "permission"
+	ThreadAwaitingKindInput      ThreadAwaitingKind = "input"
+)
+
+// AllValues returns all ThreadAwaitingKind values.
+func (ThreadAwaitingKind) AllValues() []ThreadAwaitingKind {
+	return []ThreadAwaitingKind{
+		ThreadAwaitingKindPermission,
+		ThreadAwaitingKindInput,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s ThreadAwaitingKind) MarshalText() ([]byte, error) {
+	switch s {
+	case ThreadAwaitingKindPermission:
+		return []byte(s), nil
+	case ThreadAwaitingKindInput:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *ThreadAwaitingKind) UnmarshalText(data []byte) error {
+	switch ThreadAwaitingKind(data) {
+	case ThreadAwaitingKindPermission:
+		*s = ThreadAwaitingKindPermission
+		return nil
+	case ThreadAwaitingKindInput:
+		*s = ThreadAwaitingKindInput
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)
