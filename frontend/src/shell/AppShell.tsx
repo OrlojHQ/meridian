@@ -13,6 +13,7 @@ import {
   useNavigate,
 } from "react-router-dom";
 
+import { normalizeAPIError } from "../api/client";
 import type { Project } from "../api/generated/types.gen";
 import { queries } from "../api/queries";
 import { NewProjectDialog } from "../components/NewProjectDialog";
@@ -25,6 +26,7 @@ import {
   PlusIcon,
   SearchIcon,
   ThreadIcon,
+  WarningIcon,
 } from "../components/ui/Icons";
 import {
   defaultSession,
@@ -33,7 +35,7 @@ import {
   type ActivityGroup,
   type CapsuleSession,
 } from "./capsuleActivity";
-import { useWorkingSet } from "./useWorkingSet";
+import { useWorkingSet, type WorkingSetItem } from "./useWorkingSet";
 import { WorkspaceContext } from "./WorkspaceContext";
 
 const pathID = (pathname: string, resource: string) => {
@@ -49,7 +51,10 @@ const isTypingTarget = (target: EventTarget | null) => {
   );
 };
 
-export type ShellOutletContext = { openNewProject: () => void };
+export type ShellOutletContext = {
+  openNewProject: () => void;
+  openLauncher: (project: Project) => void;
+};
 
 export function ActivityDot({ group }: { group: ActivityGroup }) {
   return <span className={`state-dot activity-dot-${group}`} aria-hidden="true" />;
@@ -94,10 +99,101 @@ function SessionList({
   );
 }
 
+function useOnline() {
+  const [online, setOnline] = useState(navigator.onLine);
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine);
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    return () => {
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+    };
+  }, []);
+  return online;
+}
+
+const statusGroups: { group: ActivityGroup; label: string }[] = [
+  { group: "attention", label: "Needs attention" },
+  { group: "working", label: "Working" },
+  { group: "finished", label: "Ready for review" },
+];
+
+// The status bar reports daemon reachability from the capabilities query,
+// which records no Capsule activity, and counts only the working set the
+// sidebar already derives. The API exposes no resource metrics to show.
+function StatusBar({ items }: { items: WorkingSetItem[] }) {
+  const online = useOnline();
+  const capabilities = useQuery({ ...queries.capabilities(), refetchInterval: 15_000 });
+  const provider = capabilities.data?.providerVersion ?? "";
+  const simulated = provider.startsWith("fake/");
+  const failure = capabilities.isError ? normalizeAPIError(capabilities.error) : undefined;
+  const connection = !online
+    ? { state: "offline", label: "Offline", title: "This browser is offline" }
+    : failure
+      ? failure.status === 401
+        ? { state: "offline", label: "Sign-in required", title: "The daemon rejected this browser session" }
+        : { state: "offline", label: "Daemon unreachable", title: failure.message }
+      : capabilities.isPending
+        ? { state: "pending", label: "Connecting…", title: "Contacting the daemon" }
+        : { state: "online", label: "Connected", title: "The daemon API is reachable" };
+  return (
+    <footer className={`status-bar${simulated ? " simulated" : ""}`} aria-label="Status bar">
+      <span
+        className={`status-connection ${connection.state}`}
+        role="status"
+        title={connection.title}
+      >
+        <i aria-hidden="true" />
+        <span className="status-connection-label">{connection.label}</span>
+      </span>
+      {provider && (
+        <span className="status-provider" title="Capsule provider">
+          <span className="sr-only">Provider </span>
+          {provider}
+        </span>
+      )}
+      {simulated && (
+        <strong
+          className="status-simulated"
+          title="meridiand is running with --provider=fake. Capsules are simulated and no agents run."
+        >
+          <WarningIcon />
+          <span>
+            Simulated<span className="status-long"> provider</span>
+            {" — "}
+            <span className="status-long">Capsules are simulated and </span>
+            no agents run
+          </span>
+        </strong>
+      )}
+      <nav className="status-counts" aria-label="Capsule activity summary">
+        {statusGroups.map(({ group, label }) => {
+          const count = items.filter((item) => item.activity.group === group).length;
+          return (
+            <Link
+              key={group}
+              to="/ui/"
+              className={count === 0 ? "empty" : undefined}
+              aria-label={`${label}: ${count}`}
+              title={label}
+            >
+              <ActivityDot group={group} />
+              {count}
+              <span className="status-long" aria-hidden="true">
+                {label.toLowerCase()}
+              </span>
+            </Link>
+          );
+        })}
+      </nav>
+    </footer>
+  );
+}
+
 export function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
-  const [online, setOnline] = useState(navigator.onLine);
   const [filter, setFilter] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [contextOpen, setContextOpen] = useState(true);
@@ -150,16 +246,6 @@ export function AppShell() {
   const attentionCount = items.filter(
     (item) => item.activity.group === "attention",
   ).length;
-
-  useEffect(() => {
-    const update = () => setOnline(navigator.onLine);
-    window.addEventListener("online", update);
-    window.addEventListener("offline", update);
-    return () => {
-      window.removeEventListener("online", update);
-      window.removeEventListener("offline", update);
-    };
-  }, []);
 
   useEffect(() => {
     setSidebarOpen(false);
@@ -365,18 +451,18 @@ export function AppShell() {
             <ThreadIcon />
             Threads
           </NavLink>
-          <span
-            className={`connection ${online ? "online" : "offline"}`}
-            role="status"
-          >
-            <i />
-            {online ? "Connected" : "Offline"}
-          </span>
         </footer>
       </aside>
 
       <main id="content" className="workspace-main" tabIndex={-1}>
-        <Outlet context={{ openNewProject: () => setNewProjectOpen(true) } satisfies ShellOutletContext} />
+        <Outlet
+          context={
+            {
+              openNewProject: () => setNewProjectOpen(true),
+              openLauncher: setLaunchProject,
+            } satisfies ShellOutletContext
+          }
+        />
       </main>
 
       {hasContext && (
@@ -399,6 +485,8 @@ export function AppShell() {
           )}
         </>
       )}
+
+      <StatusBar items={items} />
 
       <NewProjectDialog
         open={newProjectOpen}

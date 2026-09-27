@@ -41,6 +41,7 @@
   --sidebar-width: 17rem;
   --context-width: clamp(24rem, 42vw, 48rem);
   --topbar-height: 3.2rem;
+  --statusbar-height: 1.7rem;
   --shadow-dialog: 0 24px 80px rgb(28 33 29 / 22%);
 }
 

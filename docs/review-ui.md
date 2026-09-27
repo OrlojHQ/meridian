@@ -18,14 +18,28 @@ The UI uses a full-height, Capsule-centered workspace:
 - the contextual tool pane provides capability-gated Changes, Preview, Files,
   Terminal, and Activity tabs for the selected Capsule.
 
-The Activity view groups the working set by what it needs from the operator:
-Needs attention, Working, Ready for review, Idle, Paused, and Sealed. Status is
-derived only from Capsule, Run, and Thread summaries, including the Thread's
-content-free `awaiting` flag. The working set never polls Git status, files,
+The Activity view is an inbox of what needs the operator. Needs attention and
+Ready for review come first as rows with direct actions: a session waiting for
+permission or input links straight to that session, a failed Capsule or Run
+shows its bounded failure reason and opens the Capsule, and finished work opens
+the Capsule or, when the provider supports Git review, its diff page. Working
+Capsules collapse into a compact list of links, and Idle, Paused, and Sealed
+into one collapsed summary. When nothing needs the operator the view says it is
+all caught up and still offers to start work in each Project or create a new
+one. Status is derived only from Capsule, Run, and Thread summaries, including
+the Thread's content-free `awaiting` flag. The working set never polls Git status, files,
 or previews, because those count as Capsule activity and would defeat idle
 pausing, and never fetches transcripts. `meridiand --runtime-refresh-interval`
 keeps Run state and structured Thread output current while no client is
 watching (ADR 0025).
+
+A slim status bar runs along the bottom of the shell. It shows whether the
+browser is online and whether the daemon API answers the capabilities request,
+the provider version, and counts of Capsules that need attention, are working,
+or are ready for review, each linking to the Activity view. When the provider is
+`fake`, the bar turns to a warning that Capsules are simulated and no agents
+run. It shows no resource use because the API exposes no resource metrics
+(`capabilities.resourceMetrics` is false).
 
 The Terminal tool appears only when the primary surface is not already showing
 that native PTY, avoiding duplicate attachments while keeping PTY access beside
@@ -38,7 +52,7 @@ direct return to its owning Capsule workspace.
 
 Desktop layouts show all three surfaces. On narrower viewports the Activity
 sidebar becomes a drawer and Capsule tools become an independently dismissible
-full-screen surface. Each pane owns its scrolling; the browser document does
+full-screen surface above the status bar. Each pane owns its scrolling; the browser document does
 not become an unbounded stack of Capsule panels.
 
 The Changes tool parses the bounded unified diff into collapsible file sections,

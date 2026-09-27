@@ -124,3 +124,12 @@ export function MoreIcon(props: IconProps) {
     </Icon>
   );
 }
+
+export function WarningIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M10 3 2.5 16.5h15L10 3Z" />
+      <path d="M10 8.5v3.5M10 14.5v.01" />
+    </Icon>
+  );
+}

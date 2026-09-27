@@ -1,10 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { api } from "../api/client";
+import { MeridianAPIError, api } from "../api/client";
 import type {
   Capabilities,
   Capsule,
@@ -226,6 +226,102 @@ describe("application shell", () => {
     expect(screen.queryByRole("link", { name: /Review the launcher/ })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Setup broke/ })).toBeInTheDocument();
     expect(gitStatus).not.toHaveBeenCalled();
+  });
+
+  it("shows connection, provider, and activity counts in the status bar", async () => {
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
+    vi.spyOn(api, "capsules").mockResolvedValue({
+      items: [
+        capsule,
+        { ...capsule, id: "capsule-2", name: "Setup broke", state: "Failed" },
+      ],
+    });
+    vi.spyOn(api, "runs").mockImplementation(async (capsuleId) => ({
+      items:
+        capsuleId === capsule.id
+          ? [
+              {
+                id: "run-1",
+                capsuleId,
+                harness: "opencode",
+                state: "Running",
+                createdAt: "2026-08-26T00:02:00Z",
+                startedAt: "2026-08-26T00:02:01Z",
+                updatedAt: "2026-08-26T00:02:01Z",
+                resourceVersion: 1,
+              },
+            ]
+          : [],
+    }));
+    vi.spyOn(api, "capabilities").mockResolvedValue(capabilities);
+
+    wrapper(
+      <Routes>
+        <Route path="/ui" element={<AppShell />}>
+          <Route index element={<p>Activity home</p>} />
+        </Route>
+      </Routes>,
+    );
+
+    const bar = screen.getByRole("contentinfo", { name: "Status bar" });
+    await waitFor(() =>
+      expect(within(bar).getByRole("status")).toHaveTextContent("Connected"),
+    );
+    expect(bar).toHaveTextContent("fake/v1");
+    expect(bar).toHaveTextContent("Capsules are simulated and no agents run");
+    await waitFor(() =>
+      expect(within(bar).getByRole("link", { name: "Needs attention: 1" })).toHaveAttribute(
+        "href",
+        "/ui/",
+      ),
+    );
+    expect(within(bar).getByRole("link", { name: "Working: 1" })).toBeInTheDocument();
+    expect(within(bar).getByRole("link", { name: "Ready for review: 0" })).toBeInTheDocument();
+    expect(bar).not.toHaveTextContent(/cpu|memory/i);
+    const sidebar = screen.getByRole("complementary", { name: "Activity" });
+    expect(sidebar).not.toHaveTextContent("Connected");
+  });
+
+  it("reports an unreachable daemon without a simulated-provider warning", async () => {
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "capabilities").mockRejectedValue(
+      new MeridianAPIError("Meridian API is unreachable", "network_error"),
+    );
+
+    wrapper(
+      <Routes>
+        <Route path="/ui" element={<AppShell />}>
+          <Route index element={<p>Activity home</p>} />
+        </Route>
+      </Routes>,
+    );
+
+    const bar = screen.getByRole("contentinfo", { name: "Status bar" });
+    await waitFor(
+      () => expect(within(bar).getByRole("status")).toHaveTextContent("Daemon unreachable"),
+      { timeout: 5_000 },
+    );
+    expect(bar).not.toHaveTextContent("simulated");
+  });
+
+  it("marks a non-simulated provider plainly", async () => {
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "capabilities").mockResolvedValue({
+      ...capabilities,
+      providerVersion: "docker/v2",
+    });
+
+    wrapper(
+      <Routes>
+        <Route path="/ui" element={<AppShell />}>
+          <Route index element={<p>Activity home</p>} />
+        </Route>
+      </Routes>,
+    );
+
+    const bar = screen.getByRole("contentinfo", { name: "Status bar" });
+    expect(await within(bar).findByText("docker/v2")).toBeInTheDocument();
+    expect(bar).not.toHaveTextContent(/simulated/i);
   });
 
   it("flags Capsules whose Thread is waiting for the operator", async () => {
