@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api, normalizeAPIError } from "../api/client";
@@ -10,7 +10,9 @@ import type {
   Run,
 } from "../api/generated/types.gen";
 import { queries } from "../api/queries";
-import { DiffViewer } from "../components/DiffViewer";
+import { DiffViewer, parseUnifiedDiff } from "../components/DiffViewer";
+import { ReviewBatch } from "../components/ReviewComments";
+import { useReviewComments } from "../components/reviewBatch";
 import { CodeViewer } from "../components/SyntaxCode";
 import {
   ActivityIcon,
@@ -54,14 +56,19 @@ function InlineError({ error }: { error: unknown }) {
 function ChangesPane({
   capsule,
   supported,
+  structured,
 }: {
   capsule: Capsule;
   supported: boolean;
+  structured: boolean;
 }) {
   const diff = useQuery({
     ...queries.gitDiff(capsule.id),
     enabled: supported && capsule.state === "Ready",
   });
+  const review = useReviewComments(capsule.id);
+  const content = diff.data?.content ?? "";
+  const files = useMemo(() => parseUnifiedDiff(content), [content]);
   if (!supported) {
     return <p className="tool-empty">Git review is unsupported by this provider.</p>;
   }
@@ -78,7 +85,12 @@ function ChangesPane({
           Full review
         </Link>
       </div>
-      <DiffViewer content={diff.data.content} truncated={diff.data.truncated} />
+      <ReviewBatch capsule={capsule} files={files} structured={structured} />
+      <DiffViewer
+        content={diff.data.content}
+        truncated={diff.data.truncated}
+        review={review}
+      />
     </div>
   );
 }
@@ -452,7 +464,11 @@ export function WorkspaceContext({
         aria-label={tabs.find((item) => item.id === tab)?.label}
       >
         {tab === "changes" && (
-          <ChangesPane capsule={capsule.data} supported={capabilities?.git === true} />
+          <ChangesPane
+            capsule={capsule.data}
+            supported={capabilities?.git === true}
+            structured={capabilities?.structured === true || !capsule.data.harness}
+          />
         )}
         {tab === "preview" && (
           <PreviewPane capsule={capsule.data} supported={capabilities?.preview === true} />

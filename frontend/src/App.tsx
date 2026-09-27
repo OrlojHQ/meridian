@@ -39,6 +39,7 @@ import {
   ThreadDetail,
   ThreadFleet,
 } from "./components/Threads";
+import { PendingReviewNotice } from "./components/ReviewComments";
 import { CodeViewer } from "./components/SyntaxCode";
 import { ActionsMenu, type ActionsMenuItem } from "./components/ui/ActionsMenu";
 import { HarnessMark } from "./components/ui/HarnessMark";
@@ -1173,9 +1174,11 @@ function DiffPage() {
         <Link to={`/ui/capsules/${capsuleId}`}>Back to Capsule</Link>
       </header>
       <p className="notice">
-        Changes are open in the Capsule tools pane. Inspect the exact Git state
-        here before shipping.
+        Changes are open in the Capsule tools pane. Comment on lines there and
+        send the review to the agent, or inspect the exact Git state here before
+        shipping.
       </p>
+      <PendingReviewNotice capsuleId={capsuleId} />
       {capabilities.data.delivery ? (
         <ShipPanel capsule={capsule.data} />
       ) : (
