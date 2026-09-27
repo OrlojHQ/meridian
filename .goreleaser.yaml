@@ -86,7 +86,11 @@ checksum:
   algorithm: sha256
 
 sboms:
+  # Syft emits SPDX JSON; name it so release.yml attests/signs it and
+  # docs/operations.md verification commands match.
   - artifacts: archive
+    documents:
+      - "{{ .ArtifactName }}.spdx.json"
 
 changelog:
   use: git
