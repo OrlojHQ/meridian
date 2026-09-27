@@ -231,9 +231,81 @@
 }
 
 .activity-item-copy small {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
   color: var(--muted);
   font-size: 0.64rem;
   font-weight: 470;
+}
+
+.activity-item-copy small .harness-mark {
+  width: 0.95rem;
+  height: 0.95rem;
+  font-size: 0.48rem;
+}
+
+.activity-item-side {
+  display: grid;
+  align-self: stretch;
+  justify-items: end;
+  align-content: space-between;
+}
+
+.session-count {
+  min-width: 1.05rem;
+  border-radius: 999px;
+  padding: 0 0.3rem;
+  color: var(--muted);
+  background: var(--surface-subtle);
+  font-size: 0.58rem;
+  font-weight: 650;
+  text-align: center;
+}
+
+.project-group .session-list {
+  position: relative;
+  margin: 0.1rem 0 0.35rem 0.62rem;
+  padding-left: 0.55rem;
+  border-left: 1px solid var(--border);
+}
+
+.project-group .session-list a {
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  gap: 0.4rem;
+  min-height: 1.9rem;
+  padding: 0.2rem 0.4rem;
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.project-group .session-list a.selected {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.session-list-label {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 0.35rem;
+  overflow: hidden;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.session-list-label small {
+  overflow: hidden;
+  color: var(--faint);
+  font-weight: 470;
+  text-overflow: ellipsis;
+}
+
+.session-list time {
+  color: var(--faint);
+  font-size: 0.6rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .state-dot {
@@ -260,13 +332,22 @@
   color: var(--danger);
 }
 
+.activity-dot-attention {
+  animation: activity-pulse 1.2s ease-in-out infinite;
+}
+
 .activity-dot-paused {
   color: var(--warning);
+  background: transparent;
 }
 
 .activity-dot-idle,
 .activity-dot-sealed {
   color: var(--faint);
+}
+
+.activity-dot-idle {
+  background: transparent;
 }
 
 @keyframes activity-pulse {
@@ -435,6 +516,13 @@
 
 .context-toggle.open {
   right: calc(var(--context-width) + 0.45rem);
+}
+
+/* The Capsule tools toggle floats over the top-right of the primary
+   surface; keep header content clear of it. */
+.app-shell.with-context-toggle .workspace-main .workspace-view-header,
+.app-shell.with-context-toggle .workspace-main .capsule-bar {
+  padding-right: 3.1rem;
 }
 
 .context-toggle.open svg {

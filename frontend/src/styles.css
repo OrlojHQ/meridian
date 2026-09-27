@@ -457,19 +457,6 @@ button.file-entry {
   overflow: auto;
 }
 
-.thread-fast-path {
-  margin-top: 1rem;
-}
-
-.thread-fast-path summary {
-  cursor: pointer;
-  font-weight: 700;
-}
-
-.thread-fast-path .thread-create {
-  margin-top: 1rem;
-}
-
 label {
   display: grid;
   gap: 0.35rem;

@@ -9,11 +9,17 @@ import type {
 } from "../api/generated/types.gen";
 
 import { queries } from "../api/queries";
+import { harnessName } from "../shell/capsuleActivity";
 import { PreparationProgress } from "./PreparationProgress";
 
-export function StructuredLauncher({ project }: { project: Project }) {
+export function StructuredLauncher({
+  project,
+  harness,
+}: {
+  project: Project;
+  harness: string;
+}) {
   const queryClient = useQueryClient();
-  const packs = project.harnessImages ?? [];
   const [result, setResult] = useState<ProjectThreadIntent>();
   const mutation = useMutation({
     mutationFn: ({
@@ -48,7 +54,7 @@ export function StructuredLauncher({ project }: { project: Project }) {
     const data = new FormData(form);
     mutation.mutate({
       projectId: project.id,
-      harness: String(data.get("harness") ?? ""),
+      harness,
       prompt: String(data.get("prompt") ?? ""),
       name: String(data.get("name") ?? "") || undefined,
     });
@@ -56,45 +62,13 @@ export function StructuredLauncher({ project }: { project: Project }) {
 
   return (
     <section className="launcher-pane">
-      <header className="launcher-pane-heading">
-        <div>
-          <p className="eyebrow">Structured session</p>
-          <h2>Start with a task</h2>
-        </div>
-        <span className="launcher-kind">Thread</span>
-      </header>
       <p className="muted-copy">
-        Provision a fresh Capsule and retain an encrypted structured transcript.
+        {harnessName(harness)} starts in a fresh Capsule with this task. The
+        conversation is kept encrypted.
       </p>
       <form className="launcher-form" onSubmit={submit}>
-        <label htmlFor="spawn-harness">
-          Structured harness
-          <select
-            id="spawn-harness"
-            name="harness"
-            required
-            defaultValue={packs[0]?.name}
-            disabled={mutation.isPending || Boolean(result) || packs.length === 0}
-          >
-            {packs.map((pack) => (
-              <option key={pack.name} value={pack.name}>
-                {pack.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        {packs.length === 0 && (
-          <p className="notice">
-            This Project has no applied harness packs. Apply one before starting
-            a structured Thread.
-          </p>
-        )}
-        <label htmlFor="spawn-name">
-          Capsule name <span className="optional-label">Optional</span>
-          <input id="spawn-name" name="name" maxLength={128} />
-        </label>
         <label htmlFor="spawn-prompt">
-          First task
+          Task
           <textarea
             id="spawn-prompt"
             name="prompt"
@@ -104,11 +78,15 @@ export function StructuredLauncher({ project }: { project: Project }) {
             placeholder="Describe the work you want the agent to do…"
           />
         </label>
+        <label htmlFor="spawn-name">
+          Capsule name <span className="optional-label">Optional</span>
+          <input id="spawn-name" name="name" maxLength={128} />
+        </label>
         <button
           type="submit"
-          disabled={mutation.isPending || Boolean(result) || packs.length === 0}
+          disabled={mutation.isPending || Boolean(result) || !harness}
         >
-          {mutation.isPending ? "Starting…" : "Start Thread"}
+          {mutation.isPending ? "Starting…" : "Start task"}
         </button>
       </form>
       {mutation.isError ? (

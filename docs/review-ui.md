@@ -7,12 +7,14 @@ generated from `api/openapi.yaml`; lifecycle transitions remain server-owned.
 
 The UI uses a full-height, Capsule-centered workspace:
 
-- the persistent Activity sidebar groups Capsules by Project and shows what
-  each is doing and for how long (for example "Claude Code working", "Waiting
-  for permission", or "Capsule failed") without requiring a dashboard round
-  trip;
-- the primary surface presents the active structured Thread, native PTY, or
-  resource inspector; and
+- the persistent Activity sidebar groups Capsules by Project and shows each
+  Capsule's harness and what it is doing and for how long (for example "Claude
+  Code working", "Waiting for permission", or "Capsule failed") without
+  requiring a dashboard round trip. The selected Capsule lists its sessions
+  beneath it when it has more than one;
+- the primary surface presents the Capsule's sessions as tabs (its native PTY
+  and each structured Thread) under a one-line header whose actions menu holds
+  Pause, Resume, Seal, and Delete, or a resource inspector; and
 - the contextual tool pane provides capability-gated Changes, Preview, Files,
   Terminal, and Activity tabs for the selected Capsule.
 
@@ -29,8 +31,8 @@ The Terminal tool appears only when the primary surface is not already showing
 that native PTY, avoiding duplicate attachments while keeping PTY access beside
 structured Threads and inspectors.
 
-Run history lives in the Activity tool instead of repeating beneath the primary
-workspace. Run inspectors and historical terminal routes remain directly
+Run history and Moments live in the Activity tool instead of repeating beneath
+the primary workspace. Run inspectors and historical terminal routes remain directly
 addressable from that list. Every Run inspector and focused terminal provides a
 direct return to its owning Capsule workspace.
 
@@ -50,9 +52,13 @@ text is always rendered as React text nodes, never injected HTML.
 
 `New project` creates the top-level Project boundary and can apply one
 installation-known harness pack without accepting a free image reference. Each
-Project heading owns its own `+` launcher with separate native-harness and
-structured Thread modes, so Capsule creation is already scoped and does not ask
-for a Project again. Native launch lists only harness packs applied to that
+Project heading owns its own `+` launcher, so Capsule creation is already
+scoped and does not ask for a Project again. The launcher starts with an agent
+picker over the Project's applied packs; it can add another installation-known
+pack to the Project in place, again without accepting a free image reference.
+Under the picker the operator chooses between opening the agent's terminal
+(native) and giving it a written task (structured, when the provider supports
+it). Native launch lists only harness packs applied to that
 Project, follows provisioning, and opens the first PTY Run. Structured launch
 retains the encrypted Thread intent workflow. Keyboard shortcuts `n`, `/`,
 `j`/`k`, and the arrow keys open Project creation, focus filtering, and move

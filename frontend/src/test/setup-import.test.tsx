@@ -49,14 +49,14 @@ it("imports inline and selects the saved setup for Capsule creation",async()=>{
  vi.spyOn(api,"previewHarnessSetup").mockResolvedValue({bundle,issues:[],digest:"digest"});
  vi.spyOn(api,"importHarnessSetup").mockImplementation(async()=>{setups.mockResolvedValue({items:[saved]});return saved;});
  const create=vi.spyOn(api,"createCapsule").mockResolvedValue(capsule);vi.spyOn(api,"capsule").mockResolvedValue(capsule);vi.spyOn(api,"runs").mockResolvedValue({items:[]});
- show(<NativeLauncher project={project}/>);
+ show(<NativeLauncher project={project} harness="opencode"/>);
  await userEvent.click(await screen.findByRole("button",{name:"Import my setup"}));
  expect(screen.getByRole("heading",{name:"Import your setup"})).toBeInTheDocument();
  await userEvent.upload(screen.getByLabelText("Choose configuration files"),file("opencode.json",bundle.files[0]!.content));
  await userEvent.click(screen.getByRole("button",{name:"Review import"}));
  await userEvent.click(await screen.findByRole("button",{name:"Save setup"}));
  expect(await screen.findByText(/Using My OpenCode setup/)).toBeInTheDocument();
- await userEvent.click(screen.getByRole("button",{name:"Create Capsule"}));
+ await userEvent.click(screen.getByRole("button",{name:"Start OpenCode"}));
  await waitFor(()=>expect(create).toHaveBeenCalledWith("p",expect.any(String),"opencode",undefined,"setup"));
 });
 

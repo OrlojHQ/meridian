@@ -3,13 +3,19 @@ import { useMemo } from "react";
 
 import type { Capsule, Run, Thread } from "../api/generated/types.gen";
 import { queries } from "../api/queries";
-import { describeCapsule, type CapsuleActivity } from "./capsuleActivity";
+import {
+  capsuleSessions,
+  describeCapsule,
+  type CapsuleActivity,
+  type CapsuleSession,
+} from "./capsuleActivity";
 
 export type WorkingSetItem = {
   capsule: Capsule;
   runs: Run[];
   threads: Thread[];
   activity: CapsuleActivity;
+  sessions: CapsuleSession[];
 };
 
 export function useWorkingSet() {
@@ -51,6 +57,7 @@ export function useWorkingSet() {
           runs,
           threads,
           activity: describeCapsule(capsule, runs, threads),
+          sessions: capsuleSessions(capsule, runs, threads),
         };
       }),
     [capsules, runResults, threadResults],

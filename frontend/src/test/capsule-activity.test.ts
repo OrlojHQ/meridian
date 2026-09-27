@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import type { Capsule, Run, Thread } from "../api/generated/types.gen";
 import {
+  capsuleSessions,
+  defaultSession,
   describeCapsule,
   latestRun,
   relativeTime,
@@ -110,7 +112,50 @@ describe("Capsule activity", () => {
     );
     expect(activity.agent).toBe("OpenCode");
     expect(activity.detail).toBe("adapter crashed");
-    expect(describeCapsule({ ...capsule, harness: undefined }).agent).toBe("Thread");
+    const idle = describeCapsule({ ...capsule, harness: undefined });
+    expect(idle.agent).toBe("");
+    expect(idle.label).toBe("No agent running");
+    expect(
+      describeCapsule({ ...capsule, harness: undefined }, [
+        run({ harness: "", state: "Running" }),
+      ]).label,
+    ).toBe("Agent working");
+  });
+
+  it("derives sessions and opens on the one that needs the operator", () => {
+    const thread = (overrides: Partial<Thread>): Thread => ({
+      id: "thread-1",
+      capsuleId: capsule.id,
+      state: "active",
+      harness: "claude",
+      encryptedAtRest: true,
+      messageCount: 1,
+      encryptedBytes: 64,
+      createdAt: "2026-08-23T01:00:00Z",
+      updatedAt: "2026-08-23T01:00:00Z",
+      resourceVersion: 1,
+      ...overrides,
+    });
+    const sessions = capsuleSessions(
+      capsule,
+      [run({ state: "Running" })],
+      [
+        thread({ id: "deleted", state: "deleted" }),
+        thread({ id: "archived", state: "archived" }),
+        thread({
+          id: "waiting",
+          awaiting: { kind: "input", since: "2026-08-23T02:00:00Z" },
+        }),
+      ],
+    );
+    expect(sessions.map((session) => [session.id, session.group, session.label])).toEqual([
+      ["terminal", "working", "Working"],
+      ["archived", "sealed", "Archived"],
+      ["waiting", "attention", "Waiting for input"],
+    ]);
+    expect(defaultSession(sessions)?.id).toBe("waiting");
+    expect(defaultSession(sessions.slice(0, 2))?.id).toBe("terminal");
+    expect(capsuleSessions({ ...capsule, harness: undefined })).toEqual([]);
   });
 
   it("measures working time from Run start and finished time from Run end", () => {
