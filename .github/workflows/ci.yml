@@ -9,9 +9,12 @@ on:
 permissions:
   contents: read
 
+# A newer push supersedes an in-progress pull request run. Pushes to main get
+# one group per commit, so every merged change keeps its full run; otherwise a
+# docs-only merge would cancel the previous code merge's build.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   changes:
