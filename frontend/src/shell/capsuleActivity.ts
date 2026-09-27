@@ -172,6 +172,11 @@ export type CapsuleSession = {
 
 export const TERMINAL_SESSION = "terminal";
 
+export const sessionPath = (capsuleId: string, sessionId?: string) =>
+  `/ui/capsules/${encodeURIComponent(capsuleId)}${
+    sessionId ? `?session=${encodeURIComponent(sessionId)}` : ""
+  }`;
+
 function terminalSession(harness: string, runs: Run[]): CapsuleSession {
   const run = latestRun(runs);
   const base = { id: TERMINAL_SESSION, kind: "terminal" as const, harness };

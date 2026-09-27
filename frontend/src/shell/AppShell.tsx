@@ -32,6 +32,7 @@ import {
   defaultSession,
   harnessName,
   relativeTime,
+  sessionPath,
   type ActivityGroup,
   type CapsuleSession,
 } from "./capsuleActivity";
@@ -60,10 +61,7 @@ export function ActivityDot({ group }: { group: ActivityGroup }) {
   return <span className={`state-dot activity-dot-${group}`} aria-hidden="true" />;
 }
 
-export const sessionPath = (capsuleId: string, sessionId?: string) =>
-  `/ui/capsules/${encodeURIComponent(capsuleId)}${
-    sessionId ? `?session=${encodeURIComponent(sessionId)}` : ""
-  }`;
+export { sessionPath };
 
 function SessionList({
   capsuleId,

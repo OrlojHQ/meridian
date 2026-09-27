@@ -7,6 +7,18 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Diff review comments. In the Changes tool, including beside the full review
+  page, a reviewer can comment on a diff line or a range of lines, then edit or
+  remove each comment inline or in a review summary. "Send to agent" composes
+  one message that quotes each commented excerpt with its file and line, shows
+  it for review, and sends it to a chosen structured Thread (by default the
+  Capsule's default session) through the existing Thread message API, then
+  opens that session. Terminal-only Capsules get "Copy as prompt" instead;
+  Meridian never types into a native PTY. Pending comments stay in browser
+  memory for each Capsule and are discarded on reload.
+
 ### Changed
 
 - The New Capsule dialog starts with an agent picker. A Project with no agents

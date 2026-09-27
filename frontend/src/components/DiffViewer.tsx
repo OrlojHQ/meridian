@@ -1,5 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useId, useMemo, useState } from "react";
 
+import { AddCommentForm, ReviewCommentCard } from "./ReviewComments";
+import {
+  anchorLabel,
+  commentsByRow,
+  lineSide,
+  MAX_REVIEW_COMMENTS,
+  reviewAnchor,
+  type ReviewCommentsController,
+} from "./reviewBatch";
 import {
   type HighlightToken,
   languageForPath,
@@ -171,11 +180,26 @@ export function parseUnifiedDiff(content: string): DiffFile[] {
 export function DiffViewer({
   content,
   truncated = false,
+  review,
 }: {
   content: string;
   truncated?: boolean;
+  review?: ReviewCommentsController;
 }) {
   const files = useMemo(() => parseUnifiedDiff(content), [content]);
+  const idPrefix = useId();
+  const [draft, setDraft] = useState<{ fileIndex: number; lineIndex: number }>();
+  const placement = useMemo(
+    () => (review ? commentsByRow(files, review.comments).rows : undefined),
+    [files, review],
+  );
+  const addButtonId = (fileIndex: number, lineIndex: number) =>
+    `${idPrefix}-comment-${fileIndex}-${lineIndex}`;
+  const closeDraft = () => {
+    if (draft) document.getElementById(addButtonId(draft.fileIndex, draft.lineIndex))?.focus();
+    setDraft(undefined);
+  };
+  const full = (review?.comments.length ?? 0) >= MAX_REVIEW_COMMENTS;
   const [dark, setDark] = useState(() =>
     window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false,
   );
@@ -243,7 +267,10 @@ export function DiffViewer({
   }
 
   return (
-    <div className="github-diff" aria-label="Unified diff">
+    <div
+      className={`github-diff${review ? " reviewable" : ""}`}
+      aria-label="Unified diff"
+    >
       {truncated && (
         <p className="warning" role="alert">
           Diff truncated by the server response limit.
@@ -266,9 +293,11 @@ export function DiffViewer({
           </summary>
           <div className="diff-rows" role="table" aria-label={`Changes in ${file.path}`}>
             {file.lines.map((line, lineIndex) => {
+              const reviewCell = review && <span className="diff-comment-cell" />;
               if (line.kind === "hunk") {
                 return (
                   <div className="diff-row hunk" role="row" key={lineIndex}>
+                    {reviewCell}
                     <span className="diff-gutter" />
                     <span className="diff-gutter" />
                     <span className="diff-marker">@@</span>
@@ -279,6 +308,7 @@ export function DiffViewer({
               if (line.kind === "metadata") {
                 return (
                   <div className="diff-row metadata" role="row" key={lineIndex}>
+                    {reviewCell}
                     <span className="diff-gutter" />
                     <span className="diff-gutter" />
                     <span className="diff-marker" />
@@ -287,28 +317,76 @@ export function DiffViewer({
                 );
               }
               const tokenSide = line.kind === "deletion" ? "old" : "new";
+              const anchor = review && lineSide(line) ? reviewAnchor(file, lineIndex) : undefined;
+              const drafting =
+                draft?.fileIndex === fileIndex && draft.lineIndex === lineIndex;
+              const comments = placement?.get(`${fileIndex}:${lineIndex}`) ?? [];
               return (
-                <div className={`diff-row ${line.kind}`} role="row" key={lineIndex}>
-                  <span className="diff-gutter" aria-label={line.oldLine ? `Old line ${line.oldLine}` : undefined}>
-                    {line.oldLine}
-                  </span>
-                  <span className="diff-gutter" aria-label={line.newLine ? `New line ${line.newLine}` : undefined}>
-                    {line.newLine}
-                  </span>
-                  <span className="diff-marker" aria-hidden="true">
-                    {line.kind === "addition"
-                      ? "+"
-                      : line.kind === "deletion"
-                        ? "−"
-                        : " "}
-                  </span>
-                  <code>
-                    <SyntaxTokenLine
-                      tokens={tokens[`${fileIndex}:${lineIndex}:${tokenSide}`]}
-                      fallback={line.text}
-                    />
-                  </code>
-                </div>
+                <Fragment key={lineIndex}>
+                  <div className={`diff-row ${line.kind}`} role="row">
+                    {review && (
+                      <span className="diff-comment-cell">
+                        {anchor && (
+                          <button
+                            type="button"
+                            id={addButtonId(fileIndex, lineIndex)}
+                            className="diff-comment-add"
+                            aria-label={`Comment on ${anchorLabel(anchor)}`}
+                            title={full ? "The review is full" : "Add a review comment"}
+                            aria-expanded={drafting}
+                            disabled={full}
+                            onClick={() => setDraft({ fileIndex, lineIndex })}
+                          >
+                            +
+                          </button>
+                        )}
+                      </span>
+                    )}
+                    <span className="diff-gutter" aria-label={line.oldLine ? `Old line ${line.oldLine}` : undefined}>
+                      {line.oldLine}
+                    </span>
+                    <span className="diff-gutter" aria-label={line.newLine ? `New line ${line.newLine}` : undefined}>
+                      {line.newLine}
+                    </span>
+                    <span className="diff-marker" aria-hidden="true">
+                      {line.kind === "addition"
+                        ? "+"
+                        : line.kind === "deletion"
+                          ? "−"
+                          : " "}
+                    </span>
+                    <code>
+                      <SyntaxTokenLine
+                        tokens={tokens[`${fileIndex}:${lineIndex}:${tokenSide}`]}
+                        fallback={line.text}
+                      />
+                    </code>
+                  </div>
+                  {review && (comments.length > 0 || drafting) && (
+                    <div className="diff-comment-row" role="row">
+                      <div className="diff-comment-thread" role="cell">
+                        {comments.map((comment) => (
+                          <ReviewCommentCard
+                            key={comment.id}
+                            comment={comment}
+                            review={review}
+                          />
+                        ))}
+                        {drafting && (
+                          <AddCommentForm
+                            file={file}
+                            lineIndex={lineIndex}
+                            onCancel={closeDraft}
+                            onAdd={(value, body) => {
+                              review.add(value, body);
+                              closeDraft();
+                            }}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </Fragment>
               );
             })}
           </div>

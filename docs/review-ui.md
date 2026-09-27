@@ -64,6 +64,32 @@ regular-expression engine rather than WebAssembly and maps the local GitHub
 token palette to bundled CSS classes, preserving the UI's strict CSP. Repository
 text is always rendered as React text nodes, never injected HTML.
 
+Each diff line in the Changes tool has a comment affordance that appears on
+hover and on keyboard focus. A comment is Markdown text anchored to the file
+path, side, and line: deletions are anchored to the old side and additions and
+context to the new side, and a comment may extend through later lines of the
+same hunk. Pending comments render as text under their last line and in a
+review summary with a count, where they can be edited or removed; a comment
+whose line has left the current diff stays in the summary and is marked as not
+in the diff. They are kept only in memory for each Capsule, shared by the
+Capsule workspace and `/ui/capsules/:id/diff`, and are discarded on reload.
+They are never written to browser storage or the server.
+
+"Send to agent" composes one message that lists each comment with its
+`file:line` and a short quoted excerpt of the code it refers to, and shows the
+whole message before anything is sent. Excerpts are control-stripped and
+bounded, and paths and code sit in code spans and fences longer than any
+backtick run they contain, so quoted repository text cannot close its fence and
+read as the reviewer's instructions. The message goes to one active structured
+Thread in the Capsule, by default the Capsule's default session, through the
+existing Thread message API with the Thread's current resource version. A
+conflict refreshes the Thread and keeps the batch so the operator can send
+again; the batch is cleared only after the server accepts the message, and the
+workspace then opens that session. The UI never types into or injects text into
+a native PTY: when the Capsule has no structured session, and as an option
+otherwise, "Copy as prompt" places the message on the clipboard for the
+operator to paste, and the comments stay pending.
+
 `New project` creates the top-level Project boundary and can apply one
 installation-known harness pack without accepting a free image reference. Each
 Project heading owns its own `+` launcher, so Capsule creation is already
@@ -136,7 +162,8 @@ Static and SPA responses include a restrictive Content Security Policy,
 clickjacking, MIME-sniffing, referrer, opener, and permissions headers. Diffs
 are rendered as text in `<pre>` elements, never injected as HTML. The UI does
 not write API bodies, diffs, terminal frames, prompts, or ticket values to
-browser logs or storage.
+browser logs or storage. Review comments live only in page memory, and the
+review prompt reaches the clipboard only through an explicit "Copy as prompt".
 
 Workspace file content uses base64 in JSON and is decoded only for text
 rendering. Valid UTF-8 without binary control content is placed in `<pre>`;
