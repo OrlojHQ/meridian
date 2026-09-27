@@ -1,6 +1,8 @@
 .app-shell {
+  --shell-height: calc(100dvh - var(--statusbar-height));
   display: grid;
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  grid-template-rows: var(--shell-height) var(--statusbar-height);
   width: 100vw;
   height: 100dvh;
   overflow: hidden;
@@ -37,7 +39,7 @@
   grid-column: 1;
   grid-template-rows: auto auto minmax(0, 1fr) auto;
   min-width: 0;
-  height: 100dvh;
+  height: var(--shell-height);
   border-right: 1px solid var(--border);
   background: var(--app-bg);
 }
@@ -407,32 +409,12 @@
   background: var(--surface-hover);
 }
 
-.sidebar-footer .connection {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.4rem 0.55rem 0.2rem;
-  color: var(--muted);
-  font-size: 0.64rem;
-}
-
-.sidebar-footer .connection i {
-  width: 0.38rem;
-  height: 0.38rem;
-  border-radius: 50%;
-  background: var(--status-working);
-}
-
-.sidebar-footer .connection.offline i {
-  background: var(--danger);
-}
-
 .workspace-main {
   grid-row: 1;
   grid-column: 2;
   width: auto;
   min-width: 0;
-  height: 100dvh;
+  height: var(--shell-height);
   margin: 0;
   padding: 0;
   overflow: auto;
@@ -446,7 +428,7 @@
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   min-width: 0;
-  height: 100dvh;
+  height: var(--shell-height);
   border-left: 1px solid var(--border);
   background: var(--surface);
 }
@@ -534,6 +516,108 @@
   display: none;
 }
 
+.status-bar {
+  grid-row: 2;
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  min-width: 0;
+  height: var(--statusbar-height);
+  border-top: 1px solid var(--border);
+  padding: 0 0.75rem;
+  overflow: hidden;
+  color: var(--muted);
+  background: var(--app-bg);
+  font-size: 0.66rem;
+  white-space: nowrap;
+}
+
+.status-bar.simulated {
+  border-top-color: color-mix(in srgb, var(--warning) 55%, var(--border));
+  background: var(--warning-soft);
+}
+
+.status-connection,
+.status-simulated,
+.status-counts a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.status-connection i {
+  width: 0.42rem;
+  height: 0.42rem;
+  border-radius: 50%;
+  background: var(--status-working);
+}
+
+.status-connection.pending i {
+  background: var(--faint);
+}
+
+.status-connection.offline {
+  color: var(--danger);
+  font-weight: 650;
+}
+
+.status-connection.offline i {
+  background: var(--danger);
+}
+
+.status-provider {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.64rem;
+}
+
+.status-simulated {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--warning);
+  font-weight: 700;
+  text-overflow: ellipsis;
+}
+
+.status-simulated svg {
+  width: 0.85rem;
+  height: 0.85rem;
+  flex: none;
+}
+
+.status-counts {
+  display: flex;
+  gap: 0.2rem;
+  margin-left: auto;
+}
+
+.status-counts a {
+  border-radius: var(--radius-sm);
+  padding: 0.1rem 0.4rem;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.status-counts a:hover {
+  background: var(--surface-hover);
+}
+
+.status-counts a.empty {
+  color: var(--faint);
+  font-weight: 500;
+}
+
+.status-counts a.empty .state-dot {
+  animation: none;
+}
+
+.status-counts .status-long {
+  color: var(--muted);
+  font-weight: 500;
+}
+
 .dialog-backdrop {
   position: fixed;
   z-index: 30;
@@ -615,13 +699,18 @@
   .context-panel {
     position: fixed;
     z-index: 12;
-    inset: 0 0 0 auto;
+    inset: 0 0 var(--statusbar-height) auto;
+    height: auto;
     width: min(var(--context-width), calc(100vw - 3rem));
     box-shadow: -12px 0 40px rgb(20 24 21 / 18%);
   }
 
   .context-toggle.open {
     right: min(calc(var(--context-width) + 0.45rem), calc(100vw - 2.6rem));
+  }
+
+  .status-counts .status-long {
+    display: none;
   }
 }
 
@@ -635,6 +724,7 @@
     position: fixed;
     z-index: 20;
     inset: 0 auto 0 0;
+    height: 100dvh;
     width: min(var(--sidebar-width), calc(100vw - 3rem));
     transform: translateX(-105%);
     box-shadow: 16px 0 50px rgb(20 24 21 / 22%);
@@ -668,13 +758,27 @@
   }
 
   .workspace-main {
-    height: 100dvh;
+    height: var(--shell-height);
     padding-top: var(--topbar-height);
   }
 
   .context-panel {
     width: 100vw;
-    inset: 0;
+    inset: 0 0 var(--statusbar-height);
+  }
+
+  .status-bar {
+    position: fixed;
+    z-index: 11;
+    inset: auto 0 0;
+    gap: 0.6rem;
+    padding-inline: 0.55rem;
+  }
+
+  .status-long,
+  .status-connection.online .status-connection-label,
+  .status-bar.simulated .status-provider {
+    display: none;
   }
 
   .context-toggle,

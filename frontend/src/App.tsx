@@ -27,6 +27,7 @@ import type {
   GitResult,
   Moment,
   PreviewTicket,
+  Project,
   Run,
   RunEvent,
   RunPage,
@@ -143,53 +144,175 @@ export function AuthenticationState() {
   );
 }
 
-function WorkingSetRow({
+const byRecent = (a: WorkingSetItem, b: WorkingSetItem) =>
+  Date.parse(b.activity.since ?? "") - Date.parse(a.activity.since ?? "");
+
+const liveSessions = (item: WorkingSetItem) =>
+  item.sessions.filter((session) => !session.archived);
+
+const itemHarness = (item: WorkingSetItem) =>
+  item.capsule.harness || liveSessions(item)[0]?.harness;
+
+type InboxAction = { key: string; to: string; label: string; harness?: string };
+
+// Inbox actions link straight to what needs the operator: a waiting session,
+// the failed Capsule or Run, or the diff of finished work. They are built only
+// from the working set's summaries; nothing here loads Git state or content.
+function inboxActions(item: WorkingSetItem, git: boolean): InboxAction[] {
+  const { capsule, activity, threads } = item;
+  const open = { key: "open", to: sessionPath(capsule.id), label: "Open Capsule" };
+  if (activity.group === "finished") {
+    return git
+      ? [
+          open,
+          {
+            key: "diff",
+            to: `/ui/capsules/${encodeURIComponent(capsule.id)}/diff`,
+            label: "Open diff",
+          },
+        ]
+      : [open];
+  }
+  if (capsule.state === "Failed") return [open];
+  const waiting = liveSessions(item).filter((session) => session.group === "attention");
+  if (waiting.length === 0) return [open];
+  return waiting.map((session) => {
+    const kind = threads.find((thread) => thread.id === session.id)?.awaiting?.kind;
+    return {
+      key: session.id,
+      to: sessionPath(capsule.id, session.id),
+      label:
+        kind === "permission"
+          ? "Review permission"
+          : kind === "input"
+            ? "Reply"
+            : "Open Capsule",
+      harness: waiting.length > 1 ? session.harness : undefined,
+    };
+  });
+}
+
+function InboxRow({
   item,
   projectName,
   momentCount,
+  git,
 }: {
   item: WorkingSetItem;
   projectName?: string;
   momentCount?: number;
+  git: boolean;
 }) {
   const { capsule, activity } = item;
+  const actions = inboxActions(item, git);
   return (
-    <li className="working-set-row">
-      <ActivityDot group={activity.group} />
-      <div className="working-set-main">
-        <Link
-          className="working-set-name"
-          to={`/ui/capsules/${encodeURIComponent(capsule.id)}`}
-        >
-          {capsule.name}
-        </Link>
-        <p className="working-set-meta">
-          {[projectName, activity.agent].filter(Boolean).join(" · ")}
+    <li className={`inbox-row inbox-row-${activity.group}`}>
+      <HarnessMark harness={itemHarness(item)} size="md" />
+      <div className="inbox-main">
+        <p className="inbox-title">
+          <Link to={sessionPath(capsule.id)}>{capsule.name}</Link>
+          <time dateTime={activity.since}>{relativeTime(activity.since)}</time>
+        </p>
+        <p className="inbox-meta">
+          <ActivityDot group={activity.group} />
+          <span className="inbox-status">{activity.label}</span>
+          {projectName && <span>{projectName}</span>}
           {momentCount ? (
-            <>
-              {" · "}
-              <Link to={`/ui/timelines/${encodeURIComponent(capsule.timelineId)}`}>
-                {momentCount === 1 ? "1 Moment" : `${momentCount} Moments`}
-              </Link>
-            </>
+            <Link to={`/ui/timelines/${encodeURIComponent(capsule.timelineId)}`}>
+              {momentCount === 1 ? "1 Moment" : `${momentCount} Moments`}
+            </Link>
           ) : null}
         </p>
-        {activity.detail && <p className="working-set-detail">{activity.detail}</p>}
+        {activity.detail && <p className="inbox-detail">{activity.detail}</p>}
       </div>
-      <span className="working-set-status">{activity.label}</span>
-      <time className="working-set-time" dateTime={activity.since}>
-        {relativeTime(activity.since)}
-      </time>
+      <div className="inbox-actions">
+        {actions.map((action, index) => (
+          <Link
+            key={action.key}
+            to={action.to}
+            className={`button-link${index === 0 ? " primary-button" : ""}`}
+          >
+            {action.harness && <HarnessMark harness={action.harness} />}
+            {action.label}
+          </Link>
+        ))}
+      </div>
     </li>
   );
 }
 
+function CompactList({ items }: { items: WorkingSetItem[] }) {
+  return (
+    <ul className="activity-compact">
+      {items.map((item) => (
+        <li key={item.capsule.id}>
+          <Link to={sessionPath(item.capsule.id)} title={item.activity.detail}>
+            <ActivityDot group={item.activity.group} />
+            <HarnessMark harness={itemHarness(item)} />
+            <strong>{item.capsule.name}</strong>
+            <small>{item.activity.label}</small>
+            <time dateTime={item.activity.since}>{relativeTime(item.activity.since)}</time>
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function StartWork({
+  projects,
+  openLauncher,
+  openNewProject,
+}: {
+  projects: Project[];
+  openLauncher?: (project: Project) => void;
+  openNewProject?: () => void;
+}) {
+  if (!openLauncher && !openNewProject) {
+    return (
+      <p>
+        Use <strong>+</strong> next to a project in the sidebar to start an
+        agent in a new Capsule.
+      </p>
+    );
+  }
+  return (
+    <div className="inbox-start">
+      {openLauncher &&
+        projects.map((project) => (
+          <button key={project.id} type="button" onClick={() => openLauncher(project)}>
+            <PlusIcon />
+            Start work in {project.name}
+          </button>
+        ))}
+      {openNewProject && (
+        <button type="button" className="secondary" onClick={openNewProject}>
+          New project
+        </button>
+      )}
+    </div>
+  );
+}
+
+const plural = (count: number, one: string, many: string) =>
+  `${count} ${count === 1 ? one : many}`;
+
 export function CapsuleList() {
-  const openNewProject = useOutletContext<ShellOutletContext | undefined>()?.openNewProject;
+  const outlet = useOutletContext<ShellOutletContext | undefined>();
   const { projects, projectItems, capsuleResults, items } = useWorkingSet();
   const capabilities = useQuery(queries.capabilities());
+  const attention = items.filter((item) => item.activity.group === "attention").sort(byRecent);
+  const review = items.filter((item) => item.activity.group === "finished").sort(byRecent);
+  const working = items.filter((item) => item.activity.group === "working").sort(byRecent);
+  const quietGroups = activityGroups.filter(({ group }) =>
+    ["idle", "paused", "sealed"].includes(group),
+  );
+  const quiet = quietGroups.flatMap(({ group }) =>
+    items.filter((item) => item.activity.group === group).sort(byRecent),
+  );
+  const inbox = [...attention, ...review];
   const momentResults = useQueries({
-    queries: items.map(({ capsule }) => ({
+    queries: inbox.map(({ capsule }) => ({
       ...queries.moments(capsule.id),
       enabled: capabilities.data?.snapshot === true,
     })),
@@ -206,8 +329,8 @@ export function CapsuleList() {
           A Project points Meridian at a repository. Every agent session then
           runs in its own disposable Capsule with a fresh clone.
         </p>
-        {openNewProject && (
-          <button type="button" onClick={openNewProject}>
+        {outlet?.openNewProject && (
+          <button type="button" onClick={outlet.openNewProject}>
             New project
           </button>
         )}
@@ -229,74 +352,100 @@ export function CapsuleList() {
           </div>
         </header>
         <div className="empty-state">
-          <p>
-            Use <strong>+</strong> next to a project in the sidebar to start an
-            agent in a new Capsule.
-          </p>
-          <span>
-            {projectItems.length === 1
-              ? "1 project ready"
-              : `${projectItems.length} projects ready`}
-          </span>
+          <p>Start an agent in a new Capsule.</p>
+          <StartWork
+            projects={projectItems}
+            openLauncher={outlet?.openLauncher}
+            openNewProject={outlet?.openNewProject}
+          />
         </div>
       </section>
     );
   }
   const momentCounts = new Map(
-    items.map(({ capsule }, index) => [
+    inbox.map(({ capsule }, index) => [
       capsule.id,
       momentResults[index]?.data?.items.length ?? 0,
     ]),
   );
-  const attention = items.filter((item) => item.activity.group === "attention").length;
-  const working = items.filter((item) => item.activity.group === "working").length;
+  const git = capabilities.data?.git === true;
+  const row = (item: WorkingSetItem) => (
+    <InboxRow
+      key={item.capsule.id}
+      item={item}
+      projectName={projectNames.get(item.capsule.projectId)}
+      momentCount={momentCounts.get(item.capsule.id)}
+      git={git}
+    />
+  );
   return (
-    <section className="fleet-view">
+    <section className="fleet-view activity-inbox">
       <header className="workspace-view-header">
         <div>
           <p className="eyebrow">Activity</p>
           <h1>
-            {attention > 0
-              ? `${attention} need${attention === 1 ? "s" : ""} attention`
-              : working > 0
-                ? `${working} agent${working === 1 ? "" : "s"} working`
-                : "All quiet"}
+            {attention.length > 0
+              ? `${attention.length} need${attention.length === 1 ? "s" : ""} attention`
+              : review.length > 0
+                ? `${review.length} ready for review`
+                : "All caught up"}
           </h1>
         </div>
-        <span className="count-label">
-          {items.length === 1 ? "1 Capsule" : `${items.length} Capsules`}
-        </span>
+        <span className="count-label">{plural(items.length, "Capsule", "Capsules")}</span>
       </header>
-      {activityGroups.map(({ group, title }) => {
-        const groupItems = items
-          .filter((item) => item.activity.group === group)
-          .sort(
-            (a, b) =>
-              Date.parse(b.activity.since ?? "") - Date.parse(a.activity.since ?? ""),
-          );
-        if (groupItems.length === 0) return null;
-        return (
-          <section
-            key={group}
-            className="working-set-group"
-            aria-labelledby={`working-set-${group}`}
-          >
-            <h2 id={`working-set-${group}`}>
-              {title} <small>{groupItems.length}</small>
-            </h2>
-            <ul>
-              {groupItems.map((item) => (
-                <WorkingSetRow
-                  key={item.capsule.id}
-                  item={item}
-                  projectName={projectNames.get(item.capsule.projectId)}
-                  momentCount={momentCounts.get(item.capsule.id)}
-                />
-              ))}
-            </ul>
-          </section>
-        );
-      })}
+      {attention.length > 0 && (
+        <section className="inbox-group" aria-labelledby="inbox-attention">
+          <h2 id="inbox-attention">
+            Needs attention <small>{attention.length}</small>
+          </h2>
+          <ul>{attention.map(row)}</ul>
+        </section>
+      )}
+      {review.length > 0 && (
+        <section className="inbox-group" aria-labelledby="inbox-review">
+          <h2 id="inbox-review">
+            Ready for review <small>{review.length}</small>
+          </h2>
+          <ul>{review.map(row)}</ul>
+        </section>
+      )}
+      {inbox.length === 0 && (
+        <div className="inbox-clear">
+          <p>
+            Nothing needs you right now.
+            {working.length > 0 &&
+              ` ${plural(working.length, "agent is", "agents are")} still working.`}
+          </p>
+          <StartWork
+            projects={projectItems}
+            openLauncher={outlet?.openLauncher}
+            openNewProject={outlet?.openNewProject}
+          />
+        </div>
+      )}
+      {working.length > 0 && (
+        <section className="activity-summary" aria-labelledby="inbox-working">
+          <h2 id="inbox-working">
+            Working <small>{working.length}</small>
+          </h2>
+          <CompactList items={working} />
+        </section>
+      )}
+      {quiet.length > 0 && (
+        <details className="activity-summary activity-quiet">
+          <summary>
+            {quietGroups
+              .map(({ group, title }) => ({
+                title,
+                count: quiet.filter((item) => item.activity.group === group).length,
+              }))
+              .filter(({ count }) => count > 0)
+              .map(({ title, count }) => `${count} ${title.toLowerCase()}`)
+              .join(" · ")}
+          </summary>
+          <CompactList items={quiet} />
+        </details>
+      )}
     </section>
   );
 }

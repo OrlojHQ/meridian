@@ -21,6 +21,15 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   as tabs in the primary surface, and a Capsule without sessions opens on the
   new-session form. Moments moved to the Activity tool.
 - The Capsule tools toggle no longer overlaps the header's state badge.
+- The Activity view is an inbox. Capsules that need attention or are ready for
+  review come first with direct actions: open the waiting session, see a
+  failure and open the Capsule, or open the diff when Git review is supported.
+  Working Capsules collapse into a compact list and Idle, Paused, and Sealed
+  into one summary. An "All caught up" state still offers to start work.
+- A status bar along the bottom of the shell shows browser and daemon
+  connectivity, the provider version, and attention, working, and review
+  counts. With the fake provider it warns that Capsules are simulated and no
+  agents run. It replaces the sidebar's connection indicator.
 
 ## [0.1.1] - 2026-09-27
 
