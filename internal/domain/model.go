@@ -184,12 +184,14 @@ func InstallationHarnessImages(defaultImage, packTag string) []HarnessImage {
 	if defaultImage == "" {
 		defaultImage = LocalCapsuleImage
 	}
+	// Clients preselect the first entry, so real agents come first. mock is
+	// the harness-free supervisor image used by tests and contributors.
 	return []HarnessImage{
-		{Name: "mock", ImageReference: defaultImage},
 		{Name: "opencode", ImageReference: officialPackImage(defaultImage, "meridian-capsule-opencode", packTag)},
 		{Name: "pi", ImageReference: officialPackImage(defaultImage, "meridian-capsule-pi", packTag)},
 		{Name: "claude", ImageReference: officialPackImage(defaultImage, "meridian-capsule-claude", packTag)},
 		{Name: "codex", ImageReference: officialPackImage(defaultImage, "meridian-capsule-codex", packTag)},
+		{Name: "mock", ImageReference: defaultImage},
 	}
 }
 
