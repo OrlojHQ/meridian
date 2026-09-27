@@ -348,6 +348,115 @@ func TestRunUseCasesIdempotencyExclusivityEventsAndCancellation(t *testing.T) {
 	}
 }
 
+// stoppedRuntime reports what a provider returns once a Capsule's runtime was
+// stopped outside Meridian, such as by a host or container engine restart.
+type stoppedRuntime struct {
+	*runRuntime
+	mu      sync.Mutex
+	stopped bool
+}
+
+func (r *stoppedRuntime) stop() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.stopped = true
+}
+
+func (r *stoppedRuntime) inactive() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.stopped {
+		return fmt.Errorf("%w: Capsule runtime is not active", domain.ErrIllegalTransition)
+	}
+	return nil
+}
+
+func (r *stoppedRuntime) GetRun(ctx context.Context, resourceID string, id domain.RunID) (ports.RuntimeRun, error) {
+	if err := r.inactive(); err != nil {
+		return ports.RuntimeRun{}, err
+	}
+	return r.runRuntime.GetRun(ctx, resourceID, id)
+}
+
+func (r *stoppedRuntime) CancelRun(ctx context.Context, resourceID string, id domain.RunID) (ports.RuntimeRun, error) {
+	if err := r.inactive(); err != nil {
+		return ports.RuntimeRun{}, err
+	}
+	return r.runRuntime.CancelRun(ctx, resourceID, id)
+}
+
+func TestRunRecoveryFailsRunsWhoseReadyCapsuleRuntimeStopped(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	store, err := sqlite.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	clock := &testClock{now: time.Date(2026, 9, 27, 0, 0, 0, 0, time.UTC)}
+	ids := &testIDs{}
+	provider := fake.New(fake.Options{})
+	reconciler := app.NewReconciler(store, provider, clock, ids)
+	reconciler.Start(ctx)
+	defer reconciler.Close()
+	runtime := &stoppedRuntime{runRuntime: &runRuntime{}}
+	service := app.NewService(store, clock, ids, reconciler, runtime)
+	project, err := service.CreateProject(ctx, "project", "project-stopped")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var running, cancelling domain.Run
+	for i, run := range []*domain.Run{&running, &cancelling} {
+		capsule, err := service.CreateCapsule(ctx, project.ID, fmt.Sprintf("capsule-%d", i), fmt.Sprintf("capsule-%d", i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		deadline := time.Now().Add(time.Second)
+		for capsule.State != domain.CapsuleReady {
+			capsule, err = service.GetCapsule(ctx, capsule.ID)
+			if err != nil || time.Now().After(deadline) {
+				t.Fatalf("Capsule readiness = %#v, %v", capsule, err)
+			}
+			time.Sleep(time.Millisecond)
+		}
+		*run, err = service.StartRun(ctx, capsule.ID, "mock", "prompt", fmt.Sprintf("start-%d", i), 0, 0)
+		if err != nil || run.State != domain.RunRunning {
+			t.Fatalf("start Run = %#v, %v", run, err)
+		}
+	}
+	runtime.stop()
+	// Cancellation is durable before the runtime is contacted, so a stopped
+	// runtime leaves the Run Cancelling for startup recovery.
+	if stored, err := service.CancelRun(
+		ctx, cancelling.ID, cancelling.ResourceVersion, "cancel-stopped",
+	); err != nil || stored.State != domain.RunCancelling {
+		t.Fatalf("cancel with stopped runtime = %#v, %v", stored, err)
+	}
+
+	if err := service.RecoverRuns(ctx); err != nil {
+		t.Fatalf("Run startup recovery = %v", err)
+	}
+	for _, id := range []domain.RunID{running.ID, cancelling.ID} {
+		recovered, err := service.GetRunStored(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if recovered.State != domain.RunFailed ||
+			recovered.Failure != "Capsule runtime stopped while this Run was active" {
+			t.Fatalf("recovered Run = %#v", recovered)
+		}
+	}
+	if err := service.RecoverRuns(ctx); err != nil {
+		t.Fatalf("repeated Run startup recovery = %v", err)
+	}
+	runtime.runRuntime.mu.Lock()
+	starts := runtime.starts
+	runtime.runRuntime.mu.Unlock()
+	if starts != 2 {
+		t.Fatalf("recovery restarted a lost Run: starts = %d", starts)
+	}
+}
+
 func TestRuntimeEventSynchronizationIsConcurrentMonotonicAndIdempotent(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
