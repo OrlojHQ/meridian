@@ -8,7 +8,7 @@ Include affected versions or commits, reproduction steps, impact, and any sugges
 
 ## Supported versions
 
-Meridian has not published a release and currently provides no supported production version. Security fixes apply to the latest development branch until a version-support policy is announced.
+Meridian is pre-1.0 and provides no supported production version. Security fixes land on `main` and ship in the next release; only the latest release receives fixes until a version-support policy is announced.
 
 Release configuration creates draft releases only. A published first release
 must pass `docs/first-release-checklist.md`; local builds must not claim GitHub
