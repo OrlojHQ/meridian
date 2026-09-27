@@ -1,10 +1,10 @@
 #!/bin/sh
 set -eu
 # Official Node.js LTS archives; one pin shared by all optional harness packs.
-version=v24.20.0
+version=v24.21.0
 case "$TARGETARCH" in
-  amd64) arch=x64; checksum=2f2c0da162318f0de47665410c7c8c2ed3d36c8f3105de4bbc61176c70a7cbf2 ;;
-  arm64) arch=arm64; checksum=5f4ddab610c1ab2016b3c227cebdbf6d9495161487e4739c7b90090595f465f7 ;;
+  amd64) arch=x64; checksum=fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6 ;;
+  arm64) arch=arm64; checksum=6ad1325edbdb5649c379b75a237147a666c95d4f9ae8d340fef2d1575d289ad2 ;;
   *) echo 'unsupported Node architecture' >&2; exit 1 ;;
 esac
 curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
