@@ -7,6 +7,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-09-27
+
 ### Changed
 
 - `meridiand` defaults to `--provider=docker` and exits at startup with a clear
@@ -98,5 +100,6 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - Docker and Agent Sandbox are not claimed as hostile multi-tenant isolation
   boundaries; hardened runtime deployment and external review remain required.
 
-[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/OrlojHQ/meridian/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/OrlojHQ/meridian/releases/tag/v0.1.0
