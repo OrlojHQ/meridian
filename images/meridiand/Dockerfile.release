@@ -17,4 +17,4 @@ WORKDIR /var/lib/meridian
 EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=3s --retries=5 CMD ["/usr/local/bin/meridiand", "healthcheck"]
 ENTRYPOINT ["/usr/local/bin/meridiand"]
-CMD ["--provider=fake", "--listen=0.0.0.0:8080", "--preview-listen=127.0.0.1:8081", "--data-dir=/var/lib/meridian"]
+CMD ["--provider=docker", "--listen=0.0.0.0:8080", "--preview-listen=127.0.0.1:8081", "--data-dir=/var/lib/meridian"]
