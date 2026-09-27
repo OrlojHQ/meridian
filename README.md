@@ -1,157 +1,186 @@
 # Meridian
 
-Self-hosted disposable coding workspaces.
+**Run Claude Code, Codex, OpenCode, or Pi in disposable workspaces on your own
+machine, then review, rewind, and ship what they built.**
 
-[Apache-2.0](LICENSE) · pre-release · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
+[![CI](https://github.com/OrlojHQ/meridian/actions/workflows/ci.yml/badge.svg)](https://github.com/OrlojHQ/meridian/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/OrlojHQ/meridian?include_prereleases&sort=semver)](https://github.com/OrlojHQ/meridian/releases)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-Meridian gives a coding agent a disposable workspace you run yourself. Point it
-at a repository, pick OpenCode, Claude, Codex, or Pi, and review or branch the
-filesystem when you are done.
+Coding agents do their best work when you let them run: install packages, run
+the test suite, rewrite half the repo. That is exactly what you don't want
+happening in your only checkout, on your laptop, one attempt at a time.
 
-Each workspace is a **Capsule**: a short-lived environment with the **harness**
-you chose attached to `/workspace`. Meridian starts that Capsule, keeps the
-terminal and review surfaces in front of you, and leaves the agent loop and
-sign-in inside the harness. It does not provide a model or pick the agent's
-tools.
+Meridian gives every agent session its own **Capsule**: a throwaway container
+with a fresh clone of your repository at `/workspace` and the agent you picked
+already installed. Watch it work from the browser or your terminal, review the
+diff, snapshot or fork the workspace to try another approach, and when you like
+the result, open a pull request or pull the changes into your local checkout.
+When you don't, throw it away.
 
-You can:
+Meridian is self-hosted and brings no model of its own. You sign in to the
+agent exactly as you do today.
 
-- Start a workspace from a public repo in the browser or the terminal dashboard
-- Attach the harness you already use; sign-in stays there
-- Review diffs, browse files, and keep a terminal on the workspace
-- Snapshot and branch the filesystem (Moments) instead of throwing the machine
-  away
+## Why Meridian
 
-## Try it
+- **Let agents run without risking your machine.** Each Capsule is a non-root
+  container with bounded CPU, memory, and process count. It never receives your Docker
+  socket, your home directory, or Meridian's own credentials.
+- **Keep the agent you already use.** Official images for Claude Code, Codex,
+  OpenCode, and Pi. Import your existing configuration, skills, and plugins
+  with **Import my setup**; login caches and history stay behind.
+- **Snapshot, fork, and rewind.** Capture a **Moment** of the workspace at any
+  point. Shard it into a new Capsule to try a different approach in parallel,
+  or rewind to an earlier Moment without losing anything that came after.
+- **Review before anything leaves the box.** A browser workspace with
+  syntax-highlighted diffs, a file browser, a live terminal, and authenticated
+  previews of dev servers running inside the Capsule.
+- **Ship on your terms.** Push a reviewed branch and open a GitHub pull
+  request, or sync the changes into an existing local checkout. Approval is
+  bound to the exact tree you reviewed.
+- **Start fast the second time.** Prepared environments cache your project's
+  setup step, so the next Capsule on the same commit skips the reinstall.
+- **Script everything.** Every UI action is also a CLI command and a
+  documented [OpenAPI](api/openapi.yaml) endpoint.
+
+## Quick start
+
+You need Docker. Then pick an install path.
+
+### From a release
+
+Download the archive for your platform from
+[Releases](https://github.com/OrlojHQ/meridian/releases) (`macOS` or `linux`,
+`arm64` or `amd64`) and [verify it](docs/operations.md#verify-a-release):
+
+```console
+VERSION=0.1.0
+curl -fsSLO "https://github.com/OrlojHQ/meridian/releases/download/v${VERSION}/meridian_${VERSION}_macOS_arm64.tar.gz"
+tar -xzf "meridian_${VERSION}_macOS_arm64.tar.gz" meridian meridiand
+```
+
+Start the daemon, then open the dashboard in a second terminal:
+
+```console
+./meridiand --provider=docker
+./meridian tui --harness claude
+```
+
+Enter a repository (`owner/repo` or a clone URL) and submit. Meridian pulls
+the Claude Code image, starts a Capsule, and hands you its terminal.
+Sign in there. The browser workspace is at
+[http://127.0.0.1:8080/ui/](http://127.0.0.1:8080/ui/).
+
+Swap `--harness claude` for `codex`, `opencode`, or `pi`.
+
+### From source
 
 You need Go 1.26.5, Bun 1.3.0, Git, Make, and Docker with BuildKit.
 
 ```console
 make bootstrap
-make try-opencode
+make try-claude
 ```
 
-That builds the CLI, builds `meridian-capsule-opencode:dev`, starts `meridiand`
-on loopback if it is not already up, and opens the dashboard on New Project.
-Enter a public repository (`owner/repo` or a clone URL) and submit. Meridian
-creates a Capsule and hands the terminal to OpenCode. Sign in there.
+That builds everything, starts `meridiand` on loopback, and opens the same
+dashboard. Also available: `make try-codex`, `make try-opencode`,
+`make try-pi`.
 
-Same path for the other official packs: `make try-pi`, `make try-claude`,
-`make try-codex`.
+## Supported agents
 
-If the daemon is already running:
+| Agent | Image | Terminal | Browser threads |
+| --- | --- | :---: | :---: |
+| Claude Code | `ghcr.io/orlojhq/meridian-capsule-claude` | ✓ | |
+| Codex | `ghcr.io/orlojhq/meridian-capsule-codex` | ✓ | |
+| OpenCode | `ghcr.io/orlojhq/meridian-capsule-opencode` | ✓ | ✓ |
+| Pi | `ghcr.io/orlojhq/meridian-capsule-pi` | ✓ | ✓ |
 
-```console
-export MERIDIAN_TOKEN_FILE=.local/meridian-data/api-auth/installation.token
-./bin/meridian tui --harness opencode
-```
-
-The browser UI is [http://127.0.0.1:8080/ui/](http://127.0.0.1:8080/ui/).
+Every image pins its agent release by checksum, is built for `amd64` and
+`arm64`, and is signed with Sigstore on each release. Browser threads are
+structured, encrypted conversations you can follow and answer from the web UI.
+Any other CLI agent can run as a custom harness through
+[`.meridian/project.yaml`](docs/harness-configuration.md).
 
 ## How it works
 
-You run a local daemon and talk to it from the CLI, the terminal dashboard, or
-the embedded browser UI. The daemon creates a Capsule through Docker (local)
-or Agent Sandbox (Kubernetes), attaches one harness, and stores workspace
-artifacts next to its SQLite database.
-
-| Piece | Role |
-| --- | --- |
-| `meridiand` | Control plane: API, storage, Capsule lifecycle, embedded web UI |
-| `meridian` | CLI and terminal dashboard; talks to that daemon |
-| Capsule image | `capsuled` plus one harness (`opencode`, `pi`, `claude`, `codex`, or your own) |
-
 ```mermaid
 flowchart LR
-    You["You"] --> Client["meridian<br/>CLI / TUI / browser"]
-    You --> Daemon["meridiand"]
-    Client -->|"REST / SSE / WebSocket"| Daemon
-    Daemon --> Store["SQLite + artifacts"]
-    Daemon --> Provider["Docker or Agent Sandbox"]
+    You["You"] --> Client["meridian<br/>CLI · TUI · browser"]
+    Client -->|"REST / SSE / WebSocket"| Daemon["meridiand"]
+    Daemon --> Store["SQLite + Moments"]
+    Daemon --> Provider["Docker or Kubernetes<br/>Agent Sandbox"]
     Provider --> Capsule["Capsule"]
-    Capsule --> Harness["coding harness"]
+    Capsule --> Agent["agent"]
     Capsule --> Workspace["/workspace"]
 ```
 
-Until you install a release, build from this repo. Published images, Compose,
-and Helm are in [operations](docs/operations.md). Official packs and the
-structured protocol are in [harness adapters](docs/harness-adapters.md). Docker
-is the complete local path; Agent Sandbox is the Kubernetes option — see
-[Docker development](docs/docker-development.md) and
-[Agent Sandbox](docs/kubernetes-agentsandbox.md).
+| Piece | Role |
+| --- | --- |
+| `meridiand` | Daemon: API, storage, Capsule lifecycle, embedded web UI |
+| `meridian` | CLI and terminal dashboard |
+| Capsule | Container with `capsuled` (a small supervisor) and one agent |
+
+You run one daemon. It starts Capsules on local Docker or, for a cluster, on
+[Kubernetes Agent Sandbox](docs/kubernetes-agentsandbox.md), and stores
+Moments next to its SQLite database.
+
+## Security model
+
+Meridian treats repositories, agent output, terminals, and Capsule processes as
+hostile.
+
+- The API listens on loopback by default and requires an installation token.
+- Only `meridiand` touches the Docker socket; Capsules never get it, host
+  paths, or control-plane credentials.
+- Secrets are encrypted at rest and scoped to a purpose, such as one clone or
+  one pull request.
+- Structured transcripts are encrypted at rest.
+
+Meridian is built for **one trusted person** running agents on their own
+machine or cluster. Docker containers are not a boundary between mutually
+hostile tenants, so do not host Meridian for untrusted users. Read the
+[threat model](docs/threat-model.md) and [security policy](SECURITY.md).
 
 ## Status
 
-> [!IMPORTANT]
-> Pre-release: there is no published stable version yet. You operate
-> `meridiand` and `meridian` yourself. The Docker provider is for one trusted
-> user and is not a hostile multi-tenant boundary. Keep the API on loopback
-> unless you supply TLS and a reviewed network edge.
+Meridian is pre-1.0. APIs and on-disk formats may change between minor
+releases; see the [changelog](CHANGELOG.md).
 
-## Docs
+## Documentation
 
-**Start here**
+**Use**
+- [CLI and terminal dashboard](docs/cli-and-tui.md): `thread spawn`, sync,
+  ship
+- [Browser workspace and previews](docs/review-ui.md)
+- [Bring your harness setup](docs/personal-harness-setups.md)
+- [Prepared project environments](docs/prepared-environments.md)
+- [Moments and lineage](docs/moments-and-lineage.md): capture, shard, rewind,
+  seal
 
-- [CLI and TUI](docs/cli-and-tui.md) — dashboard, `thread spawn`, sync, ship
-- [Review UI and previews](docs/review-ui.md)
-- [Harness configuration](docs/harness-configuration.md) — `.meridian/project.yaml`
+**Extend**
+- [Harness configuration](docs/harness-configuration.md): `.meridian/project.yaml`
+- [Harness adapters](docs/harness-adapters.md): official images and the
+  structured protocol
 
-**Go deeper**
-
-- [Harness adapters](docs/harness-adapters.md) — official packs and structured protocol
-- [Personal harness setups](docs/personal-harness-setups.md) — import configuration and reusable API connections
-- [Prepared project environments](docs/prepared-environments.md) — reuse project dependencies between Capsules
-- [Moments and lineage](docs/moments-and-lineage.md) — capture, shard, rewind, seal
-
-**Operate and secure**
-
-- [Docker development](docs/docker-development.md) — local provider, dev Compose, mock image
-- [Agent Sandbox](docs/kubernetes-agentsandbox.md)
-- [Operations](docs/operations.md) — install, backup, verify, Helm
+**Operate**
+- [Operations](docs/operations.md): install, verify, back up, Compose, Helm
+- [Docker development](docs/docker-development.md)
+- [Kubernetes Agent Sandbox](docs/kubernetes-agentsandbox.md)
 - [Threat model](docs/threat-model.md)
 
-## Security
+## Contributing
 
-Treat repositories, harness output, terminals, and Capsule processes as hostile.
-
-- One installation bearer; API defaults to loopback
-- Only `meridiand` may use the host Docker socket
-- Capsules never receive that socket, host paths, or control-plane credentials
-- Docker does not isolate mutually hostile tenants
-- Structured transcripts are encrypted at rest; the local daemon decrypts them
-  for the operator through explicit Thread APIs
-- Hosted multi-tenancy is unsupported
-
-See the [threat model](docs/threat-model.md) and [security policy](SECURITY.md).
-
-## Development
+Issues and pull requests are welcome. Start with
+[CONTRIBUTING.md](CONTRIBUTING.md), and discuss large changes in an issue
+first.
 
 ```console
 make bootstrap
-make build
-make test
-make lint
-make ui-build
-make helm-test
-```
-
-`make generate` then `make check-generated` after `api/openapi.yaml` changes.
-`pkg/client` and `frontend/src/api/generated` are generated; do not edit them.
-
-```text
-api/           OpenAPI contract
-cmd/           meridian, meridiand, capsuled
-deploy/        Compose and Helm
-docs/          operations, security, ADRs
-images/        thin Capsule and official pack Dockerfiles
-internal/      control plane, providers, TUI
+make build test lint ui-build helm-test
 ```
 
 ## License
 
-Apache License 2.0. See [LICENSE](LICENSE).
-
-Meridian is coding-workspace infrastructure, independent from
-[Orloj](https://github.com/OrlojHQ/orloj), a runtime for durable agentic
-systems. It is not a model API, an agent, a planner, a hosted collaboration
-product, or a claim that containers isolate hostile tenants.
+[Apache License 2.0](LICENSE). Meridian is developed by
+[OrlojHQ](https://github.com/OrlojHQ) and is independent of
+[Orloj](https://github.com/OrlojHQ/orloj).
