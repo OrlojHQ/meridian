@@ -386,22 +386,34 @@ func (s *Service) RecoverRuns(ctx context.Context) error {
 			capsule.Maintenance != "" {
 			continue
 		}
+		var runtimeRun ports.RuntimeRun
+		var runtimeErr error
 		if run.State == domain.RunCancelling {
-			runtimeRun, cancelErr := s.runtime.CancelRun(ctx, capsule.ProviderResourceID, run.ID)
-			if cancelErr == nil {
-				_, err = s.applyRuntimeState(ctx, run.ID, runtimeRun)
-			}
+			runtimeRun, runtimeErr = s.runtime.CancelRun(ctx, capsule.ProviderResourceID, run.ID)
 		} else {
-			runtimeRun, getErr := s.runtime.GetRun(ctx, capsule.ProviderResourceID, run.ID)
-			if getErr == nil {
-				_, err = s.applyRuntimeState(ctx, run.ID, runtimeRun)
-			} else if errors.Is(getErr, domain.ErrNotFound) {
-				_, err = s.transitionRun(ctx, run.ID, domain.RunFailed, &runCompletion{
-					Failure: "Capsule runtime no longer knows this Run",
-				})
-			} else {
-				err = getErr
-			}
+			runtimeRun, runtimeErr = s.runtime.GetRun(ctx, capsule.ProviderResourceID, run.ID)
+		}
+		switch {
+		case runtimeErr == nil:
+			_, err = s.applyRuntimeState(ctx, run.ID, runtimeRun)
+		case errors.Is(runtimeErr, domain.ErrNotFound):
+			_, err = s.transitionRun(ctx, run.ID, domain.RunFailed, &runCompletion{
+				Failure: "Capsule runtime no longer knows this Run",
+			})
+		case errors.Is(runtimeErr, domain.ErrIllegalTransition):
+			// Meridian persists a Ready Capsule only while its runtime is
+			// active, so an inactive runtime here was stopped outside the
+			// control plane (for example by a host or engine restart). The
+			// supervisor and its process registry are gone; record that loss
+			// instead of aborting startup or fabricating continuity. The
+			// Capsule reconciler owns the Capsule's own failure.
+			_, err = s.transitionRun(ctx, run.ID, domain.RunFailed, &runCompletion{
+				Failure: "Capsule runtime stopped while this Run was active",
+			})
+		case run.State == domain.RunCancelling:
+			// Cancellation stays durable and is retried by a later recovery.
+		default:
+			err = runtimeErr
 		}
 		if err != nil && !errors.Is(err, domain.ErrConflict) {
 			return err
