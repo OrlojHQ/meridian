@@ -3,10 +3,11 @@
 All notable changes to Meridian will be documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-Meridian will use [Semantic Versioning](https://semver.org/) when published
-releases begin.
+Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.1.0] - 2026-09-27
 
 ### Added
 
@@ -73,3 +74,6 @@ releases begin.
   previews default to loopback.
 - Docker and Agent Sandbox are not claimed as hostile multi-tenant isolation
   boundaries; hardened runtime deployment and external review remain required.
+
+[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/OrlojHQ/meridian/releases/tag/v0.1.0
