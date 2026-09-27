@@ -1963,21 +1963,27 @@ type runPageJSON struct {
 }
 
 type threadJSON struct {
-	ID                  string `json:"id"`
-	CapsuleID           string `json:"capsuleId"`
-	State               string `json:"state"`
-	Harness             string `json:"harness"`
-	CurrentRunID        string `json:"currentRunId,omitempty"`
-	CurrentRunState     string `json:"currentRunState,omitempty"`
-	Protocol            string `json:"protocol,omitempty"`
-	StructuredSupported bool   `json:"structuredSupported"`
-	EncryptedAtRest     bool   `json:"encryptedAtRest"`
-	MessageCount        int64  `json:"messageCount"`
-	EncryptedBytes      int64  `json:"encryptedBytes"`
-	CreatedAt           string `json:"createdAt"`
-	UpdatedAt           string `json:"updatedAt"`
-	DeletedAt           string `json:"deletedAt,omitempty"`
-	ResourceVersion     int64  `json:"resourceVersion"`
+	ID                  string              `json:"id"`
+	CapsuleID           string              `json:"capsuleId"`
+	State               string              `json:"state"`
+	Harness             string              `json:"harness"`
+	CurrentRunID        string              `json:"currentRunId,omitempty"`
+	CurrentRunState     string              `json:"currentRunState,omitempty"`
+	Awaiting            *threadAwaitingJSON `json:"awaiting,omitempty"`
+	Protocol            string              `json:"protocol,omitempty"`
+	StructuredSupported bool                `json:"structuredSupported"`
+	EncryptedAtRest     bool                `json:"encryptedAtRest"`
+	MessageCount        int64               `json:"messageCount"`
+	EncryptedBytes      int64               `json:"encryptedBytes"`
+	CreatedAt           string              `json:"createdAt"`
+	UpdatedAt           string              `json:"updatedAt"`
+	DeletedAt           string              `json:"deletedAt,omitempty"`
+	ResourceVersion     int64               `json:"resourceVersion"`
+}
+
+type threadAwaitingJSON struct {
+	Kind  string `json:"kind"`
+	Since string `json:"since"`
 }
 
 type projectThreadIntentJSON struct {
@@ -2261,6 +2267,12 @@ func (s *Server) threadResponse(ctx context.Context, thread domain.Thread) threa
 	if thread.CurrentRunID != "" {
 		if run, err := s.service.GetRunStored(ctx, thread.CurrentRunID); err == nil {
 			result.CurrentRunState = string(run.State)
+		}
+		if awaiting, err := s.service.ThreadAwaiting(ctx, thread); err == nil && awaiting != nil {
+			result.Awaiting = &threadAwaitingJSON{
+				Kind:  string(awaiting.Kind),
+				Since: awaiting.Since.UTC().Format(time.RFC3339Nano),
+			}
 		}
 	}
 	return result

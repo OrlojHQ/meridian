@@ -42,6 +42,7 @@ type Config struct {
 	SecretKeyFile      string
 	IdlePause          time.Duration
 	IdleScanInterval   time.Duration
+	RuntimeRefresh     time.Duration
 	OfficialPackTag    string
 	Logger             *log.Logger
 	Docker             dockerprovider.Config
@@ -410,6 +411,27 @@ func Run(ctx context.Context, config Config) error {
 		if err := reconciler.StartIdleScanner(ctx, config.IdleScanInterval, config.IdlePause); err != nil {
 			return fmt.Errorf("start idle Capsule scanner: %w", err)
 		}
+	}
+	if config.RuntimeRefresh > 0 {
+		refreshCtx, stopRefresh := context.WithCancel(ctx)
+		refreshDone := make(chan struct{})
+		go func() {
+			defer close(refreshDone)
+			ticker := time.NewTicker(config.RuntimeRefresh)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-refreshCtx.Done():
+					return
+				case <-ticker.C:
+					_ = service.RefreshLiveRuntime(refreshCtx)
+				}
+			}
+		}()
+		defer func() {
+			stopRefresh()
+			<-refreshDone
+		}()
 	}
 	api.SetReady(true)
 	config.Logger.Printf(

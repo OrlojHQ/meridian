@@ -930,6 +930,7 @@ func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
 		}
 		cursor := currentRun.EventCursor
 		messageSequence := currentThread.MessageCount
+		persisted := false
 		now := s.clock.Now().UTC()
 		appendGap := func(requested, available uint64) error {
 			if available <= requested+1 {
@@ -988,6 +989,7 @@ func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
 				if err := tx.AppendThreadMessage(ctx, message); err != nil {
 					return err
 				}
+				persisted = true
 			}
 			if event.Frame.Type == adapterproto.KindEnd {
 				endStatus = event.Frame.Status
@@ -1009,6 +1011,12 @@ func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
 		currentRun.ResourceVersion++
 		if err := tx.UpdateRun(ctx, currentRun, previous); err != nil {
 			return err
+		}
+		// Heartbeats and replay gaps advance the cursor but are not agent
+		// activity; counting them would keep background-refreshed Capsules
+		// awake indefinitely.
+		if !persisted {
+			return nil
 		}
 		return s.touchCapsuleActivityTx(ctx, tx, currentThread.CapsuleID, now)
 	})
@@ -1063,26 +1071,38 @@ func (s *Service) RecoverThreads(ctx context.Context) error {
 			_, _ = s.startStructuredRuntime(ctx, thread, run, false)
 			continue
 		}
-		runtimeRun, getErr := s.structured.GetStructured(ctx, capsule.ProviderResourceID, run.ID)
-		if getErr == nil {
-			if _, err := s.applyRuntimeState(ctx, run.ID, runtimeRun); err != nil &&
-				!errors.Is(err, domain.ErrConflict) {
-				return err
-			}
-			if err := s.SyncThread(ctx, thread.ID); err != nil &&
-				!errors.Is(err, domain.ErrConflict) && !errors.Is(err, domain.ErrNotFound) {
-				return err
-			}
-		} else if errors.Is(getErr, domain.ErrNotFound) {
-			if _, err := s.transitionRun(ctx, run.ID, domain.RunFailed, &runCompletion{
-				Failure: "Capsule runtime no longer knows this structured session",
-			}); err != nil && !errors.Is(err, domain.ErrConflict) {
-				return err
-			}
-			if err := s.pauseCompletedThread(ctx, thread.ID, run.ID); err != nil &&
-				!errors.Is(err, domain.ErrConflict) {
-				return err
-			}
+		if err := s.reconcileStructuredRun(ctx, capsule, thread, run); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// reconcileStructuredRun applies the runtime's view of a started structured
+// session and ingests its pending frames. A session the Capsule runtime no
+// longer knows becomes a failed terminal Run; durable messages are not resent.
+func (s *Service) reconcileStructuredRun(
+	ctx context.Context, capsule domain.Capsule, thread domain.Thread, run domain.Run,
+) error {
+	runtimeRun, getErr := s.structured.GetStructured(ctx, capsule.ProviderResourceID, run.ID)
+	if getErr == nil {
+		if _, err := s.applyRuntimeState(ctx, run.ID, runtimeRun); err != nil &&
+			!errors.Is(err, domain.ErrConflict) {
+			return err
+		}
+		if err := s.SyncThread(ctx, thread.ID); err != nil &&
+			!errors.Is(err, domain.ErrConflict) && !errors.Is(err, domain.ErrNotFound) {
+			return err
+		}
+	} else if errors.Is(getErr, domain.ErrNotFound) {
+		if _, err := s.transitionRun(ctx, run.ID, domain.RunFailed, &runCompletion{
+			Failure: "Capsule runtime no longer knows this structured session",
+		}); err != nil && !errors.Is(err, domain.ErrConflict) {
+			return err
+		}
+		if err := s.pauseCompletedThread(ctx, thread.ID, run.ID); err != nil &&
+			!errors.Is(err, domain.ErrConflict) {
+			return err
 		}
 	}
 	return nil

@@ -10295,6 +10295,39 @@ func (s *OptThreadAdapterEventStatus) UnmarshalJSON(data []byte) error {
 	return s.Decode(d)
 }
 
+// Encode encodes ThreadAwaiting as json.
+func (o OptThreadAwaiting) Encode(e *jx.Encoder) {
+	if !o.Set {
+		return
+	}
+	o.Value.Encode(e)
+}
+
+// Decode decodes ThreadAwaiting from json.
+func (o *OptThreadAwaiting) Decode(d *jx.Decoder) error {
+	if o == nil {
+		return errors.New("invalid: unable to decode OptThreadAwaiting to nil")
+	}
+	o.Set = true
+	if err := o.Value.Decode(d); err != nil {
+		return err
+	}
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s OptThreadAwaiting) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *OptThreadAwaiting) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
 // Encode encodes ThreadInput as json.
 func (o OptThreadInput) Encode(e *jx.Encoder) {
 	if !o.Set {
@@ -16968,6 +17001,12 @@ func (s *Thread) encodeFields(e *jx.Encoder) {
 		}
 	}
 	{
+		if s.Awaiting.Set {
+			e.FieldStart("awaiting")
+			s.Awaiting.Encode(e)
+		}
+	}
+	{
 		if s.Protocol.Set {
 			e.FieldStart("protocol")
 			s.Protocol.Encode(e)
@@ -17011,22 +17050,23 @@ func (s *Thread) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfThread = [15]string{
+var jsonFieldsNameOfThread = [16]string{
 	0:  "id",
 	1:  "capsuleId",
 	2:  "state",
 	3:  "harness",
 	4:  "currentRunId",
 	5:  "currentRunState",
-	6:  "protocol",
-	7:  "structuredSupported",
-	8:  "encryptedAtRest",
-	9:  "messageCount",
-	10: "encryptedBytes",
-	11: "createdAt",
-	12: "updatedAt",
-	13: "deletedAt",
-	14: "resourceVersion",
+	6:  "awaiting",
+	7:  "protocol",
+	8:  "structuredSupported",
+	9:  "encryptedAtRest",
+	10: "messageCount",
+	11: "encryptedBytes",
+	12: "createdAt",
+	13: "updatedAt",
+	14: "deletedAt",
+	15: "resourceVersion",
 }
 
 // Decode decodes Thread from json.
@@ -17104,6 +17144,16 @@ func (s *Thread) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"currentRunState\"")
 			}
+		case "awaiting":
+			if err := func() error {
+				s.Awaiting.Reset()
+				if err := s.Awaiting.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"awaiting\"")
+			}
 		case "protocol":
 			if err := func() error {
 				s.Protocol.Reset()
@@ -17125,7 +17175,7 @@ func (s *Thread) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"structuredSupported\"")
 			}
 		case "encryptedAtRest":
-			requiredBitSet[1] |= 1 << 0
+			requiredBitSet[1] |= 1 << 1
 			if err := func() error {
 				v, err := d.Bool()
 				s.EncryptedAtRest = bool(v)
@@ -17137,7 +17187,7 @@ func (s *Thread) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"encryptedAtRest\"")
 			}
 		case "messageCount":
-			requiredBitSet[1] |= 1 << 1
+			requiredBitSet[1] |= 1 << 2
 			if err := func() error {
 				v, err := d.Int64()
 				s.MessageCount = int64(v)
@@ -17149,7 +17199,7 @@ func (s *Thread) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"messageCount\"")
 			}
 		case "encryptedBytes":
-			requiredBitSet[1] |= 1 << 2
+			requiredBitSet[1] |= 1 << 3
 			if err := func() error {
 				v, err := d.Int64()
 				s.EncryptedBytes = int64(v)
@@ -17161,7 +17211,7 @@ func (s *Thread) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"encryptedBytes\"")
 			}
 		case "createdAt":
-			requiredBitSet[1] |= 1 << 3
+			requiredBitSet[1] |= 1 << 4
 			if err := func() error {
 				v, err := json.DecodeDateTime(d)
 				s.CreatedAt = v
@@ -17173,7 +17223,7 @@ func (s *Thread) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"createdAt\"")
 			}
 		case "updatedAt":
-			requiredBitSet[1] |= 1 << 4
+			requiredBitSet[1] |= 1 << 5
 			if err := func() error {
 				v, err := json.DecodeDateTime(d)
 				s.UpdatedAt = v
@@ -17195,7 +17245,7 @@ func (s *Thread) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"deletedAt\"")
 			}
 		case "resourceVersion":
-			requiredBitSet[1] |= 1 << 6
+			requiredBitSet[1] |= 1 << 7
 			if err := func() error {
 				v, err := d.Int64()
 				s.ResourceVersion = int64(v)
@@ -17217,7 +17267,7 @@ func (s *Thread) Decode(d *jx.Decoder) error {
 	var failures []validate.FieldError
 	for i, mask := range [2]uint8{
 		0b00001111,
-		0b01011111,
+		0b10111110,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.
@@ -17704,6 +17754,157 @@ func (s ThreadAdapterEventType) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
 func (s *ThreadAdapterEventType) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s *ThreadAwaiting) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *ThreadAwaiting) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("kind")
+		s.Kind.Encode(e)
+	}
+	{
+		e.FieldStart("since")
+		json.EncodeDateTime(e, s.Since)
+	}
+}
+
+var jsonFieldsNameOfThreadAwaiting = [2]string{
+	0: "kind",
+	1: "since",
+}
+
+// Decode decodes ThreadAwaiting from json.
+func (s *ThreadAwaiting) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode ThreadAwaiting to nil")
+	}
+	var requiredBitSet [1]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "kind":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				if err := s.Kind.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"kind\"")
+			}
+		case "since":
+			requiredBitSet[0] |= 1 << 1
+			if err := func() error {
+				v, err := json.DecodeDateTime(d)
+				s.Since = v
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"since\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode ThreadAwaiting")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [1]uint8{
+		0b00000011,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfThreadAwaiting) {
+					name = jsonFieldsNameOfThreadAwaiting[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *ThreadAwaiting) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *ThreadAwaiting) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes ThreadAwaitingKind as json.
+func (s ThreadAwaitingKind) Encode(e *jx.Encoder) {
+	e.Str(string(s))
+}
+
+// Decode decodes ThreadAwaitingKind from json.
+func (s *ThreadAwaitingKind) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode ThreadAwaitingKind to nil")
+	}
+	v, err := d.StrBytes()
+	if err != nil {
+		return err
+	}
+	// Try to use constant string.
+	switch ThreadAwaitingKind(v) {
+	case ThreadAwaitingKindPermission:
+		*s = ThreadAwaitingKindPermission
+	case ThreadAwaitingKindInput:
+		*s = ThreadAwaitingKindInput
+	default:
+		*s = ThreadAwaitingKind(v)
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s ThreadAwaitingKind) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *ThreadAwaitingKind) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }

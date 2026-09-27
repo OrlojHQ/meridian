@@ -303,6 +303,14 @@ acknowledged replay does not resend. Supervisor deduplication is additional
 protection around the send/acknowledgement crash boundary. Startup recovery
 never auto-sends a transcript message.
 
+Thread responses may include a content-free `awaiting` kind and start time
+while an active session has an unanswered permission or input request. The
+daemon derives it in memory from a bounded tail of the decrypted transcript
+and never persists, logs, or emits it; it omits request summaries, options,
+and prompts, so SQLite and backup exposure are unchanged. Background runtime
+refresh ingests frames for Threads nobody is watching into the same encrypted
+store; it never sends, resends, or resumes a session (ADR 0025).
+
 Crypto-shred removes the wrapped DEK and opaque live linkage while retaining
 content-free metadata and unreadable ciphertext. It is logical erasure and does
 not guarantee that storage media, swap, filesystem snapshots, copied keys, or
@@ -385,7 +393,10 @@ The target idle policy pauses only a quiescent Capsule using a durable activity
 clock. Authenticated Thread/Run progress and PTY, preview, sync, browse, setup,
 archive, or delivery work count as activity; probes, reconciliation polls, and
 passive reads do not. Runtime use wakes a paused Capsule through an idempotent
-resume. Idle pause, absolute provider/Capsule deletion TTL, reusable setup
+resume. Background runtime refresh is a reconciliation poll: it counts as
+activity only when ingestion persists agent output, never for heartbeats,
+cursors, or gaps, and it skips paused, non-Ready, and maintenance Capsules
+rather than waking them. Idle pause, absolute provider/Capsule deletion TTL, reusable setup
 Moment retention, user Moment retention, and ticket/credential expiry remain
 separate clocks: pause cannot renew an absolute TTL or turn destruction into
 retention.
@@ -441,6 +452,8 @@ they are not a statement that every planned path is already implemented.
 - Run prompts, raw PTY bytes, full diffs, setup output, and secret values are
   omitted from normal durable records and logs. Only explicit structured
   Threads persist prompt/tool content, always as authenticated ciphertext.
+- Thread attention (`awaiting`) is derived in memory, content-free, and never
+  persisted; background runtime refresh never sends, resumes, or wakes work.
 - Public PTY access uses expiring Run-scoped tickets rather than Capsule supervisor credentials.
 - Review UI assets cannot shadow API routes and untrusted diffs are never injected as HTML.
 - Preview ingress is loopback-only and exists only with end-to-end bounded Capsule discovery and routing; fake and incomplete providers fail closed.

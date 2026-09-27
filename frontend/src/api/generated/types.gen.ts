@@ -549,6 +549,7 @@ export type Thread = {
     harness: string;
     currentRunId?: string;
     currentRunState?: RunState;
+    awaiting?: ThreadAwaiting;
     protocol?: 'meridian.adapter.v1';
     structuredSupported?: boolean;
     encryptedAtRest: true;
@@ -558,6 +559,14 @@ export type Thread = {
     updatedAt: string;
     deletedAt?: string;
     resourceVersion: number;
+};
+
+/**
+ * Present while the active structured session has an unanswered permission or input request. Derived in memory from the encrypted transcript and never persisted in plaintext; it carries no request summary, options, or prompt text.
+ */
+export type ThreadAwaiting = {
+    kind: 'permission' | 'input';
+    since: string;
 };
 
 export type ThreadMutationResult = {
