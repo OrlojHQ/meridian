@@ -86,6 +86,25 @@ That builds everything, starts `meridiand` on loopback, and opens the same
 dashboard. Also available: `make try-codex`, `make try-opencode`,
 `make try-pi`.
 
+### Troubleshooting
+
+- **`cannot reach Docker`**: start Docker (Docker Desktop, OrbStack, or the
+  Docker service). On Linux, your user needs access to the Docker socket. Use
+  `--docker-host` to point at a different engine.
+- **Port 8080 is already in use**: pick other ports and point the CLI at them:
+
+  ```console
+  ./meridiand --provider=docker --listen=127.0.0.1:18080 --preview-listen=127.0.0.1:18081
+  ./meridian --server http://127.0.0.1:18080 tui --harness claude
+  ```
+
+  The browser workspace is then at `http://127.0.0.1:18080/ui/`.
+- **macOS says `meridiand` cannot be opened**: the binaries are not notarized,
+  and archives downloaded in a browser are quarantined. After
+  [verifying the archive](docs/operations.md#verify-a-release), run
+  `xattr -d com.apple.quarantine meridian meridiand`. Downloads made with
+  `curl`, as above, are not quarantined.
+
 ## Supported agents
 
 | Agent | Image | Terminal | Browser threads |
