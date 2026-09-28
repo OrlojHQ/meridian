@@ -141,3 +141,14 @@ export function CommandIcon(props: IconProps) {
     </Icon>
   );
 }
+
+export function SettingsIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 5.5h5M13 5.5h3M4 10h2M10 10h6M4 14.5h7M15 14.5h1" />
+      <circle cx="11" cy="5.5" r="1.75" />
+      <circle cx="8" cy="10" r="1.75" />
+      <circle cx="13" cy="14.5" r="1.75" />
+    </Icon>
+  );
+}

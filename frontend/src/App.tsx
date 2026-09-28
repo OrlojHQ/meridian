@@ -42,7 +42,6 @@ import {
   ThreadFleet,
 } from "./components/Threads";
 import { PendingReviewNotice } from "./components/ReviewComments";
-import { CodeViewer } from "./components/SyntaxCode";
 import { ActionsMenu, type ActionsMenuItem } from "./components/ui/ActionsMenu";
 import { HarnessMark } from "./components/ui/HarnessMark";
 import { PlusIcon } from "./components/ui/Icons";
@@ -677,95 +676,6 @@ function CapsuleMenu({
         </div>
       )}
     </>
-  );
-}
-
-function decodeWorkspaceText(content: string): string | undefined {
-  try {
-    const binary = Uint8Array.from(atob(content), (value) => value.charCodeAt(0));
-    const text = new TextDecoder("utf-8", { fatal: true }).decode(binary);
-    const controls = Array.from(text).filter((value) => {
-      const code = value.charCodeAt(0);
-      return code === 0 || (code < 32 && value !== "\n" && value !== "\r" && value !== "\t");
-    }).length;
-    return text.includes("\0") || controls > Math.max(4, text.length / 100) ? undefined : text;
-  } catch {
-    return undefined;
-  }
-}
-
-export function WorkspaceBrowser({
-  capsuleId,
-  ready = true,
-}: {
-  capsuleId: string;
-  ready?: boolean;
-}) {
-  const [directory, setDirectory] = useState("");
-  const [selected, setSelected] = useState("");
-  const files = useQuery({
-    ...queries.workspaceFiles(capsuleId, directory),
-    enabled: ready && Boolean(capsuleId),
-  });
-  const content = useQuery({
-    queryKey: ["workspace-file", capsuleId, selected],
-    queryFn: ({ signal }) => api.workspaceFile(capsuleId, selected, signal),
-    enabled: ready && Boolean(selected),
-  });
-  const text = content.data ? decodeWorkspaceText(content.data.content) : undefined;
-  const enter = (name: string) => {
-    setDirectory(directory ? `${directory}/${name}` : name);
-    setSelected("");
-  };
-  const up = () => {
-    setDirectory(directory.split("/").slice(0, -1).join("/"));
-    setSelected("");
-  };
-  return (
-    <section className="panel">
-      <div className="section-heading">
-        <div>
-          <h2>Workspace files</h2>
-          <span className="mono">/{directory}</span>
-        </div>
-        {directory ? <button type="button" className="secondary" onClick={up}>Up</button> : null}
-      </div>
-      {!ready ? <p>File browsing is available only while the Capsule is Ready.</p> :
-        files.isPending ? <p role="status">Loading workspace files…</p> :
-          files.isError ? <ErrorState error={files.error} /> :
-            <div className="workspace-browser">
-              <ul className="file-tree" aria-label="Workspace file tree">
-                {files.data.items.map((entry) => (
-                  <li key={entry.name}>
-                    {entry.type === "directory" ? (
-                      <button type="button" className="file-entry" onClick={() => enter(entry.name)}>
-                        {entry.name}/
-                      </button>
-                    ) : entry.type === "file" ? (
-                      <button
-                        type="button"
-                        className="file-entry"
-                        onClick={() => setSelected(directory ? `${directory}/${entry.name}` : entry.name)}
-                      >
-                        {entry.name}
-                      </button>
-                    ) : (
-                      <span>{entry.name} <small>({entry.type} unsupported)</small></span>
-                    )}
-                    {entry.type === "file" && entry.size > 1_048_576 ?
-                      <small> (too large; unsupported)</small> : null}
-                  </li>
-                ))}
-              </ul>
-              <div className="file-viewer" aria-live="polite">
-                {!selected ? <p>Select a text file to review it.</p> :
-                  content.isPending ? <p role="status">Loading file…</p> :
-                    content.isError ? <p role="alert">This file is too large or unsupported.</p> :
-                      text === undefined ? <p role="status">Binary content is unsupported.</p> :
-                        <CodeViewer content={text} path={selected} />}
-              </div>
-            </div>}
-    </section>
   );
 }
 

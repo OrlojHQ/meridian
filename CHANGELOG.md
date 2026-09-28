@@ -27,9 +27,24 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   opens that session. Terminal-only Capsules get "Copy as prompt" instead;
   Meridian never types into a native PTY. Pending comments stay in browser
   memory for each Capsule and are discarded on reload.
+- Change counts. The Changes tab label and the Changes pane header show how
+  many files changed and how many lines were added and removed. They come from
+  the diff the Changes tool already loaded and add no Git requests.
 
 ### Changed
 
+- The Files tool is a collapsible tree. A directory is listed only when it is
+  expanded, listings refresh only on request rather than on window focus, and
+  arrow keys, Home, End, and Enter move through the tree and open files.
+- Activity, Threads, and Harness settings moved from the sidebar footer to the
+  top of the sidebar, and Harness settings has an icon.
+- Harness settings is organized into Your setups, Import from this computer, and
+  Provider connections, with shorter copy and no nested disclosures.
+- New project preselects the harness chosen for the last Project created in
+  this browser, when the installation still offers it, and otherwise the first
+  pack in installation order other than `mock`.
+- The standalone Thread page names the agent and links to its Capsule by name
+  instead of showing internal identifiers in its heading.
 - The New Capsule dialog starts with an agent picker. A Project with no agents
   lists the installed harness packs and adds one in place instead of sending
   the operator to the CLI. Choosing between a terminal and a written task is a

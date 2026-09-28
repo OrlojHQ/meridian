@@ -30,3 +30,17 @@ it("launches with an automatic name and requires a deliberate new connection gra
  await userEvent.click(screen.getByRole("button",{name:"Start Codex"}));await waitFor(()=>expect(create).toHaveBeenCalled());
  expect(grant).toHaveBeenCalledWith("project","codex","connection");expect(create).toHaveBeenCalledWith("project",expect.stringMatching(/^codex-/),"codex",undefined,"");
 });
+it("groups settings under plain section headings without nested disclosures",async()=>{
+ vi.spyOn(api,"harnessSetups").mockResolvedValue({items:[setup]});vi.spyOn(api,"providerConnections").mockResolvedValue({items:[],enabled:true});
+ const view=show(<HarnessSetups/>);
+ expect(screen.getByRole("heading",{level:1,name:"Harness settings"})).toBeInTheDocument();
+ expect(await screen.findByRole("heading",{level:3,name:/My Codex setup/})).toBeInTheDocument();
+ expect(screen.getAllByRole("heading",{level:2}).map(heading=>heading.textContent)).toEqual(["Your setups","Import from this computer","Provider connections"]);
+ expect(view.container.querySelector("details")).toBeNull();
+ expect(screen.getByRole("button",{name:"Add skills folder"})).toBeInTheDocument();
+ expect(view.container).toHaveTextContent("Dependency folders such as node_modules and login caches are excluded; you sign in to each harness separately.");
+ expect(view.container).toHaveTextContent("Review import uploads the selected files to your Meridian server for checks.");
+ expect(view.container).toHaveTextContent("Subscription logins stay in the harness and are never imported.");
+ expect(view.container).toHaveTextContent("meridian harness import");
+ expect(screen.getByLabelText("API key")).toHaveAttribute("type","password");
+});

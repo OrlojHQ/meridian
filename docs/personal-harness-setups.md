@@ -1,9 +1,9 @@
 # Bring your harness setup
 
 In the UI, select **Import my setup** while creating a Capsule, or open
-**Settings → Harnesses**. Choose the harness configuration folder or individual
-configuration files, select **Review import**, inspect the portable files and
-exclusions, then select **Save setup**. The launcher selects the saved setup and
+**Harness settings** in the sidebar. Choose the harness configuration folder or
+individual configuration files, select **Review import**, inspect the portable
+files and exclusions, then select **Save setup**. The launcher selects the saved setup and
 returns you to Capsule creation. No CLI command is required.
 
 For OpenCode, select `~/.config/opencode`. On macOS, use Command-Shift-G in the
@@ -46,7 +46,7 @@ to explicitly accept the reported omissions. Imports are bounded to 256 files,
 128 KiB per file, and 512 KiB total content. Symlinks and unsupported paths are
 excluded. Configuration-directory environment overrides are supported.
 
-Settings → Harnesses shows saved setups, their files and revisions, defaults,
+Harness settings shows saved setups, their files and revisions, defaults,
 rename, rollback, and deletion. Import again to update a default setup. An
 interactive `capsule create --harness NAME` notices changes in an existing local
 default and offers the same reviewed import before launching.
@@ -79,8 +79,8 @@ logging. Permit the origin in Capsule egress policy. Permit the control plane
 to reach `api.openai.com:443` and `api.anthropic.com:443`. Keep broader control-plane
 access restricted using the existing installation authentication.
 
-Add your own OpenAI or Anthropic API key in Settings → Harnesses. Alternatively,
-pipe a key from your secret manager into:
+Add your own OpenAI or Anthropic API key under Provider connections in Harness
+settings. Alternatively, pipe a key from your secret manager into:
 
 ```console
 meridian harness connect openai --stdin
@@ -120,7 +120,7 @@ progress, setup settings, rebuild, and retry behavior.
 
 ## Manage your saved setup
 
-In Settings → Harnesses, saved setups appear before the optional local importer.
+In Harness settings, Your setups appears before Import from this computer.
 Choose **Edit files and skills** to edit configuration, remove a file, or add a
 skill directly in Meridian. **Review changes** shows the sanitized files and
 exclusions; **Save changes** creates a revision for future Capsules. Existing
@@ -132,6 +132,6 @@ Supported browsers use a read-only folder-access picker and skip dependency
 folders such as node_modules without scanning their contents. Other browsers
 show their standard file-count confirmation before Meridian filters the files;
 the importer explains that prompt in advance. No files are sent until review.
-Use **Skills stored somewhere else? → Add skills folder** for a folder such as
-`~/.agents/skills`. Nested files are mapped into the selected harness's skills
-folder. Duplicate destinations must be resolved explicitly.
+Use **Add skills folder** for a folder such as `~/.agents/skills`. Nested files
+are mapped into the selected harness's skills folder. Duplicate destinations
+must be resolved explicitly.

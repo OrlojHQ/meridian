@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, normalizeAPIError } from "../api/client";
 import type { HarnessSetup, MutateHarnessSetupRequest } from "../api/generated/types.gen";
+import { harnessName } from "../shell/capsuleActivity";
 
 function SetupCard({setup}:{setup:HarnessSetup}) {
  const cache=useQueryClient();
@@ -15,8 +16,8 @@ function SetupCard({setup}:{setup:HarnessSetup}) {
  const revisions=useQuery({queryKey:["harness-setup-revisions",setup.id,setup.revision],queryFn:()=>api.harnessSetupRevisions(setup.id),enabled:expanded});
  const update=useMutation({mutationFn:(body:Omit<MutateHarnessSetupRequest,"expectedResourceVersion">)=>api.mutateHarnessSetup(setup.id,{...body,expectedResourceVersion:setup.resourceVersion}),onSuccess:()=>cache.invalidateQueries({queryKey:["harness-setups"]})});
  return <section className="panel">
-  <h2>{setup.name} {setup.default && <small>Default</small>}</h2>
-  <p>{setup.harness} · Changes apply to new Capsules.</p>
+  <h3>{setup.name} {setup.default && <small>Default</small>}</h3>
+  <p>{harnessName(setup.harness)} · Changes apply to new Capsules.</p>
   {!editing && <button onClick={()=>setEditing(true)}>Edit files and skills</button>}
   {editing && <HarnessSetupEditor setup={setup} onClose={()=>setEditing(false)} />}
   <div className="actions"><label>Name<input value={name} maxLength={128} onChange={event=>setName(event.target.value)}/></label>
@@ -34,16 +35,23 @@ function SetupCard({setup}:{setup:HarnessSetup}) {
 }
 export function HarnessSetups(){
  const setups=useQuery({queryKey:["harness-setups"],queryFn:api.harnessSetups});
- return <article className="workspace-detail"><header><p className="eyebrow">Settings</p><h1>Your harness setups</h1><p>Bring your settings, instructions, skills, and portable tools once. New Capsules use your saved defaults.</p></header>
-
-
-
- {setups.isPending && <p role="status">Loading saved setups…</p>}
- {setups.isError && <p role="alert">{normalizeAPIError(setups.error).message}<button onClick={()=>void setups.refetch()}>Retry</button></p>}
- {setups.data?.items.filter(item=>!item.deleted).map(item=><SetupCard key={item.id} setup={item}/>)}
- {setups.data?.items.every(item=>item.deleted) && <p>No saved setups yet. Import your local configuration once to get started.</p>}
- {setups.data && <details open={setups.data.items.every(item=>item.deleted)}><summary>Import from this computer</summary><HarnessSetupImport setups={setups.data.items} /></details>}
- <details><summary>Prefer the CLI?</summary><p>Run <code>meridian harness import</code> on your computer. For a remote installation, point it at the same Meridian server as this UI.</p></details>
- <ProviderConnections />
+ const saved=setups.data?.items.filter(item=>!item.deleted) ?? [];
+ return <article className="workspace-detail harness-settings">
+  <header className="workspace-view-header">
+   <div>
+    <p className="eyebrow">Settings</p>
+    <h1>Harness settings</h1>
+    <p className="view-description">Save your agent settings, instructions, skills, and portable tools once. New Capsules start with your default setup.</p>
+   </div>
+  </header>
+  <section className="panel settings-section" aria-labelledby="harness-setups-heading">
+   <h2 id="harness-setups-heading">Your setups</h2>
+   {setups.isPending && <p role="status">Loading saved setups…</p>}
+   {setups.isError && <p role="alert">{normalizeAPIError(setups.error).message}<button onClick={()=>void setups.refetch()}>Retry</button></p>}
+   {setups.data && saved.length===0 && <p>No saved setups yet. Import one from this computer below.</p>}
+   {saved.map(item=><SetupCard key={item.id} setup={item}/>)}
+  </section>
+  {setups.data && <HarnessSetupImport title="Import from this computer" setups={setups.data.items} />}
+  <ProviderConnections />
  </article>;
 }

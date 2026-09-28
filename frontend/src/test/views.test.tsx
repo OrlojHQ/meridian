@@ -12,7 +12,6 @@ import {
   Lineage,
   PreviewCard,
   ShipPanel,
-  WorkspaceBrowser,
 } from "../App";
 import { MeridianAPIError, api } from "../api/client";
 import type {
@@ -24,6 +23,7 @@ import type {
 import { NativeLauncher } from "../components/NativeLauncher";
 import { NewWorkspaceDialog } from "../components/NewWorkspaceDialog";
 import { StructuredLauncher } from "../components/StructuredLauncher";
+import { WorkspaceFiles } from "../components/WorkspaceFiles";
 
 const project = {
   id: "project-1",
@@ -644,13 +644,13 @@ describe("Workspace browsing and shipping", () => {
       size: path === "review.txt" ? 25 : 3,
       executable: false,
     }));
-    const { container } = wrapper(<WorkspaceBrowser capsuleId={capsule.id} />);
-    await userEvent.click(await screen.findByRole("button", { name: "review.txt" }));
+    const { container } = wrapper(<WorkspaceFiles capsuleId={capsule.id} />);
+    await userEvent.click(await screen.findByRole("treeitem", { name: "review.txt" }));
     expect(await screen.findByLabelText("Contents of review.txt")).toHaveTextContent(
       "<script>unsafe()</script>",
     );
     expect(container.querySelector("script")).toBeNull();
-    await userEvent.click(screen.getByRole("button", { name: "image.bin" }));
+    await userEvent.click(screen.getByRole("treeitem", { name: "image.bin" }));
     expect(await screen.findByText("Binary content is unsupported.")).toBeInTheDocument();
   });
 

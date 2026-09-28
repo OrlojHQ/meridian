@@ -423,12 +423,6 @@ pre.thread-content {
   gap: 0.85rem;
 }
 
-.workspace-browser {
-  display: grid;
-  grid-template-columns: minmax(12rem, 0.7fr) minmax(0, 2fr);
-  gap: 1rem;
-}
-
 .file-tree {
   min-height: 12rem;
   border-right: 1px solid var(--border);
@@ -438,23 +432,6 @@ pre.thread-content {
 .file-tree li {
   padding: 0.35rem 0;
   overflow-wrap: anywhere;
-}
-
-button.file-entry {
-  border: 0;
-  padding: 0;
-  color: var(--accent);
-  background: transparent;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-weight: 650;
-  text-align: left;
-}
-
-.file-viewer {
-  min-width: 0;
-  min-height: 12rem;
-  max-height: 40rem;
-  overflow: auto;
 }
 
 label {
@@ -626,10 +603,6 @@ pre {
 }
 
 @media (max-width: 700px) {
-  .workspace-browser {
-    grid-template-columns: 1fr;
-  }
-
   .file-tree {
     border-right: 0;
     border-bottom: 1px solid var(--border);
