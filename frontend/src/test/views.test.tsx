@@ -680,6 +680,146 @@ describe("Capsule detail states", () => {
     expect(screen.queryByRole("heading", { name: "Start a session" })).not.toBeInTheDocument();
   });
 
+  it("stops running sessions before deleting instead of failing", async () => {
+    const nativeCapsule: Capsule = { ...capsule, harness: "claude" };
+    const running: Run = {
+      id: "run-live",
+      capsuleId: nativeCapsule.id,
+      harness: "claude",
+      state: "Running",
+      createdAt: "2026-08-26T00:00:00Z",
+      startedAt: "2026-08-26T00:00:01Z",
+      updatedAt: "2026-08-26T00:00:01Z",
+      resourceVersion: 4,
+    };
+    const threadRun: Run = { ...running, id: "run-thread", harness: "opencode", resourceVersion: 7 };
+    vi.spyOn(api, "capsule").mockResolvedValue(nativeCapsule);
+    const runs = vi.spyOn(api, "runs").mockResolvedValue({ items: [running, threadRun] });
+    vi.spyOn(api, "threads").mockResolvedValue({
+      items: [
+        {
+          id: "thread-1",
+          capsuleId: nativeCapsule.id,
+          state: "active",
+          harness: "opencode",
+          currentRunId: threadRun.id,
+          currentRunState: "Running",
+          encryptedAtRest: true,
+          messageCount: 1,
+          encryptedBytes: 64,
+          createdAt: "2026-08-26T00:00:00Z",
+          updatedAt: "2026-08-26T00:00:02Z",
+          resourceVersion: 3,
+        },
+      ],
+    });
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
+    vi.spyOn(api, "harnessProfiles").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "capabilities").mockResolvedValue({
+      providerVersion: "docker/v2",
+      attach: false,
+      run: true,
+      structured: true,
+      git: false,
+      pause: false,
+      snapshot: false,
+      clone: false,
+      browse: false,
+      delivery: false,
+      preview: false,
+      resourceMetrics: false,
+    });
+    const cancelRun = vi.spyOn(api, "cancelRun").mockResolvedValue({ ...running, state: "Cancelling" });
+    const threadSession = vi.spyOn(api, "threadSession").mockResolvedValue({
+      thread: {
+        id: "thread-1",
+        capsuleId: nativeCapsule.id,
+        state: "active",
+        harness: "opencode",
+        encryptedAtRest: true,
+        messageCount: 1,
+        encryptedBytes: 64,
+        createdAt: "2026-08-26T00:00:00Z",
+        updatedAt: "2026-08-26T00:00:03Z",
+        resourceVersion: 4,
+      },
+    });
+    const lifecycle = vi.spyOn(api, "lifecycle");
+    wrapper(
+      <Routes>
+        <Route path="/ui/capsules/:capsuleId" element={<CapsuleDetail />} />
+      </Routes>,
+      "/ui/capsules/capsule-1",
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: "Capsule actions" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Delete…" }));
+    const dialog = screen.getByRole("alertdialog", { name: `Delete ${capsule.name}?` });
+    expect(dialog).toHaveTextContent("before deleting");
+    const confirm = screen.getByRole("button", { name: "Confirm delete" });
+    expect(confirm).toBeDisabled();
+
+    const sessions = within(screen.getByRole("list", { name: "Running sessions" }));
+    const [stopTerminal, stopTask] = sessions.getAllByRole("button", { name: "Stop" });
+    await userEvent.click(stopTerminal!);
+    await waitFor(() => expect(cancelRun).toHaveBeenCalledWith(running.id, running.resourceVersion));
+    await userEvent.click(stopTask!);
+    await waitFor(() =>
+      expect(threadSession).toHaveBeenCalledWith("cancel", "thread-1", 3),
+    );
+    expect(lifecycle).not.toHaveBeenCalled();
+
+    runs.mockResolvedValue({
+      items: [
+        { ...running, state: "Cancelled" },
+        { ...threadRun, state: "Cancelled" },
+      ],
+    });
+    await waitFor(() => expect(confirm).toBeEnabled(), { timeout: 5_000 });
+  });
+
+  it("stops the native terminal from its heading after confirmation", async () => {
+    const nativeCapsule: Capsule = { ...capsule, harness: "claude" };
+    const running: Run = {
+      id: "run-live",
+      capsuleId: nativeCapsule.id,
+      harness: "claude",
+      state: "Running",
+      createdAt: "2026-08-26T00:00:00Z",
+      startedAt: "2026-08-26T00:00:01Z",
+      updatedAt: "2026-08-26T00:00:01Z",
+      resourceVersion: 4,
+    };
+    vi.spyOn(api, "capsule").mockResolvedValue(nativeCapsule);
+    vi.spyOn(api, "runs").mockResolvedValue({ items: [running] });
+    vi.spyOn(api, "capabilities").mockResolvedValue({
+      providerVersion: "docker/v2",
+      attach: false,
+      run: true,
+      git: false,
+      pause: false,
+      snapshot: false,
+      clone: false,
+      browse: false,
+      delivery: false,
+      preview: false,
+      resourceMetrics: false,
+    });
+    const cancelRun = vi.spyOn(api, "cancelRun").mockResolvedValue({ ...running, state: "Cancelling" });
+    wrapper(
+      <Routes>
+        <Route path="/ui/capsules/:capsuleId" element={<CapsuleDetail />} />
+      </Routes>,
+      "/ui/capsules/capsule-1",
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Stop" }));
+    expect(cancelRun).not.toHaveBeenCalled();
+    const group = within(screen.getByRole("group", { name: "Confirm stop" }));
+    expect(group.getByText("Stop Claude Code?")).toBeInTheDocument();
+    await userEvent.click(group.getByRole("button", { name: "Stop" }));
+    await waitFor(() => expect(cancelRun).toHaveBeenCalledWith(running.id, running.resourceVersion));
+  });
+
   it("explains a failed native Run and starts another one", async () => {
     const nativeCapsule: Capsule = {
       ...capsule,

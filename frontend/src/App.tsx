@@ -33,6 +33,7 @@ import type {
   Run,
   RunEvent,
   RunPage,
+  Thread,
   TimelineView,
 } from "./api/generated/types.gen";
 import { queries } from "./api/queries";
@@ -538,16 +539,83 @@ export function PreviewCard({
   );
 }
 
+const activeRunStates: Run["state"][] = ["Queued", "Starting", "Running", "Cancelling"];
+
+export const isActiveRun = (run: Run) => activeRunStates.includes(run.state);
+
+// A structured Thread's Run is stopped through its Thread session so the
+// adapter shuts down cleanly; any other Run is cancelled directly.
+async function stopRun(run: Run, threads: Thread[]): Promise<void> {
+  const thread = threads.find((item) => item.currentRunId === run.id);
+  if (thread) {
+    await api.threadSession("cancel", thread.id, thread.resourceVersion);
+    return;
+  }
+  await api.cancelRun(run.id, run.resourceVersion);
+}
+
+function ActiveRuns({
+  runs,
+  threads,
+}: {
+  runs: Run[];
+  threads: Thread[];
+}) {
+  const queryClient = useQueryClient();
+  const stop = useMutation({
+    mutationFn: (run: Run) => stopRun(run, threads),
+    onSettled: async (_result, _error, run) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["runs", run.capsuleId] }),
+        queryClient.invalidateQueries({ queryKey: ["threads", run.capsuleId] }),
+      ]);
+    },
+  });
+  return (
+    <>
+      <ul className="active-runs" aria-label="Running sessions">
+        {runs.map((run) => {
+          const stopping =
+            run.state === "Cancelling" || (stop.isPending && stop.variables?.id === run.id);
+          return (
+            <li key={run.id}>
+              <HarnessMark harness={run.harness} />
+              <span>
+                {harnessName(run.harness)}
+                {threads.some((thread) => thread.currentRunId === run.id)
+                  ? " task session"
+                  : " terminal"}
+              </span>
+              <button
+                type="button"
+                disabled={stopping}
+                onClick={() => stop.mutate(run)}
+              >
+                {stopping ? "Stopping…" : "Stop"}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {stop.isError && <ErrorState error={stop.error} />}
+    </>
+  );
+}
+
 function CapsuleMenu({
   capsule,
   pauseSupported = true,
   snapshotSupported = true,
   capabilitiesKnown = true,
+  runs = [],
+  threads = [],
 }: {
   capsule: Capsule;
   pauseSupported?: boolean;
   snapshotSupported?: boolean;
   capabilitiesKnown?: boolean;
+  runs?: Run[];
+  threads?: Thread[];
 }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -572,6 +640,9 @@ function CapsuleMenu({
   const canResume = pauseSupported && capsule.state === "Paused";
   const canSeal = snapshotSupported && ["Ready", "Paused"].includes(capsule.state);
   const canDelete = !["Sealed", "Deleting", "Deleted"].includes(capsule.state);
+  // meridiand refuses to delete a Capsule while any Run is active.
+  const activeRuns = runs.filter(isActiveRun);
+  const blockedByRuns = pendingAction === "delete" && activeRuns.length > 0;
 
   // The command palette asks for lifecycle actions through history state so
   // this menu stays their only owner. Seal and Delete open the confirmation
@@ -648,11 +719,20 @@ function CapsuleMenu({
                   ? "Sealing captures a final Moment and makes this Capsule immutable."
                   : "Deletion stops the Capsule and revokes its active preview links."}
               </p>
+              {blockedByRuns && (
+                <>
+                  <p className="notice" role="status">
+                    Stop {activeRuns.length === 1 ? "this session" : "these sessions"} before
+                    deleting. Anything the agent hasn't saved in the workspace is lost.
+                  </p>
+                  <ActiveRuns runs={activeRuns} threads={threads} />
+                </>
+              )}
               <div className="actions">
                 <button
                   type="button"
                   className="danger"
-                  disabled={mutation.isPending}
+                  disabled={mutation.isPending || blockedByRuns}
                   onClick={() => {
                     const action = pendingAction;
                     setPendingAction(undefined);
@@ -851,6 +931,17 @@ function TerminalSession({
     capsule.state === "Ready" &&
     capabilities.data?.run === true &&
     !reconnect;
+  const [confirmStop, setConfirmStop] = useState(false);
+  const stopNative = useMutation({
+    mutationFn: (run: Run) => api.cancelRun(run.id, run.resourceVersion),
+    onSettled: async () => {
+      setConfirmStop(false);
+      await queryClient.invalidateQueries({ queryKey: ["runs", capsule.id] });
+    },
+  });
+  const canStop =
+    currentRun !== undefined &&
+    ["Queued", "Starting", "Running"].includes(currentRun.state);
   return (
     <section className="primary-session" aria-label="Native harness terminal">
       <div className="section-heading">
@@ -859,6 +950,28 @@ function TerminalSession({
           {currentRun && <StateBadge state={currentRun.state} />}
         </div>
         <div className="session-heading-actions">
+          {canStop && currentRun && !confirmStop && (
+            <button type="button" onClick={() => setConfirmStop(true)}>
+              Stop
+            </button>
+          )}
+          {canStop && currentRun && confirmStop && (
+            <span className="inline-confirm" role="group" aria-label="Confirm stop">
+              <span>Stop {harnessName(harness)}?</span>
+              <button
+                type="button"
+                className="danger"
+                disabled={stopNative.isPending}
+                onClick={() => stopNative.mutate(currentRun)}
+              >
+                {stopNative.isPending ? "Stopping…" : "Stop"}
+              </button>
+              <button type="button" className="secondary" onClick={() => setConfirmStop(false)}>
+                Keep running
+              </button>
+            </span>
+          )}
+          {currentRun?.state === "Cancelling" && <span className="muted-copy">Stopping…</span>}
           {canStartNative && (
             <button
               type="button"
@@ -905,6 +1018,7 @@ function TerminalSession({
         </Suspense>
       )}
       {startNative.isError && <ErrorState error={startNative.error} />}
+      {stopNative.isError && <ErrorState error={stopNative.error} />}
     </section>
   );
 }
@@ -983,6 +1097,8 @@ export function CapsuleDetail() {
             pauseSupported={capabilities.data?.pause === true}
             snapshotSupported={capabilities.data?.snapshot === true}
             capabilitiesKnown={capabilities.isSuccess}
+            runs={runs.data?.items}
+            threads={threads.data?.items}
           />
         </div>
       </header>
