@@ -100,10 +100,31 @@ Under the picker the operator chooses between opening the agent's terminal
 (native) and giving it a written task (structured, when the provider supports
 it). Native launch lists only harness packs applied to that
 Project, follows provisioning, and opens the first PTY Run. Structured launch
-retains the encrypted Thread intent workflow. Keyboard shortcuts `n`, `/`,
-`j`/`k`, and the arrow keys open Project creation, focus filtering, and move
-through the Capsule working set only while focus is outside terminals and form
-controls.
+retains the encrypted Thread intent workflow.
+
+Keyboard shortcuts `n`, `/`, `j`/`k`, the arrow keys, and `?` open Project
+creation, focus filtering, move through the Capsule working set, and list every
+shortcut, only while focus is outside terminals and form controls. The command
+palette opens with ⌘K on macOS and Ctrl+K elsewhere, or from "Commands" in the
+sidebar. ⌘K works from anywhere, including a focused terminal. Ctrl+K is the
+shell's kill-line, so the palette never takes it from a terminal. The palette
+is a modal dialog with a combobox over a grouped listbox: Capsules, sessions of
+Capsules with more than one, "New Capsule in" each Project, New project,
+Activity, Threads, Harness settings, the keyboard shortcut list, and, for the
+current Capsule, the full diff (when the provider supports Git), lineage, Pause
+or Resume (when it supports pausing), Seal (when it supports snapshots), and
+Delete. Matching is fuzzy over names, Projects, harnesses, and activity labels,
+and each item shows its shortcut where it has one. With an empty query the most
+recently run items come first; they are kept in page memory only and never
+written to browser storage.
+
+The palette builds its items only from the working set and the capabilities
+response the shell already holds and issues no request of its own for any
+Capsule, for the same idle-pausing reason the working set never polls Git
+status, files, or previews. Lifecycle items go through the Capsule workspace's
+actions menu, which owns those mutations: Pause and Resume run there with the
+Capsule's current resource version, while Seal and Delete only open its
+existing confirmation and never run from the palette.
 
 ## Development and production assets
 

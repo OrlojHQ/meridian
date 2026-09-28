@@ -6,11 +6,13 @@ import {
   useQueryClient,
   type UseQueryResult,
 } from "@tanstack/react-query";
-import { lazy, Suspense, useEffect, useMemo, useState, type FormEvent } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { createPortal } from "react-dom";
 import {
   Link,
   Route,
   Routes,
+  useLocation,
   useNavigate,
   useOutletContext,
   useParams,
@@ -59,6 +61,7 @@ import {
   relativeTime,
   TERMINAL_SESSION,
 } from "./shell/capsuleActivity";
+import { requestedCapsuleAction } from "./shell/paletteCommands";
 import { useWorkingSet, type WorkingSetItem } from "./shell/useWorkingSet";
 const TerminalView = lazy(() =>
   import("./components/Terminal").then((module) => ({
@@ -540,13 +543,17 @@ function CapsuleMenu({
   capsule,
   pauseSupported = true,
   snapshotSupported = true,
+  capabilitiesKnown = true,
 }: {
   capsule: Capsule;
   pauseSupported?: boolean;
   snapshotSupported?: boolean;
+  capabilitiesKnown?: boolean;
 }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const location = useLocation();
+  const handledRequest = useRef("");
   const [pendingAction, setPendingAction] = useState<"delete" | "seal">();
   const mutation = useMutation<unknown, Error, "pause" | "resume" | "delete" | "seal">({
     mutationFn: (action: "pause" | "resume" | "delete" | "seal") => {
@@ -556,24 +563,59 @@ function CapsuleMenu({
       return api.lifecycle(action, capsule.id, capsule.resourceVersion);
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["capsule", capsule.id] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["capsule", capsule.id] }),
+        queryClient.invalidateQueries({ queryKey: ["capsules", capsule.projectId] }),
+      ]);
     },
   });
+  const canPause = pauseSupported && capsule.state === "Ready";
+  const canResume = pauseSupported && capsule.state === "Paused";
+  const canSeal = snapshotSupported && ["Ready", "Paused"].includes(capsule.state);
+  const canDelete = !["Sealed", "Deleting", "Deleted"].includes(capsule.state);
+
+  // The command palette asks for lifecycle actions through history state so
+  // this menu stays their only owner. Seal and Delete open the confirmation
+  // and never run from the request itself.
+  const requested = requestedCapsuleAction(location.state);
+  useEffect(() => {
+    if (!requested || !capabilitiesKnown || handledRequest.current === location.key) return;
+    handledRequest.current = location.key;
+    navigate(
+      { pathname: location.pathname, search: location.search, hash: location.hash },
+      { replace: true, state: null },
+    );
+    if (requested === "pause" && canPause) mutation.mutate("pause");
+    else if (requested === "resume" && canResume) mutation.mutate("resume");
+    else if (requested === "seal" && canSeal) setPendingAction("seal");
+    else if (requested === "delete" && canDelete) setPendingAction("delete");
+  }, [
+    requested,
+    capabilitiesKnown,
+    location,
+    navigate,
+    mutation,
+    canPause,
+    canResume,
+    canSeal,
+    canDelete,
+  ]);
+
   const items: ActionsMenuItem[] = [];
-  if (pauseSupported && capsule.state === "Ready") {
+  if (canPause) {
     items.push({ label: "Pause", onSelect: () => mutation.mutate("pause") });
   }
-  if (pauseSupported && capsule.state === "Paused") {
+  if (canResume) {
     items.push({ label: "Resume", onSelect: () => mutation.mutate("resume") });
   }
   items.push({
     label: "Open lineage",
     onSelect: () => navigate(`/ui/timelines/${encodeURIComponent(capsule.timelineId)}`),
   });
-  if (snapshotSupported && ["Ready", "Paused"].includes(capsule.state)) {
+  if (canSeal) {
     items.push({ label: "Seal…", danger: true, onSelect: () => setPendingAction("seal") });
   }
-  if (!["Sealed", "Deleting", "Deleted"].includes(capsule.state)) {
+  if (canDelete) {
     items.push({ label: "Delete…", danger: true, onSelect: () => setPendingAction("delete") });
   }
   return (
@@ -585,12 +627,17 @@ function CapsuleMenu({
       {(mutation.isError || pendingAction) && (
         <div className="capsule-bar-notice">
           {mutation.isError && <ErrorState error={mutation.error} />}
-          {pendingAction && (
+          {/* The capsule bar's backdrop filter would otherwise become the
+              fixed confirmation's containing block and clip it. */}
+          {pendingAction && createPortal(
             <section
               className="confirm-dialog"
               role="alertdialog"
               aria-modal="true"
               aria-labelledby="capsule-action-title"
+              onKeyDown={(event) => {
+                if (event.key === "Escape") setPendingAction(undefined);
+              }}
             >
               <h2 id="capsule-action-title">
                 {pendingAction === "seal"
@@ -618,12 +665,14 @@ function CapsuleMenu({
                 <button
                   type="button"
                   className="secondary"
+                  autoFocus
                   onClick={() => setPendingAction(undefined)}
                 >
                   Keep Capsule
                 </button>
               </div>
-            </section>
+            </section>,
+            document.body,
           )}
         </div>
       )}
@@ -1014,6 +1063,7 @@ export function CapsuleDetail() {
             capsule={value}
             pauseSupported={capabilities.data?.pause === true}
             snapshotSupported={capabilities.data?.snapshot === true}
+            capabilitiesKnown={capabilities.isSuccess}
           />
         </div>
       </header>

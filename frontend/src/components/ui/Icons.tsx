@@ -133,3 +133,11 @@ export function WarningIcon(props: IconProps) {
     </Icon>
   );
 }
+
+export function CommandIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M7.5 7.5h5v5h-5zM7.5 7.5V5.75a1.75 1.75 0 1 0-1.75 1.75zM12.5 7.5h1.75a1.75 1.75 0 1 0-1.75-1.75zM12.5 12.5v1.75a1.75 1.75 0 1 0 1.75-1.75zM7.5 12.5H5.75a1.75 1.75 0 1 0 1.75 1.75z" />
+    </Icon>
+  );
+}

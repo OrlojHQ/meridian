@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import {
+  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -22,6 +23,7 @@ import { HarnessMark } from "../components/ui/HarnessMark";
 import {
   ActivityIcon,
   ChevronIcon,
+  CommandIcon,
   MenuIcon,
   PlusIcon,
   SearchIcon,
@@ -36,6 +38,14 @@ import {
   type ActivityGroup,
   type CapsuleSession,
 } from "./capsuleActivity";
+import { CommandPalette, KeyboardShortcutsDialog } from "./CommandPalette";
+import {
+  buildPaletteCommands,
+  isApplePlatform,
+  paletteShortcut,
+  type CapsuleActionRequest,
+  type PaletteCommand,
+} from "./paletteCommands";
 import { useWorkingSet, type WorkingSetItem } from "./useWorkingSet";
 import { WorkspaceContext } from "./WorkspaceContext";
 
@@ -51,6 +61,19 @@ const isTypingTarget = (target: EventTarget | null) => {
     Boolean(target.closest(".terminal-host"))
   );
 };
+
+const inTerminal = (target: EventTarget | null) =>
+  target instanceof Element && Boolean(target.closest(".terminal-host"));
+
+// ⌘K on Apple platforms and Ctrl+K elsewhere. Ctrl+K is the shell's
+// kill-line, so it is never taken from a focused terminal.
+const isPaletteShortcut = (event: KeyboardEvent) => {
+  if (event.key.toLowerCase() !== "k" || event.altKey || event.shiftKey) return false;
+  if (isApplePlatform()) return event.metaKey && !event.ctrlKey;
+  return event.ctrlKey && !event.metaKey && !inTerminal(event.target);
+};
+
+const MAX_RECENT = 5;
 
 export type ShellOutletContext = {
   openNewProject: () => void;
@@ -197,6 +220,10 @@ export function AppShell() {
   const [contextOpen, setContextOpen] = useState(true);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [launchProject, setLaunchProject] = useState<Project>();
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  // Recent palette commands live only in page memory.
+  const [recentCommands, setRecentCommands] = useState<string[]>([]);
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -255,6 +282,11 @@ export function AppShell() {
       if (isTypingTarget(event.target) || event.metaKey || event.ctrlKey || event.altKey) {
         return;
       }
+      if (event.key === "?") {
+        event.preventDefault();
+        setShortcutsOpen(true);
+        return;
+      }
       if (event.key === "n") {
         event.preventDefault();
         setNewProjectOpen(true);
@@ -281,6 +313,64 @@ export function AppShell() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [capsuleId, navigate, visibleCapsules]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!isPaletteShortcut(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setShortcutsOpen(false);
+      setPaletteOpen((open) => !open);
+    };
+    // Capture so a focused terminal cannot consume ⌘K first.
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, []);
+
+  const requestCapsuleAction = useCallback(
+    (id: string, action: CapsuleActionRequest) => {
+      const search = id === capsuleId && directCapsuleId ? location.search : "";
+      navigate(
+        { pathname: `/ui/capsules/${encodeURIComponent(id)}`, search },
+        { state: { capsuleAction: action } },
+      );
+    },
+    [capsuleId, directCapsuleId, location.search, navigate],
+  );
+  const paletteCommands = useMemo(
+    () =>
+      paletteOpen
+        ? buildPaletteCommands({
+            items,
+            projects: projectItems,
+            capsuleId,
+            capabilities: capabilities.data,
+            actions: {
+              navigate,
+              requestCapsuleAction,
+              openNewProject: () => setNewProjectOpen(true),
+              openLauncher: setLaunchProject,
+              openShortcuts: () => setShortcutsOpen(true),
+            },
+          })
+        : [],
+    [
+      paletteOpen,
+      items,
+      projectItems,
+      capsuleId,
+      capabilities.data,
+      navigate,
+      requestCapsuleAction,
+    ],
+  );
+  const runPaletteCommand = (command: PaletteCommand) => {
+    setPaletteOpen(false);
+    setRecentCommands((current) =>
+      [command.id, ...current.filter((id) => id !== command.id)].slice(0, MAX_RECENT),
+    );
+    command.run();
+  };
 
   const onSidebarKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.key === "Escape") setSidebarOpen(false);
@@ -432,6 +522,23 @@ export function AppShell() {
           )}
         </nav>
         <footer className="sidebar-footer">
+          <button
+            type="button"
+            className="palette-trigger"
+            aria-keyshortcuts={isApplePlatform() ? "Meta+K" : "Control+K"}
+            onClick={() => {
+              setSidebarOpen(false);
+              setPaletteOpen(true);
+            }}
+          >
+            <CommandIcon />
+            Commands
+            <span className="key-combo" aria-hidden="true">
+              {paletteShortcut().map((key) => (
+                <kbd key={key}>{key}</kbd>
+              ))}
+            </span>
+          </button>
           <NavLink to="/ui/settings/harnesses">Harness settings</NavLink>
           <NavLink to="/ui/" end>
             <ActivityIcon />
@@ -496,6 +603,17 @@ export function AppShell() {
         project={launchProject}
         onClose={() => setLaunchProject(undefined)}
       />
+      {paletteOpen && (
+        <CommandPalette
+          commands={paletteCommands}
+          recent={recentCommands}
+          onRun={runPaletteCommand}
+          onClose={() => setPaletteOpen(false)}
+        />
+      )}
+      {shortcutsOpen && (
+        <KeyboardShortcutsDialog onClose={() => setShortcutsOpen(false)} />
+      )}
     </div>
   );
 }
