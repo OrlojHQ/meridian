@@ -7,6 +7,14 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Official harness packs build from one shared
+  `images/harness-pack/Dockerfile`. Each pack is now a `pack.env` data file
+  with its pinned release and checksums, its trusted profile, and an optional
+  launcher. Make targets, CI, and release publishing find packs from those
+  directories, so adding a harness no longer needs its own Dockerfile.
+
 ## [0.2.0] - 2026-09-27
 
 ### Added

@@ -2,6 +2,7 @@ package capsuleproto
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -88,200 +89,183 @@ func TestLoadHarnessConfigRejectsRepositoryShadowingTrustedProfile(t *testing.T)
 	}
 }
 
-func TestOfficialOpenCodeManifestIsNativePTY(t *testing.T) {
-	file, err := os.Open(filepath.Join("..", "..", "images", "capsule-opencode", "project.yaml"))
+// officialPacks returns the images/capsule-<pack> directories that the shared
+// images/harness-pack/Dockerfile builds, keyed by pack name.
+func officialPacks(t *testing.T) map[string]string {
+	t.Helper()
+	matches, err := filepath.Glob(filepath.Join("..", "..", "images", "capsule-*", "pack.env"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer file.Close()
-	config, err := harness.Parse(file)
-	if err != nil {
-		t.Fatal(err)
+	if len(matches) == 0 {
+		t.Fatal("no official pack data files")
 	}
-	profile, err := config.Profile("opencode")
-	if err != nil {
-		t.Fatal(err)
+	packs := make(map[string]string, len(matches))
+	for _, match := range matches {
+		root := filepath.Dir(match)
+		packs[strings.TrimPrefix(filepath.Base(root), "capsule-")] = root
 	}
-	if profile.Interaction != harness.InteractionNative || !profile.PTY ||
-		profile.Prompt != harness.PromptInteractive ||
-		profile.Executable != "/usr/local/bin/opencode" {
-		t.Fatalf("OpenCode profile = %#v", profile)
-	}
+	return packs
 }
 
-func TestOfficialOpenCodeLauncherUsesExecutablePrivateTemp(t *testing.T) {
-	root := filepath.Join("..", "..", "images", "capsule-opencode")
-	launcher := filepath.Join(root, "opencode")
-	value, err := os.ReadFile(launcher)
+// packExecutable returns where images/harness-pack/install puts the pinned
+// harness binary for a pack.
+func packExecutable(t *testing.T, root, name string) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(root, "pack.env"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(value)
-	if !strings.Contains(text, `BUN_TMPDIR="${BUN_TMPDIR:-/home/capsule/.cache/opencode/bun-tmp}"`) ||
-		!strings.Contains(text, "exec /usr/local/libexec/opencode") {
-		t.Fatalf("OpenCode launcher does not redirect Bun's native library temp directory: %s", text)
+	values := map[string]string{}
+	for line := range strings.Lines(string(data)) {
+		key, value, ok := strings.Cut(strings.TrimSpace(line), "=")
+		if ok && !strings.HasPrefix(key, "#") {
+			values[key] = value
+		}
 	}
-	if output, err := exec.Command("sh", "-n", launcher).CombinedOutput(); err != nil {
-		t.Fatalf("OpenCode launcher syntax: %v: %s", err, output)
+	if values["PACK_LAYOUT"] == "tree" {
+		return "/usr/local/libexec/" + name + "/" + values["PACK_ENTRY"]
 	}
-	dockerfile, err := os.ReadFile(filepath.Join(root, "Dockerfile"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(dockerfile), "/usr/local/libexec/opencode") ||
-		!strings.Contains(string(dockerfile), "COPY --chmod=0755 images/capsule-opencode/opencode /usr/local/bin/opencode") {
-		t.Fatal("OpenCode image does not install the launcher in front of the pinned binary")
-	}
+	return "/usr/local/libexec/" + name
 }
 
-func TestOfficialPiManifestIsNativePTY(t *testing.T) {
-	file, err := os.Open(filepath.Join("..", "..", "images", "capsule-pi", "project.yaml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer file.Close()
-	config, err := harness.Parse(file)
-	if err != nil {
-		t.Fatal(err)
-	}
-	profile, err := config.Profile("pi")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if profile.Interaction != harness.InteractionNative || !profile.PTY ||
-		profile.Prompt != harness.PromptInteractive ||
-		profile.Executable != "/usr/local/bin/pi" {
-		t.Fatalf("Pi profile = %#v", profile)
-	}
-}
-
-func TestOfficialPiLauncherUsesExecutablePrivateTemp(t *testing.T) {
-	root := filepath.Join("..", "..", "images", "capsule-pi")
-	launcher := filepath.Join(root, "pi")
-	value, err := os.ReadFile(launcher)
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(value)
-	if !strings.Contains(text, `BUN_TMPDIR="${BUN_TMPDIR:-/home/capsule/.cache/pi/bun-tmp}"`) ||
-		!strings.Contains(text, "exec /usr/local/libexec/pi/pi") {
-		t.Fatalf("Pi launcher does not redirect Bun's native library temp directory: %s", text)
-	}
-	if output, err := exec.Command("sh", "-n", launcher).CombinedOutput(); err != nil {
-		t.Fatalf("Pi launcher syntax: %v: %s", err, output)
-	}
-	dockerfile, err := os.ReadFile(filepath.Join(root, "Dockerfile"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(dockerfile), "/usr/local/libexec/pi") ||
-		!strings.Contains(string(dockerfile), "COPY --chmod=0755 images/capsule-pi/pi /usr/local/bin/pi") {
-		t.Fatal("Pi image does not install the launcher in front of the pinned binary")
-	}
-}
-
-func TestOfficialClaudeManifestIsNativePTY(t *testing.T) {
-	file, err := os.Open(filepath.Join("..", "..", "images", "capsule-claude", "project.yaml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer file.Close()
-	config, err := harness.Parse(file)
-	if err != nil {
-		t.Fatal(err)
-	}
-	profile, err := config.Profile("claude")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if profile.Interaction != harness.InteractionNative || !profile.PTY ||
-		profile.Prompt != harness.PromptInteractive ||
-		profile.Executable != "/usr/local/bin/claude" {
-		t.Fatalf("Claude profile = %#v", profile)
-	}
-}
-
-func TestOfficialClaudeLauncherUsesExecutablePrivateTemp(t *testing.T) {
-	root := filepath.Join("..", "..", "images", "capsule-claude")
-	launcher := filepath.Join(root, "claude")
-	value, err := os.ReadFile(launcher)
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(value)
-	if !strings.Contains(text, `BUN_TMPDIR="${BUN_TMPDIR:-/home/capsule/.cache/claude/bun-tmp}"`) ||
-		!strings.Contains(text, "exec /usr/local/libexec/claude") ||
-		!strings.Contains(text, `DISABLE_UPDATES="${DISABLE_UPDATES:-1}"`) {
-		t.Fatalf("Claude launcher does not pin updates or redirect Bun temp: %s", text)
-	}
-	if output, err := exec.Command("sh", "-n", launcher).CombinedOutput(); err != nil {
-		t.Fatalf("Claude launcher syntax: %v: %s", err, output)
-	}
-	dockerfile, err := os.ReadFile(filepath.Join(root, "Dockerfile"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(dockerfile), "/usr/local/libexec/claude") ||
-		!strings.Contains(string(dockerfile), "COPY --chmod=0755 images/capsule-claude/claude /usr/local/bin/claude") {
-		t.Fatal("Claude image does not install the launcher in front of the pinned binary")
-	}
-}
-
-func TestOfficialCodexManifestIsNativePTY(t *testing.T) {
-	file, err := os.Open(filepath.Join("..", "..", "images", "capsule-codex", "project.yaml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer file.Close()
-	config, err := harness.Parse(file)
-	if err != nil {
-		t.Fatal(err)
-	}
-	profile, err := config.Profile("codex")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if profile.Interaction != harness.InteractionNative || !profile.PTY ||
-		profile.Prompt != harness.PromptInteractive ||
-		profile.Executable != "/usr/local/bin/codex" {
-		t.Fatalf("Codex profile = %#v", profile)
-	}
-}
-
-func TestOfficialCodexLauncherInvokesPinnedBinary(t *testing.T) {
-	root := filepath.Join("..", "..", "images", "capsule-codex")
-	launcher := filepath.Join(root, "codex")
-	value, err := os.ReadFile(launcher)
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(value)
-	if !strings.Contains(text, "exec /usr/local/libexec/codex") {
-		t.Fatalf("Codex launcher does not exec the pinned binary: %s", text)
-	}
-	if output, err := exec.Command("sh", "-n", launcher).CombinedOutput(); err != nil {
-		t.Fatalf("Codex launcher syntax: %v: %s", err, output)
-	}
-	dockerfile, err := os.ReadFile(filepath.Join(root, "Dockerfile"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(dockerfile), "/usr/local/libexec/codex") ||
-		!strings.Contains(string(dockerfile), "COPY --chmod=0755 images/capsule-codex/codex /usr/local/bin/codex") {
-		t.Fatal("Codex image does not install the launcher in front of the pinned binary")
-	}
-}
-
-func TestOfficialPackDockerfilesUseConfigurableBase(t *testing.T) {
-	for _, pack := range []string{"opencode", "pi", "claude", "codex"} {
-		dockerfile, err := os.ReadFile(filepath.Join("..", "..", "images", "capsule-"+pack, "Dockerfile"))
+func TestOfficialPacksInstallNativePTYProfiles(t *testing.T) {
+	for name, root := range officialPacks(t) {
+		if output, err := exec.Command("sh", filepath.Join("..", "..", "images", "harness-pack", "install"),
+			"--check", root).CombinedOutput(); err != nil {
+			t.Fatalf("%s pack.env: %v: %s", name, err, output)
+		}
+		file, err := os.Open(filepath.Join(root, "project.yaml"))
 		if err != nil {
 			t.Fatal(err)
 		}
-		text := string(dockerfile)
-		if !strings.Contains(text, "ARG CAPSULE_BASE=meridian-capsule:dev") ||
-			!strings.Contains(text, "FROM ${CAPSULE_BASE}") {
-			t.Fatalf("%s pack Dockerfile does not accept a published Capsule base", pack)
+		config, err := harness.Parse(file)
+		_ = file.Close()
+		if err != nil {
+			t.Fatalf("%s profile: %v", name, err)
 		}
+		profile, err := config.Profile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if profile.Interaction != harness.InteractionNative || !profile.PTY ||
+			profile.Prompt != harness.PromptInteractive ||
+			profile.Executable != "/usr/local/bin/"+name {
+			t.Fatalf("%s profile = %#v", name, profile)
+		}
+	}
+}
+
+func TestOfficialPackLaunchersInvokePinnedBinary(t *testing.T) {
+	for name, root := range officialPacks(t) {
+		launcher := filepath.Join(root, name)
+		value, err := os.ReadFile(launcher)
+		if os.IsNotExist(err) {
+			// The install script symlinks /usr/local/bin/<name> to the binary.
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := "exec " + packExecutable(t, root, name) + ` "$@"`; !strings.Contains(string(value), want) {
+			t.Fatalf("%s launcher does not %q: %s", name, want, value)
+		}
+		if output, err := exec.Command("sh", "-n", launcher).CombinedOutput(); err != nil {
+			t.Fatalf("%s launcher syntax: %v: %s", name, err, output)
+		}
+	}
+}
+
+func TestOfficialBunLaunchersUseExecutablePrivateTemp(t *testing.T) {
+	// Bun extracts native libraries before loading them, and /tmp is noexec.
+	for _, name := range []string{"opencode", "pi", "claude"} {
+		value, err := os.ReadFile(filepath.Join("..", "..", "images", "capsule-"+name, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := `BUN_TMPDIR="${BUN_TMPDIR:-/home/capsule/.cache/` + name + `/bun-tmp}"`; !strings.Contains(string(value), want) {
+			t.Fatalf("%s launcher does not redirect Bun's native library temp directory: %s", name, value)
+		}
+	}
+}
+
+func TestOfficialClaudeLauncherDisablesSelfUpdate(t *testing.T) {
+	value, err := os.ReadFile(filepath.Join("..", "..", "images", "capsule-claude", "claude"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(value), `DISABLE_UPDATES="${DISABLE_UPDATES:-1}"`) {
+		t.Fatalf("Claude launcher does not pin updates: %s", value)
+	}
+}
+
+func TestOfficialPackDockerfileUsesConfigurableBase(t *testing.T) {
+	dockerfile, err := os.ReadFile(filepath.Join("..", "..", "images", "harness-pack", "Dockerfile"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(dockerfile)
+	if !strings.Contains(text, "ARG CAPSULE_BASE=meridian-capsule:dev") ||
+		!strings.Contains(text, "FROM ${CAPSULE_BASE}") {
+		t.Fatal("pack Dockerfile does not accept a published Capsule base")
+	}
+}
+
+func TestPackInstallCheckRejectsUnsafeData(t *testing.T) {
+	valid := map[string]string{
+		"PACK_NAME":         "demo",
+		"PACK_VERSION":      "1.2.3",
+		"PACK_URL":          "https://example.test/v{version}/demo-{arch}.tar.gz",
+		"PACK_ARCH_AMD64":   "x64",
+		"PACK_ARCH_ARM64":   "arm64",
+		"PACK_SHA256_AMD64": strings.Repeat("a", 64),
+		"PACK_SHA256_ARM64": strings.Repeat("b", 64),
+		"PACK_LAYOUT":       "file",
+		"PACK_ENTRY":        "demo",
+	}
+	check := func(values map[string]string, extra string) ([]byte, error) {
+		root := filepath.Join(t.TempDir(), "capsule-demo")
+		if err := os.Mkdir(root, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		var data strings.Builder
+		for key, value := range values {
+			fmt.Fprintf(&data, "%s=%s\n", key, value)
+		}
+		data.WriteString(extra)
+		if err := os.WriteFile(filepath.Join(root, "pack.env"), []byte(data.String()), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, "project.yaml"), []byte(fmt.Sprintf(nativeHarnessFixture, "demo", "demo")), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return exec.Command("sh", filepath.Join("..", "..", "images", "harness-pack", "install"), "--check", root).CombinedOutput()
+	}
+	if output, err := check(valid, ""); err != nil {
+		t.Fatalf("valid pack rejected: %v: %s", err, output)
+	}
+	for name, change := range map[string][2]string{
+		"unknown key":      {"PACK_EXTRA", "1"},
+		"name mismatch":    {"PACK_NAME", "other"},
+		"http url":         {"PACK_URL", "http://example.test/demo-{arch}.tar.gz"},
+		"no arch":          {"PACK_URL", "https://example.test/demo.tar.gz"},
+		"shell in url":     {"PACK_URL", "https://example.test/$(id)-{arch}.tar.gz"},
+		"short checksum":   {"PACK_SHA256_AMD64", "abc"},
+		"unknown layout":   {"PACK_LAYOUT", "zip"},
+		"file entry path":  {"PACK_ENTRY", "bin/demo"},
+		"tree dot segment": {"PACK_ENTRY", "../demo"},
+		"version space":    {"PACK_VERSION", "1 2"},
+	} {
+		values := maps.Clone(valid)
+		values[change[0]] = change[1]
+		if name == "tree dot segment" {
+			values["PACK_LAYOUT"] = "tree"
+		}
+		if _, err := check(values, ""); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	if _, err := check(valid, "not a key value line\n"); err == nil {
+		t.Error("malformed line: accepted")
 	}
 }
