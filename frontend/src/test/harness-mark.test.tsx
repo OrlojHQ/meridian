@@ -12,7 +12,7 @@ it("draws published harness marks and falls back to a monogram", () => {
 
   const codex = render(<HarnessMark harness="codex" />).container.firstElementChild;
   expect(codex).toHaveAttribute("title", "Codex");
-  expect(codex?.querySelector("svg path")).toHaveAttribute("fill-rule", "evenodd");
+  expect(codex?.querySelector("svg")).toHaveAttribute("viewBox", "0 0 716 716");
 
   const mock = render(<HarnessMark harness="mock" />).container.firstElementChild;
   expect(mock).toHaveTextContent("M");
