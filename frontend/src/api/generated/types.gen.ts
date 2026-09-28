@@ -111,6 +111,11 @@ export type HarnessImage = {
      * Capsule image that contains that harness; Docker resolves it to an immutable identity.
      */
     imageReference: string;
+    /**
+     * Session kinds the pack's trusted profile supports. Present only on installation catalog entries in capabilities, and only when the pack ships a trusted profile under its name. Absent means the repository's harness configuration decides, so nothing is known before a Capsule exists. A catalog pack without `structured` cannot start a Project Thread. Ignored in requests and never stored on a Project.
+     *
+     */
+    readonly interactionModes?: Array<'native' | 'structured'>;
 };
 
 export type PutSecretRequest = {
@@ -772,6 +777,135 @@ export type ProjectHarnessSetup = {
      * Saved setup ID, clean, or empty to inherit the personal default.
      */
     setup: string;
+};
+
+export type CapabilitiesWritable = {
+    providerVersion: string;
+    attach: boolean;
+    run: boolean;
+    /**
+     * True only when the provider and runtime expose meridian.adapter.v1 structured sessions.
+     */
+    structured?: boolean;
+    structuredProtocol?: 'meridian.adapter.v1';
+    /**
+     * True when native Run and PTY attachment remain available independently of structured profiles.
+     */
+    ptyFallback?: boolean;
+    git: boolean;
+    pause: boolean;
+    /**
+     * False unless the provider and application share a safe Moment storage contract; CSI discovery alone is insufficient.
+     */
+    snapshot: boolean;
+    /**
+     * False unless provider-native restore preserves Meridian lineage and failure semantics.
+     */
+    clone: boolean;
+    /**
+     * False unless a provider exposes bounded port discovery and Capsule-scoped proxying.
+     */
+    preview: boolean;
+    /**
+     * False unless a provider exposes the authenticated bounded workspace browser.
+     */
+    browse: boolean;
+    /**
+     * False unless a provider exposes authenticated exact-object commit and exact-ref push operations.
+     */
+    delivery: boolean;
+    /**
+     * False when provider resource metrics are not exposed by the public API.
+     */
+    resourceMetrics: boolean;
+    /**
+     * Installation-known harness packs the operator may apply on a Project. Not a boolean capability. Spawn still uses only names stored on that Project.
+     *
+     */
+    harnessImages?: Array<HarnessImageWritable>;
+};
+
+export type CreateProjectRequestWritable = {
+    name: string;
+    /**
+     * Public URL or absolute local fixture path visible to the selected provider.
+     */
+    repositoryUrl?: string;
+    /**
+     * Setup executable followed by its arguments; never interpreted by a shell.
+     */
+    setup?: Array<string>;
+    /**
+     * Default Capsule image reference; Docker resolves it to an immutable image identity.
+     */
+    imageReference?: string;
+    /**
+     * Named harness-pack images allowlisted on this Project. Capsule creation and Project Thread spawn resolve a selected name to one of these images; clients never supply a free image reference at spawn time.
+     *
+     */
+    harnessImages?: Array<HarnessImageWritable>;
+    /**
+     * Name of a git_https secret authorized only for HTTPS clone.
+     */
+    gitSecretName?: string;
+    /**
+     * Explicit allowlist of harness_env secret names.
+     */
+    harnessSecretNames?: Array<string>;
+    /**
+     * Name of a git_push secret authorized only for one exact Delivery push.
+     */
+    gitPushSecretName?: string;
+    /**
+     * Name of a github_api secret used only by meridiand to open a pull request.
+     */
+    githubAPISecretName?: string;
+    commitAuthorName?: string;
+    commitAuthorEmail?: string;
+    defaultBaseBranch?: string;
+};
+
+export type PatchProjectRequestWritable = {
+    expectedResourceVersion: number;
+    /**
+     * Replacement allowlist. Empty clears it and spawn uses the default image.
+     */
+    harnessImages: Array<HarnessImageWritable>;
+};
+
+export type HarnessImageWritable = {
+    /**
+     * Harness pack/profile name selected by Capsule creation or Thread spawn.
+     */
+    name: string;
+    /**
+     * Capsule image that contains that harness; Docker resolves it to an immutable identity.
+     */
+    imageReference: string;
+};
+
+export type ProjectWritable = {
+    id: string;
+    name: string;
+    repositoryUrl?: string;
+    setup?: Array<string>;
+    imageReference?: string;
+    harnessImages?: Array<HarnessImageWritable>;
+    gitSecretName?: string;
+    harnessSecretNames?: Array<string>;
+    gitPushSecretName?: string;
+    githubAPISecretName?: string;
+    commitAuthorName?: string;
+    commitAuthorEmail?: string;
+    defaultBaseBranch?: string;
+    createdAt: string;
+    updatedAt: string;
+    resourceVersion: number;
+};
+
+export type ProjectPageWritable = {
+    items: Array<ProjectWritable>;
+    nextCursor?: string;
 };
 
 export type ProviderConnectionRequestWritable = {
@@ -1459,7 +1593,7 @@ export type ListProjectsResponses = {
 export type ListProjectsResponse = ListProjectsResponses[keyof ListProjectsResponses];
 
 export type CreateProjectData = {
-    body: CreateProjectRequest;
+    body: CreateProjectRequestWritable;
     headers: {
         'Idempotency-Key': string;
     };
@@ -1534,7 +1668,7 @@ export type GetProjectResponses = {
 export type GetProjectResponse = GetProjectResponses[keyof GetProjectResponses];
 
 export type PatchProjectData = {
-    body: PatchProjectRequest;
+    body: PatchProjectRequestWritable;
     path: {
         projectId: string;
     };

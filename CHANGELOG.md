@@ -69,6 +69,17 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- "Give it a task" is offered only for a harness pack that can run a
+  structured session. No official pack can: Claude Code, Codex, OpenCode, and
+  Pi install only native terminal profiles, and the New Capsule dialog now
+  shows just the terminal launcher for them. Before, a task for one of these
+  packs provisioned a full Capsule whose session failed at once with "Capsule
+  runtime rejected structured session start". The daemon now refuses such a
+  request with `422 unsupported` before provisioning anything. The
+  capabilities `harnessImages` catalog carries a read-only `interactionModes`
+  list for packs whose profiles the installation knows. `mock` and custom
+  images declare none and are unchanged, because their profiles come from the
+  repository.
 - The Seal and Delete confirmation in the Capsule workspace is no longer
   clipped by the Capsule header. It receives focus on "Keep Capsule" and closes
   with Escape.

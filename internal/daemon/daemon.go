@@ -301,6 +301,8 @@ func Run(ctx context.Context, config Config) error {
 	}
 	defer service.CloseProviderGateway()
 	service.ConfigureObserver(metrics, config.Provider)
+	harnessPacks := domain.InstallationHarnessImages(installationDefaultImage(config), config.OfficialPackTag)
+	service.ConfigureHarnessPacks(harnessPacks)
 	if capabilities.Run {
 		if runtime == nil {
 			_ = httpServer.Close()
@@ -358,7 +360,7 @@ func Run(ctx context.Context, config Config) error {
 	}
 	previewBaseURL := "http://" + previewListener.Addr().String()
 	api := httpapi.NewWithPreview(service, capabilities, previewBaseURL, apiToken)
-	api.SetHarnessImages(domain.InstallationHarnessImages(installationDefaultImage(config), config.OfficialPackTag))
+	api.SetHarnessPacks(harnessPacks)
 	api.ConfigureObservability(metrics)
 	handler.set(api)
 	previewHandler.set(api.PreviewHandler())

@@ -79,6 +79,14 @@ func (s *Service) CreateProjectThread(
 		if err != nil {
 			return err
 		}
+		if domain.StructuredUnsupported(s.harnessPacks, domain.HarnessImage{
+			Name: input.Harness, ImageReference: image,
+		}) {
+			return fmt.Errorf(
+				"%w: harness pack %q runs only in a terminal and cannot start a structured session",
+				domain.ErrUnsupported, input.Harness,
+			)
+		}
 		now := s.clock.Now().UTC()
 		intentID := domain.ProjectThreadIntentID(s.ids.NewID())
 		capsuleName := input.Name

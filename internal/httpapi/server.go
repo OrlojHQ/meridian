@@ -40,7 +40,7 @@ type Server struct {
 	apiToken      *apiauth.Token
 	browserToken  *apiauth.Token
 	browserValue  string
-	harnessImages []domain.HarnessImage
+	harnessImages []domain.HarnessPack
 }
 
 const browserSessionCookie = "meridian_session"
@@ -128,8 +128,8 @@ func (s *Server) ConfigureObservability(metrics *observability.Metrics) {
 	s.metrics = metrics
 }
 
-func (s *Server) SetHarnessImages(items []domain.HarnessImage) {
-	s.harnessImages = append([]domain.HarnessImage(nil), items...)
+func (s *Server) SetHarnessPacks(items []domain.HarnessPack) {
+	s.harnessImages = append([]domain.HarnessPack(nil), items...)
 }
 
 func (s *Server) SetReady(ready bool) {
@@ -816,7 +816,7 @@ func (s *Server) getCapabilities(writer http.ResponseWriter, _ *http.Request) {
 		Browse:          s.capabilities.Browse,
 		Delivery:        s.capabilities.Delivery,
 		ResourceMetrics: false,
-		HarnessImages:   harnessImagesToJSON(s.harnessImages),
+		HarnessImages:   harnessPacksToJSON(s.harnessImages),
 	})
 }
 
@@ -1743,6 +1743,9 @@ type createProjectRequest struct {
 type harnessImageJSON struct {
 	Name           string `json:"name"`
 	ImageReference string `json:"imageReference"`
+	// InteractionModes is read-only catalog metadata. Requests may echo a
+	// catalog entry, so it is accepted there and ignored.
+	InteractionModes []string `json:"interactionModes,omitempty"`
 }
 
 type patchProjectRequest struct {
@@ -2327,6 +2330,23 @@ func harnessImagesFromRequest(items []harnessImageJSON) []domain.HarnessImage {
 	for _, item := range items {
 		result = append(result, domain.HarnessImage{
 			Name: item.Name, ImageReference: item.ImageReference,
+		})
+	}
+	return result
+}
+
+func harnessPacksToJSON(items []domain.HarnessPack) []harnessImageJSON {
+	if len(items) == 0 {
+		return nil
+	}
+	result := make([]harnessImageJSON, 0, len(items))
+	for _, item := range items {
+		var modes []string
+		for _, mode := range item.InteractionModes {
+			modes = append(modes, string(mode))
+		}
+		result = append(result, harnessImageJSON{
+			Name: item.Name, ImageReference: item.ImageReference, InteractionModes: modes,
 		})
 	}
 	return result

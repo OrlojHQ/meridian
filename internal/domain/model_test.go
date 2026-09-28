@@ -195,7 +195,7 @@ func TestImageForHarnessAllowlist(t *testing.T) {
 	if err != nil || len(items) != 2 || items[0].Name != "opencode" {
 		t.Fatalf("specs = %#v, %v", items, err)
 	}
-	byName := func(items []HarnessImage) map[string]string {
+	byName := func(items []HarnessPack) map[string]string {
 		images := make(map[string]string, len(items))
 		for _, item := range items {
 			images[item.Name] = item.ImageReference
