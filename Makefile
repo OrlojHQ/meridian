@@ -12,14 +12,17 @@ COMPOSE := docker compose -f deploy/docker/compose.yaml
 MERIDIAN_DATA ?= $(CURDIR)/.local/meridian-data
 MERIDIAN_TOKEN_FILE ?= $(MERIDIAN_DATA)/api-auth/installation.token
 CAPSULE_IMAGE ?= meridian-capsule-integration:dev
+# Official harness packs: each images/capsule-<pack>/pack.env builds with the
+# shared images/harness-pack/Dockerfile.
+PACKS := $(sort $(patsubst images/capsule-%/pack.env,%,$(wildcard images/capsule-*/pack.env)))
+PACK_IMAGES := $(PACKS:%=capsule-%-image)
 
 .PHONY: bootstrap build test tui-test ui-test lint ui-build generate check-generated api-lint \
-	format-check vet frontend-typecheck capsule-image capsule-opencode-image \
-	capsule-pi-image capsule-claude-image capsule-codex-image \
+	format-check vet frontend-typecheck capsule-image $(PACK_IMAGES) \
 	capsule-integration-image docker-integration helm-tool helm-test \
 	agentsandbox-integration clean release-check release-snapshot release-smoke \
 	meridiand-image release-docker-validate meridiand-up meridiand-down \
-	meridiand-ready tui try try-opencode try-pi try-claude try-codex
+	meridiand-ready tui try list-packs $(PACKS:%=try-%)
 
 bootstrap:
 	go mod download
@@ -93,25 +96,14 @@ meridiand-image:
 		-t meridiand:dev \
 		-f images/meridiand/Dockerfile .
 
-capsule-opencode-image: capsule-image
-	docker build -t meridian-capsule-opencode:dev \
+$(PACK_IMAGES): capsule-%-image: capsule-image
+	docker build -t meridian-capsule-$*:dev \
 		--build-arg CAPSULE_BASE=meridian-capsule:dev \
-		-f images/capsule-opencode/Dockerfile .
+		--build-arg PACK=$* \
+		-f images/harness-pack/Dockerfile .
 
-capsule-pi-image: capsule-image
-	docker build -t meridian-capsule-pi:dev \
-		--build-arg CAPSULE_BASE=meridian-capsule:dev \
-		-f images/capsule-pi/Dockerfile .
-
-capsule-claude-image: capsule-image
-	docker build -t meridian-capsule-claude:dev \
-		--build-arg CAPSULE_BASE=meridian-capsule:dev \
-		-f images/capsule-claude/Dockerfile .
-
-capsule-codex-image: capsule-image
-	docker build -t meridian-capsule-codex:dev \
-		--build-arg CAPSULE_BASE=meridian-capsule:dev \
-		-f images/capsule-codex/Dockerfile .
+list-packs:
+	@echo $(PACKS)
 
 capsule-integration-image: capsule-image
 	docker build -t meridian-capsule-integration:dev \
@@ -162,28 +154,18 @@ tui: build
 	MERIDIAN_TOKEN_FILE="$(MERIDIAN_TOKEN_FILE)" ./bin/meridian tui \
 		$(if $(HARNESS),--harness $(HARNESS),)
 
-try-opencode:
-	$(MAKE) try HARNESS=opencode
-
-try-pi:
-	$(MAKE) try HARNESS=pi
-
-try-claude:
-	$(MAKE) try HARNESS=claude
-
-try-codex:
-	$(MAKE) try HARNESS=codex
+$(PACKS:%=try-%): try-%:
+	$(MAKE) try HARNESS=$*
 
 try: build
 	@harness="$(or $(HARNESS),opencode)"; \
-	case "$$harness" in \
-		opencode) $(MAKE) capsule-opencode-image ;; \
-		pi) $(MAKE) capsule-pi-image ;; \
-		claude) $(MAKE) capsule-claude-image ;; \
-		codex) $(MAKE) capsule-codex-image ;; \
-		mock) $(MAKE) capsule-image ;; \
-		*) echo "unknown HARNESS=$$harness; expected opencode, pi, claude, codex, or mock" >&2; exit 1 ;; \
-	esac; \
+	if [[ " $(PACKS) " == *" $$harness "* ]]; then \
+		$(MAKE) capsule-$$harness-image; \
+	elif [[ "$$harness" == mock ]]; then \
+		$(MAKE) capsule-image; \
+	else \
+		echo "unknown HARNESS=$$harness; expected one of: $(PACKS) mock" >&2; exit 1; \
+	fi; \
 	if ./bin/meridiand healthcheck --address=http://127.0.0.1:8080 >/dev/null 2>&1 && \
 		[[ -f "$(MERIDIAN_TOKEN_FILE)" ]]; then \
 		echo "meridiand is already ready at http://127.0.0.1:8080"; \
@@ -233,9 +215,10 @@ release-docker-validate:
 			--build-arg BUILD_DATE="$(BUILD_DATE)" \
 			-f images/capsule/Dockerfile.release "$$tmp/capsule-$$arch"; \
 	done; \
-	for pack in opencode pi claude codex; do \
-		grep -qF 'ARG CAPSULE_BASE=meridian-capsule:dev' "images/capsule-$$pack/Dockerfile"; \
-		grep -qF 'FROM $${CAPSULE_BASE}' "images/capsule-$$pack/Dockerfile"; \
+	grep -qF 'ARG CAPSULE_BASE=meridian-capsule:dev' images/harness-pack/Dockerfile; \
+	grep -qF 'FROM $${CAPSULE_BASE}' images/harness-pack/Dockerfile; \
+	for pack in $(PACKS); do \
+		sh images/harness-pack/install --check "images/capsule-$$pack"; \
 	done
 
 release-smoke:

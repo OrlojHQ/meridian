@@ -16,12 +16,35 @@ one pinned harness binary plus a trusted native PTY profile. Tag-only releases
 publish and Cosign-sign `ghcr.io/orlojhq/meridian-capsule-<pack>:<tag>` from
 the published thin Capsule image. Local make targets still build `:dev`.
 
-| Make target | Image | Profile |
-| --- | --- | --- |
-| `capsule-opencode-image` | `meridian-capsule-opencode:dev` | `/etc/meridian/harnesses.d/opencode.yaml` |
-| `capsule-pi-image` | `meridian-capsule-pi:dev` | `/etc/meridian/harnesses.d/pi.yaml` |
-| `capsule-claude-image` | `meridian-capsule-claude:dev` | `/etc/meridian/harnesses.d/claude.yaml` |
-| `capsule-codex-image` | `meridian-capsule-codex:dev` | `/etc/meridian/harnesses.d/codex.yaml` |
+Every pack builds with the shared `images/harness-pack/Dockerfile`. A pack is
+a directory `images/capsule-<pack>/` holding:
+
+- `pack.env`: the pinned release as data (never sourced by a shell): name,
+  version, an HTTPS `.tar.gz` URL with `{version}` and `{arch}` placeholders,
+  per-architecture tokens and SHA-256 checksums, and a `file` or `tree`
+  layout naming the executable inside the archive;
+- `project.yaml`: the trusted native profile, installed as
+  `/etc/meridian/harnesses.d/<pack>.yaml`, whose executable is
+  `/usr/local/bin/<pack>`; and
+- optionally a `<pack>` launcher script that sets harness environment before
+  exec'ing the pinned binary. Without one, `/usr/local/bin/<pack>` is a symlink
+  to the binary.
+
+`images/harness-pack/install` validates the data, verifies the checksum, runs
+the binary's `--version`, and installs all three. `install --check <dir>`
+validates without network access. `make capsule-<pack>-image` and
+`make try-<pack>` exist for every pack directory, and CI builds and releases
+publish every one. `make list-packs` prints them.
+
+| Pack | Image | Layout | Launcher |
+| --- | --- | --- | --- |
+| `claude` | `meridian-capsule-claude:dev` | file | Bun temp, updates disabled |
+| `codex` | `meridian-capsule-codex:dev` | file | symlink |
+| `opencode` | `meridian-capsule-opencode:dev` | file | Bun temp |
+| `pi` | `meridian-capsule-pi:dev` | tree | Bun temp |
+
+A new official pack also needs its name in `InstallationHarnessImages`; a test
+fails until the catalog and the pack directories agree.
 
 Each official pack installs only its native profile, including Pi and
 OpenCode; the `pi-rpc` and `opencode-server` drivers below are for custom

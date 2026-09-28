@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/OrlojHQ/meridian/internal/domain"
@@ -49,6 +50,28 @@ func TestInstallationHarnessPackModesMatchOfficialManifests(t *testing.T) {
 		if !slices.Equal(modes, declared) {
 			t.Fatalf("%s declares %v but %s provides %v", pack.Name, declared, path, modes)
 		}
+	}
+}
+
+func TestInstallationHarnessPacksMatchPackDirectories(t *testing.T) {
+	matches, err := filepath.Glob(filepath.Join("..", "..", "images", "capsule-*", "pack.env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var built []string
+	for _, match := range matches {
+		built = append(built, strings.TrimPrefix(filepath.Base(filepath.Dir(match)), "capsule-"))
+	}
+	var advertised []string
+	for _, pack := range domain.InstallationHarnessImages("meridian-capsule:dev", "") {
+		if pack.Name != "mock" {
+			advertised = append(advertised, pack.Name)
+		}
+	}
+	slices.Sort(built)
+	slices.Sort(advertised)
+	if !slices.Equal(built, advertised) {
+		t.Fatalf("catalog advertises %v but images/capsule-*/pack.env builds %v", advertised, built)
 	}
 }
 

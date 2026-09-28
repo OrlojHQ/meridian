@@ -1,0 +1,131 @@
+#!/bin/sh
+# Install one official harness pack from its pack.env data file.
+#
+#   install <pack-dir>           download, verify, and install (image build, as root)
+#   install --check <pack-dir>   validate pack.env only; no network, no writes
+#
+# pack.env is data, not shell: KEY=value lines from a fixed key set. It is
+# never sourced. The pack directory also holds the trusted project.yaml
+# profile and, optionally, a launcher script named after the pack.
+set -eu
+
+die() {
+	echo "harness-pack: $*" >&2
+	exit 1
+}
+
+check_only=false
+if [ "${1:-}" = "--check" ]; then
+	check_only=true
+	shift
+fi
+[ $# -eq 1 ] || die "usage: install [--check] <pack-dir>"
+dir=$1
+[ -f "$dir/pack.env" ] || die "missing $dir/pack.env"
+[ -f "$dir/project.yaml" ] || die "missing $dir/project.yaml"
+
+name= version= url= layout= entry=
+arch_amd64= arch_arm64= sha_amd64= sha_arm64=
+while IFS= read -r line || [ -n "$line" ]; do
+	case $line in '' | '#'*) continue ;; esac
+	key=${line%%=*}
+	value=${line#*=}
+	[ "$key" != "$line" ] || die "malformed line: $line"
+	case $key in
+	PACK_NAME) name=$value ;;
+	PACK_VERSION) version=$value ;;
+	PACK_URL) url=$value ;;
+	PACK_LAYOUT) layout=$value ;;
+	PACK_ENTRY) entry=$value ;;
+	PACK_ARCH_AMD64) arch_amd64=$value ;;
+	PACK_ARCH_ARM64) arch_arm64=$value ;;
+	PACK_SHA256_AMD64) sha_amd64=$value ;;
+	PACK_SHA256_ARM64) sha_arm64=$value ;;
+	*) die "unknown key: $key" ;;
+	esac
+done <"$dir/pack.env"
+
+matches() {
+	printf '%s' "$1" | grep -Eqx "$2"
+}
+matches "$name" '[a-z][a-z0-9-]{0,31}' || die "invalid PACK_NAME"
+[ "$(basename "$dir")" = "capsule-$name" ] || die "PACK_NAME $name does not match $dir"
+matches "$version" '[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}' || die "invalid PACK_VERSION"
+matches "$url" 'https://[A-Za-z0-9./_{}+-]+\.tar\.gz' || die "PACK_URL must be an https .tar.gz URL"
+case $url in *'{arch}'*) ;; *) die "PACK_URL has no {arch} placeholder" ;; esac
+for token in "$arch_amd64" "$arch_arm64"; do
+	matches "$token" '[A-Za-z0-9_-]{1,64}' || die "invalid PACK_ARCH_* token"
+done
+for sum in "$sha_amd64" "$sha_arm64"; do
+	matches "$sum" '[0-9a-f]{64}' || die "invalid PACK_SHA256_* checksum"
+done
+case $layout in
+file) matches "$entry" '[A-Za-z0-9._*-]{1,64}' || die "file PACK_ENTRY must be a file-name pattern" ;;
+tree) matches "$entry" '[A-Za-z0-9._-]{1,64}(/[A-Za-z0-9._-]{1,64}){0,3}' || die "tree PACK_ENTRY must be a relative path" ;;
+*) die "PACK_LAYOUT must be file or tree" ;;
+esac
+case "/$entry/" in */../* | */./*) die "PACK_ENTRY must not contain dot segments" ;; esac
+if [ -e "$dir/$name" ]; then
+	[ -f "$dir/$name" ] || die "launcher $dir/$name is not a regular file"
+	sh -n "$dir/$name" || die "launcher $dir/$name has a syntax error"
+fi
+
+if $check_only; then
+	exit 0
+fi
+
+case "${TARGETARCH:-}" in
+amd64) arch=$arch_amd64 checksum=$sha_amd64 ;;
+arm64) arch=$arch_arm64 checksum=$sha_arm64 ;;
+*) die "unsupported TARGETARCH=${TARGETARCH:-}" ;;
+esac
+url=$(printf '%s' "$url" | sed "s/{version}/$version/g; s/{arch}/$arch/g")
+case $url in *'{'* | *'}'*) die "PACK_URL has an unknown placeholder" ;; esac
+
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+apt-get update
+apt-get install -y --no-install-recommends curl ca-certificates
+curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+	"$url" -o "$work/pack.tar.gz"
+printf '%s  %s\n' "$checksum" "$work/pack.tar.gz" | sha256sum -c -
+mkdir "$work/x"
+tar -xzf "$work/pack.tar.gz" -C "$work/x" --no-same-owner
+apt-get purge -y curl
+apt-get autoremove -y
+rm -rf /var/lib/apt/lists/*
+
+install -d -m 0755 /usr/local/libexec
+target=/usr/local/libexec/$name
+case $layout in
+file)
+	found=$(find "$work/x" -type f -name "$entry")
+	[ -n "$found" ] || die "no $entry in archive"
+	[ "$(printf '%s\n' "$found" | wc -l)" -eq 1 ] || die "several files match $entry"
+	install -m 0755 "$found" "$target"
+	executable=$target
+	;;
+tree)
+	set -- "$work"/x/*
+	[ $# -eq 1 ] && [ -d "$1" ] && [ ! -L "$1" ] || die "tree archive must hold one top-level directory"
+	mv "$1" "$target"
+	chown -R root:root "$target"
+	chmod -R go-w "$target"
+	executable=$target/$entry
+	;;
+esac
+[ -x "$executable" ] || die "$executable is not executable"
+# Harnesses may write caches on first run; keep them out of the image.
+mkdir -m 0700 "$work/home" "$work/tmp"
+HOME=$work/home TMPDIR=$work/tmp XDG_CACHE_HOME=$work/home/.cache "$executable" --version
+
+# A launcher sets harness-specific environment (for example a private Bun temp
+# directory, since /tmp is noexec) before exec'ing the pinned binary. Packs
+# that need none get a symlink.
+if [ -f "$dir/$name" ]; then
+	install -m 0755 "$dir/$name" "/usr/local/bin/$name"
+else
+	ln -s "$executable" "/usr/local/bin/$name"
+fi
+install -d -m 0755 /etc/meridian/harnesses.d
+install -m 0644 "$dir/project.yaml" "/etc/meridian/harnesses.d/$name.yaml"
