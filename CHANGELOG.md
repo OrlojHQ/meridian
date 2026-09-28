@@ -7,6 +7,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-27
+
 ### Added
 
 - Command palette. ⌘K on macOS and Ctrl+K elsewhere (never taken from a focused
@@ -49,6 +51,9 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   lists the installed harness packs and adds one in place instead of sending
   the operator to the CLI. Choosing between a terminal and a written task is a
   secondary option under the picker.
+- Capsules, sessions, and the agent picker identify each harness by its logo:
+  Claude Code, OpenCode, and Pi from simple-icons, and OpenAI's Blossom for
+  Codex exactly as OpenAI publishes it. Other harnesses show a monogram.
 - Activity sidebar rows show the Capsule's harness, and the selected Capsule
   lists its sessions (native terminal and structured Threads) with their state.
   Idle and paused status dots are hollow; attention pulses.
@@ -80,6 +85,13 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   list for packs whose profiles the installation knows. `mock` and custom
   images declare none and are unchanged, because their profiles come from the
   repository.
+- The Capsule workspace offers a new structured session only when the
+  Capsule's own harness profiles include one. Capsules whose pack installs only
+  native terminal profiles, which includes every official pack, no longer show
+  a new-session tab that cannot start.
+- `meridiand` no longer exits at startup when a Capsule recorded as Ready lost
+  its container outside Meridian (for example after a Docker restart). Startup
+  recovery fails that Capsule's Run, as ADR 0007 requires, instead of aborting.
 - The Seal and Delete confirmation in the Capsule workspace is no longer
   clipped by the Capsule header. It receives focus on "Keep Capsule" and closes
   with Escape.
@@ -177,6 +189,7 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - Docker and Agent Sandbox are not claimed as hostile multi-tenant isolation
   boundaries; hardened runtime deployment and external review remain required.
 
-[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/OrlojHQ/meridian/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/OrlojHQ/meridian/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/OrlojHQ/meridian/releases/tag/v0.1.0
