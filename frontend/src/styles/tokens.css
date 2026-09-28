@@ -31,7 +31,7 @@
   --terminal-text: #e6e9e5;
   --focus: #ba6f2d;
   --harness-claude: #d97757;
-  --harness-codex: #1f221e;
+  --harness-codex: #000000;
   --harness-opencode: #1f221e;
   --harness-pi: #1f221e;
   --harness-other: #6b706a;
@@ -235,7 +235,7 @@ pre {
     --diff-hunk-bg: #18283a;
     --diff-hunk-text: #79b8ff;
     --harness-claude: #d97757;
-    --harness-codex: #eceee9;
+    --harness-codex: #ffffff;
     --harness-opencode: #eceee9;
     --harness-pi: #eceee9;
     --harness-other: #a3a9a2;

@@ -603,7 +603,9 @@ describe("Capsule detail states", () => {
     vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
     vi.spyOn(api, "threads").mockResolvedValue({ items: [] });
     vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
-    vi.spyOn(api, "harnessProfiles").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "harnessProfiles").mockResolvedValue({
+      items: [{ name: "opencode-structured", structured: true, pty: false }],
+    });
     const moments = vi.spyOn(api, "moments").mockResolvedValue({ items: [] });
     vi.spyOn(api, "capabilities").mockResolvedValue({
       providerVersion: "fake/v1",
@@ -639,6 +641,43 @@ describe("Capsule detail states", () => {
       screen.getByRole("alertdialog", { name: `Delete ${capsule.name}?` }),
     ).toBeInTheDocument();
     expect(moments).not.toHaveBeenCalled();
+  });
+
+  it("offers no new session when the Capsule's harness is terminal-only", async () => {
+    vi.spyOn(api, "capsule").mockResolvedValue({ ...capsule, harness: "claude" });
+    vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "threads").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
+    const profiles = vi.spyOn(api, "harnessProfiles").mockResolvedValue({
+      items: [{ name: "claude", structured: false, pty: true }],
+    });
+    vi.spyOn(api, "capabilities").mockResolvedValue({
+      providerVersion: "docker/v2",
+      attach: false,
+      run: false,
+      structured: true,
+      git: false,
+      pause: false,
+      snapshot: false,
+      clone: false,
+      browse: false,
+      delivery: false,
+      preview: false,
+      resourceMetrics: false,
+    });
+    wrapper(
+      <Routes>
+        <Route path="/ui/capsules/:capsuleId" element={<CapsuleDetail />} />
+      </Routes>,
+      "/ui/capsules/capsule-1?session=new",
+    );
+    expect(await screen.findByRole("tab", { name: /Claude Code/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await waitFor(() => expect(profiles).toHaveBeenCalled());
+    expect(screen.queryByRole("tab", { name: "New session" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Start a session" })).not.toBeInTheDocument();
   });
 
   it("explains a failed native Run and starts another one", async () => {

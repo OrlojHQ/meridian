@@ -927,11 +927,20 @@ export function CapsuleDetail() {
     ...queries.threads(capsuleId),
     enabled: Boolean(capsuleId) && structured,
   });
+  // The installation capability says structured sessions exist somewhere;
+  // only the Capsule's own harness profiles say whether it can start one.
+  const profiles = useQuery({
+    ...queries.harnessProfiles(capsuleId),
+    enabled: Boolean(capsuleId) && structured && capsule.data?.state === "Ready",
+  });
   if (capsule.isPending) return <p className="loading" role="status">Loading Capsule…</p>;
   if (capsule.isError) return <ErrorState error={capsule.error} />;
   const value = capsule.data;
   const sessions = capsuleSessions(value, runs.data?.items, threads.data?.items);
-  const canCreateThread = structured && value.state === "Ready";
+  const canCreateThread =
+    structured &&
+    value.state === "Ready" &&
+    profiles.data?.items.some((profile) => profile.structured) === true;
   const requested = searchParams.get("session") ?? "";
   const selected =
     (requested === NEW_SESSION && canCreateThread
