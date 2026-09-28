@@ -7,6 +7,18 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Deleting a Capsule with a running agent no longer fails with "resource
+  version conflict: cancel the active Run or Thread before deleting the
+  Capsule". The Delete confirmation lists each running session with a Stop
+  button and enables Delete once they have stopped. A running native terminal
+  also has its own Stop control, with confirmation, in its session heading.
+- Between 721 and 1040 pixels wide, where Capsule tools open as a drawer over
+  the workspace, the Capsule header keeps Ship and the Capsule actions menu
+  clear of the drawer. Before, the drawer covered them, so Pause, Seal, and
+  Delete couldn't be reached without closing it.
+
 ## [0.2.0] - 2026-09-27
 
 ### Added

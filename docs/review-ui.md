@@ -16,7 +16,10 @@ The UI uses a full-height, Capsule-centered workspace:
   beneath it when it has more than one;
 - the primary surface presents the Capsule's sessions as tabs (its native PTY
   and each structured Thread) under a one-line header whose actions menu holds
-  Pause, Resume, Seal, and Delete, or a resource inspector; and
+  Pause, Resume, Seal, and Delete, or a resource inspector. meridiand refuses
+  to delete a Capsule with an active Run, so the Delete confirmation lists
+  running sessions with Stop buttons and enables Delete once they end; a
+  running native terminal can also be stopped from its session heading; and
 - the contextual tool pane provides capability-gated Changes, Preview, Files,
   Terminal, and Activity tabs for the selected Capsule.
 
