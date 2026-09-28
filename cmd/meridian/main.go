@@ -319,6 +319,8 @@ func newProjectCommand(config *cliConfig) *cobra.Command {
 			if pack.Name == "" {
 				return fmt.Errorf("installation has no harness pack %q", args[1])
 			}
+			// Interaction modes are catalog metadata a Project never stores.
+			pack.InteractionModes = nil
 			images := append([]client.HarnessImage(nil), project.Response.HarnessImages...)
 			replaced := false
 			for index, item := range images {

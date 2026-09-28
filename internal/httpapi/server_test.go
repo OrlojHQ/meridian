@@ -666,3 +666,104 @@ func waitState(
 		time.Sleep(5 * time.Millisecond)
 	}
 }
+
+func TestHarnessCatalogInteractionModes(t *testing.T) {
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	idSource := &ids{}
+	reconciler := app.NewReconciler(store, fake.New(fake.Options{}), clock{}, idSource)
+	runtime := &runtime{}
+	service := app.NewService(store, clock{}, idSource, reconciler, runtime)
+	key, err := transcripts.NewInstallationKey("http-catalog-test", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer key.Zero()
+	service.ConfigureThreads(runtime, key)
+	packs := domain.InstallationHarnessImages("meridian-capsule:dev", "")
+	service.ConfigureHarnessPacks(packs)
+	apiTokenValue := "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	apiToken, err := apiauth.ParseToken(apiTokenValue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := httpapi.NewWithCapabilities(service, ports.ProviderCapabilities{
+		Run: true, Attach: true, Structured: true,
+	}, apiToken)
+	handler.SetHarnessPacks(packs)
+	handler.SetReady(true)
+	server := httptest.NewServer(handler)
+	defer server.Close()
+	api, err := client.NewClient(server.URL, testSecuritySource{token: apiTokenValue})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := api.GetCapabilities(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog := result.(*client.Capabilities).HarnessImages
+	modes := make(map[string][]client.HarnessImageInteractionModesItem, len(catalog))
+	for _, item := range catalog {
+		modes[item.Name] = item.InteractionModes
+	}
+	for _, name := range []string{"opencode", "pi", "claude", "codex"} {
+		if len(modes[name]) != 1 || modes[name][0] != client.HarnessImageInteractionModesItemNative {
+			t.Fatalf("%s modes = %v", name, modes[name])
+		}
+	}
+	if got, ok := modes["mock"]; !ok || got != nil {
+		t.Fatalf("mock modes = %v, listed %v", got, ok)
+	}
+
+	// Clients apply packs by echoing catalog entries; the read-only modes are
+	// accepted and never stored on the Project.
+	created, err := api.CreateProject(
+		ctx,
+		&client.CreateProjectRequest{Name: "catalog", HarnessImages: catalog},
+		client.CreateProjectParams{IdempotencyKey: "catalog-project"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, ok := created.(*client.ProjectHeaders)
+	if !ok || len(project.Response.HarnessImages) != len(catalog) {
+		t.Fatalf("create project response = %#v", created)
+	}
+	for _, item := range project.Response.HarnessImages {
+		if item.InteractionModes != nil {
+			t.Fatalf("Project stored modes for %s: %v", item.Name, item.InteractionModes)
+		}
+	}
+
+	spawn := func(harness string) *httptest.ResponseRecorder {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(
+			http.MethodPost, "/projects/"+project.Response.ID+"/threads",
+			strings.NewReader(`{"harness":"`+harness+`","prompt":"give it a task"}`),
+		)
+		request.Header.Set("Authorization", "Bearer "+apiTokenValue)
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("Idempotency-Key", "catalog-"+harness)
+		handler.ServeHTTP(recorder, request)
+		return recorder
+	}
+	rejected := spawn("claude")
+	if rejected.Code != http.StatusUnprocessableEntity ||
+		!strings.Contains(rejected.Body.String(), `"code":"unsupported"`) ||
+		!strings.Contains(rejected.Body.String(), "runs only in a terminal") {
+		t.Fatalf("claude spawn = %d %s", rejected.Code, rejected.Body.String())
+	}
+	capsules, err := service.ListCapsules(ctx, domain.ProjectID(project.Response.ID), 0, 100)
+	if err != nil || len(capsules.Items) != 0 {
+		t.Fatalf("rejected spawn provisioned %#v, %v", capsules.Items, err)
+	}
+	if accepted := spawn("mock"); accepted.Code != http.StatusAccepted {
+		t.Fatalf("mock spawn = %d %s", accepted.Code, accepted.Body.String())
+	}
+}

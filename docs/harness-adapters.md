@@ -23,6 +23,19 @@ the published thin Capsule image. Local make targets still build `:dev`.
 | `capsule-claude-image` | `meridian-capsule-claude:dev` | `/etc/meridian/harnesses.d/claude.yaml` |
 | `capsule-codex-image` | `meridian-capsule-codex:dev` | `/etc/meridian/harnesses.d/codex.yaml` |
 
+Each official pack installs only its native profile, including Pi and
+OpenCode; the `pi-rpc` and `opencode-server` drivers below are for custom
+structured profiles. Because a repository cannot redefine a trusted profile
+name, the daemon knows this before any Capsule exists and advertises it as
+`interactionModes: [native]` on the pack's entry in the capabilities
+`harnessImages` catalog. `mock` uses the supervisor image, which installs no
+trusted profile, so its entry declares no modes and the repository's
+`.meridian/project.yaml` decides. Project Thread spawn rejects a pack whose
+catalog entry, matched by name and image, lacks `structured` with
+`422 unsupported` before provisioning. Packs outside the catalog, such as
+custom images, are not checked up front. A test keeps the declared modes equal
+to the profiles in `images/capsule-<pack>/project.yaml`.
+
 Repositories do not copy those profiles. Keep a thin Project default image and
 allowlist a pack with `--harness-image=NAME=IMAGE`; `/new` selects it, the
 daemon freezes that image and profile name on the Capsule, and the dashboard

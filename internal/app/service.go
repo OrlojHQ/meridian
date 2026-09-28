@@ -38,6 +38,7 @@ type Service struct {
 	providerName  string
 	structured    ports.StructuredRuntime
 	profiles      ports.HarnessProfileRuntime
+	harnessPacks  []domain.HarnessPack
 	transcriptKey transcriptKey
 	secretKey     *secrets.InstallationKey
 	runSync       [64]sync.Mutex
@@ -85,6 +86,13 @@ func (s *Service) ConfigureThreads(runtime ports.StructuredRuntime, key transcri
 
 func (s *Service) ConfigureHarnessProfiles(runtime ports.HarnessProfileRuntime) {
 	s.profiles = runtime
+}
+
+// ConfigureHarnessPacks sets the installation harness catalog, whose declared
+// interaction modes let Project Thread spawn refuse a native-only pack before
+// provisioning.
+func (s *Service) ConfigureHarnessPacks(packs []domain.HarnessPack) {
+	s.harnessPacks = append([]domain.HarnessPack(nil), packs...)
 }
 
 func (s *Service) ConfigureTemporal(

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { api, normalizeAPIError } from "../api/client";
 import type { HarnessImage, Project } from "../api/generated/types.gen";
+import { packMayRunStructured } from "../api/harnessPacks";
 import { queries } from "../api/queries";
 import { harnessName } from "../shell/capsuleActivity";
 import { ProjectEnvironment } from "./ProjectEnvironment";
@@ -173,8 +174,14 @@ export function NewWorkspaceDialog({
       : current
         ? savedHarness(current.id)
         : "";
-  const harness = packs.find((pack) => pack.name === preferred)?.name ?? packs[0]?.name ?? "";
-  const structured = capabilities.data?.structured === true;
+  const pack = packs.find((item) => item.name === preferred) ?? packs[0];
+  const harness = pack?.name ?? "";
+  // Official packs that declare only native sessions get just the terminal
+  // launcher; the daemon would refuse their task before provisioning.
+  const structured =
+    capabilities.data?.structured === true &&
+    pack !== undefined &&
+    packMayRunStructured(pack, capabilities.data.harnessImages ?? []);
   const activeMode = structured ? mode : "terminal";
   const select = (value: string) => {
     if (!current) return;

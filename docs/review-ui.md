@@ -118,10 +118,16 @@ scoped and does not ask for a Project again. The launcher starts with an agent
 picker over the Project's applied packs; it can add another installation-known
 pack to the Project in place, again without accepting a free image reference.
 Under the picker the operator chooses between opening the agent's terminal
-(native) and giving it a written task (structured, when the provider supports
-it). Native launch lists only harness packs applied to that
-Project, follows provisioning, and opens the first PTY Run. Structured launch
-retains the encrypted Thread intent workflow.
+(native) and giving it a written task (structured). The choice appears only
+when the provider supports structured sessions and the selected pack might run
+one: a pack whose installation catalog entry, matched by name and image,
+declares `interactionModes` without `structured` shows just the terminal
+launcher with no tab strip. The official Claude Code, Codex, OpenCode, and Pi
+packs declare only `native`. `mock` and custom images declare nothing, because
+their profiles come from the repository, so they keep the choice and the
+Capsule's profiles decide. Native launch lists only harness packs applied to
+that Project, follows provisioning, and opens the first PTY Run. Structured
+launch retains the encrypted Thread intent workflow.
 
 Keyboard shortcuts `n`, `/`, `j`/`k`, the arrow keys, and `?` open Project
 creation, focus filtering, move through the Capsule working set, and list every
@@ -197,7 +203,10 @@ the workspace shows its bounded failure reason and requires an explicit
 
 The separate structured form posts the harness, optional Capsule name, and
 first prompt once and displays the stable provisioning intent, Capsule, and
-Thread references. It does not attempt to select or reuse an existing Ready
+Thread references. The daemon refuses a pack whose catalog entry lacks
+`structured` with `422 unsupported` before creating a Capsule, so a CLI, TUI,
+or stale browser request cannot provision a Capsule whose session could never
+start. It does not attempt to select or reuse an existing Ready
 Capsule. Capsule-scoped Thread controls remain available on Capsule detail
 pages.
 

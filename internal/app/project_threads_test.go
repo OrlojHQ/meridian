@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -229,6 +230,105 @@ func TestCreateProjectThreadAllowlistsHarnessImage(t *testing.T) {
 		IdempotencyKey: "spawn-pi",
 	}); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("unknown harness error = %v", err)
+	}
+}
+
+func TestCreateProjectThreadRejectsNativeOnlyPackBeforeProvisioning(t *testing.T) {
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	now := time.Date(2026, 9, 27, 12, 0, 0, 0, time.UTC)
+	key, err := transcripts.NewInstallationKey("project-thread-packs", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer key.Zero()
+	queue := &recordingQueue{}
+	service := app.NewService(store, &testClock{now: now}, &testIDs{}, queue)
+	service.ConfigureThreads(&structuredRuntime{}, key)
+	service.ConfigureHarnessPacks(domain.InstallationHarnessImages("meridian-capsule:dev", ""))
+	projects := []domain.Project{
+		{
+			ID: "project-packs", Name: "packs", ImageReference: "meridian-capsule:dev",
+			HarnessImages: []domain.HarnessImage{
+				{Name: "claude", ImageReference: "meridian-capsule-claude:dev"},
+				{Name: "codex", ImageReference: "meridian-capsule-codex:dev"},
+				{Name: "opencode", ImageReference: "meridian-capsule-opencode:dev"},
+				{Name: "pi", ImageReference: "meridian-capsule-pi:dev"},
+				{Name: "mock", ImageReference: "meridian-capsule:dev"},
+			},
+		},
+		{
+			// Without an allowlist every name resolves to the default image.
+			ID: "project-default-claude", Name: "default", ImageReference: "meridian-capsule-claude:dev",
+		},
+		{
+			ID: "project-custom", Name: "custom", ImageReference: "meridian-capsule:dev",
+			HarnessImages: []domain.HarnessImage{
+				{Name: "claude", ImageReference: "example.test/claude-structured:1"},
+			},
+		},
+	}
+	if err := store.Transact(ctx, func(tx ports.Transaction) error {
+		for _, project := range projects {
+			project.CreatedAt, project.UpdatedAt, project.ResourceVersion = now, now, 1
+			if err := tx.InsertProject(ctx, project); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		project domain.ProjectID
+		harness string
+	}{
+		{"project-packs", "claude"},
+		{"project-packs", "codex"},
+		{"project-packs", "opencode"},
+		{"project-packs", "pi"},
+		{"project-default-claude", "claude"},
+	} {
+		_, err := service.CreateProjectThread(ctx, app.CreateProjectThreadInput{
+			ProjectID: tc.project, Harness: tc.harness, Prompt: "give it a task",
+			IdempotencyKey: "task-" + tc.harness,
+		})
+		if !errors.Is(err, domain.ErrUnsupported) || !strings.Contains(err.Error(), "runs only in a terminal") {
+			t.Fatalf("%s/%s error = %v", tc.project, tc.harness, err)
+		}
+		page, err := service.ListCapsules(ctx, tc.project, 0, 100)
+		if err != nil || len(page.Items) != 0 {
+			t.Fatalf("%s/%s provisioned %#v, %v", tc.project, tc.harness, page.Items, err)
+		}
+	}
+	queue.mu.Lock()
+	enqueued := len(queue.ids)
+	queue.mu.Unlock()
+	if enqueued != 0 {
+		t.Fatalf("rejected spawns enqueued %d Capsules", enqueued)
+	}
+
+	// mock and custom images have no catalog declaration; their Capsule's
+	// profiles decide, so spawn proceeds as before.
+	for _, tc := range []struct {
+		project domain.ProjectID
+		harness string
+	}{
+		{"project-packs", "mock"},
+		{"project-custom", "claude"},
+	} {
+		created, err := service.CreateProjectThread(ctx, app.CreateProjectThreadInput{
+			ProjectID: tc.project, Harness: tc.harness, Prompt: "give it a task",
+			IdempotencyKey: "task-" + string(tc.project) + "-" + tc.harness,
+		})
+		if err != nil || created.Intent.State != domain.ProjectThreadProvisioning {
+			t.Fatalf("%s/%s = %#v, %v", tc.project, tc.harness, created.Intent, err)
+		}
 	}
 }
 

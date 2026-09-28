@@ -2304,6 +2304,12 @@ type HarnessImage struct {
 	Name string `json:"name"`
 	// Capsule image that contains that harness; Docker resolves it to an immutable identity.
 	ImageReference string `json:"imageReference"`
+	// Session kinds the pack's trusted profile supports. Present only on installation catalog entries in
+	// capabilities, and only when the pack ships a trusted profile under its name. Absent means the
+	// repository's harness configuration decides, so nothing is known before a Capsule exists. A catalog
+	// pack without `structured` cannot start a Project Thread. Ignored in requests and never stored on a
+	// Project.
+	InteractionModes []HarnessImageInteractionModesItem `json:"interactionModes"`
 }
 
 // GetName returns the value of Name.
@@ -2316,6 +2322,11 @@ func (s *HarnessImage) GetImageReference() string {
 	return s.ImageReference
 }
 
+// GetInteractionModes returns the value of InteractionModes.
+func (s *HarnessImage) GetInteractionModes() []HarnessImageInteractionModesItem {
+	return s.InteractionModes
+}
+
 // SetName sets the value of Name.
 func (s *HarnessImage) SetName(val string) {
 	s.Name = val
@@ -2324,6 +2335,52 @@ func (s *HarnessImage) SetName(val string) {
 // SetImageReference sets the value of ImageReference.
 func (s *HarnessImage) SetImageReference(val string) {
 	s.ImageReference = val
+}
+
+// SetInteractionModes sets the value of InteractionModes.
+func (s *HarnessImage) SetInteractionModes(val []HarnessImageInteractionModesItem) {
+	s.InteractionModes = val
+}
+
+type HarnessImageInteractionModesItem string
+
+const (
+	HarnessImageInteractionModesItemNative     HarnessImageInteractionModesItem = "native"
+	HarnessImageInteractionModesItemStructured HarnessImageInteractionModesItem = "structured"
+)
+
+// AllValues returns all HarnessImageInteractionModesItem values.
+func (HarnessImageInteractionModesItem) AllValues() []HarnessImageInteractionModesItem {
+	return []HarnessImageInteractionModesItem{
+		HarnessImageInteractionModesItemNative,
+		HarnessImageInteractionModesItemStructured,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s HarnessImageInteractionModesItem) MarshalText() ([]byte, error) {
+	switch s {
+	case HarnessImageInteractionModesItemNative:
+		return []byte(s), nil
+	case HarnessImageInteractionModesItemStructured:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *HarnessImageInteractionModesItem) UnmarshalText(data []byte) error {
+	switch HarnessImageInteractionModesItem(data) {
+	case HarnessImageInteractionModesItemNative:
+		*s = HarnessImageInteractionModesItemNative
+		return nil
+	case HarnessImageInteractionModesItemStructured:
+		*s = HarnessImageInteractionModesItemStructured
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
 }
 
 // Ref: #/components/schemas/HarnessProfile

@@ -607,7 +607,12 @@ paths:
     post:
       operationId: createProjectThread
       summary: Provision a fresh Capsule and start its first structured Thread
-      description: Persists a durable encrypted session intent before asynchronously provisioning a new Capsule. Idempotent replay returns the same intent and resource IDs.
+      description: >
+        Persists a durable encrypted session intent before asynchronously
+        provisioning a new Capsule. Idempotent replay returns the same intent
+        and resource IDs. A harness pack whose installation catalog entry
+        lacks the `structured` interaction mode is rejected with 422
+        `unsupported` before anything is provisioned.
       tags: [threads]
       parameters:
         - $ref: "#/components/parameters/ProjectId"
@@ -2082,6 +2087,22 @@ components:
           minLength: 1
           maxLength: 1024
           description: Capsule image that contains that harness; Docker resolves it to an immutable identity.
+        interactionModes:
+          type: array
+          readOnly: true
+          maxItems: 2
+          uniqueItems: true
+          description: >
+            Session kinds the pack's trusted profile supports. Present only on
+            installation catalog entries in capabilities, and only when the
+            pack ships a trusted profile under its name. Absent means the
+            repository's harness configuration decides, so nothing is known
+            before a Capsule exists. A catalog pack without `structured`
+            cannot start a Project Thread. Ignored in requests and never
+            stored on a Project.
+          items:
+            type: string
+            enum: [native, structured]
     PutSecretRequest:
       type: object
       required: [purpose]

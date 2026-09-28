@@ -48,6 +48,7 @@ import {
   respondThread,
   readCapsuleFile,
 } from "./generated/sdk.gen";
+import { projectHarnessImage } from "./harnessPacks";
 import type { HarnessSetupUpload, HarnessSetupPreview, ImportHarnessSetupRequest, EnvironmentMutation, ProjectEnvironment,
   ProjectHarnessSetup,
   ProviderConnection, ProviderConnectionPage, ProviderConnectionRequestWritable, ProjectProviderConnection,
@@ -201,7 +202,7 @@ export const api = {
         path: { projectId },
         body: {
           expectedResourceVersion: current.resourceVersion,
-          harnessImages: [...images, pack],
+          harnessImages: [...images, projectHarnessImage(pack)],
         },
       }),
     );

@@ -3,6 +3,7 @@ import { type FormEvent, useEffect, useMemo, useRef } from "react";
 
 import { api, normalizeAPIError } from "../api/client";
 import type { HarnessImage, Project } from "../api/generated/types.gen";
+import { projectHarnessImage } from "../api/harnessPacks";
 import { CloseIcon } from "./ui/Icons";
 
 const harnessPreferenceKey = "meridian.newProjectHarness";
@@ -62,7 +63,7 @@ export function NewProjectDialog({
       return api.createProject({
         name,
         ...(repositoryUrl ? { repositoryUrl } : {}),
-        ...(harness ? { harnessImages: [harness] } : {}),
+        ...(harness ? { harnessImages: [projectHarnessImage(harness)] } : {}),
       });
     },
     onSuccess: async (project, { harnessName }) => {

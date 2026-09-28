@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 )
@@ -175,23 +176,70 @@ func (p Project) HarnessNames() []string {
 	return names
 }
 
+type HarnessInteractionMode string
+
+const (
+	HarnessInteractionNative     HarnessInteractionMode = "native"
+	HarnessInteractionStructured HarnessInteractionMode = "structured"
+)
+
+// HarnessPack is an installation-known harness pack. InteractionModes lists
+// the session kinds the pack's trusted profile supports. It is nil when the
+// pack ships no trusted profile under its name, so the repository's harness
+// configuration decides and nothing is known before a Capsule exists.
+type HarnessPack struct {
+	HarnessImage
+	InteractionModes []HarnessInteractionMode
+}
+
+// RejectsStructured reports whether the pack is known to have no structured
+// session profile.
+func (p HarnessPack) RejectsStructured() bool {
+	return p.InteractionModes != nil && !slices.Contains(p.InteractionModes, HarnessInteractionStructured)
+}
+
+// StructuredUnsupported reports whether packs declares that the harness name
+// and image pair cannot run a structured session. A pair outside the
+// installation catalog, such as a custom image, is not known to reject it.
+func StructuredUnsupported(packs []HarnessPack, image HarnessImage) bool {
+	for _, pack := range packs {
+		if pack.HarnessImage == image {
+			return pack.RejectsStructured()
+		}
+	}
+	return false
+}
+
 // InstallationHarnessImages is the daemon-advertised catalog of official
 // harness packs. Spawn still uses only names applied on a Project.
 // packTag overrides the tag copied from defaultImage so a digest-pinned
 // Capsule image can still advertise release-tagged official packs.
-func InstallationHarnessImages(defaultImage, packTag string) []HarnessImage {
+func InstallationHarnessImages(defaultImage, packTag string) []HarnessPack {
 	defaultImage = strings.TrimSpace(defaultImage)
 	if defaultImage == "" {
 		defaultImage = LocalCapsuleImage
 	}
+	// The official packs install only the native profile in
+	// images/capsule-<pack>/project.yaml, and a repository cannot redefine a
+	// trusted profile name. mock uses the supervisor image, which has no
+	// trusted profile, so the repository decides its modes.
+	official := func(name string) HarnessPack {
+		return HarnessPack{
+			HarnessImage: HarnessImage{
+				Name:           name,
+				ImageReference: officialPackImage(defaultImage, "meridian-capsule-"+name, packTag),
+			},
+			InteractionModes: []HarnessInteractionMode{HarnessInteractionNative},
+		}
+	}
 	// Clients preselect the first entry, so real agents come first. mock is
 	// the harness-free supervisor image used by tests and contributors.
-	return []HarnessImage{
-		{Name: "opencode", ImageReference: officialPackImage(defaultImage, "meridian-capsule-opencode", packTag)},
-		{Name: "pi", ImageReference: officialPackImage(defaultImage, "meridian-capsule-pi", packTag)},
-		{Name: "claude", ImageReference: officialPackImage(defaultImage, "meridian-capsule-claude", packTag)},
-		{Name: "codex", ImageReference: officialPackImage(defaultImage, "meridian-capsule-codex", packTag)},
-		{Name: "mock", ImageReference: defaultImage},
+	return []HarnessPack{
+		official("opencode"),
+		official("pi"),
+		official("claude"),
+		official("codex"),
+		{HarnessImage: HarnessImage{Name: "mock", ImageReference: defaultImage}},
 	}
 }
 

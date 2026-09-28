@@ -477,6 +477,101 @@ describe("Native harness launcher", () => {
     expect(screen.getByRole("button", { name: "Start OpenCode" })).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "Give it a task" })).not.toBeInTheDocument();
   });
+
+  const claudePack = {
+    name: "claude",
+    imageReference: "ghcr.io/orlojhq/meridian-capsule-claude:v1",
+  };
+  const mockPack = {
+    name: "mock",
+    imageReference: "ghcr.io/orlojhq/meridian-capsule:v1",
+  };
+  const structuredCapabilities = {
+    providerVersion: "docker/v2",
+    attach: true,
+    run: true,
+    structured: true,
+    git: false,
+    pause: false,
+    snapshot: false,
+    clone: false,
+    browse: false,
+    delivery: false,
+    preview: false,
+    resourceMetrics: false,
+    harnessImages: [
+      { ...claudePack, interactionModes: ["native" as const] },
+      mockPack,
+    ],
+  };
+
+  it("offers a task only for a pack that can run a structured session", async () => {
+    localStorage.clear();
+    vi.spyOn(api, "capabilities").mockResolvedValue(structuredCapabilities);
+    wrapper(
+      <NewWorkspaceDialog
+        open
+        project={{ ...project, id: "project-modes", harnessImages: [claudePack, mockPack] }}
+        onClose={() => undefined}
+      />,
+    );
+
+    expect(await screen.findByRole("button", { name: "Start Claude Code" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Claude Code" })).toBeChecked();
+    expect(screen.queryByRole("tablist", { name: "How to start" })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("radio", { name: "Mock (test)" }));
+    const modes = await screen.findByRole("tablist", { name: "How to start" });
+    expect(within(modes).getByRole("tab", { name: "Open terminal" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await userEvent.click(within(modes).getByRole("tab", { name: "Give it a task" }));
+    expect(screen.getByLabelText("Task")).toBeInTheDocument();
+
+    // Switching to a terminal-only pack never leaves its task form showing.
+    await userEvent.click(screen.getByRole("radio", { name: "Claude Code" }));
+    expect(screen.queryByRole("tablist", { name: "How to start" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Task")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Start Claude Code" })).toBeInTheDocument();
+  });
+
+  it("leaves the task choice to the Capsule for a pack outside the catalog", async () => {
+    localStorage.clear();
+    vi.spyOn(api, "capabilities").mockResolvedValue(structuredCapabilities);
+    wrapper(
+      <NewWorkspaceDialog
+        open
+        project={{
+          ...project,
+          id: "project-custom",
+          harnessImages: [{ name: "claude", imageReference: "example.test/claude-structured:1" }],
+        }}
+        onClose={() => undefined}
+      />,
+    );
+
+    const modes = await screen.findByRole("tablist", { name: "How to start" });
+    expect(within(modes).getByRole("tab", { name: "Give it a task" })).toBeInTheDocument();
+  });
+
+  it("shows only the terminal launcher when the provider has no structured sessions", async () => {
+    localStorage.clear();
+    vi.spyOn(api, "capabilities").mockResolvedValue({
+      ...structuredCapabilities,
+      structured: false,
+    });
+    wrapper(
+      <NewWorkspaceDialog
+        open
+        project={{ ...project, id: "project-native", harnessImages: [mockPack] }}
+        onClose={() => undefined}
+      />,
+    );
+
+    expect(await screen.findByRole("button", { name: "Start Mock (test)" })).toBeInTheDocument();
+    expect(screen.queryByRole("tablist", { name: "How to start" })).not.toBeInTheDocument();
+  });
 });
 
 describe("Capsule detail states", () => {

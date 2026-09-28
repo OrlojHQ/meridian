@@ -6197,11 +6197,22 @@ func (s *HarnessImage) encodeFields(e *jx.Encoder) {
 		e.FieldStart("imageReference")
 		e.Str(s.ImageReference)
 	}
+	{
+		if s.InteractionModes != nil {
+			e.FieldStart("interactionModes")
+			e.ArrStart()
+			for _, elem := range s.InteractionModes {
+				elem.Encode(e)
+			}
+			e.ArrEnd()
+		}
+	}
 }
 
-var jsonFieldsNameOfHarnessImage = [2]string{
+var jsonFieldsNameOfHarnessImage = [3]string{
 	0: "name",
 	1: "imageReference",
+	2: "interactionModes",
 }
 
 // Decode decodes HarnessImage from json.
@@ -6236,6 +6247,23 @@ func (s *HarnessImage) Decode(d *jx.Decoder) error {
 				return nil
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"imageReference\"")
+			}
+		case "interactionModes":
+			if err := func() error {
+				s.InteractionModes = make([]HarnessImageInteractionModesItem, 0)
+				if err := d.Arr(func(d *jx.Decoder) error {
+					var elem HarnessImageInteractionModesItem
+					if err := elem.Decode(d); err != nil {
+						return err
+					}
+					s.InteractionModes = append(s.InteractionModes, elem)
+					return nil
+				}); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"interactionModes\"")
 			}
 		default:
 			return d.Skip()
@@ -6289,6 +6317,46 @@ func (s *HarnessImage) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
 func (s *HarnessImage) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes HarnessImageInteractionModesItem as json.
+func (s HarnessImageInteractionModesItem) Encode(e *jx.Encoder) {
+	e.Str(string(s))
+}
+
+// Decode decodes HarnessImageInteractionModesItem from json.
+func (s *HarnessImageInteractionModesItem) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode HarnessImageInteractionModesItem to nil")
+	}
+	v, err := d.StrBytes()
+	if err != nil {
+		return err
+	}
+	// Try to use constant string.
+	switch HarnessImageInteractionModesItem(v) {
+	case HarnessImageInteractionModesItemNative:
+		*s = HarnessImageInteractionModesItemNative
+	case HarnessImageInteractionModesItemStructured:
+		*s = HarnessImageInteractionModesItemStructured
+	default:
+		*s = HarnessImageInteractionModesItem(v)
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s HarnessImageInteractionModesItem) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *HarnessImageInteractionModesItem) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }
