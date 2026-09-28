@@ -7,8 +7,8 @@ import { LocalSetupError, directoryPicker, scanSetupDirectory, harnessFolders, r
 function importError(cause: unknown) {return cause instanceof LocalSetupError ? cause.message : normalizeAPIError(cause).message;}
 
 const displayNames: Record<Harness, string> = { opencode: "OpenCode", codex: "Codex", claude: "Claude", pi: "Pi" };
-export function HarnessSetupImport({ initialHarness = "opencode", setups, onSaved, onCancel }: {
-  initialHarness?: Harness; setups: HarnessSetup[]; onSaved?: (setup: HarnessSetup) => void; onCancel?: () => void;
+export function HarnessSetupImport({ title = "Import your setup", initialHarness = "opencode", setups, onSaved, onCancel }: {
+  title?: string; initialHarness?: Harness; setups: HarnessSetup[]; onSaved?: (setup: HarnessSetup) => void; onCancel?: () => void;
 }) {
   const client = useQueryClient();
   const folderInput = useRef<HTMLInputElement>(null);
@@ -76,26 +76,27 @@ export function HarnessSetupImport({ initialHarness = "opencode", setups, onSave
     finally { setBusy(false); }
   }
   return <section className="panel setup-import">
-    <h2>Import your setup</h2>
+    <h2>{title}</h2>
     {!onCancel && <label>Harness<select value={harness} disabled={busy} onChange={event => {setHarness(event.target.value as Harness);setSelection([]);setExcluded([]);setPreview(undefined);setSaved(undefined);setError("");}}>{Object.entries(displayNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>}
     {!preview && !saved && <>
-      <p>Bring your {displayNames[harness]} settings and skills into your Capsules.</p>
+      <p>Choose your {displayNames[harness]} configuration folder. You review every file before anything is saved, and new Capsules reuse the saved setup.</p>
       <div className="setup-import-picker">
-        <p><strong>Select your configuration folder</strong><br /><code>{harnessFolders[harness]}</code></p>
+        <p><strong>Configuration folder</strong> <code>{harnessFolders[harness]}</code></p>
+        <p className="setup-import-hint">Hidden folder? On macOS, press <kbd>Cmd + Shift + G</kbd> in the picker and paste the path. Elsewhere, use the picker’s location field or show hidden files.</p>
         <input ref={folderInput} hidden aria-label="Choose configuration folder" type="file" multiple {...{ webkitdirectory: "" }} disabled={busy} onChange={event => choose(event)} />
         <input ref={skillsInput} hidden aria-label="Choose skills folder" type="file" multiple {...{ webkitdirectory: "" }} disabled={busy} onChange={event => choose(event, "skills/")} />
         <input ref={filesInput} hidden aria-label="Choose configuration files" type="file" multiple disabled={busy} onChange={event => choose(event)} />
         <div className="setup-import-actions">
           <button className="primary-button" type="button" disabled={busy} onClick={() => void chooseFolder()}>Choose folder</button>
           <button type="button" disabled={busy} onClick={() => filesInput.current?.click()}>Choose individual files</button>
+          <button type="button" disabled={busy} onClick={() => void chooseFolder(true)}>Add skills folder</button>
         </div>
-        <details><summary>Skills stored somewhere else?</summary><p>Select a folder containing skill directories, such as <code>~/.agents/skills</code> or <code>~/.claude/skills</code>. They will be copied into this harness’s skills folder. Duplicate paths must be resolved before import.</p><button type="button" disabled={busy} onClick={() => void chooseFolder(true)}>Add skills folder</button></details>
-        <p className="setup-import-hint">Import once, then reuse your saved setup in new Capsules. Dependency folders such as node_modules are excluded.</p>
+        <p className="setup-import-hint">Keep skills somewhere else, such as <code>~/.agents/skills</code> or <code>~/.claude/skills</code>? Add that folder too and its skills are copied into this harness’s skills folder. Resolve duplicate paths before import.</p>
+        {harness === "claude" && <p className="setup-import-hint">For global MCP settings, also choose <code>~/.claude.json</code> as an individual file.</p>}
         {!directoryPicker() && <p className="setup-import-hint">This browser’s folder picker counts every file in its confirmation, including excluded dependencies. Meridian filters them afterward; nothing is sent until Review import.</p>}
-        <details><summary>Can’t find the folder?</summary><p>On macOS, press <kbd>Cmd + Shift + G</kbd> in the picker and paste <code>{harnessFolders[harness]}</code>. On Windows or Linux, use the picker’s location field or show hidden files.</p></details>
       </div>
-      {harness === "claude" && <p>For global MCP settings, you can also select <code>~/.claude.json</code> individually.</p>}
-      <p className="setup-import-hint">Next, review the selected files before saving. Review uploads them to your Meridian server for checks. Login caches are excluded; you’ll sign in separately.</p>
+      <p className="setup-import-hint">Review import uploads the selected files to your Meridian server for checks. Dependency folders such as node_modules and login caches are excluded; you sign in to each harness separately.</p>
+      {!onCancel && <p className="setup-import-hint">Prefer the terminal? Run <code>meridian harness import</code> on your computer. For a remote installation, point it at this Meridian server.</p>}
       {selection.length > 0 && <><p>{selection.length} files selected</p><ul>{selection.map(item => <li key={item.path}>{item.path} <button type="button" disabled={busy} aria-label={`Remove ${item.path}`} onClick={() => setSelection(current => current.filter(value => value.path !== item.path))}>Remove</button></li>)}</ul><button type="button" disabled={busy} onClick={() => void review()}>{busy ? "Reviewing…" : "Review import"}</button></>}
       {!selection.length && excluded.length > 0 && <p>No supported files selected. Choose the configuration folder shown above.</p>}
     </>}

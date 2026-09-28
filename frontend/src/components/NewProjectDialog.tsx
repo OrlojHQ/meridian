@@ -1,9 +1,39 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { type FormEvent, useEffect, useRef } from "react";
+import { type FormEvent, useEffect, useMemo, useRef } from "react";
 
 import { api, normalizeAPIError } from "../api/client";
 import type { HarnessImage, Project } from "../api/generated/types.gen";
 import { CloseIcon } from "./ui/Icons";
+
+const harnessPreferenceKey = "meridian.newProjectHarness";
+
+function rememberedHarness() {
+  try {
+    return localStorage.getItem(harnessPreferenceKey) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function rememberHarness(harness: string) {
+  try {
+    localStorage.setItem(harnessPreferenceKey, harness);
+  } catch {
+    // The preference is a convenience; creating a Project does not depend on it.
+  }
+}
+
+// The installation orders its catalog (official agents first, mock last), so
+// without a remembered choice the first real agent wins.
+export function initialHarness(harnessImages: HarnessImage[]) {
+  const remembered = rememberedHarness();
+  if (harnessImages.some((harness) => harness.name === remembered)) {
+    return remembered;
+  }
+  return (
+    harnessImages.find((harness) => harness.name !== "mock") ?? harnessImages[0]
+  )?.name;
+}
 
 export function NewProjectDialog({
   open,
@@ -35,12 +65,19 @@ export function NewProjectDialog({
         ...(harness ? { harnessImages: [harness] } : {}),
       });
     },
-    onSuccess: async (project) => {
+    onSuccess: async (project, { harnessName }) => {
+      const chosen = harnessImages.find((harness) => harness.name === harnessName);
+      if (chosen) rememberHarness(chosen.name);
       await queryClient.invalidateQueries({ queryKey: ["projects"] });
       onCreated?.(project);
       onClose();
     },
   });
+
+  const preselected = useMemo(
+    () => (open ? initialHarness(harnessImages) : undefined),
+    [harnessImages, open],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -123,7 +160,7 @@ export function NewProjectDialog({
                 <select
                   id="project-harness"
                   name="harness"
-                  defaultValue={harnessImages[0]?.name}
+                  defaultValue={preselected}
                   disabled={mutation.isPending}
                 >
                   {harnessImages.map((harness) => (

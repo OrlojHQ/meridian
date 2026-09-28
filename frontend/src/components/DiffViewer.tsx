@@ -177,6 +177,23 @@ export function parseUnifiedDiff(content: string): DiffFile[] {
   );
 }
 
+export type DiffStats = {
+  files: number;
+  additions: number;
+  deletions: number;
+};
+
+export function diffStats(files: DiffFile[]): DiffStats {
+  return files.reduce(
+    (total, file) => ({
+      files: total.files + 1,
+      additions: total.additions + file.additions,
+      deletions: total.deletions + file.deletions,
+    }),
+    { files: 0, additions: 0, deletions: 0 },
+  );
+}
+
 export function DiffViewer({
   content,
   truncated = false,

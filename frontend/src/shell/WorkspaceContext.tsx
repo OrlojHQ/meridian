@@ -10,10 +10,14 @@ import type {
   Run,
 } from "../api/generated/types.gen";
 import { queries } from "../api/queries";
-import { DiffViewer, parseUnifiedDiff } from "../components/DiffViewer";
+import {
+  type DiffStats,
+  diffStats,
+  DiffViewer,
+  parseUnifiedDiff,
+} from "../components/DiffViewer";
 import { ReviewBatch } from "../components/ReviewComments";
 import { useReviewComments } from "../components/reviewBatch";
-import { CodeViewer } from "../components/SyntaxCode";
 import {
   ActivityIcon,
   ChangesIcon,
@@ -22,6 +26,7 @@ import {
   PreviewIcon,
   TerminalIcon,
 } from "../components/ui/Icons";
+import { WorkspaceFiles } from "../components/WorkspaceFiles";
 
 const TerminalView = lazy(() =>
   import("../components/Terminal").then((module) => ({
@@ -53,6 +58,43 @@ function InlineError({ error }: { error: unknown }) {
   );
 }
 
+// Parses the Capsule's diff query. The tab label passes `fetch: false` so it
+// only reads a diff the Changes tool already loaded: Git access counts as
+// Capsule activity and must never happen in the background.
+function useLoadedDiff(capsuleId: string, fetch: boolean) {
+  const diff = useQuery({ ...queries.gitDiff(capsuleId), enabled: fetch });
+  const content = diff.data?.content;
+  const files = useMemo(
+    () => (content === undefined ? undefined : parseUnifiedDiff(content)),
+    [content],
+  );
+  return { diff, files, stats: files ? diffStats(files) : undefined };
+}
+
+const compactCount = (value: number) =>
+  value < 1_000
+    ? String(value)
+    : `${(value / 1_000).toFixed(value < 10_000 ? 1 : 0)}k`;
+
+const plural = (count: number, noun: string) =>
+  `${count} ${noun}${count === 1 ? "" : "s"}`;
+
+function describeStats(stats: DiffStats, truncated: boolean) {
+  return `${plural(stats.files, "file")} changed, ${plural(
+    stats.additions,
+    "addition",
+  )}, ${plural(stats.deletions, "deletion")}${truncated ? " (diff truncated)" : ""}`;
+}
+
+function LineCounts({ stats }: { stats: DiffStats }) {
+  return (
+    <span className="diff-file-stats" aria-hidden="true">
+      <i className="additions">+{compactCount(stats.additions)}</i>
+      <i className="deletions">−{compactCount(stats.deletions)}</i>
+    </span>
+  );
+}
+
 function ChangesPane({
   capsule,
   supported,
@@ -62,13 +104,11 @@ function ChangesPane({
   supported: boolean;
   structured: boolean;
 }) {
-  const diff = useQuery({
-    ...queries.gitDiff(capsule.id),
-    enabled: supported && capsule.state === "Ready",
-  });
+  const { diff, files = [], stats } = useLoadedDiff(
+    capsule.id,
+    supported && capsule.state === "Ready",
+  );
   const review = useReviewComments(capsule.id);
-  const content = diff.data?.content ?? "";
-  const files = useMemo(() => parseUnifiedDiff(content), [content]);
   if (!supported) {
     return <p className="tool-empty">Git review is unsupported by this provider.</p>;
   }
@@ -80,7 +120,20 @@ function ChangesPane({
   return (
     <div className="tool-pane-content">
       <div className="tool-pane-actions">
-        <span>{diff.data.content ? "Working-tree changes" : "Working tree clean"}</span>
+        {diff.data.content && stats ? (
+          <span className="diff-summary">
+            <strong>
+              {plural(stats.files, "file")}
+              {diff.data.truncated ? "+" : ""} changed
+            </strong>
+            <LineCounts stats={stats} />
+            <span className="sr-only">
+              {describeStats(stats, diff.data.truncated)}
+            </span>
+          </span>
+        ) : (
+          <span>Working tree clean</span>
+        )}
         <Link to={`/ui/capsules/${encodeURIComponent(capsule.id)}/diff`}>
           Full review
         </Link>
@@ -95,25 +148,6 @@ function ChangesPane({
   );
 }
 
-function decodeWorkspaceText(content: string): string | undefined {
-  try {
-    const binary = Uint8Array.from(atob(content), (value) => value.charCodeAt(0));
-    const text = new TextDecoder("utf-8", { fatal: true }).decode(binary);
-    const controls = Array.from(text).filter((value) => {
-      const code = value.charCodeAt(0);
-      return (
-        code === 0 ||
-        (code < 32 && value !== "\n" && value !== "\r" && value !== "\t")
-      );
-    }).length;
-    return text.includes("\0") || controls > Math.max(4, text.length / 100)
-      ? undefined
-      : text;
-  } catch {
-    return undefined;
-  }
-}
-
 function FilesPane({
   capsule,
   supported,
@@ -121,92 +155,13 @@ function FilesPane({
   capsule: Capsule;
   supported: boolean;
 }) {
-  const [directory, setDirectory] = useState("");
-  const [selected, setSelected] = useState("");
-  const ready = capsule.state === "Ready";
-  const files = useQuery({
-    ...queries.workspaceFiles(capsule.id, directory),
-    enabled: supported && ready,
-  });
-  const content = useQuery({
-    queryKey: ["workspace-file", capsule.id, selected],
-    queryFn: ({ signal }) => api.workspaceFile(capsule.id, selected, signal),
-    enabled: supported && ready && Boolean(selected),
-  });
-  const text = content.data
-    ? decodeWorkspaceText(content.data.content)
-    : undefined;
   if (!supported) {
     return <p className="tool-empty">Workspace browsing is unsupported.</p>;
   }
-  if (!ready) {
+  if (capsule.state !== "Ready") {
     return <p className="tool-empty">Files are available while the Capsule is Ready.</p>;
   }
-  if (files.isPending) return <p className="tool-loading" role="status">Loading files…</p>;
-  if (files.isError) return <InlineError error={files.error} />;
-  const enter = (name: string) => {
-    setDirectory(directory ? `${directory}/${name}` : name);
-    setSelected("");
-  };
-  const up = () => {
-    setDirectory(directory.split("/").slice(0, -1).join("/"));
-    setSelected("");
-  };
-  return (
-    <div className="context-files">
-      <div className="context-file-toolbar">
-        <button type="button" className="text-button" disabled={!directory} onClick={up}>
-          Up
-        </button>
-        <span className="mono">/{directory}</span>
-      </div>
-      <div className="context-file-layout">
-        <ul aria-label="Workspace file tree">
-          {files.data.items.map((entry) => (
-            <li key={entry.name}>
-              {entry.type === "directory" ? (
-                <button
-                  type="button"
-                  className="file-entry"
-                  onClick={() => enter(entry.name)}
-                >
-                  {entry.name}/
-                </button>
-              ) : entry.type === "file" ? (
-                <button
-                  type="button"
-                  className="file-entry"
-                  disabled={entry.size > 1_048_576}
-                  onClick={() =>
-                    setSelected(
-                      directory ? `${directory}/${entry.name}` : entry.name,
-                    )
-                  }
-                >
-                  {entry.name}
-                </button>
-              ) : (
-                <span>{entry.name}</span>
-              )}
-            </li>
-          ))}
-        </ul>
-        <div className="context-file-viewer" aria-live="polite">
-          {!selected ? (
-            <p className="tool-empty">Select a text file.</p>
-          ) : content.isPending ? (
-            <p className="tool-loading" role="status">Loading file…</p>
-          ) : content.isError ? (
-            <p className="inline-error" role="alert">File unavailable or too large.</p>
-          ) : text === undefined ? (
-            <p className="tool-empty">Binary content is unsupported.</p>
-          ) : (
-            <CodeViewer content={text} path={selected} />
-          )}
-        </div>
-      </div>
-    </div>
-  );
+  return <WorkspaceFiles capsuleId={capsule.id} />;
 }
 
 function PreviewPane({
@@ -405,6 +360,7 @@ export function WorkspaceContext({
   const [tab, setTab] = useState<ContextTab>(() => tabFromPath(pathname));
   const capsule = useQuery(queries.capsule(capsuleId));
   const runs = useQuery(queries.runs(capsuleId));
+  const loadedDiff = useLoadedDiff(capsuleId, false);
   useEffect(() => setTab(tabFromPath(pathname)), [pathname]);
 
   if (capsule.isPending || runs.isPending) {
@@ -439,23 +395,50 @@ export function WorkspaceContext({
       ),
   );
 
+  const changes =
+    capabilities?.git === true &&
+    capsule.data.state === "Ready" &&
+    loadedDiff.diff.data?.content &&
+    loadedDiff.stats?.files
+      ? {
+          stats: loadedDiff.stats,
+          truncated: loadedDiff.diff.data.truncated,
+        }
+      : undefined;
+
   return (
     <aside className="context-panel" aria-label="Capsule tools">
       <div className="context-tabs" role="tablist" aria-label="Capsule tools">
-        {tabs.map(({ id, label, icon: TabIcon }) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            aria-selected={tab === id}
-            aria-controls={`context-${id}`}
-            title={label}
-            onClick={() => setTab(id)}
-          >
-            <TabIcon />
-            <span>{label}</span>
-          </button>
-        ))}
+        {tabs.map(({ id, label, icon: TabIcon }) => {
+          const counts = id === "changes" ? changes : undefined;
+          const name = counts
+            ? `${label}, ${describeStats(counts.stats, counts.truncated)}`
+            : label;
+          return (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={tab === id}
+              aria-controls={`context-${id}`}
+              aria-label={name}
+              title={name}
+              onClick={() => setTab(id)}
+            >
+              <TabIcon />
+              <span>{label}</span>
+              {counts && (
+                <small className="tab-stats" aria-hidden="true">
+                  <b>
+                    {compactCount(counts.stats.files)}
+                    {counts.truncated ? "+" : ""}
+                  </b>
+                  <LineCounts stats={counts.stats} />
+                </small>
+              )}
+            </button>
+          );
+        })}
       </div>
       <section
         id={`context-${tab}`}
@@ -474,7 +457,11 @@ export function WorkspaceContext({
           <PreviewPane capsule={capsule.data} supported={capabilities?.preview === true} />
         )}
         {tab === "files" && (
-          <FilesPane capsule={capsule.data} supported={capabilities?.browse === true} />
+          <FilesPane
+            key={capsule.data.id}
+            capsule={capsule.data}
+            supported={capabilities?.browse === true}
+          />
         )}
         {tab === "terminal" && (
           <TerminalPane

@@ -196,6 +196,7 @@ describe("Thread detail transcript and controls", () => {
       },
     ];
     vi.spyOn(api, "thread").mockResolvedValue(thread);
+    vi.spyOn(api, "capsule").mockResolvedValue(capsule);
     vi.spyOn(api, "threadBlocks").mockResolvedValue({
       items: blocks,
       nextCursor: 5,
@@ -231,11 +232,11 @@ describe("Thread detail transcript and controls", () => {
     expect(screen.getByText("waiting")).toBeInTheDocument();
     expect(screen.getByText("bad[31mthing")).toBeInTheDocument();
     expect(view.container.textContent).not.toMatch(/[\u001b\u009b]/);
-    expect(screen.getByRole("link", { name: capsule.id })).toHaveAttribute(
+    expect(await screen.findByRole("link", { name: capsule.name })).toHaveAttribute(
       "href",
       "/ui/capsules/capsule-1?session=thread-1",
     );
-    expect(screen.getByRole("link", { name: "Native PTY fallback" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Open terminal" })).toHaveAttribute(
       "href",
       "/ui/capsules/capsule-1#terminal",
     );
@@ -271,6 +272,63 @@ describe("Thread detail transcript and controls", () => {
     const abort = vi.spyOn(AbortController.prototype, "abort");
     view.unmount();
     expect(abort).toHaveBeenCalled();
+  });
+
+  it("names the agent and Capsule in plain words", async () => {
+    vi.spyOn(api, "thread").mockResolvedValue({ ...thread, harness: "claude" });
+    vi.spyOn(api, "capsule").mockResolvedValue(capsule);
+    vi.spyOn(api, "threadBlocks").mockResolvedValue({
+      items: [],
+      nextCursor: 0,
+      more: false,
+    });
+    vi.spyOn(threadEvents, "followThreadBlocks").mockImplementation(
+      async (_id, _cursor, signal, _onBlock, onStatus) => {
+        onStatus("live");
+        await new Promise<void>((resolve) =>
+          signal.addEventListener("abort", () => resolve(), { once: true }),
+        );
+      },
+    );
+    const view = wrapper(
+      <Routes>
+        <Route path="/ui/threads/:threadId" element={<ThreadDetail />} />
+      </Routes>,
+    );
+
+    expect(await screen.findByRole("heading", { level: 1, name: "Claude Code" })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "Workspace" })).toHaveAttribute(
+      "href",
+      "/ui/capsules/capsule-1?session=thread-1",
+    );
+    const header = view.container.querySelector("header")!;
+    expect(header).toHaveTextContent("The transcript is encrypted at rest.");
+    expect(header).not.toHaveTextContent(capsule.id);
+    expect(header).not.toHaveTextContent(thread.id);
+    expect(view.container).not.toHaveTextContent(/Structured Thread|Retained encrypted/);
+    expect(screen.getByText("Live")).toHaveAttribute("title", "Cursor 0");
+    expect(screen.getByRole("button", { name: "Crypto-shred" })).toBeInTheDocument();
+  });
+
+  it("falls back to a generic Capsule link until the Capsule loads", async () => {
+    vi.spyOn(api, "thread").mockResolvedValue(thread);
+    vi.spyOn(api, "capsule").mockImplementation(() => new Promise(() => {}));
+    vi.spyOn(api, "threadBlocks").mockResolvedValue({
+      items: [],
+      nextCursor: 0,
+      more: false,
+    });
+    vi.spyOn(threadEvents, "followThreadBlocks").mockResolvedValue();
+    wrapper(
+      <Routes>
+        <Route path="/ui/threads/:threadId" element={<ThreadDetail />} />
+      </Routes>,
+    );
+    expect(await screen.findByRole("link", { name: "its Capsule" })).toHaveAttribute(
+      "href",
+      "/ui/capsules/capsule-1?session=thread-1",
+    );
+    expect(screen.getByRole("heading", { level: 1, name: "Mock (test)" })).toBeInTheDocument();
   });
 
   it("resumes a paused retained Thread", async () => {

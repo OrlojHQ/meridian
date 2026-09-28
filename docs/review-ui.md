@@ -7,7 +7,9 @@ generated from `api/openapi.yaml`; lifecycle transitions remain server-owned.
 
 The UI uses a full-height, Capsule-centered workspace:
 
-- the persistent Activity sidebar groups Capsules by Project and shows each
+- the persistent Activity sidebar opens with links to Activity (with a count
+  of Capsules that need attention), Threads, and Harness settings under the
+  brand and filter, then groups Capsules by Project and shows each
   Capsule's harness and what it is doing and for how long (for example "Claude
   Code working", "Waiting for permission", or "Capsule failed") without
   requiring a dashboard round trip. The selected Capsule lists its sessions
@@ -57,6 +59,20 @@ not become an unbounded stack of Capsule panels.
 
 The Changes tool parses the bounded unified diff into collapsible file sections,
 old/new line-number gutters, hunk headers, and semantic addition/deletion rows.
+The Changes tab label and the Changes pane header show how many files changed
+and how many lines were added and removed. Both are derived from the diff the
+Changes tool has already loaded, so they add no polling or Git request; until
+that diff loads, and while the Capsule is not Ready, no counts are shown. A
+truncated diff marks the file count as a lower bound.
+
+The Files tool is a collapsible tree with `role="tree"`. It lists the workspace
+root when opened and lists a directory only when the operator expands it; it
+never prefetches, because reading the workspace counts as Capsule activity.
+Listings and file content refresh only through the tool's Refresh action, not
+on window focus or reconnect. Arrow keys move through and expand the tree, Home
+and End jump to its ends, and Enter opens a file. Symlinks, special files, and
+files over 1 MiB are listed but cannot be opened.
+
 Changes and Files share an extension-aware source renderer with line numbers.
 Highlighting is loaded only when supported source opens and is skipped for large
 or unknown files without preventing plain-text review. It uses Shiki's JavaScript
@@ -91,7 +107,12 @@ otherwise, "Copy as prompt" places the message on the clipboard for the
 operator to paste, and the comments stay pending.
 
 `New project` creates the top-level Project boundary and can apply one
-installation-known harness pack without accepting a free image reference. Each
+installation-known harness pack without accepting a free image reference. It
+preselects the harness chosen when the operator last created a Project, if the
+installation still offers it, and otherwise the first pack in installation
+order other than `mock`. Only the harness name is remembered, in the browser's
+`meridian.newProjectHarness` storage entry, and only after the Project is
+created; the dialog works unchanged when browser storage is unavailable. Each
 Project heading owns its own `+` launcher, so Capsule creation is already
 scoped and does not ask for a Project again. The launcher starts with an agent
 picker over the Project's applied packs; it can add another installation-known
@@ -152,7 +173,10 @@ The production routes are:
   surface while the contextual Changes tab shows the bounded Git diff;
 - `/ui/threads` and `/ui/threads/:id` — retained structured Thread fleet,
   decrypted typed-block timeline, pinned composer, permissions, and session
-  actions;
+  actions. The standalone Thread page names the agent and links to its owning
+  Capsule by name;
+- `/ui/settings/harnesses` — Harness settings, in three sections: Your setups,
+  Import from this computer, and Provider connections;
 - `/ui/runs/:id` and `/ui/runs/:id/terminal` — ordered activity and focused PTY;
 - `/ui/moments/:id` — immutable filesystem Moment metadata; and
 - `/ui/timelines/:id` — visual lineage with an accessible text alternative.
@@ -183,8 +207,10 @@ Static and SPA responses include a restrictive Content Security Policy,
 clickjacking, MIME-sniffing, referrer, opener, and permissions headers. Diffs
 are rendered as text in `<pre>` elements, never injected as HTML. The UI does
 not write API bodies, diffs, terminal frames, prompts, or ticket values to
-browser logs or storage. Review comments live only in page memory, and the
-review prompt reaches the clipboard only through an explicit "Copy as prompt".
+browser logs or storage; browser storage holds only the harness names the New
+project and New Capsule dialogs remember. Review comments live only in page
+memory, and the review prompt reaches the clipboard only through an explicit
+"Copy as prompt".
 
 Workspace file content uses base64 in JSON and is decoded only for text
 rendering. Valid UTF-8 without binary control content is placed in `<pre>`;

@@ -114,11 +114,25 @@ export const queries = {
       queryFn: ({ signal }) => api.gitDiff(capsuleId, signal),
       enabled: Boolean(capsuleId),
     }),
+  // Reading the workspace counts as Capsule activity, so listings and file
+  // content refresh only when the operator asks, never on focus or reconnect.
   workspaceFiles: (capsuleId: string, path = "") =>
     queryOptions({
       queryKey: ["workspace-files", capsuleId, path],
       queryFn: ({ signal }) => api.workspaceFiles(capsuleId, path, signal),
       enabled: Boolean(capsuleId),
+      staleTime: Infinity,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+    }),
+  workspaceFile: (capsuleId: string, path: string) =>
+    queryOptions({
+      queryKey: ["workspace-file", capsuleId, path],
+      queryFn: ({ signal }) => api.workspaceFile(capsuleId, path, signal),
+      enabled: Boolean(capsuleId && path),
+      staleTime: Infinity,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
     }),
   deliveryInspection: (capsuleId: string) =>
     queryOptions({

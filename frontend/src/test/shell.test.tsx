@@ -228,6 +228,49 @@ describe("application shell", () => {
     expect(gitStatus).not.toHaveBeenCalled();
   });
 
+  it("places Activity, Threads, and Harness settings at the top of the sidebar", async () => {
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
+    vi.spyOn(api, "capsules").mockResolvedValue({
+      items: [{ ...capsule, name: "Setup broke", state: "Failed" }],
+    });
+    vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "capabilities").mockResolvedValue(capabilities);
+
+    wrapper(
+      <Routes>
+        <Route path="/ui" element={<AppShell />}>
+          <Route index element={<p>Activity home</p>} />
+        </Route>
+      </Routes>,
+    );
+
+    const sidebar = screen.getByRole("complementary", { name: "Activity" });
+    const views = within(sidebar).getByRole("navigation", { name: "Views" });
+    const links = within(views).getAllByRole("link");
+    expect(links.map((link) => link.textContent?.replace(/\d+$/, ""))).toEqual([
+      "Activity",
+      "Threads",
+      "Harness settings",
+    ]);
+    expect(links.map((link) => link.getAttribute("href"))).toEqual([
+      "/ui/",
+      "/ui/threads",
+      "/ui/settings/harnesses",
+    ]);
+    links.forEach((link) => expect(link.querySelector("svg")).not.toBeNull());
+    expect(await within(views).findByLabelText("1 need attention")).toHaveTextContent("1");
+
+    const filter = within(sidebar).getByPlaceholderText("Filter work");
+    const work = within(sidebar).getByRole("navigation", { name: "Capsule activity" });
+    expect(filter.compareDocumentPosition(views) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(views.compareDocumentPosition(work) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    const footer = sidebar.querySelector(".sidebar-footer")!;
+    expect(within(footer as HTMLElement).queryAllByRole("link")).toHaveLength(0);
+    expect(within(footer as HTMLElement).getByRole("button", { name: /Commands/ })).toBeInTheDocument();
+    expect(sidebar).not.toHaveTextContent(/Connected|Connecting/);
+  });
+
   it("shows connection, provider, and activity counts in the status bar", async () => {
     vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
     vi.spyOn(api, "capsules").mockResolvedValue({

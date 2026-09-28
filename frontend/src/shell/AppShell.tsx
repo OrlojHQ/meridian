@@ -27,6 +27,7 @@ import {
   MenuIcon,
   PlusIcon,
   SearchIcon,
+  SettingsIcon,
   ThreadIcon,
   WarningIcon,
 } from "../components/ui/Icons";
@@ -437,6 +438,28 @@ export function AppShell() {
           />
           <kbd>/</kbd>
         </label>
+        <nav className="sidebar-links" aria-label="Views">
+          <NavLink to="/ui/" end>
+            <ActivityIcon />
+            Activity
+            {attentionCount > 0 && (
+              <span
+                className="attention-count"
+                aria-label={`${attentionCount} need attention`}
+              >
+                {attentionCount}
+              </span>
+            )}
+          </NavLink>
+          <NavLink to="/ui/threads">
+            <ThreadIcon />
+            Threads
+          </NavLink>
+          <NavLink to="/ui/settings/harnesses">
+            <SettingsIcon />
+            Harness settings
+          </NavLink>
+        </nav>
         <nav className="activity-nav" aria-label="Capsule activity">
           {projects.isPending ? (
             <p className="sidebar-status" role="status">
@@ -539,23 +562,6 @@ export function AppShell() {
               ))}
             </span>
           </button>
-          <NavLink to="/ui/settings/harnesses">Harness settings</NavLink>
-          <NavLink to="/ui/" end>
-            <ActivityIcon />
-            Activity
-            {attentionCount > 0 && (
-              <span
-                className="attention-count"
-                aria-label={`${attentionCount} need attention`}
-              >
-                {attentionCount}
-              </span>
-            )}
-          </NavLink>
-          <NavLink to="/ui/threads">
-            <ThreadIcon />
-            Threads
-          </NavLink>
         </footer>
       </aside>
 

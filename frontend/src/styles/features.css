@@ -703,6 +703,17 @@
   color: var(--danger);
 }
 
+.diff-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.diff-summary strong {
+  color: var(--text);
+  font-weight: 650;
+}
+
 .diff-rows {
   max-width: 100%;
   overflow: auto;
@@ -1113,41 +1124,89 @@
 
 .context-file-layout {
   display: grid;
-  grid-template-columns: 11rem minmax(0, 1fr);
+  grid-template-columns: minmax(11rem, 34%) minmax(0, 1fr);
   min-height: calc(100dvh - 5.8rem);
 }
 
-.context-file-layout > ul {
+.context-file-tree {
   min-width: 0;
-  margin: 0;
   border-right: 1px solid var(--border);
-  padding: 0.45rem;
   overflow: auto;
-  list-style: none;
   background: var(--app-bg);
 }
 
-.context-file-layout li {
-  min-width: 0;
+.file-tree-list {
+  min-width: max-content;
+  margin: 0;
+  padding: 0.35rem;
+  list-style: none;
 }
 
-.context-file-layout .file-entry {
-  width: 100%;
-  min-height: 1.75rem;
-  overflow: hidden;
-  border: 0;
-  padding: 0.25rem 0.35rem;
+.file-tree-item {
+  display: flex;
+  align-items: center;
+  min-height: 1.6rem;
+  border-radius: var(--radius-sm);
+  padding: 0.15rem 0.35rem 0.15rem 0.2rem;
   color: var(--text);
-  background: transparent;
+  cursor: pointer;
   font-family: ui-monospace, monospace;
   font-size: 0.66rem;
-  text-align: left;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.context-file-layout .file-entry:hover {
+.file-tree-item:hover {
   background: var(--surface-hover);
+}
+
+.file-tree-item:focus-visible {
+  outline-offset: -2px;
+}
+
+.file-tree-item[aria-selected="true"] {
+  background: var(--surface-selected);
+}
+
+.file-tree-item[aria-disabled="true"] {
+  color: var(--muted);
+  cursor: default;
+}
+
+.file-tree-indent {
+  flex: none;
+  align-self: stretch;
+  width: 0.8rem;
+  margin-left: 0.2rem;
+  border-left: 1px solid var(--border);
+}
+
+.file-tree-toggle {
+  display: inline-grid;
+  flex: none;
+  width: 1rem;
+  place-items: center;
+  color: var(--muted);
+}
+
+.file-tree-toggle svg {
+  width: 0.75rem;
+  height: 0.75rem;
+  transition: transform 120ms ease;
+}
+
+.file-tree-item[aria-expanded="true"] .file-tree-toggle svg {
+  transform: rotate(90deg);
+}
+
+.file-tree-item.directory .file-tree-name {
+  font-weight: 650;
+}
+
+.file-tree-item small {
+  margin-left: 0.5rem;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 0.6rem;
 }
 
 .context-file-viewer {

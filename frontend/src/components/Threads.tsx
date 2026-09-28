@@ -24,6 +24,7 @@ import {
   followThreadBlocks,
   type ThreadStreamStatus,
 } from "../api/threadEvents";
+import { harnessName } from "../shell/capsuleActivity";
 import { StateBadge } from "./ui/StateBadge";
 
 const MAX_BLOCKS = 400;
@@ -41,6 +42,13 @@ const bounded = (value = "") => {
 
 const safeInline = (value = "") =>
   sanitizeThreadText(value).replace(/[\n\t]+/g, " ");
+
+const streamLabels: Record<ThreadStreamStatus, string> = {
+  connecting: "Connecting…",
+  live: "Live",
+  reconnecting: "Reconnecting…",
+  closed: "Closed",
+};
 
 export function mergeThreadBlocks(
   current: ThreadBlock[],
@@ -538,6 +546,12 @@ export function ThreadDetail({
   const profiles = useQuery(
     queries.harnessProfiles(threadQuery.data?.capsuleId ?? ""),
   );
+  // The standalone page names the owning Capsule. The shell already follows
+  // this Capsule for its tools pane, so this shares that query.
+  const owner = useQuery({
+    ...queries.capsule(threadQuery.data?.capsuleId ?? ""),
+    enabled: !embedded && Boolean(threadQuery.data?.capsuleId),
+  });
   const [blocks, setBlocks] = useState<ThreadBlock[]>([]);
   const [status, setStatus] = useState<ThreadStreamStatus>("connecting");
   const [gap, setGap] = useState<{ expected: number; received: number }>();
@@ -641,36 +655,37 @@ export function ThreadDetail({
       {!embedded && (
         <header className="workspace-view-header">
           <div>
-            <p className="eyebrow">Structured Thread</p>
-            <h1>{safeInline(thread.harness)}</h1>
+            <p className="eyebrow">Thread</p>
+            <h1>{safeInline(harnessName(thread.harness)) || "Agent"}</h1>
             <p className="view-description">
-              Retained encrypted conversation in Capsule{" "}
+              Conversation in{" "}
               <Link to={`/ui/capsules/${encodeURIComponent(thread.capsuleId)}?session=${encodeURIComponent(thread.id)}`}>
-                {safeInline(thread.capsuleId)}
+                {owner.data ? safeInline(owner.data.name) : "its Capsule"}
               </Link>
+              {thread.encryptedAtRest ? ". The transcript is encrypted at rest." : "."}
             </p>
           </div>
           <div className="workspace-header-meta">
             <StateBadge state={thread.state} />
-            <span className="mono">{safeInline(thread.id)}</span>
           </div>
         </header>
       )}
       <details className="thread-metadata">
         <summary>Thread details</summary>
         <dl className="facts">
-          <div><dt>Harness</dt><dd>{safeInline(thread.harness)}</dd></div>
+          <div><dt>Agent</dt><dd>{safeInline(harnessName(thread.harness))}</dd></div>
           <div><dt>Adapter</dt><dd>{safeInline(profile?.adapterKind ?? (profile?.pty ? "Native PTY" : "Unknown"))}</dd></div>
           <div><dt>Protocol</dt><dd>{safeInline(thread.protocol ?? "Unsupported")}</dd></div>
           <div><dt>Session</dt><dd>{safeInline(thread.currentRunState ?? "Idle")}</dd></div>
           <div><dt>Messages</dt><dd>{thread.messageCount}</dd></div>
           <div><dt>Encryption</dt><dd>{thread.encryptedAtRest ? "Encrypted at rest" : "Unavailable"}</dd></div>
+          <div><dt>Thread ID</dt><dd className="mono">{safeInline(thread.id)}</dd></div>
         </dl>
       </details>
       {thread.structuredSupported === false && (
         <p className="notice" role="status">
-          This profile does not support structured sessions. Use a native Run and
-          its separate Terminal tab.
+          This agent does not support written-task sessions. Use its terminal
+          instead.
         </p>
       )}
       <div className="actions" aria-label="Thread actions">
@@ -698,7 +713,7 @@ export function ThreadDetail({
           className="button-link secondary"
           to={`/ui/capsules/${thread.capsuleId}#terminal`}
         >
-          Native PTY fallback
+          Open terminal
         </Link>
         {thread.state !== "deleted" && (
           <button className="danger" onClick={() => setConfirmDelete(true)}>
@@ -717,12 +732,12 @@ export function ThreadDetail({
         >
           <h2 id="thread-action-title">
             {confirmAction === "cancel"
-              ? "Cancel the active structured session?"
-              : "Archive this retained Thread?"}
+              ? "Cancel the running session?"
+              : "Archive this Thread?"}
           </h2>
           <p>
             {confirmAction === "cancel"
-              ? "The active adapter process will be asked to stop."
+              ? "The agent will be asked to stop."
               : "The transcript remains encrypted and readable, but new messages are disabled."}
           </p>
           <div className="actions">
@@ -779,8 +794,12 @@ export function ThreadDetail({
       <section className="thread-surface">
         <div className="section-heading">
           <h2>Transcript</h2>
-          <span className="connection" role="status">
-            {status} · cursor {blocks.at(-1)?.messageSequence ?? replay.data.nextCursor}
+          <span
+            className="connection"
+            role="status"
+            title={`Cursor ${blocks.at(-1)?.messageSequence ?? replay.data.nextCursor}`}
+          >
+            {streamLabels[status]}
           </span>
         </div>
         {(gap || replay.data.gap) && (
