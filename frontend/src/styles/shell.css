@@ -848,3 +848,249 @@
 
 .setup-editor textarea { width: 100%; box-sizing: border-box; font-family: monospace; resize: vertical; }
 .setup-editor > button { margin-block: 0.75rem; }
+
+.sidebar-footer > .palette-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: 0.45rem 0.5rem;
+  color: var(--muted);
+  background: transparent;
+  font-size: 0.72rem;
+  font-weight: 620;
+  text-align: left;
+}
+
+.sidebar-footer > .palette-trigger:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.palette-trigger .key-combo {
+  margin-left: auto;
+}
+
+.key-combo {
+  display: inline-flex;
+  flex: none;
+  gap: 0.2rem;
+}
+
+.key-combo kbd,
+.palette-search kbd,
+.palette-footer kbd {
+  min-width: 1.25rem;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-sm);
+  padding: 0.05rem 0.3rem;
+  color: var(--muted);
+  background: var(--surface);
+  font-family: ui-monospace, monospace;
+  font-size: 0.62rem;
+  line-height: 1.3;
+  text-align: center;
+}
+
+.palette-backdrop {
+  z-index: 45;
+  place-items: start center;
+  padding-top: min(12vh, 7rem);
+}
+
+.command-palette {
+  display: flex;
+  flex-direction: column;
+  width: min(38rem, 100%);
+  max-height: min(34rem, calc(100dvh - 2rem));
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-dialog);
+}
+
+.palette-search {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  border-bottom: 1px solid var(--border);
+  padding: 0 0.85rem;
+  color: var(--muted);
+}
+
+.palette-search svg {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+}
+
+.palette-search input {
+  flex: 1;
+  min-width: 0;
+  height: 3rem;
+  border: 0;
+  padding: 0;
+  color: var(--text);
+  background: transparent;
+  font-size: 0.9rem;
+  outline: 0;
+}
+
+.palette-results {
+  min-height: 0;
+  padding: 0.3rem;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.palette-group + .palette-group {
+  margin-top: 0.25rem;
+}
+
+.palette-group-label {
+  padding: 0.45rem 0.55rem 0.25rem;
+  color: var(--faint);
+  font-size: 0.62rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.palette-option {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 2.3rem;
+  border-radius: var(--radius-md);
+  padding: 0.35rem 0.55rem;
+  cursor: pointer;
+}
+
+.palette-option.active {
+  background: var(--surface-selected);
+}
+
+.palette-option.danger .palette-option-label {
+  color: var(--danger);
+}
+
+.palette-option-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  width: 2.1rem;
+  flex: none;
+}
+
+.palette-option-copy {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.palette-option-label {
+  flex: none;
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 0.8rem;
+  font-weight: 560;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette-option-detail {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette-empty {
+  margin: 0;
+  padding: 1.2rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+.palette-footer {
+  display: flex;
+  gap: 1rem;
+  border-top: 1px solid var(--border);
+  padding: 0.45rem 0.85rem;
+  color: var(--faint);
+  font-size: 0.65rem;
+}
+
+.palette-footer span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.shortcuts-dialog {
+  width: min(28rem, 100%);
+}
+
+.shortcut-list {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0 0 1rem;
+}
+
+.shortcut-list > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.shortcut-list dt {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+  order: 2;
+}
+
+.shortcut-list dd {
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+.shortcut-or {
+  color: var(--faint);
+  font-size: 0.7rem;
+}
+
+@media (max-width: 720px) {
+  .palette-trigger .key-combo {
+    display: none;
+  }
+
+  .palette-backdrop {
+    padding: 0.5rem;
+  }
+
+  .command-palette {
+    max-height: calc(100dvh - 1rem);
+  }
+
+  .palette-option-copy {
+    flex-direction: column;
+    gap: 0.05rem;
+  }
+
+  .palette-footer {
+    display: none;
+  }
+}

@@ -9,6 +9,15 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Command palette. ⌘K on macOS and Ctrl+K elsewhere (never taken from a focused
+  terminal, where Ctrl+K is kill-line) opens a searchable list of Capsules,
+  sessions, "New Capsule in" each Project, New project, Activity, Threads, and
+  Harness settings, plus the current Capsule's full diff, lineage, and Pause or
+  Resume, each gated on provider capabilities. Seal and Delete open the
+  Capsule's existing confirmation instead of running. Matching is fuzzy, recent
+  items come first and stay in page memory, and items show their shortcuts.
+  `?` lists every keyboard shortcut. The palette uses only the working set and
+  fetches nothing per Capsule.
 - Diff review comments. In the Changes tool, including beside the full review
   page, a reviewer can comment on a diff line or a range of lines, then edit or
   remove each comment inline or in a review summary. "Send to agent" composes
@@ -42,6 +51,12 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   connectivity, the provider version, and attention, working, and review
   counts. With the fake provider it warns that Capsules are simulated and no
   agents run. It replaces the sidebar's connection indicator.
+
+### Fixed
+
+- The Seal and Delete confirmation in the Capsule workspace is no longer
+  clipped by the Capsule header. It receives focus on "Keep Capsule" and closes
+  with Escape.
 
 ## [0.1.1] - 2026-09-27
 
