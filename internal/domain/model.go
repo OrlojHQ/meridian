@@ -210,6 +210,18 @@ func StructuredUnsupported(packs []HarnessPack, image HarnessImage) bool {
 	return false
 }
 
+// NativeUnsupported reports whether packs declares that the harness name and
+// image pair has no terminal profile, with the same catalog rule as
+// StructuredUnsupported.
+func NativeUnsupported(packs []HarnessPack, image HarnessImage) bool {
+	for _, pack := range packs {
+		if pack.HarnessImage == image {
+			return pack.InteractionModes != nil && !slices.Contains(pack.InteractionModes, HarnessInteractionNative)
+		}
+	}
+	return false
+}
+
 // InstallationHarnessImages is the daemon-advertised catalog of official
 // harness packs. Spawn still uses only names applied on a Project.
 // packTag overrides the tag copied from defaultImage so a digest-pinned
@@ -223,15 +235,16 @@ func InstallationHarnessImages(defaultImage, packTag string) []HarnessPack {
 	// pack name in images/capsule-<pack>/project.yaml, and a repository cannot
 	// define profiles under a trusted name. mock uses the supervisor image,
 	// which has no trusted profile, so the repository decides its modes.
-	official := func(name string) HarnessPack {
+	official := func(name string, modes ...HarnessInteractionMode) HarnessPack {
+		if len(modes) == 0 {
+			modes = []HarnessInteractionMode{HarnessInteractionNative, HarnessInteractionStructured}
+		}
 		return HarnessPack{
 			HarnessImage: HarnessImage{
 				Name:           name,
 				ImageReference: officialPackImage(defaultImage, "meridian-capsule-"+name, packTag),
 			},
-			InteractionModes: []HarnessInteractionMode{
-				HarnessInteractionNative, HarnessInteractionStructured,
-			},
+			InteractionModes: modes,
 		}
 	}
 	// Clients preselect the first entry, so real agents come first. mock is
@@ -241,6 +254,8 @@ func InstallationHarnessImages(defaultImage, packTag string) []HarnessPack {
 		official("pi"),
 		official("claude"),
 		official("codex"),
+		// The published DeepSeek Harness CLI ships no terminal UI.
+		official("dsh", HarnessInteractionStructured),
 		{HarnessImage: HarnessImage{Name: "mock", ImageReference: defaultImage}},
 	}
 }

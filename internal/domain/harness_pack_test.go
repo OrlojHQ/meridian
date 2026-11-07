@@ -116,3 +116,19 @@ func TestStructuredUnsupported(t *testing.T) {
 		t.Fatal("an empty catalog must not reject anything")
 	}
 }
+
+func TestNativeUnsupported(t *testing.T) {
+	packs := domain.InstallationHarnessImages("meridian-capsule:dev", "")
+	if !domain.NativeUnsupported(packs, domain.HarnessImage{Name: "dsh", ImageReference: "meridian-capsule-dsh:dev"}) {
+		t.Fatal("the official dsh pack has no terminal profile")
+	}
+	for _, image := range []domain.HarnessImage{
+		{Name: "claude", ImageReference: "meridian-capsule-claude:dev"},
+		{Name: "mock", ImageReference: "meridian-capsule:dev"},
+		{Name: "dsh", ImageReference: "example.test/custom-dsh:1"},
+	} {
+		if domain.NativeUnsupported(packs, image) {
+			t.Fatalf("%#v must allow a terminal session", image)
+		}
+	}
+}

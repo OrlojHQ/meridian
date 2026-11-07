@@ -21,3 +21,14 @@ export function packMayRunStructured(
   );
   return entry?.interactionModes === undefined || entry.interactionModes.includes("structured");
 }
+
+/** Whether a Project's pack can open a terminal session, by the same rule. */
+export function packMayRunNative(
+  pack: HarnessImage,
+  catalog: readonly HarnessImage[],
+): boolean {
+  const entry = catalog.find(
+    (item) => item.name === pack.name && item.imageReference === pack.imageReference,
+  );
+  return entry?.interactionModes === undefined || entry.interactionModes.includes("native");
+}

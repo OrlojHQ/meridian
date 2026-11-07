@@ -207,12 +207,13 @@ func TestImageForHarnessAllowlist(t *testing.T) {
 	for _, item := range catalog {
 		order = append(order, item.Name)
 	}
-	if strings.Join(order, ",") != "opencode,pi,claude,codex,mock" {
+	if strings.Join(order, ",") != "opencode,pi,claude,codex,dsh,mock" {
 		t.Fatalf("catalog order = %v; clients preselect the first entry, so mock must be last", order)
 	}
 	if got := byName(catalog); got["mock"] != "meridian-capsule:dev" ||
 		got["opencode"] != "meridian-capsule-opencode:dev" || got["pi"] != "meridian-capsule-pi:dev" ||
-		got["claude"] != "meridian-capsule-claude:dev" || got["codex"] != "meridian-capsule-codex:dev" {
+		got["claude"] != "meridian-capsule-claude:dev" || got["codex"] != "meridian-capsule-codex:dev" ||
+		got["dsh"] != "meridian-capsule-dsh:dev" {
 		t.Fatalf("catalog = %#v", catalog)
 	}
 	if got := byName(InstallationHarnessImages("ghcr.io/orlojhq/meridian-capsule:v1.2.3", "")); got["mock"] != "ghcr.io/orlojhq/meridian-capsule:v1.2.3" ||

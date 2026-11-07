@@ -63,6 +63,15 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   agent offered. A new ACP harness needs only a pack image and a manifest
   (ADR 0030).
 
+- A `dsh` pack runs DeepSeek Harness 0.2.2-rc.1 Threads over ACP
+  (`dsh --profile acp`). The published package has no terminal UI, so the
+  pack is Thread-only: its catalog entry declares only `structured`, and a
+  terminal launch is refused before provisioning. Packs can now install from
+  an npm lockfile (`PACK_LAYOUT=npm`, registry tarballs with `sha512`
+  integrity, no install scripts) and require identifying `--help` text
+  (`PACK_IDENTITY`). `dsh` has no Meridian-managed credentials yet; see
+  `docs/harness-adapters.md`.
+
 - `meridian project apply-harness PROJECT_ID NAME=IMAGE` allowlists a custom
   harness image on an existing Project. `meridian thread follow --until-idle`
   exits when the turn that answers the latest prompt goes idle.

@@ -21,22 +21,39 @@ Every pack builds with the shared `images/harness-pack/Dockerfile`. A pack is
 a directory `images/capsule-<pack>/` holding:
 
 - `pack.env`: the pinned release as data (never sourced by a shell): name,
-  version, an HTTPS `.tar.gz` URL with `{version}` and `{arch}` placeholders,
-  per-architecture tokens and SHA-256 checksums, and a `file` or `tree`
-  layout naming the executable inside the archive;
+  version, and a layout. The `file` and `tree` layouts take an HTTPS
+  `.tar.gz` URL with `{version}` and `{arch}` placeholders, per-architecture
+  tokens and SHA-256 checksums, and the executable inside the archive. The
+  `npm` layout takes a package name and an entry file inside it instead (see
+  below). `PACK_IDENTITY`, when set, is text the binary's `--help` must
+  contain;
 - `project.yaml`: the trusted profiles, installed as
   `/etc/meridian/harnesses.d/<pack>.yaml`: a native profile whose executable
   is `/usr/local/bin/<pack>`, and a structured profile that runs that binary
-  through `/usr/local/bin/meridian-harness-adapter`; and
+  through `/usr/local/bin/meridian-harness-adapter`. A pack whose harness has
+  no terminal UI ships only the structured profile; and
 - optionally a `<pack>` launcher script that sets harness environment before
   exec'ing the pinned binary. Without one, `/usr/local/bin/<pack>` is a symlink
-  to the binary.
+  to the binary. An `npm` pack requires one, since its entry runs under the
+  image's Node.
 
 `images/harness-pack/install` validates the data, verifies the checksum, runs
-the binary's `--version`, and installs all three. `install --check <dir>`
-validates without network access. `make capsule-<pack>-image` and
-`make try-<pack>` exist for every pack directory, and CI builds and releases
-publish every one. `make list-packs` prints them.
+the binary's `--version` (and `--help` against `PACK_IDENTITY`), and installs
+all three. `install --check <dir>` validates without network access.
+`make capsule-<pack>-image` and `make try-<pack>` exist for every pack
+directory, and CI builds and releases publish every one. `make list-packs`
+prints them.
+
+The `npm` layout is for harnesses published only as npm packages. The pack
+directory also holds a `package.json` that must be exactly
+`{"name":"meridian-capsule-<pack>","private":true,"dependencies":{"<package>":"<version>"}}`
+(npm's two-space formatting), with an exact version, and the
+`package-lock.json` npm generated from it. The check requires lockfile
+version 3, the pinned version at `node_modules/<package>`, no `link` entries,
+and a `registry.npmjs.org` tarball with a `sha512` integrity for every
+package. The build runs `npm ci --ignore-scripts --omit=dev` with the image's
+Node into `/usr/local/libexec/<pack>`, so every file comes from the lockfile
+and no package script runs. Nothing is downloaded when a Capsule starts.
 
 | Pack | Image | Layout | Launcher |
 | --- | --- | --- | --- |
@@ -44,11 +61,13 @@ publish every one. `make list-packs` prints them.
 | `codex` | `meridian-capsule-codex:dev` | file | symlink |
 | `opencode` | `meridian-capsule-opencode:dev` | file | Bun temp |
 | `pi` | `meridian-capsule-pi:dev` | tree | Bun temp |
+| `dsh` | `meridian-capsule-dsh:dev` | npm | Node, telemetry disabled, native addons loaded in place |
 
 A new official pack also needs its name in `InstallationHarnessImages`; a test
 fails until the catalog and the pack directories agree.
 
-Each official pack installs a native and a structured profile under its name:
+Each official pack installs a structured profile under its name, and all but
+`dsh` a native one:
 
 | Pack | Structured driver | Shipped adapter arguments |
 | --- | --- | --- |
@@ -56,18 +75,64 @@ Each official pack installs a native and a structured profile under its name:
 | `codex` | `codex-app-server` | `codex-app-server --approval-policy untrusted --sandbox danger-full-access -- /usr/local/bin/codex` |
 | `opencode` | `acp` | `acp --secret-env OPENCODE_SERVER_PASSWORD -- /usr/local/bin/opencode acp --hostname 127.0.0.1 --mdns=false` |
 | `pi` | `pi-rpc` | `pi-rpc --session-dir /home/capsule/.pi-sessions -- /usr/local/bin/pi` |
+| `dsh` | `acp` | `acp -- /usr/local/bin/dsh --profile acp` |
 
 The terminal launcher picks the native profile, and Threads pick the
 structured one. Because the image owns every mode of its names and a repository
 cannot define profiles under them, the daemon knows a pack's modes before any
-Capsule exists. It advertises them as `interactionModes: [native, structured]`
-on the pack's entry in the capabilities `harnessImages` catalog. `mock` uses
-the supervisor image, which installs no trusted profile, so its entry declares
-no modes and the repository's `.meridian/project.yaml` decides. Project Thread
-spawn rejects a pack whose catalog entry, matched by name and image, lacks
-`structured` with `422 unsupported` before provisioning. Packs outside the
-catalog, such as custom images, are not checked up front. A test keeps the
-declared modes equal to the profiles in `images/capsule-<pack>/project.yaml`.
+Capsule exists. It advertises them as `interactionModes` (`[native,
+structured]`, or `[structured]` for `dsh`) on the pack's entry in the
+capabilities `harnessImages` catalog. `mock` uses the supervisor image, which
+installs no trusted profile, so its entry declares no modes and the
+repository's `.meridian/project.yaml` decides. Project Thread spawn rejects a
+pack whose catalog entry, matched by name and image, lacks `structured`, and
+creating a Capsule with a terminal launcher rejects one that lacks `native`,
+both with `422 unsupported` before provisioning. The dashboard offers only
+the modes a catalog pack declares. Packs outside the catalog, such as custom
+images, are not checked up front. A test keeps the declared modes equal to the
+profiles in `images/capsule-<pack>/project.yaml`.
+
+### DeepSeek Harness
+
+`dsh` installs `@deepseek-ai/dsh` (DeepSeek Harness, a developer preview)
+from its lockfile. Debian and Ubuntu ship an unrelated `dsh` (distributed
+shell) whose `--version` also succeeds, so the pack sets `PACK_IDENTITY` to
+`boot a DeepSeek Harness profile` and the build fails on any other binary.
+The published package ships the `acp`, `web`, `headless`, and `sdk` profiles
+but no terminal UI; DeepSeek's TUI is a plugin that `dsh` installs from npm at
+run time, so the pack has no native profile rather than download code in a
+Capsule. The launcher sets `DSH_TELEMETRY_DISABLED=1`, because `dsh`
+otherwise posts product telemetry to DeepSeek, and `NARB_DISABLE_NATIVE_CACHE=1`,
+because its native-addon loader otherwise copies addons into the Capsule's
+`noexec` `/tmp` and fails to load them.
+
+DeepSeek Harness reports no `available_commands_update`, so its `/` menu
+lists only Meridian's own commands. It asks permission when a shell command
+requests more than its default workspace-write sandbox, and offers "Allow
+once" and "Reject".
+
+`dsh` has no Meridian-managed credentials yet, so a Thread's turns fail until
+the image or Project supplies them. Its DeepSeek provider speaks the
+Anthropic Messages protocol to `DEEPSEEK_BASE_URL` (default
+`https://api.deepseek.com/anthropic`, with `/v1/messages` appended), sends
+`DEEPSEEK_API_KEY` as `x-api-key`, and has no OpenAI-protocol provider. The
+base URL can be overridden, so the provider gateway could serve it, but no
+connection fits today:
+
+- an `anthropic` connection forwards to `api.anthropic.com`, which does not
+  serve DeepSeek models, and `capsuled` writes provider configuration only for
+  `claude`, `codex`, `opencode`, and `pi`;
+- an `openai-compatible` connection cannot serve it, because `dsh` cannot
+  speak the OpenAI protocol;
+- an `anthropic-compatible` connection whose base URL is
+  `https://api.deepseek.com/anthropic` would fit once those connections exist
+  and `capsuled` sets `DEEPSEEK_BASE_URL` to the gateway and a lease in
+  `DEEPSEEK_API_KEY`. That wiring must also point or disable web search
+  (`DEEPSEEK_SEARCH_BASE_URL`, which receives the same key), and accept that
+  model listing (`<origin>/models`) and the Files API are not routed and that
+  each request carries a `dsh_session_log` copy of the session's events.
+
+Meridian does not pass a raw DeepSeek key into the Capsule in the meantime.
 
 Structured sessions have no terminal to sign in with. Attach a provider
 connection (see [personal harness setups](personal-harness-setups.md)) to the
@@ -260,8 +325,11 @@ pack directory whose `pack.env` pins the release and whose `project.yaml`
 declares the structured profile as
 `["acp", "--", "/usr/local/bin/<pack>", <the agent's ACP arguments>...]`, then
 add the name to `InstallationHarnessImages`. The agent binary must be
-installed at image build time from a pinned, checksummed artifact. Launching
-through `npx`, `bunx`, or any download at Capsule start is not supported.
+installed at image build time from a pinned, checksummed artifact: a release
+archive, or an npm lockfile with the `npm` layout. Launching through `npx`,
+`bunx`, or any download at Capsule start is not supported. If the agent has
+no terminal UI, omit the native profile and declare only the structured mode
+in the catalog, as `dsh` does.
 
 The `acp` driver maps ACP onto `meridian.adapter.v1` like this:
 
@@ -312,6 +380,12 @@ recorded against `opencode acp` from OpenCode 1.18.32, which also runs
 `/name args` prompts as its own commands. Unknown update kinds are ignored;
 malformed or oversized records, uncorrelated responses, and a protocol version
 other than 1 end the adapter.
+
+The driver also runs `dsh --profile acp` from DeepSeek Harness 0.2.2-rc.1
+(agent `deepseek-harness-acp` 0.0.1), recorded on 2026-11-07 with a local
+mock of DeepSeek's Anthropic-protocol endpoint: streamed turns, a shell
+escalation permission prompt resolved by "Allow once", and no command list.
+Its first `session/request_permission` uses JSON-RPC id `0`.
 
 `opencode acp` also starts OpenCode's HTTP server on `127.0.0.1`. The pack
 gives it a fresh random `OPENCODE_SERVER_PASSWORD` per launch and disables

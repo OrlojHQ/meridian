@@ -718,6 +718,9 @@ func TestHarnessCatalogInteractionModes(t *testing.T) {
 			t.Fatalf("%s modes = %v", name, modes[name])
 		}
 	}
+	if got := modes["dsh"]; len(got) != 1 || got[0] != client.HarnessImageInteractionModesItemStructured {
+		t.Fatalf("dsh modes = %v", got)
+	}
 	if got, ok := modes["mock"]; !ok || got != nil {
 		t.Fatalf("mock modes = %v, listed %v", got, ok)
 	}

@@ -340,6 +340,44 @@ func TestCreateProjectThreadRejectsNativeOnlyPackBeforeProvisioning(t *testing.T
 	}
 }
 
+func TestCreateCapsuleForHarnessRejectsStructuredOnlyPackBeforeProvisioning(t *testing.T) {
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	now := time.Date(2026, 9, 27, 12, 0, 0, 0, time.UTC)
+	queue := &recordingQueue{}
+	service := app.NewService(store, &testClock{now: now}, &testIDs{}, queue)
+	service.ConfigureHarnessPacks(domain.InstallationHarnessImages("meridian-capsule:dev", ""))
+	project := domain.Project{
+		ID: "project-dsh", Name: "dsh", ImageReference: "meridian-capsule:dev",
+		HarnessImages: []domain.HarnessImage{
+			{Name: "dsh", ImageReference: "meridian-capsule-dsh:dev"},
+			{Name: "claude", ImageReference: "meridian-capsule-claude:dev"},
+		},
+		CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
+	}
+	if err := store.Transact(ctx, func(tx ports.Transaction) error {
+		return tx.InsertProject(ctx, project)
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = service.CreateCapsuleForHarness(ctx, project.ID, "dsh-terminal", "dsh", "launch-dsh")
+	if !errors.Is(err, domain.ErrUnsupported) || !strings.Contains(err.Error(), "no terminal session") {
+		t.Fatalf("dsh launcher error = %v", err)
+	}
+	page, err := service.ListCapsules(ctx, project.ID, "", 0, 100)
+	if err != nil || len(page.Items) != 0 {
+		t.Fatalf("rejected launcher provisioned %#v, %v", page.Items, err)
+	}
+	if _, err := service.CreateCapsuleForHarness(ctx, project.ID, "claude-terminal", "claude", "launch-claude"); err != nil {
+		t.Fatalf("claude launcher = %v", err)
+	}
+}
+
 func setProjectThreadCapsuleState(
 	t *testing.T,
 	ctx context.Context,

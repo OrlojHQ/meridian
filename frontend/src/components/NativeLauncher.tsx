@@ -34,6 +34,8 @@ export function NativeLauncher({
   const connections=useQuery({queryKey:["provider-connections"],queryFn:api.providerConnections});
   const grant=useQuery({queryKey:["project-connection",project.id,harness],queryFn:()=>api.projectConnection(project.id,harness),enabled:!!harness});
   const selectedConnection=connection ?? grant.data?.connectionId ?? "";
+  // capsuled writes provider configuration only for these harnesses.
+  const connectable=["opencode", "codex", "claude", "pi"].includes(harness) && !!connections.data?.enabled;
   const availableConnections=connections.data?.items.filter(item=>!item.revoked && connectionSupports(harness,item)) ?? [];
   const setups = useQuery({queryKey:["harness-setups"], queryFn:api.harnessSetups});
   const choices = setups.data?.items.filter(item => item.harness === harness && !item.deleted) ?? [];
@@ -90,11 +92,11 @@ export function NativeLauncher({
           <p>{shownSetup ? `Using ${shownSetup.name}` : "Using harness defaults"}. Native account login is separate.</p>}
         {!defaultSetup && ["opencode", "codex", "claude", "pi"].includes(harness) && <button type="button" disabled={busy || setups.isPending || setups.isError} onClick={() => setImporting(true)}>Import my setup</button>}
         {(grant.isError || connections.isError || projectSetup.isError) && <p role="alert">Launch settings could not be loaded. <button type="button" onClick={()=>{void grant.refetch();void connections.refetch();void projectSetup.refetch();}}>Retry</button></p>}
-        {connections.data?.enabled && <label>Provider connection<select value={selectedConnection} onChange={event=>setConnection(event.target.value)} disabled={busy}>
+        {connectable && <label>Provider connection<select value={selectedConnection} onChange={event=>setConnection(event.target.value)} disabled={busy}>
           <option value="">Sign in inside the harness</option>{availableConnections.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}
         </select></label>}
         {selectedConnection && selectedConnection!==grant.data?.connectionId && <p>Creating this Capsule authorizes this API connection for {project.name} and future {harness} sessions.</p>}
-        {connections.data?.enabled && availableConnections.length===0 && <Link to="/ui/settings/harnesses">Connect provider</Link>}
+        {connectable && availableConnections.length===0 && <Link to="/ui/settings/harnesses">Connect provider</Link>}
         <details><summary>Customize</summary>
         <label>Personal setup<select value={setup} onChange={event => setSetup(event.target.value)} disabled={busy}>
           <option value="">Use project default</option><option value="clean">Start clean</option>

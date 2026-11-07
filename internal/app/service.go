@@ -458,6 +458,14 @@ func (s *Service) CreateCapsuleForHarness(
 			if err != nil {
 				return err
 			}
+			if domain.NativeUnsupported(s.harnessPacks, domain.HarnessImage{
+				Name: harness, ImageReference: image,
+			}) {
+				return fmt.Errorf(
+					"%w: harness pack %q has no terminal session; start a Thread instead",
+					domain.ErrUnsupported, harness,
+				)
+			}
 		}
 		now := s.clock.Now().UTC()
 		timelineID := domain.TimelineID(s.ids.NewID())

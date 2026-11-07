@@ -242,6 +242,20 @@ process. `opencode acp` also listens on Capsule loopback; the OpenCode pack
 protects that API with such a per-launch password and disables mDNS, which
 keeps other Capsule processes out but is not a boundary against code running
 as the same user. Provider credentials keep the lease design of ADR 0024.
+
+The DeepSeek Harness pack (`dsh`) is installed from an npm lockfile of about
+700 third-party packages. Each is pinned to a `registry.npmjs.org` tarball and
+`sha512` integrity that the build verifies, links and other sources are
+rejected, and `npm ci --ignore-scripts` runs no package script, but the code
+itself is unreviewed upstream code with the authority of the harness. The
+build checks `--help` for DeepSeek Harness's own text so Debian's unrelated
+`dsh` cannot stand in for it. The launcher disables DeepSeek's product
+telemetry; model traffic still goes wherever `dsh` is configured to send it,
+and each model request includes a `dsh_session_log` copy of the session's
+events. `dsh` applies its own workspace-write sandbox and asks Meridian's
+permission prompt for escalations; neither is a Meridian boundary. The pack
+gets no provider connection or lease, and Meridian does not pass a raw
+DeepSeek key into the Capsule (ADR 0030).
 Profile-registered MCP servers (`--mcp-server`) are trusted profile metadata.
 They take absolute executables and quote-free arguments, run with the harness's
 authority, and their tool calls still pass through harness permission prompts.
@@ -609,6 +623,9 @@ they are not a statement that every planned path is already implemented.
   grants authority, and closing a link never deletes a helper's transcript or
   workspace. Coordination is advertised only with end-to-end structured
   transport and mailbox support.
+- Harness packs are installed at image build time from pinned checksummed
+  archives or sha512-locked npm registry tarballs with install scripts
+  disabled; no pack downloads code at Capsule start.
 - Network, compute, storage, and lifetime are bounded outside the Capsule.
 - Agent Sandbox lifecycle management is never represented as a sandboxing or
   untrusted multi-tenancy guarantee.

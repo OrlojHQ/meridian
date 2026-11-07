@@ -1,0 +1,27 @@
+# Copy this file into a repository as .meridian/project.yaml.
+# The Capsule image must contain /usr/local/bin/dsh
+# (make capsule-dsh-image → meridian-capsule-dsh:dev).
+# Threads (structured) run `dsh --profile acp` (Agent Client Protocol over
+# stdio) through the Meridian adapter. There is no terminal (native) profile:
+# the published DeepSeek Harness CLI ships no terminal UI, and adding one
+# means installing plugins at Capsule start.
+# Meridian has no DeepSeek provider connection yet, so the profile receives
+# no credentials. A repository cannot define profiles or secretReferences
+# under this name.
+version: v1
+harnesses:
+  - name: dsh
+    interactionMode: structured
+    adapter:
+      protocol: meridian.adapter.v1
+      executable: /usr/local/bin/meridian-harness-adapter
+      arguments:
+        - acp
+        - --
+        - /usr/local/bin/dsh
+        - --profile
+        - acp
+    workingDirectory: .
+    pty: false
+    timeout: 24h
+    secretReferences: []
