@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/OrlojHQ/meridian/internal/domain"
 )
@@ -77,13 +78,25 @@ func (r *repository) GetCoordinationGrantByRootCapsule(
 	return scanGrant(r.q.QueryRowContext(ctx, grantSelect+" WHERE root_capsule_id = ?", capsuleID))
 }
 
-func (r *repository) ListActiveCoordinationGrants(ctx context.Context) ([]domain.CoordinationGrant, error) {
+// ListActiveCoordinationGrants returns grants that still need the
+// coordination loop: active grants, grants with open links or undelivered
+// reports, and grants with a child stopped since stoppedSince whose Capsule
+// is still running.
+func (r *repository) ListActiveCoordinationGrants(
+	ctx context.Context, stoppedSince time.Time,
+) ([]domain.CoordinationGrant, error) {
 	rows, err := r.q.QueryContext(ctx, grantSelect+`
 		WHERE state = 'active' OR id IN (
 			SELECT grant_id FROM thread_links WHERE state = 'active'
 				OR report_delivered_seq < report_seq
+		) OR id IN (
+			SELECT l.grant_id FROM thread_links l
+				JOIN capsules c ON c.id = l.child_capsule_id
+			WHERE l.state = 'closed' AND l.close_reason IN ('cancelled', 'revoked')
+				AND c.desired_state = 'Ready' AND c.state = 'Ready'
+				AND julianday(l.updated_at) >= julianday(?)
 		)
-		ORDER BY created_at, id LIMIT 1000`)
+		ORDER BY created_at, id LIMIT 1000`, formatTime(stoppedSince))
 	if err != nil {
 		return nil, err
 	}

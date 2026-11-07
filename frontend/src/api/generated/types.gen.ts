@@ -684,7 +684,7 @@ export type Thread = {
     protocol?: 'meridian.adapter.v1';
     structuredSupported?: boolean;
     /**
-     * Present on a lead Thread that holds a Coordination Grant.
+     * The Coordination Grant over this Thread's tree, on the lead and on each helper.
      */
     coordinationGrantId?: string;
     /**

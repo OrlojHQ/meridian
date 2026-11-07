@@ -68,7 +68,7 @@ type Reader interface {
 	GetCoordinationGrant(context.Context, domain.CoordinationGrantID) (domain.CoordinationGrant, error)
 	GetCoordinationGrantByRootThread(context.Context, domain.ThreadID) (domain.CoordinationGrant, error)
 	GetCoordinationGrantByRootCapsule(context.Context, domain.CapsuleID) (domain.CoordinationGrant, error)
-	ListActiveCoordinationGrants(context.Context) ([]domain.CoordinationGrant, error)
+	ListActiveCoordinationGrants(ctx context.Context, stoppedSince time.Time) ([]domain.CoordinationGrant, error)
 	GetThreadLink(context.Context, domain.ThreadLinkID) (domain.ThreadLink, error)
 	GetThreadLinkByChildThread(context.Context, domain.ThreadID) (domain.ThreadLink, error)
 	ListThreadLinksByParent(context.Context, domain.ThreadID) ([]domain.ThreadLink, error)

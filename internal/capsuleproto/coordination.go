@@ -202,20 +202,24 @@ func (m *Mailbox) wait(ctx context.Context, request coordproto.Request) coordpro
 		}
 		var unseen []coordproto.Report
 		ready := request.All
+		settled := true
 		for _, link := range targets {
 			report, ok := m.reports[link]
 			fresh := ok && report.Seq > m.consumed[link]
 			if fresh {
 				unseen = append(unseen, report)
 			}
-			if request.All && !fresh && m.links[link].State == "active" {
+			if !fresh && m.links[link].State == "active" {
 				ready = false
+				settled = false
 			}
 		}
 		if !request.All {
 			ready = len(unseen) > 0
 		}
-		if ready && len(unseen) > 0 {
+		// Closed links never report again, so waiting on only those returns
+		// at once rather than at the timeout.
+		if ready || (settled && len(targets) > 0) {
 			m.consumeLocked(unseen)
 			m.mu.Unlock()
 			response := coordproto.OK()

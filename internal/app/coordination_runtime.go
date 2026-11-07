@@ -18,13 +18,17 @@ import (
 )
 
 const (
-	coordinationTick       = 2 * time.Second
-	coordinationPollWait   = 20 * time.Second
-	coordinationWakeDelay  = 2 * time.Second
-	coordinationWakeBytes  = 64 << 10
-	coordinationWakeItems  = 8
-	coordinationIdleRetry  = 3 * time.Second
-	coordinationMaxBackoff = 30 * time.Second
+	coordinationTick        = 2 * time.Second
+	coordinationPollWait    = 20 * time.Second
+	coordinationWakeDelay   = 2 * time.Second
+	coordinationWakeBytes   = 64 << 10
+	coordinationWakeItems   = 8
+	coordinationIdleRetry   = 3 * time.Second
+	coordinationMaxBackoff  = 30 * time.Second
+	coordinationCancelGrace = 30 * time.Second
+	// A cancelled or revoked child is stopped within this window after its
+	// link closes; after that an operator who resumed it keeps it running.
+	coordinationStopWindow = 10 * time.Minute
 )
 
 // RunCoordination drives grant lifecycle, child reports, and lead wakes until
@@ -52,7 +56,7 @@ func (s *Service) CoordinationTick(ctx context.Context) {
 	var grants []domain.CoordinationGrant
 	if err := s.store.View(ctx, func(reader ports.Reader) error {
 		var err error
-		grants, err = reader.ListActiveCoordinationGrants(ctx)
+		grants, err = reader.ListActiveCoordinationGrants(ctx, s.clock.Now().Add(-coordinationStopWindow))
 		return err
 	}); err != nil {
 		return
@@ -293,6 +297,9 @@ func (s *Service) stopClosedChild(ctx context.Context, link domain.ThreadLink) {
 	if done {
 		return
 	}
+	if s.clock.Now().Sub(link.UpdatedAt) > coordinationStopWindow {
+		return
+	}
 	capsule, err := s.GetCapsule(ctx, link.ChildCapsuleID)
 	if err != nil {
 		return
@@ -303,9 +310,15 @@ func (s *Service) stopClosedChild(ctx context.Context, link domain.ThreadLink) {
 	finished := true
 	if thread, err := s.GetThread(ctx, link.ChildThreadID); err == nil && thread.CurrentRunID != "" {
 		if run, err := s.GetRunStored(ctx, thread.CurrentRunID); err == nil && !run.State.Terminal() {
-			if _, err := s.CancelThread(ctx, thread.ID, thread.ResourceVersion,
-				"coord-stop-"+string(link.ID)+"-"+strconv.FormatInt(int64(thread.ResourceVersion), 10)); err != nil {
-				finished = false
+			if run.State != domain.RunCancelling {
+				_, _ = s.CancelThread(ctx, thread.ID, thread.ResourceVersion,
+					"coord-stop-"+string(link.ID)+"-"+strconv.FormatInt(int64(thread.ResourceVersion), 10))
+				return
+			}
+			// Pausing freezes the adapter, so give the cancel time to land
+			// first; a hung adapter is paused anyway once the grace ends.
+			if s.clock.Now().Sub(run.UpdatedAt) < coordinationCancelGrace {
+				return
 			}
 		}
 	}

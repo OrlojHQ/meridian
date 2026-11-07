@@ -8083,7 +8083,7 @@ type Thread struct {
 	Turn                OptThreadTurn     `json:"turn"`
 	Protocol            OptThreadProtocol `json:"protocol"`
 	StructuredSupported OptBool           `json:"structuredSupported"`
-	// Present on a lead Thread that holds a Coordination Grant.
+	// The Coordination Grant over this Thread's tree, on the lead and on each helper.
 	CoordinationGrantId OptString `json:"coordinationGrantId"`
 	// Present on a helper Thread; the lead that spawned it.
 	ParentThreadId OptString `json:"parentThreadId"`

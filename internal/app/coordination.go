@@ -179,7 +179,7 @@ func (s *Service) ThreadCoordinationOf(ctx context.Context, id domain.ThreadID) 
 			return err
 		}
 		result.ParentThreadID, result.LinkID, result.Depth = link.ParentThreadID, link.ID, link.Depth
-		result.RootThreadID = grant.RootThreadID
+		result.GrantID, result.RootThreadID = grant.ID, grant.RootThreadID
 		return nil
 	})
 	return result, err
