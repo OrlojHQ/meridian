@@ -16,7 +16,7 @@ import {
 } from "../api/threadEvents";
 import { harnessName } from "../shell/capsuleActivity";
 import { isActiveRunState, isBusyAdapterStatus, safeInline } from "./threadChat";
-import { ThreadConversation } from "./ThreadChat";
+import { ThreadConversation } from "./ThreadConversation";
 import { ThreadError } from "./ThreadError";
 import { ActionsMenu, type ActionsMenuItem } from "./ui/ActionsMenu";
 import { StateBadge } from "./ui/StateBadge";
