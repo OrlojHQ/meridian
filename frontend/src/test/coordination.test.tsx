@@ -14,7 +14,7 @@ import type {
   ThreadLink,
 } from "../api/generated/types.gen";
 import { StructuredLauncher } from "../components/StructuredLauncher";
-import { ThreadSubagents } from "../components/ThreadSubagents";
+import { grantLimits, ThreadSubagents, untilDeadline } from "../components/ThreadSubagents";
 import { buildThreadChat } from "../components/threadChat";
 import { nestSubagents, type WorkingSetItem } from "../shell/useWorkingSet";
 
@@ -176,10 +176,23 @@ describe("Subagents panel", () => {
     expect(first).toHaveAttribute("href", "/ui/capsules/capsule-subagent-1?session=thread-subagent-1");
     expect(within(panel).getByText("Reported")).toBeInTheDocument();
     expect(within(panel).getByText("Needs you")).toBeInTheDocument();
-    expect(within(panel).getByText("2 of 8 started", { exact: false })).toBeInTheDocument();
+    expect(
+      within(panel).getByText("2 of 4 started · up to 4 at a time", { exact: false }),
+    ).toBeInTheDocument();
     await userEvent.click(within(panel).getByRole("button", { name: "Stop subagents" }));
     await userEvent.click(within(panel).getByRole("button", { name: "Confirm stop" }));
     await waitFor(() => expect(revoke).toHaveBeenCalledWith(grant));
+  });
+
+  it("words the grant limits and its deadline relative to now", () => {
+    const now = Date.parse("2026-11-01T00:08:00Z");
+    expect(grantLimits(grant, true, now)).toBe("2 of 4 started · up to 4 at a time · ends in 7h 52m");
+    expect(grantLimits({ ...grant, maxChildren: 16 }, false, now)).toBe(
+      "2 of 8 started · up to 4 at a time",
+    );
+    expect(untilDeadline("2026-11-03T02:00:00Z", now)).toBe("ends in 2d 1h");
+    expect(untilDeadline("2026-11-01T00:30:00Z", now)).toBe("ends in 22m");
+    expect(untilDeadline("2026-11-01T00:00:00Z", now)).toBe("deadline passed");
   });
 
   it("folds archived subagents and marks promoted ones", async () => {

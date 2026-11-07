@@ -10,6 +10,7 @@ import {
   sessionPath,
   type ActivityGroup,
 } from "../shell/capsuleActivity";
+import { BlockerPeek } from "./BlockerPeek";
 import { PromoteSubagent } from "./PromoteSubagent";
 import { failureText, safeInline } from "./threadChat";
 import { ThreadError } from "./ThreadError";
@@ -124,6 +125,9 @@ function BoardRow({
           )}
         </p>
         {failure && <p className="inbox-detail">{failure}</p>}
+        {item.thread && (item.needsYou === "permission" || item.needsYou === "input") && (
+          <BlockerPeek thread={item.thread} kind={item.needsYou} />
+        )}
         {expanded && subagents && (
           <ul className="board-subagents" aria-label={`Subagents of ${itemName(item)}`}>
             {subagents.filter((subagent) => !subagent.link?.archivedAt).map(subagentRow)}

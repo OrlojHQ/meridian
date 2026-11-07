@@ -115,7 +115,20 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   harness image on an existing Project. `meridian thread follow --until-idle`
   exits when the turn that answers the latest prompt goes idle.
 
+- Board and Activity rows that wait for permission or input can be peeked
+  open to see which permission, tool or command is being asked for, and
+  answered in place with the Thread view's card. The rows stay content-free;
+  only an explicit peek reads that Thread's transcript tail, and nothing is
+  cached or polled. Agent-supplied request text is shown as capped plain text
+  with control and bidirectional characters removed.
+
 ### Changed
+
+- A lead's Board rollup and its Subagents panel now derive from the same link
+  phase. A subagent whose session failed, for example on a harness timeout,
+  reads as failed in both, instead of "needs you" in the rollup and "Ended" in
+  the panel. The panel words its limits as "3 of 4 started · up to 4 at a
+  time · ends in 7h 52m".
 
 - Provider gateway errors for rejected requests include the upstream HTTP
   status in `error.upstreamStatus` and the message, plus a short sanitized

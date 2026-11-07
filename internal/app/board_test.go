@@ -168,6 +168,72 @@ func TestBoardStatusFollowsTheTurnAndTheRun(t *testing.T) {
 	}
 }
 
+// A subagent whose session times out must read the same in the lead's rollup
+// and in its Subagents panel: failed, not "needs you" in one and "ended" in the
+// other.
+func TestRollupAndSubagentPanelAgreeWhenASubagentRunFails(t *testing.T) {
+	f := newCoordFixture(t)
+	lead, mailbox := f.spawnLead(t, domain.CoordinationPolicy{MaxChildren: 3})
+	failed := f.finishedSubagent(t, mailbox, "one")
+	waiting := f.spawnSubagent(t, mailbox, "two")
+	f.spawnSubagent(t, mailbox, "three")
+
+	child, err := f.service.GetThread(f.ctx, failed.ChildThreadID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.runtime.mu.Lock()
+	f.runtime.runs[child.CurrentRunID] = ports.RuntimeRun{
+		State: domain.RunFailed, Structured: true, Failure: "structured adapter timed out",
+	}
+	f.runtime.mu.Unlock()
+	if err := f.store.Transact(f.ctx, func(tx ports.Transaction) error {
+		run, err := tx.GetRun(f.ctx, child.CurrentRunID)
+		if err != nil {
+			return err
+		}
+		run.State, run.Failure = domain.RunFailed, "structured adapter timed out"
+		run.FinishedAt, run.UpdatedAt = f.clock.Now(), f.clock.Now()
+		expected := run.ResourceVersion
+		run.ResourceVersion++
+		return tx.UpdateRun(f.ctx, run, expected)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	waitingThread, err := f.service.GetThread(f.ctx, waiting.ChildThreadID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.runtime.askPermission(waitingThread.CurrentRunID, "permission-2")
+	if _, err := f.service.ThreadBlocks(f.ctx, waiting.ChildThreadID, 0, 100); err != nil {
+		t.Fatal(err)
+	}
+	f.service.CoordinationTick(f.ctx)
+
+	closed, err := f.service.GetThreadLink(f.ctx, failed.ID)
+	if err != nil || closed.State != domain.LinkClosed || closed.CloseReason != domain.LinkEnded {
+		t.Fatalf("failed subagent link = %+v, %v", closed, err)
+	}
+	links, err := f.service.ListThreadLinks(f.ctx, lead.Intent.ThreadID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	phases := map[string]string{}
+	for _, link := range links {
+		phases[link.Name] = f.service.ThreadLinkPhase(f.ctx, link)
+	}
+	if phases["one"] != coordproto.PhaseFailed || phases["two"] != coordproto.PhaseAwaiting ||
+		phases["three"] != coordproto.PhaseWorking {
+		t.Fatalf("panel phases = %v", phases)
+	}
+	if rollup := f.leadRollup(t, lead.Intent.CapsuleID); rollup != (app.ChildRollup{Total: 3, Failed: 1, NeedsYou: 1, Working: 1}) {
+		t.Fatalf("rollup = %+v", rollup)
+	}
+	if row := boardRow(f.board(t, ""), failed.ChildCapsuleID); row == nil || row.NeedsYou != app.BoardAttentionFailed {
+		t.Fatalf("failed subagent row = %+v", row)
+	}
+}
+
 func TestOperatorMessageToSubagentIsNoticedOnTheLeadsNextWake(t *testing.T) {
 	f := newCoordFixture(t)
 	lead, mailbox := f.spawnLead(t, domain.CoordinationPolicy{})

@@ -252,6 +252,51 @@
   white-space: pre-wrap;
 }
 
+.blocker-peek {
+  margin-top: 0.35rem;
+}
+
+button.blocker-peek-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border: 0;
+  padding: 0.15rem 0.1rem;
+  color: var(--accent);
+  background: none;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.blocker-peek-toggle:hover {
+  text-decoration: underline;
+}
+
+.blocker-peek-chevron {
+  width: 0.8rem;
+  height: 0.8rem;
+  transition: transform 120ms ease;
+}
+
+.blocker-peek-toggle[aria-expanded="true"] .blocker-peek-chevron {
+  transform: rotate(90deg);
+}
+
+.blocker-peek-label {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.blocker-peek-body {
+  max-width: 44rem;
+  margin-top: 0.35rem;
+}
+
+.blocker-peek-body .muted-copy {
+  margin: 0;
+  font-size: 0.75rem;
+}
+
 .inbox-actions {
   display: flex;
   flex-wrap: wrap;

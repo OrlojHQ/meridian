@@ -38,6 +38,24 @@ pausing, and never fetches transcripts. `meridiand --runtime-refresh-interval`
 keeps Run state and structured Thread output current while no client is
 watching (ADR 0025).
 
+Activity and Board rows that wait for permission or input have a "Peek"
+disclosure that names the blocker and lets the operator answer without opening
+the Thread. Rows stay content-free: only an explicit expand reads that one
+Thread's transcript, limited to the trailing 256 messages the daemon uses for
+`awaiting`, and the result lives in the row's own state. It is never prefetched,
+polled, or kept in the query cache, and collapsing the row discards it. The peek
+renders the Thread view's permission or input card. The request kind and
+summary are agent-authored, so they are shown as one plain-text line with
+control characters and bidirectional controls removed, capped at 64 and 600
+characters; option labels are capped at 48 characters, while the answer still
+names the option exactly as the agent offered it. Answers are the same
+`POST /threads/{threadId}/responses` request the Thread view sends, with the
+current resource version and a fresh idempotency key, so they pass the same
+authentication and checks; a version conflict reloads the request. After an
+answer, focus moves to the next row's peek. A lead's Board rollup and its
+Subagents panel derive from the same link phase, so a subagent whose session
+failed reads as failed in both.
+
 A slim status bar runs along the bottom of the shell. It shows whether the
 browser is online and whether the daemon API answers the capabilities request,
 the provider version, and counts of Capsules that need attention, are working,

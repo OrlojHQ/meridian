@@ -15,6 +15,7 @@ import {
 
 import { api, normalizeAPIError } from "../api/client";
 import type { Thread, ThreadBlock } from "../api/generated/types.gen";
+import { plainAgentText } from "./agentText";
 import {
   boundedThreadText,
   buildThreadChat,
@@ -147,10 +148,12 @@ const optionLabels: Record<string, string> = {
   no: "Deny",
 };
 
+const MAX_OPTION_LABEL = 48;
+
 export const permissionOptionLabel = (option: string) => {
   const known = optionLabels[option.toLowerCase()];
   if (known) return known;
-  const words = option.replace(/[_-]+/g, " ").trim();
+  const words = plainAgentText(option.replace(/[_-]+/g, " "), MAX_OPTION_LABEL);
   return words.charAt(0).toUpperCase() + words.slice(1);
 };
 
@@ -164,7 +167,7 @@ function answerText(request: ChatRequest) {
   return choice && choice !== "answered" ? `Chose ${permissionOptionLabel(choice)}` : "Answered";
 }
 
-function RequestCard({
+export function RequestCard({
   thread,
   request,
   actionable,
