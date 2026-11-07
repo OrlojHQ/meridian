@@ -12,6 +12,7 @@ import type {
 import { queries } from "../api/queries";
 import { harnessName } from "../shell/capsuleActivity";
 import { PreparationProgress } from "./PreparationProgress";
+import { connectableHarnesses, connectionSupports } from "./ProviderConnections";
 
 export function StructuredLauncher({
   project,
@@ -27,8 +28,14 @@ export function StructuredLauncher({
   const coordinationSupported = Boolean(
     capabilities.data?.coordination?.supported,
   );
+  const [connection, setConnection] = useState<string>();
+  const connections = useQuery({queryKey: ["provider-connections"], queryFn: api.providerConnections});
+  const grant = useQuery({queryKey: ["project-connection", project.id, harness], queryFn: () => api.projectConnection(project.id, harness), enabled: !!harness});
+  const selectedConnection = connection ?? grant.data?.connectionId ?? "";
+  const connectable = connectableHarnesses.includes(harness) && !!connections.data?.enabled;
+  const availableConnections = connections.data?.items.filter(item => !item.revoked && connectionSupports(harness, item)) ?? [];
   const mutation = useMutation({
-    mutationFn: ({
+    mutationFn: async ({
       projectId,
       harness,
       prompt,
@@ -40,7 +47,10 @@ export function StructuredLauncher({
       prompt: string;
       name?: string;
       coordination?: CoordinationPolicy;
-    }) => api.createProjectThread(projectId, harness, prompt, name, coordination),
+    }) => {
+      if (selectedConnection !== (grant.data?.connectionId ?? "")) await api.grantConnection(projectId, harness, selectedConnection);
+      return api.createProjectThread(projectId, harness, prompt, name, coordination);
+    },
     onSuccess: async (value) => {
       setResult(value);
       await queryClient.invalidateQueries({
@@ -93,6 +103,17 @@ export function StructuredLauncher({
             placeholder="Describe the work you want the agent to do…"
           />
         </label>
+        {connectable && (
+          <label htmlFor="spawn-connection">
+            Provider connection
+            <select id="spawn-connection" value={selectedConnection} onChange={(event) => setConnection(event.target.value)} disabled={mutation.isPending || Boolean(result)}>
+              <option value="">None</option>
+              {availableConnections.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+          </label>
+        )}
+        {!result && selectedConnection && selectedConnection !== grant.data?.connectionId && <p>Starting this task authorizes this API connection for {project.name} and future {harnessName(harness)} sessions.</p>}
+        {connectable && availableConnections.length === 0 && <Link to="/ui/settings/harnesses">Connect provider</Link>}
         <label htmlFor="spawn-name">
           Capsule name <span className="optional-label">Optional</span>
           <input id="spawn-name" name="name" maxLength={128} />

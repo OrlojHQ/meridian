@@ -27,13 +27,19 @@ func (s *Server) prepareProviderConnection(ctx context.Context, connection *harn
 	if !custom && connection.Model != "" || !harnesssetup.ConnectionSupported(harness, connection.Provider, connection.Model) {
 		return nil, errors.New("provider does not support this harness")
 	}
-	if setup == nil {
+	revision := "connection-" + harness
+	switch {
+	case setup != nil:
+		revision = setup.Revision
+	case !harnesssetup.Supported(harness):
+		// Harnesses without personal setups get an empty Meridian-owned home.
+		env, err = s.materializeSetupHome(ctx, revision, nil, nil)
+	default:
 		paths := map[string]string{"codex": ".codex/AGENTS.md", "claude": ".claude/CLAUDE.md", "opencode": ".config/opencode/AGENTS.md", "pi": ".pi/agent/AGENTS.md"}
-		setup = &harnesssetup.RuntimeSetup{Revision: "connection-" + harness, Bundle: harnesssetup.Bundle{Harness: harness, Files: []harnesssetup.File{{Path: paths[harness], Content: ""}}}}
-		env, err = s.prepareHarnessSetup(ctx, setup, harness)
-		if err != nil {
-			return nil, err
-		}
+		env, err = s.prepareHarnessSetup(ctx, &harnesssetup.RuntimeSetup{Revision: revision, Bundle: harnesssetup.Bundle{Harness: harness, Files: []harnesssetup.File{{Path: paths[harness], Content: ""}}}}, harness)
+	}
+	if err != nil {
+		return nil, err
 	}
 	env["MERIDIAN_PROVIDER_TOKEN"] = connection.Token
 	base := s.config.HarnessHome
@@ -45,7 +51,7 @@ func (s *Server) prepareProviderConnection(ctx context.Context, connection *harn
 		return nil, err
 	}
 	defer outer.Close()
-	root, err := outer.OpenRoot(".meridian-setup-" + setup.Revision)
+	root, err := outer.OpenRoot(".meridian-setup-" + revision)
 	if err != nil {
 		return nil, err
 	}
@@ -120,8 +126,42 @@ func (s *Server) prepareProviderConnection(ctx context.Context, connection *harn
 				config["defaultModel"] = model
 			})
 		}
+	case "dsh":
+		env["DSH_HOME"] = filepath.Join(env["HOME"], ".dsh")
+		var patch []byte
+		patch, err = dshProviderPatch(connection)
+		if err == nil {
+			err = writeSetupFile(root, ".dsh/cordis.patch.yml", patch)
+		}
 	}
 	return env, err
+}
+
+// dshProviderPatch is DeepSeek Harness's home-level Cordis patch for a
+// gateway route. It is JSON, which the YAML loader accepts without
+// evaluating tags. Each entry replaces that entry's whole configuration.
+// The DeepSeek adapters, DeepSeek web search, and the session-log upload are
+// disabled so the gateway route is the only model endpoint.
+func dshProviderPatch(connection *harnesssetup.Connection) ([]byte, error) {
+	api, base := "openai-completions", connection.URL+"/v1"
+	if connection.Provider == "anthropic-compatible" {
+		// The Anthropic client appends /v1/messages itself.
+		api, base = "anthropic-messages", connection.URL
+	}
+	selection := map[string]any{"provider": "meridian", "model": connection.Model}
+	entries := []map[string]any{
+		{"id": "llm-pi-ai", "config": map[string]any{"providers": map[string]any{"meridian": map[string]any{
+			"displayName": "Meridian", "api": api, "baseURL": base,
+			"apiKeyEnv": "MERIDIAN_PROVIDER_TOKEN", "models": []any{map[string]any{"id": connection.Model}},
+		}}}},
+		{"id": "acp", "config": selection},
+		{"id": "agent-default-model", "config": selection},
+		{"id": "tool-web", "config": map[string]any{"search": false, "fetch": true}},
+	}
+	for _, id := range []string{"llm-deepseek", "llm-deepseek-account", "session-log-deepseek", "web-search-deepseek", "web-deepseek-api"} {
+		entries = append(entries, map[string]any{"id": id, "disabled": true})
+	}
+	return json.MarshalIndent(entries, "", "  ")
 }
 func object(parent map[string]any, key string) map[string]any {
 	value, ok := parent[key].(map[string]any)
@@ -167,6 +207,9 @@ func editNativeConfig(root *os.Root, p string, edit func(map[string]any)) error 
 	if err != nil {
 		return err
 	}
+	return writeSetupFile(root, p, raw)
+}
+func writeSetupFile(root *os.Root, p string, raw []byte) error {
 	if err := root.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 		return err
 	}

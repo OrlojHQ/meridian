@@ -70,6 +70,48 @@ func TestGatewayLimitsRoutesAndReplacesCredentials(t *testing.T) {
 		t.Fatal("revoked credential accepted")
 	}
 }
+func TestGatewayAcceptsOnlyTheAnthropicBetaMarkerAndDropsIt(t *testing.T) {
+	seen := 0
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen++
+		if r.URL.Path != "/v1/messages" || r.URL.RawQuery != "" || r.Header.Get("X-Api-Key") != "upstream-key" {
+			t.Errorf("upstream request %s?%s", r.URL.Path, r.URL.RawQuery)
+		}
+		_, _ = io.WriteString(w, "{}")
+	}))
+	defer upstream.Close()
+	g := New(func(context.Context, Lease) (Upstream, error) { return Upstream{Key: "upstream-key"}, nil }, Options{})
+	defer g.Close()
+	g.client = upstream.Client()
+	g.upstream["anthropic"] = upstream.URL
+	g.upstream["openai"] = upstream.URL
+	anthropic, err := g.Issue(Lease{Provider: "anthropic", Connection: "a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	openai, err := g.Issue(Lease{Provider: "openai", Connection: "o"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		path, token string
+		status      int
+	}{
+		{"/provider-gateway/anthropic/v1/messages?beta=true", anthropic, 200},
+		{"/provider-gateway/anthropic/v1/messages?beta=false", anthropic, 404},
+		{"/provider-gateway/anthropic/v1/messages?beta=true&x=1", anthropic, 404},
+		{"/provider-gateway/openai/v1/chat/completions?beta=true", openai, 404},
+	} {
+		w := send(g, tc.path, tc.token, nil)
+		if w.Code != tc.status {
+			t.Fatalf("%s: %d want %d", tc.path, w.Code, tc.status)
+		}
+	}
+	if seen != 1 {
+		t.Fatalf("upstream calls %d", seen)
+	}
+}
+
 func TestRevocationCancelsActiveStream(t *testing.T) {
 	started := make(chan struct{})
 	cancelled := make(chan struct{})

@@ -250,14 +250,23 @@ rejected, and `npm ci --ignore-scripts` runs no package script, but the code
 itself is unreviewed upstream code with the authority of the harness. The
 build checks `--help` for DeepSeek Harness's own text so Debian's unrelated
 `dsh` cannot stand in for it. The launcher disables DeepSeek's product
-telemetry; model traffic still goes wherever `dsh` is configured to send it,
-and requests through its DeepSeek adapter include a `dsh_session_log` copy
-of the session's events. `dsh` applies its own workspace-write sandbox and
-asks Meridian's permission prompt for escalations; neither is a Meridian
-boundary. The pack gets no provider connection or lease yet, and Meridian
-does not pass a raw key into the Capsule. Its multi-provider adapter can read
-a gateway lease from the environment like the other harnesses, so connecting
-it later adds no new credential path (ADR 0030).
+telemetry. `dsh` applies its own workspace-write sandbox and asks Meridian's
+permission prompt for escalations; neither is a Meridian boundary. Its model
+traffic uses the lease design: for an `openai-compatible` or
+`anthropic-compatible` connection with a default model, `capsuled` writes a
+home-level Cordis patch whose only model route is the connection's gateway
+URL, reading the lease from `MERIDIAN_PROVIDER_TOKEN`. The patch is JSON, so
+no `!!js` tag reaches `dsh`'s evaluating YAML loader, and the model name is
+validated. It disables the DeepSeek adapters, which are the only senders of a
+`dsh_session_log` copy of the session's events and the only users of
+DeepSeek's Files API, the session-log uploader, and DeepSeek web search,
+which reads its own `DEEPSEEK_API_KEY`. `web_fetch` stays and is bounded by
+the Project's egress policy. Model listing does not run in ACP, and the
+gateway refuses anything but `POST` to a known route. The gateway accepts
+only the query `beta=true`, only on Anthropic routes, and does not forward it.
+Hostile code in the Capsule can rewrite the patch or re-enable those plugins,
+but it can only send what it could already send with the lease it holds or
+through the Capsule's egress; no upstream key enters the Capsule (ADR 0030).
 Profile-registered MCP servers (`--mcp-server`) are trusted profile metadata.
 They take absolute executables and quote-free arguments, run with the harness's
 authority, and their tool calls still pass through harness permission prompts.

@@ -6,6 +6,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { api } from "../api/client";
 import { HarnessSetups } from "../components/HarnessSetups";
 import { NativeLauncher } from "../components/NativeLauncher";
+import { StructuredLauncher } from "../components/StructuredLauncher";
 
 const setup={id:"setup",harness:"codex",name:"My Codex setup",revision:"rev-2",default:true,deleted:false,createdAt:"2026-09-06T00:00:00Z",resourceVersion:2};
 const project={id:"project",name:"Project",createdAt:setup.createdAt,updatedAt:setup.createdAt,resourceVersion:1,harnessImages:[{name:"codex",imageReference:"example/codex:v1"}]};
@@ -36,6 +37,28 @@ it("offers no provider connection to a harness capsuled cannot configure",async(
  show(<NativeLauncher project={{...project,harnessImages:[{name:"mock",imageReference:"example/mock:v1"}]}} harness="mock"/>);
  expect(await screen.findByRole("button",{name:"Start Mock (test)"})).toBeInTheDocument();
  expect(screen.queryByLabelText("Provider connection")).toBeNull();expect(screen.queryByRole("link",{name:"Connect provider"})).toBeNull();
+});
+it("grants a custom endpoint connection to a DeepSeek Harness task before spawning it",async()=>{
+ vi.spyOn(api,"capabilities").mockResolvedValue({providerVersion:"docker/v2",attach:true,run:true,structured:true,git:false,pause:false,snapshot:false,clone:false,browse:false,delivery:false,preview:false,resourceMetrics:false,harnessImages:[]});
+ vi.spyOn(api,"projectConnection").mockResolvedValue({connectionId:""});
+ vi.spyOn(api,"providerConnections").mockResolvedValue({enabled:true,items:[
+  {id:"official",provider:"openai",name:"OpenAI",createdAt:setup.createdAt,resourceVersion:1,revoked:false},
+  {id:"nomodel",provider:"openai-compatible",name:"No model",baseUrl:"https://models.example",createdAt:setup.createdAt,resourceVersion:1,revoked:false},
+  {id:"dgx",provider:"openai-compatible",name:"DGX",baseUrl:"https://dgx.example",defaultModel:"deepseek-v4",createdAt:setup.createdAt,resourceVersion:1,revoked:false},
+ ]});
+ const grant=vi.spyOn(api,"grantConnection").mockResolvedValue({connectionId:"dgx"});
+ const intent={id:"intent",projectId:project.id,harness:"dsh",state:"provisioning" as const,capsuleId:"capsule",capsuleName:"dsh-task",threadId:"thread",runId:"run",messageId:"message",createdAt:setup.createdAt,updatedAt:setup.createdAt,resourceVersion:1};
+ const spawn=vi.spyOn(api,"createProjectThread").mockResolvedValue(intent);
+ vi.spyOn(api,"projectThreadIntent").mockResolvedValue(intent);
+ vi.spyOn(api,"capsule").mockResolvedValue(capsule);vi.spyOn(api,"runs").mockResolvedValue({items:[]});
+ show(<StructuredLauncher project={{...project,harnessImages:[{name:"dsh",imageReference:"example/dsh:v1"}]}} harness="dsh"/>);
+ const select=await screen.findByLabelText("Provider connection");
+ await waitFor(()=>expect(screen.getByRole("option",{name:"DGX"})).toBeInTheDocument());
+ expect(screen.queryByRole("option",{name:"OpenAI"})).toBeNull();expect(screen.queryByRole("option",{name:"No model"})).toBeNull();
+ await userEvent.selectOptions(select,"dgx");await userEvent.type(screen.getByLabelText("Task"),"fix the build");
+ await userEvent.click(screen.getByRole("button",{name:"Start task"}));
+ await waitFor(()=>expect(spawn).toHaveBeenCalled());
+ expect(grant).toHaveBeenCalledWith("project","dsh","dgx");expect(grant.mock.invocationCallOrder[0]).toBeLessThan(spawn.mock.invocationCallOrder[0]);
 });
 it("groups settings under plain section headings without nested disclosures",async()=>{
  vi.spyOn(api,"harnessSetups").mockResolvedValue({items:[setup]});vi.spyOn(api,"providerConnections").mockResolvedValue({items:[],enabled:true});

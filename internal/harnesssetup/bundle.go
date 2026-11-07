@@ -179,9 +179,16 @@ func ValidModel(model string) bool {
 	return true
 }
 
+// ConnectionHarness reports whether capsuled can configure the harness for a
+// provider connection. It includes harnesses that have no personal setups.
+func ConnectionHarness(name string) bool {
+	return Supported(name) || name == "dsh"
+}
+
 // ConnectionSupported pairs a harness with the provider connection types its
 // native configuration can use. OpenCode and Pi need a model name to register
-// a custom OpenAI-compatible provider.
+// a custom OpenAI-compatible provider. DeepSeek Harness reaches the gateway
+// only through a custom endpoint route, which names its model.
 func ConnectionSupported(harness, provider, model string) bool {
 	switch harness {
 	case "claude":
@@ -190,6 +197,8 @@ func ConnectionSupported(harness, provider, model string) bool {
 		return provider == "openai" || provider == "openai-compatible"
 	case "opencode", "pi":
 		return provider == "openai" || provider == "anthropic" || provider == "openai-compatible" && model != ""
+	case "dsh":
+		return (provider == "openai-compatible" || provider == "anthropic-compatible") && model != ""
 	}
 	return false
 }

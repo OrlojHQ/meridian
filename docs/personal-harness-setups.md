@@ -114,8 +114,8 @@ ADR 0027.
 
 | Type | Use with | Upstream routes |
 |---|---|---|
-| `openai-compatible` | Codex, OpenCode, Pi | `/v1/responses` (Codex), `/v1/chat/completions` (OpenCode, Pi) |
-| `anthropic-compatible` | Claude Code | `/v1/messages`, `/v1/messages/count_tokens` |
+| `openai-compatible` | Codex, OpenCode, Pi, DeepSeek Harness | `/v1/responses` (Codex), `/v1/chat/completions` (OpenCode, Pi, DeepSeek Harness) |
+| `anthropic-compatible` | Claude Code, DeepSeek Harness | `/v1/messages`, `/v1/messages/count_tokens` |
 
 The control plane must be able to reach the server; Capsules do not need to.
 The examples below serve GLM-5.3-Flash.
@@ -216,6 +216,12 @@ Harness behavior:
   `ANTHROPIC_MODEL` and the default opus, sonnet, and haiku model variables
   to it. Meridian sends the key as both `X-Api-Key` and a bearer token,
   because vLLM accepts only the latter.
+- **DeepSeek Harness** (`dsh`, Threads only) accepts either custom endpoint
+  type with a default model, and no official connection. Choose the
+  connection in the task form. Meridian declares a `meridian` route for that
+  model, makes it the only model for sessions and subagents, and turns off
+  DeepSeek's own adapters, web search, and session-log upload. See
+  [harness adapters](harness-adapters.md#deepseek-harness).
 
 Model quality and tool-calling support depend on your model and server.
 Meridian does not translate between APIs.

@@ -158,7 +158,7 @@ func (s *Service) validateConnectionInput(input ConnectionInput) (ConnectionInpu
 	return input, nil
 }
 func (s *Service) GrantProviderConnection(ctx context.Context, project domain.ProjectID, harness, connection string) error {
-	if !harnesssetup.Supported(harness) {
+	if !harnesssetup.ConnectionHarness(harness) {
 		return domain.ErrInvalid
 	}
 	err := s.store.Transact(ctx, func(tx ports.Transaction) error {

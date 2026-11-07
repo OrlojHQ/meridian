@@ -79,8 +79,16 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   terminal launch is refused before provisioning. Packs can now install from
   an npm lockfile (`PACK_LAYOUT=npm`, registry tarballs with `sha512`
   integrity, no install scripts) and require identifying `--help` text
-  (`PACK_IDENTITY`). `dsh` has no Meridian-managed credentials yet; see
-  `docs/harness-adapters.md`.
+  (`PACK_IDENTITY`).
+
+- DeepSeek Harness Threads use a Project's `openai-compatible` or
+  `anthropic-compatible` provider connection through the provider gateway.
+  `capsuled` writes a `dsh` route that reads the gateway lease from
+  `MERIDIAN_PROVIDER_TOKEN`, selects it for sessions and subagents, and
+  disables DeepSeek's adapters, web search, and session-log upload; no raw
+  key enters the Capsule. The task form now offers a provider connection for
+  harnesses `capsuled` can configure. The gateway accepts Anthropic SDK
+  clients' `?beta=true` marker and does not forward it.
 
 - `meridian project apply-harness PROJECT_ID NAME=IMAGE` allowlists a custom
   harness image on an existing Project. `meridian thread follow --until-idle`
