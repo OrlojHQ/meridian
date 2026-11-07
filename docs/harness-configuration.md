@@ -6,9 +6,12 @@
    `/etc/meridian/harnesses.d/*.yaml`; then
 2. the optional repository file `/workspace/.meridian/project.yaml`.
 
-Both sources use the same strict `v1` parser. Duplicate names across files fail
-closed, so a repository cannot shadow an image-owned executable. `meridiand`
-never parses either source on the host.
+Both sources use the same strict `v1` parser. A name may appear at most twice,
+once per interaction mode (`native` and `structured`), and every lookup selects
+by name and mode. A name defined by any trusted manifest belongs to the image
+in every mode: the repository cannot define that name at all, so it cannot
+shadow an image-owned executable or attach its own adapter or secrets to it
+(ADR 0026). `meridiand` never parses either source on the host.
 
 ```yaml
 version: v1
@@ -26,7 +29,7 @@ harnesses:
 
 Fields are strict:
 
-- `name` is unique.
+- `name` is unique per interaction mode.
 - `executable` is invoked directly. `arguments` remains an argument array and is never concatenated into a shell command.
 - `workingDirectory` is a clean relative path beneath `/workspace`; absolute and escaping paths are rejected.
 - `promptMode` is `argument`, `stdin`, or `interactive`. Argument mode appends one argument, stdin mode writes once and closes stdin, and interactive mode requires a PTY.
@@ -35,7 +38,8 @@ Fields are strict:
 - `timeout` is positive and no greater than 24 hours.
 - `secretReferences` contains opaque `harness_env` names only.
 
-Unknown fields, malformed YAML, duplicate names within or across sources,
+Unknown fields, malformed YAML, duplicate name and mode pairs, repository
+profiles under a trusted name,
 non-regular trusted manifest entries, inline secret-like values,
 unsafe paths, unreasonable sizes, and invalid modes fail closed. The Project,
 not repository YAML, must explicitly authorize every referenced name. At Run

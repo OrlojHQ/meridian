@@ -200,6 +200,24 @@ Dedicated bearer-authenticated private endpoints use the existing
 Docker loopback or owned Agent Sandbox port-forward and are not public or
 shared with PTY attachment.
 
+Official packs carry a native and a structured profile under one name. A name
+defined by a trusted image manifest cannot be defined by the repository in any
+interaction mode, so repository YAML cannot attach its own adapter, executable,
+or `secretReferences` to an official harness (ADR 0026). The Claude Code and
+Codex adapters translate only those CLIs' published stdio protocols: Claude
+Code's stream-json control protocol and the Codex app-server JSON-RPC. They
+never parse terminal output, reject malformed or oversized upstream records,
+refuse upstream requests they do not model (Codex dynamic tools, ChatGPT token
+refresh, attestation, and data-collecting MCP elicitations), and deny any
+permission choice that is not an explicit allow. Codex's internal sandbox
+cannot run in a Capsule, which drops all capabilities and sets
+`no-new-privileges`, so the shipped Codex profile disables it and requires
+operator approval for every command Codex does not consider read-only. The
+Capsule remains the only isolation boundary, with the limits stated above.
+Profile-registered MCP servers (`--mcp-server`) are trusted profile metadata.
+They take absolute executables and quote-free arguments, run with the harness's
+authority, and their tool calls still pass through harness permission prompts.
+
 Normal Run prompts remain transient. Run records and events do not persist
 prompts, raw terminal bytes, full diffs, setup output, or secrets. An explicitly
 created structured Thread is the sole exception: its typed blocks are durably
@@ -524,7 +542,13 @@ Capsule code can spend against its authorized provider connection until revoked
 or expired; a scoped gateway is not a guarantee against abusive inference use.
 
 Subscription credentials and MCP account tokens are not imported or managed by
-this feature. Native login state remains ephemeral Capsule-local state. Backup
+this feature. Native login state remains ephemeral Capsule-local state.
+Structured sessions cannot sign in interactively; official structured profiles
+rely on the provider connection's gateway lease. The lease reaches the harness
+only through its process environment, and Meridian never writes it to the
+setup home's native configuration, repository YAML, adapter arguments, or
+transcripts. A harness that prints its own environment can still expose the
+lease in its output. Backup
 and recovery must retain the database and installation encryption key together;
 a missing key must not silently be replaced when saved setups or connections
 exist. A daemon restart invalidates gateway leases and requires active harness

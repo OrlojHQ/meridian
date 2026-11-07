@@ -7,7 +7,22 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Browser Threads work with every official pack. Each pack now installs a
+  structured profile next to its native one under the same name. New
+  `claude-stream` and `codex-app-server` adapter drivers run Claude Code's
+  stream-json control protocol and the Codex app-server. They map streaming
+  text, tool events, permission and question prompts, cancel, and resume to
+  `meridian.adapter.v1`, and end every turn with `idle`. Both accept
+  `--mcp-server` to register a stdio MCP server in the harness. Threads
+  authenticate through provider connections (ADR 0026).
+
 ### Changed
+
+- A harness name may carry one native and one structured profile. A
+  repository can no longer define any profile under a name that a trusted
+  image manifest defines.
 
 - Official harness packs build from one shared
   `images/harness-pack/Dockerfile`. Each pack is now a `pack.env` data file

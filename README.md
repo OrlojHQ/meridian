@@ -109,14 +109,16 @@ dashboard. Also available: `make try-codex`, `make try-opencode`,
 
 | Agent | Image | Terminal | Browser threads |
 | --- | --- | :---: | :---: |
-| Claude Code | `ghcr.io/orlojhq/meridian-capsule-claude` | ✓ | |
-| Codex | `ghcr.io/orlojhq/meridian-capsule-codex` | ✓ | |
+| Claude Code | `ghcr.io/orlojhq/meridian-capsule-claude` | ✓ | ✓ |
+| Codex | `ghcr.io/orlojhq/meridian-capsule-codex` | ✓ | ✓ |
 | OpenCode | `ghcr.io/orlojhq/meridian-capsule-opencode` | ✓ | ✓ |
 | Pi | `ghcr.io/orlojhq/meridian-capsule-pi` | ✓ | ✓ |
 
 Every image pins its agent release by checksum, is built for `amd64` and
 `arm64`, and is signed with Sigstore on each release. Browser threads are
 structured, encrypted conversations you can follow and answer from the web UI.
+They have no terminal to sign in with, so they use a
+[provider connection](docs/personal-harness-setups.md) for model credentials.
 Any other CLI agent can run as a custom harness through
 [`.meridian/project.yaml`](docs/harness-configuration.md).
 
