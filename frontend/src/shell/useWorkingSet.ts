@@ -83,7 +83,14 @@ export function useWorkingSet() {
       }),
     [capsules, runResults, threadResults, rollups],
   );
-  return { projects, projectItems, capsuleResults, items };
+  const ready =
+    !projects.isPending &&
+    !board.isPending &&
+    !capabilities.isPending &&
+    capsuleResults.every((result) => !result.isPending) &&
+    runResults.every((result) => !result.isPending) &&
+    threadResults.every((result) => !result.isPending);
+  return { projects, projectItems, capsuleResults, items, ready };
 }
 
 // Subagent Capsules render under their lead so a coordinated tree reads as one

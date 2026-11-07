@@ -4,6 +4,7 @@ import {
   sessionPath,
   type ActivityGroup,
 } from "./capsuleActivity";
+import { nextNeedingMe } from "./needsYou";
 import type { WorkingSetItem } from "./useWorkingSet";
 
 // Commands are built only from the working set the sidebar already holds and
@@ -131,10 +132,7 @@ export function buildPaletteCommands({
     }
   }
 
-  const waiting = items
-    .filter(({ activity }) => activity.group === "attention")
-    .sort((a, b) => Date.parse(a.activity.since ?? "") - Date.parse(b.activity.since ?? ""));
-  const next = waiting[0];
+  const next = nextNeedingMe(items, capsuleId);
   if (next) {
     commands.push({
       id: "go:next-needing-me",
@@ -143,6 +141,7 @@ export function buildPaletteCommands({
       detail: `${next.capsule.name} · ${next.activity.label}`,
       keywords: "attention needs you queue permission input",
       activity: "attention",
+      shortcut: ["G", "N"],
       run: () => actions.navigate(sessionPath(next.capsule.id)),
     });
   }
@@ -323,6 +322,7 @@ export type ShortcutHelp = { keys: string[][]; description: string };
 
 export const keyboardShortcuts = (): ShortcutHelp[] => [
   { keys: [paletteShortcut()], description: "Open the command palette" },
+  { keys: [["G", "N"]], description: "Next item needing me" },
   { keys: [["N"]], description: "New project" },
   { keys: [["/"]], description: "Filter Capsules" },
   { keys: [["J"], ["↓"]], description: "Next Capsule" },

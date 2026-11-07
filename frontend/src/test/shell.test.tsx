@@ -71,7 +71,9 @@ function wrapper(node: React.ReactNode, initial = "/ui/") {
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  document.title = "";
 });
 
 describe("application shell", () => {
@@ -464,8 +466,51 @@ describe("application shell", () => {
     const row = await screen.findByRole("link", { name: /Review the launcher/ });
     await waitFor(() => expect(row).toHaveTextContent("Waiting for permission"));
     expect(screen.getByLabelText("1 need attention")).toBeInTheDocument();
+    await waitFor(() => expect(document.title).toBe("(1) Meridian"));
+    expect(document.title).not.toContain("Review the launcher");
     expect(threads).toHaveBeenCalledWith(capsule.id, expect.anything());
     expect(blocks).not.toHaveBeenCalled();
+  });
+
+  it("offers content-free browser notifications from the status bar", async () => {
+    const posted: { title: string; options?: NotificationOptions }[] = [];
+    class FakeNotification {
+      static permission: NotificationPermission = "default";
+      static requestPermission = vi.fn(async () => {
+        FakeNotification.permission = "granted";
+        return "granted" as NotificationPermission;
+      });
+      onclick: (() => void) | null = null;
+      constructor(title: string, options?: NotificationOptions) {
+        posted.push({ title, options });
+      }
+      close() {}
+    }
+    vi.stubGlobal("Notification", FakeNotification);
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
+    vi.spyOn(api, "capsules").mockResolvedValue({ items: [capsule] });
+    vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "capabilities").mockResolvedValue(capabilities);
+
+    wrapper(
+      <Routes>
+        <Route path="/ui" element={<AppShell />}>
+          <Route index element={<p>Activity home</p>} />
+        </Route>
+      </Routes>,
+    );
+
+    const enable = await screen.findByRole("button", { name: "Enable browser notifications" });
+    expect(enable).toHaveAttribute(
+      "title",
+      expect.stringContaining("Meridian needs you"),
+    );
+    await userEvent.click(enable);
+    expect(FakeNotification.requestPermission).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText("Alerts on")).toBeInTheDocument();
+    expect(setItem).not.toHaveBeenCalled();
+    expect(posted).toHaveLength(0);
   });
 
   it("nests the selected Capsule's sessions beneath it", async () => {

@@ -153,7 +153,8 @@ need you, in which case they get their own row. `--all` lists every subagent,
 board to one Project. Rollups also count archived subagents. The browser has the
 same view at `/ui/board`, with "Show all subagents" and a per-lead subagent fold
 whose archived subagents sit in an "Archived (n)" fold; the command palette's
-"Next item needing me" opens the oldest item that needs you. The browser
+"Next item needing me" (`g` then `n` in the browser) cycles through items that
+need you, oldest first. The browser
 sidebar lists main Capsules, each lead with its subagent rollup, plus subagents
 that need you nested under their lead. A subagent's Thread view and its
 needs-you board row offer "Promote to main"; a promoted subagent that kept its
