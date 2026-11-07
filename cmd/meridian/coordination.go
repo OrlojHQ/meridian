@@ -109,6 +109,97 @@ func newThreadLinksCommand(config *cliConfig) *cobra.Command {
 	}
 }
 
+func newBoardCommand(config *cliConfig) *cobra.Command {
+	var projectID, expand string
+	var all bool
+	command := &cobra.Command{
+		Use:   "board",
+		Short: "List every Capsule by status, needs-you first",
+		Long: "List every Capsule by status, needs-you first. Helpers fold under their lead's\n" +
+			"rollup unless they need you; --all lists every helper.",
+		Args: cobra.NoArgs,
+		RunE: func(command *cobra.Command, _ []string) error {
+			params := client.GetBoardParams{}
+			if projectID != "" {
+				params.ProjectId = client.NewOptString(projectID)
+			}
+			if all {
+				if command.Flags().Changed("expand") {
+					return errors.New("--all and --expand are mutually exclusive")
+				}
+				expand = string(client.GetBoardExpandAll)
+			}
+			switch expand {
+			case "":
+			case string(client.GetBoardExpandAttention), string(client.GetBoardExpandAll), string(client.GetBoardExpandNone):
+				params.Expand = client.NewOptGetBoardExpand(client.GetBoardExpand(expand))
+			default:
+				return errors.New("--expand must be attention, all or none")
+			}
+			api, err := newAPI(config)
+			if err != nil {
+				return err
+			}
+			result, err := api.GetBoard(command.Context(), params)
+			if err != nil {
+				return apiCallError(err)
+			}
+			page, ok := result.(*client.BoardPage)
+			if !ok {
+				return responseError(result)
+			}
+			if config.json {
+				return writeJSON(config.stdout, page)
+			}
+			return writeBoard(config, page)
+		},
+	}
+	command.Flags().StringVar(&projectID, "project", "", "only this Project's Capsules")
+	command.Flags().BoolVar(&all, "all", false, "list every helper, not only the ones that need you")
+	command.Flags().StringVar(&expand, "expand", "", "helpers to list: attention (default), all or none")
+	return command
+}
+
+func writeBoard(config *cliConfig, page *client.BoardPage) error {
+	for _, item := range page.Items {
+		status := string(item.Status)
+		if reason, ok := item.NeedsYou.Get(); ok {
+			status += "(" + string(reason) + ")"
+		}
+		name := item.Capsule.Name
+		if link, ok := item.Link.Get(); ok {
+			name = link.Name
+			if item.Surfaced {
+				name += " (helper)"
+			}
+		}
+		thread, harness := "-", item.Capsule.Harness.Or("-")
+		if value, ok := item.Thread.Get(); ok {
+			thread, harness = value.ID, value.Harness
+		}
+		line := fmt.Sprintf("%s\t%s\t%s\tcapsule=%s\tthread=%s\tsince=%s",
+			status, name, harness, item.Capsule.ID, thread, item.Since.Format(time.RFC3339))
+		if rollup, ok := item.ChildRollup.Get(); ok {
+			line += fmt.Sprintf("\thelpers=%d working=%d idle=%d done=%d needs_you=%d failed=%d",
+				rollup.Total, rollup.Working, rollup.Idle, rollup.Done, rollup.NeedsYou, rollup.Failed)
+		}
+		if delivery, ok := item.LatestDelivery.Get(); ok {
+			line += "\tdelivery=" + string(delivery.State)
+			if url, ok := delivery.PullRequestUrl.Get(); ok {
+				line += " " + url.String()
+			}
+		}
+		if _, err := fmt.Fprintln(config.stdout, line); err != nil {
+			return err
+		}
+	}
+	if page.Truncated {
+		_, err := fmt.Fprintln(config.stdout, "(truncated: more Capsules than one board read covers)")
+		return err
+	}
+	return nil
+}
+
 func newGrantCommand(config *cliConfig) *cobra.Command {
 	root := &cobra.Command{Use: "grant", Short: "Inspect or revoke a lead Thread's coordination grant"}
 	show := &cobra.Command{

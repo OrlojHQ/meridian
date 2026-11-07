@@ -1,6 +1,6 @@
 import { QueryClient, queryOptions } from "@tanstack/react-query";
 
-import { MeridianAPIError, api } from "./client";
+import { MeridianAPIError, api, type BoardExpand } from "./client";
 
 const retry = (failureCount: number, error: Error) =>
   failureCount < 2 &&
@@ -87,6 +87,12 @@ export const queries = {
       queryFn: ({ signal }) => api.thread(threadId, signal),
       enabled: Boolean(threadId),
       refetchInterval: 2_000,
+    }),
+  board: (expand: BoardExpand = "attention") =>
+    queryOptions({
+      queryKey: ["board", expand],
+      queryFn: ({ signal }) => api.board(expand, signal),
+      refetchInterval: 3_000,
     }),
   threadLinks: (threadId: string) =>
     queryOptions({

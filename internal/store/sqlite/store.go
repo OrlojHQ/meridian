@@ -32,7 +32,7 @@ type Store struct {
 }
 
 // CurrentSchemaVersion is the newest migration this binary understands.
-const CurrentSchemaVersion = 14
+const CurrentSchemaVersion = 15
 
 func Open(ctx context.Context, dataDir string) (*Store, error) {
 	if strings.TrimSpace(dataDir) == "" {
@@ -987,6 +987,14 @@ func (r *repository) GetRun(ctx context.Context, id domain.RunID) (domain.Run, e
 		SELECT id, capsule_id, harness, state, exit_status, failure, event_cursor, created_at,
 			started_at, finished_at, updated_at, resource_version
 		FROM runs WHERE id = ?`, id))
+}
+
+// LatestRun returns the Capsule's most recently created Run.
+func (r *repository) LatestRun(ctx context.Context, capsuleID domain.CapsuleID) (domain.Run, error) {
+	return scanRun(r.q.QueryRowContext(ctx, `
+		SELECT id, capsule_id, harness, state, exit_status, failure, event_cursor, created_at,
+			started_at, finished_at, updated_at, resource_version
+		FROM runs WHERE capsule_id = ? ORDER BY created_at DESC, id DESC LIMIT 1`, capsuleID))
 }
 
 func (r *repository) ListRuns(

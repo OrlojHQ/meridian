@@ -50,6 +50,7 @@ import {
   getCoordinationGrant,
   listThreadLinks,
   revokeCoordinationGrant,
+  getBoard,
 } from "./generated/sdk.gen";
 import { projectHarnessImage } from "./harnessPacks";
 import type { HarnessSetupUpload, HarnessSetupPreview, ImportHarnessSetupRequest, EnvironmentMutation, ProjectEnvironment,
@@ -57,6 +58,7 @@ import type { HarnessSetupUpload, HarnessSetupPreview, ImportHarnessSetupRequest
   ProviderConnection, ProviderConnectionPage, ProviderConnectionRequestWritable, ProjectProviderConnection,
   HarnessSetup, HarnessSetupPage, HarnessSetupRevisionPage, MutateHarnessSetupRequest,
   AttachTicket,
+  BoardPage,
   Capabilities,
   Capsule,
   CapsulePage,
@@ -91,6 +93,8 @@ import type { HarnessSetupUpload, HarnessSetupPreview, ImportHarnessSetupRequest
   WorkspaceFile,
   WorkspaceFilePage,
 } from "./generated/types.gen";
+
+export type BoardExpand = "attention" | "all" | "none";
 
 const baseUrl =
   typeof window === "undefined" ? "http://127.0.0.1:8080" : window.location.origin;
@@ -257,6 +261,8 @@ export const api = {
         },
       }),
     ),
+  board: (expand: BoardExpand, signal?: AbortSignal) =>
+    call<BoardPage>(getBoard({ ...generatedOptions(signal), query: { expand } })),
   threadLinks: (threadId: string, signal?: AbortSignal) =>
     call<ThreadLinkPage>(
       listThreadLinks({ ...generatedOptions(signal), path: { threadId } }),

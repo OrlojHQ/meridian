@@ -742,6 +742,34 @@ func (s *Service) coordCancel(
 	return s.linkResponse(ctx, link.ID)
 }
 
+// countOperatorMessage records, without content, that the operator messaged a
+// helper directly so the lead's next wake can say so. Closed links are left
+// untouched: the lead can no longer address the helper, and a closed link's
+// update time bounds how long the sweep may stop the helper.
+func (s *Service) countOperatorMessage(ctx context.Context) appendTxHook {
+	return func(tx ports.Transaction, thread domain.Thread, _ domain.ThreadMessageID, now time.Time) error {
+		link, err := tx.GetThreadLinkByChildThread(ctx, thread.ID)
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if link.State != domain.LinkActive {
+			return nil
+		}
+		previous := link.ResourceVersion
+		link.OperatorMessages++
+		link.UpdatedAt = now
+		link.ResourceVersion++
+		if err := tx.UpdateThreadLink(ctx, link, previous); err != nil {
+			return err
+		}
+		return s.appendEvent(ctx, tx, "thread_link", string(link.ID), "thread_link.operator_messaged",
+			link.ResourceVersion, nil)
+	}
+}
+
 func digestKey(parts ...string) string {
 	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
 	return hex.EncodeToString(sum[:16])

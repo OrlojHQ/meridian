@@ -126,7 +126,20 @@ spawn. `meridian thread links THREAD_ID` lists a lead's helpers,
 `meridian grant revoke GRANT_ID --expected-version N` ends it and stops the
 helpers (`--keep-helpers` leaves them running). `meridian capsule list --role
 sub` lists helper Capsules. A helper is an ordinary Thread: its permission and
-input requests come to you, never to its lead.
+input requests come to you, never to its lead. If you message a helper
+directly, the lead's next report wake says so (without your text), and the
+message does not count against `--max-messages-per-link`.
+
+### Board
+
+`meridian board` lists every Capsule across Projects by status: needs you
+(oldest first), working, PR open, ready for review, idle, paused and sealed.
+Leads show a helper rollup; helpers stay folded under their lead unless they
+need you, in which case they get their own row. `--all` lists every helper,
+`--expand none` lists only main Capsules, and `--project PROJECT_ID` limits the
+board to one Project. The browser has the same view at `/ui/board`, with
+"Show all helpers" and a per-lead helper fold; the command palette's "Next item
+needing me" opens the oldest item that needs you.
 
 Inside a lead Capsule the agent uses `meridian-coord`, which official packs
 register as an MCP server for Claude Code and Codex. It also works as a CLI:

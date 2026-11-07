@@ -131,6 +131,22 @@ export function buildPaletteCommands({
     }
   }
 
+  const waiting = items
+    .filter(({ activity }) => activity.group === "attention")
+    .sort((a, b) => Date.parse(a.activity.since ?? "") - Date.parse(b.activity.since ?? ""));
+  const next = waiting[0];
+  if (next) {
+    commands.push({
+      id: "go:next-needing-me",
+      group: "Go to",
+      label: "Next item needing me",
+      detail: `${next.capsule.name} · ${next.activity.label}`,
+      keywords: "attention needs you queue permission input",
+      activity: "attention",
+      run: () => actions.navigate(sessionPath(next.capsule.id)),
+    });
+  }
+
   for (const { capsule, activity } of items) {
     commands.push({
       id: `capsule:${capsule.id}`,
@@ -188,6 +204,7 @@ export function buildPaletteCommands({
       run: () => actions.navigate(path),
     });
   go("activity", "Activity", "/ui/", "inbox home");
+  go("board", "Board", "/ui/board", "status helpers leads everything");
   go("threads", "Threads", "/ui/threads", "sessions structured");
   go("harnesses", "Harness settings", "/ui/settings/harnesses", "providers setups");
 

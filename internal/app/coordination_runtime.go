@@ -441,7 +441,13 @@ func (s *Service) wakeLead(ctx context.Context, grant domain.CoordinationGrant) 
 	// The poller records reads asynchronously. A lead's wait or result returns
 	// before its turn can end, so reading the mailbox after seeing the turn
 	// idle catches every report it already consumed.
-	if pending, err = s.unreadReports(ctx, grant); err != nil || len(pending) == 0 {
+	if links, err = s.refreshConsumedReports(ctx, grant); err != nil {
+		return
+	}
+	pending = slices.DeleteFunc(slices.Clone(links), func(link domain.ThreadLink) bool {
+		return link.ReportSeq <= link.ReportDeliveredSeq
+	})
+	if len(pending) == 0 {
 		return
 	}
 	var text strings.Builder
@@ -469,12 +475,30 @@ func (s *Service) wakeLead(ctx context.Context, grant domain.CoordinationGrant) 
 	if len(included) == 0 {
 		return
 	}
+	noticed := make(map[domain.ThreadLinkID]int)
+	for _, link := range links {
+		if link.OperatorMessages > link.OperatorNoticed {
+			if len(noticed) == 0 {
+				text.WriteString("Operator activity (no message content is shared):\n")
+			}
+			fmt.Fprintf(&text, "- The operator messaged helper %q directly (%d new).\n",
+				link.Name, link.OperatorMessages-link.OperatorNoticed)
+			noticed[link.ID] = link.OperatorMessages
+		}
+	}
+	if len(noticed) > 0 {
+		text.WriteString("\n")
+	}
 	text.WriteString("Summarize these results for the user and decide the next step.")
 	slices.Sort(ids)
-	keyParts := make([]string, 0, len(ids))
+	keyParts := make([]string, 0, len(ids)+len(noticed))
 	for _, id := range ids {
 		keyParts = append(keyParts, string(id)+":"+strconv.Itoa(included[id]))
 	}
+	for id, count := range noticed {
+		keyParts = append(keyParts, "operator:"+string(id)+":"+strconv.Itoa(count))
+	}
+	slices.Sort(keyParts)
 	key := "wake-" + digestKey(keyParts...)
 	payload := persistedThreadBlock{Content: text.String(), Origin: &ThreadOrigin{
 		Source: OriginCoordination, Kind: OriginFromHelpers, LinkIDs: ids,
@@ -491,6 +515,11 @@ func (s *Service) wakeLead(ctx context.Context, grant domain.CoordinationGrant) 
 		func(tx ports.Transaction, _ domain.Thread, _ domain.ThreadMessageID, now time.Time) error {
 			for id, seq := range included {
 				if err := s.markReportDeliveredTx(ctx, tx, id, seq, now); err != nil {
+					return err
+				}
+			}
+			for id, count := range noticed {
+				if err := s.markOperatorNoticedTx(ctx, tx, id, count, now); err != nil {
 					return err
 				}
 			}
@@ -523,9 +552,9 @@ func (s *Service) markReportDeliveredTx(
 		link.ResourceVersion, []byte(fmt.Sprintf(`{"reportSeq":%d}`, seq)))
 }
 
-// unreadReports applies the lead mailbox's current consumed reports and
-// returns the links whose latest report the lead has not seen.
-func (s *Service) unreadReports(ctx context.Context, grant domain.CoordinationGrant) ([]domain.ThreadLink, error) {
+// refreshConsumedReports applies the lead mailbox's current consumed reports
+// and returns the lead's links as they stand afterwards.
+func (s *Service) refreshConsumedReports(ctx context.Context, grant domain.CoordinationGrant) ([]domain.ThreadLink, error) {
 	var capsule domain.Capsule
 	if err := s.store.View(ctx, func(reader ports.Reader) error {
 		var err error
@@ -547,9 +576,25 @@ func (s *Service) unreadReports(ctx context.Context, grant domain.CoordinationGr
 	}); err != nil {
 		return nil, err
 	}
-	return slices.DeleteFunc(links, func(link domain.ThreadLink) bool {
-		return link.ReportSeq <= link.ReportDeliveredSeq
-	}), nil
+	return links, nil
+}
+
+func (s *Service) markOperatorNoticedTx(
+	ctx context.Context, tx ports.Transaction, id domain.ThreadLinkID, count int, now time.Time,
+) error {
+	link, err := tx.GetThreadLink(ctx, id)
+	if err != nil {
+		return err
+	}
+	count = min(count, link.OperatorMessages)
+	if count <= link.OperatorNoticed {
+		return nil
+	}
+	previous := link.ResourceVersion
+	link.OperatorNoticed = count
+	link.UpdatedAt = now
+	link.ResourceVersion++
+	return tx.UpdateThreadLink(ctx, link, previous)
 }
 
 // applyConsumedReports records reports the lead read through wait or result.

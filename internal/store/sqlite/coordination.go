@@ -148,8 +148,8 @@ const linkSelect = `
 	SELECT id, grant_id, parent_thread_id, parent_capsule_id, child_intent_id,
 		child_thread_id, child_capsule_id, depth, name, harness, state, close_reason,
 		report_seq, report_delivered_seq, report_message_seq, last_report_status,
-		last_report_reason, last_report_at, messages_forwarded, created_at,
-		updated_at, resource_version
+		last_report_reason, last_report_at, messages_forwarded, operator_messages,
+		operator_noticed, created_at, updated_at, resource_version
 	FROM thread_links`
 
 func (r *repository) InsertThreadLink(ctx context.Context, link domain.ThreadLink) error {
@@ -158,15 +158,15 @@ func (r *repository) InsertThreadLink(ctx context.Context, link domain.ThreadLin
 			id, grant_id, parent_thread_id, parent_capsule_id, child_intent_id,
 			child_thread_id, child_capsule_id, depth, name, harness, state, close_reason,
 			report_seq, report_delivered_seq, report_message_seq, last_report_status,
-			last_report_reason, last_report_at, messages_forwarded, created_at,
-			updated_at, resource_version
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			last_report_reason, last_report_at, messages_forwarded, operator_messages,
+			operator_noticed, created_at, updated_at, resource_version
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		link.ID, link.GrantID, link.ParentThreadID, link.ParentCapsuleID, link.ChildIntentID,
 		link.ChildThreadID, link.ChildCapsuleID, link.Depth, link.Name, link.Harness,
 		link.State, link.CloseReason, link.ReportSeq, link.ReportDeliveredSeq,
 		link.ReportMessageSeq, link.LastReportStatus, link.LastReportReason,
-		nullableTime(link.LastReportAt), link.MessagesForwarded, formatTime(link.CreatedAt),
-		formatTime(link.UpdatedAt), link.ResourceVersion,
+		nullableTime(link.LastReportAt), link.MessagesForwarded, link.OperatorMessages,
+		link.OperatorNoticed, formatTime(link.CreatedAt), formatTime(link.UpdatedAt), link.ResourceVersion,
 	)
 	return mapError(err)
 }
@@ -183,11 +183,12 @@ func (r *repository) UpdateThreadLink(
 		UPDATE thread_links SET state = ?, close_reason = ?, report_seq = ?,
 			report_delivered_seq = ?, report_message_seq = ?, last_report_status = ?,
 			last_report_reason = ?, last_report_at = ?, messages_forwarded = ?,
-			updated_at = ?, resource_version = ?
+			operator_messages = ?, operator_noticed = ?, updated_at = ?, resource_version = ?
 		WHERE id = ? AND resource_version = ?`,
 		link.State, link.CloseReason, link.ReportSeq, link.ReportDeliveredSeq,
 		link.ReportMessageSeq, link.LastReportStatus, link.LastReportReason,
-		nullableTime(link.LastReportAt), link.MessagesForwarded, formatTime(link.UpdatedAt),
+		nullableTime(link.LastReportAt), link.MessagesForwarded, link.OperatorMessages,
+		link.OperatorNoticed, formatTime(link.UpdatedAt),
 		link.ResourceVersion, link.ID, expected,
 	)
 	return r.expectOneRow(ctx, result, err, "thread_links", string(link.ID))
@@ -241,7 +242,8 @@ func scanLink(row scanner) (domain.ThreadLink, error) {
 		&link.ChildThreadID, &link.ChildCapsuleID, &link.Depth, &link.Name, &link.Harness,
 		&link.State, &link.CloseReason, &link.ReportSeq, &link.ReportDeliveredSeq,
 		&link.ReportMessageSeq, &link.LastReportStatus, &link.LastReportReason, &reported,
-		&link.MessagesForwarded, &created, &updated, &link.ResourceVersion,
+		&link.MessagesForwarded, &link.OperatorMessages, &link.OperatorNoticed,
+		&created, &updated, &link.ResourceVersion,
 	); err != nil {
 		return domain.ThreadLink{}, mapError(err)
 	}

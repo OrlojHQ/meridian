@@ -35,6 +35,7 @@ var operationRolesBearerAuth = map[string][]string{
 	DeleteSecretOperation:                   []string{},
 	DeleteThreadOperation:                   []string{},
 	ExportCapsuleWorkspaceOperation:         []string{},
+	GetBoardOperation:                       []string{},
 	GetCapabilitiesOperation:                []string{},
 	GetCapsuleOperation:                     []string{},
 	GetCapsuleGitDiffOperation:              []string{},

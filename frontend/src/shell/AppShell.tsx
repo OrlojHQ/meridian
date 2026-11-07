@@ -22,6 +22,7 @@ import { NewWorkspaceDialog } from "../components/NewWorkspaceDialog";
 import { HarnessMark } from "../components/ui/HarnessMark";
 import {
   ActivityIcon,
+  BoardIcon,
   ChevronIcon,
   CommandIcon,
   MenuIcon,
@@ -505,6 +506,10 @@ export function AppShell() {
                 {attentionCount}
               </span>
             )}
+          </NavLink>
+          <NavLink to="/ui/board">
+            <BoardIcon />
+            Board
           </NavLink>
           <NavLink to="/ui/threads">
             <ThreadIcon />

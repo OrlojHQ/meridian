@@ -163,6 +163,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("PATCH /projects/{projectId}", s.patchProject)
 	s.mux.HandleFunc("POST /projects/{projectId}/threads", s.createProjectThread)
 	s.mux.HandleFunc("GET /project-thread-intents/{intentId}", s.getProjectThreadIntent)
+	s.mux.HandleFunc("GET /board", s.getBoard)
 	s.mux.HandleFunc("GET /threads/{threadId}/links", s.listThreadLinks)
 	s.mux.HandleFunc("GET /thread-links/{linkId}", s.getThreadLink)
 	s.mux.HandleFunc("GET /coordination-grants/{grantId}", s.getCoordinationGrant)

@@ -596,8 +596,12 @@ func (s *Service) SendThreadMessage(
 			Content: saved.Content,
 		}
 	}
-	return s.appendAndSend(ctx, id, expected, key, "message", domain.ThreadRoleUser,
-		domain.ThreadMessagePrompt, domain.ThreadBlockText, persistedThreadBlock{Content: content}, frame)
+	if expected <= 0 {
+		return ThreadMutationResult{}, fmt.Errorf("%w: expected resource version is required", domain.ErrInvalid)
+	}
+	return s.appendAndSendHook(ctx, id, expected, key, "message", domain.ThreadRoleUser,
+		domain.ThreadMessagePrompt, domain.ThreadBlockText, persistedThreadBlock{Content: content}, frame,
+		s.countOperatorMessage(ctx))
 }
 
 func (s *Service) RespondThread(

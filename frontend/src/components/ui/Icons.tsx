@@ -54,6 +54,16 @@ export function ActivityIcon(props: IconProps) {
   );
 }
 
+export function BoardIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="3" y="4" width="4" height="12" rx="1" />
+      <rect x="8.5" y="4" width="4" height="8" rx="1" />
+      <rect x="14" y="4" width="3" height="5" rx="1" />
+    </Icon>
+  );
+}
+
 export function ThreadIcon(props: IconProps) {
   return (
     <Icon {...props}>

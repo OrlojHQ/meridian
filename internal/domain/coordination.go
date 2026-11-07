@@ -256,9 +256,13 @@ type ThreadLink struct {
 	LastReportReason   ReportReason
 	LastReportAt       time.Time
 	MessagesForwarded  int
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
-	ResourceVersion    ResourceVersion
+	// OperatorMessages counts operator messages sent straight to the helper;
+	// OperatorNoticed is how many of them a lead wake prompt has mentioned.
+	OperatorMessages int
+	OperatorNoticed  int
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	ResourceVersion  ResourceVersion
 }
 
 func ValidLinkName(name string) bool {

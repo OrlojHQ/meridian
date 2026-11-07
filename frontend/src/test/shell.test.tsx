@@ -228,7 +228,7 @@ describe("application shell", () => {
     expect(gitStatus).not.toHaveBeenCalled();
   });
 
-  it("places Activity, Threads, and Harness settings at the top of the sidebar", async () => {
+  it("places Activity, Board, Threads, and Harness settings at the top of the sidebar", async () => {
     vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
     vi.spyOn(api, "capsules").mockResolvedValue({
       items: [{ ...capsule, name: "Setup broke", state: "Failed" }],
@@ -249,11 +249,13 @@ describe("application shell", () => {
     const links = within(views).getAllByRole("link");
     expect(links.map((link) => link.textContent?.replace(/\d+$/, ""))).toEqual([
       "Activity",
+      "Board",
       "Threads",
       "Harness settings",
     ]);
     expect(links.map((link) => link.getAttribute("href"))).toEqual([
       "/ui/",
+      "/ui/board",
       "/ui/threads",
       "/ui/settings/harnesses",
     ]);

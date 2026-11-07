@@ -73,6 +73,10 @@ type ExportCapsuleWorkspaceRes interface {
 	exportCapsuleWorkspaceRes()
 }
 
+type GetBoardRes interface {
+	getBoardRes()
+}
+
 type GetCapabilitiesRes interface {
 	getCapabilitiesRes()
 }

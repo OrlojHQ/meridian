@@ -41,6 +41,7 @@ type Reader interface {
 	ListRecoverableCapsules(context.Context) ([]domain.Capsule, error)
 	GetRun(context.Context, domain.RunID) (domain.Run, error)
 	ListRuns(context.Context, domain.CapsuleID, Page) ([]domain.Run, bool, error)
+	LatestRun(context.Context, domain.CapsuleID) (domain.Run, error)
 	ListRecoverableRuns(context.Context) ([]domain.Run, error)
 	ListRunEvents(context.Context, domain.RunID, int64, int) ([]domain.Event, bool, error)
 	ListEvents(context.Context, string, string) ([]domain.Event, error)
