@@ -25,6 +25,7 @@ const (
 	DeleteSecretOperation                   OperationName = "DeleteSecret"
 	DeleteThreadOperation                   OperationName = "DeleteThread"
 	ExportCapsuleWorkspaceOperation         OperationName = "ExportCapsuleWorkspace"
+	GetBoardOperation                       OperationName = "GetBoard"
 	GetCapabilitiesOperation                OperationName = "GetCapabilities"
 	GetCapsuleOperation                     OperationName = "GetCapsule"
 	GetCapsuleGitDiffOperation              OperationName = "GetCapsuleGitDiff"

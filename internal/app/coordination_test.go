@@ -725,6 +725,33 @@ func TestCoordinationRecordsResistTampering(t *testing.T) {
 		link.ReportSeq, link.ResourceVersion = 1, link.ResourceVersion+1
 		return tx.UpdateThreadLink(f.ctx, link, previous)
 	})
+	if err := f.store.Transact(f.ctx, func(tx ports.Transaction) error {
+		link, err := tx.GetThreadLink(f.ctx, linkID)
+		if err != nil {
+			return err
+		}
+		previous := link.ResourceVersion
+		link.OperatorMessages, link.OperatorNoticed, link.ResourceVersion = 2, 1, link.ResourceVersion+1
+		return tx.UpdateThreadLink(f.ctx, link, previous)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for name, change := range map[string]func(*domain.ThreadLink){
+		"operator message rewind": func(link *domain.ThreadLink) { link.OperatorMessages = 1 },
+		"operator notice rewind":  func(link *domain.ThreadLink) { link.OperatorNoticed = 0 },
+		"notice beyond messages":  func(link *domain.ThreadLink) { link.OperatorNoticed = 3 },
+	} {
+		mutate(name, func(tx ports.Transaction) error {
+			link, err := tx.GetThreadLink(f.ctx, linkID)
+			if err != nil {
+				return err
+			}
+			previous := link.ResourceVersion
+			change(&link)
+			link.ResourceVersion++
+			return tx.UpdateThreadLink(f.ctx, link, previous)
+		})
+	}
 	ignore(func(tx ports.Transaction) error {
 		grant, err := tx.GetCoordinationGrant(f.ctx, position.GrantID)
 		if err != nil {

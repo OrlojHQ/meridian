@@ -175,6 +175,31 @@ func TestCoordinationRoutes(t *testing.T) {
 		t.Fatal("unknown link found")
 	}
 
+	boardResult, err := api.GetBoard(ctx, client.GetBoardParams{
+		ProjectId: client.NewOptString(projectID), Expand: client.NewOptGetBoardExpand(client.GetBoardExpandAll),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	board := boardResult.(*client.BoardPage)
+	if len(board.Items) != 1 || board.Truncated || board.Items[0].Capsule.ID != intent.CapsuleId ||
+		board.Items[0].Thread.Value.ID != thread.ID || board.Items[0].Surfaced ||
+		board.Items[0].Status != client.BoardItemStatusWorking {
+		t.Fatalf("board = %#v", board)
+	}
+	if bad, err := api.GetBoard(ctx, client.GetBoardParams{ProjectId: client.NewOptString("missing")}); err != nil {
+		t.Fatal(err)
+	} else if _, ok := bad.(*client.BoardPage); ok {
+		t.Fatal("board for an unknown Project")
+	}
+	invalid := httptest.NewRecorder()
+	invalidRequest := httptest.NewRequest(http.MethodGet, "/board?expand=everything", nil)
+	invalidRequest.Header.Set("Authorization", "Bearer "+tokenValue)
+	handler.ServeHTTP(invalid, invalidRequest)
+	if invalid.Code != http.StatusBadRequest {
+		t.Fatalf("invalid expand = %d", invalid.Code)
+	}
+
 	unauthenticated := httptest.NewRecorder()
 	handler.ServeHTTP(unauthenticated, httptest.NewRequest(http.MethodGet, "/coordination-grants/"+grantID, nil))
 	if unauthenticated.Code != http.StatusUnauthorized {

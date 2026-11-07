@@ -287,6 +287,23 @@ describe("command palette", () => {
     expect(screen.getByRole("dialog", { name: "Start work in Meridian" })).toBeInTheDocument();
   });
 
+  it("jumps to the oldest item that needs the operator", async () => {
+    onPlatform("Linux x86_64");
+    mockAPI();
+    vi.spyOn(api, "capsules").mockResolvedValue({
+      items: [capsule, { ...other, state: "Failed", updatedAt: "2026-08-26T00:00:30Z" }],
+    });
+    renderShell();
+    await screen.findByRole("link", { name: /Fix flaky tests/ });
+    await openPalette();
+    await userEvent.type(screen.getByRole("combobox"), "next needing");
+    expect(screen.getByRole("option", { name: /Next item needing me/ })).toHaveTextContent(
+      "Fix flaky tests",
+    );
+    await userEvent.keyboard("{Enter}");
+    expect(screen.getByTestId("location")).toHaveTextContent("/ui/capsules/capsule-2");
+  });
+
   it("lists keyboard shortcuts from ? and from the palette", async () => {
     onPlatform("MacIntel");
     mockAPI();

@@ -658,6 +658,42 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
         default: { $ref: "#/components/responses/DefaultError" }
+  /board:
+    get:
+      operationId: getBoard
+      summary: List every Capsule's content-free status across Projects
+      description: >
+        One row per Capsule, grouped by status. Helper sub-Capsules fold under
+        their lead's child rollup; with the default expand=attention a helper
+        that needs the operator also gets its own surfaced row. Built from
+        Capsule, Thread, Run, Delivery and link summaries plus the in-memory
+        Thread attention; never transcript text and never Git status.
+      tags: [threads]
+      parameters:
+        - name: projectId
+          in: query
+          required: false
+          schema: { type: string }
+        - name: expand
+          in: query
+          required: false
+          description: >
+            attention (default) lists main Capsules and helpers that need the
+            operator; all lists every helper; none lists main Capsules only. A
+            helper whose lead is not listed always gets its own row.
+          schema:
+            type: string
+            enum: [attention, all, none]
+      responses:
+        "200":
+          description: Board rows, needs-you first and oldest first within it
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BoardPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        default: { $ref: "#/components/responses/DefaultError" }
   /threads/{threadId}/links:
     get:
       operationId: listThreadLinks
@@ -2680,6 +2716,63 @@ components:
         pullRequestTitle: { type: string, maxLength: 512 }
         pullRequestBody: { type: string, maxLength: 65536 }
         baseBranch: { type: string, maxLength: 255 }
+    BoardPage:
+      type: object
+      required: [items, truncated]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/BoardItem" }
+        truncated:
+          type: boolean
+          description: True when the installation has more Capsules than one board read covers (500).
+    BoardItem:
+      type: object
+      description: Content-free status of one Capsule and its primary Thread.
+      required: [capsule, status, since, surfaced]
+      properties:
+        capsule: { $ref: "#/components/schemas/Capsule" }
+        thread: { $ref: "#/components/schemas/Thread" }
+        currentRun: { $ref: "#/components/schemas/Run" }
+        status:
+          type: string
+          enum: [needs_you, working, pr_open, ready_for_review, idle, paused, sealed]
+        since: { type: string, format: date-time }
+        needsYou:
+          type: string
+          enum: [permission, input, failed]
+          description: Why the row needs the operator; set only with status needs_you.
+        latestDelivery: { $ref: "#/components/schemas/DeliverySummary" }
+        link:
+          $ref: "#/components/schemas/ThreadLink"
+          description: The helper's link to its lead, on sub-Capsules.
+        childRollup: { $ref: "#/components/schemas/ChildRollup" }
+        surfaced:
+          type: boolean
+          description: A helper listed on its own because it needs the operator.
+    ChildRollup:
+      type: object
+      description: A lead's helpers by state.
+      required: [total, working, idle, done, needsYou, failed]
+      properties:
+        total: { type: integer, minimum: 0 }
+        working: { type: integer, minimum: 0 }
+        idle: { type: integer, minimum: 0 }
+        done: { type: integer, minimum: 0 }
+        needsYou: { type: integer, minimum: 0 }
+        failed: { type: integer, minimum: 0 }
+    DeliverySummary:
+      type: object
+      required: [id, state, action, updatedAt]
+      properties:
+        id: { type: string }
+        state: { $ref: "#/components/schemas/DeliveryState" }
+        action:
+          type: string
+          enum: [push, open_pull_request]
+        pullRequestNumber: { type: integer, format: int64, minimum: 1 }
+        pullRequestUrl: { type: string, format: uri }
+        updatedAt: { type: string, format: date-time }
     DeliveryState:
       type: string
       enum: [queued, committing, pushing, opening_pr, succeeded, failed]
@@ -2886,7 +2979,8 @@ components:
       required:
         [id, grantId, parentThreadId, parentCapsuleId, childThreadId, childCapsuleId,
          childIntentId, depth, name, harness, state, phase, reportSeq,
-         reportDeliveredSeq, messagesForwarded, createdAt, updatedAt, resourceVersion]
+         reportDeliveredSeq, messagesForwarded, operatorMessages, createdAt, updatedAt,
+         resourceVersion]
       properties:
         id: { type: string }
         grantId: { type: string }
@@ -2909,6 +3003,10 @@ components:
         lastReportReason: { type: string, enum: [cancelled, capsule_failed, session_ended, revoked] }
         lastReportAt: { type: string, format: date-time }
         messagesForwarded: { type: integer, minimum: 0 }
+        operatorMessages:
+          type: integer
+          minimum: 0
+          description: Operator messages sent straight to this helper. They do not count against the lead's message limit.
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
         resourceVersion: { type: integer, format: int64, minimum: 1 }

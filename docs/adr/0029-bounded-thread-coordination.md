@@ -87,6 +87,17 @@ Three ways to carry a request out of the Capsule were considered:
   transport and the mailbox end to end (Docker and Agent Sandbox). Audit
   events for grants, links, forwarded messages, reports and rejections carry
   identifiers, codes and sizes only. Metrics and traces remain content-free.
+- Amendment, board and operator notices: `GET /board` lists every Capsule's
+  status from Capsule, Thread, Run, Delivery and link rows plus the existing
+  in-memory Thread attention (ADR 0025). It reads no transcript text beyond
+  that derivation, polls no Git state, and grants nothing; helpers that need
+  the operator are listed under their own name. When the operator messages a
+  helper directly, its active link counts the message (`operatorMessages`,
+  a plaintext counter) outside `maxMessagesPerLink`, and the lead's next
+  report wake says that the operator messaged that helper and how many times,
+  never what was said. A notice never wakes a lead on its own. Messages to a
+  helper whose link has closed are not counted and leave the link untouched,
+  so resuming a stopped helper does not restart its stop window.
 - Not in this decision, and left for later ADR amendments: operator spawn
   approval, widening a grant, depth above 1, returned patch series, proposed
   Deliveries, auto-archive of finished children, promoting or detaching a

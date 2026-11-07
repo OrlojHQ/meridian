@@ -320,3 +320,48 @@ func TestThreadFollowUntilIdleExitsOnOpenStream(t *testing.T) {
 		t.Fatalf("after = %q, output = %q", after, output.String())
 	}
 }
+
+func TestBoardListsRowsAndAsksForEveryHelper(t *testing.T) {
+	var query string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		query = request.URL.Path + "?" + request.URL.RawQuery
+		writer.Header().Set("Content-Type", "application/json")
+		capsule := func(id, name, role string) string {
+			return `{"id":"` + id + `","projectId":"project-1","timelineId":"timeline-1","name":"` + name +
+				`","harness":"mock","role":"` + role + `","state":"Ready","desiredState":"Ready","restoreComplete":true,` +
+				`"createdAt":"2026-08-24T12:00:00Z","updatedAt":"2026-08-24T12:00:00Z","resourceVersion":1}`
+		}
+		_, _ = io.WriteString(writer, `{"truncated":false,"items":[`+
+			`{"capsule":`+capsule("capsule-2", "helper-capsule", "sub")+`,"status":"needs_you","needsYou":"permission",`+
+			`"since":"2026-08-24T12:01:00Z","surfaced":true,"link":{"id":"link-1","grantId":"grant-1",`+
+			`"parentThreadId":"thread-1","parentCapsuleId":"capsule-1","childThreadId":"thread-2",`+
+			`"childCapsuleId":"capsule-2","childIntentId":"intent-2","depth":1,"name":"tests","harness":"mock",`+
+			`"state":"active","phase":"working","reportSeq":0,"reportDeliveredSeq":0,"messagesForwarded":0,`+
+			`"operatorMessages":0,"createdAt":"2026-08-24T12:00:00Z","updatedAt":"2026-08-24T12:00:00Z","resourceVersion":1}},`+
+			`{"capsule":`+capsule("capsule-1", "lead", "main")+`,"status":"working","since":"2026-08-24T12:00:00Z",`+
+			`"surfaced":false,"childRollup":{"total":2,"working":1,"idle":0,"done":0,"needsYou":1,"failed":0}}]}`)
+	}))
+	defer server.Close()
+	var output bytes.Buffer
+	config := &cliConfig{server: server.URL, tokenFile: testAPITokenFile(t), stdout: &output}
+	root := &cobra.Command{Use: "meridian", SilenceUsage: true, SilenceErrors: true}
+	root.AddCommand(newBoardCommand(config))
+	root.SetArgs([]string{"board", "--all", "--project", "project-1"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if query != "/board?projectId=project-1&expand=all" && query != "/board?expand=all&projectId=project-1" {
+		t.Fatalf("board request = %s", query)
+	}
+	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
+	if len(lines) != 2 || !strings.HasPrefix(lines[0], "needs_you(permission)\ttests (helper)\tmock\tcapsule=capsule-2") ||
+		!strings.HasPrefix(lines[1], "working\tlead\tmock\tcapsule=capsule-1") ||
+		!strings.Contains(lines[1], "helpers=2 working=1 idle=0 done=0 needs_you=1 failed=0") {
+		t.Fatalf("board output =\n%s", output.String())
+	}
+
+	root.SetArgs([]string{"board", "--all", "--expand", "none"})
+	if err := root.Execute(); err == nil {
+		t.Fatal("--all with --expand was accepted")
+	}
+}

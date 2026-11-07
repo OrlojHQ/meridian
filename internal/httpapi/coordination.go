@@ -80,6 +80,7 @@ type threadLinkJSON struct {
 	LastReportReason   string `json:"lastReportReason,omitempty"`
 	LastReportAt       string `json:"lastReportAt,omitempty"`
 	MessagesForwarded  int    `json:"messagesForwarded"`
+	OperatorMessages   int    `json:"operatorMessages"`
 	CreatedAt          string `json:"createdAt"`
 	UpdatedAt          string `json:"updatedAt"`
 	ResourceVersion    int64  `json:"resourceVersion"`
@@ -131,9 +132,10 @@ func (s *Server) linkResponse(request *http.Request, link domain.ThreadLink) thr
 		ReportSeq: link.ReportSeq, ReportDeliveredSeq: link.ReportDeliveredSeq,
 		LastReportStatus: string(link.LastReportStatus), LastReportReason: string(link.LastReportReason),
 		LastReportAt: formatOptionalTime(link.LastReportAt), MessagesForwarded: link.MessagesForwarded,
-		CreatedAt:       link.CreatedAt.UTC().Format(time.RFC3339Nano),
-		UpdatedAt:       link.UpdatedAt.UTC().Format(time.RFC3339Nano),
-		ResourceVersion: int64(link.ResourceVersion),
+		OperatorMessages: link.OperatorMessages,
+		CreatedAt:        link.CreatedAt.UTC().Format(time.RFC3339Nano),
+		UpdatedAt:        link.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		ResourceVersion:  int64(link.ResourceVersion),
 	}
 }
 

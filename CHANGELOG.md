@@ -9,6 +9,16 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- A board of every Capsule by status. `GET /board`, `meridian board` and the
+  browser's Board view group Capsules across Projects into needs you, working,
+  PR open, ready for review, idle, paused and sealed, with the latest Delivery
+  and, for leads, a helper rollup. Helpers fold under their lead unless they
+  need you; `expand=all` (`--all`, "Show all helpers") lists every helper. The
+  command palette gains "Next item needing me". When the operator messages a
+  helper directly, its lead's next report wake says so without the message
+  text, and the message does not count against the lead's per-helper limit;
+  thread links gain `operatorMessages` (ADR 0029).
+
 - A structured Thread can lead helper Threads. Spawning it with a
   Coordination Grant (`meridian thread spawn --lead`, the browser's "Lead
   with helpers" option, or `coordination` on `POST /projects/{id}/threads`)

@@ -119,6 +119,278 @@ func (s *BearerAuth) SetRoles(val []string) {
 	s.Roles = val
 }
 
+// Content-free status of one Capsule and its primary Thread.
+// Ref: #/components/schemas/BoardItem
+type BoardItem struct {
+	Capsule    Capsule         `json:"capsule"`
+	Thread     OptThread       `json:"thread"`
+	CurrentRun OptRun          `json:"currentRun"`
+	Status     BoardItemStatus `json:"status"`
+	Since      time.Time       `json:"since"`
+	// Why the row needs the operator; set only with status needs_you.
+	NeedsYou       OptBoardItemNeedsYou `json:"needsYou"`
+	LatestDelivery OptDeliverySummary   `json:"latestDelivery"`
+	// The helper's link to its lead, on sub-Capsules.
+	Link        OptThreadLink  `json:"link"`
+	ChildRollup OptChildRollup `json:"childRollup"`
+	// A helper listed on its own because it needs the operator.
+	Surfaced bool `json:"surfaced"`
+}
+
+// GetCapsule returns the value of Capsule.
+func (s *BoardItem) GetCapsule() Capsule {
+	return s.Capsule
+}
+
+// GetThread returns the value of Thread.
+func (s *BoardItem) GetThread() OptThread {
+	return s.Thread
+}
+
+// GetCurrentRun returns the value of CurrentRun.
+func (s *BoardItem) GetCurrentRun() OptRun {
+	return s.CurrentRun
+}
+
+// GetStatus returns the value of Status.
+func (s *BoardItem) GetStatus() BoardItemStatus {
+	return s.Status
+}
+
+// GetSince returns the value of Since.
+func (s *BoardItem) GetSince() time.Time {
+	return s.Since
+}
+
+// GetNeedsYou returns the value of NeedsYou.
+func (s *BoardItem) GetNeedsYou() OptBoardItemNeedsYou {
+	return s.NeedsYou
+}
+
+// GetLatestDelivery returns the value of LatestDelivery.
+func (s *BoardItem) GetLatestDelivery() OptDeliverySummary {
+	return s.LatestDelivery
+}
+
+// GetLink returns the value of Link.
+func (s *BoardItem) GetLink() OptThreadLink {
+	return s.Link
+}
+
+// GetChildRollup returns the value of ChildRollup.
+func (s *BoardItem) GetChildRollup() OptChildRollup {
+	return s.ChildRollup
+}
+
+// GetSurfaced returns the value of Surfaced.
+func (s *BoardItem) GetSurfaced() bool {
+	return s.Surfaced
+}
+
+// SetCapsule sets the value of Capsule.
+func (s *BoardItem) SetCapsule(val Capsule) {
+	s.Capsule = val
+}
+
+// SetThread sets the value of Thread.
+func (s *BoardItem) SetThread(val OptThread) {
+	s.Thread = val
+}
+
+// SetCurrentRun sets the value of CurrentRun.
+func (s *BoardItem) SetCurrentRun(val OptRun) {
+	s.CurrentRun = val
+}
+
+// SetStatus sets the value of Status.
+func (s *BoardItem) SetStatus(val BoardItemStatus) {
+	s.Status = val
+}
+
+// SetSince sets the value of Since.
+func (s *BoardItem) SetSince(val time.Time) {
+	s.Since = val
+}
+
+// SetNeedsYou sets the value of NeedsYou.
+func (s *BoardItem) SetNeedsYou(val OptBoardItemNeedsYou) {
+	s.NeedsYou = val
+}
+
+// SetLatestDelivery sets the value of LatestDelivery.
+func (s *BoardItem) SetLatestDelivery(val OptDeliverySummary) {
+	s.LatestDelivery = val
+}
+
+// SetLink sets the value of Link.
+func (s *BoardItem) SetLink(val OptThreadLink) {
+	s.Link = val
+}
+
+// SetChildRollup sets the value of ChildRollup.
+func (s *BoardItem) SetChildRollup(val OptChildRollup) {
+	s.ChildRollup = val
+}
+
+// SetSurfaced sets the value of Surfaced.
+func (s *BoardItem) SetSurfaced(val bool) {
+	s.Surfaced = val
+}
+
+// Why the row needs the operator; set only with status needs_you.
+type BoardItemNeedsYou string
+
+const (
+	BoardItemNeedsYouPermission BoardItemNeedsYou = "permission"
+	BoardItemNeedsYouInput      BoardItemNeedsYou = "input"
+	BoardItemNeedsYouFailed     BoardItemNeedsYou = "failed"
+)
+
+// AllValues returns all BoardItemNeedsYou values.
+func (BoardItemNeedsYou) AllValues() []BoardItemNeedsYou {
+	return []BoardItemNeedsYou{
+		BoardItemNeedsYouPermission,
+		BoardItemNeedsYouInput,
+		BoardItemNeedsYouFailed,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s BoardItemNeedsYou) MarshalText() ([]byte, error) {
+	switch s {
+	case BoardItemNeedsYouPermission:
+		return []byte(s), nil
+	case BoardItemNeedsYouInput:
+		return []byte(s), nil
+	case BoardItemNeedsYouFailed:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *BoardItemNeedsYou) UnmarshalText(data []byte) error {
+	switch BoardItemNeedsYou(data) {
+	case BoardItemNeedsYouPermission:
+		*s = BoardItemNeedsYouPermission
+		return nil
+	case BoardItemNeedsYouInput:
+		*s = BoardItemNeedsYouInput
+		return nil
+	case BoardItemNeedsYouFailed:
+		*s = BoardItemNeedsYouFailed
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+type BoardItemStatus string
+
+const (
+	BoardItemStatusNeedsYou       BoardItemStatus = "needs_you"
+	BoardItemStatusWorking        BoardItemStatus = "working"
+	BoardItemStatusPrOpen         BoardItemStatus = "pr_open"
+	BoardItemStatusReadyForReview BoardItemStatus = "ready_for_review"
+	BoardItemStatusIdle           BoardItemStatus = "idle"
+	BoardItemStatusPaused         BoardItemStatus = "paused"
+	BoardItemStatusSealed         BoardItemStatus = "sealed"
+)
+
+// AllValues returns all BoardItemStatus values.
+func (BoardItemStatus) AllValues() []BoardItemStatus {
+	return []BoardItemStatus{
+		BoardItemStatusNeedsYou,
+		BoardItemStatusWorking,
+		BoardItemStatusPrOpen,
+		BoardItemStatusReadyForReview,
+		BoardItemStatusIdle,
+		BoardItemStatusPaused,
+		BoardItemStatusSealed,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s BoardItemStatus) MarshalText() ([]byte, error) {
+	switch s {
+	case BoardItemStatusNeedsYou:
+		return []byte(s), nil
+	case BoardItemStatusWorking:
+		return []byte(s), nil
+	case BoardItemStatusPrOpen:
+		return []byte(s), nil
+	case BoardItemStatusReadyForReview:
+		return []byte(s), nil
+	case BoardItemStatusIdle:
+		return []byte(s), nil
+	case BoardItemStatusPaused:
+		return []byte(s), nil
+	case BoardItemStatusSealed:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *BoardItemStatus) UnmarshalText(data []byte) error {
+	switch BoardItemStatus(data) {
+	case BoardItemStatusNeedsYou:
+		*s = BoardItemStatusNeedsYou
+		return nil
+	case BoardItemStatusWorking:
+		*s = BoardItemStatusWorking
+		return nil
+	case BoardItemStatusPrOpen:
+		*s = BoardItemStatusPrOpen
+		return nil
+	case BoardItemStatusReadyForReview:
+		*s = BoardItemStatusReadyForReview
+		return nil
+	case BoardItemStatusIdle:
+		*s = BoardItemStatusIdle
+		return nil
+	case BoardItemStatusPaused:
+		*s = BoardItemStatusPaused
+		return nil
+	case BoardItemStatusSealed:
+		*s = BoardItemStatusSealed
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Ref: #/components/schemas/BoardPage
+type BoardPage struct {
+	Items []BoardItem `json:"items"`
+	// True when the installation has more Capsules than one board read covers (500).
+	Truncated bool `json:"truncated"`
+}
+
+// GetItems returns the value of Items.
+func (s *BoardPage) GetItems() []BoardItem {
+	return s.Items
+}
+
+// GetTruncated returns the value of Truncated.
+func (s *BoardPage) GetTruncated() bool {
+	return s.Truncated
+}
+
+// SetItems sets the value of Items.
+func (s *BoardPage) SetItems(val []BoardItem) {
+	s.Items = val
+}
+
+// SetTruncated sets the value of Truncated.
+func (s *BoardPage) SetTruncated(val bool) {
+	s.Truncated = val
+}
+
+func (*BoardPage) getBoardRes() {}
+
 type CancelRunBadRequest ErrorEnvelope
 
 func (*CancelRunBadRequest) cancelRunRes() {}
@@ -887,6 +1159,77 @@ func (s *CaptureMomentRequest) SetExpectedResourceVersion(val int64) {
 type CaptureMomentUnprocessableEntity ErrorEnvelope
 
 func (*CaptureMomentUnprocessableEntity) captureMomentRes() {}
+
+// A lead's helpers by state.
+// Ref: #/components/schemas/ChildRollup
+type ChildRollup struct {
+	Total    int `json:"total"`
+	Working  int `json:"working"`
+	Idle     int `json:"idle"`
+	Done     int `json:"done"`
+	NeedsYou int `json:"needsYou"`
+	Failed   int `json:"failed"`
+}
+
+// GetTotal returns the value of Total.
+func (s *ChildRollup) GetTotal() int {
+	return s.Total
+}
+
+// GetWorking returns the value of Working.
+func (s *ChildRollup) GetWorking() int {
+	return s.Working
+}
+
+// GetIdle returns the value of Idle.
+func (s *ChildRollup) GetIdle() int {
+	return s.Idle
+}
+
+// GetDone returns the value of Done.
+func (s *ChildRollup) GetDone() int {
+	return s.Done
+}
+
+// GetNeedsYou returns the value of NeedsYou.
+func (s *ChildRollup) GetNeedsYou() int {
+	return s.NeedsYou
+}
+
+// GetFailed returns the value of Failed.
+func (s *ChildRollup) GetFailed() int {
+	return s.Failed
+}
+
+// SetTotal sets the value of Total.
+func (s *ChildRollup) SetTotal(val int) {
+	s.Total = val
+}
+
+// SetWorking sets the value of Working.
+func (s *ChildRollup) SetWorking(val int) {
+	s.Working = val
+}
+
+// SetIdle sets the value of Idle.
+func (s *ChildRollup) SetIdle(val int) {
+	s.Idle = val
+}
+
+// SetDone sets the value of Done.
+func (s *ChildRollup) SetDone(val int) {
+	s.Done = val
+}
+
+// SetNeedsYou sets the value of NeedsYou.
+func (s *ChildRollup) SetNeedsYou(val int) {
+	s.NeedsYou = val
+}
+
+// SetFailed sets the value of Failed.
+func (s *ChildRollup) SetFailed(val int) {
+	s.Failed = val
+}
 
 // Ref: #/components/schemas/CoordinationCapability
 type CoordinationCapability struct {
@@ -2744,6 +3087,117 @@ func (s *DeliveryState) UnmarshalText(data []byte) error {
 	}
 }
 
+// Ref: #/components/schemas/DeliverySummary
+type DeliverySummary struct {
+	ID                string                `json:"id"`
+	State             DeliveryState         `json:"state"`
+	Action            DeliverySummaryAction `json:"action"`
+	PullRequestNumber OptInt64              `json:"pullRequestNumber"`
+	PullRequestUrl    OptURI                `json:"pullRequestUrl"`
+	UpdatedAt         time.Time             `json:"updatedAt"`
+}
+
+// GetID returns the value of ID.
+func (s *DeliverySummary) GetID() string {
+	return s.ID
+}
+
+// GetState returns the value of State.
+func (s *DeliverySummary) GetState() DeliveryState {
+	return s.State
+}
+
+// GetAction returns the value of Action.
+func (s *DeliverySummary) GetAction() DeliverySummaryAction {
+	return s.Action
+}
+
+// GetPullRequestNumber returns the value of PullRequestNumber.
+func (s *DeliverySummary) GetPullRequestNumber() OptInt64 {
+	return s.PullRequestNumber
+}
+
+// GetPullRequestUrl returns the value of PullRequestUrl.
+func (s *DeliverySummary) GetPullRequestUrl() OptURI {
+	return s.PullRequestUrl
+}
+
+// GetUpdatedAt returns the value of UpdatedAt.
+func (s *DeliverySummary) GetUpdatedAt() time.Time {
+	return s.UpdatedAt
+}
+
+// SetID sets the value of ID.
+func (s *DeliverySummary) SetID(val string) {
+	s.ID = val
+}
+
+// SetState sets the value of State.
+func (s *DeliverySummary) SetState(val DeliveryState) {
+	s.State = val
+}
+
+// SetAction sets the value of Action.
+func (s *DeliverySummary) SetAction(val DeliverySummaryAction) {
+	s.Action = val
+}
+
+// SetPullRequestNumber sets the value of PullRequestNumber.
+func (s *DeliverySummary) SetPullRequestNumber(val OptInt64) {
+	s.PullRequestNumber = val
+}
+
+// SetPullRequestUrl sets the value of PullRequestUrl.
+func (s *DeliverySummary) SetPullRequestUrl(val OptURI) {
+	s.PullRequestUrl = val
+}
+
+// SetUpdatedAt sets the value of UpdatedAt.
+func (s *DeliverySummary) SetUpdatedAt(val time.Time) {
+	s.UpdatedAt = val
+}
+
+type DeliverySummaryAction string
+
+const (
+	DeliverySummaryActionPush            DeliverySummaryAction = "push"
+	DeliverySummaryActionOpenPullRequest DeliverySummaryAction = "open_pull_request"
+)
+
+// AllValues returns all DeliverySummaryAction values.
+func (DeliverySummaryAction) AllValues() []DeliverySummaryAction {
+	return []DeliverySummaryAction{
+		DeliverySummaryActionPush,
+		DeliverySummaryActionOpenPullRequest,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s DeliverySummaryAction) MarshalText() ([]byte, error) {
+	switch s {
+	case DeliverySummaryActionPush:
+		return []byte(s), nil
+	case DeliverySummaryActionOpenPullRequest:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *DeliverySummaryAction) UnmarshalText(data []byte) error {
+	switch DeliverySummaryAction(data) {
+	case DeliverySummaryActionPush:
+		*s = DeliverySummaryActionPush
+		return nil
+	case DeliverySummaryActionOpenPullRequest:
+		*s = DeliverySummaryActionOpenPullRequest
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
 // Ref: #/components/schemas/DescendantResult
 type DescendantResult struct {
 	Capsule  Capsule                `json:"capsule"`
@@ -2993,6 +3447,62 @@ func (*ExportCapsuleWorkspaceOKHeaders) exportCapsuleWorkspaceRes() {}
 type ExportCapsuleWorkspaceUnprocessableEntity ErrorEnvelope
 
 func (*ExportCapsuleWorkspaceUnprocessableEntity) exportCapsuleWorkspaceRes() {}
+
+type GetBoardBadRequest ErrorEnvelope
+
+func (*GetBoardBadRequest) getBoardRes() {}
+
+type GetBoardExpand string
+
+const (
+	GetBoardExpandAttention GetBoardExpand = "attention"
+	GetBoardExpandAll       GetBoardExpand = "all"
+	GetBoardExpandNone      GetBoardExpand = "none"
+)
+
+// AllValues returns all GetBoardExpand values.
+func (GetBoardExpand) AllValues() []GetBoardExpand {
+	return []GetBoardExpand{
+		GetBoardExpandAttention,
+		GetBoardExpandAll,
+		GetBoardExpandNone,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s GetBoardExpand) MarshalText() ([]byte, error) {
+	switch s {
+	case GetBoardExpandAttention:
+		return []byte(s), nil
+	case GetBoardExpandAll:
+		return []byte(s), nil
+	case GetBoardExpandNone:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *GetBoardExpand) UnmarshalText(data []byte) error {
+	switch GetBoardExpand(data) {
+	case GetBoardExpandAttention:
+		*s = GetBoardExpandAttention
+		return nil
+	case GetBoardExpandAll:
+		*s = GetBoardExpandAll
+		return nil
+	case GetBoardExpandNone:
+		*s = GetBoardExpandNone
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+type GetBoardNotFound ErrorEnvelope
+
+func (*GetBoardNotFound) getBoardRes() {}
 
 type GetCapsuleGitDiffNotFound ErrorEnvelope
 
@@ -4262,6 +4772,52 @@ func (s *MutateHarnessSetupRequest) SetExpectedResourceVersion(val int64) {
 	s.ExpectedResourceVersion = val
 }
 
+// NewOptBoardItemNeedsYou returns new OptBoardItemNeedsYou with value set to v.
+func NewOptBoardItemNeedsYou(v BoardItemNeedsYou) OptBoardItemNeedsYou {
+	return OptBoardItemNeedsYou{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptBoardItemNeedsYou is optional BoardItemNeedsYou.
+type OptBoardItemNeedsYou struct {
+	Value BoardItemNeedsYou
+	Set   bool
+}
+
+// IsSet returns true if OptBoardItemNeedsYou was set.
+func (o OptBoardItemNeedsYou) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptBoardItemNeedsYou) Reset() {
+	var v BoardItemNeedsYou
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptBoardItemNeedsYou) SetTo(v BoardItemNeedsYou) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptBoardItemNeedsYou) Get() (v BoardItemNeedsYou, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptBoardItemNeedsYou) Or(d BoardItemNeedsYou) BoardItemNeedsYou {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptBool returns new OptBool with value set to v.
 func NewOptBool(v bool) OptBool {
 	return OptBool{
@@ -4394,6 +4950,52 @@ func (o OptCapsuleRole) Get() (v CapsuleRole, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptCapsuleRole) Or(d CapsuleRole) CapsuleRole {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptChildRollup returns new OptChildRollup with value set to v.
+func NewOptChildRollup(v ChildRollup) OptChildRollup {
+	return OptChildRollup{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptChildRollup is optional ChildRollup.
+type OptChildRollup struct {
+	Value ChildRollup
+	Set   bool
+}
+
+// IsSet returns true if OptChildRollup was set.
+func (o OptChildRollup) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptChildRollup) Reset() {
+	var v ChildRollup
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptChildRollup) SetTo(v ChildRollup) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptChildRollup) Get() (v ChildRollup, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptChildRollup) Or(d ChildRollup) ChildRollup {
 	if v, ok := o.Get(); ok {
 		return v
 	}
@@ -4670,6 +5272,98 @@ func (o OptDateTime) Get() (v time.Time, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptDateTime) Or(d time.Time) time.Time {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptDeliverySummary returns new OptDeliverySummary with value set to v.
+func NewOptDeliverySummary(v DeliverySummary) OptDeliverySummary {
+	return OptDeliverySummary{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptDeliverySummary is optional DeliverySummary.
+type OptDeliverySummary struct {
+	Value DeliverySummary
+	Set   bool
+}
+
+// IsSet returns true if OptDeliverySummary was set.
+func (o OptDeliverySummary) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptDeliverySummary) Reset() {
+	var v DeliverySummary
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptDeliverySummary) SetTo(v DeliverySummary) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptDeliverySummary) Get() (v DeliverySummary, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptDeliverySummary) Or(d DeliverySummary) DeliverySummary {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptGetBoardExpand returns new OptGetBoardExpand with value set to v.
+func NewOptGetBoardExpand(v GetBoardExpand) OptGetBoardExpand {
+	return OptGetBoardExpand{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptGetBoardExpand is optional GetBoardExpand.
+type OptGetBoardExpand struct {
+	Value GetBoardExpand
+	Set   bool
+}
+
+// IsSet returns true if OptGetBoardExpand was set.
+func (o OptGetBoardExpand) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptGetBoardExpand) Reset() {
+	var v GetBoardExpand
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptGetBoardExpand) SetTo(v GetBoardExpand) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptGetBoardExpand) Get() (v GetBoardExpand, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptGetBoardExpand) Or(d GetBoardExpand) GetBoardExpand {
 	if v, ok := o.Get(); ok {
 		return v
 	}
@@ -5314,6 +6008,52 @@ func (o OptThreadInput) Get() (v ThreadInput, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptThreadInput) Or(d ThreadInput) ThreadInput {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptThreadLink returns new OptThreadLink with value set to v.
+func NewOptThreadLink(v ThreadLink) OptThreadLink {
+	return OptThreadLink{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptThreadLink is optional ThreadLink.
+type OptThreadLink struct {
+	Value ThreadLink
+	Set   bool
+}
+
+// IsSet returns true if OptThreadLink was set.
+func (o OptThreadLink) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptThreadLink) Reset() {
+	var v ThreadLink
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptThreadLink) SetTo(v ThreadLink) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptThreadLink) Get() (v ThreadLink, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptThreadLink) Or(d ThreadLink) ThreadLink {
 	if v, ok := o.Get(); ok {
 		return v
 	}
@@ -9218,9 +9958,11 @@ type ThreadLink struct {
 	LastReportReason   OptThreadLinkLastReportReason `json:"lastReportReason"`
 	LastReportAt       OptDateTime                   `json:"lastReportAt"`
 	MessagesForwarded  int                           `json:"messagesForwarded"`
-	CreatedAt          time.Time                     `json:"createdAt"`
-	UpdatedAt          time.Time                     `json:"updatedAt"`
-	ResourceVersion    int64                         `json:"resourceVersion"`
+	// Operator messages sent straight to this helper. They do not count against the lead's message limit.
+	OperatorMessages int       `json:"operatorMessages"`
+	CreatedAt        time.Time `json:"createdAt"`
+	UpdatedAt        time.Time `json:"updatedAt"`
+	ResourceVersion  int64     `json:"resourceVersion"`
 }
 
 // GetID returns the value of ID.
@@ -9316,6 +10058,11 @@ func (s *ThreadLink) GetLastReportAt() OptDateTime {
 // GetMessagesForwarded returns the value of MessagesForwarded.
 func (s *ThreadLink) GetMessagesForwarded() int {
 	return s.MessagesForwarded
+}
+
+// GetOperatorMessages returns the value of OperatorMessages.
+func (s *ThreadLink) GetOperatorMessages() int {
+	return s.OperatorMessages
 }
 
 // GetCreatedAt returns the value of CreatedAt.
@@ -9426,6 +10173,11 @@ func (s *ThreadLink) SetLastReportAt(val OptDateTime) {
 // SetMessagesForwarded sets the value of MessagesForwarded.
 func (s *ThreadLink) SetMessagesForwarded(val int) {
 	s.MessagesForwarded = val
+}
+
+// SetOperatorMessages sets the value of OperatorMessages.
+func (s *ThreadLink) SetOperatorMessages(val int) {
+	s.OperatorMessages = val
 }
 
 // SetCreatedAt sets the value of CreatedAt.
@@ -10558,6 +11310,7 @@ func (*TooManyRequestsHeaders) createRunAttachTicketRes()      {}
 func (*TooManyRequestsHeaders) createThreadRes()               {}
 func (*TooManyRequestsHeaders) deleteCapsuleRes()              {}
 func (*TooManyRequestsHeaders) deleteSecretRes()               {}
+func (*TooManyRequestsHeaders) getBoardRes()                   {}
 func (*TooManyRequestsHeaders) getCapabilitiesRes()            {}
 func (*TooManyRequestsHeaders) getCapsuleRes()                 {}
 func (*TooManyRequestsHeaders) getCoordinationGrantRes()       {}

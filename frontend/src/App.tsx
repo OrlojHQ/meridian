@@ -37,6 +37,7 @@ import type {
   TimelineView,
 } from "./api/generated/types.gen";
 import { queries } from "./api/queries";
+import { Board } from "./components/Board";
 import {
   ThreadCreate,
   ThreadDetail,
@@ -1446,6 +1447,7 @@ export function App() {
         <Route path="settings/harnesses" element={<HarnessSetups />} />
         <Route path="capsules/:capsuleId" element={<CapsuleDetail />} />
         <Route path="capsules/:capsuleId/diff" element={<DiffPage />} />
+        <Route path="board" element={<Board />} />
         <Route path="threads" element={<ThreadFleet />} />
         <Route path="threads/:threadId" element={<ThreadDetail />} />
         <Route path="runs/:runId" element={<RunDetail />} />

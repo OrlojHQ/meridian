@@ -96,6 +96,7 @@ const link = (name: string, phase: ThreadLink["phase"], reportSeq: number): Thre
   reportSeq,
   reportDeliveredSeq: 0,
   messagesForwarded: 0,
+  operatorMessages: 0,
   createdAt: "2026-11-01T00:00:00Z",
   updatedAt: "2026-11-01T00:00:00Z",
   resourceVersion: 1,

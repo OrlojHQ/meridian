@@ -421,6 +421,60 @@ export type CreateDeliveryRequest = {
     baseBranch?: string;
 };
 
+export type BoardPage = {
+    items: Array<BoardItem>;
+    /**
+     * True when the installation has more Capsules than one board read covers (500).
+     */
+    truncated: boolean;
+};
+
+/**
+ * Content-free status of one Capsule and its primary Thread.
+ */
+export type BoardItem = {
+    capsule: Capsule;
+    thread?: Thread;
+    currentRun?: Run;
+    status: 'needs_you' | 'working' | 'pr_open' | 'ready_for_review' | 'idle' | 'paused' | 'sealed';
+    since: string;
+    /**
+     * Why the row needs the operator; set only with status needs_you.
+     */
+    needsYou?: 'permission' | 'input' | 'failed';
+    latestDelivery?: DeliverySummary;
+    /**
+     * The helper's link to its lead, on sub-Capsules.
+     */
+    link?: ThreadLink;
+    childRollup?: ChildRollup;
+    /**
+     * A helper listed on its own because it needs the operator.
+     */
+    surfaced: boolean;
+};
+
+/**
+ * A lead's helpers by state.
+ */
+export type ChildRollup = {
+    total: number;
+    working: number;
+    idle: number;
+    done: number;
+    needsYou: number;
+    failed: number;
+};
+
+export type DeliverySummary = {
+    id: string;
+    state: DeliveryState;
+    action: 'push' | 'open_pull_request';
+    pullRequestNumber?: number;
+    pullRequestUrl?: string;
+    updatedAt: string;
+};
+
 export type DeliveryState = 'queued' | 'committing' | 'pushing' | 'opening_pr' | 'succeeded' | 'failed';
 
 export type Delivery = {
@@ -583,6 +637,10 @@ export type ThreadLink = {
     lastReportReason?: 'cancelled' | 'capsule_failed' | 'session_ended' | 'revoked';
     lastReportAt?: string;
     messagesForwarded: number;
+    /**
+     * Operator messages sent straight to this helper. They do not count against the lead's message limit.
+     */
+    operatorMessages: number;
     createdAt: string;
     updatedAt: string;
     resourceVersion: number;
@@ -2013,6 +2071,50 @@ export type GetProjectThreadIntentResponses = {
 };
 
 export type GetProjectThreadIntentResponse = GetProjectThreadIntentResponses[keyof GetProjectThreadIntentResponses];
+
+export type GetBoardData = {
+    body?: never;
+    path?: never;
+    query?: {
+        projectId?: string;
+        /**
+         * attention (default) lists main Capsules and helpers that need the operator; all lists every helper; none lists main Capsules only. A helper whose lead is not listed always gets its own row.
+         *
+         */
+        expand?: 'attention' | 'all' | 'none';
+    };
+    url: '/board';
+};
+
+export type GetBoardErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Request rate limit exceeded
+     */
+    429: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type GetBoardError = GetBoardErrors[keyof GetBoardErrors];
+
+export type GetBoardResponses = {
+    /**
+     * Board rows, needs-you first and oldest first within it
+     */
+    200: BoardPage;
+};
+
+export type GetBoardResponse = GetBoardResponses[keyof GetBoardResponses];
 
 export type ListThreadLinksData = {
     body?: never;

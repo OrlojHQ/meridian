@@ -102,6 +102,14 @@ type ExportCapsuleWorkspaceParams struct {
 	CapsuleId string
 }
 
+// GetBoardParams is parameters of getBoard operation.
+type GetBoardParams struct {
+	ProjectId OptString `json:",omitempty,omitzero"`
+	// Attention (default) lists main Capsules and helpers that need the operator; all lists every helper;
+	// none lists main Capsules only. A helper whose lead is not listed always gets its own row.
+	Expand OptGetBoardExpand `json:",omitempty,omitzero"`
+}
+
 // GetCapsuleParams is parameters of getCapsule operation.
 type GetCapsuleParams struct {
 	CapsuleId string

@@ -339,6 +339,18 @@ cooperation. Closing a link never deletes a helper Capsule or transcript.
 Coordination is advertised only by providers that implement the structured
 transport and mailbox end to end.
 
+The board (`GET /board`) adds no authority. It joins rows the API already
+returns with the in-memory attention derivation, so it shows statuses, names,
+counts and delivery URLs but no prompt, report or transcript text, and it
+never polls Git. A helper that needs the operator is listed under its own
+name, so a lead cannot hide a helper's permission request. Operator messages
+sent straight to a helper are counted on its link (plaintext counters only)
+and do not use the lead's message allowance; the lead learns only that the
+operator messaged that helper and how many times, on its next report wake.
+The operator's text stays in the helper's transcript. Store triggers keep the
+counters monotonic so a notice cannot be replayed or suppressed by rewinding
+them.
+
 ### Supply-chain and setup execution
 
 Package managers, install scripts, binaries, actions, generated code, and updates may be compromised. Pin project and CI dependencies, verify downloaded release checksums where practical, scan dependencies and secrets, and keep build provenance. Setup hooks execute only inside the selected isolation boundary with the same limits and egress policy as agent commands. Never run repository hooks on the control-plane host.

@@ -2732,3 +2732,57 @@ button.tool-line:hover {
   border-left: 1px solid var(--border);
   list-style: none;
 }
+
+.board-view .workspace-header-meta {
+  font-size: 0.75rem;
+}
+
+.board-view .check-label {
+  gap: 0.35rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.inbox-row-working {
+  border-left-color: var(--status-working);
+}
+
+.inbox-row-idle,
+.inbox-row-paused,
+.inbox-row-sealed {
+  border-left-color: var(--border-strong);
+}
+
+.board-breadcrumb a {
+  font-weight: 600;
+}
+
+.board-helpers {
+  display: grid;
+  gap: 0.15rem;
+  margin: 0.5rem 0 0;
+  border-left: 2px solid var(--border);
+  padding: 0 0 0 0.7rem;
+  list-style: none;
+}
+
+.board-helpers li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+}
+
+.board-helpers a {
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board-helpers small,
+.board-helpers time {
+  color: var(--muted);
+  font-size: 0.68rem;
+}
