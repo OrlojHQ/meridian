@@ -129,7 +129,8 @@ sub` lists helper Capsules. A helper is an ordinary Thread: its permission and
 input requests come to you, never to its lead.
 
 Inside a lead Capsule the agent uses `meridian-coord`, which official packs
-register as an MCP server for Claude Code and Codex. It also works as a CLI:
+register as an MCP server for Claude Code, Codex, and OpenCode. Pi has no MCP
+client, so the Pi pack loads a skill that teaches it the CLI form:
 `meridian-coord spawn --name NAME --harness H` (prompt on stdin), `send`,
 `wait LINK... | --all`, `result`, `status`, `list`, `cancel`, and `whoami`.
 It talks only to the Capsule's local mailbox; it holds no credential.

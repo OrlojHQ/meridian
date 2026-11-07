@@ -222,9 +222,57 @@ func TestOfficialPacksInstallNativeAndStructuredProfiles(t *testing.T) {
 			adapterKind(*structured.Adapter) != kind {
 			t.Fatalf("%s structured profile = %#v", name, structured)
 		}
-		if drivers[name] == "acp" && name == "opencode" &&
-			!slices.Equal(arguments[1:separator], []string{"--secret-env", "OPENCODE_SERVER_PASSWORD"}) {
+		adapterFlags := arguments[1:separator]
+		if name == "opencode" && !hasArguments(adapterFlags, "--secret-env", "OPENCODE_SERVER_PASSWORD") {
 			t.Fatalf("OpenCode must protect its loopback server with a per-launch password: %#v", arguments)
+		}
+		if coordinationMCP[name] != hasArguments(adapterFlags, "--mcp-server", "meridian-coord=/usr/local/bin/meridian-coord,mcp") {
+			t.Fatalf("%s meridian-coord MCP registration = %v, want %v: %#v",
+				name, !coordinationMCP[name], coordinationMCP[name], arguments)
+		}
+		skill := "/usr/local/share/meridian/" + name + "/skills/meridian-coord"
+		harnessFlags := arguments[separator+2:]
+		if coordinationSkill[name] != hasArguments(harnessFlags, "--skill", skill) {
+			t.Fatalf("%s meridian-coord skill = %v, want %v: %#v",
+				name, !coordinationSkill[name], coordinationSkill[name], arguments)
+		}
+		if coordinationSkill[name] {
+			if _, err := os.Stat(filepath.Join(root, "skills", "meridian-coord", "SKILL.md")); err != nil {
+				t.Fatalf("%s profile loads a skill its pack does not ship: %v", name, err)
+			}
+		}
+	}
+}
+
+// Packs whose harness has an MCP client register meridian-coord as an MCP
+// server; Pi has none, so its profile loads a skill describing the CLI.
+var (
+	coordinationMCP   = map[string]bool{"claude": true, "codex": true, "opencode": true}
+	coordinationSkill = map[string]bool{"pi": true}
+)
+
+func hasArguments(arguments []string, flag, value string) bool {
+	for index := range len(arguments) - 1 {
+		if arguments[index] == flag && arguments[index+1] == value {
+			return true
+		}
+	}
+	return false
+}
+
+func TestOfficialPackSkillsDescribeTheRealCLI(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "images", "capsule-pi", "skills", "meridian-coord", "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	for _, command := range []string{
+		"meridian-coord whoami", "meridian-coord spawn --name", "meridian-coord wait --all",
+		"meridian-coord result", "meridian-coord status", "meridian-coord list",
+		"meridian-coord send", "meridian-coord cancel", "coordination_disabled", "allowedHarnesses",
+	} {
+		if !strings.Contains(text, command) {
+			t.Errorf("skill does not mention %q", command)
 		}
 	}
 }
@@ -459,5 +507,74 @@ func TestOfficialDeepSeekPackRequiresTheRealHarness(t *testing.T) {
 	// Capsule /tmp is noexec; the addon cache would copy binaries there.
 	if !strings.Contains(string(launcher), "\nNARB_DISABLE_NATIVE_CACHE=1\n") {
 		t.Fatalf("dsh launcher does not load native addons in place: %s", launcher)
+	}
+}
+
+func TestPackInstallCheckValidatesSkills(t *testing.T) {
+	const skill = "---\nname: helper-guide\ndescription: Use when delegating.\n---\n\n# Guide\n"
+	check := func(t *testing.T, build func(skills string)) ([]byte, error) {
+		t.Helper()
+		root := filepath.Join(t.TempDir(), "capsule-demo")
+		if err := os.Mkdir(root, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		data := "PACK_NAME=demo\nPACK_VERSION=1.2.3\nPACK_URL=https://example.test/demo-{arch}.tar.gz\n" +
+			"PACK_ARCH_AMD64=x64\nPACK_ARCH_ARM64=arm64\nPACK_SHA256_AMD64=" + strings.Repeat("a", 64) +
+			"\nPACK_SHA256_ARM64=" + strings.Repeat("b", 64) + "\nPACK_LAYOUT=file\nPACK_ENTRY=demo\n"
+		if err := os.WriteFile(filepath.Join(root, "pack.env"), []byte(data), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, "project.yaml"), []byte(fmt.Sprintf(nativeHarnessFixture, "demo", "demo")), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		build(filepath.Join(root, "skills"))
+		return exec.Command("sh", filepath.Join("..", "..", "images", "harness-pack", "install"), "--check", root).CombinedOutput()
+	}
+	write := func(t *testing.T, path, content string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if output, err := check(t, func(skills string) {
+		write(t, filepath.Join(skills, "helper-guide", "SKILL.md"), skill)
+	}); err != nil {
+		t.Fatalf("valid skill rejected: %v: %s", err, output)
+	}
+	for name, build := range map[string]func(skills string){
+		"skills is a file": func(skills string) { write(t, skills, "x") },
+		"uppercase name": func(skills string) {
+			write(t, filepath.Join(skills, "Helper", "SKILL.md"), strings.Replace(skill, "helper-guide", "Helper", 1))
+		},
+		"name mismatch":  func(skills string) { write(t, filepath.Join(skills, "other", "SKILL.md"), skill) },
+		"no frontmatter": func(skills string) { write(t, filepath.Join(skills, "helper-guide", "SKILL.md"), "# Guide\n") },
+		"no description": func(skills string) {
+			write(t, filepath.Join(skills, "helper-guide", "SKILL.md"), "---\nname: helper-guide\n---\n")
+		},
+		"missing SKILL.md": func(skills string) { write(t, filepath.Join(skills, "helper-guide", "notes.md"), "x") },
+		"extra file": func(skills string) {
+			write(t, filepath.Join(skills, "helper-guide", "SKILL.md"), skill)
+			write(t, filepath.Join(skills, "helper-guide", "run.sh"), "id")
+		},
+		"symlinked SKILL.md": func(skills string) {
+			outside := filepath.Join(t.TempDir(), "SKILL.md")
+			write(t, outside, skill)
+			if err := os.MkdirAll(filepath.Join(skills, "helper-guide"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(outside, filepath.Join(skills, "helper-guide", "SKILL.md")); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"oversized": func(skills string) {
+			write(t, filepath.Join(skills, "helper-guide", "SKILL.md"), skill+strings.Repeat("x", 16384))
+		},
+	} {
+		if output, err := check(t, build); err == nil {
+			t.Errorf("%s: unsafe skills accepted: %s", name, output)
+		}
 	}
 }

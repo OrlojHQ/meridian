@@ -6,7 +6,9 @@
 #
 # pack.env is data, not shell: KEY=value lines from a fixed key set. It is
 # never sourced. The pack directory also holds the trusted project.yaml
-# profile and, optionally, a launcher script named after the pack.
+# profile and, optionally, a launcher script named after the pack and a
+# skills/<name>/SKILL.md tree that profiles load from
+# /usr/local/share/meridian/<pack>/skills.
 #
 # Layouts `file` and `tree` download one checksummed .tar.gz per architecture.
 # Layout `npm` installs one npm package with `npm ci --ignore-scripts` from the
@@ -91,6 +93,28 @@ if [ -e "$dir/$name" ]; then
 	sh -n "$dir/$name" || die "launcher $dir/$name has a syntax error"
 elif [ "$layout" = npm ]; then
 	die "the npm layout needs a launcher $dir/$name that runs the entry with /opt/meridian-node/bin/node"
+fi
+if [ -e "$dir/skills" ] || [ -L "$dir/skills" ]; then
+	[ -d "$dir/skills" ] && [ ! -L "$dir/skills" ] || die "$dir/skills must be a directory"
+	find "$dir/skills" -mindepth 1 | LC_ALL=C sort | while IFS= read -r path; do
+		relative=${path#"$dir/skills/"}
+		case $relative in
+		*/SKILL.md)
+			skill=${relative%/SKILL.md}
+			[ -f "$path" ] && [ ! -L "$path" ] || die "$path must be a regular file"
+			[ "$(wc -c <"$path")" -le 16384 ] || die "$path exceeds 16 KiB"
+			[ "$(sed -n 1p "$path")" = "---" ] || die "$path needs YAML frontmatter"
+			grep -qx "name: $skill" "$path" || die "$path frontmatter must be named $skill"
+			grep -q '^description: .' "$path" || die "$path needs a description"
+			;;
+		*/*) die "unexpected skill file $path" ;;
+		*)
+			matches "$relative" '[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?' || die "invalid skill name $relative"
+			[ -d "$path" ] && [ ! -L "$path" ] || die "$path must be a directory"
+			[ -f "$path/SKILL.md" ] || die "$path has no SKILL.md"
+			;;
+		esac
+	done
 fi
 if [ "$layout" = npm ]; then
 	manifest=$dir/package.json lock=$dir/package-lock.json
@@ -195,3 +219,10 @@ if grep -q '/usr/local/bin/meridian-harness-adapter' "$dir/project.yaml"; then
 fi
 install -d -m 0755 /etc/meridian/harnesses.d
 install -m 0644 "$dir/project.yaml" "/etc/meridian/harnesses.d/$name.yaml"
+if [ -d "$dir/skills" ]; then
+	for skill in "$dir"/skills/*/; do
+		skill=$(basename "$skill")
+		install -d -m 0755 "/usr/local/share/meridian/$name/skills/$skill"
+		install -m 0644 "$dir/skills/$skill/SKILL.md" "/usr/local/share/meridian/$name/skills/$skill/SKILL.md"
+	done
+fi

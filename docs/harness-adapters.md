@@ -31,15 +31,21 @@ a directory `images/capsule-<pack>/` holding:
   `/etc/meridian/harnesses.d/<pack>.yaml`: a native profile whose executable
   is `/usr/local/bin/<pack>`, and a structured profile that runs that binary
   through `/usr/local/bin/meridian-harness-adapter`. A pack whose harness has
-  no terminal UI ships only the structured profile; and
+  no terminal UI ships only the structured profile;
 - optionally a `<pack>` launcher script that sets harness environment before
   exec'ing the pinned binary. Without one, `/usr/local/bin/<pack>` is a symlink
   to the binary. An `npm` pack requires one, since its entry runs under the
-  image's Node.
+  image's Node; and
+- optionally `skills/<name>/SKILL.md` Agent Skills, installed read-only under
+  `/usr/local/share/meridian/<pack>/skills/` for a profile to load. Each skill
+  is one regular file of at most 16 KiB with `name` and `description`
+  frontmatter; names match `[a-z0-9-]`, and symlinks or other files fail the
+  build.
 
 `images/harness-pack/install` validates the data, verifies the checksum, runs
 the binary's `--version` (and `--help` against `PACK_IDENTITY`), and installs
-all three. `install --check <dir>` validates without network access.
+the binary, profiles, launcher, and skills. `install --check <dir>` validates
+without network access.
 `make capsule-<pack>-image` and `make try-<pack>` exist for every pack
 directory, and CI builds and releases publish every one. `make list-packs`
 prints them.
@@ -73,9 +79,22 @@ Each official pack installs a structured profile under its name, and all but
 | --- | --- | --- |
 | `claude` | `claude-stream` | `claude-stream -- /usr/local/bin/claude` |
 | `codex` | `codex-app-server` | `codex-app-server --approval-policy untrusted --sandbox danger-full-access -- /usr/local/bin/codex` |
-| `opencode` | `acp` | `acp --secret-env OPENCODE_SERVER_PASSWORD -- /usr/local/bin/opencode acp --hostname 127.0.0.1 --mdns=false` |
-| `pi` | `pi-rpc` | `pi-rpc --session-dir /home/capsule/.pi-sessions -- /usr/local/bin/pi` |
+| `opencode` | `acp` | `acp --secret-env OPENCODE_SERVER_PASSWORD --mcp-server meridian-coord=/usr/local/bin/meridian-coord,mcp -- /usr/local/bin/opencode acp --hostname 127.0.0.1 --mdns=false` |
+| `pi` | `pi-rpc` | `pi-rpc --session-dir /home/capsule/.pi-sessions -- /usr/local/bin/pi --skill /usr/local/share/meridian/pi/skills/meridian-coord` |
 | `dsh` | `acp` | `acp -- /usr/local/bin/dsh --profile acp` |
+
+A lead Thread reaches the in-Capsule `meridian-coord` tool (ADR 0029) through
+its structured profile. Claude Code and Codex register it as a stdio MCP
+server with `--mcp-server` (shown in the profile files). OpenCode receives it
+in the `mcpServers` list of ACP `session/new` and of the resume call, so the
+registration is per session and Meridian writes no OpenCode configuration
+into the workspace; OpenCode names the tools `meridian-coord_meridian_spawn`
+and so on. Pi has no MCP client, so the Pi pack ships a `meridian-coord`
+skill that teaches the agent the CLI through its bash tool, and the profile
+loads it with `--skill` (Pi loads explicit `--skill` paths even when skill
+discovery is off). In a Capsule that is not a lead, the MCP server lists no
+tools and the CLI answers `coordination_disabled`. `dsh` registers nothing
+yet.
 
 The terminal launcher picks the native profile, and Threads pick the
 structured one. Because the image owns every mode of its names and a repository

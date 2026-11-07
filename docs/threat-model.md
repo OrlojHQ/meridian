@@ -261,6 +261,14 @@ it later adds no new credential path (ADR 0030).
 Profile-registered MCP servers (`--mcp-server`) are trusted profile metadata.
 They take absolute executables and quote-free arguments, run with the harness's
 authority, and their tool calls still pass through harness permission prompts.
+Pack skills (`/usr/local/share/meridian/<pack>/skills/`) are trusted image
+content too: the pack installer accepts only bounded `SKILL.md` regular files,
+and a profile loads them by absolute path. The Pi pack's `meridian-coord`
+skill is instructions only. Pi runs the CLI with its bash tool, which asks no
+per-command permission, so a Pi lead spends its grant without prompts, as any
+process in a granted Capsule already can (ADR 0029). A repository can ship its
+own skills or `AGENTS.md` that mention `meridian-coord`; they are hostile
+content but gain nothing the Capsule's processes did not already have.
 
 Slash command lists come from the harness, which reads them from repository
 files, skills, plugins, and MCP servers, so they are hostile (ADR 0028). A

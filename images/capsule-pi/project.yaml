@@ -3,7 +3,8 @@
 # (make capsule-pi-image → meridian-capsule-pi:dev).
 # Terminal sessions (native) sign in inside the Pi TUI.
 # Threads (structured) run Pi RPC mode through the Meridian adapter; attach a
-# provider connection for credentials.
+# provider connection for credentials. Pi has no MCP client, so the structured
+# profile loads a skill that teaches a lead Thread the meridian-coord CLI.
 # Neither profile injects provider credentials itself, and a repository
 # cannot define profiles or secretReferences under this name.
 version: v1
@@ -22,7 +23,14 @@ harnesses:
     adapter:
       protocol: meridian.adapter.v1
       executable: /usr/local/bin/meridian-harness-adapter
-      arguments: ["pi-rpc", "--session-dir", "/home/capsule/.pi-sessions", "--", "/usr/local/bin/pi"]
+      arguments:
+        - pi-rpc
+        - --session-dir
+        - /home/capsule/.pi-sessions
+        - --
+        - /usr/local/bin/pi
+        - --skill
+        - /usr/local/share/meridian/pi/skills/meridian-coord
     workingDirectory: .
     pty: false
     timeout: 24h

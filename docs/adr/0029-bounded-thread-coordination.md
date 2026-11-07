@@ -107,3 +107,28 @@ child content into the lead transcript, so crypto-shredding a child does not
 erase copies already delivered to its lead. Pull-based delivery adds one
 long-poll per coordinating Capsule and some latency. This ADR does not claim
 untrusted multi-tenant isolation.
+
+## Amendment: OpenCode and Pi leads
+
+Every official pack except `dsh` now exposes `meridian-coord` to its
+structured profile, so OpenCode and Pi Threads can lead.
+
+- OpenCode registers it as a stdio MCP server in the `mcpServers` list the
+  ACP adapter sends on `session/new` and on resume, from the profile's
+  `--mcp-server` entry, like the Claude Code and Codex profiles. The
+  alternative, an `opencode.json` or `OPENCODE_CONFIG` file, would be
+  written into or merged with repository-controlled configuration and would
+  outlive the session; the ACP list is per session and comes only from the
+  trusted image profile.
+- Pi 0.87 has no MCP client. The Pi pack ships a `meridian-coord` Agent Skill
+  that describes the CLI, and the structured profile loads it with `--skill`.
+  The agent runs the CLI with its bash tool. The skill is instructions only;
+  it adds no executable and no authority.
+- Pack skills are trusted image content. The pack installer accepts only
+  `skills/<name>/SKILL.md` regular files of at most 16 KiB with matching
+  `name` and a `description`, and installs them read-only under
+  `/usr/local/share/meridian/<pack>/skills/`.
+
+Registration changes how the agent discovers the tool, not what any process
+in a Capsule may do: `meridian-coord` was already on every Capsule's `PATH`
+and the mailbox still refuses everything outside an active grant.
