@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -500,6 +501,36 @@ func TestCoordinationRejectionsAreBoundedAndScoped(t *testing.T) {
 	capsule, _ := f.service.GetCapsule(f.ctx, link.ChildCapsuleID)
 	if capsule.DesiredState != domain.IntentPaused {
 		t.Fatalf("cancelled child desired state = %s", capsule.DesiredState)
+	}
+	var grantEvents, linkEvents []domain.Event
+	if err := f.store.View(f.ctx, func(reader ports.Reader) error {
+		var err error
+		if grantEvents, err = reader.ListEvents(f.ctx, "coordination_grant", string(link.GrantID)); err != nil {
+			return err
+		}
+		linkEvents, err = reader.ListEvents(f.ctx, "thread_link", string(link.ID))
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var rejected []string
+	for _, event := range grantEvents {
+		if event.Type == "coordination_grant.request_rejected" {
+			rejected = append(rejected, string(event.Data))
+		}
+	}
+	if len(rejected) != 6 || rejected[0] != `{"code":"harness_not_allowed","kind":"spawn"}` {
+		t.Fatalf("rejection audit = %q", rejected)
+	}
+	var linkTypes []string
+	for _, event := range linkEvents {
+		linkTypes = append(linkTypes, event.Type)
+		if strings.Contains(string(event.Data), "task") || strings.Contains(string(event.Data), "more") {
+			t.Fatalf("audit event carries content: %s", event.Data)
+		}
+	}
+	if !slices.Equal(linkTypes, []string{"thread_link.created", "thread_link.message_forwarded", "thread_link.closed"}) {
+		t.Fatalf("link audit = %q", linkTypes)
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -344,8 +345,43 @@ func (s *Service) handleCoordinationRequest(
 	}
 	grant, thread, failure := s.coordinationAuthority(ctx, capsule, request.Mutating())
 	if failure != nil {
+		s.auditRejection(ctx, grant, request.Type, *failure)
 		return *failure
 	}
+	response := s.dispatchCoordinationRequest(ctx, grant, thread, capsule, request)
+	s.auditRejection(ctx, grant, request.Type, response)
+	return response
+}
+
+// auditRejection records a content-free event for a refused request. Transient
+// retry codes are not recorded.
+func (s *Service) auditRejection(
+	ctx context.Context, grant domain.CoordinationGrant, kind coordproto.Kind, response coordproto.Response,
+) {
+	if response.OK || response.Error == nil || grant.ID == "" {
+		return
+	}
+	switch response.Error.Code {
+	case coordproto.CodePending, coordproto.CodeBusy, coordproto.CodeUnavailable:
+		return
+	}
+	data, err := json.Marshal(map[string]string{"kind": string(kind), "code": response.Error.Code})
+	if err != nil {
+		return
+	}
+	_ = s.store.Transact(ctx, func(tx ports.Transaction) error {
+		return s.appendEvent(ctx, tx, "coordination_grant", string(grant.ID),
+			"coordination_grant.request_rejected", grant.ResourceVersion, data)
+	})
+}
+
+func (s *Service) dispatchCoordinationRequest(
+	ctx context.Context,
+	grant domain.CoordinationGrant,
+	thread domain.Thread,
+	capsule domain.Capsule,
+	request coordproto.Request,
+) coordproto.Response {
 	var response coordproto.Response
 	switch request.Type {
 	case coordproto.KindSpawn:
@@ -627,11 +663,15 @@ func (s *Service) coordSend(
 			if err := tx.UpdateThreadLink(ctx, current, previous); err != nil {
 				return err
 			}
-			return tx.InsertCoordinationRequest(ctx, domain.CoordinationRequest{
+			if err := tx.InsertCoordinationRequest(ctx, domain.CoordinationRequest{
 				ID: domain.CoordinationRequestID(s.ids.NewID()), GrantID: grant.ID, CapsuleID: capsule.ID,
 				Key: request.Key, CanonicalDigest: request.Digest(), Kind: domain.CoordinationSend,
 				LinkID: link.ID, ResultMessageID: messageID, CreatedAt: now,
-			})
+			}); err != nil {
+				return err
+			}
+			return s.appendEvent(ctx, tx, "thread_link", string(link.ID), "thread_link.message_forwarded",
+				current.ResourceVersion, []byte(fmt.Sprintf(`{"bytes":%d}`, len(request.Prompt))))
 		})
 	if rejected != nil {
 		return *rejected

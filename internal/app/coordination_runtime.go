@@ -509,7 +509,11 @@ func (s *Service) markReportDeliveredTx(
 	link.ReportDeliveredSeq = seq
 	link.UpdatedAt = now
 	link.ResourceVersion++
-	return tx.UpdateThreadLink(ctx, link, previous)
+	if err := tx.UpdateThreadLink(ctx, link, previous); err != nil {
+		return err
+	}
+	return s.appendEvent(ctx, tx, "thread_link", string(link.ID), "thread_link.report_delivered",
+		link.ResourceVersion, []byte(fmt.Sprintf(`{"reportSeq":%d}`, seq)))
 }
 
 // applyConsumedReports records reports the lead read through wait or result.
