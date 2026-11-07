@@ -2854,7 +2854,8 @@ components:
         type:
           type: string
           enum: [assistant_delta, assistant_message, tool_start, tool_result, status, error,
-                 permission_request, permission_response, input_request, input_response, gap, end]
+                 permission_request, permission_response, input_request, input_response, gap, end,
+                 commands]
         runtimeSequence: { type: integer, format: int64, minimum: 1 }
         messageId: { type: string }
         responseTo:
@@ -2874,6 +2875,37 @@ components:
         input: { $ref: "#/components/schemas/ThreadInput" }
         requestedAfter: { type: integer, format: int64, minimum: 0 }
         availableFrom: { type: integer, format: int64, minimum: 1 }
+        commands:
+          type: array
+          maxItems: 128
+          description: >-
+            On commands events, the commands the harness reported for this session.
+            The latest commands event replaces earlier ones. Send a command as an
+            ordinary message `/name arguments`.
+          items: { $ref: "#/components/schemas/ThreadCommand" }
+    ThreadCommand:
+      type: object
+      required: [name, kind]
+      properties:
+        name:
+          type: string
+          maxLength: 64
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        description: { type: string, maxLength: 512 }
+        argumentHint: { type: string, maxLength: 128 }
+        kind:
+          type: string
+          enum: [prompt, action]
+          description: >-
+            prompt commands are expanded by the harness; action commands are mapped
+            by the adapter to a harness protocol call.
+        aliases:
+          type: array
+          maxItems: 4
+          items:
+            type: string
+            maxLength: 64
+            pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
     ThreadBlock:
       type: object
       required:

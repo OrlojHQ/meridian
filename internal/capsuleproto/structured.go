@@ -447,6 +447,7 @@ func (s *structuredSession) execute() {
 		ID: "capsuled-hello", Capabilities: &adapterproto.Capabilities{
 			Resume: true, ToolEvents: true, Permissions: true,
 			InputRequests: true, Heartbeat: true, OpaqueMetadata: true,
+			Commands: true,
 		},
 	}
 	handshakeContext, handshakeCancel := context.WithTimeout(ctx, structuredHandshakeTimeout)
@@ -500,7 +501,7 @@ func (s *structuredSession) execute() {
 	close(s.ready)
 
 	readerDone := make(chan error, 1)
-	go func() { readerDone <- s.readerLoop(ctx, decoder) }()
+	go func() { readerDone <- s.readerLoop(ctx, decoder, capabilities.Commands) }()
 	waitDone := make(chan error, 1)
 	go func() { waitDone <- command.Wait() }()
 
@@ -634,13 +635,16 @@ func (s *structuredSession) sendControllerFrame(ctx context.Context, frame adapt
 	return err
 }
 
-func (s *structuredSession) readerLoop(ctx context.Context, decoder *adapterproto.Decoder) error {
+func (s *structuredSession) readerLoop(
+	ctx context.Context, decoder *adapterproto.Decoder, commands bool,
+) error {
 	for {
 		frame, err := decoder.Decode()
 		if err != nil {
 			return err
 		}
-		if !adapterFrame(frame.Type) || frame.Cursor != 0 || frame.Gap != nil {
+		if !adapterFrame(frame.Type) || frame.Cursor != 0 || frame.Gap != nil ||
+			(frame.Type == adapterproto.KindCommands && !commands) {
 			return adapterproto.ErrInvalidFrame
 		}
 		s.addEvent(frame)
@@ -664,7 +668,8 @@ func adapterFrame(kind adapterproto.Kind) bool {
 		adapterproto.KindToolStart, adapterproto.KindToolResult,
 		adapterproto.KindStatus, adapterproto.KindError,
 		adapterproto.KindPermissionRequest, adapterproto.KindInputRequest,
-		adapterproto.KindHeartbeat, adapterproto.KindAck, adapterproto.KindEnd:
+		adapterproto.KindHeartbeat, adapterproto.KindAck, adapterproto.KindEnd,
+		adapterproto.KindCommands:
 		return true
 	default:
 		return false

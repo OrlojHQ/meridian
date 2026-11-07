@@ -19,6 +19,9 @@ const (
 	claudeRecordLimit    = 16 << 20
 	claudeStartupTimeout = time.Minute
 	claudeMaxPending     = 64
+	// claudeMaxCommands bounds how many reported entries are examined; the
+	// report itself stops at adapterproto.MaxCommands usable ones.
+	claudeMaxCommands = 4 * adapterproto.MaxCommands
 )
 
 var claudeSessionID = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
@@ -61,6 +64,18 @@ type claudeSession struct {
 	byFrame  map[string]string
 	retired  retiredPrompts
 	controls map[string]string
+
+	// commands is what initialize reported; terminalOnly is filled from the
+	// later system/init record.
+	commands     []claudeReportedCommand
+	terminalOnly map[string]bool
+}
+
+type claudeReportedCommand struct {
+	Name         string   `json:"name"`
+	Description  string   `json:"description"`
+	ArgumentHint string   `json:"argumentHint"`
+	Aliases      []string `json:"aliases"`
 }
 
 // RunClaudeStream maps Claude Code's `--print --input-format stream-json
@@ -78,6 +93,7 @@ func RunClaudeStream(
 	if err := stream.Handshake(adapterproto.Capabilities{
 		Resume: true, ToolEvents: true, Permissions: config.Permissions,
 		InputRequests: config.Permissions, Heartbeat: false, OpaqueMetadata: true,
+		Commands: true,
 	}); err != nil {
 		return err
 	}
@@ -341,6 +357,10 @@ func (s *claudeSession) upstream(record map[string]json.RawMessage) (bool, error
 		return false, s.toolResults(record)
 	case "result":
 		return false, s.result(record)
+	case "system":
+		if stringField(record, "subtype") == "init" {
+			return false, s.terminalCommands(record)
+		}
 	default:
 		// system, keep_alive, tool_progress, rate-limit, hook, and later
 		// presentation records have no lossless Meridian v1 equivalent.
@@ -350,8 +370,9 @@ func (s *claudeSession) upstream(record map[string]json.RawMessage) (bool, error
 
 func (s *claudeSession) controlResponse(record map[string]json.RawMessage) (bool, error) {
 	var response struct {
-		Subtype   string `json:"subtype"`
-		RequestID string `json:"request_id"`
+		Subtype   string          `json:"subtype"`
+		RequestID string          `json:"request_id"`
+		Response  json.RawMessage `json:"response"`
 	}
 	if field(record, "response", &response) != nil || response.RequestID == "" {
 		return false, s.fail("claude_response_invalid", errors.New("Claude control response is malformed"))
@@ -368,7 +389,58 @@ func (s *claudeSession) controlResponse(record map[string]json.RawMessage) (bool
 		return false, s.fail("claude_initialize_failed", errors.New("Claude Code rejected initialization"))
 	}
 	s.ready = true
+	if err := s.initializeCommands(response.Response); err != nil {
+		return false, err
+	}
 	return true, s.idle()
+}
+
+// initializeCommands reports the commands Claude Code lists in its
+// initialize response. A missing or malformed list reports nothing rather
+// than failing the session.
+func (s *claudeSession) initializeCommands(raw json.RawMessage) error {
+	var value struct {
+		Commands []claudeReportedCommand `json:"commands"`
+	}
+	if len(raw) == 0 || json.Unmarshal(raw, &value) != nil || value.Commands == nil {
+		return nil
+	}
+	s.commands = value.Commands[:min(len(value.Commands), claudeMaxCommands)]
+	return s.reportCommands()
+}
+
+// terminalCommands drops the commands system/init marks as terminal-only,
+// which would not run headlessly.
+func (s *claudeSession) terminalCommands(record map[string]json.RawMessage) error {
+	var names []string
+	if s.terminalOnly != nil || s.commands == nil ||
+		field(record, "terminal_slash_commands", &names) != nil {
+		return nil
+	}
+	names = names[:min(len(names), claudeMaxCommands)]
+	s.terminalOnly = make(map[string]bool, len(names))
+	removed := false
+	for _, name := range names {
+		s.terminalOnly[name] = true
+		for _, command := range s.commands {
+			removed = removed || command.Name == name
+		}
+	}
+	if !removed {
+		return nil
+	}
+	return s.reportCommands()
+}
+
+func (s *claudeSession) reportCommands() error {
+	commands := newCommandSet()
+	for _, command := range s.commands {
+		if !s.terminalOnly[command.Name] {
+			commands.add(command.Name, command.Description, command.ArgumentHint,
+				adapterproto.CommandPrompt, command.Aliases...)
+		}
+	}
+	return s.stream.ReportCommands(commands)
 }
 
 func (s *claudeSession) controlRequest(record map[string]json.RawMessage) error {

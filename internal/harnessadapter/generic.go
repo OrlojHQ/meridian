@@ -64,6 +64,8 @@ func RunGeneric(
 	if childHello.Type != adapterproto.KindHello || childHello.Capabilities == nil {
 		return errors.New("child negotiation is incompatible")
 	}
+	commands := childHello.Capabilities.Commands && controllerHello.Capabilities.Commands
+	childHello.Capabilities.Commands = commands
 	if err := parent.Write(childHello); err != nil {
 		return err
 	}
@@ -102,7 +104,7 @@ func RunGeneric(
 				childErrors <- readErr
 				return
 			}
-			if !adapterKind(frame.Type) {
+			if !adapterKind(frame.Type) && (frame.Type != adapterproto.KindCommands || !commands) {
 				childErrors <- errors.New("invalid child adapter frame")
 				return
 			}

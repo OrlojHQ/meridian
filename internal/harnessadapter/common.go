@@ -27,10 +27,11 @@ const (
 
 // Stream is a synchronized Meridian adapter stream.
 type Stream struct {
-	decoder *adapterproto.Decoder
-	encoder *adapterproto.Encoder
-	output  io.Writer
-	mu      sync.Mutex
+	decoder  *adapterproto.Decoder
+	encoder  *adapterproto.Encoder
+	output   io.Writer
+	mu       sync.Mutex
+	commands bool
 }
 
 func NewStream(input io.Reader, output io.Writer) *Stream {
@@ -69,11 +70,25 @@ func (s *Stream) Handshake(capabilities adapterproto.Capabilities) error {
 	if frame.Type != adapterproto.KindHello || frame.Capabilities == nil {
 		return errors.New("controller negotiation is incompatible")
 	}
+	s.commands = capabilities.Commands && frame.Capabilities.Commands
+	capabilities.Commands = s.commands
 	return s.Write(adapterproto.Frame{
 		Protocol:     adapterproto.Version,
 		Type:         adapterproto.KindHello,
 		ID:           "adapter-hello",
 		Capabilities: &capabilities,
+	})
+}
+
+// ReportCommands sends the harness's command list when the controller
+// negotiated commands frames, and drops it otherwise.
+func (s *Stream) ReportCommands(commands *commandSet) error {
+	if !s.commands {
+		return nil
+	}
+	return s.Write(adapterproto.Frame{
+		Protocol: adapterproto.Version, Type: adapterproto.KindCommands,
+		Commands: commands.list(),
 	})
 }
 

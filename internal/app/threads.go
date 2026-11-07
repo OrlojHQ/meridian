@@ -64,6 +64,7 @@ type ThreadAdapterEvent struct {
 	Input           *adapterproto.Input      `json:"input,omitempty"`
 	RequestedAfter  uint64                   `json:"requestedAfter,omitempty"`
 	AvailableFrom   uint64                   `json:"availableFrom,omitempty"`
+	Commands        []adapterproto.Command   `json:"commands,omitempty"`
 }
 
 type ThreadBlockPage struct {
@@ -1438,7 +1439,7 @@ func mapStructuredEvent(event ports.RuntimeStructuredEvent) (
 		ToolCallID: frame.ToolCallID, ToolName: frame.ToolName, Summary: frame.Summary,
 		Result: frame.Result, Status: frame.Status, Code: frame.Code,
 		Retryable: frame.Retryable, Reason: frame.Reason,
-		Permission: frame.Permission, Input: frame.Input,
+		Permission: frame.Permission, Input: frame.Input, Commands: frame.Commands,
 	}
 	if (frame.Type == adapterproto.KindPermissionRequest ||
 		frame.Type == adapterproto.KindInputRequest) && frame.ID != "" {
@@ -1462,7 +1463,7 @@ func mapStructuredEvent(event ports.RuntimeStructuredEvent) (
 	case adapterproto.KindError:
 		return domain.ThreadRoleSystem, domain.ThreadMessageStatus, domain.ThreadBlockError, payload, true
 	case adapterproto.KindStatus, adapterproto.KindPermissionRequest,
-		adapterproto.KindInputRequest, adapterproto.KindEnd:
+		adapterproto.KindInputRequest, adapterproto.KindEnd, adapterproto.KindCommands:
 		return domain.ThreadRoleSystem, domain.ThreadMessageStatus, domain.ThreadBlockJSON, payload, true
 	default:
 		return "", "", "", persistedThreadBlock{}, false

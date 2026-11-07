@@ -25,6 +25,10 @@ import (
 const (
 	openCodeBodyLimit  = int64(adapterproto.MaxFrameBytes)
 	openCodeEventLimit = adapterproto.MaxFrameBytes
+	// GET /command inlines every command's full prompt template, and the
+	// reply to POST /session/{id}/command is the whole assistant message.
+	openCodeCommandsLimit = int64(4 << 20)
+	openCodeCommandReply  = int64(64 << 20)
 )
 
 type OpenCodeConfig struct {
@@ -71,6 +75,7 @@ func RunOpenCode(
 	if err := stream.Handshake(adapterproto.Capabilities{
 		Resume: true, ToolEvents: true, Permissions: config.Permissions,
 		InputRequests: false, Heartbeat: false, OpaqueMetadata: true,
+		Commands: true,
 	}); err != nil {
 		return err
 	}
@@ -166,12 +171,26 @@ func RunOpenCode(
 		permissions: config.Permissions, toolStarted: map[string]bool{},
 		toolFinished: map[string]bool{}, finalized: map[string]bool{},
 	}
+	commands := newCommandSet()
+	if stream.commands {
+		commands = openCodeCommands(ctx, api)
+		if err := stream.ReportCommands(commands); err != nil {
+			return err
+		}
+	}
 	if err := stream.Write(adapterproto.Frame{
 		Protocol: adapterproto.Version, Type: adapterproto.KindStatus,
 		Status: adapterproto.StatusIdle, ResumeState: openCodeResumeState(sessionID),
 	}); err != nil {
 		return err
 	}
+	// POST /session/{id}/command answers only once the reply is complete;
+	// its events still arrive over SSE.
+	commandAPI := *api
+	commandHTTP := *api.client
+	commandHTTP.Timeout = 0
+	commandAPI.client = &commandHTTP
+	commandErrors := make(chan error, 8)
 
 	events := make(chan openCodeEvent, 64)
 	eventErrors := make(chan error, 1)
@@ -209,9 +228,31 @@ func RunOpenCode(
 		case err := <-eventErrors:
 			stream.Fail("opencode_event_failed")
 			return err
+		case err := <-commandErrors:
+			if err := stream.Write(adapterproto.Frame{
+				Protocol: adapterproto.Version, Type: adapterproto.KindError,
+				Code: "opencode_command_failed", Summary: bounded(err.Error(), adapterproto.MaxToolSummaryBytes),
+			}); err != nil {
+				return err
+			}
 		case frame := <-parentFrames:
 			switch frame.Type {
 			case adapterproto.KindUserMessage:
+				if name, arguments, ok := slashCommand(frame.Content); ok && commands.has(name) {
+					go func() {
+						err := commandAPI.jsonLimit(ctx, http.MethodPost,
+							"/session/"+url.PathEscape(sessionID)+"/command",
+							map[string]any{"command": name, "arguments": arguments},
+							http.StatusOK, nil, openCodeCommandReply)
+						if err != nil && ctx.Err() == nil {
+							select {
+							case commandErrors <- err:
+							default:
+							}
+						}
+					}()
+					continue
+				}
 				body := map[string]any{
 					"parts": []map[string]string{{"type": "text", "text": frame.Content}},
 				}
@@ -271,6 +312,29 @@ func RunOpenCode(
 			}
 		}
 	}
+}
+
+// openCodeCommands lists what GET /command reports. OpenCode does not expand
+// "/name" in prompt text, so every entry runs through POST
+// /session/{id}/command. A failed listing reports no commands.
+func openCodeCommands(ctx context.Context, api *openCodeClient) *commandSet {
+	commands := newCommandSet()
+	var listed []struct {
+		Name        string   `json:"name"`
+		Description string   `json:"description"`
+		Hints       []string `json:"hints"`
+	}
+	if api.jsonLimit(ctx, http.MethodGet, "/command", nil, http.StatusOK, &listed, openCodeCommandsLimit) != nil {
+		return commands
+	}
+	for _, command := range listed {
+		hint := ""
+		if len(command.Hints) != 0 {
+			hint = "[arguments]"
+		}
+		commands.add(command.Name, command.Description, hint, adapterproto.CommandAction)
+	}
+	return commands
 }
 
 func validateOpenCodeConfig(config OpenCodeConfig) error {
@@ -375,18 +439,29 @@ func (c *openCodeClient) json(
 	expected int,
 	output any,
 ) error {
+	return c.jsonLimit(ctx, method, path, body, expected, output, openCodeBodyLimit)
+}
+
+func (c *openCodeClient) jsonLimit(
+	ctx context.Context,
+	method, path string,
+	body any,
+	expected int,
+	output any,
+	limit int64,
+) error {
 	response, err := c.request(ctx, method, path, body)
 	if err != nil {
 		return errors.New("OpenCode request failed")
 	}
 	defer response.Body.Close()
 	if response.StatusCode != expected {
-		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, openCodeBodyLimit+1))
+		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, limit+1))
 		return fmt.Errorf("OpenCode returned status %d", response.StatusCode)
 	}
 	if output == nil {
-		count, copyErr := io.Copy(io.Discard, io.LimitReader(response.Body, openCodeBodyLimit+1))
-		if count > openCodeBodyLimit {
+		count, copyErr := io.Copy(io.Discard, io.LimitReader(response.Body, limit+1))
+		if count > limit {
 			return errors.New("OpenCode response exceeds size limit")
 		}
 		err = copyErr
@@ -395,9 +470,9 @@ func (c *openCodeClient) json(
 	if !strings.HasPrefix(response.Header.Get("Content-Type"), "application/json") {
 		return errors.New("OpenCode response content type is incompatible")
 	}
-	limited := io.LimitReader(response.Body, openCodeBodyLimit+1)
+	limited := io.LimitReader(response.Body, limit+1)
 	value, err := io.ReadAll(limited)
-	if err != nil || len(value) > int(openCodeBodyLimit) {
+	if err != nil || int64(len(value)) > limit {
 		return errors.New("OpenCode response exceeds size limit")
 	}
 	decoder := json.NewDecoder(bytes.NewReader(value))

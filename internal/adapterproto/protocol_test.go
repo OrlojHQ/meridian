@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -107,6 +108,62 @@ func TestFrameRolesCorrelationAndBounds(t *testing.T) {
 		if err := frame.Validate(); err == nil {
 			t.Fatalf("invalid %s frame accepted", frame.Type)
 		}
+	}
+}
+
+func TestCommandsFrameIsBoundedAndValidated(t *testing.T) {
+	command := func(name string) Command {
+		return Command{Name: name, Kind: CommandPrompt}
+	}
+	full := make([]Command, 0, MaxCommands)
+	for index := range MaxCommands {
+		full = append(full, Command{
+			Name:         strings.Repeat("n", MaxCommandNameBytes-3) + fmt.Sprintf("%03d", index),
+			Description:  strings.Repeat("d", MaxCommandDescriptionBytes),
+			ArgumentHint: strings.Repeat("h", MaxCommandHintBytes),
+			Kind:         CommandAction,
+			Aliases: []string{
+				fmt.Sprintf("a%03d", index), fmt.Sprintf("b%03d", index),
+				fmt.Sprintf("c%03d", index), fmt.Sprintf("d%03d", index),
+			},
+		})
+	}
+	valid := [][]Command{
+		nil,
+		{command("compact"), command("skill:ship"), command("pr-comments"), command("v1.2")},
+		full,
+	}
+	for _, commands := range valid {
+		frame := Frame{Protocol: Version, Type: KindCommands, Commands: commands}
+		if err := frame.Validate(); err != nil {
+			t.Fatalf("valid commands rejected: %v", err)
+		}
+	}
+	invalid := map[string][]Command{
+		"too many":         append(append([]Command(nil), full...), command("extra")),
+		"leading symbol":   {command("__remote-workflow")},
+		"slash":            {command("a/b")},
+		"space":            {command("a b")},
+		"long name":        {command(strings.Repeat("x", MaxCommandNameBytes+1))},
+		"duplicate":        {command("compact"), command("compact")},
+		"alias collision":  {command("usage"), {Name: "stats", Kind: CommandPrompt, Aliases: []string{"usage"}}},
+		"unknown kind":     {{Name: "compact", Kind: "shell"}},
+		"control in text":  {{Name: "compact", Kind: CommandPrompt, Description: "one\ntwo"}},
+		"C1 control":       {{Name: "compact", Kind: CommandPrompt, ArgumentHint: "\u009b31m"}},
+		"long description": {{Name: "compact", Kind: CommandPrompt, Description: strings.Repeat("d", MaxCommandDescriptionBytes+1)}},
+		"too many aliases": {{Name: "compact", Kind: CommandPrompt, Aliases: []string{"a", "b", "c", "d", "e"}}},
+	}
+	for name, commands := range invalid {
+		t.Run(name, func(t *testing.T) {
+			frame := Frame{Protocol: Version, Type: KindCommands, Commands: commands}
+			if err := frame.Validate(); err == nil {
+				t.Fatal("invalid commands accepted")
+			}
+		})
+	}
+	stray := Frame{Protocol: Version, Type: KindStatus, Status: StatusIdle, Commands: []Command{command("compact")}}
+	if err := stray.Validate(); err == nil {
+		t.Fatal("commands accepted outside a commands frame")
 	}
 }
 

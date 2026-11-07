@@ -68,6 +68,7 @@ func RunPiRPC(
 	if err := stream.Handshake(adapterproto.Capabilities{
 		Resume: true, ToolEvents: true, Permissions: true,
 		InputRequests: true, Heartbeat: false, OpaqueMetadata: true,
+		Commands: true,
 	}); err != nil {
 		return err
 	}
@@ -192,10 +193,22 @@ func RunPiRPC(
 					return decodeErr
 				}
 				id := "pi-message-" + frame.ID
-				pending[id] = commandType
 				command := map[string]any{
 					"id": id, "type": commandType, "message": frame.Content,
 				}
+				if name, arguments, ok := slashCommand(frame.Content); ok &&
+					commandType == "prompt" && name == piCompactCommand {
+					id = "pi-compact-" + frame.ID
+					commandType = "compact"
+					command = map[string]any{"id": id, "type": commandType}
+					if arguments != "" {
+						command["customInstructions"] = arguments
+					}
+					if err := piCompactStarted(stream, id); err != nil {
+						return err
+					}
+				}
+				pending[id] = commandType
 				if err := rpc.Write(command); err != nil {
 					stream.Fail("pi_write_failed")
 					return err
@@ -264,6 +277,24 @@ func RunPiRPC(
 					return errors.New("Pi response correlation failed")
 				}
 				delete(pending, record.ID)
+				if record.Command == "get_commands" {
+					if err := stream.ReportCommands(piCommands(record)); err != nil {
+						return err
+					}
+					continue
+				}
+				if record.Command == "compact" {
+					// Compaction is not an agent run, so no agent_settled
+					// follows; ask for state to report idle.
+					if err := piCompactFinished(stream, record); err != nil {
+						return err
+					}
+					id := "pi-state-" + record.ID
+					pending[id] = "get_state"
+					if err := rpc.Write(map[string]any{"id": id, "type": "get_state"}); err != nil {
+						return err
+					}
+				}
 				if !*record.Success {
 					_ = stream.Write(adapterproto.Frame{
 						Protocol: adapterproto.Version, Type: adapterproto.KindError,
@@ -291,6 +322,13 @@ func RunPiRPC(
 							}
 						}
 						startupDeadline = nil
+						if stream.commands {
+							pending["pi-commands"] = "get_commands"
+							if err := rpc.Write(map[string]any{"id": "pi-commands", "type": "get_commands"}); err != nil {
+								stream.Fail("pi_write_failed")
+								return err
+							}
+						}
 					}
 				}
 			case "agent_start":
@@ -404,6 +442,60 @@ func RunPiRPC(
 			}
 		}
 	}
+}
+
+const piCompactCommand = "compact"
+
+// piCommands lists Pi's compact RPC and what get_commands reported. Pi
+// expands those commands itself when they arrive through prompt.
+func piCommands(record piRecord) *commandSet {
+	commands := newCommandSet()
+	commands.add(piCompactCommand, "Summarize the conversation to free context",
+		"[instructions]", adapterproto.CommandAction)
+	var data struct {
+		Commands []struct {
+			Name        string `json:"name"`
+			Description string `json:"description"`
+		} `json:"commands"`
+	}
+	if record.Success != nil && *record.Success && json.Unmarshal(record.Data, &data) == nil {
+		for _, command := range data.Commands {
+			commands.add(command.Name, command.Description, "", adapterproto.CommandPrompt)
+		}
+	}
+	return commands
+}
+
+func piCompactStarted(stream *Stream, id string) error {
+	if err := stream.Write(adapterproto.Frame{
+		Protocol: adapterproto.Version, Type: adapterproto.KindStatus,
+		Status: adapterproto.StatusRunning,
+	}); err != nil {
+		return err
+	}
+	return stream.Write(adapterproto.Frame{
+		Protocol: adapterproto.Version, Type: adapterproto.KindToolStart,
+		Role: adapterproto.RoleAssistant, ToolCallID: safeID(id, "pi-compact"),
+		ToolName: piCompactCommand, Summary: "Summarize the conversation",
+	})
+}
+
+func piCompactFinished(stream *Stream, record piRecord) error {
+	result := "failed"
+	if *record.Success {
+		var data struct {
+			TokensBefore         int64 `json:"tokensBefore"`
+			EstimatedTokensAfter int64 `json:"estimatedTokensAfter"`
+		}
+		result = "compacted"
+		if json.Unmarshal(record.Data, &data) == nil && data.TokensBefore > 0 {
+			result = fmt.Sprintf("compacted %d tokens to about %d", data.TokensBefore, data.EstimatedTokensAfter)
+		}
+	}
+	return stream.Write(adapterproto.Frame{
+		Protocol: adapterproto.Version, Type: adapterproto.KindToolResult,
+		Role: adapterproto.RoleTool, ToolCallID: safeID(record.ID, "pi-compact"), Result: result,
+	})
 }
 
 func validatePiConfig(config PiConfig) error {

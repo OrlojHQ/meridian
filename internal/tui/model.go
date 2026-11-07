@@ -2536,7 +2536,8 @@ func renderThreadBlocks(blocks []client.ThreadBlock) []string {
 				prompt, _ := input.Prompt.Get()
 				appendTurn(transcriptError, "Needs input: "+safeBlock(boundedText(prompt, 4096)))
 			case client.ThreadAdapterEventTypePermissionResponse, client.ThreadAdapterEventTypeInputResponse,
-				client.ThreadAdapterEventTypeGap, client.ThreadAdapterEventTypeEnd:
+				client.ThreadAdapterEventTypeGap, client.ThreadAdapterEventTypeEnd,
+				client.ThreadAdapterEventTypeCommands:
 				continue
 			default:
 				appendTurn(transcriptError, "unknown event "+safeInline(string(event.Type))+": "+safeBlock(content))

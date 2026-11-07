@@ -66,7 +66,21 @@ type codexSession struct {
 	prompts map[string]*codexPrompt
 	byFrame map[string]string
 	retired retiredPrompts
+
+	// skills maps reported skill commands to the SKILL.md path Codex gave.
+	skills map[string]string
+	// reviewing marks a review/start turn. Codex runs the review as an
+	// inner turn inside the turn review/start returns (reviewTurn), and only
+	// the outer turn's completion ends the Meridian turn.
+	reviewing  bool
+	reviewTurn string
 }
+
+const (
+	codexCompactCommand = "compact"
+	codexReviewCommand  = "review"
+	codexMaxSkillPath   = 4096
+)
 
 // RunCodexAppServer maps `codex app-server` stdio JSON-RPC to Meridian frames.
 func RunCodexAppServer(
@@ -82,6 +96,7 @@ func RunCodexAppServer(
 	if err := stream.Handshake(adapterproto.Capabilities{
 		Resume: true, ToolEvents: true, Permissions: config.ApprovalPolicy != "never",
 		InputRequests: config.ApprovalPolicy != "never", Heartbeat: false, OpaqueMetadata: true,
+		Commands: true,
 	}); err != nil {
 		return err
 	}
@@ -111,7 +126,7 @@ func RunCodexAppServer(
 		stream: stream, rpc: NewJSONLinesLimit(child.stdout, child.stdin, codexRecordLimit),
 		config: config, resume: resumeID, pending: map[string]string{},
 		started: map[string]bool{}, prompts: map[string]*codexPrompt{}, byFrame: map[string]string{},
-		retired: retiredPrompts{},
+		retired: retiredPrompts{}, skills: map[string]string{},
 	}
 	records, recordErrors := readUpstream(ctx, session.rpc)
 	frames, frameErrors := readController(ctx, stream)
@@ -329,18 +344,74 @@ func (s *codexSession) startTurn(frame adapterproto.Frame) error {
 	if err := s.write(adapterproto.Frame{Type: adapterproto.KindStatus, Status: adapterproto.StatusRunning}); err != nil {
 		return err
 	}
-	if err := s.call("turn/start", map[string]any{
+	method, params := "turn/start", map[string]any{
 		"threadId": s.threadID, "input": codexInput(frame.Content),
-	}); err != nil {
+	}
+	if name, arguments, ok := slashCommand(frame.Content); ok {
+		switch {
+		case name == codexCompactCommand:
+			method, params = "thread/compact/start", map[string]any{"threadId": s.threadID}
+		case name == codexReviewCommand:
+			target := map[string]any{"type": "uncommittedChanges"}
+			if arguments != "" {
+				target = map[string]any{"type": "custom", "instructions": arguments}
+			}
+			method, params = "review/start", map[string]any{"threadId": s.threadID, "target": target}
+			s.reviewing = true
+		case s.skills[name] != "":
+			params["input"] = append(codexInput(strings.TrimSpace("$"+name+" "+arguments)),
+				map[string]any{"type": "skill", "name": name, "path": s.skills[name]})
+		}
+	}
+	if err := s.call(method, params); err != nil {
 		return s.fail("codex_write_failed", err)
 	}
 	return nil
+}
+
+// reportCommands lists Codex's protocol actions and the enabled skills that
+// skills/list returned. A failed or malformed listing reports the actions.
+func (s *codexSession) reportCommands(record map[string]json.RawMessage) error {
+	commands := newCommandSet()
+	commands.add(codexCompactCommand, "Summarize the conversation to free context", "",
+		adapterproto.CommandAction)
+	commands.add(codexReviewCommand, "Review uncommitted changes, or follow custom review instructions",
+		"[instructions]", adapterproto.CommandAction)
+	var result struct {
+		Data []struct {
+			Skills []struct {
+				Name             string `json:"name"`
+				Description      string `json:"description"`
+				ShortDescription string `json:"shortDescription"`
+				Path             string `json:"path"`
+				Enabled          bool   `json:"enabled"`
+			} `json:"skills"`
+		} `json:"data"`
+	}
+	if record["error"] == nil && field(record, "result", &result) == nil {
+		for _, entry := range result.Data {
+			for _, skill := range entry.Skills {
+				if !skill.Enabled || commands.has(skill.Name) || !strings.HasPrefix(skill.Path, "/") ||
+					len(skill.Path) > codexMaxSkillPath || strings.ContainsRune(skill.Path, 0) {
+					continue
+				}
+				commands.add(skill.Name, defaultString(skill.ShortDescription, skill.Description), "",
+					adapterproto.CommandAction)
+				if commands.has(skill.Name) {
+					s.skills[skill.Name] = skill.Path
+				}
+			}
+		}
+	}
+	return s.stream.ReportCommands(commands)
 }
 
 // finishTurn reports the end of a turn and starts the next queued message.
 func (s *codexSession) finishTurn() error {
 	s.starting = false
 	s.turnID = ""
+	s.reviewing = false
+	s.reviewTurn = ""
 	s.queue = append(s.steers, s.queue...)
 	s.steers = nil
 	if err := s.idle(); err != nil {
@@ -449,6 +520,11 @@ func (s *codexSession) response(rawID json.RawMessage, record map[string]json.Ra
 		if err := s.idle(); err != nil {
 			return false, err
 		}
+		if s.stream.commands {
+			if err := s.call("skills/list", map[string]any{}); err != nil {
+				return false, s.fail("codex_write_failed", err)
+			}
+		}
 		if len(s.queue) != 0 {
 			next := s.queue[0]
 			s.queue = s.queue[1:]
@@ -483,6 +559,42 @@ func (s *codexSession) response(rawID json.RawMessage, record map[string]json.Ra
 				Summary: bounded(defaultString(failure.Message, "Codex rejected the message"), adapterproto.MaxToolSummaryBytes),
 			})
 		}
+	case "thread/compact/start":
+		// Success is followed by turn/started for the compaction turn.
+		if failed {
+			if err := s.write(adapterproto.Frame{
+				Type: adapterproto.KindError, Code: "codex_compact_rejected",
+				Summary: bounded(defaultString(failure.Message, "Codex rejected compaction"), adapterproto.MaxToolSummaryBytes),
+			}); err != nil {
+				return false, err
+			}
+			return false, s.finishTurn()
+		}
+	case "review/start":
+		if failed {
+			if err := s.write(adapterproto.Frame{
+				Type: adapterproto.KindError, Code: "codex_review_rejected",
+				Summary: bounded(defaultString(failure.Message, "Codex rejected the review"), adapterproto.MaxToolSummaryBytes),
+			}); err != nil {
+				return false, err
+			}
+			return false, s.finishTurn()
+		}
+		var result struct {
+			Turn struct {
+				ID string `json:"id"`
+			} `json:"turn"`
+		}
+		if field(record, "result", &result) != nil || result.Turn.ID == "" {
+			return false, s.fail("codex_response_invalid", errors.New("Codex review response is malformed"))
+		}
+		s.reviewTurn = result.Turn.ID
+		if s.starting {
+			return false, s.turnStarted(result.Turn.ID)
+		}
+		s.turnID = result.Turn.ID
+	case "skills/list":
+		return false, s.reportCommands(record)
 	}
 	return false, nil
 }
@@ -497,6 +609,9 @@ func (s *codexSession) notification(method string, raw json.RawMessage) error {
 		}
 		if json.Unmarshal(raw, &params) != nil || params.Turn.ID == "" {
 			return s.fail("codex_event_invalid", errors.New("Codex turn start is malformed"))
+		}
+		if s.reviewing && !s.starting {
+			return nil
 		}
 		if s.starting || s.turnID != params.Turn.ID {
 			return s.turnStarted(params.Turn.ID)
@@ -513,6 +628,9 @@ func (s *codexSession) notification(method string, raw json.RawMessage) error {
 		}
 		if json.Unmarshal(raw, &params) != nil {
 			return s.fail("codex_event_invalid", errors.New("Codex turn completion is malformed"))
+		}
+		if s.reviewing && params.Turn.ID != s.reviewTurn {
+			return nil
 		}
 		if params.Turn.Status == "failed" {
 			summary := "Codex turn failed"
@@ -606,6 +724,7 @@ func (s *codexSession) item(raw json.RawMessage, completed bool) error {
 			} `json:"kind"`
 		} `json:"changes"`
 		ContentItems json.RawMessage `json:"contentItems"`
+		Review       string          `json:"review"`
 	}
 	if json.Unmarshal(raw, &item) != nil || item.Type == "" {
 		return s.fail("codex_item_invalid", errors.New("Codex item is malformed"))
@@ -648,6 +767,18 @@ func (s *codexSession) item(raw json.RawMessage, completed bool) error {
 		name, summary, result = item.Tool, string(item.Arguments), string(item.ContentItems)
 	case "webSearch":
 		name, summary, result = "web_search", item.Query, item.Query
+	case "exitedReviewMode":
+		// The review's findings arrive as this item's text.
+		if !completed || item.Review == "" {
+			return nil
+		}
+		s.lastAssistant = true
+		return s.write(adapterproto.Frame{
+			Type: adapterproto.KindAssistantMessage, Role: adapterproto.RoleAssistant,
+			MessageID: id, Content: bounded(item.Review, adapterproto.MaxContentBytes),
+		})
+	case "contextCompaction":
+		name, summary, result = "compact", "Summarize the conversation", "compacted"
 	default:
 		return nil
 	}

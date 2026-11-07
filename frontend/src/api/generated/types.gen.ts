@@ -613,7 +613,7 @@ export type ThreadInput = {
 };
 
 export type ThreadAdapterEvent = {
-    type: 'assistant_delta' | 'assistant_message' | 'tool_start' | 'tool_result' | 'status' | 'error' | 'permission_request' | 'permission_response' | 'input_request' | 'input_response' | 'gap' | 'end';
+    type: 'assistant_delta' | 'assistant_message' | 'tool_start' | 'tool_result' | 'status' | 'error' | 'permission_request' | 'permission_response' | 'input_request' | 'input_response' | 'gap' | 'end' | 'commands';
     runtimeSequence?: number;
     messageId?: string;
     /**
@@ -632,6 +632,21 @@ export type ThreadAdapterEvent = {
     input?: ThreadInput;
     requestedAfter?: number;
     availableFrom?: number;
+    /**
+     * On commands events, the commands the harness reported for this session. The latest commands event replaces earlier ones. Send a command as an ordinary message `/name arguments`.
+     */
+    commands?: Array<ThreadCommand>;
+};
+
+export type ThreadCommand = {
+    name: string;
+    description?: string;
+    argumentHint?: string;
+    /**
+     * prompt commands are expanded by the harness; action commands are mapped by the adapter to a harness protocol call.
+     */
+    kind: 'prompt' | 'action';
+    aliases?: Array<string>;
 };
 
 export type ThreadBlock = {

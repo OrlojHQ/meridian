@@ -7030,6 +7030,9 @@ type ThreadAdapterEvent struct {
 	Input          OptThreadInput              `json:"input"`
 	RequestedAfter OptInt64                    `json:"requestedAfter"`
 	AvailableFrom  OptInt64                    `json:"availableFrom"`
+	// On commands events, the commands the harness reported for this session. The latest commands event
+	// replaces earlier ones. Send a command as an ordinary message `/name arguments`.
+	Commands []ThreadCommand `json:"commands"`
 }
 
 // GetType returns the value of Type.
@@ -7112,6 +7115,11 @@ func (s *ThreadAdapterEvent) GetAvailableFrom() OptInt64 {
 	return s.AvailableFrom
 }
 
+// GetCommands returns the value of Commands.
+func (s *ThreadAdapterEvent) GetCommands() []ThreadCommand {
+	return s.Commands
+}
+
 // SetType sets the value of Type.
 func (s *ThreadAdapterEvent) SetType(val ThreadAdapterEventType) {
 	s.Type = val
@@ -7190,6 +7198,11 @@ func (s *ThreadAdapterEvent) SetRequestedAfter(val OptInt64) {
 // SetAvailableFrom sets the value of AvailableFrom.
 func (s *ThreadAdapterEvent) SetAvailableFrom(val OptInt64) {
 	s.AvailableFrom = val
+}
+
+// SetCommands sets the value of Commands.
+func (s *ThreadAdapterEvent) SetCommands(val []ThreadCommand) {
+	s.Commands = val
 }
 
 type ThreadAdapterEventStatus string
@@ -7290,6 +7303,7 @@ const (
 	ThreadAdapterEventTypeInputResponse      ThreadAdapterEventType = "input_response"
 	ThreadAdapterEventTypeGap                ThreadAdapterEventType = "gap"
 	ThreadAdapterEventTypeEnd                ThreadAdapterEventType = "end"
+	ThreadAdapterEventTypeCommands           ThreadAdapterEventType = "commands"
 )
 
 // AllValues returns all ThreadAdapterEventType values.
@@ -7307,6 +7321,7 @@ func (ThreadAdapterEventType) AllValues() []ThreadAdapterEventType {
 		ThreadAdapterEventTypeInputResponse,
 		ThreadAdapterEventTypeGap,
 		ThreadAdapterEventTypeEnd,
+		ThreadAdapterEventTypeCommands,
 	}
 }
 
@@ -7336,6 +7351,8 @@ func (s ThreadAdapterEventType) MarshalText() ([]byte, error) {
 	case ThreadAdapterEventTypeGap:
 		return []byte(s), nil
 	case ThreadAdapterEventTypeEnd:
+		return []byte(s), nil
+	case ThreadAdapterEventTypeCommands:
 		return []byte(s), nil
 	default:
 		return nil, errors.Errorf("invalid value: %q", s)
@@ -7380,6 +7397,9 @@ func (s *ThreadAdapterEventType) UnmarshalText(data []byte) error {
 		return nil
 	case ThreadAdapterEventTypeEnd:
 		*s = ThreadAdapterEventTypeEnd
+		return nil
+	case ThreadAdapterEventTypeCommands:
+		*s = ThreadAdapterEventTypeCommands
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)
@@ -7683,6 +7703,110 @@ func (s *ThreadBlockPage) SetGap(val OptThreadAdapterEvent) {
 }
 
 func (*ThreadBlockPage) listThreadBlocksRes() {}
+
+// Ref: #/components/schemas/ThreadCommand
+type ThreadCommand struct {
+	Name         string    `json:"name"`
+	Description  OptString `json:"description"`
+	ArgumentHint OptString `json:"argumentHint"`
+	// Prompt commands are expanded by the harness; action commands are mapped by the adapter to a harness
+	// protocol call.
+	Kind    ThreadCommandKind `json:"kind"`
+	Aliases []string          `json:"aliases"`
+}
+
+// GetName returns the value of Name.
+func (s *ThreadCommand) GetName() string {
+	return s.Name
+}
+
+// GetDescription returns the value of Description.
+func (s *ThreadCommand) GetDescription() OptString {
+	return s.Description
+}
+
+// GetArgumentHint returns the value of ArgumentHint.
+func (s *ThreadCommand) GetArgumentHint() OptString {
+	return s.ArgumentHint
+}
+
+// GetKind returns the value of Kind.
+func (s *ThreadCommand) GetKind() ThreadCommandKind {
+	return s.Kind
+}
+
+// GetAliases returns the value of Aliases.
+func (s *ThreadCommand) GetAliases() []string {
+	return s.Aliases
+}
+
+// SetName sets the value of Name.
+func (s *ThreadCommand) SetName(val string) {
+	s.Name = val
+}
+
+// SetDescription sets the value of Description.
+func (s *ThreadCommand) SetDescription(val OptString) {
+	s.Description = val
+}
+
+// SetArgumentHint sets the value of ArgumentHint.
+func (s *ThreadCommand) SetArgumentHint(val OptString) {
+	s.ArgumentHint = val
+}
+
+// SetKind sets the value of Kind.
+func (s *ThreadCommand) SetKind(val ThreadCommandKind) {
+	s.Kind = val
+}
+
+// SetAliases sets the value of Aliases.
+func (s *ThreadCommand) SetAliases(val []string) {
+	s.Aliases = val
+}
+
+// Prompt commands are expanded by the harness; action commands are mapped by the adapter to a harness
+// protocol call.
+type ThreadCommandKind string
+
+const (
+	ThreadCommandKindPrompt ThreadCommandKind = "prompt"
+	ThreadCommandKindAction ThreadCommandKind = "action"
+)
+
+// AllValues returns all ThreadCommandKind values.
+func (ThreadCommandKind) AllValues() []ThreadCommandKind {
+	return []ThreadCommandKind{
+		ThreadCommandKindPrompt,
+		ThreadCommandKindAction,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s ThreadCommandKind) MarshalText() ([]byte, error) {
+	switch s {
+	case ThreadCommandKindPrompt:
+		return []byte(s), nil
+	case ThreadCommandKindAction:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *ThreadCommandKind) UnmarshalText(data []byte) error {
+	switch ThreadCommandKind(data) {
+	case ThreadCommandKindPrompt:
+		*s = ThreadCommandKindPrompt
+		return nil
+	case ThreadCommandKindAction:
+		*s = ThreadCommandKindAction
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
 
 // ThreadHeaders wraps Thread with response headers.
 type ThreadHeaders struct {

@@ -131,6 +131,51 @@ func TestPiRPCContract(t *testing.T) {
 	}
 }
 
+func TestPiRPCCommands(t *testing.T) {
+	t.Setenv("MERIDIAN_PI_HELPER", "1")
+	controller, adapter := net.Pipe()
+	defer controller.Close()
+	done := make(chan error, 1)
+	go func() {
+		done <- RunPiRPC(context.Background(), adapter, adapter, PiConfig{
+			Command: []string{os.Args[0], "-test.run=TestPiRPCContractHelper", "--"},
+		})
+	}()
+	decoder, encoder := negotiateTestAdapter(t, controller, adapterproto.KindStart, "")
+	listed := readKind(t, decoder, adapterproto.KindCommands)
+	var names []string
+	for _, command := range listed.Commands {
+		names = append(names, command.Name+":"+string(command.Kind))
+	}
+	if strings.Join(names, " ") != "compact:action fix-tests:prompt skill:ship:prompt llama:prompt" {
+		t.Fatalf("commands = %#v", listed.Commands)
+	}
+	compact := func(id, content, want string) {
+		t.Helper()
+		writeTestFrame(t, encoder, adapterproto.Frame{
+			Protocol: adapterproto.Version, Type: adapterproto.KindUserMessage,
+			ID: id, SessionID: "session-1", Role: adapterproto.RoleUser, Content: content,
+		})
+		_ = readStatus(t, decoder, adapterproto.StatusRunning)
+		if start := readKind(t, decoder, adapterproto.KindToolStart); start.ToolName != "compact" {
+			t.Fatalf("compaction start = %#v", start)
+		}
+		if result := readKind(t, decoder, adapterproto.KindToolResult); result.Result != want {
+			t.Fatalf("compaction result = %#v", result)
+		}
+		_ = readStatus(t, decoder, adapterproto.StatusIdle)
+	}
+	compact("message-1", "/compact focus on tests", "compacted 150000 tokens to about 32000")
+	compact("message-2", "/compact", "failed")
+	writeTestFrame(t, encoder, adapterproto.Frame{
+		Protocol: adapterproto.Version, Type: adapterproto.KindCancel, ID: "cancel-1",
+	})
+	_ = readKind(t, decoder, adapterproto.KindEnd)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestPiRPCContractHelper(t *testing.T) {
 	if os.Getenv("MERIDIAN_PI_HELPER") != "1" {
 		return
@@ -196,6 +241,30 @@ func TestPiRPCContractHelper(t *testing.T) {
 				"type": "extension_ui_request", "id": "ui-confirm",
 				"method": "confirm", "title": "Allow?",
 			})
+		case "get_commands":
+			_ = writer.Encode(map[string]any{
+				"type": "response", "id": id, "command": "get_commands", "success": true,
+				"data": map[string]any{"commands": []any{
+					map[string]any{"name": "fix-tests", "description": "Fix failing tests", "source": "prompt"},
+					map[string]any{"name": "skill:ship", "description": "Ship it", "source": "skill"},
+					map[string]any{"name": "compact", "description": "shadowed", "source": "prompt"},
+					map[string]any{"name": "llama", "source": "extension"},
+				}},
+			})
+		case "compact":
+			_ = writer.Encode(map[string]any{"type": "compaction_start", "reason": "manual"})
+			_ = writer.Encode(map[string]any{"type": "compaction_end", "reason": "manual", "aborted": false})
+			if command["customInstructions"] != "focus on tests" {
+				_ = writer.Encode(map[string]any{
+					"type": "response", "id": id, "command": "compact", "success": false,
+					"error": "Nothing to compact (session too small)",
+				})
+				continue
+			}
+			_ = writer.Encode(map[string]any{
+				"type": "response", "id": id, "command": "compact", "success": true,
+				"data": map[string]any{"summary": "s", "tokensBefore": 150000, "estimatedTokensAfter": 32000},
+			})
 		case "extension_ui_response":
 			_ = writer.Encode(map[string]any{"type": "agent_settled"})
 		case "abort":
@@ -237,6 +306,43 @@ func TestOpenCodeContractAuthEventsPermissionAndCancel(t *testing.T) {
 		ID: "permission-response", ResponseTo: request.ID,
 		Permission: &adapterproto.Permission{Kind: "edit", Choice: "once"},
 	})
+	writeTestFrame(t, encoder, adapterproto.Frame{
+		Protocol: adapterproto.Version, Type: adapterproto.KindCancel, ID: "cancel-1",
+	})
+	_ = readKind(t, decoder, adapterproto.KindEnd)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestOpenCodeCommands(t *testing.T) {
+	t.Setenv("MERIDIAN_OPENCODE_HELPER", "1")
+	controller, adapter := net.Pipe()
+	defer controller.Close()
+	done := make(chan error, 1)
+	go func() {
+		done <- RunOpenCode(context.Background(), adapter, adapter, OpenCodeConfig{
+			Command: []string{os.Args[0], "-test.run=TestOpenCodeContractHelper", "--"},
+		})
+	}()
+	decoder, encoder := negotiateTestAdapter(t, controller, adapterproto.KindStart, "")
+	listed := readKind(t, decoder, adapterproto.KindCommands)
+	var names []string
+	for _, command := range listed.Commands {
+		names = append(names, command.Name+":"+string(command.Kind)+":"+command.ArgumentHint)
+	}
+	if strings.Join(names, " ") != "init:action:[arguments] ship:action:[arguments] customize-opencode:action:" {
+		t.Fatalf("commands = %#v", listed.Commands)
+	}
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+	sendTestMessage(t, encoder, "message-1", "/ship now")
+	if final := readKind(t, decoder, adapterproto.KindAssistantMessage); final.Content != "shipped now" {
+		t.Fatalf("command reply = %#v", final)
+	}
+	sendTestMessage(t, encoder, "message-2", "/ship later")
+	if failure := readKind(t, decoder, adapterproto.KindError); failure.Code != "opencode_command_failed" {
+		t.Fatalf("command failure = %#v", failure)
+	}
 	writeTestFrame(t, encoder, adapterproto.Frame{
 		Protocol: adapterproto.Version, Type: adapterproto.KindCancel, ID: "cancel-1",
 	})
@@ -401,6 +507,40 @@ func TestOpenCodeContractHelper(t *testing.T) {
 				},
 				"parts": []map[string]any{{"type": "text", "text": "hello"}},
 			})
+		case request.URL.Path == "/command" && request.Method == http.MethodGet:
+			// Templates are inlined, so the listing outgrows a Meridian frame.
+			writeTestJSON(writer, []map[string]any{
+				{"name": "init", "description": "guided AGENTS.md setup", "source": "command",
+					"template": strings.Repeat("t", adapterproto.MaxFrameBytes), "hints": []string{"$ARGUMENTS"}},
+				{"name": "ship", "description": "Ship the current branch", "source": "command",
+					"template": "Ship it $ARGUMENTS", "hints": []string{"$ARGUMENTS"}},
+				{"name": "customize-opencode", "description": "Edit opencode configuration", "source": "skill",
+					"template": "skill", "hints": []string{}},
+			})
+		case request.URL.Path == "/session/ses_contract/command" && request.Method == http.MethodPost:
+			var command map[string]string
+			if json.NewDecoder(request.Body).Decode(&command) != nil ||
+				command["command"] != "ship" || command["arguments"] != "now" {
+				http.Error(writer, "unexpected command", http.StatusBadRequest)
+				return
+			}
+			for _, event := range []map[string]any{
+				{"type": "message.part.delta", "properties": map[string]any{
+					"sessionID": "ses_contract", "messageID": "msg_command", "field": "text", "delta": "shipped",
+				}},
+				{"type": "message.updated", "properties": map[string]any{
+					"info": map[string]any{"id": "msg_command", "sessionID": "ses_contract", "role": "assistant", "finish": "stop"},
+				}},
+			} {
+				value, _ := json.Marshal(event)
+				eventChannel <- string(value)
+			}
+			writeTestJSON(writer, map[string]any{"info": map[string]any{"id": "msg_command"}, "parts": []any{}})
+		case request.URL.Path == "/session/ses_contract/message/msg_command":
+			writeTestJSON(writer, map[string]any{
+				"info":  map[string]any{"id": "msg_command", "sessionID": "ses_contract", "role": "assistant"},
+				"parts": []map[string]any{{"type": "text", "text": "shipped now"}},
+			})
 		case request.URL.Path == "/session/ses_contract/permissions/perm_contract":
 			writeTestJSON(writer, true)
 		case request.URL.Path == "/session/ses_contract/abort":
@@ -430,6 +570,7 @@ func negotiateTestAdapter(
 		Capabilities: &adapterproto.Capabilities{
 			Resume: true, ToolEvents: true, Permissions: true,
 			InputRequests: true, Heartbeat: true, OpaqueMetadata: true,
+			Commands: true,
 		},
 	})
 	if hello, err := decoder.Decode(); err != nil || hello.Type != adapterproto.KindHello {

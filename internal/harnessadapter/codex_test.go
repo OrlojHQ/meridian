@@ -205,6 +205,76 @@ func TestCodexAppServerResume(t *testing.T) {
 	}
 }
 
+func TestCodexAppServerCommands(t *testing.T) {
+	decoder, encoder, argumentsPath, done := runCodexFixture(t, CodexConfig{}, adapterproto.KindStart, "")
+	listed := readKind(t, decoder, adapterproto.KindCommands)
+	var names []string
+	for _, command := range listed.Commands {
+		names = append(names, command.Name+":"+string(command.Kind))
+	}
+	if strings.Join(names, " ") != "compact:action review:action ship:action" {
+		t.Fatalf("commands = %#v", listed.Commands)
+	}
+	if listed.Commands[2].Description != "Ship the current branch with care" {
+		t.Fatalf("skill description = %q", listed.Commands[2].Description)
+	}
+
+	sendTestMessage(t, encoder, "message-1", "/compact")
+	if start := readKind(t, decoder, adapterproto.KindToolStart); start.ToolName != "compact" {
+		t.Fatalf("compaction start = %#v", start)
+	}
+	_ = readKind(t, decoder, adapterproto.KindToolResult)
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+
+	sendTestMessage(t, encoder, "message-2", "/review")
+	frames := readUntil(t, decoder, adapterproto.KindAssistantMessage)
+	if final := frames[len(frames)-1]; final.Content != "No findings." {
+		t.Fatalf("review = %#v", final)
+	}
+	// The inner review turn completes first; only the outer turn ends ours.
+	for _, frame := range frames {
+		if frame.Type == adapterproto.KindStatus && frame.Status == adapterproto.StatusIdle {
+			t.Fatalf("idle before the review finished: %#v", frames)
+		}
+	}
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+
+	sendTestMessage(t, encoder, "message-3", "/review focus on locking")
+	_ = readKind(t, decoder, adapterproto.KindAssistantMessage)
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+
+	sendTestMessage(t, encoder, "message-4", "/ship now")
+	if final := readKind(t, decoder, adapterproto.KindAssistantMessage); final.Content != "$ship now" {
+		t.Fatalf("skill turn = %#v", final)
+	}
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+
+	// Unknown commands are ordinary prompts.
+	sendTestMessage(t, encoder, "message-5", "/hello")
+	if final := readKind(t, decoder, adapterproto.KindAssistantMessage); final.Content != "/hello" {
+		t.Fatalf("plain prompt = %#v", final)
+	}
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+	writeTestFrame(t, encoder, adapterproto.Frame{
+		Protocol: adapterproto.Version, Type: adapterproto.KindCancel, ID: "cancel-1",
+	})
+	_ = readKind(t, decoder, adapterproto.KindEnd)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	log := strings.Join(readHelperArguments(t, argumentsPath), "\n")
+	for _, want := range []string{
+		"compact " + codexFixtureThread,
+		`review {"type":"uncommittedChanges"}`,
+		`review {"instructions":"focus on locking","type":"custom"}`,
+		"skill skill ship /workspace/.agents/skills/ship/SKILL.md",
+	} {
+		if !strings.Contains(log, want) {
+			t.Fatalf("helper log %q does not contain %q", log, want)
+		}
+	}
+}
+
 func TestCodexAppServerRejectsInvalidConfiguration(t *testing.T) {
 	for _, state := range []string{
 		`{"driver":"codex-app-server","threadId":"x/../y"}`,
@@ -299,8 +369,58 @@ func TestCodexAppServerHelper(t *testing.T) {
 			save()
 			reply(map[string]any{"thread": map[string]any{"id": codexFixtureThread}})
 			notify("thread/started", map[string]any{"thread": map[string]any{"id": codexFixtureThread}})
+		case "skills/list":
+			reply(map[string]any{"data": []any{map[string]any{
+				"cwd": "/workspace", "errors": []any{},
+				"skills": []any{
+					map[string]any{"name": "ship", "description": "Ship the current branch\nwith care",
+						"path": "/workspace/.agents/skills/ship/SKILL.md", "scope": "repo", "enabled": true},
+					map[string]any{"name": "compact", "description": "collides with the action",
+						"path": "/workspace/.agents/skills/compact/SKILL.md", "scope": "repo", "enabled": true},
+					map[string]any{"name": "disabled", "description": "off",
+						"path": "/workspace/.agents/skills/disabled/SKILL.md", "scope": "repo", "enabled": false},
+					map[string]any{"name": "bad name", "description": "unusable",
+						"path": "/workspace/.agents/skills/bad/SKILL.md", "scope": "repo", "enabled": true},
+					map[string]any{"name": "relative", "description": "relative path",
+						"path": "skills/relative/SKILL.md", "scope": "repo", "enabled": true},
+				},
+			}}})
+		case "thread/compact/start":
+			log = append(log, "compact "+params["threadId"].(string))
+			save()
+			reply(map[string]any{})
+			begin()
+			compaction := map[string]any{"type": "contextCompaction", "id": "compaction-1"}
+			notify("item/started", map[string]any{"item": compaction, "turnId": turnID})
+			notify("item/completed", map[string]any{"item": compaction, "turnId": turnID})
+			complete("completed", nil)
+		case "review/start":
+			target, _ := json.Marshal(params["target"])
+			log = append(log, "review "+string(target))
+			save()
+			outer := begin()
+			reply(map[string]any{"turn": map[string]any{"id": outer, "status": "inProgress"}, "reviewThreadId": codexFixtureThread})
+			notify("item/started", map[string]any{"item": map[string]any{
+				"type": "enteredReviewMode", "id": "review-entered", "review": "current changes"}, "turnId": outer})
+			inner := "turn-review-inner"
+			notify("turn/started", map[string]any{"threadId": codexFixtureThread, "turn": map[string]any{"id": inner}})
+			notify("turn/completed", map[string]any{"threadId": codexFixtureThread, "turn": map[string]any{"id": inner, "status": "completed"}})
+			notify("item/completed", map[string]any{"item": map[string]any{
+				"type": "exitedReviewMode", "id": "review-exited", "review": "No findings."}, "turnId": outer})
+			turnID = outer
+			complete("completed", nil)
 		case "turn/start":
-			input := params["input"].([]any)[0].(map[string]any)
+			inputs := params["input"].([]any)
+			input := inputs[0].(map[string]any)
+			if len(inputs) > 1 {
+				skill := inputs[1].(map[string]any)
+				log = append(log, "skill "+skill["type"].(string)+" "+skill["name"].(string)+" "+skill["path"].(string))
+				save()
+				reply(map[string]any{"turn": map[string]any{"id": begin()}})
+				message("msg_skill", input["text"].(string))
+				complete("completed", nil)
+				continue
+			}
 			reply(map[string]any{"turn": map[string]any{"id": begin()}})
 			switch input["text"] {
 			case "hello":
@@ -338,6 +458,9 @@ func TestCodexAppServerHelper(t *testing.T) {
 							"isSecret": true, "options": nil},
 					},
 				}})
+			case "/hello":
+				message("msg_plain", "/hello")
+				complete("completed", nil)
 			case "hold":
 			case "withdraw":
 				_ = writer.Encode(map[string]any{"id": 9, "method": "item/commandExecution/requestApproval", "params": map[string]any{

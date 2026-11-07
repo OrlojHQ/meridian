@@ -601,3 +601,53 @@ func threadServiceWithClock(
 	service.ConfigureThreads(runtime, key)
 	return store, service, runtime, key, capsuleID
 }
+
+func TestThreadCommandsPersistEncryptedAsStatusEvent(t *testing.T) {
+	ctx := context.Background()
+	store, service, runtime, key, capsuleID := threadService(t, ctx)
+	defer store.Close()
+	defer key.Zero()
+	created, err := service.CreateThread(ctx, app.CreateThreadInput{
+		CapsuleID: capsuleID, Harness: "mock", FirstMessage: "hello",
+		Start: true, IdempotencyKey: "commands-create",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sentinel := "distinctive-repository-command-sentinel"
+	runtime.events = ports.RuntimeStructuredEvents{
+		Items: []ports.RuntimeStructuredEvent{{Sequence: 1, Frame: adapterproto.Frame{
+			Protocol: adapterproto.Version, Type: adapterproto.KindCommands,
+			Commands: []adapterproto.Command{{
+				Name: sentinel, Description: "Project command", ArgumentHint: "target",
+				Kind: adapterproto.CommandPrompt, Aliases: []string{"ship"},
+			}},
+		}}},
+		NextCursor: 1,
+	}
+	if err := service.SyncThread(ctx, created.Thread.ID); err != nil {
+		t.Fatal(err)
+	}
+	page, err := service.ThreadBlocks(ctx, created.Thread.ID, 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := page.Items[len(page.Items)-1]
+	if last.Kind != domain.ThreadBlockJSON || last.Event == nil ||
+		last.Event.Type != adapterproto.KindCommands || len(last.Event.Commands) != 1 ||
+		last.Event.Commands[0].Name != sentinel || last.Event.Commands[0].Aliases[0] != "ship" {
+		t.Fatalf("commands block = %#v", last)
+	}
+	for _, path := range []string{store.Path(), store.Path() + "-wal"} {
+		raw, readErr := os.ReadFile(path)
+		if readErr != nil && errors.Is(readErr, os.ErrNotExist) {
+			continue
+		}
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		if bytes.Contains(raw, []byte(sentinel)) {
+			t.Fatalf("command name leaked into %s", path)
+		}
+	}
+}

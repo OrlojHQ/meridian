@@ -177,6 +177,24 @@ func TestStructuredReplayGapCrashAndCancellation(t *testing.T) {
 	})
 }
 
+func TestStructuredCommandsRequireNegotiation(t *testing.T) {
+	client := structuredTestClient(t, "commands", 16)
+	startStructuredTestRun(t, client, "commands-run")
+	events := waitStructuredEvents(t, client, "commands-run", 0, 2)
+	if frame := events.Events[1].Frame; frame.Type != adapterproto.KindCommands ||
+		len(frame.Commands) != 1 || frame.Commands[0].Name != "compact" {
+		t.Fatalf("commands event = %#v", events.Events)
+	}
+	_, _ = client.CancelStructured(context.Background(), "commands-run")
+	waitStructuredTerminal(t, client, "commands-run")
+
+	unnegotiated := structuredTestClient(t, "unnegotiated-commands", 16)
+	startStructuredTestRun(t, unnegotiated, "unnegotiated-run")
+	if status := waitStructuredTerminal(t, unnegotiated, "unnegotiated-run"); status.State != RunFailed {
+		t.Fatalf("unnegotiated commands status = %#v", status)
+	}
+}
+
 func TestStructuredAuthenticationAndVersion(t *testing.T) {
 	client := structuredTestClient(t, "echo", 16)
 	startStructuredTestRun(t, client, "auth-run")
@@ -309,6 +327,7 @@ func TestStructuredAdapterHelper(t *testing.T) {
 		Capabilities: &adapterproto.Capabilities{
 			Resume: true, ToolEvents: true, Permissions: true,
 			InputRequests: true, Heartbeat: true, OpaqueMetadata: true,
+			Commands: mode == "commands",
 		},
 	}); err != nil {
 		os.Exit(21)
@@ -319,6 +338,14 @@ func TestStructuredAdapterHelper(t *testing.T) {
 	}
 	if mode == "crash" {
 		os.Exit(23)
+	}
+	if mode == "commands" || mode == "unnegotiated-commands" {
+		_ = encoder.Encode(adapterproto.Frame{
+			Protocol: adapterproto.Version, Type: adapterproto.KindCommands,
+			Commands: []adapterproto.Command{{
+				Name: "compact", Description: "Summarize the conversation", Kind: adapterproto.CommandAction,
+			}},
+		})
 	}
 	if mode == "group" {
 		child := exec.Command("/bin/sleep", "30")
