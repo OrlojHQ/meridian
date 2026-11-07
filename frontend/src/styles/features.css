@@ -1017,6 +1017,7 @@ button.tool-line:hover {
   max-height: min(20rem, 45dvh);
   margin: 0;
   padding: 0.3rem;
+  overflow-x: hidden;
   overflow-y: auto;
   list-style: none;
 }
@@ -1044,7 +1045,7 @@ button.tool-line:hover {
 
 .slash-option {
   display: grid;
-  grid-template-columns: minmax(7rem, max-content) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr) auto;
   align-items: baseline;
   gap: 0.75rem;
   border-radius: var(--radius-md);
@@ -1058,7 +1059,10 @@ button.tool-line:hover {
 }
 
 .slash-name {
+  max-width: 20rem;
+  overflow: hidden;
   color: var(--text);
+  text-overflow: ellipsis;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.78rem;
   font-weight: 600;
