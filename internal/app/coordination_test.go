@@ -31,6 +31,8 @@ type coordRuntime struct {
 	sent      map[domain.RunID][]adapterproto.Frame
 	cancels   map[domain.RunID]int
 	mailboxes map[string]*capsuleproto.Mailbox
+
+	stallLongPolls bool
 }
 
 func newCoordRuntime() *coordRuntime {
@@ -127,7 +129,23 @@ func (r *coordRuntime) ConfigureCoordination(_ context.Context, resource string,
 }
 
 func (r *coordRuntime) PollCoordination(ctx context.Context, resource string, after, consumed uint64, wait time.Duration) (coordproto.Poll, error) {
-	return r.mailbox(resource).Poll(ctx, after, consumed, wait), nil
+	poll := r.mailbox(resource).Poll(ctx, after, consumed, wait)
+	r.mu.Lock()
+	stalled := r.stallLongPolls
+	r.mu.Unlock()
+	if stalled && wait > 0 {
+		<-ctx.Done()
+		return coordproto.Poll{}, ctx.Err()
+	}
+	return poll, nil
+}
+
+// stallBackgroundPoller makes long polls never return, as when the poller is
+// backing off from a transport error.
+func (r *coordRuntime) stallBackgroundPoller() {
+	r.mu.Lock()
+	r.stallLongPolls = true
+	r.mu.Unlock()
 }
 
 func (r *coordRuntime) ReplyCoordination(_ context.Context, resource string, replies []coordproto.Reply) error {
@@ -387,6 +405,43 @@ func TestLeadSpawnsWaitsAndReceivesChildReport(t *testing.T) {
 	f.runtime.mu.Unlock()
 	if leadSends != 1 {
 		t.Fatalf("lead received %d messages, want only its first prompt", leadSends)
+	}
+}
+
+func TestWakeSkipsReportsTheLeadReadBeforeThePollerSawThem(t *testing.T) {
+	f := newCoordFixture(t)
+	lead, mailbox := f.spawnLead(t, domain.CoordinationPolicy{})
+	spawned := tool(t, mailbox, coordproto.Request{Type: coordproto.KindSpawn, Key: "s", Name: "one", Harness: "mock", Prompt: "task"})
+	if !spawned.OK {
+		t.Fatalf("spawn = %+v", spawned)
+	}
+	link, err := f.service.GetThreadLink(f.ctx, domain.ThreadLinkID(spawned.Link.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.ready(t, link.ChildCapsuleID)
+	childThread, _ := f.service.GetThread(f.ctx, link.ChildThreadID)
+	f.runtime.stallBackgroundPoller()
+	f.runtime.finishTurn(childThread.CurrentRunID, "child-1", "done")
+	f.service.CoordinationTick(f.ctx)
+	read := tool(t, mailbox, coordproto.Request{Type: coordproto.KindWait, Links: []string{spawned.Link.ID}, TimeoutSeconds: 5})
+	if !read.OK || len(read.Reports) != 1 {
+		t.Fatalf("wait = %+v", read)
+	}
+	f.runtime.finishTurn(lead.Intent.RunID, "lead-1", "summarized the helper")
+	for range 3 {
+		f.advance(5 * time.Second)
+		f.service.CoordinationTick(f.ctx)
+	}
+	f.runtime.mu.Lock()
+	sent := len(f.runtime.sent[lead.Intent.RunID])
+	f.runtime.mu.Unlock()
+	if sent != 1 {
+		t.Fatalf("lead received %d messages, want only its first prompt", sent)
+	}
+	delivered, err := f.service.GetThreadLink(f.ctx, link.ID)
+	if err != nil || delivered.ReportDeliveredSeq != delivered.ReportSeq {
+		t.Fatalf("report delivery = %d of %d, %v", delivered.ReportDeliveredSeq, delivered.ReportSeq, err)
 	}
 }
 
