@@ -146,11 +146,14 @@ as an npm package, and whose package has no terminal UI.
 - The `dsh` launcher disables DeepSeek's product telemetry. It does not change
   `dsh`'s own sandbox or permission policy.
 
-`dsh` receives no Meridian-managed credentials. Its DeepSeek provider speaks
-the Anthropic Messages protocol to an overridable base URL, which the provider
-gateway could serve through an Anthropic-compatible connection with a DeepSeek
-base URL. No such connection exists in this change, and an `anthropic`
-connection would forward DeepSeek traffic to Anthropic. Wiring it is a
-follow-up that also has to account for `dsh` sending the same key to its web
-search endpoint and a `dsh_session_log` copy of the session with each request.
-Meridian does not pass a raw key into the Capsule as a stopgap.
+`dsh` receives no Meridian-managed credentials in this change, and Meridian
+does not pass a raw key into the Capsule as a stopgap. The lease design can
+serve it without new gateway code. Every shipped `dsh` profile mounts the
+`dsh-llm-pi-ai` adapter, whose routes declare an OpenAI Chat Completions,
+OpenAI Responses, or Anthropic Messages endpoint, a base URL, models, and an
+environment credential reference. A home-level `cordis.patch.yml` that
+`capsuled` writes can declare a route at the connection's gateway URL that
+reads `MERIDIAN_PROVIDER_TOKEN`, and select it for ACP sessions and subagents.
+This was shown against an OpenAI-compatible connection's gateway with a lease
+and a mock upstream. That wiring needs the model name that custom endpoint
+connections carry, so it follows them.

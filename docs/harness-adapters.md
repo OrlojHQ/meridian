@@ -111,28 +111,48 @@ lists only Meridian's own commands. It asks permission when a shell command
 requests more than its default workspace-write sandbox, and offers "Allow
 once" and "Reject".
 
-`dsh` has no Meridian-managed credentials yet, so a Thread's turns fail until
-the image or Project supplies them. Its DeepSeek provider speaks the
-Anthropic Messages protocol to `DEEPSEEK_BASE_URL` (default
-`https://api.deepseek.com/anthropic`, with `/v1/messages` appended), sends
-`DEEPSEEK_API_KEY` as `x-api-key`, and has no OpenAI-protocol provider. The
-base URL can be overridden, so the provider gateway could serve it, but no
-connection fits today:
+`dsh` has no Meridian-managed credentials yet: `capsuled` writes provider
+configuration only for `claude`, `codex`, `opencode`, and `pi`, so a dsh
+Thread's turns fail until the image or Project supplies credentials. Meridian
+does not pass a raw provider key into the Capsule in the meantime.
 
-- an `anthropic` connection forwards to `api.anthropic.com`, which does not
-  serve DeepSeek models, and `capsuled` writes provider configuration only for
-  `claude`, `codex`, `opencode`, and `pi`;
-- an `openai-compatible` connection cannot serve it, because `dsh` cannot
-  speak the OpenAI protocol;
-- an `anthropic-compatible` connection whose base URL is
-  `https://api.deepseek.com/anthropic` would fit once those connections exist
-  and `capsuled` sets `DEEPSEEK_BASE_URL` to the gateway and a lease in
-  `DEEPSEEK_API_KEY`. That wiring must also point or disable web search
-  (`DEEPSEEK_SEARCH_BASE_URL`, which receives the same key), and accept that
-  model listing (`<origin>/models`) and the Files API are not routed and that
-  each request carries a `dsh_session_log` copy of the session's events.
+The gateway can serve `dsh` once that wiring exists. Besides its DeepSeek
+adapters, `dsh` mounts `@deepseek-ai/dsh-llm-pi-ai` in every shipped profile
+(`dsh-base`), with no routes until settings declare them. A route names a
+wire protocol (`openai-completions`, `openai-responses`, or
+`anthropic-messages`, among others), a `baseURL`, models, and an `apiKeyEnv`
+credential reference that resolves from the launch environment. DeepSeek's
+desktop app configures the same routes, since it boots the same profile code.
+For an `openai-compatible` connection, `capsuled` would write the home-level
+patch `$HOME/.dsh/cordis.patch.yml` in the setup home:
 
-Meridian does not pass a raw DeepSeek key into the Capsule in the meantime.
+```yaml
+- id: llm-pi-ai
+  config:
+    providers:
+      meridian:
+        api: openai-completions
+        baseURL: <connection URL>/v1
+        apiKeyEnv: MERIDIAN_PROVIDER_TOKEN
+        models:
+          - id: <connection model>
+- id: acp
+  config: {provider: meridian, model: <connection model>}
+- id: agent-default-model
+  config: {provider: meridian, model: <connection model>}
+```
+
+`dsh` then sends `POST <connection URL>/v1/chat/completions` with the lease
+as `Authorization: Bearer`, which the gateway swaps for the upstream key.
+`agent-default-model` matters because subagents otherwise default to
+`deepseek-official`. `anthropic-compatible` works the same way with
+`api: anthropic-messages`. A repository's `.env` ranks below the launch
+environment in `dsh`, so it cannot replace the lease, but a credential saved
+in `$DSH_HOME` outranks it. The patch format evaluates `!!js` tags, so the
+model name must stay validated and quoted. Web search keeps its own
+`DEEPSEEK_API_KEY` reference and stays unconfigured; the lease never reaches
+it. This needs the model name that custom connections carry, so it is a
+follow-up to those connections rather than part of this pack.
 
 Structured sessions have no terminal to sign in with. Attach a provider
 connection (see [personal harness setups](personal-harness-setups.md)) to the
@@ -382,10 +402,12 @@ malformed or oversized records, uncorrelated responses, and a protocol version
 other than 1 end the adapter.
 
 The driver also runs `dsh --profile acp` from DeepSeek Harness 0.2.2-rc.1
-(agent `deepseek-harness-acp` 0.0.1), recorded on 2026-11-07 with a local
-mock of DeepSeek's Anthropic-protocol endpoint: streamed turns, a shell
-escalation permission prompt resolved by "Allow once", and no command list.
-Its first `session/request_permission` uses JSON-RPC id `0`.
+(agent `deepseek-harness-acp` 0.0.1), recorded on 2026-11-07 against local
+mocks of DeepSeek's Anthropic-protocol endpoint and of an OpenAI Chat
+Completions server behind the custom-connection provider gateway: streamed
+turns, tool calls, a shell escalation permission prompt resolved by "Allow
+once", and no command list. Its first `session/request_permission` uses
+JSON-RPC id `0`.
 
 `opencode acp` also starts OpenCode's HTTP server on `127.0.0.1`. The pack
 gives it a fresh random `OPENCODE_SERVER_PASSWORD` per launch and disables

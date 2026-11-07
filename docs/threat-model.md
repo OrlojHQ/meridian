@@ -251,11 +251,13 @@ itself is unreviewed upstream code with the authority of the harness. The
 build checks `--help` for DeepSeek Harness's own text so Debian's unrelated
 `dsh` cannot stand in for it. The launcher disables DeepSeek's product
 telemetry; model traffic still goes wherever `dsh` is configured to send it,
-and each model request includes a `dsh_session_log` copy of the session's
-events. `dsh` applies its own workspace-write sandbox and asks Meridian's
-permission prompt for escalations; neither is a Meridian boundary. The pack
-gets no provider connection or lease, and Meridian does not pass a raw
-DeepSeek key into the Capsule (ADR 0030).
+and requests through its DeepSeek adapter include a `dsh_session_log` copy
+of the session's events. `dsh` applies its own workspace-write sandbox and
+asks Meridian's permission prompt for escalations; neither is a Meridian
+boundary. The pack gets no provider connection or lease yet, and Meridian
+does not pass a raw key into the Capsule. Its multi-provider adapter can read
+a gateway lease from the environment like the other harnesses, so connecting
+it later adds no new credential path (ADR 0030).
 Profile-registered MCP servers (`--mcp-server`) are trusted profile metadata.
 They take absolute executables and quote-free arguments, run with the harness's
 authority, and their tool calls still pass through harness permission prompts.
