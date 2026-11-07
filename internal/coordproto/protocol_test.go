@@ -11,7 +11,7 @@ func record(body string) []byte { return []byte(body + "\n") }
 
 func TestDecodeRequestAcceptsClosedFieldSets(t *testing.T) {
 	valid := []string{
-		`{"protocol":"meridian.coord.v1","type":"spawn","key":"spawn-a","name":"helper-1","harness":"claude","prompt":"do it"}`,
+		`{"protocol":"meridian.coord.v1","type":"spawn","key":"spawn-a","name":"subagent-1","harness":"claude","prompt":"do it"}`,
 		`{"protocol":"meridian.coord.v1","type":"send","key":"k","link":"link-1","prompt":"more"}`,
 		`{"protocol":"meridian.coord.v1","type":"cancel","key":"k","link":"link-1"}`,
 		`{"protocol":"meridian.coord.v1","type":"wait","links":["a","b"],"all":true,"timeoutSeconds":30}`,
@@ -34,7 +34,7 @@ func TestDecodeRequestRejectsHostileRecords(t *testing.T) {
 		"unknown type":      record(`{"protocol":"meridian.coord.v1","type":"promote"}`),
 		"field not allowed": record(`{"protocol":"meridian.coord.v1","type":"list","link":"x"}`),
 		"spawn without key": record(`{"protocol":"meridian.coord.v1","type":"spawn","name":"a","harness":"h","prompt":"p"}`),
-		"bad name":          record(`{"protocol":"meridian.coord.v1","type":"spawn","key":"k","name":"Helper","harness":"h","prompt":"p"}`),
+		"bad name":          record(`{"protocol":"meridian.coord.v1","type":"spawn","key":"k","name":"Subagent","harness":"h","prompt":"p"}`),
 		"long name":         record(`{"protocol":"meridian.coord.v1","type":"spawn","key":"k","name":"` + strings.Repeat("a", 49) + `","harness":"h","prompt":"p"}`),
 		"control in key":    record(`{"protocol":"meridian.coord.v1","type":"cancel","key":"a b","link":"l"}`),
 		"NUL in prompt":     record(`{"protocol":"meridian.coord.v1","type":"send","key":"k","link":"l","prompt":"a\u0000b"}`),
@@ -119,7 +119,7 @@ func TestConfigAndNotificationValidation(t *testing.T) {
 	if err := (Config{Enabled: false, Self: &Self{}}).Validate(); err == nil {
 		t.Error("disabled config with self accepted")
 	}
-	if err := (Config{Enabled: true, Self: &Self{Role: "helper", GrantID: "g"}}).Validate(); err == nil {
+	if err := (Config{Enabled: true, Self: &Self{Role: "subagent", GrantID: "g"}}).Validate(); err == nil {
 		t.Error("non-lead config accepted")
 	}
 	if err := (Config{Enabled: true, Self: &Self{Role: "lead", GrantID: "g"}}).Validate(); err != nil {

@@ -6,7 +6,7 @@ import type { Capsule } from "../api/generated/types.gen";
 
 // Promotion is permanent and grants no coordination authority. Detaching
 // closes the lead's link for good.
-export function PromoteHelper({ capsule }: { capsule: Capsule }) {
+export function PromoteSubagent({ capsule }: { capsule: Capsule }) {
   const queryClient = useQueryClient();
   const [confirm, setConfirm] = useState(false);
   const promote = useMutation({
@@ -24,7 +24,7 @@ export function PromoteHelper({ capsule }: { capsule: Capsule }) {
   if (promoted && !capsule.linkId) return null;
   const title = promoted ? "Detach from lead" : "Promote to main";
   return (
-    <div className="promote-helper">
+    <div className="promote-subagent">
       {confirm ? (
         <div className="actions" role="alertdialog" aria-label={title}>
           <span>

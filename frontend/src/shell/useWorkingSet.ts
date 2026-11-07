@@ -25,9 +25,9 @@ export function useWorkingSet() {
   const capsuleResults = useQueries({
     queries: projectItems.map((project) => queries.mainCapsules(project.id)),
   });
-  // Helpers stay out of the working set unless they need the operator or
+  // Subagents stay out of the working set unless they need the operator or
   // their lead is gone. One content-free board read lists those and every
-  // lead's rollup, so hidden helpers add no per-Capsule polling.
+  // lead's rollup, so hidden subagents add no per-Capsule polling.
   const board = useQuery(queries.board("attention"));
   const capsules = useMemo(() => {
     const surfaced = (board.data?.items ?? [])
@@ -86,24 +86,24 @@ export function useWorkingSet() {
   return { projects, projectItems, capsuleResults, items };
 }
 
-// Helper Capsules render under their lead so a coordinated tree reads as one
-// unit. A helper whose lead is not visible stays top-level, never hidden.
-export function nestHelpers(items: WorkingSetItem[]) {
+// Subagent Capsules render under their lead so a coordinated tree reads as one
+// unit. A subagent whose lead is not visible stays top-level, never hidden.
+export function nestSubagents(items: WorkingSetItem[]) {
   const leadCapsule = new Map<string, string>();
   for (const item of items) {
     for (const thread of item.threads) leadCapsule.set(thread.id, item.capsule.id);
   }
-  const helpers = new Map<string, WorkingSetItem[]>();
+  const subagents = new Map<string, WorkingSetItem[]>();
   const roots: WorkingSetItem[] = [];
   for (const item of items) {
     const lead = item.capsule.role === "sub" && item.capsule.leadThreadId
       ? leadCapsule.get(item.capsule.leadThreadId)
       : undefined;
     if (lead && lead !== item.capsule.id) {
-      helpers.set(lead, [...(helpers.get(lead) ?? []), item]);
+      subagents.set(lead, [...(subagents.get(lead) ?? []), item]);
     } else {
       roots.push(item);
     }
   }
-  return roots.map((item) => ({ item, helpers: helpers.get(item.capsule.id) ?? [] }));
+  return roots.map((item) => ({ item, subagents: subagents.get(item.capsule.id) ?? [] }));
 }

@@ -71,7 +71,7 @@ Meridian assumes the following may be malicious or compromised:
 - local-sync archives and remote metadata, browsed filenames and file bytes,
   setup-cache archives, and pull-request fields;
 - coordination requests from any process in a lead Capsule, agent-authored
-  helper names and prompts, and helper reports returned to a lead;
+  subagent names and prompts, and subagent reports returned to a lead;
 - external services reached over the network and credentials returned by integrations; and
 - another tenant or operator in deployment modes that exceed the initial single-user assumption.
 
@@ -308,13 +308,13 @@ logging them. Bounded in-memory replay is availability control, not redaction.
 Repository content, issues, web pages, logs, and tool output can instruct an agent to misuse available authority. The control plane must not treat model or Capsule output as authorization. Sensitive delivery actions—credential grants, network exceptions, branch pushes, pull requests, destructive lifecycle operations, or policy changes—require independently verified permissions and explicit approval according to policy. Tool APIs should expose narrow operations rather than ambient administrator tokens.
 
 Model and Capsule output can cause bounded lifecycle effects, namely spawning,
-messaging, and cancelling helper Threads, but only under an operator-created
+messaging, and cancelling subagent Threads, but only under an operator-created
 Coordination Grant on that lead (ADR 0029). Delivery, credential, network, and
-policy actions are unchanged. A helper's permission and input requests go to
-the operator, never to its lead, so a hostile lead cannot approve its helpers'
-tool use. Delegated prompts and helper reports carry encrypted
-coordination provenance and are labelled "from the lead" or "from helpers";
-they are never presented as operator input. A wake prompt frames helper
+policy actions are unchanged. A subagent's permission and input requests go to
+the operator, never to its lead, so a hostile lead cannot approve its subagents'
+tool use. Delegated prompts and subagent reports carry encrypted
+coordination provenance and are labelled "from the lead" or "from subagents";
+they are never presented as operator input. A wake prompt frames subagent
 reports as untrusted data, but a model may still follow instructions in them.
 
 ### Coordination and delegated authority
@@ -332,12 +332,12 @@ Authority is the intersection of the grant, the Project policy, the
 requester's links, and the grant's remaining counters. A grant is created only
 by an operator API call together with its lead Thread, cannot be widened, and
 bounds harnesses (a subset of the Project's structured allowlist), depth (1),
-fan-out, total and live helper Capsules, messages per link, and an absolute
+fan-out, total and live subagent Capsules, messages per link, and an absolute
 deadline. A request can never name an image, Project, secret, provider
 connection, or Capsule; address a Thread or link it did not create; approve a
 spawn, permission, or Delivery; change a grant; start a native Run, PTY,
 preview, sync, or browse session; act while its lead is paused, not Ready, in
-maintenance, or revoked; or start new work after the deadline. Helpers
+maintenance, or revoked; or start new work after the deadline. Subagents
 receive no coordination authority.
 
 The protocol is closed and versioned; records are bounded (256 KiB, prompts
@@ -346,40 +346,40 @@ requests, bytes, request rate, and its reply cache. Mutating requests carry a
 Capsule-scoped idempotency key recorded with a request digest in the same
 transaction as their effect, so retries do not duplicate spawns or messages
 and a reused key with different content is refused. The only agent-authored
-plaintext at rest is the helper name, limited to `[a-z0-9-]{1,48}`; prompts
+plaintext at rest is the subagent name, limited to `[a-z0-9-]{1,48}`; prompts
 and reports stay in Thread ciphertext.
 
 Revocation, the deadline, and cancellation are daemon-side state changes that
-take effect on the next request. Revoking or cancelling cancels the helper's
+take effect on the next request. Revoking or cancelling cancels the subagent's
 run and then pauses its Capsule through the provider without Capsule
-cooperation. Closing a link never deletes a helper Capsule or transcript.
+cooperation. Closing a link never deletes a subagent Capsule or transcript.
 Coordination is advertised only by providers that implement the structured
 transport and mailbox end to end.
 
 The board (`GET /board`) adds no authority. It joins rows the API already
 returns with the in-memory attention derivation, so it shows statuses, names,
 counts and delivery URLs but no prompt, report or transcript text, and it
-never polls Git. A helper that needs the operator is listed under its own
-name, so a lead cannot hide a helper's permission request. Operator messages
-sent straight to a helper are counted on its link (plaintext counters only)
+never polls Git. A subagent that needs the operator is listed under its own
+name, so a lead cannot hide a subagent's permission request. Operator messages
+sent straight to a subagent are counted on its link (plaintext counters only)
 and do not use the lead's message allowance. The lead's next report wake says
-that the operator messaged that helper and how many times, without the text.
-The helper's own next report can still repeat or act on what the operator
+that the operator messaged that subagent and how many times, without the text.
+The subagent's own next report can still repeat or act on what the operator
 said, and that report reaches the lead like any other. Store triggers keep the
 counters monotonic so a notice cannot be replayed or suppressed by rewinding
 them.
 
-Helper lifecycle changes add no authority either. The auto-archive sweep
-only ends an idle helper session, pauses its Thread and marks the link; it
+Subagent lifecycle changes add no authority either. The auto-archive sweep
+only ends an idle subagent session, pauses its Thread and marks the link; it
 never sends a prompt, deletes a workspace or transcript, or resumes a stopped
-Capsule, and it skips helpers that need the operator, failed, are working,
+Capsule, and it skips subagents that need the operator, failed, are working,
 have a delivery in flight, or were promoted, so a lead cannot use it to hide a
 pending permission request or a failure. Archiving is an operator-set grant
 limit fixed at spawn. The link is marked before the session is cancelled so
-the cancellation is not reported to the lead, and an archived helper refuses
+the cancellation is not reported to the lead, and an archived subagent refuses
 the lead's messages until the operator resumes it. Promotion is an operator
 API call only; a Capsule cannot promote itself or a sibling. A promoted
-helper gains no grant, so its agent's coordination requests are still
+subagent gains no grant, so its agent's coordination requests are still
 refused, and it is no longer stopped by its lead's cancel or revoke, which is
 the point of taking it over. Detaching closes the link for good, so the lead
 can no longer message it or hear from it, and the Capsule then counts only
@@ -478,12 +478,12 @@ never auto-sends a transcript message.
 
 A prompt crosses the Capsule boundary only from an explicit client mutation
 or from a coordination request accepted under an active grant (ADR 0029). The
-daemon also sends a lead one coalesced wake prompt when helper reports are
+daemon also sends a lead one coalesced wake prompt when subagent reports are
 unread and the lead is idle; report delivery resumes from content-free
 sequence acknowledgements, not from content. Reports and delegated prompts
 copy content between Threads, re-encrypted under the receiving Thread's key,
-so crypto-shredding a helper does not erase copies already delivered to its
-lead, and crypto-shredding a lead does not erase its prompts in helpers.
+so crypto-shredding a subagent does not erase copies already delivered to its
+lead, and crypto-shredding a lead does not erase its prompts in subagents.
 
 Thread responses may include a content-free `awaiting` kind and start time
 while an active session has an unanswered permission or input request, and a
@@ -607,10 +607,10 @@ Operators verify pack images by digest and Cosign like other release images.
 Publishing packs is not a hosted Capsule service, and pack images contain no
 credentials.
 
-A compromised lead can spend its grant: helper Capsules, compute, and model
+A compromised lead can spend its grant: subagent Capsules, compute, and model
 calls up to the grant's fan-out, total, and live limits, and its messages per
 link. The grant deadline is a separate clock from idle pause and Capsule TTL;
-when it passes, the default action cancels helpers and pauses them. The
+when it passes, the default action cancels subagents and pauses them. The
 optional `--max-live-capsules` installation cap refuses coordinated spawns
 when that many Capsules already hold compute; it does not limit
 operator-started Capsules. Mailbox polling is a reconciliation poll: it never
@@ -623,7 +623,7 @@ A Capsule must not be able to modify control-plane audit records. Record authent
 Coordination records content-free events for grant creation, revocation, and
 expiry; link creation, reports, report delivery, and closing; forwarded
 messages (with their size); and refused requests (with their kind and code).
-They carry identifiers, codes, and sizes, never prompts, reports, or helper
+They carry identifiers, codes, and sizes, never prompts, reports, or subagent
 names.
 
 ### Residual data and incomplete teardown
@@ -666,10 +666,10 @@ they are not a statement that every planned path is already implemented.
 - No coordination credential exists in any Capsule. The daemon pulls
   coordination requests; Capsules never call the public API. Coordination
   authority is a subset of an operator-created grant, which is a subset of
-  the operator's authority. Helpers never answer to their lead for
+  the operator's authority. Subagents never answer to their lead for
   permissions or input, and Delivery stays operator-approved.
 - Capsule `role` is presentation only: it never suppresses attention, never
-  grants authority, and closing a link never deletes a helper's transcript or
+  grants authority, and closing a link never deletes a subagent's transcript or
   workspace. Coordination is advertised only with end-to-end structured
   transport and mailbox support.
 - Harness packs are installed at image build time from pinned checksummed
@@ -709,8 +709,8 @@ An allowed coding agent or network destination can intentionally exfiltrate any 
 
 Any process in a lead Capsule, not only its agent, can use the coordination
 mailbox. A compromised lead can amplify compute and model cost within its
-grant, steer helpers within their existing egress, and send them hostile
-prompts; hostile helper reports can prompt-inject the lead. Helpers run the
+grant, steer subagents within their existing egress, and send them hostile
+prompts; hostile subagent reports can prompt-inject the lead. Subagents run the
 same Project's repository for the same operator, so coordination exposes no
 new data, and it adds no confidentiality or isolation guarantee.
 

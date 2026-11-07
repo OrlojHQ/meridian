@@ -17,7 +17,7 @@ import {
 import { harnessName } from "../shell/capsuleActivity";
 import { isActiveRunState, isBusyAdapterStatus, safeInline } from "./threadChat";
 import { ThreadConversation } from "./ThreadConversation";
-import { ThreadHelpers } from "./ThreadHelpers";
+import { ThreadSubagents } from "./ThreadSubagents";
 import { ThreadError } from "./ThreadError";
 import { ActionsMenu, type ActionsMenuItem } from "./ui/ActionsMenu";
 import { StateBadge } from "./ui/StateBadge";
@@ -531,7 +531,7 @@ export function ThreadDetail({
           {deletion.isError && <ThreadError error={deletion.error} />}
         </section>
       )}
-      <ThreadHelpers thread={thread} />
+      <ThreadSubagents thread={thread} />
       <ThreadConversation
         thread={thread}
         blocks={blocks}

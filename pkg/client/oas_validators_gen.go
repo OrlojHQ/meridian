@@ -7111,7 +7111,7 @@ func (s ThreadOriginKind) Validate() error {
 	switch s {
 	case "from_lead":
 		return nil
-	case "from_helpers":
+	case "from_subagents":
 		return nil
 	default:
 		return errors.Errorf("invalid value: %v", s)

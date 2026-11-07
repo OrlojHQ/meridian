@@ -307,7 +307,7 @@ export const getProjectThreadIntent = <ThrowOnError extends boolean = false>(opt
 /**
  * List every Capsule's content-free status across Projects
  *
- * One row per Capsule, grouped by status. Helper sub-Capsules fold under their lead's child rollup; with the default expand=attention a helper that needs the operator also gets its own surfaced row. Built from Capsule, Thread, Run, Delivery and link summaries plus the in-memory Thread attention; never transcript text and never Git status.
+ * One row per Capsule, grouped by status. Subagent Capsules fold under their lead's child rollup; with the default expand=attention a subagent that needs the operator also gets its own surfaced row. Built from Capsule, Thread, Run, Delivery and link summaries plus the in-memory Thread attention; never transcript text and never Git status.
  *
  */
 export const getBoard = <ThrowOnError extends boolean = false>(options?: Options<GetBoardData, ThrowOnError>): RequestResult<GetBoardResponses, GetBoardErrors, ThrowOnError> => (options?.client ?? client).get<GetBoardResponses, GetBoardErrors, ThrowOnError>({
@@ -317,7 +317,7 @@ export const getBoard = <ThrowOnError extends boolean = false>(options?: Options
 });
 
 /**
- * List the helper Threads a lead Thread spawned
+ * List the subagent Threads a lead Thread spawned
  *
  * Content-free. Report text stays in the child transcript.
  */
@@ -328,7 +328,7 @@ export const listThreadLinks = <ThrowOnError extends boolean = false>(options: O
 });
 
 /**
- * Get one lead-to-helper Thread link
+ * Get one lead-to-subagent Thread link
  */
 export const getThreadLink = <ThrowOnError extends boolean = false>(options: Options<GetThreadLinkData, ThrowOnError>): RequestResult<GetThreadLinkResponses, GetThreadLinkErrors, ThrowOnError> => (options.client ?? client).get<GetThreadLinkResponses, GetThreadLinkErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
@@ -348,7 +348,7 @@ export const getCoordinationGrant = <ThrowOnError extends boolean = false>(optio
 /**
  * Revoke a Coordination Grant
  *
- * Ends the lead's authority to spawn, message, or cancel helpers. With cancelDescendants, open links close and their helpers are cancelled and paused; otherwise helpers keep running for the operator.
+ * Ends the lead's authority to spawn, message, or cancel subagents. With cancelDescendants, open links close and their subagents are cancelled and paused; otherwise subagents keep running for the operator.
  *
  */
 export const revokeCoordinationGrant = <ThrowOnError extends boolean = false>(options: Options<RevokeCoordinationGrantData, ThrowOnError>): RequestResult<RevokeCoordinationGrantResponses, RevokeCoordinationGrantErrors, ThrowOnError> => (options.client ?? client).post<RevokeCoordinationGrantResponses, RevokeCoordinationGrantErrors, ThrowOnError>({
@@ -567,9 +567,9 @@ export const pauseCapsule = <ThrowOnError extends boolean = false>(options: Opti
 });
 
 /**
- * Promote a helper sub-Capsule to a main Capsule
+ * Promote a subagent Capsule to a main Capsule
  *
- * Promotion is permanent and grants no coordination authority. The link to the lead stays open unless detach is set; a promoted Capsule that kept its link can be detached later. Promoted helpers are never auto-archived or stopped by their lead.
+ * Promotion is permanent and grants no coordination authority. The link to the lead stays open unless detach is set; a promoted Capsule that kept its link can be detached later. Promoted subagents are never auto-archived or stopped by their lead.
  *
  */
 export const promoteCapsule = <ThrowOnError extends boolean = false>(options: Options<PromoteCapsuleData, ThrowOnError>): RequestResult<PromoteCapsuleResponses, PromoteCapsuleErrors, ThrowOnError> => (options.client ?? client).post<PromoteCapsuleResponses, PromoteCapsuleErrors, ThrowOnError>({

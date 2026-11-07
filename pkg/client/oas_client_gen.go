@@ -156,8 +156,8 @@ type Invoker interface {
 	ExportCapsuleWorkspace(ctx context.Context, params ExportCapsuleWorkspaceParams) (ExportCapsuleWorkspaceRes, error)
 	// GetBoard invokes getBoard operation.
 	//
-	// One row per Capsule, grouped by status. Helper sub-Capsules fold under their lead's child rollup;
-	// with the default expand=attention a helper that needs the operator also gets its own surfaced row.
+	// One row per Capsule, grouped by status. Subagent Capsules fold under their lead's child rollup; with
+	// the default expand=attention a subagent that needs the operator also gets its own surfaced row.
 	// Built from Capsule, Thread, Run, Delivery and link summaries plus the in-memory Thread attention;
 	// never transcript text and never Git status.
 	//
@@ -267,7 +267,7 @@ type Invoker interface {
 	GetThread(ctx context.Context, params GetThreadParams) (GetThreadRes, error)
 	// GetThreadLink invokes getThreadLink operation.
 	//
-	// Get one lead-to-helper Thread link.
+	// Get one lead-to-subagent Thread link.
 	//
 	// GET /thread-links/{linkId}
 	GetThreadLink(ctx context.Context, params GetThreadLinkParams) (GetThreadLinkRes, error)
@@ -423,7 +423,7 @@ type Invoker interface {
 	// PromoteCapsule invokes promoteCapsule operation.
 	//
 	// Promotion is permanent and grants no coordination authority. The link to the lead stays open unless
-	// detach is set; a promoted Capsule that kept its link can be detached later. Promoted helpers are
+	// detach is set; a promoted Capsule that kept its link can be detached later. Promoted subagents are
 	// never auto-archived or stopped by their lead.
 	//
 	// POST /capsules/{capsuleId}/promote
@@ -479,8 +479,9 @@ type Invoker interface {
 	RetryCapsule(ctx context.Context, request *LifecycleMutationRequest, params RetryCapsuleParams) (RetryCapsuleRes, error)
 	// RevokeCoordinationGrant invokes revokeCoordinationGrant operation.
 	//
-	// Ends the lead's authority to spawn, message, or cancel helpers. With cancelDescendants, open links
-	// close and their helpers are cancelled and paused; otherwise helpers keep running for the operator.
+	// Ends the lead's authority to spawn, message, or cancel subagents. With cancelDescendants, open links
+	// close and their subagents are cancelled and paused; otherwise subagents keep running for the
+	// operator.
 	//
 	// POST /coordination-grants/{grantId}/revoke
 	RevokeCoordinationGrant(ctx context.Context, request *RevokeCoordinationGrantRequest, params RevokeCoordinationGrantParams) (RevokeCoordinationGrantRes, error)
@@ -3300,8 +3301,8 @@ func (c *Client) sendExportCapsuleWorkspace(ctx context.Context, params ExportCa
 
 // GetBoard invokes getBoard operation.
 //
-// One row per Capsule, grouped by status. Helper sub-Capsules fold under their lead's child rollup;
-// with the default expand=attention a helper that needs the operator also gets its own surfaced row.
+// One row per Capsule, grouped by status. Subagent Capsules fold under their lead's child rollup; with
+// the default expand=attention a subagent that needs the operator also gets its own surfaced row.
 // Built from Capsule, Thread, Run, Delivery and link summaries plus the in-memory Thread attention;
 // never transcript text and never Git status.
 //
@@ -5605,7 +5606,7 @@ func (c *Client) sendGetThread(ctx context.Context, params GetThreadParams) (res
 
 // GetThreadLink invokes getThreadLink operation.
 //
-// Get one lead-to-helper Thread link.
+// Get one lead-to-subagent Thread link.
 //
 // GET /thread-links/{linkId}
 func (c *Client) GetThreadLink(ctx context.Context, params GetThreadLinkParams) (GetThreadLinkRes, error) {
@@ -9286,7 +9287,7 @@ func (c *Client) sendPreviewHarnessSetup(ctx context.Context, request *HarnessSe
 // PromoteCapsule invokes promoteCapsule operation.
 //
 // Promotion is permanent and grants no coordination authority. The link to the lead stays open unless
-// detach is set; a promoted Capsule that kept its link can be detached later. Promoted helpers are
+// detach is set; a promoted Capsule that kept its link can be detached later. Promoted subagents are
 // never auto-archived or stopped by their lead.
 //
 // POST /capsules/{capsuleId}/promote
@@ -10488,8 +10489,9 @@ func (c *Client) sendRetryCapsule(ctx context.Context, request *LifecycleMutatio
 
 // RevokeCoordinationGrant invokes revokeCoordinationGrant operation.
 //
-// Ends the lead's authority to spawn, message, or cancel helpers. With cancelDescendants, open links
-// close and their helpers are cancelled and paused; otherwise helpers keep running for the operator.
+// Ends the lead's authority to spawn, message, or cancel subagents. With cancelDescendants, open links
+// close and their subagents are cancelled and paused; otherwise subagents keep running for the
+// operator.
 //
 // POST /coordination-grants/{grantId}/revoke
 func (c *Client) RevokeCoordinationGrant(ctx context.Context, request *RevokeCoordinationGrantRequest, params RevokeCoordinationGrantParams) (RevokeCoordinationGrantRes, error) {

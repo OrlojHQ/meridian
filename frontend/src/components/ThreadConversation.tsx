@@ -280,7 +280,7 @@ function ChatEntry({
         <li className={`chat-user${item.origin ? " chat-coordination" : ""}`}>
           {item.origin && (
             <span className="chat-origin">
-              {item.origin === "from_lead" ? "From the lead" : "From helpers"}
+              {item.origin === "from_lead" ? "From the lead" : "From subagents"}
             </span>
           )}
           <div className="chat-bubble">{item.text}</div>

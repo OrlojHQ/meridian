@@ -15,14 +15,14 @@ import (
 )
 
 const (
-	mockCoordinatePrefix       = "coordinate "
-	mockCoordinateNoWaitPrefix = "coordinate-nowait "
-	mockCoordinatorMaxHelpers  = 4
-	mockCoordinatorWait        = 10 * time.Minute
+	mockCoordinatePrefix        = "coordinate "
+	mockCoordinateNoWaitPrefix  = "coordinate-nowait "
+	mockCoordinatorMaxSubagents = 4
+	mockCoordinatorWait         = 10 * time.Minute
 )
 
 // mockCoordination is a parsed scripted coordination prompt:
-// "coordinate HARNESS COUNT TASK" spawns COUNT helpers, waits for all of
+// "coordinate HARNESS COUNT TASK" spawns COUNT subagents, waits for all of
 // them, and summarizes; "coordinate-nowait ..." ends the turn after spawning
 // so reports arrive through Meridian's wake prompt instead.
 type mockCoordination struct {
@@ -48,7 +48,7 @@ func parseMockCoordination(content string) (mockCoordination, bool) {
 		return mockCoordination{}, false
 	}
 	count, err := strconv.Atoi(fields[1])
-	if err != nil || count < 1 || count > mockCoordinatorMaxHelpers || strings.TrimSpace(fields[2]) == "" {
+	if err != nil || count < 1 || count > mockCoordinatorMaxSubagents || strings.TrimSpace(fields[2]) == "" {
 		return mockCoordination{}, false
 	}
 	return mockCoordination{harness: fields[0], count: count, task: strings.TrimSpace(fields[2]), wait: wait}, true
@@ -82,7 +82,7 @@ func runMockCoordination(ctx context.Context, stream *Stream, turn int, plan moc
 	var links []string
 	var summary strings.Builder
 	for index := 1; index <= plan.count; index++ {
-		name := fmt.Sprintf("helper-%d", index)
+		name := fmt.Sprintf("subagent-%d", index)
 		prompt := fmt.Sprintf("%s (part %d of %d)", plan.task, index, plan.count)
 		response, err := invoke([]string{"spawn", "--name", name, "--harness", plan.harness}, prompt)
 		if err != nil {
@@ -96,9 +96,9 @@ func runMockCoordination(ctx context.Context, stream *Stream, turn int, plan moc
 	}
 	switch {
 	case len(links) == 0:
-		summary.WriteString("No helpers started.")
+		summary.WriteString("No subagents started.")
 	case !plan.wait:
-		fmt.Fprintf(&summary, "Spawned %d helpers; Meridian will deliver their reports.", len(links))
+		fmt.Fprintf(&summary, "Spawned %d subagents; Meridian will deliver their reports.", len(links))
 	default:
 		arguments := append([]string{"wait", "--all", "--timeout", mockCoordinatorWait.String()}, links...)
 		response, err := invoke(arguments, "")
@@ -110,9 +110,9 @@ func runMockCoordination(ctx context.Context, stream *Stream, turn int, plan moc
 			break
 		}
 		if response.TimedOut {
-			summary.WriteString("Timed out waiting for helpers.\n")
+			summary.WriteString("Timed out waiting for subagents.\n")
 		}
-		fmt.Fprintf(&summary, "Lead summary of %d helper reports:\n", len(response.Reports))
+		fmt.Fprintf(&summary, "Lead summary of %d subagent reports:\n", len(response.Reports))
 		for _, report := range response.Reports {
 			fmt.Fprintf(&summary, "- %s (%s): %s\n", report.Name, report.Status, strings.TrimSpace(report.Summary))
 		}

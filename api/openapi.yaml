@@ -663,8 +663,8 @@ paths:
       operationId: getBoard
       summary: List every Capsule's content-free status across Projects
       description: >
-        One row per Capsule, grouped by status. Helper sub-Capsules fold under
-        their lead's child rollup; with the default expand=attention a helper
+        One row per Capsule, grouped by status. Subagent Capsules fold under
+        their lead's child rollup; with the default expand=attention a subagent
         that needs the operator also gets its own surfaced row. Built from
         Capsule, Thread, Run, Delivery and link summaries plus the in-memory
         Thread attention; never transcript text and never Git status.
@@ -678,9 +678,9 @@ paths:
           in: query
           required: false
           description: >
-            attention (default) lists main Capsules and helpers that need the
-            operator; all lists every helper; none lists main Capsules only. A
-            helper whose lead is not listed always gets its own row.
+            attention (default) lists main Capsules and subagents that need the
+            operator; all lists every subagent; none lists main Capsules only. A
+            subagent whose lead is not listed always gets its own row.
           schema:
             type: string
             enum: [attention, all, none]
@@ -697,7 +697,7 @@ paths:
   /threads/{threadId}/links:
     get:
       operationId: listThreadLinks
-      summary: List the helper Threads a lead Thread spawned
+      summary: List the subagent Threads a lead Thread spawned
       description: Content-free. Report text stays in the child transcript.
       tags: [threads]
       parameters:
@@ -714,7 +714,7 @@ paths:
   /thread-links/{linkId}:
     get:
       operationId: getThreadLink
-      summary: Get one lead-to-helper Thread link
+      summary: Get one lead-to-subagent Thread link
       tags: [threads]
       parameters:
         - $ref: "#/components/parameters/LinkId"
@@ -752,9 +752,9 @@ paths:
       operationId: revokeCoordinationGrant
       summary: Revoke a Coordination Grant
       description: >
-        Ends the lead's authority to spawn, message, or cancel helpers. With
-        cancelDescendants, open links close and their helpers are cancelled
-        and paused; otherwise helpers keep running for the operator.
+        Ends the lead's authority to spawn, message, or cancel subagents. With
+        cancelDescendants, open links close and their subagents are cancelled
+        and paused; otherwise subagents keep running for the operator.
       tags: [threads]
       parameters:
         - $ref: "#/components/parameters/GrantId"
@@ -825,7 +825,7 @@ paths:
         - name: role
           in: query
           required: false
-          description: Only main Capsules or only helper sub-Capsules.
+          description: Only main Capsules or only subagent Capsules.
           schema: { $ref: "#/components/schemas/CapsuleRole" }
       responses:
         "200":
@@ -1134,11 +1134,11 @@ paths:
   /capsules/{capsuleId}/promote:
     post:
       operationId: promoteCapsule
-      summary: Promote a helper sub-Capsule to a main Capsule
+      summary: Promote a subagent Capsule to a main Capsule
       description: >
         Promotion is permanent and grants no coordination authority. The link
         to the lead stays open unless detach is set; a promoted Capsule that
-        kept its link can be detached later. Promoted helpers are never
+        kept its link can be detached later. Promoted subagents are never
         auto-archived or stopped by their lead.
       tags: [capsules]
       parameters:
@@ -2511,14 +2511,14 @@ components:
           $ref: "#/components/schemas/CapsuleRole"
         leadThreadId:
           type: string
-          description: On sub-Capsules, the lead Thread that spawned this helper.
+          description: On sub-Capsules, the lead Thread that spawned this subagent.
         linkId:
           type: string
           description: On sub-Capsules and promoted Capsules that kept their link, the Thread link to the lead.
         promotedAt:
           type: string
           format: date-time
-          description: When a helper sub-Capsule was promoted to a main Capsule.
+          description: When a subagent Capsule was promoted to a main Capsule.
         createdAt:
           type: string
           format: date-time
@@ -2800,14 +2800,14 @@ components:
         latestDelivery: { $ref: "#/components/schemas/DeliverySummary" }
         link:
           $ref: "#/components/schemas/ThreadLink"
-          description: The helper's link to its lead, on sub-Capsules.
+          description: The subagent's link to its lead, on sub-Capsules.
         childRollup: { $ref: "#/components/schemas/ChildRollup" }
         surfaced:
           type: boolean
-          description: A helper listed on its own because it needs the operator.
+          description: A subagent listed on its own because it needs the operator.
     ChildRollup:
       type: object
-      description: A lead's helpers by state.
+      description: A lead's subagents by state.
       required: [total, working, idle, done, needsYou, failed, archived]
       properties:
         total: { type: integer, minimum: 0 }
@@ -2819,7 +2819,7 @@ components:
         archived:
           type: integer
           minimum: 0
-          description: Auto-archived helpers. They are also counted as done.
+          description: Auto-archived subagents. They are also counted as done.
     DeliverySummary:
       type: object
       required: [id, state, action, updatedAt]
@@ -2962,8 +2962,8 @@ components:
     CoordinationPolicy:
       type: object
       description: >
-        Makes the new Thread a lead that may spawn helper Threads in their own
-        sub-Capsules. Omitted limits take their defaults. Helpers answer to the
+        Makes the new Thread a lead that may spawn subagent Threads in their own
+        sub-Capsules. Omitted limits take their defaults. Subagents answer to the
         operator: the lead never approves permissions or answers input.
       properties:
         maxDepth: { type: integer, minimum: 1, maximum: 1, default: 1 }
@@ -2974,7 +2974,7 @@ components:
         allowedHarnesses:
           type: array
           maxItems: 16
-          description: Structured harnesses helpers may use; each must be on the Project allowlist. Defaults to the lead's harness.
+          description: Structured harnesses subagents may use; each must be on the Project allowlist. Defaults to the lead's harness.
           items: { type: string, minLength: 1, maxLength: 128 }
         deadlineSeconds: { type: integer, minimum: 300, maximum: 259200, default: 28800 }
         archiveAfterSeconds:
@@ -2983,7 +2983,7 @@ components:
           maximum: 2592000
           default: 86400
           description: >
-            How long a finished helper stays idle before its session is ended
+            How long a finished subagent stays idle before its session is ended
             and its Thread paused. 0 disables auto-archive; otherwise at least
             60. Archiving never deletes a workspace or transcript.
         onDeadline:
@@ -3042,8 +3042,8 @@ components:
     ThreadLink:
       type: object
       description: >
-        Content-free handle from a lead Thread to one helper. Report text is
-        re-derived from the helper's encrypted transcript and is never stored
+        Content-free handle from a lead Thread to one subagent. Report text is
+        re-derived from the subagent's encrypted transcript and is never stored
         on the link.
       required:
         [id, grantId, parentThreadId, parentCapsuleId, childThreadId, childCapsuleId,
@@ -3075,15 +3075,15 @@ components:
         operatorMessages:
           type: integer
           minimum: 0
-          description: Operator messages sent straight to this helper. They do not count against the lead's message limit.
+          description: Operator messages sent straight to this subagent. They do not count against the lead's message limit.
         archivedAt:
           type: string
           format: date-time
-          description: Set while the helper is auto-archived; cleared when its Thread resumes.
+          description: Set while the subagent is auto-archived; cleared when its Thread resumes.
         promotedAt:
           type: string
           format: date-time
-          description: When the helper was promoted to a main Capsule. Promoted helpers are never archived.
+          description: When the subagent was promoted to a main Capsule. Promoted subagents are never archived.
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
         resourceVersion: { type: integer, format: int64, minimum: 1 }
@@ -3100,18 +3100,18 @@ components:
       properties:
         supported:
           type: boolean
-          description: True when lead Threads may spawn helper Threads through the Capsule-local coordination mailbox.
+          description: True when lead Threads may spawn subagent Threads through the Capsule-local coordination mailbox.
         maxDepth: { type: integer, minimum: 0 }
         maxDescendants: { type: integer, minimum: 0 }
     ThreadOrigin:
       type: object
       description: >
         Marks a user-role message Meridian wrote for coordination rather than
-        the operator: from_lead on a helper, from_helpers on a lead.
+        the operator: from_lead on a subagent, from_subagents on a lead.
       required: [source, kind]
       properties:
         source: { type: string, enum: [coordination] }
-        kind: { type: string, enum: [from_lead, from_helpers] }
+        kind: { type: string, enum: [from_lead, from_subagents] }
         linkIds:
           type: array
           maxItems: 16
@@ -3213,21 +3213,21 @@ components:
         structuredSupported: { type: boolean }
         coordinationGrantId:
           type: string
-          description: The Coordination Grant over this Thread's tree, on the lead and on each helper.
+          description: The Coordination Grant over this Thread's tree, on the lead and on each subagent.
         parentThreadId:
           type: string
-          description: Present on a helper Thread; the lead that spawned it.
+          description: Present on a subagent Thread; the lead that spawned it.
         rootThreadId:
           type: string
           description: The lead at the root of this Thread's coordination tree.
         linkId:
           type: string
-          description: Present on a helper Thread; its link from the lead.
+          description: Present on a subagent Thread; its link from the lead.
         depth:
           type: integer
           minimum: 0
           maximum: 3
-          description: Zero for leads, one for their helpers.
+          description: Zero for leads, one for their subagents.
         encryptedAtRest:
           type: boolean
           const: true

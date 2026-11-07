@@ -487,7 +487,7 @@ type Capsule struct {
 	Role               CapsuleRole
 	LeadThreadID       ThreadID
 	LinkID             ThreadLinkID
-	// PromotedAt is set once a helper becomes a main Capsule.
+	// PromotedAt is set once a subagent becomes a main Capsule.
 	PromotedAt      time.Time
 	LastActivityAt  time.Time
 	CreatedAt       time.Time

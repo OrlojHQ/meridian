@@ -25,18 +25,18 @@ type leadFlags struct {
 func (f *leadFlags) register(command *cobra.Command) {
 	flags := command.Flags()
 	flags.BoolVar(&f.lead, "lead", false,
-		"let the Thread start helper Threads in their own Capsules (bounded by the flags below)")
-	flags.IntVar(&f.maxChildren, "max-children", 0, "helpers the lead may start (default 4, at most 16)")
-	flags.IntVar(&f.maxDescendants, "max-descendants", 0, "helpers started over the grant's lifetime (at most 32)")
-	flags.IntVar(&f.maxLiveCapsules, "max-live-capsules", 0, "helper Capsules running at once (at most 16)")
-	flags.IntVar(&f.maxMessagesPerLink, "max-messages-per-link", 0, "lead messages per helper (default 50)")
+		"let the Thread start subagent Threads in their own Capsules (bounded by the flags below)")
+	flags.IntVar(&f.maxChildren, "max-children", 0, "subagents the lead may start (default 4, at most 16)")
+	flags.IntVar(&f.maxDescendants, "max-descendants", 0, "subagents started over the grant's lifetime (at most 32)")
+	flags.IntVar(&f.maxLiveCapsules, "max-live-capsules", 0, "subagent Capsules running at once (at most 16)")
+	flags.IntVar(&f.maxMessagesPerLink, "max-messages-per-link", 0, "lead messages per subagent (default 50)")
 	flags.StringArrayVar(&f.allowHarnesses, "allow-harness", nil,
-		"structured harness helpers may use; repeatable (default: the lead's harness)")
+		"structured harness subagents may use; repeatable (default: the lead's harness)")
 	flags.DurationVar(&f.deadline, "lead-deadline", 0, "how long the lead may coordinate (default 8h, 5m to 72h)")
 	flags.StringVar(&f.onDeadline, "on-deadline", "",
 		"at the deadline: cancel_and_pause (default) or stop_new_work")
 	flags.DurationVar(&f.archiveAfter, "archive-after", 0,
-		"idle time before a finished helper is paused and archived (default 24h, 1m to 720h; 0 disables)")
+		"idle time before a finished subagent is paused and archived (default 24h, 1m to 720h; 0 disables)")
 }
 
 func (f *leadFlags) policy(command *cobra.Command) (client.OptCoordinationPolicy, error) {
@@ -86,7 +86,7 @@ func (f *leadFlags) policy(command *cobra.Command) (client.OptCoordinationPolicy
 
 func newThreadLinksCommand(config *cliConfig) *cobra.Command {
 	return &cobra.Command{
-		Use: "links THREAD_ID", Short: "List the helper Threads a lead Thread started",
+		Use: "links THREAD_ID", Short: "List the subagent Threads a lead Thread started",
 		Args: cobra.ExactArgs(1),
 		RunE: func(command *cobra.Command, args []string) error {
 			api, err := newAPI(config)
@@ -134,8 +134,8 @@ func newBoardCommand(config *cliConfig) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "board",
 		Short: "List every Capsule by status, needs-you first",
-		Long: "List every Capsule by status, needs-you first. Helpers fold under their lead's\n" +
-			"rollup unless they need you; --all lists every helper.",
+		Long: "List every Capsule by status, needs-you first. Subagents fold under their lead's\n" +
+			"rollup unless they need you; --all lists every subagent.",
 		Args: cobra.NoArgs,
 		RunE: func(command *cobra.Command, _ []string) error {
 			params := client.GetBoardParams{}
@@ -174,8 +174,8 @@ func newBoardCommand(config *cliConfig) *cobra.Command {
 		},
 	}
 	command.Flags().StringVar(&projectID, "project", "", "only this Project's Capsules")
-	command.Flags().BoolVar(&all, "all", false, "list every helper, not only the ones that need you")
-	command.Flags().StringVar(&expand, "expand", "", "helpers to list: attention (default), all or none")
+	command.Flags().BoolVar(&all, "all", false, "list every subagent, not only the ones that need you")
+	command.Flags().StringVar(&expand, "expand", "", "subagents to list: attention (default), all or none")
 	return command
 }
 
@@ -189,7 +189,7 @@ func writeBoard(config *cliConfig, page *client.BoardPage) error {
 		if link, ok := item.Link.Get(); ok {
 			name = link.Name
 			if item.Surfaced {
-				name += " (helper)"
+				name += " (subagent)"
 			}
 		}
 		thread, harness := "-", item.Capsule.Harness.Or("-")
@@ -199,7 +199,7 @@ func writeBoard(config *cliConfig, page *client.BoardPage) error {
 		line := fmt.Sprintf("%s\t%s\t%s\tcapsule=%s\tthread=%s\tsince=%s",
 			status, name, harness, item.Capsule.ID, thread, item.Since.Format(time.RFC3339))
 		if rollup, ok := item.ChildRollup.Get(); ok {
-			line += fmt.Sprintf("\thelpers=%d working=%d idle=%d done=%d needs_you=%d failed=%d archived=%d",
+			line += fmt.Sprintf("\tsubagents=%d working=%d idle=%d done=%d needs_you=%d failed=%d archived=%d",
 				rollup.Total, rollup.Working, rollup.Idle, rollup.Done, rollup.NeedsYou, rollup.Failed, rollup.Archived)
 		}
 		if delivery, ok := item.LatestDelivery.Get(); ok {
@@ -243,7 +243,7 @@ func newGrantCommand(config *cliConfig) *cobra.Command {
 	var keep bool
 	var key string
 	revoke := &cobra.Command{
-		Use: "revoke GRANT_ID", Short: "Stop a lead from starting helpers and cancel its running helpers",
+		Use: "revoke GRANT_ID", Short: "Stop a lead from starting subagents and cancel its running subagents",
 		Args: cobra.ExactArgs(1),
 		RunE: func(command *cobra.Command, args []string) error {
 			if expected <= 0 {
@@ -275,7 +275,7 @@ func newGrantCommand(config *cliConfig) *cobra.Command {
 		},
 	}
 	revoke.Flags().Int64Var(&expected, "expected-version", 0, "current grant resource version")
-	revoke.Flags().BoolVar(&keep, "keep-helpers", false, "leave running helpers alone instead of cancelling and pausing them")
+	revoke.Flags().BoolVar(&keep, "keep-subagents", false, "leave running subagents alone instead of cancelling and pausing them")
 	revoke.Flags().StringVar(&key, "idempotency-key", "", "mutation replay key (generated if omitted)")
 	root.AddCommand(show, revoke)
 	return root
@@ -286,7 +286,7 @@ func (c *cliConfig) writeCoordinationGrant(grant client.CoordinationGrant) error
 		return writeJSON(c.stdout, &grant)
 	}
 	_, err := fmt.Fprintf(c.stdout,
-		"%s\tstate=%s\tlead=%s\thelpers=%d/%d\tchildren=%d\tlive=%d\tharnesses=%s\tdeadline=%s\tarchive-after=%s\tversion=%d\n",
+		"%s\tstate=%s\tlead=%s\tsubagents=%d/%d\tchildren=%d\tlive=%d\tharnesses=%s\tdeadline=%s\tarchive-after=%s\tversion=%d\n",
 		grant.ID, grant.State, grant.RootThreadId, grant.DescendantsCreated, grant.MaxDescendants,
 		grant.MaxChildren, grant.MaxLiveCapsules, strings.Join(grant.AllowedHarnesses, ","),
 		grant.DeadlineAt.Format(time.RFC3339), archiveAfterText(grant.ArchiveAfterSeconds), grant.ResourceVersion,
@@ -307,8 +307,8 @@ func newCapsulePromoteCommand(config *cliConfig) *cobra.Command {
 	var key string
 	command := &cobra.Command{
 		Use:   "promote CAPSULE_ID",
-		Short: "Make a helper sub-Capsule a main Capsule",
-		Long: "Make a helper sub-Capsule a main Capsule. It leaves the lead's auto-archive and\n" +
+		Short: "Make a subagent Capsule a main Capsule",
+		Long: "Make a subagent Capsule a main Capsule. It leaves the lead's auto-archive and\n" +
 			"cancellation, and keeps its link so the lead can still message it and hear its\n" +
 			"reports. --detach closes the link too; a promoted Capsule can be detached later.\n" +
 			"Promotion is permanent and grants no coordination authority.",

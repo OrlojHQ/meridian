@@ -3,6 +3,7 @@ package app_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"slices"
@@ -429,7 +430,7 @@ func TestWakeSkipsReportsTheLeadReadBeforeThePollerSawThem(t *testing.T) {
 	if !read.OK || len(read.Reports) != 1 {
 		t.Fatalf("wait = %+v", read)
 	}
-	f.runtime.finishTurn(lead.Intent.RunID, "lead-1", "summarized the helper")
+	f.runtime.finishTurn(lead.Intent.RunID, "lead-1", "summarized the subagent")
 	for range 3 {
 		f.advance(5 * time.Second)
 		f.service.CoordinationTick(f.ctx)
@@ -483,12 +484,12 @@ func TestUnreadReportWakesIdleLeadOnce(t *testing.T) {
 	}
 	var origins int
 	for _, block := range blocks.Items {
-		if block.Origin != nil && block.Origin.Kind == app.OriginFromHelpers {
+		if block.Origin != nil && block.Origin.Kind == app.OriginFromSubagents {
 			origins++
 		}
 	}
 	if origins != 1 {
-		t.Fatalf("from_helpers messages = %d", origins)
+		t.Fatalf("from_subagents messages = %d", origins)
 	}
 	link, _ = f.service.GetThreadLink(f.ctx, link.ID)
 	if link.ReportDeliveredSeq != link.ReportSeq || link.ReportSeq != 1 {
@@ -779,4 +780,14 @@ func TestCoordinationRecordsResistTampering(t *testing.T) {
 		grant.ResourceVersion++
 		return tx.UpdateCoordinationGrant(f.ctx, grant, previous)
 	})
+}
+
+func TestOriginWrittenBeforeTheSubagentRenameReadsAsSubagents(t *testing.T) {
+	var origin app.ThreadOrigin
+	if err := json.Unmarshal([]byte(`{"source":"coordination","kind":"from_helpers","linkIds":["link-1"]}`), &origin); err != nil {
+		t.Fatal(err)
+	}
+	if origin.Kind != app.OriginFromSubagents || len(origin.LinkIDs) != 1 {
+		t.Fatalf("origin = %+v", origin)
+	}
 }

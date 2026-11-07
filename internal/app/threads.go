@@ -100,10 +100,26 @@ type ThreadOrigin struct {
 }
 
 const (
-	OriginCoordination = "coordination"
-	OriginFromLead     = "from_lead"
-	OriginFromHelpers  = "from_helpers"
+	OriginCoordination  = "coordination"
+	OriginFromLead      = "from_lead"
+	OriginFromSubagents = "from_subagents"
+	// originFromHelpers is stored in transcripts encrypted while subagents
+	// were still called helpers. It reads as OriginFromSubagents.
+	originFromHelpers = "from_helpers"
 )
+
+func (o *ThreadOrigin) UnmarshalJSON(data []byte) error {
+	type stored ThreadOrigin
+	var decoded stored
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	if decoded.Kind == originFromHelpers {
+		decoded.Kind = OriginFromSubagents
+	}
+	*o = ThreadOrigin(decoded)
+	return nil
+}
 
 func (s *Service) CreateThread(ctx context.Context, input CreateThreadInput) (ThreadMutationResult, error) {
 	if s.structured == nil || s.transcriptKey == nil {

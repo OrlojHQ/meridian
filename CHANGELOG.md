@@ -9,34 +9,34 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- Helper lifecycle. A finished helper is paused and archived after its
+- Subagent lifecycle. A finished subagent is paused and archived after its
   grant's `archiveAfter` (default 24 hours, 0 disables it; `--archive-after`,
   `archiveAfterSeconds`): its session ends and its Thread pauses, while the
-  workspace and transcript stay. Helpers that need you, failed, or were
-  promoted are never archived, and resuming the Thread brings a helper back.
+  workspace and transcript stay. Subagents that need you, failed, or were
+  promoted are never archived, and resuming the Thread brings a subagent back.
   `POST /capsules/{id}/promote` (`meridian capsule promote`, "Promote to
-  main") makes a helper a main Capsule that keeps its link to the lead
+  main") makes a subagent a main Capsule that keeps its link to the lead
   unless `detach` is set; promotion is permanent and grants no coordination
   authority. The browser sidebar now lists main Capsules with each lead's
-  helper rollup, plus helpers that need you, and the board and Helpers panel
-  fold archived helpers under "Archived (n)". Links gain `archivedAt`,
+  subagent rollup, plus subagents that need you, and the board and Subagents
+  panel fold archived subagents under "Archived (n)". Links gain `archivedAt`,
   `promotedAt` and the `detached` close reason; Capsules gain `promotedAt`;
   rollups gain `archived` (ADR 0029).
 
 - A board of every Capsule by status. `GET /board`, `meridian board` and the
   browser's Board view group Capsules across Projects into needs you, working,
   PR open, ready for review, idle, paused and sealed, with the latest Delivery
-  and, for leads, a helper rollup. Helpers fold under their lead unless they
-  need you; `expand=all` (`--all`, "Show all helpers") lists every helper. The
-  command palette gains "Next item needing me". When the operator messages a
-  helper directly, its lead's next report wake says so without the message
-  text, and the message does not count against the lead's per-helper limit;
-  thread links gain `operatorMessages` (ADR 0029).
+  and, for leads, a subagent rollup. Subagents fold under their lead unless
+  they need you; `expand=all` (`--all`, "Show all subagents") lists every
+  subagent. The command palette gains "Next item needing me". When the
+  operator messages a subagent directly, its lead's next report wake says so
+  without the message text, and the message does not count against the lead's
+  per-subagent limit; thread links gain `operatorMessages` (ADR 0029).
 
-- A structured Thread can lead helper Threads. Spawning it with a
+- A structured Thread can lead subagent Threads. Spawning it with a
   Coordination Grant (`meridian thread spawn --lead`, the browser's "Lead
-  with helpers" option, or `coordination` on `POST /projects/{id}/threads`)
-  lets its agent start helpers in their own sub-Capsules, message, wait on and
+  agent with subagents" option, or `coordination` on
+  `POST /projects/{id}/threads`) lets its agent start subagents in their own sub-Capsules, message, wait on and
   cancel them, and read their reports, all within operator-set limits and a
   deadline. Agents use the in-Capsule `meridian-coord` CLI or MCP server,
   which writes to a `capsuled` mailbox that `meridiand` pulls; Capsules hold no
@@ -44,10 +44,10 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   (`GET /coordination-grants/{id}`, `POST .../revoke`) and links
   (`GET /threads/{id}/links`, `GET /thread-links/{id}`), Capsules gain a
   `role` of `main` or `sub`, and `meridiand --max-live-capsules` caps
-  coordinated spawns. The browser nests helpers under their lead and labels
+  coordinated spawns. The browser nests subagents under their lead and labels
   delegated messages (ADR 0029).
 
-- OpenCode and Pi Threads can lead helpers. The OpenCode pack registers
+- OpenCode and Pi Threads can lead subagents. The OpenCode pack registers
   `meridian-coord` as an MCP server through ACP `session/new`, like the
   Claude Code and Codex packs. Pi has no MCP client, so the Pi pack loads a
   bundled `meridian-coord` skill that teaches it the CLI. Packs may ship

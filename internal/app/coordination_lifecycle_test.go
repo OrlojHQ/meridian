@@ -11,9 +11,9 @@ import (
 	"github.com/OrlojHQ/meridian/internal/domain"
 )
 
-// finishedHelper spawns a helper, starts it and ends its first turn so the
+// finishedSubagent spawns a subagent, starts it and ends its first turn so the
 // lead holds a turn_ended report.
-func (f *coordFixture) finishedHelper(t *testing.T, mailbox *capsuleproto.Mailbox, name string) domain.ThreadLink {
+func (f *coordFixture) finishedSubagent(t *testing.T, mailbox *capsuleproto.Mailbox, name string) domain.ThreadLink {
 	t.Helper()
 	spawned := tool(t, mailbox, coordproto.Request{
 		Type: coordproto.KindSpawn, Key: "spawn-" + name, Name: name, Harness: "mock", Prompt: "task " + name,
@@ -35,7 +35,7 @@ func (f *coordFixture) finishedHelper(t *testing.T, mailbox *capsuleproto.Mailbo
 	f.service.CoordinationTick(f.ctx)
 	link, err = f.service.GetThreadLink(f.ctx, link.ID)
 	if err != nil || link.LastReportStatus != domain.ReportTurnEnded {
-		t.Fatalf("helper %s report = %#v, %v", name, link, err)
+		t.Fatalf("subagent %s report = %#v, %v", name, link, err)
 	}
 	return link
 }
@@ -61,7 +61,7 @@ func (f *coordFixture) cancels(run domain.RunID) int {
 	return f.runtime.cancels[run]
 }
 
-func TestFinishedHelperIsPausedAndArchivedAfterItsPeriod(t *testing.T) {
+func TestFinishedSubagentIsPausedAndArchivedAfterItsPeriod(t *testing.T) {
 	f := newCoordFixture(t)
 	archiveAfter := time.Hour
 	lead, mailbox := f.spawnLead(t, domain.CoordinationPolicy{ArchiveAfter: &archiveAfter})
@@ -70,19 +70,19 @@ func TestFinishedHelperIsPausedAndArchivedAfterItsPeriod(t *testing.T) {
 	if grant.ArchiveAfter != time.Hour {
 		t.Fatalf("grant archiveAfter = %s", grant.ArchiveAfter)
 	}
-	link := f.finishedHelper(t, mailbox, "one")
+	link := f.finishedSubagent(t, mailbox, "one")
 	thread, _ := f.service.GetThread(f.ctx, link.ChildThreadID)
 	run := thread.CurrentRunID
 
-	f.service.SweepArchivableHelpers(f.ctx)
+	f.service.SweepArchivableSubagents(f.ctx)
 	f.advance(59 * time.Minute)
-	f.service.SweepArchivableHelpers(f.ctx)
+	f.service.SweepArchivableSubagents(f.ctx)
 	if current, _ := f.service.GetThreadLink(f.ctx, link.ID); !current.ArchivedAt.IsZero() || f.cancels(run) != 0 {
-		t.Fatalf("helper archived before its period: %#v", current)
+		t.Fatalf("subagent archived before its period: %#v", current)
 	}
 
 	f.advance(2 * time.Minute)
-	f.service.SweepArchivableHelpers(f.ctx)
+	f.service.SweepArchivableSubagents(f.ctx)
 	archived, _ := f.service.GetThreadLink(f.ctx, link.ID)
 	if archived.ArchivedAt.IsZero() || archived.State != domain.LinkActive || f.cancels(run) != 1 {
 		t.Fatalf("archived link = %#v, cancels %d", archived, f.cancels(run))
@@ -92,13 +92,13 @@ func TestFinishedHelperIsPausedAndArchivedAfterItsPeriod(t *testing.T) {
 	f.service.CoordinationTick(f.ctx)
 	thread, _ = f.service.GetThread(f.ctx, link.ChildThreadID)
 	if thread.State != domain.ThreadPaused {
-		t.Fatalf("archived helper Thread = %s", thread.State)
+		t.Fatalf("archived subagent Thread = %s", thread.State)
 	}
 	if capsule, _ := f.service.GetCapsule(f.ctx, link.ChildCapsuleID); capsule.State != domain.CapsuleReady ||
 		capsule.DesiredState != domain.IntentReady {
 		t.Fatalf("archive touched the Capsule: %s/%s", capsule.State, capsule.DesiredState)
 	}
-	// The cancelled session is not reported to the lead as the helper ending.
+	// The cancelled session is not reported to the lead as the subagent ending.
 	if current, _ := f.service.GetThreadLink(f.ctx, link.ID); current.ReportSeq != link.ReportSeq {
 		t.Fatalf("archive produced report %d (%s)", current.ReportSeq, current.LastReportStatus)
 	}
@@ -107,11 +107,11 @@ func TestFinishedHelperIsPausedAndArchivedAfterItsPeriod(t *testing.T) {
 	}
 	send := tool(t, mailbox, coordproto.Request{Type: coordproto.KindSend, Key: "wake", Link: string(link.ID), Prompt: "more"})
 	if code(send) != coordproto.CodeUnavailable {
-		t.Fatalf("send to archived helper = %+v", send)
+		t.Fatalf("send to archived subagent = %+v", send)
 	}
-	f.service.SweepArchivableHelpers(f.ctx)
+	f.service.SweepArchivableSubagents(f.ctx)
 	if f.cancels(run) != 1 {
-		t.Fatalf("archived helper was cancelled again")
+		t.Fatalf("archived subagent was cancelled again")
 	}
 
 	resumed, err := f.service.ResumeThread(f.ctx, thread.ID, thread.ResourceVersion, "resume")
@@ -119,19 +119,19 @@ func TestFinishedHelperIsPausedAndArchivedAfterItsPeriod(t *testing.T) {
 		t.Fatalf("resume = %#v, %v", resumed, err)
 	}
 	if current, _ := f.service.GetThreadLink(f.ctx, link.ID); !current.ArchivedAt.IsZero() {
-		t.Fatal("resume left the helper archived")
+		t.Fatal("resume left the subagent archived")
 	}
 	if rollup := f.leadRollup(t, lead.Intent.CapsuleID); rollup.Archived != 0 {
 		t.Fatalf("rollup after resume = %+v", rollup)
 	}
 }
 
-func TestArchiveSkipsPromotedAndDisabledHelpers(t *testing.T) {
+func TestArchiveSkipsPromotedAndDisabledSubagents(t *testing.T) {
 	f := newCoordFixture(t)
 	archiveAfter := time.Hour
 	lead, mailbox := f.spawnLead(t, domain.CoordinationPolicy{ArchiveAfter: &archiveAfter})
-	promoted := f.finishedHelper(t, mailbox, "kept")
-	cancelled := f.finishedHelper(t, mailbox, "dropped")
+	promoted := f.finishedSubagent(t, mailbox, "kept")
+	cancelled := f.finishedSubagent(t, mailbox, "dropped")
 	capsule, _ := f.service.GetCapsule(f.ctx, promoted.ChildCapsuleID)
 	if _, err := f.service.PromoteCapsule(f.ctx, capsule.ID, capsule.ResourceVersion, false, "promote"); err != nil {
 		t.Fatal(err)
@@ -147,16 +147,16 @@ func TestArchiveSkipsPromotedAndDisabledHelpers(t *testing.T) {
 	}
 	// stopClosedChild asked for a pause; the reconciler would finish it.
 	if capsule, _ := f.service.GetCapsule(f.ctx, cancelled.ChildCapsuleID); capsule.DesiredState != domain.IntentPaused {
-		t.Fatalf("cancelled helper desired state = %s", capsule.DesiredState)
+		t.Fatalf("cancelled subagent desired state = %s", capsule.DesiredState)
 	}
 	setProjectThreadCapsuleState(t, f.ctx, f.store, cancelled.ChildCapsuleID, domain.CapsulePaused)
 	f.advance(2 * time.Hour)
-	f.service.SweepArchivableHelpers(f.ctx)
+	f.service.SweepArchivableSubagents(f.ctx)
 	if link, _ := f.service.GetThreadLink(f.ctx, promoted.ID); !link.ArchivedAt.IsZero() {
-		t.Fatal("promoted helper was archived")
+		t.Fatal("promoted subagent was archived")
 	}
 	if link, _ := f.service.GetThreadLink(f.ctx, cancelled.ID); link.ArchivedAt.IsZero() || link.CloseReason != domain.LinkCancelled {
-		t.Fatalf("cancelled helper = %#v", link)
+		t.Fatalf("cancelled subagent = %#v", link)
 	}
 	if rollup := f.leadRollup(t, lead.Intent.CapsuleID); rollup.Archived != 1 || rollup.Total != 2 {
 		t.Fatalf("rollup = %+v", rollup)
@@ -165,11 +165,11 @@ func TestArchiveSkipsPromotedAndDisabledHelpers(t *testing.T) {
 	g := newCoordFixture(t)
 	disabled := time.Duration(0)
 	_, other := g.spawnLead(t, domain.CoordinationPolicy{ArchiveAfter: &disabled})
-	kept := g.finishedHelper(t, other, "kept")
+	kept := g.finishedSubagent(t, other, "kept")
 	g.advance(31 * 24 * time.Hour)
-	g.service.SweepArchivableHelpers(g.ctx)
+	g.service.SweepArchivableSubagents(g.ctx)
 	if link, _ := g.service.GetThreadLink(g.ctx, kept.ID); !link.ArchivedAt.IsZero() {
-		t.Fatal("helper archived with auto-archive disabled")
+		t.Fatal("subagent archived with auto-archive disabled")
 	}
 }
 
@@ -207,8 +207,8 @@ func TestArchivePeriodIsBoundedAndPartOfTheReplay(t *testing.T) {
 func TestPromoteKeepsTheLinkAndDetachClosesIt(t *testing.T) {
 	f := newCoordFixture(t)
 	lead, mailbox := f.spawnLead(t, domain.CoordinationPolicy{MaxChildren: 4, MaxLiveCapsules: 2})
-	first := f.finishedHelper(t, mailbox, "first")
-	second := f.finishedHelper(t, mailbox, "second")
+	first := f.finishedSubagent(t, mailbox, "first")
+	second := f.finishedSubagent(t, mailbox, "second")
 	spawnThird := coordproto.Request{Type: coordproto.KindSpawn, Key: "spawn-third", Name: "third", Harness: "mock", Prompt: "t"}
 	if response := tool(t, mailbox, spawnThird); code(response) != coordproto.CodeCapacityExhausted {
 		t.Fatalf("spawn over live limit = %+v", response)
@@ -247,10 +247,10 @@ func TestPromoteKeepsTheLinkAndDetachClosesIt(t *testing.T) {
 	if response := tool(t, mailbox, coordproto.Request{
 		Type: coordproto.KindSend, Key: "follow-up", Link: string(first.ID), Prompt: "one more thing",
 	}); !response.OK {
-		t.Fatalf("send to promoted helper = %+v", response)
+		t.Fatalf("send to promoted subagent = %+v", response)
 	}
 	if response := tool(t, mailbox, spawnThird); code(response) != coordproto.CodeCapacityExhausted {
-		t.Fatalf("a promoted, linked helper left the live count: %+v", response)
+		t.Fatalf("a promoted, linked subagent left the live count: %+v", response)
 	}
 
 	detached, err := f.service.PromoteCapsule(f.ctx, capsule.ID, promoted.ResourceVersion, true, "detach")
@@ -273,7 +273,7 @@ func TestPromoteKeepsTheLinkAndDetachClosesIt(t *testing.T) {
 		t.Fatalf("spawn after detach = %+v", response)
 	}
 
-	// A lead-side stop never reaches a promoted helper.
+	// A lead-side stop never reaches a promoted subagent.
 	other, _ := f.service.GetCapsule(f.ctx, second.ChildCapsuleID)
 	if _, err := f.service.PromoteCapsule(f.ctx, other.ID, other.ResourceVersion, false, "promote-second"); err != nil {
 		t.Fatal(err)
@@ -289,20 +289,20 @@ func TestPromoteKeepsTheLinkAndDetachClosesIt(t *testing.T) {
 		f.advance(5 * time.Second)
 	}
 	if f.cancels(secondThread.CurrentRunID) != 0 {
-		t.Fatal("revoke cancelled a promoted helper")
+		t.Fatal("revoke cancelled a promoted subagent")
 	}
 	if current, _ := f.service.GetCapsule(f.ctx, other.ID); current.DesiredState != domain.IntentReady {
-		t.Fatalf("revoke paused a promoted helper: %s", current.DesiredState)
+		t.Fatalf("revoke paused a promoted subagent: %s", current.DesiredState)
 	}
 }
 
-func TestResumedHelperIsArchivedAgainOnceIdle(t *testing.T) {
+func TestResumedSubagentIsArchivedAgainOnceIdle(t *testing.T) {
 	f := newCoordFixture(t)
 	archiveAfter := time.Minute
 	_, mailbox := f.spawnLead(t, domain.CoordinationPolicy{ArchiveAfter: &archiveAfter})
-	link := f.finishedHelper(t, mailbox, "one")
+	link := f.finishedSubagent(t, mailbox, "one")
 	f.advance(2 * time.Minute)
-	f.service.SweepArchivableHelpers(f.ctx)
+	f.service.SweepArchivableSubagents(f.ctx)
 	for range 2 {
 		f.service.CoordinationTick(f.ctx)
 		f.advance(5 * time.Second)
@@ -316,8 +316,8 @@ func TestResumedHelperIsArchivedAgainOnceIdle(t *testing.T) {
 	f.runtime.finishTurn(resumed.Thread.CurrentRunID, "resumed", "back")
 	f.service.CoordinationTick(f.ctx)
 	f.advance(2 * time.Minute)
-	f.service.SweepArchivableHelpers(f.ctx)
+	f.service.SweepArchivableSubagents(f.ctx)
 	if current, _ := f.service.GetThreadLink(f.ctx, link.ID); current.ArchivedAt.IsZero() {
-		t.Fatalf("resumed helper was not archived again: %#v", current)
+		t.Fatalf("resumed subagent was not archived again: %#v", current)
 	}
 }

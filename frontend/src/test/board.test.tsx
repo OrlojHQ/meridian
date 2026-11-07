@@ -119,7 +119,7 @@ afterEach(() => {
 });
 
 describe("Board", () => {
-  it("groups rows, surfaces a helper that needs you and folds the rest", async () => {
+  it("groups rows, surfaces a subagent that needs you and folds the rest", async () => {
     const board = vi.spyOn(api, "board").mockImplementation(async (expand) => ({
       truncated: false,
       items: expand === "all" ? [surfaced, lead, quiet, shipped] : [surfaced, lead, shipped],
@@ -138,8 +138,8 @@ describe("Board", () => {
     const working = screen.getByRole("region", { name: /Working/ });
     expect(within(working).getByText("0/2 done, 1 needs you, 1 working")).toBeTruthy();
     expect(within(working).queryByRole("link", { name: "docs" })).toBeNull();
-    await userEvent.click(await within(working).findByRole("button", { name: "Helpers (2)" }));
-    const fold = within(working).getByRole("list", { name: "Helpers of release lead" });
+    await userEvent.click(await within(working).findByRole("button", { name: "Subagents (2)" }));
+    const fold = within(working).getByRole("list", { name: "Subagents of release lead" });
     expect(within(fold).getByRole("link", { name: "docs" })).toBeTruthy();
     expect(within(fold).getByRole("link", { name: "tests" })).toBeTruthy();
 
@@ -147,9 +147,9 @@ describe("Board", () => {
     expect(pr.getAttribute("href")).toBe("https://github.com/example/repo/pull/7");
     expect(pr.getAttribute("rel")).toContain("noopener");
 
-    await userEvent.click(screen.getByRole("checkbox", { name: "Show all helpers" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Show all subagents" }));
     expect(board).toHaveBeenCalledWith("all", expect.anything());
-    expect(await within(screen.getByRole("region", { name: /Working/ })).findByText("helper of")).toBeTruthy();
+    expect(await within(screen.getByRole("region", { name: /Working/ })).findByText("subagent of")).toBeTruthy();
   });
 
   it("does not link a delivery URL that is not https", async () => {
@@ -172,7 +172,7 @@ describe("Board", () => {
     ).toBe("3/5 done, 1 working, 1 failed, 2 archived");
   });
 
-  it("folds archived helpers and offers promotion on a surfaced helper", async () => {
+  it("folds archived subagents and offers promotion on a surfaced subagent", async () => {
     const archived: BoardItem = {
       ...quiet,
       status: "paused",
@@ -189,8 +189,8 @@ describe("Board", () => {
 
     const working = await screen.findByRole("region", { name: /Working/ });
     expect(within(working).getByText("1/2 done, 1 needs you, 1 archived")).toBeTruthy();
-    await userEvent.click(await within(working).findByRole("button", { name: "Helpers (2)" }));
-    const fold = within(working).getByRole("list", { name: "Helpers of release lead" });
+    await userEvent.click(await within(working).findByRole("button", { name: "Subagents (2)" }));
+    const fold = within(working).getByRole("list", { name: "Subagents of release lead" });
     expect(within(fold).getByText("Archived (1)")).toBeTruthy();
     const archivedLink = within(fold).getByRole("link", { name: "docs" });
     expect(archivedLink.closest("details")).not.toBeNull();
@@ -204,7 +204,7 @@ describe("Board", () => {
     expect(within(working).queryByRole("button", { name: /Promote/ })).toBeNull();
   });
 
-  it("marks a promoted helper in its own row and in its lead's fold", async () => {
+  it("marks a promoted subagent in its own row and in its lead's fold", async () => {
     const promoted: BoardItem = {
       ...quiet,
       capsule: { ...quiet.capsule, role: "main", promotedAt: "2026-11-02T00:00:00Z" },
@@ -216,12 +216,12 @@ describe("Board", () => {
 
     const idle = await screen.findByRole("region", { name: /Idle/ });
     expect(within(idle).getByText("promoted from")).toBeTruthy();
-    expect(within(idle).queryByText("helper of")).toBeNull();
+    expect(within(idle).queryByText("subagent of")).toBeNull();
     expect(within(idle).queryByRole("button", { name: /Promote/ })).toBeNull();
 
     const working = screen.getByRole("region", { name: /Working/ });
-    await userEvent.click(await within(working).findByRole("button", { name: "Helpers (1)" }));
-    const fold = within(working).getByRole("list", { name: "Helpers of release lead" });
+    await userEvent.click(await within(working).findByRole("button", { name: "Subagents (1)" }));
+    const fold = within(working).getByRole("list", { name: "Subagents of release lead" });
     expect(within(fold).getByRole("link", { name: "docs" })).toBeTruthy();
     expect(within(fold).getByText("Promoted")).toBeTruthy();
   });

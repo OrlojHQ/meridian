@@ -49,7 +49,7 @@ import {
   type CapsuleActionRequest,
   type PaletteCommand,
 } from "./paletteCommands";
-import { nestHelpers, useWorkingSet, type WorkingSetItem } from "./useWorkingSet";
+import { nestSubagents, useWorkingSet, type WorkingSetItem } from "./useWorkingSet";
 import { WorkspaceContext } from "./WorkspaceContext";
 
 const pathID = (pathname: string, resource: string) => {
@@ -386,7 +386,7 @@ export function AppShell() {
   const hasContext = Boolean(capsuleId);
   const renderItem = (
     { capsule, activity, sessions, rollup }: WorkingSetItem,
-    helpers: WorkingSetItem[] = [],
+    subagents: WorkingSetItem[] = [],
   ) => {
     const selected = capsule.id === capsuleId;
     const live = sessions.filter((session) => !session.archived);
@@ -406,7 +406,7 @@ export function AppShell() {
               {activity.label}
             </small>
             {rollup && rollup.total > 0 && (
-              <small className="activity-item-rollup">Helpers: {rollupSummary(rollup)}</small>
+              <small className="activity-item-rollup">Subagents: {rollupSummary(rollup)}</small>
             )}
           </span>
           <span className="activity-item-side">
@@ -434,9 +434,9 @@ export function AppShell() {
             now={now}
           />
         )}
-        {helpers.length > 0 && (
-          <ul className="sidebar-helpers" aria-label={`Helpers of ${capsule.name}`}>
-            {helpers.map((helper) => renderItem(helper))}
+        {subagents.length > 0 && (
+          <ul className="sidebar-subagents" aria-label={`Subagents of ${capsule.name}`}>
+            {subagents.map((subagent) => renderItem(subagent))}
           </ul>
         )}
       </li>
@@ -555,7 +555,7 @@ export function AppShell() {
                   </p>
                 ) : (
                   <ul>
-                    {nestHelpers(projectCapsules).map(({ item, helpers }) => renderItem(item, helpers))}
+                    {nestSubagents(projectCapsules).map(({ item, subagents }) => renderItem(item, subagents))}
                   </ul>
                 )}
               </section>

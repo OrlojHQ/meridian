@@ -130,10 +130,10 @@ type BoardItem struct {
 	// Why the row needs the operator; set only with status needs_you.
 	NeedsYou       OptBoardItemNeedsYou `json:"needsYou"`
 	LatestDelivery OptDeliverySummary   `json:"latestDelivery"`
-	// The helper's link to its lead, on sub-Capsules.
+	// The subagent's link to its lead, on sub-Capsules.
 	Link        OptThreadLink  `json:"link"`
 	ChildRollup OptChildRollup `json:"childRollup"`
-	// A helper listed on its own because it needs the operator.
+	// A subagent listed on its own because it needs the operator.
 	Surfaced bool `json:"surfaced"`
 }
 
@@ -658,11 +658,11 @@ type Capsule struct {
 	RestoreComplete bool           `json:"restoreComplete"`
 	Maintenance     OptString      `json:"maintenance"`
 	Role            OptCapsuleRole `json:"role"`
-	// On sub-Capsules, the lead Thread that spawned this helper.
+	// On sub-Capsules, the lead Thread that spawned this subagent.
 	LeadThreadId OptString `json:"leadThreadId"`
 	// On sub-Capsules and promoted Capsules that kept their link, the Thread link to the lead.
 	LinkId OptString `json:"linkId"`
-	// When a helper sub-Capsule was promoted to a main Capsule.
+	// When a subagent Capsule was promoted to a main Capsule.
 	PromotedAt      OptDateTime `json:"promotedAt"`
 	CreatedAt       time.Time   `json:"createdAt"`
 	UpdatedAt       time.Time   `json:"updatedAt"`
@@ -1173,7 +1173,7 @@ type CaptureMomentUnprocessableEntity ErrorEnvelope
 
 func (*CaptureMomentUnprocessableEntity) captureMomentRes() {}
 
-// A lead's helpers by state.
+// A lead's subagents by state.
 // Ref: #/components/schemas/ChildRollup
 type ChildRollup struct {
 	Total    int `json:"total"`
@@ -1182,7 +1182,7 @@ type ChildRollup struct {
 	Done     int `json:"done"`
 	NeedsYou int `json:"needsYou"`
 	Failed   int `json:"failed"`
-	// Auto-archived helpers. They are also counted as done.
+	// Auto-archived subagents. They are also counted as done.
 	Archived int `json:"archived"`
 }
 
@@ -1258,7 +1258,7 @@ func (s *ChildRollup) SetArchived(val int) {
 
 // Ref: #/components/schemas/CoordinationCapability
 type CoordinationCapability struct {
-	// True when lead Threads may spawn helper Threads through the Capsule-local coordination mailbox.
+	// True when lead Threads may spawn subagent Threads through the Capsule-local coordination mailbox.
 	Supported      bool `json:"supported"`
 	MaxDepth       int  `json:"maxDepth"`
 	MaxDescendants int  `json:"maxDescendants"`
@@ -1730,9 +1730,9 @@ func (s *CoordinationGrantState) UnmarshalText(data []byte) error {
 	}
 }
 
-// Makes the new Thread a lead that may spawn helper Threads in their own sub-Capsules. Omitted limits
-// take their defaults. Helpers answer to the operator: the lead never approves permissions or answers
-// input.
+// Makes the new Thread a lead that may spawn subagent Threads in their own sub-Capsules. Omitted
+// limits take their defaults. Subagents answer to the operator: the lead never approves permissions or
+// answers input.
 // Ref: #/components/schemas/CoordinationPolicy
 type CoordinationPolicy struct {
 	MaxDepth           OptInt `json:"maxDepth"`
@@ -1740,12 +1740,12 @@ type CoordinationPolicy struct {
 	MaxDescendants     OptInt `json:"maxDescendants"`
 	MaxLiveCapsules    OptInt `json:"maxLiveCapsules"`
 	MaxMessagesPerLink OptInt `json:"maxMessagesPerLink"`
-	// Structured harnesses helpers may use; each must be on the Project allowlist. Defaults to the lead's
-	// harness.
+	// Structured harnesses subagents may use; each must be on the Project allowlist. Defaults to the
+	// lead's harness.
 	AllowedHarnesses []string `json:"allowedHarnesses"`
 	DeadlineSeconds  OptInt   `json:"deadlineSeconds"`
-	// How long a finished helper stays idle before its session is ended and its Thread paused. 0 disables
-	// auto-archive; otherwise at least 60. Archiving never deletes a workspace or transcript.
+	// How long a finished subagent stays idle before its session is ended and its Thread paused. 0
+	// disables auto-archive; otherwise at least 60. Archiving never deletes a workspace or transcript.
 	ArchiveAfterSeconds OptInt                             `json:"archiveAfterSeconds"`
 	OnDeadline          OptCoordinationPolicyOnDeadline    `json:"onDeadline"`
 	SpawnApproval       OptCoordinationPolicySpawnApproval `json:"spawnApproval"`
@@ -8915,15 +8915,15 @@ type Thread struct {
 	Turn                OptThreadTurn     `json:"turn"`
 	Protocol            OptThreadProtocol `json:"protocol"`
 	StructuredSupported OptBool           `json:"structuredSupported"`
-	// The Coordination Grant over this Thread's tree, on the lead and on each helper.
+	// The Coordination Grant over this Thread's tree, on the lead and on each subagent.
 	CoordinationGrantId OptString `json:"coordinationGrantId"`
-	// Present on a helper Thread; the lead that spawned it.
+	// Present on a subagent Thread; the lead that spawned it.
 	ParentThreadId OptString `json:"parentThreadId"`
 	// The lead at the root of this Thread's coordination tree.
 	RootThreadId OptString `json:"rootThreadId"`
-	// Present on a helper Thread; its link from the lead.
+	// Present on a subagent Thread; its link from the lead.
 	LinkId OptString `json:"linkId"`
-	// Zero for leads, one for their helpers.
+	// Zero for leads, one for their subagents.
 	Depth           OptInt      `json:"depth"`
 	EncryptedAtRest bool        `json:"encryptedAtRest"`
 	MessageCount    int64       `json:"messageCount"`
@@ -10027,8 +10027,8 @@ func (s *ThreadInput) SetSecret(val OptBool) {
 	s.Secret = val
 }
 
-// Content-free handle from a lead Thread to one helper. Report text is re-derived from the helper's
-// encrypted transcript and is never stored on the link.
+// Content-free handle from a lead Thread to one subagent. Report text is re-derived from the
+// subagent's encrypted transcript and is never stored on the link.
 // Ref: #/components/schemas/ThreadLink
 type ThreadLink struct {
 	ID                 string                        `json:"id"`
@@ -10050,11 +10050,12 @@ type ThreadLink struct {
 	LastReportReason   OptThreadLinkLastReportReason `json:"lastReportReason"`
 	LastReportAt       OptDateTime                   `json:"lastReportAt"`
 	MessagesForwarded  int                           `json:"messagesForwarded"`
-	// Operator messages sent straight to this helper. They do not count against the lead's message limit.
+	// Operator messages sent straight to this subagent. They do not count against the lead's message
+	// limit.
 	OperatorMessages int `json:"operatorMessages"`
-	// Set while the helper is auto-archived; cleared when its Thread resumes.
+	// Set while the subagent is auto-archived; cleared when its Thread resumes.
 	ArchivedAt OptDateTime `json:"archivedAt"`
-	// When the helper was promoted to a main Capsule. Promoted helpers are never archived.
+	// When the subagent was promoted to a main Capsule. Promoted subagents are never archived.
 	PromotedAt      OptDateTime `json:"promotedAt"`
 	CreatedAt       time.Time   `json:"createdAt"`
 	UpdatedAt       time.Time   `json:"updatedAt"`
@@ -10850,7 +10851,7 @@ func (s *ThreadMutationResultHeaders) SetResponse(val ThreadMutationResult) {
 func (*ThreadMutationResultHeaders) createThreadRes() {}
 
 // Marks a user-role message Meridian wrote for coordination rather than the operator: from_lead on a
-// helper, from_helpers on a lead.
+// subagent, from_subagents on a lead.
 // Ref: #/components/schemas/ThreadOrigin
 type ThreadOrigin struct {
 	Source  ThreadOriginSource `json:"source"`
@@ -10891,15 +10892,15 @@ func (s *ThreadOrigin) SetLinkIds(val []string) {
 type ThreadOriginKind string
 
 const (
-	ThreadOriginKindFromLead    ThreadOriginKind = "from_lead"
-	ThreadOriginKindFromHelpers ThreadOriginKind = "from_helpers"
+	ThreadOriginKindFromLead      ThreadOriginKind = "from_lead"
+	ThreadOriginKindFromSubagents ThreadOriginKind = "from_subagents"
 )
 
 // AllValues returns all ThreadOriginKind values.
 func (ThreadOriginKind) AllValues() []ThreadOriginKind {
 	return []ThreadOriginKind{
 		ThreadOriginKindFromLead,
-		ThreadOriginKindFromHelpers,
+		ThreadOriginKindFromSubagents,
 	}
 }
 
@@ -10908,7 +10909,7 @@ func (s ThreadOriginKind) MarshalText() ([]byte, error) {
 	switch s {
 	case ThreadOriginKindFromLead:
 		return []byte(s), nil
-	case ThreadOriginKindFromHelpers:
+	case ThreadOriginKindFromSubagents:
 		return []byte(s), nil
 	default:
 		return nil, errors.Errorf("invalid value: %q", s)
@@ -10921,8 +10922,8 @@ func (s *ThreadOriginKind) UnmarshalText(data []byte) error {
 	case ThreadOriginKindFromLead:
 		*s = ThreadOriginKindFromLead
 		return nil
-	case ThreadOriginKindFromHelpers:
-		*s = ThreadOriginKindFromHelpers
+	case ThreadOriginKindFromSubagents:
+		*s = ThreadOriginKindFromSubagents
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)

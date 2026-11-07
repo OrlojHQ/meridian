@@ -10,7 +10,7 @@ import {
   sessionPath,
   type ActivityGroup,
 } from "../shell/capsuleActivity";
-import { PromoteHelper } from "./PromoteHelper";
+import { PromoteSubagent } from "./PromoteSubagent";
 import { safeInline } from "./threadChat";
 import { ThreadError } from "./ThreadError";
 import { HarnessMark } from "./ui/HarnessMark";
@@ -51,20 +51,20 @@ function itemName(item: BoardItem) {
   return safeInline(item.link?.name ?? item.capsule.name);
 }
 
-function helperRow(helper: BoardItem) {
-  const helperGroup = boardGroups.find((entry) => entry.status === helper.status);
+function subagentRow(subagent: BoardItem) {
+  const subagentGroup = boardGroups.find((entry) => entry.status === subagent.status);
   return (
-    <li key={helper.capsule.id}>
+    <li key={subagent.capsule.id}>
       <span
-        className={`state-dot activity-dot-${helperGroup?.activity ?? "idle"}`}
+        className={`state-dot activity-dot-${subagentGroup?.activity ?? "idle"}`}
         aria-hidden="true"
       />
-      <span className="board-helper-name">
-        <Link to={boardRowPath(helper)}>{itemName(helper)}</Link>
-        {helper.capsule.promotedAt && <span className="badge">Promoted</span>}
+      <span className="board-subagent-name">
+        <Link to={boardRowPath(subagent)}>{itemName(subagent)}</Link>
+        {subagent.capsule.promotedAt && <span className="badge">Promoted</span>}
       </span>
-      <small>{helper.needsYou ? needsYouLabels[helper.needsYou] : helperGroup?.title}</small>
-      <time dateTime={helper.since}>{relativeTime(helper.since)}</time>
+      <small>{subagent.needsYou ? needsYouLabels[subagent.needsYou] : subagentGroup?.title}</small>
+      <time dateTime={subagent.since}>{relativeTime(subagent.since)}</time>
     </li>
   );
 }
@@ -72,11 +72,11 @@ function helperRow(helper: BoardItem) {
 function BoardRow({
   item,
   leadNames,
-  helpers,
+  subagents,
 }: {
   item: BoardItem;
   leadNames: Map<string, { name: string; capsuleId: string }>;
-  helpers?: BoardItem[];
+  subagents?: BoardItem[];
 }) {
   const [expanded, setExpanded] = useState(false);
   const group = boardGroups.find((entry) => entry.status === item.status);
@@ -84,7 +84,7 @@ function BoardRow({
   const pullRequest = safePullRequestURL(item.latestDelivery?.pullRequestUrl);
   const harness = item.thread?.harness ?? item.capsule.harness ?? undefined;
   const label = item.needsYou ? needsYouLabels[item.needsYou] : group?.title;
-  const archived = helpers?.filter((helper) => helper.link?.archivedAt) ?? [];
+  const archived = subagents?.filter((subagent) => subagent.link?.archivedAt) ?? [];
   return (
     <li className={`inbox-row board-row inbox-row-${group?.activity ?? "idle"}`}>
       <HarnessMark harness={harness} size="md" />
@@ -98,7 +98,7 @@ function BoardRow({
           <span className="inbox-status">{label}</span>
           {item.link && (
             <span className="board-breadcrumb">
-              {item.capsule.promotedAt ? "promoted from" : "helper of"}{" "}
+              {item.capsule.promotedAt ? "promoted from" : "subagent of"}{" "}
               {lead ? (
                 <Link to={sessionPath(lead.capsuleId, item.link.parentThreadId)}>{lead.name}</Link>
               ) : (
@@ -116,14 +116,14 @@ function BoardRow({
             <span>Delivery {item.latestDelivery.state.replaceAll("_", " ")}</span>
           )}
         </p>
-        {expanded && helpers && (
-          <ul className="board-helpers" aria-label={`Helpers of ${itemName(item)}`}>
-            {helpers.filter((helper) => !helper.link?.archivedAt).map(helperRow)}
+        {expanded && subagents && (
+          <ul className="board-subagents" aria-label={`Subagents of ${itemName(item)}`}>
+            {subagents.filter((subagent) => !subagent.link?.archivedAt).map(subagentRow)}
             {archived.length > 0 && (
               <li className="board-archived">
                 <details>
                   <summary>Archived ({archived.length})</summary>
-                  <ul className="board-helpers">{archived.map(helperRow)}</ul>
+                  <ul className="board-subagents">{archived.map(subagentRow)}</ul>
                 </details>
               </li>
             )}
@@ -131,17 +131,17 @@ function BoardRow({
         )}
       </div>
       <div className="inbox-actions">
-        {item.childRollup && helpers && helpers.length > 0 && (
+        {item.childRollup && subagents && subagents.length > 0 && (
           <button
             type="button"
             className="secondary"
             aria-expanded={expanded}
             onClick={() => setExpanded((value) => !value)}
           >
-            {expanded ? "Hide helpers" : `Helpers (${helpers.length})`}
+            {expanded ? "Hide subagents" : `Subagents (${subagents.length})`}
           </button>
         )}
-        {item.surfaced && item.capsule.role === "sub" && <PromoteHelper capsule={item.capsule} />}
+        {item.surfaced && item.capsule.role === "sub" && <PromoteSubagent capsule={item.capsule} />}
         <Link className="button-link primary-button" to={boardRowPath(item)}>
           {item.status === "needs_you" && item.needsYou !== "failed" ? "Respond" : "Open"}
         </Link>
@@ -153,7 +153,7 @@ function BoardRow({
 export function Board() {
   const [showAll, setShowAll] = useState(false);
   const board = useQuery(queries.board(showAll ? "all" : "attention"));
-  // Every helper row, for the per-lead folds; one content-free read shared by
+  // Every subagent row, for the per-lead folds; one content-free read shared by
   // all leads.
   const everything = useQuery(queries.board("all"));
 
@@ -175,7 +175,7 @@ export function Board() {
         : [],
     ),
   );
-  const helpersOf = (item: BoardItem) =>
+  const subagentsOf = (item: BoardItem) =>
     item.thread
       ? all.filter((candidate) => candidate.link?.parentThreadId === item.thread?.id)
       : [];
@@ -187,7 +187,7 @@ export function Board() {
           <p className="eyebrow">Board</p>
           <h1>{needsYou > 0 ? `${needsYou} need${needsYou === 1 ? "s" : ""} you` : "Everything"}</h1>
           <p className="view-description">
-            Every Capsule by status. Helpers fold under their lead unless they need you.
+            Every Capsule by status. Subagents fold under their lead unless they need you.
           </p>
         </div>
         <div className="workspace-header-meta">
@@ -197,7 +197,7 @@ export function Board() {
               checked={showAll}
               onChange={(event) => setShowAll(event.target.checked)}
             />
-            Show all helpers
+            Show all subagents
           </label>
           <span className="count-label">{items.length} rows</span>
         </div>
@@ -227,7 +227,7 @@ export function Board() {
                     key={item.capsule.id}
                     item={item}
                     leadNames={leadNames}
-                    helpers={item.childRollup ? helpersOf(item) : undefined}
+                    subagents={item.childRollup ? subagentsOf(item) : undefined}
                   />
                 ))}
               </ul>

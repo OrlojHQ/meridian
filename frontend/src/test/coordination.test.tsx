@@ -14,9 +14,9 @@ import type {
   ThreadLink,
 } from "../api/generated/types.gen";
 import { StructuredLauncher } from "../components/StructuredLauncher";
-import { ThreadHelpers } from "../components/ThreadHelpers";
+import { ThreadSubagents } from "../components/ThreadSubagents";
 import { buildThreadChat } from "../components/threadChat";
-import { nestHelpers, type WorkingSetItem } from "../shell/useWorkingSet";
+import { nestSubagents, type WorkingSetItem } from "../shell/useWorkingSet";
 
 const project: Project = {
   id: "project-1",
@@ -139,10 +139,10 @@ describe("Lead launcher", () => {
     vi.spyOn(api, "capabilities").mockResolvedValue(capabilities(true));
     const spawn = vi.spyOn(api, "createProjectThread").mockResolvedValue(intent);
     wrapper(<StructuredLauncher project={project} harness="mock" />);
-    await userEvent.click(await screen.findByLabelText("Lead with helpers"));
-    const helpers = screen.getByLabelText("Helpers");
-    await userEvent.clear(helpers);
-    await userEvent.type(helpers, "2");
+    await userEvent.click(await screen.findByLabelText("Lead agent with subagents"));
+    const subagents = screen.getByLabelText("Subagents");
+    await userEvent.clear(subagents);
+    await userEvent.type(subagents, "2");
     await userEvent.type(screen.getByLabelText("Task"), "split the work");
     await userEvent.click(screen.getByRole("button", { name: "Start task" }));
     await waitFor(() =>
@@ -157,32 +157,32 @@ describe("Lead launcher", () => {
     const loaded = vi.spyOn(api, "capabilities").mockResolvedValue(capabilities(false));
     wrapper(<StructuredLauncher project={project} harness="mock" />);
     await waitFor(() => expect(loaded).toHaveBeenCalled());
-    expect(screen.queryByLabelText("Lead with helpers")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Lead agent with subagents")).not.toBeInTheDocument();
   });
 });
 
-describe("Helpers panel", () => {
-  it("lists helpers with their phase and stops the tree on confirmation", async () => {
+describe("Subagents panel", () => {
+  it("lists subagents with their phase and stops the tree on confirmation", async () => {
     vi.spyOn(api, "coordinationGrant").mockResolvedValue(grant);
     vi.spyOn(api, "threadLinks").mockResolvedValue({
-      items: [link("helper-1", "idle", 1), link("helper-2", "awaiting_operator", 0)],
+      items: [link("subagent-1", "idle", 1), link("subagent-2", "awaiting_operator", 0)],
     });
     const revoke = vi
       .spyOn(api, "revokeCoordinationGrant")
       .mockResolvedValue({ ...grant, state: "revoked", revokeReason: "operator" });
-    wrapper(<ThreadHelpers thread={leadThread} />);
-    const panel = await screen.findByRole("region", { name: "Helpers" });
-    const first = await within(panel).findByRole("link", { name: "helper-1" });
-    expect(first).toHaveAttribute("href", "/ui/capsules/capsule-helper-1?session=thread-helper-1");
+    wrapper(<ThreadSubagents thread={leadThread} />);
+    const panel = await screen.findByRole("region", { name: "Subagents" });
+    const first = await within(panel).findByRole("link", { name: "subagent-1" });
+    expect(first).toHaveAttribute("href", "/ui/capsules/capsule-subagent-1?session=thread-subagent-1");
     expect(within(panel).getByText("Reported")).toBeInTheDocument();
     expect(within(panel).getByText("Needs you")).toBeInTheDocument();
     expect(within(panel).getByText("2 of 8 started", { exact: false })).toBeInTheDocument();
-    await userEvent.click(within(panel).getByRole("button", { name: "Stop helpers" }));
+    await userEvent.click(within(panel).getByRole("button", { name: "Stop subagents" }));
     await userEvent.click(within(panel).getByRole("button", { name: "Confirm stop" }));
     await waitFor(() => expect(revoke).toHaveBeenCalledWith(grant));
   });
 
-  it("folds archived helpers and marks promoted ones", async () => {
+  it("folds archived subagents and marks promoted ones", async () => {
     vi.spyOn(api, "coordinationGrant").mockResolvedValue(grant);
     vi.spyOn(api, "threadLinks").mockResolvedValue({
       items: [
@@ -196,8 +196,8 @@ describe("Helpers panel", () => {
         },
       ],
     });
-    wrapper(<ThreadHelpers thread={leadThread} />);
-    const panel = await screen.findByRole("region", { name: "Helpers" });
+    wrapper(<ThreadSubagents thread={leadThread} />);
+    const panel = await screen.findByRole("region", { name: "Subagents" });
     await within(panel).findByRole("link", { name: "kept" });
     expect(within(panel).getByText("Promoted")).toBeInTheDocument();
     expect(within(panel).getByText("Promoted, detached")).toBeInTheDocument();
@@ -206,16 +206,16 @@ describe("Helpers panel", () => {
     expect(within(panel).getByRole("link", { name: "kept" }).closest("details")).toBeNull();
   });
 
-  it("promotes a helper, and detaches a promoted one that kept its link", async () => {
+  it("promotes a subagent, and detaches a promoted one that kept its link", async () => {
     vi.spyOn(api, "thread").mockResolvedValue(leadThread);
-    const helperCapsule: Capsule = {
-      id: "capsule-helper-1",
+    const subagentCapsule: Capsule = {
+      id: "capsule-subagent-1",
       projectId: project.id,
-      timelineId: "timeline-helper-1",
-      name: "helper-1",
+      timelineId: "timeline-subagent-1",
+      name: "subagent-1",
       role: "sub",
       leadThreadId: leadThread.id,
-      linkId: "link-helper-1",
+      linkId: "link-subagent-1",
       state: "Ready",
       desiredState: "Ready",
       restoreComplete: true,
@@ -223,25 +223,25 @@ describe("Helpers panel", () => {
       updatedAt: "2026-11-01T00:00:00Z",
       resourceVersion: 3,
     };
-    const capsule = vi.spyOn(api, "capsule").mockResolvedValue(helperCapsule);
-    const promote = vi.spyOn(api, "promoteCapsule").mockResolvedValue({ ...helperCapsule, role: "main" });
-    const helper: Thread = {
+    const capsule = vi.spyOn(api, "capsule").mockResolvedValue(subagentCapsule);
+    const promote = vi.spyOn(api, "promoteCapsule").mockResolvedValue({ ...subagentCapsule, role: "main" });
+    const subagent: Thread = {
       ...leadThread,
-      id: "thread-helper-1",
-      capsuleId: "capsule-helper-1",
+      id: "thread-subagent-1",
+      capsuleId: "capsule-subagent-1",
       parentThreadId: leadThread.id,
-      linkId: "link-helper-1",
+      linkId: "link-subagent-1",
       depth: 1,
     };
-    const first = wrapper(<ThreadHelpers thread={helper} />);
+    const first = wrapper(<ThreadSubagents thread={subagent} />);
     await userEvent.click(await screen.findByRole("button", { name: "Promote to main…" }));
     await userEvent.click(screen.getByRole("button", { name: "Promote and detach" }));
-    await waitFor(() => expect(promote).toHaveBeenCalledWith(helperCapsule, true));
+    await waitFor(() => expect(promote).toHaveBeenCalledWith(subagentCapsule, true));
     first.unmount();
 
-    const promoted = { ...helperCapsule, role: "main" as const, promotedAt: "2026-11-01T01:00:00Z" };
+    const promoted = { ...subagentCapsule, role: "main" as const, promotedAt: "2026-11-01T01:00:00Z" };
     capsule.mockResolvedValue(promoted);
-    wrapper(<ThreadHelpers thread={helper} />);
+    wrapper(<ThreadSubagents thread={subagent} />);
     expect(await screen.findByText(/its lead can still message it/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Detach from lead…" }));
     expect(screen.queryByRole("button", { name: "Promote" })).not.toBeInTheDocument();
@@ -249,13 +249,13 @@ describe("Helpers panel", () => {
     await waitFor(() => expect(promote).toHaveBeenLastCalledWith(promoted, true));
   });
 
-  it("names the lead on a helper Thread and renders nothing for plain Threads", async () => {
+  it("names the lead on a subagent Thread and renders nothing for plain Threads", async () => {
     vi.spyOn(api, "thread").mockResolvedValue(leadThread);
     vi.spyOn(api, "capsule").mockResolvedValue({
-      id: "capsule-helper-1",
+      id: "capsule-subagent-1",
       projectId: project.id,
-      timelineId: "timeline-helper-1",
-      name: "helper-1",
+      timelineId: "timeline-subagent-1",
+      name: "subagent-1",
       role: "sub",
       state: "Ready",
       desiredState: "Ready",
@@ -264,22 +264,22 @@ describe("Helpers panel", () => {
       updatedAt: "2026-11-01T00:00:00Z",
       resourceVersion: 1,
     });
-    const helper: Thread = {
+    const subagent: Thread = {
       ...leadThread,
-      id: "thread-helper-1",
-      capsuleId: "capsule-helper-1",
+      id: "thread-subagent-1",
+      capsuleId: "capsule-subagent-1",
       parentThreadId: leadThread.id,
-      linkId: "link-helper-1",
+      linkId: "link-subagent-1",
       depth: 1,
     };
-    const { unmount } = wrapper(<ThreadHelpers thread={helper} />);
+    const { unmount } = wrapper(<ThreadSubagents thread={subagent} />);
     expect(await screen.findByRole("link", { name: "Open the lead" })).toHaveAttribute(
       "href",
       "/ui/capsules/capsule-lead?session=thread-lead",
     );
     unmount();
     const plain = wrapper(
-      <ThreadHelpers thread={{ ...leadThread, coordinationGrantId: undefined }} />,
+      <ThreadSubagents thread={{ ...leadThread, coordinationGrantId: undefined }} />,
     );
     expect(plain.container).toBeEmptyDOMElement();
   });
@@ -296,12 +296,12 @@ describe("Coordination transcript origin", () => {
         role: "user",
         messageKind: "prompt",
         kind: "text",
-        content: "[Meridian coordination] helper-1 reported",
-        origin: { source: "coordination", kind: "from_helpers", linkIds: ["link-helper-1"] },
+        content: "[Meridian coordination] subagent-1 reported",
+        origin: { source: "coordination", kind: "from_subagents", linkIds: ["link-subagent-1"] },
         createdAt: "2026-11-01T00:00:00Z",
       },
     ]);
-    expect(items[0]).toMatchObject({ kind: "user", origin: "from_helpers" });
+    expect(items[0]).toMatchObject({ kind: "user", origin: "from_subagents" });
   });
 });
 
@@ -325,17 +325,17 @@ describe("Sidebar nesting", () => {
     sessions: [],
   });
 
-  it("nests helpers under their lead and keeps orphans visible", () => {
+  it("nests subagents under their lead and keeps orphans visible", () => {
     const lead = item({ id: "capsule-lead", role: "main" }, [leadThread]);
-    const helper = item({ id: "capsule-helper-1", role: "sub", leadThreadId: leadThread.id });
+    const subagent = item({ id: "capsule-subagent-1", role: "sub", leadThreadId: leadThread.id });
     const orphan = item({ id: "capsule-orphan", role: "sub", leadThreadId: "thread-gone" });
     const plain = item({ id: "capsule-plain" });
-    const nested = nestHelpers([helper, lead, orphan, plain]);
+    const nested = nestSubagents([subagent, lead, orphan, plain]);
     expect(nested.map((entry) => entry.item.capsule.id)).toEqual([
       "capsule-lead",
       "capsule-orphan",
       "capsule-plain",
     ]);
-    expect(nested[0].helpers.map((entry) => entry.capsule.id)).toEqual(["capsule-helper-1"]);
+    expect(nested[0].subagents.map((entry) => entry.capsule.id)).toEqual(["capsule-subagent-1"]);
   });
 });

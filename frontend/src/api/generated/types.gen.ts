@@ -259,7 +259,7 @@ export type Capsule = {
     maintenance?: string;
     role?: CapsuleRole;
     /**
-     * On sub-Capsules, the lead Thread that spawned this helper.
+     * On sub-Capsules, the lead Thread that spawned this subagent.
      */
     leadThreadId?: string;
     /**
@@ -267,7 +267,7 @@ export type Capsule = {
      */
     linkId?: string;
     /**
-     * When a helper sub-Capsule was promoted to a main Capsule.
+     * When a subagent Capsule was promoted to a main Capsule.
      */
     promotedAt?: string;
     createdAt: string;
@@ -456,18 +456,18 @@ export type BoardItem = {
     needsYou?: 'permission' | 'input' | 'failed';
     latestDelivery?: DeliverySummary;
     /**
-     * The helper's link to its lead, on sub-Capsules.
+     * The subagent's link to its lead, on sub-Capsules.
      */
     link?: ThreadLink;
     childRollup?: ChildRollup;
     /**
-     * A helper listed on its own because it needs the operator.
+     * A subagent listed on its own because it needs the operator.
      */
     surfaced: boolean;
 };
 
 /**
- * A lead's helpers by state.
+ * A lead's subagents by state.
  */
 export type ChildRollup = {
     total: number;
@@ -477,7 +477,7 @@ export type ChildRollup = {
     needsYou: number;
     failed: number;
     /**
-     * Auto-archived helpers. They are also counted as done.
+     * Auto-archived subagents. They are also counted as done.
      */
     archived: number;
 };
@@ -579,7 +579,7 @@ export type CreateProjectThreadRequest = {
 };
 
 /**
- * Makes the new Thread a lead that may spawn helper Threads in their own sub-Capsules. Omitted limits take their defaults. Helpers answer to the operator: the lead never approves permissions or answers input.
+ * Makes the new Thread a lead that may spawn subagent Threads in their own sub-Capsules. Omitted limits take their defaults. Subagents answer to the operator: the lead never approves permissions or answers input.
  *
  */
 export type CoordinationPolicy = {
@@ -589,12 +589,12 @@ export type CoordinationPolicy = {
     maxLiveCapsules?: number;
     maxMessagesPerLink?: number;
     /**
-     * Structured harnesses helpers may use; each must be on the Project allowlist. Defaults to the lead's harness.
+     * Structured harnesses subagents may use; each must be on the Project allowlist. Defaults to the lead's harness.
      */
     allowedHarnesses?: Array<string>;
     deadlineSeconds?: number;
     /**
-     * How long a finished helper stays idle before its session is ended and its Thread paused. 0 disables auto-archive; otherwise at least 60. Archiving never deletes a workspace or transcript.
+     * How long a finished subagent stays idle before its session is ended and its Thread paused. 0 disables auto-archive; otherwise at least 60. Archiving never deletes a workspace or transcript.
      *
      */
     archiveAfterSeconds?: number;
@@ -636,7 +636,7 @@ export type RevokeCoordinationGrantRequest = {
 export type ThreadLinkState = 'active' | 'closed';
 
 /**
- * Content-free handle from a lead Thread to one helper. Report text is re-derived from the helper's encrypted transcript and is never stored on the link.
+ * Content-free handle from a lead Thread to one subagent. Report text is re-derived from the subagent's encrypted transcript and is never stored on the link.
  *
  */
 export type ThreadLink = {
@@ -660,15 +660,15 @@ export type ThreadLink = {
     lastReportAt?: string;
     messagesForwarded: number;
     /**
-     * Operator messages sent straight to this helper. They do not count against the lead's message limit.
+     * Operator messages sent straight to this subagent. They do not count against the lead's message limit.
      */
     operatorMessages: number;
     /**
-     * Set while the helper is auto-archived; cleared when its Thread resumes.
+     * Set while the subagent is auto-archived; cleared when its Thread resumes.
      */
     archivedAt?: string;
     /**
-     * When the helper was promoted to a main Capsule. Promoted helpers are never archived.
+     * When the subagent was promoted to a main Capsule. Promoted subagents are never archived.
      */
     promotedAt?: string;
     createdAt: string;
@@ -682,7 +682,7 @@ export type ThreadLinkPage = {
 
 export type CoordinationCapability = {
     /**
-     * True when lead Threads may spawn helper Threads through the Capsule-local coordination mailbox.
+     * True when lead Threads may spawn subagent Threads through the Capsule-local coordination mailbox.
      */
     supported: boolean;
     maxDepth: number;
@@ -690,12 +690,12 @@ export type CoordinationCapability = {
 };
 
 /**
- * Marks a user-role message Meridian wrote for coordination rather than the operator: from_lead on a helper, from_helpers on a lead.
+ * Marks a user-role message Meridian wrote for coordination rather than the operator: from_lead on a subagent, from_subagents on a lead.
  *
  */
 export type ThreadOrigin = {
     source: 'coordination';
-    kind: 'from_lead' | 'from_helpers';
+    kind: 'from_lead' | 'from_subagents';
     linkIds?: Array<string>;
 };
 
@@ -772,11 +772,11 @@ export type Thread = {
     protocol?: 'meridian.adapter.v1';
     structuredSupported?: boolean;
     /**
-     * The Coordination Grant over this Thread's tree, on the lead and on each helper.
+     * The Coordination Grant over this Thread's tree, on the lead and on each subagent.
      */
     coordinationGrantId?: string;
     /**
-     * Present on a helper Thread; the lead that spawned it.
+     * Present on a subagent Thread; the lead that spawned it.
      */
     parentThreadId?: string;
     /**
@@ -784,11 +784,11 @@ export type Thread = {
      */
     rootThreadId?: string;
     /**
-     * Present on a helper Thread; its link from the lead.
+     * Present on a subagent Thread; its link from the lead.
      */
     linkId?: string;
     /**
-     * Zero for leads, one for their helpers.
+     * Zero for leads, one for their subagents.
      */
     depth?: number;
     encryptedAtRest: true;
@@ -2108,7 +2108,7 @@ export type GetBoardData = {
     query?: {
         projectId?: string;
         /**
-         * attention (default) lists main Capsules and helpers that need the operator; all lists every helper; none lists main Capsules only. A helper whose lead is not listed always gets its own row.
+         * attention (default) lists main Capsules and subagents that need the operator; all lists every subagent; none lists main Capsules only. A subagent whose lead is not listed always gets its own row.
          *
          */
         expand?: 'attention' | 'all' | 'none';
@@ -2310,7 +2310,7 @@ export type ListCapsulesData = {
         cursor?: string;
         limit?: number;
         /**
-         * Only main Capsules or only helper sub-Capsules.
+         * Only main Capsules or only subagent Capsules.
          */
         role?: CapsuleRole;
     };

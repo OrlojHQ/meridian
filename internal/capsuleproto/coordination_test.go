@@ -139,7 +139,7 @@ func TestMailboxWaitConsumesReportsOnce(t *testing.T) {
 	mailbox.Notify(coordproto.Notification{Reports: []coordproto.Report{{Link: "link-a", Name: "a", Seq: 1, Status: "turn_ended", Summary: "A"}}})
 	select {
 	case response := <-done:
-		t.Fatalf("wait --all returned before every helper reported: %+v", response)
+		t.Fatalf("wait --all returned before every subagent reported: %+v", response)
 	case <-time.After(50 * time.Millisecond):
 	}
 	mailbox.Notify(coordproto.Notification{Reports: []coordproto.Report{{Link: "link-b", Name: "b", Seq: 1, Status: "turn_ended", Summary: "B"}}})
