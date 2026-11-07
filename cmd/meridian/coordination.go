@@ -173,12 +173,12 @@ func writeBoard(config *cliConfig, page *client.BoardPage) error {
 				name += " (helper)"
 			}
 		}
-		thread := "-"
+		thread, harness := "-", item.Capsule.Harness.Or("-")
 		if value, ok := item.Thread.Get(); ok {
-			thread = value.ID
+			thread, harness = value.ID, value.Harness
 		}
 		line := fmt.Sprintf("%s\t%s\t%s\tcapsule=%s\tthread=%s\tsince=%s",
-			status, name, item.Capsule.Harness.Or("-"), item.Capsule.ID, thread, item.Since.Format(time.RFC3339))
+			status, name, harness, item.Capsule.ID, thread, item.Since.Format(time.RFC3339))
 		if rollup, ok := item.ChildRollup.Get(); ok {
 			line += fmt.Sprintf("\thelpers=%d working=%d idle=%d done=%d needs_you=%d failed=%d",
 				rollup.Total, rollup.Working, rollup.Idle, rollup.Done, rollup.NeedsYou, rollup.Failed)

@@ -345,9 +345,10 @@ counts and delivery URLs but no prompt, report or transcript text, and it
 never polls Git. A helper that needs the operator is listed under its own
 name, so a lead cannot hide a helper's permission request. Operator messages
 sent straight to a helper are counted on its link (plaintext counters only)
-and do not use the lead's message allowance; the lead learns only that the
-operator messaged that helper and how many times, on its next report wake.
-The operator's text stays in the helper's transcript. Store triggers keep the
+and do not use the lead's message allowance. The lead's next report wake says
+that the operator messaged that helper and how many times, without the text.
+The helper's own next report can still repeat or act on what the operator
+said, and that report reaches the lead like any other. Store triggers keep the
 counters monotonic so a notice cannot be replayed or suppressed by rewinding
 them.
 

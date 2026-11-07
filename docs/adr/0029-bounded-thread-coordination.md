@@ -95,7 +95,8 @@ Three ways to carry a request out of the Capsule were considered:
   helper directly, its active link counts the message (`operatorMessages`,
   a plaintext counter) outside `maxMessagesPerLink`, and the lead's next
   report wake says that the operator messaged that helper and how many times,
-  never what was said. A notice never wakes a lead on its own. Messages to a
+  never what was said, although the helper's own next report may repeat it.
+  A notice never wakes a lead on its own. Messages to a
   helper whose link has closed are not counted and leave the link untouched,
   so resuming a stopped helper does not restart its stop window.
 - Not in this decision, and left for later ADR amendments: operator spawn
