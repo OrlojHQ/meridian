@@ -1,4 +1,7 @@
 providerGatewayURL: ""
+# Let custom endpoint connections opt in to plaintext HTTP model servers on
+# loopback or private-network addresses (ADR 0027). Requires providerGatewayURL.
+providerGatewayAllowPrivateHTTP: false
 
 nameOverride: ""
 fullnameOverride: ""

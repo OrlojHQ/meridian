@@ -18,11 +18,25 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   `--mcp-server` to register a stdio MCP server in the harness. Threads
   authenticate through provider connections (ADR 0026).
 
+- Custom endpoint provider connections. `openai-compatible` and
+  `anthropic-compatible` connections send gateway traffic to a self-hosted
+  server such as vLLM, Ollama, or LiteLLM. The base URL, optional key, and
+  default model are set on the connection and never reach a Capsule. Codex,
+  OpenCode, and Pi use OpenAI-compatible endpoints; Claude Code uses
+  Anthropic-compatible ones. Plaintext HTTP to private-network hosts needs
+  `meridiand --provider-gateway-allow-private-http` and a per-connection
+  opt-in. Use `meridian harness connect openai-compatible --base-url URL`
+  or the Provider connections form (ADR 0027).
+
 - `meridian project apply-harness PROJECT_ID NAME=IMAGE` allowlists a custom
   harness image on an existing Project. `meridian thread follow --until-idle`
   exits when the turn that answers the latest prompt goes idle.
 
 ### Changed
+
+- Pi provider connections reference the gateway lease as
+  `$MERIDIAN_PROVIDER_TOKEN`. Pi 0.87 treats a bare variable name in
+  `models.json` as a literal key.
 
 - `meridian thread spawn --follow` exits when the first turn goes idle or the
   session ends instead of streaming until the connection closes.
