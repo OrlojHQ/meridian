@@ -132,6 +132,12 @@ export function describeCapsule(
   if (!run) {
     return { group: "idle", label: "No agent running", agent, since: capsule.updatedAt };
   }
+  const idleSession = threads.some(
+    (thread) => thread.currentRunId === run.id && thread.turn === "idle",
+  );
+  if (run.state === "Running" && idleSession) {
+    return { group: "idle", label: `${who} idle`, agent, since: run.startedAt ?? run.createdAt };
+  }
   if (activeRunStates.has(run.state)) {
     const label =
       run.state === "Running"
@@ -211,6 +217,9 @@ function threadSession(thread: Thread): CapsuleSession {
     };
   }
   if (thread.currentRunState === "Failed") return { ...base, group: "attention", label: "Failed" };
+  if (thread.currentRunState === "Running" && thread.turn === "idle") {
+    return { ...base, group: "idle", label: "Idle" };
+  }
   if (thread.currentRunState && activeRunStates.has(thread.currentRunState)) {
     return { ...base, group: "working", label: "Working" };
   }

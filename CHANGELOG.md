@@ -56,6 +56,20 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   with its pinned release and checksums, its trusted profile, and an optional
   launcher. Make targets, CI, and release publishing find packs from those
   directories, so adding a harness no longer needs its own Dockerfile.
+- The browser Thread view is a chat. User messages are right-aligned bubbles
+  and assistant replies render as markdown, with streamed deltas merged into
+  one message. Status events no longer appear as messages; a "Working…"
+  indicator shows while a turn runs. Tool calls are compact rows that expand
+  to output, with consecutive calls grouped. Permission and input requests
+  are inline cards that collapse once answered. The composer is a single
+  rounded input pinned to the bottom, with a Stop button during a turn.
+  Raw events stay available behind a toggle that is off by default.
+  Markdown never renders raw HTML or loads remote images, and only absolute
+  http, https, and mailto links are kept.
+- Threads report a content-free `turn` (`working` or `idle`) while their
+  session is live. The sidebar and session tabs show an idle agent as idle
+  instead of working. Responses to permission and input requests are matched
+  to the request named by `responseTo`, which the API now documents.
 
 ## [0.2.0] - 2026-09-27
 

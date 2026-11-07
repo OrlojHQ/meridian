@@ -4387,6 +4387,52 @@ func (o OptThreadProtocol) Or(d ThreadProtocol) ThreadProtocol {
 	return d
 }
 
+// NewOptThreadTurn returns new OptThreadTurn with value set to v.
+func NewOptThreadTurn(v ThreadTurn) OptThreadTurn {
+	return OptThreadTurn{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptThreadTurn is optional ThreadTurn.
+type OptThreadTurn struct {
+	Value ThreadTurn
+	Set   bool
+}
+
+// IsSet returns true if OptThreadTurn was set.
+func (o OptThreadTurn) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptThreadTurn) Reset() {
+	var v ThreadTurn
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptThreadTurn) SetTo(v ThreadTurn) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptThreadTurn) Get() (v ThreadTurn, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptThreadTurn) Or(d ThreadTurn) ThreadTurn {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptURI returns new OptURI with value set to v.
 func NewOptURI(v url.URL) OptURI {
 	return OptURI{
@@ -6773,13 +6819,17 @@ func (*StreamThreadBlocksOK) streamThreadBlocksRes() {}
 
 // Ref: #/components/schemas/Thread
 type Thread struct {
-	ID                  string            `json:"id"`
-	CapsuleId           string            `json:"capsuleId"`
-	State               ThreadState       `json:"state"`
-	Harness             string            `json:"harness"`
-	CurrentRunId        OptString         `json:"currentRunId"`
-	CurrentRunState     OptRunState       `json:"currentRunState"`
-	Awaiting            OptThreadAwaiting `json:"awaiting"`
+	ID              string            `json:"id"`
+	CapsuleId       string            `json:"capsuleId"`
+	State           ThreadState       `json:"state"`
+	Harness         string            `json:"harness"`
+	CurrentRunId    OptString         `json:"currentRunId"`
+	CurrentRunState OptRunState       `json:"currentRunState"`
+	Awaiting        OptThreadAwaiting `json:"awaiting"`
+	// Present while the structured session is live: whether the agent is working on a turn or idle between
+	// turns. Derived in memory from the encrypted transcript like awaiting, never persisted, and
+	// content-free.
+	Turn                OptThreadTurn     `json:"turn"`
 	Protocol            OptThreadProtocol `json:"protocol"`
 	StructuredSupported OptBool           `json:"structuredSupported"`
 	EncryptedAtRest     bool              `json:"encryptedAtRest"`
@@ -6824,6 +6874,11 @@ func (s *Thread) GetCurrentRunState() OptRunState {
 // GetAwaiting returns the value of Awaiting.
 func (s *Thread) GetAwaiting() OptThreadAwaiting {
 	return s.Awaiting
+}
+
+// GetTurn returns the value of Turn.
+func (s *Thread) GetTurn() OptThreadTurn {
+	return s.Turn
 }
 
 // GetProtocol returns the value of Protocol.
@@ -6906,6 +6961,11 @@ func (s *Thread) SetAwaiting(val OptThreadAwaiting) {
 	s.Awaiting = val
 }
 
+// SetTurn sets the value of Turn.
+func (s *Thread) SetTurn(val OptThreadTurn) {
+	s.Turn = val
+}
+
 // SetProtocol sets the value of Protocol.
 func (s *Thread) SetProtocol(val OptThreadProtocol) {
 	s.Protocol = val
@@ -6953,21 +7013,23 @@ func (s *Thread) SetResourceVersion(val int64) {
 
 // Ref: #/components/schemas/ThreadAdapterEvent
 type ThreadAdapterEvent struct {
-	Type            ThreadAdapterEventType      `json:"type"`
-	RuntimeSequence OptInt64                    `json:"runtimeSequence"`
-	MessageId       OptString                   `json:"messageId"`
-	ToolCallId      OptString                   `json:"toolCallId"`
-	ToolName        OptString                   `json:"toolName"`
-	Summary         OptString                   `json:"summary"`
-	Result          OptString                   `json:"result"`
-	Status          OptThreadAdapterEventStatus `json:"status"`
-	Code            OptString                   `json:"code"`
-	Retryable       OptBool                     `json:"retryable"`
-	Reason          OptString                   `json:"reason"`
-	Permission      OptThreadPermission         `json:"permission"`
-	Input           OptThreadInput              `json:"input"`
-	RequestedAfter  OptInt64                    `json:"requestedAfter"`
-	AvailableFrom   OptInt64                    `json:"availableFrom"`
+	Type            ThreadAdapterEventType `json:"type"`
+	RuntimeSequence OptInt64               `json:"runtimeSequence"`
+	MessageId       OptString              `json:"messageId"`
+	// On permission and input responses, the messageId of the answered request.
+	ResponseTo     OptString                   `json:"responseTo"`
+	ToolCallId     OptString                   `json:"toolCallId"`
+	ToolName       OptString                   `json:"toolName"`
+	Summary        OptString                   `json:"summary"`
+	Result         OptString                   `json:"result"`
+	Status         OptThreadAdapterEventStatus `json:"status"`
+	Code           OptString                   `json:"code"`
+	Retryable      OptBool                     `json:"retryable"`
+	Reason         OptString                   `json:"reason"`
+	Permission     OptThreadPermission         `json:"permission"`
+	Input          OptThreadInput              `json:"input"`
+	RequestedAfter OptInt64                    `json:"requestedAfter"`
+	AvailableFrom  OptInt64                    `json:"availableFrom"`
 }
 
 // GetType returns the value of Type.
@@ -6983,6 +7045,11 @@ func (s *ThreadAdapterEvent) GetRuntimeSequence() OptInt64 {
 // GetMessageId returns the value of MessageId.
 func (s *ThreadAdapterEvent) GetMessageId() OptString {
 	return s.MessageId
+}
+
+// GetResponseTo returns the value of ResponseTo.
+func (s *ThreadAdapterEvent) GetResponseTo() OptString {
+	return s.ResponseTo
 }
 
 // GetToolCallId returns the value of ToolCallId.
@@ -7058,6 +7125,11 @@ func (s *ThreadAdapterEvent) SetRuntimeSequence(val OptInt64) {
 // SetMessageId sets the value of MessageId.
 func (s *ThreadAdapterEvent) SetMessageId(val OptString) {
 	s.MessageId = val
+}
+
+// SetResponseTo sets the value of ResponseTo.
+func (s *ThreadAdapterEvent) SetResponseTo(val OptString) {
+	s.ResponseTo = val
 }
 
 // SetToolCallId sets the value of ToolCallId.
@@ -8141,6 +8213,50 @@ func (s *ThreadState) UnmarshalText(data []byte) error {
 		return nil
 	case ThreadStateDeleted:
 		*s = ThreadStateDeleted
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Present while the structured session is live: whether the agent is working on a turn or idle between
+// turns. Derived in memory from the encrypted transcript like awaiting, never persisted, and
+// content-free.
+type ThreadTurn string
+
+const (
+	ThreadTurnWorking ThreadTurn = "working"
+	ThreadTurnIdle    ThreadTurn = "idle"
+)
+
+// AllValues returns all ThreadTurn values.
+func (ThreadTurn) AllValues() []ThreadTurn {
+	return []ThreadTurn{
+		ThreadTurnWorking,
+		ThreadTurnIdle,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s ThreadTurn) MarshalText() ([]byte, error) {
+	switch s {
+	case ThreadTurnWorking:
+		return []byte(s), nil
+	case ThreadTurnIdle:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *ThreadTurn) UnmarshalText(data []byte) error {
+	switch ThreadTurn(data) {
+	case ThreadTurnWorking:
+		*s = ThreadTurnWorking
+		return nil
+	case ThreadTurnIdle:
+		*s = ThreadTurnIdle
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)

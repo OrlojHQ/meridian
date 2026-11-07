@@ -205,9 +205,7 @@ pre {
 }
 
 .locked-state,
-.permission-panel,
-.danger-zone,
-.thread-composer {
+.danger-zone {
   margin-bottom: 1rem;
   border: 1px solid var(--border);
   border-radius: 0.8rem;
@@ -217,10 +215,6 @@ pre {
 
 .locked-state {
   border-color: var(--warning);
-}
-
-.permission-panel {
-  border-color: var(--accent);
 }
 
 .danger-zone {
@@ -343,7 +337,6 @@ pre {
 .resource-list,
 .event-list,
 .thread-list,
-.thread-timeline,
 .file-tree ul,
 .lineage-alternative {
   margin: 0;
@@ -380,43 +373,7 @@ pre {
   font-size: 0.76rem;
 }
 
-.thread-timeline {
-  display: grid;
-  gap: 0.75rem;
-  max-height: 65vh;
-  overflow: auto;
-  overscroll-behavior: contain;
-}
-
-.thread-block {
-  border: 1px solid var(--border);
-  border-radius: 0.65rem;
-  padding: 0.85rem;
-  background: var(--surface-subtle);
-}
-
-.thread-block.role-user {
-  margin-left: min(12%, 6rem);
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
-}
-
-.thread-block-heading {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 0.5rem;
-}
-
-pre.thread-content {
-  max-height: 28rem;
-  overflow: auto;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
 .thread-create,
-.thread-composer form,
-.permission-panel form,
 .ship-form,
 .launcher-form {
   display: grid;
@@ -648,10 +605,6 @@ pre {
   .thread-summary {
     display: flex;
     flex-direction: column;
-  }
-
-  .thread-block.role-user {
-    margin-left: 0;
   }
 
   .resource-list time,

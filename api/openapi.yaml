@@ -2772,6 +2772,13 @@ components:
         currentRunId: { type: string }
         currentRunState: { $ref: "#/components/schemas/RunState" }
         awaiting: { $ref: "#/components/schemas/ThreadAwaiting" }
+        turn:
+          type: string
+          enum: [working, idle]
+          description: >-
+            Present while the structured session is live: whether the agent is
+            working on a turn or idle between turns. Derived in memory from the
+            encrypted transcript like awaiting, never persisted, and content-free.
         protocol:
           type: string
           enum: [meridian.adapter.v1]
@@ -2850,6 +2857,9 @@ components:
                  permission_request, permission_response, input_request, input_response, gap, end]
         runtimeSequence: { type: integer, format: int64, minimum: 1 }
         messageId: { type: string }
+        responseTo:
+          type: string
+          description: On permission and input responses, the messageId of the answered request.
         toolCallId: { type: string }
         toolName: { type: string, maxLength: 512 }
         summary: { type: string, maxLength: 131072 }

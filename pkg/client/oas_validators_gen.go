@@ -4245,6 +4245,24 @@ func (s *Thread) Validate() error {
 		})
 	}
 	if err := func() error {
+		if value, ok := s.Turn.Get(); ok {
+			if err := func() error {
+				if err := value.Validate(); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return err
+			}
+		}
+		return nil
+	}(); err != nil {
+		failures = append(failures, validate.FieldError{
+			Name:  "turn",
+			Error: err,
+		})
+	}
+	if err := func() error {
 		if value, ok := s.Protocol.Get(); ok {
 			if err := func() error {
 				if err := value.Validate(); err != nil {
@@ -5485,6 +5503,17 @@ func (s ThreadState) Validate() error {
 	case "archived":
 		return nil
 	case "deleted":
+		return nil
+	default:
+		return errors.Errorf("invalid value: %v", s)
+	}
+}
+
+func (s ThreadTurn) Validate() error {
+	switch s {
+	case "working":
+		return nil
+	case "idle":
 		return nil
 	default:
 		return errors.Errorf("invalid value: %v", s)
