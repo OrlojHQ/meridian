@@ -143,6 +143,15 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   instead of working. Responses to permission and input requests are matched
   to the request named by `responseTo`, which the API now documents.
 
+### Security
+
+- `golang.org/x/net` is updated from v0.58.0 to v0.62.0, fixing
+  CVE-2026-78661 (denial of service through crafted HTML in `x/net/html`) and
+  CVE-2026-78669 (denial of service through excessive HTTP/2 SETTINGS
+  frames). x/net v0.62.0 also raises its sibling modules: `x/sys` v0.49.0,
+  `x/term` v0.47.0, `x/mod` v0.41.0, `x/sync` v0.24.0, `x/text` v0.43.0, and
+  `x/tools` v0.51.0.
+
 ## [0.2.0] - 2026-09-27
 
 ### Added
