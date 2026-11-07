@@ -20,6 +20,8 @@ import {
   mergeThreadBlocks,
   sanitizeThreadText,
 } from "../components/Threads";
+import { MAX_FAILURE_TEXT } from "../components/threadChat";
+import { transcript } from "./threadFixtures";
 
 const project: Project = {
   id: "project-1",
@@ -346,6 +348,7 @@ describe("Thread detail transcript and controls", () => {
     vi.spyOn(api, "thread").mockResolvedValue({ ...thread, harness: "claude" });
     vi.spyOn(api, "capsule").mockResolvedValue(capsule);
     vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
+    const run = vi.spyOn(api, "run");
     vi.spyOn(api, "threadBlocks").mockResolvedValue({
       items: [],
       nextCursor: 0,
@@ -378,8 +381,91 @@ describe("Thread detail transcript and controls", () => {
     expect(header).not.toHaveTextContent(thread.id);
     expect(view.container).not.toHaveTextContent(/Structured Thread|Retained encrypted/);
     expect(screen.getByText("Live")).toHaveAttribute("title", "Cursor 0");
+    expect(screen.queryByRole("region", { name: "Session ended" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Message")).toBeEnabled();
+    expect(run).not.toHaveBeenCalled();
     await userEvent.setup().click(screen.getByRole("button", { name: "Thread actions" }));
     expect(screen.getByRole("menuitem", { name: "Crypto-shred" })).toBeInTheDocument();
+  });
+
+  it("ends a failed session honestly, with a bounded reason and a restart path", async () => {
+    const failed = { ...thread, currentRunState: "Failed" as const };
+    vi.spyOn(api, "thread").mockResolvedValue(failed);
+    vi.spyOn(api, "capsule").mockResolvedValue(capsule);
+    const finishedAt = new Date(Date.now() - 5 * 60_000 - 10_000).toISOString();
+    const run = vi.spyOn(api, "run").mockResolvedValue({
+      id: "run-1",
+      capsuleId: capsule.id,
+      harness: "mock",
+      state: "Failed",
+      failure: `<img src=x onerror=alert(1)>\u202e structured adapter timed out\n${"z".repeat(1_000)}`,
+      createdAt: "2026-08-23T00:00:00Z",
+      finishedAt,
+      updatedAt: finishedAt,
+      resourceVersion: 3,
+    });
+    const recorded = transcript();
+    recorded.user("fix the flaky test");
+    recorded.status("running");
+    recorded.tool("call-1", "shell", "go test ./...");
+    recorded.user("report from a subagent").origin = { source: "coordination", kind: "from_subagents" };
+    recorded.status("failed");
+    vi.spyOn(api, "threadBlocks").mockResolvedValue({
+      items: recorded.blocks,
+      nextCursor: recorded.blocks.length,
+      more: false,
+    });
+    const follow = vi.spyOn(threadEvents, "followThreadBlocks").mockImplementation(
+      async (_id, _cursor, _signal, _onBlock, onStatus) => {
+        onStatus("reconnecting");
+      },
+    );
+    const session = vi.spyOn(api, "threadSession").mockResolvedValue({ thread: failed });
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    const view = wrapper(
+      <Routes>
+        <Route path="/ui/threads/:threadId" element={<ThreadDetail />} />
+      </Routes>,
+    );
+
+    const banner = await screen.findByRole("region", { name: "Session ended" });
+    expect(within(banner).getByText(/The agent's session failed/)).toHaveTextContent(
+      "The agent's session failed 5m ago.",
+    );
+    const reason = await within(banner).findByText(/structured adapter timed out/);
+    expect(reason.textContent).toMatch(
+      /^Reason <img src=x onerror=alert\(1\)> structured adapter timed out z+…$/,
+    );
+    expect(Array.from(reason.textContent!.replace(/^Reason /, ""))).toHaveLength(MAX_FAILURE_TEXT);
+    expect(view.container.querySelector("img")).toBeNull();
+    expect(view.container.textContent).not.toContain("\u202e");
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(run).toHaveBeenCalledWith("run-1", expect.anything());
+
+    expect(screen.queryByText("Reconnecting…")).not.toBeInTheDocument();
+    expect(screen.getByText("Session ended", { selector: ".connection" })).toBeInTheDocument();
+    expect(follow.mock.calls[0][6]?.()).toBe(true);
+    expect(view.container.querySelector(".workspace-view-header .thread-status-chip")).toHaveTextContent(
+      "Failed",
+    );
+    expect(screen.queryByRole("button", { name: "Start session" })).not.toBeInTheDocument();
+    const composer = screen.getByLabelText("Message");
+    expect(composer).toBeDisabled();
+    expect(composer).toHaveAttribute(
+      "placeholder",
+      "This session has ended. Restart it to send a message.",
+    );
+
+    await user.click(within(banner).getByRole("button", { name: "Copy last prompt" }));
+    expect(writeText).toHaveBeenCalledWith("fix the flaky test");
+    expect(within(banner).getByRole("status")).toHaveTextContent("Copied your last message");
+
+    await user.click(within(banner).getByRole("button", { name: "Restart session" }));
+    await waitFor(() =>
+      expect(session).toHaveBeenCalledWith("start", thread.id, thread.resourceVersion),
+    );
   });
 
   it("titles the Thread by its agent until the Capsule loads", async () => {

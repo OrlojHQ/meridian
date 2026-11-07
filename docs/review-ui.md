@@ -259,6 +259,21 @@ crypto-shred additionally requires typing `crypto-shred`. Every mutation uses
 the current Thread resource version and refreshes authoritative state after a
 conflict.
 
+When an active Thread's current Run is terminal (failed, stopped, or exited),
+the Thread says so instead of looking live: the toolbar reads "Session ended",
+the page badge reads "failed" or "ended", and a banner after the transcript
+shows when the session ended and, for a failure, the Run's `failure` text. That
+text can carry adapter or runtime output, so the Thread, Board, and Activity
+views render it as one plain-text line capped at 280 characters, with control
+characters and bidirectional overrides removed; adapter stderr is never shown.
+The banner offers Restart session (a new Run in the same Thread), Copy last
+prompt (the operator's own latest message, written to the clipboard only on
+click; subagent reports are never offered), and New session. The composer stays
+disabled until a new session starts, because the daemon rejects messages to a
+Thread without an active session. The block stream stops reconnecting once the
+daemon has closed it for the ended session and follows again when a new
+session starts. The failed Run is read once, only after the session ends.
+
 A locked transcript directs the operator to restore the matching installation
 key. A corrupt transcript directs the operator to stop and restore from a
 trusted backup. Neither view exposes key identifiers or ciphertext. Browser

@@ -11,7 +11,7 @@ import {
   type ActivityGroup,
 } from "../shell/capsuleActivity";
 import { PromoteSubagent } from "./PromoteSubagent";
-import { safeInline } from "./threadChat";
+import { failureText, safeInline } from "./threadChat";
 import { ThreadError } from "./ThreadError";
 import { HarnessMark } from "./ui/HarnessMark";
 
@@ -32,6 +32,12 @@ const needsYouLabels: Record<NonNullable<BoardItem["needsYou"]>, string> = {
   input: "Waiting for input",
   failed: "Failed",
 };
+
+export function boardFailure(item: BoardItem) {
+  if (item.needsYou !== "failed") return undefined;
+  const failure = item.capsule.state === "Failed" ? item.capsule.failure : item.currentRun?.failure;
+  return failureText(failure) || undefined;
+}
 
 export function boardRowPath(item: BoardItem) {
   return sessionPath(item.capsule.id, item.thread?.id);
@@ -84,6 +90,7 @@ function BoardRow({
   const pullRequest = safePullRequestURL(item.latestDelivery?.pullRequestUrl);
   const harness = item.thread?.harness ?? item.capsule.harness ?? undefined;
   const label = item.needsYou ? needsYouLabels[item.needsYou] : group?.title;
+  const failure = boardFailure(item);
   const archived = subagents?.filter((subagent) => subagent.link?.archivedAt) ?? [];
   return (
     <li className={`inbox-row board-row inbox-row-${group?.activity ?? "idle"}`}>
@@ -116,6 +123,7 @@ function BoardRow({
             <span>Delivery {item.latestDelivery.state.replaceAll("_", " ")}</span>
           )}
         </p>
+        {failure && <p className="inbox-detail">{failure}</p>}
         {expanded && subagents && (
           <ul className="board-subagents" aria-label={`Subagents of ${itemName(item)}`}>
             {subagents.filter((subagent) => !subagent.link?.archivedAt).map(subagentRow)}

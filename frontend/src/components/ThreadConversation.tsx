@@ -474,6 +474,7 @@ function ThreadComposer({
   thread,
   activity,
   commands,
+  ended,
   stopPending,
   onStop,
   onNewSession,
@@ -483,6 +484,7 @@ function ThreadComposer({
   thread: Thread;
   activity: ChatActivity;
   commands?: SlashCommand[];
+  ended: boolean;
   stopPending: boolean;
   onStop?: () => void;
   onNewSession?: () => void;
@@ -534,7 +536,7 @@ function ThreadComposer({
   );
   const selected = Math.min(active, Math.max(entries.length - 1, 0));
   const submit = () => {
-    if (message.trim() && !mutation.isPending) mutation.mutate();
+    if (message.trim() && !mutation.isPending && !ended) mutation.mutate();
   };
   const pick = (entry: SlashEntry) => {
     if (entry.type === "control") {
@@ -600,6 +602,7 @@ function ThreadComposer({
             ref={textarea}
             rows={1}
             maxLength={128 * 1024}
+            disabled={ended}
             value={message}
             role="combobox"
             aria-autocomplete="list"
@@ -616,7 +619,11 @@ function ThreadComposer({
             onBlur={() => setDismissed(message)}
             onFocus={() => setDismissed(undefined)}
             placeholder={
-              turnRunning ? "Send a follow-up…" : "Message the agent, or type / for commands"
+              ended
+                ? "This session has ended. Restart it to send a message."
+                : turnRunning
+                  ? "Send a follow-up…"
+                  : "Message the agent, or type / for commands"
             }
             title="Enter to send · Shift+Enter for a newline · / for commands"
           />
@@ -638,7 +645,7 @@ function ThreadComposer({
               className="composer-send"
               aria-label="Send"
               title="Send"
-              disabled={!message.trim() || mutation.isPending}
+              disabled={!message.trim() || mutation.isPending || ended}
             >
               <SendIcon />
             </button>
@@ -655,6 +662,7 @@ export function ThreadConversation({
   blocks,
   raw,
   banners,
+  endedNotice,
   canCompose,
   stopPending,
   onStop,
@@ -665,6 +673,9 @@ export function ThreadConversation({
   blocks: ThreadBlock[];
   raw: boolean;
   banners?: ReactNode;
+  // Present once the session has ended; it follows the transcript and the
+  // composer stays disabled until a new session starts.
+  endedNotice?: ReactNode;
   canCompose: boolean;
   stopPending: boolean;
   onStop?: () => void;
@@ -714,6 +725,7 @@ export function ThreadConversation({
                 )}
               </ol>
             )}
+            {endedNotice && <div className="session-ended-frame">{endedNotice}</div>}
           </div>
         </div>
         {scroll.away && (
@@ -727,6 +739,7 @@ export function ThreadConversation({
           thread={thread}
           activity={chat.activity}
           commands={commands}
+          ended={Boolean(endedNotice)}
           stopPending={stopPending}
           onStop={onStop}
           onNewSession={onNewSession}

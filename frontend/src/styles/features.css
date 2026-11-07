@@ -543,6 +543,10 @@
   background: var(--faint);
 }
 
+.thread-toolbar .connection.ended {
+  text-transform: none;
+}
+
 .thread-raw-toggle {
   display: inline-flex;
   align-items: center;
@@ -962,6 +966,85 @@ button.tool-line:hover {
   color: var(--faint);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.68rem;
+}
+
+.session-ended-frame {
+  max-width: 48rem;
+  margin: -0.6rem auto 0;
+  padding: 0 1.25rem 1.6rem;
+}
+
+.session-ended {
+  border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--faint);
+  border-radius: var(--radius-lg);
+  padding: 0.75rem 0.85rem;
+  background: var(--surface-raised);
+  box-shadow: 0 1px 3px rgb(28 33 29 / 6%);
+}
+
+.session-ended-failed {
+  border-left-color: var(--danger);
+}
+
+.session-ended header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.session-ended header svg {
+  width: 0.95rem;
+  height: 0.95rem;
+  color: var(--danger);
+}
+
+.session-ended h2 {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.session-ended p {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.session-ended .session-ended-reason {
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.55rem;
+  color: var(--danger);
+  background: var(--danger-soft);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+}
+
+.session-ended-reason span {
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-weight: 650;
+}
+
+.session-ended-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.7rem;
+}
+
+.session-ended-actions button {
+  min-height: 1.9rem;
+  padding: 0.3rem 0.85rem;
+  font-size: 0.76rem;
+}
+
+.composer-box:has(textarea:disabled) {
+  background: var(--surface-subtle);
+  box-shadow: none;
+}
+
+.composer-box textarea:disabled {
+  cursor: not-allowed;
 }
 
 .chat-notice {
@@ -2153,6 +2236,11 @@ button.tool-line:hover {
 .state-cancelled {
   color: var(--danger);
   background: var(--danger-soft);
+}
+
+.state-ended {
+  color: var(--muted);
+  background: var(--surface-subtle);
 }
 
 .state-sealed,
