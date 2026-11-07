@@ -16,16 +16,31 @@ type ConnectionInput struct {
 	Name                    string                 `json:"name"`
 	Provider                string                 `json:"provider"`
 	APIKey                  string                 `json:"apiKey"`
+	BaseURL                 string                 `json:"baseUrl,omitempty"`
+	DefaultModel            string                 `json:"defaultModel,omitempty"`
+	AllowPrivateHTTP        bool                   `json:"allowPrivateHttp,omitempty"`
 	ExpectedResourceVersion domain.ResourceVersion `json:"expectedResourceVersion"`
 	Revoked                 bool                   `json:"revoked,omitempty"`
 }
 
+// The custom upstream is bound into the envelope context, so a stored key
+// cannot be redirected to another endpoint by editing connection metadata.
 func connectionEnvelopeID(item domain.ProviderConnection) string {
-	return fmt.Sprintf("connection:%s:%s:%d:%t", item.ID, item.Provider, item.ResourceVersion, item.Revoked)
+	id := fmt.Sprintf("connection:%s:%s:%d:%t", item.ID, item.Provider, item.ResourceVersion, item.Revoked)
+	if providergateway.Custom(item.Provider) {
+		id += fmt.Sprintf(":%q:%t", item.BaseURL, item.AllowPrivateHTTP)
+	}
+	return id
 }
 
-func (s *Service) ConfigureProviderGateway(baseURL string) error {
+// ConfigureProviderGateway enables the gateway. allowPrivateHTTP is the
+// installation-level opt-in that custom connections need before they may use
+// plaintext HTTP to a private-network upstream.
+func (s *Service) ConfigureProviderGateway(baseURL string, allowPrivateHTTP bool) error {
 	if baseURL == "" {
+		if allowPrivateHTTP {
+			return fmt.Errorf("private-network HTTP provider upstreams require a provider gateway URL")
+		}
 		return nil
 	}
 	u, err := url.Parse(baseURL)
@@ -33,11 +48,13 @@ func (s *Service) ConfigureProviderGateway(baseURL string) error {
 		return fmt.Errorf("provider gateway URL must be an HTTPS origin reachable from Capsules")
 	}
 	s.gatewayURL = strings.TrimRight(baseURL, "/") + "/provider-gateway"
-	s.gateway = providergateway.New(s.authorizeProviderLease)
+	s.privateHTTP = allowPrivateHTTP
+	s.gateway = providergateway.New(s.authorizeProviderLease, providergateway.Options{AllowPrivateHTTP: allowPrivateHTTP})
 	return nil
 }
-func (s *Service) ProviderGateway() http.Handler { return s.gateway }
-func (s *Service) ProviderGatewayEnabled() bool  { return s.gateway != nil }
+func (s *Service) ProviderGateway() http.Handler          { return s.gateway }
+func (s *Service) ProviderGatewayEnabled() bool           { return s.gateway != nil }
+func (s *Service) ProviderGatewayAllowsPrivateHTTP() bool { return s.gateway != nil && s.privateHTTP }
 func (s *Service) CloseProviderGateway() {
 	if s.gateway != nil {
 		s.gateway.Close()
@@ -52,15 +69,17 @@ func (s *Service) PutProviderConnection(ctx context.Context, id string, input Co
 	if s.secretKey == nil || s.gateway == nil {
 		return domain.ProviderConnection{}, domain.ErrUnsupported
 	}
-	if input.Provider != "openai" && input.Provider != "anthropic" {
-		return domain.ProviderConnection{}, domain.ErrInvalid
+	if providergateway.API(input.Provider) == "" {
+		return domain.ProviderConnection{}, fmt.Errorf("%w: unsupported provider", domain.ErrInvalid)
 	}
 	name, err := requireName(input.Name)
 	if err != nil {
 		return domain.ProviderConnection{}, err
 	}
-	if !input.Revoked && (len(input.APIKey) < 8 || len(input.APIKey) > 4096 || strings.ContainsAny(input.APIKey, "\r\n\x00")) {
-		return domain.ProviderConnection{}, fmt.Errorf("%w: invalid API key", domain.ErrInvalid)
+	if !input.Revoked {
+		if input, err = s.validateConnectionInput(input); err != nil {
+			return domain.ProviderConnection{}, err
+		}
 	}
 	var result domain.ProviderConnection
 	err = s.store.Transact(ctx, func(tx ports.Transaction) error {
@@ -86,6 +105,9 @@ func (s *Service) PutProviderConnection(ctx context.Context, id string, input Co
 		result.Name = name
 		result.ResourceVersion++
 		result.Revoked = input.Revoked
+		if !input.Revoked {
+			result.BaseURL, result.DefaultModel, result.AllowPrivateHTTP = input.BaseURL, input.DefaultModel, input.AllowPrivateHTTP
+		}
 		result.KeyID = s.secretKey.ID
 		// Keep a valid encrypted empty envelope on revocation, never old key material.
 		value := input.APIKey
@@ -106,6 +128,35 @@ func (s *Service) PutProviderConnection(ctx context.Context, id string, input Co
 	}
 	return result, err
 }
+
+// Custom endpoints may omit the key; official providers require one and use
+// fixed upstreams.
+func (s *Service) validateConnectionInput(input ConnectionInput) (ConnectionInput, error) {
+	if len(input.APIKey) > 4096 || strings.ContainsAny(input.APIKey, "\r\n\x00") {
+		return input, fmt.Errorf("%w: invalid API key", domain.ErrInvalid)
+	}
+	if !providergateway.Custom(input.Provider) {
+		if len(input.APIKey) < 8 {
+			return input, fmt.Errorf("%w: invalid API key", domain.ErrInvalid)
+		}
+		if input.BaseURL != "" || input.DefaultModel != "" || input.AllowPrivateHTTP {
+			return input, fmt.Errorf("%w: official providers use fixed upstreams; choose a custom endpoint type", domain.ErrInvalid)
+		}
+		return input, nil
+	}
+	base, err := providergateway.NormalizeBaseURL(input.BaseURL, input.AllowPrivateHTTP)
+	if err != nil {
+		return input, fmt.Errorf("%w: %v", domain.ErrInvalid, err)
+	}
+	if input.AllowPrivateHTTP && !s.privateHTTP {
+		return input, fmt.Errorf("%w: private-network HTTP upstreams are disabled on this installation", domain.ErrInvalid)
+	}
+	if input.DefaultModel != "" && !harnesssetup.ValidModel(input.DefaultModel) {
+		return input, fmt.Errorf("%w: invalid default model name", domain.ErrInvalid)
+	}
+	input.BaseURL = base
+	return input, nil
+}
 func (s *Service) GrantProviderConnection(ctx context.Context, project domain.ProjectID, harness, connection string) error {
 	if !harnesssetup.Supported(harness) {
 		return domain.ErrInvalid
@@ -122,8 +173,8 @@ func (s *Service) GrantProviderConnection(ctx context.Context, project domain.Pr
 			if item.Revoked {
 				return domain.ErrConflict
 			}
-			if harness == "claude" && item.Provider != "anthropic" || harness == "codex" && item.Provider != "openai" {
-				return domain.ErrInvalid
+			if !harnesssetup.ConnectionSupported(harness, item.Provider, item.DefaultModel) {
+				return fmt.Errorf("%w: this connection type cannot be used with %s", domain.ErrInvalid, harness)
 			}
 		}
 		if err := tx.GrantProviderConnection(ctx, project, harness, connection); err != nil {
@@ -148,8 +199,8 @@ func (s *Service) ProjectProviderConnection(ctx context.Context, project domain.
 	})
 	return id, err
 }
-func (s *Service) authorizeProviderLease(ctx context.Context, lease providergateway.Lease) (string, error) {
-	var key string
+func (s *Service) authorizeProviderLease(ctx context.Context, lease providergateway.Lease) (providergateway.Upstream, error) {
+	var upstream providergateway.Upstream
 	err := s.store.View(ctx, func(r ports.Reader) error {
 		capsule, err := r.GetCapsule(ctx, domain.CapsuleID(lease.Capsule))
 		if err != nil {
@@ -177,10 +228,10 @@ func (s *Service) authorizeProviderLease(ctx context.Context, lease providergate
 			return err
 		}
 		defer wipe(raw)
-		key = string(raw)
+		upstream = providergateway.Upstream{Key: string(raw), BaseURL: connection.BaseURL, AllowPrivateHTTP: connection.AllowPrivateHTTP}
 		return nil
 	})
-	return key, err
+	return upstream, err
 }
 func (s *Service) runtimeProviderConnection(ctx context.Context, capsule domain.Capsule, harness string) (*harnesssetup.Connection, error) {
 	harness = strings.TrimSuffix(harness, "-structured")
@@ -203,9 +254,12 @@ func (s *Service) runtimeProviderConnection(ctx context.Context, capsule domain.
 	if connection.Revoked {
 		return nil, domain.ErrConflict
 	}
+	if !harnesssetup.ConnectionSupported(harness, connection.Provider, connection.DefaultModel) {
+		return nil, fmt.Errorf("%w: this connection type cannot be used with %s", domain.ErrInvalid, harness)
+	}
 	token, err := s.gateway.Issue(providergateway.Lease{Connection: id, Project: string(capsule.ProjectID), Capsule: string(capsule.ID), Harness: harness, Provider: connection.Provider})
 	if err != nil {
 		return nil, err
 	}
-	return &harnesssetup.Connection{Provider: connection.Provider, URL: s.gatewayURL + "/" + connection.Provider, Token: token}, nil
+	return &harnesssetup.Connection{Provider: connection.Provider, URL: s.gatewayURL + "/" + connection.Provider, Token: token, Model: connection.DefaultModel}, nil
 }

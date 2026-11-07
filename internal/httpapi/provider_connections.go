@@ -12,7 +12,7 @@ func (s *Server) listProviderConnections(w http.ResponseWriter, r *http.Request)
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, 200, map[string]any{"items": items, "enabled": s.service.ProviderGatewayEnabled()})
+	writeJSON(w, 200, map[string]any{"items": items, "enabled": s.service.ProviderGatewayEnabled(), "privateHttpAllowed": s.service.ProviderGatewayAllowsPrivateHTTP()})
 }
 func (s *Server) putProviderConnection(w http.ResponseWriter, r *http.Request) {
 	var input app.ConnectionInput

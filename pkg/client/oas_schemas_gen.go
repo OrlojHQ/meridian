@@ -5381,12 +5381,18 @@ func (s *ProjectThreadIntentState) UnmarshalText(data []byte) error {
 
 // Ref: #/components/schemas/ProviderConnection
 type ProviderConnection struct {
-	ID              string                     `json:"id"`
-	Provider        ProviderConnectionProvider `json:"provider"`
-	Name            string                     `json:"name"`
-	CreatedAt       time.Time                  `json:"createdAt"`
-	ResourceVersion int64                      `json:"resourceVersion"`
-	Revoked         bool                       `json:"revoked"`
+	ID       string                 `json:"id"`
+	Provider ProviderConnectionType `json:"provider"`
+	Name     string                 `json:"name"`
+	// Custom endpoint upstream, normalized without a trailing /v1. Never sent to a Capsule.
+	BaseUrl OptString `json:"baseUrl"`
+	// Model name configured in harnesses that use this custom endpoint.
+	DefaultModel OptString `json:"defaultModel"`
+	// Whether this custom endpoint uses plaintext HTTP to a private-network address.
+	AllowPrivateHttp OptBool   `json:"allowPrivateHttp"`
+	CreatedAt        time.Time `json:"createdAt"`
+	ResourceVersion  int64     `json:"resourceVersion"`
+	Revoked          bool      `json:"revoked"`
 }
 
 // GetID returns the value of ID.
@@ -5395,13 +5401,28 @@ func (s *ProviderConnection) GetID() string {
 }
 
 // GetProvider returns the value of Provider.
-func (s *ProviderConnection) GetProvider() ProviderConnectionProvider {
+func (s *ProviderConnection) GetProvider() ProviderConnectionType {
 	return s.Provider
 }
 
 // GetName returns the value of Name.
 func (s *ProviderConnection) GetName() string {
 	return s.Name
+}
+
+// GetBaseUrl returns the value of BaseUrl.
+func (s *ProviderConnection) GetBaseUrl() OptString {
+	return s.BaseUrl
+}
+
+// GetDefaultModel returns the value of DefaultModel.
+func (s *ProviderConnection) GetDefaultModel() OptString {
+	return s.DefaultModel
+}
+
+// GetAllowPrivateHttp returns the value of AllowPrivateHttp.
+func (s *ProviderConnection) GetAllowPrivateHttp() OptBool {
+	return s.AllowPrivateHttp
 }
 
 // GetCreatedAt returns the value of CreatedAt.
@@ -5425,13 +5446,28 @@ func (s *ProviderConnection) SetID(val string) {
 }
 
 // SetProvider sets the value of Provider.
-func (s *ProviderConnection) SetProvider(val ProviderConnectionProvider) {
+func (s *ProviderConnection) SetProvider(val ProviderConnectionType) {
 	s.Provider = val
 }
 
 // SetName sets the value of Name.
 func (s *ProviderConnection) SetName(val string) {
 	s.Name = val
+}
+
+// SetBaseUrl sets the value of BaseUrl.
+func (s *ProviderConnection) SetBaseUrl(val OptString) {
+	s.BaseUrl = val
+}
+
+// SetDefaultModel sets the value of DefaultModel.
+func (s *ProviderConnection) SetDefaultModel(val OptString) {
+	s.DefaultModel = val
+}
+
+// SetAllowPrivateHttp sets the value of AllowPrivateHttp.
+func (s *ProviderConnection) SetAllowPrivateHttp(val OptBool) {
+	s.AllowPrivateHttp = val
 }
 
 // SetCreatedAt sets the value of CreatedAt.
@@ -5453,6 +5489,8 @@ func (s *ProviderConnection) SetRevoked(val bool) {
 type ProviderConnectionPage struct {
 	Items   []ProviderConnection `json:"items"`
 	Enabled bool                 `json:"enabled"`
+	// Whether the daemon permits custom endpoints to opt in to plaintext HTTP on private networks.
+	PrivateHttpAllowed OptBool `json:"privateHttpAllowed"`
 }
 
 // GetItems returns the value of Items.
@@ -5465,6 +5503,11 @@ func (s *ProviderConnectionPage) GetEnabled() bool {
 	return s.Enabled
 }
 
+// GetPrivateHttpAllowed returns the value of PrivateHttpAllowed.
+func (s *ProviderConnectionPage) GetPrivateHttpAllowed() OptBool {
+	return s.PrivateHttpAllowed
+}
+
 // SetItems sets the value of Items.
 func (s *ProviderConnectionPage) SetItems(val []ProviderConnection) {
 	s.Items = val
@@ -5475,54 +5518,28 @@ func (s *ProviderConnectionPage) SetEnabled(val bool) {
 	s.Enabled = val
 }
 
-type ProviderConnectionProvider string
-
-const (
-	ProviderConnectionProviderOpenai    ProviderConnectionProvider = "openai"
-	ProviderConnectionProviderAnthropic ProviderConnectionProvider = "anthropic"
-)
-
-// AllValues returns all ProviderConnectionProvider values.
-func (ProviderConnectionProvider) AllValues() []ProviderConnectionProvider {
-	return []ProviderConnectionProvider{
-		ProviderConnectionProviderOpenai,
-		ProviderConnectionProviderAnthropic,
-	}
-}
-
-// MarshalText implements encoding.TextMarshaler.
-func (s ProviderConnectionProvider) MarshalText() ([]byte, error) {
-	switch s {
-	case ProviderConnectionProviderOpenai:
-		return []byte(s), nil
-	case ProviderConnectionProviderAnthropic:
-		return []byte(s), nil
-	default:
-		return nil, errors.Errorf("invalid value: %q", s)
-	}
-}
-
-// UnmarshalText implements encoding.TextUnmarshaler.
-func (s *ProviderConnectionProvider) UnmarshalText(data []byte) error {
-	switch ProviderConnectionProvider(data) {
-	case ProviderConnectionProviderOpenai:
-		*s = ProviderConnectionProviderOpenai
-		return nil
-	case ProviderConnectionProviderAnthropic:
-		*s = ProviderConnectionProviderAnthropic
-		return nil
-	default:
-		return errors.Errorf("invalid value: %q", data)
-	}
+// SetPrivateHttpAllowed sets the value of PrivateHttpAllowed.
+func (s *ProviderConnectionPage) SetPrivateHttpAllowed(val OptBool) {
+	s.PrivateHttpAllowed = val
 }
 
 // Ref: #/components/schemas/ProviderConnectionRequest
 type ProviderConnectionRequest struct {
-	Name                    string                            `json:"name"`
-	Provider                ProviderConnectionRequestProvider `json:"provider"`
-	ApiKey                  string                            `json:"apiKey"`
-	ExpectedResourceVersion int64                             `json:"expectedResourceVersion"`
-	Revoked                 OptBool                           `json:"revoked"`
+	Name     string                 `json:"name"`
+	Provider ProviderConnectionType `json:"provider"`
+	// Required for official providers. Custom endpoints accept an empty key and then send no upstream
+	// credential.
+	ApiKey string `json:"apiKey"`
+	// Required for custom endpoint types; rejected for official ones. An https URL, or an http URL on a
+	// loopback or private-network address when allowPrivateHttp is set. A trailing /v1 is removed.
+	BaseUrl OptString `json:"baseUrl"`
+	// Optional model name for custom endpoints; OpenCode and Pi require one.
+	DefaultModel OptString `json:"defaultModel"`
+	// Opt in to a plaintext http baseUrl. Requires the daemon's --provider-gateway-allow-private-http
+	// flag.
+	AllowPrivateHttp        OptBool `json:"allowPrivateHttp"`
+	ExpectedResourceVersion int64   `json:"expectedResourceVersion"`
+	Revoked                 OptBool `json:"revoked"`
 }
 
 // GetName returns the value of Name.
@@ -5531,13 +5548,28 @@ func (s *ProviderConnectionRequest) GetName() string {
 }
 
 // GetProvider returns the value of Provider.
-func (s *ProviderConnectionRequest) GetProvider() ProviderConnectionRequestProvider {
+func (s *ProviderConnectionRequest) GetProvider() ProviderConnectionType {
 	return s.Provider
 }
 
 // GetApiKey returns the value of ApiKey.
 func (s *ProviderConnectionRequest) GetApiKey() string {
 	return s.ApiKey
+}
+
+// GetBaseUrl returns the value of BaseUrl.
+func (s *ProviderConnectionRequest) GetBaseUrl() OptString {
+	return s.BaseUrl
+}
+
+// GetDefaultModel returns the value of DefaultModel.
+func (s *ProviderConnectionRequest) GetDefaultModel() OptString {
+	return s.DefaultModel
+}
+
+// GetAllowPrivateHttp returns the value of AllowPrivateHttp.
+func (s *ProviderConnectionRequest) GetAllowPrivateHttp() OptBool {
+	return s.AllowPrivateHttp
 }
 
 // GetExpectedResourceVersion returns the value of ExpectedResourceVersion.
@@ -5556,13 +5588,28 @@ func (s *ProviderConnectionRequest) SetName(val string) {
 }
 
 // SetProvider sets the value of Provider.
-func (s *ProviderConnectionRequest) SetProvider(val ProviderConnectionRequestProvider) {
+func (s *ProviderConnectionRequest) SetProvider(val ProviderConnectionType) {
 	s.Provider = val
 }
 
 // SetApiKey sets the value of ApiKey.
 func (s *ProviderConnectionRequest) SetApiKey(val string) {
 	s.ApiKey = val
+}
+
+// SetBaseUrl sets the value of BaseUrl.
+func (s *ProviderConnectionRequest) SetBaseUrl(val OptString) {
+	s.BaseUrl = val
+}
+
+// SetDefaultModel sets the value of DefaultModel.
+func (s *ProviderConnectionRequest) SetDefaultModel(val OptString) {
+	s.DefaultModel = val
+}
+
+// SetAllowPrivateHttp sets the value of AllowPrivateHttp.
+func (s *ProviderConnectionRequest) SetAllowPrivateHttp(val OptBool) {
+	s.AllowPrivateHttp = val
 }
 
 // SetExpectedResourceVersion sets the value of ExpectedResourceVersion.
@@ -5575,27 +5622,38 @@ func (s *ProviderConnectionRequest) SetRevoked(val OptBool) {
 	s.Revoked = val
 }
 
-type ProviderConnectionRequestProvider string
+// Openai and anthropic use fixed official upstreams. openai-compatible and anthropic-compatible use an
+// operator-configured baseUrl.
+// Ref: #/components/schemas/ProviderConnectionType
+type ProviderConnectionType string
 
 const (
-	ProviderConnectionRequestProviderOpenai    ProviderConnectionRequestProvider = "openai"
-	ProviderConnectionRequestProviderAnthropic ProviderConnectionRequestProvider = "anthropic"
+	ProviderConnectionTypeOpenai              ProviderConnectionType = "openai"
+	ProviderConnectionTypeAnthropic           ProviderConnectionType = "anthropic"
+	ProviderConnectionTypeOpenaiCompatible    ProviderConnectionType = "openai-compatible"
+	ProviderConnectionTypeAnthropicCompatible ProviderConnectionType = "anthropic-compatible"
 )
 
-// AllValues returns all ProviderConnectionRequestProvider values.
-func (ProviderConnectionRequestProvider) AllValues() []ProviderConnectionRequestProvider {
-	return []ProviderConnectionRequestProvider{
-		ProviderConnectionRequestProviderOpenai,
-		ProviderConnectionRequestProviderAnthropic,
+// AllValues returns all ProviderConnectionType values.
+func (ProviderConnectionType) AllValues() []ProviderConnectionType {
+	return []ProviderConnectionType{
+		ProviderConnectionTypeOpenai,
+		ProviderConnectionTypeAnthropic,
+		ProviderConnectionTypeOpenaiCompatible,
+		ProviderConnectionTypeAnthropicCompatible,
 	}
 }
 
 // MarshalText implements encoding.TextMarshaler.
-func (s ProviderConnectionRequestProvider) MarshalText() ([]byte, error) {
+func (s ProviderConnectionType) MarshalText() ([]byte, error) {
 	switch s {
-	case ProviderConnectionRequestProviderOpenai:
+	case ProviderConnectionTypeOpenai:
 		return []byte(s), nil
-	case ProviderConnectionRequestProviderAnthropic:
+	case ProviderConnectionTypeAnthropic:
+		return []byte(s), nil
+	case ProviderConnectionTypeOpenaiCompatible:
+		return []byte(s), nil
+	case ProviderConnectionTypeAnthropicCompatible:
 		return []byte(s), nil
 	default:
 		return nil, errors.Errorf("invalid value: %q", s)
@@ -5603,13 +5661,19 @@ func (s ProviderConnectionRequestProvider) MarshalText() ([]byte, error) {
 }
 
 // UnmarshalText implements encoding.TextUnmarshaler.
-func (s *ProviderConnectionRequestProvider) UnmarshalText(data []byte) error {
-	switch ProviderConnectionRequestProvider(data) {
-	case ProviderConnectionRequestProviderOpenai:
-		*s = ProviderConnectionRequestProviderOpenai
+func (s *ProviderConnectionType) UnmarshalText(data []byte) error {
+	switch ProviderConnectionType(data) {
+	case ProviderConnectionTypeOpenai:
+		*s = ProviderConnectionTypeOpenai
 		return nil
-	case ProviderConnectionRequestProviderAnthropic:
-		*s = ProviderConnectionRequestProviderAnthropic
+	case ProviderConnectionTypeAnthropic:
+		*s = ProviderConnectionTypeAnthropic
+		return nil
+	case ProviderConnectionTypeOpenaiCompatible:
+		*s = ProviderConnectionTypeOpenaiCompatible
+		return nil
+	case ProviderConnectionTypeAnthropicCompatible:
+		*s = ProviderConnectionTypeAnthropicCompatible
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)
@@ -5648,8 +5712,10 @@ func (*ProxyProviderInferenceOKTextEventStream) proxyProviderInferenceRes() {}
 type ProxyProviderInferenceProvider string
 
 const (
-	ProxyProviderInferenceProviderOpenai    ProxyProviderInferenceProvider = "openai"
-	ProxyProviderInferenceProviderAnthropic ProxyProviderInferenceProvider = "anthropic"
+	ProxyProviderInferenceProviderOpenai              ProxyProviderInferenceProvider = "openai"
+	ProxyProviderInferenceProviderAnthropic           ProxyProviderInferenceProvider = "anthropic"
+	ProxyProviderInferenceProviderOpenaiCompatible    ProxyProviderInferenceProvider = "openai-compatible"
+	ProxyProviderInferenceProviderAnthropicCompatible ProxyProviderInferenceProvider = "anthropic-compatible"
 )
 
 // AllValues returns all ProxyProviderInferenceProvider values.
@@ -5657,6 +5723,8 @@ func (ProxyProviderInferenceProvider) AllValues() []ProxyProviderInferenceProvid
 	return []ProxyProviderInferenceProvider{
 		ProxyProviderInferenceProviderOpenai,
 		ProxyProviderInferenceProviderAnthropic,
+		ProxyProviderInferenceProviderOpenaiCompatible,
+		ProxyProviderInferenceProviderAnthropicCompatible,
 	}
 }
 
@@ -5666,6 +5734,10 @@ func (s ProxyProviderInferenceProvider) MarshalText() ([]byte, error) {
 	case ProxyProviderInferenceProviderOpenai:
 		return []byte(s), nil
 	case ProxyProviderInferenceProviderAnthropic:
+		return []byte(s), nil
+	case ProxyProviderInferenceProviderOpenaiCompatible:
+		return []byte(s), nil
+	case ProxyProviderInferenceProviderAnthropicCompatible:
 		return []byte(s), nil
 	default:
 		return nil, errors.Errorf("invalid value: %q", s)
@@ -5680,6 +5752,12 @@ func (s *ProxyProviderInferenceProvider) UnmarshalText(data []byte) error {
 		return nil
 	case ProxyProviderInferenceProviderAnthropic:
 		*s = ProxyProviderInferenceProviderAnthropic
+		return nil
+	case ProxyProviderInferenceProviderOpenaiCompatible:
+		*s = ProxyProviderInferenceProviderOpenaiCompatible
+		return nil
+	case ProxyProviderInferenceProviderAnthropicCompatible:
+		*s = ProxyProviderInferenceProviderAnthropicCompatible
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)

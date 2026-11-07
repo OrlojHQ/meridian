@@ -50,6 +50,9 @@ spec:
             - --provider=agentsandbox
             {{- if .Values.providerGatewayURL }}
             - --provider-gateway-url={{ .Values.providerGatewayURL }}
+            {{- if .Values.providerGatewayAllowPrivateHTTP }}
+            - --provider-gateway-allow-private-http
+            {{- end }}
             {{- end }}
             - --listen=0.0.0.0:8080
             - --allow-non-loopback-listen

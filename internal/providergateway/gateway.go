@@ -9,18 +9,65 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/netip"
+	"net/url"
+	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
+
+const (
+	OpenAI              = "openai"
+	Anthropic           = "anthropic"
+	OpenAICompatible    = "openai-compatible"
+	AnthropicCompatible = "anthropic-compatible"
+)
+
+// API returns the wire protocol family of a provider connection type, or ""
+// for an unknown type.
+func API(provider string) string {
+	switch provider {
+	case OpenAI, OpenAICompatible:
+		return OpenAI
+	case Anthropic, AnthropicCompatible:
+		return Anthropic
+	}
+	return ""
+}
+
+// Custom reports whether the provider type sends requests to an
+// operator-configured base URL instead of a fixed official upstream.
+func Custom(provider string) bool {
+	return provider == OpenAICompatible || provider == AnthropicCompatible
+}
 
 type Lease struct {
 	Connection, Project, Capsule, Harness, Provider string
 	Expires                                         time.Time
 }
-type Authorize func(context.Context, Lease) (string, error)
+
+// Upstream is resolved on the control plane for every request. BaseURL and
+// AllowPrivateHTTP apply only to custom provider types; Key may be empty when
+// a custom endpoint needs no authentication.
+type Upstream struct {
+	Key              string
+	BaseURL          string
+	AllowPrivateHTTP bool
+}
+type Authorize func(context.Context, Lease) (Upstream, error)
+
+// Options are installation-level gateway policy set by the daemon operator.
+type Options struct {
+	// AllowPrivateHTTP permits custom connections that opted in to send
+	// plaintext HTTP to loopback, RFC 1918, ULA, or CGNAT addresses.
+	AllowPrivateHTTP bool
+}
 type entry struct {
 	slots  chan struct{}
 	lease  Lease
@@ -28,22 +75,114 @@ type entry struct {
 	ctx    context.Context
 }
 type Gateway struct {
-	slots     chan struct{}
-	mu        sync.Mutex
-	leases    map[[32]byte]entry
-	authorize Authorize
-	client    *http.Client
-	upstream  map[string]string
+	slots            chan struct{}
+	mu               sync.Mutex
+	leases           map[[32]byte]entry
+	authorize        Authorize
+	client           *http.Client
+	custom           *http.Client
+	private          *http.Client
+	allowPrivateHTTP bool
+	upstream         map[string]string
 }
 
-func New(authorize Authorize) *Gateway {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.Proxy = nil
-	transport.ResponseHeaderTimeout = 30 * time.Second
-	transport.MaxResponseHeaderBytes = 32 << 10
-	return &Gateway{slots: make(chan struct{}, 64), leases: map[[32]byte]entry{}, authorize: authorize, client: &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, upstream: map[string]string{"openai": "https://api.openai.com", "anthropic": "https://api.anthropic.com"}}
+var errBlockedAddress = errors.New("upstream address is not permitted")
+var sharedAddressSpace = netip.MustParsePrefix("100.64.0.0/10")
+
+// dialable excludes addresses no inference endpoint should use, notably
+// link-local cloud metadata services.
+func dialable(addr netip.Addr) bool {
+	return addr.IsValid() && !addr.IsUnspecified() && !addr.IsLinkLocalUnicast() && !addr.IsMulticast() && !addr.IsLinkLocalMulticast() && !addr.IsInterfaceLocalMulticast()
+}
+
+// PrivateNetwork reports whether plaintext HTTP may reach addr when the
+// operator opted in: loopback, RFC 1918, IPv6 ULA, or RFC 6598 shared space.
+func PrivateNetwork(addr netip.Addr) bool {
+	addr = addr.Unmap()
+	return dialable(addr) && (addr.IsLoopback() || addr.IsPrivate() || sharedAddressSpace.Contains(addr))
+}
+
+// NormalizeBaseURL validates an operator-supplied custom upstream and returns
+// it without a trailing slash or /v1 suffix. Hostnames are checked again
+// against the resolved address on every connection.
+func NormalizeBaseURL(raw string, allowPrivateHTTP bool) (string, error) {
+	invalid := errors.New("base URL must be an absolute http(s) URL without credentials, query, or fragment")
+	if raw == "" || len(raw) > 2048 {
+		return "", invalid
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" || u.User != nil || u.Opaque != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.RawPath != "" {
+		return "", invalid
+	}
+	switch {
+	case u.Scheme == "https" && !allowPrivateHTTP:
+	case u.Scheme == "http" && allowPrivateHTTP:
+	case u.Scheme == "http":
+		return "", errors.New("http:// base URLs require the explicit private-network HTTP opt-in")
+	case u.Scheme == "https":
+		return "", errors.New("the private-network HTTP opt-in applies only to http:// base URLs")
+	default:
+		return "", invalid
+	}
+	if port := u.Port(); port != "" {
+		if n, err := strconv.Atoi(port); err != nil || n < 1 || n > 65535 {
+			return "", invalid
+		}
+	}
+	if addr, err := netip.ParseAddr(u.Hostname()); err == nil {
+		addr = addr.Unmap()
+		if !dialable(addr) || allowPrivateHTTP && !PrivateNetwork(addr) {
+			return "", errors.New("base URL address is not permitted")
+		}
+	} else if strings.ContainsAny(u.Hostname(), "%[]") {
+		return "", invalid
+	}
+	path := strings.TrimSuffix(strings.TrimRight(u.Path, "/"), "/v1")
+	for _, segment := range strings.Split(strings.TrimPrefix(path, "/"), "/") {
+		if path == "" {
+			break
+		}
+		if segment == "" || segment == "." || segment == ".." || strings.Trim(segment, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~") != "" {
+			return "", invalid
+		}
+	}
+	return u.Scheme + "://" + u.Host + path, nil
+}
+
+func transport(allow func(netip.Addr) bool, headerTimeout time.Duration) *http.Transport {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.Proxy = nil
+	t.ResponseHeaderTimeout = headerTimeout
+	t.MaxResponseHeaderBytes = 32 << 10
+	if allow != nil {
+		dialer := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second, Control: func(_, address string, _ syscall.RawConn) error {
+			parsed, err := netip.ParseAddrPort(address)
+			if err != nil || !allow(parsed.Addr().Unmap()) {
+				return errBlockedAddress
+			}
+			return nil
+		}}
+		t.DialContext = dialer.DialContext
+	}
+	return t
+}
+
+func New(authorize Authorize, options Options) *Gateway {
+	noRedirect := func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	// Self-hosted servers may load a model before sending response headers.
+	customHeaderTimeout := 5 * time.Minute
+	return &Gateway{
+		slots: make(chan struct{}, 64), leases: map[[32]byte]entry{}, authorize: authorize, allowPrivateHTTP: options.AllowPrivateHTTP,
+		client:   &http.Client{Transport: transport(nil, 30*time.Second), CheckRedirect: noRedirect},
+		custom:   &http.Client{Transport: transport(dialable, customHeaderTimeout), CheckRedirect: noRedirect},
+		private:  &http.Client{Transport: transport(PrivateNetwork, customHeaderTimeout), CheckRedirect: noRedirect},
+		upstream: map[string]string{OpenAI: "https://api.openai.com", Anthropic: "https://api.anthropic.com"},
+	}
 }
 func (g *Gateway) Issue(lease Lease) (string, error) {
+	if API(lease.Provider) == "" {
+		return "", errors.New("unsupported provider")
+	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	now := time.Now()
@@ -106,7 +245,8 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	provider, route, ok := strings.Cut(strings.TrimPrefix(r.URL.Path, "/provider-gateway/"), "/")
 	route = "/" + route
-	allowed := provider == "openai" && (route == "/v1/responses" || route == "/v1/chat/completions") || provider == "anthropic" && (route == "/v1/messages" || route == "/v1/messages/count_tokens")
+	api := API(provider)
+	allowed := api == OpenAI && (route == "/v1/responses" || route == "/v1/chat/completions") || api == Anthropic && (route == "/v1/messages" || route == "/v1/messages/count_tokens")
 	if !ok || provider != item.lease.Provider || !allowed || r.Method != http.MethodPost || r.URL.RawQuery != "" {
 		gatewayError(w, "unsupported provider operation", http.StatusNotFound)
 		return
@@ -115,10 +255,22 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		gatewayError(w, "too many headers", http.StatusRequestHeaderFieldsTooLarge)
 		return
 	}
-	key, err := g.authorize(r.Context(), item.lease)
+	resolved, err := g.authorize(r.Context(), item.lease)
 	if err != nil {
 		gatewayError(w, "provider connection unavailable", http.StatusForbidden)
 		return
+	}
+	target, client := g.upstream[provider], g.client
+	if Custom(provider) {
+		target, err = NormalizeBaseURL(resolved.BaseURL, resolved.AllowPrivateHTTP)
+		if err != nil || resolved.AllowPrivateHTTP && !g.allowPrivateHTTP {
+			gatewayError(w, "provider connection unavailable", http.StatusForbidden)
+			return
+		}
+		client = g.custom
+		if resolved.AllowPrivateHTTP {
+			client = g.private
+		}
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 8<<20)
 	defer r.Body.Close()
@@ -126,32 +278,53 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	stop := context.AfterFunc(item.ctx, cancel)
 	defer stop()
-	upstream, err := http.NewRequestWithContext(ctx, http.MethodPost, g.upstream[provider]+route, r.Body)
+	upstream, err := http.NewRequestWithContext(ctx, http.MethodPost, target+route, r.Body)
 	if err != nil {
 		gatewayError(w, "invalid provider request", 400)
 		return
 	}
 	upstream.Header.Set("Content-Type", "application/json")
-	if provider == "openai" {
-		upstream.Header.Set("Authorization", "Bearer "+key)
+	if api == OpenAI {
+		if resolved.Key != "" {
+			upstream.Header.Set("Authorization", "Bearer "+resolved.Key)
+		}
 	} else {
-		upstream.Header.Set("X-Api-Key", key)
+		if resolved.Key != "" {
+			upstream.Header.Set("X-Api-Key", resolved.Key)
+			// Self-hosted servers such as vLLM authenticate only bearer tokens,
+			// including on their Anthropic Messages routes.
+			if provider == AnthropicCompatible {
+				upstream.Header.Set("Authorization", "Bearer "+resolved.Key)
+			}
+		}
 		upstream.Header.Set("Anthropic-Version", "2023-06-01")
-		if beta := r.Header.Get("Anthropic-Beta"); len(beta) <= 2048 {
+		if beta := r.Header.Get("Anthropic-Beta"); beta != "" && len(beta) <= 2048 {
 			upstream.Header.Set("Anthropic-Beta", beta)
 		}
 	}
-	response, err := g.client.Do(upstream)
-	key = ""
+	response, err := client.Do(upstream)
 	if err != nil {
 		gatewayError(w, "provider request failed", http.StatusBadGateway)
 		return
 	}
 	defer response.Body.Close()
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		gatewayError(w, "upstream provider rejected the request", response.StatusCode)
+	if response.StatusCode >= 300 && response.StatusCode < 400 {
+		gatewayError(w, "upstream provider redirected the request", http.StatusBadGateway)
 		return
 	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		message := fmt.Sprintf("upstream provider rejected the request (HTTP %d)", response.StatusCode)
+		if reason := upstreamReason(response, resolved.Key, token, upstream.URL.Hostname()); reason != "" {
+			message += ": " + reason
+		}
+		status := response.StatusCode
+		if status < 400 || status > 599 {
+			status = http.StatusBadGateway
+		}
+		writeGatewayError(w, message, status, response.StatusCode)
+		return
+	}
+	resolved.Key = ""
 	w.Header().Set("Content-Type", response.Header.Get("Content-Type"))
 	w.WriteHeader(response.StatusCode)
 	reader := io.LimitReader(response.Body, 64<<20)
@@ -173,7 +346,15 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func gatewayError(w http.ResponseWriter, message string, status int) {
+	writeGatewayError(w, message, status, 0)
+}
+
+func writeGatewayError(w http.ResponseWriter, message string, status, upstreamStatus int) {
+	body := map[string]any{"code": "provider_gateway_error", "message": message}
+	if upstreamStatus != 0 {
+		body["upstreamStatus"] = upstreamStatus
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": "provider_gateway_error", "message": message}})
+	_ = json.NewEncoder(w).Encode(map[string]any{"error": body})
 }

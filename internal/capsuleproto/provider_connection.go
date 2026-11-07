@@ -20,10 +20,11 @@ func (s *Server) prepareProviderConnection(ctx context.Context, connection *harn
 	}
 	harness = strings.TrimSuffix(harness, "-structured")
 	u, err := url.Parse(connection.URL)
-	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || len(connection.Token) != 64 || connection.Provider != "openai" && connection.Provider != "anthropic" {
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || len(connection.Token) != 64 || connection.Model != "" && !harnesssetup.ValidModel(connection.Model) {
 		return nil, errors.New("invalid provider connection")
 	}
-	if !harnesssetup.Supported(harness) || harness == "codex" && connection.Provider != "openai" || harness == "claude" && connection.Provider != "anthropic" {
+	custom := connection.Provider == "openai-compatible" || connection.Provider == "anthropic-compatible"
+	if !custom && connection.Model != "" || !harnesssetup.ConnectionSupported(harness, connection.Provider, connection.Model) {
 		return nil, errors.New("provider does not support this harness")
 	}
 	if setup == nil {
@@ -49,13 +50,35 @@ func (s *Server) prepareProviderConnection(ctx context.Context, connection *harn
 		return nil, err
 	}
 	defer root.Close()
+	model := connection.Model
 	switch harness {
 	case "claude":
 		env["ANTHROPIC_BASE_URL"] = connection.URL
 		env["ANTHROPIC_API_KEY"] = connection.Token
+		if model != "" {
+			// Background and alias requests must also name a model the
+			// custom endpoint serves.
+			for _, name := range []string{"ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL"} {
+				env[name] = model
+			}
+		}
 	case "codex":
 		err = editNativeConfig(root, ".codex/config.toml", func(config map[string]any) {
 			config["model_provider"] = "meridian"
+			if model != "" {
+				config["model"] = model
+			}
+			if custom {
+				// Codex's built-in web search and multi-agent tools are not
+				// function tools, which most compatible servers reject. An
+				// imported setting still wins.
+				if _, set := config["web_search"]; !set {
+					config["web_search"] = "disabled"
+				}
+				if features := object(config, "features"); features["multi_agent"] == nil {
+					features["multi_agent"] = false
+				}
+			}
 			providers := object(config, "model_providers")
 			providers["meridian"] = map[string]any{"name": "Meridian", "base_url": connection.URL + "/v1", "wire_api": "responses", "env_key": "MERIDIAN_PROVIDER_TOKEN"}
 		})
@@ -66,6 +89,15 @@ func (s *Server) prepareProviderConnection(ctx context.Context, connection *harn
 		}
 		err = editNativeConfig(root, p, func(config map[string]any) {
 			providers := object(config, "provider")
+			if custom {
+				providers["meridian"] = map[string]any{
+					"npm": "@ai-sdk/openai-compatible", "name": "Meridian",
+					"options": map[string]any{"baseURL": connection.URL + "/v1", "apiKey": "{env:MERIDIAN_PROVIDER_TOKEN}"},
+					"models":  map[string]any{model: map[string]any{"name": model}},
+				}
+				config["model"] = "meridian/" + model
+				return
+			}
 			provider := object(providers, connection.Provider)
 			options := object(provider, "options")
 			options["baseURL"] = connection.URL + "/v1"
@@ -74,10 +106,20 @@ func (s *Server) prepareProviderConnection(ctx context.Context, connection *harn
 	case "pi":
 		err = editNativeConfig(root, ".pi/agent/models.json", func(config map[string]any) {
 			providers := object(config, "providers")
+			if custom {
+				providers["meridian"] = map[string]any{"name": "Meridian", "baseUrl": connection.URL + "/v1", "api": "openai-completions", "apiKey": "$MERIDIAN_PROVIDER_TOKEN", "models": []any{map[string]any{"id": model}}}
+				return
+			}
 			provider := object(providers, connection.Provider)
 			provider["baseUrl"] = connection.URL + "/v1"
-			provider["apiKey"] = "MERIDIAN_PROVIDER_TOKEN"
+			provider["apiKey"] = "$MERIDIAN_PROVIDER_TOKEN"
 		})
+		if err == nil && custom {
+			err = editNativeConfig(root, ".pi/agent/settings.json", func(config map[string]any) {
+				config["defaultProvider"] = "meridian"
+				config["defaultModel"] = model
+			})
+		}
 	}
 	return env, err
 }

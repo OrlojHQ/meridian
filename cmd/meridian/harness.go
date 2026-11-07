@@ -212,23 +212,44 @@ func offerHarnessSetupUpdate(ctx context.Context, config *cliConfig, harness str
 	return nil
 }
 func newHarnessConnectCommand(config *cliConfig) *cobra.Command {
-	var stdin bool
-	var name, id string
+	var stdin, noKey, allowPrivateHTTP bool
+	var name, id, baseURL, model string
 	var expected int64
-	cmd := &cobra.Command{Use: "connect openai|anthropic", Short: "Save a reusable API connection from stdin", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "connect openai|anthropic|openai-compatible|anthropic-compatible", Short: "Save a reusable API or self-hosted endpoint connection; keys come from stdin", Long: `Save a reusable provider connection for Capsule harnesses.
+
+openai and anthropic use the official APIs. openai-compatible (vLLM, Ollama,
+LM Studio, SGLang, LiteLLM) and anthropic-compatible (LiteLLM and similar
+proxies for Claude Code) send requests through Meridian's gateway to
+--base-url. Capsules never see the base URL or the key.
+
+Keys are read only from stdin. Pass --no-api-key for a custom endpoint that
+needs no authentication.`, Example: `  meridian harness connect openai --stdin < key.txt
+  meridian harness connect openai-compatible --base-url https://vllm.example.com --model Qwen/Qwen3-Coder-30B-A3B-Instruct --stdin < key.txt
+  meridian harness connect openai-compatible --base-url http://192.168.1.20:11434 --allow-private-http --model qwen2.5-coder:32b --no-api-key`, Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		endpoint, err := url.Parse(config.server)
 		if err != nil || endpoint.User != nil || endpoint.Scheme != "https" && !(endpoint.Scheme == "http" && (endpoint.Hostname() == "localhost" || endpoint.Hostname() == "127.0.0.1" || endpoint.Hostname() == "::1")) {
 			return errors.New("remote provider connections require HTTPS")
 		}
-		if !stdin {
-			return errors.New("--stdin is required; API keys must not appear in flags or command history")
+		provider := args[0]
+		custom := provider == "openai-compatible" || provider == "anthropic-compatible"
+		if !custom && provider != "openai" && provider != "anthropic" {
+			return errors.New("supported providers: openai, anthropic, openai-compatible, anthropic-compatible")
 		}
-		if args[0] != "openai" && args[0] != "anthropic" {
-			return errors.New("supported providers: openai, anthropic")
+		if custom && baseURL == "" {
+			return errors.New("--base-url is required for " + provider)
 		}
-		raw, err := io.ReadAll(io.LimitReader(config.stdin, 4097))
-		if err != nil {
-			return err
+		if !custom && (baseURL != "" || model != "" || allowPrivateHTTP || noKey) {
+			return errors.New("--base-url, --model, --allow-private-http and --no-api-key apply only to custom endpoints")
+		}
+		if stdin == noKey {
+			return errors.New("pass --stdin, or --no-api-key for an endpoint without authentication; API keys must not appear in flags or command history")
+		}
+		var raw []byte
+		if stdin {
+			raw, err = io.ReadAll(io.LimitReader(config.stdin, 4097))
+			if err != nil {
+				return err
+			}
 		}
 		defer func() {
 			for i := range raw {
@@ -239,13 +260,23 @@ func newHarnessConnectCommand(config *cliConfig) *cobra.Command {
 			return errors.New("API key exceeds limit")
 		}
 		if name == "" {
-			name = args[0] + " API"
+			name = provider + " API"
+			if custom {
+				name = provider + " endpoint"
+			}
 		}
 		api, err := newAPI(config)
 		if err != nil {
 			return err
 		}
-		input := &client.ProviderConnectionRequest{Name: name, Provider: client.ProviderConnectionRequestProvider(args[0]), ApiKey: strings.TrimSpace(string(raw)), ExpectedResourceVersion: expected}
+		input := &client.ProviderConnectionRequest{Name: name, Provider: client.ProviderConnectionType(provider), ApiKey: strings.TrimSpace(string(raw)), ExpectedResourceVersion: expected}
+		if custom {
+			input.BaseUrl = client.NewOptString(baseURL)
+			input.AllowPrivateHttp = client.NewOptBool(allowPrivateHTTP)
+			if model != "" {
+				input.DefaultModel = client.NewOptString(model)
+			}
+		}
 		var saved *client.ProviderConnection
 		if id == "" {
 			saved, err = api.CreateProviderConnection(cmd.Context(), input)
@@ -258,6 +289,10 @@ func newHarnessConnectCommand(config *cliConfig) *cobra.Command {
 		return writeJSON(config.stdout, saved)
 	}}
 	cmd.Flags().BoolVar(&stdin, "stdin", false, "read the API key from stdin")
+	cmd.Flags().BoolVar(&noKey, "no-api-key", false, "custom endpoint without authentication")
+	cmd.Flags().StringVar(&baseURL, "base-url", "", "custom endpoint base URL, for example https://vllm.example.com (a trailing /v1 is accepted)")
+	cmd.Flags().StringVar(&model, "model", "", "default model name served by the custom endpoint (required for OpenCode and Pi)")
+	cmd.Flags().BoolVar(&allowPrivateHTTP, "allow-private-http", false, "allow a plaintext http:// base URL on a loopback or private-network address (the daemon must also allow it)")
 	cmd.Flags().StringVar(&name, "name", "", "connection display name")
 	cmd.Flags().StringVar(&id, "id", "", "existing connection to replace")
 	cmd.Flags().Int64Var(&expected, "expected-version", 0, "existing connection version")

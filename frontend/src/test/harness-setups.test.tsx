@@ -44,3 +44,33 @@ it("groups settings under plain section headings without nested disclosures",asy
  expect(view.container).toHaveTextContent("meridian harness import");
  expect(screen.getByLabelText("API key")).toHaveAttribute("type","password");
 });
+it("saves a self-hosted endpoint with an explicit private HTTP opt-in",async()=>{
+ vi.spyOn(api,"harnessSetups").mockResolvedValue({items:[]});vi.spyOn(api,"providerConnections").mockResolvedValue({items:[],enabled:true,privateHttpAllowed:true});
+ const save=vi.spyOn(api,"saveProviderConnection").mockResolvedValue({id:"c",provider:"openai-compatible",name:"DGX",createdAt:setup.createdAt,resourceVersion:1,revoked:false});
+ show(<HarnessSetups/>);
+ await userEvent.selectOptions(await screen.findByLabelText("Provider"),"openai-compatible");
+ expect(screen.getByLabelText("API key (optional)")).not.toBeRequired();
+ await userEvent.type(screen.getByLabelText("Connection name"),"DGX");
+ await userEvent.type(screen.getByLabelText("Base URL"),"http://192.168.1.20:8000");
+ await userEvent.type(screen.getByLabelText("Default model"),"qwen3-coder");
+ await userEvent.click(screen.getByLabelText("Use plain HTTP to a private-network server"));
+ expect(screen.getByRole("note")).toHaveTextContent("unencrypted");
+ await userEvent.click(screen.getByRole("button",{name:"Save connection"}));
+ await waitFor(()=>expect(save).toHaveBeenCalledWith({name:"DGX",provider:"openai-compatible",apiKey:"",expectedResourceVersion:0,baseUrl:"http://192.168.1.20:8000",defaultModel:"qwen3-coder",allowPrivateHttp:true},undefined));
+});
+it("hides the private HTTP opt-in unless the daemon allows it",async()=>{
+ vi.spyOn(api,"harnessSetups").mockResolvedValue({items:[]});vi.spyOn(api,"providerConnections").mockResolvedValue({items:[],enabled:true});
+ show(<HarnessSetups/>);
+ await userEvent.selectOptions(await screen.findByLabelText("Provider"),"anthropic-compatible");
+ expect(screen.getByLabelText("Base URL")).toBeRequired();
+ expect(screen.queryByLabelText("Use plain HTTP to a private-network server")).toBeNull();
+});
+it("offers only connections the harness can use",async()=>{
+ const claudeProject={...project,harnessImages:[{name:"claude",imageReference:"example/claude:v1"}]};
+ const item=(id:string,provider:"openai"|"anthropic"|"openai-compatible"|"anthropic-compatible",defaultModel?:string)=>({id,provider,name:id,createdAt:setup.createdAt,resourceVersion:1,revoked:false,...(defaultModel?{defaultModel}:{})});
+ vi.spyOn(api,"harnessSetups").mockResolvedValue({items:[]});vi.spyOn(api,"projectHarnessSetup").mockResolvedValue({setup:""});vi.spyOn(api,"projectConnection").mockResolvedValue({connectionId:""});
+ vi.spyOn(api,"providerConnections").mockResolvedValue({enabled:true,items:[item("official-openai","openai"),item("vllm","openai-compatible"),item("litellm","anthropic-compatible","qwen")]});
+ show(<NativeLauncher project={claudeProject} harness="claude"/>);
+ const select=await screen.findByLabelText("Provider connection");
+ await waitFor(()=>expect([...select.querySelectorAll("option")].map(option=>option.value)).toEqual(["","litellm"]));
+});

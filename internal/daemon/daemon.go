@@ -49,6 +49,10 @@ type Config struct {
 	DockerCPUs         float64
 	AgentSandbox       agentsandboxprovider.Config
 	Observability      observability.Config
+
+	// ProviderGatewayAllowPrivateHTTP lets custom provider connections opt in
+	// to plaintext HTTP upstreams on private-network addresses.
+	ProviderGatewayAllowPrivateHTTP bool
 }
 
 func Run(ctx context.Context, config Config) error {
@@ -296,7 +300,7 @@ func Run(ctx context.Context, config Config) error {
 	}
 	service := app.NewService(store, clock, ids, reconciler, runtime)
 	service.ConfigureSecrets(secretKey)
-	if err := service.ConfigureProviderGateway(config.ProviderGatewayURL); err != nil {
+	if err := service.ConfigureProviderGateway(config.ProviderGatewayURL, config.ProviderGatewayAllowPrivateHTTP); err != nil {
 		return err
 	}
 	defer service.CloseProviderGateway()

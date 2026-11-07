@@ -12,4 +12,10 @@ type ProviderConnection struct {
 	KeyID           string          `json:"-"`
 	Nonce           []byte          `json:"-"`
 	Ciphertext      []byte          `json:"-"`
+
+	// Custom endpoint types only. These stay on the control plane and are
+	// never sent to a Capsule, except the model name.
+	BaseURL          string `json:"baseUrl,omitempty"`
+	DefaultModel     string `json:"defaultModel,omitempty"`
+	AllowPrivateHTTP bool   `json:"allowPrivateHttp,omitempty"`
 }

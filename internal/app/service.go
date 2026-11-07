@@ -23,6 +23,7 @@ const defaultPageSize = 50
 type Service struct {
 	gateway       *providergateway.Gateway
 	gatewayURL    string
+	privateHTTP   bool
 	store         ports.Store
 	clock         ports.Clock
 	ids           ports.IDSource
