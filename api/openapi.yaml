@@ -1131,6 +1131,45 @@ paths:
           $ref: "#/components/responses/TooManyRequests"
         default:
           $ref: "#/components/responses/DefaultError"
+  /capsules/{capsuleId}/promote:
+    post:
+      operationId: promoteCapsule
+      summary: Promote a helper sub-Capsule to a main Capsule
+      description: >
+        Promotion is permanent and grants no coordination authority. The link
+        to the lead stays open unless detach is set; a promoted Capsule that
+        kept its link can be detached later. Promoted helpers are never
+        auto-archived or stopped by their lead.
+      tags: [capsules]
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PromoteCapsuleRequest"
+      responses:
+        "200":
+          description: Promoted Capsule
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Capsule"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+        default:
+          $ref: "#/components/responses/DefaultError"
   /projects/{projectId}/environment:
     get:
       operationId: getProjectEnvironment
@@ -2304,6 +2343,18 @@ components:
           type: integer
           format: int64
           minimum: 1
+    PromoteCapsuleRequest:
+      type: object
+      required: [expectedResourceVersion]
+      properties:
+        expectedResourceVersion:
+          type: integer
+          format: int64
+          minimum: 1
+        detach:
+          type: boolean
+          default: false
+          description: Close the link to the lead. The lead can no longer message or hear from this Capsule.
     CaptureMomentRequest:
       type: object
       required: [name, expectedResourceVersion]
@@ -2463,7 +2514,11 @@ components:
           description: On sub-Capsules, the lead Thread that spawned this helper.
         linkId:
           type: string
-          description: On sub-Capsules, the Thread link that owns this helper.
+          description: On sub-Capsules and promoted Capsules that kept their link, the Thread link to the lead.
+        promotedAt:
+          type: string
+          format: date-time
+          description: When a helper sub-Capsule was promoted to a main Capsule.
         createdAt:
           type: string
           format: date-time
@@ -2753,7 +2808,7 @@ components:
     ChildRollup:
       type: object
       description: A lead's helpers by state.
-      required: [total, working, idle, done, needsYou, failed]
+      required: [total, working, idle, done, needsYou, failed, archived]
       properties:
         total: { type: integer, minimum: 0 }
         working: { type: integer, minimum: 0 }
@@ -2761,6 +2816,10 @@ components:
         done: { type: integer, minimum: 0 }
         needsYou: { type: integer, minimum: 0 }
         failed: { type: integer, minimum: 0 }
+        archived:
+          type: integer
+          minimum: 0
+          description: Auto-archived helpers. They are also counted as done.
     DeliverySummary:
       type: object
       required: [id, state, action, updatedAt]
@@ -2918,6 +2977,15 @@ components:
           description: Structured harnesses helpers may use; each must be on the Project allowlist. Defaults to the lead's harness.
           items: { type: string, minLength: 1, maxLength: 128 }
         deadlineSeconds: { type: integer, minimum: 300, maximum: 259200, default: 28800 }
+        archiveAfterSeconds:
+          type: integer
+          minimum: 0
+          maximum: 2592000
+          default: 86400
+          description: >
+            How long a finished helper stays idle before its session is ended
+            and its Thread paused. 0 disables auto-archive; otherwise at least
+            60. Archiving never deletes a workspace or transcript.
         onDeadline:
           type: string
           enum: [cancel_and_pause, stop_new_work]
@@ -2934,8 +3002,8 @@ components:
       required:
         [id, projectId, rootThreadId, rootCapsuleId, state, spawnApproval, maxDepth,
          maxChildren, maxDescendants, maxLiveCapsules, maxMessagesPerLink,
-         allowedHarnesses, deadlineAt, onDeadline, descendantsCreated, createdAt,
-         updatedAt, resourceVersion]
+         allowedHarnesses, deadlineAt, onDeadline, archiveAfterSeconds,
+         descendantsCreated, createdAt, updatedAt, resourceVersion]
       properties:
         id: { type: string }
         projectId: { type: string }
@@ -2953,6 +3021,7 @@ components:
           items: { type: string }
         deadlineAt: { type: string, format: date-time }
         onDeadline: { type: string, enum: [cancel_and_pause, stop_new_work] }
+        archiveAfterSeconds: { type: integer, minimum: 0, maximum: 2592000 }
         descendantsCreated: { type: integer, minimum: 0 }
         revokedAt: { type: string, format: date-time }
         revokeReason: { type: string, enum: [operator, deadline, lead_ended] }
@@ -2993,7 +3062,7 @@ components:
         name: { type: string, pattern: "^[a-z0-9-]{1,48}$" }
         harness: { type: string }
         state: { $ref: "#/components/schemas/ThreadLinkState" }
-        closeReason: { type: string, enum: [cancelled, failed, ended, revoked] }
+        closeReason: { type: string, enum: [cancelled, failed, ended, revoked, detached] }
         phase:
           type: string
           enum: [provisioning, working, idle, awaiting_operator, ended, failed]
@@ -3007,6 +3076,14 @@ components:
           type: integer
           minimum: 0
           description: Operator messages sent straight to this helper. They do not count against the lead's message limit.
+        archivedAt:
+          type: string
+          format: date-time
+          description: Set while the helper is auto-archived; cleared when its Thread resumes.
+        promotedAt:
+          type: string
+          format: date-time
+          description: When the helper was promoted to a main Capsule. Promoted helpers are never archived.
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
         resourceVersion: { type: integer, format: int64, minimum: 1 }

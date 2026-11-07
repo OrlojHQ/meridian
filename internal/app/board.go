@@ -68,6 +68,8 @@ type ChildRollup struct {
 	Done     int
 	NeedsYou int
 	Failed   int
+	// Archived counts auto-archived helpers. They are also counted as done.
+	Archived int
 }
 
 type BoardItem struct {
@@ -134,6 +136,11 @@ func (s *Service) Board(ctx context.Context, query BoardQuery) (Board, error) {
 			var status BoardStatus
 			if ok {
 				status = items[child].Status
+			}
+			if !link.ArchivedAt.IsZero() {
+				rollup.Archived++
+				rollup.Done++
+				continue
 			}
 			switch {
 			case status == BoardNeedsYou:

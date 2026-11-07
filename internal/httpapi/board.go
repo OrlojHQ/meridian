@@ -27,6 +27,7 @@ type childRollupJSON struct {
 	Done     int `json:"done"`
 	NeedsYou int `json:"needsYou"`
 	Failed   int `json:"failed"`
+	Archived int `json:"archived"`
 }
 
 type deliverySummaryJSON struct {
@@ -84,6 +85,7 @@ func (s *Server) getBoard(writer http.ResponseWriter, request *http.Request) {
 			row.ChildRollup = &childRollupJSON{
 				Total: rollup.Total, Working: rollup.Working, Idle: rollup.Idle,
 				Done: rollup.Done, NeedsYou: rollup.NeedsYou, Failed: rollup.Failed,
+				Archived: rollup.Archived,
 			}
 		}
 		response.Items = append(response.Items, row)

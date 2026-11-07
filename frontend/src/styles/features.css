@@ -2709,10 +2709,46 @@ button.tool-line:hover {
 
 .helper-list li {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  grid-template-columns: minmax(0, 1fr);
+  grid-auto-columns: auto;
+  grid-auto-flow: column;
   align-items: center;
   gap: 0.6rem;
   font-size: 0.78rem;
+}
+
+.helper-list li.helper-archived,
+.board-helpers li.board-archived {
+  display: block;
+}
+
+.helper-archived summary,
+.board-archived summary {
+  width: fit-content;
+  color: var(--muted);
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.helper-archived .helper-list,
+.board-archived .board-helpers {
+  margin-top: 0.35rem;
+  opacity: 0.8;
+}
+
+.helper-of p {
+  margin: 0;
+}
+
+.promote-helper {
+  display: grid;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+  justify-items: start;
+}
+
+.inbox-actions .promote-helper {
+  margin-top: 0;
 }
 
 .helper-name {
@@ -2774,7 +2810,15 @@ button.tool-line:hover {
   font-size: 0.75rem;
 }
 
+.board-helper-name {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.4rem;
+}
+
 .board-helpers a {
+  min-width: 0;
   overflow: hidden;
   color: var(--text);
   text-overflow: ellipsis;

@@ -130,6 +130,18 @@ input requests come to you, never to its lead. If you message a helper
 directly, the lead's next report wake says so (without your text), and the
 message does not count against `--max-messages-per-link`.
 
+A finished helper is paused and archived once it has been idle for
+`--archive-after` (default 24h, 1m to 720h; `0` disables it). Its Thread
+moves to paused, its session ends, and idle pause stops the Capsule later;
+the workspace and transcript stay. Helpers that need you, failed, or are still
+working are never archived. Resume the helper's Thread to bring it back.
+`meridian capsule promote CAPSULE_ID --expected-version N` makes a helper a
+main Capsule: it joins your sidebar, is never archived or stopped by its lead,
+and keeps its link so the lead can still message it. `--detach` also closes the
+link, now or later. Promotion is permanent and gives the helper no
+coordination authority. `thread links` marks promoted and archived helpers,
+and `grant show` prints the archive period.
+
 ### Board
 
 `meridian board` lists every Capsule across Projects by status: needs you
@@ -137,9 +149,14 @@ message does not count against `--max-messages-per-link`.
 Leads show a helper rollup; helpers stay folded under their lead unless they
 need you, in which case they get their own row. `--all` lists every helper,
 `--expand none` lists only main Capsules, and `--project PROJECT_ID` limits the
-board to one Project. The browser has the same view at `/ui/board`, with
-"Show all helpers" and a per-lead helper fold; the command palette's "Next item
-needing me" opens the oldest item that needs you.
+board to one Project. Rollups also count archived helpers. The browser has the
+same view at `/ui/board`, with "Show all helpers" and a per-lead helper fold
+whose archived helpers sit in an "Archived (n)" fold; the command palette's
+"Next item needing me" opens the oldest item that needs you. The browser
+sidebar lists main Capsules, each lead with its helper rollup, plus helpers
+that need you nested under their lead. A helper's Thread view and its
+needs-you board row offer "Promote to main"; a promoted helper that kept its
+link offers "Detach from lead".
 
 Inside a lead Capsule the agent uses `meridian-coord`, which official packs
 register as an MCP server for Claude Code, Codex, and OpenCode. Pi has no MCP

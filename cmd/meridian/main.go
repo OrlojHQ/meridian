@@ -642,7 +642,7 @@ func newCapsuleCommand(config *cliConfig) *cobra.Command {
 		},
 	}
 
-	capsule.AddCommand(create, list, get)
+	capsule.AddCommand(create, list, get, newCapsulePromoteCommand(config))
 	capsule.AddCommand(newLifecycleCommand(config, "pause"), newLifecycleCommand(config, "resume"))
 	capsule.AddCommand(newLifecycleCommand(config, "delete"), newLifecycleCommand(config, "retry"))
 	capsule.AddCommand(newCapsuleGitCommand(config, false), newCapsuleGitCommand(config, true))
@@ -793,8 +793,14 @@ func (c *cliConfig) writeCapsule(capsule client.Capsule) error {
 	if p, ok := capsule.Preparation.Get(); ok {
 		preparation = fmt.Sprintf("\tpreparation=%s\treused=%t", p.Stage, p.Reused)
 	}
+	if role, ok := capsule.Role.Get(); ok && (role == client.CapsuleRoleSub || capsule.PromotedAt.Set) {
+		preparation += "\trole=" + string(role)
+		if capsule.PromotedAt.Set {
+			preparation += "\tpromoted"
+		}
+	}
 	if lead, ok := capsule.LeadThreadId.Get(); ok {
-		preparation += "\trole=sub\tlead=" + lead
+		preparation += "\tlead=" + lead
 	}
 	_, err := fmt.Fprintf(
 		c.stdout, "%s\t%s\tstate=%s\tdesired=%s\tversion=%d%s\n",

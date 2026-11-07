@@ -29,6 +29,10 @@ func (s *CoordinationPolicy) setDefaults() {
 		s.DeadlineSeconds.SetTo(val)
 	}
 	{
+		val := int(86400)
+		s.ArchiveAfterSeconds.SetTo(val)
+	}
+	{
 		val := CoordinationPolicyOnDeadline("cancel_and_pause")
 		s.OnDeadline.SetTo(val)
 	}
@@ -43,6 +47,14 @@ func (s *CreateThreadRequest) setDefaults() {
 	{
 		val := bool(false)
 		s.Start.SetTo(val)
+	}
+}
+
+// setDefaults set default value of fields.
+func (s *PromoteCapsuleRequest) setDefaults() {
+	{
+		val := bool(false)
+		s.Detach.SetTo(val)
 	}
 }
 

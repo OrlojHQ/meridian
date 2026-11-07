@@ -36,6 +36,7 @@ import {
   defaultSession,
   harnessName,
   relativeTime,
+  rollupSummary,
   sessionPath,
   type ActivityGroup,
   type CapsuleSession,
@@ -384,7 +385,7 @@ export function AppShell() {
   }));
   const hasContext = Boolean(capsuleId);
   const renderItem = (
-    { capsule, activity, sessions }: WorkingSetItem,
+    { capsule, activity, sessions, rollup }: WorkingSetItem,
     helpers: WorkingSetItem[] = [],
   ) => {
     const selected = capsule.id === capsuleId;
@@ -404,6 +405,9 @@ export function AppShell() {
               {harness && <HarnessMark harness={harness} />}
               {activity.label}
             </small>
+            {rollup && rollup.total > 0 && (
+              <small className="activity-item-rollup">Helpers: {rollupSummary(rollup)}</small>
+            )}
           </span>
           <span className="activity-item-side">
             <time

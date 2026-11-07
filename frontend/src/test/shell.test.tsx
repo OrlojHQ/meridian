@@ -9,6 +9,7 @@ import type {
   Capabilities,
   Capsule,
   Project,
+  Thread,
 } from "../api/generated/types.gen";
 import { AppShell } from "../shell/AppShell";
 import { WorkspaceContext } from "../shell/WorkspaceContext";
@@ -226,6 +227,65 @@ describe("application shell", () => {
     expect(screen.queryByRole("link", { name: /Review the launcher/ })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Setup broke/ })).toBeInTheDocument();
     expect(gitStatus).not.toHaveBeenCalled();
+  });
+
+  it("lists main Capsules with their helper rollup and only helpers that need you", async () => {
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
+    const lead: Capsule = { ...capsule, id: "capsule-lead", name: "Release lead", role: "main" };
+    const leadThread: Thread = {
+      id: "thread-lead",
+      capsuleId: lead.id,
+      state: "active",
+      harness: "opencode",
+      encryptedAtRest: true,
+      messageCount: 1,
+      encryptedBytes: 64,
+      createdAt: "2026-08-26T00:00:00Z",
+      updatedAt: "2026-08-26T00:00:00Z",
+      resourceVersion: 1,
+    };
+    const blocked: Capsule = {
+      ...capsule,
+      id: "capsule-blocked",
+      name: "Blocked helper",
+      role: "sub",
+      leadThreadId: leadThread.id,
+      linkId: "link-blocked",
+    };
+    const capsules = vi.spyOn(api, "capsules").mockResolvedValue({ items: [lead] });
+    vi.spyOn(api, "board").mockResolvedValue({
+      truncated: false,
+      items: [
+        {
+          capsule: lead,
+          status: "working",
+          since: "2026-08-26T00:00:00Z",
+          surfaced: false,
+          childRollup: { total: 5, working: 1, idle: 0, done: 3, needsYou: 1, failed: 0, archived: 2 },
+        },
+        { capsule: blocked, status: "needs_you", needsYou: "permission", since: "2026-08-26T00:00:00Z", surfaced: true },
+      ],
+    });
+    vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
+    const threads = vi
+      .spyOn(api, "threads")
+      .mockImplementation(async (capsuleId) => ({ items: capsuleId === lead.id ? [leadThread] : [] }));
+    vi.spyOn(api, "capabilities").mockResolvedValue({ ...capabilities, structured: true });
+
+    wrapper(
+      <Routes>
+        <Route path="/ui" element={<AppShell />}>
+          <Route index element={<p>Activity home</p>} />
+        </Route>
+      </Routes>,
+    );
+
+    const leadRow = await screen.findByRole("link", { name: /Release lead/ });
+    expect(leadRow).toHaveTextContent("Helpers: 3/5 done, 1 needs you, 1 working, 2 archived");
+    const helpers = await screen.findByRole("list", { name: "Helpers of Release lead" });
+    expect(within(helpers).getByRole("link", { name: /Blocked helper/ })).toBeInTheDocument();
+    expect(capsules).toHaveBeenCalledWith(project.id, expect.anything(), "main");
+    expect(threads.mock.calls.map(([id]) => id).sort()).toEqual([blocked.id, lead.id]);
   });
 
   it("places Activity, Board, Threads, and Harness settings at the top of the sidebar", async () => {

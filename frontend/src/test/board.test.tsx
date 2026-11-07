@@ -6,7 +6,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { api } from "../api/client";
 import type { BoardItem, Capsule, Thread, ThreadLink } from "../api/generated/types.gen";
-import { Board, rollupSummary } from "../components/Board";
+import { Board } from "../components/Board";
+import { rollupSummary } from "../shell/capsuleActivity";
 
 const capsule = (id: string, name: string, role: "main" | "sub"): Capsule => ({
   id,
@@ -64,7 +65,7 @@ const lead: BoardItem = {
   status: "working",
   since: "2026-11-01T00:00:00Z",
   surfaced: false,
-  childRollup: { total: 2, working: 1, idle: 0, done: 0, needsYou: 1, failed: 0 },
+  childRollup: { total: 2, working: 1, idle: 0, done: 0, needsYou: 1, failed: 0, archived: 0 },
 };
 
 const surfaced: BoardItem = {
@@ -166,8 +167,62 @@ describe("Board", () => {
   });
 
   it("summarizes a rollup", () => {
-    expect(rollupSummary({ total: 5, working: 1, idle: 0, done: 3, needsYou: 0, failed: 1 })).toBe(
-      "3/5 done, 1 working, 1 failed",
-    );
+    expect(
+      rollupSummary({ total: 5, working: 1, idle: 0, done: 3, needsYou: 0, failed: 1, archived: 2 }),
+    ).toBe("3/5 done, 1 working, 1 failed, 2 archived");
+  });
+
+  it("folds archived helpers and offers promotion on a surfaced helper", async () => {
+    const archived: BoardItem = {
+      ...quiet,
+      status: "paused",
+      link: { ...link("docs", "docs"), phase: "idle", archivedAt: "2026-11-02T00:00:00Z" },
+    };
+    vi.spyOn(api, "board").mockImplementation(async (expand) => ({
+      truncated: false,
+      items: expand === "all"
+        ? [surfaced, { ...lead, childRollup: { ...lead.childRollup!, done: 1, working: 0, archived: 1 } }, archived]
+        : [surfaced, { ...lead, childRollup: { ...lead.childRollup!, done: 1, working: 0, archived: 1 } }],
+    }));
+    const promote = vi.spyOn(api, "promoteCapsule").mockResolvedValue({ ...surfaced.capsule, role: "main" });
+    renderBoard();
+
+    const working = await screen.findByRole("region", { name: /Working/ });
+    expect(within(working).getByText("1/2 done, 1 needs you, 1 archived")).toBeTruthy();
+    await userEvent.click(await within(working).findByRole("button", { name: "Helpers (2)" }));
+    const fold = within(working).getByRole("list", { name: "Helpers of release lead" });
+    expect(within(fold).getByText("Archived (1)")).toBeTruthy();
+    const archivedLink = within(fold).getByRole("link", { name: "docs" });
+    expect(archivedLink.closest("details")).not.toBeNull();
+    expect(within(fold).getByRole("link", { name: "tests" }).closest("details")).toBeNull();
+
+    const needsYou = screen.getByRole("region", { name: /Needs you/ });
+    await userEvent.click(within(needsYou).getByRole("button", { name: "Promote to main…" }));
+    const dialog = within(needsYou).getByRole("alertdialog", { name: "Promote to main" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Promote" }));
+    expect(promote).toHaveBeenCalledWith(surfaced.capsule, false);
+    expect(within(working).queryByRole("button", { name: /Promote/ })).toBeNull();
+  });
+
+  it("marks a promoted helper in its own row and in its lead's fold", async () => {
+    const promoted: BoardItem = {
+      ...quiet,
+      capsule: { ...quiet.capsule, role: "main", promotedAt: "2026-11-02T00:00:00Z" },
+      status: "idle",
+      link: { ...link("docs", "docs"), phase: "idle", promotedAt: "2026-11-02T00:00:00Z" },
+    };
+    vi.spyOn(api, "board").mockResolvedValue({ truncated: false, items: [lead, promoted] });
+    renderBoard();
+
+    const idle = await screen.findByRole("region", { name: /Idle/ });
+    expect(within(idle).getByText("promoted from")).toBeTruthy();
+    expect(within(idle).queryByText("helper of")).toBeNull();
+    expect(within(idle).queryByRole("button", { name: /Promote/ })).toBeNull();
+
+    const working = screen.getByRole("region", { name: /Working/ });
+    await userEvent.click(await within(working).findByRole("button", { name: "Helpers (1)" }));
+    const fold = within(working).getByRole("list", { name: "Helpers of release lead" });
+    expect(within(fold).getByRole("link", { name: "docs" })).toBeTruthy();
+    expect(within(fold).getByText("Promoted")).toBeTruthy();
   });
 });

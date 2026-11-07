@@ -1,7 +1,7 @@
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
-import type { Capsule, Run, Thread } from "../api/generated/types.gen";
+import type { Capsule, ChildRollup, Run, Thread } from "../api/generated/types.gen";
 import { queries } from "../api/queries";
 import {
   capsuleSessions,
@@ -16,20 +16,40 @@ export type WorkingSetItem = {
   threads: Thread[];
   activity: CapsuleActivity;
   sessions: CapsuleSession[];
+  rollup?: ChildRollup;
 };
 
 export function useWorkingSet() {
   const projects = useQuery(queries.projects());
   const projectItems = useMemo(() => projects.data?.items ?? [], [projects.data]);
   const capsuleResults = useQueries({
-    queries: projectItems.map((project) => queries.capsules(project.id)),
+    queries: projectItems.map((project) => queries.mainCapsules(project.id)),
   });
-  const capsules = useMemo(
+  // Helpers stay out of the working set unless they need the operator or
+  // their lead is gone. One content-free board read lists those and every
+  // lead's rollup, so hidden helpers add no per-Capsule polling.
+  const board = useQuery(queries.board("attention"));
+  const capsules = useMemo(() => {
+    const surfaced = (board.data?.items ?? [])
+      .filter((item) => item.capsule.role === "sub")
+      .map((item) => item.capsule);
+    const seen = new Set<string>();
+    return [...capsuleResults.flatMap((result) => result.data?.items ?? []), ...surfaced].filter(
+      (capsule) => {
+        if (capsule.state === "Deleted" || seen.has(capsule.id)) return false;
+        seen.add(capsule.id);
+        return true;
+      },
+    );
+  }, [capsuleResults, board.data]);
+  const rollups = useMemo(
     () =>
-      capsuleResults
-        .flatMap((result) => result.data?.items ?? [])
-        .filter((capsule) => capsule.state !== "Deleted"),
-    [capsuleResults],
+      new Map(
+        (board.data?.items ?? []).flatMap((item) =>
+          item.childRollup ? [[item.capsule.id, item.childRollup] as const] : [],
+        ),
+      ),
+    [board.data],
   );
   const runResults = useQueries({
     queries: capsules.map((capsule) => ({
@@ -58,9 +78,10 @@ export function useWorkingSet() {
           threads,
           activity: describeCapsule(capsule, runs, threads),
           sessions: capsuleSessions(capsule, runs, threads),
+          rollup: rollups.get(capsule.id),
         };
       }),
-    [capsules, runResults, threadResults],
+    [capsules, runResults, threadResults, rollups],
   );
   return { projects, projectItems, capsuleResults, items };
 }

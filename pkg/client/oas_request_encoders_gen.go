@@ -290,6 +290,20 @@ func encodePreviewHarnessSetupRequest(
 	return nil
 }
 
+func encodePromoteCapsuleRequest(
+	req *PromoteCapsuleRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodeProxyProviderInferenceRequest(
 	req ProxyProviderInferenceReq,
 	r *http.Request,

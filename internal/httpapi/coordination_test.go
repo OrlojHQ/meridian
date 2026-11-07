@@ -107,10 +107,25 @@ func TestCoordinationRoutes(t *testing.T) {
 		t.Fatal("over-limit coordination policy was accepted")
 	}
 
+	for name, seconds := range map[string]int{"short-archive": 30, "long-archive": 2592001, "negative-archive": -1} {
+		rejected, err := api.CreateProjectThread(ctx, &client.CreateProjectThreadRequest{
+			Harness: "mock", Prompt: "lead",
+			Coordination: client.NewOptCoordinationPolicy(client.CoordinationPolicy{
+				ArchiveAfterSeconds: client.NewOptInt(seconds),
+			}),
+		}, client.CreateProjectThreadParams{ProjectId: projectID, IdempotencyKey: name})
+		if err == nil {
+			if _, ok := rejected.(*client.ProjectThreadIntentHeaders); ok {
+				t.Fatalf("%s policy was accepted", name)
+			}
+		}
+	}
+
 	created, err := api.CreateProjectThread(ctx, &client.CreateProjectThreadRequest{
 		Harness: "mock", Prompt: "lead",
 		Coordination: client.NewOptCoordinationPolicy(client.CoordinationPolicy{
 			MaxChildren: client.NewOptInt(3), DeadlineSeconds: client.NewOptInt(3600),
+			ArchiveAfterSeconds: client.NewOptInt(120),
 		}),
 	}, client.CreateProjectThreadParams{ProjectId: projectID, IdempotencyKey: "lead"})
 	if err != nil {
@@ -162,8 +177,22 @@ func TestCoordinationRoutes(t *testing.T) {
 	}
 	grant := grantResult.(*client.CoordinationGrantHeaders).Response
 	if grant.State != client.CoordinationGrantStateActive || grant.MaxChildren != 3 ||
-		grant.RootThreadId != thread.ID || grant.DeadlineAt.Sub(grant.CreatedAt) != time.Hour {
+		grant.RootThreadId != thread.ID || grant.DeadlineAt.Sub(grant.CreatedAt) != time.Hour ||
+		grant.ArchiveAfterSeconds != 120 {
 		t.Fatalf("grant = %#v", grant)
+	}
+	leadCapsule, err := service.GetCapsule(ctx, domain.CapsuleID(intent.CapsuleId))
+	if err != nil {
+		t.Fatal(err)
+	}
+	promoted, err := api.PromoteCapsule(ctx, &client.PromoteCapsuleRequest{
+		ExpectedResourceVersion: int64(leadCapsule.ResourceVersion), Detach: client.NewOptBool(true),
+	}, client.PromoteCapsuleParams{CapsuleId: intent.CapsuleId, IdempotencyKey: "promote-lead"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := promoted.(*client.PromoteCapsuleConflict); !ok {
+		t.Fatalf("promote a main Capsule = %#v", promoted)
 	}
 	links, err := api.ListThreadLinks(ctx, client.ListThreadLinksParams{ThreadId: thread.ID})
 	if err != nil || len(links.(*client.ThreadLinkPage).Items) != 0 {

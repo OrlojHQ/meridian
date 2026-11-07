@@ -1,4 +1,4 @@
-import type { Capsule, Run, Thread } from "../api/generated/types.gen";
+import type { Capsule, ChildRollup, Run, Thread } from "../api/generated/types.gen";
 
 // Activity is derived only from Capsule and Run resources. Git status,
 // workspace files, and previews record Capsule activity on the server, so
@@ -266,4 +266,14 @@ export function defaultSession(sessions: CapsuleSession[]) {
     recent[0] ??
     sessions[0]
   );
+}
+
+export function rollupSummary(rollup: ChildRollup) {
+  const parts = [`${rollup.done}/${rollup.total} done`];
+  if (rollup.needsYou) parts.push(`${rollup.needsYou} need${rollup.needsYou === 1 ? "s" : ""} you`);
+  if (rollup.working) parts.push(`${rollup.working} working`);
+  if (rollup.idle) parts.push(`${rollup.idle} idle`);
+  if (rollup.failed) parts.push(`${rollup.failed} failed`);
+  if (rollup.archived) parts.push(`${rollup.archived} archived`);
+  return parts.join(", ");
 }

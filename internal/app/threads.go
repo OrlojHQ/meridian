@@ -513,6 +513,9 @@ func (s *Service) beginThreadSession(
 			if err := thread.Transition(domain.ThreadActive, now); err != nil {
 				return err
 			}
+			if err := s.unarchiveTx(ctx, tx, thread.ID, now); err != nil {
+				return err
+			}
 		} else {
 			thread.UpdatedAt, thread.ResourceVersion = now, thread.ResourceVersion+1
 		}

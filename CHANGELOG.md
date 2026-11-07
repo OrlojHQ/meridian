@@ -9,6 +9,20 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Helper lifecycle. A finished helper is paused and archived after its
+  grant's `archiveAfter` (default 24 hours, 0 disables it; `--archive-after`,
+  `archiveAfterSeconds`): its session ends and its Thread pauses, while the
+  workspace and transcript stay. Helpers that need you, failed, or were
+  promoted are never archived, and resuming the Thread brings a helper back.
+  `POST /capsules/{id}/promote` (`meridian capsule promote`, "Promote to
+  main") makes a helper a main Capsule that keeps its link to the lead
+  unless `detach` is set; promotion is permanent and grants no coordination
+  authority. The browser sidebar now lists main Capsules with each lead's
+  helper rollup, plus helpers that need you, and the board and Helpers panel
+  fold archived helpers under "Archived (n)". Links gain `archivedAt`,
+  `promotedAt` and the `detached` close reason; Capsules gain `promotedAt`;
+  rollups gain `archived` (ADR 0029).
+
 - A board of every Capsule by status. `GET /board`, `meridian board` and the
   browser's Board view group Capsules across Projects into needs you, working,
   PR open, ready for review, idle, paused and sealed, with the latest Delivery

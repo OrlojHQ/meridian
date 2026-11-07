@@ -487,10 +487,12 @@ type Capsule struct {
 	Role               CapsuleRole
 	LeadThreadID       ThreadID
 	LinkID             ThreadLinkID
-	LastActivityAt     time.Time
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
-	ResourceVersion    ResourceVersion
+	// PromotedAt is set once a helper becomes a main Capsule.
+	PromotedAt      time.Time
+	LastActivityAt  time.Time
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	ResourceVersion ResourceVersion
 }
 
 func (c Capsule) WorkspaceImage(project Project) string {

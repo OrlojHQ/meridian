@@ -159,6 +159,14 @@ export type LifecycleMutationRequest = {
     expectedResourceVersion: number;
 };
 
+export type PromoteCapsuleRequest = {
+    expectedResourceVersion: number;
+    /**
+     * Close the link to the lead. The lead can no longer message or hear from this Capsule.
+     */
+    detach?: boolean;
+};
+
 export type CaptureMomentRequest = {
     name: string;
     expectedResourceVersion: number;
@@ -255,9 +263,13 @@ export type Capsule = {
      */
     leadThreadId?: string;
     /**
-     * On sub-Capsules, the Thread link that owns this helper.
+     * On sub-Capsules and promoted Capsules that kept their link, the Thread link to the lead.
      */
     linkId?: string;
+    /**
+     * When a helper sub-Capsule was promoted to a main Capsule.
+     */
+    promotedAt?: string;
     createdAt: string;
     updatedAt: string;
     resourceVersion: number;
@@ -464,6 +476,10 @@ export type ChildRollup = {
     done: number;
     needsYou: number;
     failed: number;
+    /**
+     * Auto-archived helpers. They are also counted as done.
+     */
+    archived: number;
 };
 
 export type DeliverySummary = {
@@ -577,6 +593,11 @@ export type CoordinationPolicy = {
      */
     allowedHarnesses?: Array<string>;
     deadlineSeconds?: number;
+    /**
+     * How long a finished helper stays idle before its session is ended and its Thread paused. 0 disables auto-archive; otherwise at least 60. Archiving never deletes a workspace or transcript.
+     *
+     */
+    archiveAfterSeconds?: number;
     onDeadline?: 'cancel_and_pause' | 'stop_new_work';
     spawnApproval?: 'auto';
 };
@@ -598,6 +619,7 @@ export type CoordinationGrant = {
     allowedHarnesses: Array<string>;
     deadlineAt: string;
     onDeadline: 'cancel_and_pause' | 'stop_new_work';
+    archiveAfterSeconds: number;
     descendantsCreated: number;
     revokedAt?: string;
     revokeReason?: 'operator' | 'deadline' | 'lead_ended';
@@ -629,7 +651,7 @@ export type ThreadLink = {
     name: string;
     harness: string;
     state: ThreadLinkState;
-    closeReason?: 'cancelled' | 'failed' | 'ended' | 'revoked';
+    closeReason?: 'cancelled' | 'failed' | 'ended' | 'revoked' | 'detached';
     phase: 'provisioning' | 'working' | 'idle' | 'awaiting_operator' | 'ended' | 'failed';
     reportSeq: number;
     reportDeliveredSeq: number;
@@ -641,6 +663,14 @@ export type ThreadLink = {
      * Operator messages sent straight to this helper. They do not count against the lead's message limit.
      */
     operatorMessages: number;
+    /**
+     * Set while the helper is auto-archived; cleared when its Thread resumes.
+     */
+    archivedAt?: string;
+    /**
+     * When the helper was promoted to a main Capsule. Promoted helpers are never archived.
+     */
+    promotedAt?: string;
     createdAt: string;
     updatedAt: string;
     resourceVersion: number;
@@ -2981,6 +3011,52 @@ export type PauseCapsuleResponses = {
 };
 
 export type PauseCapsuleResponse = PauseCapsuleResponses[keyof PauseCapsuleResponses];
+
+export type PromoteCapsuleData = {
+    body: PromoteCapsuleRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        capsuleId: string;
+    };
+    query?: never;
+    url: '/capsules/{capsuleId}/promote';
+};
+
+export type PromoteCapsuleErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type PromoteCapsuleError = PromoteCapsuleErrors[keyof PromoteCapsuleErrors];
+
+export type PromoteCapsuleResponses = {
+    /**
+     * Promoted Capsule
+     */
+    200: Capsule;
+};
+
+export type PromoteCapsuleResponse = PromoteCapsuleResponses[keyof PromoteCapsuleResponses];
 
 export type GetProjectEnvironmentData = {
     body?: never;

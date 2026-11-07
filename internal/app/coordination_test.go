@@ -66,6 +66,7 @@ func (r *coordRuntime) finishTurn(run domain.RunID, id, content string) {
 		}},
 		ports.RuntimeStructuredEvent{Sequence: next + 1, Frame: adapterproto.Frame{
 			Protocol: adapterproto.Version, Type: adapterproto.KindStatus, Status: adapterproto.StatusIdle,
+			ResumeState: `{"turn":"` + id + `"}`,
 		}},
 	)
 }

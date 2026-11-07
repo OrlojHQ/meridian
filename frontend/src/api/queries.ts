@@ -46,6 +46,13 @@ export const queries = {
       enabled: Boolean(projectId),
       refetchInterval: 5_000,
     }),
+  mainCapsules: (projectId: string) =>
+    queryOptions({
+      queryKey: ["capsules", projectId, "main"],
+      queryFn: ({ signal }) => api.capsules(projectId, signal, "main"),
+      enabled: Boolean(projectId),
+      refetchInterval: 5_000,
+    }),
   capsule: (capsuleId: string) =>
     queryOptions({
       queryKey: ["capsule", capsuleId],

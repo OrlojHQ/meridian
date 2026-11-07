@@ -192,6 +192,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /projects/{projectId}/environment", s.projectEnvironment)
 	s.mux.HandleFunc("PUT /projects/{projectId}/environment", s.projectEnvironment)
 	s.mux.HandleFunc("POST /capsules/{capsuleId}/pause", s.pauseCapsule)
+	s.mux.HandleFunc("POST /capsules/{capsuleId}/promote", s.promoteCapsule)
 	s.mux.HandleFunc("POST /capsules/{capsuleId}/resume", s.resumeCapsule)
 	s.mux.HandleFunc("POST /capsules/{capsuleId}/retry", func(w http.ResponseWriter, r *http.Request) { s.lifecycle(w, r, s.service.RetryCapsule) })
 	s.mux.HandleFunc("POST /capsules/{capsuleId}/delete", s.deleteCapsule)
@@ -1895,6 +1896,7 @@ type capsuleJSON struct {
 	Role            string                      `json:"role,omitempty"`
 	LeadThreadID    string                      `json:"leadThreadId,omitempty"`
 	LinkID          string                      `json:"linkId,omitempty"`
+	PromotedAt      string                      `json:"promotedAt,omitempty"`
 	CreatedAt       string                      `json:"createdAt"`
 	UpdatedAt       string                      `json:"updatedAt"`
 	ResourceVersion int64                       `json:"resourceVersion"`
@@ -2213,6 +2215,7 @@ func capsuleResponse(capsule domain.Capsule) capsuleJSON {
 		Role:            string(capsule.Role),
 		LeadThreadID:    string(capsule.LeadThreadID),
 		LinkID:          string(capsule.LinkID),
+		PromotedAt:      formatOptionalTime(capsule.PromotedAt),
 		CreatedAt:       capsule.CreatedAt.UTC().Format(time.RFC3339Nano),
 		UpdatedAt:       capsule.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		ResourceVersion: int64(capsule.ResourceVersion),

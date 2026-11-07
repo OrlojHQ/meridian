@@ -316,6 +316,12 @@ type PauseCapsuleParams struct {
 	IdempotencyKey string
 }
 
+// PromoteCapsuleParams is parameters of promoteCapsule operation.
+type PromoteCapsuleParams struct {
+	CapsuleId      string
+	IdempotencyKey string
+}
+
 // ProxyProviderInferenceParams is parameters of proxyProviderInference operation.
 type ProxyProviderInferenceParams struct {
 	Provider ProxyProviderInferenceProvider

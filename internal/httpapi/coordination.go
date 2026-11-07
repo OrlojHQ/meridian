@@ -15,16 +15,30 @@ type coordinationPolicyJSON struct {
 	MaxMessagesPerLink int      `json:"maxMessagesPerLink,omitempty"`
 	AllowedHarnesses   []string `json:"allowedHarnesses,omitempty"`
 	DeadlineSeconds    int64    `json:"deadlineSeconds,omitempty"`
-	OnDeadline         string   `json:"onDeadline,omitempty"`
-	SpawnApproval      string   `json:"spawnApproval,omitempty"`
+	// ArchiveAfterSeconds is a pointer because 0 disables auto-archive.
+	ArchiveAfterSeconds *int64 `json:"archiveAfterSeconds,omitempty"`
+	OnDeadline          string `json:"onDeadline,omitempty"`
+	SpawnApproval       string `json:"spawnApproval,omitempty"`
 }
 
 func (p *coordinationPolicyJSON) policy() *domain.CoordinationPolicy {
 	if p == nil {
 		return nil
 	}
+	var archiveAfter *time.Duration
+	if p.ArchiveAfterSeconds != nil {
+		// Out-of-range values become negative so Normalize rejects them
+		// instead of overflowing.
+		value := time.Duration(-1)
+		if seconds := *p.ArchiveAfterSeconds; seconds >= 0 &&
+			seconds <= int64(domain.CoordinationMaxArchiveAfter/time.Second) {
+			value = time.Duration(seconds) * time.Second
+		}
+		archiveAfter = &value
+	}
 	return &domain.CoordinationPolicy{
-		MaxDepth: p.MaxDepth, MaxChildren: p.MaxChildren, MaxDescendants: p.MaxDescendants,
+		ArchiveAfter: archiveAfter,
+		MaxDepth:     p.MaxDepth, MaxChildren: p.MaxChildren, MaxDescendants: p.MaxDescendants,
 		MaxLiveCapsules: p.MaxLiveCapsules, MaxMessagesPerLink: p.MaxMessagesPerLink,
 		AllowedHarnesses: p.AllowedHarnesses, Deadline: time.Duration(p.DeadlineSeconds) * time.Second,
 		OnDeadline: domain.OnDeadline(p.OnDeadline), SpawnApproval: domain.SpawnApproval(p.SpawnApproval),
@@ -38,26 +52,27 @@ type coordinationCapabilityJSON struct {
 }
 
 type coordinationGrantJSON struct {
-	ID                 string   `json:"id"`
-	ProjectID          string   `json:"projectId"`
-	RootThreadID       string   `json:"rootThreadId"`
-	RootCapsuleID      string   `json:"rootCapsuleId"`
-	State              string   `json:"state"`
-	SpawnApproval      string   `json:"spawnApproval"`
-	MaxDepth           int      `json:"maxDepth"`
-	MaxChildren        int      `json:"maxChildren"`
-	MaxDescendants     int      `json:"maxDescendants"`
-	MaxLiveCapsules    int      `json:"maxLiveCapsules"`
-	MaxMessagesPerLink int      `json:"maxMessagesPerLink"`
-	AllowedHarnesses   []string `json:"allowedHarnesses"`
-	DeadlineAt         string   `json:"deadlineAt"`
-	OnDeadline         string   `json:"onDeadline"`
-	DescendantsCreated int      `json:"descendantsCreated"`
-	RevokedAt          string   `json:"revokedAt,omitempty"`
-	RevokeReason       string   `json:"revokeReason,omitempty"`
-	CreatedAt          string   `json:"createdAt"`
-	UpdatedAt          string   `json:"updatedAt"`
-	ResourceVersion    int64    `json:"resourceVersion"`
+	ID                  string   `json:"id"`
+	ProjectID           string   `json:"projectId"`
+	RootThreadID        string   `json:"rootThreadId"`
+	RootCapsuleID       string   `json:"rootCapsuleId"`
+	State               string   `json:"state"`
+	SpawnApproval       string   `json:"spawnApproval"`
+	MaxDepth            int      `json:"maxDepth"`
+	MaxChildren         int      `json:"maxChildren"`
+	MaxDescendants      int      `json:"maxDescendants"`
+	MaxLiveCapsules     int      `json:"maxLiveCapsules"`
+	MaxMessagesPerLink  int      `json:"maxMessagesPerLink"`
+	AllowedHarnesses    []string `json:"allowedHarnesses"`
+	DeadlineAt          string   `json:"deadlineAt"`
+	OnDeadline          string   `json:"onDeadline"`
+	ArchiveAfterSeconds int64    `json:"archiveAfterSeconds"`
+	DescendantsCreated  int      `json:"descendantsCreated"`
+	RevokedAt           string   `json:"revokedAt,omitempty"`
+	RevokeReason        string   `json:"revokeReason,omitempty"`
+	CreatedAt           string   `json:"createdAt"`
+	UpdatedAt           string   `json:"updatedAt"`
+	ResourceVersion     int64    `json:"resourceVersion"`
 }
 
 type threadLinkJSON struct {
@@ -81,6 +96,8 @@ type threadLinkJSON struct {
 	LastReportAt       string `json:"lastReportAt,omitempty"`
 	MessagesForwarded  int    `json:"messagesForwarded"`
 	OperatorMessages   int    `json:"operatorMessages"`
+	ArchivedAt         string `json:"archivedAt,omitempty"`
+	PromotedAt         string `json:"promotedAt,omitempty"`
 	CreatedAt          string `json:"createdAt"`
 	UpdatedAt          string `json:"updatedAt"`
 	ResourceVersion    int64  `json:"resourceVersion"`
@@ -88,6 +105,11 @@ type threadLinkJSON struct {
 
 type threadLinkPageJSON struct {
 	Items []threadLinkJSON `json:"items"`
+}
+
+type promoteCapsuleRequest struct {
+	ExpectedResourceVersion int64 `json:"expectedResourceVersion"`
+	Detach                  bool  `json:"detach,omitempty"`
 }
 
 type revokeCoordinationGrantRequest struct {
@@ -114,8 +136,9 @@ func grantResponse(grant domain.CoordinationGrant) coordinationGrantJSON {
 		MaxChildren: grant.MaxChildren, MaxDescendants: grant.MaxDescendants,
 		MaxLiveCapsules: grant.MaxLiveCapsules, MaxMessagesPerLink: grant.MaxMessagesPerLink,
 		AllowedHarnesses: harnesses, DeadlineAt: grant.DeadlineAt.UTC().Format(time.RFC3339Nano),
-		OnDeadline: string(grant.OnDeadline), DescendantsCreated: grant.DescendantsCreated,
-		RevokedAt: formatOptionalTime(grant.RevokedAt), RevokeReason: string(grant.RevokeReason),
+		OnDeadline: string(grant.OnDeadline), ArchiveAfterSeconds: int64(grant.ArchiveAfter / time.Second),
+		DescendantsCreated: grant.DescendantsCreated,
+		RevokedAt:          formatOptionalTime(grant.RevokedAt), RevokeReason: string(grant.RevokeReason),
 		CreatedAt:       grant.CreatedAt.UTC().Format(time.RFC3339Nano),
 		UpdatedAt:       grant.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		ResourceVersion: int64(grant.ResourceVersion),
@@ -133,6 +156,8 @@ func (s *Server) linkResponse(request *http.Request, link domain.ThreadLink) thr
 		LastReportStatus: string(link.LastReportStatus), LastReportReason: string(link.LastReportReason),
 		LastReportAt: formatOptionalTime(link.LastReportAt), MessagesForwarded: link.MessagesForwarded,
 		OperatorMessages: link.OperatorMessages,
+		ArchivedAt:       formatOptionalTime(link.ArchivedAt),
+		PromotedAt:       formatOptionalTime(link.PromotedAt),
 		CreatedAt:        link.CreatedAt.UTC().Format(time.RFC3339Nano),
 		UpdatedAt:        link.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		ResourceVersion:  int64(link.ResourceVersion),
@@ -177,6 +202,23 @@ func (s *Server) revokeCoordinationGrant(writer http.ResponseWriter, request *ht
 	}
 	writer.Header().Set("ETag", etag(grant.ResourceVersion))
 	writeJSON(writer, http.StatusOK, grantResponse(grant))
+}
+
+func (s *Server) promoteCapsule(writer http.ResponseWriter, request *http.Request) {
+	var input promoteCapsuleRequest
+	if !decode(writer, request, &input) {
+		return
+	}
+	capsule, err := s.service.PromoteCapsule(
+		request.Context(), domain.CapsuleID(request.PathValue("capsuleId")),
+		domain.ResourceVersion(input.ExpectedResourceVersion), input.Detach,
+		request.Header.Get("Idempotency-Key"),
+	)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	writeCapsule(writer, http.StatusOK, capsule)
 }
 
 func (s *Server) listThreadLinks(writer http.ResponseWriter, request *http.Request) {

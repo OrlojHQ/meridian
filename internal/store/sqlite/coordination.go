@@ -14,8 +14,8 @@ const grantSelect = `
 	SELECT id, project_id, root_thread_id, root_capsule_id, state, spawn_approval,
 		max_depth, max_children, max_descendants, max_live_capsules,
 		max_messages_per_link, allowed_harnesses, deadline_at, on_deadline,
-		descendants_created, revoked_at, revoke_reason, created_at, updated_at,
-		resource_version
+		descendants_created, revoked_at, revoke_reason, archive_after_seconds,
+		created_at, updated_at, resource_version
 	FROM coordination_grants`
 
 func (r *repository) InsertCoordinationGrant(ctx context.Context, grant domain.CoordinationGrant) error {
@@ -28,14 +28,15 @@ func (r *repository) InsertCoordinationGrant(ctx context.Context, grant domain.C
 			id, project_id, root_thread_id, root_capsule_id, state, spawn_approval,
 			max_depth, max_children, max_descendants, max_live_capsules,
 			max_messages_per_link, allowed_harnesses, deadline_at, on_deadline,
-			descendants_created, revoked_at, revoke_reason, created_at, updated_at,
-			resource_version
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			descendants_created, revoked_at, revoke_reason, archive_after_seconds,
+			created_at, updated_at, resource_version
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		grant.ID, grant.ProjectID, grant.RootThreadID, grant.RootCapsuleID, grant.State,
 		grant.SpawnApproval, grant.MaxDepth, grant.MaxChildren, grant.MaxDescendants,
 		grant.MaxLiveCapsules, grant.MaxMessagesPerLink, string(harnesses),
 		formatTime(grant.DeadlineAt), grant.OnDeadline, grant.DescendantsCreated,
-		nullableTime(grant.RevokedAt), grant.RevokeReason, formatTime(grant.CreatedAt),
+		nullableTime(grant.RevokedAt), grant.RevokeReason, int64(grant.ArchiveAfter/time.Second),
+		formatTime(grant.CreatedAt),
 		formatTime(grant.UpdatedAt), grant.ResourceVersion,
 	)
 	return mapError(err)
@@ -116,15 +117,17 @@ func scanGrant(row scanner) (domain.CoordinationGrant, error) {
 	var grant domain.CoordinationGrant
 	var harnesses, deadline, created, updated string
 	var revoked sql.NullString
+	var archiveAfter int64
 	if err := row.Scan(
 		&grant.ID, &grant.ProjectID, &grant.RootThreadID, &grant.RootCapsuleID, &grant.State,
 		&grant.SpawnApproval, &grant.MaxDepth, &grant.MaxChildren, &grant.MaxDescendants,
 		&grant.MaxLiveCapsules, &grant.MaxMessagesPerLink, &harnesses, &deadline,
 		&grant.OnDeadline, &grant.DescendantsCreated, &revoked, &grant.RevokeReason,
-		&created, &updated, &grant.ResourceVersion,
+		&archiveAfter, &created, &updated, &grant.ResourceVersion,
 	); err != nil {
 		return domain.CoordinationGrant{}, mapError(err)
 	}
+	grant.ArchiveAfter = time.Duration(archiveAfter) * time.Second
 	if err := json.Unmarshal([]byte(harnesses), &grant.AllowedHarnesses); err != nil {
 		return domain.CoordinationGrant{}, err
 	}
@@ -149,7 +152,7 @@ const linkSelect = `
 		child_thread_id, child_capsule_id, depth, name, harness, state, close_reason,
 		report_seq, report_delivered_seq, report_message_seq, last_report_status,
 		last_report_reason, last_report_at, messages_forwarded, operator_messages,
-		operator_noticed, created_at, updated_at, resource_version
+		operator_noticed, archived_at, promoted_at, created_at, updated_at, resource_version
 	FROM thread_links`
 
 func (r *repository) InsertThreadLink(ctx context.Context, link domain.ThreadLink) error {
@@ -159,14 +162,15 @@ func (r *repository) InsertThreadLink(ctx context.Context, link domain.ThreadLin
 			child_thread_id, child_capsule_id, depth, name, harness, state, close_reason,
 			report_seq, report_delivered_seq, report_message_seq, last_report_status,
 			last_report_reason, last_report_at, messages_forwarded, operator_messages,
-			operator_noticed, created_at, updated_at, resource_version
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			operator_noticed, archived_at, promoted_at, created_at, updated_at, resource_version
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		link.ID, link.GrantID, link.ParentThreadID, link.ParentCapsuleID, link.ChildIntentID,
 		link.ChildThreadID, link.ChildCapsuleID, link.Depth, link.Name, link.Harness,
 		link.State, link.CloseReason, link.ReportSeq, link.ReportDeliveredSeq,
 		link.ReportMessageSeq, link.LastReportStatus, link.LastReportReason,
 		nullableTime(link.LastReportAt), link.MessagesForwarded, link.OperatorMessages,
-		link.OperatorNoticed, formatTime(link.CreatedAt), formatTime(link.UpdatedAt), link.ResourceVersion,
+		link.OperatorNoticed, nullableTime(link.ArchivedAt), nullableTime(link.PromotedAt),
+		formatTime(link.CreatedAt), formatTime(link.UpdatedAt), link.ResourceVersion,
 	)
 	return mapError(err)
 }
@@ -183,12 +187,14 @@ func (r *repository) UpdateThreadLink(
 		UPDATE thread_links SET state = ?, close_reason = ?, report_seq = ?,
 			report_delivered_seq = ?, report_message_seq = ?, last_report_status = ?,
 			last_report_reason = ?, last_report_at = ?, messages_forwarded = ?,
-			operator_messages = ?, operator_noticed = ?, updated_at = ?, resource_version = ?
+			operator_messages = ?, operator_noticed = ?, archived_at = ?, promoted_at = ?,
+			updated_at = ?, resource_version = ?
 		WHERE id = ? AND resource_version = ?`,
 		link.State, link.CloseReason, link.ReportSeq, link.ReportDeliveredSeq,
 		link.ReportMessageSeq, link.LastReportStatus, link.LastReportReason,
 		nullableTime(link.LastReportAt), link.MessagesForwarded, link.OperatorMessages,
-		link.OperatorNoticed, formatTime(link.UpdatedAt),
+		link.OperatorNoticed, nullableTime(link.ArchivedAt), nullableTime(link.PromotedAt),
+		formatTime(link.UpdatedAt),
 		link.ResourceVersion, link.ID, expected,
 	)
 	return r.expectOneRow(ctx, result, err, "thread_links", string(link.ID))
@@ -216,6 +222,49 @@ func (r *repository) ListThreadLinksByGrant(
 	return r.listLinks(ctx, linkSelect+" WHERE grant_id = ? ORDER BY created_at, id LIMIT 1000", grantID)
 }
 
+// ListArchivableThreadLinks returns helper links the auto-archive sweep should
+// consider: not archived or promoted, under a grant with auto-archive
+// enabled, and either reported idle or closed for a reason other than
+// failure, and unchanged for at least the grant's period. The sweep applies
+// the remaining idle and attention checks.
+func (r *repository) ListArchivableThreadLinks(
+	ctx context.Context, now time.Time, limit int,
+) ([]domain.ThreadLink, error) {
+	if limit <= 0 || limit > 1000 {
+		return nil, fmt.Errorf("%w: invalid archive scan", domain.ErrInvalid)
+	}
+	rows, err := r.q.QueryContext(ctx, `
+		SELECT l.id, l.grant_id, l.parent_thread_id, l.parent_capsule_id, l.child_intent_id,
+			l.child_thread_id, l.child_capsule_id, l.depth, l.name, l.harness, l.state, l.close_reason,
+			l.report_seq, l.report_delivered_seq, l.report_message_seq, l.last_report_status,
+			l.last_report_reason, l.last_report_at, l.messages_forwarded, l.operator_messages,
+			l.operator_noticed, l.archived_at, l.promoted_at, l.created_at, l.updated_at,
+			l.resource_version
+		FROM thread_links l
+			JOIN coordination_grants g ON g.id = l.grant_id
+			JOIN capsules c ON c.id = l.child_capsule_id
+		WHERE l.archived_at IS NULL AND l.promoted_at IS NULL AND g.archive_after_seconds > 0
+			AND c.role = 'sub' AND c.state NOT IN ('Deleting', 'Deleted', 'Failed')
+			AND c.desired_state <> 'Deleted'
+			AND ((l.state = 'active' AND l.last_report_status = 'turn_ended')
+				OR (l.state = 'closed' AND l.close_reason IN ('cancelled', 'ended', 'revoked')))
+			AND julianday(l.updated_at) + g.archive_after_seconds / 86400.0 <= julianday(?)
+		ORDER BY l.updated_at, l.id LIMIT ?`, formatTime(now), limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var links []domain.ThreadLink
+	for rows.Next() {
+		link, err := scanLink(rows)
+		if err != nil {
+			return nil, err
+		}
+		links = append(links, link)
+	}
+	return links, rows.Err()
+}
+
 func (r *repository) listLinks(ctx context.Context, query string, arg any) ([]domain.ThreadLink, error) {
 	rows, err := r.q.QueryContext(ctx, query, arg)
 	if err != nil {
@@ -236,21 +285,26 @@ func (r *repository) listLinks(ctx context.Context, query string, arg any) ([]do
 func scanLink(row scanner) (domain.ThreadLink, error) {
 	var link domain.ThreadLink
 	var created, updated string
-	var reported sql.NullString
+	var reported, archived, promoted sql.NullString
 	if err := row.Scan(
 		&link.ID, &link.GrantID, &link.ParentThreadID, &link.ParentCapsuleID, &link.ChildIntentID,
 		&link.ChildThreadID, &link.ChildCapsuleID, &link.Depth, &link.Name, &link.Harness,
 		&link.State, &link.CloseReason, &link.ReportSeq, &link.ReportDeliveredSeq,
 		&link.ReportMessageSeq, &link.LastReportStatus, &link.LastReportReason, &reported,
 		&link.MessagesForwarded, &link.OperatorMessages, &link.OperatorNoticed,
-		&created, &updated, &link.ResourceVersion,
+		&archived, &promoted, &created, &updated, &link.ResourceVersion,
 	); err != nil {
 		return domain.ThreadLink{}, mapError(err)
 	}
 	var err error
-	if reported.Valid {
-		if link.LastReportAt, err = parseTime(reported.String); err != nil {
-			return domain.ThreadLink{}, err
+	for _, field := range []struct {
+		value  sql.NullString
+		target *time.Time
+	}{{reported, &link.LastReportAt}, {archived, &link.ArchivedAt}, {promoted, &link.PromotedAt}} {
+		if field.value.Valid {
+			if *field.target, err = parseTime(field.value.String); err != nil {
+				return domain.ThreadLink{}, err
+			}
 		}
 	}
 	if link.CreatedAt, err = parseTime(created); err != nil {

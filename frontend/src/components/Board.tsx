@@ -2,13 +2,15 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
-import type { BoardItem, ChildRollup } from "../api/generated/types.gen";
+import type { BoardItem } from "../api/generated/types.gen";
 import { queries } from "../api/queries";
 import {
   relativeTime,
+  rollupSummary,
   sessionPath,
   type ActivityGroup,
 } from "../shell/capsuleActivity";
+import { PromoteHelper } from "./PromoteHelper";
 import { safeInline } from "./threadChat";
 import { ThreadError } from "./ThreadError";
 import { HarnessMark } from "./ui/HarnessMark";
@@ -35,15 +37,6 @@ export function boardRowPath(item: BoardItem) {
   return sessionPath(item.capsule.id, item.thread?.id);
 }
 
-export function rollupSummary(rollup: ChildRollup) {
-  const parts = [`${rollup.done}/${rollup.total} done`];
-  if (rollup.needsYou) parts.push(`${rollup.needsYou} need${rollup.needsYou === 1 ? "s" : ""} you`);
-  if (rollup.working) parts.push(`${rollup.working} working`);
-  if (rollup.idle) parts.push(`${rollup.idle} idle`);
-  if (rollup.failed) parts.push(`${rollup.failed} failed`);
-  return parts.join(", ");
-}
-
 function safePullRequestURL(value?: string) {
   if (!value) return undefined;
   try {
@@ -56,6 +49,24 @@ function safePullRequestURL(value?: string) {
 
 function itemName(item: BoardItem) {
   return safeInline(item.link?.name ?? item.capsule.name);
+}
+
+function helperRow(helper: BoardItem) {
+  const helperGroup = boardGroups.find((entry) => entry.status === helper.status);
+  return (
+    <li key={helper.capsule.id}>
+      <span
+        className={`state-dot activity-dot-${helperGroup?.activity ?? "idle"}`}
+        aria-hidden="true"
+      />
+      <span className="board-helper-name">
+        <Link to={boardRowPath(helper)}>{itemName(helper)}</Link>
+        {helper.capsule.promotedAt && <span className="badge">Promoted</span>}
+      </span>
+      <small>{helper.needsYou ? needsYouLabels[helper.needsYou] : helperGroup?.title}</small>
+      <time dateTime={helper.since}>{relativeTime(helper.since)}</time>
+    </li>
+  );
 }
 
 function BoardRow({
@@ -73,6 +84,7 @@ function BoardRow({
   const pullRequest = safePullRequestURL(item.latestDelivery?.pullRequestUrl);
   const harness = item.thread?.harness ?? item.capsule.harness ?? undefined;
   const label = item.needsYou ? needsYouLabels[item.needsYou] : group?.title;
+  const archived = helpers?.filter((helper) => helper.link?.archivedAt) ?? [];
   return (
     <li className={`inbox-row board-row inbox-row-${group?.activity ?? "idle"}`}>
       <HarnessMark harness={harness} size="md" />
@@ -86,7 +98,7 @@ function BoardRow({
           <span className="inbox-status">{label}</span>
           {item.link && (
             <span className="board-breadcrumb">
-              helper of{" "}
+              {item.capsule.promotedAt ? "promoted from" : "helper of"}{" "}
               {lead ? (
                 <Link to={sessionPath(lead.capsuleId, item.link.parentThreadId)}>{lead.name}</Link>
               ) : (
@@ -106,22 +118,15 @@ function BoardRow({
         </p>
         {expanded && helpers && (
           <ul className="board-helpers" aria-label={`Helpers of ${itemName(item)}`}>
-            {helpers.map((helper) => {
-              const helperGroup = boardGroups.find((entry) => entry.status === helper.status);
-              return (
-                <li key={helper.capsule.id}>
-                  <span
-                    className={`state-dot activity-dot-${helperGroup?.activity ?? "idle"}`}
-                    aria-hidden="true"
-                  />
-                  <Link to={boardRowPath(helper)}>{itemName(helper)}</Link>
-                  <small>
-                    {helper.needsYou ? needsYouLabels[helper.needsYou] : helperGroup?.title}
-                  </small>
-                  <time dateTime={helper.since}>{relativeTime(helper.since)}</time>
-                </li>
-              );
-            })}
+            {helpers.filter((helper) => !helper.link?.archivedAt).map(helperRow)}
+            {archived.length > 0 && (
+              <li className="board-archived">
+                <details>
+                  <summary>Archived ({archived.length})</summary>
+                  <ul className="board-helpers">{archived.map(helperRow)}</ul>
+                </details>
+              </li>
+            )}
           </ul>
         )}
       </div>
@@ -136,6 +141,7 @@ function BoardRow({
             {expanded ? "Hide helpers" : `Helpers (${helpers.length})`}
           </button>
         )}
+        {item.surfaced && item.capsule.role === "sub" && <PromoteHelper capsule={item.capsule} />}
         <Link className="button-link primary-button" to={boardRowPath(item)}>
           {item.status === "needs_you" && item.needsYou !== "failed" ? "Respond" : "Open"}
         </Link>
