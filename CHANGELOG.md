@@ -30,6 +30,16 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   turns off its `web_search` tool and `multi_agent` feature by default,
   because many compatible servers accept only function tools.
 
+- Typing `/` in the Thread composer opens a filterable menu of the commands
+  the harness reports for this session. Claude Code reports its commands at
+  startup, Pi through `get_commands`, and OpenCode through `GET /command`.
+  Codex reports `compact`, `review`, and its skills, which the adapter runs
+  through app-server calls, and Pi gains a `compact` action. Adapters send
+  the list in a new negotiated, bounded `commands` frame of
+  `meridian.adapter.v1`, and Thread blocks expose it as a `commands` event.
+  Unknown `/text` is still sent as a prompt. Stop and New session appear as
+  Meridian controls (ADR 0028).
+
 - `meridian project apply-harness PROJECT_ID NAME=IMAGE` allowlists a custom
   harness image on an existing Project. `meridian thread follow --until-idle`
   exits when the turn that answers the latest prompt goes idle.

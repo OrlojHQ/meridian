@@ -218,6 +218,21 @@ Profile-registered MCP servers (`--mcp-server`) are trusted profile metadata.
 They take absolute executables and quote-free arguments, run with the harness's
 authority, and their tool calls still pass through harness permission prompts.
 
+Slash command lists come from the harness, which reads them from repository
+files, skills, plugins, and MCP servers, so they are hostile (ADR 0028). A
+`commands` frame is accepted only after both hellos negotiate it, and
+`adapterproto` bounds it to 128 entries with restricted, unique names and
+aliases, bounded descriptions and hints, and no control characters. The list
+is stored only inside the encrypted transcript and rendered as text. It
+grants no authority: the controller sends `/name args` as an ordinary user
+message, and the adapter maps a name to a harness protocol call (Codex
+compaction, review, and skills, Pi compaction, OpenCode commands) only when it
+advertised that name as an action itself. Those calls run with the same harness
+permissions as a prompt. Meridian's own controls (stop, new session) are API
+calls the UI makes and are never sent to the harness. Model switching is not
+exposed, so a reported command cannot move a session off its provider
+connection.
+
 Normal Run prompts remain transient. Run records and events do not persist
 prompts, raw terminal bytes, full diffs, setup output, or secrets. An explicitly
 created structured Thread is the sole exception: its typed blocks are durably
@@ -479,6 +494,9 @@ they are not a statement that every planned path is already implemented.
 - Structured adapter transport is non-PTY, exact-versioned, bounded at both
   framing and private HTTP layers, and advertised only by providers that
   implement the protected Capsule transport end to end.
+- Harness-reported slash commands are negotiated, bounded, encrypted with the
+  transcript, and grant no authority: an adapter runs only the actions it
+  advertised, from an ordinary user message.
 - Network, compute, storage, and lifetime are bounded outside the Capsule.
 - Agent Sandbox lifecycle management is never represented as a sandboxing or
   untrusted multi-tenancy guarantee.
