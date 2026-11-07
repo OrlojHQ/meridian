@@ -47,6 +47,7 @@ export type Capabilities = {
      * False when provider resource metrics are not exposed by the public API.
      */
     resourceMetrics: boolean;
+    coordination?: CoordinationCapability;
     /**
      * Installation-known harness packs the operator may apply on a Project. Not a boolean capability. Spawn still uses only names stored on that Project.
      *
@@ -248,10 +249,24 @@ export type Capsule = {
     failure?: string;
     restoreComplete: boolean;
     maintenance?: string;
+    role?: CapsuleRole;
+    /**
+     * On sub-Capsules, the lead Thread that spawned this helper.
+     */
+    leadThreadId?: string;
+    /**
+     * On sub-Capsules, the Thread link that owns this helper.
+     */
+    linkId?: string;
     createdAt: string;
     updatedAt: string;
     resourceVersion: number;
 };
+
+/**
+ * main Capsules are operator-created; sub Capsules were spawned by a lead Thread.
+ */
+export type CapsuleRole = 'main' | 'sub';
 
 export type CapsuleState = 'Creating' | 'Preparing' | 'Ready' | 'Paused' | 'Failed' | 'Sealed' | 'Deleting' | 'Deleted';
 
@@ -490,6 +505,110 @@ export type CreateProjectThreadRequest = {
      * Encrypted as a transcript envelope before SQLite persistence. Prefer stdin in shells.
      */
     prompt: string;
+    coordination?: CoordinationPolicy;
+};
+
+/**
+ * Makes the new Thread a lead that may spawn helper Threads in their own sub-Capsules. Omitted limits take their defaults. Helpers answer to the operator: the lead never approves permissions or answers input.
+ *
+ */
+export type CoordinationPolicy = {
+    maxDepth?: number;
+    maxChildren?: number;
+    maxDescendants?: number;
+    maxLiveCapsules?: number;
+    maxMessagesPerLink?: number;
+    /**
+     * Structured harnesses helpers may use; each must be on the Project allowlist. Defaults to the lead's harness.
+     */
+    allowedHarnesses?: Array<string>;
+    deadlineSeconds?: number;
+    onDeadline?: 'cancel_and_pause' | 'stop_new_work';
+    spawnApproval?: 'auto';
+};
+
+export type CoordinationGrantState = 'active' | 'revoked' | 'expired';
+
+export type CoordinationGrant = {
+    id: string;
+    projectId: string;
+    rootThreadId: string;
+    rootCapsuleId: string;
+    state: CoordinationGrantState;
+    spawnApproval: 'auto';
+    maxDepth: number;
+    maxChildren: number;
+    maxDescendants: number;
+    maxLiveCapsules: number;
+    maxMessagesPerLink: number;
+    allowedHarnesses: Array<string>;
+    deadlineAt: string;
+    onDeadline: 'cancel_and_pause' | 'stop_new_work';
+    descendantsCreated: number;
+    revokedAt?: string;
+    revokeReason?: 'operator' | 'deadline' | 'lead_ended';
+    createdAt: string;
+    updatedAt: string;
+    resourceVersion: number;
+};
+
+export type RevokeCoordinationGrantRequest = {
+    expectedResourceVersion: number;
+    cancelDescendants?: boolean;
+};
+
+export type ThreadLinkState = 'active' | 'closed';
+
+/**
+ * Content-free handle from a lead Thread to one helper. Report text is re-derived from the helper's encrypted transcript and is never stored on the link.
+ *
+ */
+export type ThreadLink = {
+    id: string;
+    grantId: string;
+    parentThreadId: string;
+    parentCapsuleId: string;
+    childThreadId: string;
+    childCapsuleId: string;
+    childIntentId: string;
+    depth: number;
+    name: string;
+    harness: string;
+    state: ThreadLinkState;
+    closeReason?: 'cancelled' | 'failed' | 'ended' | 'revoked';
+    phase: 'provisioning' | 'working' | 'idle' | 'awaiting_operator' | 'ended' | 'failed';
+    reportSeq: number;
+    reportDeliveredSeq: number;
+    lastReportStatus?: 'turn_ended' | 'failed';
+    lastReportReason?: 'cancelled' | 'capsule_failed' | 'session_ended' | 'revoked';
+    lastReportAt?: string;
+    messagesForwarded: number;
+    createdAt: string;
+    updatedAt: string;
+    resourceVersion: number;
+};
+
+export type ThreadLinkPage = {
+    items: Array<ThreadLink>;
+};
+
+export type CoordinationCapability = {
+    /**
+     * True when lead Threads may spawn helper Threads through the Capsule-local coordination mailbox.
+     */
+    supported: boolean;
+    maxDepth: number;
+    maxDescendants: number;
+};
+
+/**
+ * Marks a user-role message Meridian wrote for coordination rather than the operator: from_lead on a helper, from_helpers on a lead.
+ *
+ */
+export type ThreadOrigin = {
+    source: 'coordination';
+    kind: 'from_lead' | 'from_helpers';
+    linkIds?: Array<string>;
 };
 
 export type ProjectThreadIntentState = 'provisioning' | 'ready' | 'failed';
@@ -564,6 +683,26 @@ export type Thread = {
     turn?: 'working' | 'idle';
     protocol?: 'meridian.adapter.v1';
     structuredSupported?: boolean;
+    /**
+     * Present on a lead Thread that holds a Coordination Grant.
+     */
+    coordinationGrantId?: string;
+    /**
+     * Present on a helper Thread; the lead that spawned it.
+     */
+    parentThreadId?: string;
+    /**
+     * The lead at the root of this Thread's coordination tree.
+     */
+    rootThreadId?: string;
+    /**
+     * Present on a helper Thread; its link from the lead.
+     */
+    linkId?: string;
+    /**
+     * Zero for leads, one for their helpers.
+     */
+    depth?: number;
     encryptedAtRest: true;
     messageCount: number;
     encryptedBytes: number;
@@ -662,6 +801,7 @@ export type ThreadBlock = {
      */
     content?: string;
     event?: ThreadAdapterEvent;
+    origin?: ThreadOrigin;
     createdAt: string;
 };
 
@@ -877,6 +1017,7 @@ export type CapabilitiesWritable = {
      * False when provider resource metrics are not exposed by the public API.
      */
     resourceMetrics: boolean;
+    coordination?: CoordinationCapability;
     /**
      * Installation-known harness packs the operator may apply on a Project. Not a boolean capability. Spawn still uses only names stored on that Project.
      *
@@ -999,6 +1140,10 @@ export type RunId = string;
 export type ThreadId = string;
 
 export type ProjectThreadIntentId = string;
+
+export type LinkId = string;
+
+export type GrantId = string;
 
 export type MomentId = string;
 
@@ -1869,6 +2014,161 @@ export type GetProjectThreadIntentResponses = {
 
 export type GetProjectThreadIntentResponse = GetProjectThreadIntentResponses[keyof GetProjectThreadIntentResponses];
 
+export type ListThreadLinksData = {
+    body?: never;
+    path: {
+        threadId: string;
+    };
+    query?: never;
+    url: '/threads/{threadId}/links';
+};
+
+export type ListThreadLinksErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Request rate limit exceeded
+     */
+    429: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ListThreadLinksError = ListThreadLinksErrors[keyof ListThreadLinksErrors];
+
+export type ListThreadLinksResponses = {
+    /**
+     * Thread links in creation order
+     */
+    200: ThreadLinkPage;
+};
+
+export type ListThreadLinksResponse = ListThreadLinksResponses[keyof ListThreadLinksResponses];
+
+export type GetThreadLinkData = {
+    body?: never;
+    path: {
+        linkId: string;
+    };
+    query?: never;
+    url: '/thread-links/{linkId}';
+};
+
+export type GetThreadLinkErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Request rate limit exceeded
+     */
+    429: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type GetThreadLinkError = GetThreadLinkErrors[keyof GetThreadLinkErrors];
+
+export type GetThreadLinkResponses = {
+    /**
+     * Thread link
+     */
+    200: ThreadLink;
+};
+
+export type GetThreadLinkResponse = GetThreadLinkResponses[keyof GetThreadLinkResponses];
+
+export type GetCoordinationGrantData = {
+    body?: never;
+    path: {
+        grantId: string;
+    };
+    query?: never;
+    url: '/coordination-grants/{grantId}';
+};
+
+export type GetCoordinationGrantErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Request rate limit exceeded
+     */
+    429: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type GetCoordinationGrantError = GetCoordinationGrantErrors[keyof GetCoordinationGrantErrors];
+
+export type GetCoordinationGrantResponses = {
+    /**
+     * Coordination Grant
+     */
+    200: CoordinationGrant;
+};
+
+export type GetCoordinationGrantResponse = GetCoordinationGrantResponses[keyof GetCoordinationGrantResponses];
+
+export type RevokeCoordinationGrantData = {
+    body: RevokeCoordinationGrantRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        grantId: string;
+    };
+    query?: never;
+    url: '/coordination-grants/{grantId}/revoke';
+};
+
+export type RevokeCoordinationGrantErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Request rate limit exceeded
+     */
+    429: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type RevokeCoordinationGrantError = RevokeCoordinationGrantErrors[keyof RevokeCoordinationGrantErrors];
+
+export type RevokeCoordinationGrantResponses = {
+    /**
+     * Revoked grant
+     */
+    200: CoordinationGrant;
+};
+
+export type RevokeCoordinationGrantResponse = RevokeCoordinationGrantResponses[keyof RevokeCoordinationGrantResponses];
+
 export type ListCapsulesData = {
     body?: never;
     path: {
@@ -1877,6 +2177,10 @@ export type ListCapsulesData = {
     query?: {
         cursor?: string;
         limit?: number;
+        /**
+         * Only main Capsules or only helper sub-Capsules.
+         */
+        role?: CapsuleRole;
     };
     url: '/projects/{projectId}/capsules';
 };

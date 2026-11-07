@@ -163,6 +163,10 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("PATCH /projects/{projectId}", s.patchProject)
 	s.mux.HandleFunc("POST /projects/{projectId}/threads", s.createProjectThread)
 	s.mux.HandleFunc("GET /project-thread-intents/{intentId}", s.getProjectThreadIntent)
+	s.mux.HandleFunc("GET /threads/{threadId}/links", s.listThreadLinks)
+	s.mux.HandleFunc("GET /thread-links/{linkId}", s.getThreadLink)
+	s.mux.HandleFunc("GET /coordination-grants/{grantId}", s.getCoordinationGrant)
+	s.mux.HandleFunc("POST /coordination-grants/{grantId}/revoke", s.revokeCoordinationGrant)
 	s.mux.HandleFunc("PUT /secrets/{secretName}", s.putSecret)
 	s.mux.HandleFunc("GET /secrets", s.listSecrets)
 	s.mux.HandleFunc("DELETE /secrets/{secretName}", s.deleteSecret)
@@ -377,6 +381,7 @@ func (s *Server) createProjectThread(writer http.ResponseWriter, request *http.R
 			ProjectID: domain.ProjectID(request.PathValue("projectId")),
 			Name:      input.Name, Harness: input.Harness, Prompt: input.Prompt,
 			IdempotencyKey: request.Header.Get("Idempotency-Key"),
+			Coordination:   input.Coordination.policy(),
 		},
 	)
 	if err != nil {
@@ -816,6 +821,7 @@ func (s *Server) getCapabilities(writer http.ResponseWriter, _ *http.Request) {
 		Browse:          s.capabilities.Browse,
 		Delivery:        s.capabilities.Delivery,
 		ResourceMetrics: false,
+		Coordination:    s.coordinationCapability(),
 		HarnessImages:   harnessPacksToJSON(s.harnessImages),
 	})
 }
@@ -994,7 +1000,8 @@ func (s *Server) listCapsules(writer http.ResponseWriter, request *http.Request)
 		writeError(writer, err)
 		return
 	}
-	page, err := s.service.ListCapsules(request.Context(), projectID, offset, limit)
+	page, err := s.service.ListCapsules(
+		request.Context(), projectID, domain.CapsuleRole(request.URL.Query().Get("role")), offset, limit)
 	if err != nil {
 		writeError(writer, err)
 		return
@@ -1702,21 +1709,22 @@ type probeResponse struct {
 }
 
 type capabilitiesJSON struct {
-	ProviderVersion    string             `json:"providerVersion"`
-	Attach             bool               `json:"attach"`
-	Run                bool               `json:"run"`
-	Structured         bool               `json:"structured"`
-	StructuredProtocol string             `json:"structuredProtocol,omitempty"`
-	PTYFallback        bool               `json:"ptyFallback"`
-	Git                bool               `json:"git"`
-	Pause              bool               `json:"pause"`
-	Snapshot           bool               `json:"snapshot"`
-	Clone              bool               `json:"clone"`
-	Preview            bool               `json:"preview"`
-	Browse             bool               `json:"browse"`
-	Delivery           bool               `json:"delivery"`
-	ResourceMetrics    bool               `json:"resourceMetrics"`
-	HarnessImages      []harnessImageJSON `json:"harnessImages,omitempty"`
+	ProviderVersion    string                      `json:"providerVersion"`
+	Attach             bool                        `json:"attach"`
+	Run                bool                        `json:"run"`
+	Structured         bool                        `json:"structured"`
+	StructuredProtocol string                      `json:"structuredProtocol,omitempty"`
+	PTYFallback        bool                        `json:"ptyFallback"`
+	Git                bool                        `json:"git"`
+	Pause              bool                        `json:"pause"`
+	Snapshot           bool                        `json:"snapshot"`
+	Clone              bool                        `json:"clone"`
+	Preview            bool                        `json:"preview"`
+	Browse             bool                        `json:"browse"`
+	Delivery           bool                        `json:"delivery"`
+	ResourceMetrics    bool                        `json:"resourceMetrics"`
+	Coordination       *coordinationCapabilityJSON `json:"coordination,omitempty"`
+	HarnessImages      []harnessImageJSON          `json:"harnessImages,omitempty"`
 }
 
 type createRequest struct {
@@ -1806,9 +1814,10 @@ type createThreadRequest struct {
 }
 
 type createProjectThreadRequest struct {
-	Name    string `json:"name,omitempty"`
-	Harness string `json:"harness"`
-	Prompt  string `json:"prompt"`
+	Name         string                  `json:"name,omitempty"`
+	Harness      string                  `json:"harness"`
+	Prompt       string                  `json:"prompt"`
+	Coordination *coordinationPolicyJSON `json:"coordination,omitempty"`
 }
 
 type harnessProfileJSON struct {
@@ -1882,6 +1891,9 @@ type capsuleJSON struct {
 	Failure         string                      `json:"failure,omitempty"`
 	RestoreComplete bool                        `json:"restoreComplete"`
 	Maintenance     string                      `json:"maintenance,omitempty"`
+	Role            string                      `json:"role,omitempty"`
+	LeadThreadID    string                      `json:"leadThreadId,omitempty"`
+	LinkID          string                      `json:"linkId,omitempty"`
 	CreatedAt       string                      `json:"createdAt"`
 	UpdatedAt       string                      `json:"updatedAt"`
 	ResourceVersion int64                       `json:"resourceVersion"`
@@ -1976,6 +1988,11 @@ type threadJSON struct {
 	Turn                string              `json:"turn,omitempty"`
 	Protocol            string              `json:"protocol,omitempty"`
 	StructuredSupported bool                `json:"structuredSupported"`
+	CoordinationGrantID string              `json:"coordinationGrantId,omitempty"`
+	ParentThreadID      string              `json:"parentThreadId,omitempty"`
+	RootThreadID        string              `json:"rootThreadId,omitempty"`
+	LinkID              string              `json:"linkId,omitempty"`
+	Depth               *int                `json:"depth,omitempty"`
 	EncryptedAtRest     bool                `json:"encryptedAtRest"`
 	MessageCount        int64               `json:"messageCount"`
 	EncryptedBytes      int64               `json:"encryptedBytes"`
@@ -2192,6 +2209,9 @@ func capsuleResponse(capsule domain.Capsule) capsuleJSON {
 		Failure:         capsule.Failure,
 		RestoreComplete: capsule.RestoreComplete,
 		Maintenance:     capsule.Maintenance,
+		Role:            string(capsule.Role),
+		LeadThreadID:    string(capsule.LeadThreadID),
+		LinkID:          string(capsule.LinkID),
 		CreatedAt:       capsule.CreatedAt.UTC().Format(time.RFC3339Nano),
 		UpdatedAt:       capsule.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		ResourceVersion: int64(capsule.ResourceVersion),
@@ -2267,6 +2287,12 @@ func (s *Server) threadResponse(ctx context.Context, thread domain.Thread) threa
 	}
 	if !thread.DeletedAt.IsZero() {
 		result.DeletedAt = thread.DeletedAt.UTC().Format(time.RFC3339Nano)
+	}
+	if position, err := s.service.ThreadCoordinationOf(ctx, thread.ID); err == nil && position.RootThreadID != "" {
+		depth := position.Depth
+		result.CoordinationGrantID = string(position.GrantID)
+		result.ParentThreadID, result.LinkID = string(position.ParentThreadID), string(position.LinkID)
+		result.RootThreadID, result.Depth = string(position.RootThreadID), &depth
 	}
 	if thread.CurrentRunID != "" {
 		if run, err := s.service.GetRunStored(ctx, thread.CurrentRunID); err == nil {

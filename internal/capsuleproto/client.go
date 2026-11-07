@@ -453,6 +453,9 @@ func (c *Client) callLimit(
 		_ = json.NewDecoder(io.LimitReader(response.Body, 4096)).Decode(&envelope)
 		return &Error{Status: response.StatusCode, Code: envelope.Error.Code}
 	}
+	if output == nil {
+		return nil
+	}
 	decoder := json.NewDecoder(io.LimitReader(response.Body, responseLimit))
 	if err := decoder.Decode(output); err != nil {
 		return fmt.Errorf("decode capsuled response: %w", err)

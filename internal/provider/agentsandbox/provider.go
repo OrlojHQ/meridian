@@ -266,7 +266,7 @@ func (p *Provider) Capabilities(ctx context.Context) (ports.ProviderCapabilities
 		Attach: transportAvailable, Structured: transportAvailable,
 		Snapshot: transportAvailable, Clone: transportAvailable,
 		Preview: transportAvailable, Browse: transportAvailable,
-		Delivery: transportAvailable,
+		Delivery: transportAvailable, Coordination: transportAvailable,
 	}, nil
 }
 

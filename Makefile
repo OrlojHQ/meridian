@@ -34,6 +34,7 @@ build:
 	go build -ldflags "$(LDFLAGS)" -o bin/meridiand ./cmd/meridiand
 	go build -ldflags "$(LDFLAGS)" -o bin/capsuled ./cmd/capsuled
 	go build -ldflags "$(LDFLAGS)" -o bin/meridian-harness-adapter ./cmd/meridian-harness-adapter
+	go build -ldflags "$(LDFLAGS)" -o bin/meridian-coord ./cmd/meridian-coord
 
 test:
 	go test ./... -count=1

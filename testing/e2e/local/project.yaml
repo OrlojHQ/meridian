@@ -40,3 +40,12 @@ harnesses:
     workingDirectory: .
     pty: false
     timeout: 2m
+  - name: mock-coordinator
+    interactionMode: structured
+    adapter:
+      protocol: meridian.adapter.v1
+      executable: /usr/local/bin/meridian-harness-adapter
+      arguments: ["mock"]
+    workingDirectory: .
+    pty: false
+    timeout: 30m

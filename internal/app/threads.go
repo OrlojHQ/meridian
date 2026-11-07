@@ -44,6 +44,7 @@ type ThreadBlockView struct {
 	Kind            domain.ThreadBlockKind   `json:"kind"`
 	Content         string                   `json:"content,omitempty"`
 	Event           *ThreadAdapterEvent      `json:"event,omitempty"`
+	Origin          *ThreadOrigin            `json:"origin,omitempty"`
 	CreatedAt       time.Time                `json:"createdAt"`
 }
 
@@ -86,7 +87,23 @@ type persistedThreadBlock struct {
 	Metadata    json.RawMessage     `json:"metadata,omitempty"`
 	SessionID   string              `json:"sessionId,omitempty"`
 	ResumeState string              `json:"resumeState,omitempty"`
+	Origin      *ThreadOrigin       `json:"origin,omitempty"`
 }
+
+// ThreadOrigin marks a user-role message that Meridian wrote on behalf of
+// coordination rather than the operator. It is stored inside the encrypted
+// payload so the UI can label it without trusting message text.
+type ThreadOrigin struct {
+	Source  string                `json:"source"`
+	Kind    string                `json:"kind"`
+	LinkIDs []domain.ThreadLinkID `json:"linkIds,omitempty"`
+}
+
+const (
+	OriginCoordination = "coordination"
+	OriginFromLead     = "from_lead"
+	OriginFromHelpers  = "from_helpers"
+)
 
 func (s *Service) CreateThread(ctx context.Context, input CreateThreadInput) (ThreadMutationResult, error) {
 	if s.structured == nil || s.transcriptKey == nil {
@@ -631,11 +648,29 @@ func (s *Service) appendAndSend(
 	payload persistedThreadBlock,
 	makeFrame func(domain.ThreadMessageID, domain.Thread, persistedThreadBlock) adapterproto.Frame,
 ) (ThreadMutationResult, error) {
-	if s.structured == nil || s.transcriptKey == nil {
-		return ThreadMutationResult{}, domain.ErrUnsupported
-	}
 	if expected <= 0 {
 		return ThreadMutationResult{}, fmt.Errorf("%w: expected resource version is required", domain.ErrInvalid)
+	}
+	return s.appendAndSendHook(ctx, id, expected, key, operation, role, messageKind, blockKind,
+		payload, makeFrame, nil)
+}
+
+// appendTxHook runs inside the append transaction after the message is
+// written. Returning an error aborts the append.
+type appendTxHook func(tx ports.Transaction, thread domain.Thread, messageID domain.ThreadMessageID, now time.Time) error
+
+// appendAndSendHook is appendAndSend for internal callers. An expected
+// version of zero skips the optimistic check; the hook commits atomically
+// with the message.
+func (s *Service) appendAndSendHook(
+	ctx context.Context, id domain.ThreadID, expected domain.ResourceVersion, key, operation string,
+	role domain.ThreadMessageRole, messageKind domain.ThreadMessageKind, blockKind domain.ThreadBlockKind,
+	payload persistedThreadBlock,
+	makeFrame func(domain.ThreadMessageID, domain.Thread, persistedThreadBlock) adapterproto.Frame,
+	hook appendTxHook,
+) (ThreadMutationResult, error) {
+	if s.structured == nil || s.transcriptKey == nil {
+		return ThreadMutationResult{}, domain.ErrUnsupported
 	}
 	if err := requireIdempotency(key); err != nil {
 		return ThreadMutationResult{}, err
@@ -660,7 +695,7 @@ func (s *Service) appendAndSend(
 		if err != nil {
 			return err
 		}
-		if thread.ResourceVersion != expected {
+		if expected != 0 && thread.ResourceVersion != expected {
 			return domain.ErrConflict
 		}
 		if thread.State != domain.ThreadActive || thread.CurrentRunID == "" {
@@ -699,6 +734,11 @@ func (s *Service) appendAndSend(
 			return err
 		}
 		result.Run, result.MessageID = &run, messageID
+		if hook != nil {
+			if err := hook(tx, result.Thread, messageID, now); err != nil {
+				return err
+			}
+		}
 		if err := s.touchCapsuleActivityTx(ctx, tx, thread.CapsuleID, now); err != nil {
 			return err
 		}
@@ -867,7 +907,7 @@ func (s *Service) ThreadBlocks(
 				ID: block.ID, MessageID: message.ID, MessageSequence: message.Sequence,
 				Sequence: block.Sequence, Role: message.Role, MessageKind: message.Kind,
 				Kind: block.Kind, Content: payload.Content, Event: payload.Event,
-				CreatedAt: block.CreatedAt,
+				Origin: payload.Origin, CreatedAt: block.CreatedAt,
 			}
 			if payload.Event != nil && payload.Event.Type == adapterproto.KindGap {
 				result.Gap = payload.Event

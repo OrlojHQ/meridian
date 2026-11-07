@@ -125,6 +125,12 @@ func RunMock(ctx context.Context, input io.Reader, output io.Writer, config Mock
 				}
 				continue
 			}
+			if plan, ok := parseMockCoordination(frame.Content); ok {
+				if err := runMockCoordination(ctx, stream, turn, plan); err != nil {
+					return err
+				}
+				continue
+			}
 			if err := emitMockTurn(stream, turn, frame.Content, config.Fault == "duplicate"); err != nil {
 				return err
 			}

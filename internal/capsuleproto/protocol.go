@@ -106,6 +106,7 @@ type Server struct {
 	err        string
 	runs       map[string]*supervisedRun
 	structured map[string]*structuredSession
+	coord      *Mailbox
 }
 
 func NewServer(config ServerConfig) (*Server, error) {
@@ -158,6 +159,7 @@ func NewServer(config ServerConfig) (*Server, error) {
 		state:      StateUnprepared,
 		runs:       make(map[string]*supervisedRun),
 		structured: make(map[string]*structuredSession),
+		coord:      NewMailbox(),
 	}
 	if err := ensureWorkspace(config.Workspace); err != nil {
 		return nil, err
@@ -201,6 +203,10 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST "+DeliveryPath+"/push", s.authenticate(http.HandlerFunc(s.deliveryPush)))
 	mux.Handle("GET "+PreviewsPath, s.authenticate(http.HandlerFunc(s.previewPorts)))
 	mux.Handle(PreviewsPath+"/{port}/{path...}", s.authenticate(http.HandlerFunc(s.forwardPreview)))
+	mux.Handle("GET "+CoordinationRequestsPath, s.authenticate(http.HandlerFunc(s.coordinationRequests)))
+	mux.Handle("POST "+CoordinationRepliesPath, s.authenticate(http.HandlerFunc(s.coordinationReplies)))
+	mux.Handle("POST "+CoordinationNotificationsPath, s.authenticate(http.HandlerFunc(s.coordinationNotifications)))
+	mux.Handle("PUT "+CoordinationConfigPath, s.authenticate(http.HandlerFunc(s.coordinationConfig)))
 	return mux
 }
 

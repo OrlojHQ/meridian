@@ -23,7 +23,7 @@ harnesses:
     adapter:
       protocol: meridian.adapter.v1
       executable: /usr/local/bin/meridian-harness-adapter
-      arguments: ["claude-stream", "--", "/usr/local/bin/claude"]
+      arguments: ["claude-stream", "--mcp-server", "meridian-coord=/usr/local/bin/meridian-coord,mcp", "--", "/usr/local/bin/claude"]
     workingDirectory: .
     pty: false
     timeout: 24h

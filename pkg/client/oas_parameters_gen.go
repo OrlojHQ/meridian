@@ -117,6 +117,11 @@ type GetCapsuleGitStatusParams struct {
 	CapsuleId string
 }
 
+// GetCoordinationGrantParams is parameters of getCoordinationGrant operation.
+type GetCoordinationGrantParams struct {
+	GrantId string
+}
+
 // GetDeliveryParams is parameters of getDelivery operation.
 type GetDeliveryParams struct {
 	DeliveryId string
@@ -169,6 +174,11 @@ type GetThreadParams struct {
 	ThreadId string
 }
 
+// GetThreadLinkParams is parameters of getThreadLink operation.
+type GetThreadLinkParams struct {
+	LinkId string
+}
+
 // GetTimelineParams is parameters of getTimeline operation.
 type GetTimelineParams struct {
 	TimelineId string
@@ -215,6 +225,8 @@ type ListCapsulesParams struct {
 	ProjectId string
 	Cursor    OptString `json:",omitempty,omitzero"`
 	Limit     OptInt    `json:",omitempty,omitzero"`
+	// Only main Capsules or only helper sub-Capsules.
+	Role OptCapsuleRole `json:",omitempty,omitzero"`
 }
 
 // ListHarnessProfilesParams is parameters of listHarnessProfiles operation.
@@ -265,6 +277,11 @@ type ListThreadBlocksParams struct {
 	ThreadId string
 	After    OptInt64 `json:",omitempty,omitzero"`
 	Limit    OptInt   `json:",omitempty,omitzero"`
+}
+
+// ListThreadLinksParams is parameters of listThreadLinks operation.
+type ListThreadLinksParams struct {
+	ThreadId string
 }
 
 // ListThreadsParams is parameters of listThreads operation.
@@ -334,6 +351,12 @@ type ResumeThreadParams struct {
 // RetryCapsuleParams is parameters of retryCapsule operation.
 type RetryCapsuleParams struct {
 	CapsuleId      string
+	IdempotencyKey string
+}
+
+// RevokeCoordinationGrantParams is parameters of revokeCoordinationGrant operation.
+type RevokeCoordinationGrantParams struct {
+	GrantId        string
 	IdempotencyKey string
 }
 

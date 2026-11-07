@@ -167,7 +167,8 @@ type Capabilities struct {
 	// False unless a provider exposes authenticated exact-object commit and exact-ref push operations.
 	Delivery bool `json:"delivery"`
 	// False when provider resource metrics are not exposed by the public API.
-	ResourceMetrics bool `json:"resourceMetrics"`
+	ResourceMetrics bool                      `json:"resourceMetrics"`
+	Coordination    OptCoordinationCapability `json:"coordination"`
 	// Installation-known harness packs the operator may apply on a Project. Not a boolean capability.
 	// Spawn still uses only names stored on that Project.
 	HarnessImages []HarnessImage `json:"harnessImages"`
@@ -241,6 +242,11 @@ func (s *Capabilities) GetDelivery() bool {
 // GetResourceMetrics returns the value of ResourceMetrics.
 func (s *Capabilities) GetResourceMetrics() bool {
 	return s.ResourceMetrics
+}
+
+// GetCoordination returns the value of Coordination.
+func (s *Capabilities) GetCoordination() OptCoordinationCapability {
+	return s.Coordination
 }
 
 // GetHarnessImages returns the value of HarnessImages.
@@ -318,6 +324,11 @@ func (s *Capabilities) SetResourceMetrics(val bool) {
 	s.ResourceMetrics = val
 }
 
+// SetCoordination sets the value of Coordination.
+func (s *Capabilities) SetCoordination(val OptCoordinationCapability) {
+	s.Coordination = val
+}
+
 // SetHarnessImages sets the value of HarnessImages.
 func (s *Capabilities) SetHarnessImages(val []HarnessImage) {
 	s.HarnessImages = val
@@ -368,15 +379,20 @@ type Capsule struct {
 	OriginMomentId OptString              `json:"originMomentId"`
 	Name           string                 `json:"name"`
 	// Immutable native launcher harness selected when the Capsule was created.
-	Harness         OptString     `json:"harness"`
-	State           CapsuleState  `json:"state"`
-	DesiredState    CapsuleIntent `json:"desiredState"`
-	Failure         OptString     `json:"failure"`
-	RestoreComplete bool          `json:"restoreComplete"`
-	Maintenance     OptString     `json:"maintenance"`
-	CreatedAt       time.Time     `json:"createdAt"`
-	UpdatedAt       time.Time     `json:"updatedAt"`
-	ResourceVersion int64         `json:"resourceVersion"`
+	Harness         OptString      `json:"harness"`
+	State           CapsuleState   `json:"state"`
+	DesiredState    CapsuleIntent  `json:"desiredState"`
+	Failure         OptString      `json:"failure"`
+	RestoreComplete bool           `json:"restoreComplete"`
+	Maintenance     OptString      `json:"maintenance"`
+	Role            OptCapsuleRole `json:"role"`
+	// On sub-Capsules, the lead Thread that spawned this helper.
+	LeadThreadId OptString `json:"leadThreadId"`
+	// On sub-Capsules, the Thread link that owns this helper.
+	LinkId          OptString `json:"linkId"`
+	CreatedAt       time.Time `json:"createdAt"`
+	UpdatedAt       time.Time `json:"updatedAt"`
+	ResourceVersion int64     `json:"resourceVersion"`
 }
 
 // GetPreparation returns the value of Preparation.
@@ -437,6 +453,21 @@ func (s *Capsule) GetRestoreComplete() bool {
 // GetMaintenance returns the value of Maintenance.
 func (s *Capsule) GetMaintenance() OptString {
 	return s.Maintenance
+}
+
+// GetRole returns the value of Role.
+func (s *Capsule) GetRole() OptCapsuleRole {
+	return s.Role
+}
+
+// GetLeadThreadId returns the value of LeadThreadId.
+func (s *Capsule) GetLeadThreadId() OptString {
+	return s.LeadThreadId
+}
+
+// GetLinkId returns the value of LinkId.
+func (s *Capsule) GetLinkId() OptString {
+	return s.LinkId
 }
 
 // GetCreatedAt returns the value of CreatedAt.
@@ -512,6 +543,21 @@ func (s *Capsule) SetRestoreComplete(val bool) {
 // SetMaintenance sets the value of Maintenance.
 func (s *Capsule) SetMaintenance(val OptString) {
 	s.Maintenance = val
+}
+
+// SetRole sets the value of Role.
+func (s *Capsule) SetRole(val OptCapsuleRole) {
+	s.Role = val
+}
+
+// SetLeadThreadId sets the value of LeadThreadId.
+func (s *Capsule) SetLeadThreadId(val OptString) {
+	s.LeadThreadId = val
+}
+
+// SetLinkId sets the value of LinkId.
+func (s *Capsule) SetLinkId(val OptString) {
+	s.LinkId = val
 }
 
 // SetCreatedAt sets the value of CreatedAt.
@@ -673,6 +719,49 @@ func (s *CapsulePage) SetNextCursor(val OptString) {
 
 func (*CapsulePage) listCapsulesRes() {}
 
+// Main Capsules are operator-created; sub Capsules were spawned by a lead Thread.
+// Ref: #/components/schemas/CapsuleRole
+type CapsuleRole string
+
+const (
+	CapsuleRoleMain CapsuleRole = "main"
+	CapsuleRoleSub  CapsuleRole = "sub"
+)
+
+// AllValues returns all CapsuleRole values.
+func (CapsuleRole) AllValues() []CapsuleRole {
+	return []CapsuleRole{
+		CapsuleRoleMain,
+		CapsuleRoleSub,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s CapsuleRole) MarshalText() ([]byte, error) {
+	switch s {
+	case CapsuleRoleMain:
+		return []byte(s), nil
+	case CapsuleRoleSub:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *CapsuleRole) UnmarshalText(data []byte) error {
+	switch CapsuleRole(data) {
+	case CapsuleRoleMain:
+		*s = CapsuleRoleMain
+		return nil
+	case CapsuleRoleSub:
+		*s = CapsuleRoleSub
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
 // Ref: #/components/schemas/CapsuleState
 type CapsuleState string
 
@@ -798,6 +887,652 @@ func (s *CaptureMomentRequest) SetExpectedResourceVersion(val int64) {
 type CaptureMomentUnprocessableEntity ErrorEnvelope
 
 func (*CaptureMomentUnprocessableEntity) captureMomentRes() {}
+
+// Ref: #/components/schemas/CoordinationCapability
+type CoordinationCapability struct {
+	// True when lead Threads may spawn helper Threads through the Capsule-local coordination mailbox.
+	Supported      bool `json:"supported"`
+	MaxDepth       int  `json:"maxDepth"`
+	MaxDescendants int  `json:"maxDescendants"`
+}
+
+// GetSupported returns the value of Supported.
+func (s *CoordinationCapability) GetSupported() bool {
+	return s.Supported
+}
+
+// GetMaxDepth returns the value of MaxDepth.
+func (s *CoordinationCapability) GetMaxDepth() int {
+	return s.MaxDepth
+}
+
+// GetMaxDescendants returns the value of MaxDescendants.
+func (s *CoordinationCapability) GetMaxDescendants() int {
+	return s.MaxDescendants
+}
+
+// SetSupported sets the value of Supported.
+func (s *CoordinationCapability) SetSupported(val bool) {
+	s.Supported = val
+}
+
+// SetMaxDepth sets the value of MaxDepth.
+func (s *CoordinationCapability) SetMaxDepth(val int) {
+	s.MaxDepth = val
+}
+
+// SetMaxDescendants sets the value of MaxDescendants.
+func (s *CoordinationCapability) SetMaxDescendants(val int) {
+	s.MaxDescendants = val
+}
+
+// Ref: #/components/schemas/CoordinationGrant
+type CoordinationGrant struct {
+	ID                 string                           `json:"id"`
+	ProjectId          string                           `json:"projectId"`
+	RootThreadId       string                           `json:"rootThreadId"`
+	RootCapsuleId      string                           `json:"rootCapsuleId"`
+	State              CoordinationGrantState           `json:"state"`
+	SpawnApproval      CoordinationGrantSpawnApproval   `json:"spawnApproval"`
+	MaxDepth           int                              `json:"maxDepth"`
+	MaxChildren        int                              `json:"maxChildren"`
+	MaxDescendants     int                              `json:"maxDescendants"`
+	MaxLiveCapsules    int                              `json:"maxLiveCapsules"`
+	MaxMessagesPerLink int                              `json:"maxMessagesPerLink"`
+	AllowedHarnesses   []string                         `json:"allowedHarnesses"`
+	DeadlineAt         time.Time                        `json:"deadlineAt"`
+	OnDeadline         CoordinationGrantOnDeadline      `json:"onDeadline"`
+	DescendantsCreated int                              `json:"descendantsCreated"`
+	RevokedAt          OptDateTime                      `json:"revokedAt"`
+	RevokeReason       OptCoordinationGrantRevokeReason `json:"revokeReason"`
+	CreatedAt          time.Time                        `json:"createdAt"`
+	UpdatedAt          time.Time                        `json:"updatedAt"`
+	ResourceVersion    int64                            `json:"resourceVersion"`
+}
+
+// GetID returns the value of ID.
+func (s *CoordinationGrant) GetID() string {
+	return s.ID
+}
+
+// GetProjectId returns the value of ProjectId.
+func (s *CoordinationGrant) GetProjectId() string {
+	return s.ProjectId
+}
+
+// GetRootThreadId returns the value of RootThreadId.
+func (s *CoordinationGrant) GetRootThreadId() string {
+	return s.RootThreadId
+}
+
+// GetRootCapsuleId returns the value of RootCapsuleId.
+func (s *CoordinationGrant) GetRootCapsuleId() string {
+	return s.RootCapsuleId
+}
+
+// GetState returns the value of State.
+func (s *CoordinationGrant) GetState() CoordinationGrantState {
+	return s.State
+}
+
+// GetSpawnApproval returns the value of SpawnApproval.
+func (s *CoordinationGrant) GetSpawnApproval() CoordinationGrantSpawnApproval {
+	return s.SpawnApproval
+}
+
+// GetMaxDepth returns the value of MaxDepth.
+func (s *CoordinationGrant) GetMaxDepth() int {
+	return s.MaxDepth
+}
+
+// GetMaxChildren returns the value of MaxChildren.
+func (s *CoordinationGrant) GetMaxChildren() int {
+	return s.MaxChildren
+}
+
+// GetMaxDescendants returns the value of MaxDescendants.
+func (s *CoordinationGrant) GetMaxDescendants() int {
+	return s.MaxDescendants
+}
+
+// GetMaxLiveCapsules returns the value of MaxLiveCapsules.
+func (s *CoordinationGrant) GetMaxLiveCapsules() int {
+	return s.MaxLiveCapsules
+}
+
+// GetMaxMessagesPerLink returns the value of MaxMessagesPerLink.
+func (s *CoordinationGrant) GetMaxMessagesPerLink() int {
+	return s.MaxMessagesPerLink
+}
+
+// GetAllowedHarnesses returns the value of AllowedHarnesses.
+func (s *CoordinationGrant) GetAllowedHarnesses() []string {
+	return s.AllowedHarnesses
+}
+
+// GetDeadlineAt returns the value of DeadlineAt.
+func (s *CoordinationGrant) GetDeadlineAt() time.Time {
+	return s.DeadlineAt
+}
+
+// GetOnDeadline returns the value of OnDeadline.
+func (s *CoordinationGrant) GetOnDeadline() CoordinationGrantOnDeadline {
+	return s.OnDeadline
+}
+
+// GetDescendantsCreated returns the value of DescendantsCreated.
+func (s *CoordinationGrant) GetDescendantsCreated() int {
+	return s.DescendantsCreated
+}
+
+// GetRevokedAt returns the value of RevokedAt.
+func (s *CoordinationGrant) GetRevokedAt() OptDateTime {
+	return s.RevokedAt
+}
+
+// GetRevokeReason returns the value of RevokeReason.
+func (s *CoordinationGrant) GetRevokeReason() OptCoordinationGrantRevokeReason {
+	return s.RevokeReason
+}
+
+// GetCreatedAt returns the value of CreatedAt.
+func (s *CoordinationGrant) GetCreatedAt() time.Time {
+	return s.CreatedAt
+}
+
+// GetUpdatedAt returns the value of UpdatedAt.
+func (s *CoordinationGrant) GetUpdatedAt() time.Time {
+	return s.UpdatedAt
+}
+
+// GetResourceVersion returns the value of ResourceVersion.
+func (s *CoordinationGrant) GetResourceVersion() int64 {
+	return s.ResourceVersion
+}
+
+// SetID sets the value of ID.
+func (s *CoordinationGrant) SetID(val string) {
+	s.ID = val
+}
+
+// SetProjectId sets the value of ProjectId.
+func (s *CoordinationGrant) SetProjectId(val string) {
+	s.ProjectId = val
+}
+
+// SetRootThreadId sets the value of RootThreadId.
+func (s *CoordinationGrant) SetRootThreadId(val string) {
+	s.RootThreadId = val
+}
+
+// SetRootCapsuleId sets the value of RootCapsuleId.
+func (s *CoordinationGrant) SetRootCapsuleId(val string) {
+	s.RootCapsuleId = val
+}
+
+// SetState sets the value of State.
+func (s *CoordinationGrant) SetState(val CoordinationGrantState) {
+	s.State = val
+}
+
+// SetSpawnApproval sets the value of SpawnApproval.
+func (s *CoordinationGrant) SetSpawnApproval(val CoordinationGrantSpawnApproval) {
+	s.SpawnApproval = val
+}
+
+// SetMaxDepth sets the value of MaxDepth.
+func (s *CoordinationGrant) SetMaxDepth(val int) {
+	s.MaxDepth = val
+}
+
+// SetMaxChildren sets the value of MaxChildren.
+func (s *CoordinationGrant) SetMaxChildren(val int) {
+	s.MaxChildren = val
+}
+
+// SetMaxDescendants sets the value of MaxDescendants.
+func (s *CoordinationGrant) SetMaxDescendants(val int) {
+	s.MaxDescendants = val
+}
+
+// SetMaxLiveCapsules sets the value of MaxLiveCapsules.
+func (s *CoordinationGrant) SetMaxLiveCapsules(val int) {
+	s.MaxLiveCapsules = val
+}
+
+// SetMaxMessagesPerLink sets the value of MaxMessagesPerLink.
+func (s *CoordinationGrant) SetMaxMessagesPerLink(val int) {
+	s.MaxMessagesPerLink = val
+}
+
+// SetAllowedHarnesses sets the value of AllowedHarnesses.
+func (s *CoordinationGrant) SetAllowedHarnesses(val []string) {
+	s.AllowedHarnesses = val
+}
+
+// SetDeadlineAt sets the value of DeadlineAt.
+func (s *CoordinationGrant) SetDeadlineAt(val time.Time) {
+	s.DeadlineAt = val
+}
+
+// SetOnDeadline sets the value of OnDeadline.
+func (s *CoordinationGrant) SetOnDeadline(val CoordinationGrantOnDeadline) {
+	s.OnDeadline = val
+}
+
+// SetDescendantsCreated sets the value of DescendantsCreated.
+func (s *CoordinationGrant) SetDescendantsCreated(val int) {
+	s.DescendantsCreated = val
+}
+
+// SetRevokedAt sets the value of RevokedAt.
+func (s *CoordinationGrant) SetRevokedAt(val OptDateTime) {
+	s.RevokedAt = val
+}
+
+// SetRevokeReason sets the value of RevokeReason.
+func (s *CoordinationGrant) SetRevokeReason(val OptCoordinationGrantRevokeReason) {
+	s.RevokeReason = val
+}
+
+// SetCreatedAt sets the value of CreatedAt.
+func (s *CoordinationGrant) SetCreatedAt(val time.Time) {
+	s.CreatedAt = val
+}
+
+// SetUpdatedAt sets the value of UpdatedAt.
+func (s *CoordinationGrant) SetUpdatedAt(val time.Time) {
+	s.UpdatedAt = val
+}
+
+// SetResourceVersion sets the value of ResourceVersion.
+func (s *CoordinationGrant) SetResourceVersion(val int64) {
+	s.ResourceVersion = val
+}
+
+// CoordinationGrantHeaders wraps CoordinationGrant with response headers.
+type CoordinationGrantHeaders struct {
+	ETag     OptString
+	Response CoordinationGrant
+}
+
+// GetETag returns the value of ETag.
+func (s *CoordinationGrantHeaders) GetETag() OptString {
+	return s.ETag
+}
+
+// GetResponse returns the value of Response.
+func (s *CoordinationGrantHeaders) GetResponse() CoordinationGrant {
+	return s.Response
+}
+
+// SetETag sets the value of ETag.
+func (s *CoordinationGrantHeaders) SetETag(val OptString) {
+	s.ETag = val
+}
+
+// SetResponse sets the value of Response.
+func (s *CoordinationGrantHeaders) SetResponse(val CoordinationGrant) {
+	s.Response = val
+}
+
+func (*CoordinationGrantHeaders) getCoordinationGrantRes()    {}
+func (*CoordinationGrantHeaders) revokeCoordinationGrantRes() {}
+
+type CoordinationGrantOnDeadline string
+
+const (
+	CoordinationGrantOnDeadlineCancelAndPause CoordinationGrantOnDeadline = "cancel_and_pause"
+	CoordinationGrantOnDeadlineStopNewWork    CoordinationGrantOnDeadline = "stop_new_work"
+)
+
+// AllValues returns all CoordinationGrantOnDeadline values.
+func (CoordinationGrantOnDeadline) AllValues() []CoordinationGrantOnDeadline {
+	return []CoordinationGrantOnDeadline{
+		CoordinationGrantOnDeadlineCancelAndPause,
+		CoordinationGrantOnDeadlineStopNewWork,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s CoordinationGrantOnDeadline) MarshalText() ([]byte, error) {
+	switch s {
+	case CoordinationGrantOnDeadlineCancelAndPause:
+		return []byte(s), nil
+	case CoordinationGrantOnDeadlineStopNewWork:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *CoordinationGrantOnDeadline) UnmarshalText(data []byte) error {
+	switch CoordinationGrantOnDeadline(data) {
+	case CoordinationGrantOnDeadlineCancelAndPause:
+		*s = CoordinationGrantOnDeadlineCancelAndPause
+		return nil
+	case CoordinationGrantOnDeadlineStopNewWork:
+		*s = CoordinationGrantOnDeadlineStopNewWork
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+type CoordinationGrantRevokeReason string
+
+const (
+	CoordinationGrantRevokeReasonOperator  CoordinationGrantRevokeReason = "operator"
+	CoordinationGrantRevokeReasonDeadline  CoordinationGrantRevokeReason = "deadline"
+	CoordinationGrantRevokeReasonLeadEnded CoordinationGrantRevokeReason = "lead_ended"
+)
+
+// AllValues returns all CoordinationGrantRevokeReason values.
+func (CoordinationGrantRevokeReason) AllValues() []CoordinationGrantRevokeReason {
+	return []CoordinationGrantRevokeReason{
+		CoordinationGrantRevokeReasonOperator,
+		CoordinationGrantRevokeReasonDeadline,
+		CoordinationGrantRevokeReasonLeadEnded,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s CoordinationGrantRevokeReason) MarshalText() ([]byte, error) {
+	switch s {
+	case CoordinationGrantRevokeReasonOperator:
+		return []byte(s), nil
+	case CoordinationGrantRevokeReasonDeadline:
+		return []byte(s), nil
+	case CoordinationGrantRevokeReasonLeadEnded:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *CoordinationGrantRevokeReason) UnmarshalText(data []byte) error {
+	switch CoordinationGrantRevokeReason(data) {
+	case CoordinationGrantRevokeReasonOperator:
+		*s = CoordinationGrantRevokeReasonOperator
+		return nil
+	case CoordinationGrantRevokeReasonDeadline:
+		*s = CoordinationGrantRevokeReasonDeadline
+		return nil
+	case CoordinationGrantRevokeReasonLeadEnded:
+		*s = CoordinationGrantRevokeReasonLeadEnded
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+type CoordinationGrantSpawnApproval string
+
+const (
+	CoordinationGrantSpawnApprovalAuto CoordinationGrantSpawnApproval = "auto"
+)
+
+// AllValues returns all CoordinationGrantSpawnApproval values.
+func (CoordinationGrantSpawnApproval) AllValues() []CoordinationGrantSpawnApproval {
+	return []CoordinationGrantSpawnApproval{
+		CoordinationGrantSpawnApprovalAuto,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s CoordinationGrantSpawnApproval) MarshalText() ([]byte, error) {
+	switch s {
+	case CoordinationGrantSpawnApprovalAuto:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *CoordinationGrantSpawnApproval) UnmarshalText(data []byte) error {
+	switch CoordinationGrantSpawnApproval(data) {
+	case CoordinationGrantSpawnApprovalAuto:
+		*s = CoordinationGrantSpawnApprovalAuto
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Ref: #/components/schemas/CoordinationGrantState
+type CoordinationGrantState string
+
+const (
+	CoordinationGrantStateActive  CoordinationGrantState = "active"
+	CoordinationGrantStateRevoked CoordinationGrantState = "revoked"
+	CoordinationGrantStateExpired CoordinationGrantState = "expired"
+)
+
+// AllValues returns all CoordinationGrantState values.
+func (CoordinationGrantState) AllValues() []CoordinationGrantState {
+	return []CoordinationGrantState{
+		CoordinationGrantStateActive,
+		CoordinationGrantStateRevoked,
+		CoordinationGrantStateExpired,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s CoordinationGrantState) MarshalText() ([]byte, error) {
+	switch s {
+	case CoordinationGrantStateActive:
+		return []byte(s), nil
+	case CoordinationGrantStateRevoked:
+		return []byte(s), nil
+	case CoordinationGrantStateExpired:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *CoordinationGrantState) UnmarshalText(data []byte) error {
+	switch CoordinationGrantState(data) {
+	case CoordinationGrantStateActive:
+		*s = CoordinationGrantStateActive
+		return nil
+	case CoordinationGrantStateRevoked:
+		*s = CoordinationGrantStateRevoked
+		return nil
+	case CoordinationGrantStateExpired:
+		*s = CoordinationGrantStateExpired
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Makes the new Thread a lead that may spawn helper Threads in their own sub-Capsules. Omitted limits
+// take their defaults. Helpers answer to the operator: the lead never approves permissions or answers
+// input.
+// Ref: #/components/schemas/CoordinationPolicy
+type CoordinationPolicy struct {
+	MaxDepth           OptInt `json:"maxDepth"`
+	MaxChildren        OptInt `json:"maxChildren"`
+	MaxDescendants     OptInt `json:"maxDescendants"`
+	MaxLiveCapsules    OptInt `json:"maxLiveCapsules"`
+	MaxMessagesPerLink OptInt `json:"maxMessagesPerLink"`
+	// Structured harnesses helpers may use; each must be on the Project allowlist. Defaults to the lead's
+	// harness.
+	AllowedHarnesses []string                           `json:"allowedHarnesses"`
+	DeadlineSeconds  OptInt                             `json:"deadlineSeconds"`
+	OnDeadline       OptCoordinationPolicyOnDeadline    `json:"onDeadline"`
+	SpawnApproval    OptCoordinationPolicySpawnApproval `json:"spawnApproval"`
+}
+
+// GetMaxDepth returns the value of MaxDepth.
+func (s *CoordinationPolicy) GetMaxDepth() OptInt {
+	return s.MaxDepth
+}
+
+// GetMaxChildren returns the value of MaxChildren.
+func (s *CoordinationPolicy) GetMaxChildren() OptInt {
+	return s.MaxChildren
+}
+
+// GetMaxDescendants returns the value of MaxDescendants.
+func (s *CoordinationPolicy) GetMaxDescendants() OptInt {
+	return s.MaxDescendants
+}
+
+// GetMaxLiveCapsules returns the value of MaxLiveCapsules.
+func (s *CoordinationPolicy) GetMaxLiveCapsules() OptInt {
+	return s.MaxLiveCapsules
+}
+
+// GetMaxMessagesPerLink returns the value of MaxMessagesPerLink.
+func (s *CoordinationPolicy) GetMaxMessagesPerLink() OptInt {
+	return s.MaxMessagesPerLink
+}
+
+// GetAllowedHarnesses returns the value of AllowedHarnesses.
+func (s *CoordinationPolicy) GetAllowedHarnesses() []string {
+	return s.AllowedHarnesses
+}
+
+// GetDeadlineSeconds returns the value of DeadlineSeconds.
+func (s *CoordinationPolicy) GetDeadlineSeconds() OptInt {
+	return s.DeadlineSeconds
+}
+
+// GetOnDeadline returns the value of OnDeadline.
+func (s *CoordinationPolicy) GetOnDeadline() OptCoordinationPolicyOnDeadline {
+	return s.OnDeadline
+}
+
+// GetSpawnApproval returns the value of SpawnApproval.
+func (s *CoordinationPolicy) GetSpawnApproval() OptCoordinationPolicySpawnApproval {
+	return s.SpawnApproval
+}
+
+// SetMaxDepth sets the value of MaxDepth.
+func (s *CoordinationPolicy) SetMaxDepth(val OptInt) {
+	s.MaxDepth = val
+}
+
+// SetMaxChildren sets the value of MaxChildren.
+func (s *CoordinationPolicy) SetMaxChildren(val OptInt) {
+	s.MaxChildren = val
+}
+
+// SetMaxDescendants sets the value of MaxDescendants.
+func (s *CoordinationPolicy) SetMaxDescendants(val OptInt) {
+	s.MaxDescendants = val
+}
+
+// SetMaxLiveCapsules sets the value of MaxLiveCapsules.
+func (s *CoordinationPolicy) SetMaxLiveCapsules(val OptInt) {
+	s.MaxLiveCapsules = val
+}
+
+// SetMaxMessagesPerLink sets the value of MaxMessagesPerLink.
+func (s *CoordinationPolicy) SetMaxMessagesPerLink(val OptInt) {
+	s.MaxMessagesPerLink = val
+}
+
+// SetAllowedHarnesses sets the value of AllowedHarnesses.
+func (s *CoordinationPolicy) SetAllowedHarnesses(val []string) {
+	s.AllowedHarnesses = val
+}
+
+// SetDeadlineSeconds sets the value of DeadlineSeconds.
+func (s *CoordinationPolicy) SetDeadlineSeconds(val OptInt) {
+	s.DeadlineSeconds = val
+}
+
+// SetOnDeadline sets the value of OnDeadline.
+func (s *CoordinationPolicy) SetOnDeadline(val OptCoordinationPolicyOnDeadline) {
+	s.OnDeadline = val
+}
+
+// SetSpawnApproval sets the value of SpawnApproval.
+func (s *CoordinationPolicy) SetSpawnApproval(val OptCoordinationPolicySpawnApproval) {
+	s.SpawnApproval = val
+}
+
+type CoordinationPolicyOnDeadline string
+
+const (
+	CoordinationPolicyOnDeadlineCancelAndPause CoordinationPolicyOnDeadline = "cancel_and_pause"
+	CoordinationPolicyOnDeadlineStopNewWork    CoordinationPolicyOnDeadline = "stop_new_work"
+)
+
+// AllValues returns all CoordinationPolicyOnDeadline values.
+func (CoordinationPolicyOnDeadline) AllValues() []CoordinationPolicyOnDeadline {
+	return []CoordinationPolicyOnDeadline{
+		CoordinationPolicyOnDeadlineCancelAndPause,
+		CoordinationPolicyOnDeadlineStopNewWork,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s CoordinationPolicyOnDeadline) MarshalText() ([]byte, error) {
+	switch s {
+	case CoordinationPolicyOnDeadlineCancelAndPause:
+		return []byte(s), nil
+	case CoordinationPolicyOnDeadlineStopNewWork:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *CoordinationPolicyOnDeadline) UnmarshalText(data []byte) error {
+	switch CoordinationPolicyOnDeadline(data) {
+	case CoordinationPolicyOnDeadlineCancelAndPause:
+		*s = CoordinationPolicyOnDeadlineCancelAndPause
+		return nil
+	case CoordinationPolicyOnDeadlineStopNewWork:
+		*s = CoordinationPolicyOnDeadlineStopNewWork
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+type CoordinationPolicySpawnApproval string
+
+const (
+	CoordinationPolicySpawnApprovalAuto CoordinationPolicySpawnApproval = "auto"
+)
+
+// AllValues returns all CoordinationPolicySpawnApproval values.
+func (CoordinationPolicySpawnApproval) AllValues() []CoordinationPolicySpawnApproval {
+	return []CoordinationPolicySpawnApproval{
+		CoordinationPolicySpawnApprovalAuto,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s CoordinationPolicySpawnApproval) MarshalText() ([]byte, error) {
+	switch s {
+	case CoordinationPolicySpawnApprovalAuto:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *CoordinationPolicySpawnApproval) UnmarshalText(data []byte) error {
+	switch CoordinationPolicySpawnApproval(data) {
+	case CoordinationPolicySpawnApprovalAuto:
+		*s = CoordinationPolicySpawnApprovalAuto
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
 
 // CreateBrowserSessionNoContent is response for CreateBrowserSession operation.
 type CreateBrowserSessionNoContent struct {
@@ -1241,7 +1976,8 @@ type CreateProjectThreadRequest struct {
 	Name    OptString `json:"name"`
 	Harness string    `json:"harness"`
 	// Encrypted as a transcript envelope before SQLite persistence. Prefer stdin in shells.
-	Prompt string `json:"prompt"`
+	Prompt       string                `json:"prompt"`
+	Coordination OptCoordinationPolicy `json:"coordination"`
 }
 
 // GetName returns the value of Name.
@@ -1259,6 +1995,11 @@ func (s *CreateProjectThreadRequest) GetPrompt() string {
 	return s.Prompt
 }
 
+// GetCoordination returns the value of Coordination.
+func (s *CreateProjectThreadRequest) GetCoordination() OptCoordinationPolicy {
+	return s.Coordination
+}
+
 // SetName sets the value of Name.
 func (s *CreateProjectThreadRequest) SetName(val OptString) {
 	s.Name = val
@@ -1272,6 +2013,11 @@ func (s *CreateProjectThreadRequest) SetHarness(val string) {
 // SetPrompt sets the value of Prompt.
 func (s *CreateProjectThreadRequest) SetPrompt(val string) {
 	s.Prompt = val
+}
+
+// SetCoordination sets the value of Coordination.
+func (s *CreateProjectThreadRequest) SetCoordination(val OptCoordinationPolicy) {
+	s.Coordination = val
 }
 
 type CreateProjectThreadUnprocessableEntity ErrorEnvelope
@@ -2145,17 +2891,20 @@ func (s *ErrorEnvelope) SetError(val APIError) {
 func (*ErrorEnvelope) attachRunWebSocketRes()     {}
 func (*ErrorEnvelope) createRunAttachTicketRes()  {}
 func (*ErrorEnvelope) getCapsuleRes()             {}
+func (*ErrorEnvelope) getCoordinationGrantRes()   {}
 func (*ErrorEnvelope) getDeliveryRes()            {}
 func (*ErrorEnvelope) getMomentRes()              {}
 func (*ErrorEnvelope) getProjectRes()             {}
 func (*ErrorEnvelope) getProjectThreadIntentRes() {}
 func (*ErrorEnvelope) getRunRes()                 {}
+func (*ErrorEnvelope) getThreadLinkRes()          {}
 func (*ErrorEnvelope) getThreadRes()              {}
 func (*ErrorEnvelope) getTimelineRes()            {}
 func (*ErrorEnvelope) listCapsuleDeliveriesRes()  {}
 func (*ErrorEnvelope) listMomentsRes()            {}
 func (*ErrorEnvelope) listProjectsRes()           {}
 func (*ErrorEnvelope) listSecretsRes()            {}
+func (*ErrorEnvelope) listThreadLinksRes()        {}
 func (*ErrorEnvelope) listThreadsRes()            {}
 
 type ExportCapsuleWorkspaceConflict ErrorEnvelope
@@ -3605,6 +4354,282 @@ func (o OptCapabilitiesStructuredProtocol) Or(d CapabilitiesStructuredProtocol) 
 	return d
 }
 
+// NewOptCapsuleRole returns new OptCapsuleRole with value set to v.
+func NewOptCapsuleRole(v CapsuleRole) OptCapsuleRole {
+	return OptCapsuleRole{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptCapsuleRole is optional CapsuleRole.
+type OptCapsuleRole struct {
+	Value CapsuleRole
+	Set   bool
+}
+
+// IsSet returns true if OptCapsuleRole was set.
+func (o OptCapsuleRole) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptCapsuleRole) Reset() {
+	var v CapsuleRole
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptCapsuleRole) SetTo(v CapsuleRole) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptCapsuleRole) Get() (v CapsuleRole, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptCapsuleRole) Or(d CapsuleRole) CapsuleRole {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptCoordinationCapability returns new OptCoordinationCapability with value set to v.
+func NewOptCoordinationCapability(v CoordinationCapability) OptCoordinationCapability {
+	return OptCoordinationCapability{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptCoordinationCapability is optional CoordinationCapability.
+type OptCoordinationCapability struct {
+	Value CoordinationCapability
+	Set   bool
+}
+
+// IsSet returns true if OptCoordinationCapability was set.
+func (o OptCoordinationCapability) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptCoordinationCapability) Reset() {
+	var v CoordinationCapability
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptCoordinationCapability) SetTo(v CoordinationCapability) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptCoordinationCapability) Get() (v CoordinationCapability, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptCoordinationCapability) Or(d CoordinationCapability) CoordinationCapability {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptCoordinationGrantRevokeReason returns new OptCoordinationGrantRevokeReason with value set to v.
+func NewOptCoordinationGrantRevokeReason(v CoordinationGrantRevokeReason) OptCoordinationGrantRevokeReason {
+	return OptCoordinationGrantRevokeReason{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptCoordinationGrantRevokeReason is optional CoordinationGrantRevokeReason.
+type OptCoordinationGrantRevokeReason struct {
+	Value CoordinationGrantRevokeReason
+	Set   bool
+}
+
+// IsSet returns true if OptCoordinationGrantRevokeReason was set.
+func (o OptCoordinationGrantRevokeReason) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptCoordinationGrantRevokeReason) Reset() {
+	var v CoordinationGrantRevokeReason
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptCoordinationGrantRevokeReason) SetTo(v CoordinationGrantRevokeReason) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptCoordinationGrantRevokeReason) Get() (v CoordinationGrantRevokeReason, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptCoordinationGrantRevokeReason) Or(d CoordinationGrantRevokeReason) CoordinationGrantRevokeReason {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptCoordinationPolicy returns new OptCoordinationPolicy with value set to v.
+func NewOptCoordinationPolicy(v CoordinationPolicy) OptCoordinationPolicy {
+	return OptCoordinationPolicy{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptCoordinationPolicy is optional CoordinationPolicy.
+type OptCoordinationPolicy struct {
+	Value CoordinationPolicy
+	Set   bool
+}
+
+// IsSet returns true if OptCoordinationPolicy was set.
+func (o OptCoordinationPolicy) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptCoordinationPolicy) Reset() {
+	var v CoordinationPolicy
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptCoordinationPolicy) SetTo(v CoordinationPolicy) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptCoordinationPolicy) Get() (v CoordinationPolicy, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptCoordinationPolicy) Or(d CoordinationPolicy) CoordinationPolicy {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptCoordinationPolicyOnDeadline returns new OptCoordinationPolicyOnDeadline with value set to v.
+func NewOptCoordinationPolicyOnDeadline(v CoordinationPolicyOnDeadline) OptCoordinationPolicyOnDeadline {
+	return OptCoordinationPolicyOnDeadline{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptCoordinationPolicyOnDeadline is optional CoordinationPolicyOnDeadline.
+type OptCoordinationPolicyOnDeadline struct {
+	Value CoordinationPolicyOnDeadline
+	Set   bool
+}
+
+// IsSet returns true if OptCoordinationPolicyOnDeadline was set.
+func (o OptCoordinationPolicyOnDeadline) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptCoordinationPolicyOnDeadline) Reset() {
+	var v CoordinationPolicyOnDeadline
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptCoordinationPolicyOnDeadline) SetTo(v CoordinationPolicyOnDeadline) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptCoordinationPolicyOnDeadline) Get() (v CoordinationPolicyOnDeadline, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptCoordinationPolicyOnDeadline) Or(d CoordinationPolicyOnDeadline) CoordinationPolicyOnDeadline {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptCoordinationPolicySpawnApproval returns new OptCoordinationPolicySpawnApproval with value set to v.
+func NewOptCoordinationPolicySpawnApproval(v CoordinationPolicySpawnApproval) OptCoordinationPolicySpawnApproval {
+	return OptCoordinationPolicySpawnApproval{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptCoordinationPolicySpawnApproval is optional CoordinationPolicySpawnApproval.
+type OptCoordinationPolicySpawnApproval struct {
+	Value CoordinationPolicySpawnApproval
+	Set   bool
+}
+
+// IsSet returns true if OptCoordinationPolicySpawnApproval was set.
+func (o OptCoordinationPolicySpawnApproval) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptCoordinationPolicySpawnApproval) Reset() {
+	var v CoordinationPolicySpawnApproval
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptCoordinationPolicySpawnApproval) SetTo(v CoordinationPolicySpawnApproval) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptCoordinationPolicySpawnApproval) Get() (v CoordinationPolicySpawnApproval, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptCoordinationPolicySpawnApproval) Or(d CoordinationPolicySpawnApproval) CoordinationPolicySpawnApproval {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptDateTime returns new OptDateTime with value set to v.
 func NewOptDateTime(v time.Time) OptDateTime {
 	return OptDateTime{
@@ -4289,6 +5314,190 @@ func (o OptThreadInput) Get() (v ThreadInput, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptThreadInput) Or(d ThreadInput) ThreadInput {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptThreadLinkCloseReason returns new OptThreadLinkCloseReason with value set to v.
+func NewOptThreadLinkCloseReason(v ThreadLinkCloseReason) OptThreadLinkCloseReason {
+	return OptThreadLinkCloseReason{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptThreadLinkCloseReason is optional ThreadLinkCloseReason.
+type OptThreadLinkCloseReason struct {
+	Value ThreadLinkCloseReason
+	Set   bool
+}
+
+// IsSet returns true if OptThreadLinkCloseReason was set.
+func (o OptThreadLinkCloseReason) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptThreadLinkCloseReason) Reset() {
+	var v ThreadLinkCloseReason
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptThreadLinkCloseReason) SetTo(v ThreadLinkCloseReason) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptThreadLinkCloseReason) Get() (v ThreadLinkCloseReason, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptThreadLinkCloseReason) Or(d ThreadLinkCloseReason) ThreadLinkCloseReason {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptThreadLinkLastReportReason returns new OptThreadLinkLastReportReason with value set to v.
+func NewOptThreadLinkLastReportReason(v ThreadLinkLastReportReason) OptThreadLinkLastReportReason {
+	return OptThreadLinkLastReportReason{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptThreadLinkLastReportReason is optional ThreadLinkLastReportReason.
+type OptThreadLinkLastReportReason struct {
+	Value ThreadLinkLastReportReason
+	Set   bool
+}
+
+// IsSet returns true if OptThreadLinkLastReportReason was set.
+func (o OptThreadLinkLastReportReason) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptThreadLinkLastReportReason) Reset() {
+	var v ThreadLinkLastReportReason
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptThreadLinkLastReportReason) SetTo(v ThreadLinkLastReportReason) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptThreadLinkLastReportReason) Get() (v ThreadLinkLastReportReason, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptThreadLinkLastReportReason) Or(d ThreadLinkLastReportReason) ThreadLinkLastReportReason {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptThreadLinkLastReportStatus returns new OptThreadLinkLastReportStatus with value set to v.
+func NewOptThreadLinkLastReportStatus(v ThreadLinkLastReportStatus) OptThreadLinkLastReportStatus {
+	return OptThreadLinkLastReportStatus{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptThreadLinkLastReportStatus is optional ThreadLinkLastReportStatus.
+type OptThreadLinkLastReportStatus struct {
+	Value ThreadLinkLastReportStatus
+	Set   bool
+}
+
+// IsSet returns true if OptThreadLinkLastReportStatus was set.
+func (o OptThreadLinkLastReportStatus) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptThreadLinkLastReportStatus) Reset() {
+	var v ThreadLinkLastReportStatus
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptThreadLinkLastReportStatus) SetTo(v ThreadLinkLastReportStatus) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptThreadLinkLastReportStatus) Get() (v ThreadLinkLastReportStatus, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptThreadLinkLastReportStatus) Or(d ThreadLinkLastReportStatus) ThreadLinkLastReportStatus {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptThreadOrigin returns new OptThreadOrigin with value set to v.
+func NewOptThreadOrigin(v ThreadOrigin) OptThreadOrigin {
+	return OptThreadOrigin{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptThreadOrigin is optional ThreadOrigin.
+type OptThreadOrigin struct {
+	Value ThreadOrigin
+	Set   bool
+}
+
+// IsSet returns true if OptThreadOrigin was set.
+func (o OptThreadOrigin) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptThreadOrigin) Reset() {
+	var v ThreadOrigin
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptThreadOrigin) SetTo(v ThreadOrigin) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptThreadOrigin) Get() (v ThreadOrigin, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptThreadOrigin) Or(d ThreadOrigin) ThreadOrigin {
 	if v, ok := o.Get(); ok {
 		return v
 	}
@@ -6019,6 +7228,48 @@ type RetryCapsuleUnprocessableEntity ErrorEnvelope
 
 func (*RetryCapsuleUnprocessableEntity) retryCapsuleRes() {}
 
+type RevokeCoordinationGrantBadRequest ErrorEnvelope
+
+func (*RevokeCoordinationGrantBadRequest) revokeCoordinationGrantRes() {}
+
+type RevokeCoordinationGrantConflict ErrorEnvelope
+
+func (*RevokeCoordinationGrantConflict) revokeCoordinationGrantRes() {}
+
+type RevokeCoordinationGrantNotFound ErrorEnvelope
+
+func (*RevokeCoordinationGrantNotFound) revokeCoordinationGrantRes() {}
+
+// Ref: #/components/schemas/RevokeCoordinationGrantRequest
+type RevokeCoordinationGrantRequest struct {
+	ExpectedResourceVersion int64   `json:"expectedResourceVersion"`
+	CancelDescendants       OptBool `json:"cancelDescendants"`
+}
+
+// GetExpectedResourceVersion returns the value of ExpectedResourceVersion.
+func (s *RevokeCoordinationGrantRequest) GetExpectedResourceVersion() int64 {
+	return s.ExpectedResourceVersion
+}
+
+// GetCancelDescendants returns the value of CancelDescendants.
+func (s *RevokeCoordinationGrantRequest) GetCancelDescendants() OptBool {
+	return s.CancelDescendants
+}
+
+// SetExpectedResourceVersion sets the value of ExpectedResourceVersion.
+func (s *RevokeCoordinationGrantRequest) SetExpectedResourceVersion(val int64) {
+	s.ExpectedResourceVersion = val
+}
+
+// SetCancelDescendants sets the value of CancelDescendants.
+func (s *RevokeCoordinationGrantRequest) SetCancelDescendants(val OptBool) {
+	s.CancelDescendants = val
+}
+
+type RevokeCoordinationGrantUnprocessableEntity ErrorEnvelope
+
+func (*RevokeCoordinationGrantUnprocessableEntity) revokeCoordinationGrantRes() {}
+
 type RewindCapsuleBadRequest ErrorEnvelope
 
 func (*RewindCapsuleBadRequest) rewindCapsuleRes() {}
@@ -6832,13 +8083,23 @@ type Thread struct {
 	Turn                OptThreadTurn     `json:"turn"`
 	Protocol            OptThreadProtocol `json:"protocol"`
 	StructuredSupported OptBool           `json:"structuredSupported"`
-	EncryptedAtRest     bool              `json:"encryptedAtRest"`
-	MessageCount        int64             `json:"messageCount"`
-	EncryptedBytes      int64             `json:"encryptedBytes"`
-	CreatedAt           time.Time         `json:"createdAt"`
-	UpdatedAt           time.Time         `json:"updatedAt"`
-	DeletedAt           OptDateTime       `json:"deletedAt"`
-	ResourceVersion     int64             `json:"resourceVersion"`
+	// Present on a lead Thread that holds a Coordination Grant.
+	CoordinationGrantId OptString `json:"coordinationGrantId"`
+	// Present on a helper Thread; the lead that spawned it.
+	ParentThreadId OptString `json:"parentThreadId"`
+	// The lead at the root of this Thread's coordination tree.
+	RootThreadId OptString `json:"rootThreadId"`
+	// Present on a helper Thread; its link from the lead.
+	LinkId OptString `json:"linkId"`
+	// Zero for leads, one for their helpers.
+	Depth           OptInt      `json:"depth"`
+	EncryptedAtRest bool        `json:"encryptedAtRest"`
+	MessageCount    int64       `json:"messageCount"`
+	EncryptedBytes  int64       `json:"encryptedBytes"`
+	CreatedAt       time.Time   `json:"createdAt"`
+	UpdatedAt       time.Time   `json:"updatedAt"`
+	DeletedAt       OptDateTime `json:"deletedAt"`
+	ResourceVersion int64       `json:"resourceVersion"`
 }
 
 // GetID returns the value of ID.
@@ -6889,6 +8150,31 @@ func (s *Thread) GetProtocol() OptThreadProtocol {
 // GetStructuredSupported returns the value of StructuredSupported.
 func (s *Thread) GetStructuredSupported() OptBool {
 	return s.StructuredSupported
+}
+
+// GetCoordinationGrantId returns the value of CoordinationGrantId.
+func (s *Thread) GetCoordinationGrantId() OptString {
+	return s.CoordinationGrantId
+}
+
+// GetParentThreadId returns the value of ParentThreadId.
+func (s *Thread) GetParentThreadId() OptString {
+	return s.ParentThreadId
+}
+
+// GetRootThreadId returns the value of RootThreadId.
+func (s *Thread) GetRootThreadId() OptString {
+	return s.RootThreadId
+}
+
+// GetLinkId returns the value of LinkId.
+func (s *Thread) GetLinkId() OptString {
+	return s.LinkId
+}
+
+// GetDepth returns the value of Depth.
+func (s *Thread) GetDepth() OptInt {
+	return s.Depth
 }
 
 // GetEncryptedAtRest returns the value of EncryptedAtRest.
@@ -6974,6 +8260,31 @@ func (s *Thread) SetProtocol(val OptThreadProtocol) {
 // SetStructuredSupported sets the value of StructuredSupported.
 func (s *Thread) SetStructuredSupported(val OptBool) {
 	s.StructuredSupported = val
+}
+
+// SetCoordinationGrantId sets the value of CoordinationGrantId.
+func (s *Thread) SetCoordinationGrantId(val OptString) {
+	s.CoordinationGrantId = val
+}
+
+// SetParentThreadId sets the value of ParentThreadId.
+func (s *Thread) SetParentThreadId(val OptString) {
+	s.ParentThreadId = val
+}
+
+// SetRootThreadId sets the value of RootThreadId.
+func (s *Thread) SetRootThreadId(val OptString) {
+	s.RootThreadId = val
+}
+
+// SetLinkId sets the value of LinkId.
+func (s *Thread) SetLinkId(val OptString) {
+	s.LinkId = val
+}
+
+// SetDepth sets the value of Depth.
+func (s *Thread) SetDepth(val OptInt) {
+	s.Depth = val
 }
 
 // SetEncryptedAtRest sets the value of EncryptedAtRest.
@@ -7488,6 +8799,7 @@ type ThreadBlock struct {
 	// Present only at explicit read/stream decryption boundaries.
 	Content   OptString             `json:"content"`
 	Event     OptThreadAdapterEvent `json:"event"`
+	Origin    OptThreadOrigin       `json:"origin"`
 	CreatedAt time.Time             `json:"createdAt"`
 }
 
@@ -7534,6 +8846,11 @@ func (s *ThreadBlock) GetContent() OptString {
 // GetEvent returns the value of Event.
 func (s *ThreadBlock) GetEvent() OptThreadAdapterEvent {
 	return s.Event
+}
+
+// GetOrigin returns the value of Origin.
+func (s *ThreadBlock) GetOrigin() OptThreadOrigin {
+	return s.Origin
 }
 
 // GetCreatedAt returns the value of CreatedAt.
@@ -7584,6 +8901,11 @@ func (s *ThreadBlock) SetContent(val OptString) {
 // SetEvent sets the value of Event.
 func (s *ThreadBlock) SetEvent(val OptThreadAdapterEvent) {
 	s.Event = val
+}
+
+// SetOrigin sets the value of Origin.
+func (s *ThreadBlock) SetOrigin(val OptThreadOrigin) {
+	s.Origin = val
 }
 
 // SetCreatedAt sets the value of CreatedAt.
@@ -7873,6 +9195,561 @@ func (s *ThreadInput) SetSecret(val OptBool) {
 	s.Secret = val
 }
 
+// Content-free handle from a lead Thread to one helper. Report text is re-derived from the helper's
+// encrypted transcript and is never stored on the link.
+// Ref: #/components/schemas/ThreadLink
+type ThreadLink struct {
+	ID                 string                        `json:"id"`
+	GrantId            string                        `json:"grantId"`
+	ParentThreadId     string                        `json:"parentThreadId"`
+	ParentCapsuleId    string                        `json:"parentCapsuleId"`
+	ChildThreadId      string                        `json:"childThreadId"`
+	ChildCapsuleId     string                        `json:"childCapsuleId"`
+	ChildIntentId      string                        `json:"childIntentId"`
+	Depth              int                           `json:"depth"`
+	Name               string                        `json:"name"`
+	Harness            string                        `json:"harness"`
+	State              ThreadLinkState               `json:"state"`
+	CloseReason        OptThreadLinkCloseReason      `json:"closeReason"`
+	Phase              ThreadLinkPhase               `json:"phase"`
+	ReportSeq          int                           `json:"reportSeq"`
+	ReportDeliveredSeq int                           `json:"reportDeliveredSeq"`
+	LastReportStatus   OptThreadLinkLastReportStatus `json:"lastReportStatus"`
+	LastReportReason   OptThreadLinkLastReportReason `json:"lastReportReason"`
+	LastReportAt       OptDateTime                   `json:"lastReportAt"`
+	MessagesForwarded  int                           `json:"messagesForwarded"`
+	CreatedAt          time.Time                     `json:"createdAt"`
+	UpdatedAt          time.Time                     `json:"updatedAt"`
+	ResourceVersion    int64                         `json:"resourceVersion"`
+}
+
+// GetID returns the value of ID.
+func (s *ThreadLink) GetID() string {
+	return s.ID
+}
+
+// GetGrantId returns the value of GrantId.
+func (s *ThreadLink) GetGrantId() string {
+	return s.GrantId
+}
+
+// GetParentThreadId returns the value of ParentThreadId.
+func (s *ThreadLink) GetParentThreadId() string {
+	return s.ParentThreadId
+}
+
+// GetParentCapsuleId returns the value of ParentCapsuleId.
+func (s *ThreadLink) GetParentCapsuleId() string {
+	return s.ParentCapsuleId
+}
+
+// GetChildThreadId returns the value of ChildThreadId.
+func (s *ThreadLink) GetChildThreadId() string {
+	return s.ChildThreadId
+}
+
+// GetChildCapsuleId returns the value of ChildCapsuleId.
+func (s *ThreadLink) GetChildCapsuleId() string {
+	return s.ChildCapsuleId
+}
+
+// GetChildIntentId returns the value of ChildIntentId.
+func (s *ThreadLink) GetChildIntentId() string {
+	return s.ChildIntentId
+}
+
+// GetDepth returns the value of Depth.
+func (s *ThreadLink) GetDepth() int {
+	return s.Depth
+}
+
+// GetName returns the value of Name.
+func (s *ThreadLink) GetName() string {
+	return s.Name
+}
+
+// GetHarness returns the value of Harness.
+func (s *ThreadLink) GetHarness() string {
+	return s.Harness
+}
+
+// GetState returns the value of State.
+func (s *ThreadLink) GetState() ThreadLinkState {
+	return s.State
+}
+
+// GetCloseReason returns the value of CloseReason.
+func (s *ThreadLink) GetCloseReason() OptThreadLinkCloseReason {
+	return s.CloseReason
+}
+
+// GetPhase returns the value of Phase.
+func (s *ThreadLink) GetPhase() ThreadLinkPhase {
+	return s.Phase
+}
+
+// GetReportSeq returns the value of ReportSeq.
+func (s *ThreadLink) GetReportSeq() int {
+	return s.ReportSeq
+}
+
+// GetReportDeliveredSeq returns the value of ReportDeliveredSeq.
+func (s *ThreadLink) GetReportDeliveredSeq() int {
+	return s.ReportDeliveredSeq
+}
+
+// GetLastReportStatus returns the value of LastReportStatus.
+func (s *ThreadLink) GetLastReportStatus() OptThreadLinkLastReportStatus {
+	return s.LastReportStatus
+}
+
+// GetLastReportReason returns the value of LastReportReason.
+func (s *ThreadLink) GetLastReportReason() OptThreadLinkLastReportReason {
+	return s.LastReportReason
+}
+
+// GetLastReportAt returns the value of LastReportAt.
+func (s *ThreadLink) GetLastReportAt() OptDateTime {
+	return s.LastReportAt
+}
+
+// GetMessagesForwarded returns the value of MessagesForwarded.
+func (s *ThreadLink) GetMessagesForwarded() int {
+	return s.MessagesForwarded
+}
+
+// GetCreatedAt returns the value of CreatedAt.
+func (s *ThreadLink) GetCreatedAt() time.Time {
+	return s.CreatedAt
+}
+
+// GetUpdatedAt returns the value of UpdatedAt.
+func (s *ThreadLink) GetUpdatedAt() time.Time {
+	return s.UpdatedAt
+}
+
+// GetResourceVersion returns the value of ResourceVersion.
+func (s *ThreadLink) GetResourceVersion() int64 {
+	return s.ResourceVersion
+}
+
+// SetID sets the value of ID.
+func (s *ThreadLink) SetID(val string) {
+	s.ID = val
+}
+
+// SetGrantId sets the value of GrantId.
+func (s *ThreadLink) SetGrantId(val string) {
+	s.GrantId = val
+}
+
+// SetParentThreadId sets the value of ParentThreadId.
+func (s *ThreadLink) SetParentThreadId(val string) {
+	s.ParentThreadId = val
+}
+
+// SetParentCapsuleId sets the value of ParentCapsuleId.
+func (s *ThreadLink) SetParentCapsuleId(val string) {
+	s.ParentCapsuleId = val
+}
+
+// SetChildThreadId sets the value of ChildThreadId.
+func (s *ThreadLink) SetChildThreadId(val string) {
+	s.ChildThreadId = val
+}
+
+// SetChildCapsuleId sets the value of ChildCapsuleId.
+func (s *ThreadLink) SetChildCapsuleId(val string) {
+	s.ChildCapsuleId = val
+}
+
+// SetChildIntentId sets the value of ChildIntentId.
+func (s *ThreadLink) SetChildIntentId(val string) {
+	s.ChildIntentId = val
+}
+
+// SetDepth sets the value of Depth.
+func (s *ThreadLink) SetDepth(val int) {
+	s.Depth = val
+}
+
+// SetName sets the value of Name.
+func (s *ThreadLink) SetName(val string) {
+	s.Name = val
+}
+
+// SetHarness sets the value of Harness.
+func (s *ThreadLink) SetHarness(val string) {
+	s.Harness = val
+}
+
+// SetState sets the value of State.
+func (s *ThreadLink) SetState(val ThreadLinkState) {
+	s.State = val
+}
+
+// SetCloseReason sets the value of CloseReason.
+func (s *ThreadLink) SetCloseReason(val OptThreadLinkCloseReason) {
+	s.CloseReason = val
+}
+
+// SetPhase sets the value of Phase.
+func (s *ThreadLink) SetPhase(val ThreadLinkPhase) {
+	s.Phase = val
+}
+
+// SetReportSeq sets the value of ReportSeq.
+func (s *ThreadLink) SetReportSeq(val int) {
+	s.ReportSeq = val
+}
+
+// SetReportDeliveredSeq sets the value of ReportDeliveredSeq.
+func (s *ThreadLink) SetReportDeliveredSeq(val int) {
+	s.ReportDeliveredSeq = val
+}
+
+// SetLastReportStatus sets the value of LastReportStatus.
+func (s *ThreadLink) SetLastReportStatus(val OptThreadLinkLastReportStatus) {
+	s.LastReportStatus = val
+}
+
+// SetLastReportReason sets the value of LastReportReason.
+func (s *ThreadLink) SetLastReportReason(val OptThreadLinkLastReportReason) {
+	s.LastReportReason = val
+}
+
+// SetLastReportAt sets the value of LastReportAt.
+func (s *ThreadLink) SetLastReportAt(val OptDateTime) {
+	s.LastReportAt = val
+}
+
+// SetMessagesForwarded sets the value of MessagesForwarded.
+func (s *ThreadLink) SetMessagesForwarded(val int) {
+	s.MessagesForwarded = val
+}
+
+// SetCreatedAt sets the value of CreatedAt.
+func (s *ThreadLink) SetCreatedAt(val time.Time) {
+	s.CreatedAt = val
+}
+
+// SetUpdatedAt sets the value of UpdatedAt.
+func (s *ThreadLink) SetUpdatedAt(val time.Time) {
+	s.UpdatedAt = val
+}
+
+// SetResourceVersion sets the value of ResourceVersion.
+func (s *ThreadLink) SetResourceVersion(val int64) {
+	s.ResourceVersion = val
+}
+
+type ThreadLinkCloseReason string
+
+const (
+	ThreadLinkCloseReasonCancelled ThreadLinkCloseReason = "cancelled"
+	ThreadLinkCloseReasonFailed    ThreadLinkCloseReason = "failed"
+	ThreadLinkCloseReasonEnded     ThreadLinkCloseReason = "ended"
+	ThreadLinkCloseReasonRevoked   ThreadLinkCloseReason = "revoked"
+)
+
+// AllValues returns all ThreadLinkCloseReason values.
+func (ThreadLinkCloseReason) AllValues() []ThreadLinkCloseReason {
+	return []ThreadLinkCloseReason{
+		ThreadLinkCloseReasonCancelled,
+		ThreadLinkCloseReasonFailed,
+		ThreadLinkCloseReasonEnded,
+		ThreadLinkCloseReasonRevoked,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s ThreadLinkCloseReason) MarshalText() ([]byte, error) {
+	switch s {
+	case ThreadLinkCloseReasonCancelled:
+		return []byte(s), nil
+	case ThreadLinkCloseReasonFailed:
+		return []byte(s), nil
+	case ThreadLinkCloseReasonEnded:
+		return []byte(s), nil
+	case ThreadLinkCloseReasonRevoked:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *ThreadLinkCloseReason) UnmarshalText(data []byte) error {
+	switch ThreadLinkCloseReason(data) {
+	case ThreadLinkCloseReasonCancelled:
+		*s = ThreadLinkCloseReasonCancelled
+		return nil
+	case ThreadLinkCloseReasonFailed:
+		*s = ThreadLinkCloseReasonFailed
+		return nil
+	case ThreadLinkCloseReasonEnded:
+		*s = ThreadLinkCloseReasonEnded
+		return nil
+	case ThreadLinkCloseReasonRevoked:
+		*s = ThreadLinkCloseReasonRevoked
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// ThreadLinkHeaders wraps ThreadLink with response headers.
+type ThreadLinkHeaders struct {
+	ETag     OptString
+	Response ThreadLink
+}
+
+// GetETag returns the value of ETag.
+func (s *ThreadLinkHeaders) GetETag() OptString {
+	return s.ETag
+}
+
+// GetResponse returns the value of Response.
+func (s *ThreadLinkHeaders) GetResponse() ThreadLink {
+	return s.Response
+}
+
+// SetETag sets the value of ETag.
+func (s *ThreadLinkHeaders) SetETag(val OptString) {
+	s.ETag = val
+}
+
+// SetResponse sets the value of Response.
+func (s *ThreadLinkHeaders) SetResponse(val ThreadLink) {
+	s.Response = val
+}
+
+func (*ThreadLinkHeaders) getThreadLinkRes() {}
+
+type ThreadLinkLastReportReason string
+
+const (
+	ThreadLinkLastReportReasonCancelled     ThreadLinkLastReportReason = "cancelled"
+	ThreadLinkLastReportReasonCapsuleFailed ThreadLinkLastReportReason = "capsule_failed"
+	ThreadLinkLastReportReasonSessionEnded  ThreadLinkLastReportReason = "session_ended"
+	ThreadLinkLastReportReasonRevoked       ThreadLinkLastReportReason = "revoked"
+)
+
+// AllValues returns all ThreadLinkLastReportReason values.
+func (ThreadLinkLastReportReason) AllValues() []ThreadLinkLastReportReason {
+	return []ThreadLinkLastReportReason{
+		ThreadLinkLastReportReasonCancelled,
+		ThreadLinkLastReportReasonCapsuleFailed,
+		ThreadLinkLastReportReasonSessionEnded,
+		ThreadLinkLastReportReasonRevoked,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s ThreadLinkLastReportReason) MarshalText() ([]byte, error) {
+	switch s {
+	case ThreadLinkLastReportReasonCancelled:
+		return []byte(s), nil
+	case ThreadLinkLastReportReasonCapsuleFailed:
+		return []byte(s), nil
+	case ThreadLinkLastReportReasonSessionEnded:
+		return []byte(s), nil
+	case ThreadLinkLastReportReasonRevoked:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *ThreadLinkLastReportReason) UnmarshalText(data []byte) error {
+	switch ThreadLinkLastReportReason(data) {
+	case ThreadLinkLastReportReasonCancelled:
+		*s = ThreadLinkLastReportReasonCancelled
+		return nil
+	case ThreadLinkLastReportReasonCapsuleFailed:
+		*s = ThreadLinkLastReportReasonCapsuleFailed
+		return nil
+	case ThreadLinkLastReportReasonSessionEnded:
+		*s = ThreadLinkLastReportReasonSessionEnded
+		return nil
+	case ThreadLinkLastReportReasonRevoked:
+		*s = ThreadLinkLastReportReasonRevoked
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+type ThreadLinkLastReportStatus string
+
+const (
+	ThreadLinkLastReportStatusTurnEnded ThreadLinkLastReportStatus = "turn_ended"
+	ThreadLinkLastReportStatusFailed    ThreadLinkLastReportStatus = "failed"
+)
+
+// AllValues returns all ThreadLinkLastReportStatus values.
+func (ThreadLinkLastReportStatus) AllValues() []ThreadLinkLastReportStatus {
+	return []ThreadLinkLastReportStatus{
+		ThreadLinkLastReportStatusTurnEnded,
+		ThreadLinkLastReportStatusFailed,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s ThreadLinkLastReportStatus) MarshalText() ([]byte, error) {
+	switch s {
+	case ThreadLinkLastReportStatusTurnEnded:
+		return []byte(s), nil
+	case ThreadLinkLastReportStatusFailed:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *ThreadLinkLastReportStatus) UnmarshalText(data []byte) error {
+	switch ThreadLinkLastReportStatus(data) {
+	case ThreadLinkLastReportStatusTurnEnded:
+		*s = ThreadLinkLastReportStatusTurnEnded
+		return nil
+	case ThreadLinkLastReportStatusFailed:
+		*s = ThreadLinkLastReportStatusFailed
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Ref: #/components/schemas/ThreadLinkPage
+type ThreadLinkPage struct {
+	Items []ThreadLink `json:"items"`
+}
+
+// GetItems returns the value of Items.
+func (s *ThreadLinkPage) GetItems() []ThreadLink {
+	return s.Items
+}
+
+// SetItems sets the value of Items.
+func (s *ThreadLinkPage) SetItems(val []ThreadLink) {
+	s.Items = val
+}
+
+func (*ThreadLinkPage) listThreadLinksRes() {}
+
+type ThreadLinkPhase string
+
+const (
+	ThreadLinkPhaseProvisioning     ThreadLinkPhase = "provisioning"
+	ThreadLinkPhaseWorking          ThreadLinkPhase = "working"
+	ThreadLinkPhaseIdle             ThreadLinkPhase = "idle"
+	ThreadLinkPhaseAwaitingOperator ThreadLinkPhase = "awaiting_operator"
+	ThreadLinkPhaseEnded            ThreadLinkPhase = "ended"
+	ThreadLinkPhaseFailed           ThreadLinkPhase = "failed"
+)
+
+// AllValues returns all ThreadLinkPhase values.
+func (ThreadLinkPhase) AllValues() []ThreadLinkPhase {
+	return []ThreadLinkPhase{
+		ThreadLinkPhaseProvisioning,
+		ThreadLinkPhaseWorking,
+		ThreadLinkPhaseIdle,
+		ThreadLinkPhaseAwaitingOperator,
+		ThreadLinkPhaseEnded,
+		ThreadLinkPhaseFailed,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s ThreadLinkPhase) MarshalText() ([]byte, error) {
+	switch s {
+	case ThreadLinkPhaseProvisioning:
+		return []byte(s), nil
+	case ThreadLinkPhaseWorking:
+		return []byte(s), nil
+	case ThreadLinkPhaseIdle:
+		return []byte(s), nil
+	case ThreadLinkPhaseAwaitingOperator:
+		return []byte(s), nil
+	case ThreadLinkPhaseEnded:
+		return []byte(s), nil
+	case ThreadLinkPhaseFailed:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *ThreadLinkPhase) UnmarshalText(data []byte) error {
+	switch ThreadLinkPhase(data) {
+	case ThreadLinkPhaseProvisioning:
+		*s = ThreadLinkPhaseProvisioning
+		return nil
+	case ThreadLinkPhaseWorking:
+		*s = ThreadLinkPhaseWorking
+		return nil
+	case ThreadLinkPhaseIdle:
+		*s = ThreadLinkPhaseIdle
+		return nil
+	case ThreadLinkPhaseAwaitingOperator:
+		*s = ThreadLinkPhaseAwaitingOperator
+		return nil
+	case ThreadLinkPhaseEnded:
+		*s = ThreadLinkPhaseEnded
+		return nil
+	case ThreadLinkPhaseFailed:
+		*s = ThreadLinkPhaseFailed
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Ref: #/components/schemas/ThreadLinkState
+type ThreadLinkState string
+
+const (
+	ThreadLinkStateActive ThreadLinkState = "active"
+	ThreadLinkStateClosed ThreadLinkState = "closed"
+)
+
+// AllValues returns all ThreadLinkState values.
+func (ThreadLinkState) AllValues() []ThreadLinkState {
+	return []ThreadLinkState{
+		ThreadLinkStateActive,
+		ThreadLinkStateClosed,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s ThreadLinkState) MarshalText() ([]byte, error) {
+	switch s {
+	case ThreadLinkStateActive:
+		return []byte(s), nil
+	case ThreadLinkStateClosed:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *ThreadLinkState) UnmarshalText(data []byte) error {
+	switch ThreadLinkState(data) {
+	case ThreadLinkStateActive:
+		*s = ThreadLinkStateActive
+		return nil
+	case ThreadLinkStateClosed:
+		*s = ThreadLinkStateClosed
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
 // Ref: #/components/schemas/ThreadMessageKind
 type ThreadMessageKind string
 
@@ -8096,6 +9973,120 @@ func (s *ThreadMutationResultHeaders) SetResponse(val ThreadMutationResult) {
 }
 
 func (*ThreadMutationResultHeaders) createThreadRes() {}
+
+// Marks a user-role message Meridian wrote for coordination rather than the operator: from_lead on a
+// helper, from_helpers on a lead.
+// Ref: #/components/schemas/ThreadOrigin
+type ThreadOrigin struct {
+	Source  ThreadOriginSource `json:"source"`
+	Kind    ThreadOriginKind   `json:"kind"`
+	LinkIds []string           `json:"linkIds"`
+}
+
+// GetSource returns the value of Source.
+func (s *ThreadOrigin) GetSource() ThreadOriginSource {
+	return s.Source
+}
+
+// GetKind returns the value of Kind.
+func (s *ThreadOrigin) GetKind() ThreadOriginKind {
+	return s.Kind
+}
+
+// GetLinkIds returns the value of LinkIds.
+func (s *ThreadOrigin) GetLinkIds() []string {
+	return s.LinkIds
+}
+
+// SetSource sets the value of Source.
+func (s *ThreadOrigin) SetSource(val ThreadOriginSource) {
+	s.Source = val
+}
+
+// SetKind sets the value of Kind.
+func (s *ThreadOrigin) SetKind(val ThreadOriginKind) {
+	s.Kind = val
+}
+
+// SetLinkIds sets the value of LinkIds.
+func (s *ThreadOrigin) SetLinkIds(val []string) {
+	s.LinkIds = val
+}
+
+type ThreadOriginKind string
+
+const (
+	ThreadOriginKindFromLead    ThreadOriginKind = "from_lead"
+	ThreadOriginKindFromHelpers ThreadOriginKind = "from_helpers"
+)
+
+// AllValues returns all ThreadOriginKind values.
+func (ThreadOriginKind) AllValues() []ThreadOriginKind {
+	return []ThreadOriginKind{
+		ThreadOriginKindFromLead,
+		ThreadOriginKindFromHelpers,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s ThreadOriginKind) MarshalText() ([]byte, error) {
+	switch s {
+	case ThreadOriginKindFromLead:
+		return []byte(s), nil
+	case ThreadOriginKindFromHelpers:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *ThreadOriginKind) UnmarshalText(data []byte) error {
+	switch ThreadOriginKind(data) {
+	case ThreadOriginKindFromLead:
+		*s = ThreadOriginKindFromLead
+		return nil
+	case ThreadOriginKindFromHelpers:
+		*s = ThreadOriginKindFromHelpers
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+type ThreadOriginSource string
+
+const (
+	ThreadOriginSourceCoordination ThreadOriginSource = "coordination"
+)
+
+// AllValues returns all ThreadOriginSource values.
+func (ThreadOriginSource) AllValues() []ThreadOriginSource {
+	return []ThreadOriginSource{
+		ThreadOriginSourceCoordination,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s ThreadOriginSource) MarshalText() ([]byte, error) {
+	switch s {
+	case ThreadOriginSourceCoordination:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *ThreadOriginSource) UnmarshalText(data []byte) error {
+	switch ThreadOriginSource(data) {
+	case ThreadOriginSourceCoordination:
+		*s = ThreadOriginSourceCoordination
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
 
 // Ref: #/components/schemas/ThreadPage
 type ThreadPage struct {
@@ -8569,18 +10560,22 @@ func (*TooManyRequestsHeaders) deleteCapsuleRes()              {}
 func (*TooManyRequestsHeaders) deleteSecretRes()               {}
 func (*TooManyRequestsHeaders) getCapabilitiesRes()            {}
 func (*TooManyRequestsHeaders) getCapsuleRes()                 {}
+func (*TooManyRequestsHeaders) getCoordinationGrantRes()       {}
 func (*TooManyRequestsHeaders) getHealthRes()                  {}
 func (*TooManyRequestsHeaders) getProjectRes()                 {}
 func (*TooManyRequestsHeaders) getProjectThreadIntentRes()     {}
 func (*TooManyRequestsHeaders) getReadinessRes()               {}
+func (*TooManyRequestsHeaders) getThreadLinkRes()              {}
 func (*TooManyRequestsHeaders) listCapsulesRes()               {}
 func (*TooManyRequestsHeaders) listProjectsRes()               {}
 func (*TooManyRequestsHeaders) listSecretsRes()                {}
+func (*TooManyRequestsHeaders) listThreadLinksRes()            {}
 func (*TooManyRequestsHeaders) patchProjectRes()               {}
 func (*TooManyRequestsHeaders) pauseCapsuleRes()               {}
 func (*TooManyRequestsHeaders) putSecretRes()                  {}
 func (*TooManyRequestsHeaders) resumeCapsuleRes()              {}
 func (*TooManyRequestsHeaders) retryCapsuleRes()               {}
+func (*TooManyRequestsHeaders) revokeCoordinationGrantRes()    {}
 func (*TooManyRequestsHeaders) sendThreadMessageRes()          {}
 
 // UnauthorizedHeaders wraps ErrorEnvelope with response headers.

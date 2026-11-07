@@ -47,6 +47,12 @@ type Service struct {
 	deliverySync  [64]sync.Mutex
 	attentionMu   sync.Mutex
 	attention     map[domain.ThreadID]cachedThreadAttention
+	coordination  ports.CoordinationRuntime
+	coordMaxLive  int
+	coordMu       sync.Mutex
+	coordPollers  map[domain.CoordinationGrantID]context.CancelFunc
+	coordPushed   map[domain.ThreadID]string
+	coordStopped  map[domain.ThreadLinkID]bool
 }
 
 func (s *Service) ConfigureSecrets(key *secrets.InstallationKey) {
@@ -517,14 +523,18 @@ func (s *Service) GetCapsule(ctx context.Context, id domain.CapsuleID) (domain.C
 func (s *Service) ListCapsules(
 	ctx context.Context,
 	projectID domain.ProjectID,
+	role domain.CapsuleRole,
 	offset, limit int,
 ) (CapsulePage, error) {
+	if role != "" && !role.Valid() {
+		return CapsulePage{}, fmt.Errorf("%w: role must be main or sub", domain.ErrInvalid)
+	}
 	page := normalizePage(offset, limit)
 	var result CapsulePage
 	err := s.store.View(ctx, func(reader ports.Reader) error {
 		var more bool
 		var err error
-		result.Items, more, err = reader.ListCapsules(ctx, projectID, page)
+		result.Items, more, err = reader.ListCapsules(ctx, projectID, role, page)
 		if err == nil {
 			for i := range result.Items {
 				p, loadErr := reader.GetPreparation(ctx, result.Items[i].ID)

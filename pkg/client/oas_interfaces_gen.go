@@ -89,6 +89,10 @@ type GetCapsuleRes interface {
 	getCapsuleRes()
 }
 
+type GetCoordinationGrantRes interface {
+	getCoordinationGrantRes()
+}
+
 type GetDeliveryRes interface {
 	getDeliveryRes()
 }
@@ -115,6 +119,10 @@ type GetReadinessRes interface {
 
 type GetRunRes interface {
 	getRunRes()
+}
+
+type GetThreadLinkRes interface {
+	getThreadLinkRes()
 }
 
 type GetThreadRes interface {
@@ -173,6 +181,10 @@ type ListThreadBlocksRes interface {
 	listThreadBlocksRes()
 }
 
+type ListThreadLinksRes interface {
+	listThreadLinksRes()
+}
+
 type ListThreadsRes interface {
 	listThreadsRes()
 }
@@ -211,6 +223,10 @@ type ResumeThreadRes interface {
 
 type RetryCapsuleRes interface {
 	retryCapsuleRes()
+}
+
+type RevokeCoordinationGrantRes interface {
+	revokeCoordinationGrantRes()
 }
 
 type RewindCapsuleRes interface {

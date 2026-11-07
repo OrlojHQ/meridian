@@ -114,6 +114,12 @@ func newRootCommand() *cobra.Command {
 		5*time.Second,
 		"refresh live Run state and structured Thread output while unwatched (0 disables)",
 	)
+	command.Flags().IntVar(
+		&config.MaxLiveCapsules,
+		"max-live-capsules",
+		0,
+		"refuse coordinated helper spawns while this many Capsules are live (0 disables)",
+	)
 	command.Flags().StringVar(&config.Docker.Host, "docker-host", "", "Docker endpoint (empty uses official client environment)")
 	defaultCapsule := domain.DefaultCapsuleImage(buildinfo.Version)
 	command.Flags().StringVar(&config.Docker.Image, "docker-image", defaultCapsule, "default Capsule image (release binaries use the matching GHCR tag)")
