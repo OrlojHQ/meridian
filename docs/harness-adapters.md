@@ -125,6 +125,17 @@ otherwise posts product telemetry to DeepSeek, and `NARB_DISABLE_NATIVE_CACHE=1`
 because its native-addon loader otherwise copies addons into the Capsule's
 `noexec` `/tmp` and fails to load them.
 
+The dependency scan (`.github/workflows/trivy.yml`) covers the pack
+lockfiles, and an upstream pin can only change with a new upstream release:
+the canonical `package.json` leaves no room for npm `overrides`. DeepSeek
+Harness 0.2.2-rc.1 pins `undici` to exactly 8.11.2 in `dsh-http-proxy` and
+`dsh-web-fetch-http`, which has four HIGH advisories fixed in 8.12.2
+(CVE-2026-109383, CVE-2026-109829, CVE-2026-109869, CVE-2026-87018). The
+code runs only inside the `dsh` Capsule. `.trivyignore.yaml` accepts those
+four findings for that lockfile and `undici` version only, until
+2027-01-07; remove the entries when the pack moves to a `dsh` release with
+`undici` 8.12.2 or later.
+
 DeepSeek Harness reports no `available_commands_update`, so its `/` menu
 lists only Meridian's own commands. It asks permission when a shell command
 requests more than its default workspace-write sandbox, and offers "Allow

@@ -159,6 +159,15 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Security
 
+- The dependency scan now runs on changes to `images/**/package*.json`, so
+  the `dsh` pack's npm lockfile gates `main`. DeepSeek Harness 0.2.2-rc.1, the
+  newest release, pins `undici` 8.11.2, which has four HIGH advisories fixed
+  in 8.12.2 (CVE-2026-109383, CVE-2026-109829, CVE-2026-109869,
+  CVE-2026-87018). Packs cannot override upstream pins, and the code runs only
+  in the `dsh` Capsule, so `.trivyignore.yaml` accepts exactly these findings
+  for that lockfile and version until 2027-01-07, to be removed once a `dsh`
+  release ships `undici` 8.12.2 or later.
+
 - `golang.org/x/net` is updated from v0.58.0 to v0.62.0, fixing
   CVE-2026-78661 (denial of service through crafted HTML in `x/net/html`) and
   CVE-2026-78669 (denial of service through excessive HTTP/2 SETTINGS

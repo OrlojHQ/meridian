@@ -247,8 +247,11 @@ The DeepSeek Harness pack (`dsh`) is installed from an npm lockfile of about
 700 third-party packages. Each is pinned to a `registry.npmjs.org` tarball and
 `sha512` integrity that the build verifies, links and other sources are
 rejected, and `npm ci --ignore-scripts` runs no package script, but the code
-itself is unreviewed upstream code with the authority of the harness. The
-build checks `--help` for DeepSeek Harness's own text so Debian's unrelated
+itself is unreviewed upstream code with the authority of the harness. Its
+dependency versions are upstream's: the pack cannot override a vulnerable
+transitive pin, so known advisories can ship until a `dsh` release fixes them,
+and each one the dependency scan accepts is listed with an expiry in
+`.trivyignore.yaml`. The build checks `--help` for DeepSeek Harness's own text so Debian's unrelated
 `dsh` cannot stand in for it. The launcher disables DeepSeek's product
 telemetry. `dsh` applies its own workspace-write sandbox and asks Meridian's
 permission prompt for escalations; neither is a Meridian boundary. Its model
