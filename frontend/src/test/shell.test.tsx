@@ -520,6 +520,60 @@ describe("application shell", () => {
     expect(screen.getByLabelText("3 sessions")).toBeInTheDocument();
   });
 
+  it.each([
+    { layout: "phone", phone: true },
+    { layout: "desktop", phone: false },
+  ])("opens a Thread on its conversation with tools matching the $layout layout", async ({ phone }) => {
+    const queries: string[] = [];
+    vi.spyOn(window, "matchMedia").mockImplementation((query) => {
+      queries.push(query);
+      return {
+        matches: phone && query === "(max-width: 720px)",
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+      } as unknown as MediaQueryList;
+    });
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
+    vi.spyOn(api, "capsules").mockResolvedValue({ items: [capsule] });
+    vi.spyOn(api, "capsule").mockResolvedValue(capsule);
+    vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "threads").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "capabilities").mockResolvedValue(capabilities);
+    vi.spyOn(api, "thread").mockResolvedValue({
+      id: "thread-1",
+      capsuleId: capsule.id,
+      state: "active",
+      harness: "opencode",
+      encryptedAtRest: true,
+      messageCount: 1,
+      encryptedBytes: 64,
+      createdAt: "2026-08-26T00:02:00Z",
+      updatedAt: "2026-08-26T00:03:00Z",
+      resourceVersion: 1,
+    });
+
+    wrapper(
+      <Routes>
+        <Route path="/ui" element={<AppShell />}>
+          <Route path="threads/:threadId" element={<p>Conversation</p>} />
+        </Route>
+      </Routes>,
+      "/ui/threads/thread-1",
+    );
+
+    expect(screen.getByText("Conversation")).toBeInTheDocument();
+    expect(queries).toContain("(max-width: 720px)");
+    if (phone) {
+      const toggle = await screen.findByRole("button", { name: "Show Capsule tools" });
+      expect(screen.queryByRole("complementary", { name: "Capsule tools" })).not.toBeInTheDocument();
+      await userEvent.click(toggle);
+      expect(await screen.findByRole("complementary", { name: "Capsule tools" })).toBeInTheDocument();
+    } else {
+      expect(await screen.findByRole("button", { name: "Hide Capsule tools" })).toBeInTheDocument();
+      expect(await screen.findByRole("complementary", { name: "Capsule tools" })).toBeInTheDocument();
+    }
+  });
+
   it("lists Moments in the Activity tool", async () => {
     vi.spyOn(api, "capsule").mockResolvedValue(capsule);
     vi.spyOn(api, "runs").mockResolvedValue({ items: [] });

@@ -57,7 +57,9 @@ direct return to its owning Capsule workspace.
 
 Desktop layouts show all three surfaces. On narrower viewports the Activity
 sidebar becomes a drawer and Capsule tools become an independently dismissible
-full-screen surface above the status bar. Each pane owns its scrolling; the browser document does
+full-screen surface above the status bar. On phone widths (720px and below)
+Capsule tools start closed, so opening a Thread or Capsule shows the
+conversation first. Each pane owns its scrolling; the browser document does
 not become an unbounded stack of Capsule panels.
 
 The Changes tool parses the bounded unified diff into collapsible file sections,
@@ -186,8 +188,11 @@ The production routes are:
   surface while the contextual Changes tab shows the bounded Git diff;
 - `/ui/threads` and `/ui/threads/:id` — retained structured Thread fleet,
   decrypted typed-block timeline, pinned composer, permissions, and session
-  actions. The standalone Thread page names the agent and links to its owning
-  Capsule by name;
+  actions. Threads are titled by their Capsule name, with the agent, Project,
+  role (lead, or subagent of a named lead) and a status chip as secondary
+  text, all from plaintext metadata; no transcript is decrypted to label a
+  row. The list puts Threads that need you first, then sorts by recency. The
+  Thread ID appears only in Thread details;
 - `/ui/settings/harnesses` — Harness settings, in three sections: Your setups,
   Import from this computer, and Provider connections;
 - `/ui/runs/:id` and `/ui/runs/:id/terminal` — ordered activity and focused PTY;

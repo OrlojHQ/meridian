@@ -78,6 +78,12 @@ const isPaletteShortcut = (event: KeyboardEvent) => {
 
 const MAX_RECENT = 5;
 
+// Matches the phone layout in shell.css, where the Capsule tools pane covers
+// the whole workspace. There it starts closed so a Thread opens on its
+// conversation.
+const PHONE_LAYOUT = "(max-width: 720px)";
+const toolsOpenByDefault = () => !window.matchMedia?.(PHONE_LAYOUT).matches;
+
 export type ShellOutletContext = {
   openNewProject: () => void;
   openLauncher: (project: Project) => void;
@@ -220,7 +226,7 @@ export function AppShell() {
   const navigate = useNavigate();
   const [filter, setFilter] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [contextOpen, setContextOpen] = useState(true);
+  const [contextOpen, setContextOpen] = useState(toolsOpenByDefault);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [launchProject, setLaunchProject] = useState<Project>();
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -277,7 +283,7 @@ export function AppShell() {
 
   useEffect(() => {
     setSidebarOpen(false);
-    setContextOpen(true);
+    setContextOpen(toolsOpenByDefault());
   }, [location.pathname]);
 
   useEffect(() => {

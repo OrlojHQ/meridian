@@ -4,23 +4,28 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { api, normalizeAPIError } from "../api/client";
-import type { Capsule, Thread, ThreadBlock } from "../api/generated/types.gen";
+import type { Capsule, Project, Thread, ThreadBlock } from "../api/generated/types.gen";
 import { queries } from "../api/queries";
 import {
   followThreadBlocks,
   type ThreadStreamStatus,
 } from "../api/threadEvents";
-import { harnessName } from "../shell/capsuleActivity";
+import {
+  harnessName,
+  relativeTime,
+  threadSession,
+  type CapsuleSession,
+} from "../shell/capsuleActivity";
 import { isActiveRunState, isBusyAdapterStatus, safeInline } from "./threadChat";
 import { ThreadConversation } from "./ThreadConversation";
 import { ThreadSubagents } from "./ThreadSubagents";
 import { ThreadError } from "./ThreadError";
 import { ActionsMenu, type ActionsMenuItem } from "./ui/ActionsMenu";
-import { StateBadge } from "./ui/StateBadge";
+import { HarnessMark } from "./ui/HarnessMark";
 
 export { sanitizeThreadText } from "./threadChat";
 
@@ -49,27 +54,121 @@ export function mergeThreadBlocks(
     .slice(-MAX_BLOCKS);
 }
 
-function ThreadSummary({ thread }: { thread: Thread }) {
-  const updated = new Date(thread.updatedAt).toLocaleString();
-  const supported = thread.structuredSupported !== false;
-  const state =
-    !supported
-      ? "Unsupported"
-      : thread.currentRunState === "Failed"
-        ? "Error"
-        : thread.state;
+function threadStatus(thread: Thread): Pick<CapsuleSession, "group" | "label"> {
+  if (thread.state === "deleted") return { group: "sealed", label: "Deleted" };
+  if (thread.structuredSupported === false) return { group: "idle", label: "Unsupported" };
+  return threadSession(thread);
+}
+
+function ThreadStatusChip({ thread }: { thread: Thread }) {
+  const { group, label } = threadStatus(thread);
+  return (
+    <span className={`thread-status-chip thread-status-${group}`}>
+      <span className={`state-dot activity-dot-${group}`} aria-hidden="true" />
+      {label}
+    </span>
+  );
+}
+
+// Roles come from the plaintext coordination fields on the Thread; the lead
+// is named by its Capsule.
+function threadRole(thread: Thread, leadName?: string) {
+  if (thread.parentThreadId) {
+    return leadName ? `Subagent of ${safeInline(leadName)}` : "Subagent";
+  }
+  return thread.coordinationGrantId ? "Lead" : undefined;
+}
+
+function ThreadMeta({
+  thread,
+  project,
+  role,
+  children,
+}: {
+  thread: Thread;
+  project?: string;
+  role?: string;
+  children?: ReactNode;
+}) {
+  return (
+    <p className="thread-meta">
+      <span>{safeInline(harnessName(thread.harness)) || "Agent"}</span>
+      {project && <span>{safeInline(project)}</span>}
+      {role && <span>{role}</span>}
+      {children}
+    </p>
+  );
+}
+
+type ThreadRow = {
+  thread: Thread;
+  title: string;
+  project?: string;
+  role?: string;
+  attention: boolean;
+};
+
+// Rows are titled from plaintext Capsule and Project names. Transcripts are
+// encrypted at rest, so no prompt is decrypted just to label a row.
+function threadRows(
+  threads: Thread[],
+  capsules: Capsule[],
+  projects: Project[],
+): ThreadRow[] {
+  const capsuleById = new Map(capsules.map((capsule) => [capsule.id, capsule]));
+  const projectName = new Map(projects.map((project) => [project.id, project.name]));
+  const threadById = new Map(threads.map((thread) => [thread.id, thread]));
+  const perCapsule = new Map<string, Thread[]>();
+  [...threads]
+    .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
+    .forEach((thread) =>
+      perCapsule.set(thread.capsuleId, [...(perCapsule.get(thread.capsuleId) ?? []), thread]),
+    );
+  return threads
+    .map((thread) => {
+      const capsule = capsuleById.get(thread.capsuleId);
+      const siblings = perCapsule.get(thread.capsuleId) ?? [];
+      const base = capsule
+        ? safeInline(capsule.name)
+        : safeInline(harnessName(thread.harness)) || "Agent";
+      const lead = thread.parentThreadId ? threadById.get(thread.parentThreadId) : undefined;
+      return {
+        thread,
+        title:
+          siblings.length > 1
+            ? `${base} · session ${siblings.indexOf(thread) + 1}`
+            : base,
+        project: capsule && projectName.get(capsule.projectId),
+        role: threadRole(thread, lead && capsuleById.get(lead.capsuleId)?.name),
+        attention: threadStatus(thread).group === "attention",
+      };
+    })
+    .sort(
+      (a, b) =>
+        Number(b.attention) - Number(a.attention) ||
+        Date.parse(b.thread.updatedAt) - Date.parse(a.thread.updatedAt),
+    );
+}
+
+function ThreadSummary({ row }: { row: ThreadRow }) {
+  const { thread } = row;
   return (
     <li className="thread-summary">
-      <div>
-        <Link to={`/ui/threads/${encodeURIComponent(thread.id)}`}>
-          {safeInline(thread.harness)}
-        </Link>
-        <p className="mono">{safeInline(thread.id)}</p>
+      <HarnessMark harness={thread.harness} size="md" />
+      <div className="thread-summary-main">
+        <Link to={`/ui/threads/${encodeURIComponent(thread.id)}`}>{row.title}</Link>
+        <ThreadMeta thread={thread} project={row.project} role={row.role} />
       </div>
-      <StateBadge state={state} />
-      <span>{safeInline(thread.currentRunState ?? "No active session")}</span>
-      <span>{thread.messageCount} messages</span>
-      <time dateTime={thread.updatedAt}>{updated}</time>
+      <ThreadStatusChip thread={thread} />
+      <span className="thread-summary-count">
+        {thread.messageCount === 1 ? "1 message" : `${thread.messageCount} messages`}
+      </span>
+      <time
+        dateTime={thread.updatedAt}
+        title={new Date(thread.updatedAt).toLocaleString()}
+      >
+        {relativeTime(thread.updatedAt)}
+      </time>
     </li>
   );
 }
@@ -103,6 +202,7 @@ export function ThreadFleet() {
   if (failed?.error) return <ThreadError error={failed.error} />;
 
   const threads = threadResults.flatMap((result) => result.data?.items ?? []);
+  const rows = threadRows(threads, capsules, projectItems);
   return (
     <section className="thread-fleet">
       <header className="workspace-view-header">
@@ -127,8 +227,8 @@ export function ThreadFleet() {
         </div>
       ) : (
         <ul className="thread-list" aria-label="Retained Threads">
-          {threads.map((thread) => (
-            <ThreadSummary key={thread.id} thread={thread} />
+          {rows.map((row) => (
+            <ThreadSummary key={row.thread.id} row={row} />
           ))}
         </ul>
       )}
@@ -255,6 +355,16 @@ export function ThreadDetail({
   const owner = useQuery({
     ...queries.capsule(threadQuery.data?.capsuleId ?? ""),
     enabled: !embedded && Boolean(threadQuery.data?.capsuleId),
+  });
+  const projects = useQuery({ ...queries.projects(), enabled: !embedded });
+  const parentThreadId = threadQuery.data?.parentThreadId ?? "";
+  const lead = useQuery({
+    ...queries.thread(parentThreadId),
+    enabled: !embedded && Boolean(parentThreadId),
+  });
+  const leadCapsule = useQuery({
+    ...queries.capsule(lead.data?.capsuleId ?? ""),
+    enabled: !embedded && Boolean(lead.data?.capsuleId),
   });
   const [blocks, setBlocks] = useState<ThreadBlock[]>([]);
   const [status, setStatus] = useState<ThreadStreamStatus>("connecting");
@@ -402,17 +512,25 @@ export function ThreadDetail({
         <header className="workspace-view-header">
           <div>
             <p className="eyebrow">Thread</p>
-            <h1>{safeInline(harnessName(thread.harness)) || "Agent"}</h1>
-            <p className="view-description">
-              Conversation in{" "}
+            <h1>
+              {owner.data
+                ? safeInline(owner.data.name)
+                : safeInline(harnessName(thread.harness)) || "Agent"}
+            </h1>
+            <ThreadMeta
+              thread={thread}
+              project={
+                projects.data?.items.find((item) => item.id === owner.data?.projectId)?.name
+              }
+              role={threadRole(thread, leadCapsule.data?.name)}
+            >
               <Link to={`/ui/capsules/${encodeURIComponent(thread.capsuleId)}?session=${encodeURIComponent(thread.id)}`}>
-                {owner.data ? safeInline(owner.data.name) : "its Capsule"}
+                Open in Capsule
               </Link>
-              {thread.encryptedAtRest ? ". The transcript is encrypted at rest." : "."}
-            </p>
+            </ThreadMeta>
           </div>
           <div className="workspace-header-meta">
-            <StateBadge state={thread.state} />
+            <ThreadStatusChip thread={thread} />
           </div>
         </header>
       )}
