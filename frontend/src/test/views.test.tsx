@@ -369,6 +369,7 @@ describe("Capsule list states", () => {
         "mock",
         "inspect",
         "new-session",
+        undefined,
       ),
     );
     expect(await screen.findByRole("status")).toHaveTextContent("Preparing your session");

@@ -34,7 +34,7 @@ export type ChatRequest = {
 };
 
 export type ChatItem =
-  | { kind: "user"; key: string; text: string }
+  | { kind: "user"; key: string; text: string; origin?: "from_lead" | "from_helpers" }
   | { kind: "assistant"; key: string; text: string; streaming: boolean }
   | { kind: "tools"; key: string; calls: ToolCall[] }
   | { kind: "request"; key: string; request: ChatRequest; actionable: boolean }
@@ -136,7 +136,12 @@ export function buildThreadChat(
       if (block.role === "user" && block.kind === "text") {
         turn += 1;
         busy = true;
-        items.push({ kind: "user", key: block.id, text: boundedThreadText(block.content) });
+        items.push({
+          kind: "user",
+          key: block.id,
+          text: boundedThreadText(block.content),
+          ...(block.origin ? { origin: block.origin.kind } : {}),
+        });
       } else if (block.kind === "error") {
         items.push({ kind: "error", key: block.id, text: boundedThreadText(block.content) });
       } else if (block.kind === "text" && block.content) {

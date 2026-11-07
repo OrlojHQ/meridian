@@ -276,7 +276,16 @@ function ChatEntry({
 }) {
   switch (item.kind) {
     case "user":
-      return <li className="chat-user"><div className="chat-bubble">{item.text}</div></li>;
+      return (
+        <li className={`chat-user${item.origin ? " chat-coordination" : ""}`}>
+          {item.origin && (
+            <span className="chat-origin">
+              {item.origin === "from_lead" ? "From the lead" : "From helpers"}
+            </span>
+          )}
+          <div className="chat-bubble">{item.text}</div>
+        </li>
+      );
     case "assistant":
       return (
         <li className={`chat-assistant${item.streaming ? " streaming" : ""}`}>

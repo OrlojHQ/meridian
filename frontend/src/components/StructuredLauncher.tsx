@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 
 import { api, normalizeAPIError } from "../api/client";
 import type {
+  CoordinationPolicy,
   Project,
   ProjectThreadIntent,
 } from "../api/generated/types.gen";
@@ -21,18 +22,25 @@ export function StructuredLauncher({
 }) {
   const queryClient = useQueryClient();
   const [result, setResult] = useState<ProjectThreadIntent>();
+  const [lead, setLead] = useState(false);
+  const capabilities = useQuery(queries.capabilities());
+  const coordinationSupported = Boolean(
+    capabilities.data?.coordination?.supported,
+  );
   const mutation = useMutation({
     mutationFn: ({
       projectId,
       harness,
       prompt,
       name,
+      coordination,
     }: {
       projectId: string;
       harness: string;
       prompt: string;
       name?: string;
-    }) => api.createProjectThread(projectId, harness, prompt, name),
+      coordination?: CoordinationPolicy;
+    }) => api.createProjectThread(projectId, harness, prompt, name, coordination),
     onSuccess: async (value) => {
       setResult(value);
       await queryClient.invalidateQueries({
@@ -57,6 +65,13 @@ export function StructuredLauncher({
       harness,
       prompt: String(data.get("prompt") ?? ""),
       name: String(data.get("name") ?? "") || undefined,
+      coordination:
+        coordinationSupported && lead
+          ? {
+              maxChildren: Number(data.get("maxChildren") ?? 4),
+              deadlineSeconds: Number(data.get("deadlineHours") ?? 8) * 3600,
+            }
+          : undefined,
     });
   }
 
@@ -82,6 +97,50 @@ export function StructuredLauncher({
           Capsule name <span className="optional-label">Optional</span>
           <input id="spawn-name" name="name" maxLength={128} />
         </label>
+        {coordinationSupported && (
+          <fieldset className="lead-options">
+            <label className="checkbox-label" htmlFor="spawn-lead">
+              <input
+                id="spawn-lead"
+                type="checkbox"
+                checked={lead}
+                onChange={(event) => setLead(event.currentTarget.checked)}
+              />
+              Lead with helpers
+            </label>
+            <p className="muted-copy">
+              The agent can start helper Threads, each in its own Capsule,
+              and collect their results. Helpers run {harnessName(harness)}{" "}
+              and ask you, not the lead, for permissions.
+            </p>
+            {lead && (
+              <div className="lead-limits">
+                <label htmlFor="spawn-max-children">
+                  Helpers
+                  <input
+                    id="spawn-max-children"
+                    name="maxChildren"
+                    type="number"
+                    min={1}
+                    max={16}
+                    defaultValue={4}
+                  />
+                </label>
+                <label htmlFor="spawn-deadline">
+                  Deadline (hours)
+                  <input
+                    id="spawn-deadline"
+                    name="deadlineHours"
+                    type="number"
+                    min={1}
+                    max={72}
+                    defaultValue={8}
+                  />
+                </label>
+              </div>
+            )}
+          </fieldset>
+        )}
         <button
           type="submit"
           disabled={mutation.isPending || Boolean(result) || !harness}
