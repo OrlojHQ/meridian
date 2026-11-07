@@ -3420,6 +3420,10 @@ func (s ProxyProviderInferenceProvider) Validate() error {
 		return nil
 	case "anthropic":
 		return nil
+	case "openai-compatible":
+		return nil
+	case "anthropic-compatible":
+		return nil
 	default:
 		return errors.Errorf("invalid value: %v", s)
 	}

@@ -5712,8 +5712,10 @@ func (*ProxyProviderInferenceOKTextEventStream) proxyProviderInferenceRes() {}
 type ProxyProviderInferenceProvider string
 
 const (
-	ProxyProviderInferenceProviderOpenai    ProxyProviderInferenceProvider = "openai"
-	ProxyProviderInferenceProviderAnthropic ProxyProviderInferenceProvider = "anthropic"
+	ProxyProviderInferenceProviderOpenai              ProxyProviderInferenceProvider = "openai"
+	ProxyProviderInferenceProviderAnthropic           ProxyProviderInferenceProvider = "anthropic"
+	ProxyProviderInferenceProviderOpenaiCompatible    ProxyProviderInferenceProvider = "openai-compatible"
+	ProxyProviderInferenceProviderAnthropicCompatible ProxyProviderInferenceProvider = "anthropic-compatible"
 )
 
 // AllValues returns all ProxyProviderInferenceProvider values.
@@ -5721,6 +5723,8 @@ func (ProxyProviderInferenceProvider) AllValues() []ProxyProviderInferenceProvid
 	return []ProxyProviderInferenceProvider{
 		ProxyProviderInferenceProviderOpenai,
 		ProxyProviderInferenceProviderAnthropic,
+		ProxyProviderInferenceProviderOpenaiCompatible,
+		ProxyProviderInferenceProviderAnthropicCompatible,
 	}
 }
 
@@ -5730,6 +5734,10 @@ func (s ProxyProviderInferenceProvider) MarshalText() ([]byte, error) {
 	case ProxyProviderInferenceProviderOpenai:
 		return []byte(s), nil
 	case ProxyProviderInferenceProviderAnthropic:
+		return []byte(s), nil
+	case ProxyProviderInferenceProviderOpenaiCompatible:
+		return []byte(s), nil
+	case ProxyProviderInferenceProviderAnthropicCompatible:
 		return []byte(s), nil
 	default:
 		return nil, errors.Errorf("invalid value: %q", s)
@@ -5744,6 +5752,12 @@ func (s *ProxyProviderInferenceProvider) UnmarshalText(data []byte) error {
 		return nil
 	case ProxyProviderInferenceProviderAnthropic:
 		*s = ProxyProviderInferenceProviderAnthropic
+		return nil
+	case ProxyProviderInferenceProviderOpenaiCompatible:
+		*s = ProxyProviderInferenceProviderOpenaiCompatible
+		return nil
+	case ProxyProviderInferenceProviderAnthropicCompatible:
+		*s = ProxyProviderInferenceProviderAnthropicCompatible
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)

@@ -561,6 +561,24 @@ service exposes that service to Capsule-authored POST bodies on the fixed
 inference paths. A custom server's responses are as hostile as any other
 provider output.
 
+Upstream error responses (4xx/5xx) are not relayed. The gateway returns the
+upstream status code and a reason built from at most 16 KiB of the body: one
+string field of a JSON error (`message`, `detail`, `error`, `msg`, or
+`reason`), or a `text/plain` body. HTML and other content types are dropped.
+It removes invalid UTF-8 and format characters (including bidirectional
+overrides), turns control characters into spaces, and collapses whitespace.
+It then redacts, case-insensitively, the upstream key, the Capsule's lease,
+and the upstream hostname, plus URLs, bearer/basic credentials, `key=`-style
+assignments, `sk-`-style tokens, and 32-character or longer word tokens.
+The result is cut to 300 characters. No upstream headers are copied. The
+reason crosses a trust boundary only from the provider to a Capsule that
+already receives that provider's full successful responses, so this adds no
+new channel. Its purpose is to keep the operator's upstream address and key
+out of Capsule-visible output even when a server echoes them in errors.
+The redaction is a best-effort filter: a hostile server could still spell a
+secret in a form these patterns miss, so it is not a guarantee against an
+upstream that wants to leak data it holds.
+
 Subscription credentials and MCP account tokens are not imported or managed by
 this feature. Native login state remains ephemeral Capsule-local state.
 Structured sessions cannot sign in interactively; official structured profiles

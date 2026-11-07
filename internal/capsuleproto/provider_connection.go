@@ -68,6 +68,17 @@ func (s *Server) prepareProviderConnection(ctx context.Context, connection *harn
 			if model != "" {
 				config["model"] = model
 			}
+			if custom {
+				// Codex's built-in web search and multi-agent tools are not
+				// function tools, which most compatible servers reject. An
+				// imported setting still wins.
+				if _, set := config["web_search"]; !set {
+					config["web_search"] = "disabled"
+				}
+				if features := object(config, "features"); features["multi_agent"] == nil {
+					features["multi_agent"] = false
+				}
+			}
 			providers := object(config, "model_providers")
 			providers["meridian"] = map[string]any{"name": "Meridian", "base_url": connection.URL + "/v1", "wire_api": "responses", "env_key": "MERIDIAN_PROVIDER_TOKEN"}
 		})

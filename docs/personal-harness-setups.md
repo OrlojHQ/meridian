@@ -95,8 +95,14 @@ of the 24-hour Capsule lease.
 
 OpenAI Responses and Chat Completions, and Anthropic Messages and token counting
 are the supported gateway operations, for official and custom endpoints. Other provider operations and arbitrary
-upstream endpoints are unavailable. Provider failures are reported without
-copying upstream response bodies into error messages.
+upstream endpoints are unavailable. When a provider rejects a request, the
+harness sees the provider's HTTP status and a short reason taken from the
+provider's error message, for example `upstream provider rejected the request
+(HTTP 400): Unsupported tool type "web_search"`. Meridian keeps at most 300
+characters of that message, removes control characters, and replaces URLs,
+the upstream host, and anything that looks like a key with `[url]` or
+`[redacted]`. Upstream headers and other response content are never passed
+on.
 
 ### Self-hosted models (vLLM, Ollama, LiteLLM)
 
@@ -195,6 +201,14 @@ Harness behavior:
   and assumes a 272k-token context window. If the server's context limit is
   smaller (vLLM `--max-model-len`), add `model_context_window` with that limit
   to your imported `~/.codex/config.toml`. Meridian keeps your other settings.
+  Codex 0.157 also sends a built-in `web_search` tool and, for multi-agent
+  work, a `namespace` tool. Neither is a function tool, and servers that accept
+  only function tools reject the whole request; TabbyAPI does. For
+  `openai-compatible` connections Meridian therefore writes
+  `web_search = "disabled"` and `multi_agent = false` under `[features]`. If
+  your imported config sets either key, your value is kept, so set
+  `web_search = "live"` or `multi_agent = true` there if your server
+  supports those tools. Official `openai` connections are unchanged.
 - **OpenCode** and **Pi** need a default model. Meridian registers a
   `meridian` provider that uses Chat Completions and selects that model.
 - **Claude Code** accepts only `anthropic-compatible`: vLLM's Messages API, or

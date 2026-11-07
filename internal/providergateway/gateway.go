@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -302,7 +303,6 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	response, err := client.Do(upstream)
-	resolved.Key = ""
 	if err != nil {
 		gatewayError(w, "provider request failed", http.StatusBadGateway)
 		return
@@ -313,9 +313,18 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		gatewayError(w, "upstream provider rejected the request", response.StatusCode)
+		message := fmt.Sprintf("upstream provider rejected the request (HTTP %d)", response.StatusCode)
+		if reason := upstreamReason(response, resolved.Key, token, upstream.URL.Hostname()); reason != "" {
+			message += ": " + reason
+		}
+		status := response.StatusCode
+		if status < 400 || status > 599 {
+			status = http.StatusBadGateway
+		}
+		writeGatewayError(w, message, status, response.StatusCode)
 		return
 	}
+	resolved.Key = ""
 	w.Header().Set("Content-Type", response.Header.Get("Content-Type"))
 	w.WriteHeader(response.StatusCode)
 	reader := io.LimitReader(response.Body, 64<<20)
@@ -337,7 +346,15 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func gatewayError(w http.ResponseWriter, message string, status int) {
+	writeGatewayError(w, message, status, 0)
+}
+
+func writeGatewayError(w http.ResponseWriter, message string, status, upstreamStatus int) {
+	body := map[string]any{"code": "provider_gateway_error", "message": message}
+	if upstreamStatus != 0 {
+		body["upstreamStatus"] = upstreamStatus
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": "provider_gateway_error", "message": message}})
+	_ = json.NewEncoder(w).Encode(map[string]any{"error": body})
 }

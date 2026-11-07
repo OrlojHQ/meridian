@@ -76,6 +76,19 @@ and gateway concurrency limits and the 10-minute deadline still apply. Custom
 endpoints wait up to five minutes for response headers, because self-hosted
 servers may load a model first. Proxy environment variables are ignored.
 
+### Upstream error reasons
+
+A self-hosted server's error message is often the only clue to a
+configuration mismatch. For a 4xx or 5xx upstream response, the gateway
+returns that status (any other non-2xx, non-3xx status becomes 502),
+`error.upstreamStatus`, and the message `upstream provider rejected the
+request (HTTP <status>): <reason>`. The reason comes from one JSON error
+string or a `text/plain` body, read from at most 16 KiB. It has control and
+format characters removed, the upstream key, lease, and upstream hostname
+redacted, URLs and credential-shaped strings replaced, and is cut to 300
+characters. Upstream headers are never copied. This applies to official
+connections too. The threat model gives the reasoning.
+
 ### Harness pairing
 
 `harnesssetup.ConnectionSupported` is checked at grant time, when the lease is
@@ -89,7 +102,12 @@ issued, and in `capsuled`:
 
 - Codex: `capsuled` writes the `meridian` model provider with
   `wire_api = "responses"`, the only wire API that Codex 0.157 accepts, and
-  sets `model` when one is configured.
+  sets `model` when one is configured. Codex 0.157 adds a `web_search` tool
+  and, through the default-on `multi_agent` feature, a `namespace` tool to
+  every request. Servers that accept only `function` tools, such as
+  TabbyAPI, reject those requests. For custom connections only, `capsuled`
+  writes `web_search = "disabled"` and `features.multi_agent = false` unless
+  the imported config sets those keys.
 - OpenCode: a `meridian` provider using `@ai-sdk/openai-compatible`
   (Chat Completions), the model as its only model entry, and
   `model = "meridian/<model>"`.

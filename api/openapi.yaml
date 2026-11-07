@@ -22,6 +22,10 @@ paths:
         Only OpenAI responses/chat completions and Anthropic messages/token counting
         are supported; unsupported provider/operation combinations return 404.
         The origin must be enabled explicitly by the deployment operator.
+        When the upstream provider rejects a request, the gateway returns its 4xx or
+        5xx status (other statuses become 502), sets error.upstreamStatus, and
+        includes at most 300 characters of sanitized upstream reason in error.message.
+        Upstream headers and raw bodies are never copied.
       security: []
       parameters:
         - name: provider
@@ -29,7 +33,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [openai, anthropic]
+            enum: [openai, anthropic, openai-compatible, anthropic-compatible]
         - name: operation
           in: path
           required: true

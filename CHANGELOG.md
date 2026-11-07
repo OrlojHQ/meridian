@@ -26,7 +26,9 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   Anthropic-compatible ones. Plaintext HTTP to private-network hosts needs
   `meridiand --provider-gateway-allow-private-http` and a per-connection
   opt-in. Use `meridian harness connect openai-compatible --base-url URL`
-  or the Provider connections form (ADR 0027).
+  or the Provider connections form (ADR 0027). For these connections, Codex
+  turns off its `web_search` tool and `multi_agent` feature by default,
+  because many compatible servers accept only function tools.
 
 - `meridian project apply-harness PROJECT_ID NAME=IMAGE` allowlists a custom
   harness image on an existing Project. `meridian thread follow --until-idle`
@@ -34,6 +36,10 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Provider gateway errors for rejected requests include the upstream HTTP
+  status in `error.upstreamStatus` and the message, plus a short sanitized
+  reason from the upstream error. URLs, the upstream host, and credential-like
+  strings are redacted.
 - Pi provider connections reference the gateway lease as
   `$MERIDIAN_PROVIDER_TOKEN`. Pi 0.87 treats a bare variable name in
   `models.json` as a literal key.

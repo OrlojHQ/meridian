@@ -1011,7 +1011,7 @@ export type ProxyProviderInferenceData = {
         'Anthropic-Beta'?: string;
     };
     path: {
-        provider: 'openai' | 'anthropic';
+        provider: 'openai' | 'anthropic' | 'openai-compatible' | 'anthropic-compatible';
         /**
          * responses, chat/completions, messages, or messages/count_tokens.
          */

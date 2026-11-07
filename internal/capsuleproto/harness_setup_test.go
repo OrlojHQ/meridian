@@ -141,6 +141,9 @@ func TestCustomEndpointHarnessConfiguration(t *testing.T) {
 		if config["model_provider"] != "meridian" || config["model"] != "qwen3-coder" || provider["base_url"] != gateway || provider["wire_api"] != "responses" || provider["env_key"] != "MERIDIAN_PROVIDER_TOKEN" {
 			t.Fatalf("unexpected codex config %v", config)
 		}
+		if config["web_search"] != "disabled" || config["features"].(map[string]any)["multi_agent"] != false {
+			t.Fatalf("non-function Codex tools left enabled for a custom endpoint: %v", config)
+		}
 	})
 	t.Run("opencode", func(t *testing.T) {
 		env, err := prepare(t, "opencode", "openai-compatible", "qwen2.5-coder:7b")
@@ -187,5 +190,47 @@ func TestCustomEndpointHarnessConfiguration(t *testing.T) {
 		if _, err := prepare(t, tc.harness, tc.provider, tc.model); err == nil {
 			t.Errorf("%s accepted %s with model %q", tc.harness, tc.provider, tc.model)
 		}
+	}
+}
+
+func TestCodexToolDefaultsApplyOnlyToCustomEndpoints(t *testing.T) {
+	token := strings.Repeat("c", 64)
+	render := func(t *testing.T, provider, imported string) map[string]any {
+		t.Helper()
+		s := &Server{config: ServerConfig{HarnessHome: t.TempDir()}}
+		var setup *harnesssetup.RuntimeSetup
+		var env map[string]string
+		if imported != "" {
+			setup = &harnesssetup.RuntimeSetup{Revision: "rev-" + provider, Bundle: harnesssetup.Bundle{Harness: "codex", Files: []harnesssetup.File{{Path: ".codex/config.toml", Content: imported}}}}
+			var err error
+			if env, err = s.prepareHarnessSetup(context.Background(), setup, "codex"); err != nil {
+				t.Fatal(err)
+			}
+		}
+		env, err := s.prepareProviderConnection(context.Background(), &harnesssetup.Connection{Provider: provider, URL: "https://meridian.example/provider-gateway/" + provider, Token: token}, setup, "codex", env)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, err := os.ReadFile(filepath.Join(env["HOME"], ".codex", "config.toml"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		config := map[string]any{}
+		if err := toml.Unmarshal(raw, &config); err != nil {
+			t.Fatal(err)
+		}
+		return config
+	}
+	official := render(t, "openai", "")
+	if _, ok := official["web_search"]; ok {
+		t.Fatalf("official OpenAI config changed: %v", official)
+	}
+	if _, ok := official["features"]; ok {
+		t.Fatalf("official OpenAI config changed: %v", official)
+	}
+	imported := render(t, "openai-compatible", "web_search = \"live\"\n\n[features]\nmulti_agent = true\nshell_snapshot = true\n")
+	features := imported["features"].(map[string]any)
+	if imported["web_search"] != "live" || features["multi_agent"] != true || features["shell_snapshot"] != true {
+		t.Fatalf("imported Codex settings overridden: %v", imported)
 	}
 }

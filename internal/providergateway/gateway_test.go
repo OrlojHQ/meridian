@@ -2,6 +2,7 @@ package providergateway
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -339,5 +340,81 @@ func TestNormalizeBaseURL(t *testing.T) {
 		if got != tc.want || (err == nil) != (tc.want != "") {
 			t.Errorf("%s (http %t): %q %v", tc.raw, tc.http, got, err)
 		}
+	}
+}
+
+func TestUpstreamRejectionSurfacesStatusAndSanitizedReason(t *testing.T) {
+	var upstream *httptest.Server
+	g := New(func(context.Context, Lease) (Upstream, error) {
+		return Upstream{Key: "local-key-1234", BaseURL: upstream.URL + "/v1"}, nil
+	}, Options{})
+	defer g.Close()
+	token, err := g.Issue(Lease{Provider: OpenAICompatible, Connection: "connection"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	upstream = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Set-Cookie", "session=upstream-cookie")
+		w.Header().Set("X-Upstream-Secret", "upstream-header")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{
+			"message": "Unsupported tool type \"web_search\"\u202e\u0007 (key LOCAL-KEY-1234, lease " + token + ", host 127.0.0.1, see https://internal.example/docs?k=v, sk-abcdefgh12345678)",
+			"trace":   "Traceback: local-key-1234",
+		}})
+	}))
+	defer upstream.Close()
+	trustTestServer(g, upstream)
+	w := send(g, "/provider-gateway/openai-compatible/v1/responses", token, nil)
+	if w.Code != http.StatusBadRequest || w.Header().Get("Content-Type") != "application/json" || w.Header().Get("Set-Cookie") != "" || w.Header().Get("X-Upstream-Secret") != "" {
+		t.Fatalf("status %d headers %v", w.Code, w.Header())
+	}
+	var body struct {
+		Error struct {
+			Code           string `json:"code"`
+			Message        string `json:"message"`
+			UpstreamStatus int    `json:"upstreamStatus"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	message := body.Error.Message
+	if body.Error.Code != "provider_gateway_error" || body.Error.UpstreamStatus != 400 || !strings.HasPrefix(message, `upstream provider rejected the request (HTTP 400): Unsupported tool type "web_search" (key [redacted], lease [redacted], host [redacted]`) {
+		t.Fatalf("unexpected error %+v", body.Error)
+	}
+	for _, leaked := range []string{"local-key", "LOCAL-KEY", token, "127.0.0.1", "internal.example", "sk-", "Traceback", "upstream-cookie", "upstream-header", "\u202e", "\u0007"} {
+		if strings.Contains(message, leaked) {
+			t.Fatalf("error message leaked %q: %s", leaked, message)
+		}
+	}
+}
+
+func TestUpstreamReason(t *testing.T) {
+	long := strings.Repeat("é", 400)
+	for _, tc := range []struct {
+		name, contentType, body, want string
+	}{
+		{"openai", "application/json", `{"error":{"message":"The model ` + "`glm-5.3-flash`" + ` does not exist","type":"invalid_request_error"}}`, "The model `glm-5.3-flash` does not exist"},
+		{"string error", "application/json", `{"error":"rate limited","code":429}`, "rate limited"},
+		{"fastapi validation", "application/json", `{"detail":[{"loc":["body","tools",0,"type"],"msg":"Input should be 'function'","type":"literal_error"}]}`, "Input should be 'function'"},
+		{"plain text", "text/plain; charset=utf-8", "model\r\nnot\tloaded\x1b[31m\xff", "model not loaded [31m"},
+		{"html ignored", "text/html", "<html><body>Bad Gateway</body></html>", ""},
+		{"unknown json ignored", "application/json", `{"trace":"Traceback ..."}`, ""},
+		{"bearer", "text/plain", "Authorization: Bearer abc.def.ghi rejected; bearer xyz", "[redacted] rejected; [redacted]"},
+		{"token assignment", "text/plain", "invalid api_key=xyz and password: hunter22", "invalid [redacted] and [redacted]"},
+		{"long token", "text/plain", "key 0123456789abcdef0123456789abcdef0123 invalid for Qwen3-Coder-30B-A3B-Instruct", "key [redacted] invalid for Qwen3-Coder-30B-A3B-Instruct"},
+		{"truncated", "text/plain", long, strings.Repeat("é", reasonRuneLimit) + "…"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			response := &http.Response{Header: http.Header{"Content-Type": {tc.contentType}}, Body: io.NopCloser(strings.NewReader(tc.body))}
+			if got := upstreamReason(response); got != tc.want {
+				t.Fatalf("got %q want %q", got, tc.want)
+			}
+		})
+	}
+	oversized := &http.Response{Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":"` + strings.Repeat("a", reasonBodyLimit) + `"}`))}
+	if got := upstreamReason(oversized); got != "" {
+		t.Fatalf("truncated JSON produced %q", got)
 	}
 }
