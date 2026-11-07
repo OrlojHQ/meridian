@@ -468,7 +468,7 @@ export type PreviewTicket = {
 export type HarnessProfile = {
     name: string;
     structured: boolean;
-    adapterKind?: 'opencode' | 'pi' | 'claude' | 'codex' | 'mock' | 'generic' | 'external';
+    adapterKind?: 'acp' | 'pi' | 'claude' | 'codex' | 'mock' | 'generic' | 'external';
     protocol?: 'meridian.adapter.v1';
     /**
      * Native PTY behavior for this profile; structured profiles are always false.

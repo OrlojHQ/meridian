@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -170,7 +171,7 @@ func packExecutable(t *testing.T, root, name string) string {
 func TestOfficialPacksInstallNativeAndStructuredProfiles(t *testing.T) {
 	drivers := map[string]string{
 		"claude": "claude-stream", "codex": "codex-app-server",
-		"opencode": "opencode-server", "pi": "pi-rpc",
+		"opencode": "acp", "pi": "pi-rpc",
 	}
 	for name, root := range officialPacks(t) {
 		if output, err := exec.Command("sh", filepath.Join("..", "..", "images", "harness-pack", "install"),
@@ -200,12 +201,21 @@ func TestOfficialPacksInstallNativeAndStructuredProfiles(t *testing.T) {
 			t.Fatalf("%s structured profile: %v", name, err)
 		}
 		arguments := structured.Adapter.Arguments
+		separator := slices.Index(arguments, "--")
+		kind := name
+		if drivers[name] == "acp" {
+			kind = "acp"
+		}
 		if structured.PTY || len(structured.SecretRefs) != 0 ||
 			structured.Adapter.Executable != "/usr/local/bin/meridian-harness-adapter" ||
-			len(arguments) < 3 || arguments[0] != drivers[name] ||
-			arguments[len(arguments)-2] != "--" || arguments[len(arguments)-1] != "/usr/local/bin/"+name ||
-			adapterKind(*structured.Adapter) != name {
+			len(arguments) < 3 || arguments[0] != drivers[name] || separator < 1 ||
+			separator+1 >= len(arguments) || arguments[separator+1] != "/usr/local/bin/"+name ||
+			adapterKind(*structured.Adapter) != kind {
 			t.Fatalf("%s structured profile = %#v", name, structured)
+		}
+		if drivers[name] == "acp" && name == "opencode" &&
+			!slices.Equal(arguments[1:separator], []string{"--secret-env", "OPENCODE_SERVER_PASSWORD"}) {
+			t.Fatalf("OpenCode must protect its loopback server with a per-launch password: %#v", arguments)
 		}
 	}
 }

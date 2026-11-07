@@ -25,7 +25,7 @@ func newRootCommand() *cobra.Command {
 	command.AddCommand(
 		newGenericCommand(),
 		newPiCommand(),
-		newOpenCodeCommand(),
+		newACPCommand(),
 		newClaudeCommand(),
 		newCodexCommand(),
 		newMockCommand(),
@@ -65,30 +65,6 @@ func newPiCommand() *cobra.Command {
 	}
 	command.Flags().StringVar(&sessionName, "session-name", "", "initial Pi session display name")
 	command.Flags().StringVar(&sessionDirectory, "session-dir", "", "Pi session storage directory")
-	return command
-}
-
-func newOpenCodeCommand() *cobra.Command {
-	var sessionName string
-	var permissions bool
-	command := &cobra.Command{
-		Use:   "opencode-server -- <opencode-executable> [arguments...]",
-		Short: "Bridge an authenticated OpenCode server to Meridian",
-		Args:  cobra.MinimumNArgs(1),
-		RunE: func(command *cobra.Command, arguments []string) error {
-			return harnessadapter.RunOpenCode(
-				command.Context(), command.InOrStdin(), command.OutOrStdout(),
-				harnessadapter.OpenCodeConfig{
-					Command: arguments, SessionName: sessionName, Permissions: permissions,
-				},
-			)
-		},
-	}
-	command.Flags().StringVar(&sessionName, "session-name", "", "initial OpenCode session title")
-	command.Flags().BoolVar(
-		&permissions, "permissions", true,
-		"enable the documented legacy session permission response endpoint",
-	)
 	return command
 }
 
@@ -164,6 +140,42 @@ func newCodexCommand() *cobra.Command {
 		"Codex sandbox: read-only, workspace-write, or danger-full-access (default: Codex configuration)",
 	)
 	command.Flags().StringArrayVar(&mcpServers, "mcp-server", nil, mcpServerUsage)
+	return command
+}
+
+func newACPCommand() *cobra.Command {
+	var permissions bool
+	var mcpServers, secretEnv []string
+	command := &cobra.Command{
+		Use:   "acp -- <agent-executable> [arguments...]",
+		Short: "Bridge an Agent Client Protocol agent over stdio to Meridian",
+		Long: "Launch a command that speaks the Agent Client Protocol (ACP) version 1 over stdio and map\n" +
+			"its sessions, updates, tool calls, plans, permission requests, and commands to Meridian frames.\n" +
+			"The client offers the agent no file system, terminal, or authentication capability.",
+		Args: cobra.MinimumNArgs(1),
+		RunE: func(command *cobra.Command, arguments []string) error {
+			servers, err := parseMCPServers(mcpServers)
+			if err != nil {
+				return err
+			}
+			return harnessadapter.RunACP(
+				command.Context(), command.InOrStdin(), command.OutOrStdout(),
+				harnessadapter.ACPConfig{
+					Command: arguments, Permissions: permissions, MCPServers: servers,
+					SecretEnv: secretEnv,
+				},
+			)
+		},
+	}
+	command.Flags().BoolVar(
+		&permissions, "permissions", true,
+		"route ACP permission requests to Meridian instead of rejecting them",
+	)
+	command.Flags().StringArrayVar(&mcpServers, "mcp-server", nil, mcpServerUsage)
+	command.Flags().StringArrayVar(
+		&secretEnv, "secret-env", nil,
+		"set this environment variable to a fresh random value for each launch; repeatable",
+	)
 	return command
 }
 
