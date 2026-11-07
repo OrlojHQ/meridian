@@ -13,6 +13,7 @@ RUN groupadd --gid 10001 capsule \
     && install -d -o 10001 -g 10001 -m 0750 /workspace /home/capsule/.cache
 COPY capsuled /usr/local/bin/capsuled
 COPY meridian-harness-adapter /usr/local/bin/meridian-harness-adapter
+COPY meridian-coord /usr/local/bin/meridian-coord
 LABEL org.opencontainers.image.title="Meridian Capsule" \
       org.opencontainers.image.description="Non-root Meridian Capsule supervisor image" \
       org.opencontainers.image.source="https://github.com/OrlojHQ/meridian" \

@@ -37,7 +37,7 @@ func environmentView(ctx context.Context, reader ports.Reader, id domain.Project
 		return ProjectEnvironment{}, err
 	}
 	result := ProjectEnvironment{Enabled: !policy.Disabled, Generation: policy.Generation, Setup: append([]string{}, project.Setup...), ImageReference: project.ImageReference, ResourceVersion: project.ResourceVersion}
-	capsules, _, err := reader.ListCapsules(ctx, id, ports.Page{Limit: 1})
+	capsules, _, err := reader.ListCapsules(ctx, id, "", ports.Page{Limit: 1})
 	if err != nil {
 		return result, err
 	}

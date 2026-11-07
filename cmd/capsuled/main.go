@@ -16,6 +16,7 @@ import (
 
 	"github.com/OrlojHQ/meridian/internal/buildinfo"
 	"github.com/OrlojHQ/meridian/internal/capsuleproto"
+	"github.com/OrlojHQ/meridian/internal/coordproto"
 	"github.com/spf13/cobra"
 )
 
@@ -33,7 +34,7 @@ func newRootCommand() *cobra.Command {
 }
 
 func newServeCommand() *cobra.Command {
-	var listen, workspace, tokenFile string
+	var listen, workspace, tokenFile, coordinationSocket string
 	var setupTimeout time.Duration
 	command := &cobra.Command{
 		Use:   "serve",
@@ -52,6 +53,18 @@ func newServeCommand() *cobra.Command {
 			})
 			if err != nil {
 				return err
+			}
+			if coordinationSocket != "" {
+				listener, err := capsuleproto.ListenCoordination(coordinationSocket)
+				if err != nil {
+					fmt.Fprintln(os.Stderr, "capsuled: coordination mailbox unavailable:", err)
+				} else {
+					defer listener.Close()
+					if err := os.Setenv(coordproto.SocketEnv, coordinationSocket); err != nil {
+						return err
+					}
+					go func() { _ = server.ServeCoordination(listener) }()
+				}
 			}
 			httpServer := &http.Server{
 				Addr:              listen,
@@ -87,6 +100,10 @@ func newServeCommand() *cobra.Command {
 	command.Flags().StringVar(&workspace, "workspace", "/workspace", "Capsule workspace path")
 	command.Flags().StringVar(&tokenFile, "token-file", "", "read protocol token from a private file")
 	command.Flags().DurationVar(&setupTimeout, "setup-timeout", 10*time.Minute, "maximum clone and setup duration")
+	command.Flags().StringVar(
+		&coordinationSocket, "coordination-socket", defaultCoordinationSocket(),
+		"Thread coordination mailbox socket (empty disables)",
+	)
 	return command
 }
 
@@ -115,6 +132,14 @@ func newHealthcheckCommand() *cobra.Command {
 	}
 	command.Flags().StringVar(&url, "url", "http://127.0.0.1:7777/healthz", "health URL")
 	return command
+}
+
+func defaultCoordinationSocket() string {
+	home := os.Getenv("HOME")
+	if !filepath.IsAbs(home) || home == "/" {
+		return ""
+	}
+	return coordproto.SocketPathForHome(filepath.Clean(home))
 }
 
 func loadToken(path string) (string, error) {

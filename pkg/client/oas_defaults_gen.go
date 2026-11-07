@@ -3,9 +3,53 @@
 package client
 
 // setDefaults set default value of fields.
+func (s *CoordinationPolicy) setDefaults() {
+	{
+		val := int(1)
+		s.MaxDepth.SetTo(val)
+	}
+	{
+		val := int(4)
+		s.MaxChildren.SetTo(val)
+	}
+	{
+		val := int(8)
+		s.MaxDescendants.SetTo(val)
+	}
+	{
+		val := int(4)
+		s.MaxLiveCapsules.SetTo(val)
+	}
+	{
+		val := int(50)
+		s.MaxMessagesPerLink.SetTo(val)
+	}
+	{
+		val := int(28800)
+		s.DeadlineSeconds.SetTo(val)
+	}
+	{
+		val := CoordinationPolicyOnDeadline("cancel_and_pause")
+		s.OnDeadline.SetTo(val)
+	}
+	{
+		val := CoordinationPolicySpawnApproval("auto")
+		s.SpawnApproval.SetTo(val)
+	}
+}
+
+// setDefaults set default value of fields.
 func (s *CreateThreadRequest) setDefaults() {
 	{
 		val := bool(false)
 		s.Start.SetTo(val)
+	}
+}
+
+// setDefaults set default value of fields.
+func (s *RevokeCoordinationGrantRequest) setDefaults() {
+	{
+		val := bool(true)
+		s.CancelDescendants.SetTo(val)
 	}
 }

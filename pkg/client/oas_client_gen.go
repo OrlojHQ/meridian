@@ -178,6 +178,12 @@ type Invoker interface {
 	//
 	// GET /capsules/{capsuleId}/git/status
 	GetCapsuleGitStatus(ctx context.Context, params GetCapsuleGitStatusParams) (GetCapsuleGitStatusRes, error)
+	// GetCoordinationGrant invokes getCoordinationGrant operation.
+	//
+	// Get a lead Thread's Coordination Grant.
+	//
+	// GET /coordination-grants/{grantId}
+	GetCoordinationGrant(ctx context.Context, params GetCoordinationGrantParams) (GetCoordinationGrantRes, error)
 	// GetDelivery invokes getDelivery operation.
 	//
 	// Get a durable Delivery.
@@ -250,6 +256,12 @@ type Invoker interface {
 	//
 	// GET /threads/{threadId}
 	GetThread(ctx context.Context, params GetThreadParams) (GetThreadRes, error)
+	// GetThreadLink invokes getThreadLink operation.
+	//
+	// Get one lead-to-helper Thread link.
+	//
+	// GET /thread-links/{linkId}
+	GetThreadLink(ctx context.Context, params GetThreadLinkParams) (GetThreadLinkRes, error)
 	// GetTimeline invokes getTimeline operation.
 	//
 	// Get a Timeline and its ancestry.
@@ -362,6 +374,12 @@ type Invoker interface {
 	//
 	// GET /threads/{threadId}/blocks
 	ListThreadBlocks(ctx context.Context, params ListThreadBlocksParams) (ListThreadBlocksRes, error)
+	// ListThreadLinks invokes listThreadLinks operation.
+	//
+	// Content-free. Report text stays in the child transcript.
+	//
+	// GET /threads/{threadId}/links
+	ListThreadLinks(ctx context.Context, params ListThreadLinksParams) (ListThreadLinksRes, error)
 	// ListThreads invokes listThreads operation.
 	//
 	// List retained Thread histories for a Capsule.
@@ -442,6 +460,13 @@ type Invoker interface {
 	//
 	// POST /capsules/{capsuleId}/retry
 	RetryCapsule(ctx context.Context, request *LifecycleMutationRequest, params RetryCapsuleParams) (RetryCapsuleRes, error)
+	// RevokeCoordinationGrant invokes revokeCoordinationGrant operation.
+	//
+	// Ends the lead's authority to spawn, message, or cancel helpers. With cancelDescendants, open links
+	// close and their helpers are cancelled and paused; otherwise helpers keep running for the operator.
+	//
+	// POST /coordination-grants/{grantId}/revoke
+	RevokeCoordinationGrant(ctx context.Context, request *RevokeCoordinationGrantRequest, params RevokeCoordinationGrantParams) (RevokeCoordinationGrantRes, error)
 	// RewindCapsule invokes rewindCapsule operation.
 	//
 	// Create a non-destructive descendant from an earlier Moment.
@@ -3764,6 +3789,137 @@ func (c *Client) sendGetCapsuleGitStatus(ctx context.Context, params GetCapsuleG
 	return result, nil
 }
 
+// GetCoordinationGrant invokes getCoordinationGrant operation.
+//
+// Get a lead Thread's Coordination Grant.
+//
+// GET /coordination-grants/{grantId}
+func (c *Client) GetCoordinationGrant(ctx context.Context, params GetCoordinationGrantParams) (GetCoordinationGrantRes, error) {
+	res, err := c.sendGetCoordinationGrant(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendGetCoordinationGrant(ctx context.Context, params GetCoordinationGrantParams) (res GetCoordinationGrantRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getCoordinationGrant"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/coordination-grants/{grantId}"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetCoordinationGrantOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [2]string
+	pathParts[0] = "/coordination-grants/"
+	{
+		// Encode "grantId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "grantId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.GrantId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, GetCoordinationGrantOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeGetCoordinationGrantResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // GetDelivery invokes getDelivery operation.
 //
 // Get a durable Delivery.
@@ -5276,6 +5432,137 @@ func (c *Client) sendGetThread(ctx context.Context, params GetThreadParams) (res
 	return result, nil
 }
 
+// GetThreadLink invokes getThreadLink operation.
+//
+// Get one lead-to-helper Thread link.
+//
+// GET /thread-links/{linkId}
+func (c *Client) GetThreadLink(ctx context.Context, params GetThreadLinkParams) (GetThreadLinkRes, error) {
+	res, err := c.sendGetThreadLink(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendGetThreadLink(ctx context.Context, params GetThreadLinkParams) (res GetThreadLinkRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getThreadLink"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/thread-links/{linkId}"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetThreadLinkOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [2]string
+	pathParts[0] = "/thread-links/"
+	{
+		// Encode "linkId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "linkId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.LinkId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, GetThreadLinkOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeGetThreadLinkResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // GetTimeline invokes getTimeline operation.
 //
 // Get a Timeline and its ancestry.
@@ -6413,6 +6700,23 @@ func (c *Client) sendListCapsules(ctx context.Context, params ListCapsulesParams
 		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
 			if val, ok := params.Limit.Get(); ok {
 				return e.EncodeValue(conv.IntToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	{
+		// Encode "role" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "role",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.Role.Get(); ok {
+				return e.EncodeValue(conv.StringToString(string(val)))
 			}
 			return nil
 		}); err != nil {
@@ -7951,6 +8255,138 @@ func (c *Client) sendListThreadBlocks(ctx context.Context, params ListThreadBloc
 
 	stage = "DecodeResponse"
 	result, err := decodeListThreadBlocksResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// ListThreadLinks invokes listThreadLinks operation.
+//
+// Content-free. Report text stays in the child transcript.
+//
+// GET /threads/{threadId}/links
+func (c *Client) ListThreadLinks(ctx context.Context, params ListThreadLinksParams) (ListThreadLinksRes, error) {
+	res, err := c.sendListThreadLinks(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendListThreadLinks(ctx context.Context, params ListThreadLinksParams) (res ListThreadLinksRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("listThreadLinks"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/threads/{threadId}/links"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, ListThreadLinksOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/threads/"
+	{
+		// Encode "threadId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "threadId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ThreadId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/links"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, ListThreadLinksOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeListThreadLinksResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -9721,6 +10157,156 @@ func (c *Client) sendRetryCapsule(ctx context.Context, request *LifecycleMutatio
 
 	stage = "DecodeResponse"
 	result, err := decodeRetryCapsuleResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// RevokeCoordinationGrant invokes revokeCoordinationGrant operation.
+//
+// Ends the lead's authority to spawn, message, or cancel helpers. With cancelDescendants, open links
+// close and their helpers are cancelled and paused; otherwise helpers keep running for the operator.
+//
+// POST /coordination-grants/{grantId}/revoke
+func (c *Client) RevokeCoordinationGrant(ctx context.Context, request *RevokeCoordinationGrantRequest, params RevokeCoordinationGrantParams) (RevokeCoordinationGrantRes, error) {
+	res, err := c.sendRevokeCoordinationGrant(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendRevokeCoordinationGrant(ctx context.Context, request *RevokeCoordinationGrantRequest, params RevokeCoordinationGrantParams) (res RevokeCoordinationGrantRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("revokeCoordinationGrant"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/coordination-grants/{grantId}/revoke"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, RevokeCoordinationGrantOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/coordination-grants/"
+	{
+		// Encode "grantId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "grantId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.GrantId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/revoke"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeRevokeCoordinationGrantRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "EncodeHeaderParams"
+	h := uri.NewHeaderEncoder(r.Header)
+	{
+		cfg := uri.HeaderParameterEncodingConfig{
+			Name:    "Idempotency-Key",
+			Explode: false,
+		}
+		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.IdempotencyKey))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode header")
+		}
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, RevokeCoordinationGrantOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeRevokeCoordinationGrantResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}

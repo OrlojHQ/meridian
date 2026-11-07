@@ -47,7 +47,7 @@ import {
   type CapsuleActionRequest,
   type PaletteCommand,
 } from "./paletteCommands";
-import { useWorkingSet, type WorkingSetItem } from "./useWorkingSet";
+import { nestHelpers, useWorkingSet, type WorkingSetItem } from "./useWorkingSet";
 import { WorkspaceContext } from "./WorkspaceContext";
 
 const pathID = (pathname: string, resource: string) => {
@@ -382,6 +382,61 @@ export function AppShell() {
     items: visibleItems.filter((item) => item.capsule.projectId === project.id),
   }));
   const hasContext = Boolean(capsuleId);
+  const renderItem = (
+    { capsule, activity, sessions }: WorkingSetItem,
+    helpers: WorkingSetItem[] = [],
+  ) => {
+    const selected = capsule.id === capsuleId;
+    const live = sessions.filter((session) => !session.archived);
+    const harness = capsule.harness || live[0]?.harness;
+    return (
+      <li key={capsule.id}>
+        <NavLink
+          to={sessionPath(capsule.id)}
+          className={selected ? "selected" : undefined}
+          title={activity.detail}
+        >
+          <ActivityDot group={activity.group} />
+          <span className="activity-item-copy">
+            <strong>{capsule.name}</strong>
+            <small>
+              {harness && <HarnessMark harness={harness} />}
+              {activity.label}
+            </small>
+          </span>
+          <span className="activity-item-side">
+            <time
+              className="activity-item-time"
+              dateTime={activity.since}
+            >
+              {relativeTime(activity.since, now)}
+            </time>
+            {!selected && live.length > 1 && (
+              <small
+                className="session-count"
+                aria-label={`${live.length} sessions`}
+              >
+                {live.length}
+              </small>
+            )}
+          </span>
+        </NavLink>
+        {selected && live.length > 1 && (
+          <SessionList
+            capsuleId={capsule.id}
+            sessions={live}
+            selected={sessionId || defaultSession(live)?.id || ""}
+            now={now}
+          />
+        )}
+        {helpers.length > 0 && (
+          <ul className="sidebar-helpers" aria-label={`Helpers of ${capsule.name}`}>
+            {helpers.map((helper) => renderItem(helper))}
+          </ul>
+        )}
+      </li>
+    );
+  };
 
   return (
     <div
@@ -491,53 +546,7 @@ export function AppShell() {
                   </p>
                 ) : (
                   <ul>
-                    {projectCapsules.map(({ capsule, activity, sessions }) => {
-                      const selected = capsule.id === capsuleId;
-                      const live = sessions.filter((session) => !session.archived);
-                      const harness = capsule.harness || live[0]?.harness;
-                      return (
-                        <li key={capsule.id}>
-                          <NavLink
-                            to={sessionPath(capsule.id)}
-                            className={selected ? "selected" : undefined}
-                            title={activity.detail}
-                          >
-                            <ActivityDot group={activity.group} />
-                            <span className="activity-item-copy">
-                              <strong>{capsule.name}</strong>
-                              <small>
-                                {harness && <HarnessMark harness={harness} />}
-                                {activity.label}
-                              </small>
-                            </span>
-                            <span className="activity-item-side">
-                              <time
-                                className="activity-item-time"
-                                dateTime={activity.since}
-                              >
-                                {relativeTime(activity.since, now)}
-                              </time>
-                              {!selected && live.length > 1 && (
-                                <small
-                                  className="session-count"
-                                  aria-label={`${live.length} sessions`}
-                                >
-                                  {live.length}
-                                </small>
-                              )}
-                            </span>
-                          </NavLink>
-                          {selected && live.length > 1 && (
-                            <SessionList
-                              capsuleId={capsule.id}
-                              sessions={live}
-                              selected={sessionId || defaultSession(live)?.id || ""}
-                              now={now}
-                            />
-                          )}
-                        </li>
-                      );
-                    })}
+                    {nestHelpers(projectCapsules).map(({ item, helpers }) => renderItem(item, helpers))}
                   </ul>
                 )}
               </section>

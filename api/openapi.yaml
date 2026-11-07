@@ -658,6 +658,90 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
         default: { $ref: "#/components/responses/DefaultError" }
+  /threads/{threadId}/links:
+    get:
+      operationId: listThreadLinks
+      summary: List the helper Threads a lead Thread spawned
+      description: Content-free. Report text stays in the child transcript.
+      tags: [threads]
+      parameters:
+        - $ref: "#/components/parameters/ThreadId"
+      responses:
+        "200":
+          description: Thread links in creation order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ThreadLinkPage" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /thread-links/{linkId}:
+    get:
+      operationId: getThreadLink
+      summary: Get one lead-to-helper Thread link
+      tags: [threads]
+      parameters:
+        - $ref: "#/components/parameters/LinkId"
+      responses:
+        "200":
+          description: Thread link
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ThreadLink" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /coordination-grants/{grantId}:
+    get:
+      operationId: getCoordinationGrant
+      summary: Get a lead Thread's Coordination Grant
+      tags: [threads]
+      parameters:
+        - $ref: "#/components/parameters/GrantId"
+      responses:
+        "200":
+          description: Coordination Grant
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CoordinationGrant" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /coordination-grants/{grantId}/revoke:
+    post:
+      operationId: revokeCoordinationGrant
+      summary: Revoke a Coordination Grant
+      description: >
+        Ends the lead's authority to spawn, message, or cancel helpers. With
+        cancelDescendants, open links close and their helpers are cancelled
+        and paused; otherwise helpers keep running for the operator.
+      tags: [threads]
+      parameters:
+        - $ref: "#/components/parameters/GrantId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RevokeCoordinationGrantRequest" }
+      responses:
+        "200":
+          description: Revoked grant
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CoordinationGrant" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        default: { $ref: "#/components/responses/DefaultError" }
   /projects/{projectId}/capsules:
     post:
       operationId: createCapsule
@@ -702,6 +786,11 @@ paths:
         - $ref: "#/components/parameters/ProjectId"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
+        - name: role
+          in: query
+          required: false
+          description: Only main Capsules or only helper sub-Capsules.
+          schema: { $ref: "#/components/schemas/CapsuleRole" }
       responses:
         "200":
           description: Capsule page
@@ -1783,6 +1872,20 @@ components:
       schema:
         type: string
         minLength: 1
+    LinkId:
+      name: linkId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    GrantId:
+      name: grantId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
     MomentId:
       name: momentId
       in: path
@@ -1992,6 +2095,8 @@ components:
         resourceMetrics:
           type: boolean
           description: False when provider resource metrics are not exposed by the public API.
+        coordination:
+          $ref: "#/components/schemas/CoordinationCapability"
         harnessImages:
           type: array
           description: >
@@ -2315,6 +2420,14 @@ components:
           type: boolean
         maintenance:
           type: string
+        role:
+          $ref: "#/components/schemas/CapsuleRole"
+        leadThreadId:
+          type: string
+          description: On sub-Capsules, the lead Thread that spawned this helper.
+        linkId:
+          type: string
+          description: On sub-Capsules, the Thread link that owns this helper.
         createdAt:
           type: string
           format: date-time
@@ -2325,6 +2438,10 @@ components:
           type: integer
           format: int64
           minimum: 1
+    CapsuleRole:
+      type: string
+      enum: [main, sub]
+      description: main Capsules are operator-created; sub Capsules were spawned by a lead Thread.
     CapsuleState:
       type: string
       enum: [Creating, Preparing, Ready, Paused, Failed, Sealed, Deleting, Deleted]
@@ -2688,6 +2805,142 @@ components:
           minLength: 1
           maxLength: 131072
           description: Encrypted as a transcript envelope before SQLite persistence. Prefer stdin in shells.
+        coordination:
+          $ref: "#/components/schemas/CoordinationPolicy"
+    CoordinationPolicy:
+      type: object
+      description: >
+        Makes the new Thread a lead that may spawn helper Threads in their own
+        sub-Capsules. Omitted limits take their defaults. Helpers answer to the
+        operator: the lead never approves permissions or answers input.
+      properties:
+        maxDepth: { type: integer, minimum: 1, maximum: 1, default: 1 }
+        maxChildren: { type: integer, minimum: 1, maximum: 16, default: 4 }
+        maxDescendants: { type: integer, minimum: 1, maximum: 32, default: 8 }
+        maxLiveCapsules: { type: integer, minimum: 1, maximum: 16, default: 4 }
+        maxMessagesPerLink: { type: integer, minimum: 1, maximum: 500, default: 50 }
+        allowedHarnesses:
+          type: array
+          maxItems: 16
+          description: Structured harnesses helpers may use; each must be on the Project allowlist. Defaults to the lead's harness.
+          items: { type: string, minLength: 1, maxLength: 128 }
+        deadlineSeconds: { type: integer, minimum: 300, maximum: 259200, default: 28800 }
+        onDeadline:
+          type: string
+          enum: [cancel_and_pause, stop_new_work]
+          default: cancel_and_pause
+        spawnApproval:
+          type: string
+          enum: [auto]
+          default: auto
+    CoordinationGrantState:
+      type: string
+      enum: [active, revoked, expired]
+    CoordinationGrant:
+      type: object
+      required:
+        [id, projectId, rootThreadId, rootCapsuleId, state, spawnApproval, maxDepth,
+         maxChildren, maxDescendants, maxLiveCapsules, maxMessagesPerLink,
+         allowedHarnesses, deadlineAt, onDeadline, descendantsCreated, createdAt,
+         updatedAt, resourceVersion]
+      properties:
+        id: { type: string }
+        projectId: { type: string }
+        rootThreadId: { type: string }
+        rootCapsuleId: { type: string }
+        state: { $ref: "#/components/schemas/CoordinationGrantState" }
+        spawnApproval: { type: string, enum: [auto] }
+        maxDepth: { type: integer, minimum: 1 }
+        maxChildren: { type: integer, minimum: 1 }
+        maxDescendants: { type: integer, minimum: 1 }
+        maxLiveCapsules: { type: integer, minimum: 1 }
+        maxMessagesPerLink: { type: integer, minimum: 1 }
+        allowedHarnesses:
+          type: array
+          items: { type: string }
+        deadlineAt: { type: string, format: date-time }
+        onDeadline: { type: string, enum: [cancel_and_pause, stop_new_work] }
+        descendantsCreated: { type: integer, minimum: 0 }
+        revokedAt: { type: string, format: date-time }
+        revokeReason: { type: string, enum: [operator, deadline, lead_ended] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        resourceVersion: { type: integer, format: int64, minimum: 1 }
+    RevokeCoordinationGrantRequest:
+      type: object
+      required: [expectedResourceVersion]
+      properties:
+        expectedResourceVersion: { type: integer, format: int64, minimum: 1 }
+        cancelDescendants:
+          type: boolean
+          default: true
+    ThreadLinkState:
+      type: string
+      enum: [active, closed]
+    ThreadLink:
+      type: object
+      description: >
+        Content-free handle from a lead Thread to one helper. Report text is
+        re-derived from the helper's encrypted transcript and is never stored
+        on the link.
+      required:
+        [id, grantId, parentThreadId, parentCapsuleId, childThreadId, childCapsuleId,
+         childIntentId, depth, name, harness, state, phase, reportSeq,
+         reportDeliveredSeq, messagesForwarded, createdAt, updatedAt, resourceVersion]
+      properties:
+        id: { type: string }
+        grantId: { type: string }
+        parentThreadId: { type: string }
+        parentCapsuleId: { type: string }
+        childThreadId: { type: string }
+        childCapsuleId: { type: string }
+        childIntentId: { type: string }
+        depth: { type: integer, minimum: 1, maximum: 3 }
+        name: { type: string, pattern: "^[a-z0-9-]{1,48}$" }
+        harness: { type: string }
+        state: { $ref: "#/components/schemas/ThreadLinkState" }
+        closeReason: { type: string, enum: [cancelled, failed, ended, revoked] }
+        phase:
+          type: string
+          enum: [provisioning, working, idle, awaiting_operator, ended, failed]
+        reportSeq: { type: integer, minimum: 0 }
+        reportDeliveredSeq: { type: integer, minimum: 0 }
+        lastReportStatus: { type: string, enum: [turn_ended, failed] }
+        lastReportReason: { type: string, enum: [cancelled, capsule_failed, session_ended, revoked] }
+        lastReportAt: { type: string, format: date-time }
+        messagesForwarded: { type: integer, minimum: 0 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        resourceVersion: { type: integer, format: int64, minimum: 1 }
+    ThreadLinkPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ThreadLink" }
+    CoordinationCapability:
+      type: object
+      required: [supported, maxDepth, maxDescendants]
+      properties:
+        supported:
+          type: boolean
+          description: True when lead Threads may spawn helper Threads through the Capsule-local coordination mailbox.
+        maxDepth: { type: integer, minimum: 0 }
+        maxDescendants: { type: integer, minimum: 0 }
+    ThreadOrigin:
+      type: object
+      description: >
+        Marks a user-role message Meridian wrote for coordination rather than
+        the operator: from_lead on a helper, from_helpers on a lead.
+      required: [source, kind]
+      properties:
+        source: { type: string, enum: [coordination] }
+        kind: { type: string, enum: [from_lead, from_helpers] }
+        linkIds:
+          type: array
+          maxItems: 16
+          items: { type: string }
     ProjectThreadIntentState:
       type: string
       enum: [provisioning, ready, failed]
@@ -2783,6 +3036,23 @@ components:
           type: string
           enum: [meridian.adapter.v1]
         structuredSupported: { type: boolean }
+        coordinationGrantId:
+          type: string
+          description: The Coordination Grant over this Thread's tree, on the lead and on each helper.
+        parentThreadId:
+          type: string
+          description: Present on a helper Thread; the lead that spawned it.
+        rootThreadId:
+          type: string
+          description: The lead at the root of this Thread's coordination tree.
+        linkId:
+          type: string
+          description: Present on a helper Thread; its link from the lead.
+        depth:
+          type: integer
+          minimum: 0
+          maximum: 3
+          description: Zero for leads, one for their helpers.
         encryptedAtRest:
           type: boolean
           const: true
@@ -2923,6 +3193,7 @@ components:
           maxLength: 1048576
           description: Present only at explicit read/stream decryption boundaries.
         event: { $ref: "#/components/schemas/ThreadAdapterEvent" }
+        origin: { $ref: "#/components/schemas/ThreadOrigin" }
         createdAt: { type: string, format: date-time }
     ThreadBlockPage:
       type: object

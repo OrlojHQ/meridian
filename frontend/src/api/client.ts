@@ -47,6 +47,9 @@ import {
   startThread,
   respondThread,
   readCapsuleFile,
+  getCoordinationGrant,
+  listThreadLinks,
+  revokeCoordinationGrant,
 } from "./generated/sdk.gen";
 import { projectHarnessImage } from "./harnessPacks";
 import type { HarnessSetupUpload, HarnessSetupPreview, ImportHarnessSetupRequest, EnvironmentMutation, ProjectEnvironment,
@@ -57,6 +60,8 @@ import type { HarnessSetupUpload, HarnessSetupPreview, ImportHarnessSetupRequest
   Capabilities,
   Capsule,
   CapsulePage,
+  CoordinationGrant,
+  CoordinationPolicy,
   CreateProjectRequest,
   HarnessImage,
   ErrorEnvelope,
@@ -79,6 +84,7 @@ import type { HarnessSetupUpload, HarnessSetupPreview, ImportHarnessSetupRequest
   DeliveryInspection,
   Thread,
   ThreadBlockPage,
+  ThreadLinkPage,
   ThreadMutationResult,
   ThreadPage,
   ThreadResponseRequest,
@@ -235,6 +241,7 @@ export const api = {
     harness: string,
     prompt: string,
     name?: string,
+    coordination?: CoordinationPolicy,
     signal?: AbortSignal,
   ) =>
     call<ProjectThreadIntent>(
@@ -242,7 +249,32 @@ export const api = {
         ...generatedOptions(signal),
         path: { projectId },
         headers: idempotencyHeaders(),
-        body: { harness, prompt, ...(name ? { name } : {}) },
+        body: {
+          harness,
+          prompt,
+          ...(name ? { name } : {}),
+          ...(coordination ? { coordination } : {}),
+        },
+      }),
+    ),
+  threadLinks: (threadId: string, signal?: AbortSignal) =>
+    call<ThreadLinkPage>(
+      listThreadLinks({ ...generatedOptions(signal), path: { threadId } }),
+    ),
+  coordinationGrant: (grantId: string, signal?: AbortSignal) =>
+    call<CoordinationGrant>(
+      getCoordinationGrant({ ...generatedOptions(signal), path: { grantId } }),
+    ),
+  revokeCoordinationGrant: (grant: CoordinationGrant) =>
+    call<CoordinationGrant>(
+      revokeCoordinationGrant({
+        ...generatedOptions(),
+        path: { grantId: grant.id },
+        headers: idempotencyHeaders(),
+        body: {
+          expectedResourceVersion: grant.resourceVersion,
+          cancelDescendants: true,
+        },
       }),
     ),
   previewHarnessSetup: (body: HarnessSetupUpload) => call<HarnessSetupPreview>(previewHarnessSetup({...generatedOptions(), body})),

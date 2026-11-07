@@ -309,7 +309,7 @@ func TestCreateProjectThreadRejectsNativeOnlyPackBeforeProvisioning(t *testing.T
 		if !errors.Is(err, domain.ErrUnsupported) || !strings.Contains(err.Error(), "runs only in a terminal") {
 			t.Fatalf("%s/%s error = %v", tc.project, tc.harness, err)
 		}
-		page, err := service.ListCapsules(ctx, tc.project, 0, 100)
+		page, err := service.ListCapsules(ctx, tc.project, "", 0, 100)
 		if err != nil || len(page.Items) != 0 {
 			t.Fatalf("%s/%s provisioned %#v, %v", tc.project, tc.harness, page.Items, err)
 		}

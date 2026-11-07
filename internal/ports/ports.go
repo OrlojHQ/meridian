@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/OrlojHQ/meridian/internal/adapterproto"
+	"github.com/OrlojHQ/meridian/internal/coordproto"
 	"github.com/OrlojHQ/meridian/internal/domain"
 )
 
@@ -34,7 +35,8 @@ type Reader interface {
 	GetSecret(context.Context, string) (domain.Secret, error)
 	ListSecrets(context.Context, Page) ([]domain.Secret, bool, error)
 	GetCapsule(context.Context, domain.CapsuleID) (domain.Capsule, error)
-	ListCapsules(context.Context, domain.ProjectID, Page) ([]domain.Capsule, bool, error)
+	ListCapsules(context.Context, domain.ProjectID, domain.CapsuleRole, Page) ([]domain.Capsule, bool, error)
+	CountLiveCapsules(context.Context) (int, error)
 	ListIdleCapsules(context.Context, time.Time, int) ([]domain.Capsule, error)
 	ListRecoverableCapsules(context.Context) ([]domain.Capsule, error)
 	GetRun(context.Context, domain.RunID) (domain.Run, error)
@@ -63,6 +65,15 @@ type Reader interface {
 	GetDelivery(context.Context, domain.DeliveryID) (domain.Delivery, error)
 	ListDeliveries(context.Context, domain.CapsuleID, Page) ([]domain.Delivery, bool, error)
 	ListRecoverableDeliveries(context.Context) ([]domain.Delivery, error)
+	GetCoordinationGrant(context.Context, domain.CoordinationGrantID) (domain.CoordinationGrant, error)
+	GetCoordinationGrantByRootThread(context.Context, domain.ThreadID) (domain.CoordinationGrant, error)
+	GetCoordinationGrantByRootCapsule(context.Context, domain.CapsuleID) (domain.CoordinationGrant, error)
+	ListActiveCoordinationGrants(ctx context.Context, stoppedSince time.Time) ([]domain.CoordinationGrant, error)
+	GetThreadLink(context.Context, domain.ThreadLinkID) (domain.ThreadLink, error)
+	GetThreadLinkByChildThread(context.Context, domain.ThreadID) (domain.ThreadLink, error)
+	ListThreadLinksByParent(context.Context, domain.ThreadID) ([]domain.ThreadLink, error)
+	ListThreadLinksByGrant(context.Context, domain.CoordinationGrantID) ([]domain.ThreadLink, error)
+	GetCoordinationRequest(context.Context, domain.CapsuleID, string) (domain.CoordinationRequest, error)
 }
 
 type Transaction interface {
@@ -114,6 +125,11 @@ type Transaction interface {
 	) error
 	InsertDelivery(context.Context, domain.Delivery) error
 	UpdateDelivery(context.Context, domain.Delivery, domain.ResourceVersion) error
+	InsertCoordinationGrant(context.Context, domain.CoordinationGrant) error
+	UpdateCoordinationGrant(context.Context, domain.CoordinationGrant, domain.ResourceVersion) error
+	InsertThreadLink(context.Context, domain.ThreadLink) error
+	UpdateThreadLink(context.Context, domain.ThreadLink, domain.ResourceVersion) error
+	InsertCoordinationRequest(context.Context, domain.CoordinationRequest) error
 }
 
 type Store interface {
@@ -167,6 +183,8 @@ type ProviderCapabilities struct {
 	Structured bool
 	Browse     bool
 	Delivery   bool
+	// Coordination reports a Capsule-local mailbox for lead Threads.
+	Coordination bool
 }
 
 type RuntimeRunRequest struct {
@@ -348,6 +366,16 @@ type StructuredRuntime interface {
 	SendStructured(context.Context, RuntimeStructuredSendRequest) error
 	StructuredEvents(context.Context, string, domain.RunID, uint64) (RuntimeStructuredEvents, error)
 	CancelStructured(context.Context, string, domain.RunID) (RuntimeRun, error)
+}
+
+// CoordinationRuntime is optional. It relays the Capsule-local coordination
+// mailbox; meridiand always pulls, and the Capsule never reaches the public
+// API or holds a credential.
+type CoordinationRuntime interface {
+	ConfigureCoordination(context.Context, string, coordproto.Config) error
+	PollCoordination(context.Context, string, uint64, uint64, time.Duration) (coordproto.Poll, error)
+	ReplyCoordination(context.Context, string, []coordproto.Reply) error
+	NotifyCoordination(context.Context, string, coordproto.Notification) error
 }
 
 type PreviewPort struct {

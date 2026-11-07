@@ -43,6 +43,7 @@ type Config struct {
 	IdlePause          time.Duration
 	IdleScanInterval   time.Duration
 	RuntimeRefresh     time.Duration
+	MaxLiveCapsules    int
 	OfficialPackTag    string
 	Logger             *log.Logger
 	Docker             dockerprovider.Config
@@ -359,6 +360,15 @@ func Run(ctx context.Context, config Config) error {
 		}
 		service.ConfigureDelivery(deliveryRuntime, app.NewGitHubHTTPClient(nil))
 	}
+	if capabilities.Coordination && capabilities.Structured {
+		coordinationRuntime, _ := provider.(ports.CoordinationRuntime)
+		if coordinationRuntime == nil {
+			_ = httpServer.Close()
+			_ = previewHTTPServer.Close()
+			return errors.New("provider advertises Coordination without implementing it")
+		}
+		service.ConfigureCoordination(coordinationRuntime, config.MaxLiveCapsules)
+	}
 	if snapshotter != nil {
 		service.ConfigureTemporal(snapshotter, artifactStore)
 	}
@@ -441,6 +451,18 @@ func Run(ctx context.Context, config Config) error {
 		defer func() {
 			stopRefresh()
 			<-refreshDone
+		}()
+	}
+	if service.CoordinationSupported() {
+		coordinationCtx, stopCoordination := context.WithCancel(ctx)
+		coordinationDone := make(chan struct{})
+		go func() {
+			defer close(coordinationDone)
+			service.RunCoordination(coordinationCtx)
+		}()
+		defer func() {
+			stopCoordination()
+			<-coordinationDone
 		}()
 	}
 	api.SetReady(true)

@@ -1,0 +1,201 @@
+package httpapi
+
+import (
+	"net/http"
+	"time"
+
+	"github.com/OrlojHQ/meridian/internal/domain"
+)
+
+type coordinationPolicyJSON struct {
+	MaxDepth           int      `json:"maxDepth,omitempty"`
+	MaxChildren        int      `json:"maxChildren,omitempty"`
+	MaxDescendants     int      `json:"maxDescendants,omitempty"`
+	MaxLiveCapsules    int      `json:"maxLiveCapsules,omitempty"`
+	MaxMessagesPerLink int      `json:"maxMessagesPerLink,omitempty"`
+	AllowedHarnesses   []string `json:"allowedHarnesses,omitempty"`
+	DeadlineSeconds    int64    `json:"deadlineSeconds,omitempty"`
+	OnDeadline         string   `json:"onDeadline,omitempty"`
+	SpawnApproval      string   `json:"spawnApproval,omitempty"`
+}
+
+func (p *coordinationPolicyJSON) policy() *domain.CoordinationPolicy {
+	if p == nil {
+		return nil
+	}
+	return &domain.CoordinationPolicy{
+		MaxDepth: p.MaxDepth, MaxChildren: p.MaxChildren, MaxDescendants: p.MaxDescendants,
+		MaxLiveCapsules: p.MaxLiveCapsules, MaxMessagesPerLink: p.MaxMessagesPerLink,
+		AllowedHarnesses: p.AllowedHarnesses, Deadline: time.Duration(p.DeadlineSeconds) * time.Second,
+		OnDeadline: domain.OnDeadline(p.OnDeadline), SpawnApproval: domain.SpawnApproval(p.SpawnApproval),
+	}
+}
+
+type coordinationCapabilityJSON struct {
+	Supported      bool `json:"supported"`
+	MaxDepth       int  `json:"maxDepth"`
+	MaxDescendants int  `json:"maxDescendants"`
+}
+
+type coordinationGrantJSON struct {
+	ID                 string   `json:"id"`
+	ProjectID          string   `json:"projectId"`
+	RootThreadID       string   `json:"rootThreadId"`
+	RootCapsuleID      string   `json:"rootCapsuleId"`
+	State              string   `json:"state"`
+	SpawnApproval      string   `json:"spawnApproval"`
+	MaxDepth           int      `json:"maxDepth"`
+	MaxChildren        int      `json:"maxChildren"`
+	MaxDescendants     int      `json:"maxDescendants"`
+	MaxLiveCapsules    int      `json:"maxLiveCapsules"`
+	MaxMessagesPerLink int      `json:"maxMessagesPerLink"`
+	AllowedHarnesses   []string `json:"allowedHarnesses"`
+	DeadlineAt         string   `json:"deadlineAt"`
+	OnDeadline         string   `json:"onDeadline"`
+	DescendantsCreated int      `json:"descendantsCreated"`
+	RevokedAt          string   `json:"revokedAt,omitempty"`
+	RevokeReason       string   `json:"revokeReason,omitempty"`
+	CreatedAt          string   `json:"createdAt"`
+	UpdatedAt          string   `json:"updatedAt"`
+	ResourceVersion    int64    `json:"resourceVersion"`
+}
+
+type threadLinkJSON struct {
+	ID                 string `json:"id"`
+	GrantID            string `json:"grantId"`
+	ParentThreadID     string `json:"parentThreadId"`
+	ParentCapsuleID    string `json:"parentCapsuleId"`
+	ChildThreadID      string `json:"childThreadId"`
+	ChildCapsuleID     string `json:"childCapsuleId"`
+	ChildIntentID      string `json:"childIntentId"`
+	Depth              int    `json:"depth"`
+	Name               string `json:"name"`
+	Harness            string `json:"harness"`
+	State              string `json:"state"`
+	CloseReason        string `json:"closeReason,omitempty"`
+	Phase              string `json:"phase"`
+	ReportSeq          int    `json:"reportSeq"`
+	ReportDeliveredSeq int    `json:"reportDeliveredSeq"`
+	LastReportStatus   string `json:"lastReportStatus,omitempty"`
+	LastReportReason   string `json:"lastReportReason,omitempty"`
+	LastReportAt       string `json:"lastReportAt,omitempty"`
+	MessagesForwarded  int    `json:"messagesForwarded"`
+	CreatedAt          string `json:"createdAt"`
+	UpdatedAt          string `json:"updatedAt"`
+	ResourceVersion    int64  `json:"resourceVersion"`
+}
+
+type threadLinkPageJSON struct {
+	Items []threadLinkJSON `json:"items"`
+}
+
+type revokeCoordinationGrantRequest struct {
+	ExpectedResourceVersion int64 `json:"expectedResourceVersion"`
+	CancelDescendants       *bool `json:"cancelDescendants,omitempty"`
+}
+
+func formatOptionalTime(value time.Time) string {
+	if value.IsZero() {
+		return ""
+	}
+	return value.UTC().Format(time.RFC3339Nano)
+}
+
+func grantResponse(grant domain.CoordinationGrant) coordinationGrantJSON {
+	harnesses := grant.AllowedHarnesses
+	if harnesses == nil {
+		harnesses = []string{}
+	}
+	return coordinationGrantJSON{
+		ID: string(grant.ID), ProjectID: string(grant.ProjectID), RootThreadID: string(grant.RootThreadID),
+		RootCapsuleID: string(grant.RootCapsuleID), State: string(grant.State),
+		SpawnApproval: string(grant.SpawnApproval), MaxDepth: grant.MaxDepth,
+		MaxChildren: grant.MaxChildren, MaxDescendants: grant.MaxDescendants,
+		MaxLiveCapsules: grant.MaxLiveCapsules, MaxMessagesPerLink: grant.MaxMessagesPerLink,
+		AllowedHarnesses: harnesses, DeadlineAt: grant.DeadlineAt.UTC().Format(time.RFC3339Nano),
+		OnDeadline: string(grant.OnDeadline), DescendantsCreated: grant.DescendantsCreated,
+		RevokedAt: formatOptionalTime(grant.RevokedAt), RevokeReason: string(grant.RevokeReason),
+		CreatedAt:       grant.CreatedAt.UTC().Format(time.RFC3339Nano),
+		UpdatedAt:       grant.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		ResourceVersion: int64(grant.ResourceVersion),
+	}
+}
+
+func (s *Server) linkResponse(request *http.Request, link domain.ThreadLink) threadLinkJSON {
+	return threadLinkJSON{
+		ID: string(link.ID), GrantID: string(link.GrantID), ParentThreadID: string(link.ParentThreadID),
+		ParentCapsuleID: string(link.ParentCapsuleID), ChildThreadID: string(link.ChildThreadID),
+		ChildCapsuleID: string(link.ChildCapsuleID), ChildIntentID: string(link.ChildIntentID),
+		Depth: link.Depth, Name: link.Name, Harness: link.Harness, State: string(link.State),
+		CloseReason: string(link.CloseReason), Phase: s.service.ThreadLinkPhase(request.Context(), link),
+		ReportSeq: link.ReportSeq, ReportDeliveredSeq: link.ReportDeliveredSeq,
+		LastReportStatus: string(link.LastReportStatus), LastReportReason: string(link.LastReportReason),
+		LastReportAt: formatOptionalTime(link.LastReportAt), MessagesForwarded: link.MessagesForwarded,
+		CreatedAt:       link.CreatedAt.UTC().Format(time.RFC3339Nano),
+		UpdatedAt:       link.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		ResourceVersion: int64(link.ResourceVersion),
+	}
+}
+
+func (s *Server) coordinationCapability() *coordinationCapabilityJSON {
+	if s.service == nil || !s.capabilities.Coordination || !s.service.CoordinationSupported() {
+		return &coordinationCapabilityJSON{}
+	}
+	return &coordinationCapabilityJSON{
+		Supported: true, MaxDepth: domain.CoordinationMaxDepth,
+		MaxDescendants: domain.CoordinationMaxDescendants,
+	}
+}
+
+func (s *Server) getCoordinationGrant(writer http.ResponseWriter, request *http.Request) {
+	grant, err := s.service.GetCoordinationGrant(
+		request.Context(), domain.CoordinationGrantID(request.PathValue("grantId")))
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	writer.Header().Set("ETag", etag(grant.ResourceVersion))
+	writeJSON(writer, http.StatusOK, grantResponse(grant))
+}
+
+func (s *Server) revokeCoordinationGrant(writer http.ResponseWriter, request *http.Request) {
+	var input revokeCoordinationGrantRequest
+	if !decode(writer, request, &input) {
+		return
+	}
+	cancelDescendants := input.CancelDescendants == nil || *input.CancelDescendants
+	grant, err := s.service.RevokeCoordinationGrant(
+		request.Context(), domain.CoordinationGrantID(request.PathValue("grantId")),
+		domain.ResourceVersion(input.ExpectedResourceVersion), cancelDescendants,
+		request.Header.Get("Idempotency-Key"),
+	)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	writer.Header().Set("ETag", etag(grant.ResourceVersion))
+	writeJSON(writer, http.StatusOK, grantResponse(grant))
+}
+
+func (s *Server) listThreadLinks(writer http.ResponseWriter, request *http.Request) {
+	links, err := s.service.ListThreadLinks(request.Context(), domain.ThreadID(request.PathValue("threadId")))
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	response := threadLinkPageJSON{Items: make([]threadLinkJSON, 0, len(links))}
+	for _, link := range links {
+		response.Items = append(response.Items, s.linkResponse(request, link))
+	}
+	writeJSON(writer, http.StatusOK, response)
+}
+
+func (s *Server) getThreadLink(writer http.ResponseWriter, request *http.Request) {
+	link, err := s.service.GetThreadLink(request.Context(), domain.ThreadLinkID(request.PathValue("linkId")))
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	writer.Header().Set("ETag", etag(link.ResourceVersion))
+	writeJSON(writer, http.StatusOK, s.linkResponse(request, link))
+}

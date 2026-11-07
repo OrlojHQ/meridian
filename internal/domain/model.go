@@ -469,6 +469,9 @@ type Capsule struct {
 	Maintenance        string
 	Failure            string
 	ImageReference     string
+	Role               CapsuleRole
+	LeadThreadID       ThreadID
+	LinkID             ThreadLinkID
 	LastActivityAt     time.Time
 	CreatedAt          time.Time
 	UpdatedAt          time.Time

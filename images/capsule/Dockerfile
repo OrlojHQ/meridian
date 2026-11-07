@@ -12,7 +12,10 @@ RUN CGO_ENABLED=0 go build -trimpath \
     -o /out/capsuled ./cmd/capsuled \
     && CGO_ENABLED=0 go build -trimpath \
     -ldflags="-s -w -X github.com/OrlojHQ/meridian/internal/buildinfo.Version=${VERSION} -X github.com/OrlojHQ/meridian/internal/buildinfo.Commit=${COMMIT} -X github.com/OrlojHQ/meridian/internal/buildinfo.Date=${BUILD_DATE}" \
-    -o /out/meridian-harness-adapter ./cmd/meridian-harness-adapter
+    -o /out/meridian-harness-adapter ./cmd/meridian-harness-adapter \
+    && CGO_ENABLED=0 go build -trimpath \
+    -ldflags="-s -w -X github.com/OrlojHQ/meridian/internal/buildinfo.Version=${VERSION} -X github.com/OrlojHQ/meridian/internal/buildinfo.Commit=${COMMIT} -X github.com/OrlojHQ/meridian/internal/buildinfo.Date=${BUILD_DATE}" \
+    -o /out/meridian-coord ./cmd/meridian-coord
 
 # Debian bookworm-slim multi-platform index resolved from Docker Hub on 2026-08-23.
 FROM debian:bookworm-slim@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241
@@ -24,6 +27,7 @@ RUN groupadd --gid 10001 capsule \
     && install -d -o 10001 -g 10001 -m 0750 /workspace /home/capsule/.cache
 COPY --from=build --chown=0:0 /out/capsuled /usr/local/bin/capsuled
 COPY --from=build --chown=0:0 /out/meridian-harness-adapter /usr/local/bin/meridian-harness-adapter
+COPY --from=build --chown=0:0 /out/meridian-coord /usr/local/bin/meridian-coord
 LABEL org.opencontainers.image.title="Meridian Capsule" \
       org.opencontainers.image.description="Non-root Meridian Capsule supervisor image for Docker or Agent Sandbox" \
       org.opencontainers.image.source="https://github.com/OrlojHQ/meridian" \

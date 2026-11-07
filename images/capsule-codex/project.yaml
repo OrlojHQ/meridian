@@ -25,7 +25,7 @@ harnesses:
     adapter:
       protocol: meridian.adapter.v1
       executable: /usr/local/bin/meridian-harness-adapter
-      arguments: ["codex-app-server", "--approval-policy", "untrusted", "--sandbox", "danger-full-access", "--", "/usr/local/bin/codex"]
+      arguments: ["codex-app-server", "--mcp-server", "meridian-coord=/usr/local/bin/meridian-coord,mcp", "--approval-policy", "untrusted", "--sandbox", "danger-full-access", "--", "/usr/local/bin/codex"]
     workingDirectory: .
     pty: false
     timeout: 24h

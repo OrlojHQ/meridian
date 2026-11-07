@@ -20,6 +20,23 @@ type CreateProjectThreadInput struct {
 	Harness        string
 	Prompt         string
 	IdempotencyKey string
+	// Coordination, when set, makes the new Thread a lead holding a
+	// Coordination Grant with this policy.
+	Coordination *domain.CoordinationPolicy
+}
+
+// projectThreadSpec is everything needed to insert a provisioning Project
+// Thread. Coordinated spawns set the sub-Capsule fields and an origin.
+type projectThreadSpec struct {
+	ProjectID      domain.ProjectID
+	Name           string
+	Harness        string
+	Prompt         string
+	IdempotencyKey string
+	Role           domain.CapsuleRole
+	LeadThreadID   domain.ThreadID
+	LinkID         domain.ThreadLinkID
+	Origin         *ThreadOrigin
 }
 
 type ProjectThreadResult struct {
@@ -71,96 +88,27 @@ func (s *Service) CreateProjectThread(
 		if !errors.Is(err, domain.ErrNotFound) {
 			return err
 		}
-		project, err := tx.GetProject(ctx, input.ProjectID)
-		if err != nil {
-			return err
-		}
-		image, err := project.ImageForHarness(input.Harness)
-		if err != nil {
-			return err
-		}
-		if domain.StructuredUnsupported(s.harnessPacks, domain.HarnessImage{
-			Name: input.Harness, ImageReference: image,
-		}) {
-			return fmt.Errorf(
-				"%w: harness pack %q runs only in a terminal and cannot start a structured session",
-				domain.ErrUnsupported, input.Harness,
-			)
-		}
-		now := s.clock.Now().UTC()
-		intentID := domain.ProjectThreadIntentID(s.ids.NewID())
-		capsuleName := input.Name
-		if capsuleName == "" {
-			suffix := string(intentID)
-			if len(suffix) > 12 {
-				suffix = suffix[:12]
+		var policy domain.CoordinationPolicy
+		if input.Coordination != nil {
+			if s.coordination == nil {
+				return fmt.Errorf("%w: provider does not support Thread coordination", domain.ErrUnsupported)
 			}
-			capsuleName = "thread-" + suffix
+			policy, err = s.validateCoordinationPolicy(ctx, tx, input.ProjectID, input.Harness, *input.Coordination)
+			if err != nil {
+				return err
+			}
 		}
-		threadID := domain.ThreadID(s.ids.NewID())
-		capsuleID := domain.CapsuleID(s.ids.NewID())
-		timelineID := domain.TimelineID(s.ids.NewID())
-		runID := domain.RunID(s.ids.NewID())
-		messageID := domain.ThreadMessageID(s.ids.NewID())
-		dek, err := s.transcriptKey.NewDEK()
+		result.Intent, err = s.insertProjectThreadTx(ctx, tx, projectThreadSpec{
+			ProjectID: input.ProjectID, Name: input.Name, Harness: input.Harness,
+			Prompt: input.Prompt, IdempotencyKey: input.IdempotencyKey, Role: domain.CapsuleMain,
+		})
 		if err != nil {
 			return err
 		}
-		defer wipe(dek)
-		wrapped, err := s.transcriptKey.WrapDEK(threadID, dek)
-		if err != nil {
-			return err
+		if input.Coordination != nil {
+			return s.insertCoordinationGrantTx(ctx, tx, result.Intent, policy)
 		}
-		keyID, keyVersion := s.transcriptKey.Metadata()
-		threadEnvelope := domain.Thread{
-			ID: threadID, CapsuleID: capsuleID, State: domain.ThreadActive,
-			AdapterID: input.Harness, WrappedDEK: wrapped, KEKID: keyID,
-			KEKVersion: keyVersion, EnvelopeVersion: transcripts.EnvelopeVersion,
-			CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
-		}
-		message, err := s.encryptThreadMessage(
-			dek, threadEnvelope, messageID, 1, domain.ThreadRoleUser,
-			domain.ThreadMessagePrompt, domain.ThreadBlockText,
-			persistedThreadBlock{Content: input.Prompt}, now,
-		)
-		if err != nil {
-			return err
-		}
-		capsule := domain.Capsule{
-			ID: capsuleID, ProjectID: input.ProjectID, TimelineID: timelineID,
-			Name: capsuleName, State: domain.CapsuleCreating,
-			DesiredState: domain.IntentReady, RestoreComplete: true,
-			ImageReference: image, LastActivityAt: now, CreatedAt: now, UpdatedAt: now,
-			ResourceVersion: 1,
-		}
-		if err := tx.InsertCapsule(ctx, capsule); err != nil {
-			return err
-		}
-		if err := s.pinHarnessSetups(ctx, tx, capsule.ID, ""); err != nil {
-			return err
-		}
-		if err := tx.InsertTimeline(ctx, domain.Timeline{
-			ID: timelineID, ProjectID: input.ProjectID, CapsuleID: capsuleID,
-			Reason: domain.TimelineRoot, CreatedAt: now,
-		}); err != nil {
-			return err
-		}
-		result.Intent = domain.ProjectThreadIntent{
-			ID: intentID, ProjectID: input.ProjectID, CapsuleID: capsuleID,
-			ThreadID: threadID, RunID: runID, MessageID: messageID,
-			CapsuleName: capsuleName, RequestedName: input.Name,
-			Harness: input.Harness, IdempotencyKey: input.IdempotencyKey,
-			State: domain.ProjectThreadProvisioning, WrappedDEK: wrapped,
-			KEKID: keyID, KEKVersion: keyVersion,
-			EnvelopeVersion: transcripts.EnvelopeVersion, PendingMessage: message,
-			CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
-		}
-		if err := tx.InsertProjectThreadIntent(ctx, result.Intent); err != nil {
-			return err
-		}
-		return s.appendEvent(
-			ctx, tx, "capsule", string(capsuleID), "capsule.create_requested", 1, nil,
-		)
+		return nil
 	})
 	if err != nil {
 		return ProjectThreadResult{}, err
@@ -174,6 +122,114 @@ func (s *Service) CreateProjectThread(
 		err = s.retryProjectThreadDelivery(ctx, &result)
 	}
 	return result, err
+}
+
+func (s *Service) insertProjectThreadTx(
+	ctx context.Context,
+	tx ports.Transaction,
+	spec projectThreadSpec,
+) (domain.ProjectThreadIntent, error) {
+	project, err := tx.GetProject(ctx, spec.ProjectID)
+	if err != nil {
+		return domain.ProjectThreadIntent{}, err
+	}
+	image, err := s.structuredHarnessImage(project, spec.Harness)
+	if err != nil {
+		return domain.ProjectThreadIntent{}, err
+	}
+	now := s.clock.Now().UTC()
+	intentID := domain.ProjectThreadIntentID(s.ids.NewID())
+	capsuleName := spec.Name
+	if capsuleName == "" {
+		suffix := string(intentID)
+		if len(suffix) > 12 {
+			suffix = suffix[:12]
+		}
+		capsuleName = "thread-" + suffix
+	}
+	threadID := domain.ThreadID(s.ids.NewID())
+	capsuleID := domain.CapsuleID(s.ids.NewID())
+	timelineID := domain.TimelineID(s.ids.NewID())
+	runID := domain.RunID(s.ids.NewID())
+	messageID := domain.ThreadMessageID(s.ids.NewID())
+	dek, err := s.transcriptKey.NewDEK()
+	if err != nil {
+		return domain.ProjectThreadIntent{}, err
+	}
+	defer wipe(dek)
+	wrapped, err := s.transcriptKey.WrapDEK(threadID, dek)
+	if err != nil {
+		return domain.ProjectThreadIntent{}, err
+	}
+	keyID, keyVersion := s.transcriptKey.Metadata()
+	threadEnvelope := domain.Thread{
+		ID: threadID, CapsuleID: capsuleID, State: domain.ThreadActive,
+		AdapterID: spec.Harness, WrappedDEK: wrapped, KEKID: keyID,
+		KEKVersion: keyVersion, EnvelopeVersion: transcripts.EnvelopeVersion,
+		CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
+	}
+	message, err := s.encryptThreadMessage(
+		dek, threadEnvelope, messageID, 1, domain.ThreadRoleUser,
+		domain.ThreadMessagePrompt, domain.ThreadBlockText,
+		persistedThreadBlock{Content: spec.Prompt, Origin: spec.Origin}, now,
+	)
+	if err != nil {
+		return domain.ProjectThreadIntent{}, err
+	}
+	capsule := domain.Capsule{
+		ID: capsuleID, ProjectID: spec.ProjectID, TimelineID: timelineID,
+		Name: capsuleName, State: domain.CapsuleCreating,
+		DesiredState: domain.IntentReady, RestoreComplete: true,
+		ImageReference: image, Role: spec.Role, LeadThreadID: spec.LeadThreadID,
+		LinkID: spec.LinkID, LastActivityAt: now, CreatedAt: now, UpdatedAt: now,
+		ResourceVersion: 1,
+	}
+	if err := tx.InsertCapsule(ctx, capsule); err != nil {
+		return domain.ProjectThreadIntent{}, err
+	}
+	if err := s.pinHarnessSetups(ctx, tx, capsule.ID, ""); err != nil {
+		return domain.ProjectThreadIntent{}, err
+	}
+	if err := tx.InsertTimeline(ctx, domain.Timeline{
+		ID: timelineID, ProjectID: spec.ProjectID, CapsuleID: capsuleID,
+		Reason: domain.TimelineRoot, CreatedAt: now,
+	}); err != nil {
+		return domain.ProjectThreadIntent{}, err
+	}
+	intent := domain.ProjectThreadIntent{
+		ID: intentID, ProjectID: spec.ProjectID, CapsuleID: capsuleID,
+		ThreadID: threadID, RunID: runID, MessageID: messageID,
+		CapsuleName: capsuleName, RequestedName: spec.Name,
+		Harness: spec.Harness, IdempotencyKey: spec.IdempotencyKey,
+		State: domain.ProjectThreadProvisioning, WrappedDEK: wrapped,
+		KEKID: keyID, KEKVersion: keyVersion,
+		EnvelopeVersion: transcripts.EnvelopeVersion, PendingMessage: message,
+		CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
+	}
+	if err := tx.InsertProjectThreadIntent(ctx, intent); err != nil {
+		return domain.ProjectThreadIntent{}, err
+	}
+	return intent, s.appendEvent(
+		ctx, tx, "capsule", string(capsuleID), "capsule.create_requested", 1, nil,
+	)
+}
+
+// structuredHarnessImage resolves a harness the Project allowlists and whose
+// pack can run a structured session.
+func (s *Service) structuredHarnessImage(project domain.Project, harness string) (string, error) {
+	image, err := project.ImageForHarness(harness)
+	if err != nil {
+		return "", err
+	}
+	if domain.StructuredUnsupported(s.harnessPacks, domain.HarnessImage{
+		Name: harness, ImageReference: image,
+	}) {
+		return "", fmt.Errorf(
+			"%w: harness pack %q runs only in a terminal and cannot start a structured session",
+			domain.ErrUnsupported, harness,
+		)
+	}
+	return image, nil
 }
 
 func (s *Service) GetProjectThreadIntent(
@@ -203,6 +259,9 @@ func (s *Service) matchProjectThreadReplay(
 ) error {
 	if intent.RequestedName != input.Name || intent.Harness != input.Harness {
 		return fmt.Errorf("%w: Idempotency-Key was used with a different request", domain.ErrConflict)
+	}
+	if err := s.matchCoordinationReplay(ctx, reader, intent, input.Coordination); err != nil {
+		return err
 	}
 	var dek []byte
 	var err error
@@ -413,6 +472,7 @@ func (s *Service) promoteProjectThread(
 	if err != nil || result.Intent.ID == "" {
 		return result, err
 	}
+	s.configureLeadMailbox(ctx, capsuleID, result.Thread.ID)
 	run, startErr := s.startStructuredRuntime(ctx, *result.Thread, *result.Run, false)
 	result.Run = &run
 	if startErr != nil || !deliver {

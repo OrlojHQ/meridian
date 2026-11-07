@@ -88,6 +88,20 @@ export const queries = {
       enabled: Boolean(threadId),
       refetchInterval: 2_000,
     }),
+  threadLinks: (threadId: string) =>
+    queryOptions({
+      queryKey: ["thread-links", threadId],
+      queryFn: ({ signal }) => api.threadLinks(threadId, signal),
+      enabled: Boolean(threadId),
+      refetchInterval: 3_000,
+    }),
+  coordinationGrant: (grantId: string) =>
+    queryOptions({
+      queryKey: ["coordination-grant", grantId],
+      queryFn: ({ signal }) => api.coordinationGrant(grantId, signal),
+      enabled: Boolean(grantId),
+      refetchInterval: 5_000,
+    }),
   threadBlocks: (threadId: string) =>
     queryOptions({
       queryKey: ["thread-blocks", threadId],

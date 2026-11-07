@@ -58,6 +58,20 @@ builds:
         -X github.com/OrlojHQ/meridian/internal/buildinfo.Commit={{.FullCommit}}
         -X github.com/OrlojHQ/meridian/internal/buildinfo.Date={{.CommitDate}}
     mod_timestamp: "{{ .CommitTimestamp }}"
+  - id: meridian-coord
+    main: ./cmd/meridian-coord
+    binary: meridian-coord
+    env: [CGO_ENABLED=0]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath, -buildvcs=false]
+    ldflags:
+      - >-
+        -s -w -buildid=
+        -X github.com/OrlojHQ/meridian/internal/buildinfo.Version={{.Version}}
+        -X github.com/OrlojHQ/meridian/internal/buildinfo.Commit={{.FullCommit}}
+        -X github.com/OrlojHQ/meridian/internal/buildinfo.Date={{.CommitDate}}
+    mod_timestamp: "{{ .CommitTimestamp }}"
 
 archives:
   - id: meridian
@@ -73,7 +87,7 @@ archives:
       - SECURITY.md
       - docs/operations.md
   - id: capsule
-    ids: [capsuled, meridian-harness-adapter]
+    ids: [capsuled, meridian-harness-adapter, meridian-coord]
     formats: [tar.gz]
     name_template: "meridian-capsule_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
@@ -137,7 +151,7 @@ dockers:
       - "--build-arg=COMMIT={{.FullCommit}}"
       - "--build-arg=BUILD_DATE={{.CommitDate}}"
   - id: capsule-amd64
-    ids: [capsuled, meridian-harness-adapter]
+    ids: [capsuled, meridian-harness-adapter, meridian-coord]
     goos: linux
     goarch: amd64
     use: buildx
@@ -152,7 +166,7 @@ dockers:
       - "--build-arg=COMMIT={{.FullCommit}}"
       - "--build-arg=BUILD_DATE={{.CommitDate}}"
   - id: capsule-arm64
-    ids: [capsuled, meridian-harness-adapter]
+    ids: [capsuled, meridian-harness-adapter, meridian-coord]
     goos: linux
     goarch: arm64
     use: buildx
