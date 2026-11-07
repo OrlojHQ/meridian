@@ -5,6 +5,8 @@
 # Threads (structured) run `opencode acp` (Agent Client Protocol over stdio)
 # through the Meridian adapter, with a fresh password on OpenCode's loopback
 # server for each launch; attach a provider connection for credentials.
+# meridian-coord is registered as a stdio MCP server through ACP session/new,
+# so a lead Thread gets the coordination tools.
 # Neither profile injects provider credentials itself, and a repository
 # cannot define profiles or secretReferences under this name.
 version: v1
@@ -27,6 +29,8 @@ harnesses:
         - acp
         - --secret-env
         - OPENCODE_SERVER_PASSWORD
+        - --mcp-server
+        - meridian-coord=/usr/local/bin/meridian-coord,mcp
         - --
         - /usr/local/bin/opencode
         - acp

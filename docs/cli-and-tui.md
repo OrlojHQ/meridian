@@ -142,7 +142,8 @@ board to one Project. The browser has the same view at `/ui/board`, with
 needing me" opens the oldest item that needs you.
 
 Inside a lead Capsule the agent uses `meridian-coord`, which official packs
-register as an MCP server for Claude Code and Codex. It also works as a CLI:
+register as an MCP server for Claude Code, Codex, and OpenCode. Pi has no MCP
+client, so the Pi pack loads a skill that teaches it the CLI form:
 `meridian-coord spawn --name NAME --harness H` (prompt on stdin), `send`,
 `wait LINK... | --all`, `result`, `status`, `list`, `cancel`, and `whoami`.
 It talks only to the Capsule's local mailbox; it holds no credential.

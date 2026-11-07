@@ -33,6 +33,13 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   coordinated spawns. The browser nests helpers under their lead and labels
   delegated messages (ADR 0029).
 
+- OpenCode and Pi Threads can lead helpers. The OpenCode pack registers
+  `meridian-coord` as an MCP server through ACP `session/new`, like the
+  Claude Code and Codex packs. Pi has no MCP client, so the Pi pack loads a
+  bundled `meridian-coord` skill that teaches it the CLI. Packs may ship
+  validated `skills/<name>/SKILL.md` files, installed under
+  `/usr/local/share/meridian/<pack>/skills/`.
+
 - Browser Threads work with every official pack. Each pack now installs a
   structured profile next to its native one under the same name. New
   `claude-stream` and `codex-app-server` adapter drivers run Claude Code's
