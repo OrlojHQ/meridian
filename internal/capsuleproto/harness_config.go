@@ -61,6 +61,13 @@ func (s *Server) loadHarnessConfig() (harness.Config, error) {
 		if closeErr != nil {
 			return harness.Config{}, fmt.Errorf("close repository harness configuration: %w", closeErr)
 		}
+		// An image owns every interaction mode of the names it defines, so a
+		// repository cannot add a structured adapter under a trusted name.
+		for _, profile := range parsed.Harnesses {
+			if config.Has(profile.Name) {
+				return harness.Config{}, fmt.Errorf("duplicate harness profile name %q", profile.Name)
+			}
+		}
 		config.Harnesses = append(config.Harnesses, parsed.Harnesses...)
 		found = true
 	} else if !errors.Is(err, fs.ErrNotExist) {

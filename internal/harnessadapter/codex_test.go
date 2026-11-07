@@ -1,0 +1,395 @@
+package harnessadapter
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"net"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/OrlojHQ/meridian/internal/adapterproto"
+)
+
+const codexFixtureThread = "01a1b386-a696-7321-a344-5534f6afeaa8"
+
+func runCodexFixture(
+	t *testing.T,
+	config CodexConfig,
+	initial adapterproto.Kind,
+	resume string,
+) (*adapterproto.Decoder, *adapterproto.Encoder, string, chan error) {
+	t.Helper()
+	directory := t.TempDir()
+	arguments := filepath.Join(directory, "arguments.json")
+	// The adapter places its subcommand right after the executable, which
+	// would end Go test flag parsing, so the helper is reached through a shim.
+	shim := filepath.Join(directory, "codex")
+	script := "#!/bin/sh\nexec '" + os.Args[0] + "' '-test.run=^TestCodexAppServerHelper$' -- \"$@\"\n"
+	if err := os.WriteFile(shim, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("MERIDIAN_CODEX_HELPER", "1")
+	t.Setenv("MERIDIAN_CODEX_HELPER_ARGUMENTS", arguments)
+	config.Command = append([]string{shim}, config.Command...)
+	controller, adapter := net.Pipe()
+	t.Cleanup(func() { _ = controller.Close() })
+	done := make(chan error, 1)
+	go func() {
+		done <- RunCodexAppServer(context.Background(), adapter, adapter, config)
+	}()
+	decoder, encoder := negotiateTestAdapter(t, controller, initial, resume)
+	return decoder, encoder, arguments, done
+}
+
+func TestCodexAppServerContract(t *testing.T) {
+	decoder, encoder, argumentsPath, done := runCodexFixture(t, CodexConfig{
+		Command:        []string{"-c", "model=\"gpt-fixture\""},
+		ApprovalPolicy: "on-request", Sandbox: "workspace-write",
+		MCPServers: []MCPServer{{
+			Name: "meridian-coord", Command: "/usr/local/bin/meridian-coord", Arguments: []string{"mcp"},
+		}},
+	}, adapterproto.KindStart, "")
+	_ = readStatus(t, decoder, adapterproto.StatusStarting)
+	idle := readStatus(t, decoder, adapterproto.StatusIdle)
+	wantResume := `{"driver":"codex-app-server","threadId":"` + codexFixtureThread + `"}`
+	if idle.ResumeState != wantResume {
+		t.Fatalf("resume state = %q", idle.ResumeState)
+	}
+
+	sendTestMessage(t, encoder, "message-1", "hello")
+	frames := readUntil(t, decoder, adapterproto.KindAssistantMessage)
+	assertKinds(t, frames, adapterproto.KindStatus, adapterproto.KindAssistantDelta)
+	if final := frames[len(frames)-1]; final.Content != "hello" || final.MessageID != "msg_fixture" {
+		t.Fatalf("final message = %#v", final)
+	}
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+
+	sendTestMessage(t, encoder, "message-2", "tool")
+	start := readKind(t, decoder, adapterproto.KindToolStart)
+	if start.ToolName != "shell" || start.Summary != "echo meridian" {
+		t.Fatalf("tool start = %#v", start)
+	}
+	request := readKind(t, decoder, adapterproto.KindPermissionRequest)
+	if request.Permission.Kind != "command" || !strings.Contains(request.Permission.Summary, "echo meridian") {
+		t.Fatalf("permission request = %#v", request)
+	}
+	writeTestFrame(t, encoder, adapterproto.Frame{
+		Protocol: adapterproto.Version, Type: adapterproto.KindPermissionResponse,
+		ID: "permission-response-1", ResponseTo: request.ID,
+		Permission: &adapterproto.Permission{Kind: "command", Choice: "acceptForSession"},
+	})
+	result := readKind(t, decoder, adapterproto.KindToolResult)
+	if result.ToolCallID != "call_fixture" || result.Result != "decision acceptForSession" {
+		t.Fatalf("tool result = %#v", result)
+	}
+	_ = readKind(t, decoder, adapterproto.KindAssistantMessage)
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+
+	sendTestMessage(t, encoder, "message-3", "mcp")
+	request = readKind(t, decoder, adapterproto.KindPermissionRequest)
+	if request.Permission.Kind != "mcp_tool_call" ||
+		strings.Join(request.Permission.Options, ",") != "accept,acceptForSession,decline,cancel" {
+		t.Fatalf("mcp approval = %#v", request)
+	}
+	writeTestFrame(t, encoder, adapterproto.Frame{
+		Protocol: adapterproto.Version, Type: adapterproto.KindPermissionResponse,
+		ID: "permission-response-2", ResponseTo: request.ID,
+		Permission: &adapterproto.Permission{Kind: "mcp_tool_call", Choice: "allow"},
+	})
+	if final := readKind(t, decoder, adapterproto.KindAssistantMessage); final.Content != "elicitation accept" {
+		t.Fatalf("mcp final = %#v", final)
+	}
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+
+	sendTestMessage(t, encoder, "message-4", "input")
+	first := readKind(t, decoder, adapterproto.KindInputRequest)
+	second := readKind(t, decoder, adapterproto.KindInputRequest)
+	if !second.Input.Secret || !strings.Contains(first.Input.Prompt, "- red (warm)") {
+		t.Fatalf("questions = %#v %#v", first, second)
+	}
+	for _, answer := range []struct{ request, value string }{{first.ID, "red"}, {second.ID, "hunter2"}} {
+		writeTestFrame(t, encoder, adapterproto.Frame{
+			Protocol: adapterproto.Version, Type: adapterproto.KindInputResponse,
+			ID: "input-" + answer.value, ResponseTo: answer.request,
+			Input: &adapterproto.Input{Value: answer.value},
+		})
+	}
+	if final := readKind(t, decoder, adapterproto.KindAssistantMessage); final.Content != `{"color":{"answers":["red"]},"token":{"answers":["hunter2"]}}` {
+		t.Fatalf("input final = %#v", final)
+	}
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+
+	// A held turn queues a plain follow-up and accepts a steering message.
+	sendTestMessage(t, encoder, "message-5", "hold")
+	_ = readStatus(t, decoder, adapterproto.StatusRunning)
+	sendTestMessage(t, encoder, "message-6", "hello")
+	writeTestFrame(t, encoder, adapterproto.Frame{
+		Protocol: adapterproto.Version, Type: adapterproto.KindUserMessage,
+		ID: "message-7", SessionID: "session-1", Role: adapterproto.RoleUser,
+		Content: "steered", Metadata: json.RawMessage(`{"codex":{"delivery":"steer"}}`),
+	})
+	frames = readUntil(t, decoder, adapterproto.KindAssistantMessage)
+	if final := frames[len(frames)-1]; final.Content != "steered" {
+		t.Fatalf("steered final = %#v", final)
+	}
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+	_ = readStatus(t, decoder, adapterproto.StatusRunning)
+	if final := readKind(t, decoder, adapterproto.KindAssistantMessage); final.Content != "hello" {
+		t.Fatalf("queued final = %#v", final)
+	}
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+
+	sendTestMessage(t, encoder, "message-8", "withdraw")
+	withdrawn := readKind(t, decoder, adapterproto.KindPermissionRequest)
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+	writeTestFrame(t, encoder, adapterproto.Frame{
+		Protocol: adapterproto.Version, Type: adapterproto.KindPermissionResponse,
+		ID: "late-response", ResponseTo: withdrawn.ID,
+		Permission: &adapterproto.Permission{Kind: "command", Choice: "accept"},
+	})
+
+	sendTestMessage(t, encoder, "message-9", "fail")
+	failure := readKind(t, decoder, adapterproto.KindError)
+	if failure.Code != "codex_turn_failed" || failure.Summary != "unexpected status 401 Unauthorized" {
+		t.Fatalf("failure = %#v", failure)
+	}
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+
+	sendTestMessage(t, encoder, "message-10", "hold")
+	_ = readStatus(t, decoder, adapterproto.StatusRunning)
+	writeTestFrame(t, encoder, adapterproto.Frame{
+		Protocol: adapterproto.Version, Type: adapterproto.KindCancel, ID: "cancel-1",
+	})
+	if end := readKind(t, decoder, adapterproto.KindEnd); end.Status != adapterproto.StatusCancelled {
+		t.Fatalf("end = %#v", end)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+
+	arguments := strings.Join(readHelperArguments(t, argumentsPath), " ")
+	for _, want := range []string{
+		"app-server --listen stdio:// -c model=\"gpt-fixture\"",
+		`-c mcp_servers.meridian-coord.command="/usr/local/bin/meridian-coord"`,
+		`-c mcp_servers.meridian-coord.args=["mcp"]`,
+		"thread/start approvalPolicy=on-request sandbox=workspace-write",
+	} {
+		if !strings.Contains(arguments, want) {
+			t.Fatalf("helper log %q does not contain %q", arguments, want)
+		}
+	}
+}
+
+func TestCodexAppServerResume(t *testing.T) {
+	resume := `{"driver":"codex-app-server","threadId":"` + codexFixtureThread + `"}`
+	decoder, encoder, argumentsPath, done := runCodexFixture(
+		t, CodexConfig{ApprovalPolicy: "never"}, adapterproto.KindResume, resume,
+	)
+	if idle := readStatus(t, decoder, adapterproto.StatusIdle); idle.ResumeState != resume {
+		t.Fatalf("resumed idle = %#v", idle)
+	}
+	writeTestFrame(t, encoder, adapterproto.Frame{
+		Protocol: adapterproto.Version, Type: adapterproto.KindCancel, ID: "cancel-1",
+	})
+	_ = readKind(t, decoder, adapterproto.KindEnd)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if log := strings.Join(readHelperArguments(t, argumentsPath), " "); !strings.Contains(
+		log, "thread/resume "+codexFixtureThread+" approvalPolicy=never",
+	) {
+		t.Fatalf("helper log = %q", log)
+	}
+}
+
+func TestCodexAppServerRejectsInvalidConfiguration(t *testing.T) {
+	for _, state := range []string{
+		`{"driver":"codex-app-server","threadId":"x/../y"}`,
+		`{"driver":"claude-stream","threadId":"` + codexFixtureThread + `"}`,
+	} {
+		if _, err := codexResumeID(state); err == nil {
+			t.Fatalf("resume state %s was accepted", state)
+		}
+	}
+	for _, config := range []CodexConfig{
+		{Command: []string{"codex", "exec"}},
+		{Command: []string{"codex", "--listen=ws://0.0.0.0:1"}},
+		{Command: []string{"codex"}, ApprovalPolicy: "always"},
+		{Command: []string{"codex"}, Sandbox: "none"},
+		{Command: []string{"codex"}, MCPServers: []MCPServer{{Name: "a"}, {Name: "a"}}},
+	} {
+		if err := validateCodexConfig(config); err == nil {
+			t.Fatalf("config %#v was accepted", config)
+		}
+	}
+	if _, err := codexSteer(json.RawMessage(`{"codex":{"delivery":"interrupt"}}`)); err == nil {
+		t.Fatal("unknown delivery was accepted")
+	}
+}
+
+// TestCodexAppServerHelper replays JSON-RPC shapes captured from
+// `codex app-server` 0.157.1 over stdio.
+func TestCodexAppServerHelper(t *testing.T) {
+	if os.Getenv("MERIDIAN_CODEX_HELPER") != "1" {
+		return
+	}
+	log := helperArguments()
+	save := func() {
+		encoded, _ := json.Marshal(log)
+		_ = os.WriteFile(os.Getenv("MERIDIAN_CODEX_HELPER_ARGUMENTS"), encoded, 0o600)
+	}
+	save()
+	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Buffer(make([]byte, 1<<20), 1<<20)
+	writer := json.NewEncoder(os.Stdout)
+	notify := func(method string, params any) {
+		_ = writer.Encode(map[string]any{"method": method, "params": params})
+	}
+	turn := 0
+	turnID := ""
+	begin := func() string {
+		turn++
+		turnID = "turn-" + string(rune('a'+turn))
+		notify("turn/started", map[string]any{"threadId": codexFixtureThread, "turn": map[string]any{"id": turnID}})
+		return turnID
+	}
+	message := func(id, text string) {
+		notify("item/started", map[string]any{"item": map[string]any{"type": "agentMessage", "id": id, "text": ""}})
+		notify("item/agentMessage/delta", map[string]any{"itemId": id, "delta": text})
+		notify("item/completed", map[string]any{"item": map[string]any{"type": "agentMessage", "id": id, "text": text}})
+	}
+	complete := func(status string, failure any) {
+		notify("turn/completed", map[string]any{
+			"threadId": codexFixtureThread,
+			"turn":     map[string]any{"id": turnID, "status": status, "error": failure},
+		})
+		turnID = ""
+	}
+	pending := map[string]string{}
+	for scanner.Scan() {
+		var record map[string]json.RawMessage
+		if json.Unmarshal(scanner.Bytes(), &record) != nil {
+			os.Exit(3)
+		}
+		var method string
+		_ = json.Unmarshal(record["method"], &method)
+		var params map[string]any
+		_ = json.Unmarshal(record["params"], &params)
+		id := record["id"]
+		reply := func(result any) { _ = writer.Encode(map[string]any{"id": id, "result": result}) }
+		switch method {
+		case "initialize":
+			reply(map[string]any{"userAgent": "codex-fixture", "codexHome": "/tmp", "platformFamily": "unix"})
+		case "initialized":
+		case "thread/start", "thread/resume":
+			entry := method
+			if method == "thread/resume" {
+				entry += " " + params["threadId"].(string)
+			}
+			if policy, exists := params["approvalPolicy"]; exists {
+				entry += " approvalPolicy=" + policy.(string)
+			}
+			if sandbox, exists := params["sandbox"]; exists {
+				entry += " sandbox=" + sandbox.(string)
+			}
+			log = append(log, entry)
+			save()
+			reply(map[string]any{"thread": map[string]any{"id": codexFixtureThread}})
+			notify("thread/started", map[string]any{"thread": map[string]any{"id": codexFixtureThread}})
+		case "turn/start":
+			input := params["input"].([]any)[0].(map[string]any)
+			reply(map[string]any{"turn": map[string]any{"id": begin()}})
+			switch input["text"] {
+			case "hello":
+				message("msg_fixture", "hello")
+				complete("completed", nil)
+			case "tool":
+				notify("item/started", map[string]any{"item": map[string]any{
+					"type": "commandExecution", "id": "call_fixture", "command": "echo meridian",
+					"cwd": "/workspace", "status": "inProgress",
+				}})
+				pending["7"] = "tool"
+				_ = writer.Encode(map[string]any{"id": 7, "method": "item/commandExecution/requestApproval", "params": map[string]any{
+					"threadId": codexFixtureThread, "turnId": turnID, "itemId": "call_fixture",
+					"command": "echo meridian", "cwd": "/workspace", "reason": nil,
+				}})
+			case "mcp":
+				pending["8"] = "mcp"
+				_ = writer.Encode(map[string]any{"id": 8, "method": "mcpServer/elicitation/request", "params": map[string]any{
+					"threadId": codexFixtureThread, "turnId": turnID, "serverName": "meridian-coord",
+					"mode": "form", "message": "Allow the meridian-coord MCP server to run tool \"ping\"?",
+					"requestedSchema": map[string]any{"type": "object", "properties": map[string]any{}},
+					"_meta": map[string]any{
+						"codex_approval_kind": "mcp_tool_call", "persist": []any{"session", "always"},
+						"tool_params": map[string]any{},
+					},
+				}})
+			case "input":
+				pending["\"input-1\""] = "input"
+				_ = writer.Encode(map[string]any{"id": "input-1", "method": "item/tool/requestUserInput", "params": map[string]any{
+					"threadId": codexFixtureThread, "turnId": turnID, "itemId": "call_input",
+					"questions": []any{
+						map[string]any{"id": "color", "header": "Color", "question": "Which color?", "isOther": false,
+							"isSecret": false, "options": []any{map[string]any{"label": "red", "description": "warm"}}},
+						map[string]any{"id": "token", "header": "Token", "question": "Token?", "isOther": false,
+							"isSecret": true, "options": nil},
+					},
+				}})
+			case "hold":
+			case "withdraw":
+				_ = writer.Encode(map[string]any{"id": 9, "method": "item/commandExecution/requestApproval", "params": map[string]any{
+					"threadId": codexFixtureThread, "turnId": turnID, "itemId": "call_withdrawn", "command": "sleep 100",
+				}})
+				notify("serverRequest/resolved", map[string]any{"threadId": codexFixtureThread, "requestId": 9})
+				complete("interrupted", nil)
+			case "fail":
+				notify("error", map[string]any{"error": map[string]any{"message": "Reconnecting... 1/5"}, "willRetry": true})
+				complete("failed", map[string]any{"message": "unexpected status 401 Unauthorized"})
+			default:
+				os.Exit(4)
+			}
+		case "turn/steer":
+			if params["expectedTurnId"] != turnID {
+				os.Exit(5)
+			}
+			reply(map[string]any{"turnId": turnID})
+			input := params["input"].([]any)[0].(map[string]any)
+			message("msg_steered", input["text"].(string))
+			complete("completed", nil)
+		case "turn/interrupt":
+			reply(map[string]any{})
+			complete("interrupted", nil)
+		case "":
+			var result map[string]any
+			_ = json.Unmarshal(record["result"], &result)
+			switch pending[string(id)] {
+			case "tool":
+				notify("serverRequest/resolved", map[string]any{"threadId": codexFixtureThread, "requestId": 7})
+				exitCode := 0
+				notify("item/completed", map[string]any{"item": map[string]any{
+					"type": "commandExecution", "id": "call_fixture", "command": "echo meridian",
+					"aggregatedOutput": "decision " + result["decision"].(string), "exitCode": exitCode,
+					"status": "completed",
+				}})
+				message("msg_tool", "tool finished")
+				complete("completed", nil)
+			case "mcp":
+				message("msg_mcp", "elicitation "+result["action"].(string))
+				complete("completed", nil)
+			case "input":
+				answers, _ := json.Marshal(result["answers"])
+				message("msg_input", string(answers))
+				complete("completed", nil)
+			default:
+				os.Exit(6)
+			}
+			delete(pending, string(id))
+		default:
+			os.Exit(7)
+		}
+	}
+	os.Exit(0)
+}

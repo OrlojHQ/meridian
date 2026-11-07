@@ -99,7 +99,10 @@ printf '%s' 'inspect this project' | meridian thread spawn PROJECT_ID \
 
 Each accepted mutation reserves stable intent, Capsule, Thread, Run, and
 message IDs, then provisions a fresh Capsule and Timeline. `--follow` polls the
-durable intent and attaches to the encrypted Thread after promotion. Retry an
+durable intent, attaches to the encrypted Thread after promotion, and exits when
+the first turn goes idle or the session ends. `meridian thread follow THREAD_ID`
+keeps streaming; add `--after SEQUENCE --until-idle` to wait for the turn that
+answers the next prompt. Retry an
 ambiguous mutation with the same `--idempotency-key`; a replay never allocates
 a second Capsule. Capsule-scoped `thread create` remains available for
 power-user workflows.

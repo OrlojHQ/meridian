@@ -2088,6 +2088,10 @@ func (s HarnessProfileAdapterKind) Validate() error {
 		return nil
 	case "pi":
 		return nil
+	case "claude":
+		return nil
+	case "codex":
+		return nil
 	case "mock":
 		return nil
 	case "generic":

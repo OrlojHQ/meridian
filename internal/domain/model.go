@@ -219,17 +219,19 @@ func InstallationHarnessImages(defaultImage, packTag string) []HarnessPack {
 	if defaultImage == "" {
 		defaultImage = LocalCapsuleImage
 	}
-	// The official packs install only the native profile in
-	// images/capsule-<pack>/project.yaml, and a repository cannot redefine a
-	// trusted profile name. mock uses the supervisor image, which has no
-	// trusted profile, so the repository decides its modes.
+	// The official packs install a native and a structured profile under the
+	// pack name in images/capsule-<pack>/project.yaml, and a repository cannot
+	// define profiles under a trusted name. mock uses the supervisor image,
+	// which has no trusted profile, so the repository decides its modes.
 	official := func(name string) HarnessPack {
 		return HarnessPack{
 			HarnessImage: HarnessImage{
 				Name:           name,
 				ImageReference: officialPackImage(defaultImage, "meridian-capsule-"+name, packTag),
 			},
-			InteractionModes: []HarnessInteractionMode{HarnessInteractionNative},
+			InteractionModes: []HarnessInteractionMode{
+				HarnessInteractionNative, HarnessInteractionStructured,
+			},
 		}
 	}
 	// Clients preselect the first entry, so real agents come first. mock is

@@ -462,10 +462,13 @@ export type PreviewTicket = {
     reusePolicy: 'reusable_until_expiry';
 };
 
+/**
+ * A name appears at most twice, once per interaction mode, when one harness offers both a native terminal and a structured session.
+ */
 export type HarnessProfile = {
     name: string;
     structured: boolean;
-    adapterKind?: 'opencode' | 'pi' | 'mock' | 'generic' | 'external';
+    adapterKind?: 'opencode' | 'pi' | 'claude' | 'codex' | 'mock' | 'generic' | 'external';
     protocol?: 'meridian.adapter.v1';
     /**
      * Native PTY behavior for this profile; structured profiles are always false.

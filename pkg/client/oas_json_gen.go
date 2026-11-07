@@ -6545,6 +6545,10 @@ func (s *HarnessProfileAdapterKind) Decode(d *jx.Decoder) error {
 		*s = HarnessProfileAdapterKindOpencode
 	case HarnessProfileAdapterKindPi:
 		*s = HarnessProfileAdapterKindPi
+	case HarnessProfileAdapterKindClaude:
+		*s = HarnessProfileAdapterKindClaude
+	case HarnessProfileAdapterKindCodex:
+		*s = HarnessProfileAdapterKindCodex
 	case HarnessProfileAdapterKindMock:
 		*s = HarnessProfileAdapterKindMock
 	case HarnessProfileAdapterKindGeneric:

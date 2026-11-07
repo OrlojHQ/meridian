@@ -2647,13 +2647,14 @@ components:
     HarnessProfile:
       type: object
       required: [name, structured, pty]
+      description: A name appears at most twice, once per interaction mode, when one harness offers both a native terminal and a structured session.
       properties:
         name: { type: string, minLength: 1, maxLength: 128 }
         structured:
           type: boolean
         adapterKind:
           type: string
-          enum: [opencode, pi, mock, generic, external]
+          enum: [opencode, pi, claude, codex, mock, generic, external]
         protocol:
           type: string
           enum: [meridian.adapter.v1]

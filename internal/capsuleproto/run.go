@@ -241,12 +241,12 @@ func (s *Server) startRun(writer http.ResponseWriter, request *http.Request) {
 		writeProtocolError(writer, http.StatusUnprocessableEntity, "harness_configuration_invalid")
 		return
 	}
-	profile, err := config.Profile(input.Harness)
-	if err != nil {
+	if !config.Has(input.Harness) {
 		writeProtocolError(writer, http.StatusNotFound, "harness_not_found")
 		return
 	}
-	if profile.Interaction != harness.InteractionNative {
+	profile, err := config.ProfileFor(input.Harness, harness.InteractionNative)
+	if err != nil {
 		writeProtocolError(writer, http.StatusUnprocessableEntity, "native_interaction_unavailable")
 		return
 	}

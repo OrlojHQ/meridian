@@ -283,9 +283,12 @@ func newProjectCommand(config *cliConfig) *cobra.Command {
 		},
 	}
 	apply := &cobra.Command{
-		Use:   "apply-harness PROJECT_ID NAME",
-		Short: "Apply an installation harness pack to a Project",
-		Args:  cobra.ExactArgs(2),
+		Use:   "apply-harness PROJECT_ID NAME|NAME=IMAGE",
+		Short: "Allowlist a harness pack or custom harness image on a Project",
+		Long: "Allowlist a harness on a Project, replacing any entry with the same name.\n" +
+			"NAME applies the installation catalog's pack. NAME=IMAGE allowlists a custom image\n" +
+			"under the profile name that Capsules and Threads will select, such as mock-structured.",
+		Args: cobra.ExactArgs(2),
 		RunE: func(command *cobra.Command, args []string) error {
 			api, err := newAPI(config)
 			if err != nil {
@@ -301,23 +304,31 @@ func newProjectCommand(config *cliConfig) *cobra.Command {
 			if !ok {
 				return responseError(got)
 			}
-			capabilities, err := api.GetCapabilities(command.Context())
-			if err != nil {
-				return apiCallError(err)
-			}
-			catalog, ok := capabilities.(*client.Capabilities)
-			if !ok {
-				return responseError(capabilities)
-			}
 			var pack client.HarnessImage
-			for _, item := range catalog.HarnessImages {
-				if item.Name == args[1] {
-					pack = item
-					break
+			if strings.Contains(args[1], "=") {
+				item, err := domain.ParseHarnessImageSpec(args[1])
+				if err != nil {
+					return err
 				}
-			}
-			if pack.Name == "" {
-				return fmt.Errorf("installation has no harness pack %q", args[1])
+				pack = client.HarnessImage{Name: item.Name, ImageReference: item.ImageReference}
+			} else {
+				capabilities, err := api.GetCapabilities(command.Context())
+				if err != nil {
+					return apiCallError(err)
+				}
+				catalog, ok := capabilities.(*client.Capabilities)
+				if !ok {
+					return responseError(capabilities)
+				}
+				for _, item := range catalog.HarnessImages {
+					if item.Name == args[1] {
+						pack = item
+						break
+					}
+				}
+				if pack.Name == "" {
+					return fmt.Errorf("installation has no harness pack %q; use NAME=IMAGE for a custom image", args[1])
+				}
 			}
 			// Interaction modes are catalog metadata a Project never stores.
 			pack.InteractionModes = nil

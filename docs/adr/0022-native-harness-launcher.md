@@ -31,7 +31,8 @@ profile that makes the pack usable.
   `/etc/meridian/harnesses.d/*.yaml` files and then optional repository profiles
   from `/workspace/.meridian/project.yaml`. Both use the same strict parser.
   Duplicate names fail closed, so repository content cannot shadow an
-  image-owned executable.
+  image-owned executable. (Amended by ADR 0026: a name may carry one native
+  and one structured profile, and the image owns every mode of its names.)
 - When a harness-selected Capsule first becomes Ready, the daemon validates
   that the frozen profile is native and PTY-backed and starts it with a stable
   idempotency key. Any Run history is the durable completion marker; terminal

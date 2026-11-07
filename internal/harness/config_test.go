@@ -60,6 +60,40 @@ harnesses:
 	}
 }
 
+func TestParseAllowsOneProfilePerModeUnderOneName(t *testing.T) {
+	config, err := Parse(strings.NewReader(`
+version: v1
+harnesses:
+  - {name: agent, executable: /usr/local/bin/agent, workingDirectory: ., promptMode: interactive, pty: true, outputMode: text, timeout: 1h}
+  - {name: agent, interactionMode: structured, adapter: {protocol: meridian.adapter.v1, executable: adapter}, workingDirectory: ., pty: false, timeout: 1h}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	native, err := config.ProfileFor("agent", InteractionNative)
+	if err != nil || !native.PTY {
+		t.Fatalf("native = %#v, %v", native, err)
+	}
+	structured, err := config.ProfileFor("agent", InteractionStructured)
+	if err != nil || structured.Adapter == nil {
+		t.Fatalf("structured = %#v, %v", structured, err)
+	}
+	if profile, err := config.Profile("agent"); err != nil || profile.Interaction != InteractionNative {
+		t.Fatalf("default profile = %#v, %v", profile, err)
+	}
+	if !config.Has("agent") || config.Has("other") {
+		t.Fatal("Has does not match profile names")
+	}
+	if _, err := Parse(strings.NewReader(`
+version: v1
+harnesses:
+  - {name: agent, interactionMode: structured, adapter: {protocol: meridian.adapter.v1, executable: a}, workingDirectory: ., pty: false, timeout: 1h}
+  - {name: agent, interactionMode: structured, adapter: {protocol: meridian.adapter.v1, executable: b}, workingDirectory: ., pty: false, timeout: 1h}
+`)); err == nil {
+		t.Fatal("two structured profiles under one name were accepted")
+	}
+}
+
 func TestParseRejectsMaliciousAndMalformedConfiguration(t *testing.T) {
 	tests := map[string]string{
 		"unknown field": `
