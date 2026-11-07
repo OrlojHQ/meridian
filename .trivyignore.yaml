@@ -1,0 +1,44 @@
+# Accepted dependency vulnerabilities for .github/workflows/trivy.yml.
+# Every entry is scoped to one CVE, one lockfile, and one package version,
+# carries an expiry, and names the condition that removes it.
+#
+# undici 8.11.2 in images/capsule-dsh/package-lock.json
+#   @deepseek-ai/dsh-http-proxy and @deepseek-ai/dsh-web-fetch-http pin
+#   undici to exactly 8.11.2 in DeepSeek Harness 0.2.2-rc.1, the newest dsh
+#   release on npm. The fix is undici 8.12.2. The harness-pack installer
+#   (ADR 0030) installs the upstream lockfile as is and rejects npm
+#   overrides, so Meridian cannot bump undici without a new dsh release.
+#   The affected code runs only inside the dsh Capsule, which Meridian
+#   already treats as hostile; it is not part of meridiand, capsuled, or the
+#   CLI. Remove these entries once a dsh release ships undici 8.12.2 or
+#   later and the pack moves to it. A changed undici version no longer
+#   matches and fails the scan again.
+vulnerabilities:
+  - id: CVE-2026-109383
+    paths:
+      - images/capsule-dsh/package-lock.json
+    purls:
+      - pkg:npm/undici@8.11.2
+    expired_at: 2027-01-07
+    statement: Pinned by upstream DeepSeek Harness 0.2.2-rc.1; runs only in the dsh Capsule. Remove when a dsh release ships undici >= 8.12.2.
+  - id: CVE-2026-109829
+    paths:
+      - images/capsule-dsh/package-lock.json
+    purls:
+      - pkg:npm/undici@8.11.2
+    expired_at: 2027-01-07
+    statement: Pinned by upstream DeepSeek Harness 0.2.2-rc.1; runs only in the dsh Capsule. Remove when a dsh release ships undici >= 8.12.2.
+  - id: CVE-2026-109869
+    paths:
+      - images/capsule-dsh/package-lock.json
+    purls:
+      - pkg:npm/undici@8.11.2
+    expired_at: 2027-01-07
+    statement: Pinned by upstream DeepSeek Harness 0.2.2-rc.1; runs only in the dsh Capsule. Remove when a dsh release ships undici >= 8.12.2.
+  - id: CVE-2026-87018
+    paths:
+      - images/capsule-dsh/package-lock.json
+    purls:
+      - pkg:npm/undici@8.11.2
+    expired_at: 2027-01-07
+    statement: Pinned by upstream DeepSeek Harness 0.2.2-rc.1; runs only in the dsh Capsule. Remove when a dsh release ships undici >= 8.12.2.

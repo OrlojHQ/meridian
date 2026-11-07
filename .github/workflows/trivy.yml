@@ -7,6 +7,8 @@ on:
       - "go.sum"
       - "frontend/package.json"
       - "frontend/bun.lock"
+      - "images/**/package*.json"
+      - ".trivyignore.yaml"
       - ".github/workflows/trivy.yml"
   push:
     branches:
@@ -16,6 +18,8 @@ on:
       - "go.sum"
       - "frontend/package.json"
       - "frontend/bun.lock"
+      - "images/**/package*.json"
+      - ".trivyignore.yaml"
       - ".github/workflows/trivy.yml"
   schedule:
     - cron: "0 6 * * 1"
@@ -46,6 +50,7 @@ jobs:
           output: trivy-fs.sarif
           severity: CRITICAL,HIGH
           ignore-unfixed: true
+          trivyignores: .trivyignore.yaml
 
       - name: Upload SARIF
         if: always() && hashFiles('trivy-fs.sarif') != ''
@@ -66,3 +71,4 @@ jobs:
           exit-code: "1"
           severity: CRITICAL,HIGH
           ignore-unfixed: true
+          trivyignores: .trivyignore.yaml
