@@ -242,6 +242,11 @@
   font-weight: 470;
 }
 
+.activity-item-copy small.activity-item-rollup {
+  display: block;
+  font-size: 0.6rem;
+}
+
 .activity-item-copy small .harness-mark {
   width: 0.95rem;
   height: 0.95rem;

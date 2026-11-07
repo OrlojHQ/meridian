@@ -51,6 +51,7 @@ import {
   listThreadLinks,
   revokeCoordinationGrant,
   getBoard,
+  promoteCapsule,
 } from "./generated/sdk.gen";
 import { projectHarnessImage } from "./harnessPacks";
 import type { HarnessSetupUpload, HarnessSetupPreview, ImportHarnessSetupRequest, EnvironmentMutation, ProjectEnvironment,
@@ -61,6 +62,7 @@ import type { HarnessSetupUpload, HarnessSetupPreview, ImportHarnessSetupRequest
   BoardPage,
   Capabilities,
   Capsule,
+  CapsuleRole,
   CapsulePage,
   CoordinationGrant,
   CoordinationPolicy,
@@ -217,12 +219,21 @@ export const api = {
       }),
     );
   },
-  capsules: (projectId: string, signal?: AbortSignal) =>
+  capsules: (projectId: string, signal?: AbortSignal, role?: CapsuleRole) =>
     call<CapsulePage>(
       listCapsules({
         ...generatedOptions(signal),
         path: { projectId },
-        query: { limit: 100 },
+        query: role ? { limit: 100, role } : { limit: 100 },
+      }),
+    ),
+  promoteCapsule: (capsule: Capsule, detach: boolean) =>
+    call<Capsule>(
+      promoteCapsule({
+        ...generatedOptions(),
+        path: { capsuleId: capsule.id },
+        headers: idempotencyHeaders(),
+        body: { expectedResourceVersion: capsule.resourceVersion, detach },
       }),
     ),
   createCapsule: (

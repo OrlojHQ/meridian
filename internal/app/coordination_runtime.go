@@ -41,8 +41,13 @@ func (s *Service) RunCoordination(ctx context.Context) {
 	ticker := time.NewTicker(coordinationTick)
 	defer ticker.Stop()
 	defer s.stopAllCoordinationPollers()
+	var swept time.Time
 	for {
 		s.CoordinationTick(ctx)
+		if now := s.clock.Now(); now.Sub(swept) >= archiveSweepInterval {
+			s.SweepArchivableHelpers(ctx)
+			swept = now
+		}
 		select {
 		case <-ctx.Done():
 			return
@@ -177,7 +182,9 @@ func (s *Service) scanLinkReports(ctx context.Context, grant domain.Coordination
 		return
 	}
 	for _, link := range links {
-		if link.State != domain.LinkActive {
+		// An archived helper's session was ended by the sweep, not by the
+		// helper, so it reports nothing until it resumes.
+		if link.State != domain.LinkActive || !link.ArchivedAt.IsZero() {
 			continue
 		}
 		s.scanLinkReport(ctx, link)
@@ -287,8 +294,9 @@ func (s *Service) sweepClosedChildren(ctx context.Context, grant domain.Coordina
 	}
 }
 
+// A promoted helper belongs to the operator and is never stopped here.
 func (s *Service) stopClosedChild(ctx context.Context, link domain.ThreadLink) {
-	if link.State != domain.LinkClosed ||
+	if link.State != domain.LinkClosed || !link.PromotedAt.IsZero() ||
 		(link.CloseReason != domain.LinkCancelled && link.CloseReason != domain.LinkRevoked) {
 		return
 	}

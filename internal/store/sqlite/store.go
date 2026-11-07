@@ -32,7 +32,7 @@ type Store struct {
 }
 
 // CurrentSchemaVersion is the newest migration this binary understands.
-const CurrentSchemaVersion = 15
+const CurrentSchemaVersion = 16
 
 func Open(ctx context.Context, dataDir string) (*Store, error) {
 	if strings.TrimSpace(dataDir) == "" {
@@ -563,6 +563,27 @@ func (r *repository) UpdateCapsule(
 	return nil
 }
 
+// PromoteCapsule writes a Capsule's role, lead, link and promotion time.
+// The schema allows only promotion of a helper and detaching a promoted one.
+func (r *repository) PromoteCapsule(
+	ctx context.Context,
+	capsule domain.Capsule,
+	expected domain.ResourceVersion,
+) error {
+	if capsule.ResourceVersion != expected+1 {
+		return fmt.Errorf("%w: invalid Capsule resource version", domain.ErrInvalid)
+	}
+	result, err := r.q.ExecContext(ctx, `
+		UPDATE capsules SET role = ?, lead_thread_id = ?, link_id = ?, promoted_at = ?,
+			updated_at = ?, resource_version = ?
+		WHERE id = ? AND resource_version = ?`,
+		capsule.Role, nullableString(string(capsule.LeadThreadID)),
+		nullableString(string(capsule.LinkID)), nullableTime(capsule.PromotedAt),
+		formatTime(capsule.UpdatedAt), capsule.ResourceVersion, capsule.ID, expected,
+	)
+	return r.expectOneRow(ctx, result, err, "capsules", string(capsule.ID))
+}
+
 func (r *repository) TouchCapsuleActivity(
 	ctx context.Context, id domain.CapsuleID, at time.Time,
 ) error {
@@ -578,7 +599,7 @@ func (r *repository) GetCapsule(ctx context.Context, id domain.CapsuleID) (domai
 	return scanCapsule(r.q.QueryRowContext(ctx, `
 		SELECT id, project_id, timeline_id, name, launcher_harness, state, desired_state, provider_resource_id,
 			origin_moment_id, restore_complete, maintenance, failure, image_reference,
-			role, lead_thread_id, link_id,
+			role, lead_thread_id, link_id, promoted_at,
 			last_activity_at, created_at, updated_at, resource_version
 		FROM capsules WHERE id = ?`, id,
 	))
@@ -593,7 +614,7 @@ func (r *repository) ListCapsules(
 	rows, err := r.q.QueryContext(ctx, `
 		SELECT id, project_id, timeline_id, name, launcher_harness, state, desired_state, provider_resource_id,
 			origin_moment_id, restore_complete, maintenance, failure, image_reference,
-			role, lead_thread_id, link_id,
+			role, lead_thread_id, link_id, promoted_at,
 			last_activity_at, created_at, updated_at, resource_version
 		FROM capsules WHERE project_id = ? AND (? = '' OR role = ?)
 		ORDER BY created_at, id LIMIT ? OFFSET ?`,
@@ -632,7 +653,7 @@ func (r *repository) ListIdleCapsules(
 	rows, err := r.q.QueryContext(ctx, `
 		SELECT id, project_id, timeline_id, name, launcher_harness, state, desired_state, provider_resource_id,
 			origin_moment_id, restore_complete, maintenance, failure, image_reference,
-			role, lead_thread_id, link_id,
+			role, lead_thread_id, link_id, promoted_at,
 			last_activity_at, created_at, updated_at, resource_version
 		FROM capsules
 		WHERE state = ? AND desired_state = ? AND maintenance = ''
@@ -658,7 +679,7 @@ func (r *repository) ListRecoverableCapsules(ctx context.Context) ([]domain.Caps
 	rows, err := r.q.QueryContext(ctx, `
 		SELECT id, project_id, timeline_id, name, launcher_harness, state, desired_state, provider_resource_id,
 			origin_moment_id, restore_complete, maintenance, failure, image_reference,
-			role, lead_thread_id, link_id,
+			role, lead_thread_id, link_id, promoted_at,
 			last_activity_at, created_at, updated_at, resource_version
 		FROM capsules WHERE state NOT IN (?, ?)
 		ORDER BY created_at, id`, domain.CapsuleSealed, domain.CapsuleDeleted,
@@ -685,13 +706,13 @@ type scanner interface {
 func scanCapsule(row scanner) (domain.Capsule, error) {
 	var capsule domain.Capsule
 	var activity, created, updated string
-	var origin, leadThread, link sql.NullString
+	var origin, leadThread, link, promoted sql.NullString
 	err := row.Scan(
 		&capsule.ID, &capsule.ProjectID, &capsule.TimelineID, &capsule.Name, &capsule.LauncherHarness,
 		&capsule.State,
 		&capsule.DesiredState, &capsule.ProviderResourceID, &origin, &capsule.RestoreComplete,
 		&capsule.Maintenance, &capsule.Failure, &capsule.ImageReference,
-		&capsule.Role, &leadThread, &link,
+		&capsule.Role, &leadThread, &link, &promoted,
 		&activity, &created, &updated, &capsule.ResourceVersion,
 	)
 	if err != nil {
@@ -700,6 +721,11 @@ func scanCapsule(row scanner) (domain.Capsule, error) {
 	capsule.OriginMomentID = domain.MomentID(origin.String)
 	capsule.LeadThreadID = domain.ThreadID(leadThread.String)
 	capsule.LinkID = domain.ThreadLinkID(link.String)
+	if promoted.Valid {
+		if capsule.PromotedAt, err = parseTime(promoted.String); err != nil {
+			return domain.Capsule{}, err
+		}
+	}
 	capsule.LastActivityAt, err = parseTime(activity)
 	if err != nil {
 		return domain.Capsule{}, err

@@ -339,7 +339,7 @@ func TestBoardListsRowsAndAsksForEveryHelper(t *testing.T) {
 			`"state":"active","phase":"working","reportSeq":0,"reportDeliveredSeq":0,"messagesForwarded":0,`+
 			`"operatorMessages":0,"createdAt":"2026-08-24T12:00:00Z","updatedAt":"2026-08-24T12:00:00Z","resourceVersion":1}},`+
 			`{"capsule":`+capsule("capsule-1", "lead", "main")+`,"status":"working","since":"2026-08-24T12:00:00Z",`+
-			`"surfaced":false,"childRollup":{"total":2,"working":1,"idle":0,"done":0,"needsYou":1,"failed":0}}]}`)
+			`"surfaced":false,"childRollup":{"total":2,"working":1,"idle":0,"done":0,"needsYou":1,"failed":0,"archived":0}}]}`)
 	}))
 	defer server.Close()
 	var output bytes.Buffer
@@ -356,12 +356,71 @@ func TestBoardListsRowsAndAsksForEveryHelper(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
 	if len(lines) != 2 || !strings.HasPrefix(lines[0], "needs_you(permission)\ttests (helper)\tmock\tcapsule=capsule-2") ||
 		!strings.HasPrefix(lines[1], "working\tlead\tmock\tcapsule=capsule-1") ||
-		!strings.Contains(lines[1], "helpers=2 working=1 idle=0 done=0 needs_you=1 failed=0") {
+		!strings.Contains(lines[1], "helpers=2 working=1 idle=0 done=0 needs_you=1 failed=0 archived=0") {
 		t.Fatalf("board output =\n%s", output.String())
 	}
 
 	root.SetArgs([]string{"board", "--all", "--expand", "none"})
 	if err := root.Execute(); err == nil {
 		t.Fatal("--all with --expand was accepted")
+	}
+}
+
+func TestLeadArchiveAfterAndCapsulePromote(t *testing.T) {
+	var path, received, idempotency string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		path = request.URL.Path
+		value, _ := io.ReadAll(request.Body)
+		received = string(value)
+		idempotency = request.Header.Get("Idempotency-Key")
+		writer.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(path, "/promote") {
+			_, _ = io.WriteString(writer, `{"id":"capsule-2","projectId":"project-1","timelineId":"timeline-2",`+
+				`"name":"helper","role":"main","promotedAt":"2026-08-24T12:05:00Z","state":"Ready",`+
+				`"desiredState":"Ready","restoreComplete":true,"createdAt":"2026-08-24T12:00:00Z",`+
+				`"updatedAt":"2026-08-24T12:05:00Z","resourceVersion":5}`)
+			return
+		}
+		writer.WriteHeader(http.StatusAccepted)
+		_, _ = io.WriteString(writer, `{"id":"intent-1","projectId":"project-1","capsuleId":"capsule-1","capsuleName":"lead","threadId":"thread-1","runId":"run-1","messageId":"message-1","harness":"mock","state":"provisioning","createdAt":"2026-08-24T12:00:00Z","updatedAt":"2026-08-24T12:00:00Z","resourceVersion":1}`)
+	}))
+	defer server.Close()
+	var output bytes.Buffer
+	config := &cliConfig{
+		server: server.URL, tokenFile: testAPITokenFile(t), json: true,
+		stdout: &output, stdin: strings.NewReader("lead prompt"),
+	}
+	command := threadTestRoot(config)
+	command.SetArgs([]string{
+		"thread", "spawn", "project-1", "--harness", "mock", "--prompt-stdin", "--lead", "--archive-after", "0",
+	})
+	if err := command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(received, `"archiveAfterSeconds":0`) {
+		t.Fatalf("spawn request = %s", received)
+	}
+	command = threadTestRoot(config)
+	command.SetArgs([]string{"thread", "spawn", "project-1", "--harness", "mock", "--prompt", "x", "--archive-after", "1h"})
+	if err := command.Execute(); err == nil || !strings.Contains(err.Error(), "--archive-after requires --lead") {
+		t.Fatalf("--archive-after without --lead = %v", err)
+	}
+
+	output.Reset()
+	config.json = false
+	root := &cobra.Command{Use: "meridian", SilenceUsage: true, SilenceErrors: true}
+	capsule := &cobra.Command{Use: "capsule"}
+	capsule.AddCommand(newCapsulePromoteCommand(config))
+	root.AddCommand(capsule)
+	root.SetArgs([]string{"capsule", "promote", "capsule-2", "--expected-version", "4", "--detach", "--idempotency-key", "p"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if path != "/capsules/capsule-2/promote" || idempotency != "p" ||
+		!strings.Contains(received, `"expectedResourceVersion":4`) || !strings.Contains(received, `"detach":true`) {
+		t.Fatalf("promote request = %s %s key=%q", path, received, idempotency)
+	}
+	if line := output.String(); !strings.Contains(line, "role=main\tpromoted") || strings.Contains(line, "lead=") {
+		t.Fatalf("promote output = %q", line)
 	}
 }

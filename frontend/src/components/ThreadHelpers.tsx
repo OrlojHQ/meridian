@@ -6,6 +6,7 @@ import { api, normalizeAPIError } from "../api/client";
 import type { Thread, ThreadLink } from "../api/generated/types.gen";
 import { queries } from "../api/queries";
 import { harnessName } from "../shell/capsuleActivity";
+import { PromoteHelper } from "./PromoteHelper";
 import { StateBadge } from "./ui/StateBadge";
 
 const phaseLabels: Record<ThreadLink["phase"], string> = {
@@ -16,6 +17,22 @@ const phaseLabels: Record<ThreadLink["phase"], string> = {
   ended: "Ended",
   failed: "Failed",
 };
+
+function helperRow(link: ThreadLink) {
+  return (
+    <li key={link.id}>
+      <Link to={helperHref(link)} className="helper-name">{link.name}</Link>
+      <span className="muted-copy">{harnessName(link.harness)}</span>
+      <span className={`badge helper-phase phase-${link.phase}`}>{phaseLabels[link.phase]}</span>
+      {link.promotedAt && (
+        <span className="badge">{link.closeReason === "detached" ? "Promoted, detached" : "Promoted"}</span>
+      )}
+      <span className="muted-copy">
+        {link.reportSeq === 1 ? "1 report" : `${link.reportSeq} reports`}
+      </span>
+    </li>
+  );
+}
 
 function helperHref(link: Pick<ThreadLink, "childCapsuleId" | "childThreadId">) {
   return `/ui/capsules/${encodeURIComponent(link.childCapsuleId)}?session=${encodeURIComponent(link.childThreadId)}`;
@@ -32,16 +49,26 @@ export function ThreadHelpers({ thread }: { thread: Thread }) {
 
 function HelperOf({ thread }: { thread: Thread }) {
   const lead = useQuery(queries.thread(thread.parentThreadId ?? ""));
+  const capsule = useQuery(queries.capsule(thread.capsuleId));
+  const leadLink = lead.data ? (
+    <Link to={`/ui/capsules/${encodeURIComponent(lead.data.capsuleId)}?session=${encodeURIComponent(lead.data.id)}`}>
+      Open the lead
+    </Link>
+  ) : null;
+  const promoted = capsule.data?.role === "main";
   return (
-    <p className="notice helper-of" role="status">
-      Helper Thread started by a lead.{" "}
-      {lead.data ? (
-        <Link to={`/ui/capsules/${encodeURIComponent(lead.data.capsuleId)}?session=${encodeURIComponent(lead.data.id)}`}>
-          Open the lead
-        </Link>
-      ) : null}
-      . Its permission and input requests come to you, not the lead.
-    </p>
+    <div className="notice helper-of" role="status">
+      <p>
+        {promoted
+          ? capsule.data?.linkId
+            ? "Promoted from a helper; its lead can still message it."
+            : "Promoted from a helper and detached from its lead."
+          : "Helper Thread started by a lead."}{" "}
+        {leadLink}
+        {promoted ? "" : ". Its permission and input requests come to you, not the lead."}
+      </p>
+      {capsule.data && <PromoteHelper capsule={capsule.data} />}
+    </div>
   );
 }
 
@@ -64,6 +91,8 @@ function LeadHelpers({ thread, grantId }: { thread: Thread; grantId: string }) {
     },
   });
   const items = links.data?.items ?? [];
+  const current = items.filter((link) => !link.archivedAt);
+  const archived = items.filter((link) => link.archivedAt);
   const active = grant.data?.state === "active";
   return (
     <section className="thread-helpers" aria-labelledby="thread-helpers-title">
@@ -98,16 +127,15 @@ function LeadHelpers({ thread, grantId }: { thread: Thread; grantId: string }) {
         <p className="muted-copy">{links.isPending ? "Loading helpers…" : "No helpers yet."}</p>
       ) : (
         <ul className="helper-list">
-          {items.map((link) => (
-            <li key={link.id}>
-              <Link to={helperHref(link)} className="helper-name">{link.name}</Link>
-              <span className="muted-copy">{harnessName(link.harness)}</span>
-              <span className={`badge helper-phase phase-${link.phase}`}>{phaseLabels[link.phase]}</span>
-              <span className="muted-copy">
-                {link.reportSeq === 1 ? "1 report" : `${link.reportSeq} reports`}
-              </span>
+          {current.map(helperRow)}
+          {archived.length > 0 && (
+            <li className="helper-archived">
+              <details>
+                <summary>Archived ({archived.length})</summary>
+                <ul className="helper-list">{archived.map(helperRow)}</ul>
+              </details>
             </li>
-          ))}
+          )}
         </ul>
       )}
     </section>

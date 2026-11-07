@@ -71,7 +71,7 @@ func (s *Service) insertCoordinationGrantTx(
 		MaxDescendants: policy.MaxDescendants, MaxLiveCapsules: policy.MaxLiveCapsules,
 		MaxMessagesPerLink: policy.MaxMessagesPerLink, AllowedHarnesses: policy.AllowedHarnesses,
 		DeadlineAt: now.Add(policy.Deadline), OnDeadline: policy.OnDeadline,
-		CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
+		ArchiveAfter: *policy.ArchiveAfter, CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
 	}
 	if err := tx.InsertCoordinationGrant(ctx, grant); err != nil {
 		return err
@@ -106,7 +106,7 @@ func (s *Service) matchCoordinationReplay(
 	if policy.MaxDepth != stored.MaxDepth || policy.MaxChildren != stored.MaxChildren ||
 		policy.MaxDescendants != stored.MaxDescendants || policy.MaxLiveCapsules != stored.MaxLiveCapsules ||
 		policy.MaxMessagesPerLink != stored.MaxMessagesPerLink || policy.OnDeadline != stored.OnDeadline ||
-		policy.SpawnApproval != stored.SpawnApproval ||
+		policy.SpawnApproval != stored.SpawnApproval || *policy.ArchiveAfter != *stored.ArchiveAfter ||
 		!slices.Equal(policy.AllowedHarnesses, stored.AllowedHarnesses) ||
 		grant.DeadlineAt.Sub(grant.CreatedAt) != policy.Deadline {
 		return fmt.Errorf("%w: Idempotency-Key was used with a different request", domain.ErrConflict)
@@ -568,7 +568,8 @@ func (s *Service) coordSpawn(
 var errCoordinationRejected = errors.New("coordination request rejected")
 
 // liveTreeCapsules counts the grant's children whose Capsules hold or are
-// about to hold compute.
+// about to hold compute. Detached helpers count only toward installation
+// limits.
 func (s *Service) liveTreeCapsules(
 	ctx context.Context, reader ports.Reader, grantID domain.CoordinationGrantID,
 ) (int, error) {
@@ -578,6 +579,9 @@ func (s *Service) liveTreeCapsules(
 	}
 	live := 0
 	for _, link := range links {
+		if link.CloseReason == domain.LinkDetached {
+			continue
+		}
 		capsule, err := reader.GetCapsule(ctx, link.ChildCapsuleID)
 		if err != nil {
 			return 0, err
@@ -622,6 +626,9 @@ func (s *Service) coordSend(
 	if record.ID == "" {
 		if link.State != domain.LinkActive {
 			return coordproto.Fail(coordproto.CodeLinkClosed, "link is closed")
+		}
+		if !link.ArchivedAt.IsZero() {
+			return coordproto.Fail(coordproto.CodeUnavailable, "helper is archived; the operator can resume it")
 		}
 		if link.MessagesForwarded >= grant.MaxMessagesPerLink {
 			return coordproto.Fail(coordproto.CodeLimitExceeded, "message limit for this link reached")
@@ -748,6 +755,9 @@ func (s *Service) coordCancel(
 // update time bounds how long the sweep may stop the helper.
 func (s *Service) countOperatorMessage(ctx context.Context) appendTxHook {
 	return func(tx ports.Transaction, thread domain.Thread, _ domain.ThreadMessageID, now time.Time) error {
+		if err := s.unarchiveTx(ctx, tx, thread.ID, now); err != nil {
+			return err
+		}
 		link, err := tx.GetThreadLinkByChildThread(ctx, thread.ID)
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil

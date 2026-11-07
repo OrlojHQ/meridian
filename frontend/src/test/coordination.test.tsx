@@ -74,6 +74,7 @@ const grant: CoordinationGrant = {
   allowedHarnesses: ["mock"],
   deadlineAt: "2026-11-01T08:00:00Z",
   onDeadline: "cancel_and_pause",
+  archiveAfterSeconds: 86400,
   descendantsCreated: 2,
   createdAt: "2026-11-01T00:00:00Z",
   updatedAt: "2026-11-01T00:00:00Z",
@@ -181,8 +182,88 @@ describe("Helpers panel", () => {
     await waitFor(() => expect(revoke).toHaveBeenCalledWith(grant));
   });
 
+  it("folds archived helpers and marks promoted ones", async () => {
+    vi.spyOn(api, "coordinationGrant").mockResolvedValue(grant);
+    vi.spyOn(api, "threadLinks").mockResolvedValue({
+      items: [
+        { ...link("kept", "idle", 1), promotedAt: "2026-11-01T01:00:00Z" },
+        { ...link("parked", "idle", 1), archivedAt: "2026-11-02T00:00:00Z" },
+        {
+          ...link("gone", "ended", 1),
+          state: "closed",
+          closeReason: "detached",
+          promotedAt: "2026-11-01T01:00:00Z",
+        },
+      ],
+    });
+    wrapper(<ThreadHelpers thread={leadThread} />);
+    const panel = await screen.findByRole("region", { name: "Helpers" });
+    await within(panel).findByRole("link", { name: "kept" });
+    expect(within(panel).getByText("Promoted")).toBeInTheDocument();
+    expect(within(panel).getByText("Promoted, detached")).toBeInTheDocument();
+    expect(within(panel).getByText("Archived (1)")).toBeInTheDocument();
+    expect(within(panel).getByRole("link", { name: "parked" }).closest("details")).not.toBeNull();
+    expect(within(panel).getByRole("link", { name: "kept" }).closest("details")).toBeNull();
+  });
+
+  it("promotes a helper, and detaches a promoted one that kept its link", async () => {
+    vi.spyOn(api, "thread").mockResolvedValue(leadThread);
+    const helperCapsule: Capsule = {
+      id: "capsule-helper-1",
+      projectId: project.id,
+      timelineId: "timeline-helper-1",
+      name: "helper-1",
+      role: "sub",
+      leadThreadId: leadThread.id,
+      linkId: "link-helper-1",
+      state: "Ready",
+      desiredState: "Ready",
+      restoreComplete: true,
+      createdAt: "2026-11-01T00:00:00Z",
+      updatedAt: "2026-11-01T00:00:00Z",
+      resourceVersion: 3,
+    };
+    const capsule = vi.spyOn(api, "capsule").mockResolvedValue(helperCapsule);
+    const promote = vi.spyOn(api, "promoteCapsule").mockResolvedValue({ ...helperCapsule, role: "main" });
+    const helper: Thread = {
+      ...leadThread,
+      id: "thread-helper-1",
+      capsuleId: "capsule-helper-1",
+      parentThreadId: leadThread.id,
+      linkId: "link-helper-1",
+      depth: 1,
+    };
+    const first = wrapper(<ThreadHelpers thread={helper} />);
+    await userEvent.click(await screen.findByRole("button", { name: "Promote to main…" }));
+    await userEvent.click(screen.getByRole("button", { name: "Promote and detach" }));
+    await waitFor(() => expect(promote).toHaveBeenCalledWith(helperCapsule, true));
+    first.unmount();
+
+    const promoted = { ...helperCapsule, role: "main" as const, promotedAt: "2026-11-01T01:00:00Z" };
+    capsule.mockResolvedValue(promoted);
+    wrapper(<ThreadHelpers thread={helper} />);
+    expect(await screen.findByText(/its lead can still message it/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Detach from lead…" }));
+    expect(screen.queryByRole("button", { name: "Promote" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Detach" }));
+    await waitFor(() => expect(promote).toHaveBeenLastCalledWith(promoted, true));
+  });
+
   it("names the lead on a helper Thread and renders nothing for plain Threads", async () => {
     vi.spyOn(api, "thread").mockResolvedValue(leadThread);
+    vi.spyOn(api, "capsule").mockResolvedValue({
+      id: "capsule-helper-1",
+      projectId: project.id,
+      timelineId: "timeline-helper-1",
+      name: "helper-1",
+      role: "sub",
+      state: "Ready",
+      desiredState: "Ready",
+      restoreComplete: true,
+      createdAt: "2026-11-01T00:00:00Z",
+      updatedAt: "2026-11-01T00:00:00Z",
+      resourceVersion: 1,
+    });
     const helper: Thread = {
       ...leadThread,
       id: "thread-helper-1",

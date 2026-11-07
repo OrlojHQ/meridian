@@ -67,6 +67,9 @@ const (
 	CoordinationMaxDeadline           = 72 * time.Hour
 	CoordinationMinDeadline           = 5 * time.Minute
 	CoordinationMaxAllowedHarnesses   = MaxHarnessImages
+	CoordinationDefaultArchiveAfter   = 24 * time.Hour
+	CoordinationMinArchiveAfter       = time.Minute
+	CoordinationMaxArchiveAfter       = 30 * 24 * time.Hour
 )
 
 // CoordinationPolicy is the operator's request for a grant. Zero values take
@@ -81,6 +84,9 @@ type CoordinationPolicy struct {
 	Deadline           time.Duration
 	OnDeadline         OnDeadline
 	SpawnApproval      SpawnApproval
+	// ArchiveAfter is how long a finished helper stays idle before it is
+	// archived. Nil takes the default; zero disables auto-archive.
+	ArchiveAfter *time.Duration
 }
 
 // Normalize applies defaults and rejects values outside the hard limits.
@@ -142,6 +148,15 @@ func (p CoordinationPolicy) Normalize() (CoordinationPolicy, error) {
 	default:
 		return p, fmt.Errorf("%w: coordination spawnApproval must be auto", ErrUnsupported)
 	}
+	switch {
+	case p.ArchiveAfter == nil:
+		archiveAfter := CoordinationDefaultArchiveAfter
+		p.ArchiveAfter = &archiveAfter
+	case *p.ArchiveAfter == 0:
+	case *p.ArchiveAfter < CoordinationMinArchiveAfter || *p.ArchiveAfter > CoordinationMaxArchiveAfter ||
+		*p.ArchiveAfter%time.Second != 0:
+		return p, fmt.Errorf("%w: coordination archiveAfter must be 0 or whole seconds between 1m and 720h", ErrInvalid)
+	}
 	if len(p.AllowedHarnesses) > CoordinationMaxAllowedHarnesses {
 		return p, fmt.Errorf("%w: too many coordination harnesses", ErrInvalid)
 	}
@@ -174,6 +189,8 @@ type CoordinationGrant struct {
 	AllowedHarnesses   []string
 	DeadlineAt         time.Time
 	OnDeadline         OnDeadline
+	// ArchiveAfter is zero when auto-archive is disabled.
+	ArchiveAfter       time.Duration
 	DescendantsCreated int
 	RevokedAt          time.Time
 	RevokeReason       GrantRevokeReason
@@ -183,6 +200,7 @@ type CoordinationGrant struct {
 }
 
 func (g CoordinationGrant) Policy() CoordinationPolicy {
+	archiveAfter := g.ArchiveAfter
 	return CoordinationPolicy{
 		MaxDepth:           g.MaxDepth,
 		MaxChildren:        g.MaxChildren,
@@ -192,6 +210,7 @@ func (g CoordinationGrant) Policy() CoordinationPolicy {
 		AllowedHarnesses:   slices.Clone(g.AllowedHarnesses),
 		OnDeadline:         g.OnDeadline,
 		SpawnApproval:      g.SpawnApproval,
+		ArchiveAfter:       &archiveAfter,
 	}
 }
 
@@ -214,6 +233,9 @@ const (
 	LinkFailed    LinkCloseReason = "failed"
 	LinkEnded     LinkCloseReason = "ended"
 	LinkRevoked   LinkCloseReason = "revoked"
+	// LinkDetached closes the link of a promoted helper; the lead can no
+	// longer address it and it leaves the tree's live Capsule count.
+	LinkDetached LinkCloseReason = "detached"
 )
 
 type ReportStatus string
@@ -260,9 +282,13 @@ type ThreadLink struct {
 	// OperatorNoticed is how many of them a lead wake prompt has mentioned.
 	OperatorMessages int
 	OperatorNoticed  int
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
-	ResourceVersion  ResourceVersion
+	// ArchivedAt is set when the auto-archive sweep paused a finished helper
+	// and cleared when its Thread resumes. PromotedAt is permanent.
+	ArchivedAt      time.Time
+	PromotedAt      time.Time
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	ResourceVersion ResourceVersion
 }
 
 func ValidLinkName(name string) bool {

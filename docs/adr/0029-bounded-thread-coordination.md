@@ -101,8 +101,8 @@ Three ways to carry a request out of the Capsule were considered:
   so resuming a stopped helper does not restart its stop window.
 - Not in this decision, and left for later ADR amendments: operator spawn
   approval, widening a grant, depth above 1, returned patch series, proposed
-  Deliveries, auto-archive of finished children, promoting or detaching a
-  sub-Capsule, and queueing spawns over capacity. Delivery approval under
+  Deliveries, and queueing spawns over capacity. Auto-archive and promotion
+  are covered by the helper lifecycle amendment below. Delivery approval under
   ADR 0020 is unchanged; agents cannot propose or approve a Delivery.
 
 ## Consequences
@@ -144,3 +144,48 @@ structured profile, so OpenCode and Pi Threads can lead.
 Registration changes how the agent discovers the tool, not what any process
 in a Capsule may do: `meridian-coord` was already on every Capsule's `PATH`
 and the mailbox still refuses everything outside an active grant.
+
+## Amendment: helper lifecycle
+
+Finished helpers are archived automatically, and the operator can promote a
+helper to a main Capsule.
+
+- **Auto-archive.** A grant's `archiveAfter` (default 24 hours; 0 disables
+  it; otherwise 1 minute to 30 days in whole seconds) is fixed at spawn like
+  every other limit. A helper is archived once it has been idle for that long
+  after it finished: its link is active and its last report is `turn_ended`,
+  or its link closed as cancelled, ended or revoked. Helpers that need the
+  operator, are working, have a delivery in flight, failed (report, Run or
+  Capsule), or were promoted are never archived; failed helpers stay until the
+  operator acts. A daemon sweep every 30 seconds marks the link `archivedAt`,
+  moves an idle Thread to `paused` and cancels its session, and leaves the
+  Capsule to ADR 0019 idle pause. `paused` rather than `archived` keeps the
+  helper resumable. Archiving never sends a message, never deletes a
+  workspace or transcript, and never resumes a stopped Capsule. The link is
+  marked before the session is cancelled, and the report scan skips archived
+  links, so ending the session is not reported to the lead as the helper
+  ending. Resuming the helper's Thread clears `archivedAt`. While archived,
+  the lead's `send` is refused as unavailable; only the operator brings a
+  helper back.
+- **Promotion.** `POST /capsules/{id}/promote` turns a sub-Capsule into a main
+  Capsule (`promotedAt`). By default the link stays open, so the lead can
+  still message the helper and still receives its reports. `detach` also
+  closes the link as `detached`; a promoted Capsule that kept its link can be
+  detached later. A detached Capsule leaves the tree's live-Capsule count and
+  counts only toward installation limits. Promotion is permanent; there is no
+  demote. A promoted helper is never auto-archived, and closing its link by
+  cancellation or revocation no longer stops it, because the operator has
+  taken it over. Promotion grants no coordination authority: the Capsule
+  gets no grant of its own and its agent's requests are still refused.
+- **Store rules.** Triggers allow a Capsule's role to change only from `sub`
+  to `main` with `promotedAt` set, and its lead and link to be cleared only
+  together, on a promoted Capsule. A link's `promotedAt` is permanent, a link
+  can close as `detached` only once promoted, and a link is never archived
+  and promoted at once. Promotion and archive events carry identifiers only.
+- **Presentation.** The sidebar and Activity inbox list main Capsules
+  (`role=main`) plus helpers that need the operator or whose lead is gone,
+  and take every lead's rollup from one board read, so hidden helpers add no
+  per-Capsule polling. Rollups count archived helpers (also counted as done),
+  and the board and the lead's Helpers panel fold them under "Archived (n)".
+  A promoted Capsule is its own row, labelled as promoted from its lead, and
+  is badged in the lead's fold while it keeps its link.

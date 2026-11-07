@@ -660,11 +660,13 @@ type Capsule struct {
 	Role            OptCapsuleRole `json:"role"`
 	// On sub-Capsules, the lead Thread that spawned this helper.
 	LeadThreadId OptString `json:"leadThreadId"`
-	// On sub-Capsules, the Thread link that owns this helper.
-	LinkId          OptString `json:"linkId"`
-	CreatedAt       time.Time `json:"createdAt"`
-	UpdatedAt       time.Time `json:"updatedAt"`
-	ResourceVersion int64     `json:"resourceVersion"`
+	// On sub-Capsules and promoted Capsules that kept their link, the Thread link to the lead.
+	LinkId OptString `json:"linkId"`
+	// When a helper sub-Capsule was promoted to a main Capsule.
+	PromotedAt      OptDateTime `json:"promotedAt"`
+	CreatedAt       time.Time   `json:"createdAt"`
+	UpdatedAt       time.Time   `json:"updatedAt"`
+	ResourceVersion int64       `json:"resourceVersion"`
 }
 
 // GetPreparation returns the value of Preparation.
@@ -740,6 +742,11 @@ func (s *Capsule) GetLeadThreadId() OptString {
 // GetLinkId returns the value of LinkId.
 func (s *Capsule) GetLinkId() OptString {
 	return s.LinkId
+}
+
+// GetPromotedAt returns the value of PromotedAt.
+func (s *Capsule) GetPromotedAt() OptDateTime {
+	return s.PromotedAt
 }
 
 // GetCreatedAt returns the value of CreatedAt.
@@ -832,6 +839,11 @@ func (s *Capsule) SetLinkId(val OptString) {
 	s.LinkId = val
 }
 
+// SetPromotedAt sets the value of PromotedAt.
+func (s *Capsule) SetPromotedAt(val OptDateTime) {
+	s.PromotedAt = val
+}
+
 // SetCreatedAt sets the value of CreatedAt.
 func (s *Capsule) SetCreatedAt(val time.Time) {
 	s.CreatedAt = val
@@ -904,8 +916,9 @@ func (s *CapsuleHeaders) SetResponse(val Capsule) {
 	s.Response = val
 }
 
-func (*CapsuleHeaders) createCapsuleRes() {}
-func (*CapsuleHeaders) getCapsuleRes()    {}
+func (*CapsuleHeaders) createCapsuleRes()  {}
+func (*CapsuleHeaders) getCapsuleRes()     {}
+func (*CapsuleHeaders) promoteCapsuleRes() {}
 
 // Ref: #/components/schemas/CapsuleIntent
 type CapsuleIntent string
@@ -1169,6 +1182,8 @@ type ChildRollup struct {
 	Done     int `json:"done"`
 	NeedsYou int `json:"needsYou"`
 	Failed   int `json:"failed"`
+	// Auto-archived helpers. They are also counted as done.
+	Archived int `json:"archived"`
 }
 
 // GetTotal returns the value of Total.
@@ -1201,6 +1216,11 @@ func (s *ChildRollup) GetFailed() int {
 	return s.Failed
 }
 
+// GetArchived returns the value of Archived.
+func (s *ChildRollup) GetArchived() int {
+	return s.Archived
+}
+
 // SetTotal sets the value of Total.
 func (s *ChildRollup) SetTotal(val int) {
 	s.Total = val
@@ -1229,6 +1249,11 @@ func (s *ChildRollup) SetNeedsYou(val int) {
 // SetFailed sets the value of Failed.
 func (s *ChildRollup) SetFailed(val int) {
 	s.Failed = val
+}
+
+// SetArchived sets the value of Archived.
+func (s *ChildRollup) SetArchived(val int) {
+	s.Archived = val
 }
 
 // Ref: #/components/schemas/CoordinationCapability
@@ -1271,26 +1296,27 @@ func (s *CoordinationCapability) SetMaxDescendants(val int) {
 
 // Ref: #/components/schemas/CoordinationGrant
 type CoordinationGrant struct {
-	ID                 string                           `json:"id"`
-	ProjectId          string                           `json:"projectId"`
-	RootThreadId       string                           `json:"rootThreadId"`
-	RootCapsuleId      string                           `json:"rootCapsuleId"`
-	State              CoordinationGrantState           `json:"state"`
-	SpawnApproval      CoordinationGrantSpawnApproval   `json:"spawnApproval"`
-	MaxDepth           int                              `json:"maxDepth"`
-	MaxChildren        int                              `json:"maxChildren"`
-	MaxDescendants     int                              `json:"maxDescendants"`
-	MaxLiveCapsules    int                              `json:"maxLiveCapsules"`
-	MaxMessagesPerLink int                              `json:"maxMessagesPerLink"`
-	AllowedHarnesses   []string                         `json:"allowedHarnesses"`
-	DeadlineAt         time.Time                        `json:"deadlineAt"`
-	OnDeadline         CoordinationGrantOnDeadline      `json:"onDeadline"`
-	DescendantsCreated int                              `json:"descendantsCreated"`
-	RevokedAt          OptDateTime                      `json:"revokedAt"`
-	RevokeReason       OptCoordinationGrantRevokeReason `json:"revokeReason"`
-	CreatedAt          time.Time                        `json:"createdAt"`
-	UpdatedAt          time.Time                        `json:"updatedAt"`
-	ResourceVersion    int64                            `json:"resourceVersion"`
+	ID                  string                           `json:"id"`
+	ProjectId           string                           `json:"projectId"`
+	RootThreadId        string                           `json:"rootThreadId"`
+	RootCapsuleId       string                           `json:"rootCapsuleId"`
+	State               CoordinationGrantState           `json:"state"`
+	SpawnApproval       CoordinationGrantSpawnApproval   `json:"spawnApproval"`
+	MaxDepth            int                              `json:"maxDepth"`
+	MaxChildren         int                              `json:"maxChildren"`
+	MaxDescendants      int                              `json:"maxDescendants"`
+	MaxLiveCapsules     int                              `json:"maxLiveCapsules"`
+	MaxMessagesPerLink  int                              `json:"maxMessagesPerLink"`
+	AllowedHarnesses    []string                         `json:"allowedHarnesses"`
+	DeadlineAt          time.Time                        `json:"deadlineAt"`
+	OnDeadline          CoordinationGrantOnDeadline      `json:"onDeadline"`
+	ArchiveAfterSeconds int                              `json:"archiveAfterSeconds"`
+	DescendantsCreated  int                              `json:"descendantsCreated"`
+	RevokedAt           OptDateTime                      `json:"revokedAt"`
+	RevokeReason        OptCoordinationGrantRevokeReason `json:"revokeReason"`
+	CreatedAt           time.Time                        `json:"createdAt"`
+	UpdatedAt           time.Time                        `json:"updatedAt"`
+	ResourceVersion     int64                            `json:"resourceVersion"`
 }
 
 // GetID returns the value of ID.
@@ -1361,6 +1387,11 @@ func (s *CoordinationGrant) GetDeadlineAt() time.Time {
 // GetOnDeadline returns the value of OnDeadline.
 func (s *CoordinationGrant) GetOnDeadline() CoordinationGrantOnDeadline {
 	return s.OnDeadline
+}
+
+// GetArchiveAfterSeconds returns the value of ArchiveAfterSeconds.
+func (s *CoordinationGrant) GetArchiveAfterSeconds() int {
+	return s.ArchiveAfterSeconds
 }
 
 // GetDescendantsCreated returns the value of DescendantsCreated.
@@ -1461,6 +1492,11 @@ func (s *CoordinationGrant) SetDeadlineAt(val time.Time) {
 // SetOnDeadline sets the value of OnDeadline.
 func (s *CoordinationGrant) SetOnDeadline(val CoordinationGrantOnDeadline) {
 	s.OnDeadline = val
+}
+
+// SetArchiveAfterSeconds sets the value of ArchiveAfterSeconds.
+func (s *CoordinationGrant) SetArchiveAfterSeconds(val int) {
+	s.ArchiveAfterSeconds = val
 }
 
 // SetDescendantsCreated sets the value of DescendantsCreated.
@@ -1706,10 +1742,13 @@ type CoordinationPolicy struct {
 	MaxMessagesPerLink OptInt `json:"maxMessagesPerLink"`
 	// Structured harnesses helpers may use; each must be on the Project allowlist. Defaults to the lead's
 	// harness.
-	AllowedHarnesses []string                           `json:"allowedHarnesses"`
-	DeadlineSeconds  OptInt                             `json:"deadlineSeconds"`
-	OnDeadline       OptCoordinationPolicyOnDeadline    `json:"onDeadline"`
-	SpawnApproval    OptCoordinationPolicySpawnApproval `json:"spawnApproval"`
+	AllowedHarnesses []string `json:"allowedHarnesses"`
+	DeadlineSeconds  OptInt   `json:"deadlineSeconds"`
+	// How long a finished helper stays idle before its session is ended and its Thread paused. 0 disables
+	// auto-archive; otherwise at least 60. Archiving never deletes a workspace or transcript.
+	ArchiveAfterSeconds OptInt                             `json:"archiveAfterSeconds"`
+	OnDeadline          OptCoordinationPolicyOnDeadline    `json:"onDeadline"`
+	SpawnApproval       OptCoordinationPolicySpawnApproval `json:"spawnApproval"`
 }
 
 // GetMaxDepth returns the value of MaxDepth.
@@ -1745,6 +1784,11 @@ func (s *CoordinationPolicy) GetAllowedHarnesses() []string {
 // GetDeadlineSeconds returns the value of DeadlineSeconds.
 func (s *CoordinationPolicy) GetDeadlineSeconds() OptInt {
 	return s.DeadlineSeconds
+}
+
+// GetArchiveAfterSeconds returns the value of ArchiveAfterSeconds.
+func (s *CoordinationPolicy) GetArchiveAfterSeconds() OptInt {
+	return s.ArchiveAfterSeconds
 }
 
 // GetOnDeadline returns the value of OnDeadline.
@@ -1790,6 +1834,11 @@ func (s *CoordinationPolicy) SetAllowedHarnesses(val []string) {
 // SetDeadlineSeconds sets the value of DeadlineSeconds.
 func (s *CoordinationPolicy) SetDeadlineSeconds(val OptInt) {
 	s.DeadlineSeconds = val
+}
+
+// SetArchiveAfterSeconds sets the value of ArchiveAfterSeconds.
+func (s *CoordinationPolicy) SetArchiveAfterSeconds(val OptInt) {
+	s.ArchiveAfterSeconds = val
 }
 
 // SetOnDeadline sets the value of OnDeadline.
@@ -7374,6 +7423,49 @@ func (s *ProjectThreadIntentState) UnmarshalText(data []byte) error {
 	}
 }
 
+type PromoteCapsuleBadRequest ErrorEnvelope
+
+func (*PromoteCapsuleBadRequest) promoteCapsuleRes() {}
+
+type PromoteCapsuleConflict ErrorEnvelope
+
+func (*PromoteCapsuleConflict) promoteCapsuleRes() {}
+
+type PromoteCapsuleNotFound ErrorEnvelope
+
+func (*PromoteCapsuleNotFound) promoteCapsuleRes() {}
+
+// Ref: #/components/schemas/PromoteCapsuleRequest
+type PromoteCapsuleRequest struct {
+	ExpectedResourceVersion int64 `json:"expectedResourceVersion"`
+	// Close the link to the lead. The lead can no longer message or hear from this Capsule.
+	Detach OptBool `json:"detach"`
+}
+
+// GetExpectedResourceVersion returns the value of ExpectedResourceVersion.
+func (s *PromoteCapsuleRequest) GetExpectedResourceVersion() int64 {
+	return s.ExpectedResourceVersion
+}
+
+// GetDetach returns the value of Detach.
+func (s *PromoteCapsuleRequest) GetDetach() OptBool {
+	return s.Detach
+}
+
+// SetExpectedResourceVersion sets the value of ExpectedResourceVersion.
+func (s *PromoteCapsuleRequest) SetExpectedResourceVersion(val int64) {
+	s.ExpectedResourceVersion = val
+}
+
+// SetDetach sets the value of Detach.
+func (s *PromoteCapsuleRequest) SetDetach(val OptBool) {
+	s.Detach = val
+}
+
+type PromoteCapsuleUnprocessableEntity ErrorEnvelope
+
+func (*PromoteCapsuleUnprocessableEntity) promoteCapsuleRes() {}
+
 // Ref: #/components/schemas/ProviderConnection
 type ProviderConnection struct {
 	ID       string                 `json:"id"`
@@ -9959,10 +10051,14 @@ type ThreadLink struct {
 	LastReportAt       OptDateTime                   `json:"lastReportAt"`
 	MessagesForwarded  int                           `json:"messagesForwarded"`
 	// Operator messages sent straight to this helper. They do not count against the lead's message limit.
-	OperatorMessages int       `json:"operatorMessages"`
-	CreatedAt        time.Time `json:"createdAt"`
-	UpdatedAt        time.Time `json:"updatedAt"`
-	ResourceVersion  int64     `json:"resourceVersion"`
+	OperatorMessages int `json:"operatorMessages"`
+	// Set while the helper is auto-archived; cleared when its Thread resumes.
+	ArchivedAt OptDateTime `json:"archivedAt"`
+	// When the helper was promoted to a main Capsule. Promoted helpers are never archived.
+	PromotedAt      OptDateTime `json:"promotedAt"`
+	CreatedAt       time.Time   `json:"createdAt"`
+	UpdatedAt       time.Time   `json:"updatedAt"`
+	ResourceVersion int64       `json:"resourceVersion"`
 }
 
 // GetID returns the value of ID.
@@ -10063,6 +10159,16 @@ func (s *ThreadLink) GetMessagesForwarded() int {
 // GetOperatorMessages returns the value of OperatorMessages.
 func (s *ThreadLink) GetOperatorMessages() int {
 	return s.OperatorMessages
+}
+
+// GetArchivedAt returns the value of ArchivedAt.
+func (s *ThreadLink) GetArchivedAt() OptDateTime {
+	return s.ArchivedAt
+}
+
+// GetPromotedAt returns the value of PromotedAt.
+func (s *ThreadLink) GetPromotedAt() OptDateTime {
+	return s.PromotedAt
 }
 
 // GetCreatedAt returns the value of CreatedAt.
@@ -10180,6 +10286,16 @@ func (s *ThreadLink) SetOperatorMessages(val int) {
 	s.OperatorMessages = val
 }
 
+// SetArchivedAt sets the value of ArchivedAt.
+func (s *ThreadLink) SetArchivedAt(val OptDateTime) {
+	s.ArchivedAt = val
+}
+
+// SetPromotedAt sets the value of PromotedAt.
+func (s *ThreadLink) SetPromotedAt(val OptDateTime) {
+	s.PromotedAt = val
+}
+
 // SetCreatedAt sets the value of CreatedAt.
 func (s *ThreadLink) SetCreatedAt(val time.Time) {
 	s.CreatedAt = val
@@ -10202,6 +10318,7 @@ const (
 	ThreadLinkCloseReasonFailed    ThreadLinkCloseReason = "failed"
 	ThreadLinkCloseReasonEnded     ThreadLinkCloseReason = "ended"
 	ThreadLinkCloseReasonRevoked   ThreadLinkCloseReason = "revoked"
+	ThreadLinkCloseReasonDetached  ThreadLinkCloseReason = "detached"
 )
 
 // AllValues returns all ThreadLinkCloseReason values.
@@ -10211,6 +10328,7 @@ func (ThreadLinkCloseReason) AllValues() []ThreadLinkCloseReason {
 		ThreadLinkCloseReasonFailed,
 		ThreadLinkCloseReasonEnded,
 		ThreadLinkCloseReasonRevoked,
+		ThreadLinkCloseReasonDetached,
 	}
 }
 
@@ -10224,6 +10342,8 @@ func (s ThreadLinkCloseReason) MarshalText() ([]byte, error) {
 	case ThreadLinkCloseReasonEnded:
 		return []byte(s), nil
 	case ThreadLinkCloseReasonRevoked:
+		return []byte(s), nil
+	case ThreadLinkCloseReasonDetached:
 		return []byte(s), nil
 	default:
 		return nil, errors.Errorf("invalid value: %q", s)
@@ -10244,6 +10364,9 @@ func (s *ThreadLinkCloseReason) UnmarshalText(data []byte) error {
 		return nil
 	case ThreadLinkCloseReasonRevoked:
 		*s = ThreadLinkCloseReasonRevoked
+		return nil
+	case ThreadLinkCloseReasonDetached:
+		*s = ThreadLinkCloseReasonDetached
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)

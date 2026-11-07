@@ -19,6 +19,7 @@ type leadFlags struct {
 	allowHarnesses     []string
 	deadline           time.Duration
 	onDeadline         string
+	archiveAfter       time.Duration
 }
 
 func (f *leadFlags) register(command *cobra.Command) {
@@ -34,13 +35,15 @@ func (f *leadFlags) register(command *cobra.Command) {
 	flags.DurationVar(&f.deadline, "lead-deadline", 0, "how long the lead may coordinate (default 8h, 5m to 72h)")
 	flags.StringVar(&f.onDeadline, "on-deadline", "",
 		"at the deadline: cancel_and_pause (default) or stop_new_work")
+	flags.DurationVar(&f.archiveAfter, "archive-after", 0,
+		"idle time before a finished helper is paused and archived (default 24h, 1m to 720h; 0 disables)")
 }
 
 func (f *leadFlags) policy(command *cobra.Command) (client.OptCoordinationPolicy, error) {
 	if !f.lead {
 		for _, name := range []string{
 			"max-children", "max-descendants", "max-live-capsules", "max-messages-per-link",
-			"allow-harness", "lead-deadline", "on-deadline",
+			"allow-harness", "lead-deadline", "on-deadline", "archive-after",
 		} {
 			if command.Flags().Changed(name) {
 				return client.OptCoordinationPolicy{}, fmt.Errorf("--%s requires --lead", name)
@@ -64,6 +67,12 @@ func (f *leadFlags) policy(command *cobra.Command) (client.OptCoordinationPolicy
 			return client.OptCoordinationPolicy{}, errors.New("--lead-deadline must be whole seconds")
 		}
 		policy.DeadlineSeconds = client.NewOptInt(int(f.deadline / time.Second))
+	}
+	if command.Flags().Changed("archive-after") {
+		if f.archiveAfter < 0 || f.archiveAfter%time.Second != 0 {
+			return client.OptCoordinationPolicy{}, errors.New("--archive-after must be 0 or whole seconds")
+		}
+		policy.ArchiveAfterSeconds = client.NewOptInt(int(f.archiveAfter / time.Second))
 	}
 	switch f.onDeadline {
 	case "":
@@ -96,10 +105,20 @@ func newThreadLinksCommand(config *cliConfig) *cobra.Command {
 				return writeJSON(config.stdout, page)
 			}
 			for _, link := range page.Items {
+				state := string(link.State)
+				if reason, ok := link.CloseReason.Get(); ok {
+					state += "(" + string(reason) + ")"
+				}
+				if link.PromotedAt.Set {
+					state += "\tpromoted"
+				}
+				if link.ArchivedAt.Set {
+					state += "\tarchived"
+				}
 				if _, err := fmt.Fprintf(config.stdout,
-					"%s\t%s\t%s\tphase=%s\treports=%d\tthread=%s\tcapsule=%s\n",
+					"%s\t%s\t%s\tphase=%s\treports=%d\tthread=%s\tcapsule=%s\tstate=%s\n",
 					link.ID, link.Name, link.Harness, link.Phase, link.ReportSeq,
-					link.ChildThreadId, link.ChildCapsuleId,
+					link.ChildThreadId, link.ChildCapsuleId, state,
 				); err != nil {
 					return err
 				}
@@ -180,8 +199,8 @@ func writeBoard(config *cliConfig, page *client.BoardPage) error {
 		line := fmt.Sprintf("%s\t%s\t%s\tcapsule=%s\tthread=%s\tsince=%s",
 			status, name, harness, item.Capsule.ID, thread, item.Since.Format(time.RFC3339))
 		if rollup, ok := item.ChildRollup.Get(); ok {
-			line += fmt.Sprintf("\thelpers=%d working=%d idle=%d done=%d needs_you=%d failed=%d",
-				rollup.Total, rollup.Working, rollup.Idle, rollup.Done, rollup.NeedsYou, rollup.Failed)
+			line += fmt.Sprintf("\thelpers=%d working=%d idle=%d done=%d needs_you=%d failed=%d archived=%d",
+				rollup.Total, rollup.Working, rollup.Idle, rollup.Done, rollup.NeedsYou, rollup.Failed, rollup.Archived)
 		}
 		if delivery, ok := item.LatestDelivery.Get(); ok {
 			line += "\tdelivery=" + string(delivery.State)
@@ -267,10 +286,61 @@ func (c *cliConfig) writeCoordinationGrant(grant client.CoordinationGrant) error
 		return writeJSON(c.stdout, &grant)
 	}
 	_, err := fmt.Fprintf(c.stdout,
-		"%s\tstate=%s\tlead=%s\thelpers=%d/%d\tchildren=%d\tlive=%d\tharnesses=%s\tdeadline=%s\tversion=%d\n",
+		"%s\tstate=%s\tlead=%s\thelpers=%d/%d\tchildren=%d\tlive=%d\tharnesses=%s\tdeadline=%s\tarchive-after=%s\tversion=%d\n",
 		grant.ID, grant.State, grant.RootThreadId, grant.DescendantsCreated, grant.MaxDescendants,
 		grant.MaxChildren, grant.MaxLiveCapsules, strings.Join(grant.AllowedHarnesses, ","),
-		grant.DeadlineAt.Format(time.RFC3339), grant.ResourceVersion,
+		grant.DeadlineAt.Format(time.RFC3339), archiveAfterText(grant.ArchiveAfterSeconds), grant.ResourceVersion,
 	)
 	return err
+}
+
+func archiveAfterText(seconds int) string {
+	if seconds == 0 {
+		return "off"
+	}
+	return (time.Duration(seconds) * time.Second).String()
+}
+
+func newCapsulePromoteCommand(config *cliConfig) *cobra.Command {
+	var expected int64
+	var detach bool
+	var key string
+	command := &cobra.Command{
+		Use:   "promote CAPSULE_ID",
+		Short: "Make a helper sub-Capsule a main Capsule",
+		Long: "Make a helper sub-Capsule a main Capsule. It leaves the lead's auto-archive and\n" +
+			"cancellation, and keeps its link so the lead can still message it and hear its\n" +
+			"reports. --detach closes the link too; a promoted Capsule can be detached later.\n" +
+			"Promotion is permanent and grants no coordination authority.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(command *cobra.Command, args []string) error {
+			if expected <= 0 {
+				return errors.New("--expected-version must be greater than zero")
+			}
+			idempotency, err := idempotencyKey(key)
+			if err != nil {
+				return err
+			}
+			api, err := newAPI(config)
+			if err != nil {
+				return err
+			}
+			result, err := api.PromoteCapsule(command.Context(),
+				&client.PromoteCapsuleRequest{ExpectedResourceVersion: expected, Detach: client.NewOptBool(detach)},
+				client.PromoteCapsuleParams{CapsuleId: args[0], IdempotencyKey: idempotency},
+			)
+			if err != nil {
+				return apiCallError(err)
+			}
+			success, ok := result.(*client.CapsuleHeaders)
+			if !ok {
+				return responseError(result)
+			}
+			return config.writeCapsule(success.Response)
+		},
+	}
+	command.Flags().Int64Var(&expected, "expected-version", 0, "required current resource version")
+	command.Flags().BoolVar(&detach, "detach", false, "also close the link to the lead")
+	command.Flags().StringVar(&key, "idempotency-key", "", "mutation replay key (generated if omitted)")
+	return command
 }

@@ -369,6 +369,23 @@ said, and that report reaches the lead like any other. Store triggers keep the
 counters monotonic so a notice cannot be replayed or suppressed by rewinding
 them.
 
+Helper lifecycle changes add no authority either. The auto-archive sweep
+only ends an idle helper session, pauses its Thread and marks the link; it
+never sends a prompt, deletes a workspace or transcript, or resumes a stopped
+Capsule, and it skips helpers that need the operator, failed, are working,
+have a delivery in flight, or were promoted, so a lead cannot use it to hide a
+pending permission request or a failure. Archiving is an operator-set grant
+limit fixed at spawn. The link is marked before the session is cancelled so
+the cancellation is not reported to the lead, and an archived helper refuses
+the lead's messages until the operator resumes it. Promotion is an operator
+API call only; a Capsule cannot promote itself or a sibling. A promoted
+helper gains no grant, so its agent's coordination requests are still
+refused, and it is no longer stopped by its lead's cancel or revoke, which is
+the point of taking it over. Detaching closes the link for good, so the lead
+can no longer message it or hear from it, and the Capsule then counts only
+toward installation limits. Store triggers keep promotion permanent and refuse
+a detach without promotion.
+
 ### Supply-chain and setup execution
 
 Package managers, install scripts, binaries, actions, generated code, and updates may be compromised. Pin project and CI dependencies, verify downloaded release checksums where practical, scan dependencies and secrets, and keep build provenance. Setup hooks execute only inside the selected isolation boundary with the same limits and egress policy as agent commands. Never run repository hooks on the control-plane host.

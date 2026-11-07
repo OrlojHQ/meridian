@@ -201,6 +201,10 @@ type PauseCapsuleRes interface {
 	pauseCapsuleRes()
 }
 
+type PromoteCapsuleRes interface {
+	promoteCapsuleRes()
+}
+
 type ProxyProviderInferenceRes interface {
 	proxyProviderInferenceRes()
 }

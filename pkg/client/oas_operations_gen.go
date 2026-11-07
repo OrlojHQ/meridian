@@ -68,6 +68,7 @@ const (
 	PatchProjectOperation                   OperationName = "PatchProject"
 	PauseCapsuleOperation                   OperationName = "PauseCapsule"
 	PreviewHarnessSetupOperation            OperationName = "PreviewHarnessSetup"
+	PromoteCapsuleOperation                 OperationName = "PromoteCapsule"
 	ProxyProviderInferenceOperation         OperationName = "ProxyProviderInference"
 	PutSecretOperation                      OperationName = "PutSecret"
 	ReadCapsuleFileOperation                OperationName = "ReadCapsuleFile"

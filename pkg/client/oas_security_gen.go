@@ -76,6 +76,7 @@ var operationRolesBearerAuth = map[string][]string{
 	PatchProjectOperation:                   []string{},
 	PauseCapsuleOperation:                   []string{},
 	PreviewHarnessSetupOperation:            []string{},
+	PromoteCapsuleOperation:                 []string{},
 	PutSecretOperation:                      []string{},
 	ReadCapsuleFileOperation:                []string{},
 	RespondThreadOperation:                  []string{},
