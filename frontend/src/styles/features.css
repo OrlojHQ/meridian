@@ -49,7 +49,7 @@
 
 .thread-fleet .thread-summary {
   display: grid;
-  grid-template-columns: minmax(12rem, 1.5fr) repeat(4, minmax(6rem, auto));
+  grid-template-columns: auto minmax(0, 1fr) auto minmax(6rem, auto) minmax(3rem, auto);
   align-items: center;
   gap: 0.8rem;
   margin: 0;
@@ -62,6 +62,75 @@
 
 .thread-fleet .thread-summary:hover {
   background: var(--surface-hover);
+}
+
+.thread-summary-main {
+  min-width: 0;
+}
+
+.thread-summary-main > a {
+  display: block;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.88rem;
+  font-weight: 650;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thread-summary-main > a:hover {
+  text-decoration: underline;
+}
+
+.thread-summary-count,
+.thread-summary time {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.thread-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.15rem 0.5rem;
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.thread-meta > :not(:first-child)::before {
+  content: "·";
+  display: inline-block;
+  margin-right: 0.5rem;
+  color: var(--faint);
+}
+
+.thread-meta a {
+  color: inherit;
+}
+
+.thread-status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  justify-self: start;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.18rem 0.55rem;
+  color: var(--text);
+  background: var(--surface-subtle);
+  font-size: 0.68rem;
+  font-weight: 620;
+  white-space: nowrap;
+}
+
+.thread-status-attention {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--border));
+  color: var(--danger);
+  background: var(--danger-soft);
 }
 
 .inbox-group > h2,
@@ -395,6 +464,10 @@
 .thread-workspace.thread-chat {
   height: 100%;
   min-height: 0;
+}
+
+.thread-workspace > .workspace-view-header {
+  flex: none;
 }
 
 .capsule-workspace.chat-session {
@@ -2211,6 +2284,25 @@ button.tool-line:hover {
   }
 
   .activity-compact small {
+    display: none;
+  }
+
+  .thread-fleet .thread-summary {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: start;
+    row-gap: 0.4rem;
+  }
+
+  .thread-summary time {
+    grid-row: 1;
+    grid-column: 3;
+  }
+
+  .thread-summary .thread-status-chip {
+    grid-column: 2;
+  }
+
+  .thread-summary-count {
     display: none;
   }
 

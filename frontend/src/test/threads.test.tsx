@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MeridianAPIError, api } from "../api/client";
 import type {
   Capsule,
+  Project,
   Thread,
   ThreadBlock,
 } from "../api/generated/types.gen";
@@ -19,6 +20,14 @@ import {
   mergeThreadBlocks,
   sanitizeThreadText,
 } from "../components/Threads";
+
+const project: Project = {
+  id: "project-1",
+  name: "Project",
+  createdAt: "2026-08-23T00:00:00Z",
+  updatedAt: "2026-08-23T00:00:00Z",
+  resourceVersion: 1,
+};
 
 const capsule: Capsule = {
   id: "capsule-1",
@@ -87,15 +96,7 @@ afterEach(() => {
 
 describe("Thread routes and creation", () => {
   it("renders an empty fleet and retained Thread route", async () => {
-    vi.spyOn(api, "projects").mockResolvedValue({
-      items: [{
-        id: "project-1",
-        name: "Project",
-        createdAt: capsule.createdAt,
-        updatedAt: capsule.updatedAt,
-        resourceVersion: 1,
-      }],
-    });
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
     vi.spyOn(api, "capsules").mockResolvedValue({ items: [capsule] });
     vi.spyOn(api, "threads").mockResolvedValue({ items: [] });
     const empty = wrapper(<ThreadFleet />, "/ui/threads");
@@ -104,10 +105,74 @@ describe("Thread routes and creation", () => {
 
     vi.mocked(api.threads).mockResolvedValue({ items: [thread] });
     wrapper(<ThreadFleet />, "/ui/threads");
-    expect(await screen.findByRole("link", { name: thread.harness })).toHaveAttribute(
+    expect(await screen.findByRole("link", { name: capsule.name })).toHaveAttribute(
       "href",
       "/ui/threads/thread-1",
     );
+  });
+
+  it("titles fleet rows by Capsule, names subagents by their lead, and lists needs-you first", async () => {
+    const subagentCapsule: Capsule = {
+      ...capsule,
+      id: "capsule-2",
+      name: "fix-login-tests",
+      role: "sub",
+      leadThreadId: "lead-thread",
+    };
+    const lead: Thread = {
+      ...thread,
+      id: "lead-thread",
+      harness: "claude",
+      coordinationGrantId: "grant-1",
+      depth: 0,
+      createdAt: "2026-08-23T00:00:00Z",
+      updatedAt: "2026-08-23T00:05:00Z",
+    };
+    const second: Thread = {
+      ...thread,
+      id: "second-thread",
+      currentRunId: undefined,
+      currentRunState: undefined,
+      createdAt: "2026-08-23T00:02:00Z",
+      updatedAt: "2026-08-23T00:03:00Z",
+    };
+    const subagent: Thread = {
+      ...thread,
+      id: "subagent-thread",
+      capsuleId: subagentCapsule.id,
+      coordinationGrantId: "grant-1",
+      parentThreadId: lead.id,
+      rootThreadId: lead.id,
+      depth: 1,
+      awaiting: { kind: "permission", since: "2026-08-23T00:01:00Z" },
+      updatedAt: "2026-08-23T00:01:00Z",
+    };
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
+    vi.spyOn(api, "capsules").mockResolvedValue({ items: [capsule, subagentCapsule] });
+    vi.spyOn(api, "threads").mockImplementation(async (capsuleId) => ({
+      items: capsuleId === capsule.id ? [lead, second] : [subagent],
+    }));
+    const view = wrapper(<ThreadFleet />, "/ui/threads");
+
+    const list = await screen.findByRole("list", { name: "Retained Threads" });
+    const rows = within(list).getAllByRole("listitem");
+    const titles = rows.map((row) => within(row).getAllByRole("link")[0].textContent);
+    expect(titles).toEqual([
+      "fix-login-tests",
+      "Workspace · session 1",
+      "Workspace · session 2",
+    ]);
+    expect(new Set(titles).size).toBe(titles.length);
+    expect(rows[0]).toHaveTextContent("Subagent of Workspace");
+    expect(rows[0]).toHaveTextContent("Waiting for permission");
+    expect(rows[0]).toHaveTextContent("Project");
+    expect(rows[1]).toHaveTextContent("Lead");
+    expect(rows[1]).toHaveTextContent("Claude Code");
+    expect(rows[2]).toHaveTextContent("Idle");
+    expect(view.container).not.toHaveTextContent(/helper/i);
+    for (const id of [lead.id, second.id, subagent.id]) {
+      expect(view.container).not.toHaveTextContent(id);
+    }
   });
 
   it("creates and atomically starts a first task", async () => {
@@ -234,7 +299,8 @@ describe("Thread detail transcript and controls", () => {
     expect(screen.queryByText("waiting")).not.toBeInTheDocument();
     expect(screen.getByText("bad[31mthing")).toBeInTheDocument();
     expect(view.container.textContent).not.toMatch(/[\u001b\u009b]/);
-    expect(await screen.findByRole("link", { name: capsule.name })).toHaveAttribute(
+    expect(await screen.findByRole("heading", { level: 1, name: capsule.name })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open in Capsule" })).toHaveAttribute(
       "href",
       "/ui/capsules/capsule-1?session=thread-1",
     );
@@ -276,9 +342,10 @@ describe("Thread detail transcript and controls", () => {
     expect(abort).toHaveBeenCalled();
   });
 
-  it("names the agent and Capsule in plain words", async () => {
+  it("titles the Thread by its Capsule and names the agent and Project", async () => {
     vi.spyOn(api, "thread").mockResolvedValue({ ...thread, harness: "claude" });
     vi.spyOn(api, "capsule").mockResolvedValue(capsule);
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
     vi.spyOn(api, "threadBlocks").mockResolvedValue({
       items: [],
       nextCursor: 0,
@@ -298,13 +365,15 @@ describe("Thread detail transcript and controls", () => {
       </Routes>,
     );
 
-    expect(await screen.findByRole("heading", { level: 1, name: "Claude Code" })).toBeInTheDocument();
-    expect(await screen.findByRole("link", { name: "Workspace" })).toHaveAttribute(
+    expect(await screen.findByRole("heading", { level: 1, name: "Workspace" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open in Capsule" })).toHaveAttribute(
       "href",
       "/ui/capsules/capsule-1?session=thread-1",
     );
     const header = view.container.querySelector("header")!;
-    expect(header).toHaveTextContent("The transcript is encrypted at rest.");
+    expect(within(header).getByText("Claude Code")).toBeInTheDocument();
+    expect(await within(header).findByText("Project")).toBeInTheDocument();
+    expect(within(header).getByText("Working")).toBeInTheDocument();
     expect(header).not.toHaveTextContent(capsule.id);
     expect(header).not.toHaveTextContent(thread.id);
     expect(view.container).not.toHaveTextContent(/Structured Thread|Retained encrypted/);
@@ -313,7 +382,7 @@ describe("Thread detail transcript and controls", () => {
     expect(screen.getByRole("menuitem", { name: "Crypto-shred" })).toBeInTheDocument();
   });
 
-  it("falls back to a generic Capsule link until the Capsule loads", async () => {
+  it("titles the Thread by its agent until the Capsule loads", async () => {
     vi.spyOn(api, "thread").mockResolvedValue(thread);
     vi.spyOn(api, "capsule").mockImplementation(() => new Promise(() => {}));
     vi.spyOn(api, "threadBlocks").mockResolvedValue({
@@ -327,7 +396,7 @@ describe("Thread detail transcript and controls", () => {
         <Route path="/ui/threads/:threadId" element={<ThreadDetail />} />
       </Routes>,
     );
-    expect(await screen.findByRole("link", { name: "its Capsule" })).toHaveAttribute(
+    expect(await screen.findByRole("link", { name: "Open in Capsule" })).toHaveAttribute(
       "href",
       "/ui/capsules/capsule-1?session=thread-1",
     );

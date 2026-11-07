@@ -201,7 +201,7 @@ function terminalSession(harness: string, runs: Run[]): CapsuleSession {
   return { ...base, group: "finished", label: run.state === "Cancelled" ? "Stopped" : "Finished", since };
 }
 
-function threadSession(thread: Thread): CapsuleSession {
+export function threadSession(thread: Thread): CapsuleSession {
   const base = {
     id: thread.id,
     kind: "thread" as const,
