@@ -127,17 +127,17 @@ export function StructuredLauncher({
                 checked={lead}
                 onChange={(event) => setLead(event.currentTarget.checked)}
               />
-              Lead with helpers
+              Lead agent with subagents
             </label>
             <p className="muted-copy">
-              The agent can start helper Threads, each in its own Capsule,
-              and collect their results. Helpers run {harnessName(harness)}{" "}
+              The agent can start subagent Threads, each in its own Capsule,
+              and collect their results. Subagents run {harnessName(harness)}{" "}
               and ask you, not the lead, for permissions.
             </p>
             {lead && (
               <div className="lead-limits">
                 <label htmlFor="spawn-max-children">
-                  Helpers
+                  Subagents
                   <input
                     id="spawn-max-children"
                     name="maxChildren"

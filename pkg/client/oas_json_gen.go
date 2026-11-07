@@ -23377,8 +23377,8 @@ func (s *ThreadOriginKind) Decode(d *jx.Decoder) error {
 	switch ThreadOriginKind(v) {
 	case ThreadOriginKindFromLead:
 		*s = ThreadOriginKindFromLead
-	case ThreadOriginKindFromHelpers:
-		*s = ThreadOriginKindFromHelpers
+	case ThreadOriginKindFromSubagents:
+		*s = ThreadOriginKindFromSubagents
 	default:
 		*s = ThreadOriginKind(v)
 	}

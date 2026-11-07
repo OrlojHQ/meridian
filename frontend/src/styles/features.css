@@ -2673,7 +2673,7 @@ button.tool-line:hover {
   border-style: dashed;
 }
 
-.thread-helpers {
+.thread-subagents {
   display: grid;
   gap: 0.5rem;
   margin: 0 0 0.75rem;
@@ -2683,23 +2683,23 @@ button.tool-line:hover {
   background: var(--surface-raised);
 }
 
-.thread-helpers header {
+.thread-subagents header {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.6rem;
 }
 
-.thread-helpers h2 {
+.thread-subagents h2 {
   margin: 0;
   font-size: 0.82rem;
 }
 
-.thread-helpers header button {
+.thread-subagents header button {
   margin-left: auto;
 }
 
-.helper-list {
+.subagent-list {
   display: grid;
   gap: 0.35rem;
   margin: 0;
@@ -2707,7 +2707,7 @@ button.tool-line:hover {
   list-style: none;
 }
 
-.helper-list li {
+.subagent-list li {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   grid-auto-columns: auto;
@@ -2717,12 +2717,12 @@ button.tool-line:hover {
   font-size: 0.78rem;
 }
 
-.helper-list li.helper-archived,
-.board-helpers li.board-archived {
+.subagent-list li.subagent-archived,
+.board-subagents li.board-archived {
   display: block;
 }
 
-.helper-archived summary,
+.subagent-archived summary,
 .board-archived summary {
   width: fit-content;
   color: var(--muted);
@@ -2730,39 +2730,39 @@ button.tool-line:hover {
   cursor: pointer;
 }
 
-.helper-archived .helper-list,
-.board-archived .board-helpers {
+.subagent-archived .subagent-list,
+.board-archived .board-subagents {
   margin-top: 0.35rem;
   opacity: 0.8;
 }
 
-.helper-of p {
+.subagent-of p {
   margin: 0;
 }
 
-.promote-helper {
+.promote-subagent {
   display: grid;
   gap: 0.4rem;
   margin-top: 0.5rem;
   justify-items: start;
 }
 
-.inbox-actions .promote-helper {
+.inbox-actions .promote-subagent {
   margin-top: 0;
 }
 
-.helper-name {
+.subagent-name {
   font-family: var(--font-mono, monospace);
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.helper-phase.phase-awaiting_operator,
-.helper-phase.phase-failed {
+.subagent-phase.phase-awaiting_operator,
+.subagent-phase.phase-failed {
   color: var(--danger, #b42318);
 }
 
-.sidebar-helpers {
+.sidebar-subagents {
   margin: 0 0 0 0.9rem;
   padding: 0 0 0 0.45rem;
   border-left: 1px solid var(--border);
@@ -2793,7 +2793,7 @@ button.tool-line:hover {
   font-weight: 600;
 }
 
-.board-helpers {
+.board-subagents {
   display: grid;
   gap: 0.15rem;
   margin: 0.5rem 0 0;
@@ -2802,7 +2802,7 @@ button.tool-line:hover {
   list-style: none;
 }
 
-.board-helpers li {
+.board-subagents li {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
@@ -2810,14 +2810,14 @@ button.tool-line:hover {
   font-size: 0.75rem;
 }
 
-.board-helper-name {
+.board-subagent-name {
   display: flex;
   min-width: 0;
   align-items: center;
   gap: 0.4rem;
 }
 
-.board-helpers a {
+.board-subagents a {
   min-width: 0;
   overflow: hidden;
   color: var(--text);
@@ -2825,8 +2825,8 @@ button.tool-line:hover {
   white-space: nowrap;
 }
 
-.board-helpers small,
-.board-helpers time {
+.board-subagents small,
+.board-subagents time {
   color: var(--muted);
   font-size: 0.68rem;
 }

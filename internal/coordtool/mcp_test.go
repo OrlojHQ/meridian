@@ -118,7 +118,7 @@ func TestMCPServerExposesToolsOnlyToLeads(t *testing.T) {
 		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}`,
 		`{"jsonrpc":"2.0","method":"notifications/initialized"}`,
 		`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`,
-		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"meridian_spawn","arguments":{"name":"helper-1","harness":"mock","prompt":"do it"}}}`,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"meridian_spawn","arguments":{"name":"subagent-1","harness":"mock","prompt":"do it"}}}`,
 		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"meridian_spawn","arguments":{"name":"x","harness":"mock","prompt":"p","capsule":"other"}}}`,
 		`{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"meridian_promote"}}`,
 		`{"jsonrpc":"2.0","id":6,"method":"resources/list"}`,
@@ -137,7 +137,7 @@ func TestMCPServerExposesToolsOnlyToLeads(t *testing.T) {
 		t.Fatalf("tools = %d", len(tools))
 	}
 	spawn := byID(responses, 3)["result"].(map[string]any)
-	if spawn["isError"] != false || !strings.Contains(spawn["content"].([]any)[0].(map[string]any)["text"].(string), "link-helper-1") {
+	if spawn["isError"] != false || !strings.Contains(spawn["content"].([]any)[0].(map[string]any)["text"].(string), "link-subagent-1") {
 		t.Fatalf("spawn = %v", spawn)
 	}
 	if byID(responses, 4)["result"].(map[string]any)["isError"] != true {
@@ -154,7 +154,7 @@ func TestMCPServerExposesToolsOnlyToLeads(t *testing.T) {
 			spawns = append(spawns, request)
 		}
 	}
-	if len(spawns) != 1 || spawns[0].Key != "spawn-helper-1" {
+	if len(spawns) != 1 || spawns[0].Key != "spawn-subagent-1" {
 		t.Fatalf("spawn requests = %+v", spawns)
 	}
 }

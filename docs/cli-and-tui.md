@@ -107,13 +107,13 @@ ambiguous mutation with the same `--idempotency-key`; a replay never allocates
 a second Capsule. Capsule-scoped `thread create` remains available for
 power-user workflows.
 
-### Leads and helpers
+### Leads and subagents
 
 `--lead` gives the new Thread a Coordination Grant, so its agent can start
-helper Threads in their own Capsules and read their reports (ADR 0029):
+subagent Threads in their own Capsules and read their reports (ADR 0029):
 
 ```console
-printf '%s' 'split the review across helpers' | meridian thread spawn PROJECT_ID \
+printf '%s' 'split the review across subagents' | meridian thread spawn PROJECT_ID \
   --harness claude --prompt-stdin --lead --max-children 3 --lead-deadline 2h
 ```
 
@@ -121,41 +121,42 @@ printf '%s' 'split the review across helpers' | meridian thread spawn PROJECT_ID
 `--max-live-capsules`, `--max-messages-per-link`, repeatable
 `--allow-harness` (default: the lead's harness), and `--on-deadline`
 (`cancel_and_pause` or `stop_new_work`) bound the grant; they are fixed at
-spawn. `meridian thread links THREAD_ID` lists a lead's helpers,
+spawn. `meridian thread links THREAD_ID` lists a lead's subagents,
 `meridian grant show GRANT_ID` shows the grant, and
 `meridian grant revoke GRANT_ID --expected-version N` ends it and stops the
-helpers (`--keep-helpers` leaves them running). `meridian capsule list --role
-sub` lists helper Capsules. A helper is an ordinary Thread: its permission and
-input requests come to you, never to its lead. If you message a helper
-directly, the lead's next report wake says so (without your text), and the
-message does not count against `--max-messages-per-link`.
+subagents (`--keep-subagents` leaves them running).
+`meridian capsule list --role sub` lists subagent Capsules. A subagent is an
+ordinary Thread: its permission and input requests come to you, never to its
+lead. If you message a subagent directly, the lead's next report wake says so
+(without your text), and the message does not count against
+`--max-messages-per-link`.
 
-A finished helper is paused and archived once it has been idle for
+A finished subagent is paused and archived once it has been idle for
 `--archive-after` (default 24h, 1m to 720h; `0` disables it). Its Thread
 moves to paused, its session ends, and idle pause stops the Capsule later;
-the workspace and transcript stay. Helpers that need you, failed, or are still
-working are never archived. Resume the helper's Thread to bring it back.
-`meridian capsule promote CAPSULE_ID --expected-version N` makes a helper a
+the workspace and transcript stay. Subagents that need you, failed, or are still
+working are never archived. Resume the subagent's Thread to bring it back.
+`meridian capsule promote CAPSULE_ID --expected-version N` makes a subagent a
 main Capsule: it joins your sidebar, is never archived or stopped by its lead,
 and keeps its link so the lead can still message it. `--detach` also closes the
-link, now or later. Promotion is permanent and gives the helper no
-coordination authority. `thread links` marks promoted and archived helpers,
+link, now or later. Promotion is permanent and gives the subagent no
+coordination authority. `thread links` marks promoted and archived subagents,
 and `grant show` prints the archive period.
 
 ### Board
 
 `meridian board` lists every Capsule across Projects by status: needs you
 (oldest first), working, PR open, ready for review, idle, paused and sealed.
-Leads show a helper rollup; helpers stay folded under their lead unless they
-need you, in which case they get their own row. `--all` lists every helper,
+Leads show a subagent rollup; subagents stay folded under their lead unless they
+need you, in which case they get their own row. `--all` lists every subagent,
 `--expand none` lists only main Capsules, and `--project PROJECT_ID` limits the
-board to one Project. Rollups also count archived helpers. The browser has the
-same view at `/ui/board`, with "Show all helpers" and a per-lead helper fold
-whose archived helpers sit in an "Archived (n)" fold; the command palette's
+board to one Project. Rollups also count archived subagents. The browser has the
+same view at `/ui/board`, with "Show all subagents" and a per-lead subagent fold
+whose archived subagents sit in an "Archived (n)" fold; the command palette's
 "Next item needing me" opens the oldest item that needs you. The browser
-sidebar lists main Capsules, each lead with its helper rollup, plus helpers
-that need you nested under their lead. A helper's Thread view and its
-needs-you board row offer "Promote to main"; a promoted helper that kept its
+sidebar lists main Capsules, each lead with its subagent rollup, plus subagents
+that need you nested under their lead. A subagent's Thread view and its
+needs-you board row offer "Promote to main"; a promoted subagent that kept its
 link offers "Detach from lead".
 
 Inside a lead Capsule the agent uses `meridian-coord`, which official packs

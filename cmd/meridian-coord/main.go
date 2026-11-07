@@ -25,8 +25,8 @@ func newRootCommand() *cobra.Command {
 	var socket string
 	command := &cobra.Command{
 		Use:   "meridian-coord",
-		Short: "Coordinate helper Threads from a Meridian lead Thread",
-		Long: "Coordinate helper Threads from inside a Meridian Capsule.\n\n" +
+		Short: "Coordinate subagent Threads from a Meridian lead Thread",
+		Long: "Coordinate subagent Threads from inside a Meridian Capsule.\n\n" +
 			"Requests go to the Capsule-local mailbox; meridiand pulls them and enforces the\n" +
 			"lead Thread's Coordination Grant. Output is one JSON response per command.",
 		Version:       buildinfo.Current().String(),
@@ -60,11 +60,11 @@ func newRootCommand() *cobra.Command {
 		newSpawnCommand(run),
 		newSendCommand(run),
 		newWaitCommand(run),
-		newLinkCommand("cancel", "Cancel a helper and pause its Capsule", coordproto.KindCancel, true, run),
-		newLinkCommand("status", "Show a helper's content-free status", coordproto.KindStatus, false, run),
-		newLinkCommand("result", "Show a helper's latest report without waiting", coordproto.KindResult, false, run),
+		newLinkCommand("cancel", "Cancel a subagent and pause its Capsule", coordproto.KindCancel, true, run),
+		newLinkCommand("status", "Show a subagent's content-free status", coordproto.KindStatus, false, run),
+		newLinkCommand("result", "Show a subagent's latest report without waiting", coordproto.KindResult, false, run),
 		&cobra.Command{
-			Use: "list", Short: "List helpers", Args: cobra.NoArgs,
+			Use: "list", Short: "List subagents", Args: cobra.NoArgs,
 			RunE: func(command *cobra.Command, _ []string) error {
 				return run(command, coordproto.Request{Type: coordproto.KindList})
 			},
@@ -108,7 +108,7 @@ func newSpawnCommand(run runner) *cobra.Command {
 	var name, harness, prompt, key string
 	command := &cobra.Command{
 		Use:   "spawn --name NAME --harness HARNESS [--prompt TEXT]",
-		Short: "Start a helper Thread in its own Capsule (prompt from --prompt or stdin)",
+		Short: "Start a subagent Thread in its own Capsule (prompt from --prompt or stdin)",
 		Args:  cobra.NoArgs,
 		RunE: func(command *cobra.Command, _ []string) error {
 			text, err := readPrompt(command, prompt)
@@ -120,9 +120,9 @@ func newSpawnCommand(run runner) *cobra.Command {
 			})
 		},
 	}
-	command.Flags().StringVar(&name, "name", "", "unique helper name ([a-z0-9-]{1,48})")
-	command.Flags().StringVar(&harness, "harness", "", "structured harness for the helper")
-	command.Flags().StringVar(&prompt, "prompt", "", "task for the helper (default: read stdin)")
+	command.Flags().StringVar(&name, "name", "", "unique subagent name ([a-z0-9-]{1,48})")
+	command.Flags().StringVar(&harness, "harness", "", "structured harness for the subagent")
+	command.Flags().StringVar(&prompt, "prompt", "", "task for the subagent (default: read stdin)")
 	command.Flags().StringVar(&key, "key", "", "idempotency key (default derives from --name)")
 	_ = command.MarkFlagRequired("name")
 	_ = command.MarkFlagRequired("harness")
@@ -133,7 +133,7 @@ func newSendCommand(run runner) *cobra.Command {
 	var prompt, key string
 	command := &cobra.Command{
 		Use:   "send LINK [--prompt TEXT]",
-		Short: "Send a follow-up message to a helper (prompt from --prompt or stdin)",
+		Short: "Send a follow-up message to a subagent (prompt from --prompt or stdin)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(command *cobra.Command, arguments []string) error {
 			text, err := readPrompt(command, prompt)
@@ -155,7 +155,7 @@ func newWaitCommand(run runner) *cobra.Command {
 	var timeout time.Duration
 	command := &cobra.Command{
 		Use:   "wait [LINK...]",
-		Short: "Wait for helper reports",
+		Short: "Wait for subagent reports",
 		Args:  cobra.MaximumNArgs(coordproto.MaxWaitLinks),
 		RunE: func(command *cobra.Command, arguments []string) error {
 			seconds := int(timeout / time.Second)
@@ -169,7 +169,7 @@ func newWaitCommand(run runner) *cobra.Command {
 			return run(command, request)
 		},
 	}
-	command.Flags().BoolVar(&all, "all", false, "wait until every listed helper has reported or closed")
+	command.Flags().BoolVar(&all, "all", false, "wait until every listed subagent has reported or closed")
 	command.Flags().DurationVar(&timeout, "timeout", coordproto.DefaultWaitSeconds*time.Second, "maximum wait")
 	return command
 }

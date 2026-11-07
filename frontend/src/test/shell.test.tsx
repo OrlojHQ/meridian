@@ -229,7 +229,7 @@ describe("application shell", () => {
     expect(gitStatus).not.toHaveBeenCalled();
   });
 
-  it("lists main Capsules with their helper rollup and only helpers that need you", async () => {
+  it("lists main Capsules with their subagent rollup and only subagents that need you", async () => {
     vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
     const lead: Capsule = { ...capsule, id: "capsule-lead", name: "Release lead", role: "main" };
     const leadThread: Thread = {
@@ -247,7 +247,7 @@ describe("application shell", () => {
     const blocked: Capsule = {
       ...capsule,
       id: "capsule-blocked",
-      name: "Blocked helper",
+      name: "Blocked subagent",
       role: "sub",
       leadThreadId: leadThread.id,
       linkId: "link-blocked",
@@ -281,9 +281,9 @@ describe("application shell", () => {
     );
 
     const leadRow = await screen.findByRole("link", { name: /Release lead/ });
-    expect(leadRow).toHaveTextContent("Helpers: 3/5 done, 1 needs you, 1 working, 2 archived");
-    const helpers = await screen.findByRole("list", { name: "Helpers of Release lead" });
-    expect(within(helpers).getByRole("link", { name: /Blocked helper/ })).toBeInTheDocument();
+    expect(leadRow).toHaveTextContent("Subagents: 3/5 done, 1 needs you, 1 working, 2 archived");
+    const subagents = await screen.findByRole("list", { name: "Subagents of Release lead" });
+    expect(within(subagents).getByRole("link", { name: /Blocked subagent/ })).toBeInTheDocument();
     expect(capsules).toHaveBeenCalledWith(project.id, expect.anything(), "main");
     expect(threads.mock.calls.map(([id]) => id).sort()).toEqual([blocked.id, lead.id]);
   });

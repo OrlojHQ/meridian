@@ -617,7 +617,7 @@ func newCapsuleCommand(config *cliConfig) *cobra.Command {
 	}
 	list.Flags().StringVar(&listCursor, "cursor", "", "pagination cursor")
 	list.Flags().IntVar(&listLimit, "limit", 50, "page size")
-	list.Flags().StringVar(&listRole, "role", "", "only main Capsules or only helper (sub) Capsules")
+	list.Flags().StringVar(&listRole, "role", "", "only main Capsules or only subagent (sub) Capsules")
 
 	get := &cobra.Command{
 		Use:   "get CAPSULE_ID",

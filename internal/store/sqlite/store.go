@@ -564,7 +564,7 @@ func (r *repository) UpdateCapsule(
 }
 
 // PromoteCapsule writes a Capsule's role, lead, link and promotion time.
-// The schema allows only promotion of a helper and detaching a promoted one.
+// The schema allows only promotion of a subagent and detaching a promoted one.
 func (r *repository) PromoteCapsule(
 	ctx context.Context,
 	capsule domain.Capsule,

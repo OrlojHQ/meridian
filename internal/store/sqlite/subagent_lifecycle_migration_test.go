@@ -58,7 +58,7 @@ func applyMigrationsBefore(t *testing.T, db *sql.DB, version int) {
 	}
 }
 
-func TestHelperLifecycleMigrationKeepsLinksAndRequests(t *testing.T) {
+func TestSubagentLifecycleMigrationKeepsLinksAndRequests(t *testing.T) {
 	ctx := context.Background()
 	dataDir := t.TempDir()
 	db, err := sql.Open("sqlite", filepath.Join(dataDir, "meridian.db"))

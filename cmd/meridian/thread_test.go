@@ -321,7 +321,7 @@ func TestThreadFollowUntilIdleExitsOnOpenStream(t *testing.T) {
 	}
 }
 
-func TestBoardListsRowsAndAsksForEveryHelper(t *testing.T) {
+func TestBoardListsRowsAndAsksForEverySubagent(t *testing.T) {
 	var query string
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		query = request.URL.Path + "?" + request.URL.RawQuery
@@ -332,7 +332,7 @@ func TestBoardListsRowsAndAsksForEveryHelper(t *testing.T) {
 				`"createdAt":"2026-08-24T12:00:00Z","updatedAt":"2026-08-24T12:00:00Z","resourceVersion":1}`
 		}
 		_, _ = io.WriteString(writer, `{"truncated":false,"items":[`+
-			`{"capsule":`+capsule("capsule-2", "helper-capsule", "sub")+`,"status":"needs_you","needsYou":"permission",`+
+			`{"capsule":`+capsule("capsule-2", "subagent-capsule", "sub")+`,"status":"needs_you","needsYou":"permission",`+
 			`"since":"2026-08-24T12:01:00Z","surfaced":true,"link":{"id":"link-1","grantId":"grant-1",`+
 			`"parentThreadId":"thread-1","parentCapsuleId":"capsule-1","childThreadId":"thread-2",`+
 			`"childCapsuleId":"capsule-2","childIntentId":"intent-2","depth":1,"name":"tests","harness":"mock",`+
@@ -354,9 +354,9 @@ func TestBoardListsRowsAndAsksForEveryHelper(t *testing.T) {
 		t.Fatalf("board request = %s", query)
 	}
 	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
-	if len(lines) != 2 || !strings.HasPrefix(lines[0], "needs_you(permission)\ttests (helper)\tmock\tcapsule=capsule-2") ||
+	if len(lines) != 2 || !strings.HasPrefix(lines[0], "needs_you(permission)\ttests (subagent)\tmock\tcapsule=capsule-2") ||
 		!strings.HasPrefix(lines[1], "working\tlead\tmock\tcapsule=capsule-1") ||
-		!strings.Contains(lines[1], "helpers=2 working=1 idle=0 done=0 needs_you=1 failed=0 archived=0") {
+		!strings.Contains(lines[1], "subagents=2 working=1 idle=0 done=0 needs_you=1 failed=0 archived=0") {
 		t.Fatalf("board output =\n%s", output.String())
 	}
 
@@ -376,7 +376,7 @@ func TestLeadArchiveAfterAndCapsulePromote(t *testing.T) {
 		writer.Header().Set("Content-Type", "application/json")
 		if strings.HasSuffix(path, "/promote") {
 			_, _ = io.WriteString(writer, `{"id":"capsule-2","projectId":"project-1","timelineId":"timeline-2",`+
-				`"name":"helper","role":"main","promotedAt":"2026-08-24T12:05:00Z","state":"Ready",`+
+				`"name":"subagent","role":"main","promotedAt":"2026-08-24T12:05:00Z","state":"Ready",`+
 				`"desiredState":"Ready","restoreComplete":true,"createdAt":"2026-08-24T12:00:00Z",`+
 				`"updatedAt":"2026-08-24T12:05:00Z","resourceVersion":5}`)
 			return

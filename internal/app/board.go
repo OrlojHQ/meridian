@@ -41,11 +41,11 @@ const (
 	BoardAttentionFailed     BoardAttention = "failed"
 )
 
-// BoardExpand chooses which helper Capsules get their own rows.
+// BoardExpand chooses which subagent Capsules get their own rows.
 type BoardExpand string
 
 const (
-	// BoardExpandAttention lists main Capsules plus helpers that need the
+	// BoardExpandAttention lists main Capsules plus subagents that need the
 	// operator. It is the default.
 	BoardExpandAttention BoardExpand = "attention"
 	BoardExpandAll       BoardExpand = "all"
@@ -60,7 +60,7 @@ type BoardQuery struct {
 	Expand    BoardExpand
 }
 
-// ChildRollup counts a lead's helpers by state.
+// ChildRollup counts a lead's subagents by state.
 type ChildRollup struct {
 	Total    int
 	Working  int
@@ -68,7 +68,7 @@ type ChildRollup struct {
 	Done     int
 	NeedsYou int
 	Failed   int
-	// Archived counts auto-archived helpers. They are also counted as done.
+	// Archived counts auto-archived subagents. They are also counted as done.
 	Archived int
 }
 
@@ -83,7 +83,7 @@ type BoardItem struct {
 	Since          time.Time
 	NeedsYou       BoardAttention
 	Rollup         *ChildRollup
-	// Surfaced marks a helper listed on its own because it needs the operator.
+	// Surfaced marks a subagent listed on its own because it needs the operator.
 	Surfaced bool
 }
 
@@ -165,7 +165,7 @@ func (s *Service) Board(ctx context.Context, query BoardQuery) (Board, error) {
 			item.Surfaced = item.Status == BoardNeedsYou
 			switch {
 			case !leadListed:
-				// A helper whose lead is gone is never hidden.
+				// A subagent whose lead is gone is never hidden.
 			case query.Expand == BoardExpandAll:
 			case query.Expand == BoardExpandAttention && item.Surfaced:
 			default:

@@ -568,7 +568,7 @@ func (s *Service) coordSpawn(
 var errCoordinationRejected = errors.New("coordination request rejected")
 
 // liveTreeCapsules counts the grant's children whose Capsules hold or are
-// about to hold compute. Detached helpers count only toward installation
+// about to hold compute. Detached subagents count only toward installation
 // limits.
 func (s *Service) liveTreeCapsules(
 	ctx context.Context, reader ports.Reader, grantID domain.CoordinationGrantID,
@@ -628,7 +628,7 @@ func (s *Service) coordSend(
 			return coordproto.Fail(coordproto.CodeLinkClosed, "link is closed")
 		}
 		if !link.ArchivedAt.IsZero() {
-			return coordproto.Fail(coordproto.CodeUnavailable, "helper is archived; the operator can resume it")
+			return coordproto.Fail(coordproto.CodeUnavailable, "subagent is archived; the operator can resume it")
 		}
 		if link.MessagesForwarded >= grant.MaxMessagesPerLink {
 			return coordproto.Fail(coordproto.CodeLimitExceeded, "message limit for this link reached")
@@ -750,9 +750,9 @@ func (s *Service) coordCancel(
 }
 
 // countOperatorMessage records, without content, that the operator messaged a
-// helper directly so the lead's next wake can say so. Closed links are left
-// untouched: the lead can no longer address the helper, and a closed link's
-// update time bounds how long the sweep may stop the helper.
+// subagent directly so the lead's next wake can say so. Closed links are left
+// untouched: the lead can no longer address the subagent, and a closed link's
+// update time bounds how long the sweep may stop the subagent.
 func (s *Service) countOperatorMessage(ctx context.Context) appendTxHook {
 	return func(tx ports.Transaction, thread domain.Thread, _ domain.ThreadMessageID, now time.Time) error {
 		if err := s.unarchiveTx(ctx, tx, thread.ID, now); err != nil {

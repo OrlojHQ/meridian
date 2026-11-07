@@ -14,9 +14,9 @@ import (
 	"github.com/OrlojHQ/meridian/internal/ports"
 )
 
-// spawnHelper spawns a named helper through the lead's mailbox and makes it
+// spawnSubagent spawns a named subagent through the lead's mailbox and makes it
 // Ready.
-func (f *coordFixture) spawnHelper(t *testing.T, mailbox *capsuleproto.Mailbox, name string) domain.ThreadLink {
+func (f *coordFixture) spawnSubagent(t *testing.T, mailbox *capsuleproto.Mailbox, name string) domain.ThreadLink {
 	t.Helper()
 	spawned := tool(t, mailbox, coordproto.Request{
 		Type: coordproto.KindSpawn, Key: "spawn-" + name, Name: name, Harness: "mock", Prompt: "task for " + name,
@@ -60,11 +60,11 @@ func boardRow(board app.Board, capsule domain.CapsuleID) *app.BoardItem {
 	return nil
 }
 
-func TestBoardFoldsHelpersAndSurfacesOnesThatNeedYou(t *testing.T) {
+func TestBoardFoldsSubagentsAndSurfacesOnesThatNeedYou(t *testing.T) {
 	f := newCoordFixture(t)
 	lead, mailbox := f.spawnLead(t, domain.CoordinationPolicy{MaxChildren: 2})
-	one := f.spawnHelper(t, mailbox, "one")
-	two := f.spawnHelper(t, mailbox, "two")
+	one := f.spawnSubagent(t, mailbox, "one")
+	two := f.spawnSubagent(t, mailbox, "two")
 
 	board := f.board(t, "")
 	if len(board.Items) != 1 || board.Truncated {
@@ -87,7 +87,7 @@ func TestBoardFoldsHelpersAndSurfacesOnesThatNeedYou(t *testing.T) {
 
 	board = f.board(t, app.BoardExpandAttention)
 	if len(board.Items) != 2 {
-		t.Fatalf("attention board = %d rows, want lead plus the surfaced helper", len(board.Items))
+		t.Fatalf("attention board = %d rows, want lead plus the surfaced subagent", len(board.Items))
 	}
 	surfaced := board.Items[0]
 	if surfaced.Capsule.ID != one.ChildCapsuleID || surfaced.Status != app.BoardNeedsYou ||
@@ -107,7 +107,7 @@ func TestBoardFoldsHelpersAndSurfacesOnesThatNeedYou(t *testing.T) {
 		t.Fatalf("expand=all rows = %d", len(all.Items))
 	}
 	if quiet := boardRow(all, two.ChildCapsuleID); quiet == nil || quiet.Surfaced || quiet.Status != app.BoardWorking {
-		t.Fatalf("quiet helper row = %+v", quiet)
+		t.Fatalf("quiet subagent row = %+v", quiet)
 	}
 
 	if _, err := f.service.Board(f.ctx, app.BoardQuery{Expand: "everything"}); !errors.Is(err, domain.ErrInvalid) {
@@ -118,10 +118,10 @@ func TestBoardFoldsHelpersAndSurfacesOnesThatNeedYou(t *testing.T) {
 	}
 }
 
-func TestBoardShowsHelpersWhoseLeadIsGone(t *testing.T) {
+func TestBoardShowsSubagentsWhoseLeadIsGone(t *testing.T) {
 	f := newCoordFixture(t)
 	lead, mailbox := f.spawnLead(t, domain.CoordinationPolicy{})
-	helper := f.spawnHelper(t, mailbox, "orphan")
+	subagent := f.spawnSubagent(t, mailbox, "orphan")
 	if err := f.store.Transact(f.ctx, func(tx ports.Transaction) error {
 		capsule, err := tx.GetCapsule(f.ctx, lead.Intent.CapsuleID)
 		if err != nil {
@@ -136,7 +136,7 @@ func TestBoardShowsHelpersWhoseLeadIsGone(t *testing.T) {
 		t.Fatal(err)
 	}
 	board := f.board(t, app.BoardExpandNone)
-	if len(board.Items) != 1 || board.Items[0].Capsule.ID != helper.ChildCapsuleID || board.Items[0].Surfaced {
+	if len(board.Items) != 1 || board.Items[0].Capsule.ID != subagent.ChildCapsuleID || board.Items[0].Surfaced {
 		t.Fatalf("rows = %+v", board.Items)
 	}
 }
@@ -168,10 +168,10 @@ func TestBoardStatusFollowsTheTurnAndTheRun(t *testing.T) {
 	}
 }
 
-func TestOperatorMessageToHelperIsNoticedOnTheLeadsNextWake(t *testing.T) {
+func TestOperatorMessageToSubagentIsNoticedOnTheLeadsNextWake(t *testing.T) {
 	f := newCoordFixture(t)
 	lead, mailbox := f.spawnLead(t, domain.CoordinationPolicy{})
-	link := f.spawnHelper(t, mailbox, "one")
+	link := f.spawnSubagent(t, mailbox, "one")
 	child, err := f.service.GetThread(f.ctx, link.ChildThreadID)
 	if err != nil {
 		t.Fatal(err)
@@ -201,7 +201,7 @@ func TestOperatorMessageToHelperIsNoticedOnTheLeadsNextWake(t *testing.T) {
 		t.Fatalf("lead messages = %d, want first prompt plus one wake", len(sent))
 	}
 	wake := sent[1].Content
-	if !strings.Contains(wake, `The operator messaged helper "one" directly (1 new)`) || strings.Contains(wake, secret) {
+	if !strings.Contains(wake, `The operator messaged subagent "one" directly (1 new)`) || strings.Contains(wake, secret) {
 		t.Fatalf("wake prompt = %q", wake)
 	}
 	noticed, err := f.service.GetThreadLink(f.ctx, link.ID)
@@ -213,7 +213,7 @@ func TestOperatorMessageToHelperIsNoticedOnTheLeadsNextWake(t *testing.T) {
 func TestOperatorMessagesAfterTheLinkClosesAreNotCounted(t *testing.T) {
 	f := newCoordFixture(t)
 	_, mailbox := f.spawnLead(t, domain.CoordinationPolicy{})
-	link := f.spawnHelper(t, mailbox, "one")
+	link := f.spawnSubagent(t, mailbox, "one")
 	var closed domain.ThreadLink
 	if err := f.store.Transact(f.ctx, func(tx ports.Transaction) error {
 		current, err := tx.GetThreadLink(f.ctx, link.ID)

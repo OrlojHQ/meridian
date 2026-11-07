@@ -6,7 +6,7 @@ import { api, normalizeAPIError } from "../api/client";
 import type { Thread, ThreadLink } from "../api/generated/types.gen";
 import { queries } from "../api/queries";
 import { harnessName } from "../shell/capsuleActivity";
-import { PromoteHelper } from "./PromoteHelper";
+import { PromoteSubagent } from "./PromoteSubagent";
 import { StateBadge } from "./ui/StateBadge";
 
 const phaseLabels: Record<ThreadLink["phase"], string> = {
@@ -18,12 +18,12 @@ const phaseLabels: Record<ThreadLink["phase"], string> = {
   failed: "Failed",
 };
 
-function helperRow(link: ThreadLink) {
+function subagentRow(link: ThreadLink) {
   return (
     <li key={link.id}>
-      <Link to={helperHref(link)} className="helper-name">{link.name}</Link>
+      <Link to={subagentHref(link)} className="subagent-name">{link.name}</Link>
       <span className="muted-copy">{harnessName(link.harness)}</span>
-      <span className={`badge helper-phase phase-${link.phase}`}>{phaseLabels[link.phase]}</span>
+      <span className={`badge subagent-phase phase-${link.phase}`}>{phaseLabels[link.phase]}</span>
       {link.promotedAt && (
         <span className="badge">{link.closeReason === "detached" ? "Promoted, detached" : "Promoted"}</span>
       )}
@@ -34,20 +34,20 @@ function helperRow(link: ThreadLink) {
   );
 }
 
-function helperHref(link: Pick<ThreadLink, "childCapsuleId" | "childThreadId">) {
+function subagentHref(link: Pick<ThreadLink, "childCapsuleId" | "childThreadId">) {
   return `/ui/capsules/${encodeURIComponent(link.childCapsuleId)}?session=${encodeURIComponent(link.childThreadId)}`;
 }
 
-// Lead Threads list their helpers and can stop the whole tree; helper
+// Lead Threads list their subagents and can stop the whole tree; subagent
 // Threads name their lead. Neither view shows report text: that lives only in
-// each helper's encrypted transcript.
-export function ThreadHelpers({ thread }: { thread: Thread }) {
+// each subagent's encrypted transcript.
+export function ThreadSubagents({ thread }: { thread: Thread }) {
   if (!thread.coordinationGrantId) return null;
-  if (thread.parentThreadId) return <HelperOf thread={thread} />;
-  return <LeadHelpers thread={thread} grantId={thread.coordinationGrantId} />;
+  if (thread.parentThreadId) return <SubagentOf thread={thread} />;
+  return <LeadSubagents thread={thread} grantId={thread.coordinationGrantId} />;
 }
 
-function HelperOf({ thread }: { thread: Thread }) {
+function SubagentOf({ thread }: { thread: Thread }) {
   const lead = useQuery(queries.thread(thread.parentThreadId ?? ""));
   const capsule = useQuery(queries.capsule(thread.capsuleId));
   const leadLink = lead.data ? (
@@ -57,22 +57,22 @@ function HelperOf({ thread }: { thread: Thread }) {
   ) : null;
   const promoted = capsule.data?.role === "main";
   return (
-    <div className="notice helper-of" role="status">
+    <div className="notice subagent-of" role="status">
       <p>
         {promoted
           ? capsule.data?.linkId
-            ? "Promoted from a helper; its lead can still message it."
-            : "Promoted from a helper and detached from its lead."
-          : "Helper Thread started by a lead."}{" "}
+            ? "Promoted from a subagent; its lead can still message it."
+            : "Promoted from a subagent and detached from its lead."
+          : "Subagent Thread started by a lead."}{" "}
         {leadLink}
         {promoted ? "" : ". Its permission and input requests come to you, not the lead."}
       </p>
-      {capsule.data && <PromoteHelper capsule={capsule.data} />}
+      {capsule.data && <PromoteSubagent capsule={capsule.data} />}
     </div>
   );
 }
 
-function LeadHelpers({ thread, grantId }: { thread: Thread; grantId: string }) {
+function LeadSubagents({ thread, grantId }: { thread: Thread; grantId: string }) {
   const queryClient = useQueryClient();
   const [confirm, setConfirm] = useState(false);
   const grant = useQuery(queries.coordinationGrant(grantId));
@@ -95,9 +95,9 @@ function LeadHelpers({ thread, grantId }: { thread: Thread; grantId: string }) {
   const archived = items.filter((link) => link.archivedAt);
   const active = grant.data?.state === "active";
   return (
-    <section className="thread-helpers" aria-labelledby="thread-helpers-title">
+    <section className="thread-subagents" aria-labelledby="thread-subagents-title">
       <header>
-        <h2 id="thread-helpers-title">Helpers</h2>
+        <h2 id="thread-subagents-title">Subagents</h2>
         {grant.data && (
           <span className="muted-copy">
             {grant.data.descendantsCreated} of {grant.data.maxDescendants} started
@@ -107,13 +107,13 @@ function LeadHelpers({ thread, grantId }: { thread: Thread; grantId: string }) {
         {grant.data && <StateBadge state={grant.data.state} />}
         {active && !confirm && (
           <button type="button" className="danger" onClick={() => setConfirm(true)}>
-            Stop helpers
+            Stop subagents
           </button>
         )}
       </header>
       {confirm && (
-        <div className="actions" role="alertdialog" aria-label="Stop helpers">
-          <span>The lead can no longer start helpers, and running helpers are cancelled and paused.</span>
+        <div className="actions" role="alertdialog" aria-label="Stop subagents">
+          <span>The lead can no longer start subagents, and running subagents are cancelled and paused.</span>
           <button type="button" className="danger" disabled={revoke.isPending} onClick={() => revoke.mutate()}>
             Confirm stop
           </button>
@@ -124,15 +124,15 @@ function LeadHelpers({ thread, grantId }: { thread: Thread; grantId: string }) {
         <p role="alert" className="inline-error">{normalizeAPIError(revoke.error).message}</p>
       )}
       {items.length === 0 ? (
-        <p className="muted-copy">{links.isPending ? "Loading helpers…" : "No helpers yet."}</p>
+        <p className="muted-copy">{links.isPending ? "Loading subagents…" : "No subagents yet."}</p>
       ) : (
-        <ul className="helper-list">
-          {current.map(helperRow)}
+        <ul className="subagent-list">
+          {current.map(subagentRow)}
           {archived.length > 0 && (
-            <li className="helper-archived">
+            <li className="subagent-archived">
               <details>
                 <summary>Archived ({archived.length})</summary>
-                <ul className="helper-list">{archived.map(helperRow)}</ul>
+                <ul className="subagent-list">{archived.map(subagentRow)}</ul>
               </details>
             </li>
           )}

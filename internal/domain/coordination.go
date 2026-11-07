@@ -84,7 +84,7 @@ type CoordinationPolicy struct {
 	Deadline           time.Duration
 	OnDeadline         OnDeadline
 	SpawnApproval      SpawnApproval
-	// ArchiveAfter is how long a finished helper stays idle before it is
+	// ArchiveAfter is how long a finished subagent stays idle before it is
 	// archived. Nil takes the default; zero disables auto-archive.
 	ArchiveAfter *time.Duration
 }
@@ -233,7 +233,7 @@ const (
 	LinkFailed    LinkCloseReason = "failed"
 	LinkEnded     LinkCloseReason = "ended"
 	LinkRevoked   LinkCloseReason = "revoked"
-	// LinkDetached closes the link of a promoted helper; the lead can no
+	// LinkDetached closes the link of a promoted subagent; the lead can no
 	// longer address it and it leaves the tree's live Capsule count.
 	LinkDetached LinkCloseReason = "detached"
 )
@@ -278,11 +278,11 @@ type ThreadLink struct {
 	LastReportReason   ReportReason
 	LastReportAt       time.Time
 	MessagesForwarded  int
-	// OperatorMessages counts operator messages sent straight to the helper;
+	// OperatorMessages counts operator messages sent straight to the subagent;
 	// OperatorNoticed is how many of them a lead wake prompt has mentioned.
 	OperatorMessages int
 	OperatorNoticed  int
-	// ArchivedAt is set when the auto-archive sweep paused a finished helper
+	// ArchivedAt is set when the auto-archive sweep paused a finished subagent
 	// and cleared when its Thread resumes. PromotedAt is permanent.
 	ArchivedAt      time.Time
 	PromotedAt      time.Time

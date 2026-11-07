@@ -222,7 +222,7 @@ func (r *repository) ListThreadLinksByGrant(
 	return r.listLinks(ctx, linkSelect+" WHERE grant_id = ? ORDER BY created_at, id LIMIT 1000", grantID)
 }
 
-// ListArchivableThreadLinks returns helper links the auto-archive sweep should
+// ListArchivableThreadLinks returns subagent links the auto-archive sweep should
 // consider: not archived or promoted, under a grant with auto-archive
 // enabled, and either reported idle or closed for a reason other than
 // failure, and unchanged for at least the grant's period. The sweep applies

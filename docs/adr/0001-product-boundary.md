@@ -14,7 +14,7 @@ Meridian is coding-specific infrastructure for isolated, resumable development e
 Meridian does not:
 
 - implement general DAG, delegation, or multi-agent orchestration (ADR 0029
-  allows only bounded lead/helper Thread coordination under an operator
+  allows only bounded lead/subagent Thread coordination under an operator
   grant);
 - require or reimplement Orloj;
 - replace Git, a coding-agent harness, or a model provider;

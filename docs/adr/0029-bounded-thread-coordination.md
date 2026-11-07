@@ -61,9 +61,9 @@ Three ways to carry a request out of the Capsule were considered:
   own Thread. With depth fixed at 1, children receive no coordination
   authority.
 - Every Capsule carries an immutable, content-free `role` of `main` or `sub`.
-  Sub-Capsules record their lead Thread and link. The UI nests helpers under
+  Sub-Capsules record their lead Thread and link. The UI nests subagents under
   their lead and labels them; `role` is presentation only, is never read by an
-  authorization check, and never suppresses attention. A helper's permission
+  authorization check, and never suppresses attention. A subagent's permission
   and input requests are answered only by the operator.
 - A prompt may cross into a Capsule from an explicit client mutation or from a
   coordination request accepted under an active grant. Delegated prompts carry
@@ -74,7 +74,7 @@ Three ways to carry a request out of the Capsule were considered:
   the child's own encrypted transcript (the last assistant message, at most
   16 KiB) when a turn ends, the session ends or the link closes. The lead
   reads reports through `wait` or `result`; unread reports wake an idle lead
-  with one coalesced `from_helpers` prompt, framed as untrusted data and
+  with one coalesced `from_subagents` prompt, framed as untrusted data and
   re-encrypted under the lead's key. Delivery acknowledgements are
   content-free sequence numbers.
 - Revocation, deadline and cancellation are daemon-side state changes that
@@ -90,19 +90,19 @@ Three ways to carry a request out of the Capsule were considered:
 - Amendment, board and operator notices: `GET /board` lists every Capsule's
   status from Capsule, Thread, Run, Delivery and link rows plus the existing
   in-memory Thread attention (ADR 0025). It reads no transcript text beyond
-  that derivation, polls no Git state, and grants nothing; helpers that need
+  that derivation, polls no Git state, and grants nothing; subagents that need
   the operator are listed under their own name. When the operator messages a
-  helper directly, its active link counts the message (`operatorMessages`,
+  subagent directly, its active link counts the message (`operatorMessages`,
   a plaintext counter) outside `maxMessagesPerLink`, and the lead's next
-  report wake says that the operator messaged that helper and how many times,
-  never what was said, although the helper's own next report may repeat it.
+  report wake says that the operator messaged that subagent and how many times,
+  never what was said, although the subagent's own next report may repeat it.
   A notice never wakes a lead on its own. Messages to a
-  helper whose link has closed are not counted and leave the link untouched,
-  so resuming a stopped helper does not restart its stop window.
+  subagent whose link has closed are not counted and leave the link untouched,
+  so resuming a stopped subagent does not restart its stop window.
 - Not in this decision, and left for later ADR amendments: operator spawn
   approval, widening a grant, depth above 1, returned patch series, proposed
   Deliveries, and queueing spawns over capacity. Auto-archive and promotion
-  are covered by the helper lifecycle amendment below. Delivery approval under
+  are covered by the subagent lifecycle amendment below. Delivery approval under
   ADR 0020 is unchanged; agents cannot propose or approve a Delivery.
 
 ## Consequences
@@ -145,35 +145,35 @@ Registration changes how the agent discovers the tool, not what any process
 in a Capsule may do: `meridian-coord` was already on every Capsule's `PATH`
 and the mailbox still refuses everything outside an active grant.
 
-## Amendment: helper lifecycle
+## Amendment: subagent lifecycle
 
-Finished helpers are archived automatically, and the operator can promote a
-helper to a main Capsule.
+Finished subagents are archived automatically, and the operator can promote a
+subagent to a main Capsule.
 
 - **Auto-archive.** A grant's `archiveAfter` (default 24 hours; 0 disables
   it; otherwise 1 minute to 30 days in whole seconds) is fixed at spawn like
-  every other limit. A helper is archived once it has been idle for that long
+  every other limit. A subagent is archived once it has been idle for that long
   after it finished: its link is active and its last report is `turn_ended`,
-  or its link closed as cancelled, ended or revoked. Helpers that need the
+  or its link closed as cancelled, ended or revoked. Subagents that need the
   operator, are working, have a delivery in flight, failed (report, Run or
-  Capsule), or were promoted are never archived; failed helpers stay until the
+  Capsule), or were promoted are never archived; failed subagents stay until the
   operator acts. A daemon sweep every 30 seconds marks the link `archivedAt`,
   moves an idle Thread to `paused` and cancels its session, and leaves the
   Capsule to ADR 0019 idle pause. `paused` rather than `archived` keeps the
-  helper resumable. Archiving never sends a message, never deletes a
+  subagent resumable. Archiving never sends a message, never deletes a
   workspace or transcript, and never resumes a stopped Capsule. The link is
   marked before the session is cancelled, and the report scan skips archived
-  links, so ending the session is not reported to the lead as the helper
-  ending. Resuming the helper's Thread clears `archivedAt`. While archived,
+  links, so ending the session is not reported to the lead as the subagent
+  ending. Resuming the subagent's Thread clears `archivedAt`. While archived,
   the lead's `send` is refused as unavailable; only the operator brings a
-  helper back.
+  subagent back.
 - **Promotion.** `POST /capsules/{id}/promote` turns a sub-Capsule into a main
   Capsule (`promotedAt`). By default the link stays open, so the lead can
-  still message the helper and still receives its reports. `detach` also
+  still message the subagent and still receives its reports. `detach` also
   closes the link as `detached`; a promoted Capsule that kept its link can be
   detached later. A detached Capsule leaves the tree's live-Capsule count and
   counts only toward installation limits. Promotion is permanent; there is no
-  demote. A promoted helper is never auto-archived, and closing its link by
+  demote. A promoted subagent is never auto-archived, and closing its link by
   cancellation or revocation no longer stops it, because the operator has
   taken it over. Promotion grants no coordination authority: the Capsule
   gets no grant of its own and its agent's requests are still refused.
@@ -183,9 +183,19 @@ helper to a main Capsule.
   can close as `detached` only once promoted, and a link is never archived
   and promoted at once. Promotion and archive events carry identifiers only.
 - **Presentation.** The sidebar and Activity inbox list main Capsules
-  (`role=main`) plus helpers that need the operator or whose lead is gone,
-  and take every lead's rollup from one board read, so hidden helpers add no
-  per-Capsule polling. Rollups count archived helpers (also counted as done),
-  and the board and the lead's Helpers panel fold them under "Archived (n)".
+  (`role=main`) plus subagents that need the operator or whose lead is gone,
+  and take every lead's rollup from one board read, so hidden subagents add no
+  per-Capsule polling. Rollups count archived subagents (also counted as done),
+  and the board and the lead's Subagents panel fold them under "Archived (n)".
   A promoted Capsule is its own row, labelled as promoted from its lead, and
   is badged in the lead's fold while it keeps its link.
+
+## Amendment: terminology
+
+A lead Thread's children are called subagents, pairing with the lead agent
+that starts them; earlier revisions of this ADR called them helpers. The
+rename covers the API, CLI, browser, `meridian-coord` and documentation.
+Two stored names keep the old word: migration `0016_helper_lifecycle.sql`,
+whose file name is recorded in `schema_migrations`, and the coordination
+origin kind `from_helpers` inside transcripts encrypted before the rename,
+which reads back as `from_subagents`. Neither changes authority.

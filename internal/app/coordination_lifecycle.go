@@ -20,8 +20,8 @@ type promoteOutcome struct {
 	Detach bool `json:"detach"`
 }
 
-// PromoteCapsule turns a helper sub-Capsule into a main Capsule. The link
-// stays open unless detach is set, so the lead can still message the helper
+// PromoteCapsule turns a subagent Capsule into a main Capsule. The link
+// stays open unless detach is set, so the lead can still message the subagent
 // and receive its reports. Detaching closes the link; a Capsule promoted
 // earlier with its link kept can be detached later. Promotion grants no
 // coordination authority and is never undone.
@@ -116,11 +116,11 @@ func (s *Service) PromoteCapsule(
 	return result, nil
 }
 
-// SweepArchivableHelpers archives finished helpers that stayed idle for their
+// SweepArchivableSubagents archives finished subagents that stayed idle for their
 // grant's archiveAfter. Archiving ends the idle session, pauses the Thread
 // and marks the link; the Capsule is left to idle pause (ADR 0019). It never
 // sends a message and never deletes a workspace or transcript.
-func (s *Service) SweepArchivableHelpers(ctx context.Context) {
+func (s *Service) SweepArchivableSubagents(ctx context.Context) {
 	if !s.CoordinationSupported() {
 		return
 	}
@@ -136,11 +136,11 @@ func (s *Service) SweepArchivableHelpers(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		s.archiveHelper(ctx, link)
+		s.archiveSubagent(ctx, link)
 	}
 }
 
-func (s *Service) archiveHelper(ctx context.Context, link domain.ThreadLink) {
+func (s *Service) archiveSubagent(ctx context.Context, link domain.ThreadLink) {
 	var grant domain.CoordinationGrant
 	var capsule domain.Capsule
 	if err := s.store.View(ctx, func(reader ports.Reader) error {
@@ -157,7 +157,7 @@ func (s *Service) archiveHelper(ctx context.Context, link domain.ThreadLink) {
 	if err != nil || item.Thread == nil || item.Thread.ID != link.ChildThreadID {
 		return
 	}
-	// A helper that needs the operator, is working, or has a delivery in
+	// A subagent that needs the operator, is working, or has a delivery in
 	// flight is never archived.
 	if item.Status == BoardNeedsYou || item.Status == BoardWorking {
 		return
@@ -176,7 +176,7 @@ func (s *Service) archiveHelper(ctx context.Context, link domain.ThreadLink) {
 		return
 	}
 	// The link is marked before the session ends so the report scan does not
-	// read the cancellation as the helper's session ending.
+	// read the cancellation as the subagent's session ending.
 	err = s.store.Transact(ctx, func(tx ports.Transaction) error {
 		current, err := tx.GetThreadLink(ctx, link.ID)
 		if err != nil {
@@ -220,9 +220,9 @@ func (s *Service) archiveHelper(ctx context.Context, link domain.ThreadLink) {
 	}
 }
 
-var errArchiveRaced = errors.New("helper changed during archive")
+var errArchiveRaced = errors.New("subagent changed during archive")
 
-// unarchiveTx clears a helper's archived mark when its Thread resumes or the
+// unarchiveTx clears a subagent's archived mark when its Thread resumes or the
 // operator messages it, so it leaves the lead's Archived fold.
 func (s *Service) unarchiveTx(
 	ctx context.Context, tx ports.Transaction, thread domain.ThreadID, now time.Time,

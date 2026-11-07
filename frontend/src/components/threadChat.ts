@@ -34,7 +34,7 @@ export type ChatRequest = {
 };
 
 export type ChatItem =
-  | { kind: "user"; key: string; text: string; origin?: "from_lead" | "from_helpers" }
+  | { kind: "user"; key: string; text: string; origin?: "from_lead" | "from_subagents" }
   | { kind: "assistant"; key: string; text: string; streaming: boolean }
   | { kind: "tools"; key: string; calls: ToolCall[] }
   | { kind: "request"; key: string; request: ChatRequest; actionable: boolean }
