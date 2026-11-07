@@ -162,8 +162,12 @@ func packExecutable(t *testing.T, root, name string) string {
 			values[key] = value
 		}
 	}
-	if values["PACK_LAYOUT"] == "tree" {
+	switch values["PACK_LAYOUT"] {
+	case "tree":
 		return "/usr/local/libexec/" + name + "/" + values["PACK_ENTRY"]
+	case "npm":
+		return "/opt/meridian-node/bin/node /usr/local/libexec/" + name + "/node_modules/" +
+			values["PACK_PACKAGE"] + "/" + values["PACK_ENTRY"]
 	}
 	return "/usr/local/libexec/" + name
 }
@@ -171,8 +175,10 @@ func packExecutable(t *testing.T, root, name string) string {
 func TestOfficialPacksInstallNativeAndStructuredProfiles(t *testing.T) {
 	drivers := map[string]string{
 		"claude": "claude-stream", "codex": "codex-app-server",
-		"opencode": "acp", "pi": "pi-rpc",
+		"opencode": "acp", "pi": "pi-rpc", "dsh": "acp",
 	}
+	// The published DeepSeek Harness CLI has no terminal UI.
+	structuredOnly := map[string]bool{"dsh": true}
 	for name, root := range officialPacks(t) {
 		if output, err := exec.Command("sh", filepath.Join("..", "..", "images", "harness-pack", "install"),
 			"--check", root).CombinedOutput(); err != nil {
@@ -188,10 +194,13 @@ func TestOfficialPacksInstallNativeAndStructuredProfiles(t *testing.T) {
 			t.Fatalf("%s profile: %v", name, err)
 		}
 		profile, err := config.ProfileFor(name, harness.InteractionNative)
-		if err != nil {
+		if structuredOnly[name] {
+			if err == nil {
+				t.Fatalf("%s must not ship a native profile: %#v", name, profile)
+			}
+		} else if err != nil {
 			t.Fatal(err)
-		}
-		if profile.Interaction != harness.InteractionNative || !profile.PTY ||
+		} else if profile.Interaction != harness.InteractionNative || !profile.PTY ||
 			profile.Prompt != harness.PromptInteractive ||
 			profile.Executable != "/usr/local/bin/"+name {
 			t.Fatalf("%s profile = %#v", name, profile)
@@ -331,5 +340,124 @@ func TestPackInstallCheckRejectsUnsafeData(t *testing.T) {
 	}
 	if _, err := check(valid, "not a key value line\n"); err == nil {
 		t.Error("malformed line: accepted")
+	}
+}
+
+func TestPackInstallCheckRequiresLockedNPMPackages(t *testing.T) {
+	const manifest = "{\n  \"name\": \"meridian-capsule-demo\",\n  \"private\": true,\n  \"dependencies\": {\n    \"@demo/cli\": \"1.2.3-rc.1\"\n  }\n}\n"
+	const lock = `{
+  "name": "meridian-capsule-demo",
+  "lockfileVersion": 3,
+  "requires": true,
+  "packages": {
+    "": {
+      "name": "meridian-capsule-demo",
+      "dependencies": {
+        "@demo/cli": "1.2.3-rc.1"
+      }
+    },
+    "node_modules/@demo/cli": {
+      "version": "1.2.3-rc.1",
+      "resolved": "https://registry.npmjs.org/@demo/cli/-/cli-1.2.3-rc.1.tgz",
+      "integrity": "sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+      "license": "MIT"
+    },
+    "node_modules/left-pad": {
+      "version": "1.3.0",
+      "resolved": "https://registry.npmjs.org/left-pad/-/left-pad-1.3.0.tgz",
+      "integrity": "sha512-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=="
+    }
+  }
+}
+`
+	valid := "PACK_NAME=demo\nPACK_VERSION=1.2.3-rc.1\nPACK_LAYOUT=npm\nPACK_PACKAGE=@demo/cli\nPACK_ENTRY=lib/bin.js\nPACK_IDENTITY=the demo harness\n"
+	check := func(env, manifest, lock string, launcher bool) ([]byte, error) {
+		root := filepath.Join(t.TempDir(), "capsule-demo")
+		if err := os.Mkdir(root, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		files := map[string]string{
+			"pack.env":          env,
+			"project.yaml":      fmt.Sprintf(nativeHarnessFixture, "demo", "demo"),
+			"package.json":      manifest,
+			"package-lock.json": lock,
+		}
+		if launcher {
+			files["demo"] = "#!/bin/sh\nexec /opt/meridian-node/bin/node /usr/local/libexec/demo/node_modules/@demo/cli/lib/bin.js \"$@\"\n"
+		}
+		for name, content := range files {
+			if content == "" {
+				continue
+			}
+			if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return exec.Command("sh", filepath.Join("..", "..", "images", "harness-pack", "install"), "--check", root).CombinedOutput()
+	}
+	if output, err := check(valid, manifest, lock, true); err != nil {
+		t.Fatalf("valid npm pack rejected: %v: %s", err, output)
+	}
+	for name, mutation := range map[string]struct {
+		env, manifest, lock string
+		noLauncher          bool
+	}{
+		"download url":       {env: valid + "PACK_URL=https://example.test/demo-{arch}.tar.gz\n"},
+		"checksum":           {env: valid + "PACK_SHA256_AMD64=" + strings.Repeat("a", 64) + "\n"},
+		"version range":      {env: strings.Replace(valid, "1.2.3-rc.1", "^1.2.3", 1)},
+		"package path":       {env: strings.Replace(valid, "@demo/cli", "../cli", 1)},
+		"identity quote":     {env: strings.Replace(valid, "the demo harness", `the "demo"`, 1)},
+		"no launcher":        {noLauncher: true},
+		"extra dependency":   {manifest: strings.Replace(manifest, `"@demo/cli": "1.2.3-rc.1"`, `"@demo/cli": "1.2.3-rc.1",`+"\n    \"other\": \"1.0.0\"", 1)},
+		"manifest range":     {manifest: strings.Replace(manifest, `"1.2.3-rc.1"`, `"^1.2.3-rc.1"`, 1)},
+		"no lock":            {lock: "-"},
+		"lockfile v2":        {lock: strings.Replace(lock, `"lockfileVersion": 3`, `"lockfileVersion": 2`, 1)},
+		"other registry":     {lock: strings.Replace(lock, "https://registry.npmjs.org/left-pad", "https://evil.test/left-pad", 1)},
+		"plain http":         {lock: strings.Replace(lock, "https://registry.npmjs.org/left-pad", "http://registry.npmjs.org/left-pad", 1)},
+		"git dependency":     {lock: strings.Replace(lock, "https://registry.npmjs.org/left-pad/-/left-pad-1.3.0.tgz", "git+ssh://git@github.com/x/left-pad.git#abc", 1)},
+		"sha1 integrity":     {lock: strings.Replace(lock, `"sha512-BBBB`, `"sha1-BBBB`, 1)},
+		"missing integrity":  {lock: strings.Replace(lock, ",\n      \"integrity\": \"sha512-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB==\"", "", 1)},
+		"linked package":     {lock: strings.Replace(lock, `"license": "MIT"`, `"link": true`, 1)},
+		"unpinned top level": {lock: strings.Replace(lock, "\"version\": \"1.2.3-rc.1\",\n      \"resolved\"", "\"version\": \"1.2.4\",\n      \"resolved\"", 1)},
+	} {
+		env, m, l := valid, manifest, lock
+		if mutation.env != "" {
+			env = mutation.env
+		}
+		if mutation.manifest != "" {
+			m = mutation.manifest
+		}
+		if mutation.lock == "-" {
+			l = ""
+		} else if mutation.lock != "" {
+			l = mutation.lock
+		}
+		if output, err := check(env, m, l, !mutation.noLauncher); err == nil {
+			t.Errorf("%s: accepted: %s", name, output)
+		}
+	}
+}
+
+func TestOfficialDeepSeekPackRequiresTheRealHarness(t *testing.T) {
+	root := officialPacks(t)["dsh"]
+	data, err := os.ReadFile(filepath.Join(root, "pack.env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Debian and Ubuntu ship an unrelated `dsh` (distributed shell).
+	if !strings.Contains(string(data), "\nPACK_IDENTITY=boot a DeepSeek Harness profile\n") ||
+		!strings.Contains(string(data), "\nPACK_LAYOUT=npm\n") {
+		t.Fatalf("dsh pack does not verify DeepSeek Harness from its lockfile: %s", data)
+	}
+	launcher, err := os.ReadFile(filepath.Join(root, "dsh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(launcher), `DSH_TELEMETRY_DISABLED="${DSH_TELEMETRY_DISABLED:-1}"`) {
+		t.Fatalf("dsh launcher does not disable product telemetry: %s", launcher)
+	}
+	// Capsule /tmp is noexec; the addon cache would copy binaries there.
+	if !strings.Contains(string(launcher), "\nNARB_DISABLE_NATIVE_CACHE=1\n") {
+		t.Fatalf("dsh launcher does not load native addons in place: %s", launcher)
 	}
 }

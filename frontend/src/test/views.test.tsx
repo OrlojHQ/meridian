@@ -537,6 +537,27 @@ describe("Native harness launcher", () => {
     expect(screen.getByRole("button", { name: "Start Claude Code" })).toBeInTheDocument();
   });
 
+  it("offers only a task for a pack without a terminal session", async () => {
+    localStorage.clear();
+    const dshPack = { name: "dsh", imageReference: "ghcr.io/orlojhq/meridian-capsule-dsh:v1" };
+    vi.spyOn(api, "capabilities").mockResolvedValue({
+      ...structuredCapabilities,
+      harnessImages: [{ ...dshPack, interactionModes: ["structured" as const] }, mockPack],
+    });
+    wrapper(
+      <NewWorkspaceDialog
+        open
+        project={{ ...project, id: "project-structured-only", harnessImages: [dshPack, mockPack] }}
+        onClose={() => undefined}
+      />,
+    );
+
+    expect(await screen.findByLabelText("Task")).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "DeepSeek Harness" })).toBeChecked();
+    expect(screen.queryByRole("tablist", { name: "How to start" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Start DeepSeek Harness" })).not.toBeInTheDocument();
+  });
+
   it("leaves the task choice to the Capsule for a pack outside the catalog", async () => {
     localStorage.clear();
     vi.spyOn(api, "capabilities").mockResolvedValue(structuredCapabilities);

@@ -7,6 +7,11 @@
 # pack.env is data, not shell: KEY=value lines from a fixed key set. It is
 # never sourced. The pack directory also holds the trusted project.yaml
 # profile and, optionally, a launcher script named after the pack.
+#
+# Layouts `file` and `tree` download one checksummed .tar.gz per architecture.
+# Layout `npm` installs one npm package with `npm ci --ignore-scripts` from the
+# pack's committed package.json and package-lock.json, whose entries must all
+# be sha512-pinned registry.npmjs.org tarballs; it needs a launcher.
 set -eu
 
 die() {
@@ -24,7 +29,7 @@ dir=$1
 [ -f "$dir/pack.env" ] || die "missing $dir/pack.env"
 [ -f "$dir/project.yaml" ] || die "missing $dir/project.yaml"
 
-name= version= url= layout= entry=
+name= version= url= layout= entry= package= identity=
 arch_amd64= arch_arm64= sha_amd64= sha_arm64=
 while IFS= read -r line || [ -n "$line" ]; do
 	case $line in '' | '#'*) continue ;; esac
@@ -37,6 +42,8 @@ while IFS= read -r line || [ -n "$line" ]; do
 	PACK_URL) url=$value ;;
 	PACK_LAYOUT) layout=$value ;;
 	PACK_ENTRY) entry=$value ;;
+	PACK_PACKAGE) package=$value ;;
+	PACK_IDENTITY) identity=$value ;;
 	PACK_ARCH_AMD64) arch_amd64=$value ;;
 	PACK_ARCH_ARM64) arch_arm64=$value ;;
 	PACK_SHA256_AMD64) sha_amd64=$value ;;
@@ -51,23 +58,56 @@ matches() {
 matches "$name" '[a-z][a-z0-9-]{0,31}' || die "invalid PACK_NAME"
 [ "$(basename "$dir")" = "capsule-$name" ] || die "PACK_NAME $name does not match $dir"
 matches "$version" '[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}' || die "invalid PACK_VERSION"
-matches "$url" 'https://[A-Za-z0-9./_{}+-]+\.tar\.gz' || die "PACK_URL must be an https .tar.gz URL"
-case $url in *'{arch}'*) ;; *) die "PACK_URL has no {arch} placeholder" ;; esac
-for token in "$arch_amd64" "$arch_arm64"; do
-	matches "$token" '[A-Za-z0-9_-]{1,64}' || die "invalid PACK_ARCH_* token"
-done
-for sum in "$sha_amd64" "$sha_arm64"; do
-	matches "$sum" '[0-9a-f]{64}' || die "invalid PACK_SHA256_* checksum"
-done
+if [ -n "$identity" ]; then
+	matches "$identity" '[A-Za-z0-9][A-Za-z0-9 ._-]{0,127}' || die "invalid PACK_IDENTITY"
+fi
+case $layout in
+file | tree)
+	[ -z "$package" ] || die "PACK_PACKAGE is only for the npm layout"
+	matches "$url" 'https://[A-Za-z0-9./_{}+-]+\.tar\.gz' || die "PACK_URL must be an https .tar.gz URL"
+	case $url in *'{arch}'*) ;; *) die "PACK_URL has no {arch} placeholder" ;; esac
+	for token in "$arch_amd64" "$arch_arm64"; do
+		matches "$token" '[A-Za-z0-9_-]{1,64}' || die "invalid PACK_ARCH_* token"
+	done
+	for sum in "$sha_amd64" "$sha_arm64"; do
+		matches "$sum" '[0-9a-f]{64}' || die "invalid PACK_SHA256_* checksum"
+	done
+	;;
+npm)
+	[ -z "$url$arch_amd64$arch_arm64$sha_amd64$sha_arm64" ] ||
+		die "the npm layout pins through package-lock.json, not PACK_URL, PACK_ARCH_*, or PACK_SHA256_*"
+	matches "$package" '(@[a-z0-9][a-z0-9._-]{0,63}/)?[a-z0-9][a-z0-9._-]{0,63}' || die "invalid PACK_PACKAGE"
+	matches "$version" '[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?' || die "npm PACK_VERSION must be an exact version"
+	;;
+*) die "PACK_LAYOUT must be file, tree, or npm" ;;
+esac
 case $layout in
 file) matches "$entry" '[A-Za-z0-9._*-]{1,64}' || die "file PACK_ENTRY must be a file-name pattern" ;;
-tree) matches "$entry" '[A-Za-z0-9._-]{1,64}(/[A-Za-z0-9._-]{1,64}){0,3}' || die "tree PACK_ENTRY must be a relative path" ;;
-*) die "PACK_LAYOUT must be file or tree" ;;
+*) matches "$entry" '[A-Za-z0-9._-]{1,64}(/[A-Za-z0-9._-]{1,64}){0,3}' || die "$layout PACK_ENTRY must be a relative path" ;;
 esac
 case "/$entry/" in */../* | */./*) die "PACK_ENTRY must not contain dot segments" ;; esac
 if [ -e "$dir/$name" ]; then
 	[ -f "$dir/$name" ] || die "launcher $dir/$name is not a regular file"
 	sh -n "$dir/$name" || die "launcher $dir/$name has a syntax error"
+elif [ "$layout" = npm ]; then
+	die "the npm layout needs a launcher $dir/$name that runs the entry with /opt/meridian-node/bin/node"
+fi
+if [ "$layout" = npm ]; then
+	manifest=$dir/package.json lock=$dir/package-lock.json
+	[ -f "$manifest" ] && [ ! -L "$manifest" ] || die "missing $manifest"
+	[ -f "$lock" ] && [ ! -L "$lock" ] || die "missing $lock"
+	expected=$(printf '{\n  "name": "meridian-capsule-%s",\n  "private": true,\n  "dependencies": {\n    "%s": "%s"\n  }\n}' "$name" "$package" "$version")
+	[ "$(cat "$manifest")" = "$expected" ] || die "$manifest must depend only on $package $version"
+	grep -q '^  "lockfileVersion": 3,$' "$lock" || die "$lock must be lockfileVersion 3"
+	! grep -q '"link": true' "$lock" || die "$lock must not link local packages"
+	resolved=$(grep -c '^ *"resolved": ' "$lock" || true)
+	pinned=$(grep -Ec '^ *"resolved": "https://registry\.npmjs\.org/[A-Za-z0-9@._/-]+\.tgz",?$' "$lock" || true)
+	integrity=$(grep -Ec '^ *"integrity": "sha512-[A-Za-z0-9+/]+={0,2}",?$' "$lock" || true)
+	[ "$resolved" -gt 0 ] && [ "$resolved" = "$pinned" ] ||
+		die "every $lock entry must resolve to a registry.npmjs.org tarball"
+	[ "$integrity" = "$resolved" ] || die "every $lock entry needs a sha512 integrity"
+	grep -A1 "^    \"node_modules/$package\": {\$" "$lock" | grep -q "^      \"version\": \"$version\",\$" ||
+		die "$lock does not pin $package $version"
 fi
 
 if $check_only; then
@@ -79,25 +119,40 @@ amd64) arch=$arch_amd64 checksum=$sha_amd64 ;;
 arm64) arch=$arch_arm64 checksum=$sha_arm64 ;;
 *) die "unsupported TARGETARCH=${TARGETARCH:-}" ;;
 esac
-url=$(printf '%s' "$url" | sed "s/{version}/$version/g; s/{arch}/$arch/g")
-case $url in *'{'* | *'}'*) die "PACK_URL has an unknown placeholder" ;; esac
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
-apt-get update
-apt-get install -y --no-install-recommends curl ca-certificates
-curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
-	"$url" -o "$work/pack.tar.gz"
-printf '%s  %s\n' "$checksum" "$work/pack.tar.gz" | sha256sum -c -
-mkdir "$work/x"
-tar -xzf "$work/pack.tar.gz" -C "$work/x" --no-same-owner
-apt-get purge -y curl
-apt-get autoremove -y
-rm -rf /var/lib/apt/lists/*
+mkdir -m 0700 "$work/home" "$work/tmp"
+if [ "$layout" != npm ]; then
+	url=$(printf '%s' "$url" | sed "s/{version}/$version/g; s/{arch}/$arch/g")
+	case $url in *'{'* | *'}'*) die "PACK_URL has an unknown placeholder" ;; esac
+	apt-get update
+	apt-get install -y --no-install-recommends curl ca-certificates
+	curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+		"$url" -o "$work/pack.tar.gz"
+	printf '%s  %s\n' "$checksum" "$work/pack.tar.gz" | sha256sum -c -
+	mkdir "$work/x"
+	tar -xzf "$work/pack.tar.gz" -C "$work/x" --no-same-owner
+	apt-get purge -y curl
+	apt-get autoremove -y
+	rm -rf /var/lib/apt/lists/*
+fi
 
 install -d -m 0755 /usr/local/libexec
 target=/usr/local/libexec/$name
 case $layout in
+npm)
+	[ -x /opt/meridian-node/bin/npm ] || die "the npm layout needs the shared Node runtime in /opt/meridian-node"
+	install -d -m 0755 "$target"
+	install -m 0644 "$manifest" "$lock" "$target/"
+	# Lifecycle scripts never run; packages that need them do not fit this layout.
+	HOME=$work/home TMPDIR=$work/tmp npm_config_cache=$work/npm-cache npm_config_update_notifier=false \
+		/opt/meridian-node/bin/npm ci --prefix "$target" --ignore-scripts --omit=dev \
+		--no-audit --no-fund --registry=https://registry.npmjs.org/
+	chown -R root:root "$target"
+	chmod -R go-w "$target"
+	executable=$target/node_modules/$package/$entry
+	;;
 file)
 	found=$(find "$work/x" -type f -name "$entry")
 	[ -n "$found" ] || die "no $entry in archive"
@@ -116,8 +171,14 @@ tree)
 esac
 [ -x "$executable" ] || die "$executable is not executable"
 # Harnesses may write caches on first run; keep them out of the image.
-mkdir -m 0700 "$work/home" "$work/tmp"
 HOME=$work/home TMPDIR=$work/tmp XDG_CACHE_HOME=$work/home/.cache "$executable" --version
+# Distribution packages can ship an unrelated program under the same name, so
+# a pack may require a fixed string in the pinned binary's own help.
+if [ -n "$identity" ]; then
+	HOME=$work/home TMPDIR=$work/tmp XDG_CACHE_HOME=$work/home/.cache "$executable" --help >"$work/help" 2>&1 ||
+		die "$executable --help failed"
+	grep -qF -- "$identity" "$work/help" || die "$executable is not the expected harness: --help lacks \"$identity\""
+fi
 
 # A launcher sets harness-specific environment (for example a private Bun temp
 # directory, since /tmp is noexec) before exec'ing the pinned binary. Packs

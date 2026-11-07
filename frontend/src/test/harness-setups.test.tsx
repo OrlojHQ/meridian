@@ -30,6 +30,13 @@ it("launches with an automatic name and requires a deliberate new connection gra
  await userEvent.click(screen.getByRole("button",{name:"Start Codex"}));await waitFor(()=>expect(create).toHaveBeenCalled());
  expect(grant).toHaveBeenCalledWith("project","codex","connection");expect(create).toHaveBeenCalledWith("project",expect.stringMatching(/^codex-/),"codex",undefined,"");
 });
+it("offers no provider connection to a harness capsuled cannot configure",async()=>{
+ vi.spyOn(api,"harnessSetups").mockResolvedValue({items:[]});vi.spyOn(api,"projectHarnessSetup").mockResolvedValue({setup:""});vi.spyOn(api,"projectConnection").mockResolvedValue({connectionId:""});
+ vi.spyOn(api,"providerConnections").mockResolvedValue({enabled:true,items:[{id:"connection",provider:"anthropic",name:"My API",createdAt:setup.createdAt,resourceVersion:1,revoked:false}]});
+ show(<NativeLauncher project={{...project,harnessImages:[{name:"mock",imageReference:"example/mock:v1"}]}} harness="mock"/>);
+ expect(await screen.findByRole("button",{name:"Start Mock (test)"})).toBeInTheDocument();
+ expect(screen.queryByLabelText("Provider connection")).toBeNull();expect(screen.queryByRole("link",{name:"Connect provider"})).toBeNull();
+});
 it("groups settings under plain section headings without nested disclosures",async()=>{
  vi.spyOn(api,"harnessSetups").mockResolvedValue({items:[setup]});vi.spyOn(api,"providerConnections").mockResolvedValue({items:[],enabled:true});
  const view=show(<HarnessSetups/>);

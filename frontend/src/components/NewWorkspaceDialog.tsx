@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { api, normalizeAPIError } from "../api/client";
 import type { HarnessImage, Project } from "../api/generated/types.gen";
-import { packMayRunStructured } from "../api/harnessPacks";
+import { packMayRunNative, packMayRunStructured } from "../api/harnessPacks";
 import { queries } from "../api/queries";
 import { harnessName } from "../shell/capsuleActivity";
 import { ProjectEnvironment } from "./ProjectEnvironment";
@@ -177,12 +177,14 @@ export function NewWorkspaceDialog({
   const pack = packs.find((item) => item.name === preferred) ?? packs[0];
   const harness = pack?.name ?? "";
   // Official packs that declare only native sessions get just the terminal
-  // launcher; the daemon would refuse their task before provisioning.
+  // launcher; the daemon would refuse their task before provisioning. Packs
+  // that declare only structured sessions get just the task launcher.
   const structured =
     capabilities.data?.structured === true &&
     pack !== undefined &&
     packMayRunStructured(pack, capabilities.data.harnessImages ?? []);
-  const activeMode = structured ? mode : "terminal";
+  const native = pack === undefined || packMayRunNative(pack, capabilities.data?.harnessImages ?? []);
+  const activeMode = structured && (!native || mode === "task") ? "task" : "terminal";
   const select = (value: string) => {
     if (!current) return;
     saveHarness(current.id, value);
@@ -230,7 +232,7 @@ export function NewWorkspaceDialog({
                   setChoice({ projectId: updated.id, harness: value });
                 }}
               />
-              {harness && structured && (
+              {harness && structured && native && (
                 <div className="segmented-control" role="tablist" aria-label="How to start">
                   <button
                     type="button"

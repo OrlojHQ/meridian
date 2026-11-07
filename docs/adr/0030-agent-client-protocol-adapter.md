@@ -119,3 +119,41 @@ ACP features that need client capabilities (file system, terminals,
 elicitation) are not offered. An agent that requires them fails or degrades
 in its own way. Adding any of them needs its own decision, because each one
 would let the agent act through Meridian rather than only inside the Capsule.
+
+## Amendment: npm-locked and structured-only packs
+
+DeepSeek Harness (`dsh`) is the first ACP pack whose agent is published only
+as an npm package, and whose package has no terminal UI.
+
+- The pack installer gains an `npm` layout. The pack directory holds a
+  canonical one-dependency `package.json` with an exact version and its
+  version 3 `package-lock.json`. The installer rejects any lockfile entry
+  that is a link or that resolves anywhere but a `registry.npmjs.org` tarball
+  with a `sha512` integrity, then runs `npm ci --ignore-scripts --omit=dev`
+  with the image's pinned Node. The lockfile is the checksum list: every file
+  in the image is fixed by it, no package script runs, and nothing is
+  downloaded at Capsule start. Hundreds of transitive packages enter the
+  image this way, so updates are reviewed as a lockfile diff.
+- `PACK_IDENTITY` names text the binary's `--help` must contain. Debian and
+  Ubuntu ship an unrelated `dsh` whose `--version` succeeds, so a version
+  check alone does not prove the right program was installed.
+- A pack may ship only a structured profile. Its catalog entry declares
+  `interactionModes: [structured]`, the dashboard offers only Threads, and
+  creating a Capsule with that pack as terminal launcher fails with
+  `422 unsupported` before provisioning, the mirror of the existing Thread
+  check. The alternative, letting `dsh` install its TUI plugin from npm on
+  first run, would download unpinned code into the Capsule.
+- The `dsh` launcher disables DeepSeek's product telemetry. It does not change
+  `dsh`'s own sandbox or permission policy.
+
+`dsh` receives no Meridian-managed credentials in this change, and Meridian
+does not pass a raw key into the Capsule as a stopgap. The lease design can
+serve it without new gateway code. Every shipped `dsh` profile mounts the
+`dsh-llm-pi-ai` adapter, whose routes declare an OpenAI Chat Completions,
+OpenAI Responses, or Anthropic Messages endpoint, a base URL, models, and an
+environment credential reference. A home-level `cordis.patch.yml` that
+`capsuled` writes can declare a route at the connection's gateway URL that
+reads `MERIDIAN_PROVIDER_TOKEN`, and select it for ACP sessions and subagents.
+This was shown against an OpenAI-compatible connection's gateway with a lease
+and a mock upstream. That wiring needs the model name that custom endpoint
+connections carry, so it follows them.

@@ -32,6 +32,7 @@ export const activityGroups: { group: ActivityGroup; title: string }[] = [
 const harnessNames: Record<string, string> = {
   claude: "Claude Code",
   codex: "Codex",
+  dsh: "DeepSeek Harness",
   opencode: "OpenCode",
   pi: "Pi",
   mock: "Mock (test)",

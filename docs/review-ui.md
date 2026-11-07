@@ -125,8 +125,12 @@ Under the picker the operator chooses between opening the agent's terminal
 when the provider supports structured sessions and the selected pack might run
 one: a pack whose installation catalog entry, matched by name and image,
 declares `interactionModes` without `structured` shows just the terminal
-launcher with no tab strip. The official Claude Code, Codex, OpenCode, and Pi
-packs declare only `native`. `mock` and custom images declare nothing, because
+launcher with no tab strip, and one that declares `structured` without
+`native` shows just the task form. The official Claude Code, Codex, OpenCode,
+and Pi packs declare both; DeepSeek Harness declares only `structured`, because
+its published package has no terminal UI. The agent picker also offers a
+provider connection only for harnesses whose provider configuration
+`capsuled` writes. `mock` and custom images declare nothing, because
 their profiles come from the repository, so they keep the choice and the
 Capsule's profiles decide. Native launch lists only harness packs applied to
 that Project, follows provisioning, and opens the first PTY Run. Structured

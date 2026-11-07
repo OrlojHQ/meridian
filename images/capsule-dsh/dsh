@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+
+# DeepSeek Harness sends product telemetry to DeepSeek unless this is set.
+DSH_TELEMETRY_DISABLED="${DSH_TELEMETRY_DISABLED:-1}"
+export DSH_TELEMETRY_DISABLED
+# Its native-addon loader copies binaries into the noexec /tmp before loading
+# them; load the pinned image copies in place instead.
+NARB_DISABLE_NATIVE_CACHE=1
+export NARB_DISABLE_NATIVE_CACHE
+
+exec /opt/meridian-node/bin/node /usr/local/libexec/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js "$@"
