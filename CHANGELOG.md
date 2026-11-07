@@ -32,13 +32,22 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 - Typing `/` in the Thread composer opens a filterable menu of the commands
   the harness reports for this session. Claude Code reports its commands at
-  startup, Pi through `get_commands`, and OpenCode through `GET /command`.
+  startup, Pi through `get_commands`, and OpenCode through ACP
+  `available_commands_update`.
   Codex reports `compact`, `review`, and its skills, which the adapter runs
   through app-server calls, and Pi gains a `compact` action. Adapters send
   the list in a new negotiated, bounded `commands` frame of
   `meridian.adapter.v1`, and Thread blocks expose it as a `commands` event.
   Unknown `/text` is still sent as a prompt. Stop and New session appear as
   Meridian controls (ADR 0028).
+
+- A new `acp` adapter driver runs any Agent Client Protocol agent as a
+  structured harness. It maps prompts, streamed messages, tool calls, plans,
+  permission requests, available commands, cancel, and resume or load onto
+  `meridian.adapter.v1`, advertises no file-system or terminal capability,
+  refuses other agent requests, and answers permissions only with options the
+  agent offered. A new ACP harness needs only a pack image and a manifest
+  (ADR 0030).
 
 - `meridian project apply-harness PROJECT_ID NAME=IMAGE` allowlists a custom
   harness image on an existing Project. `meridian thread follow --until-idle`
@@ -53,6 +62,11 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - Pi provider connections reference the gateway lease as
   `$MERIDIAN_PROVIDER_TOKEN`. Pi 0.87 treats a bare variable name in
   `models.json` as a literal key.
+
+- The OpenCode pack's Threads run `opencode acp` through the `acp` driver,
+  with a fresh password per launch on OpenCode's loopback server. The
+  `opencode-server` driver is removed, and the `adapterKind` value `opencode`
+  is now `acp`. Provider connections work as before.
 
 - `meridian thread spawn --follow` exits when the first turn goes idle or the
   session ends instead of streaming until the connection closes.

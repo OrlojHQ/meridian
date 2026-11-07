@@ -54,7 +54,7 @@ Each official pack installs a native and a structured profile under its name:
 | --- | --- | --- |
 | `claude` | `claude-stream` | `claude-stream -- /usr/local/bin/claude` |
 | `codex` | `codex-app-server` | `codex-app-server --approval-policy untrusted --sandbox danger-full-access -- /usr/local/bin/codex` |
-| `opencode` | `opencode-server` | `opencode-server -- /usr/local/bin/opencode` |
+| `opencode` | `acp` | `acp --secret-env OPENCODE_SERVER_PASSWORD -- /usr/local/bin/opencode acp --hostname 127.0.0.1 --mdns=false` |
 | `pi` | `pi-rpc` | `pi-rpc --session-dir /home/capsule/.pi-sessions -- /usr/local/bin/pi` |
 
 The terminal launcher picks the native profile, and Threads pick the
@@ -98,7 +98,10 @@ hands the terminal to the harness when Ready. That layout is the contributor
 example: keep the base image thin, add a Dockerfile and trusted manifest to
 an official pack, and leave other harnesses out unless they are official.
 
-The binary has six drivers:
+The binary has six drivers. `acp` is the generic one: any harness that speaks
+the Agent Client Protocol needs only a pack image and a manifest (see
+[Adding an ACP harness](#adding-an-acp-harness)). The others are
+harness-specific:
 
 - `generic -- <adapter> [args...]` validates and normalizes both directions of
   an existing `meridian.adapter.v1` child while suppressing child stderr and
@@ -108,11 +111,17 @@ The binary has six drivers:
   `--session-dir` are adapter flags. A user-message metadata object may select
   an upstream queue primitive explicitly:
   `{"pi":{"command":"prompt|steer|follow_up"}}`. The default is `prompt`.
-- `opencode-server -- <opencode> [args...]` remains available for explicit
-  structured API/CLI integrations. It starts `opencode serve` on a random
-  `127.0.0.1` port with a fresh 256-bit Basic Auth password, mDNS disabled, no
-  CORS origins, and no public bind. `--permissions=false` disables permission
-  capability and rejects permission events.
+- `acp -- <agent> [args...]` runs an Agent Client Protocol (ACP v1) agent
+  over stdio: `initialize`, `session/new` in the working directory,
+  `session/prompt` per message, and the `session/cancel` notification. The
+  command and its arguments come only from the trusted profile; the agent is
+  started directly, never through a shell, `npx`, or a package manager.
+  `--permissions=false` answers every `session/request_permission` with the
+  agent's own reject option and advertises no permission capability.
+  `--secret-env NAME`, repeatable, sets `NAME` to a fresh random 256-bit value
+  for each launch (the OpenCode pack uses it for the password on OpenCode's
+  loopback server). `--mcp-server` registers stdio MCP servers through
+  `session/new`, with the syntax below.
 - `claude-stream -- <claude> [args...]` runs Claude Code headless with
   `--print --input-format stream-json --output-format stream-json --verbose
   --include-partial-messages`. Claude Code queues messages sent during a turn.
@@ -139,15 +148,16 @@ The binary has six drivers:
 - `mock` is deterministic and credential-free. `--fault` accepts `gap`,
   `duplicate`, `crash`, `crash-start`, `hang`, `oversize`, or `malformed`.
 
-`claude-stream` and `codex-app-server` accept
+`claude-stream`, `codex-app-server`, and `acp` accept
 `--mcp-server NAME=/absolute/executable[,argument...]`, repeatable, to register
 a stdio MCP server in the harness's own configuration. For Claude Code that is
 inline `--mcp-config` JSON; for Codex it is `-c mcp_servers.NAME.command` and
-`.args`. Names match `[A-Za-z0-9_-]{1,64}`, and quotes, backslashes, and line
+`.args`; for ACP it is the `mcpServers` list of `session/new` and
+`session/resume`. Names match `[A-Za-z0-9_-]{1,64}`, and quotes, backslashes, and line
 breaks are rejected. MCP tool calls still go through the harness's permission
 prompts.
 
-Both drivers end every turn with exactly one `status: idle` carrying resume
+These drivers end every turn with exactly one `status: idle` carrying resume
 state. When the turn produced final text, an `assistant_message` precedes it;
 Claude Code text that appears only in its `result` record is emitted as one.
 A failed turn emits `error` before `idle`. Cancel interrupts the running turn
@@ -178,12 +188,12 @@ harnesses:
     pty: false
     timeout: 2h
 
-  - name: opencode-structured
+  - name: my-acp-agent
     interactionMode: structured
     adapter:
       protocol: meridian.adapter.v1
       executable: /usr/local/bin/meridian-harness-adapter
-      arguments: ["opencode-server", "--", "/usr/local/bin/opencode"]
+      arguments: ["acp", "--", "/usr/local/bin/my-agent", "acp"]
     workingDirectory: .
     pty: false
     timeout: 2h
@@ -227,7 +237,7 @@ frame, sent only when both hellos negotiate the `commands` capability
 | `claude-stream` | `initialize` `commands[]`, minus `system/init` `terminal_slash_commands` | `prompt` | Claude Code expands `/name args` itself. |
 | `codex-app-server` | `compact`, `review`, and enabled skills from `skills/list` | `action` | `thread/compact/start`; `review/start` on uncommitted changes, or with the arguments as custom instructions; `turn/start` with a `skill` item. |
 | `pi-rpc` | `compact`, then `get_commands` | `compact` is an `action`, the rest `prompt` | `compact` with the arguments as custom instructions; Pi's `prompt` expands the rest. |
-| `opencode-server` | `GET /command` | `action` | `POST /session/{id}/command`. |
+| `acp` | `available_commands_update` | `prompt` | The agent expands `/name args` sent as an ordinary `session/prompt`, as ACP specifies. |
 | `generic` | the child adapter | as reported | Validated and forwarded. |
 
 The controller sends `/name args` as an ordinary `user_message`. An adapter
@@ -243,6 +253,41 @@ Stop and New session are Meridian controls in the same menu. They call the
 Thread API and are never sent to the harness. Model switching is not offered
 (ADR 0028).
 
+## Adding an ACP harness
+
+A harness that speaks ACP over stdio needs no new Go code (ADR 0030). Add a
+pack directory whose `pack.env` pins the release and whose `project.yaml`
+declares the structured profile as
+`["acp", "--", "/usr/local/bin/<pack>", <the agent's ACP arguments>...]`, then
+add the name to `InstallationHarnessImages`. The agent binary must be
+installed at image build time from a pinned, checksummed artifact. Launching
+through `npx`, `bunx`, or any download at Capsule start is not supported.
+
+The `acp` driver maps ACP onto `meridian.adapter.v1` like this:
+
+| ACP | Meridian |
+| --- | --- |
+| `session/new`, `session/resume`, or `session/load` | `status: idle` with resume state `{"driver":"acp","sessionId":...}` |
+| `user_message` | one `session/prompt` with a single text block; messages sent during a turn queue (at most 32) |
+| `agent_message_chunk` | `assistant_delta`, then one `assistant_message` per ACP message ID |
+| `tool_call`, `tool_call_update` | `tool_start` once the call runs or asks permission, `tool_result` when it completes or fails |
+| `plan` | a `plan` tool with a checklist; an unchanged plan is not repeated |
+| `available_commands_update` | `commands` |
+| `session/request_permission` | `permission_request` whose options are the agent's own option names |
+| stop reason `end_turn` / `cancelled` | `idle` / `end: cancelled` |
+| stop reason `max_tokens`, `max_turn_requests`, `refusal` | `error` (`acp_max_tokens`, `acp_max_turn_requests`, `acp_refusal`), then `idle` |
+| controller `cancel` | answers open permission prompts with `cancelled`, sends `session/cancel`, and ends after the agent stops or 2 seconds |
+
+Thoughts, user-message replays, mode, model, usage, and session-info updates
+are dropped. The adapter advertises no `fs` or `terminal` client capability
+and refuses every other agent-to-client request, so the agent edits files and
+runs commands with its own tools inside the Capsule, under its own permission
+prompts. Resume uses `session/resume` when offered and otherwise
+`session/load`, whose replayed history is not re-emitted; an agent with
+neither fails resume with `acp_resume_unsupported`. Authentication is the
+agent's own configuration (a personal setup or provider connection); an
+agent that answers `auth_required` fails with `acp_auth_required`.
+
 ## Tested upstream contracts
 
 The Pi driver follows the authoritative `badlogic/pi-mono`
@@ -255,19 +300,22 @@ The Pi driver follows the authoritative `badlogic/pi-mono`
 path/id/name. Unknown events, malformed records, correlation mismatches, and
 oversized records terminate the adapter.
 
-The OpenCode driver follows the authoritative server documentation and OpenAPI
-surface retrieved 2026-08-24: authenticated `opencode serve`, `/global/health`,
-`POST /session`, `GET /session/{id}`, `POST
-/session/{id}/prompt_async`, `GET /event`, message/part/session events, `POST
-/session/{id}/abort`, message reconciliation, and the documented legacy `POST
-/session/{id}/permissions/{permissionID}` endpoint. Commands use `GET /command`
-and `POST /session/{id}/command` as served by OpenCode 1.18.32. SSE reconnects use
-`Last-Event-ID` when supplied and bounded hash deduplication otherwise.
+The ACP driver follows the ACP v1 schema (`agentclientprotocol/agent-client-protocol`
+`schema/schema.json`, schema release 1.29.1, retrieved 2026-11-07): strict LF
+JSON-RPC 2.0, `initialize` with protocol version 1, `session/new`,
+`session/resume`, `session/load`, `session/prompt` and its stop reasons,
+`session/cancel`, `session/update` (`agent_message_chunk`, `tool_call`,
+`tool_call_update`, `plan`, `available_commands_update`, and the ignored
+kinds), `session/request_permission` with `allow_once`, `allow_always`,
+`reject_once`, and `reject_always` options, and `$/cancel_request`. It was
+recorded against `opencode acp` from OpenCode 1.18.32, which also runs
+`/name args` prompts as its own commands. Unknown update kinds are ignored;
+malformed or oversized records, uncorrelated responses, and a protocol version
+other than 1 end the adapter.
 
-OpenCode's permission route is explicitly legacy and has changed in development
-versions. Disable it with `--permissions=false` when the installed version does
-not publish that exact endpoint; the driver does not guess newer permission
-schemas. Question/input APIs and arbitrary URL proxying are not supported.
+`opencode acp` also starts OpenCode's HTTP server on `127.0.0.1`. The pack
+gives it a fresh random `OPENCODE_SERVER_PASSWORD` per launch and disables
+mDNS, so other Capsule processes cannot drive that API without the password.
 
 The Claude Code driver follows the stream-json control protocol of Claude Code
 2.1.283, recorded against the real binary on 2026-11-07: an `initialize`
@@ -306,8 +354,9 @@ The deterministic coverage is intentionally composed rather than hidden in one
 brittle external script:
 
 - adapter contract tests cover mock multi-turn, tool events, permission/input
-  round trips, resume, cancellation, Pi RPC fixtures, authenticated OpenCode
-  server/SSE fixtures, reconnect cursors, and deduplication. Claude Code and
+  round trips, resume, cancellation, Pi RPC fixtures, and an ACP agent fixture
+  covering streaming, tools, plans, permissions, commands, resume and load,
+  cancellation, refused client requests, and hostile records. Claude Code and
   Codex fixtures replay recorded upstream records for streaming, final
   messages, tools, permissions, questions, MCP approval, queueing and steering,
   withdrawn prompts, failed turns, resume, and MCP registration. Every driver

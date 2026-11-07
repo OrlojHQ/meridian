@@ -214,6 +214,29 @@ cannot run in a Capsule, which drops all capabilities and sets
 `no-new-privileges`, so the shipped Codex profile disables it and requires
 operator approval for every command Codex does not consider read-only. The
 Capsule remains the only isolation boundary, with the limits stated above.
+The `acp` driver (ADR 0030) speaks the Agent Client Protocol to any agent a
+trusted profile names, so it treats every agent record as hostile. Records are
+bounded to 16 MiB and must be valid JSON-RPC; responses must correlate with an
+outstanding request; text is forced to valid UTF-8 without NUL and truncated to
+the frame limits; agent tool and message IDs are replaced by hashes when they
+are not safe frame IDs, and session IDs are bounded and validated before they
+enter resume state; and queued messages, open permission
+requests, tracked tool calls, and plan entries have fixed caps. The adapter
+advertises no `fs` or `terminal` client capability and refuses every
+agent-to-client request except `session/request_permission`, so an agent
+cannot read or write host files or start processes through Meridian. A
+permission answer is always one of the options the agent offered for that
+request: the controller's choice is matched by label or option ID, and
+anything else selects the agent's reject option or `cancelled`. With
+permissions disabled, every request is rejected without a prompt. Updates for
+another session and replayed history from `session/load` are dropped. ACP
+agents are installed from pinned artifacts at image build time; the driver
+never runs a package manager. `--secret-env` values are fresh random strings
+generated per launch, never credentials, and are passed only to the agent
+process. `opencode acp` also listens on Capsule loopback; the OpenCode pack
+protects that API with such a per-launch password and disables mDNS, which
+keeps other Capsule processes out but is not a boundary against code running
+as the same user. Provider credentials keep the lease design of ADR 0024.
 Profile-registered MCP servers (`--mcp-server`) are trusted profile metadata.
 They take absolute executables and quote-free arguments, run with the harness's
 authority, and their tool calls still pass through harness permission prompts.
@@ -226,7 +249,7 @@ aliases, bounded descriptions and hints, and no control characters. The list
 is stored only inside the encrypted transcript and rendered as text. It
 grants no authority: the controller sends `/name args` as an ordinary user
 message, and the adapter maps a name to a harness protocol call (Codex
-compaction, review, and skills, Pi compaction, OpenCode commands) only when it
+compaction, review, and skills, Pi compaction) only when it
 advertised that name as an action itself. Those calls run with the same harness
 permissions as a prompt. Meridian's own controls (stop, new session) are API
 calls the UI makes and are never sent to the harness. Model switching is not
@@ -497,6 +520,8 @@ they are not a statement that every planned path is already implemented.
 - Harness-reported slash commands are negotiated, bounded, encrypted with the
   transcript, and grant no authority: an adapter runs only the actions it
   advertised, from an ordinary user message.
+- ACP agents get no file-system or terminal client capability, and their
+  permission requests resolve only to options they offered.
 - Network, compute, storage, and lifetime are bounded outside the Capsule.
 - Agent Sandbox lifecycle management is never represented as a sandboxing or
   untrusted multi-tenancy guarantee.
