@@ -215,6 +215,34 @@ Use Project-authorized `harness_env` named secrets and profile
 perform ambient provider credential discovery, and it never injects
 `git_https`, `git_push`, or `github_api` values into adapters.
 
+## Slash commands
+
+Adapters report the slash commands their harness supports in a `commands`
+frame, sent only when both hellos negotiate the `commands` capability
+(ADR 0028). The browser composer shows the latest report when the user types
+`/`. Meridian keeps no command list of its own.
+
+| Driver | Source | Kind | What runs |
+| --- | --- | --- | --- |
+| `claude-stream` | `initialize` `commands[]`, minus `system/init` `terminal_slash_commands` | `prompt` | Claude Code expands `/name args` itself. |
+| `codex-app-server` | `compact`, `review`, and enabled skills from `skills/list` | `action` | `thread/compact/start`; `review/start` on uncommitted changes, or with the arguments as custom instructions; `turn/start` with a `skill` item. |
+| `pi-rpc` | `compact`, then `get_commands` | `compact` is an `action`, the rest `prompt` | `compact` with the arguments as custom instructions; Pi's `prompt` expands the rest. |
+| `opencode-server` | `GET /command` | `action` | `POST /session/{id}/command`. |
+| `generic` | the child adapter | as reported | Validated and forwarded. |
+
+The controller sends `/name args` as an ordinary `user_message`. An adapter
+runs it as an action only when `name` is one of its own advertised actions;
+anything else, including unknown `/text`, goes to the harness as a prompt.
+Frames hold at most 128 commands. Names match
+`[A-Za-z0-9][A-Za-z0-9._:-]*` up to 64 bytes and are unique with their aliases
+(at most four each); descriptions are at most 512 bytes and argument hints 128,
+with no control characters. Adapters fold, truncate, and drop entries to fit,
+and report the list again when it changes.
+
+Stop and New session are Meridian controls in the same menu. They call the
+Thread API and are never sent to the harness. Model switching is not offered
+(ADR 0028).
+
 ## Tested upstream contracts
 
 The Pi driver follows the authoritative `badlogic/pi-mono`
@@ -222,7 +250,8 @@ The Pi driver follows the authoritative `badlogic/pi-mono`
 2026-08-24: strict LF JSONL, correlated `response` records, delta-only
 `message_update`, authoritative `message_end`, tool execution events,
 `extension_ui_request`/`extension_ui_response`, `get_state`,
-`switch_session`, and `abort`. Resume state contains only the bounded Pi session
+`switch_session`, and `abort`. Command discovery and compaction follow the
+`get_commands` and `compact` commands of Pi 0.87.1. Resume state contains only the bounded Pi session
 path/id/name. Unknown events, malformed records, correlation mismatches, and
 oversized records terminate the adapter.
 
@@ -231,7 +260,8 @@ surface retrieved 2026-08-24: authenticated `opencode serve`, `/global/health`,
 `POST /session`, `GET /session/{id}`, `POST
 /session/{id}/prompt_async`, `GET /event`, message/part/session events, `POST
 /session/{id}/abort`, message reconciliation, and the documented legacy `POST
-/session/{id}/permissions/{permissionID}` endpoint. SSE reconnects use
+/session/{id}/permissions/{permissionID}` endpoint. Commands use `GET /command`
+and `POST /session/{id}/command` as served by OpenCode 1.18.32. SSE reconnects use
 `Last-Event-ID` when supplied and bounded hash deduplication otherwise.
 
 OpenCode's permission route is explicitly legacy and has changed in development
@@ -246,14 +276,17 @@ text deltas share an ID with the authoritative per-block `assistant` records,
 `user` tool results, `result` turn ends (including `is_error` results such as
 "Not logged in"), `can_use_tool` control requests answered with `allow` plus
 `updatedInput` or `deny`, `control_cancel_request`, and `interrupt`. Records
-from subagents (non-null `parent_tool_use_id`) are dropped.
+from subagents (non-null `parent_tool_use_id`) are dropped. Commands come from
+the `initialize` response's `commands` and `system/init`'s
+`terminal_slash_commands`.
 
 The Codex driver follows the `codex app-server generate-json-schema` output of
 Codex 0.157.1: `initialize` and `initialized`, `thread/start`,
 `thread/resume`, `turn/start`, `turn/steer`, `turn/interrupt`, `turn/*` and
 `item/*` notifications, `item/agentMessage/delta`, `error` with `willRetry`,
-`serverRequest/resolved`, and the v2 approval, user-input, and elicitation
-server requests. Resume state contains only the thread UUID. Correlation
+`serverRequest/resolved`, the v2 approval, user-input, and elicitation
+server requests, `skills/list`, `thread/compact/start`, and `review/start` with
+its nested review turn. Resume state contains only the thread UUID. Correlation
 mismatches and malformed or oversized records end the adapter.
 
 No driver parses terminal/TUI output.
@@ -277,7 +310,9 @@ brittle external script:
   server/SSE fixtures, reconnect cursors, and deduplication. Claude Code and
   Codex fixtures replay recorded upstream records for streaming, final
   messages, tools, permissions, questions, MCP approval, queueing and steering,
-  withdrawn prompts, failed turns, resume, and MCP registration;
+  withdrawn prompts, failed turns, resume, and MCP registration. Every driver
+  has a slash-command fixture covering discovery, bounds, actions, and unknown
+  `/text`;
 - supervisor tests cover strict negotiation, malformed/oversized/deep JSON,
   LF framing (including U+2028/U+2029 content), concurrent writes, replay gaps,
   crash/hang/process-group cleanup, stale auth/version, and bounded consumers;

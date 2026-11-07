@@ -24,6 +24,15 @@ import {
   safeInline,
   type ToolCall,
 } from "./threadChat";
+import { harnessName } from "../shell/capsuleActivity";
+import {
+  filterSlashEntries,
+  latestThreadCommands,
+  type SlashCommand,
+  type SlashControl,
+  type SlashEntry,
+  slashQuery,
+} from "./slashCommands";
 import { ThreadError } from "./ThreadError";
 import {
   CheckIcon,
@@ -364,23 +373,118 @@ function useStickToBottom(content: unknown) {
   return { ref, onScroll, away, jump };
 }
 
+const commandKindLabels: Record<SlashCommand["kind"], string> = {
+  prompt: "Prompt",
+  action: "Action",
+};
+
+function SlashMenu({
+  id,
+  harness,
+  commands,
+  entries,
+  active,
+  onHover,
+  onPick,
+}: {
+  id: string;
+  harness: string;
+  commands?: SlashCommand[];
+  entries: SlashEntry[];
+  active: number;
+  onHover: (index: number) => void;
+  onPick: (entry: SlashEntry) => void;
+}) {
+  const list = useRef<HTMLUListElement>(null);
+  useEffect(() => {
+    list.current
+      ?.querySelector<HTMLElement>(`[data-index="${active}"]`)
+      ?.scrollIntoView?.({ block: "nearest" });
+  }, [active]);
+  const firstControl = entries.findIndex((entry) => entry.type === "control");
+  const commandCount = firstControl === -1 ? entries.length : firstControl;
+  const option = (entry: SlashEntry, index: number) => (
+    <li
+      key={entry.key}
+      id={`${id}-${index}`}
+      data-index={index}
+      role="option"
+      aria-selected={index === active}
+      className={`slash-option${index === active ? " active" : ""}`}
+      onMouseDown={(event) => event.preventDefault()}
+      onMouseMove={() => index !== active && onHover(index)}
+      onClick={() => onPick(entry)}
+    >
+      {entry.type === "command" ? (
+        <>
+          <span className="slash-name">
+            /{entry.command.name}
+            {entry.command.hint && <span className="slash-hint"> {entry.command.hint}</span>}
+            {entry.alias && <span className="slash-alias"> · /{entry.alias}</span>}
+          </span>
+          <span className="slash-description">{entry.command.description}</span>
+          <span className={`slash-kind ${entry.command.kind}`}>
+            {commandKindLabels[entry.command.kind]}
+          </span>
+        </>
+      ) : (
+        <>
+          <span className="slash-name">{entry.control.label}</span>
+          <span className="slash-description">{entry.control.description}</span>
+        </>
+      )}
+    </li>
+  );
+  const agent = safeInline(harnessName(harness)) || "the agent";
+  return (
+    <div className="slash-menu">
+      <ul id={id} ref={list} role="listbox" aria-label="Commands">
+        <li role="presentation" className="slash-group">{agent} commands</li>
+        {commandCount === 0 && (
+          <li role="presentation" className="slash-empty">
+            {commands === undefined
+              ? `${agent} has not reported commands for this session.`
+              : commands.length === 0
+                ? `${agent} reported no commands.`
+                : "No matching commands. Enter sends the text as a message."}
+          </li>
+        )}
+        {entries.slice(0, commandCount).map((entry, index) => option(entry, index))}
+        {firstControl !== -1 && (
+          <>
+            <li role="presentation" className="slash-group">Meridian</li>
+            {entries.slice(firstControl).map((entry, index) => option(entry, firstControl + index))}
+          </>
+        )}
+      </ul>
+    </div>
+  );
+}
+
 function ThreadComposer({
   thread,
   activity,
+  commands,
   stopPending,
   onStop,
+  onNewSession,
   onSent,
   onConflict,
 }: {
   thread: Thread;
   activity: ChatActivity;
+  commands?: SlashCommand[];
   stopPending: boolean;
   onStop?: () => void;
+  onNewSession?: () => void;
   onSent: () => void;
   onConflict: () => Promise<void>;
 }) {
   const [message, setMessage] = useState("");
+  const [active, setActive] = useState(0);
+  const [dismissed, setDismissed] = useState<string>();
   const textarea = useRef<HTMLTextAreaElement>(null);
+  const menuId = useId();
   const mutation = useMutation({
     mutationFn: () => api.sendThreadMessage(thread.id, thread.resourceVersion, message),
     onSuccess: () => {
@@ -397,63 +501,141 @@ function ThreadComposer({
     element.style.height = "auto";
     element.style.height = `${element.scrollHeight}px`;
   }, [message]);
+  const turnRunning = activity !== "idle";
+  const canStop = turnRunning && onStop !== undefined && !stopPending && activity !== "stopping";
+  const controls = useMemo(() => {
+    const available: SlashControl[] = [];
+    if (canStop) {
+      available.push({ id: "stop", label: "Stop", description: "Stop the current turn" });
+    }
+    if (onNewSession) {
+      available.push({
+        id: "new-session",
+        label: "New session",
+        description: "Start a fresh conversation in this Capsule",
+      });
+    }
+    return available;
+  }, [canStop, onNewSession]);
+  const query = slashQuery(message);
+  const menuOpen = query !== undefined && dismissed !== message;
+  const entries = useMemo(
+    () => (query === undefined ? [] : filterSlashEntries(query, commands ?? [], controls)),
+    [commands, controls, query],
+  );
+  const selected = Math.min(active, Math.max(entries.length - 1, 0));
   const submit = () => {
     if (message.trim() && !mutation.isPending) mutation.mutate();
   };
+  const pick = (entry: SlashEntry) => {
+    if (entry.type === "control") {
+      setMessage("");
+      if (entry.control.id === "stop") onStop?.();
+      else onNewSession?.();
+      return;
+    }
+    setMessage(`/${entry.command.name} `);
+    textarea.current?.focus();
+  };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+    if (event.nativeEvent.isComposing) return;
+    if (menuOpen && entries.length > 0) {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        const step = event.key === "ArrowDown" ? 1 : -1;
+        setActive((selected + step + entries.length) % entries.length);
+        return;
+      }
+      if (event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) {
+        event.preventDefault();
+        pick(entries[selected]);
+        return;
+      }
+    }
+    if (menuOpen && event.key === "Escape") {
+      event.preventDefault();
+      setDismissed(message);
+      return;
+    }
+    if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       submit();
     }
   };
-  const turnRunning = activity !== "idle";
   return (
     <section className="thread-composer" aria-label="Thread message composer">
-      <form
-        className="composer-box"
-        onSubmit={(event) => {
-          event.preventDefault();
-          submit();
-        }}
-      >
-        <label className="sr-only" htmlFor="thread-message">
-          Message
-        </label>
-        <textarea
-          id="thread-message"
-          ref={textarea}
-          rows={1}
-          maxLength={128 * 1024}
-          value={message}
-          onChange={(event) => setMessage(event.target.value)}
-          onKeyDown={onKeyDown}
-          placeholder={turnRunning ? "Send a follow-up…" : "Message the agent…"}
-          title="Enter to send · Shift+Enter for a newline"
-        />
-        <div className="composer-actions">
-          {turnRunning && onStop && (
+      <div className="composer-frame">
+        {menuOpen && (
+          <SlashMenu
+            id={menuId}
+            harness={thread.harness}
+            commands={commands}
+            entries={entries}
+            active={selected}
+            onHover={setActive}
+            onPick={pick}
+          />
+        )}
+        <form
+          className="composer-box"
+          onSubmit={(event) => {
+            event.preventDefault();
+            submit();
+          }}
+        >
+          <label className="sr-only" htmlFor="thread-message">
+            Message
+          </label>
+          <textarea
+            id="thread-message"
+            ref={textarea}
+            rows={1}
+            maxLength={128 * 1024}
+            value={message}
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={menuOpen}
+            aria-controls={menuOpen ? menuId : undefined}
+            aria-activedescendant={
+              menuOpen && entries.length > 0 ? `${menuId}-${selected}` : undefined
+            }
+            onChange={(event) => {
+              setMessage(event.target.value);
+              setActive(0);
+            }}
+            onKeyDown={onKeyDown}
+            onBlur={() => setDismissed(message)}
+            onFocus={() => setDismissed(undefined)}
+            placeholder={
+              turnRunning ? "Send a follow-up…" : "Message the agent, or type / for commands"
+            }
+            title="Enter to send · Shift+Enter for a newline · / for commands"
+          />
+          <div className="composer-actions">
+            {turnRunning && onStop && (
+              <button
+                type="button"
+                className="composer-stop"
+                aria-label="Stop"
+                title="Stop"
+                disabled={stopPending || activity === "stopping"}
+                onClick={onStop}
+              >
+                <StopIcon />
+              </button>
+            )}
             <button
-              type="button"
-              className="composer-stop"
-              aria-label="Stop"
-              title="Stop"
-              disabled={stopPending || activity === "stopping"}
-              onClick={onStop}
+              type="submit"
+              className="composer-send"
+              aria-label="Send"
+              title="Send"
+              disabled={!message.trim() || mutation.isPending}
             >
-              <StopIcon />
+              <SendIcon />
             </button>
-          )}
-          <button
-            type="submit"
-            className="composer-send"
-            aria-label="Send"
-            title="Send"
-            disabled={!message.trim() || mutation.isPending}
-          >
-            <SendIcon />
-          </button>
-        </div>
-      </form>
+          </div>
+        </form>
+      </div>
       {mutation.isError && <ThreadError error={mutation.error} />}
     </section>
   );
@@ -467,6 +649,7 @@ export function ThreadConversation({
   canCompose,
   stopPending,
   onStop,
+  onNewSession,
   onRefresh,
 }: {
   thread: Thread;
@@ -476,8 +659,10 @@ export function ThreadConversation({
   canCompose: boolean;
   stopPending: boolean;
   onStop?: () => void;
+  onNewSession?: () => void;
   onRefresh: () => Promise<void>;
 }) {
+  const commands = useMemo(() => latestThreadCommands(blocks), [blocks]);
   const [answers, setAnswers] = useState<ReadonlyMap<string, string>>(new Map());
   const chat = useMemo(
     () => buildThreadChat(blocks, thread.currentRunState, answers),
@@ -532,8 +717,10 @@ export function ThreadConversation({
         <ThreadComposer
           thread={thread}
           activity={chat.activity}
+          commands={commands}
           stopPending={stopPending}
           onStop={onStop}
+          onNewSession={onNewSession}
           onSent={() => {
             scroll.jump();
             void onRefresh();

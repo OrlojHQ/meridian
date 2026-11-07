@@ -994,6 +994,107 @@ button.tool-line:hover {
   background: var(--surface);
 }
 
+.composer-frame {
+  position: relative;
+  max-width: 48rem;
+  margin: 0 auto;
+}
+
+.slash-menu {
+  position: absolute;
+  z-index: 5;
+  right: 0;
+  bottom: calc(100% + 0.4rem);
+  left: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+  box-shadow: 0 10px 32px rgb(28 33 29 / 16%);
+}
+
+.slash-menu ul {
+  max-height: min(20rem, 45dvh);
+  margin: 0;
+  padding: 0.3rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.slash-group {
+  padding: 0.45rem 0.6rem 0.25rem;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.slash-group:not(:first-child) {
+  margin-top: 0.25rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.55rem;
+}
+
+.slash-empty {
+  padding: 0.35rem 0.6rem 0.5rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.slash-option {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 0.75rem;
+  border-radius: var(--radius-md);
+  padding: 0.4rem 0.6rem;
+  cursor: pointer;
+  font-size: 0.82rem;
+}
+
+.slash-option.active {
+  background: var(--surface-selected);
+}
+
+.slash-name {
+  max-width: 20rem;
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.slash-hint,
+.slash-alias {
+  color: var(--faint);
+  font-weight: 400;
+}
+
+.slash-description {
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.slash-kind {
+  border-radius: var(--radius-sm);
+  padding: 0.05rem 0.35rem;
+  color: var(--muted);
+  background: var(--surface-subtle);
+  font-size: 0.66rem;
+}
+
+.slash-kind.action {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
 .composer-box {
   display: flex;
   max-width: 48rem;

@@ -4,6 +4,7 @@ import type {
   ThreadMessageKind,
   ThreadMessageRole,
   ThreadBlockKind,
+  ThreadCommand,
 } from "../api/generated/types.gen";
 
 // Builds blocks the way the server maps adapter frames (mapStructuredEvent in
@@ -72,6 +73,8 @@ export function transcript(start = 1) {
       }),
     error: (code: string, reason: string) =>
       push("system", "status", "error", { type: "error", code, reason }),
+    commands: (commands: ThreadCommand[]) =>
+      push("system", "status", "json", { type: "commands", commands }),
   };
   return api;
 }

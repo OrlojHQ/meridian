@@ -537,6 +537,14 @@ export function ThreadDetail({
         canCompose={canCompose}
         stopPending={session.isPending}
         onStop={activeSession ? () => session.mutate("cancel") : undefined}
+        onNewSession={
+          profiles.data?.items.some((item) => item.structured)
+            ? () =>
+                navigate(
+                  `/ui/capsules/${encodeURIComponent(thread.capsuleId)}?session=new`,
+                )
+            : undefined
+        }
         onRefresh={refresh}
         banners={
           <>

@@ -287,6 +287,53 @@ func helperArguments() []string {
 	return nil
 }
 
+// claudeFixtureCommands is a subset of the initialize response of Claude Code
+// 2.1.283 for a workspace with .claude/commands/ship.md.
+var claudeFixtureCommands = []any{
+	map[string]any{"name": "ship", "description": "Ship the current branch (project)", "argumentHint": "target"},
+	map[string]any{"name": "compact", "description": "Free up context by summarizing the conversation so far",
+		"argumentHint": "<optional custom summarization instructions>", "builtin": true},
+	map[string]any{"name": "usage", "description": "Show session cost, plan usage, and what's contributing to your limits",
+		"argumentHint": "", "aliases": []any{"cost", "stats"}, "builtin": true},
+	map[string]any{"name": "doctor", "description": "Health-check the user's Claude Code setup", "argumentHint": "", "builtin": true},
+	map[string]any{"name": "claude-api", "description": "Reference for the Claude API.\nTRIGGER when: " +
+		strings.Repeat("code imports anthropic; ", 40), "argumentHint": ""},
+	map[string]any{"name": "__remote-workflow", "description": "server-launched sessions only", "argumentHint": "", "builtin": true},
+}
+
+func TestClaudeStreamCommands(t *testing.T) {
+	decoder, _, _, _ := runClaudeFixture(t, ClaudeConfig{Permissions: true}, adapterproto.KindStart, "")
+	initial := readKind(t, decoder, adapterproto.KindCommands)
+	names := func(commands []adapterproto.Command) string {
+		var result []string
+		for _, command := range commands {
+			result = append(result, command.Name)
+		}
+		return strings.Join(result, " ")
+	}
+	if got := names(initial.Commands); got != "ship compact usage doctor claude-api" {
+		t.Fatalf("initialize commands = %q", got)
+	}
+	for _, command := range initial.Commands {
+		if command.Kind != adapterproto.CommandPrompt {
+			t.Fatalf("command kind = %#v", command)
+		}
+	}
+	if usage := initial.Commands[2]; strings.Join(usage.Aliases, ",") != "cost,stats" {
+		t.Fatalf("usage aliases = %#v", usage)
+	}
+	api := initial.Commands[4].Description
+	if len(api) > adapterproto.MaxCommandDescriptionBytes || strings.ContainsAny(api, "\n\t") ||
+		!strings.HasPrefix(api, "Reference for the Claude API. TRIGGER when:") || !strings.HasSuffix(api, "…") {
+		t.Fatalf("folded description = %q", api)
+	}
+	frames := readUntil(t, decoder, adapterproto.KindCommands)
+	assertKinds(t, frames, adapterproto.KindStatus, adapterproto.KindCommands)
+	if got := names(frames[1].Commands); got != "ship compact usage claude-api" {
+		t.Fatalf("headless commands = %q", got)
+	}
+}
+
 // TestClaudeStreamHelper replays record shapes captured from Claude Code
 // 2.1.283 in --input-format/--output-format stream-json mode.
 func TestClaudeStreamHelper(t *testing.T) {
@@ -340,15 +387,22 @@ func TestClaudeStreamHelper(t *testing.T) {
 				emit(map[string]any{"type": "result", "subtype": "error_during_execution", "is_error": true})
 				os.Exit(1)
 			}
+			body := map[string]any{}
+			if request["subtype"] == "initialize" {
+				body = map[string]any{"commands": claudeFixtureCommands, "models": []any{}}
+			}
 			emit(map[string]any{
 				"type": "control_response",
 				"response": map[string]any{
-					"subtype": "success", "request_id": record["request_id"],
-					"response": map[string]any{"commands": []any{}, "models": []any{}},
+					"subtype": "success", "request_id": record["request_id"], "response": body,
 				},
 			})
 			if request["subtype"] == "initialize" {
-				emit(map[string]any{"type": "system", "subtype": "init", "tools": []any{"Bash"}})
+				emit(map[string]any{
+					"type": "system", "subtype": "init", "tools": []any{"Bash"},
+					"slash_commands":          []any{"ship", "compact", "usage", "doctor", "claude-api", "__remote-workflow"},
+					"terminal_slash_commands": []any{"doctor", "color"},
+				})
 			}
 			if request["subtype"] == "interrupt" {
 				os.Exit(0)

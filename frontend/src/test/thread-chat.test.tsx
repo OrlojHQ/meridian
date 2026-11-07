@@ -7,6 +7,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../api/client";
 import type { Thread, ThreadBlock } from "../api/generated/types.gen";
 import * as threadEvents from "../api/threadEvents";
+import {
+  filterSlashEntries,
+  latestThreadCommands,
+  slashQuery,
+} from "../components/slashCommands";
 import { buildThreadChat } from "../components/threadChat";
 import { safeLinkTarget, ThreadMarkdown } from "../components/ThreadMarkdown";
 import { ThreadDetail } from "../components/Threads";
@@ -264,6 +269,160 @@ describe("Thread chat view", () => {
     const raw = screen.getByRole("list", { name: "Raw Thread events" });
     expect(within(raw).getByText("#12.1")).toBeInTheDocument();
     expect(within(raw).getAllByText("status").length).toBeGreaterThan(0);
+  });
+});
+
+const reportedCommands = [
+  { name: "compact", description: "Summarize the conversation", argumentHint: "<instructions>", kind: "prompt" as const },
+  { name: "review", description: "Review a pull request", kind: "prompt" as const },
+  { name: "usage", description: "Show plan usage", kind: "prompt" as const, aliases: ["cost", "stats"] },
+  { name: "ship", description: "Ship the current branch (project)", argumentHint: "target", kind: "prompt" as const },
+];
+
+describe("Slash command model", () => {
+  it("uses the latest report and drops entries the daemon would reject", () => {
+    const t = transcript();
+    expect(latestThreadCommands(t.blocks)).toBeUndefined();
+    t.commands([{ name: "old", kind: "prompt" }]);
+    t.commands([
+      ...reportedCommands,
+      { name: "bad name", kind: "prompt" },
+      { name: "compact", kind: "action" },
+      { name: "-flag", kind: "prompt" },
+      { name: "tricky", description: "line\u0007one\ntwo", kind: "action" },
+    ]);
+    const commands = latestThreadCommands(t.blocks) ?? [];
+    expect(commands.map((command) => command.name)).toEqual([
+      "compact",
+      "review",
+      "usage",
+      "ship",
+      "tricky",
+    ]);
+    expect(commands.at(-1)).toMatchObject({ description: "lineone two", kind: "action" });
+    expect(buildThreadChat(t.blocks, "Running").items).toEqual([]);
+  });
+
+  it("filters by name and alias and keeps argument text out of the menu", () => {
+    const t = transcript();
+    t.commands(reportedCommands);
+    const commands = latestThreadCommands(t.blocks);
+    expect(commands).toHaveLength(4);
+    expect(slashQuery("/")).toBe("");
+    expect(slashQuery("/rev")).toBe("rev");
+    expect(slashQuery("/review now")).toBeUndefined();
+    expect(slashQuery("hello /review")).toBeUndefined();
+    const names = (query: string) =>
+      filterSlashEntries(query, commands ?? [], [
+        { id: "new-session", label: "New session", description: "" },
+      ]).map((entry) => (entry.type === "command" ? entry.command.name : entry.control.id));
+    expect(names("")).toEqual(["compact", "review", "usage", "ship", "new-session"]);
+    expect(names("cost")).toEqual(["usage"]);
+    expect(names("s")).toEqual(["usage", "ship", "new-session"]);
+    expect(names("session")).toEqual(["new-session"]);
+    expect(names("hello")).toEqual([]);
+  });
+});
+
+describe("Slash command menu", () => {
+  const running = () => {
+    const t = transcript();
+    t.commands(reportedCommands);
+    t.user("long task");
+    t.status("running");
+    return t;
+  };
+
+  it("opens on / with the harness-reported commands and inserts the picked one", async () => {
+    const send = vi.spyOn(api, "sendThreadMessage").mockResolvedValue({ thread });
+    const user = userEvent.setup();
+    renderThread(running().blocks);
+    const composer = await screen.findByRole("combobox", { name: "Message" });
+    await user.type(composer, "/");
+    const menu = screen.getByRole("listbox", { name: "Commands" });
+    expect(composer).toHaveAttribute("aria-expanded", "true");
+    expect(within(menu).getAllByRole("option").map((option) => option.textContent)).toEqual([
+      "/compact <instructions>Summarize the conversationPrompt",
+      "/reviewReview a pull requestPrompt",
+      "/usageShow plan usagePrompt",
+      "/ship targetShip the current branch (project)Prompt",
+      "StopStop the current turn",
+      "New sessionStart a fresh conversation in this Capsule",
+    ]);
+    await user.type(composer, "sh");
+    expect(within(menu).getAllByRole("option")[0]).toHaveAttribute("aria-selected", "true");
+    await user.keyboard("{Enter}");
+    expect(composer).toHaveValue("/ship ");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(send).not.toHaveBeenCalled();
+    await user.type(composer, "staging{Enter}");
+    await waitFor(() =>
+      expect(send).toHaveBeenCalledWith(thread.id, thread.resourceVersion, "/ship staging"),
+    );
+  });
+
+  it("navigates with arrows, matches aliases, and closes on Escape", async () => {
+    const user = userEvent.setup();
+    renderThread(running().blocks);
+    const composer = await screen.findByRole("combobox", { name: "Message" });
+    await user.type(composer, "/");
+    await user.keyboard("{ArrowDown}{ArrowDown}");
+    const options = screen.getAllByRole("option");
+    expect(options[2]).toHaveAttribute("aria-selected", "true");
+    expect(composer).toHaveAttribute("aria-activedescendant", options[2].id);
+    await user.keyboard("{ArrowUp}{ArrowUp}{ArrowUp}");
+    expect(screen.getAllByRole("option").at(-1)).toHaveAttribute("aria-selected", "true");
+    await user.type(composer, "cos");
+    expect(screen.getByRole("option")).toHaveTextContent("/usage · /costShow plan usage");
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    await user.type(composer, "t");
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+  });
+
+  it("sends unknown /text as an ordinary prompt", async () => {
+    const send = vi.spyOn(api, "sendThreadMessage").mockResolvedValue({ thread });
+    const user = userEvent.setup();
+    renderThread(running().blocks);
+    const composer = await screen.findByRole("combobox", { name: "Message" });
+    await user.type(composer, "/deploy-now");
+    expect(screen.getByRole("listbox")).toHaveTextContent(
+      "No matching commands. Enter sends the text as a message.",
+    );
+    await user.keyboard("{Enter}");
+    await waitFor(() =>
+      expect(send).toHaveBeenCalledWith(thread.id, thread.resourceVersion, "/deploy-now"),
+    );
+  });
+
+  it("runs Meridian controls instead of sending them", async () => {
+    const send = vi.spyOn(api, "sendThreadMessage").mockResolvedValue({ thread });
+    const session = vi.spyOn(api, "threadSession").mockResolvedValue({ thread });
+    const user = userEvent.setup();
+    renderThread(running().blocks);
+    const composer = await screen.findByRole("combobox", { name: "Message" });
+    await user.type(composer, "/stop{Enter}");
+    await waitFor(() =>
+      expect(session).toHaveBeenCalledWith("cancel", thread.id, thread.resourceVersion),
+    );
+    expect(composer).toHaveValue("");
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("offers no Stop while idle and explains a harness that reported nothing", async () => {
+    const t = transcript();
+    t.user("hi");
+    t.final("a1", "hello");
+    t.status("idle");
+    const user = userEvent.setup();
+    renderThread(t.blocks);
+    const composer = await screen.findByRole("combobox", { name: "Message" });
+    await user.type(composer, "/");
+    const menu = screen.getByRole("listbox");
+    expect(menu).toHaveTextContent("Mock (test) has not reported commands for this session.");
+    expect(within(menu).getAllByRole("option").map((option) => option.textContent)).toEqual([
+      "New sessionStart a fresh conversation in this Capsule",
+    ]);
   });
 });
 

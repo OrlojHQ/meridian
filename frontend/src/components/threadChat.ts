@@ -224,6 +224,7 @@ export function buildThreadChat(
       }
       case "permission_response":
       case "input_response":
+      case "commands":
         break;
       case "gap":
         items.push({ kind: "notice", key: block.id, text: "Some earlier events are unavailable." });

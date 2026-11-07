@@ -26,6 +26,14 @@ const (
 	MaxIDBytes          = 160
 	MaxOptions          = 32
 	MaxOptionBytes      = 1024
+
+	// Command lists come from repositories and harness plugins; 128 entries
+	// at every limit still fit one frame.
+	MaxCommands                = 128
+	MaxCommandNameBytes        = 64
+	MaxCommandDescriptionBytes = 512
+	MaxCommandHintBytes        = 128
+	MaxCommandAliases          = 4
 )
 
 var (
@@ -58,7 +66,27 @@ const (
 	KindCursor             Kind = "cursor"
 	KindGap                Kind = "gap"
 	KindEnd                Kind = "end"
+	KindCommands           Kind = "commands"
 )
+
+// CommandKind says how an adapter runs a reported command. A prompt command
+// is forwarded verbatim as `/name args` for the harness to expand; an action
+// command is mapped by the adapter to a harness protocol call. Controllers
+// send both as ordinary user messages.
+type CommandKind string
+
+const (
+	CommandPrompt CommandKind = "prompt"
+	CommandAction CommandKind = "action"
+)
+
+type Command struct {
+	Name         string      `json:"name"`
+	Description  string      `json:"description,omitempty"`
+	ArgumentHint string      `json:"argumentHint,omitempty"`
+	Kind         CommandKind `json:"kind"`
+	Aliases      []string    `json:"aliases,omitempty"`
+}
 
 type Role string
 
@@ -89,6 +117,9 @@ type Capabilities struct {
 	InputRequests  bool `json:"inputRequests"`
 	Heartbeat      bool `json:"heartbeat"`
 	OpaqueMetadata bool `json:"opaqueMetadata"`
+	// Commands says the peer understands commands frames. An adapter
+	// reports commands only when both hellos set it.
+	Commands bool `json:"commands,omitempty"`
 }
 
 type Permission struct {
@@ -134,6 +165,7 @@ type Frame struct {
 	Permission   *Permission     `json:"permission,omitempty"`
 	Input        *Input          `json:"input,omitempty"`
 	Metadata     json.RawMessage `json:"metadata,omitempty"`
+	Commands     []Command       `json:"commands,omitempty"`
 	Cursor       uint64          `json:"cursor,omitempty"`
 	Gap          *Gap            `json:"gap,omitempty"`
 }
@@ -281,8 +313,72 @@ func validateShape(f Frame) error {
 			f.Status == StatusRestarting {
 			return invalid("end status")
 		}
+	case KindCommands:
+		if !validCommands(f.Commands) {
+			return invalid("commands")
+		}
+	}
+	if f.Type != KindCommands && f.Commands != nil {
+		return invalid("commands")
 	}
 	return nil
+}
+
+func validCommands(commands []Command) bool {
+	if len(commands) > MaxCommands {
+		return false
+	}
+	names := make(map[string]bool, len(commands))
+	claim := func(name string) bool {
+		if !ValidCommandName(name) || names[name] {
+			return false
+		}
+		names[name] = true
+		return true
+	}
+	for _, command := range commands {
+		if !claim(command.Name) ||
+			(command.Kind != CommandPrompt && command.Kind != CommandAction) ||
+			!validLine(command.Description, MaxCommandDescriptionBytes) ||
+			!validLine(command.ArgumentHint, MaxCommandHintBytes) ||
+			len(command.Aliases) > MaxCommandAliases {
+			return false
+		}
+		for _, alias := range command.Aliases {
+			if !claim(alias) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// ValidCommandName accepts the names a user can type after "/": an ASCII
+// letter or digit followed by letters, digits, ".", "_", ":", or "-".
+func ValidCommandName(name string) bool {
+	if name == "" || len(name) > MaxCommandNameBytes {
+		return false
+	}
+	for index, r := range name {
+		alphanumeric := r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9'
+		if !alphanumeric && (index == 0 || !strings.ContainsRune("._:-", r)) {
+			return false
+		}
+	}
+	return true
+}
+
+// validLine accepts bounded UTF-8 text without control characters.
+func validLine(value string, limit int) bool {
+	if !validText(value, limit) {
+		return false
+	}
+	for _, r := range value {
+		if r < 0x20 || r >= 0x7f && r <= 0x9f {
+			return false
+		}
+	}
+	return true
 }
 
 func validPermission(value Permission, response bool) bool {
@@ -306,7 +402,7 @@ func knownKind(kind Kind) bool {
 		KindAssistantMessage, KindToolStart, KindToolResult, KindStatus, KindError,
 		KindPermissionRequest, KindPermissionResponse, KindInputRequest,
 		KindInputResponse, KindHeartbeat, KindCancel, KindAck, KindCursor,
-		KindGap, KindEnd:
+		KindGap, KindEnd, KindCommands:
 		return true
 	default:
 		return false
