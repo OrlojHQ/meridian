@@ -136,8 +136,8 @@ func adapterKind(adapter harness.Adapter) string {
 		return "external"
 	}
 	switch adapter.Arguments[0] {
-	case "opencode-server":
-		return "opencode"
+	case "acp":
+		return "acp"
 	case "pi-rpc":
 		return "pi"
 	case "claude-stream":

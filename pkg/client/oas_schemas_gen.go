@@ -2448,7 +2448,7 @@ func (s *HarnessProfile) SetPty(val bool) {
 type HarnessProfileAdapterKind string
 
 const (
-	HarnessProfileAdapterKindOpencode HarnessProfileAdapterKind = "opencode"
+	HarnessProfileAdapterKindAcp      HarnessProfileAdapterKind = "acp"
 	HarnessProfileAdapterKindPi       HarnessProfileAdapterKind = "pi"
 	HarnessProfileAdapterKindClaude   HarnessProfileAdapterKind = "claude"
 	HarnessProfileAdapterKindCodex    HarnessProfileAdapterKind = "codex"
@@ -2460,7 +2460,7 @@ const (
 // AllValues returns all HarnessProfileAdapterKind values.
 func (HarnessProfileAdapterKind) AllValues() []HarnessProfileAdapterKind {
 	return []HarnessProfileAdapterKind{
-		HarnessProfileAdapterKindOpencode,
+		HarnessProfileAdapterKindAcp,
 		HarnessProfileAdapterKindPi,
 		HarnessProfileAdapterKindClaude,
 		HarnessProfileAdapterKindCodex,
@@ -2473,7 +2473,7 @@ func (HarnessProfileAdapterKind) AllValues() []HarnessProfileAdapterKind {
 // MarshalText implements encoding.TextMarshaler.
 func (s HarnessProfileAdapterKind) MarshalText() ([]byte, error) {
 	switch s {
-	case HarnessProfileAdapterKindOpencode:
+	case HarnessProfileAdapterKindAcp:
 		return []byte(s), nil
 	case HarnessProfileAdapterKindPi:
 		return []byte(s), nil
@@ -2495,8 +2495,8 @@ func (s HarnessProfileAdapterKind) MarshalText() ([]byte, error) {
 // UnmarshalText implements encoding.TextUnmarshaler.
 func (s *HarnessProfileAdapterKind) UnmarshalText(data []byte) error {
 	switch HarnessProfileAdapterKind(data) {
-	case HarnessProfileAdapterKindOpencode:
-		*s = HarnessProfileAdapterKindOpencode
+	case HarnessProfileAdapterKindAcp:
+		*s = HarnessProfileAdapterKindAcp
 		return nil
 	case HarnessProfileAdapterKindPi:
 		*s = HarnessProfileAdapterKindPi

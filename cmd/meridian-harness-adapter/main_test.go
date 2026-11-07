@@ -23,7 +23,7 @@ func TestRootHelpAndVersion(t *testing.T) {
 }
 
 func TestDriverHelpDescribesDirectExecutableArrays(t *testing.T) {
-	for _, driver := range []string{"generic", "pi-rpc", "opencode-server", "claude-stream", "codex-app-server"} {
+	for _, driver := range []string{"generic", "pi-rpc", "acp", "claude-stream", "codex-app-server"} {
 		command := newRootCommand()
 		var output bytes.Buffer
 		command.SetOut(&output)

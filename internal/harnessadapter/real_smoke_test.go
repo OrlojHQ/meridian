@@ -29,7 +29,7 @@ func TestRealPiRPCSmoke(t *testing.T) {
 	})
 }
 
-func TestRealOpenCodeServerSmoke(t *testing.T) {
+func TestRealOpenCodeACPSmoke(t *testing.T) {
 	if os.Getenv("MERIDIAN_OPENCODE_SMOKE") != "1" {
 		t.Skip("MERIDIAN_OPENCODE_SMOKE=1 is not set")
 	}
@@ -43,8 +43,8 @@ func TestRealOpenCodeServerSmoke(t *testing.T) {
 		t.Skip("MERIDIAN_OPENCODE_SMOKE_PROMPT is unset; provider credentials/model are not confirmed")
 	}
 	runRealSmoke(t, prompt, func(ctx context.Context, connection net.Conn) error {
-		return RunOpenCode(ctx, connection, connection, OpenCodeConfig{
-			Command: []string{path}, Permissions: false,
+		return RunACP(ctx, connection, connection, ACPConfig{
+			Command: []string{path, "acp"}, SecretEnv: []string{"OPENCODE_SERVER_PASSWORD"},
 		})
 	})
 }

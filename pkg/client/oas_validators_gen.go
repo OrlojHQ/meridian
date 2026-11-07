@@ -2084,7 +2084,7 @@ func (s *HarnessProfile) Validate() error {
 
 func (s HarnessProfileAdapterKind) Validate() error {
 	switch s {
-	case "opencode":
+	case "acp":
 		return nil
 	case "pi":
 		return nil

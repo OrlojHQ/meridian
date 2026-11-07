@@ -2,8 +2,9 @@
 # The Capsule image must contain /usr/local/bin/opencode
 # (make capsule-opencode-image → meridian-capsule-opencode:dev).
 # Terminal sessions (native) sign in inside the OpenCode TUI.
-# Threads (structured) run an authenticated loopback OpenCode server through
-# the Meridian adapter; attach a provider connection for credentials.
+# Threads (structured) run `opencode acp` (Agent Client Protocol over stdio)
+# through the Meridian adapter, with a fresh password on OpenCode's loopback
+# server for each launch; attach a provider connection for credentials.
 # Neither profile injects provider credentials itself, and a repository
 # cannot define profiles or secretReferences under this name.
 version: v1
@@ -22,7 +23,16 @@ harnesses:
     adapter:
       protocol: meridian.adapter.v1
       executable: /usr/local/bin/meridian-harness-adapter
-      arguments: ["opencode-server", "--", "/usr/local/bin/opencode"]
+      arguments:
+        - acp
+        - --secret-env
+        - OPENCODE_SERVER_PASSWORD
+        - --
+        - /usr/local/bin/opencode
+        - acp
+        - --hostname
+        - 127.0.0.1
+        - --mdns=false
     workingDirectory: .
     pty: false
     timeout: 24h

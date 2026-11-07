@@ -3,6 +3,8 @@
 - Status: Accepted
 - Date: 2026-11-07
 - Extends: ADRs 0013 and 0026
+- Amended by: ADR 0030 (OpenCode reports ACP commands as `prompt`; the
+  `opencode-server` driver is removed)
 
 ## Context
 

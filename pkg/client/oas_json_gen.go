@@ -6541,8 +6541,8 @@ func (s *HarnessProfileAdapterKind) Decode(d *jx.Decoder) error {
 	}
 	// Try to use constant string.
 	switch HarnessProfileAdapterKind(v) {
-	case HarnessProfileAdapterKindOpencode:
-		*s = HarnessProfileAdapterKindOpencode
+	case HarnessProfileAdapterKindAcp:
+		*s = HarnessProfileAdapterKindAcp
 	case HarnessProfileAdapterKindPi:
 		*s = HarnessProfileAdapterKindPi
 	case HarnessProfileAdapterKindClaude:

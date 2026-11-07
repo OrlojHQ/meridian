@@ -2658,7 +2658,7 @@ components:
           type: boolean
         adapterKind:
           type: string
-          enum: [opencode, pi, claude, codex, mock, generic, external]
+          enum: [acp, pi, claude, codex, mock, generic, external]
         protocol:
           type: string
           enum: [meridian.adapter.v1]
