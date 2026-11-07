@@ -111,28 +111,28 @@ lists only Meridian's own commands. It asks permission when a shell command
 requests more than its default workspace-write sandbox, and offers "Allow
 once" and "Reject".
 
-`dsh` has no Meridian-managed credentials yet: `capsuled` writes provider
-configuration only for `claude`, `codex`, `opencode`, and `pi`, so a dsh
-Thread's turns fail until the image or Project supplies credentials. Meridian
-does not pass a raw provider key into the Capsule in the meantime.
+`dsh` reaches models only through a Meridian provider connection. Attach an
+`openai-compatible` or `anthropic-compatible` connection that has a default
+model to the Project and `dsh` from the task form. Official `openai` and
+`anthropic` connections are refused for `dsh`, because its route must name a
+model. Without a connection, a dsh Thread's turns fail; Meridian does not
+pass a raw provider key into the Capsule instead.
 
-The gateway can serve `dsh` once that wiring exists. Besides its DeepSeek
-adapters, `dsh` mounts `@deepseek-ai/dsh-llm-pi-ai` in every shipped profile
-(`dsh-base`), with no routes until settings declare them. A route names a
-wire protocol (`openai-completions`, `openai-responses`, or
-`anthropic-messages`, among others), a `baseURL`, models, and an `apiKeyEnv`
-credential reference that resolves from the launch environment. DeepSeek's
-desktop app configures the same routes, since it boots the same profile code.
-For an `openai-compatible` connection, `capsuled` would write the home-level
-patch `$HOME/.dsh/cordis.patch.yml` in the setup home:
+Besides its DeepSeek adapters, `dsh` mounts `@deepseek-ai/dsh-llm-pi-ai` in
+every shipped profile (`dsh-base`), with no routes until settings declare
+them. For a connection, `capsuled` sets `DSH_HOME` to `.dsh` in the
+Meridian-owned setup home, puts the gateway lease in
+`MERIDIAN_PROVIDER_TOKEN`, and rewrites `$DSH_HOME/cordis.patch.yml` on every
+launch. The patch is JSON, which `dsh`'s YAML loader reads without evaluating
+`!!js` tags, and the model name has passed Meridian's model validation:
 
 ```yaml
 - id: llm-pi-ai
   config:
     providers:
       meridian:
-        api: openai-completions
-        baseURL: <connection URL>/v1
+        api: openai-completions        # anthropic-messages for anthropic-compatible
+        baseURL: <gateway URL>/v1      # <gateway URL> for anthropic-compatible
         apiKeyEnv: MERIDIAN_PROVIDER_TOKEN
         models:
           - id: <connection model>
@@ -140,19 +140,44 @@ patch `$HOME/.dsh/cordis.patch.yml` in the setup home:
   config: {provider: meridian, model: <connection model>}
 - id: agent-default-model
   config: {provider: meridian, model: <connection model>}
+- id: tool-web
+  config: {search: false, fetch: true}
+- {id: llm-deepseek, disabled: true}
+- {id: llm-deepseek-account, disabled: true}
+- {id: session-log-deepseek, disabled: true}
+- {id: web-search-deepseek, disabled: true}
+- {id: web-deepseek-api, disabled: true}
 ```
 
-`dsh` then sends `POST <connection URL>/v1/chat/completions` with the lease
-as `Authorization: Bearer`, which the gateway swaps for the upstream key.
-`agent-default-model` matters because subagents otherwise default to
-`deepseek-official`. `anthropic-compatible` works the same way with
-`api: anthropic-messages`. A repository's `.env` ranks below the launch
-environment in `dsh`, so it cannot replace the lease, but a credential saved
-in `$DSH_HOME` outranks it. The patch format evaluates `!!js` tags, so the
-model name must stay validated and quoted. Web search keeps its own
-`DEEPSEEK_API_KEY` reference and stays unconfigured; the lease never reaches
-it. This needs the model name that custom connections carry, so it is a
-follow-up to those connections rather than part of this pack.
+Each entry replaces that entry's whole configuration, so the profile's own
+defaults for these entries do not survive. `dsh` then sends
+`POST <gateway URL>/v1/chat/completions` with the lease as
+`Authorization: Bearer`, or `POST <gateway URL>/v1/messages?beta=true` with
+it as `x-api-key`. The gateway swaps the lease for the upstream key and
+forwards the request without the query; `beta=true` is the only query it
+accepts, and only on Anthropic routes. `agent-default-model` matters because
+subagents otherwise default to `deepseek-official`, and the model picker
+offers only the `meridian` route.
+
+The patch also closes `dsh`'s other outbound model paths:
+
+- The DeepSeek adapters (`llm-deepseek`, `llm-deepseek-account`) are the
+  only users of DeepSeek's Files API and the only senders of the
+  `dsh_session_log` request field, which carries a copy of the session's
+  events. With them and the `session-log-deepseek` plugin disabled, no
+  request carries a session log; the pi-ai route sends images inline.
+- DeepSeek web search reads its own `DEEPSEEK_API_KEY` and is disabled, and
+  the `web_search` tool is not registered. `web_fetch` stays; it fetches from
+  the Capsule under the Project's egress policy, like other harnesses' fetch
+  tools.
+- `dsh` lists models (`GET /models`) only from configuration pages of its
+  `web` profile, never in ACP, and the gateway accepts only `POST`.
+
+A repository's `.env` ranks below the launch environment in `dsh` and cannot
+set `DSH_*` variables, so it cannot replace the lease or move `DSH_HOME`. A
+process in the Capsule can still edit the patch or save a credential in
+`$DSH_HOME`, which outranks the environment, but it already holds the lease,
+which is valid only at the gateway for that Capsule.
 
 Structured sessions have no terminal to sign in with. Attach a provider
 connection (see [personal harness setups](personal-harness-setups.md)) to the
@@ -163,7 +188,8 @@ Project and harness:
 - for `codex`, it writes a `meridian` model provider into the setup home's
   `~/.codex/config.toml` that reads the lease from `MERIDIAN_PROVIDER_TOKEN`;
 - for OpenCode and Pi, it writes their native provider configuration the same
-  way.
+  way;
+- for `dsh`, it writes the route patch above and sets `DSH_HOME`.
 
 Official structured profiles list no `secretReferences`, because listed
 references are mandatory. Images that prefer named API keys can define their

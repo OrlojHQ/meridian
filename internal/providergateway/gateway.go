@@ -247,7 +247,10 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	route = "/" + route
 	api := API(provider)
 	allowed := api == OpenAI && (route == "/v1/responses" || route == "/v1/chat/completions") || api == Anthropic && (route == "/v1/messages" || route == "/v1/messages/count_tokens")
-	if !ok || provider != item.lease.Provider || !allowed || r.Method != http.MethodPost || r.URL.RawQuery != "" {
+	// Anthropic SDK beta clients mark requests with ?beta=true. It selects
+	// nothing upstream, so it is accepted and not forwarded.
+	query := r.URL.RawQuery == "" || api == Anthropic && r.URL.RawQuery == "beta=true"
+	if !ok || provider != item.lease.Provider || !allowed || r.Method != http.MethodPost || !query {
 		gatewayError(w, "unsupported provider operation", http.StatusNotFound)
 		return
 	}

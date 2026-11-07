@@ -6,12 +6,16 @@ import type { ProviderConnection, ProviderConnectionRequestWritable, ProviderCon
 const providerLabels:Record<ProviderConnectionType,string>={openai:"OpenAI",anthropic:"Anthropic","openai-compatible":"OpenAI-compatible endpoint","anthropic-compatible":"Anthropic-compatible endpoint"};
 const isCustom=(provider:ProviderConnectionType)=>provider==="openai-compatible"||provider==="anthropic-compatible";
 
+// Mirrors harnesssetup.ConnectionHarness: capsuled writes provider configuration only for these harnesses.
+export const connectableHarnesses=["opencode", "codex", "claude", "pi", "dsh"];
+
 // Mirrors harnesssetup.ConnectionSupported; the server enforces the same pairing.
 export function connectionSupports(harness:string,item:ProviderConnection){
  switch(harness){
  case "claude": return item.provider==="anthropic"||item.provider==="anthropic-compatible";
  case "codex": return item.provider==="openai"||item.provider==="openai-compatible";
  case "opencode": case "pi": return item.provider==="openai"||item.provider==="anthropic"||(item.provider==="openai-compatible"&&!!item.defaultModel);
+ case "dsh": return isCustom(item.provider)&&!!item.defaultModel;
  default: return !isCustom(item.provider);
  }
 }

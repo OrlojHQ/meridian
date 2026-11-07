@@ -210,10 +210,21 @@ func TestCustomEndpointGrantsAndRuntimeLease(t *testing.T) {
 		{"opencode", anthropic.ID, false},
 		{"opencode", openai.ID, false},
 		{"pi", openai.ID, false},
+		// DeepSeek Harness needs the connection's model to declare its route.
+		{"dsh", openai.ID, false},
+		{"dsh", anthropic.ID, true},
+		{"mock", anthropic.ID, false},
 	} {
 		if err := s.GrantProviderConnection(ctx, project.ID, tc.harness, tc.connection); (err == nil) != tc.ok {
 			t.Errorf("%s/%s: %v", tc.harness, tc.connection, err)
 		}
+	}
+	dsh, err := s.runtimeProviderConnection(ctx, capsule, "dsh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dsh.URL != "https://meridian.example/provider-gateway/anthropic-compatible" || dsh.Model != "qwen3-coder" || strings.Contains(dsh.URL, "litellm") {
+		t.Fatalf("unexpected dsh runtime connection %+v", dsh)
 	}
 	lease := providergateway.Lease{Connection: openai.ID, Project: string(project.ID), Capsule: string(capsule.ID), Harness: "codex", Provider: "openai-compatible"}
 	upstream, err := s.authorizeProviderLease(ctx, lease)

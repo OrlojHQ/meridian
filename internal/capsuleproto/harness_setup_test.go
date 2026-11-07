@@ -64,16 +64,19 @@ func TestSetupRejectsSymlinkEscape(t *testing.T) {
 }
 
 func TestGatewayConfigurationDoesNotWriteLeaseToken(t *testing.T) {
-	for _, harness := range []string{"codex", "claude", "opencode", "pi"} {
+	for _, harness := range []string{"codex", "claude", "opencode", "pi", "dsh"} {
 		t.Run(harness, func(t *testing.T) {
 			base := t.TempDir()
 			s := &Server{config: ServerConfig{HarnessHome: base}}
-			provider := "openai"
-			if harness == "claude" {
+			provider, model := "openai", ""
+			switch harness {
+			case "claude":
 				provider = "anthropic"
+			case "dsh":
+				provider, model = "openai-compatible", "m"
 			}
 			token := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-			env, err := s.prepareProviderConnection(context.Background(), &harnesssetup.Connection{Provider: provider, URL: "https://meridian.example/provider-gateway/" + provider, Token: token}, nil, harness, nil)
+			env, err := s.prepareProviderConnection(context.Background(), &harnesssetup.Connection{Provider: provider, URL: "https://meridian.example/provider-gateway/" + provider, Token: token, Model: model}, nil, harness, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -179,6 +182,55 @@ func TestCustomEndpointHarnessConfiguration(t *testing.T) {
 			t.Fatalf("unexpected claude environment %v", env)
 		}
 	})
+	dsh := func(t *testing.T, provider, api, baseURL string) {
+		env, err := prepare(t, "dsh-structured", provider, "deepseek-chat:v4")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if env["MERIDIAN_PROVIDER_TOKEN"] != token || env["DSH_HOME"] != filepath.Join(env["HOME"], ".dsh") {
+			t.Fatalf("unexpected dsh environment %v", env)
+		}
+		raw, err := os.ReadFile(filepath.Join(env["DSH_HOME"], "cordis.patch.yml"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(raw), token) || strings.Contains(string(raw), "!!") {
+			t.Fatalf("unsafe dsh patch %s", raw)
+		}
+		var entries []map[string]any
+		if err := json.Unmarshal(raw, &entries); err != nil {
+			t.Fatal(err)
+		}
+		byID := map[string]map[string]any{}
+		for _, entry := range entries {
+			byID[entry["id"].(string)] = entry
+		}
+		route := byID["llm-pi-ai"]["config"].(map[string]any)["providers"].(map[string]any)["meridian"].(map[string]any)
+		models := route["models"].([]any)
+		if route["api"] != api || route["baseURL"] != baseURL || route["apiKeyEnv"] != "MERIDIAN_PROVIDER_TOKEN" || len(models) != 1 || models[0].(map[string]any)["id"] != "deepseek-chat:v4" {
+			t.Fatalf("unexpected dsh route %v", route)
+		}
+		for _, id := range []string{"acp", "agent-default-model"} {
+			config := byID[id]["config"].(map[string]any)
+			if config["provider"] != "meridian" || config["model"] != "deepseek-chat:v4" {
+				t.Fatalf("%s does not select the gateway route: %v", id, config)
+			}
+		}
+		for _, id := range []string{"llm-deepseek", "llm-deepseek-account", "session-log-deepseek", "web-search-deepseek", "web-deepseek-api"} {
+			if byID[id]["disabled"] != true {
+				t.Fatalf("%s left enabled", id)
+			}
+		}
+		if web := byID["tool-web"]["config"].(map[string]any); web["search"] != false || web["fetch"] != true {
+			t.Fatalf("unexpected web tool config %v", web)
+		}
+	}
+	t.Run("dsh openai-compatible", func(t *testing.T) {
+		dsh(t, "openai-compatible", "openai-completions", gateway)
+	})
+	t.Run("dsh anthropic-compatible", func(t *testing.T) {
+		dsh(t, "anthropic-compatible", "anthropic-messages", "https://meridian.example/provider-gateway/anthropic-compatible")
+	})
 	for _, tc := range []struct{ harness, provider, model string }{
 		{"claude", "openai-compatible", "m"},
 		{"codex", "anthropic-compatible", "m"},
@@ -186,6 +238,10 @@ func TestCustomEndpointHarnessConfiguration(t *testing.T) {
 		{"pi", "anthropic-compatible", "m"},
 		{"codex", "openai", "gpt"},
 		{"codex", "openai-compatible", "bad\nmodel"},
+		{"dsh", "openai", ""},
+		{"dsh", "anthropic", ""},
+		{"dsh", "openai-compatible", ""},
+		{"dsh", "openai-compatible", `m"`},
 	} {
 		if _, err := prepare(t, tc.harness, tc.provider, tc.model); err == nil {
 			t.Errorf("%s accepted %s with model %q", tc.harness, tc.provider, tc.model)

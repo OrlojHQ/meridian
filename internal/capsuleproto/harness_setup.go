@@ -23,6 +23,12 @@ func (s *Server) prepareHarnessSetup(ctx context.Context, setup *harnesssetup.Ru
 	if err := setup.Bundle.Validate(); err != nil {
 		return nil, err
 	}
+	return s.materializeSetupHome(ctx, setup.Revision, setup.Bundle.Files, setup.Bundle.Dependencies)
+}
+
+// materializeSetupHome creates the private home for a validated revision
+// once and returns its environment.
+func (s *Server) materializeSetupHome(ctx context.Context, revision string, files []harnesssetup.File, dependencies []string) (map[string]string, error) {
 	base := s.config.HarnessHome
 	if base == "" {
 		base = "/home/capsule"
@@ -32,7 +38,7 @@ func (s *Server) prepareHarnessSetup(ctx context.Context, setup *harnesssetup.Ru
 		return nil, err
 	}
 	defer root.Close()
-	target := ".meridian-setup-" + setup.Revision
+	target := ".meridian-setup-" + revision
 	if _, err := root.Stat(target + "/.complete"); errors.Is(err, os.ErrNotExist) {
 		suffix := make([]byte, 16)
 		if _, err := rand.Read(suffix); err != nil {
@@ -43,7 +49,7 @@ func (s *Server) prepareHarnessSetup(ctx context.Context, setup *harnesssetup.Ru
 			return nil, err
 		}
 		defer root.RemoveAll(temp)
-		for _, file := range setup.Bundle.Files {
+		for _, file := range files {
 			p := temp + "/" + file.Path
 			if err := root.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 				return nil, err
@@ -77,7 +83,7 @@ func (s *Server) prepareHarnessSetup(ctx context.Context, setup *harnesssetup.Ru
 				return nil, closeErr
 			}
 		}
-		if err := installSetupDependencies(ctx, filepath.Join(base, temp), setup.Bundle.Dependencies); err != nil {
+		if err := installSetupDependencies(ctx, filepath.Join(base, temp), dependencies); err != nil {
 			return nil, err
 		}
 		f, err := root.OpenFile(temp+"/.complete", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)

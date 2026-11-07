@@ -5,8 +5,9 @@
 # stdio) through the Meridian adapter. There is no terminal (native) profile:
 # the published DeepSeek Harness CLI ships no terminal UI, and adding one
 # means installing plugins at Capsule start.
-# capsuled does not yet write dsh provider configuration, so the profile
-# receives no credentials. A repository cannot define profiles or
+# Model credentials come from a Project provider connection: capsuled writes
+# a DeepSeek Harness route to the provider gateway that reads the lease from
+# MERIDIAN_PROVIDER_TOKEN. A repository cannot define profiles or
 # secretReferences under this name.
 version: v1
 harnesses:

@@ -146,14 +146,34 @@ as an npm package, and whose package has no terminal UI.
 - The `dsh` launcher disables DeepSeek's product telemetry. It does not change
   `dsh`'s own sandbox or permission policy.
 
-`dsh` receives no Meridian-managed credentials in this change, and Meridian
-does not pass a raw key into the Capsule as a stopgap. The lease design can
-serve it without new gateway code. Every shipped `dsh` profile mounts the
-`dsh-llm-pi-ai` adapter, whose routes declare an OpenAI Chat Completions,
-OpenAI Responses, or Anthropic Messages endpoint, a base URL, models, and an
-environment credential reference. A home-level `cordis.patch.yml` that
-`capsuled` writes can declare a route at the connection's gateway URL that
-reads `MERIDIAN_PROVIDER_TOKEN`, and select it for ACP sessions and subagents.
-This was shown against an OpenAI-compatible connection's gateway with a lease
-and a mock upstream. That wiring needs the model name that custom endpoint
-connections carry, so it follows them.
+`dsh` receives Meridian-managed credentials only through a custom endpoint
+connection, and Meridian never passes a raw key into the Capsule. Every
+shipped `dsh` profile mounts the `dsh-llm-pi-ai` adapter, whose routes declare
+an OpenAI Chat Completions or Anthropic Messages endpoint, a base URL, models,
+and an environment credential reference.
+
+- `harnesssetup.ConnectionHarness` lists the harnesses `capsuled` can
+  configure for a connection: the four with personal setups, plus `dsh`.
+  Project grants and runtime leases are gated on it and on
+  `ConnectionSupported`, which pairs `dsh` only with an `openai-compatible`
+  or `anthropic-compatible` connection that names a default model.
+- `capsuled` gives `dsh` an empty Meridian-owned setup home, sets `DSH_HOME`
+  inside it, puts the lease in `MERIDIAN_PROVIDER_TOKEN`, and rewrites the
+  home-level `cordis.patch.yml` on each launch. The patch declares a
+  `meridian` route at the connection's gateway URL that reads that variable,
+  selects it for ACP sessions (`acp`) and subagents
+  (`agent-default-model`), and disables the DeepSeek adapters, the
+  session-log uploader, and DeepSeek web search. It is written as JSON,
+  because Cordis YAML evaluates `!!js` tags.
+- The provider gateway accepts the query `beta=true` on Anthropic routes and
+  drops it before forwarding. Anthropic's SDK beta client, which `dsh`'s
+  Anthropic route uses, adds it to every request; it selects nothing at the
+  upstream. Every other query is still refused.
+
+The DeepSeek adapters are the only senders of the `dsh_session_log` request
+field and the only users of DeepSeek's Files API, so with them disabled no
+session log goes upstream. Patch entries replace whole entry configurations,
+so a later `dsh` release that moves these features into other plugins could
+re-enable them; the pack's pinned lockfile makes that a reviewed change.
+A process in the Capsule can edit the patch, but it already holds the lease,
+so editing grants nothing beyond the Capsule's own gateway access.
