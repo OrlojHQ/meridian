@@ -630,8 +630,15 @@ func (c *cliConfig) writeThread(thread client.Thread) error {
 	if c.json {
 		return writeJSON(c.stdout, &thread)
 	}
-	_, err := fmt.Fprintf(c.stdout, "%s\t%s\tstate=%s\tmessages=%d\tversion=%d\n",
+	line := fmt.Sprintf("%s\t%s\tstate=%s\tmessages=%d\tversion=%d",
 		thread.ID, thread.Harness, thread.State, thread.MessageCount, thread.ResourceVersion)
+	if grant, ok := thread.CoordinationGrantId.Get(); ok {
+		line += "\tgrant=" + grant
+	}
+	if parent, ok := thread.ParentThreadId.Get(); ok {
+		line += "\tlead=" + parent
+	}
+	_, err := fmt.Fprintln(c.stdout, line)
 	return err
 }
 
