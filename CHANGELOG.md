@@ -18,7 +18,14 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   `--mcp-server` to register a stdio MCP server in the harness. Threads
   authenticate through provider connections (ADR 0026).
 
+- `meridian project apply-harness PROJECT_ID NAME=IMAGE` allowlists a custom
+  harness image on an existing Project. `meridian thread follow --until-idle`
+  exits when the turn that answers the latest prompt goes idle.
+
 ### Changed
+
+- `meridian thread spawn --follow` exits when the first turn goes idle or the
+  session ends instead of streaming until the connection closes.
 
 - A harness name may carry one native and one structured profile. A
   repository can no longer define any profile under a name that a trusted

@@ -57,9 +57,13 @@ meridian project create example \
 ```
 
 To offer more than one harness pack on the same Project, apply installation
-packs after create (`/harness` in the TUI, or `meridian project apply-harness`)
-or pass `--harness-image` at create. `/new` and `thread spawn --harness` pick a
-name; the daemon uses the matching image. `/new` also freezes the name on the
+packs after create (`/harness` in the TUI, or `meridian project apply-harness
+PROJECT_ID NAME`) or pass `--harness-image` at create. `/new` and `thread spawn
+--harness` pick a name; the daemon uses the matching image. Each allowlist name
+must be exactly the profile name a Capsule or Thread selects, so a custom image
+whose structured profile is `mock-structured` is allowlisted as
+`mock-structured=IMAGE`. Add such an entry to an existing Project with
+`meridian project apply-harness PROJECT_ID NAME=IMAGE`. `/new` also freezes the name on the
 Capsule and starts its native PTY profile when Ready. The daemon advertises `mock` (its
 default Capsule image) and official packs that keep that image's registry and
 tag: `opencode`, `pi`, `claude`, and `codex`. A digest-pinned Capsule image
@@ -147,7 +151,8 @@ The Compose file uses host networking so `meridiand` can reach Capsule superviso
 ## Credential-free mock
 
 `meridian-capsule-integration:dev` ships a fixture repository and mock
-harnesses. It needs no provider login:
+harnesses. It needs no provider login. Its structured profile is
+`mock-structured`, which is therefore also the allowlist name:
 
 ```console
 make capsule-integration-image
@@ -157,12 +162,13 @@ make capsule-integration-image
 ./bin/meridian project create demo \
   --repository-url=file:///fixture \
   --image=meridian-capsule-integration:dev \
-  --harness-image=mock=meridian-capsule-integration:dev
+  --harness-image=mock-structured=meridian-capsule-integration:dev
 printf '%s' 'inspect the fixture' | ./bin/meridian thread spawn PROJECT_ID \
   --harness mock-structured --prompt-stdin --name workspace --follow
 ```
 
-`make meridiand-up` also builds that image. Scriptable follow-ups live in
+`--follow` exits once the first turn goes idle or the session ends. `make
+meridiand-up` also builds that image. Scriptable follow-ups live in
 [CLI and TUI](cli-and-tui.md).
 
 ## Integration test

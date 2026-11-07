@@ -7,8 +7,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/OrlojHQ/meridian/internal/apiauth"
 	"github.com/OrlojHQ/meridian/internal/store/sqlite"
@@ -221,4 +223,100 @@ func threadTestRoot(config *cliConfig) *cobra.Command {
 	root := &cobra.Command{Use: "meridian", SilenceUsage: true, SilenceErrors: true}
 	root.AddCommand(newThreadCommand(config))
 	return root
+}
+
+func sseBlock(sequence int64, role, messageKind, kind, content, event string) string {
+	block := `{"id":"block-` + strconv.FormatInt(sequence, 10) + `","messageId":"message-` +
+		strconv.FormatInt(sequence, 10) + `","messageSequence":` + strconv.FormatInt(sequence, 10) +
+		`,"sequence":0,"role":"` + role + `","messageKind":"` + messageKind + `","kind":"` + kind + `"`
+	if content != "" {
+		block += `,"content":` + strconv.Quote(content)
+	}
+	if event != "" {
+		block += `,"event":` + event
+	}
+	return "data: " + block + `,"createdAt":"2026-08-24T12:00:00Z"}` + "\n\n"
+}
+
+func statusBlock(sequence int64, status string) string {
+	return sseBlock(sequence, "system", "status", "json", "", `{"type":"status","status":"`+status+`"}`)
+}
+
+func TestStreamThreadSSEUntilIdleIgnoresStartupIdle(t *testing.T) {
+	stream := sseBlock(1, "user", "prompt", "text", "inspect", "") +
+		statusBlock(2, "running") + statusBlock(3, "idle") + statusBlock(4, "running") +
+		sseBlock(5, "assistant", "response", "text", "done",
+			`{"type":"assistant_message","messageId":"answer"}`) +
+		statusBlock(6, "idle") +
+		sseBlock(7, "assistant", "response", "text", "after idle", `{"type":"assistant_message"}`)
+	var output bytes.Buffer
+	if err := streamThreadSSE(strings.NewReader(stream), &cliConfig{stdout: &output}, true); err != nil {
+		t.Fatal(err)
+	}
+	if got := output.String(); got != "inspect\n2\tstatus\n3\tstatus\n4\tstatus\ndone\n6\tstatus\n" {
+		t.Fatalf("until-idle output = %q", got)
+	}
+	output.Reset()
+	if err := streamThreadSSE(strings.NewReader(stream), &cliConfig{stdout: &output}, false); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(output.String(), "\nafter idle\n") {
+		t.Fatalf("continuous output = %q", output.String())
+	}
+}
+
+func TestStreamThreadSSEUntilIdleWaitsForTurnAfterLatestPrompt(t *testing.T) {
+	stream := sseBlock(1, "assistant", "response", "text", "earlier", `{"type":"assistant_message"}`) +
+		sseBlock(2, "user", "prompt", "text", "next", "") +
+		statusBlock(3, "idle") +
+		sseBlock(4, "system", "status", "json", "",
+			`{"type":"error","code":"auth_required","retryable":false}`) +
+		statusBlock(5, "idle") + statusBlock(6, "running")
+	var output bytes.Buffer
+	if err := streamThreadSSE(strings.NewReader(stream), &cliConfig{stdout: &output}, true); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(output.String(), "6\t") || !strings.HasSuffix(output.String(), "5\tstatus\n") {
+		t.Fatalf("until-idle output = %q", output.String())
+	}
+	output.Reset()
+	end := sseBlock(1, "user", "prompt", "text", "go", "") +
+		sseBlock(2, "system", "status", "json", "", `{"type":"end","reason":"exited"}`) + statusBlock(3, "idle")
+	if err := streamThreadSSE(strings.NewReader(end), &cliConfig{stdout: &output}, true); err != nil {
+		t.Fatal(err)
+	}
+	if output.String() != "go\n2\tend\n" {
+		t.Fatalf("end output = %q", output.String())
+	}
+}
+
+func TestThreadFollowUntilIdleExitsOnOpenStream(t *testing.T) {
+	var after string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		after = request.URL.Query().Get("after")
+		writer.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(writer, sseBlock(4, "user", "prompt", "text", "again", "")+
+			sseBlock(5, "assistant", "response", "text", "answer", `{"type":"assistant_message"}`)+
+			statusBlock(6, "idle"))
+		writer.(http.Flusher).Flush()
+		<-request.Context().Done()
+	}))
+	defer server.Close()
+	var output bytes.Buffer
+	config := &cliConfig{server: server.URL, tokenFile: testAPITokenFile(t), stdout: &output}
+	command := threadTestRoot(config)
+	command.SetArgs([]string{"thread", "follow", "thread-1", "--after", "3", "--until-idle"})
+	done := make(chan error, 1)
+	go func() { done <- command.Execute() }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("follow --until-idle did not exit after the turn went idle")
+	}
+	if after != "3" || output.String() != "again\nanswer\n6\tstatus\n" {
+		t.Fatalf("after = %q, output = %q", after, output.String())
+	}
 }

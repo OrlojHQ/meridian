@@ -4,11 +4,16 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/OrlojHQ/meridian/pkg/client"
+	"github.com/spf13/cobra"
 )
 
 func TestWriteProjectJSONOmitsUnsetOptionalFields(t *testing.T) {
@@ -87,5 +92,44 @@ func runMainGit(t *testing.T, directory string, arguments ...string) {
 	}
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %v: %s", arguments, err, output)
+	}
+}
+
+func TestProjectApplyHarnessAllowlistsCustomImageByProfileName(t *testing.T) {
+	const project = `{"id":"project-1","name":"demo","setup":[],"imageReference":"capsule:dev",` +
+		`"harnessImages":[{"name":"mock","imageReference":"capsule:dev"},` +
+		`{"name":"mock-structured","imageReference":"capsule:old"}],"harnessSecretNames":[],` +
+		`"createdAt":"2026-08-24T12:00:00Z","updatedAt":"2026-08-24T12:00:00Z","resourceVersion":7}`
+	var patched string
+	var paths []string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		paths = append(paths, request.Method+" "+request.URL.Path)
+		if request.Method == http.MethodPatch {
+			value, _ := io.ReadAll(request.Body)
+			patched = string(value)
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(writer, project)
+	}))
+	defer server.Close()
+	var output bytes.Buffer
+	config := &cliConfig{server: server.URL, tokenFile: testAPITokenFile(t), json: true, stdout: &output}
+	root := &cobra.Command{Use: "meridian", SilenceUsage: true, SilenceErrors: true}
+	root.AddCommand(newProjectCommand(config))
+	root.SetArgs([]string{"project", "apply-harness", "project-1", "mock-structured=capsule:dev"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(paths, ",") != "GET /projects/project-1,PATCH /projects/project-1" {
+		t.Fatalf("requests = %v", paths)
+	}
+	if !strings.Contains(patched, `"expectedResourceVersion":7`) ||
+		!strings.Contains(patched, `"harnessImages":[{"name":"mock","imageReference":"capsule:dev"},`+
+			`{"name":"mock-structured","imageReference":"capsule:dev"}]`) {
+		t.Fatalf("patch request = %s", patched)
+	}
+	root.SetArgs([]string{"project", "apply-harness", "project-1", "mock-structured="})
+	if err := root.Execute(); err == nil {
+		t.Fatal("empty custom image reference was accepted")
 	}
 }

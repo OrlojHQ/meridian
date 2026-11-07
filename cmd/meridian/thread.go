@@ -111,14 +111,15 @@ func newThreadSpawnCommand(config *cliConfig) *cobra.Command {
 				}
 				return errors.New(message)
 			}
-			return followThread(command, config, intent.ThreadId, 0)
+			return followThread(command, config, intent.ThreadId, 0, true)
 		},
 	}
 	command.Flags().StringVar(&harness, "harness", "", "structured harness profile name")
 	command.Flags().StringVar(&prompt, "prompt", "", "first prompt (may be retained in shell history; prefer --prompt-stdin)")
 	command.Flags().BoolVar(&promptStdin, "prompt-stdin", false, "read the first prompt from stdin")
 	command.Flags().StringVar(&name, "name", "", "optional fresh Capsule name")
-	command.Flags().BoolVar(&follow, "follow", false, "wait for provisioning and follow the Thread")
+	command.Flags().BoolVar(&follow, "follow", false,
+		"wait for provisioning and follow the Thread until its first turn goes idle or the session ends")
 	command.Flags().StringVar(&key, "idempotency-key", "", "mutation replay key (generated if omitted)")
 	return command
 }
@@ -471,13 +472,16 @@ func newThreadDeleteCommand(config *cliConfig) *cobra.Command {
 
 func newThreadFollowCommand(config *cliConfig) *cobra.Command {
 	var after int64
+	var untilIdle bool
 	command := &cobra.Command{
 		Use: "follow THREAD_ID", Short: "Follow ordered decrypted Thread blocks", Args: cobra.ExactArgs(1),
 		RunE: func(command *cobra.Command, args []string) error {
-			return followThread(command, config, args[0], after)
+			return followThread(command, config, args[0], after, untilIdle)
 		},
 	}
 	command.Flags().Int64Var(&after, "after", 0, "resume after durable message sequence")
+	command.Flags().BoolVar(&untilIdle, "until-idle", false,
+		"exit when the turn after the latest prompt goes idle or the session ends")
 	return command
 }
 
@@ -486,6 +490,7 @@ func followThread(
 	config *cliConfig,
 	threadID string,
 	after int64,
+	untilIdle bool,
 ) error {
 	endpoint := strings.TrimRight(config.server, "/") + "/threads/" +
 		url.PathEscape(threadID) + "/blocks/stream?after=" + strconv.FormatInt(after, 10)
@@ -512,12 +517,44 @@ func followThread(
 		}
 		return fmt.Errorf("follow Thread returned %s", response.Status)
 	}
-	return streamThreadSSE(response.Body, config)
+	return streamThreadSSE(response.Body, config, untilIdle)
 }
 
-func streamThreadSSE(reader io.Reader, config *cliConfig) error {
+// turnTracker finds the end of the turn that answers the latest prompt.
+// Adapters also report idle once at startup, so an idle counts only after
+// that turn produced output.
+type turnTracker struct {
+	active bool
+}
+
+func (t *turnTracker) done(block client.ThreadBlock) bool {
+	if block.Role == client.ThreadMessageRoleUser {
+		t.active = false
+		return false
+	}
+	event, ok := block.Event.Get()
+	if !ok {
+		return false
+	}
+	switch event.Type {
+	case client.ThreadAdapterEventTypeEnd:
+		return true
+	case client.ThreadAdapterEventTypeStatus:
+		status, _ := event.Status.Get()
+		return t.active && status == client.ThreadAdapterEventStatusIdle
+	case client.ThreadAdapterEventTypeAssistantDelta, client.ThreadAdapterEventTypeAssistantMessage,
+		client.ThreadAdapterEventTypeToolStart, client.ThreadAdapterEventTypeToolResult,
+		client.ThreadAdapterEventTypeError, client.ThreadAdapterEventTypePermissionRequest,
+		client.ThreadAdapterEventTypeInputRequest:
+		t.active = true
+	}
+	return false
+}
+
+func streamThreadSSE(reader io.Reader, config *cliConfig, untilIdle bool) error {
 	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 64<<10), 2<<20)
+	var turn turnTracker
 	var data bytes.Buffer
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -543,6 +580,9 @@ func streamThreadSSE(reader io.Reader, config *cliConfig) error {
 					block.MessageSequence, event.Type); err != nil {
 					return err
 				}
+			}
+			if turn.done(block) && untilIdle {
+				return nil
 			}
 			data.Reset()
 			continue
