@@ -127,5 +127,10 @@ if [ -f "$dir/$name" ]; then
 else
 	ln -s "$executable" "/usr/local/bin/$name"
 fi
+# Structured profiles run the adapter shipped by the Capsule base image.
+if grep -q '/usr/local/bin/meridian-harness-adapter' "$dir/project.yaml"; then
+	[ -x /usr/local/bin/meridian-harness-adapter ] ||
+		die "project.yaml needs /usr/local/bin/meridian-harness-adapter from the Capsule base image"
+fi
 install -d -m 0755 /etc/meridian/harnesses.d
 install -m 0644 "$dir/project.yaml" "/etc/meridian/harnesses.d/$name.yaml"

@@ -129,18 +129,25 @@ func metadata(value any) json.RawMessage {
 type JSONLines struct {
 	reader *bufio.Reader
 	writer io.Writer
+	limit  int
 	mu     sync.Mutex
 }
 
 func NewJSONLines(reader io.Reader, writer io.Writer) *JSONLines {
-	return &JSONLines{reader: bufio.NewReaderSize(reader, 4096), writer: writer}
+	return NewJSONLinesLimit(reader, writer, maxUpstreamLine)
+}
+
+// NewJSONLinesLimit bounds each upstream record at limit bytes. Harnesses that
+// inline whole tool outputs in one record need more than a Meridian frame.
+func NewJSONLinesLimit(reader io.Reader, writer io.Writer, limit int) *JSONLines {
+	return &JSONLines{reader: bufio.NewReaderSize(reader, 4096), writer: writer, limit: limit}
 }
 
 func (j *JSONLines) Read(output any) error {
 	line := make([]byte, 0, 4096)
 	for {
 		fragment, err := j.reader.ReadSlice('\n')
-		if len(line)+len(fragment) > maxUpstreamLine {
+		if len(line)+len(fragment) > j.limit {
 			for errors.Is(err, bufio.ErrBufferFull) {
 				_, err = j.reader.ReadSlice('\n')
 			}
@@ -180,7 +187,7 @@ func (j *JSONLines) Write(value any) error {
 		return err
 	}
 	encoded = append(encoded, '\n')
-	if len(encoded) > maxUpstreamLine {
+	if len(encoded) > j.limit {
 		return errors.New("upstream command exceeds size limit")
 	}
 	j.mu.Lock()
@@ -288,6 +295,168 @@ func replaceEnv(values []string, replacements map[string]string) []string {
 		result = append(result, key+"="+value)
 	}
 	return result
+}
+
+// readUpstream decodes upstream records as JSON objects until an error.
+func readUpstream(ctx context.Context, rpc *JSONLines) (<-chan map[string]json.RawMessage, <-chan error) {
+	records := make(chan map[string]json.RawMessage)
+	failures := make(chan error, 1)
+	go func() {
+		defer close(records)
+		for {
+			var record map[string]json.RawMessage
+			if err := rpc.Read(&record); err != nil {
+				failures <- err
+				return
+			}
+			if record == nil {
+				failures <- errors.New("upstream record is not an object")
+				return
+			}
+			select {
+			case records <- record:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return records, failures
+}
+
+// readController decodes controller frames until an error.
+func readController(ctx context.Context, stream *Stream) (<-chan adapterproto.Frame, <-chan error) {
+	frames := make(chan adapterproto.Frame)
+	failures := make(chan error, 1)
+	go func() {
+		defer close(frames)
+		for {
+			frame, err := stream.Read()
+			if err != nil {
+				failures <- err
+				return
+			}
+			select {
+			case frames <- frame:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return frames, failures
+}
+
+// field decodes one optional upstream field. Absent or null fields leave
+// output unchanged.
+func field(record map[string]json.RawMessage, name string, output any) error {
+	raw, exists := record[name]
+	if !exists || string(raw) == "null" {
+		return nil
+	}
+	if err := json.Unmarshal(raw, output); err != nil {
+		return fmt.Errorf("upstream field %q is malformed", name)
+	}
+	return nil
+}
+
+func stringField(record map[string]json.RawMessage, name string) string {
+	var value string
+	if field(record, name, &value) != nil {
+		return ""
+	}
+	return value
+}
+
+// permissionAllowed interprets a controller permission choice.
+func permissionAllowed(choice string) bool {
+	switch strings.ToLower(strings.TrimSpace(choice)) {
+	case "allow", "yes", "true", "confirm", "once", "accept":
+		return true
+	default:
+		return false
+	}
+}
+
+// textBlocks joins the text of a string or an array of content blocks.
+func textBlocks(raw json.RawMessage) string {
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		return text
+	}
+	var blocks []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if json.Unmarshal(raw, &blocks) != nil {
+		return ""
+	}
+	var result strings.Builder
+	for _, block := range blocks {
+		if block.Type == "text" {
+			result.WriteString(block.Text)
+		}
+	}
+	return result.String()
+}
+
+func defaultString(value, fallback string) string {
+	if value == "" {
+		return fallback
+	}
+	return value
+}
+
+const maxRetiredPrompts = 256
+
+// retiredPrompts remembers prompt frames the harness withdrew, so a
+// controller answer that crossed the withdrawal is dropped instead of fatal.
+type retiredPrompts map[string]bool
+
+func (r retiredPrompts) add(ids []string) {
+	if len(r) >= maxRetiredPrompts {
+		clear(r)
+	}
+	for _, id := range ids {
+		r[id] = true
+	}
+}
+
+func (r retiredPrompts) take(id string) bool {
+	if !r[id] {
+		return false
+	}
+	delete(r, id)
+	return true
+}
+
+// MCPServer is a trusted stdio MCP server a profile registers in a harness.
+type MCPServer struct {
+	Name      string
+	Command   string
+	Arguments []string
+}
+
+// ParseMCPServer parses NAME=EXECUTABLE[,ARGUMENT...].
+func ParseMCPServer(value string) (MCPServer, error) {
+	name, rest, ok := strings.Cut(value, "=")
+	parts := strings.Split(rest, ",")
+	server := MCPServer{Name: name, Command: parts[0], Arguments: parts[1:]}
+	if !ok || !validMCPName(name) || !strings.HasPrefix(server.Command, "/") ||
+		strings.ContainsAny(value, "\x00\r\n\"'\\") {
+		return MCPServer{}, errors.New("MCP server must be NAME=/absolute/executable[,argument...]")
+	}
+	return server, nil
+}
+
+func validMCPName(name string) bool {
+	if name == "" || len(name) > 64 {
+		return false
+	}
+	for _, r := range name {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_') {
+			return false
+		}
+	}
+	return true
 }
 
 func contextFromSignal(parent context.Context) context.Context {

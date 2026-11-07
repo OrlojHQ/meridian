@@ -249,7 +249,15 @@ func TestCreateProjectThreadRejectsNativeOnlyPackBeforeProvisioning(t *testing.T
 	queue := &recordingQueue{}
 	service := app.NewService(store, &testClock{now: now}, &testIDs{}, queue)
 	service.ConfigureThreads(&structuredRuntime{}, key)
-	service.ConfigureHarnessPacks(domain.InstallationHarnessImages("meridian-capsule:dev", ""))
+	// The official packs declare structured; a catalog that declares only
+	// native for them must still stop spawn before provisioning.
+	packs := domain.InstallationHarnessImages("meridian-capsule:dev", "")
+	for index := range packs {
+		if packs[index].Name != "mock" {
+			packs[index].InteractionModes = []domain.HarnessInteractionMode{domain.HarnessInteractionNative}
+		}
+	}
+	service.ConfigureHarnessPacks(packs)
 	projects := []domain.Project{
 		{
 			ID: "project-packs", Name: "packs", ImageReference: "meridian-capsule:dev",

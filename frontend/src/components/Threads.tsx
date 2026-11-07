@@ -643,7 +643,9 @@ export function ThreadDetail({
   if (threadQuery.isError) return <ThreadError error={threadQuery.error} />;
   if (replay.isError) return <ThreadError error={replay.error} />;
   const thread = threadQuery.data;
-  const profile = profiles.data?.items.find((item) => item.name === thread.harness);
+  // A pack can list a native and a structured profile under one name.
+  const named = profiles.data?.items.filter((item) => item.name === thread.harness) ?? [];
+  const profile = named.find((item) => item.structured) ?? named[0];
   const pending = pendingRequest(blocks);
   const activeSession = ["Queued", "Starting", "Running", "Cancelling"].includes(
     thread.currentRunState ?? "",

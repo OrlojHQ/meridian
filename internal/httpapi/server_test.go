@@ -713,7 +713,8 @@ func TestHarnessCatalogInteractionModes(t *testing.T) {
 		modes[item.Name] = item.InteractionModes
 	}
 	for _, name := range []string{"opencode", "pi", "claude", "codex"} {
-		if len(modes[name]) != 1 || modes[name][0] != client.HarnessImageInteractionModesItemNative {
+		if len(modes[name]) != 2 || modes[name][0] != client.HarnessImageInteractionModesItemNative ||
+			modes[name][1] != client.HarnessImageInteractionModesItemStructured {
 			t.Fatalf("%s modes = %v", name, modes[name])
 		}
 	}
@@ -753,15 +754,8 @@ func TestHarnessCatalogInteractionModes(t *testing.T) {
 		handler.ServeHTTP(recorder, request)
 		return recorder
 	}
-	rejected := spawn("claude")
-	if rejected.Code != http.StatusUnprocessableEntity ||
-		!strings.Contains(rejected.Body.String(), `"code":"unsupported"`) ||
-		!strings.Contains(rejected.Body.String(), "runs only in a terminal") {
-		t.Fatalf("claude spawn = %d %s", rejected.Code, rejected.Body.String())
-	}
-	capsules, err := service.ListCapsules(ctx, domain.ProjectID(project.Response.ID), 0, 100)
-	if err != nil || len(capsules.Items) != 0 {
-		t.Fatalf("rejected spawn provisioned %#v, %v", capsules.Items, err)
+	if accepted := spawn("claude"); accepted.Code != http.StatusAccepted {
+		t.Fatalf("claude spawn = %d %s", accepted.Code, accepted.Body.String())
 	}
 	if accepted := spawn("mock"); accepted.Code != http.StatusAccepted {
 		t.Fatalf("mock spawn = %d %s", accepted.Code, accepted.Body.String())

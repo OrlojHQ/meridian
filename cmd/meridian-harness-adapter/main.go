@@ -26,6 +26,8 @@ func newRootCommand() *cobra.Command {
 		newGenericCommand(),
 		newPiCommand(),
 		newOpenCodeCommand(),
+		newClaudeCommand(),
+		newCodexCommand(),
 		newMockCommand(),
 	)
 	return command
@@ -87,6 +89,81 @@ func newOpenCodeCommand() *cobra.Command {
 		&permissions, "permissions", true,
 		"enable the documented legacy session permission response endpoint",
 	)
+	return command
+}
+
+func parseMCPServers(values []string) ([]harnessadapter.MCPServer, error) {
+	servers := make([]harnessadapter.MCPServer, 0, len(values))
+	for _, value := range values {
+		server, err := harnessadapter.ParseMCPServer(value)
+		if err != nil {
+			return nil, err
+		}
+		servers = append(servers, server)
+	}
+	return servers, nil
+}
+
+const mcpServerUsage = "register a stdio MCP server as NAME=/absolute/executable[,argument...]; repeatable"
+
+func newClaudeCommand() *cobra.Command {
+	var permissions bool
+	var mcpServers []string
+	command := &cobra.Command{
+		Use:   "claude-stream -- <claude-executable> [arguments...]",
+		Short: "Bridge Claude Code stream-json mode to Meridian",
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(command *cobra.Command, arguments []string) error {
+			servers, err := parseMCPServers(mcpServers)
+			if err != nil {
+				return err
+			}
+			return harnessadapter.RunClaudeStream(
+				command.Context(), command.InOrStdin(), command.OutOrStdout(),
+				harnessadapter.ClaudeConfig{
+					Command: arguments, Permissions: permissions, MCPServers: servers,
+				},
+			)
+		},
+	}
+	command.Flags().BoolVar(
+		&permissions, "permissions", true,
+		"route Claude Code tool permission prompts to Meridian instead of disabling them",
+	)
+	command.Flags().StringArrayVar(&mcpServers, "mcp-server", nil, mcpServerUsage)
+	return command
+}
+
+func newCodexCommand() *cobra.Command {
+	var approvalPolicy, sandbox string
+	var mcpServers []string
+	command := &cobra.Command{
+		Use:   "codex-app-server -- <codex-executable> [arguments...]",
+		Short: "Bridge the Codex app-server protocol to Meridian",
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(command *cobra.Command, arguments []string) error {
+			servers, err := parseMCPServers(mcpServers)
+			if err != nil {
+				return err
+			}
+			return harnessadapter.RunCodexAppServer(
+				command.Context(), command.InOrStdin(), command.OutOrStdout(),
+				harnessadapter.CodexConfig{
+					Command: arguments, ApprovalPolicy: approvalPolicy, Sandbox: sandbox,
+					MCPServers: servers,
+				},
+			)
+		},
+	}
+	command.Flags().StringVar(
+		&approvalPolicy, "approval-policy", "",
+		"Codex approval policy: untrusted, on-request, or never (default: Codex configuration)",
+	)
+	command.Flags().StringVar(
+		&sandbox, "sandbox", "",
+		"Codex sandbox: read-only, workspace-write, or danger-full-access (default: Codex configuration)",
+	)
+	command.Flags().StringArrayVar(&mcpServers, "mcp-server", nil, mcpServerUsage)
 	return command
 }
 

@@ -2383,6 +2383,8 @@ func (s *HarnessImageInteractionModesItem) UnmarshalText(data []byte) error {
 	}
 }
 
+// A name appears at most twice, once per interaction mode, when one harness offers both a native
+// terminal and a structured session.
 // Ref: #/components/schemas/HarnessProfile
 type HarnessProfile struct {
 	Name        string                       `json:"name"`
@@ -2448,6 +2450,8 @@ type HarnessProfileAdapterKind string
 const (
 	HarnessProfileAdapterKindOpencode HarnessProfileAdapterKind = "opencode"
 	HarnessProfileAdapterKindPi       HarnessProfileAdapterKind = "pi"
+	HarnessProfileAdapterKindClaude   HarnessProfileAdapterKind = "claude"
+	HarnessProfileAdapterKindCodex    HarnessProfileAdapterKind = "codex"
 	HarnessProfileAdapterKindMock     HarnessProfileAdapterKind = "mock"
 	HarnessProfileAdapterKindGeneric  HarnessProfileAdapterKind = "generic"
 	HarnessProfileAdapterKindExternal HarnessProfileAdapterKind = "external"
@@ -2458,6 +2462,8 @@ func (HarnessProfileAdapterKind) AllValues() []HarnessProfileAdapterKind {
 	return []HarnessProfileAdapterKind{
 		HarnessProfileAdapterKindOpencode,
 		HarnessProfileAdapterKindPi,
+		HarnessProfileAdapterKindClaude,
+		HarnessProfileAdapterKindCodex,
 		HarnessProfileAdapterKindMock,
 		HarnessProfileAdapterKindGeneric,
 		HarnessProfileAdapterKindExternal,
@@ -2470,6 +2476,10 @@ func (s HarnessProfileAdapterKind) MarshalText() ([]byte, error) {
 	case HarnessProfileAdapterKindOpencode:
 		return []byte(s), nil
 	case HarnessProfileAdapterKindPi:
+		return []byte(s), nil
+	case HarnessProfileAdapterKindClaude:
+		return []byte(s), nil
+	case HarnessProfileAdapterKindCodex:
 		return []byte(s), nil
 	case HarnessProfileAdapterKindMock:
 		return []byte(s), nil
@@ -2490,6 +2500,12 @@ func (s *HarnessProfileAdapterKind) UnmarshalText(data []byte) error {
 		return nil
 	case HarnessProfileAdapterKindPi:
 		*s = HarnessProfileAdapterKindPi
+		return nil
+	case HarnessProfileAdapterKindClaude:
+		*s = HarnessProfileAdapterKindClaude
+		return nil
+	case HarnessProfileAdapterKindCodex:
+		*s = HarnessProfileAdapterKindCodex
 		return nil
 	case HarnessProfileAdapterKindMock:
 		*s = HarnessProfileAdapterKindMock

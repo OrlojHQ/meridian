@@ -1,8 +1,14 @@
 # Copy this file into a repository as .meridian/project.yaml.
 # The Capsule image must contain /usr/local/bin/codex
 # (make capsule-codex-image → meridian-capsule-codex:dev).
-# Sign in inside the Codex TUI. This trusted profile does not inject provider
-# credentials; a repository cannot add secretReferences under the same name.
+# Terminal sessions (native) sign in inside the Codex TUI.
+# Threads (structured) run `codex app-server` through the Meridian adapter.
+# They cannot sign in interactively: attach an OpenAI provider connection so
+# capsuled writes the gateway model provider into ~/.codex/config.toml.
+# Codex's own sandbox needs user namespaces the Capsule does not grant, so the
+# Capsule is the boundary and every non-read-only command asks the operator.
+# Neither profile injects provider credentials itself, and a repository
+# cannot define profiles or secretReferences under this name.
 version: v1
 harnesses:
   - name: codex
@@ -12,5 +18,15 @@ harnesses:
     promptMode: interactive
     outputMode: text
     pty: true
+    timeout: 24h
+    secretReferences: []
+  - name: codex
+    interactionMode: structured
+    adapter:
+      protocol: meridian.adapter.v1
+      executable: /usr/local/bin/meridian-harness-adapter
+      arguments: ["codex-app-server", "--approval-policy", "untrusted", "--sandbox", "danger-full-access", "--", "/usr/local/bin/codex"]
+    workingDirectory: .
+    pty: false
     timeout: 24h
     secretReferences: []

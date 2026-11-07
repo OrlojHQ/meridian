@@ -1,9 +1,12 @@
 # Copy this file into a repository as .meridian/project.yaml.
 # The Capsule image must contain /usr/local/bin/claude
 # (make capsule-claude-image → meridian-capsule-claude:dev).
-# Sign in inside the Claude Code TUI. This trusted profile does not inject
-# provider credentials; a repository cannot add secretReferences under the
-# same name.
+# Terminal sessions (native) sign in inside the Claude Code TUI.
+# Threads (structured) run Claude Code headless through the Meridian adapter.
+# They cannot sign in interactively: attach an Anthropic provider connection
+# so capsuled sets ANTHROPIC_BASE_URL and a gateway lease in ANTHROPIC_API_KEY.
+# Neither profile injects provider credentials itself, and a repository
+# cannot define profiles or secretReferences under this name.
 version: v1
 harnesses:
   - name: claude
@@ -13,5 +16,15 @@ harnesses:
     promptMode: interactive
     outputMode: text
     pty: true
+    timeout: 24h
+    secretReferences: []
+  - name: claude
+    interactionMode: structured
+    adapter:
+      protocol: meridian.adapter.v1
+      executable: /usr/local/bin/meridian-harness-adapter
+      arguments: ["claude-stream", "--", "/usr/local/bin/claude"]
+    workingDirectory: .
+    pty: false
     timeout: 24h
     secretReferences: []

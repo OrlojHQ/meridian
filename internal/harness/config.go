@@ -100,27 +100,53 @@ func (c *Config) Validate() error {
 	if len(c.Harnesses) == 0 || len(c.Harnesses) > maxProfiles {
 		return fmt.Errorf("harness profile count must be between 1 and %d", maxProfiles)
 	}
-	names := make(map[string]struct{}, len(c.Harnesses))
+	// A name may carry one native and one structured profile, so one harness
+	// pack can serve both a terminal and a Thread under the same name.
+	type key struct {
+		name string
+		mode InteractionMode
+	}
+	names := make(map[key]struct{}, len(c.Harnesses))
 	for index := range c.Harnesses {
 		profile := &c.Harnesses[index]
 		if err := profile.validate(); err != nil {
 			return fmt.Errorf("harness profile %d: %w", index, err)
 		}
-		if _, exists := names[profile.Name]; exists {
+		current := key{profile.Name, profile.Interaction}
+		if _, exists := names[current]; exists {
 			return fmt.Errorf("duplicate harness profile name %q", profile.Name)
 		}
-		names[profile.Name] = struct{}{}
+		names[current] = struct{}{}
 	}
 	return nil
 }
 
+// Profile returns the first profile with name, preferring a native one.
 func (c Config) Profile(name string) (Profile, error) {
+	if profile, err := c.ProfileFor(name, InteractionNative); err == nil {
+		return profile, nil
+	}
+	return c.ProfileFor(name, InteractionStructured)
+}
+
+// ProfileFor returns the profile with name and interaction mode.
+func (c Config) ProfileFor(name string, mode InteractionMode) (Profile, error) {
 	for _, profile := range c.Harnesses {
-		if profile.Name == name {
+		if profile.Name == name && profile.Interaction == mode {
 			return profile, nil
 		}
 	}
 	return Profile{}, fmt.Errorf("harness profile %q not found", name)
+}
+
+// Has reports whether any profile uses name.
+func (c Config) Has(name string) bool {
+	for _, profile := range c.Harnesses {
+		if profile.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 func (p *Profile) validate() error {

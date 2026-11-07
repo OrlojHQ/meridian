@@ -49,6 +49,42 @@ func TestRealOpenCodeServerSmoke(t *testing.T) {
 	})
 }
 
+func TestRealClaudeStreamSmoke(t *testing.T) {
+	if os.Getenv("MERIDIAN_CLAUDE_SMOKE") != "1" {
+		t.Skip("MERIDIAN_CLAUDE_SMOKE=1 is not set")
+	}
+	path, err := exec.LookPath(defaultString(os.Getenv("MERIDIAN_CLAUDE_BINARY"), "claude"))
+	if err != nil {
+		t.Skip("Claude Code binary is unavailable")
+	}
+	prompt := os.Getenv("MERIDIAN_CLAUDE_SMOKE_PROMPT")
+	if prompt == "" {
+		t.Skip("MERIDIAN_CLAUDE_SMOKE_PROMPT is unset; provider credentials are not confirmed")
+	}
+	runRealSmoke(t, prompt, func(ctx context.Context, connection net.Conn) error {
+		return RunClaudeStream(ctx, connection, connection, ClaudeConfig{Command: []string{path}})
+	})
+}
+
+func TestRealCodexAppServerSmoke(t *testing.T) {
+	if os.Getenv("MERIDIAN_CODEX_SMOKE") != "1" {
+		t.Skip("MERIDIAN_CODEX_SMOKE=1 is not set")
+	}
+	path, err := exec.LookPath(defaultString(os.Getenv("MERIDIAN_CODEX_BINARY"), "codex"))
+	if err != nil {
+		t.Skip("Codex binary is unavailable")
+	}
+	prompt := os.Getenv("MERIDIAN_CODEX_SMOKE_PROMPT")
+	if prompt == "" {
+		t.Skip("MERIDIAN_CODEX_SMOKE_PROMPT is unset; provider credentials are not confirmed")
+	}
+	runRealSmoke(t, prompt, func(ctx context.Context, connection net.Conn) error {
+		return RunCodexAppServer(ctx, connection, connection, CodexConfig{
+			Command: []string{path}, ApprovalPolicy: "never", Sandbox: "read-only",
+		})
+	})
+}
+
 func runRealSmoke(
 	t *testing.T,
 	prompt string,
@@ -76,11 +112,4 @@ func runRealSmoke(
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
-}
-
-func defaultString(value, fallback string) string {
-	if value == "" {
-		return fallback
-	}
-	return value
 }

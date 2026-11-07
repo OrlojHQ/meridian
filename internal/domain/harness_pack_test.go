@@ -79,9 +79,16 @@ func TestStructuredUnsupported(t *testing.T) {
 	packs := domain.InstallationHarnessImages("meridian-capsule:dev", "")
 	for _, name := range []string{"claude", "codex", "opencode", "pi"} {
 		image := domain.HarnessImage{Name: name, ImageReference: "meridian-capsule-" + name + ":dev"}
-		if !domain.StructuredUnsupported(packs, image) {
-			t.Fatalf("%s must be known to reject structured sessions", name)
+		if domain.StructuredUnsupported(packs, image) {
+			t.Fatalf("official %s pack must allow structured sessions", name)
 		}
+	}
+	nativeOnly := []domain.HarnessPack{{
+		HarnessImage:     domain.HarnessImage{Name: "agent", ImageReference: "agent:1"},
+		InteractionModes: []domain.HarnessInteractionMode{domain.HarnessInteractionNative},
+	}}
+	if !domain.StructuredUnsupported(nativeOnly, nativeOnly[0].HarnessImage) {
+		t.Fatal("a pack declaring only native must reject structured sessions")
 	}
 	for _, image := range []domain.HarnessImage{
 		// mock's profiles come from the repository.

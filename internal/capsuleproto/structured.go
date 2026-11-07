@@ -136,7 +136,15 @@ func adapterKind(adapter harness.Adapter) string {
 		return "external"
 	}
 	switch adapter.Arguments[0] {
-	case "opencode", "pi", "mock", "generic":
+	case "opencode-server":
+		return "opencode"
+	case "pi-rpc":
+		return "pi"
+	case "claude-stream":
+		return "claude"
+	case "codex-app-server":
+		return "codex"
+	case "mock", "generic":
 		return adapter.Arguments[0]
 	default:
 		return "external"
@@ -270,11 +278,11 @@ func (s *Server) structuredProfile(
 	if err != nil {
 		return harness.Profile{}, "", nil, http.StatusUnprocessableEntity, "harness_configuration_invalid"
 	}
-	profile, err := config.Profile(name)
-	if err != nil {
+	if !config.Has(name) {
 		return harness.Profile{}, "", nil, http.StatusNotFound, "harness_not_found"
 	}
-	if profile.Interaction != harness.InteractionStructured || profile.Adapter == nil {
+	profile, err := config.ProfileFor(name, harness.InteractionStructured)
+	if err != nil || profile.Adapter == nil {
 		return harness.Profile{}, "", nil, http.StatusUnprocessableEntity, "structured_interaction_unavailable"
 	}
 	resolved, ok := resolveProfileSecrets(profile.SecretRefs, supplied)

@@ -29,15 +29,15 @@ func (s *Service) ReconcileCapsuleLauncher(
 	if err != nil {
 		return fmt.Errorf("resolve launcher harness: %w", err)
 	}
+	found := false
 	for _, profile := range profiles {
 		if profile.Name != capsule.LauncherHarness {
 			continue
 		}
+		found = true
+		// A pack may also offer a structured profile under the same name.
 		if profile.Structured || !profile.PTY {
-			return fmt.Errorf(
-				"%w: launcher harness %q must be a native PTY profile",
-				domain.ErrInvalid, capsule.LauncherHarness,
-			)
+			continue
 		}
 		_, err = s.StartRun(
 			ctx,
@@ -49,6 +49,12 @@ func (s *Service) ReconcileCapsuleLauncher(
 			0,
 		)
 		return err
+	}
+	if found {
+		return fmt.Errorf(
+			"%w: launcher harness %q must be a native PTY profile",
+			domain.ErrInvalid, capsule.LauncherHarness,
+		)
 	}
 	return fmt.Errorf(
 		"%w: launcher harness %q is unavailable in the Capsule",

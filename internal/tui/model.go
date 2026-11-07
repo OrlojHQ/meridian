@@ -1288,21 +1288,18 @@ func (m Model) enterSelection() (tea.Model, tea.Cmd) {
 		m.status = "Provisioning the Capsule…"
 		return m, nil
 	case client.CapsuleStateReady:
-		for _, profile := range detail.Profiles {
-			if profile.Name != harness {
-				continue
-			}
-			if profile.Structured || !profile.Pty {
-				m.status = "Launch failed: selected harness is not a native PTY profile"
-				return m, nil
-			}
+		switch nativeProfile(detail.Profiles, harness) {
+		case profileNative:
 			m.pendingAttachID = detail.Capsule.ID
 			m.status = "Starting the native harness…"
 			return m.execute(ActionRequest{
 				Action: ActionRunStart, CapsuleID: detail.Capsule.ID, Harness: harness,
 			})
+		case profileNotNative:
+			m.status = "Launch failed: selected harness is not a native PTY profile"
+		default:
+			m.status = "Launch failed: selected harness profile is unavailable"
 		}
-		m.status = "Launch failed: selected harness profile is unavailable"
 		return m, nil
 	case client.CapsuleStateFailed:
 		failure, _ := detail.Capsule.Failure.Get()
@@ -1600,14 +1597,14 @@ func (m Model) attachSelectedRun() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) attachRun(detail CapsuleDetail, run client.Run) (tea.Model, tea.Cmd) {
-	for _, profile := range detail.Profiles {
-		if profile.Name != run.Harness {
-			continue
-		}
-		if profile.Structured || !profile.Pty {
+	for _, thread := range detail.Threads {
+		if current, ok := thread.Thread.CurrentRunId.Get(); ok && current == run.ID {
 			m.status = "Launch failed: that Run is not a native PTY session"
 			return m, nil
 		}
+	}
+	switch nativeProfile(detail.Profiles, run.Harness) {
+	case profileNative:
 		m.status = "Handing terminal to " + safeInline(run.Harness)
 		title := "Meridian · " + safeInline(detail.Capsule.Name) + " · " + safeInline(run.Harness)
 		restoreTitle := "Meridian"
@@ -1617,9 +1614,36 @@ func (m Model) attachRun(detail CapsuleDetail, run client.Run) (tea.Model, tea.C
 		return m, m.attach(AttachRequest{
 			RunID: run.ID, Title: title, RestoreTitle: restoreTitle,
 		})
+	case profileNotNative:
+		m.status = "Launch failed: that Run is not a native PTY session"
+	default:
+		m.status = "Launch failed: Run profile metadata is unavailable"
 	}
-	m.status = "Launch failed: Run profile metadata is unavailable"
 	return m, nil
+}
+
+type profileMatch int
+
+const (
+	profileMissing profileMatch = iota
+	profileNotNative
+	profileNative
+)
+
+// nativeProfile finds name's native PTY profile. A harness pack may list a
+// structured profile under the same name, which a terminal cannot use.
+func nativeProfile(profiles []client.HarnessProfile, name string) profileMatch {
+	match := profileMissing
+	for _, profile := range profiles {
+		if profile.Name != name {
+			continue
+		}
+		if !profile.Structured && profile.Pty {
+			return profileNative
+		}
+		match = profileNotNative
+	}
+	return match
 }
 
 func (m *Model) openCreateProject() {
