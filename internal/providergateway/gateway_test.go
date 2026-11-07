@@ -194,6 +194,32 @@ func TestCustomUpstreamWithoutKeySendsNoCredential(t *testing.T) {
 	}
 }
 
+func TestAnthropicCompatibleKeyUsesBothHeaders(t *testing.T) {
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Api-Key") != "vllm-key" || r.Header.Get("Authorization") != "Bearer vllm-key" {
+			t.Error("upstream key not sent in both accepted headers")
+		}
+		_, _ = io.WriteString(w, `{}`)
+	}))
+	defer upstream.Close()
+	g := New(func(context.Context, Lease) (Upstream, error) {
+		return Upstream{Key: "vllm-key", BaseURL: upstream.URL}, nil
+	}, Options{})
+	defer g.Close()
+	trustTestServer(g, upstream)
+	token, err := g.Issue(Lease{Provider: AnthropicCompatible, Connection: "connection"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := httptest.NewRequest("POST", "/provider-gateway/anthropic-compatible/v1/messages/count_tokens", strings.NewReader(`{}`))
+	r.Header.Set("X-Api-Key", token)
+	w := httptest.NewRecorder()
+	g.ServeHTTP(w, r)
+	if w.Code != 200 {
+		t.Fatalf("status %d", w.Code)
+	}
+}
+
 func TestCustomUpstreamRedirectIsNotFollowed(t *testing.T) {
 	followed := false
 	target := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { followed = true }))

@@ -94,9 +94,117 @@ connection identity. Restart active sessions after a daemon restart or expiry
 of the 24-hour Capsule lease.
 
 OpenAI Responses and Chat Completions, and Anthropic Messages and token counting
-are the supported gateway operations. Other provider operations and arbitrary
+are the supported gateway operations, for official and custom endpoints. Other provider operations and arbitrary
 upstream endpoints are unavailable. Provider failures are reported without
 copying upstream response bodies into error messages.
+
+### Self-hosted models (vLLM, Ollama, LiteLLM)
+
+A custom endpoint connection sends a harness's inference requests to your own
+OpenAI- or Anthropic-compatible server, such as vLLM on a DGX. Meridian's
+control plane makes the upstream request. Capsules receive only the usual
+gateway URL and a 24-hour lease, never your server's address or key. See
+ADR 0027.
+
+| Type | Use with | Upstream routes |
+|---|---|---|
+| `openai-compatible` | Codex, OpenCode, Pi | `/v1/responses` (Codex), `/v1/chat/completions` (OpenCode, Pi) |
+| `anthropic-compatible` | Claude Code | `/v1/messages`, `/v1/messages/count_tokens` |
+
+The control plane must be able to reach the server; Capsules do not need to.
+The examples below serve GLM-5.3-Flash.
+
+**1. Serve the model with tool calling enabled.** Coding harnesses need tool
+calls, so vLLM must parse them. GLM-5.3-Flash uses the `glm47` tool and
+reasoning parsers and needs vLLM 0.29.0 or later (currently the nightly
+image). See the [vLLM recipe](https://recipes.vllm.ai/zai-org/GLM-5.3-Flash)
+for sizing; the FP8 checkpoint needs about 306 GiB of GPU memory before KV
+cache.
+
+```console
+vllm serve zai-org/GLM-5.3-Flash \
+  --served-model-name glm-5.3-flash \
+  --tensor-parallel-size 8 \
+  --enable-auto-tool-choice --tool-call-parser glm47 \
+  --reasoning-parser glm47 \
+  --host 0.0.0.0 --port 8000 --api-key "$VLLM_KEY"
+```
+
+One vLLM server answers `/v1/responses`, `/v1/chat/completions`, and
+`/v1/messages`. Point an `openai-compatible` connection and an
+`anthropic-compatible` connection at the same base URL to use it from all
+four harnesses. Omit `--api-key` (and use `--no-api-key` below) only if the
+port is unreachable from anything except the Meridian host.
+
+Ollama cannot serve GLM-5.3-Flash locally. Its library offers only
+`glm-5.3-flash:cloud`, which forwards prompts to Ollama's hosted service,
+and its local engine does not support the model's architecture. With models
+Ollama can run locally, expose it with `OLLAMA_HOST=0.0.0.0:11434 ollama
+serve` and use a library tag whose page lists the `tools` capability. Ollama
+parses tool calls from the model's template, so it needs no tool-parser flag.
+Raise the context with `OLLAMA_CONTEXT_LENGTH` (for example `65536`); the
+small default truncates coding-agent prompts.
+
+**2. Connect it.** Over HTTPS with a certificate the control plane trusts,
+pipe the key from stdin:
+
+```console
+printf %s "$VLLM_KEY" | meridian harness connect openai-compatible \
+  --name "DGX GLM" --base-url https://dgx.example.com \
+  --model glm-5.3-flash --stdin
+printf %s "$VLLM_KEY" | meridian harness connect anthropic-compatible \
+  --name "DGX GLM (Claude Code)" --base-url https://dgx.example.com \
+  --model glm-5.3-flash --stdin
+```
+
+For a plain `http://` server on your LAN or tailnet, the daemon operator must
+allow it once, and each connection must opt in too:
+
+```console
+meridiand --provider=docker --provider-gateway-url=https://meridian.example \
+  --provider-gateway-allow-private-http
+printf %s "$VLLM_KEY" | meridian harness connect openai-compatible \
+  --name "DGX GLM" --base-url http://192.168.1.20:8000 --allow-private-http \
+  --model glm-5.3-flash --stdin
+```
+
+The `--model` value must match the server's model ID: vLLM's
+`--served-model-name`, or the Ollama tag. In plain HTTP mode, Meridian
+connects only to loopback, RFC 1918 (`10/8`, `172.16/12`, `192.168/16`), IPv6
+ULA, and `100.64/10` addresses, after DNS resolution. Plain HTTP sends
+prompts, repository content, and the key unencrypted between Meridian and the
+server, so use it only on a network you trust. Prefer HTTPS, or a tunnel such
+as a tailnet, whenever the path leaves the host. A trailing `/v1` on the base
+URL is accepted. Redirects are not followed. Custom endpoints never use
+link-local addresses such as cloud metadata services.
+
+The same fields are under **Provider connections** in Harness settings:
+choose *OpenAI-compatible endpoint* or *Anthropic-compatible endpoint*, then
+enter the base URL, the default model, the optional key, and, when the daemon
+allows it, the plain HTTP opt-in. Saving changes to a custom connection
+replaces its stored key, so enter the key again. Revoking works as for API
+keys.
+
+**3. Authorize it on first launch** as for any other connection.
+
+Harness behavior:
+
+- **Codex** uses a `meridian` model provider with `wire_api = "responses"`,
+  because Codex 0.157 accepts no other wire API. The default model becomes
+  `model`. Codex has no metadata for non-OpenAI models, so it warns at start
+  and assumes a 272k-token context window. If the server's context limit is
+  smaller (vLLM `--max-model-len`), add `model_context_window` with that limit
+  to your imported `~/.codex/config.toml`. Meridian keeps your other settings.
+- **OpenCode** and **Pi** need a default model. Meridian registers a
+  `meridian` provider that uses Chat Completions and selects that model.
+- **Claude Code** accepts only `anthropic-compatible`: vLLM's Messages API, or
+  a proxy such as LiteLLM. With a default model, Meridian sets
+  `ANTHROPIC_MODEL` and the default opus, sonnet, and haiku model variables
+  to it. Meridian sends the key as both `X-Api-Key` and a bearer token,
+  because vLLM accepts only the latter.
+
+Model quality and tool-calling support depend on your model and server.
+Meridian does not translate between APIs.
 
 Subscription sign-in remains inside the unmodified native harness and may need
 repeating for new Capsules. Imported settings do not imply that all local tools

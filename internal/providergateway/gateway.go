@@ -290,6 +290,11 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	} else {
 		if resolved.Key != "" {
 			upstream.Header.Set("X-Api-Key", resolved.Key)
+			// Self-hosted servers such as vLLM authenticate only bearer tokens,
+			// including on their Anthropic Messages routes.
+			if provider == AnthropicCompatible {
+				upstream.Header.Set("Authorization", "Bearer "+resolved.Key)
+			}
 		}
 		upstream.Header.Set("Anthropic-Version", "2023-06-01")
 		if beta := r.Header.Get("Anthropic-Beta"); beta != "" && len(beta) <= 2048 {

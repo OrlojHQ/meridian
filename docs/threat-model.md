@@ -541,6 +541,26 @@ Capsule-to-gateway routing are explicit deployment prerequisites. Compromised
 Capsule code can spend against its authorized provider connection until revoked
 or expired; a scoped gateway is not a guarantee against abusive inference use.
 
+Custom endpoint connections (`openai-compatible`, `anthropic-compatible`,
+ADR 0027) replace the fixed host with a base URL that the installation
+principal sets on the connection. The base URL never reaches a Capsule. The
+gateway reads it from the store on each request, and Capsule paths, queries,
+and headers cannot change it. The base URL and the plaintext-HTTP flag are
+bound into the key envelope's authenticated context, so editing stored
+metadata cannot redirect a saved key, and changing the endpoint requires
+sending the key again. Custom transports never dial unspecified, link-local
+(cloud metadata), or multicast addresses and never follow redirects. Plaintext
+`http://` upstreams need both the daemon's
+`--provider-gateway-allow-private-http` flag and a per-connection opt-in. They
+dial only loopback, RFC 1918, ULA, or CGNAT addresses, checked on the
+connected address so DNS rebinding cannot defeat it. Prompts, repository
+content, and any upstream key then cross that network unencrypted. Use this
+only on trusted LAN or tailnet segments. An operator-chosen base URL turns
+the control plane into an HTTP client of that host. Pointing it at an internal
+service exposes that service to Capsule-authored POST bodies on the fixed
+inference paths. A custom server's responses are as hostile as any other
+provider output.
+
 Subscription credentials and MCP account tokens are not imported or managed by
 this feature. Native login state remains ephemeral Capsule-local state.
 Structured sessions cannot sign in interactively; official structured profiles
