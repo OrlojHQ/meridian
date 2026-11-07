@@ -29,6 +29,7 @@ func newThreadCommand(config *cliConfig) *cobra.Command {
 		newThreadSendCommand(config), newThreadRespondCommand(config),
 		newThreadSessionCommand(config, "cancel"), newThreadFollowCommand(config),
 		newThreadArchiveCommand(config), newThreadDeleteCommand(config),
+		newThreadLinksCommand(config),
 	)
 	return thread
 }
@@ -36,6 +37,7 @@ func newThreadCommand(config *cliConfig) *cobra.Command {
 func newThreadSpawnCommand(config *cliConfig) *cobra.Command {
 	var harness, prompt, name, key string
 	var promptStdin, follow bool
+	var lead leadFlags
 	command := &cobra.Command{
 		Use: "spawn PROJECT_ID", Short: "Provision a fresh Capsule and start its first Thread",
 		Args: cobra.ExactArgs(1),
@@ -51,6 +53,10 @@ func newThreadSpawnCommand(config *cliConfig) *cobra.Command {
 			if !supplied || content == "" {
 				return errors.New("provide a non-empty --prompt or --prompt-stdin")
 			}
+			coordination, err := lead.policy(command)
+			if err != nil {
+				return err
+			}
 			idempotency, err := idempotencyKey(key)
 			if err != nil {
 				return err
@@ -59,7 +65,9 @@ func newThreadSpawnCommand(config *cliConfig) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			input := &client.CreateProjectThreadRequest{Harness: harness, Prompt: content}
+			input := &client.CreateProjectThreadRequest{
+				Harness: harness, Prompt: content, Coordination: coordination,
+			}
 			if name != "" {
 				input.Name = client.NewOptString(name)
 			}
@@ -121,6 +129,7 @@ func newThreadSpawnCommand(config *cliConfig) *cobra.Command {
 	command.Flags().BoolVar(&follow, "follow", false,
 		"wait for provisioning and follow the Thread until its first turn goes idle or the session ends")
 	command.Flags().StringVar(&key, "idempotency-key", "", "mutation replay key (generated if omitted)")
+	lead.register(command)
 	return command
 }
 

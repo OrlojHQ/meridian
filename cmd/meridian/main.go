@@ -54,7 +54,7 @@ func newRootCommand() *cobra.Command {
 		newThreadCommand(config),
 		newMomentCommand(config), newTimelineCommand(config), newShardCommand(config),
 		newRewindCommand(config), newSealCommand(config), newTUICommand(config),
-		newAdminCommand(config),
+		newAdminCommand(config), newGrantCommand(config),
 	)
 	return command
 }
@@ -579,7 +579,7 @@ func newCapsuleCommand(config *cliConfig) *cobra.Command {
 	create.Flags().StringVar(&createKey, "idempotency-key", "", "mutation replay key (generated if omitted)")
 	create.Flags().StringVar(&createHarness, "harness", "", "Project-allowlisted native harness to launch")
 
-	var listCursor string
+	var listCursor, listRole string
 	var listLimit int
 	list := &cobra.Command{
 		Use:   "list PROJECT_ID",
@@ -597,6 +597,13 @@ func newCapsuleCommand(config *cliConfig) *cobra.Command {
 			if listCursor != "" {
 				params.Cursor = client.NewOptString(listCursor)
 			}
+			switch listRole {
+			case "":
+			case string(client.CapsuleRoleMain), string(client.CapsuleRoleSub):
+				params.Role = client.NewOptCapsuleRole(client.CapsuleRole(listRole))
+			default:
+				return errors.New("--role must be main or sub")
+			}
 			result, err := api.ListCapsules(command.Context(), params)
 			if err != nil {
 				return apiCallError(err)
@@ -610,6 +617,7 @@ func newCapsuleCommand(config *cliConfig) *cobra.Command {
 	}
 	list.Flags().StringVar(&listCursor, "cursor", "", "pagination cursor")
 	list.Flags().IntVar(&listLimit, "limit", 50, "page size")
+	list.Flags().StringVar(&listRole, "role", "", "only main Capsules or only helper (sub) Capsules")
 
 	get := &cobra.Command{
 		Use:   "get CAPSULE_ID",
@@ -784,6 +792,9 @@ func (c *cliConfig) writeCapsule(capsule client.Capsule) error {
 	preparation := ""
 	if p, ok := capsule.Preparation.Get(); ok {
 		preparation = fmt.Sprintf("\tpreparation=%s\treused=%t", p.Stage, p.Reused)
+	}
+	if lead, ok := capsule.LeadThreadId.Get(); ok {
+		preparation += "\trole=sub\tlead=" + lead
 	}
 	_, err := fmt.Fprintf(
 		c.stdout, "%s\t%s\tstate=%s\tdesired=%s\tversion=%d%s\n",
