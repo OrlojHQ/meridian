@@ -155,9 +155,41 @@ func (b Bundle) Digest() string {
 	return hex.EncodeToString(sum[:])
 }
 
-// Connection carries only an ephemeral gateway lease, never an upstream key.
+// Connection carries only an ephemeral gateway lease, never an upstream key
+// or a custom upstream address.
 type Connection struct {
 	Provider string `json:"provider"`
 	URL      string `json:"url"`
 	Token    string `json:"token"`
+	Model    string `json:"model,omitempty"`
+}
+
+// ValidModel bounds a configured model name. It is written into native
+// harness configuration and the process environment.
+func ValidModel(model string) bool {
+	if len(model) == 0 || len(model) > 256 {
+		return false
+	}
+	for i, r := range model {
+		alnum := r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9'
+		if !alnum && (i == 0 || !strings.ContainsRune("._:/@+-", r)) {
+			return false
+		}
+	}
+	return true
+}
+
+// ConnectionSupported pairs a harness with the provider connection types its
+// native configuration can use. OpenCode and Pi need a model name to register
+// a custom OpenAI-compatible provider.
+func ConnectionSupported(harness, provider, model string) bool {
+	switch harness {
+	case "claude":
+		return provider == "anthropic" || provider == "anthropic-compatible"
+	case "codex":
+		return provider == "openai" || provider == "openai-compatible"
+	case "opencode", "pi":
+		return provider == "openai" || provider == "anthropic" || provider == "openai-compatible" && model != ""
+	}
+	return false
 }

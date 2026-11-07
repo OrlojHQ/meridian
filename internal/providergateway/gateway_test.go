@@ -2,9 +2,11 @@ package providergateway
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"strings"
 	"testing"
 	"time"
@@ -21,12 +23,12 @@ func TestGatewayLimitsRoutesAndReplacesCredentials(t *testing.T) {
 		_, _ = io.WriteString(w, "data: response\n\n")
 	}))
 	defer upstream.Close()
-	g := New(func(_ context.Context, l Lease) (string, error) {
+	g := New(func(_ context.Context, l Lease) (Upstream, error) {
 		if l.Project != "project" {
 			t.Error("wrong scope")
 		}
-		return "upstream-key", nil
-	})
+		return Upstream{Key: "upstream-key"}, nil
+	}, Options{})
 	defer g.Close()
 	g.client = upstream.Client()
 	g.upstream["openai"] = upstream.URL
@@ -41,6 +43,7 @@ func TestGatewayLimitsRoutesAndReplacesCredentials(t *testing.T) {
 		{"/provider-gateway/openai/v1/responses", "POST", token, 200},
 		{"/provider-gateway/openai/v1/files", "POST", token, 404},
 		{"/provider-gateway/anthropic/v1/messages", "POST", token, 404},
+		{"/provider-gateway/openai-compatible/v1/responses", "POST", token, 404},
 		{"/provider-gateway/openai/v1/responses?upstream=https://other.example", "POST", token, 404},
 		{"/provider-gateway/openai/v1/responses", "GET", token, 404},
 		{"/provider-gateway/openai/v1/responses", "POST", "wrong", 401},
@@ -78,7 +81,7 @@ func TestRevocationCancelsActiveStream(t *testing.T) {
 		close(cancelled)
 	}))
 	defer upstream.Close()
-	g := New(func(context.Context, Lease) (string, error) { return "key", nil })
+	g := New(func(context.Context, Lease) (Upstream, error) { return Upstream{Key: "key"}, nil }, Options{})
 	defer g.Close()
 	g.client = upstream.Client()
 	g.upstream["openai"] = upstream.URL
@@ -105,4 +108,210 @@ func TestRevocationCancelsActiveStream(t *testing.T) {
 		t.Fatal("upstream request was not cancelled")
 	}
 	<-done
+}
+
+func trustTestServer(g *Gateway, server *httptest.Server) {
+	config := server.Client().Transport.(*http.Transport).TLSClientConfig.Clone()
+	g.custom.Transport.(*http.Transport).TLSClientConfig = config
+}
+
+func send(g *Gateway, path, token string, header http.Header) *httptest.ResponseRecorder {
+	r := httptest.NewRequest("POST", path, strings.NewReader(`{"model":"qwen"}`))
+	r.Header.Set("Authorization", "Bearer "+token)
+	for name, values := range header {
+		r.Header[name] = values
+	}
+	w := httptest.NewRecorder()
+	g.ServeHTTP(w, r)
+	return w
+}
+
+func TestCustomUpstreamIsFixedByTheConnection(t *testing.T) {
+	var paths []string
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		if r.Header.Get("Authorization") != "Bearer local-key" || r.Header.Get("Cookie") != "" || r.Header.Get("X-Forwarded-Host") != "" {
+			t.Error("unsafe upstream request")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"ok":true}`)
+	}))
+	defer upstream.Close()
+	other := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Error("request reached a Capsule-chosen upstream") }))
+	defer other.Close()
+	g := New(func(context.Context, Lease) (Upstream, error) {
+		return Upstream{Key: "local-key", BaseURL: upstream.URL + "/llm/v1"}, nil
+	}, Options{})
+	defer g.Close()
+	trustTestServer(g, upstream)
+	token, err := g.Issue(Lease{Provider: OpenAICompatible, Connection: "connection"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	overrides := http.Header{"Cookie": {"x"}, "X-Forwarded-Host": {other.Listener.Addr().String()}, "Host": {other.Listener.Addr().String()}}
+	for _, tc := range []struct {
+		path   string
+		status int
+	}{
+		{"/provider-gateway/openai-compatible/v1/chat/completions", 200},
+		{"/provider-gateway/openai-compatible/v1/responses", 200},
+		{"/provider-gateway/openai-compatible/v1/chat/completions?base_url=" + other.URL, 404},
+		{"/provider-gateway/openai-compatible/v1/models", 404},
+		{"/provider-gateway/openai-compatible/v1/messages", 404},
+		{"/provider-gateway/openai/v1/responses", 404},
+		{"/provider-gateway/openai-compatible/../../v1/chat/completions", 404},
+	} {
+		if w := send(g, tc.path, token, overrides); w.Code != tc.status {
+			t.Fatalf("%s: %d want %d", tc.path, w.Code, tc.status)
+		}
+	}
+	if strings.Join(paths, ",") != "/llm/v1/chat/completions,/llm/v1/responses" {
+		t.Fatalf("unexpected upstream paths %v", paths)
+	}
+}
+
+func TestCustomUpstreamWithoutKeySendsNoCredential(t *testing.T) {
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/messages" || r.Header.Get("Authorization") != "" || r.Header.Get("X-Api-Key") != "" || r.Header.Get("Anthropic-Version") == "" {
+			t.Error("lease token or empty key forwarded upstream")
+		}
+		_, _ = io.WriteString(w, `{}`)
+	}))
+	defer upstream.Close()
+	g := New(func(context.Context, Lease) (Upstream, error) { return Upstream{BaseURL: upstream.URL}, nil }, Options{})
+	defer g.Close()
+	trustTestServer(g, upstream)
+	token, err := g.Issue(Lease{Provider: AnthropicCompatible, Connection: "connection"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := httptest.NewRequest("POST", "/provider-gateway/anthropic-compatible/v1/messages", strings.NewReader(`{}`))
+	r.Header.Set("X-Api-Key", token)
+	w := httptest.NewRecorder()
+	g.ServeHTTP(w, r)
+	if w.Code != 200 {
+		t.Fatalf("status %d", w.Code)
+	}
+}
+
+func TestCustomUpstreamRedirectIsNotFollowed(t *testing.T) {
+	followed := false
+	target := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { followed = true }))
+	defer target.Close()
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL+"/v1/chat/completions", http.StatusTemporaryRedirect)
+	}))
+	defer upstream.Close()
+	g := New(func(context.Context, Lease) (Upstream, error) {
+		return Upstream{Key: "local-key", BaseURL: upstream.URL}, nil
+	}, Options{})
+	defer g.Close()
+	trustTestServer(g, upstream)
+	token, err := g.Issue(Lease{Provider: OpenAICompatible, Connection: "connection"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := send(g, "/provider-gateway/openai-compatible/v1/chat/completions", token, nil)
+	if w.Code != http.StatusBadGateway || w.Header().Get("Location") != "" || followed {
+		t.Fatalf("redirect followed or exposed: %d %q %t", w.Code, w.Header().Get("Location"), followed)
+	}
+}
+
+func TestPrivateHTTPUpstreamRequiresBothOptIns(t *testing.T) {
+	seen := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen++
+		_, _ = io.WriteString(w, `{}`)
+	}))
+	defer upstream.Close()
+	for _, tc := range []struct {
+		name             string
+		installation     bool
+		connection       bool
+		status, upstream int
+	}{
+		{"installation disabled", false, true, http.StatusForbidden, 0},
+		{"connection did not opt in", true, false, http.StatusForbidden, 0},
+		{"both opted in", true, true, http.StatusOK, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			seen = 0
+			g := New(func(context.Context, Lease) (Upstream, error) {
+				return Upstream{BaseURL: upstream.URL, AllowPrivateHTTP: tc.connection}, nil
+			}, Options{AllowPrivateHTTP: tc.installation})
+			defer g.Close()
+			token, err := g.Issue(Lease{Provider: OpenAICompatible, Connection: "connection"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if w := send(g, "/provider-gateway/openai-compatible/v1/chat/completions", token, nil); w.Code != tc.status || seen != tc.upstream {
+				t.Fatalf("status %d upstream calls %d", w.Code, seen)
+			}
+		})
+	}
+}
+
+func TestUpstreamDialPolicy(t *testing.T) {
+	for _, tc := range []struct {
+		addr            string
+		custom, private bool
+	}{
+		{"127.0.0.1", true, true},
+		{"10.0.0.8", true, true},
+		{"192.168.1.20", true, true},
+		{"100.101.102.103", true, true},
+		{"fd00::1", true, true},
+		{"::ffff:192.168.1.20", true, true},
+		{"8.8.8.8", true, false},
+		{"169.254.169.254", false, false},
+		{"fe80::1", false, false},
+		{"0.0.0.0", false, false},
+		{"224.0.0.1", false, false},
+	} {
+		addr := netip.MustParseAddr(tc.addr).Unmap()
+		if dialable(addr) != tc.custom || PrivateNetwork(addr) != tc.private {
+			t.Errorf("%s: dialable %t private %t", tc.addr, dialable(addr), PrivateNetwork(addr))
+		}
+	}
+	g := New(func(context.Context, Lease) (Upstream, error) {
+		return Upstream{BaseURL: "http://localhost.metadata.invalid", AllowPrivateHTTP: true}, nil
+	}, Options{AllowPrivateHTTP: true})
+	defer g.Close()
+	dial := g.private.Transport.(*http.Transport).DialContext
+	if _, err := dial(context.Background(), "tcp", "8.8.8.8:80"); !errors.Is(err, errBlockedAddress) {
+		t.Fatalf("plaintext dial to a public address was not blocked: %v", err)
+	}
+	if _, err := g.custom.Transport.(*http.Transport).DialContext(context.Background(), "tcp", "169.254.169.254:80"); !errors.Is(err, errBlockedAddress) {
+		t.Fatalf("metadata address was not blocked: %v", err)
+	}
+}
+
+func TestNormalizeBaseURL(t *testing.T) {
+	for _, tc := range []struct {
+		raw, want string
+		http      bool
+	}{
+		{"https://models.example/v1", "https://models.example", false},
+		{"https://models.example/llm/v1/", "https://models.example/llm", false},
+		{"http://dgx.lan:8000", "http://dgx.lan:8000", true},
+		{"http://192.168.1.20:11434/v1", "http://192.168.1.20:11434", true},
+		{"http://[fd00::1]:8000", "http://[fd00::1]:8000", true},
+		{"http://dgx.lan:8000", "", false},
+		{"https://models.example", "", true},
+		{"http://8.8.8.8:8000", "", true},
+		{"https://169.254.169.254", "", false},
+		{"https://user:pass@models.example", "", false},
+		{"https://models.example/v1?key=x", "", false},
+		{"https://models.example/#x", "", false},
+		{"https://models.example/a/../b", "", false},
+		{"https://models.example/%2e%2e", "", false},
+		{"ftp://models.example", "", false},
+		{"https://models.example:99999", "", false},
+		{"/v1", "", false},
+	} {
+		got, err := NormalizeBaseURL(tc.raw, tc.http)
+		if got != tc.want || (err == nil) != (tc.want != "") {
+			t.Errorf("%s (http %t): %q %v", tc.raw, tc.http, got, err)
+		}
+	}
 }

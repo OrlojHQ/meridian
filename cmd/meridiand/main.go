@@ -33,6 +33,12 @@ func newRootCommand() *cobra.Command {
 	}
 	command.SetVersionTemplate("meridiand {{.Version}}\n")
 	command.Flags().StringVar(&config.ProviderGatewayURL, "provider-gateway-url", "", "HTTPS Meridian origin reachable from Capsules; enables reusable API connections")
+	command.Flags().BoolVar(
+		&config.ProviderGatewayAllowPrivateHTTP,
+		"provider-gateway-allow-private-http",
+		false,
+		"let custom endpoint connections that opt in use plaintext HTTP to loopback or private-network model servers",
+	)
 	command.Flags().StringVar(&config.Provider, "provider", "docker", "Capsule provider (docker, agentsandbox, or fake for simulated Capsules)")
 	command.Flags().StringVar(&config.Listen, "listen", "127.0.0.1:8080", "HTTP listen address")
 	command.Flags().BoolVar(
