@@ -558,6 +558,10 @@ export type Thread = {
     currentRunId?: string;
     currentRunState?: RunState;
     awaiting?: ThreadAwaiting;
+    /**
+     * Present while the structured session is live: whether the agent is working on a turn or idle between turns. Derived in memory from the encrypted transcript like awaiting, never persisted, and content-free.
+     */
+    turn?: 'working' | 'idle';
     protocol?: 'meridian.adapter.v1';
     structuredSupported?: boolean;
     encryptedAtRest: true;
@@ -612,6 +616,10 @@ export type ThreadAdapterEvent = {
     type: 'assistant_delta' | 'assistant_message' | 'tool_start' | 'tool_result' | 'status' | 'error' | 'permission_request' | 'permission_response' | 'input_request' | 'input_response' | 'gap' | 'end';
     runtimeSequence?: number;
     messageId?: string;
+    /**
+     * On permission and input responses, the messageId of the answered request.
+     */
+    responseTo?: string;
     toolCallId?: string;
     toolName?: string;
     summary?: string;

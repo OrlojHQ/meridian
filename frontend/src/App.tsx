@@ -1068,9 +1068,11 @@ export function CapsuleDetail() {
     (project) => project.id === value.projectId,
   )?.name;
   const harness = value.harness || sessions[0]?.harness;
+  const chatSelected =
+    selected !== "" && selected !== TERMINAL_SESSION && selected !== NEW_SESSION;
 
   return (
-    <article className="capsule-workspace">
+    <article className={`capsule-workspace${chatSelected ? " chat-session" : ""}`}>
       <header className="capsule-bar">
         <div className="capsule-bar-title">
           {harness && <HarnessMark harness={harness} size="md" />}

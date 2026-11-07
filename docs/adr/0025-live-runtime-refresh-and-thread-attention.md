@@ -38,6 +38,8 @@ events, so a persisted "awaiting" column would add new plaintext at rest.
   memory, only for an active Thread whose current Run is non-terminal, by
   decrypting at most the trailing 256 messages. Each response answers the most
   recent outstanding request of its kind, matching the browser Thread view.
+  (Amended: a response answers the request its `responseTo` names, falling
+  back to the most recent outstanding request of its kind.)
   The result is cached in memory by message count and is never persisted,
   logged, or emitted in events, metrics, or traces. It carries no summary,
   options, prompt, or tool text.
@@ -62,3 +64,16 @@ Each refresh pass costs one runtime status request per live Run plus frame
 ingestion. Awaiting derivation decrypts only when a Thread's message count
 has changed since the last read. The cache is lost on restart and recomputed
 on the next read. A request more than 256 messages old is not reported.
+
+## Amendment: live turn state
+
+A structured session's Run stays `Running` for as long as the adapter process
+lives, including between turns, so the working set showed idle agents as
+working. Thread responses gain an optional content-free `turn` (`working` or
+`idle`), derived in the same pass, window, and cache as `awaiting`: a user
+prompt or a `starting`, `running`, `restarting`, or `waiting` adapter status
+marks the session working, and any other status or an `end` frame marks it
+idle. It is present only while `awaiting` could be, and is likewise never
+persisted, logged, or emitted. Authenticated readers additionally learn
+whether the agent is mid-turn, which the Run state and message count already
+approximate; no transcript text is exposed.

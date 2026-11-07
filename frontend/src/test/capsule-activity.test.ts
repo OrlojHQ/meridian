@@ -105,6 +105,40 @@ describe("Capsule activity", () => {
     ).toBe("Codex working");
   });
 
+  it("reports a live structured session as idle between turns", () => {
+    const session: Thread = {
+      id: "thread-1",
+      capsuleId: capsule.id,
+      state: "active",
+      harness: "codex",
+      currentRunId: "run-1",
+      currentRunState: "Running",
+      encryptedAtRest: true,
+      messageCount: 4,
+      encryptedBytes: 512,
+      createdAt: "2026-08-23T01:00:00Z",
+      updatedAt: "2026-08-23T01:05:00Z",
+      resourceVersion: 3,
+    };
+    const running = [run({ state: "Running" })];
+    expect(describeCapsule(capsule, running, [{ ...session, turn: "idle" }])).toMatchObject({
+      group: "idle",
+      label: "Codex idle",
+    });
+    expect(describeCapsule(capsule, running, [{ ...session, turn: "working" }]).label).toBe(
+      "Codex working",
+    );
+    expect(
+      describeCapsule(capsule, running, [{ ...session, currentRunId: "other", turn: "idle" }]).label,
+    ).toBe("Codex working");
+    const [, tab] = capsuleSessions(capsule, running, [{ ...session, turn: "idle" }]);
+    expect(tab).toMatchObject({ group: "idle", label: "Idle" });
+    expect(capsuleSessions(capsule, running, [{ ...session, turn: "working" }])[1]).toMatchObject({
+      group: "working",
+      label: "Working",
+    });
+  });
+
   it("names structured Capsules by their Run harness and surfaces failures", () => {
     const activity = describeCapsule(
       { ...capsule, harness: undefined },

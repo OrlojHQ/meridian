@@ -227,33 +227,35 @@ describe("Thread detail transcript and controls", () => {
     expect(await screen.findByText("final <script>x</script>")).toBeInTheDocument();
     expect(screen.queryByText("partial")).not.toBeInTheDocument();
     expect(view.container.querySelector("script")).toBeNull();
-    expect(screen.getByText("Tool started · <b>shell</b>")).toBeInTheDocument();
-    expect(screen.getByText("Unknown block event · future_event")).toBeInTheDocument();
-    expect(screen.getByText("waiting")).toBeInTheDocument();
+    expect(view.container.querySelector("b")).toBeNull();
+    expect(screen.getByText("<b>shell</b>")).toBeInTheDocument();
+    expect(screen.getByText("safe summary")).toBeInTheDocument();
+    expect(screen.getByText("Unrecognized event · future_event")).toBeInTheDocument();
+    expect(screen.queryByText("waiting")).not.toBeInTheDocument();
     expect(screen.getByText("bad[31mthing")).toBeInTheDocument();
     expect(view.container.textContent).not.toMatch(/[\u001b\u009b]/);
     expect(await screen.findByRole("link", { name: capsule.name })).toHaveAttribute(
       "href",
       "/ui/capsules/capsule-1?session=thread-1",
     );
-    expect(screen.getByRole("link", { name: "Open terminal" })).toHaveAttribute(
-      "href",
-      "/ui/capsules/capsule-1#terminal",
-    );
-    await user.click(screen.getByRole("button", { name: "Cancel session" }));
+    const actions = screen.getByRole("button", { name: "Thread actions" });
+    await user.click(actions);
+    expect(screen.getByRole("menuitem", { name: "Open terminal" })).toBeInTheDocument();
+    await user.click(screen.getByRole("menuitem", { name: "Cancel session" }));
     expect(session).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "Confirm cancel" }));
     await waitFor(() =>
       expect(session).toHaveBeenCalledWith("cancel", thread.id, thread.resourceVersion),
     );
-    await user.click(screen.getByRole("button", { name: "Archive" }));
+    await user.click(actions);
+    await user.click(screen.getByRole("menuitem", { name: "Archive" }));
     expect(archive).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "Confirm archive" }));
     await waitFor(() =>
       expect(archive).toHaveBeenCalledWith(thread.id, thread.resourceVersion),
     );
 
-    await user.click(screen.getByRole("button", { name: "allow" }));
+    await user.click(screen.getByRole("button", { name: "Approve" }));
     await waitFor(() =>
       expect(respond).toHaveBeenCalledWith(
         thread.id,
@@ -307,7 +309,8 @@ describe("Thread detail transcript and controls", () => {
     expect(header).not.toHaveTextContent(thread.id);
     expect(view.container).not.toHaveTextContent(/Structured Thread|Retained encrypted/);
     expect(screen.getByText("Live")).toHaveAttribute("title", "Cursor 0");
-    expect(screen.getByRole("button", { name: "Crypto-shred" })).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Thread actions" }));
+    expect(screen.getByRole("menuitem", { name: "Crypto-shred" })).toBeInTheDocument();
   });
 
   it("falls back to a generic Capsule link until the Capsule loads", async () => {
@@ -403,7 +406,7 @@ describe("Thread detail transcript and controls", () => {
     const working = await screen.findByRole("tab", { name: /Mock \(test\)\s*Working/ });
     expect(working).toHaveAttribute("aria-selected", "true");
     await waitFor(() => expect(blocks.mock.calls.map((call) => call[0])).toContain(thread.id));
-    expect(await screen.findByRole("heading", { name: "Transcript" })).toBeInTheDocument();
+    expect(await screen.findByText("No messages yet.")).toBeInTheDocument();
     expect(screen.queryByText("Structured Thread")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: /Mock \(test\)\s*Idle/ }));
@@ -505,7 +508,8 @@ describe("Thread detail transcript and controls", () => {
         <Route path="/ui/threads/:threadId" element={<ThreadDetail />} />
       </Routes>,
     );
-    await user.click(await screen.findByRole("button", { name: "Crypto-shred" }));
+    await user.click(await screen.findByRole("button", { name: "Thread actions" }));
+    await user.click(screen.getByRole("menuitem", { name: "Crypto-shred" }));
     const confirm = screen.getByRole("button", { name: "Delete key permanently" });
     expect(confirm).toBeDisabled();
     await user.type(screen.getByLabelText("Confirmation"), "crypto-shred");

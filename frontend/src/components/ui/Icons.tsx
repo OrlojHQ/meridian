@@ -152,3 +152,44 @@ export function SettingsIcon(props: IconProps) {
     </Icon>
   );
 }
+
+export function ToolIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12.5 3.5a3.5 3.5 0 0 0-3.3 4.7L3.8 13.6a1.4 1.4 0 0 0 2 2l5.4-5.4a3.5 3.5 0 0 0 4.7-3.3l-2 2-2-.6-.6-2z" />
+    </Icon>
+  );
+}
+
+export function FileIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M5 2.5h6.5L15 6v11.5H5z" />
+      <path d="M11.5 2.5V6H15M7.5 10h5M7.5 13h5" />
+    </Icon>
+  );
+}
+
+export function CheckIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="m4.5 10.5 3.5 3.5 7.5-8" />
+    </Icon>
+  );
+}
+
+export function SendIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M10 16V4M5 9l5-5 5 5" />
+    </Icon>
+  );
+}
+
+export function StopIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="5.5" y="5.5" width="9" height="9" rx="1.5" fill="currentColor" />
+    </Icon>
+  );
+}

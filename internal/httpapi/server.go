@@ -1973,6 +1973,7 @@ type threadJSON struct {
 	CurrentRunID        string              `json:"currentRunId,omitempty"`
 	CurrentRunState     string              `json:"currentRunState,omitempty"`
 	Awaiting            *threadAwaitingJSON `json:"awaiting,omitempty"`
+	Turn                string              `json:"turn,omitempty"`
 	Protocol            string              `json:"protocol,omitempty"`
 	StructuredSupported bool                `json:"structuredSupported"`
 	EncryptedAtRest     bool                `json:"encryptedAtRest"`
@@ -2271,10 +2272,13 @@ func (s *Server) threadResponse(ctx context.Context, thread domain.Thread) threa
 		if run, err := s.service.GetRunStored(ctx, thread.CurrentRunID); err == nil {
 			result.CurrentRunState = string(run.State)
 		}
-		if awaiting, err := s.service.ThreadAwaiting(ctx, thread); err == nil && awaiting != nil {
-			result.Awaiting = &threadAwaitingJSON{
-				Kind:  string(awaiting.Kind),
-				Since: awaiting.Since.UTC().Format(time.RFC3339Nano),
+		if attention, err := s.service.ThreadAttention(ctx, thread); err == nil {
+			result.Turn = string(attention.Turn)
+			if awaiting := attention.Awaiting; awaiting != nil {
+				result.Awaiting = &threadAwaitingJSON{
+					Kind:  string(awaiting.Kind),
+					Since: awaiting.Since.UTC().Format(time.RFC3339Nano),
+				}
 			}
 		}
 	}

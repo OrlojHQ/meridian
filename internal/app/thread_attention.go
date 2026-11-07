@@ -30,36 +30,59 @@ type ThreadAwaiting struct {
 	Since time.Time
 }
 
+// ThreadTurn says whether a live structured session is working on a turn or
+// idle between turns. Like ThreadAwaiting it carries no transcript content.
+type ThreadTurn string
+
+const (
+	ThreadTurnWorking ThreadTurn = "working"
+	ThreadTurnIdle    ThreadTurn = "idle"
+)
+
+// ThreadAttention is the content-free live state of a structured session.
+// Turn is empty when no live session or transcript key is available.
+type ThreadAttention struct {
+	Awaiting *ThreadAwaiting
+	Turn     ThreadTurn
+}
+
 type cachedThreadAttention struct {
 	messageCount int64
-	awaiting     *ThreadAwaiting
+	attention    ThreadAttention
 }
 
 // ThreadAwaiting derives, in memory, whether the Thread's live adapter session
 // has an unanswered permission or input request. It is never persisted: the
 // only durable record of a request remains the encrypted transcript.
 func (s *Service) ThreadAwaiting(ctx context.Context, thread domain.Thread) (*ThreadAwaiting, error) {
+	attention, err := s.ThreadAttention(ctx, thread)
+	return attention.Awaiting, err
+}
+
+// ThreadAttention derives the live session's unanswered request and turn state
+// from the trailing transcript window, in memory and never persisted.
+func (s *Service) ThreadAttention(ctx context.Context, thread domain.Thread) (ThreadAttention, error) {
 	if s.transcriptKey == nil || thread.State != domain.ThreadActive ||
 		thread.CurrentRunID == "" || thread.MessageCount == 0 {
-		return nil, nil
+		return ThreadAttention{}, nil
 	}
 	run, err := s.GetRunStored(ctx, thread.CurrentRunID)
 	if err != nil {
-		return nil, err
+		return ThreadAttention{}, err
 	}
 	if run.State.Terminal() {
-		return nil, nil
+		return ThreadAttention{}, nil
 	}
 	s.attentionMu.Lock()
 	cached, ok := s.attention[thread.ID]
 	s.attentionMu.Unlock()
 	if ok && cached.messageCount == thread.MessageCount {
-		return cached.awaiting, nil
+		return cached.attention, nil
 	}
 
 	dek, err := s.unwrapThread(thread)
 	if err != nil {
-		return nil, err
+		return ThreadAttention{}, err
 	}
 	defer wipe(dek)
 	after := max(thread.MessageCount-threadAttentionWindow, 0)
@@ -69,67 +92,102 @@ func (s *Service) ThreadAwaiting(ctx context.Context, thread domain.Thread) (*Th
 		messages, _, err = reader.ListThreadMessages(ctx, thread.ID, after, threadAttentionWindow)
 		return err
 	}); err != nil {
-		return nil, err
+		return ThreadAttention{}, err
 	}
 
-	// Mirror the browser's pending-request rule: each response answers the
-	// most recent outstanding request of its kind.
-	var permissions, inputs []domain.ThreadMessage
+	// Mirror the browser's pending-request rule: a response answers the
+	// request it names, or the most recent outstanding one of its kind.
+	var permissions, inputs []pendingThreadRequest
+	working := false
 	for _, message := range messages {
+		if message.Role == domain.ThreadRoleUser && message.Kind == domain.ThreadMessagePrompt {
+			working = true
+		}
 		plaintext, err := transcripts.DecryptMessage(dek, message)
 		if err != nil {
-			return nil, err
+			return ThreadAttention{}, err
 		}
 		for _, raw := range plaintext {
 			var payload persistedThreadBlock
 			if err := json.Unmarshal(raw, &payload); err != nil {
 				transcripts.ZeroPlaintextBlocks(plaintext)
-				return nil, domain.ErrTranscriptCorrupt
+				return ThreadAttention{}, domain.ErrTranscriptCorrupt
 			}
 			if payload.Event == nil {
 				continue
 			}
 			switch payload.Event.Type {
+			case adapterproto.KindStatus:
+				if payload.Event.Status != "" {
+					working = busyAdapterStatus(payload.Event.Status)
+				}
+			case adapterproto.KindEnd:
+				working = false
 			case adapterproto.KindPermissionRequest:
-				permissions = append(permissions, message)
+				permissions = append(permissions, pendingThreadRequest{payload.Event.MessageID, message})
 			case adapterproto.KindInputRequest:
-				inputs = append(inputs, message)
+				inputs = append(inputs, pendingThreadRequest{payload.Event.MessageID, message})
 			case adapterproto.KindPermissionResponse:
-				permissions = dropLast(permissions)
+				permissions = answerRequest(permissions, payload.Event.ResponseTo)
 			case adapterproto.KindInputResponse:
-				inputs = dropLast(inputs)
+				inputs = answerRequest(inputs, payload.Event.ResponseTo)
 			}
 		}
 		transcripts.ZeroPlaintextBlocks(plaintext)
 	}
 
-	var awaiting *ThreadAwaiting
+	attention := ThreadAttention{Turn: ThreadTurnIdle}
+	if working {
+		attention.Turn = ThreadTurnWorking
+	}
 	permission, hasPermission := last(permissions)
 	input, hasInput := last(inputs)
 	switch {
-	case hasPermission && (!hasInput || permission.Sequence > input.Sequence):
-		awaiting = &ThreadAwaiting{Kind: ThreadAwaitingPermission, Since: permission.CreatedAt}
+	case hasPermission && (!hasInput || permission.message.Sequence > input.message.Sequence):
+		attention.Awaiting = &ThreadAwaiting{Kind: ThreadAwaitingPermission, Since: permission.message.CreatedAt}
 	case hasInput:
-		awaiting = &ThreadAwaiting{Kind: ThreadAwaitingInput, Since: input.CreatedAt}
+		attention.Awaiting = &ThreadAwaiting{Kind: ThreadAwaitingInput, Since: input.message.CreatedAt}
 	}
 	s.attentionMu.Lock()
 	s.attention[thread.ID] = cachedThreadAttention{
-		messageCount: thread.MessageCount, awaiting: awaiting,
+		messageCount: thread.MessageCount, attention: attention,
 	}
 	s.attentionMu.Unlock()
-	return awaiting, nil
+	return attention, nil
 }
 
-func dropLast(values []domain.ThreadMessage) []domain.ThreadMessage {
-	if len(values) == 0 {
-		return values
+func busyAdapterStatus(status adapterproto.Status) bool {
+	switch status {
+	case adapterproto.StatusStarting, adapterproto.StatusRunning,
+		adapterproto.StatusRestarting, adapterproto.StatusWaiting:
+		return true
 	}
-	return values[:len(values)-1]
+	return false
 }
 
-func last(values []domain.ThreadMessage) (domain.ThreadMessage, bool) {
+type pendingThreadRequest struct {
+	id      string
+	message domain.ThreadMessage
+}
+
+func answerRequest(pending []pendingThreadRequest, responseTo string) []pendingThreadRequest {
+	if len(pending) == 0 {
+		return pending
+	}
+	if responseTo == "" {
+		return pending[:len(pending)-1]
+	}
+	for index := len(pending) - 1; index >= 0; index-- {
+		if pending[index].id == responseTo {
+			return append(pending[:index:index], pending[index+1:]...)
+		}
+	}
+	return pending
+}
+
+func last(values []pendingThreadRequest) (pendingThreadRequest, bool) {
 	if len(values) == 0 {
-		return domain.ThreadMessage{}, false
+		return pendingThreadRequest{}, false
 	}
 	return values[len(values)-1], true
 }

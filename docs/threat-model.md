@@ -322,9 +322,10 @@ protection around the send/acknowledgement crash boundary. Startup recovery
 never auto-sends a transcript message.
 
 Thread responses may include a content-free `awaiting` kind and start time
-while an active session has an unanswered permission or input request. The
-daemon derives it in memory from a bounded tail of the decrypted transcript
-and never persists, logs, or emits it; it omits request summaries, options,
+while an active session has an unanswered permission or input request, and a
+content-free `turn` (`working` or `idle`) while the session is live. The
+daemon derives both in memory from a bounded tail of the decrypted transcript
+and never persists, logs, or emits them; they omit request summaries, options,
 and prompts, so SQLite and backup exposure are unchanged. Background runtime
 refresh ingests frames for Threads nobody is watching into the same encrypted
 store; it never sends, resends, or resumes a session (ADR 0025).
@@ -470,7 +471,7 @@ they are not a statement that every planned path is already implemented.
 - Run prompts, raw PTY bytes, full diffs, setup output, and secret values are
   omitted from normal durable records and logs. Only explicit structured
   Threads persist prompt/tool content, always as authenticated ciphertext.
-- Thread attention (`awaiting`) is derived in memory, content-free, and never
+- Thread attention (`awaiting`, `turn`) is derived in memory, content-free, and never
   persisted; background runtime refresh never sends, resumes, or wakes work.
 - Public PTY access uses expiring Run-scoped tickets rather than Capsule supervisor credentials.
 - Review UI assets cannot shadow API routes and untrusted diffs are never injected as HTML.

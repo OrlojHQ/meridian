@@ -110,6 +110,106 @@ func TestRuntimeRefreshSurfacesUnansweredRequestsWithoutAViewer(t *testing.T) {
 	}
 }
 
+func TestThreadAwaitingMatchesResponsesToTheirRequests(t *testing.T) {
+	ctx := context.Background()
+	store, service, runtime, key, capsuleID := threadService(t, ctx)
+	defer store.Close()
+	defer key.Zero()
+	request := func(sequence uint64, id string) ports.RuntimeStructuredEvent {
+		return structuredEvent(sequence, adapterproto.Frame{
+			Type: adapterproto.KindPermissionRequest, ID: id,
+			Permission: &adapterproto.Permission{Kind: "shell", Summary: id},
+		})
+	}
+	setStructuredEvents(runtime, request(1, "permission-1"), request(2, "permission-2"))
+	created, err := service.CreateThread(ctx, app.CreateThreadInput{
+		CapsuleID: capsuleID, Harness: "mock", FirstMessage: "two asks",
+		Start: true, IdempotencyKey: "create-thread",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.RefreshLiveRuntime(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for index, id := range []string{"permission-1", "permission-2"} {
+		thread, _ := service.GetThread(ctx, created.Thread.ID)
+		choice := "allow"
+		if _, err := service.RespondThread(
+			ctx, thread.ID, thread.ResourceVersion, id, &choice, nil, "respond-"+id,
+		); err != nil {
+			t.Fatal(err)
+		}
+		want := []string{"permission", ""}[index]
+		if kind := awaitingKind(t, ctx, service, created.Thread.ID); kind != want {
+			t.Fatalf("awaiting after answering %s = %q, want %q", id, kind, want)
+		}
+	}
+}
+
+func TestThreadAttentionTracksTheLiveTurn(t *testing.T) {
+	ctx := context.Background()
+	store, service, runtime, key, capsuleID := threadService(t, ctx)
+	defer store.Close()
+	defer key.Zero()
+	var threadID domain.ThreadID
+	turn := func() app.ThreadTurn {
+		t.Helper()
+		if err := service.RefreshLiveRuntime(ctx); err != nil {
+			t.Fatal(err)
+		}
+		thread, err := service.GetThread(ctx, threadID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		attention, err := service.ThreadAttention(ctx, thread)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return attention.Turn
+	}
+	running := structuredEvent(1, adapterproto.Frame{
+		Type: adapterproto.KindStatus, Status: adapterproto.StatusRunning,
+	})
+	setStructuredEvents(runtime, running)
+	created, err := service.CreateThread(ctx, app.CreateThreadInput{
+		CapsuleID: capsuleID, Harness: "mock", FirstMessage: "build it",
+		Start: true, IdempotencyKey: "create-thread",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	threadID = created.Thread.ID
+	if got := turn(); got != app.ThreadTurnWorking {
+		t.Fatalf("turn after the first prompt = %q, want working", got)
+	}
+
+	idle := structuredEvent(2, adapterproto.Frame{
+		Type: adapterproto.KindStatus, Status: adapterproto.StatusIdle,
+	})
+	setStructuredEvents(runtime, running, idle)
+	if got := turn(); got != app.ThreadTurnIdle {
+		t.Fatalf("turn after the adapter went idle = %q, want idle", got)
+	}
+
+	thread, _ := service.GetThread(ctx, created.Thread.ID)
+	if _, err := service.SendThreadMessage(
+		ctx, thread.ID, thread.ResourceVersion, "next", "send-next",
+	); err != nil {
+		t.Fatal(err)
+	}
+	if got := turn(); got != app.ThreadTurnWorking {
+		t.Fatalf("turn after a follow-up = %q, want working", got)
+	}
+
+	runtime.mu.Lock()
+	runtime.runs[created.Run.ID] = ports.RuntimeRun{State: domain.RunSucceeded, Structured: true}
+	runtime.mu.Unlock()
+	if got := turn(); got != "" {
+		t.Fatalf("turn after the session ended = %q, want none", got)
+	}
+}
+
 func TestRuntimeRefreshIgnoresHeartbeatsForIdleActivity(t *testing.T) {
 	ctx := context.Background()
 	clock := &testClock{now: time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)}
