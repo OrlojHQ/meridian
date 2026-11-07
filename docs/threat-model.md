@@ -46,8 +46,11 @@ The principal boundaries are between:
 4. the control plane and a Capsule provider;
 5. the provider/host and each Capsule;
 6. `capsuled` and untrusted processes inside its Capsule;
-7. a Capsule and external networks, source hosts, registries, and model services; and
-8. authenticated ingress and terminal or preview services inside a Capsule.
+7. a Capsule and external networks, source hosts, registries, and model services;
+8. authenticated ingress and terminal or preview services inside a Capsule; and
+9. Capsule-originated coordination requests, pulled by the control plane from
+   `capsuled`, and the control plane's delegated actions on other Capsules
+   (ADR 0029).
 
 Crossing a boundary requires authenticated identity, explicit authorization,
 bounded input, and auditable outcomes. Meridian's initial API has one
@@ -67,6 +70,8 @@ Meridian assumes the following may be malicious or compromised:
 - files, archives, terminal escape sequences, HTTP headers, event payloads, and generated diffs returned by a Capsule;
 - local-sync archives and remote metadata, browsed filenames and file bytes,
   setup-cache archives, and pull-request fields;
+- coordination requests from any process in a lead Capsule, agent-authored
+  helper names and prompts, and helper reports returned to a lead;
 - external services reached over the network and credentials returned by integrations; and
 - another tenant or operator in deployment modes that exceed the initial single-user assumption.
 
@@ -269,6 +274,55 @@ logging them. Bounded in-memory replay is availability control, not redaction.
 
 Repository content, issues, web pages, logs, and tool output can instruct an agent to misuse available authority. The control plane must not treat model or Capsule output as authorization. Sensitive delivery actions—credential grants, network exceptions, branch pushes, pull requests, destructive lifecycle operations, or policy changes—require independently verified permissions and explicit approval according to policy. Tool APIs should expose narrow operations rather than ambient administrator tokens.
 
+Model and Capsule output can cause bounded lifecycle effects, namely spawning,
+messaging, and cancelling helper Threads, but only under an operator-created
+Coordination Grant on that lead (ADR 0029). Delivery, credential, network, and
+policy actions are unchanged. A helper's permission and input requests go to
+the operator, never to its lead, so a hostile lead cannot approve its helpers'
+tool use. Delegated prompts and helper reports carry encrypted
+coordination provenance and are labelled "from the lead" or "from helpers";
+they are never presented as operator input. A wake prompt frames helper
+reports as untrusted data, but a model may still follow instructions in them.
+
+### Coordination and delegated authority
+
+No coordination credential exists in a Capsule. `meridian-coord` writes
+requests to a `capsuled` mailbox on a private Unix socket (0600 in a 0700
+directory under the Capsule user's home). `meridiand` pulls requests over the
+existing authenticated private Capsule transport and identifies the requester
+by the Capsule it dialed; Capsules never call the public API, receive no host
+runtime socket, and gain no new network route, so coordination works under
+deny-all egress. The mailbox refuses every request until the daemon
+configures it for a lead, and again once the grant ends.
+
+Authority is the intersection of the grant, the Project policy, the
+requester's links, and the grant's remaining counters. A grant is created only
+by an operator API call together with its lead Thread, cannot be widened, and
+bounds harnesses (a subset of the Project's structured allowlist), depth (1),
+fan-out, total and live helper Capsules, messages per link, and an absolute
+deadline. A request can never name an image, Project, secret, provider
+connection, or Capsule; address a Thread or link it did not create; approve a
+spawn, permission, or Delivery; change a grant; start a native Run, PTY,
+preview, sync, or browse session; act while its lead is paused, not Ready, in
+maintenance, or revoked; or start new work after the deadline. Helpers
+receive no coordination authority.
+
+The protocol is closed and versioned; records are bounded (256 KiB, prompts
+128 KiB), unknown fields are rejected, and the mailbox bounds pending
+requests, bytes, request rate, and its reply cache. Mutating requests carry a
+Capsule-scoped idempotency key recorded with a request digest in the same
+transaction as their effect, so retries do not duplicate spawns or messages
+and a reused key with different content is refused. The only agent-authored
+plaintext at rest is the helper name, limited to `[a-z0-9-]{1,48}`; prompts
+and reports stay in Thread ciphertext.
+
+Revocation, the deadline, and cancellation are daemon-side state changes that
+take effect on the next request. Revoking or cancelling cancels the helper's
+run and then pauses its Capsule through the provider without Capsule
+cooperation. Closing a link never deletes a helper Capsule or transcript.
+Coordination is advertised only by providers that implement the structured
+transport and mailbox end to end.
+
 ### Supply-chain and setup execution
 
 Package managers, install scripts, binaries, actions, generated code, and updates may be compromised. Pin project and CI dependencies, verify downloaded release checksums where practical, scan dependencies and secrets, and keep build provenance. Setup hooks execute only inside the selected isolation boundary with the same limits and egress policy as agent commands. Never run repository hooks on the control-plane host.
@@ -358,6 +412,15 @@ deliver the one pending message after a crash-before-send, while an
 acknowledged replay does not resend. Supervisor deduplication is additional
 protection around the send/acknowledgement crash boundary. Startup recovery
 never auto-sends a transcript message.
+
+A prompt crosses the Capsule boundary only from an explicit client mutation
+or from a coordination request accepted under an active grant (ADR 0029). The
+daemon also sends a lead one coalesced wake prompt when helper reports are
+unread and the lead is idle; report delivery resumes from content-free
+sequence acknowledgements, not from content. Reports and delegated prompts
+copy content between Threads, re-encrypted under the receiving Thread's key,
+so crypto-shredding a helper does not erase copies already delivered to its
+lead, and crypto-shredding a lead does not erase its prompts in helpers.
 
 Thread responses may include a content-free `awaiting` kind and start time
 while an active session has an unanswered permission or input request, and a
@@ -481,9 +544,24 @@ Operators verify pack images by digest and Cosign like other release images.
 Publishing packs is not a hosted Capsule service, and pack images contain no
 credentials.
 
+A compromised lead can spend its grant: helper Capsules, compute, and model
+calls up to the grant's fan-out, total, and live limits, and its messages per
+link. The grant deadline is a separate clock from idle pause and Capsule TTL;
+when it passes, the default action cancels helpers and pauses them. The
+optional `--max-live-capsules` installation cap refuses coordinated spawns
+when that many Capsules already hold compute; it does not limit
+operator-started Capsules. Mailbox polling is a reconciliation poll: it never
+wakes a paused Capsule or counts as activity.
+
 ### Audit tampering and repudiation
 
 A Capsule must not be able to modify control-plane audit records. Record authenticated lifecycle, credential, policy, ingress, and delivery actions with timestamps and stable object identities in append-oriented storage. Minimize secret and source content in audit records. Clock, retention, export, and integrity controls must match deployment assurance requirements.
+
+Coordination records content-free events for grant creation, revocation, and
+expiry; link creation, reports, report delivery, and closing; forwarded
+messages (with their size); and refused requests (with their kind and code).
+They carry identifiers, codes, and sizes, never prompts, reports, or helper
+names.
 
 ### Residual data and incomplete teardown
 
@@ -522,6 +600,15 @@ they are not a statement that every planned path is already implemented.
   advertised, from an ordinary user message.
 - ACP agents get no file-system or terminal client capability, and their
   permission requests resolve only to options they offered.
+- No coordination credential exists in any Capsule. The daemon pulls
+  coordination requests; Capsules never call the public API. Coordination
+  authority is a subset of an operator-created grant, which is a subset of
+  the operator's authority. Helpers never answer to their lead for
+  permissions or input, and Delivery stays operator-approved.
+- Capsule `role` is presentation only: it never suppresses attention, never
+  grants authority, and closing a link never deletes a helper's transcript or
+  workspace. Coordination is advertised only with end-to-end structured
+  transport and mailbox support.
 - Network, compute, storage, and lifetime are bounded outside the Capsule.
 - Agent Sandbox lifecycle management is never represented as a sandboxing or
   untrusted multi-tenancy guarantee.
@@ -553,6 +640,13 @@ they are not a statement that every planned path is already implemented.
 ## Residual risks
 
 An allowed coding agent or network destination can intentionally exfiltrate any data it can read, including session-only harness or Git grants during their valid operation. A kernel or hardware vulnerability may defeat even a strong sandbox. A compromised control plane, installation bearer, credential KEK, or provider can subvert isolation and audit. The trusted single-user deployment profile reduces operational complexity; it does not make untrusted code safe or support hostile multi-tenancy.
+
+Any process in a lead Capsule, not only its agent, can use the coordination
+mailbox. A compromised lead can amplify compute and model cost within its
+grant, steer helpers within their existing egress, and send them hostile
+prompts; hostile helper reports can prompt-inject the lead. Helpers run the
+same Project's repository for the same operator, so coordination exposes no
+new data, and it adds no confidentiality or isolation guarantee.
 
 These risks must be stated in deployment documentation and revisited before implementing a provider, credentials, PTY access, Moments, delivery, multi-user access, or internet-facing operation.
 

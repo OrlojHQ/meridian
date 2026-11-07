@@ -9,6 +9,20 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- A structured Thread can lead helper Threads. Spawning it with a
+  Coordination Grant (`meridian thread spawn --lead`, the browser's "Lead
+  with helpers" option, or `coordination` on `POST /projects/{id}/threads`)
+  lets its agent start helpers in their own sub-Capsules, message, wait on and
+  cancel them, and read their reports, all within operator-set limits and a
+  deadline. Agents use the in-Capsule `meridian-coord` CLI or MCP server,
+  which writes to a `capsuled` mailbox that `meridiand` pulls; Capsules hold no
+  credential. Unread reports wake an idle lead. New APIs expose grants
+  (`GET /coordination-grants/{id}`, `POST .../revoke`) and links
+  (`GET /threads/{id}/links`, `GET /thread-links/{id}`), Capsules gain a
+  `role` of `main` or `sub`, and `meridiand --max-live-capsules` caps
+  coordinated spawns. The browser nests helpers under their lead and labels
+  delegated messages (ADR 0029).
+
 - Browser Threads work with every official pack. Each pack now installs a
   structured profile next to its native one under the same name. New
   `claude-stream` and `codex-app-server` adapter drivers run Claude Code's

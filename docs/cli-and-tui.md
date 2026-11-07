@@ -107,6 +107,33 @@ ambiguous mutation with the same `--idempotency-key`; a replay never allocates
 a second Capsule. Capsule-scoped `thread create` remains available for
 power-user workflows.
 
+### Leads and helpers
+
+`--lead` gives the new Thread a Coordination Grant, so its agent can start
+helper Threads in their own Capsules and read their reports (ADR 0029):
+
+```console
+printf '%s' 'split the review across helpers' | meridian thread spawn PROJECT_ID \
+  --harness claude --prompt-stdin --lead --max-children 3 --lead-deadline 2h
+```
+
+`--max-children` (default 4, at most 16), `--max-descendants`,
+`--max-live-capsules`, `--max-messages-per-link`, repeatable
+`--allow-harness` (default: the lead's harness), and `--on-deadline`
+(`cancel_and_pause` or `stop_new_work`) bound the grant; they are fixed at
+spawn. `meridian thread links THREAD_ID` lists a lead's helpers,
+`meridian grant show GRANT_ID` shows the grant, and
+`meridian grant revoke GRANT_ID --expected-version N` ends it and stops the
+helpers (`--keep-helpers` leaves them running). `meridian capsule list --role
+sub` lists helper Capsules. A helper is an ordinary Thread: its permission and
+input requests come to you, never to its lead.
+
+Inside a lead Capsule the agent uses `meridian-coord`, which official packs
+register as an MCP server for Claude Code and Codex. It also works as a CLI:
+`meridian-coord spawn --name NAME --harness H` (prompt on stdin), `send`,
+`wait LINK... | --all`, `result`, `status`, `list`, `cancel`, and `whoami`.
+It talks only to the Capsule's local mailbox; it holds no credential.
+
 ## Sessions and Capsules
 
 The dashboard is a Project and Capsule launcher, not a wrapper around each

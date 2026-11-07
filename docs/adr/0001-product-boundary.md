@@ -1,6 +1,6 @@
 # ADR 0001: Keep Meridian coding-specific
 
-- Status: Accepted
+- Status: Accepted; amended by ADR 0029
 - Date: 2026-08-23
 
 ## Context
@@ -13,7 +13,9 @@ Meridian is coding-specific infrastructure for isolated, resumable development e
 
 Meridian does not:
 
-- implement general DAG, delegation, or multi-agent orchestration;
+- implement general DAG, delegation, or multi-agent orchestration (ADR 0029
+  allows only bounded lead/helper Thread coordination under an operator
+  grant);
 - require or reimplement Orloj;
 - replace Git, a coding-agent harness, or a model provider;
 - build a hypervisor or microVM monitor; or
