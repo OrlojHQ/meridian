@@ -3293,17 +3293,6 @@ func (s *ProviderConnectionPage) Validate() error {
 	return nil
 }
 
-func (s ProviderConnectionProvider) Validate() error {
-	switch s {
-	case "openai":
-		return nil
-	case "anthropic":
-		return nil
-	default:
-		return errors.Errorf("invalid value: %v", s)
-	}
-}
-
 func (s *ProviderConnectionRequest) Validate() error {
 	if s == nil {
 		return validate.ErrNilPointer
@@ -3344,17 +3333,81 @@ func (s *ProviderConnectionRequest) Validate() error {
 			Error: err,
 		})
 	}
+	if err := func() error {
+		if value, ok := s.BaseUrl.Get(); ok {
+			if err := func() error {
+				if err := (validate.String{
+					MinLength:     0,
+					MinLengthSet:  false,
+					MaxLength:     2048,
+					MaxLengthSet:  true,
+					Email:         false,
+					Hostname:      false,
+					Regex:         nil,
+					MinNumeric:    0,
+					MinNumericSet: false,
+					MaxNumeric:    0,
+					MaxNumericSet: false,
+				}).Validate(string(value)); err != nil {
+					return errors.Wrap(err, "string")
+				}
+				return nil
+			}(); err != nil {
+				return err
+			}
+		}
+		return nil
+	}(); err != nil {
+		failures = append(failures, validate.FieldError{
+			Name:  "baseUrl",
+			Error: err,
+		})
+	}
+	if err := func() error {
+		if value, ok := s.DefaultModel.Get(); ok {
+			if err := func() error {
+				if err := (validate.String{
+					MinLength:     0,
+					MinLengthSet:  false,
+					MaxLength:     256,
+					MaxLengthSet:  true,
+					Email:         false,
+					Hostname:      false,
+					Regex:         nil,
+					MinNumeric:    0,
+					MinNumericSet: false,
+					MaxNumeric:    0,
+					MaxNumericSet: false,
+				}).Validate(string(value)); err != nil {
+					return errors.Wrap(err, "string")
+				}
+				return nil
+			}(); err != nil {
+				return err
+			}
+		}
+		return nil
+	}(); err != nil {
+		failures = append(failures, validate.FieldError{
+			Name:  "defaultModel",
+			Error: err,
+		})
+	}
 	if len(failures) > 0 {
 		return &validate.Error{Fields: failures}
 	}
 	return nil
 }
 
-func (s ProviderConnectionRequestProvider) Validate() error {
+func (s ProviderConnectionType) Validate() error {
 	switch s {
 	case "openai":
 		return nil
 	case "anthropic":
+		return nil
+	case "openai-compatible":
+		return nil
+	case "anthropic-compatible":
 		return nil
 	default:
 		return errors.Errorf("invalid value: %v", s)

@@ -12946,6 +12946,24 @@ func (s *ProviderConnection) encodeFields(e *jx.Encoder) {
 		e.Str(s.Name)
 	}
 	{
+		if s.BaseUrl.Set {
+			e.FieldStart("baseUrl")
+			s.BaseUrl.Encode(e)
+		}
+	}
+	{
+		if s.DefaultModel.Set {
+			e.FieldStart("defaultModel")
+			s.DefaultModel.Encode(e)
+		}
+	}
+	{
+		if s.AllowPrivateHttp.Set {
+			e.FieldStart("allowPrivateHttp")
+			s.AllowPrivateHttp.Encode(e)
+		}
+	}
+	{
 		e.FieldStart("createdAt")
 		json.EncodeDateTime(e, s.CreatedAt)
 	}
@@ -12959,13 +12977,16 @@ func (s *ProviderConnection) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfProviderConnection = [6]string{
+var jsonFieldsNameOfProviderConnection = [9]string{
 	0: "id",
 	1: "provider",
 	2: "name",
-	3: "createdAt",
-	4: "resourceVersion",
-	5: "revoked",
+	3: "baseUrl",
+	4: "defaultModel",
+	5: "allowPrivateHttp",
+	6: "createdAt",
+	7: "resourceVersion",
+	8: "revoked",
 }
 
 // Decode decodes ProviderConnection from json.
@@ -12973,7 +12994,7 @@ func (s *ProviderConnection) Decode(d *jx.Decoder) error {
 	if s == nil {
 		return errors.New("invalid: unable to decode ProviderConnection to nil")
 	}
-	var requiredBitSet [1]uint8
+	var requiredBitSet [2]uint8
 
 	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
 		switch string(k) {
@@ -13011,8 +13032,38 @@ func (s *ProviderConnection) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"name\"")
 			}
+		case "baseUrl":
+			if err := func() error {
+				s.BaseUrl.Reset()
+				if err := s.BaseUrl.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"baseUrl\"")
+			}
+		case "defaultModel":
+			if err := func() error {
+				s.DefaultModel.Reset()
+				if err := s.DefaultModel.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"defaultModel\"")
+			}
+		case "allowPrivateHttp":
+			if err := func() error {
+				s.AllowPrivateHttp.Reset()
+				if err := s.AllowPrivateHttp.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"allowPrivateHttp\"")
+			}
 		case "createdAt":
-			requiredBitSet[0] |= 1 << 3
+			requiredBitSet[0] |= 1 << 6
 			if err := func() error {
 				v, err := json.DecodeDateTime(d)
 				s.CreatedAt = v
@@ -13024,7 +13075,7 @@ func (s *ProviderConnection) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"createdAt\"")
 			}
 		case "resourceVersion":
-			requiredBitSet[0] |= 1 << 4
+			requiredBitSet[0] |= 1 << 7
 			if err := func() error {
 				v, err := d.Int64()
 				s.ResourceVersion = int64(v)
@@ -13036,7 +13087,7 @@ func (s *ProviderConnection) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"resourceVersion\"")
 			}
 		case "revoked":
-			requiredBitSet[0] |= 1 << 5
+			requiredBitSet[1] |= 1 << 0
 			if err := func() error {
 				v, err := d.Bool()
 				s.Revoked = bool(v)
@@ -13056,8 +13107,9 @@ func (s *ProviderConnection) Decode(d *jx.Decoder) error {
 	}
 	// Validate required fields.
 	var failures []validate.FieldError
-	for i, mask := range [1]uint8{
-		0b00111111,
+	for i, mask := range [2]uint8{
+		0b11000111,
+		0b00000001,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.
@@ -13124,11 +13176,18 @@ func (s *ProviderConnectionPage) encodeFields(e *jx.Encoder) {
 		e.FieldStart("enabled")
 		e.Bool(s.Enabled)
 	}
+	{
+		if s.PrivateHttpAllowed.Set {
+			e.FieldStart("privateHttpAllowed")
+			s.PrivateHttpAllowed.Encode(e)
+		}
+	}
 }
 
-var jsonFieldsNameOfProviderConnectionPage = [2]string{
+var jsonFieldsNameOfProviderConnectionPage = [3]string{
 	0: "items",
 	1: "enabled",
+	2: "privateHttpAllowed",
 }
 
 // Decode decodes ProviderConnectionPage from json.
@@ -13169,6 +13228,16 @@ func (s *ProviderConnectionPage) Decode(d *jx.Decoder) error {
 				return nil
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"enabled\"")
+			}
+		case "privateHttpAllowed":
+			if err := func() error {
+				s.PrivateHttpAllowed.Reset()
+				if err := s.PrivateHttpAllowed.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"privateHttpAllowed\"")
 			}
 		default:
 			return d.Skip()
@@ -13226,46 +13295,6 @@ func (s *ProviderConnectionPage) UnmarshalJSON(data []byte) error {
 	return s.Decode(d)
 }
 
-// Encode encodes ProviderConnectionProvider as json.
-func (s ProviderConnectionProvider) Encode(e *jx.Encoder) {
-	e.Str(string(s))
-}
-
-// Decode decodes ProviderConnectionProvider from json.
-func (s *ProviderConnectionProvider) Decode(d *jx.Decoder) error {
-	if s == nil {
-		return errors.New("invalid: unable to decode ProviderConnectionProvider to nil")
-	}
-	v, err := d.StrBytes()
-	if err != nil {
-		return err
-	}
-	// Try to use constant string.
-	switch ProviderConnectionProvider(v) {
-	case ProviderConnectionProviderOpenai:
-		*s = ProviderConnectionProviderOpenai
-	case ProviderConnectionProviderAnthropic:
-		*s = ProviderConnectionProviderAnthropic
-	default:
-		*s = ProviderConnectionProvider(v)
-	}
-
-	return nil
-}
-
-// MarshalJSON implements stdjson.Marshaler.
-func (s ProviderConnectionProvider) MarshalJSON() ([]byte, error) {
-	e := jx.Encoder{}
-	s.Encode(&e)
-	return e.Bytes(), nil
-}
-
-// UnmarshalJSON implements stdjson.Unmarshaler.
-func (s *ProviderConnectionProvider) UnmarshalJSON(data []byte) error {
-	d := jx.DecodeBytes(data)
-	return s.Decode(d)
-}
-
 // Encode implements json.Marshaler.
 func (s *ProviderConnectionRequest) Encode(e *jx.Encoder) {
 	e.ObjStart()
@@ -13288,6 +13317,24 @@ func (s *ProviderConnectionRequest) encodeFields(e *jx.Encoder) {
 		e.Str(s.ApiKey)
 	}
 	{
+		if s.BaseUrl.Set {
+			e.FieldStart("baseUrl")
+			s.BaseUrl.Encode(e)
+		}
+	}
+	{
+		if s.DefaultModel.Set {
+			e.FieldStart("defaultModel")
+			s.DefaultModel.Encode(e)
+		}
+	}
+	{
+		if s.AllowPrivateHttp.Set {
+			e.FieldStart("allowPrivateHttp")
+			s.AllowPrivateHttp.Encode(e)
+		}
+	}
+	{
 		e.FieldStart("expectedResourceVersion")
 		e.Int64(s.ExpectedResourceVersion)
 	}
@@ -13299,12 +13346,15 @@ func (s *ProviderConnectionRequest) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfProviderConnectionRequest = [5]string{
+var jsonFieldsNameOfProviderConnectionRequest = [8]string{
 	0: "name",
 	1: "provider",
 	2: "apiKey",
-	3: "expectedResourceVersion",
-	4: "revoked",
+	3: "baseUrl",
+	4: "defaultModel",
+	5: "allowPrivateHttp",
+	6: "expectedResourceVersion",
+	7: "revoked",
 }
 
 // Decode decodes ProviderConnectionRequest from json.
@@ -13350,8 +13400,38 @@ func (s *ProviderConnectionRequest) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"apiKey\"")
 			}
+		case "baseUrl":
+			if err := func() error {
+				s.BaseUrl.Reset()
+				if err := s.BaseUrl.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"baseUrl\"")
+			}
+		case "defaultModel":
+			if err := func() error {
+				s.DefaultModel.Reset()
+				if err := s.DefaultModel.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"defaultModel\"")
+			}
+		case "allowPrivateHttp":
+			if err := func() error {
+				s.AllowPrivateHttp.Reset()
+				if err := s.AllowPrivateHttp.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"allowPrivateHttp\"")
+			}
 		case "expectedResourceVersion":
-			requiredBitSet[0] |= 1 << 3
+			requiredBitSet[0] |= 1 << 6
 			if err := func() error {
 				v, err := d.Int64()
 				s.ExpectedResourceVersion = int64(v)
@@ -13382,7 +13462,7 @@ func (s *ProviderConnectionRequest) Decode(d *jx.Decoder) error {
 	// Validate required fields.
 	var failures []validate.FieldError
 	for i, mask := range [1]uint8{
-		0b00001111,
+		0b01000111,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.
@@ -13428,42 +13508,46 @@ func (s *ProviderConnectionRequest) UnmarshalJSON(data []byte) error {
 	return s.Decode(d)
 }
 
-// Encode encodes ProviderConnectionRequestProvider as json.
-func (s ProviderConnectionRequestProvider) Encode(e *jx.Encoder) {
+// Encode encodes ProviderConnectionType as json.
+func (s ProviderConnectionType) Encode(e *jx.Encoder) {
 	e.Str(string(s))
 }
 
-// Decode decodes ProviderConnectionRequestProvider from json.
-func (s *ProviderConnectionRequestProvider) Decode(d *jx.Decoder) error {
+// Decode decodes ProviderConnectionType from json.
+func (s *ProviderConnectionType) Decode(d *jx.Decoder) error {
 	if s == nil {
-		return errors.New("invalid: unable to decode ProviderConnectionRequestProvider to nil")
+		return errors.New("invalid: unable to decode ProviderConnectionType to nil")
 	}
 	v, err := d.StrBytes()
 	if err != nil {
 		return err
 	}
 	// Try to use constant string.
-	switch ProviderConnectionRequestProvider(v) {
-	case ProviderConnectionRequestProviderOpenai:
-		*s = ProviderConnectionRequestProviderOpenai
-	case ProviderConnectionRequestProviderAnthropic:
-		*s = ProviderConnectionRequestProviderAnthropic
+	switch ProviderConnectionType(v) {
+	case ProviderConnectionTypeOpenai:
+		*s = ProviderConnectionTypeOpenai
+	case ProviderConnectionTypeAnthropic:
+		*s = ProviderConnectionTypeAnthropic
+	case ProviderConnectionTypeOpenaiCompatible:
+		*s = ProviderConnectionTypeOpenaiCompatible
+	case ProviderConnectionTypeAnthropicCompatible:
+		*s = ProviderConnectionTypeAnthropicCompatible
 	default:
-		*s = ProviderConnectionRequestProvider(v)
+		*s = ProviderConnectionType(v)
 	}
 
 	return nil
 }
 
 // MarshalJSON implements stdjson.Marshaler.
-func (s ProviderConnectionRequestProvider) MarshalJSON() ([]byte, error) {
+func (s ProviderConnectionType) MarshalJSON() ([]byte, error) {
 	e := jx.Encoder{}
 	s.Encode(&e)
 	return e.Bytes(), nil
 }
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
-func (s *ProviderConnectionRequestProvider) UnmarshalJSON(data []byte) error {
+func (s *ProviderConnectionType) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }

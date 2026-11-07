@@ -9,6 +9,7 @@ import { harnessName } from "../shell/capsuleActivity";
 
 import { HarnessSetupImport } from "./HarnessSetupImport";
 import { PreparationProgress } from "./PreparationProgress";
+import { connectionSupports } from "./ProviderConnections";
 
 type PendingLaunch = {
   capsule: Capsule;
@@ -33,7 +34,7 @@ export function NativeLauncher({
   const connections=useQuery({queryKey:["provider-connections"],queryFn:api.providerConnections});
   const grant=useQuery({queryKey:["project-connection",project.id,harness],queryFn:()=>api.projectConnection(project.id,harness),enabled:!!harness});
   const selectedConnection=connection ?? grant.data?.connectionId ?? "";
-  const availableConnections=connections.data?.items.filter(item=>!item.revoked && (harness!=="claude" || item.provider==="anthropic") && (harness!=="codex" || item.provider==="openai")) ?? [];
+  const availableConnections=connections.data?.items.filter(item=>!item.revoked && connectionSupports(harness,item)) ?? [];
   const setups = useQuery({queryKey:["harness-setups"], queryFn:api.harnessSetups});
   const choices = setups.data?.items.filter(item => item.harness === harness && !item.deleted) ?? [];
   const defaultSetup = choices.find(item => item.default);

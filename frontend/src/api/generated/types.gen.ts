@@ -749,8 +749,20 @@ export type MutateHarnessSetupRequest = {
 
 export type ProviderConnection = {
     id: string;
-    provider: 'openai' | 'anthropic';
+    provider: ProviderConnectionType;
     name: string;
+    /**
+     * Custom endpoint upstream, normalized without a trailing /v1. Never sent to a Capsule.
+     */
+    baseUrl?: string;
+    /**
+     * Model name configured in harnesses that use this custom endpoint.
+     */
+    defaultModel?: string;
+    /**
+     * Whether this custom endpoint uses plaintext HTTP to a private-network address.
+     */
+    allowPrivateHttp?: boolean;
     createdAt: string;
     resourceVersion: number;
     revoked: boolean;
@@ -759,11 +771,32 @@ export type ProviderConnection = {
 export type ProviderConnectionPage = {
     items: Array<ProviderConnection>;
     enabled: boolean;
+    /**
+     * Whether the daemon permits custom endpoints to opt in to plaintext HTTP on private networks.
+     */
+    privateHttpAllowed?: boolean;
 };
+
+/**
+ * openai and anthropic use fixed official upstreams. openai-compatible and anthropic-compatible use an operator-configured baseUrl.
+ */
+export type ProviderConnectionType = 'openai' | 'anthropic' | 'openai-compatible' | 'anthropic-compatible';
 
 export type ProviderConnectionRequest = {
     name: string;
-    provider: 'openai' | 'anthropic';
+    provider: ProviderConnectionType;
+    /**
+     * Required for custom endpoint types; rejected for official ones. An https URL, or an http URL on a loopback or private-network address when allowPrivateHttp is set. A trailing /v1 is removed.
+     */
+    baseUrl?: string;
+    /**
+     * Optional model name for custom endpoints; OpenCode and Pi require one.
+     */
+    defaultModel?: string;
+    /**
+     * Opt in to a plaintext http baseUrl. Requires the daemon's --provider-gateway-allow-private-http flag.
+     */
+    allowPrivateHttp?: boolean;
     expectedResourceVersion: number;
     revoked?: boolean;
 };
@@ -913,8 +946,23 @@ export type ProjectPageWritable = {
 
 export type ProviderConnectionRequestWritable = {
     name: string;
-    provider: 'openai' | 'anthropic';
+    provider: ProviderConnectionType;
+    /**
+     * Required for official providers. Custom endpoints accept an empty key and then send no upstream credential.
+     */
     apiKey: string;
+    /**
+     * Required for custom endpoint types; rejected for official ones. An https URL, or an http URL on a loopback or private-network address when allowPrivateHttp is set. A trailing /v1 is removed.
+     */
+    baseUrl?: string;
+    /**
+     * Optional model name for custom endpoints; OpenCode and Pi require one.
+     */
+    defaultModel?: string;
+    /**
+     * Opt in to a plaintext http baseUrl. Requires the daemon's --provider-gateway-allow-private-http flag.
+     */
+    allowPrivateHttp?: boolean;
     expectedResourceVersion: number;
     revoked?: boolean;
 };

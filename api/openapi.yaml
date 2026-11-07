@@ -3076,10 +3076,18 @@ components:
         id:
           type: string
         provider:
-          type: string
-          enum: [openai, anthropic]
+          $ref: '#/components/schemas/ProviderConnectionType'
         name:
           type: string
+        baseUrl:
+          type: string
+          description: Custom endpoint upstream, normalized without a trailing /v1. Never sent to a Capsule.
+        defaultModel:
+          type: string
+          description: Model name configured in harnesses that use this custom endpoint.
+        allowPrivateHttp:
+          type: boolean
+          description: Whether this custom endpoint uses plaintext HTTP to a private-network address.
         createdAt:
           type: string
           format: date-time
@@ -3098,6 +3106,15 @@ components:
             $ref: '#/components/schemas/ProviderConnection'
         enabled:
           type: boolean
+        privateHttpAllowed:
+          type: boolean
+          description: Whether the daemon permits custom endpoints to opt in to plaintext HTTP on private networks.
+    ProviderConnectionType:
+      type: string
+      enum: [openai, anthropic, openai-compatible, anthropic-compatible]
+      description: >-
+        openai and anthropic use fixed official upstreams. openai-compatible
+        and anthropic-compatible use an operator-configured baseUrl.
     ProviderConnectionRequest:
       type: object
       required: [name, provider, apiKey, expectedResourceVersion]
@@ -3105,12 +3122,26 @@ components:
         name:
           type: string
         provider:
-          type: string
-          enum: [openai, anthropic]
+          $ref: '#/components/schemas/ProviderConnectionType'
         apiKey:
           type: string
           writeOnly: true
           maxLength: 4096
+          description: Required for official providers. Custom endpoints accept an empty key and then send no upstream credential.
+        baseUrl:
+          type: string
+          maxLength: 2048
+          description: >-
+            Required for custom endpoint types; rejected for official ones.
+            An https URL, or an http URL on a loopback or private-network
+            address when allowPrivateHttp is set. A trailing /v1 is removed.
+        defaultModel:
+          type: string
+          maxLength: 256
+          description: Optional model name for custom endpoints; OpenCode and Pi require one.
+        allowPrivateHttp:
+          type: boolean
+          description: Opt in to a plaintext http baseUrl. Requires the daemon's --provider-gateway-allow-private-http flag.
         expectedResourceVersion:
           type: integer
           format: int64
