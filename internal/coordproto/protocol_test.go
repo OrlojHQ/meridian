@@ -17,6 +17,8 @@ func TestDecodeRequestAcceptsClosedFieldSets(t *testing.T) {
 		`{"protocol":"meridian.coord.v1","type":"wait","links":["a","b"],"all":true,"timeoutSeconds":30}`,
 		`{"protocol":"meridian.coord.v1","type":"status","link":"link-1"}`,
 		`{"protocol":"meridian.coord.v1","type":"result","link":"link-1"}`,
+		`{"protocol":"meridian.coord.v1","type":"patch","link":"link-1","maxBytes":1048576}`,
+		`{"protocol":"meridian.coord.v1","type":"report","key":"r","status":"done","summary":"finished the task"}`,
 		`{"protocol":"meridian.coord.v1","type":"list"}`,
 		`{"protocol":"meridian.coord.v1","type":"whoami"}`,
 	}
@@ -29,21 +31,24 @@ func TestDecodeRequestAcceptsClosedFieldSets(t *testing.T) {
 
 func TestDecodeRequestRejectsHostileRecords(t *testing.T) {
 	cases := map[string][]byte{
-		"unknown field":     record(`{"protocol":"meridian.coord.v1","type":"list","capsule":"x"}`),
-		"wrong protocol":    record(`{"protocol":"meridian.coord.v2","type":"list"}`),
-		"unknown type":      record(`{"protocol":"meridian.coord.v1","type":"promote"}`),
-		"field not allowed": record(`{"protocol":"meridian.coord.v1","type":"list","link":"x"}`),
-		"spawn without key": record(`{"protocol":"meridian.coord.v1","type":"spawn","name":"a","harness":"h","prompt":"p"}`),
-		"bad name":          record(`{"protocol":"meridian.coord.v1","type":"spawn","key":"k","name":"Subagent","harness":"h","prompt":"p"}`),
-		"long name":         record(`{"protocol":"meridian.coord.v1","type":"spawn","key":"k","name":"` + strings.Repeat("a", 49) + `","harness":"h","prompt":"p"}`),
-		"control in key":    record(`{"protocol":"meridian.coord.v1","type":"cancel","key":"a b","link":"l"}`),
-		"NUL in prompt":     record(`{"protocol":"meridian.coord.v1","type":"send","key":"k","link":"l","prompt":"a\u0000b"}`),
-		"all without links": record(`{"protocol":"meridian.coord.v1","type":"wait","all":true}`),
-		"timeout too long":  record(`{"protocol":"meridian.coord.v1","type":"wait","timeoutSeconds":3601}`),
-		"trailing data":     record(`{"protocol":"meridian.coord.v1","type":"list"} {}`),
-		"carriage return":   []byte("{\"protocol\":\"meridian.coord.v1\",\"type\":\"list\"}\r\n"),
-		"missing LF":        []byte(`{"protocol":"meridian.coord.v1","type":"list"}`),
-		"invalid UTF-8":     record("{\"protocol\":\"meridian.coord.v1\",\"type\":\"list\",\"x\":\"\xff\"}"),
+		"unknown field":            record(`{"protocol":"meridian.coord.v1","type":"list","capsule":"x"}`),
+		"wrong protocol":           record(`{"protocol":"meridian.coord.v2","type":"list"}`),
+		"unknown type":             record(`{"protocol":"meridian.coord.v1","type":"promote"}`),
+		"lead cannot report extra": record(`{"protocol":"meridian.coord.v1","type":"report","key":"k","status":"done","summary":"x","link":"l"}`),
+		"bad report status":        record(`{"protocol":"meridian.coord.v1","type":"report","key":"k","status":"turn_ended","summary":"x"}`),
+		"patch too large":          record(`{"protocol":"meridian.coord.v1","type":"patch","link":"l","maxBytes":4194305}`),
+		"field not allowed":        record(`{"protocol":"meridian.coord.v1","type":"list","link":"x"}`),
+		"spawn without key":        record(`{"protocol":"meridian.coord.v1","type":"spawn","name":"a","harness":"h","prompt":"p"}`),
+		"bad name":                 record(`{"protocol":"meridian.coord.v1","type":"spawn","key":"k","name":"Subagent","harness":"h","prompt":"p"}`),
+		"long name":                record(`{"protocol":"meridian.coord.v1","type":"spawn","key":"k","name":"` + strings.Repeat("a", 49) + `","harness":"h","prompt":"p"}`),
+		"control in key":           record(`{"protocol":"meridian.coord.v1","type":"cancel","key":"a b","link":"l"}`),
+		"NUL in prompt":            record(`{"protocol":"meridian.coord.v1","type":"send","key":"k","link":"l","prompt":"a\u0000b"}`),
+		"all without links":        record(`{"protocol":"meridian.coord.v1","type":"wait","all":true}`),
+		"timeout too long":         record(`{"protocol":"meridian.coord.v1","type":"wait","timeoutSeconds":3601}`),
+		"trailing data":            record(`{"protocol":"meridian.coord.v1","type":"list"} {}`),
+		"carriage return":          []byte("{\"protocol\":\"meridian.coord.v1\",\"type\":\"list\"}\r\n"),
+		"missing LF":               []byte(`{"protocol":"meridian.coord.v1","type":"list"}`),
+		"invalid UTF-8":            record("{\"protocol\":\"meridian.coord.v1\",\"type\":\"list\",\"x\":\"\xff\"}"),
 		"oversized prompt": record(`{"protocol":"meridian.coord.v1","type":"send","key":"k","link":"l","prompt":"` +
 			strings.Repeat("a", MaxPromptBytes+1) + `"}`),
 	}
@@ -124,6 +129,12 @@ func TestConfigAndNotificationValidation(t *testing.T) {
 	}
 	if err := (Config{Enabled: true, Self: &Self{Role: "lead", GrantID: "g"}}).Validate(); err != nil {
 		t.Error(err)
+	}
+	if err := (Config{Enabled: true, Self: &Self{Role: "sub", Depth: 1, GrantID: "g"}}).Validate(); err != nil {
+		t.Error(err)
+	}
+	if err := (Config{Enabled: true, Self: &Self{Role: "sub", Depth: 0, GrantID: "g"}}).Validate(); err == nil {
+		t.Error("sub config with lead depth accepted")
 	}
 	big := Notification{Reports: []Report{{Link: "l", Seq: 1, Summary: strings.Repeat("x", MaxReportSummaryBytes+1)}}}
 	if err := big.Validate(); err == nil {

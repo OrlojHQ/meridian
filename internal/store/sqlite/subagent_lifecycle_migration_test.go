@@ -257,3 +257,98 @@ func TestSpawnApprovalMigrationAllowsGrantUpdates(t *testing.T) {
 		}
 	}
 }
+
+func TestSubagentResultsMigrationAddsGitMetadataAndDone(t *testing.T) {
+	ctx := context.Background()
+	dataDir := t.TempDir()
+	db, err := sql.Open("sqlite", filepath.Join(dataDir, "meridian.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	applyMigrationsBefore(t, db, 18)
+	seed, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		`INSERT INTO projects(id, name, created_at, updated_at, resource_version)
+			VALUES ('p1', 'p', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 1)`,
+		`INSERT INTO capsules(id, project_id, timeline_id, name, state, desired_state, created_at, updated_at, resource_version)
+			VALUES ('lead', 'p1', 'tl-lead', 'lead', 'Ready', 'Ready', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 1)`,
+		`INSERT INTO capsules(id, project_id, timeline_id, name, state, desired_state, role, lead_thread_id, link_id,
+				created_at, updated_at, resource_version)
+			VALUES ('child', 'p1', 'tl-child', 'child', 'Ready', 'Ready', 'sub', 'lead-thread', 'link1',
+				'2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 1)`,
+		`INSERT INTO timelines(id, project_id, capsule_id, reason, created_at)
+			VALUES ('tl-lead', 'p1', 'lead', 'root', '2026-01-01T00:00:00Z'),
+				('tl-child', 'p1', 'child', 'root', '2026-01-01T00:00:00Z')`,
+		`INSERT INTO project_thread_intents(id, project_id, capsule_id, thread_id, run_id, message_id, block_id,
+				capsule_name, requested_name, harness, idempotency_key, state, wrapped_dek, kek_id, kek_version,
+				envelope_version, ciphertext, created_at, updated_at, resource_version)
+			VALUES ('intent', 'p1', 'child', 'child-thread', 'run', 'msg', 'blk', 'child', 'child', 'mock', 'k',
+				'provisioning', zeroblob(64), 'kek', 1, 1, zeroblob(32), '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 1)`,
+		`INSERT INTO coordination_grants(id, project_id, root_thread_id, root_capsule_id, state, spawn_approval,
+				max_depth, max_children, max_descendants, max_live_capsules, max_messages_per_link, allowed_harnesses,
+				deadline_at, on_deadline, descendants_created, archive_after_seconds, created_at, updated_at, resource_version)
+			VALUES ('g1', 'p1', 'lead-thread', 'lead', 'active', 'auto', 1, 4, 8, 4, 50, '["mock"]',
+				'2026-01-02T00:00:00Z', 'cancel_and_pause', 1, 86400, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 2)`,
+		`INSERT INTO thread_links(id, grant_id, parent_thread_id, parent_capsule_id, child_intent_id, child_thread_id,
+				child_capsule_id, depth, name, harness, state, report_seq, last_report_status, last_report_at,
+				operator_messages, operator_noticed, created_at, updated_at, resource_version)
+			VALUES ('link1', 'g1', 'lead-thread', 'lead', 'intent', 'child-thread', 'child', 1, 'one', 'mock', 'active',
+				1, 'turn_ended', '2026-01-01T00:05:00Z', 0, 0, '2026-01-01T00:00:00Z', '2026-01-01T00:05:00Z', 3)`,
+	} {
+		if _, err := seed.Exec(statement); err != nil {
+			t.Fatalf("seed: %v\n%s", err, statement)
+		}
+	}
+	if err := seed.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := sqlite.Open(ctx, dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.View(ctx, func(reader ports.Reader) error {
+		link, err := reader.GetThreadLink(ctx, "link1")
+		if err != nil {
+			return err
+		}
+		if link.BaseCommit != "" || link.Head != "" || link.FilesChanged != 0 || link.LastReportStatus != domain.ReportTurnEnded {
+			t.Fatalf("migrated link = %#v", link)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	raw, err := sql.Open("sqlite", store.Path()+"?_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	if _, err := raw.Exec(`UPDATE thread_links SET last_report_status = 'done' WHERE id = 'link1'`); err != nil {
+		t.Fatalf("done status: %v", err)
+	}
+	if _, err := raw.Exec(`UPDATE thread_links SET last_report_status = 'blocked' WHERE id = 'link1'`); err != nil {
+		t.Fatalf("blocked status: %v", err)
+	}
+	if _, err := raw.Exec(`UPDATE thread_links SET base_commit = 'aaaaaaaa', head = 'bbbbbbbb', files_changed = 2,
+		insertions = 4, deletions = 1 WHERE id = 'link1'`); err != nil {
+		t.Fatalf("git metadata: %v", err)
+	}
+	if _, err := raw.Exec(`UPDATE thread_links SET base_commit = 'cccccccc' WHERE id = 'link1'`); err == nil {
+		t.Fatal("base_commit was rewritten")
+	}
+	if _, err := raw.Exec(`INSERT INTO coordination_requests(id, grant_id, capsule_id, request_key, canonical_digest,
+		kind, link_id, state, created_at, updated_at, resource_version)
+		VALUES ('r-report', 'g1', 'child', 'done-1', '` + strings.Repeat("b", 64) + `', 'report', 'link1',
+		'completed', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 1)`); err != nil {
+		t.Fatalf("report kind: %v", err)
+	}
+}

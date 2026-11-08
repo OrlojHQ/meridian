@@ -167,8 +167,10 @@ Inside a lead Capsule the agent uses `meridian-coord`, which official packs
 register as an MCP server for Claude Code, Codex, and OpenCode. Pi has no MCP
 client, so the Pi pack loads a skill that teaches it the CLI form:
 `meridian-coord spawn --name NAME --harness H` (prompt on stdin), `send`,
-`wait LINK... | --all`, `result`, `status`, `list`, `cancel`, and `whoami`.
-It talks only to the Capsule's local mailbox; it holds no credential.
+`wait LINK... | --all`, `result`, `patch`, `status`, `list`, `cancel`, and
+`whoami`. A subagent uses `meridian-coord report --status done|blocked|failed`
+(summary on stdin). Reports and patches are untrusted data. It talks only to
+the Capsule's local mailbox; it holds no credential.
 
 ## Sessions and Capsules
 

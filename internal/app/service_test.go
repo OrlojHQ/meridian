@@ -150,6 +150,10 @@ func (*runRuntime) GitDiff(context.Context, string) (ports.GitResult, error) {
 	return ports.GitResult{Content: "diff"}, nil
 }
 
+func (*runRuntime) GitPatch(context.Context, string, ports.GitPatchRequest) (ports.GitPatchResult, error) {
+	return ports.GitPatchResult{}, domain.ErrUnsupported
+}
+
 func (q *recordingQueue) Enqueue(_ context.Context, id domain.CapsuleID) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()

@@ -98,6 +98,11 @@ type threadLinkJSON struct {
 	OperatorMessages   int    `json:"operatorMessages"`
 	ArchivedAt         string `json:"archivedAt,omitempty"`
 	PromotedAt         string `json:"promotedAt,omitempty"`
+	BaseCommit         string `json:"baseCommit,omitempty"`
+	Head               string `json:"head,omitempty"`
+	FilesChanged       int    `json:"filesChanged,omitempty"`
+	Insertions         int    `json:"insertions,omitempty"`
+	Deletions          int    `json:"deletions,omitempty"`
 	CreatedAt          string `json:"createdAt"`
 	UpdatedAt          string `json:"updatedAt"`
 	ResourceVersion    int64  `json:"resourceVersion"`
@@ -234,9 +239,11 @@ func (s *Server) linkResponse(request *http.Request, link domain.ThreadLink) thr
 		OperatorMessages: link.OperatorMessages,
 		ArchivedAt:       formatOptionalTime(link.ArchivedAt),
 		PromotedAt:       formatOptionalTime(link.PromotedAt),
-		CreatedAt:        link.CreatedAt.UTC().Format(time.RFC3339Nano),
-		UpdatedAt:        link.UpdatedAt.UTC().Format(time.RFC3339Nano),
-		ResourceVersion:  int64(link.ResourceVersion),
+		BaseCommit:       link.BaseCommit, Head: link.Head, FilesChanged: link.FilesChanged,
+		Insertions: link.Insertions, Deletions: link.Deletions,
+		CreatedAt:       link.CreatedAt.UTC().Format(time.RFC3339Nano),
+		UpdatedAt:       link.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		ResourceVersion: int64(link.ResourceVersion),
 	}
 }
 

@@ -251,6 +251,20 @@ func (p *Provider) GitDiff(ctx context.Context, resourceID string) (ports.GitRes
 	return ports.GitResult{Content: result.Content, Truncated: result.Truncated}, mapRuntimeError(err)
 }
 
+func (p *Provider) GitPatch(ctx context.Context, resourceID string, request ports.GitPatchRequest) (ports.GitPatchResult, error) {
+	supervisor, err := p.runtimeClient(ctx, resourceID)
+	if err != nil {
+		return ports.GitPatchResult{}, err
+	}
+	result, err := supervisor.GitPatch(ctx, capsuleproto.GitPatchRequest{
+		BaseCommit: request.BaseCommit, MaxBytes: request.MaxBytes, IncludePatch: request.IncludePatch,
+	})
+	return ports.GitPatchResult{
+		Patch: result.Patch, Truncated: result.Truncated, Head: result.Head, BaseCommit: result.BaseCommit,
+		FilesChanged: result.FilesChanged, Insertions: result.Insertions, Deletions: result.Deletions,
+	}, mapRuntimeError(err)
+}
+
 func (p *Provider) ListWorkspaceFiles(
 	ctx context.Context, resourceID, filePath, after string, limit int,
 ) (ports.WorkspaceFilePage, error) {

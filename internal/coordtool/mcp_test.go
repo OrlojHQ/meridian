@@ -17,6 +17,7 @@ import (
 // fakeMailbox answers whoami as a lead and echoes spawn requests as links.
 type fakeMailbox struct {
 	mu       sync.Mutex
+	role     string
 	requests []coordproto.Request
 }
 
@@ -57,7 +58,11 @@ func (f *fakeMailbox) serve(t *testing.T) string {
 				response := coordproto.OK()
 				switch request.Type {
 				case coordproto.KindWhoAmI:
-					response.Self = &coordproto.Self{Role: "lead", GrantID: "grant"}
+					role := f.role
+					if role == "" {
+						role = "lead"
+					}
+					response.Self = &coordproto.Self{Role: role, GrantID: "grant", Depth: 1}
 				case coordproto.KindSpawn:
 					response.Link = &coordproto.Link{ID: "link-" + request.Name, Name: request.Name, State: "active"}
 				default:
@@ -133,7 +138,7 @@ func TestMCPServerExposesToolsOnlyToLeads(t *testing.T) {
 		t.Fatalf("initialize = %v", initialize)
 	}
 	tools := byID(responses, 2)["result"].(map[string]any)["tools"].([]any)
-	if len(tools) != 8 {
+	if len(tools) != 9 {
 		t.Fatalf("tools = %d", len(tools))
 	}
 	spawn := byID(responses, 3)["result"].(map[string]any)
@@ -156,6 +161,23 @@ func TestMCPServerExposesToolsOnlyToLeads(t *testing.T) {
 	}
 	if len(spawns) != 1 || spawns[0].Key != "spawn-subagent-1" {
 		t.Fatalf("spawn requests = %+v", spawns)
+	}
+}
+
+func TestMCPServerListsReportToolsForSubagents(t *testing.T) {
+	mailbox := &fakeMailbox{role: "sub"}
+	socket := mailbox.serve(t)
+	responses := exchange(t, socket, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
+	tools := responses[0]["result"].(map[string]any)["tools"].([]any)
+	if len(tools) != 2 {
+		t.Fatalf("subagent tools = %d", len(tools))
+	}
+	names := map[string]bool{}
+	for _, item := range tools {
+		names[item.(map[string]any)["name"].(string)] = true
+	}
+	if !names["meridian_report"] || !names["meridian_whoami"] || names["meridian_spawn"] {
+		t.Fatalf("subagent tools = %v", names)
 	}
 }
 

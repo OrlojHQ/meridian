@@ -23176,6 +23176,36 @@ func (s *ThreadLink) encodeFields(e *jx.Encoder) {
 		}
 	}
 	{
+		if s.BaseCommit.Set {
+			e.FieldStart("baseCommit")
+			s.BaseCommit.Encode(e)
+		}
+	}
+	{
+		if s.Head.Set {
+			e.FieldStart("head")
+			s.Head.Encode(e)
+		}
+	}
+	{
+		if s.FilesChanged.Set {
+			e.FieldStart("filesChanged")
+			s.FilesChanged.Encode(e)
+		}
+	}
+	{
+		if s.Insertions.Set {
+			e.FieldStart("insertions")
+			s.Insertions.Encode(e)
+		}
+	}
+	{
+		if s.Deletions.Set {
+			e.FieldStart("deletions")
+			s.Deletions.Encode(e)
+		}
+	}
+	{
 		e.FieldStart("createdAt")
 		json.EncodeDateTime(e, s.CreatedAt)
 	}
@@ -23189,7 +23219,7 @@ func (s *ThreadLink) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfThreadLink = [25]string{
+var jsonFieldsNameOfThreadLink = [30]string{
 	0:  "id",
 	1:  "grantId",
 	2:  "parentThreadId",
@@ -23212,9 +23242,14 @@ var jsonFieldsNameOfThreadLink = [25]string{
 	19: "operatorMessages",
 	20: "archivedAt",
 	21: "promotedAt",
-	22: "createdAt",
-	23: "updatedAt",
-	24: "resourceVersion",
+	22: "baseCommit",
+	23: "head",
+	24: "filesChanged",
+	25: "insertions",
+	26: "deletions",
+	27: "createdAt",
+	28: "updatedAt",
+	29: "resourceVersion",
 }
 
 // Decode decodes ThreadLink from json.
@@ -23474,8 +23509,58 @@ func (s *ThreadLink) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"promotedAt\"")
 			}
+		case "baseCommit":
+			if err := func() error {
+				s.BaseCommit.Reset()
+				if err := s.BaseCommit.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"baseCommit\"")
+			}
+		case "head":
+			if err := func() error {
+				s.Head.Reset()
+				if err := s.Head.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"head\"")
+			}
+		case "filesChanged":
+			if err := func() error {
+				s.FilesChanged.Reset()
+				if err := s.FilesChanged.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"filesChanged\"")
+			}
+		case "insertions":
+			if err := func() error {
+				s.Insertions.Reset()
+				if err := s.Insertions.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"insertions\"")
+			}
+		case "deletions":
+			if err := func() error {
+				s.Deletions.Reset()
+				if err := s.Deletions.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"deletions\"")
+			}
 		case "createdAt":
-			requiredBitSet[2] |= 1 << 6
+			requiredBitSet[3] |= 1 << 3
 			if err := func() error {
 				v, err := json.DecodeDateTime(d)
 				s.CreatedAt = v
@@ -23487,7 +23572,7 @@ func (s *ThreadLink) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"createdAt\"")
 			}
 		case "updatedAt":
-			requiredBitSet[2] |= 1 << 7
+			requiredBitSet[3] |= 1 << 4
 			if err := func() error {
 				v, err := json.DecodeDateTime(d)
 				s.UpdatedAt = v
@@ -23499,7 +23584,7 @@ func (s *ThreadLink) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"updatedAt\"")
 			}
 		case "resourceVersion":
-			requiredBitSet[3] |= 1 << 0
+			requiredBitSet[3] |= 1 << 5
 			if err := func() error {
 				v, err := d.Int64()
 				s.ResourceVersion = int64(v)
@@ -23522,8 +23607,8 @@ func (s *ThreadLink) Decode(d *jx.Decoder) error {
 	for i, mask := range [4]uint8{
 		0b11111111,
 		0b01110111,
-		0b11001100,
-		0b00000001,
+		0b00001100,
+		0b00111000,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.
@@ -23683,6 +23768,10 @@ func (s *ThreadLinkLastReportStatus) Decode(d *jx.Decoder) error {
 		*s = ThreadLinkLastReportStatusTurnEnded
 	case ThreadLinkLastReportStatusFailed:
 		*s = ThreadLinkLastReportStatusFailed
+	case ThreadLinkLastReportStatusDone:
+		*s = ThreadLinkLastReportStatusDone
+	case ThreadLinkLastReportStatusBlocked:
+		*s = ThreadLinkLastReportStatusBlocked
 	default:
 		*s = ThreadLinkLastReportStatus(v)
 	}

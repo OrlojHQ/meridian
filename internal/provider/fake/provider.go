@@ -123,6 +123,10 @@ func (p *Provider) GitDiff(context.Context, string) (ports.GitResult, error) {
 	return ports.GitResult{}, domain.ErrUnsupported
 }
 
+func (p *Provider) GitPatch(context.Context, string, ports.GitPatchRequest) (ports.GitPatchResult, error) {
+	return ports.GitPatchResult{}, domain.ErrUnsupported
+}
+
 func (p *Provider) Create(
 	ctx context.Context,
 	request ports.CreateCapsuleRequest,

@@ -174,6 +174,46 @@ func TestMailboxWaitReturnsForClosedLinks(t *testing.T) {
 	}
 }
 
+func TestMailboxSubagentMayOnlyReport(t *testing.T) {
+	mailbox := NewMailbox()
+	mailbox.replyLatency = 20 * time.Millisecond
+	mailbox.Configure(coordproto.Config{Enabled: true, Self: &coordproto.Self{
+		Role: "sub", Depth: 1, GrantID: "grant-1",
+	}})
+	whoami := mailbox.Handle(context.Background(), coordproto.Request{
+		Protocol: coordproto.Version, Type: coordproto.KindWhoAmI,
+	})
+	if !whoami.OK || whoami.Self.Role != "sub" {
+		t.Fatalf("whoami: %+v", whoami)
+	}
+	if response := mailbox.Handle(context.Background(), spawnRequest("k", "nested")); response.Error == nil ||
+		response.Error.Code != coordproto.CodeCoordinationDisabled {
+		t.Fatalf("subagent spawn: %+v", response)
+	}
+	if response := mailbox.Handle(context.Background(), coordproto.Request{
+		Protocol: coordproto.Version, Type: coordproto.KindPatch, Link: "link-a",
+	}); response.Error == nil || response.Error.Code != coordproto.CodeCoordinationDisabled {
+		t.Fatalf("subagent patch: %+v", response)
+	}
+	done := make(chan coordproto.Response, 1)
+	go func() {
+		done <- mailbox.Handle(context.Background(), coordproto.Request{
+			Protocol: coordproto.Version, Type: coordproto.KindReport,
+			Key: "done-1", Status: coordproto.ReportDone, Summary: "finished",
+		})
+	}()
+	poll := mailbox.Poll(context.Background(), 0, 0, 2*time.Second)
+	if len(poll.Requests) != 1 || poll.Requests[0].Request.Type != coordproto.KindReport {
+		t.Fatalf("report was not relayed: %+v", poll.Requests)
+	}
+	reply := coordproto.OK()
+	reply.Link = &coordproto.Link{ID: "link-a", LastReportStatus: coordproto.ReportDone}
+	mailbox.Reply([]coordproto.Reply{{Cursor: poll.Requests[0].Cursor, Response: reply}})
+	if response := <-done; !response.OK || response.Link.LastReportStatus != coordproto.ReportDone {
+		t.Fatalf("report: %+v", response)
+	}
+}
+
 func TestMailboxDisableFailsPendingAndForgetsLinks(t *testing.T) {
 	mailbox := enabledMailbox(t)
 	mailbox.Notify(coordproto.Notification{Links: []coordproto.Link{{ID: "link-a", State: "active"}}})

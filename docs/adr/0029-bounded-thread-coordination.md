@@ -45,7 +45,8 @@ Three ways to carry a request out of the Capsule were considered:
   versioned, bounded `meridian.coord.v1` protocol to a `capsuled` mailbox on a
   private Unix socket (`$HOME/.meridian/coord.sock`, mode 0600 in a 0700
   directory). The mailbox refuses every request as `coordination_disabled`
-  until the daemon configures it for a lead and again once the grant ends.
+  until the daemon configures it for a lead or a subagent and again once the
+  grant ends.
   `meridiand` long-polls it over the existing authenticated
   private Capsule transport, identifies the requester by that channel and
   validates each request against the grant, Project policy and the
@@ -59,8 +60,8 @@ Three ways to carry a request out of the Capsule were considered:
 - A child is an ordinary Project Thread in its own fresh Capsule (ADR 0016),
   linked to its parent by a ThreadLink with an operator-visible name limited
   to `[a-z0-9-]{1,48}`. A Capsule may address only links whose parent is its
-  own Thread. With depth fixed at 1, children receive no coordination
-  authority.
+  own Thread. With depth fixed at 1, children receive only `report` and
+  `whoami`; they cannot spawn, send, wait, cancel, list, result, or patch.
 - Every Capsule carries an immutable, content-free `role` of `main` or `sub`.
   Sub-Capsules record their lead Thread and link. The UI nests subagents under
   their lead and labels them; `role` is presentation only, is never read by an
@@ -73,11 +74,17 @@ Three ways to carry a request out of the Capsule were considered:
   be replayed under its idempotency key.
 - Child results return as bounded reports: the daemon derives a report from
   the child's own encrypted transcript (the last assistant message, at most
-  16 KiB) when a turn ends, the session ends or the link closes. The lead
-  reads reports through `wait` or `result`; unread reports wake an idle lead
-  with one coalesced `from_subagents` prompt, framed as untrusted data and
-  re-encrypted under the lead's key. Delivery acknowledgements are
-  content-free sequence numbers.
+  16 KiB) when a turn ends, the session ends or the link closes, unless the
+  child sent an explicit `report` (`done`, `blocked`, or `failed`) that
+  overrides that default. The lead reads reports through `wait` or `result`;
+  unread reports wake an idle lead with one coalesced `from_subagents`
+  prompt, framed as untrusted data and re-encrypted under the lead's key.
+  Delivery acknowledgements are content-free sequence numbers. `patch`
+  returns a bounded `git format-patch` series plus the working-tree diff from
+  the child's Capsule (default 1 MiB, max 4 MiB), produced with hooks
+  disabled. Patch bytes are never stored. Link views carry only HEAD, base
+  commit, and a content-free diffstat. Reports and patches are hostile
+  input to the lead.
 - Revocation, deadline and cancellation are daemon-side state changes that
   take effect on the next request without Capsule cooperation. Closing a link
   by cancellation or revocation cancels the child's run and then pauses its
@@ -101,11 +108,12 @@ Three ways to carry a request out of the Capsule were considered:
   subagent whose link has closed are not counted and leave the link untouched,
   so resuming a stopped subagent does not restart its stop window.
 - Not in this decision, and left for later ADR amendments: depth above 1,
-  returned patch series, proposed Deliveries, and queueing spawns over
-  capacity. Auto-archive and promotion are covered by the subagent lifecycle
-  amendment below. Operator spawn approval and grant updates are covered by
-  the amendment after that. Delivery approval under ADR 0020 is unchanged;
-  agents cannot propose or approve a Delivery.
+  proposed Deliveries, and queueing spawns over capacity. Auto-archive and
+  promotion are covered by the subagent lifecycle amendment below. Operator
+  spawn approval and grant updates are covered by the amendment after that.
+  Explicit reports and bounded patches are covered by the amendment after
+  that. Delivery approval under ADR 0020 is unchanged; agents cannot propose
+  or approve a Delivery.
 
 ## Consequences
 
@@ -155,8 +163,8 @@ subagent to a main Capsule.
 - **Auto-archive.** A grant's `archiveAfter` (default 24 hours; 0 disables
   it; otherwise 1 minute to 30 days in whole seconds) can be changed later by
   the operator, like the other grant limits. A subagent is archived once it has been idle for that long
-  after it finished: its link is active and its last report is `turn_ended`,
-  or its link closed as cancelled, ended or revoked. Subagents that need the
+  after it finished: its link is active and its last report is `turn_ended`
+  or `done`, or its link closed as cancelled, ended or revoked. Subagents that need the
   operator, are working, have a delivery in flight, failed (report, Run or
   Capsule), or were promoted are never archived; failed subagents stay until the
   operator acts. A daemon sweep every 30 seconds marks the link `archivedAt`,
@@ -224,3 +232,37 @@ active grant's limits.
   Deadline is remaining time from now, between 5 minutes and 72 hours, and
   cannot pass `createdAt+72h`. Only an active grant can be patched. Every
   mutation uses `expectedResourceVersion` and `Idempotency-Key`.
+
+## Amendment: subagent reports and patches
+
+A subagent can send an explicit result to its lead, and the lead can fetch a
+bounded patch of the subagent's git work. Report text and patch bytes are
+hostile.
+
+- **Explicit report.** `report {status: done|blocked|failed, summary}` is a
+  mutating, Capsule-scoped request a subagent mailbox will relay. The summary
+  (at most 16 KiB) is persisted as an assistant response on the child's
+  encrypted transcript and is not delivered to the child's harness. It
+  becomes `ThreadLink.last_report_status` and overrides the turn-end default
+  until a later assistant message is recorded. Ending the child's session
+  without a new assistant message does not replace `done`, `blocked`, or
+  `failed`. `done` is an archive-eligible finish, like `turn_ended`.
+  `blocked` and `failed` stay until the operator or a later report. Leads
+  cannot report.
+- **Mailbox for subagents.** The daemon enables the mailbox on a Ready
+  sub-Capsule with `role=sub` and `depth=1`. Subagents see `report` and
+  `whoami` only. The lead still cannot approve a subagent's permission or
+  input requests. meridiand polls Ready children the same way it polls the
+  lead: pull-only, no Capsule credential, not counted as activity.
+- **Patch.** `patch {link, maxBytes}` is a lead-only remote read. `capsuled`
+  runs `git format-patch --stdout` from the child's stored `base_commit`
+  (HEAD when the Capsule became Ready) plus `git diff HEAD`, with
+  `core.hooksPath=/dev/null` and no shell. Default 1 MiB, maximum 4 MiB;
+  oversized output is truncated and flagged. The response includes HEAD,
+  base commit, and a content-free diffstat. Patch bytes are never written to
+  SQLite; only those counts and SHAs are. The board still does not poll Git.
+- **Store.** Migration 0018 widens `last_report_status` with `done` and
+  `blocked`, records `base_commit`/`head` (lowercase hex, 7–64) and
+  non-negative diffstat counts, and allows coordination request kind
+  `report`. `base_commit` is immutable once set. Report summaries stay in
+  transcript ciphertext.

@@ -38,6 +38,9 @@ const (
 	DefaultWaitSeconds    = 600
 	MaxReportSummaryBytes = 16 << 10
 	MaxMessageBytes       = 512
+	DefaultPatchBytes     = 1 << 20
+	MaxPatchBytes         = 4 << 20
+	MaxResponseBytes      = MaxPatchBytes + 64<<10
 
 	// Mailbox bounds. A full mailbox answers busy.
 	MaxPendingRequests = 64
@@ -66,6 +69,8 @@ const (
 	KindStatus Kind = "status"
 	KindList   Kind = "list"
 	KindResult Kind = "result"
+	KindPatch  Kind = "patch"
+	KindReport Kind = "report"
 	KindWhoAmI Kind = "whoami"
 )
 
@@ -82,16 +87,19 @@ type Request struct {
 	Links          []string `json:"links,omitempty"`
 	All            bool     `json:"all,omitempty"`
 	TimeoutSeconds int      `json:"timeoutSeconds,omitempty"`
+	Status         string   `json:"status,omitempty"`
+	Summary        string   `json:"summary,omitempty"`
+	MaxBytes       int      `json:"maxBytes,omitempty"`
 }
 
 // Mutating requests carry an idempotency key and are recorded by meridiand.
 func (r Request) Mutating() bool {
-	return r.Type == KindSpawn || r.Type == KindSend || r.Type == KindCancel
+	return r.Type == KindSpawn || r.Type == KindSend || r.Type == KindCancel || r.Type == KindReport
 }
 
 // Remote requests are relayed to meridiand. The rest are served by capsuled.
 func (r Request) Remote() bool {
-	return r.Mutating() || r.Type == KindStatus || r.Type == KindList
+	return r.Mutating() || r.Type == KindStatus || r.Type == KindList || r.Type == KindPatch
 }
 
 // Digest binds an idempotency key to the exact request it first named.
@@ -106,7 +114,9 @@ func (r Request) Validate() error {
 	if r.Protocol != Version {
 		return fmt.Errorf("%w: unsupported protocol", ErrInvalidRecord)
 	}
-	type fields struct{ key, name, harness, prompt, link, links, all, timeout bool }
+	type fields struct {
+		key, name, harness, prompt, link, links, all, timeout, status, summary, maxBytes bool
+	}
 	var allowed fields
 	switch r.Type {
 	case KindSpawn:
@@ -117,6 +127,10 @@ func (r Request) Validate() error {
 		allowed = fields{key: true, link: true}
 	case KindStatus, KindResult:
 		allowed = fields{link: true}
+	case KindPatch:
+		allowed = fields{link: true, maxBytes: true}
+	case KindReport:
+		allowed = fields{key: true, status: true, summary: true}
 	case KindWait:
 		allowed = fields{links: true, all: true, timeout: true}
 	case KindList, KindWhoAmI:
@@ -126,12 +140,15 @@ func (r Request) Validate() error {
 	present := fields{
 		key: r.Key != "", name: r.Name != "", harness: r.Harness != "",
 		prompt: r.Prompt != "", link: r.Link != "", links: r.Links != nil,
-		all: r.All, timeout: r.TimeoutSeconds != 0,
+		all: r.All, timeout: r.TimeoutSeconds != 0, status: r.Status != "",
+		summary: r.Summary != "", maxBytes: r.MaxBytes != 0,
 	}
 	if (present.key && !allowed.key) || (present.name && !allowed.name) ||
 		(present.harness && !allowed.harness) || (present.prompt && !allowed.prompt) ||
 		(present.link && !allowed.link) || (present.links && !allowed.links) ||
-		(present.all && !allowed.all) || (present.timeout && !allowed.timeout) {
+		(present.all && !allowed.all) || (present.timeout && !allowed.timeout) ||
+		(present.status && !allowed.status) || (present.summary && !allowed.summary) ||
+		(present.maxBytes && !allowed.maxBytes) {
 		return fmt.Errorf("%w: field not allowed for %s", ErrInvalidRecord, r.Type)
 	}
 	if allowed.key && !validToken(r.Key, MaxKeyBytes) {
@@ -162,6 +179,15 @@ func (r Request) Validate() error {
 	}
 	if r.TimeoutSeconds < 0 || r.TimeoutSeconds > MaxWaitSeconds {
 		return fmt.Errorf("%w: timeoutSeconds must be between 1 and %d", ErrInvalidRecord, MaxWaitSeconds)
+	}
+	if allowed.status && r.Status != ReportDone && r.Status != ReportBlocked && r.Status != ReportFailed {
+		return fmt.Errorf("%w: report status must be done, blocked or failed", ErrInvalidRecord)
+	}
+	if allowed.summary && !validText(r.Summary, MaxReportSummaryBytes) {
+		return fmt.Errorf("%w: summary must be 1-%d bytes of UTF-8", ErrInvalidRecord, MaxReportSummaryBytes)
+	}
+	if r.MaxBytes < 0 || r.MaxBytes > MaxPatchBytes {
+		return fmt.Errorf("%w: maxBytes must be between 1 and %d", ErrInvalidRecord, MaxPatchBytes)
 	}
 	return nil
 }
@@ -234,15 +260,22 @@ func Fail(code, message string) Response {
 }
 
 type Response struct {
-	Protocol  string   `json:"protocol"`
-	OK        bool     `json:"ok"`
-	Error     *Error   `json:"error,omitempty"`
-	Link      *Link    `json:"link,omitempty"`
-	Links     []Link   `json:"links,omitempty"`
-	Reports   []Report `json:"reports,omitempty"`
-	MessageID string   `json:"messageId,omitempty"`
-	TimedOut  bool     `json:"timedOut,omitempty"`
-	Self      *Self    `json:"self,omitempty"`
+	Protocol     string   `json:"protocol"`
+	OK           bool     `json:"ok"`
+	Error        *Error   `json:"error,omitempty"`
+	Link         *Link    `json:"link,omitempty"`
+	Links        []Link   `json:"links,omitempty"`
+	Reports      []Report `json:"reports,omitempty"`
+	MessageID    string   `json:"messageId,omitempty"`
+	TimedOut     bool     `json:"timedOut,omitempty"`
+	Self         *Self    `json:"self,omitempty"`
+	Patch        string   `json:"patch,omitempty"`
+	Truncated    bool     `json:"truncated,omitempty"`
+	Head         string   `json:"head,omitempty"`
+	BaseCommit   string   `json:"baseCommit,omitempty"`
+	FilesChanged int      `json:"filesChanged,omitempty"`
+	Insertions   int      `json:"insertions,omitempty"`
+	Deletions    int      `json:"deletions,omitempty"`
 }
 
 func OK() Response {
@@ -260,7 +293,20 @@ type Link struct {
 	ReportSeq         int    `json:"reportSeq"`
 	LastReportStatus  string `json:"lastReportStatus,omitempty"`
 	MessagesForwarded int    `json:"messagesForwarded"`
+	Head              string `json:"head,omitempty"`
+	BaseCommit        string `json:"baseCommit,omitempty"`
+	FilesChanged      int    `json:"filesChanged,omitempty"`
+	Insertions        int    `json:"insertions,omitempty"`
+	Deletions         int    `json:"deletions,omitempty"`
 }
+
+// Explicit report statuses. Turn-end reports use turn_ended instead.
+const (
+	ReportDone      = "done"
+	ReportBlocked   = "blocked"
+	ReportFailed    = "failed"
+	ReportTurnEnded = "turn_ended"
+)
 
 // Link phases.
 const (
@@ -310,8 +356,19 @@ func (c Config) Validate() error {
 		}
 		return nil
 	}
-	if c.Self == nil || c.Self.Role != "lead" || c.Self.Depth < 0 || c.Self.Depth > 3 ||
-		!validToken(c.Self.GrantID, MaxIDBytes) || len(c.Self.AllowedHarnesses) > MaxLinks {
+	if c.Self == nil || !validToken(c.Self.GrantID, MaxIDBytes) || len(c.Self.AllowedHarnesses) > MaxLinks {
+		return fmt.Errorf("%w: invalid coordination config", ErrInvalidRecord)
+	}
+	switch c.Self.Role {
+	case "lead":
+		if c.Self.Depth < 0 || c.Self.Depth > 3 {
+			return fmt.Errorf("%w: invalid coordination config", ErrInvalidRecord)
+		}
+	case "sub":
+		if c.Self.Depth != 1 {
+			return fmt.Errorf("%w: invalid coordination config", ErrInvalidRecord)
+		}
+	default:
 		return fmt.Errorf("%w: invalid coordination config", ErrInvalidRecord)
 	}
 	return nil
@@ -366,12 +423,20 @@ func (n Notification) Validate() error {
 	return nil
 }
 
-// ReadRecord reads one LF-terminated record of at most MaxRecordBytes.
+// ReadRecord reads one LF-terminated request record of at most MaxRecordBytes.
 func ReadRecord(reader *bufio.Reader) ([]byte, error) {
+	return ReadRecordLimit(reader, MaxRecordBytes)
+}
+
+// ReadRecordLimit reads one LF-terminated record of at most limit bytes.
+func ReadRecordLimit(reader *bufio.Reader, limit int) ([]byte, error) {
+	if limit <= 0 {
+		limit = MaxRecordBytes
+	}
 	var line []byte
 	for {
 		fragment, err := reader.ReadSlice('\n')
-		if len(line)+len(fragment) > MaxRecordBytes {
+		if len(line)+len(fragment) > limit {
 			return nil, ErrRecordTooLarge
 		}
 		line = append(line, fragment...)
@@ -407,7 +472,7 @@ func DecodeRequest(record []byte) (Request, error) {
 // DecodeResponse decodes a response record.
 func DecodeResponse(record []byte) (Response, error) {
 	var response Response
-	if err := decodeStrict(record, &response); err != nil {
+	if err := decodeStrictLimit(record, &response, MaxResponseBytes); err != nil {
 		return Response{}, err
 	}
 	if response.Protocol != Version || response.OK == (response.Error != nil) {
@@ -417,7 +482,11 @@ func DecodeResponse(record []byte) (Response, error) {
 }
 
 func decodeStrict(record []byte, target any) error {
-	if len(record) > MaxRecordBytes {
+	return decodeStrictLimit(record, target, MaxRecordBytes)
+}
+
+func decodeStrictLimit(record []byte, target any, limit int) error {
+	if len(record) > limit {
 		return ErrRecordTooLarge
 	}
 	if len(record) == 0 || record[len(record)-1] != '\n' {
@@ -438,13 +507,21 @@ func decodeStrict(record []byte, target any) error {
 	return nil
 }
 
-// Encode marshals one LF-terminated record.
+// Encode marshals one LF-terminated request record.
 func Encode(value any) ([]byte, error) {
+	return EncodeLimit(value, MaxRecordBytes)
+}
+
+// EncodeLimit marshals one LF-terminated record of at most limit bytes.
+func EncodeLimit(value any, limit int) ([]byte, error) {
+	if limit <= 0 {
+		limit = MaxRecordBytes
+	}
 	encoded, err := json.Marshal(value)
 	if err != nil {
 		return nil, err
 	}
-	if len(encoded)+1 > MaxRecordBytes {
+	if len(encoded)+1 > limit {
 		return nil, ErrRecordTooLarge
 	}
 	return append(encoded, '\n'), nil

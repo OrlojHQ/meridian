@@ -70,8 +70,9 @@ Meridian assumes the following may be malicious or compromised:
 - files, archives, terminal escape sequences, HTTP headers, event payloads, and generated diffs returned by a Capsule;
 - local-sync archives and remote metadata, browsed filenames and file bytes,
   setup-cache archives, and pull-request fields;
-- coordination requests from any process in a lead Capsule, agent-authored
-  subagent names and prompts, and subagent reports returned to a lead;
+- coordination requests from any process in a lead or subagent Capsule,
+  agent-authored subagent names and prompts, subagent reports returned to a
+  lead, and bounded git patch series a lead fetches from a subagent Capsule;
 - external services reached over the network and credentials returned by integrations; and
 - another tenant or operator in deployment modes that exceed the initial single-user assumption.
 
@@ -319,6 +320,8 @@ tool use. Delegated prompts and subagent reports carry encrypted
 coordination provenance and are labelled "from the lead" or "from subagents";
 they are never presented as operator input. A wake prompt frames subagent
 reports as untrusted data, but a model may still follow instructions in them.
+Bounded patch bytes are untrusted repository content: a lead must treat them
+as data, not as instructions, and must not apply them outside its own Capsule.
 
 ### Coordination and delegated authority
 
@@ -329,7 +332,8 @@ existing authenticated private Capsule transport and identifies the requester
 by the Capsule it dialed; Capsules never call the public API, receive no host
 runtime socket, and gain no new network route, so coordination works under
 deny-all egress. The mailbox refuses every request until the daemon
-configures it for a lead, and again once the grant ends.
+configures it for a lead or a subagent, and again once the grant ends.
+A subagent mailbox relays only `report` and `whoami`.
 
 Authority is the intersection of the grant, the Project policy, the
 requester's links, and the grant's remaining counters. A grant is created only
@@ -343,20 +347,25 @@ connection, or Capsule; address a Thread or link it did not create; approve a
 spawn, permission, or Delivery; change a grant; start a native Run, PTY,
 preview, sync, or browse session; act while its lead is paused, not Ready, in
 maintenance, or revoked; or start new work after the deadline. Subagents
-receive no coordination authority. When `spawnApproval` is `operator`, an
+receive no spawn, send, wait, cancel, or patch authority; they may only
+report a bounded summary to their lead. When `spawnApproval` is `operator`, an
 accepted spawn stays `pending_approval` with its prompt encrypted under the
 child Thread key and is not provisioned until the operator approves it; deny
 closes the link without deleting the Capsule. Pending and denied children do
 not hold compute. Switching a grant to `auto` does not start queued spawns.
 
 The protocol is closed and versioned; records are bounded (256 KiB, prompts
-128 KiB), unknown fields are rejected, and the mailbox bounds pending
-requests, bytes, request rate, and its reply cache. Mutating requests carry a
-Capsule-scoped idempotency key recorded with a request digest in the same
-transaction as their effect, so retries do not duplicate spawns or messages
-and a reused key with different content is refused. The only agent-authored
-plaintext at rest is the subagent name, limited to `[a-z0-9-]{1,48}`; prompts
-and reports stay in Thread ciphertext.
+128 KiB, report summaries 16 KiB, patches 1–4 MiB), unknown fields are
+rejected, and the mailbox bounds pending requests, bytes, request rate, and
+its reply cache. Mutating requests carry a Capsule-scoped idempotency key
+recorded with a request digest in the same transaction as their effect, so
+retries do not duplicate spawns, messages, or reports and a reused key with
+different content is refused. The only agent-authored plaintext at rest is
+the subagent name, limited to `[a-z0-9-]{1,48}`; prompts, reports, and patch
+bytes stay out of SQLite plaintext. Report summaries are re-derived from the
+child transcript; patch bytes are produced on demand by `capsuled` with Git
+hooks disabled and are never stored. Link rows may hold a content-free
+diffstat and SHAs. The board still never polls Git.
 
 Revocation, the deadline, and cancellation are daemon-side state changes that
 take effect on the next request. Revoking or cancelling cancels the subagent's
@@ -737,7 +746,8 @@ An allowed coding agent or network destination can intentionally exfiltrate any 
 Any process in a lead Capsule, not only its agent, can use the coordination
 mailbox. A compromised lead can amplify compute and model cost within its
 grant, steer subagents within their existing egress, and send them hostile
-prompts; hostile subagent reports can prompt-inject the lead. Subagents run the
+prompts; hostile subagent reports and patches can prompt-inject the lead.
+Subagents run the
 same Project's repository for the same operator, so coordination exposes no
 new data, and it adds no confidentiality or isolation guarantee.
 

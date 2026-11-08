@@ -703,7 +703,7 @@ export type ThreadLink = {
     phase: 'provisioning' | 'working' | 'idle' | 'awaiting_operator' | 'ended' | 'failed';
     reportSeq: number;
     reportDeliveredSeq: number;
-    lastReportStatus?: 'turn_ended' | 'failed';
+    lastReportStatus?: 'turn_ended' | 'failed' | 'done' | 'blocked';
     lastReportReason?: 'cancelled' | 'capsule_failed' | 'session_ended' | 'revoked' | 'denied';
     lastReportAt?: string;
     messagesForwarded: number;
@@ -719,6 +719,17 @@ export type ThreadLink = {
      * When the subagent was promoted to a main Capsule. Promoted subagents are never archived.
      */
     promotedAt?: string;
+    /**
+     * Child workspace HEAD when the Capsule became Ready. Patch bytes are never stored.
+     */
+    baseCommit?: string;
+    /**
+     * Latest observed child HEAD. Content-free.
+     */
+    head?: string;
+    filesChanged?: number;
+    insertions?: number;
+    deletions?: number;
     createdAt: string;
     updatedAt: string;
     resourceVersion: number;

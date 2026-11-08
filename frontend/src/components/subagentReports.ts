@@ -16,7 +16,20 @@ const REPORT_MARK = /--- (?:subagent|helper) "/;
 const statusLabels: Record<string, string> = {
   turn_ended: "turn ended",
   failed: "failed",
+  done: "done",
+  blocked: "blocked",
 };
+
+export function subagentReportStatusLabel(status?: string) {
+  if (!status) return "";
+  return statusLabels[status] ?? status.replaceAll("_", " ");
+}
+
+export function subagentDiffstat(link: Pick<ThreadLink, "filesChanged" | "insertions" | "deletions">) {
+  if (!link.filesChanged) return "";
+  const files = link.filesChanged === 1 ? "1 file" : `${link.filesChanged} files`;
+  return `+${link.insertions ?? 0} −${link.deletions ?? 0} · ${files}`;
+}
 
 const reasonLabels: Record<string, string> = {
   cancelled: "cancelled",

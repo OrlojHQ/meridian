@@ -162,7 +162,8 @@ const linkSelect = `
 		child_thread_id, child_capsule_id, depth, name, harness, state, close_reason,
 		report_seq, report_delivered_seq, report_message_seq, last_report_status,
 		last_report_reason, last_report_at, messages_forwarded, operator_messages,
-		operator_noticed, archived_at, promoted_at, created_at, updated_at, resource_version
+		operator_noticed, archived_at, promoted_at, base_commit, head, files_changed,
+		insertions, deletions, created_at, updated_at, resource_version
 	FROM thread_links`
 
 func (r *repository) InsertThreadLink(ctx context.Context, link domain.ThreadLink) error {
@@ -172,14 +173,16 @@ func (r *repository) InsertThreadLink(ctx context.Context, link domain.ThreadLin
 			child_thread_id, child_capsule_id, depth, name, harness, state, close_reason,
 			report_seq, report_delivered_seq, report_message_seq, last_report_status,
 			last_report_reason, last_report_at, messages_forwarded, operator_messages,
-			operator_noticed, archived_at, promoted_at, created_at, updated_at, resource_version
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			operator_noticed, archived_at, promoted_at, base_commit, head, files_changed,
+			insertions, deletions, created_at, updated_at, resource_version
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		link.ID, link.GrantID, link.ParentThreadID, link.ParentCapsuleID, link.ChildIntentID,
 		link.ChildThreadID, link.ChildCapsuleID, link.Depth, link.Name, link.Harness,
 		link.State, link.CloseReason, link.ReportSeq, link.ReportDeliveredSeq,
 		link.ReportMessageSeq, link.LastReportStatus, link.LastReportReason,
 		nullableTime(link.LastReportAt), link.MessagesForwarded, link.OperatorMessages,
 		link.OperatorNoticed, nullableTime(link.ArchivedAt), nullableTime(link.PromotedAt),
+		link.BaseCommit, link.Head, link.FilesChanged, link.Insertions, link.Deletions,
 		formatTime(link.CreatedAt), formatTime(link.UpdatedAt), link.ResourceVersion,
 	)
 	return mapError(err)
@@ -198,12 +201,14 @@ func (r *repository) UpdateThreadLink(
 			report_delivered_seq = ?, report_message_seq = ?, last_report_status = ?,
 			last_report_reason = ?, last_report_at = ?, messages_forwarded = ?,
 			operator_messages = ?, operator_noticed = ?, archived_at = ?, promoted_at = ?,
+			base_commit = ?, head = ?, files_changed = ?, insertions = ?, deletions = ?,
 			updated_at = ?, resource_version = ?
 		WHERE id = ? AND resource_version = ?`,
 		link.State, link.CloseReason, link.ReportSeq, link.ReportDeliveredSeq,
 		link.ReportMessageSeq, link.LastReportStatus, link.LastReportReason,
 		nullableTime(link.LastReportAt), link.MessagesForwarded, link.OperatorMessages,
 		link.OperatorNoticed, nullableTime(link.ArchivedAt), nullableTime(link.PromotedAt),
+		link.BaseCommit, link.Head, link.FilesChanged, link.Insertions, link.Deletions,
 		formatTime(link.UpdatedAt),
 		link.ResourceVersion, link.ID, expected,
 	)
@@ -248,15 +253,15 @@ func (r *repository) ListArchivableThreadLinks(
 			l.child_thread_id, l.child_capsule_id, l.depth, l.name, l.harness, l.state, l.close_reason,
 			l.report_seq, l.report_delivered_seq, l.report_message_seq, l.last_report_status,
 			l.last_report_reason, l.last_report_at, l.messages_forwarded, l.operator_messages,
-			l.operator_noticed, l.archived_at, l.promoted_at, l.created_at, l.updated_at,
-			l.resource_version
+			l.operator_noticed, l.archived_at, l.promoted_at, l.base_commit, l.head, l.files_changed,
+			l.insertions, l.deletions, l.created_at, l.updated_at, l.resource_version
 		FROM thread_links l
 			JOIN coordination_grants g ON g.id = l.grant_id
 			JOIN capsules c ON c.id = l.child_capsule_id
 		WHERE l.archived_at IS NULL AND l.promoted_at IS NULL AND g.archive_after_seconds > 0
 			AND c.role = 'sub' AND c.state NOT IN ('Deleting', 'Deleted', 'Failed')
 			AND c.desired_state <> 'Deleted'
-			AND ((l.state = 'active' AND l.last_report_status = 'turn_ended')
+			AND ((l.state = 'active' AND l.last_report_status IN ('turn_ended', 'done'))
 				OR (l.state = 'closed' AND l.close_reason IN ('cancelled', 'ended', 'revoked')))
 			AND julianday(l.updated_at) + g.archive_after_seconds / 86400.0 <= julianday(?)
 		ORDER BY l.updated_at, l.id LIMIT ?`, formatTime(now), limit)
@@ -302,7 +307,8 @@ func scanLink(row scanner) (domain.ThreadLink, error) {
 		&link.State, &link.CloseReason, &link.ReportSeq, &link.ReportDeliveredSeq,
 		&link.ReportMessageSeq, &link.LastReportStatus, &link.LastReportReason, &reported,
 		&link.MessagesForwarded, &link.OperatorMessages, &link.OperatorNoticed,
-		&archived, &promoted, &created, &updated, &link.ResourceVersion,
+		&archived, &promoted, &link.BaseCommit, &link.Head, &link.FilesChanged,
+		&link.Insertions, &link.Deletions, &created, &updated, &link.ResourceVersion,
 	); err != nil {
 		return domain.ThreadLink{}, mapError(err)
 	}
