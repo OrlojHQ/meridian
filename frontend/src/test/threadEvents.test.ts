@@ -62,3 +62,26 @@ it("reconnects with a cursor, deduplicates blocks, reports gaps, and aborts", as
   expect(statuses).toContain("reconnecting");
   expect(statuses.at(-1)).toBe("closed");
 });
+
+it("stops after the server closes the stream of an ended session", async () => {
+  streamThreadBlocks.mockReset();
+  streamThreadBlocks.mockResolvedValue({ stream: stream([block("last", 4)]) });
+  const statuses: string[] = [];
+  const received: string[] = [];
+  let ended = false;
+  await followThreadBlocks(
+    "thread-1",
+    3,
+    new AbortController().signal,
+    (value) => {
+      received.push(value.id);
+      ended = true;
+    },
+    (status) => statuses.push(status),
+    () => {},
+    () => ended,
+  );
+  expect(received).toEqual(["last"]);
+  expect(streamThreadBlocks).toHaveBeenCalledTimes(1);
+  expect(statuses).toEqual(["connecting", "live", "closed"]);
+});

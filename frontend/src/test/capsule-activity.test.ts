@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Capsule, Run, Thread } from "../api/generated/types.gen";
+import { MAX_FAILURE_TEXT } from "../components/threadChat";
 import {
   capsuleSessions,
   defaultSession,
@@ -190,6 +191,41 @@ describe("Capsule activity", () => {
     expect(defaultSession(sessions)?.id).toBe("waiting");
     expect(defaultSession(sessions.slice(0, 2))?.id).toBe("terminal");
     expect(capsuleSessions({ ...capsule, harness: undefined })).toEqual([]);
+  });
+
+  it("labels ended sessions honestly and bounds failure detail", () => {
+    const base: Thread = {
+      id: "thread-1",
+      capsuleId: capsule.id,
+      state: "active",
+      harness: "claude",
+      currentRunId: "run-1",
+      encryptedAtRest: true,
+      messageCount: 1,
+      encryptedBytes: 64,
+      createdAt: "2026-08-23T01:00:00Z",
+      updatedAt: "2026-08-23T01:00:00Z",
+      resourceVersion: 1,
+    };
+    const labels = capsuleSessions({ ...capsule, harness: undefined }, [], [
+      { ...base, id: "failed", currentRunState: "Failed" },
+      { ...base, id: "stopped", currentRunState: "Cancelled" },
+      { ...base, id: "exited", currentRunState: "Succeeded" },
+      { ...base, id: "paused", state: "paused", currentRunState: "Cancelled" },
+    ]).map((session) => [session.id, session.group, session.label]);
+    expect(labels).toEqual([
+      ["failed", "attention", "Failed"],
+      ["stopped", "idle", "Stopped"],
+      ["exited", "idle", "Ended"],
+      ["paused", "paused", "Paused"],
+    ]);
+
+    const hostile = `\u202eboom\u001b[31m ${"x".repeat(2_000)}`;
+    const detail = describeCapsule(capsule, [run({ state: "Failed", failure: hostile })]).detail!;
+    expect(detail.startsWith("boom[31m x")).toBe(true);
+    expect(Array.from(detail)).toHaveLength(MAX_FAILURE_TEXT);
+    expect(detail.endsWith("…")).toBe(true);
+    expect(describeCapsule(capsule, [run({ state: "Failed", failure: " \n " })]).detail).toBeUndefined();
   });
 
   it("measures working time from Run start and finished time from Run end", () => {

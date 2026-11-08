@@ -1,4 +1,5 @@
 import type { Capsule, ChildRollup, Run, Thread } from "../api/generated/types.gen";
+import { endedSessionState, failureText } from "../components/threadChat";
 
 // Activity is derived only from Capsule and Run resources. Git status,
 // workspace files, and previews record Capsule activity on the server, so
@@ -78,7 +79,7 @@ export function describeCapsule(
       label: "Capsule failed",
       agent,
       since: capsule.updatedAt,
-      detail: capsule.failure,
+      detail: failureText(capsule.failure) || undefined,
     };
   }
   if (capsule.state === "Deleting" || capsule.desiredState === "Deleted") {
@@ -155,7 +156,7 @@ export function describeCapsule(
       label: `${who} failed`,
       agent,
       since: finishedAt,
-      detail: run.failure,
+      detail: failureText(run.failure) || undefined,
     };
   }
   if (run.state === "Cancelled") {
@@ -226,6 +227,8 @@ export function threadSession(thread: Thread): CapsuleSession {
   }
   if (thread.state === "paused") return { ...base, group: "paused", label: "Paused" };
   if (thread.state === "archived") return { ...base, group: "sealed", label: "Archived" };
+  const ended = endedSessionState(thread);
+  if (ended) return { ...base, group: "idle", label: ended === "Cancelled" ? "Stopped" : "Ended" };
   return { ...base, group: "idle", label: "Idle" };
 }
 

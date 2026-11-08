@@ -166,6 +166,40 @@ describe("Board", () => {
     expect(screen.getByText("Delivery succeeded")).toBeTruthy();
   });
 
+  it("says why a failed row needs you, as bounded text", async () => {
+    const failedRun = {
+      id: "run-failed",
+      capsuleId: "capsule-failed",
+      harness: "mock",
+      state: "Failed" as const,
+      failure: `<img src=x onerror=alert(1)> structured adapter timed out ${"y".repeat(1_000)}`,
+      createdAt: "2026-11-01T00:00:00Z",
+      finishedAt: "2026-11-01T00:02:00Z",
+      updatedAt: "2026-11-01T00:02:00Z",
+      resourceVersion: 3,
+    };
+    vi.spyOn(api, "board").mockResolvedValue({
+      truncated: false,
+      items: [{
+        capsule: capsule("capsule-failed", "flaky", "main"),
+        thread: { ...thread("thread-failed", "capsule-failed"), currentRunState: "Failed" },
+        currentRun: failedRun,
+        status: "needs_you",
+        needsYou: "failed",
+        surfaced: false,
+        since: "2026-11-01T00:02:00Z",
+      }],
+    });
+    const view = renderBoard();
+    const row = (await screen.findByRole("link", { name: "flaky" })).closest("li")!;
+    expect(within(row).getByText("Failed")).toBeTruthy();
+    const reason = within(row).getByText(/structured adapter timed out/);
+    expect(reason.textContent!.startsWith("<img src=x onerror=alert(1)>")).toBe(true);
+    expect(reason.textContent!.length).toBeLessThanOrEqual(280);
+    expect(view.container.querySelector("img")).toBeNull();
+    expect(within(row).getByRole("link", { name: "Open" })).toBeTruthy();
+  });
+
   it("summarizes a rollup", () => {
     expect(
       rollupSummary({ total: 5, working: 1, idle: 0, done: 3, needsYou: 0, failed: 1, archived: 2 }),

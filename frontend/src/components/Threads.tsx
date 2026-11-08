@@ -4,7 +4,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { api, normalizeAPIError } from "../api/client";
@@ -20,7 +20,14 @@ import {
   threadSession,
   type CapsuleSession,
 } from "../shell/capsuleActivity";
-import { isActiveRunState, isBusyAdapterStatus, safeInline } from "./threadChat";
+import { SessionEnded } from "./SessionEnded";
+import {
+  endedSessionState,
+  isActiveRunState,
+  isBusyAdapterStatus,
+  lastOperatorPrompt,
+  safeInline,
+} from "./threadChat";
 import { ThreadConversation } from "./ThreadConversation";
 import { ThreadSubagents } from "./ThreadSubagents";
 import { ThreadError } from "./ThreadError";
@@ -374,6 +381,23 @@ export function ThreadDetail({
   const [confirmAction, setConfirmAction] = useState<"cancel" | "archive">();
   const [showDetails, setShowDetails] = useState(false);
   const [rawEvents, setRawEvents] = useState(false);
+  const ended = threadQuery.data ? endedSessionState(threadQuery.data) : undefined;
+  const endedRef = useRef(ended !== undefined);
+  endedRef.current = ended !== undefined;
+  // Following stops once an ended session's stream closes; a new session
+  // follows again.
+  const sessionLive = ended === undefined;
+  // A terminal Run no longer changes, so its failure text is read once.
+  const endedRun = useQuery({
+    ...queries.run(threadQuery.data?.currentRunId ?? ""),
+    enabled: ended !== undefined && Boolean(threadQuery.data?.currentRunId),
+    refetchInterval: false,
+    staleTime: Infinity,
+  });
+  const lastPrompt = useMemo(
+    () => (ended ? lastOperatorPrompt(blocks) : undefined),
+    [blocks, ended],
+  );
 
   const capsuleId = threadQuery.data?.capsuleId;
   const refreshSummaries = useCallback(
@@ -426,9 +450,10 @@ export function ThreadDetail({
       },
       setStatus,
       (expected, received) => setGap({ expected, received }),
+      () => endedRef.current,
     );
     return () => controller.abort();
-  }, [queryClient, refreshSummaries, replay.data, threadId]);
+  }, [queryClient, refreshSummaries, replay.data, threadId, sessionLive]);
 
   const session = useMutation({
     mutationFn: (action: "start" | "resume" | "cancel") => {
@@ -483,6 +508,9 @@ export function ThreadDetail({
   const profile = named.find((item) => item.structured) ?? named[0];
   const activeSession = isActiveRunState(thread.currentRunState);
   const canCompose = thread.state === "active" && thread.structuredSupported !== false;
+  const newSession = profiles.data?.items.some((item) => item.structured)
+    ? () => navigate(`/ui/capsules/${encodeURIComponent(thread.capsuleId)}?session=new`)
+    : undefined;
   const menu: ActionsMenuItem[] = [];
   if (activeSession) {
     menu.push({
@@ -544,11 +572,11 @@ export function ThreadDetail({
           Thread details
         </button>
         <span
-          className={`connection ${status}`}
+          className={`connection ${ended ? "closed ended" : status}`}
           role="status"
           title={`Cursor ${blocks.at(-1)?.messageSequence ?? replay.data.nextCursor}`}
         >
-          {streamLabels[status]}
+          {ended ? "Session ended" : streamLabels[status]}
         </span>
         <label className="thread-raw-toggle">
           <input
@@ -558,7 +586,7 @@ export function ThreadDetail({
           />
           Raw events
         </label>
-        {thread.state === "active" && !activeSession && thread.structuredSupported !== false && (
+        {thread.state === "active" && !activeSession && !ended && thread.structuredSupported !== false && (
           <button disabled={session.isPending} onClick={() => session.mutate("start")}>
             Start session
           </button>
@@ -657,15 +685,24 @@ export function ThreadDetail({
         canCompose={canCompose}
         stopPending={session.isPending}
         onStop={activeSession ? () => session.mutate("cancel") : undefined}
-        onNewSession={
-          profiles.data?.items.some((item) => item.structured)
-            ? () =>
-                navigate(
-                  `/ui/capsules/${encodeURIComponent(thread.capsuleId)}?session=new`,
-                )
-            : undefined
-        }
+        onNewSession={newSession}
         onRefresh={refresh}
+        endedNotice={
+          ended && (
+            <SessionEnded
+              state={ended}
+              run={endedRun.data?.id === thread.currentRunId ? endedRun.data : undefined}
+              lastPrompt={lastPrompt}
+              restartPending={session.isPending}
+              onRestart={
+                thread.structuredSupported !== false
+                  ? () => session.mutate("start")
+                  : undefined
+              }
+              onNewSession={newSession}
+            />
+          )
+        }
         banners={
           <>
             {(gap || replay.data.gap) && (

@@ -1,4 +1,4 @@
-import type { RunState, ThreadBlock } from "../api/generated/types.gen";
+import type { RunState, Thread, ThreadBlock } from "../api/generated/types.gen";
 
 const MAX_CONTENT = 64 * 1024;
 
@@ -14,6 +14,19 @@ export const boundedThreadText = (value = "") => {
 
 export const safeInline = (value = "") =>
   sanitizeThreadText(value).replace(/[\n\t]+/g, " ");
+
+export const MAX_FAILURE_TEXT = 280;
+
+// Run and Capsule failure text can carry adapter or runtime output, so it is
+// shown as one bounded line with bidirectional overrides removed.
+export const failureText = (value = "") => {
+  const characters = Array.from(
+    safeInline(value).replace(/[\u202a-\u202e\u2066-\u2069]/g, "").replace(/ {2,}/g, " ").trim(),
+  );
+  return characters.length > MAX_FAILURE_TEXT
+    ? `${characters.slice(0, MAX_FAILURE_TEXT - 1).join("")}…`
+    : characters.join("");
+};
 
 export type ToolCall = {
   key: string;
@@ -57,6 +70,32 @@ export const isBusyAdapterStatus = (status?: string) =>
 export const isActiveRunState = (state?: RunState) =>
   state !== undefined && ACTIVE_RUN_STATES.includes(state);
 
+export type EndedRunState = Extract<RunState, "Failed" | "Cancelled" | "Succeeded">;
+
+// An active Thread whose current Run is terminal accepts no messages until a
+// new session starts. Paused and archived Threads have their own controls.
+export const endedSessionState = (
+  thread: Pick<Thread, "state" | "currentRunState">,
+): EndedRunState | undefined => {
+  const state = thread.currentRunState;
+  return thread.state === "active" &&
+    (state === "Failed" || state === "Cancelled" || state === "Succeeded")
+    ? state
+    : undefined;
+};
+
+// The operator's own latest message. Coordination deliveries are agent-authored
+// and never offered back as operator input.
+export function lastOperatorPrompt(blocks: ThreadBlock[]) {
+  for (let index = blocks.length - 1; index >= 0; index -= 1) {
+    const block = blocks[index];
+    if (!block.event && block.role === "user" && block.kind === "text" && !block.origin && block.content) {
+      return boundedThreadText(block.content);
+    }
+  }
+  return undefined;
+}
+
 // Matches responses to their requests. Responses name their request through
 // responseTo; older transcripts without it answer the latest open request.
 function answeredRequests(blocks: ThreadBlock[]) {
@@ -82,18 +121,38 @@ function answeredRequests(blocks: ThreadBlock[]) {
   return answers;
 }
 
+// Adapters may restart their message IDs in each session, so once a message
+// has its final text, a later delta or final with that ID is a new message.
+function assistantMessageKeys(blocks: ThreadBlock[]) {
+  const keys = new Map<string, string>();
+  const finals = new Map<string, string>();
+  const current = new Map<string, { key: string; final: boolean }>();
+  let generation = 0;
+  for (const block of blocks) {
+    const type = block.event?.type;
+    if (type !== "assistant_delta" && type !== "assistant_message") continue;
+    const id = block.event?.messageId ?? block.messageId;
+    let entry = current.get(id);
+    if (!entry || entry.final) {
+      entry = { key: entry ? `${id}#${(generation += 1)}` : id, final: false };
+      current.set(id, entry);
+    }
+    keys.set(block.id, entry.key);
+    if (type === "assistant_message") {
+      entry.final = true;
+      finals.set(entry.key, block.content ?? "");
+    }
+  }
+  return { keys, finals };
+}
+
 export function buildThreadChat(
   blocks: ThreadBlock[],
   runState?: RunState,
   localAnswers: ReadonlyMap<string, string> = new Map(),
 ): ThreadChat {
   const sessionActive = isActiveRunState(runState);
-  const finals = new Map<string, string>();
-  for (const block of blocks) {
-    if (block.event?.type === "assistant_message") {
-      finals.set(block.event.messageId ?? block.messageId, block.content ?? "");
-    }
-  }
+  const { keys: assistantKeys, finals } = assistantMessageKeys(blocks);
   const answers = answeredRequests(blocks);
   const items: ChatItem[] = [];
   const assistants = new Map<string, Extract<ChatItem, { kind: "assistant" }>>();
@@ -158,10 +217,14 @@ export function buildThreadChat(
     const messageKey = event.messageId ?? block.messageId;
     switch (event.type) {
       case "assistant_delta":
-        assistant(messageKey, event.summary ?? block.content ?? "", false);
+        assistant(
+          assistantKeys.get(block.id) ?? messageKey,
+          event.summary ?? block.content ?? "",
+          false,
+        );
         break;
       case "assistant_message":
-        assistant(messageKey, block.content ?? "", true);
+        assistant(assistantKeys.get(block.id) ?? messageKey, block.content ?? "", true);
         break;
       case "tool_start": {
         const call: ToolCall = {

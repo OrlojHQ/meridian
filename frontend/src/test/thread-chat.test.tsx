@@ -117,6 +117,28 @@ describe("Thread chat model", () => {
     expect(ended.items.at(-1)).toMatchObject({ kind: "notice", text: "Stopped" });
   });
 
+  it("keeps a restarted session's reply apart when the adapter reuses message IDs", () => {
+    const t = transcript();
+    t.user("fix the test");
+    t.delta("mock-message-1", "fix");
+    t.final("mock-message-1", "mock:fix the test");
+    t.status("failed");
+    t.user("run it again");
+    t.status("running");
+    t.delta("mock-message-1", "run");
+    const streaming = buildThreadChat(t.blocks, "Running").items;
+    expect(streaming.filter((item) => item.kind === "assistant")).toMatchObject([
+      { text: "mock:fix the test", streaming: false },
+      { text: "run", streaming: true },
+    ]);
+    t.final("mock-message-1", "mock:run it again");
+    const items = buildThreadChat(t.blocks, "Running").items;
+    expect(items.map((item) => item.kind)).toEqual(["user", "assistant", "error", "user", "assistant"]);
+    expect(items[1]).toMatchObject({ text: "mock:fix the test" });
+    expect(items[4]).toMatchObject({ text: "mock:run it again", streaming: false });
+    expect(new Set(items.map((item) => item.key)).size).toBe(items.length);
+  });
+
   it("matches responses to requests by responseTo, not by order", () => {
     const t = transcript();
     t.permission("perm-1", "First?");

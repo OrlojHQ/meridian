@@ -45,6 +45,9 @@ export async function followThreadBlocks(
   onBlock: (block: ThreadBlock) => void,
   onStatus: (status: ThreadStreamStatus) => void,
   onGap: (expected: number, received: number) => void,
+  // The server closes the stream once the Thread's Run is terminal; after
+  // that close there is nothing to reconnect to until a new session starts.
+  sessionEnded: () => boolean = () => false,
 ): Promise<void> {
   let cursor = initialCursor;
   let attempts = 0;
@@ -81,6 +84,7 @@ export async function followThreadBlocks(
           keep.forEach((id) => seen.add(id));
         }
       }
+      if (sessionEnded()) break;
       attempts += 1;
     } catch {
       if (signal.aborted) break;

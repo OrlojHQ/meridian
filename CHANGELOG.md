@@ -157,6 +157,18 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   instead of working. Responses to permission and input requests are matched
   to the request named by `responseTo`, which the API now documents.
 
+### Fixed
+
+- A Thread whose session failed, stopped, or exited no longer shows "active"
+  and "Reconnecting…" forever. It says "Session ended", shows the Run's
+  failure reason as bounded plain text, and offers Restart session, Copy last
+  prompt, and New session; the composer stays disabled until a new session
+  starts, and the block stream stops reconnecting. Board rows for a failed
+  Capsule or Run show the same reason as the Activity view, and the sidebar
+  and session tabs label ended sessions "Ended" or "Stopped" instead of
+  "Idle". After a restart, replies from an adapter that reuses message IDs
+  across sessions no longer overwrite the previous session's reply.
+
 ### Security
 
 - The dependency scan now runs on changes to `images/**/package*.json`, so
