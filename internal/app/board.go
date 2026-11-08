@@ -37,9 +37,10 @@ var boardStatusOrder = []BoardStatus{
 type BoardAttention string
 
 const (
-	BoardAttentionPermission BoardAttention = "permission"
-	BoardAttentionInput      BoardAttention = "input"
-	BoardAttentionFailed     BoardAttention = "failed"
+	BoardAttentionPermission    BoardAttention = "permission"
+	BoardAttentionInput         BoardAttention = "input"
+	BoardAttentionFailed        BoardAttention = "failed"
+	BoardAttentionSpawnApproval BoardAttention = "spawn_approval"
 )
 
 // BoardExpand chooses which subagent Capsules get their own rows.
@@ -312,6 +313,12 @@ func primaryThread(threads []domain.Thread) *domain.Thread {
 
 func boardStatus(item BoardItem) (BoardStatus, time.Time, BoardAttention) {
 	capsule, run := item.Capsule, item.Run
+	if item.Link != nil && item.Link.State == domain.LinkPendingApproval {
+		return BoardNeedsYou, item.Link.CreatedAt, BoardAttentionSpawnApproval
+	}
+	if item.Link != nil && item.Link.CloseReason == domain.LinkDenied {
+		return BoardIdle, item.Link.UpdatedAt, ""
+	}
 	switch {
 	case capsule.State == domain.CapsuleSealed:
 		return BoardSealed, capsule.UpdatedAt, ""

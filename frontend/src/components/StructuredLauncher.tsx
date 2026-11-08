@@ -24,6 +24,7 @@ export function StructuredLauncher({
   const queryClient = useQueryClient();
   const [result, setResult] = useState<ProjectThreadIntent>();
   const [lead, setLead] = useState(false);
+  const [operatorApproval, setOperatorApproval] = useState(false);
   const capabilities = useQuery(queries.capabilities());
   const coordinationSupported = Boolean(
     capabilities.data?.coordination?.supported,
@@ -80,6 +81,7 @@ export function StructuredLauncher({
           ? {
               maxChildren: Number(data.get("maxChildren") ?? 4),
               deadlineSeconds: Number(data.get("deadlineHours") ?? 8) * 3600,
+              ...(operatorApproval ? { spawnApproval: "operator" as const } : {}),
             }
           : undefined,
     });
@@ -157,6 +159,15 @@ export function StructuredLauncher({
                     max={72}
                     defaultValue={8}
                   />
+                </label>
+                <label className="checkbox-label" htmlFor="spawn-approval">
+                  <input
+                    id="spawn-approval"
+                    type="checkbox"
+                    checked={operatorApproval}
+                    onChange={(event) => setOperatorApproval(event.currentTarget.checked)}
+                  />
+                  Approve each subagent spawn
                 </label>
               </div>
             )}

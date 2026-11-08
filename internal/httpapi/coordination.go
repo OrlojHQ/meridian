@@ -117,6 +117,82 @@ type revokeCoordinationGrantRequest struct {
 	CancelDescendants       *bool `json:"cancelDescendants,omitempty"`
 }
 
+type updateCoordinationGrantRequest struct {
+	ExpectedResourceVersion int64     `json:"expectedResourceVersion"`
+	SpawnApproval           *string   `json:"spawnApproval"`
+	MaxChildren             *int      `json:"maxChildren"`
+	MaxDescendants          *int      `json:"maxDescendants"`
+	MaxLiveCapsules         *int      `json:"maxLiveCapsules"`
+	MaxMessagesPerLink      *int      `json:"maxMessagesPerLink"`
+	AllowedHarnesses        *[]string `json:"allowedHarnesses"`
+	DeadlineSeconds         *int64    `json:"deadlineSeconds"`
+	OnDeadline              *string   `json:"onDeadline"`
+	ArchiveAfterSeconds     *int64    `json:"archiveAfterSeconds"`
+}
+
+func (p updateCoordinationGrantRequest) patch() domain.CoordinationGrantPatch {
+	patch := domain.CoordinationGrantPatch{
+		MaxChildren: p.MaxChildren, MaxDescendants: p.MaxDescendants,
+		MaxLiveCapsules: p.MaxLiveCapsules, MaxMessagesPerLink: p.MaxMessagesPerLink,
+		AllowedHarnesses: p.AllowedHarnesses,
+	}
+	if p.SpawnApproval != nil {
+		value := domain.SpawnApproval(*p.SpawnApproval)
+		patch.SpawnApproval = &value
+	}
+	if p.OnDeadline != nil {
+		value := domain.OnDeadline(*p.OnDeadline)
+		patch.OnDeadline = &value
+	}
+	if p.DeadlineSeconds != nil {
+		value := time.Duration(-1)
+		if seconds := *p.DeadlineSeconds; seconds >= 0 &&
+			seconds <= int64(domain.CoordinationMaxDeadline/time.Second) {
+			value = time.Duration(seconds) * time.Second
+		}
+		patch.Deadline = &value
+	}
+	if p.ArchiveAfterSeconds != nil {
+		value := time.Duration(-1)
+		if seconds := *p.ArchiveAfterSeconds; seconds >= 0 &&
+			seconds <= int64(domain.CoordinationMaxArchiveAfter/time.Second) {
+			value = time.Duration(seconds) * time.Second
+		}
+		patch.ArchiveAfter = &value
+	}
+	return patch
+}
+
+type decideCoordinationRequest struct {
+	ExpectedResourceVersion int64 `json:"expectedResourceVersion"`
+}
+
+type coordinationRequestJSON struct {
+	ID              string `json:"id"`
+	GrantID         string `json:"grantId"`
+	CapsuleID       string `json:"capsuleId"`
+	Key             string `json:"key"`
+	Kind            string `json:"kind"`
+	LinkID          string `json:"linkId"`
+	State           string `json:"state"`
+	CreatedAt       string `json:"createdAt"`
+	UpdatedAt       string `json:"updatedAt"`
+	ResourceVersion int64  `json:"resourceVersion"`
+}
+
+type coordinationRequestPageJSON struct {
+	Items []coordinationRequestJSON `json:"items"`
+}
+
+func requestResponse(request domain.CoordinationRequest) coordinationRequestJSON {
+	return coordinationRequestJSON{
+		ID: string(request.ID), GrantID: string(request.GrantID), CapsuleID: string(request.CapsuleID),
+		Key: request.Key, Kind: string(request.Kind), LinkID: string(request.LinkID),
+		State: string(request.State), CreatedAt: request.CreatedAt.UTC().Format(time.RFC3339Nano),
+		UpdatedAt: request.UpdatedAt.UTC().Format(time.RFC3339Nano), ResourceVersion: int64(request.ResourceVersion),
+	}
+}
+
 func formatOptionalTime(value time.Time) string {
 	if value.IsZero() {
 		return ""
@@ -183,6 +259,69 @@ func (s *Server) getCoordinationGrant(writer http.ResponseWriter, request *http.
 	}
 	writer.Header().Set("ETag", etag(grant.ResourceVersion))
 	writeJSON(writer, http.StatusOK, grantResponse(grant))
+}
+
+func (s *Server) updateCoordinationGrant(writer http.ResponseWriter, request *http.Request) {
+	var input updateCoordinationGrantRequest
+	if !decode(writer, request, &input) {
+		return
+	}
+	grant, err := s.service.UpdateCoordinationGrant(
+		request.Context(), domain.CoordinationGrantID(request.PathValue("grantId")),
+		domain.ResourceVersion(input.ExpectedResourceVersion), input.patch(),
+		request.Header.Get("Idempotency-Key"),
+	)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	writer.Header().Set("ETag", etag(grant.ResourceVersion))
+	writeJSON(writer, http.StatusOK, grantResponse(grant))
+}
+
+func (s *Server) listCoordinationRequests(writer http.ResponseWriter, request *http.Request) {
+	requests, err := s.service.ListCoordinationRequests(
+		request.Context(), domain.CoordinationRequestState(request.URL.Query().Get("state")))
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	response := coordinationRequestPageJSON{Items: make([]coordinationRequestJSON, 0, len(requests))}
+	for _, item := range requests {
+		response.Items = append(response.Items, requestResponse(item))
+	}
+	writeJSON(writer, http.StatusOK, response)
+}
+
+func (s *Server) approveCoordinationRequest(writer http.ResponseWriter, request *http.Request) {
+	s.decideCoordinationRequest(writer, request, true)
+}
+
+func (s *Server) denyCoordinationRequest(writer http.ResponseWriter, request *http.Request) {
+	s.decideCoordinationRequest(writer, request, false)
+}
+
+func (s *Server) decideCoordinationRequest(writer http.ResponseWriter, request *http.Request, approve bool) {
+	var input decideCoordinationRequest
+	if !decode(writer, request, &input) {
+		return
+	}
+	id := domain.CoordinationRequestID(request.PathValue("requestId"))
+	key := request.Header.Get("Idempotency-Key")
+	expected := domain.ResourceVersion(input.ExpectedResourceVersion)
+	var result domain.CoordinationRequest
+	var err error
+	if approve {
+		result, err = s.service.ApproveCoordinationRequest(request.Context(), id, expected, key)
+	} else {
+		result, err = s.service.DenyCoordinationRequest(request.Context(), id, expected, key)
+	}
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	writer.Header().Set("ETag", etag(result.ResourceVersion))
+	writeJSON(writer, http.StatusOK, requestResponse(result))
 }
 
 func (s *Server) revokeCoordinationGrant(writer http.ResponseWriter, request *http.Request) {

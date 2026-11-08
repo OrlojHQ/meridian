@@ -17,6 +17,7 @@ type SecuritySource interface {
 
 // operationRolesBearerAuth is a private map storing roles per operation.
 var operationRolesBearerAuth = map[string][]string{
+	ApproveCoordinationRequestOperation:     []string{},
 	ArchiveThreadOperation:                  []string{},
 	CancelRunOperation:                      []string{},
 	CancelThreadOperation:                   []string{},
@@ -34,6 +35,7 @@ var operationRolesBearerAuth = map[string][]string{
 	DeleteCapsuleOperation:                  []string{},
 	DeleteSecretOperation:                   []string{},
 	DeleteThreadOperation:                   []string{},
+	DenyCoordinationRequestOperation:        []string{},
 	ExportCapsuleWorkspaceOperation:         []string{},
 	GetBoardOperation:                       []string{},
 	GetCapabilitiesOperation:                []string{},
@@ -60,6 +62,7 @@ var operationRolesBearerAuth = map[string][]string{
 	ListCapsuleFilesOperation:               []string{},
 	ListCapsulePreviewPortsOperation:        []string{},
 	ListCapsulesOperation:                   []string{},
+	ListCoordinationRequestsOperation:       []string{},
 	ListHarnessProfilesOperation:            []string{},
 	ListHarnessSetupRevisionsOperation:      []string{},
 	ListHarnessSetupsOperation:              []string{},
@@ -92,6 +95,7 @@ var operationRolesBearerAuth = map[string][]string{
 	StartThreadOperation:                    []string{},
 	StreamRunEventsOperation:                []string{},
 	StreamThreadBlocksOperation:             []string{},
+	UpdateCoordinationGrantOperation:        []string{},
 	UpdateProjectEnvironmentOperation:       []string{},
 	UpdateProviderConnectionOperation:       []string{},
 }

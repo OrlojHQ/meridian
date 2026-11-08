@@ -115,6 +115,12 @@ export const queries = {
       enabled: Boolean(grantId),
       refetchInterval: 5_000,
     }),
+  coordinationRequests: () =>
+    queryOptions({
+      queryKey: ["coordination-requests", "pending_approval"],
+      queryFn: ({ signal }) => api.coordinationRequests(signal),
+      refetchInterval: 3_000,
+    }),
   threadBlocks: (threadId: string) =>
     queryOptions({
       queryKey: ["thread-blocks", threadId],

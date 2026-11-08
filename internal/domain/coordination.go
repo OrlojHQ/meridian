@@ -33,9 +33,13 @@ const (
 
 type SpawnApproval string
 
-// SpawnAuto is the only approval mode in this phase. Operator approval of
-// each spawn needs an approval queue that does not exist yet.
-const SpawnAuto SpawnApproval = "auto"
+const (
+	// SpawnAuto starts each accepted spawn without a further operator click.
+	// The grant itself is the approval.
+	SpawnAuto SpawnApproval = "auto"
+	// SpawnOperator queues each spawn until the operator approves or denies it.
+	SpawnOperator SpawnApproval = "operator"
+)
 
 type OnDeadline string
 
@@ -144,9 +148,9 @@ func (p CoordinationPolicy) Normalize() (CoordinationPolicy, error) {
 	switch p.SpawnApproval {
 	case "":
 		p.SpawnApproval = SpawnAuto
-	case SpawnAuto:
+	case SpawnAuto, SpawnOperator:
 	default:
-		return p, fmt.Errorf("%w: coordination spawnApproval must be auto", ErrUnsupported)
+		return p, fmt.Errorf("%w: coordination spawnApproval must be auto or operator", ErrInvalid)
 	}
 	switch {
 	case p.ArchiveAfter == nil:
@@ -222,8 +226,9 @@ func (g CoordinationGrant) Usable(now time.Time) bool {
 type ThreadLinkState string
 
 const (
-	LinkActive ThreadLinkState = "active"
-	LinkClosed ThreadLinkState = "closed"
+	LinkPendingApproval ThreadLinkState = "pending_approval"
+	LinkActive          ThreadLinkState = "active"
+	LinkClosed          ThreadLinkState = "closed"
 )
 
 type LinkCloseReason string
@@ -233,6 +238,8 @@ const (
 	LinkFailed    LinkCloseReason = "failed"
 	LinkEnded     LinkCloseReason = "ended"
 	LinkRevoked   LinkCloseReason = "revoked"
+	// LinkDenied closes a spawn the operator refused.
+	LinkDenied LinkCloseReason = "denied"
 	// LinkDetached closes the link of a promoted subagent; the lead can no
 	// longer address it and it leaves the tree's live Capsule count.
 	LinkDetached LinkCloseReason = "detached"
@@ -253,6 +260,7 @@ const (
 	ReportCapsuleFailed ReportReason = "capsule_failed"
 	ReportSessionEnded  ReportReason = "session_ended"
 	ReportRevoked       ReportReason = "revoked"
+	ReportDenied        ReportReason = "denied"
 )
 
 // ThreadLink is the handle a lead Thread holds for one child Thread. Report
@@ -311,8 +319,17 @@ const (
 	CoordinationCancel CoordinationRequestKind = "cancel"
 )
 
+type CoordinationRequestState string
+
+const (
+	RequestPendingApproval CoordinationRequestState = "pending_approval"
+	RequestCompleted       CoordinationRequestState = "completed"
+	RequestRejected        CoordinationRequestState = "rejected"
+)
+
 // CoordinationRequest is the durable idempotency record for one mutating
-// coordination request. Result holds identifiers only, never content.
+// coordination request, and the operator queue for spawnApproval=operator.
+// Result holds identifiers only, never content.
 type CoordinationRequest struct {
 	ID              CoordinationRequestID
 	GrantID         CoordinationGrantID
@@ -321,6 +338,123 @@ type CoordinationRequest struct {
 	CanonicalDigest string
 	Kind            CoordinationRequestKind
 	LinkID          ThreadLinkID
+	State           CoordinationRequestState
 	ResultMessageID ThreadMessageID
 	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	ResourceVersion ResourceVersion
+}
+
+// CoordinationGrantPatch is an operator update to an active grant. Nil
+// fields are left unchanged. AllowedHarnesses, when non-nil, replaces the
+// allowlist. The operator may loosen or tighten limits; switching
+// spawnApproval to auto does not start spawns that are already queued.
+type CoordinationGrantPatch struct {
+	SpawnApproval      *SpawnApproval
+	MaxChildren        *int
+	MaxDescendants     *int
+	MaxLiveCapsules    *int
+	MaxMessagesPerLink *int
+	AllowedHarnesses   *[]string
+	Deadline           *time.Duration
+	OnDeadline         *OnDeadline
+	ArchiveAfter       *time.Duration
+}
+
+func (p CoordinationGrantPatch) empty() bool {
+	return p.SpawnApproval == nil && p.MaxChildren == nil && p.MaxDescendants == nil &&
+		p.MaxLiveCapsules == nil && p.MaxMessagesPerLink == nil && p.AllowedHarnesses == nil &&
+		p.Deadline == nil && p.OnDeadline == nil && p.ArchiveAfter == nil
+}
+
+func (p CoordinationGrantPatch) Empty() bool {
+	return p.empty()
+}
+
+// Apply returns a copy of g with the patch applied. Deadline is remaining
+// time from now, capped at createdAt plus 72 hours. Identity fields are
+// unchanged. The grant's resource version is not bumped here.
+func (g CoordinationGrant) Apply(patch CoordinationGrantPatch, now time.Time) (CoordinationGrant, error) {
+	if patch.empty() {
+		return g, fmt.Errorf("%w: coordination grant update requires a change", ErrInvalid)
+	}
+	setInt := func(dst *int, src *int, maximum int, field string) error {
+		if src == nil {
+			return nil
+		}
+		if *src < 1 || *src > maximum {
+			return fmt.Errorf("%w: coordination %s must be between 1 and %d", ErrInvalid, field, maximum)
+		}
+		*dst = *src
+		return nil
+	}
+	if patch.SpawnApproval != nil {
+		switch *patch.SpawnApproval {
+		case SpawnAuto, SpawnOperator:
+			g.SpawnApproval = *patch.SpawnApproval
+		default:
+			return g, fmt.Errorf("%w: coordination spawnApproval must be auto or operator", ErrInvalid)
+		}
+	}
+	if err := setInt(&g.MaxChildren, patch.MaxChildren, CoordinationMaxChildren, "maxChildren"); err != nil {
+		return g, err
+	}
+	if err := setInt(&g.MaxDescendants, patch.MaxDescendants, CoordinationMaxDescendants, "maxDescendants"); err != nil {
+		return g, err
+	}
+	if err := setInt(&g.MaxLiveCapsules, patch.MaxLiveCapsules, CoordinationMaxLiveCapsules, "maxLiveCapsules"); err != nil {
+		return g, err
+	}
+	if err := setInt(&g.MaxMessagesPerLink, patch.MaxMessagesPerLink, CoordinationMaxMessagesPerLink, "maxMessagesPerLink"); err != nil {
+		return g, err
+	}
+	if g.MaxDescendants < g.MaxChildren {
+		return g, fmt.Errorf("%w: coordination maxDescendants must be at least maxChildren", ErrInvalid)
+	}
+	if patch.AllowedHarnesses != nil {
+		policy := CoordinationPolicy{AllowedHarnesses: *patch.AllowedHarnesses}
+		normalized, err := policy.Normalize()
+		if err != nil {
+			return g, err
+		}
+		if len(normalized.AllowedHarnesses) == 0 {
+			return g, fmt.Errorf("%w: coordination allowedHarnesses must not be empty", ErrInvalid)
+		}
+		g.AllowedHarnesses = normalized.AllowedHarnesses
+	}
+	if patch.OnDeadline != nil {
+		switch *patch.OnDeadline {
+		case DeadlineCancelAndPause, DeadlineStopNewWork:
+			g.OnDeadline = *patch.OnDeadline
+		default:
+			return g, fmt.Errorf("%w: unsupported coordination onDeadline", ErrInvalid)
+		}
+	}
+	if patch.ArchiveAfter != nil {
+		switch {
+		case *patch.ArchiveAfter == 0:
+			g.ArchiveAfter = 0
+		case *patch.ArchiveAfter < CoordinationMinArchiveAfter || *patch.ArchiveAfter > CoordinationMaxArchiveAfter ||
+			*patch.ArchiveAfter%time.Second != 0:
+			return g, fmt.Errorf("%w: coordination archiveAfter must be 0 or whole seconds between 1m and 720h", ErrInvalid)
+		default:
+			g.ArchiveAfter = *patch.ArchiveAfter
+		}
+	}
+	if patch.Deadline != nil {
+		remaining := *patch.Deadline
+		if remaining < CoordinationMinDeadline || remaining > CoordinationMaxDeadline {
+			return g, fmt.Errorf("%w: coordination deadline must be between 5m and 72h", ErrInvalid)
+		}
+		at := now.UTC().Add(remaining)
+		capAt := g.CreatedAt.Add(CoordinationMaxDeadline)
+		if at.After(capAt) {
+			if capAt.Sub(now.UTC()) < CoordinationMinDeadline {
+				return g, fmt.Errorf("%w: coordination deadline cannot extend past createdAt+72h", ErrInvalid)
+			}
+			at = capAt
+		}
+		g.DeadlineAt = at
+	}
+	return g, nil
 }

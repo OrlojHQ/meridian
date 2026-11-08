@@ -136,6 +136,11 @@ func (r *Reconciler) Recover(ctx context.Context) error {
 		return err
 	}
 	for _, capsule := range capsules {
+		if skip, err := r.heldForSpawnApproval(ctx, capsule); err != nil {
+			return err
+		} else if skip {
+			continue
+		}
 		if err := r.Enqueue(ctx, capsule.ID); err != nil {
 			return err
 		}
@@ -190,10 +195,34 @@ func (r *Reconciler) process(ctx context.Context, id domain.CapsuleID) {
 	_ = r.recordFailure(ctx, id, err)
 }
 
+func (r *Reconciler) heldForSpawnApproval(ctx context.Context, capsule domain.Capsule) (bool, error) {
+	if capsule.LinkID == "" || capsule.ProviderResourceID != "" {
+		return false, nil
+	}
+	var link domain.ThreadLink
+	err := r.store.View(ctx, func(reader ports.Reader) error {
+		var err error
+		link, err = reader.GetThreadLink(ctx, capsule.LinkID)
+		return err
+	})
+	if errors.Is(err, domain.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return link.State != domain.LinkActive, nil
+}
+
 func (r *Reconciler) reconcile(ctx context.Context, id domain.CapsuleID) error {
 	capsule, err := r.getCapsule(ctx, id)
 	if err != nil {
 		return err
+	}
+	if skip, err := r.heldForSpawnApproval(ctx, capsule); err != nil {
+		return err
+	} else if skip {
+		return nil
 	}
 	if r.sessionReady != nil {
 		switch capsule.State {

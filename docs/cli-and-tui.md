@@ -119,12 +119,15 @@ printf '%s' 'split the review across subagents' | meridian thread spawn PROJECT_
 
 `--max-children` (default 4, at most 16), `--max-descendants`,
 `--max-live-capsules`, `--max-messages-per-link`, repeatable
-`--allow-harness` (default: the lead's harness), and `--on-deadline`
-(`cancel_and_pause` or `stop_new_work`) bound the grant; they are fixed at
-spawn. `meridian thread links THREAD_ID` lists a lead's subagents,
-`meridian grant show GRANT_ID` shows the grant, and
-`meridian grant revoke GRANT_ID --expected-version N` ends it and stops the
-subagents (`--keep-subagents` leaves them running).
+`--allow-harness` (default: the lead's harness), `--on-deadline`
+(`cancel_and_pause` or `stop_new_work`), and `--spawn-approval`
+(`auto`, the default, or `operator`) bound the grant. With `operator`, each
+spawn waits until you approve it (`meridian approvals list` /
+`approve` / `deny`). `meridian thread links THREAD_ID` lists a lead's
+subagents, `meridian grant show GRANT_ID` shows the grant,
+`meridian grant update GRANT_ID --expected-version N` changes limits or spawn
+approval, and `meridian grant revoke GRANT_ID --expected-version N` ends it
+and stops the subagents (`--keep-subagents` leaves them running).
 `meridian capsule list --role sub` lists subagent Capsules. A subagent is an
 ordinary Thread: its permission and input requests come to you, never to its
 lead. If you message a subagent directly, the lead's next report wake says so

@@ -10,6 +10,20 @@ import (
 	ht "github.com/ogen-go/ogen/http"
 )
 
+func encodeApproveCoordinationRequestRequest(
+	req *DecideCoordinationRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodeArchiveThreadRequest(
 	req *LifecycleMutationRequest,
 	r *http.Request,
@@ -194,6 +208,20 @@ func encodeDeleteSecretRequest(
 
 func encodeDeleteThreadRequest(
 	req *DeleteThreadRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeDenyCoordinationRequestRequest(
+	req *DecideCoordinationRequest,
 	r *http.Request,
 ) error {
 	const contentType = "application/json"
@@ -474,6 +502,20 @@ func encodeStartRunRequest(
 
 func encodeStartThreadRequest(
 	req *LifecycleMutationRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeUpdateCoordinationGrantRequest(
+	req *UpdateCoordinationGrantRequest,
 	r *http.Request,
 ) error {
 	const contentType = "application/json"

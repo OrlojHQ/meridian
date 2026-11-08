@@ -304,13 +304,12 @@ func TestCoordinationGrantIsCreatedWithTheLeadAndReplayIsExact(t *testing.T) {
 func TestCoordinationPolicyIsBounded(t *testing.T) {
 	f := newCoordFixture(t)
 	for name, policy := range map[string]domain.CoordinationPolicy{
-		"depth":           {MaxDepth: 2},
-		"children":        {MaxChildren: 17},
-		"descendants":     {MaxDescendants: 33},
-		"short deadline":  {Deadline: time.Minute},
-		"long deadline":   {Deadline: 73 * time.Hour},
-		"unlisted":        {AllowedHarnesses: []string{"pi"}},
-		"operator spawns": {SpawnApproval: "operator"},
+		"depth":          {MaxDepth: 2},
+		"children":       {MaxChildren: 17},
+		"descendants":    {MaxDescendants: 33},
+		"short deadline": {Deadline: time.Minute},
+		"long deadline":  {Deadline: 73 * time.Hour},
+		"unlisted":       {AllowedHarnesses: []string{"pi"}},
 	} {
 		_, err := f.service.CreateProjectThread(f.ctx, app.CreateProjectThreadInput{
 			ProjectID: "project-coord", Harness: "mock", Prompt: "lead",
@@ -760,12 +759,12 @@ func TestCoordinationRecordsResistTampering(t *testing.T) {
 			return err
 		}
 		previous := grant.ResourceVersion
-		grant.MaxChildren, grant.ResourceVersion = 16, grant.ResourceVersion+1
+		grant.MaxDepth, grant.ResourceVersion = 3, grant.ResourceVersion+1
 		return tx.UpdateCoordinationGrant(f.ctx, grant, previous)
 	})
 	grant, _ := f.service.GetCoordinationGrant(f.ctx, position.GrantID)
-	if grant.MaxChildren != domain.CoordinationDefaultChildren {
-		t.Errorf("grant limit raised to %d", grant.MaxChildren)
+	if grant.MaxDepth != domain.CoordinationMaxDepth {
+		t.Errorf("grant depth raised to %d", grant.MaxDepth)
 	}
 	if _, err := f.service.RevokeCoordinationGrant(f.ctx, grant.ID, grant.ResourceVersion, false, "revoke"); err != nil {
 		t.Fatal(err)

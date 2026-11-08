@@ -42,6 +42,22 @@ func (s *APIError) SetMessage(val string) {
 	s.Message = val
 }
 
+type ApproveCoordinationRequestBadRequest ErrorEnvelope
+
+func (*ApproveCoordinationRequestBadRequest) approveCoordinationRequestRes() {}
+
+type ApproveCoordinationRequestConflict ErrorEnvelope
+
+func (*ApproveCoordinationRequestConflict) approveCoordinationRequestRes() {}
+
+type ApproveCoordinationRequestNotFound ErrorEnvelope
+
+func (*ApproveCoordinationRequestNotFound) approveCoordinationRequestRes() {}
+
+type ApproveCoordinationRequestUnprocessableEntity ErrorEnvelope
+
+func (*ApproveCoordinationRequestUnprocessableEntity) approveCoordinationRequestRes() {}
+
 type ArchiveThreadConflict ErrorEnvelope
 
 func (*ArchiveThreadConflict) archiveThreadRes() {}
@@ -241,9 +257,10 @@ func (s *BoardItem) SetSurfaced(val bool) {
 type BoardItemNeedsYou string
 
 const (
-	BoardItemNeedsYouPermission BoardItemNeedsYou = "permission"
-	BoardItemNeedsYouInput      BoardItemNeedsYou = "input"
-	BoardItemNeedsYouFailed     BoardItemNeedsYou = "failed"
+	BoardItemNeedsYouPermission    BoardItemNeedsYou = "permission"
+	BoardItemNeedsYouInput         BoardItemNeedsYou = "input"
+	BoardItemNeedsYouFailed        BoardItemNeedsYou = "failed"
+	BoardItemNeedsYouSpawnApproval BoardItemNeedsYou = "spawn_approval"
 )
 
 // AllValues returns all BoardItemNeedsYou values.
@@ -252,6 +269,7 @@ func (BoardItemNeedsYou) AllValues() []BoardItemNeedsYou {
 		BoardItemNeedsYouPermission,
 		BoardItemNeedsYouInput,
 		BoardItemNeedsYouFailed,
+		BoardItemNeedsYouSpawnApproval,
 	}
 }
 
@@ -263,6 +281,8 @@ func (s BoardItemNeedsYou) MarshalText() ([]byte, error) {
 	case BoardItemNeedsYouInput:
 		return []byte(s), nil
 	case BoardItemNeedsYouFailed:
+		return []byte(s), nil
+	case BoardItemNeedsYouSpawnApproval:
 		return []byte(s), nil
 	default:
 		return nil, errors.Errorf("invalid value: %q", s)
@@ -280,6 +300,9 @@ func (s *BoardItemNeedsYou) UnmarshalText(data []byte) error {
 		return nil
 	case BoardItemNeedsYouFailed:
 		*s = BoardItemNeedsYouFailed
+		return nil
+	case BoardItemNeedsYouSpawnApproval:
+		*s = BoardItemNeedsYouSpawnApproval
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)
@@ -1557,6 +1580,7 @@ func (s *CoordinationGrantHeaders) SetResponse(val CoordinationGrant) {
 
 func (*CoordinationGrantHeaders) getCoordinationGrantRes()    {}
 func (*CoordinationGrantHeaders) revokeCoordinationGrantRes() {}
+func (*CoordinationGrantHeaders) updateCoordinationGrantRes() {}
 
 type CoordinationGrantOnDeadline string
 
@@ -1650,13 +1674,15 @@ func (s *CoordinationGrantRevokeReason) UnmarshalText(data []byte) error {
 type CoordinationGrantSpawnApproval string
 
 const (
-	CoordinationGrantSpawnApprovalAuto CoordinationGrantSpawnApproval = "auto"
+	CoordinationGrantSpawnApprovalAuto     CoordinationGrantSpawnApproval = "auto"
+	CoordinationGrantSpawnApprovalOperator CoordinationGrantSpawnApproval = "operator"
 )
 
 // AllValues returns all CoordinationGrantSpawnApproval values.
 func (CoordinationGrantSpawnApproval) AllValues() []CoordinationGrantSpawnApproval {
 	return []CoordinationGrantSpawnApproval{
 		CoordinationGrantSpawnApprovalAuto,
+		CoordinationGrantSpawnApprovalOperator,
 	}
 }
 
@@ -1664,6 +1690,8 @@ func (CoordinationGrantSpawnApproval) AllValues() []CoordinationGrantSpawnApprov
 func (s CoordinationGrantSpawnApproval) MarshalText() ([]byte, error) {
 	switch s {
 	case CoordinationGrantSpawnApprovalAuto:
+		return []byte(s), nil
+	case CoordinationGrantSpawnApprovalOperator:
 		return []byte(s), nil
 	default:
 		return nil, errors.Errorf("invalid value: %q", s)
@@ -1675,6 +1703,9 @@ func (s *CoordinationGrantSpawnApproval) UnmarshalText(data []byte) error {
 	switch CoordinationGrantSpawnApproval(data) {
 	case CoordinationGrantSpawnApprovalAuto:
 		*s = CoordinationGrantSpawnApprovalAuto
+		return nil
+	case CoordinationGrantSpawnApprovalOperator:
+		*s = CoordinationGrantSpawnApprovalOperator
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)
@@ -1746,9 +1777,11 @@ type CoordinationPolicy struct {
 	DeadlineSeconds  OptInt   `json:"deadlineSeconds"`
 	// How long a finished subagent stays idle before its session is ended and its Thread paused. 0
 	// disables auto-archive; otherwise at least 60. Archiving never deletes a workspace or transcript.
-	ArchiveAfterSeconds OptInt                             `json:"archiveAfterSeconds"`
-	OnDeadline          OptCoordinationPolicyOnDeadline    `json:"onDeadline"`
-	SpawnApproval       OptCoordinationPolicySpawnApproval `json:"spawnApproval"`
+	ArchiveAfterSeconds OptInt                          `json:"archiveAfterSeconds"`
+	OnDeadline          OptCoordinationPolicyOnDeadline `json:"onDeadline"`
+	// Auto starts each accepted spawn. operator queues it until the operator approves or denies it. The
+	// grant itself is still the bound on how many may be requested.
+	SpawnApproval OptCoordinationPolicySpawnApproval `json:"spawnApproval"`
 }
 
 // GetMaxDepth returns the value of MaxDepth.
@@ -1892,16 +1925,20 @@ func (s *CoordinationPolicyOnDeadline) UnmarshalText(data []byte) error {
 	}
 }
 
+// Auto starts each accepted spawn. operator queues it until the operator approves or denies it. The
+// grant itself is still the bound on how many may be requested.
 type CoordinationPolicySpawnApproval string
 
 const (
-	CoordinationPolicySpawnApprovalAuto CoordinationPolicySpawnApproval = "auto"
+	CoordinationPolicySpawnApprovalAuto     CoordinationPolicySpawnApproval = "auto"
+	CoordinationPolicySpawnApprovalOperator CoordinationPolicySpawnApproval = "operator"
 )
 
 // AllValues returns all CoordinationPolicySpawnApproval values.
 func (CoordinationPolicySpawnApproval) AllValues() []CoordinationPolicySpawnApproval {
 	return []CoordinationPolicySpawnApproval{
 		CoordinationPolicySpawnApprovalAuto,
+		CoordinationPolicySpawnApprovalOperator,
 	}
 }
 
@@ -1909,6 +1946,8 @@ func (CoordinationPolicySpawnApproval) AllValues() []CoordinationPolicySpawnAppr
 func (s CoordinationPolicySpawnApproval) MarshalText() ([]byte, error) {
 	switch s {
 	case CoordinationPolicySpawnApprovalAuto:
+		return []byte(s), nil
+	case CoordinationPolicySpawnApprovalOperator:
 		return []byte(s), nil
 	default:
 		return nil, errors.Errorf("invalid value: %q", s)
@@ -1920,6 +1959,268 @@ func (s *CoordinationPolicySpawnApproval) UnmarshalText(data []byte) error {
 	switch CoordinationPolicySpawnApproval(data) {
 	case CoordinationPolicySpawnApprovalAuto:
 		*s = CoordinationPolicySpawnApprovalAuto
+		return nil
+	case CoordinationPolicySpawnApprovalOperator:
+		*s = CoordinationPolicySpawnApprovalOperator
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Durable idempotency record for one mutating coordination request, and the operator queue when
+// spawnApproval is operator. Prompts are never included.
+// Ref: #/components/schemas/CoordinationRequest
+type CoordinationRequest struct {
+	ID              string                   `json:"id"`
+	GrantId         string                   `json:"grantId"`
+	CapsuleId       string                   `json:"capsuleId"`
+	Key             string                   `json:"key"`
+	Kind            CoordinationRequestKind  `json:"kind"`
+	LinkId          string                   `json:"linkId"`
+	State           CoordinationRequestState `json:"state"`
+	CreatedAt       time.Time                `json:"createdAt"`
+	UpdatedAt       time.Time                `json:"updatedAt"`
+	ResourceVersion int64                    `json:"resourceVersion"`
+}
+
+// GetID returns the value of ID.
+func (s *CoordinationRequest) GetID() string {
+	return s.ID
+}
+
+// GetGrantId returns the value of GrantId.
+func (s *CoordinationRequest) GetGrantId() string {
+	return s.GrantId
+}
+
+// GetCapsuleId returns the value of CapsuleId.
+func (s *CoordinationRequest) GetCapsuleId() string {
+	return s.CapsuleId
+}
+
+// GetKey returns the value of Key.
+func (s *CoordinationRequest) GetKey() string {
+	return s.Key
+}
+
+// GetKind returns the value of Kind.
+func (s *CoordinationRequest) GetKind() CoordinationRequestKind {
+	return s.Kind
+}
+
+// GetLinkId returns the value of LinkId.
+func (s *CoordinationRequest) GetLinkId() string {
+	return s.LinkId
+}
+
+// GetState returns the value of State.
+func (s *CoordinationRequest) GetState() CoordinationRequestState {
+	return s.State
+}
+
+// GetCreatedAt returns the value of CreatedAt.
+func (s *CoordinationRequest) GetCreatedAt() time.Time {
+	return s.CreatedAt
+}
+
+// GetUpdatedAt returns the value of UpdatedAt.
+func (s *CoordinationRequest) GetUpdatedAt() time.Time {
+	return s.UpdatedAt
+}
+
+// GetResourceVersion returns the value of ResourceVersion.
+func (s *CoordinationRequest) GetResourceVersion() int64 {
+	return s.ResourceVersion
+}
+
+// SetID sets the value of ID.
+func (s *CoordinationRequest) SetID(val string) {
+	s.ID = val
+}
+
+// SetGrantId sets the value of GrantId.
+func (s *CoordinationRequest) SetGrantId(val string) {
+	s.GrantId = val
+}
+
+// SetCapsuleId sets the value of CapsuleId.
+func (s *CoordinationRequest) SetCapsuleId(val string) {
+	s.CapsuleId = val
+}
+
+// SetKey sets the value of Key.
+func (s *CoordinationRequest) SetKey(val string) {
+	s.Key = val
+}
+
+// SetKind sets the value of Kind.
+func (s *CoordinationRequest) SetKind(val CoordinationRequestKind) {
+	s.Kind = val
+}
+
+// SetLinkId sets the value of LinkId.
+func (s *CoordinationRequest) SetLinkId(val string) {
+	s.LinkId = val
+}
+
+// SetState sets the value of State.
+func (s *CoordinationRequest) SetState(val CoordinationRequestState) {
+	s.State = val
+}
+
+// SetCreatedAt sets the value of CreatedAt.
+func (s *CoordinationRequest) SetCreatedAt(val time.Time) {
+	s.CreatedAt = val
+}
+
+// SetUpdatedAt sets the value of UpdatedAt.
+func (s *CoordinationRequest) SetUpdatedAt(val time.Time) {
+	s.UpdatedAt = val
+}
+
+// SetResourceVersion sets the value of ResourceVersion.
+func (s *CoordinationRequest) SetResourceVersion(val int64) {
+	s.ResourceVersion = val
+}
+
+// CoordinationRequestHeaders wraps CoordinationRequest with response headers.
+type CoordinationRequestHeaders struct {
+	ETag     OptString
+	Response CoordinationRequest
+}
+
+// GetETag returns the value of ETag.
+func (s *CoordinationRequestHeaders) GetETag() OptString {
+	return s.ETag
+}
+
+// GetResponse returns the value of Response.
+func (s *CoordinationRequestHeaders) GetResponse() CoordinationRequest {
+	return s.Response
+}
+
+// SetETag sets the value of ETag.
+func (s *CoordinationRequestHeaders) SetETag(val OptString) {
+	s.ETag = val
+}
+
+// SetResponse sets the value of Response.
+func (s *CoordinationRequestHeaders) SetResponse(val CoordinationRequest) {
+	s.Response = val
+}
+
+func (*CoordinationRequestHeaders) approveCoordinationRequestRes() {}
+func (*CoordinationRequestHeaders) denyCoordinationRequestRes()    {}
+
+type CoordinationRequestKind string
+
+const (
+	CoordinationRequestKindSpawn  CoordinationRequestKind = "spawn"
+	CoordinationRequestKindSend   CoordinationRequestKind = "send"
+	CoordinationRequestKindCancel CoordinationRequestKind = "cancel"
+)
+
+// AllValues returns all CoordinationRequestKind values.
+func (CoordinationRequestKind) AllValues() []CoordinationRequestKind {
+	return []CoordinationRequestKind{
+		CoordinationRequestKindSpawn,
+		CoordinationRequestKindSend,
+		CoordinationRequestKindCancel,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s CoordinationRequestKind) MarshalText() ([]byte, error) {
+	switch s {
+	case CoordinationRequestKindSpawn:
+		return []byte(s), nil
+	case CoordinationRequestKindSend:
+		return []byte(s), nil
+	case CoordinationRequestKindCancel:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *CoordinationRequestKind) UnmarshalText(data []byte) error {
+	switch CoordinationRequestKind(data) {
+	case CoordinationRequestKindSpawn:
+		*s = CoordinationRequestKindSpawn
+		return nil
+	case CoordinationRequestKindSend:
+		*s = CoordinationRequestKindSend
+		return nil
+	case CoordinationRequestKindCancel:
+		*s = CoordinationRequestKindCancel
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Ref: #/components/schemas/CoordinationRequestPage
+type CoordinationRequestPage struct {
+	Items []CoordinationRequest `json:"items"`
+}
+
+// GetItems returns the value of Items.
+func (s *CoordinationRequestPage) GetItems() []CoordinationRequest {
+	return s.Items
+}
+
+// SetItems sets the value of Items.
+func (s *CoordinationRequestPage) SetItems(val []CoordinationRequest) {
+	s.Items = val
+}
+
+func (*CoordinationRequestPage) listCoordinationRequestsRes() {}
+
+// Ref: #/components/schemas/CoordinationRequestState
+type CoordinationRequestState string
+
+const (
+	CoordinationRequestStatePendingApproval CoordinationRequestState = "pending_approval"
+	CoordinationRequestStateCompleted       CoordinationRequestState = "completed"
+	CoordinationRequestStateRejected        CoordinationRequestState = "rejected"
+)
+
+// AllValues returns all CoordinationRequestState values.
+func (CoordinationRequestState) AllValues() []CoordinationRequestState {
+	return []CoordinationRequestState{
+		CoordinationRequestStatePendingApproval,
+		CoordinationRequestStateCompleted,
+		CoordinationRequestStateRejected,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s CoordinationRequestState) MarshalText() ([]byte, error) {
+	switch s {
+	case CoordinationRequestStatePendingApproval:
+		return []byte(s), nil
+	case CoordinationRequestStateCompleted:
+		return []byte(s), nil
+	case CoordinationRequestStateRejected:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *CoordinationRequestState) UnmarshalText(data []byte) error {
+	switch CoordinationRequestState(data) {
+	case CoordinationRequestStatePendingApproval:
+		*s = CoordinationRequestStatePendingApproval
+		return nil
+	case CoordinationRequestStateCompleted:
+		*s = CoordinationRequestStateCompleted
+		return nil
+	case CoordinationRequestStateRejected:
+		*s = CoordinationRequestStateRejected
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)
@@ -2490,6 +2791,21 @@ func (s *CreateThreadRequest) SetStart(val OptBool) {
 type CreateThreadUnprocessableEntity ErrorEnvelope
 
 func (*CreateThreadUnprocessableEntity) createThreadRes() {}
+
+// Ref: #/components/schemas/DecideCoordinationRequest
+type DecideCoordinationRequest struct {
+	ExpectedResourceVersion int64 `json:"expectedResourceVersion"`
+}
+
+// GetExpectedResourceVersion returns the value of ExpectedResourceVersion.
+func (s *DecideCoordinationRequest) GetExpectedResourceVersion() int64 {
+	return s.ExpectedResourceVersion
+}
+
+// SetExpectedResourceVersion sets the value of ExpectedResourceVersion.
+func (s *DecideCoordinationRequest) SetExpectedResourceVersion(val int64) {
+	s.ExpectedResourceVersion = val
+}
 
 // DefaultErrorStatusCode wraps ErrorEnvelope with StatusCode.
 type DefaultErrorStatusCode struct {
@@ -3247,6 +3563,22 @@ func (s *DeliverySummaryAction) UnmarshalText(data []byte) error {
 	}
 }
 
+type DenyCoordinationRequestBadRequest ErrorEnvelope
+
+func (*DenyCoordinationRequestBadRequest) denyCoordinationRequestRes() {}
+
+type DenyCoordinationRequestConflict ErrorEnvelope
+
+func (*DenyCoordinationRequestConflict) denyCoordinationRequestRes() {}
+
+type DenyCoordinationRequestNotFound ErrorEnvelope
+
+func (*DenyCoordinationRequestNotFound) denyCoordinationRequestRes() {}
+
+type DenyCoordinationRequestUnprocessableEntity ErrorEnvelope
+
+func (*DenyCoordinationRequestUnprocessableEntity) denyCoordinationRequestRes() {}
+
 // Ref: #/components/schemas/DescendantResult
 type DescendantResult struct {
 	Capsule  Capsule                `json:"capsule"`
@@ -3391,24 +3723,25 @@ func (s *ErrorEnvelope) SetError(val APIError) {
 	s.Error = val
 }
 
-func (*ErrorEnvelope) attachRunWebSocketRes()     {}
-func (*ErrorEnvelope) createRunAttachTicketRes()  {}
-func (*ErrorEnvelope) getCapsuleRes()             {}
-func (*ErrorEnvelope) getCoordinationGrantRes()   {}
-func (*ErrorEnvelope) getDeliveryRes()            {}
-func (*ErrorEnvelope) getMomentRes()              {}
-func (*ErrorEnvelope) getProjectRes()             {}
-func (*ErrorEnvelope) getProjectThreadIntentRes() {}
-func (*ErrorEnvelope) getRunRes()                 {}
-func (*ErrorEnvelope) getThreadLinkRes()          {}
-func (*ErrorEnvelope) getThreadRes()              {}
-func (*ErrorEnvelope) getTimelineRes()            {}
-func (*ErrorEnvelope) listCapsuleDeliveriesRes()  {}
-func (*ErrorEnvelope) listMomentsRes()            {}
-func (*ErrorEnvelope) listProjectsRes()           {}
-func (*ErrorEnvelope) listSecretsRes()            {}
-func (*ErrorEnvelope) listThreadLinksRes()        {}
-func (*ErrorEnvelope) listThreadsRes()            {}
+func (*ErrorEnvelope) attachRunWebSocketRes()       {}
+func (*ErrorEnvelope) createRunAttachTicketRes()    {}
+func (*ErrorEnvelope) getCapsuleRes()               {}
+func (*ErrorEnvelope) getCoordinationGrantRes()     {}
+func (*ErrorEnvelope) getDeliveryRes()              {}
+func (*ErrorEnvelope) getMomentRes()                {}
+func (*ErrorEnvelope) getProjectRes()               {}
+func (*ErrorEnvelope) getProjectThreadIntentRes()   {}
+func (*ErrorEnvelope) getRunRes()                   {}
+func (*ErrorEnvelope) getThreadLinkRes()            {}
+func (*ErrorEnvelope) getThreadRes()                {}
+func (*ErrorEnvelope) getTimelineRes()              {}
+func (*ErrorEnvelope) listCapsuleDeliveriesRes()    {}
+func (*ErrorEnvelope) listCoordinationRequestsRes() {}
+func (*ErrorEnvelope) listMomentsRes()              {}
+func (*ErrorEnvelope) listProjectsRes()             {}
+func (*ErrorEnvelope) listSecretsRes()              {}
+func (*ErrorEnvelope) listThreadLinksRes()          {}
+func (*ErrorEnvelope) listThreadsRes()              {}
 
 type ExportCapsuleWorkspaceConflict ErrorEnvelope
 
@@ -5281,6 +5614,52 @@ func (o OptCoordinationPolicySpawnApproval) Or(d CoordinationPolicySpawnApproval
 	return d
 }
 
+// NewOptCoordinationRequestState returns new OptCoordinationRequestState with value set to v.
+func NewOptCoordinationRequestState(v CoordinationRequestState) OptCoordinationRequestState {
+	return OptCoordinationRequestState{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptCoordinationRequestState is optional CoordinationRequestState.
+type OptCoordinationRequestState struct {
+	Value CoordinationRequestState
+	Set   bool
+}
+
+// IsSet returns true if OptCoordinationRequestState was set.
+func (o OptCoordinationRequestState) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptCoordinationRequestState) Reset() {
+	var v CoordinationRequestState
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptCoordinationRequestState) SetTo(v CoordinationRequestState) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptCoordinationRequestState) Get() (v CoordinationRequestState, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptCoordinationRequestState) Or(d CoordinationRequestState) CoordinationRequestState {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptDateTime returns new OptDateTime with value set to v.
 func NewOptDateTime(v time.Time) OptDateTime {
 	return OptDateTime{
@@ -6471,6 +6850,98 @@ func (o OptURI) Get() (v url.URL, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptURI) Or(d url.URL) url.URL {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptUpdateCoordinationGrantRequestOnDeadline returns new OptUpdateCoordinationGrantRequestOnDeadline with value set to v.
+func NewOptUpdateCoordinationGrantRequestOnDeadline(v UpdateCoordinationGrantRequestOnDeadline) OptUpdateCoordinationGrantRequestOnDeadline {
+	return OptUpdateCoordinationGrantRequestOnDeadline{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptUpdateCoordinationGrantRequestOnDeadline is optional UpdateCoordinationGrantRequestOnDeadline.
+type OptUpdateCoordinationGrantRequestOnDeadline struct {
+	Value UpdateCoordinationGrantRequestOnDeadline
+	Set   bool
+}
+
+// IsSet returns true if OptUpdateCoordinationGrantRequestOnDeadline was set.
+func (o OptUpdateCoordinationGrantRequestOnDeadline) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptUpdateCoordinationGrantRequestOnDeadline) Reset() {
+	var v UpdateCoordinationGrantRequestOnDeadline
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptUpdateCoordinationGrantRequestOnDeadline) SetTo(v UpdateCoordinationGrantRequestOnDeadline) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptUpdateCoordinationGrantRequestOnDeadline) Get() (v UpdateCoordinationGrantRequestOnDeadline, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptUpdateCoordinationGrantRequestOnDeadline) Or(d UpdateCoordinationGrantRequestOnDeadline) UpdateCoordinationGrantRequestOnDeadline {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptUpdateCoordinationGrantRequestSpawnApproval returns new OptUpdateCoordinationGrantRequestSpawnApproval with value set to v.
+func NewOptUpdateCoordinationGrantRequestSpawnApproval(v UpdateCoordinationGrantRequestSpawnApproval) OptUpdateCoordinationGrantRequestSpawnApproval {
+	return OptUpdateCoordinationGrantRequestSpawnApproval{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptUpdateCoordinationGrantRequestSpawnApproval is optional UpdateCoordinationGrantRequestSpawnApproval.
+type OptUpdateCoordinationGrantRequestSpawnApproval struct {
+	Value UpdateCoordinationGrantRequestSpawnApproval
+	Set   bool
+}
+
+// IsSet returns true if OptUpdateCoordinationGrantRequestSpawnApproval was set.
+func (o OptUpdateCoordinationGrantRequestSpawnApproval) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptUpdateCoordinationGrantRequestSpawnApproval) Reset() {
+	var v UpdateCoordinationGrantRequestSpawnApproval
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptUpdateCoordinationGrantRequestSpawnApproval) SetTo(v UpdateCoordinationGrantRequestSpawnApproval) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptUpdateCoordinationGrantRequestSpawnApproval) Get() (v UpdateCoordinationGrantRequestSpawnApproval, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptUpdateCoordinationGrantRequestSpawnApproval) Or(d UpdateCoordinationGrantRequestSpawnApproval) UpdateCoordinationGrantRequestSpawnApproval {
 	if v, ok := o.Get(); ok {
 		return v
 	}
@@ -10319,6 +10790,7 @@ const (
 	ThreadLinkCloseReasonFailed    ThreadLinkCloseReason = "failed"
 	ThreadLinkCloseReasonEnded     ThreadLinkCloseReason = "ended"
 	ThreadLinkCloseReasonRevoked   ThreadLinkCloseReason = "revoked"
+	ThreadLinkCloseReasonDenied    ThreadLinkCloseReason = "denied"
 	ThreadLinkCloseReasonDetached  ThreadLinkCloseReason = "detached"
 )
 
@@ -10329,6 +10801,7 @@ func (ThreadLinkCloseReason) AllValues() []ThreadLinkCloseReason {
 		ThreadLinkCloseReasonFailed,
 		ThreadLinkCloseReasonEnded,
 		ThreadLinkCloseReasonRevoked,
+		ThreadLinkCloseReasonDenied,
 		ThreadLinkCloseReasonDetached,
 	}
 }
@@ -10343,6 +10816,8 @@ func (s ThreadLinkCloseReason) MarshalText() ([]byte, error) {
 	case ThreadLinkCloseReasonEnded:
 		return []byte(s), nil
 	case ThreadLinkCloseReasonRevoked:
+		return []byte(s), nil
+	case ThreadLinkCloseReasonDenied:
 		return []byte(s), nil
 	case ThreadLinkCloseReasonDetached:
 		return []byte(s), nil
@@ -10365,6 +10840,9 @@ func (s *ThreadLinkCloseReason) UnmarshalText(data []byte) error {
 		return nil
 	case ThreadLinkCloseReasonRevoked:
 		*s = ThreadLinkCloseReasonRevoked
+		return nil
+	case ThreadLinkCloseReasonDenied:
+		*s = ThreadLinkCloseReasonDenied
 		return nil
 	case ThreadLinkCloseReasonDetached:
 		*s = ThreadLinkCloseReasonDetached
@@ -10409,6 +10887,7 @@ const (
 	ThreadLinkLastReportReasonCapsuleFailed ThreadLinkLastReportReason = "capsule_failed"
 	ThreadLinkLastReportReasonSessionEnded  ThreadLinkLastReportReason = "session_ended"
 	ThreadLinkLastReportReasonRevoked       ThreadLinkLastReportReason = "revoked"
+	ThreadLinkLastReportReasonDenied        ThreadLinkLastReportReason = "denied"
 )
 
 // AllValues returns all ThreadLinkLastReportReason values.
@@ -10418,6 +10897,7 @@ func (ThreadLinkLastReportReason) AllValues() []ThreadLinkLastReportReason {
 		ThreadLinkLastReportReasonCapsuleFailed,
 		ThreadLinkLastReportReasonSessionEnded,
 		ThreadLinkLastReportReasonRevoked,
+		ThreadLinkLastReportReasonDenied,
 	}
 }
 
@@ -10431,6 +10911,8 @@ func (s ThreadLinkLastReportReason) MarshalText() ([]byte, error) {
 	case ThreadLinkLastReportReasonSessionEnded:
 		return []byte(s), nil
 	case ThreadLinkLastReportReasonRevoked:
+		return []byte(s), nil
+	case ThreadLinkLastReportReasonDenied:
 		return []byte(s), nil
 	default:
 		return nil, errors.Errorf("invalid value: %q", s)
@@ -10451,6 +10933,9 @@ func (s *ThreadLinkLastReportReason) UnmarshalText(data []byte) error {
 		return nil
 	case ThreadLinkLastReportReasonRevoked:
 		*s = ThreadLinkLastReportReasonRevoked
+		return nil
+	case ThreadLinkLastReportReasonDenied:
+		*s = ThreadLinkLastReportReasonDenied
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)
@@ -10588,13 +11073,15 @@ func (s *ThreadLinkPhase) UnmarshalText(data []byte) error {
 type ThreadLinkState string
 
 const (
-	ThreadLinkStateActive ThreadLinkState = "active"
-	ThreadLinkStateClosed ThreadLinkState = "closed"
+	ThreadLinkStatePendingApproval ThreadLinkState = "pending_approval"
+	ThreadLinkStateActive          ThreadLinkState = "active"
+	ThreadLinkStateClosed          ThreadLinkState = "closed"
 )
 
 // AllValues returns all ThreadLinkState values.
 func (ThreadLinkState) AllValues() []ThreadLinkState {
 	return []ThreadLinkState{
+		ThreadLinkStatePendingApproval,
 		ThreadLinkStateActive,
 		ThreadLinkStateClosed,
 	}
@@ -10603,6 +11090,8 @@ func (ThreadLinkState) AllValues() []ThreadLinkState {
 // MarshalText implements encoding.TextMarshaler.
 func (s ThreadLinkState) MarshalText() ([]byte, error) {
 	switch s {
+	case ThreadLinkStatePendingApproval:
+		return []byte(s), nil
 	case ThreadLinkStateActive:
 		return []byte(s), nil
 	case ThreadLinkStateClosed:
@@ -10615,6 +11104,9 @@ func (s ThreadLinkState) MarshalText() ([]byte, error) {
 // UnmarshalText implements encoding.TextUnmarshaler.
 func (s *ThreadLinkState) UnmarshalText(data []byte) error {
 	switch ThreadLinkState(data) {
+	case ThreadLinkStatePendingApproval:
+		*s = ThreadLinkStatePendingApproval
+		return nil
 	case ThreadLinkStateActive:
 		*s = ThreadLinkStateActive
 		return nil
@@ -11426,6 +11918,7 @@ func (s *TooManyRequestsHeaders) SetResponse(val ErrorEnvelope) {
 	s.Response = val
 }
 
+func (*TooManyRequestsHeaders) approveCoordinationRequestRes() {}
 func (*TooManyRequestsHeaders) createCapsulePreviewTicketRes() {}
 func (*TooManyRequestsHeaders) createCapsuleRes()              {}
 func (*TooManyRequestsHeaders) createProjectRes()              {}
@@ -11434,6 +11927,7 @@ func (*TooManyRequestsHeaders) createRunAttachTicketRes()      {}
 func (*TooManyRequestsHeaders) createThreadRes()               {}
 func (*TooManyRequestsHeaders) deleteCapsuleRes()              {}
 func (*TooManyRequestsHeaders) deleteSecretRes()               {}
+func (*TooManyRequestsHeaders) denyCoordinationRequestRes()    {}
 func (*TooManyRequestsHeaders) getBoardRes()                   {}
 func (*TooManyRequestsHeaders) getCapabilitiesRes()            {}
 func (*TooManyRequestsHeaders) getCapsuleRes()                 {}
@@ -11444,6 +11938,7 @@ func (*TooManyRequestsHeaders) getProjectThreadIntentRes()     {}
 func (*TooManyRequestsHeaders) getReadinessRes()               {}
 func (*TooManyRequestsHeaders) getThreadLinkRes()              {}
 func (*TooManyRequestsHeaders) listCapsulesRes()               {}
+func (*TooManyRequestsHeaders) listCoordinationRequestsRes()   {}
 func (*TooManyRequestsHeaders) listProjectsRes()               {}
 func (*TooManyRequestsHeaders) listSecretsRes()                {}
 func (*TooManyRequestsHeaders) listThreadLinksRes()            {}
@@ -11454,6 +11949,7 @@ func (*TooManyRequestsHeaders) resumeCapsuleRes()              {}
 func (*TooManyRequestsHeaders) retryCapsuleRes()               {}
 func (*TooManyRequestsHeaders) revokeCoordinationGrantRes()    {}
 func (*TooManyRequestsHeaders) sendThreadMessageRes()          {}
+func (*TooManyRequestsHeaders) updateCoordinationGrantRes()    {}
 
 // UnauthorizedHeaders wraps ErrorEnvelope with response headers.
 type UnauthorizedHeaders struct {
@@ -11482,6 +11978,220 @@ func (s *UnauthorizedHeaders) SetResponse(val ErrorEnvelope) {
 }
 
 func (*UnauthorizedHeaders) createBrowserSessionRes() {}
+
+type UpdateCoordinationGrantBadRequest ErrorEnvelope
+
+func (*UpdateCoordinationGrantBadRequest) updateCoordinationGrantRes() {}
+
+type UpdateCoordinationGrantConflict ErrorEnvelope
+
+func (*UpdateCoordinationGrantConflict) updateCoordinationGrantRes() {}
+
+type UpdateCoordinationGrantNotFound ErrorEnvelope
+
+func (*UpdateCoordinationGrantNotFound) updateCoordinationGrantRes() {}
+
+// Operator update to an active grant. Omitted fields stay unchanged. allowedHarnesses, when present,
+// replaces the allowlist and must not be empty. deadlineSeconds is remaining time from now.
+// Ref: #/components/schemas/UpdateCoordinationGrantRequest
+type UpdateCoordinationGrantRequest struct {
+	ExpectedResourceVersion int64                                          `json:"expectedResourceVersion"`
+	SpawnApproval           OptUpdateCoordinationGrantRequestSpawnApproval `json:"spawnApproval"`
+	MaxChildren             OptInt                                         `json:"maxChildren"`
+	MaxDescendants          OptInt                                         `json:"maxDescendants"`
+	MaxLiveCapsules         OptInt                                         `json:"maxLiveCapsules"`
+	MaxMessagesPerLink      OptInt                                         `json:"maxMessagesPerLink"`
+	AllowedHarnesses        []string                                       `json:"allowedHarnesses"`
+	DeadlineSeconds         OptInt                                         `json:"deadlineSeconds"`
+	OnDeadline              OptUpdateCoordinationGrantRequestOnDeadline    `json:"onDeadline"`
+	ArchiveAfterSeconds     OptInt                                         `json:"archiveAfterSeconds"`
+}
+
+// GetExpectedResourceVersion returns the value of ExpectedResourceVersion.
+func (s *UpdateCoordinationGrantRequest) GetExpectedResourceVersion() int64 {
+	return s.ExpectedResourceVersion
+}
+
+// GetSpawnApproval returns the value of SpawnApproval.
+func (s *UpdateCoordinationGrantRequest) GetSpawnApproval() OptUpdateCoordinationGrantRequestSpawnApproval {
+	return s.SpawnApproval
+}
+
+// GetMaxChildren returns the value of MaxChildren.
+func (s *UpdateCoordinationGrantRequest) GetMaxChildren() OptInt {
+	return s.MaxChildren
+}
+
+// GetMaxDescendants returns the value of MaxDescendants.
+func (s *UpdateCoordinationGrantRequest) GetMaxDescendants() OptInt {
+	return s.MaxDescendants
+}
+
+// GetMaxLiveCapsules returns the value of MaxLiveCapsules.
+func (s *UpdateCoordinationGrantRequest) GetMaxLiveCapsules() OptInt {
+	return s.MaxLiveCapsules
+}
+
+// GetMaxMessagesPerLink returns the value of MaxMessagesPerLink.
+func (s *UpdateCoordinationGrantRequest) GetMaxMessagesPerLink() OptInt {
+	return s.MaxMessagesPerLink
+}
+
+// GetAllowedHarnesses returns the value of AllowedHarnesses.
+func (s *UpdateCoordinationGrantRequest) GetAllowedHarnesses() []string {
+	return s.AllowedHarnesses
+}
+
+// GetDeadlineSeconds returns the value of DeadlineSeconds.
+func (s *UpdateCoordinationGrantRequest) GetDeadlineSeconds() OptInt {
+	return s.DeadlineSeconds
+}
+
+// GetOnDeadline returns the value of OnDeadline.
+func (s *UpdateCoordinationGrantRequest) GetOnDeadline() OptUpdateCoordinationGrantRequestOnDeadline {
+	return s.OnDeadline
+}
+
+// GetArchiveAfterSeconds returns the value of ArchiveAfterSeconds.
+func (s *UpdateCoordinationGrantRequest) GetArchiveAfterSeconds() OptInt {
+	return s.ArchiveAfterSeconds
+}
+
+// SetExpectedResourceVersion sets the value of ExpectedResourceVersion.
+func (s *UpdateCoordinationGrantRequest) SetExpectedResourceVersion(val int64) {
+	s.ExpectedResourceVersion = val
+}
+
+// SetSpawnApproval sets the value of SpawnApproval.
+func (s *UpdateCoordinationGrantRequest) SetSpawnApproval(val OptUpdateCoordinationGrantRequestSpawnApproval) {
+	s.SpawnApproval = val
+}
+
+// SetMaxChildren sets the value of MaxChildren.
+func (s *UpdateCoordinationGrantRequest) SetMaxChildren(val OptInt) {
+	s.MaxChildren = val
+}
+
+// SetMaxDescendants sets the value of MaxDescendants.
+func (s *UpdateCoordinationGrantRequest) SetMaxDescendants(val OptInt) {
+	s.MaxDescendants = val
+}
+
+// SetMaxLiveCapsules sets the value of MaxLiveCapsules.
+func (s *UpdateCoordinationGrantRequest) SetMaxLiveCapsules(val OptInt) {
+	s.MaxLiveCapsules = val
+}
+
+// SetMaxMessagesPerLink sets the value of MaxMessagesPerLink.
+func (s *UpdateCoordinationGrantRequest) SetMaxMessagesPerLink(val OptInt) {
+	s.MaxMessagesPerLink = val
+}
+
+// SetAllowedHarnesses sets the value of AllowedHarnesses.
+func (s *UpdateCoordinationGrantRequest) SetAllowedHarnesses(val []string) {
+	s.AllowedHarnesses = val
+}
+
+// SetDeadlineSeconds sets the value of DeadlineSeconds.
+func (s *UpdateCoordinationGrantRequest) SetDeadlineSeconds(val OptInt) {
+	s.DeadlineSeconds = val
+}
+
+// SetOnDeadline sets the value of OnDeadline.
+func (s *UpdateCoordinationGrantRequest) SetOnDeadline(val OptUpdateCoordinationGrantRequestOnDeadline) {
+	s.OnDeadline = val
+}
+
+// SetArchiveAfterSeconds sets the value of ArchiveAfterSeconds.
+func (s *UpdateCoordinationGrantRequest) SetArchiveAfterSeconds(val OptInt) {
+	s.ArchiveAfterSeconds = val
+}
+
+type UpdateCoordinationGrantRequestOnDeadline string
+
+const (
+	UpdateCoordinationGrantRequestOnDeadlineCancelAndPause UpdateCoordinationGrantRequestOnDeadline = "cancel_and_pause"
+	UpdateCoordinationGrantRequestOnDeadlineStopNewWork    UpdateCoordinationGrantRequestOnDeadline = "stop_new_work"
+)
+
+// AllValues returns all UpdateCoordinationGrantRequestOnDeadline values.
+func (UpdateCoordinationGrantRequestOnDeadline) AllValues() []UpdateCoordinationGrantRequestOnDeadline {
+	return []UpdateCoordinationGrantRequestOnDeadline{
+		UpdateCoordinationGrantRequestOnDeadlineCancelAndPause,
+		UpdateCoordinationGrantRequestOnDeadlineStopNewWork,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s UpdateCoordinationGrantRequestOnDeadline) MarshalText() ([]byte, error) {
+	switch s {
+	case UpdateCoordinationGrantRequestOnDeadlineCancelAndPause:
+		return []byte(s), nil
+	case UpdateCoordinationGrantRequestOnDeadlineStopNewWork:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *UpdateCoordinationGrantRequestOnDeadline) UnmarshalText(data []byte) error {
+	switch UpdateCoordinationGrantRequestOnDeadline(data) {
+	case UpdateCoordinationGrantRequestOnDeadlineCancelAndPause:
+		*s = UpdateCoordinationGrantRequestOnDeadlineCancelAndPause
+		return nil
+	case UpdateCoordinationGrantRequestOnDeadlineStopNewWork:
+		*s = UpdateCoordinationGrantRequestOnDeadlineStopNewWork
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+type UpdateCoordinationGrantRequestSpawnApproval string
+
+const (
+	UpdateCoordinationGrantRequestSpawnApprovalAuto     UpdateCoordinationGrantRequestSpawnApproval = "auto"
+	UpdateCoordinationGrantRequestSpawnApprovalOperator UpdateCoordinationGrantRequestSpawnApproval = "operator"
+)
+
+// AllValues returns all UpdateCoordinationGrantRequestSpawnApproval values.
+func (UpdateCoordinationGrantRequestSpawnApproval) AllValues() []UpdateCoordinationGrantRequestSpawnApproval {
+	return []UpdateCoordinationGrantRequestSpawnApproval{
+		UpdateCoordinationGrantRequestSpawnApprovalAuto,
+		UpdateCoordinationGrantRequestSpawnApprovalOperator,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s UpdateCoordinationGrantRequestSpawnApproval) MarshalText() ([]byte, error) {
+	switch s {
+	case UpdateCoordinationGrantRequestSpawnApprovalAuto:
+		return []byte(s), nil
+	case UpdateCoordinationGrantRequestSpawnApprovalOperator:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *UpdateCoordinationGrantRequestSpawnApproval) UnmarshalText(data []byte) error {
+	switch UpdateCoordinationGrantRequestSpawnApproval(data) {
+	case UpdateCoordinationGrantRequestSpawnApprovalAuto:
+		*s = UpdateCoordinationGrantRequestSpawnApprovalAuto
+		return nil
+	case UpdateCoordinationGrantRequestSpawnApprovalOperator:
+		*s = UpdateCoordinationGrantRequestSpawnApprovalOperator
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+type UpdateCoordinationGrantUnprocessableEntity ErrorEnvelope
+
+func (*UpdateCoordinationGrantUnprocessableEntity) updateCoordinationGrantRes() {}
 
 // Ref: #/components/schemas/WorkspaceFile
 type WorkspaceFile struct {

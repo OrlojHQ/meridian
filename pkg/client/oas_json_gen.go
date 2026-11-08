@@ -126,6 +126,158 @@ func (s *APIError) UnmarshalJSON(data []byte) error {
 	return s.Decode(d)
 }
 
+// Encode encodes ApproveCoordinationRequestBadRequest as json.
+func (s *ApproveCoordinationRequestBadRequest) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes ApproveCoordinationRequestBadRequest from json.
+func (s *ApproveCoordinationRequestBadRequest) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode ApproveCoordinationRequestBadRequest to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = ApproveCoordinationRequestBadRequest(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *ApproveCoordinationRequestBadRequest) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *ApproveCoordinationRequestBadRequest) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes ApproveCoordinationRequestConflict as json.
+func (s *ApproveCoordinationRequestConflict) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes ApproveCoordinationRequestConflict from json.
+func (s *ApproveCoordinationRequestConflict) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode ApproveCoordinationRequestConflict to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = ApproveCoordinationRequestConflict(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *ApproveCoordinationRequestConflict) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *ApproveCoordinationRequestConflict) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes ApproveCoordinationRequestNotFound as json.
+func (s *ApproveCoordinationRequestNotFound) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes ApproveCoordinationRequestNotFound from json.
+func (s *ApproveCoordinationRequestNotFound) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode ApproveCoordinationRequestNotFound to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = ApproveCoordinationRequestNotFound(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *ApproveCoordinationRequestNotFound) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *ApproveCoordinationRequestNotFound) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes ApproveCoordinationRequestUnprocessableEntity as json.
+func (s *ApproveCoordinationRequestUnprocessableEntity) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes ApproveCoordinationRequestUnprocessableEntity from json.
+func (s *ApproveCoordinationRequestUnprocessableEntity) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode ApproveCoordinationRequestUnprocessableEntity to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = ApproveCoordinationRequestUnprocessableEntity(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *ApproveCoordinationRequestUnprocessableEntity) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *ApproveCoordinationRequestUnprocessableEntity) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
 // Encode encodes ArchiveThreadConflict as json.
 func (s *ArchiveThreadConflict) Encode(e *jx.Encoder) {
 	unwrapped := (*ErrorEnvelope)(s)
@@ -600,6 +752,8 @@ func (s *BoardItemNeedsYou) Decode(d *jx.Decoder) error {
 		*s = BoardItemNeedsYouInput
 	case BoardItemNeedsYouFailed:
 		*s = BoardItemNeedsYouFailed
+	case BoardItemNeedsYouSpawnApproval:
+		*s = BoardItemNeedsYouSpawnApproval
 	default:
 		*s = BoardItemNeedsYou(v)
 	}
@@ -3218,6 +3372,8 @@ func (s *CoordinationGrantSpawnApproval) Decode(d *jx.Decoder) error {
 	switch CoordinationGrantSpawnApproval(v) {
 	case CoordinationGrantSpawnApprovalAuto:
 		*s = CoordinationGrantSpawnApprovalAuto
+	case CoordinationGrantSpawnApprovalOperator:
+		*s = CoordinationGrantSpawnApprovalOperator
 	default:
 		*s = CoordinationGrantSpawnApproval(v)
 	}
@@ -3568,6 +3724,8 @@ func (s *CoordinationPolicySpawnApproval) Decode(d *jx.Decoder) error {
 	switch CoordinationPolicySpawnApproval(v) {
 	case CoordinationPolicySpawnApprovalAuto:
 		*s = CoordinationPolicySpawnApprovalAuto
+	case CoordinationPolicySpawnApprovalOperator:
+		*s = CoordinationPolicySpawnApprovalOperator
 	default:
 		*s = CoordinationPolicySpawnApproval(v)
 	}
@@ -3584,6 +3742,442 @@ func (s CoordinationPolicySpawnApproval) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
 func (s *CoordinationPolicySpawnApproval) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s *CoordinationRequest) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *CoordinationRequest) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("id")
+		e.Str(s.ID)
+	}
+	{
+		e.FieldStart("grantId")
+		e.Str(s.GrantId)
+	}
+	{
+		e.FieldStart("capsuleId")
+		e.Str(s.CapsuleId)
+	}
+	{
+		e.FieldStart("key")
+		e.Str(s.Key)
+	}
+	{
+		e.FieldStart("kind")
+		s.Kind.Encode(e)
+	}
+	{
+		e.FieldStart("linkId")
+		e.Str(s.LinkId)
+	}
+	{
+		e.FieldStart("state")
+		s.State.Encode(e)
+	}
+	{
+		e.FieldStart("createdAt")
+		json.EncodeDateTime(e, s.CreatedAt)
+	}
+	{
+		e.FieldStart("updatedAt")
+		json.EncodeDateTime(e, s.UpdatedAt)
+	}
+	{
+		e.FieldStart("resourceVersion")
+		e.Int64(s.ResourceVersion)
+	}
+}
+
+var jsonFieldsNameOfCoordinationRequest = [10]string{
+	0: "id",
+	1: "grantId",
+	2: "capsuleId",
+	3: "key",
+	4: "kind",
+	5: "linkId",
+	6: "state",
+	7: "createdAt",
+	8: "updatedAt",
+	9: "resourceVersion",
+}
+
+// Decode decodes CoordinationRequest from json.
+func (s *CoordinationRequest) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode CoordinationRequest to nil")
+	}
+	var requiredBitSet [2]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "id":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				v, err := d.Str()
+				s.ID = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"id\"")
+			}
+		case "grantId":
+			requiredBitSet[0] |= 1 << 1
+			if err := func() error {
+				v, err := d.Str()
+				s.GrantId = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"grantId\"")
+			}
+		case "capsuleId":
+			requiredBitSet[0] |= 1 << 2
+			if err := func() error {
+				v, err := d.Str()
+				s.CapsuleId = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"capsuleId\"")
+			}
+		case "key":
+			requiredBitSet[0] |= 1 << 3
+			if err := func() error {
+				v, err := d.Str()
+				s.Key = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"key\"")
+			}
+		case "kind":
+			requiredBitSet[0] |= 1 << 4
+			if err := func() error {
+				if err := s.Kind.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"kind\"")
+			}
+		case "linkId":
+			requiredBitSet[0] |= 1 << 5
+			if err := func() error {
+				v, err := d.Str()
+				s.LinkId = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"linkId\"")
+			}
+		case "state":
+			requiredBitSet[0] |= 1 << 6
+			if err := func() error {
+				if err := s.State.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"state\"")
+			}
+		case "createdAt":
+			requiredBitSet[0] |= 1 << 7
+			if err := func() error {
+				v, err := json.DecodeDateTime(d)
+				s.CreatedAt = v
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"createdAt\"")
+			}
+		case "updatedAt":
+			requiredBitSet[1] |= 1 << 0
+			if err := func() error {
+				v, err := json.DecodeDateTime(d)
+				s.UpdatedAt = v
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"updatedAt\"")
+			}
+		case "resourceVersion":
+			requiredBitSet[1] |= 1 << 1
+			if err := func() error {
+				v, err := d.Int64()
+				s.ResourceVersion = int64(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"resourceVersion\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode CoordinationRequest")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [2]uint8{
+		0b11111111,
+		0b00000011,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfCoordinationRequest) {
+					name = jsonFieldsNameOfCoordinationRequest[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *CoordinationRequest) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *CoordinationRequest) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes CoordinationRequestKind as json.
+func (s CoordinationRequestKind) Encode(e *jx.Encoder) {
+	e.Str(string(s))
+}
+
+// Decode decodes CoordinationRequestKind from json.
+func (s *CoordinationRequestKind) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode CoordinationRequestKind to nil")
+	}
+	v, err := d.StrBytes()
+	if err != nil {
+		return err
+	}
+	// Try to use constant string.
+	switch CoordinationRequestKind(v) {
+	case CoordinationRequestKindSpawn:
+		*s = CoordinationRequestKindSpawn
+	case CoordinationRequestKindSend:
+		*s = CoordinationRequestKindSend
+	case CoordinationRequestKindCancel:
+		*s = CoordinationRequestKindCancel
+	default:
+		*s = CoordinationRequestKind(v)
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s CoordinationRequestKind) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *CoordinationRequestKind) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s *CoordinationRequestPage) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *CoordinationRequestPage) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("items")
+		e.ArrStart()
+		for _, elem := range s.Items {
+			elem.Encode(e)
+		}
+		e.ArrEnd()
+	}
+}
+
+var jsonFieldsNameOfCoordinationRequestPage = [1]string{
+	0: "items",
+}
+
+// Decode decodes CoordinationRequestPage from json.
+func (s *CoordinationRequestPage) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode CoordinationRequestPage to nil")
+	}
+	var requiredBitSet [1]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "items":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				s.Items = make([]CoordinationRequest, 0)
+				if err := d.Arr(func(d *jx.Decoder) error {
+					var elem CoordinationRequest
+					if err := elem.Decode(d); err != nil {
+						return err
+					}
+					s.Items = append(s.Items, elem)
+					return nil
+				}); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"items\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode CoordinationRequestPage")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [1]uint8{
+		0b00000001,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfCoordinationRequestPage) {
+					name = jsonFieldsNameOfCoordinationRequestPage[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *CoordinationRequestPage) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *CoordinationRequestPage) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes CoordinationRequestState as json.
+func (s CoordinationRequestState) Encode(e *jx.Encoder) {
+	e.Str(string(s))
+}
+
+// Decode decodes CoordinationRequestState from json.
+func (s *CoordinationRequestState) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode CoordinationRequestState to nil")
+	}
+	v, err := d.StrBytes()
+	if err != nil {
+		return err
+	}
+	// Try to use constant string.
+	switch CoordinationRequestState(v) {
+	case CoordinationRequestStatePendingApproval:
+		*s = CoordinationRequestStatePendingApproval
+	case CoordinationRequestStateCompleted:
+		*s = CoordinationRequestStateCompleted
+	case CoordinationRequestStateRejected:
+		*s = CoordinationRequestStateRejected
+	default:
+		*s = CoordinationRequestState(v)
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s CoordinationRequestState) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *CoordinationRequestState) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }
@@ -5689,6 +6283,102 @@ func (s *CreateThreadUnprocessableEntity) UnmarshalJSON(data []byte) error {
 	return s.Decode(d)
 }
 
+// Encode implements json.Marshaler.
+func (s *DecideCoordinationRequest) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *DecideCoordinationRequest) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("expectedResourceVersion")
+		e.Int64(s.ExpectedResourceVersion)
+	}
+}
+
+var jsonFieldsNameOfDecideCoordinationRequest = [1]string{
+	0: "expectedResourceVersion",
+}
+
+// Decode decodes DecideCoordinationRequest from json.
+func (s *DecideCoordinationRequest) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode DecideCoordinationRequest to nil")
+	}
+	var requiredBitSet [1]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "expectedResourceVersion":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				v, err := d.Int64()
+				s.ExpectedResourceVersion = int64(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"expectedResourceVersion\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode DecideCoordinationRequest")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [1]uint8{
+		0b00000001,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfDecideCoordinationRequest) {
+					name = jsonFieldsNameOfDecideCoordinationRequest[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *DecideCoordinationRequest) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *DecideCoordinationRequest) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
 // Encode encodes DeleteCapsuleBadRequest as json.
 func (s *DeleteCapsuleBadRequest) Encode(e *jx.Encoder) {
 	unwrapped := (*ErrorEnvelope)(s)
@@ -7366,6 +8056,158 @@ func (s DeliverySummaryAction) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
 func (s *DeliverySummaryAction) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes DenyCoordinationRequestBadRequest as json.
+func (s *DenyCoordinationRequestBadRequest) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes DenyCoordinationRequestBadRequest from json.
+func (s *DenyCoordinationRequestBadRequest) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode DenyCoordinationRequestBadRequest to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = DenyCoordinationRequestBadRequest(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *DenyCoordinationRequestBadRequest) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *DenyCoordinationRequestBadRequest) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes DenyCoordinationRequestConflict as json.
+func (s *DenyCoordinationRequestConflict) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes DenyCoordinationRequestConflict from json.
+func (s *DenyCoordinationRequestConflict) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode DenyCoordinationRequestConflict to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = DenyCoordinationRequestConflict(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *DenyCoordinationRequestConflict) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *DenyCoordinationRequestConflict) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes DenyCoordinationRequestNotFound as json.
+func (s *DenyCoordinationRequestNotFound) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes DenyCoordinationRequestNotFound from json.
+func (s *DenyCoordinationRequestNotFound) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode DenyCoordinationRequestNotFound to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = DenyCoordinationRequestNotFound(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *DenyCoordinationRequestNotFound) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *DenyCoordinationRequestNotFound) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes DenyCoordinationRequestUnprocessableEntity as json.
+func (s *DenyCoordinationRequestUnprocessableEntity) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes DenyCoordinationRequestUnprocessableEntity from json.
+func (s *DenyCoordinationRequestUnprocessableEntity) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode DenyCoordinationRequestUnprocessableEntity to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = DenyCoordinationRequestUnprocessableEntity(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *DenyCoordinationRequestUnprocessableEntity) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *DenyCoordinationRequestUnprocessableEntity) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }
@@ -13164,6 +14006,72 @@ func (s OptURI) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
 func (s *OptURI) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes UpdateCoordinationGrantRequestOnDeadline as json.
+func (o OptUpdateCoordinationGrantRequestOnDeadline) Encode(e *jx.Encoder) {
+	if !o.Set {
+		return
+	}
+	e.Str(string(o.Value))
+}
+
+// Decode decodes UpdateCoordinationGrantRequestOnDeadline from json.
+func (o *OptUpdateCoordinationGrantRequestOnDeadline) Decode(d *jx.Decoder) error {
+	if o == nil {
+		return errors.New("invalid: unable to decode OptUpdateCoordinationGrantRequestOnDeadline to nil")
+	}
+	o.Set = true
+	if err := o.Value.Decode(d); err != nil {
+		return err
+	}
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s OptUpdateCoordinationGrantRequestOnDeadline) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *OptUpdateCoordinationGrantRequestOnDeadline) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes UpdateCoordinationGrantRequestSpawnApproval as json.
+func (o OptUpdateCoordinationGrantRequestSpawnApproval) Encode(e *jx.Encoder) {
+	if !o.Set {
+		return
+	}
+	e.Str(string(o.Value))
+}
+
+// Decode decodes UpdateCoordinationGrantRequestSpawnApproval from json.
+func (o *OptUpdateCoordinationGrantRequestSpawnApproval) Decode(d *jx.Decoder) error {
+	if o == nil {
+		return errors.New("invalid: unable to decode OptUpdateCoordinationGrantRequestSpawnApproval to nil")
+	}
+	o.Set = true
+	if err := o.Value.Decode(d); err != nil {
+		return err
+	}
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s OptUpdateCoordinationGrantRequestSpawnApproval) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *OptUpdateCoordinationGrantRequestSpawnApproval) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }
@@ -22685,6 +23593,8 @@ func (s *ThreadLinkCloseReason) Decode(d *jx.Decoder) error {
 		*s = ThreadLinkCloseReasonEnded
 	case ThreadLinkCloseReasonRevoked:
 		*s = ThreadLinkCloseReasonRevoked
+	case ThreadLinkCloseReasonDenied:
+		*s = ThreadLinkCloseReasonDenied
 	case ThreadLinkCloseReasonDetached:
 		*s = ThreadLinkCloseReasonDetached
 	default:
@@ -22731,6 +23641,8 @@ func (s *ThreadLinkLastReportReason) Decode(d *jx.Decoder) error {
 		*s = ThreadLinkLastReportReasonSessionEnded
 	case ThreadLinkLastReportReasonRevoked:
 		*s = ThreadLinkLastReportReasonRevoked
+	case ThreadLinkLastReportReasonDenied:
+		*s = ThreadLinkLastReportReasonDenied
 	default:
 		*s = ThreadLinkLastReportReason(v)
 	}
@@ -22961,6 +23873,8 @@ func (s *ThreadLinkState) Decode(d *jx.Decoder) error {
 	}
 	// Try to use constant string.
 	switch ThreadLinkState(v) {
+	case ThreadLinkStatePendingApproval:
+		*s = ThreadLinkStatePendingApproval
 	case ThreadLinkStateActive:
 		*s = ThreadLinkStateActive
 	case ThreadLinkStateClosed:
@@ -24327,6 +25241,501 @@ func (s *TimelineView) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
 func (s *TimelineView) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes UpdateCoordinationGrantBadRequest as json.
+func (s *UpdateCoordinationGrantBadRequest) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes UpdateCoordinationGrantBadRequest from json.
+func (s *UpdateCoordinationGrantBadRequest) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode UpdateCoordinationGrantBadRequest to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = UpdateCoordinationGrantBadRequest(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *UpdateCoordinationGrantBadRequest) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *UpdateCoordinationGrantBadRequest) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes UpdateCoordinationGrantConflict as json.
+func (s *UpdateCoordinationGrantConflict) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes UpdateCoordinationGrantConflict from json.
+func (s *UpdateCoordinationGrantConflict) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode UpdateCoordinationGrantConflict to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = UpdateCoordinationGrantConflict(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *UpdateCoordinationGrantConflict) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *UpdateCoordinationGrantConflict) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes UpdateCoordinationGrantNotFound as json.
+func (s *UpdateCoordinationGrantNotFound) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes UpdateCoordinationGrantNotFound from json.
+func (s *UpdateCoordinationGrantNotFound) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode UpdateCoordinationGrantNotFound to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = UpdateCoordinationGrantNotFound(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *UpdateCoordinationGrantNotFound) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *UpdateCoordinationGrantNotFound) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s *UpdateCoordinationGrantRequest) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *UpdateCoordinationGrantRequest) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("expectedResourceVersion")
+		e.Int64(s.ExpectedResourceVersion)
+	}
+	{
+		if s.SpawnApproval.Set {
+			e.FieldStart("spawnApproval")
+			s.SpawnApproval.Encode(e)
+		}
+	}
+	{
+		if s.MaxChildren.Set {
+			e.FieldStart("maxChildren")
+			s.MaxChildren.Encode(e)
+		}
+	}
+	{
+		if s.MaxDescendants.Set {
+			e.FieldStart("maxDescendants")
+			s.MaxDescendants.Encode(e)
+		}
+	}
+	{
+		if s.MaxLiveCapsules.Set {
+			e.FieldStart("maxLiveCapsules")
+			s.MaxLiveCapsules.Encode(e)
+		}
+	}
+	{
+		if s.MaxMessagesPerLink.Set {
+			e.FieldStart("maxMessagesPerLink")
+			s.MaxMessagesPerLink.Encode(e)
+		}
+	}
+	{
+		if s.AllowedHarnesses != nil {
+			e.FieldStart("allowedHarnesses")
+			e.ArrStart()
+			for _, elem := range s.AllowedHarnesses {
+				e.Str(elem)
+			}
+			e.ArrEnd()
+		}
+	}
+	{
+		if s.DeadlineSeconds.Set {
+			e.FieldStart("deadlineSeconds")
+			s.DeadlineSeconds.Encode(e)
+		}
+	}
+	{
+		if s.OnDeadline.Set {
+			e.FieldStart("onDeadline")
+			s.OnDeadline.Encode(e)
+		}
+	}
+	{
+		if s.ArchiveAfterSeconds.Set {
+			e.FieldStart("archiveAfterSeconds")
+			s.ArchiveAfterSeconds.Encode(e)
+		}
+	}
+}
+
+var jsonFieldsNameOfUpdateCoordinationGrantRequest = [10]string{
+	0: "expectedResourceVersion",
+	1: "spawnApproval",
+	2: "maxChildren",
+	3: "maxDescendants",
+	4: "maxLiveCapsules",
+	5: "maxMessagesPerLink",
+	6: "allowedHarnesses",
+	7: "deadlineSeconds",
+	8: "onDeadline",
+	9: "archiveAfterSeconds",
+}
+
+// Decode decodes UpdateCoordinationGrantRequest from json.
+func (s *UpdateCoordinationGrantRequest) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode UpdateCoordinationGrantRequest to nil")
+	}
+	var requiredBitSet [2]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "expectedResourceVersion":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				v, err := d.Int64()
+				s.ExpectedResourceVersion = int64(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"expectedResourceVersion\"")
+			}
+		case "spawnApproval":
+			if err := func() error {
+				s.SpawnApproval.Reset()
+				if err := s.SpawnApproval.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"spawnApproval\"")
+			}
+		case "maxChildren":
+			if err := func() error {
+				s.MaxChildren.Reset()
+				if err := s.MaxChildren.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"maxChildren\"")
+			}
+		case "maxDescendants":
+			if err := func() error {
+				s.MaxDescendants.Reset()
+				if err := s.MaxDescendants.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"maxDescendants\"")
+			}
+		case "maxLiveCapsules":
+			if err := func() error {
+				s.MaxLiveCapsules.Reset()
+				if err := s.MaxLiveCapsules.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"maxLiveCapsules\"")
+			}
+		case "maxMessagesPerLink":
+			if err := func() error {
+				s.MaxMessagesPerLink.Reset()
+				if err := s.MaxMessagesPerLink.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"maxMessagesPerLink\"")
+			}
+		case "allowedHarnesses":
+			if err := func() error {
+				s.AllowedHarnesses = make([]string, 0)
+				if err := d.Arr(func(d *jx.Decoder) error {
+					var elem string
+					v, err := d.Str()
+					elem = string(v)
+					if err != nil {
+						return err
+					}
+					s.AllowedHarnesses = append(s.AllowedHarnesses, elem)
+					return nil
+				}); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"allowedHarnesses\"")
+			}
+		case "deadlineSeconds":
+			if err := func() error {
+				s.DeadlineSeconds.Reset()
+				if err := s.DeadlineSeconds.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"deadlineSeconds\"")
+			}
+		case "onDeadline":
+			if err := func() error {
+				s.OnDeadline.Reset()
+				if err := s.OnDeadline.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"onDeadline\"")
+			}
+		case "archiveAfterSeconds":
+			if err := func() error {
+				s.ArchiveAfterSeconds.Reset()
+				if err := s.ArchiveAfterSeconds.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"archiveAfterSeconds\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode UpdateCoordinationGrantRequest")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [2]uint8{
+		0b00000001,
+		0b00000000,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfUpdateCoordinationGrantRequest) {
+					name = jsonFieldsNameOfUpdateCoordinationGrantRequest[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *UpdateCoordinationGrantRequest) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *UpdateCoordinationGrantRequest) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes UpdateCoordinationGrantRequestOnDeadline as json.
+func (s UpdateCoordinationGrantRequestOnDeadline) Encode(e *jx.Encoder) {
+	e.Str(string(s))
+}
+
+// Decode decodes UpdateCoordinationGrantRequestOnDeadline from json.
+func (s *UpdateCoordinationGrantRequestOnDeadline) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode UpdateCoordinationGrantRequestOnDeadline to nil")
+	}
+	v, err := d.StrBytes()
+	if err != nil {
+		return err
+	}
+	// Try to use constant string.
+	switch UpdateCoordinationGrantRequestOnDeadline(v) {
+	case UpdateCoordinationGrantRequestOnDeadlineCancelAndPause:
+		*s = UpdateCoordinationGrantRequestOnDeadlineCancelAndPause
+	case UpdateCoordinationGrantRequestOnDeadlineStopNewWork:
+		*s = UpdateCoordinationGrantRequestOnDeadlineStopNewWork
+	default:
+		*s = UpdateCoordinationGrantRequestOnDeadline(v)
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s UpdateCoordinationGrantRequestOnDeadline) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *UpdateCoordinationGrantRequestOnDeadline) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes UpdateCoordinationGrantRequestSpawnApproval as json.
+func (s UpdateCoordinationGrantRequestSpawnApproval) Encode(e *jx.Encoder) {
+	e.Str(string(s))
+}
+
+// Decode decodes UpdateCoordinationGrantRequestSpawnApproval from json.
+func (s *UpdateCoordinationGrantRequestSpawnApproval) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode UpdateCoordinationGrantRequestSpawnApproval to nil")
+	}
+	v, err := d.StrBytes()
+	if err != nil {
+		return err
+	}
+	// Try to use constant string.
+	switch UpdateCoordinationGrantRequestSpawnApproval(v) {
+	case UpdateCoordinationGrantRequestSpawnApprovalAuto:
+		*s = UpdateCoordinationGrantRequestSpawnApprovalAuto
+	case UpdateCoordinationGrantRequestSpawnApprovalOperator:
+		*s = UpdateCoordinationGrantRequestSpawnApprovalOperator
+	default:
+		*s = UpdateCoordinationGrantRequestSpawnApproval(v)
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s UpdateCoordinationGrantRequestSpawnApproval) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *UpdateCoordinationGrantRequestSpawnApproval) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes UpdateCoordinationGrantUnprocessableEntity as json.
+func (s *UpdateCoordinationGrantUnprocessableEntity) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes UpdateCoordinationGrantUnprocessableEntity from json.
+func (s *UpdateCoordinationGrantUnprocessableEntity) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode UpdateCoordinationGrantUnprocessableEntity to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = UpdateCoordinationGrantUnprocessableEntity(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *UpdateCoordinationGrantUnprocessableEntity) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *UpdateCoordinationGrantUnprocessableEntity) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }

@@ -178,8 +178,28 @@ func TestCoordinationRoutes(t *testing.T) {
 	grant := grantResult.(*client.CoordinationGrantHeaders).Response
 	if grant.State != client.CoordinationGrantStateActive || grant.MaxChildren != 3 ||
 		grant.RootThreadId != thread.ID || grant.DeadlineAt.Sub(grant.CreatedAt) != time.Hour ||
-		grant.ArchiveAfterSeconds != 120 {
+		grant.ArchiveAfterSeconds != 120 || grant.SpawnApproval != client.CoordinationGrantSpawnApprovalAuto {
 		t.Fatalf("grant = %#v", grant)
+	}
+	patched, err := api.UpdateCoordinationGrant(ctx, &client.UpdateCoordinationGrantRequest{
+		ExpectedResourceVersion: grant.ResourceVersion,
+		SpawnApproval: client.NewOptUpdateCoordinationGrantRequestSpawnApproval(
+			client.UpdateCoordinationGrantRequestSpawnApprovalOperator),
+		MaxChildren: client.NewOptInt(5),
+	}, client.UpdateCoordinationGrantParams{GrantId: grantID, IdempotencyKey: "grant-patch"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	grant = patched.(*client.CoordinationGrantHeaders).Response
+	if grant.SpawnApproval != client.CoordinationGrantSpawnApprovalOperator || grant.MaxChildren != 5 {
+		t.Fatalf("patched grant = %#v", grant)
+	}
+	listed, err := api.ListCoordinationRequests(ctx, client.ListCoordinationRequestsParams{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page, ok := listed.(*client.CoordinationRequestPage); !ok || len(page.Items) != 0 {
+		t.Fatalf("pending requests = %#v, %v", listed, err)
 	}
 	leadCapsule, err := service.GetCapsule(ctx, domain.CapsuleID(intent.CapsuleId))
 	if err != nil {

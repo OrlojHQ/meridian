@@ -333,15 +333,21 @@ configures it for a lead, and again once the grant ends.
 
 Authority is the intersection of the grant, the Project policy, the
 requester's links, and the grant's remaining counters. A grant is created only
-by an operator API call together with its lead Thread, cannot be widened, and
-bounds harnesses (a subset of the Project's structured allowlist), depth (1),
-fan-out, total and live subagent Capsules, messages per link, and an absolute
-deadline. A request can never name an image, Project, secret, provider
+by an operator API call together with its lead Thread. The operator may later
+loosen or tighten its limits, including `spawnApproval`. Capsules cannot
+change a grant. It bounds harnesses (a subset of the Project's structured
+allowlist), depth (1), fan-out, total and live subagent Capsules, messages per
+link, an absolute deadline, and whether each spawn needs a further operator
+click. A request can never name an image, Project, secret, provider
 connection, or Capsule; address a Thread or link it did not create; approve a
 spawn, permission, or Delivery; change a grant; start a native Run, PTY,
 preview, sync, or browse session; act while its lead is paused, not Ready, in
 maintenance, or revoked; or start new work after the deadline. Subagents
-receive no coordination authority.
+receive no coordination authority. When `spawnApproval` is `operator`, an
+accepted spawn stays `pending_approval` with its prompt encrypted under the
+child Thread key and is not provisioned until the operator approves it; deny
+closes the link without deleting the Capsule. Pending and denied children do
+not hold compute. Switching a grant to `auto` does not start queued spawns.
 
 The protocol is closed and versioned; records are bounded (256 KiB, prompts
 128 KiB), unknown fields are rejected, and the mailbox bounds pending
@@ -378,7 +384,7 @@ never sends a prompt, deletes a workspace or transcript, or resumes a stopped
 Capsule, and it skips subagents that need the operator, failed, are working,
 have a delivery in flight, or were promoted, so a lead cannot use it to hide a
 pending permission request or a failure. Archiving is an operator-set grant
-limit fixed at spawn. The link is marked before the session is cancelled so
+limit. The link is marked before the session is cancelled so
 the cancellation is not reported to the lead, and an archived subagent refuses
 the lead's messages until the operator resumes it. Promotion is an operator
 API call only; a Capsule cannot promote itself or a sibling. A promoted
@@ -388,6 +394,14 @@ the point of taking it over. Detaching closes the link for good, so the lead
 can no longer message it or hear from it, and the Capsule then counts only
 toward installation limits. Store triggers keep promotion permanent and refuse
 a detach without promotion.
+
+Operator spawn approval and grant updates add no Capsule authority. Approve
+and deny are installation-bearer operator APIs; a Capsule cannot approve its
+own spawn. Grant PATCH is the same principal as grant create. Tightening a
+limit does not cancel work already started; loosening does not start queued
+spawns. Denied children stay on disk until the operator deletes them and still
+count toward descendants, so a lead cannot free budget by issuing and
+withdrawing hostile names.
 
 ### Supply-chain and setup execution
 

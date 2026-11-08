@@ -29,6 +29,13 @@ func trimTrailingSlashes(u *url.URL) {
 
 // Invoker invokes operations described by OpenAPI v3 specification.
 type Invoker interface {
+	// ApproveCoordinationRequest invokes approveCoordinationRequest operation.
+	//
+	// Starts a subagent the lead spawned under spawnApproval=operator. The child Capsule is not
+	// provisioned until this call. Denied or completed requests cannot be approved.
+	//
+	// POST /coordination-requests/{requestId}/approve
+	ApproveCoordinationRequest(ctx context.Context, request *DecideCoordinationRequest, params ApproveCoordinationRequestParams) (ApproveCoordinationRequestRes, error)
 	// ArchiveThread invokes archiveThread operation.
 	//
 	// Archive a Thread history.
@@ -147,6 +154,13 @@ type Invoker interface {
 	//
 	// POST /threads/{threadId}/delete
 	DeleteThread(ctx context.Context, request *DeleteThreadRequest, params DeleteThreadParams) (DeleteThreadRes, error)
+	// DenyCoordinationRequest invokes denyCoordinationRequest operation.
+	//
+	// Refuses a subagent the lead spawned under spawnApproval=operator. The child Capsule is not deleted
+	// and still counts toward the grant's descendantsCreated.
+	//
+	// POST /coordination-requests/{requestId}/deny
+	DenyCoordinationRequest(ctx context.Context, request *DecideCoordinationRequest, params DenyCoordinationRequestParams) (DenyCoordinationRequestRes, error)
 	// ExportCapsuleWorkspace invokes exportCapsuleWorkspace operation.
 	//
 	// Uses installation authentication in the Authorization header. The archive is never addressed by a
@@ -320,6 +334,13 @@ type Invoker interface {
 	//
 	// GET /projects/{projectId}/capsules
 	ListCapsules(ctx context.Context, params ListCapsulesParams) (ListCapsulesRes, error)
+	// ListCoordinationRequests invokes listCoordinationRequests operation.
+	//
+	// The operator queue for spawn approvals. Prompts are not included; they stay in the child Thread's
+	// encrypted intent.
+	//
+	// GET /coordination-requests
+	ListCoordinationRequests(ctx context.Context, params ListCoordinationRequestsParams) (ListCoordinationRequestsRes, error)
 	// ListHarnessProfiles invokes listHarnessProfiles operation.
 	//
 	// Provider-independent discovery. A false structured value identifies PTY/native fallback; clients
@@ -534,6 +555,15 @@ type Invoker interface {
 	//
 	// GET /threads/{threadId}/blocks/stream
 	StreamThreadBlocks(ctx context.Context, params StreamThreadBlocksParams) (StreamThreadBlocksRes, error)
+	// UpdateCoordinationGrant invokes updateCoordinationGrant operation.
+	//
+	// Changes spawn approval, limits, harnesses, deadline, deadline action, or archiveAfter on an active
+	// grant. The operator may loosen or tighten limits. Switching spawnApproval to auto does not start
+	// spawns already waiting for approval. Deadline is remaining time from now, between 5 minutes and 72
+	// hours, and cannot pass createdAt+72h.
+	//
+	// PATCH /coordination-grants/{grantId}
+	UpdateCoordinationGrant(ctx context.Context, request *UpdateCoordinationGrantRequest, params UpdateCoordinationGrantParams) (UpdateCoordinationGrantRes, error)
 	// UpdateProjectEnvironment invokes updateProjectEnvironment operation.
 	//
 	// Configure preparation or rebuild on next launch.
@@ -587,6 +617,156 @@ func (c *Client) requestURL(ctx context.Context) *url.URL {
 		return c.serverURL
 	}
 	return u
+}
+
+// ApproveCoordinationRequest invokes approveCoordinationRequest operation.
+//
+// Starts a subagent the lead spawned under spawnApproval=operator. The child Capsule is not
+// provisioned until this call. Denied or completed requests cannot be approved.
+//
+// POST /coordination-requests/{requestId}/approve
+func (c *Client) ApproveCoordinationRequest(ctx context.Context, request *DecideCoordinationRequest, params ApproveCoordinationRequestParams) (ApproveCoordinationRequestRes, error) {
+	res, err := c.sendApproveCoordinationRequest(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendApproveCoordinationRequest(ctx context.Context, request *DecideCoordinationRequest, params ApproveCoordinationRequestParams) (res ApproveCoordinationRequestRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("approveCoordinationRequest"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/coordination-requests/{requestId}/approve"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, ApproveCoordinationRequestOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/coordination-requests/"
+	{
+		// Encode "requestId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "requestId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.RequestId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/approve"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeApproveCoordinationRequestRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "EncodeHeaderParams"
+	h := uri.NewHeaderEncoder(r.Header)
+	{
+		cfg := uri.HeaderParameterEncodingConfig{
+			Name:    "Idempotency-Key",
+			Explode: false,
+		}
+		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.IdempotencyKey))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode header")
+		}
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, ApproveCoordinationRequestOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeApproveCoordinationRequestResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
 }
 
 // ArchiveThread invokes archiveThread operation.
@@ -3159,6 +3339,156 @@ func (c *Client) sendDeleteThread(ctx context.Context, request *DeleteThreadRequ
 
 	stage = "DecodeResponse"
 	result, err := decodeDeleteThreadResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// DenyCoordinationRequest invokes denyCoordinationRequest operation.
+//
+// Refuses a subagent the lead spawned under spawnApproval=operator. The child Capsule is not deleted
+// and still counts toward the grant's descendantsCreated.
+//
+// POST /coordination-requests/{requestId}/deny
+func (c *Client) DenyCoordinationRequest(ctx context.Context, request *DecideCoordinationRequest, params DenyCoordinationRequestParams) (DenyCoordinationRequestRes, error) {
+	res, err := c.sendDenyCoordinationRequest(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendDenyCoordinationRequest(ctx context.Context, request *DecideCoordinationRequest, params DenyCoordinationRequestParams) (res DenyCoordinationRequestRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("denyCoordinationRequest"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/coordination-requests/{requestId}/deny"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, DenyCoordinationRequestOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/coordination-requests/"
+	{
+		// Encode "requestId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "requestId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.RequestId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/deny"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeDenyCoordinationRequestRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "EncodeHeaderParams"
+	h := uri.NewHeaderEncoder(r.Header)
+	{
+		cfg := uri.HeaderParameterEncodingConfig{
+			Name:    "Idempotency-Key",
+			Explode: false,
+		}
+		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.IdempotencyKey))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode header")
+		}
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, DenyCoordinationRequestOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeDenyCoordinationRequestResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -6952,6 +7282,141 @@ func (c *Client) sendListCapsules(ctx context.Context, params ListCapsulesParams
 
 	stage = "DecodeResponse"
 	result, err := decodeListCapsulesResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// ListCoordinationRequests invokes listCoordinationRequests operation.
+//
+// The operator queue for spawn approvals. Prompts are not included; they stay in the child Thread's
+// encrypted intent.
+//
+// GET /coordination-requests
+func (c *Client) ListCoordinationRequests(ctx context.Context, params ListCoordinationRequestsParams) (ListCoordinationRequestsRes, error) {
+	res, err := c.sendListCoordinationRequests(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendListCoordinationRequests(ctx context.Context, params ListCoordinationRequestsParams) (res ListCoordinationRequestsRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("listCoordinationRequests"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/coordination-requests"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, ListCoordinationRequestsOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/coordination-requests"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeQueryParams"
+	q := uri.NewQueryEncoder()
+	{
+		// Encode "state" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "state",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.State.Get(); ok {
+				return e.EncodeValue(conv.StringToString(string(val)))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	u.RawQuery = q.Values().Encode()
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, ListCoordinationRequestsOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeListCoordinationRequestsResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -11871,6 +12336,157 @@ func (c *Client) sendStreamThreadBlocks(ctx context.Context, params StreamThread
 
 	stage = "DecodeResponse"
 	result, err := decodeStreamThreadBlocksResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// UpdateCoordinationGrant invokes updateCoordinationGrant operation.
+//
+// Changes spawn approval, limits, harnesses, deadline, deadline action, or archiveAfter on an active
+// grant. The operator may loosen or tighten limits. Switching spawnApproval to auto does not start
+// spawns already waiting for approval. Deadline is remaining time from now, between 5 minutes and 72
+// hours, and cannot pass createdAt+72h.
+//
+// PATCH /coordination-grants/{grantId}
+func (c *Client) UpdateCoordinationGrant(ctx context.Context, request *UpdateCoordinationGrantRequest, params UpdateCoordinationGrantParams) (UpdateCoordinationGrantRes, error) {
+	res, err := c.sendUpdateCoordinationGrant(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendUpdateCoordinationGrant(ctx context.Context, request *UpdateCoordinationGrantRequest, params UpdateCoordinationGrantParams) (res UpdateCoordinationGrantRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("updateCoordinationGrant"),
+		semconv.HTTPRequestMethodKey.String("PATCH"),
+		semconv.URLTemplateKey.String("/coordination-grants/{grantId}"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, UpdateCoordinationGrantOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [2]string
+	pathParts[0] = "/coordination-grants/"
+	{
+		// Encode "grantId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "grantId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.GrantId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "PATCH", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeUpdateCoordinationGrantRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "EncodeHeaderParams"
+	h := uri.NewHeaderEncoder(r.Header)
+	{
+		cfg := uri.HeaderParameterEncodingConfig{
+			Name:    "Idempotency-Key",
+			Explode: false,
+		}
+		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.IdempotencyKey))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode header")
+		}
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, UpdateCoordinationGrantOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeUpdateCoordinationGrantResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}

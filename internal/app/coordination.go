@@ -257,8 +257,32 @@ func (s *Service) endGrantTx(
 			return grant, err
 		}
 		for _, link := range links {
-			if link.State != domain.LinkActive {
+			if link.State != domain.LinkActive && link.State != domain.LinkPendingApproval {
 				continue
+			}
+			if link.State == domain.LinkPendingApproval {
+				if err := s.rejectPendingSpawnTx(ctx, tx, link, now); err != nil {
+					return grant, err
+				}
+			}
+			if err := s.closeLinkTx(ctx, tx, link, domain.LinkRevoked,
+				domain.ReportFailed, domain.ReportRevoked, 0, now); err != nil {
+				return grant, err
+			}
+		}
+	} else {
+		// Pending spawns never started; leaving them queued after revoke would
+		// strand them, so they close even when running children are kept.
+		links, err := tx.ListThreadLinksByGrant(ctx, grant.ID)
+		if err != nil {
+			return grant, err
+		}
+		for _, link := range links {
+			if link.State != domain.LinkPendingApproval {
+				continue
+			}
+			if err := s.rejectPendingSpawnTx(ctx, tx, link, now); err != nil {
+				return grant, err
 			}
 			if err := s.closeLinkTx(ctx, tx, link, domain.LinkRevoked,
 				domain.ReportFailed, domain.ReportRevoked, 0, now); err != nil {
@@ -461,6 +485,7 @@ func (s *Service) coordSpawn(
 	linkID := domain.ThreadLinkID(s.ids.NewID())
 	var failure *coordproto.Response
 	var intent domain.ProjectThreadIntent
+	var held bool
 	err := s.store.Transact(ctx, func(tx ports.Transaction) error {
 		if _, err := tx.GetCoordinationRequest(ctx, capsule.ID, request.Key); err == nil {
 			return domain.ErrConflict
@@ -526,10 +551,17 @@ func (s *Service) coordSpawn(
 			}
 			return err
 		}
+		linkState := domain.LinkActive
+		requestState := domain.RequestCompleted
+		if current.SpawnApproval == domain.SpawnOperator {
+			held = true
+			linkState = domain.LinkPendingApproval
+			requestState = domain.RequestPendingApproval
+		}
 		link := domain.ThreadLink{
 			ID: linkID, GrantID: current.ID, ParentThreadID: parent.ID, ParentCapsuleID: capsule.ID,
 			ChildIntentID: intent.ID, ChildThreadID: intent.ThreadID, ChildCapsuleID: intent.CapsuleID,
-			Depth: 1, Name: request.Name, Harness: request.Harness, State: domain.LinkActive,
+			Depth: 1, Name: request.Name, Harness: request.Harness, State: linkState,
 			CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
 		}
 		if err := tx.InsertThreadLink(ctx, link); err != nil {
@@ -545,7 +577,7 @@ func (s *Service) coordSpawn(
 		if err := tx.InsertCoordinationRequest(ctx, domain.CoordinationRequest{
 			ID: domain.CoordinationRequestID(s.ids.NewID()), GrantID: current.ID, CapsuleID: capsule.ID,
 			Key: request.Key, CanonicalDigest: request.Digest(), Kind: domain.CoordinationSpawn,
-			LinkID: linkID, CreatedAt: now,
+			LinkID: linkID, State: requestState, CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
 		}); err != nil {
 			return err
 		}
@@ -560,7 +592,9 @@ func (s *Service) coordSpawn(
 	if err != nil {
 		return coordproto.Fail(coordproto.CodeInternal, "spawn failed")
 	}
-	_ = s.queue.Enqueue(ctx, intent.CapsuleID)
+	if !held {
+		_ = s.queue.Enqueue(ctx, intent.CapsuleID)
+	}
 	s.invalidateCoordinationPush(parent.ID)
 	return s.linkResponse(ctx, linkID)
 }
@@ -579,7 +613,8 @@ func (s *Service) liveTreeCapsules(
 	}
 	live := 0
 	for _, link := range links {
-		if link.CloseReason == domain.LinkDetached {
+		if link.State == domain.LinkPendingApproval ||
+			link.CloseReason == domain.LinkDetached || link.CloseReason == domain.LinkDenied {
 			continue
 		}
 		capsule, err := reader.GetCapsule(ctx, link.ChildCapsuleID)
@@ -624,6 +659,9 @@ func (s *Service) coordSend(
 		return coordproto.Fail(coordproto.CodeNotFound, "no such link")
 	}
 	if record.ID == "" {
+		if link.State == domain.LinkPendingApproval {
+			return coordproto.Fail(coordproto.CodeUnavailable, "spawn is waiting for operator approval")
+		}
 		if link.State != domain.LinkActive {
 			return coordproto.Fail(coordproto.CodeLinkClosed, "link is closed")
 		}
@@ -716,14 +754,19 @@ func (s *Service) coordCancel(
 	if !ok {
 		return coordproto.Fail(coordproto.CodeNotFound, "no such link")
 	}
-	if record.ID == "" && link.State == domain.LinkActive {
+	if record.ID == "" && (link.State == domain.LinkActive || link.State == domain.LinkPendingApproval) {
 		err := s.store.Transact(ctx, func(tx ports.Transaction) error {
 			current, err := tx.GetThreadLink(ctx, link.ID)
 			if err != nil {
 				return err
 			}
 			now := s.clock.Now().UTC()
-			if current.State == domain.LinkActive {
+			if current.State == domain.LinkPendingApproval {
+				if err := s.rejectPendingSpawnTx(ctx, tx, current, now); err != nil {
+					return err
+				}
+			}
+			if current.State == domain.LinkActive || current.State == domain.LinkPendingApproval {
 				if err := s.closeLinkTx(ctx, tx, current, domain.LinkCancelled,
 					domain.ReportFailed, domain.ReportCancelled, 0, now); err != nil {
 					return err
@@ -732,7 +775,8 @@ func (s *Service) coordCancel(
 			return tx.InsertCoordinationRequest(ctx, domain.CoordinationRequest{
 				ID: domain.CoordinationRequestID(s.ids.NewID()), GrantID: grant.ID, CapsuleID: capsule.ID,
 				Key: request.Key, CanonicalDigest: request.Digest(), Kind: domain.CoordinationCancel,
-				LinkID: link.ID, CreatedAt: now,
+				LinkID: link.ID, State: domain.RequestCompleted, CreatedAt: now, UpdatedAt: now,
+				ResourceVersion: 1,
 			})
 		})
 		if errors.Is(err, domain.ErrConflict) {
@@ -804,6 +848,9 @@ func (s *Service) ThreadLinkPhase(ctx context.Context, link domain.ThreadLink) s
 // linkPhase is the one derivation behind a lead's subagent panel and its
 // board rollup, so the two never disagree.
 func (s *Service) linkPhase(ctx context.Context, link domain.ThreadLink) string {
+	if link.State == domain.LinkPendingApproval {
+		return coordproto.PhaseAwaiting
+	}
 	if link.State == domain.LinkClosed {
 		if link.CloseReason == domain.LinkFailed || s.childRunFailed(ctx, link) {
 			return coordproto.PhaseFailed

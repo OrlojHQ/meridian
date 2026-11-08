@@ -103,6 +103,7 @@ const shipped: BoardItem = {
 };
 
 function renderBoard() {
+  vi.spyOn(api, "coordinationRequests").mockResolvedValue({ items: [] });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>

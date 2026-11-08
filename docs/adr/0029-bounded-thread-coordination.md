@@ -36,9 +36,10 @@ Three ways to carry a request out of the Capsule were considered:
   fan-out (default 4, at most 16), total children (at most 32), live child
   Capsules (at most 16), messages per link (default 50, at most 500), an
   absolute deadline (default 8 hours, 5 minutes to 72 hours) with a deadline
-  action, and the spawn approval mode. Only the operator creates or revokes a
-  grant. Grants cannot be widened after creation, and the only approval mode
-  is `auto`, which the operator chose by creating the grant.
+  action, and the spawn approval mode (`auto` or `operator`). Only the operator
+  creates, updates or revokes a grant. The operator may loosen or tighten
+  limits after creation. Switching `spawnApproval` to `auto` does not start
+  spawns already waiting for approval.
 - Capsules hold no coordination credential. `meridian-coord`, a CLI and stdio
   MCP server installed in Capsule images, writes requests in the closed,
   versioned, bounded `meridian.coord.v1` protocol to a `capsuled` mailbox on a
@@ -99,11 +100,12 @@ Three ways to carry a request out of the Capsule were considered:
   A notice never wakes a lead on its own. Messages to a
   subagent whose link has closed are not counted and leave the link untouched,
   so resuming a stopped subagent does not restart its stop window.
-- Not in this decision, and left for later ADR amendments: operator spawn
-  approval, widening a grant, depth above 1, returned patch series, proposed
-  Deliveries, and queueing spawns over capacity. Auto-archive and promotion
-  are covered by the subagent lifecycle amendment below. Delivery approval under
-  ADR 0020 is unchanged; agents cannot propose or approve a Delivery.
+- Not in this decision, and left for later ADR amendments: depth above 1,
+  returned patch series, proposed Deliveries, and queueing spawns over
+  capacity. Auto-archive and promotion are covered by the subagent lifecycle
+  amendment below. Operator spawn approval and grant updates are covered by
+  the amendment after that. Delivery approval under ADR 0020 is unchanged;
+  agents cannot propose or approve a Delivery.
 
 ## Consequences
 
@@ -151,8 +153,8 @@ Finished subagents are archived automatically, and the operator can promote a
 subagent to a main Capsule.
 
 - **Auto-archive.** A grant's `archiveAfter` (default 24 hours; 0 disables
-  it; otherwise 1 minute to 30 days in whole seconds) is fixed at spawn like
-  every other limit. A subagent is archived once it has been idle for that long
+  it; otherwise 1 minute to 30 days in whole seconds) can be changed later by
+  the operator, like the other grant limits. A subagent is archived once it has been idle for that long
   after it finished: its link is active and its last report is `turn_ended`,
   or its link closed as cancelled, ended or revoked. Subagents that need the
   operator, are working, have a delivery in flight, failed (report, Run or
@@ -199,3 +201,26 @@ Two stored names keep the old word: migration `0016_helper_lifecycle.sql`,
 whose file name is recorded in `schema_migrations`, and the coordination
 origin kind `from_helpers` inside transcripts encrypted before the rename,
 which reads back as `from_subagents`. Neither changes authority.
+
+## Amendment: operator spawn approvals and grant updates
+
+The operator can require a click before each spawn starts, and can change an
+active grant's limits.
+
+- **Spawn approval.** `spawnApproval: auto` (the default) starts each accepted
+  spawn. `operator` records the child Capsule, encrypted prompt and ThreadLink
+  as `pending_approval` and does not provision it until
+  `POST /coordination-requests/{id}/approve`. Deny closes the link as `denied`
+  without deleting the Capsule; the spawn still counts toward
+  `descendantsCreated`. Pending children do not count as live, are skipped by
+  recover and intent lookup, cannot be promoted, and surface on the board as
+  `needs_you` / `spawn_approval`. Switching a grant to `auto` leaves already
+  queued spawns queued. The lead may cancel a pending spawn. Capsules cannot
+  approve or deny their own requests.
+- **Grant updates.** `PATCH /coordination-grants/{id}` lets the operator loosen
+  or tighten spawn approval, fan-out, descendants, live Capsules, messages per
+  link, allowed harnesses, remaining deadline, deadline action and
+  `archiveAfter`. Identity (project, lead, depth, createdAt) stays fixed.
+  Deadline is remaining time from now, between 5 minutes and 72 hours, and
+  cannot pass `createdAt+72h`. Only an active grant can be patched. Every
+  mutation uses `expectedResourceVersion` and `Idempotency-Key`.

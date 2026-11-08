@@ -6,6 +6,7 @@ package client
 type OperationName = string
 
 const (
+	ApproveCoordinationRequestOperation     OperationName = "ApproveCoordinationRequest"
 	ArchiveThreadOperation                  OperationName = "ArchiveThread"
 	AttachRunWebSocketOperation             OperationName = "AttachRunWebSocket"
 	CancelRunOperation                      OperationName = "CancelRun"
@@ -24,6 +25,7 @@ const (
 	DeleteCapsuleOperation                  OperationName = "DeleteCapsule"
 	DeleteSecretOperation                   OperationName = "DeleteSecret"
 	DeleteThreadOperation                   OperationName = "DeleteThread"
+	DenyCoordinationRequestOperation        OperationName = "DenyCoordinationRequest"
 	ExportCapsuleWorkspaceOperation         OperationName = "ExportCapsuleWorkspace"
 	GetBoardOperation                       OperationName = "GetBoard"
 	GetCapabilitiesOperation                OperationName = "GetCapabilities"
@@ -52,6 +54,7 @@ const (
 	ListCapsuleFilesOperation               OperationName = "ListCapsuleFiles"
 	ListCapsulePreviewPortsOperation        OperationName = "ListCapsulePreviewPorts"
 	ListCapsulesOperation                   OperationName = "ListCapsules"
+	ListCoordinationRequestsOperation       OperationName = "ListCoordinationRequests"
 	ListHarnessProfilesOperation            OperationName = "ListHarnessProfiles"
 	ListHarnessSetupRevisionsOperation      OperationName = "ListHarnessSetupRevisions"
 	ListHarnessSetupsOperation              OperationName = "ListHarnessSetups"
@@ -85,6 +88,7 @@ const (
 	StartThreadOperation                    OperationName = "StartThread"
 	StreamRunEventsOperation                OperationName = "StreamRunEvents"
 	StreamThreadBlocksOperation             OperationName = "StreamThreadBlocks"
+	UpdateCoordinationGrantOperation        OperationName = "UpdateCoordinationGrant"
 	UpdateProjectEnvironmentOperation       OperationName = "UpdateProjectEnvironment"
 	UpdateProviderConnectionOperation       OperationName = "UpdateProviderConnection"
 )
