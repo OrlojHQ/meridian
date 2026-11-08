@@ -12,6 +12,11 @@ import {
   latestThreadCommands,
   slashQuery,
 } from "../components/slashCommands";
+import {
+  adapterCanSteer,
+  composerBusyHint,
+  profileAdapterKind,
+} from "../components/composerDelivery";
 import { buildThreadChat } from "../components/threadChat";
 import { safeLinkTarget, ThreadMarkdown } from "../components/ThreadMarkdown";
 import { ThreadDetail } from "../components/Threads";
@@ -247,12 +252,12 @@ describe("Thread chat view", () => {
     expect(error.tagName).toBe("LI");
   });
 
-  it("sends on Enter, adds newlines on Shift+Enter, and stops a running turn", async () => {
+  it("sends on Enter while idle, adds newlines on Shift+Enter, and stops a running turn", async () => {
     const t = transcript();
-    t.user("long task");
-    t.status("running");
+    t.user("hi");
+    t.final("a1", "hello");
+    t.status("idle");
     const send = vi.spyOn(api, "sendThreadMessage").mockResolvedValue({ thread });
-    const session = vi.spyOn(api, "threadSession").mockResolvedValue({ thread });
     const user = userEvent.setup();
     renderThread(t.blocks);
     const composer = await screen.findByLabelText("Message");
@@ -264,6 +269,22 @@ describe("Thread chat view", () => {
       expect(send).toHaveBeenCalledWith(thread.id, thread.resourceVersion, "one\ntwo"),
     );
     await waitFor(() => expect(composer).toHaveValue(""));
+    expect(screen.queryByRole("button", { name: "Queue" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Steer" })).not.toBeInTheDocument();
+  });
+
+  it("queues on Enter while a turn is running and can stop that turn", async () => {
+    const t = transcript();
+    t.user("long task");
+    t.status("running");
+    const send = vi.spyOn(api, "sendThreadMessage").mockResolvedValue({ thread });
+    const session = vi.spyOn(api, "threadSession").mockResolvedValue({ thread });
+    const user = userEvent.setup();
+    renderThread(t.blocks);
+    const composer = await screen.findByLabelText("Message");
+    await user.type(composer, "one{Shift>}{Enter}{/Shift}two{Enter}");
+    expect(send).not.toHaveBeenCalled();
+    expect(screen.getByRole("list", { name: "Queued follow-ups" })).toHaveTextContent("one two");
     await user.click(screen.getByRole("button", { name: "Stop" }));
     await waitFor(() =>
       expect(session).toHaveBeenCalledWith("cancel", thread.id, thread.resourceVersion),
@@ -377,9 +398,10 @@ describe("Slash command menu", () => {
     expect(composer).toHaveValue("/ship ");
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
     expect(send).not.toHaveBeenCalled();
-    await user.type(composer, "staging{Enter}");
+    await user.type(composer, "staging");
+    await user.click(screen.getByRole("button", { name: "Steer" }));
     await waitFor(() =>
-      expect(send).toHaveBeenCalledWith(thread.id, thread.resourceVersion, "/ship staging"),
+      expect(send).toHaveBeenCalledWith(thread.id, thread.resourceVersion, "/ship staging", "steer"),
     );
   });
 
@@ -412,9 +434,8 @@ describe("Slash command menu", () => {
       "No matching commands. Enter sends the text as a message.",
     );
     await user.keyboard("{Enter}");
-    await waitFor(() =>
-      expect(send).toHaveBeenCalledWith(thread.id, thread.resourceVersion, "/deploy-now"),
-    );
+    expect(send).not.toHaveBeenCalled();
+    expect(screen.getByRole("list", { name: "Queued follow-ups" })).toHaveTextContent("/deploy-now");
   });
 
   it("runs Meridian controls instead of sending them", async () => {
@@ -445,6 +466,114 @@ describe("Slash command menu", () => {
     expect(within(menu).getAllByRole("option").map((option) => option.textContent)).toEqual([
       "New sessionStart a fresh conversation in this Capsule",
     ]);
+  });
+});
+
+describe("Steer and queue composer", () => {
+  const running = () => {
+    const t = transcript();
+    t.user("long task");
+    t.status("running");
+    return t;
+  };
+
+  it("offers steer and an editable queue while a turn is running", async () => {
+    const t = running();
+    const send = vi.spyOn(api, "sendThreadMessage").mockResolvedValue({ thread });
+    const stored = vi.spyOn(Storage.prototype, "setItem");
+    const user = userEvent.setup();
+    renderThread(t.blocks);
+    const composer = await screen.findByLabelText("Message");
+    expect(screen.getByRole("button", { name: "Steer" })).toBeInTheDocument();
+    expect(screen.getByText(/Steer delivers now/)).toBeInTheDocument();
+    await user.type(composer, "look at tests{Enter}");
+    expect(send).not.toHaveBeenCalled();
+    const queue = screen.getByRole("list", { name: "Queued follow-ups" });
+    expect(queue).toHaveTextContent("After this turn");
+    expect(queue).toHaveTextContent("look at tests");
+    expect(stored.mock.calls.some((call) => String(call[1]).includes("look at tests"))).toBe(
+      false,
+    );
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    expect(composer).toHaveValue("look at tests");
+    expect(screen.queryByRole("list", { name: "Queued follow-ups" })).not.toBeInTheDocument();
+    await user.type(composer, "{Enter}");
+    await user.click(screen.getByRole("button", { name: "Remove queued follow-up" }));
+    expect(screen.queryByRole("list", { name: "Queued follow-ups" })).not.toBeInTheDocument();
+    await user.type(composer, "<img src=x onerror=alert(1)>");
+    await user.click(screen.getByRole("button", { name: "Steer" }));
+    await waitFor(() =>
+      expect(send).toHaveBeenCalledWith(
+        thread.id,
+        thread.resourceVersion,
+        "<img src=x onerror=alert(1)>",
+        "steer",
+      ),
+    );
+  });
+
+  it("sends the queued follow-up once the turn is idle", async () => {
+    const t = running();
+    const send = vi.spyOn(api, "sendThreadMessage").mockResolvedValue({ thread });
+    const user = userEvent.setup();
+    renderThread(t.blocks);
+    const composer = await screen.findByLabelText("Message");
+    await user.type(composer, "after the tools{Enter}");
+    expect(send).not.toHaveBeenCalled();
+    act(() => {
+      pushBlock({
+        id: "block-idle",
+        messageId: "message-idle",
+        messageSequence: 99,
+        sequence: 1,
+        role: "system",
+        messageKind: "status",
+        kind: "json",
+        event: { type: "status", status: "idle" },
+        createdAt: "2026-11-07T00:02:00Z",
+      });
+    });
+    await waitFor(() =>
+      expect(send).toHaveBeenCalledWith(thread.id, thread.resourceVersion, "after the tools"),
+    );
+  });
+
+  it("hides steer when the adapter cannot inject at a tool boundary", async () => {
+    vi.spyOn(api, "harnessProfiles").mockResolvedValue({
+      items: [{
+        name: "opencode",
+        structured: true,
+        adapterKind: "acp",
+        protocol: "meridian.adapter.v1",
+        pty: false,
+      }],
+    });
+    const t = running();
+    const send = vi.spyOn(api, "sendThreadMessage").mockResolvedValue({
+      thread: { ...thread, harness: "opencode" },
+    });
+    const user = userEvent.setup();
+    renderThread(t.blocks, { ...thread, harness: "opencode" });
+    const composer = await screen.findByLabelText("Message");
+    expect(screen.queryByRole("button", { name: "Steer" })).not.toBeInTheDocument();
+    expect(screen.getByText(/cannot steer/i)).toBeInTheDocument();
+    await user.type(composer, "later{Enter}");
+    expect(send).not.toHaveBeenCalled();
+    expect(screen.getByRole("list", { name: "Queued follow-ups" })).toHaveTextContent("later");
+  });
+});
+
+describe("Composer delivery helpers", () => {
+  it("steers only where the adapter has a mid-turn inject", () => {
+    expect(adapterCanSteer("pi")).toBe(true);
+    expect(adapterCanSteer("codex")).toBe(true);
+    expect(adapterCanSteer("mock")).toBe(true);
+    expect(adapterCanSteer("acp")).toBe(false);
+    expect(adapterCanSteer("claude")).toBe(false);
+    expect(profileAdapterKind([{ name: "pi", structured: true, adapterKind: "pi", pty: false }], "pi")).toBe(
+      "pi",
+    );
+    expect(composerBusyHint("acp", false)).toMatch(/cannot steer/i);
   });
 });
 

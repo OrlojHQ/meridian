@@ -393,18 +393,18 @@ func TestThreadDeliveryRetriesCrashBeforeSendAndAcknowledgesSuccess(t *testing.T
 	}
 	runtime.sendFailures = 1
 	sent, err := service.SendThreadMessage(
-		ctx, thread.ID, thread.ResourceVersion, "second", "send-crash",
+		ctx, thread.ID, thread.ResourceVersion, "second", "send-crash", "",
 	)
 	if err == nil {
 		t.Fatal("injected message delivery failure succeeded")
 	}
 	if _, err := service.SendThreadMessage(
-		ctx, thread.ID, thread.ResourceVersion, "ignored-on-replay", "send-crash",
+		ctx, thread.ID, thread.ResourceVersion, "ignored-on-replay", "send-crash", "",
 	); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := service.SendThreadMessage(
-		ctx, thread.ID, thread.ResourceVersion, "ignored-again", "send-crash",
+		ctx, thread.ID, thread.ResourceVersion, "ignored-again", "send-crash", "",
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -649,5 +649,72 @@ func TestThreadCommandsPersistEncryptedAsStatusEvent(t *testing.T) {
 		if bytes.Contains(raw, []byte(sentinel)) {
 			t.Fatalf("command name leaked into %s", path)
 		}
+	}
+}
+
+func TestThreadSteerAttachesAdapterMetadataAndRetries(t *testing.T) {
+	ctx := context.Background()
+	store, service, runtime, key, capsuleID := threadService(t, ctx)
+	defer store.Close()
+	defer key.Zero()
+	created, err := service.CreateThread(ctx, app.CreateThreadInput{
+		CapsuleID: capsuleID, Harness: "mock", FirstMessage: "hello",
+		Start: true, IdempotencyKey: "steer-create",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread, err := service.GetThread(ctx, created.Thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain, err := service.SendThreadMessage(
+		ctx, thread.ID, thread.ResourceVersion, "plain follow-up", "steer-plain", "",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime.mu.Lock()
+	plainFrame := runtime.frames[string(plain.MessageID)]
+	runtime.mu.Unlock()
+	if len(plainFrame.Metadata) != 0 {
+		t.Fatalf("idle send metadata = %s", plainFrame.Metadata)
+	}
+
+	thread, err = service.GetThread(ctx, thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.SendThreadMessage(
+		ctx, thread.ID, thread.ResourceVersion, "nope", "steer-bad", "queue",
+	); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("unknown delivery = %v", err)
+	}
+
+	runtime.sendFailures = 1
+	steered, err := service.SendThreadMessage(
+		ctx, thread.ID, thread.ResourceVersion, "change course", "steer-send", "steer",
+	)
+	if err == nil {
+		t.Fatal("injected steer delivery failure succeeded")
+	}
+	if _, err := service.SendThreadMessage(
+		ctx, thread.ID, thread.ResourceVersion, "ignored", "steer-send", "steer",
+	); err != nil {
+		t.Fatal(err)
+	}
+	runtime.mu.Lock()
+	frame := runtime.frames[string(steered.MessageID)]
+	attempts := runtime.sends[string(steered.MessageID)]
+	runtime.mu.Unlock()
+	if attempts != 2 {
+		t.Fatalf("steer delivery attempts = %d", attempts)
+	}
+	if !bytes.Contains(frame.Metadata, []byte(`"delivery":"steer"`)) ||
+		!bytes.Contains(frame.Metadata, []byte(`"command":"steer"`)) {
+		t.Fatalf("steer metadata = %s", frame.Metadata)
+	}
+	if frame.Content != "change course" {
+		t.Fatalf("steer content = %q", frame.Content)
 	}
 }

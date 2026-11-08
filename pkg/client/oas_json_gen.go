@@ -13957,6 +13957,39 @@ func (s *OptRunState) UnmarshalJSON(data []byte) error {
 	return s.Decode(d)
 }
 
+// Encode encodes SendThreadMessageRequestDelivery as json.
+func (o OptSendThreadMessageRequestDelivery) Encode(e *jx.Encoder) {
+	if !o.Set {
+		return
+	}
+	e.Str(string(o.Value))
+}
+
+// Decode decodes SendThreadMessageRequestDelivery from json.
+func (o *OptSendThreadMessageRequestDelivery) Decode(d *jx.Decoder) error {
+	if o == nil {
+		return errors.New("invalid: unable to decode OptSendThreadMessageRequestDelivery to nil")
+	}
+	o.Set = true
+	if err := o.Value.Decode(d); err != nil {
+		return err
+	}
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s OptSendThreadMessageRequestDelivery) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *OptSendThreadMessageRequestDelivery) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
 // Encode encodes string as json.
 func (o OptString) Encode(e *jx.Encoder) {
 	if !o.Set {
@@ -21188,11 +21221,18 @@ func (s *SendThreadMessageRequest) encodeFields(e *jx.Encoder) {
 		e.FieldStart("content")
 		e.Str(s.Content)
 	}
+	{
+		if s.Delivery.Set {
+			e.FieldStart("delivery")
+			s.Delivery.Encode(e)
+		}
+	}
 }
 
-var jsonFieldsNameOfSendThreadMessageRequest = [2]string{
+var jsonFieldsNameOfSendThreadMessageRequest = [3]string{
 	0: "expectedResourceVersion",
 	1: "content",
+	2: "delivery",
 }
 
 // Decode decodes SendThreadMessageRequest from json.
@@ -21227,6 +21267,16 @@ func (s *SendThreadMessageRequest) Decode(d *jx.Decoder) error {
 				return nil
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"content\"")
+			}
+		case "delivery":
+			if err := func() error {
+				s.Delivery.Reset()
+				if err := s.Delivery.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"delivery\"")
 			}
 		default:
 			return d.Skip()
@@ -21280,6 +21330,44 @@ func (s *SendThreadMessageRequest) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
 func (s *SendThreadMessageRequest) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes SendThreadMessageRequestDelivery as json.
+func (s SendThreadMessageRequestDelivery) Encode(e *jx.Encoder) {
+	e.Str(string(s))
+}
+
+// Decode decodes SendThreadMessageRequestDelivery from json.
+func (s *SendThreadMessageRequestDelivery) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode SendThreadMessageRequestDelivery to nil")
+	}
+	v, err := d.StrBytes()
+	if err != nil {
+		return err
+	}
+	// Try to use constant string.
+	switch SendThreadMessageRequestDelivery(v) {
+	case SendThreadMessageRequestDeliverySteer:
+		*s = SendThreadMessageRequestDeliverySteer
+	default:
+		*s = SendThreadMessageRequestDelivery(v)
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s SendThreadMessageRequestDelivery) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *SendThreadMessageRequestDelivery) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }

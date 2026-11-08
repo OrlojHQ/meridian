@@ -822,6 +822,11 @@ export type SendThreadMessageRequest = {
      * Encrypted before SQLite persistence.
      */
     content: string;
+    /**
+     * Inject into the running turn at the next tool boundary. The daemon sets the documented Pi and Codex user-message metadata; other adapters ignore it. Omit when idle. Queued follow-ups stay in the web UI's memory until the turn is idle and are never written to browser storage.
+     *
+     */
+    delivery?: 'steer';
 };
 
 export type ThreadResponseRequest = {

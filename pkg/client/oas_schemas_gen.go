@@ -6360,6 +6360,52 @@ func (o OptRunState) Or(d RunState) RunState {
 	return d
 }
 
+// NewOptSendThreadMessageRequestDelivery returns new OptSendThreadMessageRequestDelivery with value set to v.
+func NewOptSendThreadMessageRequestDelivery(v SendThreadMessageRequestDelivery) OptSendThreadMessageRequestDelivery {
+	return OptSendThreadMessageRequestDelivery{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptSendThreadMessageRequestDelivery is optional SendThreadMessageRequestDelivery.
+type OptSendThreadMessageRequestDelivery struct {
+	Value SendThreadMessageRequestDelivery
+	Set   bool
+}
+
+// IsSet returns true if OptSendThreadMessageRequestDelivery was set.
+func (o OptSendThreadMessageRequestDelivery) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptSendThreadMessageRequestDelivery) Reset() {
+	var v SendThreadMessageRequestDelivery
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptSendThreadMessageRequestDelivery) SetTo(v SendThreadMessageRequestDelivery) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptSendThreadMessageRequestDelivery) Get() (v SendThreadMessageRequestDelivery, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptSendThreadMessageRequestDelivery) Or(d SendThreadMessageRequestDelivery) SendThreadMessageRequestDelivery {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptString returns new OptString with value set to v.
 func NewOptString(v string) OptString {
 	return OptString{
@@ -9445,6 +9491,10 @@ type SendThreadMessageRequest struct {
 	ExpectedResourceVersion int64 `json:"expectedResourceVersion"`
 	// Encrypted before SQLite persistence.
 	Content string `json:"content"`
+	// Inject into the running turn at the next tool boundary. The daemon sets the documented Pi and Codex
+	// user-message metadata; other adapters ignore it. Omit when idle. Queued follow-ups stay in the web
+	// UI's memory until the turn is idle and are never written to browser storage.
+	Delivery OptSendThreadMessageRequestDelivery `json:"delivery"`
 }
 
 // GetExpectedResourceVersion returns the value of ExpectedResourceVersion.
@@ -9457,6 +9507,11 @@ func (s *SendThreadMessageRequest) GetContent() string {
 	return s.Content
 }
 
+// GetDelivery returns the value of Delivery.
+func (s *SendThreadMessageRequest) GetDelivery() OptSendThreadMessageRequestDelivery {
+	return s.Delivery
+}
+
 // SetExpectedResourceVersion sets the value of ExpectedResourceVersion.
 func (s *SendThreadMessageRequest) SetExpectedResourceVersion(val int64) {
 	s.ExpectedResourceVersion = val
@@ -9465,6 +9520,48 @@ func (s *SendThreadMessageRequest) SetExpectedResourceVersion(val int64) {
 // SetContent sets the value of Content.
 func (s *SendThreadMessageRequest) SetContent(val string) {
 	s.Content = val
+}
+
+// SetDelivery sets the value of Delivery.
+func (s *SendThreadMessageRequest) SetDelivery(val OptSendThreadMessageRequestDelivery) {
+	s.Delivery = val
+}
+
+// Inject into the running turn at the next tool boundary. The daemon sets the documented Pi and Codex
+// user-message metadata; other adapters ignore it. Omit when idle. Queued follow-ups stay in the web
+// UI's memory until the turn is idle and are never written to browser storage.
+type SendThreadMessageRequestDelivery string
+
+const (
+	SendThreadMessageRequestDeliverySteer SendThreadMessageRequestDelivery = "steer"
+)
+
+// AllValues returns all SendThreadMessageRequestDelivery values.
+func (SendThreadMessageRequestDelivery) AllValues() []SendThreadMessageRequestDelivery {
+	return []SendThreadMessageRequestDelivery{
+		SendThreadMessageRequestDeliverySteer,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s SendThreadMessageRequestDelivery) MarshalText() ([]byte, error) {
+	switch s {
+	case SendThreadMessageRequestDeliverySteer:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *SendThreadMessageRequestDelivery) UnmarshalText(data []byte) error {
+	switch SendThreadMessageRequestDelivery(data) {
+	case SendThreadMessageRequestDeliverySteer:
+		*s = SendThreadMessageRequestDeliverySteer
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
 }
 
 type SendThreadMessageUnprocessableEntity ErrorEnvelope

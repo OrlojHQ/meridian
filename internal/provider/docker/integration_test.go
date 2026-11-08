@@ -118,7 +118,7 @@ func TestDockerProviderIntegrationMomentsLineageAndSeal(t *testing.T) {
 	}
 	if _, err := service.SendThreadMessage(
 		ctx, currentThread.ID, currentThread.ResourceVersion,
-		"second turn", "docker-thread-second",
+		"second turn", "docker-thread-second", "",
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestDockerProviderIntegrationMomentsLineageAndSeal(t *testing.T) {
 	}
 	if _, err := service.SendThreadMessage(
 		ctx, currentThread.ID, currentThread.ResourceVersion,
-		"permission request", "docker-thread-permission",
+		"permission request", "docker-thread-permission", "",
 	); err != nil {
 		t.Fatal(err)
 	}
