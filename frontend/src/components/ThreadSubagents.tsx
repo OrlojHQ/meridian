@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api, normalizeAPIError } from "../api/client";
@@ -70,13 +70,80 @@ export function grantLimits(
   return parts.join(" · ");
 }
 
-// Lead Threads list their subagents and can stop the whole tree; subagent
-// Threads name their lead. Neither view shows report text: that lives only in
+// Subagent Threads name their lead above the transcript. A lead's subagents
+// live behind the composer's Agents button (SubagentsButton) so they do not
+// crowd the conversation. Neither view shows report text: that lives only in
 // each subagent's encrypted transcript.
 export function ThreadSubagents({ thread }: { thread: Thread }) {
-  if (!thread.coordinationGrantId) return null;
-  if (thread.parentThreadId) return <SubagentOf thread={thread} />;
-  return <LeadSubagents thread={thread} grantId={thread.coordinationGrantId} />;
+  if (!thread.coordinationGrantId || !thread.parentThreadId) return null;
+  return <SubagentOf thread={thread} />;
+}
+
+function AgentsIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <circle cx="6" cy="5.5" r="2.25" />
+      <path d="M1.75 13.25c.4-2.3 2.1-3.75 4.25-3.75s3.85 1.45 4.25 3.75" strokeLinecap="round" />
+      <path d="M10.5 3.6a2.1 2.1 0 1 1 .6 4.1M12 9.7c1.3.4 2.1 1.6 2.3 3.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+// The lead's Agents button: a count with an attention dot when a subagent or a
+// queued spawn waits on the operator. It opens the subagent list above the
+// composer; Escape or a click elsewhere closes it.
+export function SubagentsButton({ thread }: { thread: Thread }) {
+  const grantId = thread.coordinationGrantId ?? "";
+  const lead = Boolean(thread.coordinationGrantId && !thread.parentThreadId);
+  const [open, setOpen] = useState(false);
+  const panelId = useId();
+  const root = useRef<HTMLDivElement>(null);
+  const links = useQuery({ ...queries.threadLinks(thread.id), enabled: lead });
+  const pending = useQuery({ ...queries.coordinationRequests(), enabled: lead });
+  useEffect(() => {
+    if (!open) return;
+    const onPointer = (event: PointerEvent) => {
+      if (root.current && !root.current.contains(event.target as Node)) setOpen(false);
+    };
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  if (!lead) return null;
+  const current = (links.data?.items ?? []).filter((link) => !link.archivedAt);
+  const waiting =
+    current.filter((link) => link.phase === "awaiting_operator").length +
+    (pending.data?.items ?? []).filter((item) => item.grantId === grantId).length;
+  const label = `${current.length} ${current.length === 1 ? "agent" : "agents"}`;
+  return (
+    <div className="composer-agents" ref={root}>
+      <button
+        type="button"
+        className={`composer-chip${waiting > 0 ? " needs-you" : ""}`}
+        aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
+        aria-label={waiting > 0 ? `${label}, ${waiting} need you` : label}
+        title="Subagents"
+        onClick={() => setOpen((value) => !value)}
+      >
+        <AgentsIcon />
+        <span>Agents</span>
+        {current.length > 0 && <span className="composer-chip-count">{current.length}</span>}
+        {waiting > 0 && <span className="composer-chip-dot" aria-hidden="true" />}
+      </button>
+      {open && (
+        <div className="composer-popover" id={panelId}>
+          <SubagentsPanel thread={thread} grantId={grantId} />
+        </div>
+      )}
+    </div>
+  );
 }
 
 function SubagentOf({ thread }: { thread: Thread }) {
@@ -118,7 +185,7 @@ function SubagentOf({ thread }: { thread: Thread }) {
   );
 }
 
-function LeadSubagents({ thread, grantId }: { thread: Thread; grantId: string }) {
+export function SubagentsPanel({ thread, grantId }: { thread: Thread; grantId: string }) {
   const queryClient = useQueryClient();
   const [confirm, setConfirm] = useState(false);
   const grant = useQuery(queries.coordinationGrant(grantId));

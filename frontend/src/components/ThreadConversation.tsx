@@ -42,6 +42,7 @@ import {
   slashQuery,
 } from "./slashCommands";
 import { ThreadError } from "./ThreadError";
+import { SubagentsButton } from "./ThreadSubagents";
 import {
   CheckIcon,
   ChevronIcon,
@@ -502,6 +503,7 @@ function ThreadComposer({
   onNewSession,
   onSent,
   onConflict,
+  toolbar,
 }: {
   thread: Thread;
   activity: ChatActivity;
@@ -513,6 +515,8 @@ function ThreadComposer({
   onNewSession?: () => void;
   onSent: () => void;
   onConflict: () => Promise<void>;
+  // Controls under the message box, such as the lead's Agents button.
+  toolbar?: ReactNode;
 }) {
   const [message, setMessage] = useState("");
   const [queue, setQueue] = useState<QueuedFollowUp[]>([]);
@@ -704,6 +708,7 @@ function ThreadComposer({
             onPick={pick}
           />
         )}
+        {toolbar && <div className="composer-toolbar">{toolbar}</div>}
         <form
           className="composer-box"
           onSubmit={(event) => {
@@ -842,6 +847,7 @@ export function ThreadConversation({
     [onRefresh],
   );
   const label = activityLabels[chat.activity];
+  const toolbar = isLead ? <SubagentsButton thread={thread} /> : undefined;
   return (
     <>
       <div className="thread-scroll-frame">
@@ -881,8 +887,16 @@ export function ThreadConversation({
         )}
       </div>
       {isLead && <SubagentNeedsYouTray links={subagents} />}
+      {!canCompose && isLead && (
+        <section className="thread-composer" aria-label="Thread controls">
+          <div className="composer-frame">
+            <div className="composer-toolbar">{toolbar}</div>
+          </div>
+        </section>
+      )}
       {canCompose && (
         <ThreadComposer
+          toolbar={toolbar}
           thread={thread}
           activity={chat.activity}
           adapterKind={adapterKind}
