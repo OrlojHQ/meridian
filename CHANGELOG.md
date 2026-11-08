@@ -215,6 +215,13 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Helm NetworkPolicy allows Capsule egress to the in-namespace provider
+  gateway (control-plane TCP 8080) and control-plane HTTPS egress to
+  operator-selected model-provider CIDRs (`api.openai.com:443`,
+  `api.anthropic.com:443`, and HTTPS custom endpoints). Capsules still do
+  not receive provider or API-server CIDRs, default internet egress, or a
+  host Docker socket.
+
 - A failed Pi prompt now settles the Thread to idle. Before, the adapter
   emitted `error` and skipped `idle`, so the session stayed "working" with
   the composer disabled even though the turn had ended.

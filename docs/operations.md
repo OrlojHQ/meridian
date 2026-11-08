@@ -232,9 +232,9 @@ equally trusted dedicated host.
 ## Helm installation
 
 Install Agent Sandbox v0.5.6 and its CRDs/controller separately. Pin both image
-digests, use one namespace, and set an explicit API-server CIDR. For hostile
-workloads, configure a validated gVisor/Kata `RuntimeClass`; the chart does not
-install or certify one.
+digests, use one namespace, and set explicit API-server and model-provider
+CIDRs. For hostile workloads, configure a validated gVisor/Kata `RuntimeClass`;
+the chart does not install or certify one.
 
 ```console
 helm upgrade --install meridian deploy/helm/meridian \
@@ -245,7 +245,8 @@ helm upgrade --install meridian deploy/helm/meridian \
   --set capsuleImage.tag=v0.1.0 \
   --set capsuleImage.digest="sha256:VERIFIED_CAPSULE_DIGEST" \
   --set agentSandbox.runtimeClassName=gvisor \
-  --set-json 'networkPolicy.kubernetesAPIServerCIDRs=["192.0.2.10/32"]'
+  --set-json 'networkPolicy.kubernetesAPIServerCIDRs=["192.0.2.10/32"]' \
+  --set-json 'networkPolicy.providerEgressCIDRs=["192.0.2.1/32"]'
 ```
 
 Set `capsuleImage.tag` to the verified release version even when pinning the

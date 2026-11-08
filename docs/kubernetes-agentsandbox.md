@@ -16,11 +16,14 @@ Required:
 - a Meridian control-plane image and Capsule image pinned by digest; and
 - for hostile code, a separately validated sandboxed RuntimeClass.
 
-The default chart creates no Namespace and has empty API-server and Capsule
-egress CIDR lists. This is fail-closed but not immediately operational. Set the
-target namespace explicitly, label it for the Restricted Pod Security
-standard, and configure the routable Kubernetes Service/API endpoint CIDR.
-NetworkPolicy cannot select the API server by identity; an IP block can become
+The default chart creates no Namespace and has empty API-server, provider, and
+Capsule egress CIDR lists. This is fail-closed but not immediately operational.
+Set the target namespace explicitly, label it for the Restricted Pod Security
+standard, and configure the routable Kubernetes Service/API endpoint CIDR plus
+the routable CIDRs for `api.openai.com` and `api.anthropic.com` (and any HTTPS
+custom endpoint). Capsules already receive in-namespace TCP to the control-plane
+provider gateway; they do not receive those provider CIDRs. NetworkPolicy cannot
+select the API server or provider hosts by identity; an IP block can become
 stale or include unintended endpoints. Enforce API authorization with RBAC and
 use infrastructure-level egress controls where this limitation is unacceptable.
 CPU, memory, ephemeral storage, PVC size, namespace quota, operation time, and
@@ -50,8 +53,16 @@ helm upgrade --install meridian deploy/helm/meridian \
   --set capsuleImage.digest=sha256:CAPSULE_DIGEST \
   --set agentSandbox.runtimeClassName=gvisor \
   --set agentSandbox.storageClassName=WORKSPACE_CLASS \
-  --set 'networkPolicy.kubernetesAPIServerCIDRs[0]=10.96.0.1/32'
+  --set providerGatewayURL=https://meridian.example \
+  --set 'networkPolicy.kubernetesAPIServerCIDRs[0]=10.96.0.1/32' \
+  --set 'networkPolicy.providerEgressCIDRs[0]=192.0.2.1/32' \
+  --set 'networkPolicy.capsuleEgressCIDRs[0]=192.0.2.8/32'
 ```
+
+Replace the example `providerEgressCIDRs` and `capsuleEgressCIDRs` values
+with the current routable addresses of `api.openai.com` / `api.anthropic.com`
+(and any HTTPS custom endpoint) and of the HTTPS gateway origin. NetworkPolicy
+cannot select those hosts by name.
 
 Set `capsuleImage.tag` to the verified release version even when pinning the
 thin Capsule image by digest. The chart passes that tag as

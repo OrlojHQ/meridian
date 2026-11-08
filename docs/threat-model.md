@@ -135,10 +135,17 @@ read Secrets.
 
 A compromised Capsule can encode source or credentials into any allowed request, including DNS and model prompts. Review-only presentation does not prevent exfiltration. Egress should be deny-by-default, destination- and protocol-scoped, logged with privacy-aware metadata, and grant exceptions explicitly. Block cloud metadata services, host-local services, control-plane administrative endpoints, and other Capsules. Stronger deployments need network policy enforced outside the Capsule and controls appropriate to data sensitivity; no policy can guarantee confidentiality while arbitrary outbound communication is allowed.
 
-The chart permits DNS plus operator-selected CIDRs. NetworkPolicy cannot select
-the Kubernetes API server by authenticated identity, so its CIDR can become
-stale or encompass unintended endpoints. RBAC remains the authorization
-boundary; high-assurance deployments need infrastructure-level egress controls.
+The chart permits DNS, Capsule TCP to the in-namespace control-plane
+provider gateway, operator-selected Capsule CIDRs, and operator-selected
+control-plane CIDRs for the Kubernetes API and for HTTPS model providers.
+Capsules do not receive provider CIDRs, API-server CIDRs, cloud metadata,
+default internet egress, or a host Docker socket. Inference to
+`api.openai.com:443` and `api.anthropic.com:443` (and HTTPS custom
+endpoints) leaves from the control plane through the provider gateway.
+NetworkPolicy cannot select the Kubernetes API server or those provider
+hosts by authenticated identity, so those CIDRs can become stale or
+encompass unintended endpoints. RBAC remains the authorization boundary;
+high-assurance deployments need infrastructure-level egress controls.
 
 ### Malicious ingress, terminals, and previews
 
@@ -796,7 +803,10 @@ process environment; they expire in 24 hours. Revocation cancels active streams.
 The gateway fixes upstream hosts and operation paths, strips caller credentials
 and cookies, rejects redirects and query strings, bounds requests/responses,
 and imposes request deadlines. It does not log inference payloads. TLS and
-Capsule-to-gateway routing are explicit deployment prerequisites. Compromised
+Capsule-to-gateway routing are explicit deployment prerequisites. On
+Kubernetes, Capsule NetworkPolicy allows in-namespace TCP to that gateway;
+upstream `api.openai.com:443` / `api.anthropic.com:443` CIDRs attach only to
+the control plane. Compromised
 Capsule code can spend against its authorized provider connection until revoked
 or expired; a scoped gateway is not a guarantee against abusive inference use.
 

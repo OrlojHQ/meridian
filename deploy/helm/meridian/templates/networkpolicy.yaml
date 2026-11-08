@@ -24,7 +24,7 @@ spec:
     - from:
         - podSelector: {}
       ports:
-        - {protocol: TCP, port: 8080}
+        - {protocol: TCP, port: {{ .Values.service.port }}}
   egress:
     - to:
         - namespaceSelector:
@@ -37,6 +37,12 @@ spec:
         - {protocol: UDP, port: 53}
         - {protocol: TCP, port: 53}
     {{- range .Values.networkPolicy.kubernetesAPIServerCIDRs }}
+    - to:
+        - ipBlock: {cidr: {{ . | quote }}}
+      ports:
+        - {protocol: TCP, port: 443}
+    {{- end }}
+    {{- range .Values.networkPolicy.providerEgressCIDRs }}
     - to:
         - ipBlock: {cidr: {{ . | quote }}}
       ports:
@@ -66,6 +72,14 @@ spec:
       ports:
         - {protocol: UDP, port: 53}
         - {protocol: TCP, port: 53}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ include "meridian.name" . }}
+              app.kubernetes.io/instance: {{ .Release.Name }}
+              app.kubernetes.io/component: control-plane
+      ports:
+        - {protocol: TCP, port: {{ .Values.service.port }}}
     {{- range .Values.networkPolicy.capsuleEgressCIDRs }}
     - to:
         - ipBlock: {cidr: {{ . | quote }}}
