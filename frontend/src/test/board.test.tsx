@@ -1,13 +1,44 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { App } from "../App";
 import { api } from "../api/client";
-import type { BoardItem, Capsule, Thread, ThreadLink } from "../api/generated/types.gen";
+import type {
+  BoardItem,
+  Capabilities,
+  Capsule,
+  Project,
+  Thread,
+  ThreadLink,
+} from "../api/generated/types.gen";
 import { Board } from "../components/Board";
 import { rollupSummary } from "../shell/capsuleActivity";
+
+const project: Project = {
+  id: "project-1",
+  name: "Meridian",
+  createdAt: "2026-11-01T00:00:00Z",
+  updatedAt: "2026-11-01T00:00:00Z",
+  resourceVersion: 1,
+};
+
+const capabilities: Capabilities = {
+  providerVersion: "fake/v1",
+  attach: false,
+  run: false,
+  structured: true,
+  git: false,
+  pause: false,
+  snapshot: false,
+  clone: false,
+  preview: false,
+  browse: false,
+  delivery: false,
+  resourceMetrics: false,
+};
 
 const capsule = (id: string, name: string, role: "main" | "sub"): Capsule => ({
   id,
@@ -102,13 +133,22 @@ const shipped: BoardItem = {
   },
 };
 
-function renderBoard() {
+function renderBoard(
+  outlet?: { openNewProject: () => void; openLauncher: (value: Project) => void },
+  extra: { git?: boolean; projects?: Project[] } = {},
+) {
   vi.spyOn(api, "coordinationRequests").mockResolvedValue({ items: [] });
+  vi.spyOn(api, "projects").mockResolvedValue({ items: extra.projects ?? [project] });
+  vi.spyOn(api, "capabilities").mockResolvedValue({ ...capabilities, git: extra.git === true });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={["/ui/board"]}>
-        <Board />
+      <MemoryRouter initialEntries={["/ui/"]}>
+        <Routes>
+          <Route path="/ui" element={<Outlet context={outlet} />}>
+            <Route index element={<Board />} />
+          </Route>
+        </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -127,7 +167,10 @@ describe("Board", () => {
     }));
     renderBoard();
 
-    expect(await screen.findByRole("heading", { name: "1 needs you" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "1 needs attention" })).toBeTruthy();
+    expect(screen.getByText("Inbox")).toBeTruthy();
+    expect(screen.getByText("3 Capsules")).toBeTruthy();
+    expect(within(screen.getByRole("region", { name: /Needs you/ })).getByText("Meridian")).toBeTruthy();
     const needsYou = screen.getByRole("region", { name: /Needs you/ });
     expect(within(needsYou).getByRole("link", { name: "tests" })).toBeTruthy();
     expect(within(needsYou).getByText("Waiting for permission")).toBeTruthy();
@@ -331,5 +374,107 @@ describe("Board", () => {
     const fold = within(working).getByRole("list", { name: "Subagents of release lead" });
     expect(within(fold).getByRole("link", { name: "docs" })).toBeTruthy();
     expect(within(fold).getByText("Promoted")).toBeTruthy();
+  });
+
+  it("says when everything is caught up and still offers new work", async () => {
+    vi.spyOn(api, "board").mockResolvedValue({ truncated: false, items: [lead] });
+    const gitStatus = vi.spyOn(api, "gitStatus");
+    const gitDiff = vi.spyOn(api, "gitDiff");
+    const files = vi.spyOn(api, "workspaceFiles");
+    const moments = vi.spyOn(api, "moments");
+    const blocks = vi.spyOn(api, "threadBlocks");
+    const openLauncher = vi.fn();
+    const openNewProject = vi.fn();
+    renderBoard({ openLauncher, openNewProject });
+
+    expect(await screen.findByRole("heading", { name: "All caught up" })).toBeTruthy();
+    expect(screen.getByText(/1 agent is still working/)).toBeTruthy();
+    expect(screen.queryByRole("region", { name: /Needs you/ })).toBeNull();
+    expect(screen.getByRole("region", { name: /Working/ })).toHaveTextContent("release lead");
+    await userEvent.click(screen.getByRole("button", { name: "Start work in Meridian" }));
+    expect(openLauncher).toHaveBeenCalledWith(project);
+    await userEvent.click(screen.getByRole("button", { name: "New project" }));
+    expect(openNewProject).toHaveBeenCalled();
+    expect(gitStatus).not.toHaveBeenCalled();
+    expect(gitDiff).not.toHaveBeenCalled();
+    expect(files).not.toHaveBeenCalled();
+    expect(moments).not.toHaveBeenCalled();
+    expect(blocks).not.toHaveBeenCalled();
+  });
+
+  it("offers the diff of finished work only when the provider supports Git review", async () => {
+    const review: BoardItem = {
+      capsule: capsule("capsule-done", "Done", "main"),
+      status: "ready_for_review",
+      since: "2026-11-01T00:05:00Z",
+      surfaced: false,
+    };
+    vi.spyOn(api, "board").mockResolvedValue({ truncated: false, items: [review] });
+    renderBoard(undefined, { git: true });
+
+    expect(await screen.findByRole("heading", { name: "All caught up" })).toBeTruthy();
+    const lane = screen.getByRole("region", { name: /Ready for review/ });
+    expect(within(lane).getByRole("link", { name: "Open diff" })).toHaveAttribute(
+      "href",
+      "/ui/capsules/capsule-done/diff",
+    );
+  });
+
+  it("does not offer a diff when Git review is unavailable", async () => {
+    vi.spyOn(api, "board").mockResolvedValue({
+      truncated: false,
+      items: [{
+        capsule: capsule("capsule-done", "Done", "main"),
+        status: "ready_for_review",
+        since: "2026-11-01T00:05:00Z",
+        surfaced: false,
+      }],
+    });
+    renderBoard();
+    expect(await screen.findByRole("region", { name: /Ready for review/ })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Open diff" })).toBeNull();
+  });
+
+  it("asks for a Project when the installation has none", async () => {
+    vi.spyOn(api, "board").mockResolvedValue({ truncated: false, items: [] });
+    const openNewProject = vi.fn();
+    renderBoard({ openLauncher: vi.fn(), openNewProject }, { projects: [] });
+    expect(await screen.findByRole("heading", { name: "No projects yet" })).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "New project" }));
+    expect(openNewProject).toHaveBeenCalled();
+  });
+
+  it("is the home view and redirects /ui/board", async () => {
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
+    vi.spyOn(api, "capsules").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "threads").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "capabilities").mockResolvedValue(capabilities);
+    vi.spyOn(api, "board").mockResolvedValue({ truncated: false, items: [surfaced, lead] });
+    vi.spyOn(api, "coordinationRequests").mockResolvedValue({ items: [] });
+    function Where() {
+      const location = useLocation();
+      return <p data-testid="location">{location.pathname}</p>;
+    }
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/ui/board"]}>
+          <App />
+          <Where />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByTestId("location")).toHaveTextContent("/ui/");
+    expect(await screen.findByRole("heading", { name: "1 needs attention" })).toBeTruthy();
+    const views = screen.getByRole("navigation", { name: "Views" });
+    expect(within(views).getAllByRole("link").map((link) => link.getAttribute("href"))).toEqual([
+      "/ui/",
+      "/ui/threads",
+      "/ui/settings/harnesses",
+    ]);
+    expect(within(views).getByRole("link", { name: /Inbox/ })).toBeTruthy();
+    expect(within(views).queryByRole("link", { name: /^Board$/ })).toBeNull();
+    expect(within(views).queryByRole("link", { name: /^Activity$/ })).toBeNull();
   });
 });

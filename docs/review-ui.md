@@ -7,7 +7,7 @@ generated from `api/openapi.yaml`; lifecycle transitions remain server-owned.
 
 The UI uses a full-height, Capsule-centered workspace:
 
-- the persistent Activity sidebar opens with links to Activity (with a count
+- the persistent Activity sidebar opens with links to Inbox (with a count
   of Capsules that need attention), Threads, and Harness settings under the
   brand and filter, then groups Capsules by Project and shows each
   Capsule's harness and what it is doing and for how long (for example "Claude
@@ -23,22 +23,22 @@ The UI uses a full-height, Capsule-centered workspace:
 - the contextual tool pane provides capability-gated Changes, Preview, Files,
   Terminal, and Activity tabs for the selected Capsule.
 
-The Activity view is an inbox of what needs the operator. Needs attention and
-Ready for review come first as rows with direct actions: a session waiting for
-permission or input links straight to that session, a failed Capsule or Run
-shows its bounded failure reason and opens the Capsule, and finished work opens
-the Capsule or, when the provider supports Git review, its diff page. Working
-Capsules collapse into a compact list of links, and Idle, Paused, and Sealed
-into one collapsed summary. When nothing needs the operator the view says it is
-all caught up and still offers to start work in each Project or create a new
-one. Status is derived only from Capsule, Run, and Thread summaries, including
-the Thread's content-free `awaiting` flag. The working set never polls Git status, files,
-or previews, because those count as Capsule activity and would defeat idle
-pausing, and never fetches transcripts. `meridiand --runtime-refresh-interval`
-keeps Run state and structured Thread output current while no client is
-watching (ADR 0025).
+The Inbox at `/ui/` is the operator's one attention-first list. It uses the
+Board's status lanes (needs you, working, PR open, ready for review, idle,
+paused, sealed) and the Activity headline ("N need attention", or "All caught
+up"). A session waiting for permission or input can be peeked and answered in
+place, a failed Capsule or Run shows its bounded failure reason, finished work
+opens the Capsule or, when the provider supports Git review, its diff page, and
+subagents fold under their lead unless they need you. When nothing needs the
+operator the view still offers to start work in each Project or create a new
+one. `/ui/board` redirects here. Status is derived from the content-free Board
+and working-set summaries, including the Thread's `awaiting` flag. The working
+set never polls Git status, files, or previews, because those count as Capsule
+activity and would defeat idle pausing, and never fetches transcripts.
+`meridiand --runtime-refresh-interval` keeps Run state and structured Thread
+output current while no client is watching (ADR 0025).
 
-Activity and Board rows that wait for permission or input have a "Peek"
+Inbox rows that wait for permission or input have a "Peek"
 disclosure that names the blocker and lets the operator answer without opening
 the Thread. Rows stay content-free: only an explicit expand reads that one
 Thread's transcript, limited to the trailing 256 messages the daemon uses for
@@ -59,7 +59,7 @@ failed reads as failed in both.
 A slim status bar runs along the bottom of the shell. It shows whether the
 browser is online and whether the daemon API answers the capabilities request,
 the provider version, and counts of Capsules that need attention, are working,
-or are ready for review, each linking to the Activity view. When the provider is
+or are ready for review, each linking to the Inbox. When the provider is
 `fake`, the bar turns to a warning that Capsules are simulated and no agents
 run. It shows no resource use because the API exposes no resource metrics
 (`capabilities.resourceMetrics` is false). "Notify me" asks this browser for
@@ -167,13 +167,13 @@ open Project creation, focus filtering, move through the Capsule working set,
 jump to the next Capsule that needs the operator, and list every shortcut, only
 while focus is outside terminals and form controls. `g` then `n` is the same
 command as the palette's "Next item needing me": it cycles oldest-first through
-Board and Activity items that need you. The command
+Inbox items that need you. The command
 palette opens with ⌘K on macOS and Ctrl+K elsewhere, or from "Commands" in the
 sidebar. ⌘K works from anywhere, including a focused terminal. Ctrl+K is the
 shell's kill-line, so the palette never takes it from a terminal. The palette
 is a modal dialog with a combobox over a grouped listbox: Capsules, sessions of
 Capsules with more than one, "New Capsule in" each Project, New project,
-Activity, Threads, Harness settings, the keyboard shortcut list, and, for the
+Inbox, Threads, Harness settings, the keyboard shortcut list, and, for the
 current Capsule, the full diff (when the provider supports Git), lineage, Pause
 or Resume (when it supports pausing), Seal (when it supports snapshots), and
 Delete. Matching is fuzzy over names, Projects, harnesses, and activity labels,
@@ -208,7 +208,8 @@ for deterministic jsdom component tests.
 
 The production routes are:
 
-- `/ui/` — Activity view for the Capsule working set;
+- `/ui/` — Inbox of every Capsule by status (needs you first); `/ui/board`
+  redirects here;
 - `/ui/capsules/:id` — unified Capsule workspace, with native PTY or structured
   Thread controls in the primary surface and review tools beside it;
 - `/ui/capsules/:id/diff` — exact-state Delivery approval in the primary
@@ -290,7 +291,7 @@ When an active Thread's current Run is terminal (failed, stopped, or exited),
 the Thread says so instead of looking live: the toolbar reads "Session ended",
 the page badge reads "failed" or "ended", and a banner after the transcript
 shows when the session ended and, for a failure, the Run's `failure` text. That
-text can carry adapter or runtime output, so the Thread, Board, and Activity
+text can carry adapter or runtime output, so the Thread and Inbox
 views render it as one plain-text line capped at 280 characters, with control
 characters and bidirectional overrides removed; adapter stderr is never shown.
 The banner offers Restart session (a new Run in the same Thread), Copy last

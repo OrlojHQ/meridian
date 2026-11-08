@@ -1,7 +1,6 @@
 import { HarnessSetups } from "./components/HarnessSetups";
 import {
   useMutation,
-  useQueries,
   useQuery,
   useQueryClient,
   type UseQueryResult,
@@ -10,11 +9,11 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent } 
 import { createPortal } from "react-dom";
 import {
   Link,
+  Navigate,
   Route,
   Routes,
   useLocation,
   useNavigate,
-  useOutletContext,
   useParams,
   useSearchParams,
 } from "react-router-dom";
@@ -29,7 +28,6 @@ import type {
   GitResult,
   Moment,
   PreviewTicket,
-  Project,
   Run,
   RunEvent,
   RunPage,
@@ -37,7 +35,6 @@ import type {
   TimelineView,
 } from "./api/generated/types.gen";
 import { queries } from "./api/queries";
-import { BlockerPeek } from "./components/BlockerPeek";
 import { Board } from "./components/Board";
 import { DeliveryDecision } from "./components/DeliveryDecision";
 import {
@@ -54,10 +51,8 @@ import {
   ActivityDot,
   AppShell,
   sessionPath,
-  type ShellOutletContext,
 } from "./shell/AppShell";
 import {
-  activityGroups,
   capsuleSessions,
   defaultSession,
   harnessName,
@@ -65,7 +60,6 @@ import {
   TERMINAL_SESSION,
 } from "./shell/capsuleActivity";
 import { requestedCapsuleAction } from "./shell/paletteCommands";
-import { useWorkingSet, type WorkingSetItem } from "./shell/useWorkingSet";
 const TerminalView = lazy(() =>
   import("./components/Terminal").then((module) => ({
     default: module.TerminalView,
@@ -147,323 +141,6 @@ export function AuthenticationState() {
         </button>
       </form>
       {error ? <p>{error}</p> : null}
-    </section>
-  );
-}
-
-const byRecent = (a: WorkingSetItem, b: WorkingSetItem) =>
-  Date.parse(b.activity.since ?? "") - Date.parse(a.activity.since ?? "");
-
-const liveSessions = (item: WorkingSetItem) =>
-  item.sessions.filter((session) => !session.archived);
-
-const itemHarness = (item: WorkingSetItem) =>
-  item.capsule.harness || liveSessions(item)[0]?.harness;
-
-type InboxAction = { key: string; to: string; label: string; harness?: string };
-
-// Inbox actions link straight to what needs the operator: a waiting session,
-// the failed Capsule or Run, or the diff of finished work. They are built only
-// from the working set's summaries; nothing here loads Git state or content.
-function inboxActions(item: WorkingSetItem, git: boolean): InboxAction[] {
-  const { capsule, activity, threads } = item;
-  const open = { key: "open", to: sessionPath(capsule.id), label: "Open Capsule" };
-  if (activity.group === "finished") {
-    return git
-      ? [
-          open,
-          {
-            key: "diff",
-            to: `/ui/capsules/${encodeURIComponent(capsule.id)}/diff`,
-            label: "Open diff",
-          },
-        ]
-      : [open];
-  }
-  if (capsule.state === "Failed") return [open];
-  const waiting = liveSessions(item).filter((session) => session.group === "attention");
-  if (waiting.length === 0) return [open];
-  return waiting.map((session) => {
-    const kind = threads.find((thread) => thread.id === session.id)?.awaiting?.kind;
-    return {
-      key: session.id,
-      to: sessionPath(capsule.id, session.id),
-      label:
-        kind === "permission"
-          ? "Review permission"
-          : kind === "input"
-            ? "Reply"
-            : "Open Capsule",
-      harness: waiting.length > 1 ? session.harness : undefined,
-    };
-  });
-}
-
-function InboxRow({
-  item,
-  projectName,
-  momentCount,
-  git,
-}: {
-  item: WorkingSetItem;
-  projectName?: string;
-  momentCount?: number;
-  git: boolean;
-}) {
-  const { capsule, activity } = item;
-  const actions = inboxActions(item, git);
-  const waiting = item.threads.flatMap((thread) =>
-    thread.state === "active" && thread.awaiting ? [{ thread, kind: thread.awaiting.kind }] : [],
-  );
-  return (
-    <li className={`inbox-row inbox-row-${activity.group}`}>
-      <HarnessMark harness={itemHarness(item)} size="md" />
-      <div className="inbox-main">
-        <p className="inbox-title">
-          <Link to={sessionPath(capsule.id)}>{capsule.name}</Link>
-          <time dateTime={activity.since}>{relativeTime(activity.since)}</time>
-        </p>
-        <p className="inbox-meta">
-          <ActivityDot group={activity.group} />
-          <span className="inbox-status">{activity.label}</span>
-          {projectName && <span>{projectName}</span>}
-          {momentCount ? (
-            <Link to={`/ui/timelines/${encodeURIComponent(capsule.timelineId)}`}>
-              {momentCount === 1 ? "1 Moment" : `${momentCount} Moments`}
-            </Link>
-          ) : null}
-        </p>
-        {activity.detail && <p className="inbox-detail">{activity.detail}</p>}
-        {waiting.map(({ thread, kind }) => (
-          <BlockerPeek
-            key={thread.id}
-            thread={thread}
-            kind={kind}
-            label={waiting.length > 1 ? harnessName(thread.harness) : undefined}
-          />
-        ))}
-      </div>
-      <div className="inbox-actions">
-        {actions.map((action, index) => (
-          <Link
-            key={action.key}
-            to={action.to}
-            className={`button-link${index === 0 ? " primary-button" : ""}`}
-          >
-            {action.harness && <HarnessMark harness={action.harness} />}
-            {action.label}
-          </Link>
-        ))}
-      </div>
-    </li>
-  );
-}
-
-function CompactList({ items }: { items: WorkingSetItem[] }) {
-  return (
-    <ul className="activity-compact">
-      {items.map((item) => (
-        <li key={item.capsule.id}>
-          <Link to={sessionPath(item.capsule.id)} title={item.activity.detail}>
-            <ActivityDot group={item.activity.group} />
-            <HarnessMark harness={itemHarness(item)} />
-            <strong>{item.capsule.name}</strong>
-            <small>{item.activity.label}</small>
-            <time dateTime={item.activity.since}>{relativeTime(item.activity.since)}</time>
-          </Link>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function StartWork({
-  projects,
-  openLauncher,
-  openNewProject,
-}: {
-  projects: Project[];
-  openLauncher?: (project: Project) => void;
-  openNewProject?: () => void;
-}) {
-  if (!openLauncher && !openNewProject) {
-    return (
-      <p>
-        Use <strong>+</strong> next to a project in the sidebar to start an
-        agent in a new Capsule.
-      </p>
-    );
-  }
-  return (
-    <div className="inbox-start">
-      {openLauncher &&
-        projects.map((project) => (
-          <button key={project.id} type="button" onClick={() => openLauncher(project)}>
-            <PlusIcon />
-            Start work in {project.name}
-          </button>
-        ))}
-      {openNewProject && (
-        <button type="button" className="secondary" onClick={openNewProject}>
-          New project
-        </button>
-      )}
-    </div>
-  );
-}
-
-const plural = (count: number, one: string, many: string) =>
-  `${count} ${count === 1 ? one : many}`;
-
-export function CapsuleList() {
-  const outlet = useOutletContext<ShellOutletContext | undefined>();
-  const { projects, projectItems, capsuleResults, items } = useWorkingSet();
-  const capabilities = useQuery(queries.capabilities());
-  const attention = items.filter((item) => item.activity.group === "attention").sort(byRecent);
-  const review = items.filter((item) => item.activity.group === "finished").sort(byRecent);
-  const working = items.filter((item) => item.activity.group === "working").sort(byRecent);
-  const quietGroups = activityGroups.filter(({ group }) =>
-    ["idle", "paused", "sealed"].includes(group),
-  );
-  const quiet = quietGroups.flatMap(({ group }) =>
-    items.filter((item) => item.activity.group === group).sort(byRecent),
-  );
-  const inbox = [...attention, ...review];
-  const momentResults = useQueries({
-    queries: inbox.map(({ capsule }) => ({
-      ...queries.moments(capsule.id),
-      enabled: capabilities.data?.snapshot === true,
-    })),
-  });
-  const projectNames = new Map(projectItems.map((project) => [project.id, project.name]));
-
-  if (projects.isPending) return <p className="loading" role="status">Loading Capsules…</p>;
-  if (projects.isError) return <ErrorState error={projects.error} />;
-  if (projectItems.length === 0) {
-    return (
-      <section className="empty-state">
-        <h1>No projects yet</h1>
-        <p>
-          A Project points Meridian at a repository. Every agent session then
-          runs in its own disposable Capsule with a fresh clone.
-        </p>
-        {outlet?.openNewProject && (
-          <button type="button" onClick={outlet.openNewProject}>
-            New project
-          </button>
-        )}
-      </section>
-    );
-  }
-  if (capsuleResults.some((result) => result.isPending)) {
-    return <p className="loading" role="status">Loading Capsules…</p>;
-  }
-  const capsuleError = capsuleResults.find((result) => result.isError);
-  if (capsuleError) return <ErrorState error={capsuleError.error} />;
-  if (items.length === 0) {
-    return (
-      <section className="fleet-view">
-        <header className="workspace-view-header">
-          <div>
-            <p className="eyebrow">Activity</p>
-            <h1>Nothing running yet</h1>
-          </div>
-        </header>
-        <div className="empty-state">
-          <p>Start an agent in a new Capsule.</p>
-          <StartWork
-            projects={projectItems}
-            openLauncher={outlet?.openLauncher}
-            openNewProject={outlet?.openNewProject}
-          />
-        </div>
-      </section>
-    );
-  }
-  const momentCounts = new Map(
-    inbox.map(({ capsule }, index) => [
-      capsule.id,
-      momentResults[index]?.data?.items.length ?? 0,
-    ]),
-  );
-  const git = capabilities.data?.git === true;
-  const row = (item: WorkingSetItem) => (
-    <InboxRow
-      key={item.capsule.id}
-      item={item}
-      projectName={projectNames.get(item.capsule.projectId)}
-      momentCount={momentCounts.get(item.capsule.id)}
-      git={git}
-    />
-  );
-  return (
-    <section className="fleet-view activity-inbox">
-      <header className="workspace-view-header">
-        <div>
-          <p className="eyebrow">Activity</p>
-          <h1>
-            {attention.length > 0
-              ? `${attention.length} need${attention.length === 1 ? "s" : ""} attention`
-              : review.length > 0
-                ? `${review.length} ready for review`
-                : "All caught up"}
-          </h1>
-        </div>
-        <span className="count-label">{plural(items.length, "Capsule", "Capsules")}</span>
-      </header>
-      {attention.length > 0 && (
-        <section className="inbox-group" aria-labelledby="inbox-attention">
-          <h2 id="inbox-attention">
-            Needs attention <small>{attention.length}</small>
-          </h2>
-          <ul>{attention.map(row)}</ul>
-        </section>
-      )}
-      {review.length > 0 && (
-        <section className="inbox-group" aria-labelledby="inbox-review">
-          <h2 id="inbox-review">
-            Ready for review <small>{review.length}</small>
-          </h2>
-          <ul>{review.map(row)}</ul>
-        </section>
-      )}
-      {inbox.length === 0 && (
-        <div className="inbox-clear">
-          <p>
-            Nothing needs you right now.
-            {working.length > 0 &&
-              ` ${plural(working.length, "agent is", "agents are")} still working.`}
-          </p>
-          <StartWork
-            projects={projectItems}
-            openLauncher={outlet?.openLauncher}
-            openNewProject={outlet?.openNewProject}
-          />
-        </div>
-      )}
-      {working.length > 0 && (
-        <section className="activity-summary" aria-labelledby="inbox-working">
-          <h2 id="inbox-working">
-            Working <small>{working.length}</small>
-          </h2>
-          <CompactList items={working} />
-        </section>
-      )}
-      {quiet.length > 0 && (
-        <details className="activity-summary activity-quiet">
-          <summary>
-            {quietGroups
-              .map(({ group, title }) => ({
-                title,
-                count: quiet.filter((item) => item.activity.group === group).length,
-              }))
-              .filter(({ count }) => count > 0)
-              .map(({ title, count }) => `${count} ${title.toLowerCase()}`)
-              .join(" · ")}
-          </summary>
-          <CompactList items={quiet} />
-        </details>
-      )}
     </section>
   );
 }
@@ -1465,11 +1142,11 @@ export function App() {
   return (
     <Routes>
       <Route path="/ui" element={<AppShell />}>
-        <Route index element={<CapsuleList />} />
+        <Route index element={<Board />} />
         <Route path="settings/harnesses" element={<HarnessSetups />} />
         <Route path="capsules/:capsuleId" element={<CapsuleDetail />} />
         <Route path="capsules/:capsuleId/diff" element={<DiffPage />} />
-        <Route path="board" element={<Board />} />
+        <Route path="board" element={<Navigate to="/ui/" replace />} />
         <Route path="threads" element={<ThreadFleet />} />
         <Route path="threads/:threadId" element={<ThreadDetail />} />
         <Route path="runs/:runId" element={<RunDetail />} />

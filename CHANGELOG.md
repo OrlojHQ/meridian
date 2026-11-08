@@ -167,6 +167,14 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Activity and Board are one Inbox at `/ui/`. The page keeps Board status
+  lanes (needs you, working, PR open, ready for review, idle, paused, sealed)
+  and the Activity headline ("N need attention", or "All caught up"), with
+  peek-and-respond and subagent rollups on the same rows, so operators no
+  longer visit two pages for the same blockers. The sidebar and command
+  palette expose Inbox instead of separate Activity and Board links;
+  `/ui/board` redirects to `/ui/`. `meridian board` is unchanged.
+
 - A lead's Board rollup and its Subagents panel now derive from the same link
   phase. A subagent whose session failed, for example on a harness timeout,
   reads as failed in both, instead of "needs you" in the rollup and "Ended" in
