@@ -86,6 +86,7 @@ const (
 	SealCapsuleOperation                    OperationName = "SealCapsule"
 	SendThreadMessageOperation              OperationName = "SendThreadMessage"
 	SetProjectHarnessSetupOperation         OperationName = "SetProjectHarnessSetup"
+	SetThreadModelOperation                 OperationName = "SetThreadModel"
 	StartRunOperation                       OperationName = "StartRun"
 	StartThreadOperation                    OperationName = "StartThread"
 	StreamRunEventsOperation                OperationName = "StreamRunEvents"

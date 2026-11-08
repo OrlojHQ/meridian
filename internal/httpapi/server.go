@@ -188,6 +188,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /threads/{threadId}/resume", s.resumeThread)
 	s.mux.HandleFunc("POST /threads/{threadId}/messages", s.sendThreadMessage)
 	s.mux.HandleFunc("POST /threads/{threadId}/responses", s.respondThread)
+	s.mux.HandleFunc("POST /threads/{threadId}/model", s.setThreadModel)
 	s.mux.HandleFunc("POST /threads/{threadId}/cancel", s.cancelThread)
 	s.mux.HandleFunc("GET /threads/{threadId}/blocks", s.listThreadBlocks)
 	s.mux.HandleFunc("GET /threads/{threadId}/blocks/stream", s.streamThreadBlocks)
@@ -556,6 +557,23 @@ func (s *Server) respondThread(writer http.ResponseWriter, request *http.Request
 		request.Context(), domain.ThreadID(request.PathValue("threadId")),
 		domain.ResourceVersion(input.ExpectedResourceVersion), input.ResponseTo,
 		input.Choice, input.Input, request.Header.Get("Idempotency-Key"))
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	writer.Header().Set("ETag", etag(result.Thread.ResourceVersion))
+	writeJSON(writer, http.StatusAccepted, s.threadMutationResponse(request.Context(), result))
+}
+
+func (s *Server) setThreadModel(writer http.ResponseWriter, request *http.Request) {
+	var input threadModelRequest
+	if !decode(writer, request, &input) {
+		return
+	}
+	result, err := s.service.SetThreadModel(
+		request.Context(), domain.ThreadID(request.PathValue("threadId")),
+		domain.ResourceVersion(input.ExpectedResourceVersion), input.Model,
+		request.Header.Get("Idempotency-Key"))
 	if err != nil {
 		writeError(writer, err)
 		return
@@ -1918,6 +1936,11 @@ type threadResponseRequest struct {
 	ResponseTo              string  `json:"responseTo"`
 	Choice                  *string `json:"choice,omitempty"`
 	Input                   *string `json:"input,omitempty"`
+}
+
+type threadModelRequest struct {
+	ExpectedResourceVersion int64  `json:"expectedResourceVersion"`
+	Model                   string `json:"model"`
 }
 
 type projectJSON struct {

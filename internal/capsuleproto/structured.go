@@ -323,6 +323,10 @@ func (s *Server) sendStructured(writer http.ResponseWriter, request *http.Reques
 		}
 		return
 	}
+	if input.Frame.Type == adapterproto.KindSetModel && !session.negotiatedModels() {
+		writeProtocolError(writer, http.StatusConflict, "models_unsupported")
+		return
+	}
 	ctx, cancel := context.WithTimeout(request.Context(), structuredWriteTimeout)
 	defer cancel()
 	if err := session.sendControllerFrame(ctx, input.Frame); err != nil {
@@ -336,7 +340,7 @@ func controllerFrame(kind adapterproto.Kind) bool {
 	switch kind {
 	case adapterproto.KindUserMessage, adapterproto.KindPermissionResponse,
 		adapterproto.KindInputResponse, adapterproto.KindCancel,
-		adapterproto.KindHeartbeat, adapterproto.KindAck:
+		adapterproto.KindHeartbeat, adapterproto.KindAck, adapterproto.KindSetModel:
 		return true
 	default:
 		return false
@@ -447,7 +451,7 @@ func (s *structuredSession) execute() {
 		ID: "capsuled-hello", Capabilities: &adapterproto.Capabilities{
 			Resume: true, ToolEvents: true, Permissions: true,
 			InputRequests: true, Heartbeat: true, OpaqueMetadata: true,
-			Commands: true,
+			Commands: true, Models: true,
 		},
 	}
 	handshakeContext, handshakeCancel := context.WithTimeout(ctx, structuredHandshakeTimeout)
@@ -501,7 +505,7 @@ func (s *structuredSession) execute() {
 	close(s.ready)
 
 	readerDone := make(chan error, 1)
-	go func() { readerDone <- s.readerLoop(ctx, decoder, capabilities.Commands) }()
+	go func() { readerDone <- s.readerLoop(ctx, decoder, capabilities) }()
 	waitDone := make(chan error, 1)
 	go func() { waitDone <- command.Wait() }()
 
@@ -636,7 +640,7 @@ func (s *structuredSession) sendControllerFrame(ctx context.Context, frame adapt
 }
 
 func (s *structuredSession) readerLoop(
-	ctx context.Context, decoder *adapterproto.Decoder, commands bool,
+	ctx context.Context, decoder *adapterproto.Decoder, capabilities adapterproto.Capabilities,
 ) error {
 	for {
 		frame, err := decoder.Decode()
@@ -644,7 +648,8 @@ func (s *structuredSession) readerLoop(
 			return err
 		}
 		if !adapterFrame(frame.Type) || frame.Cursor != 0 || frame.Gap != nil ||
-			(frame.Type == adapterproto.KindCommands && !commands) {
+			(frame.Type == adapterproto.KindCommands && !capabilities.Commands) ||
+			(frame.Type == adapterproto.KindModels && !capabilities.Models) {
 			return adapterproto.ErrInvalidFrame
 		}
 		s.addEvent(frame)
@@ -669,7 +674,7 @@ func adapterFrame(kind adapterproto.Kind) bool {
 		adapterproto.KindStatus, adapterproto.KindError,
 		adapterproto.KindPermissionRequest, adapterproto.KindInputRequest,
 		adapterproto.KindHeartbeat, adapterproto.KindAck, adapterproto.KindEnd,
-		adapterproto.KindCommands:
+		adapterproto.KindCommands, adapterproto.KindModels:
 		return true
 	default:
 		return false
@@ -723,6 +728,14 @@ func (s *structuredSession) waitChannel() <-chan struct{} {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.notify
+}
+
+// negotiatedModels reports whether the adapter accepted models frames. A
+// session that has not finished its handshake has not.
+func (s *structuredSession) negotiatedModels() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.capabilities != nil && s.capabilities.Models
 }
 
 func (s *structuredSession) status() StructuredStatusResponse {

@@ -408,8 +408,31 @@ with no control characters. Adapters fold, truncate, and drop entries to fit,
 and report the list again when it changes.
 
 Stop and New session are Meridian controls in the same menu. They call the
-Thread API and are never sent to the harness. Model switching is not offered
-(ADR 0028).
+Thread API and are never sent to the harness.
+
+## Models
+
+Adapters report the harness's current model and the models it offers in a
+`models` frame, and switch on a `set_model` frame, when both hellos negotiate
+the `models` capability (ADR 0031). The browser composer shows the current
+model inside the message box and switches from its menu
+(`POST /threads/{threadId}/model`). The switch applies from the next turn.
+
+| Driver | List | Current | Switch |
+| --- | --- | --- | --- |
+| `claude-stream` | `initialize` `models[]` | `default` until a switch succeeds | control request `set_model` |
+| `codex-app-server` | `model/list`, without hidden models | `thread/start` or `thread/resume` `model` | `model` on the next `turn/start`, which Codex keeps |
+| `pi-rpc` | `get_available_models`, as `provider/id` | `get_state` `model` | `set_model` with provider and model ID |
+| `acp` | the `select` config option with category `model`, flattened | its `currentValue` | `session/set_config_option` |
+| `generic` | the child adapter | as reported | forwarded |
+
+Each list is what the harness's configuration already lets it use: Pi lists
+providers with credentials, the `dsh` connection route names one model, and
+Claude Code and Codex list their vendor's models. An adapter switches only to
+an ID from its own latest list. Anything else, or a harness that refuses, is a
+non-fatal `model_unavailable` error and the session keeps its model. Frames
+hold at most 128 options with unique IDs up to 256 bytes, labels up to 128,
+and descriptions up to 512, with no control characters.
 
 ## Adding an ACP harness
 
@@ -533,7 +556,8 @@ brittle external script:
   messages, tools, permissions, questions, MCP approval, queueing and steering,
   withdrawn prompts, failed turns, resume, and MCP registration. Every driver
   has a slash-command fixture covering discovery, bounds, actions, and unknown
-  `/text`;
+  `/text`, and a models fixture covering the reported list, a switch, an
+  unlisted ID, and a refused switch;
 - supervisor tests cover strict negotiation, malformed/oversized/deep JSON,
   LF framing (including U+2028/U+2029 content), concurrent writes, replay gaps,
   crash/hang/process-group cleanup, stale auth/version, and bounded consumers;

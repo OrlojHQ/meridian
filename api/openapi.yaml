@@ -1164,6 +1164,30 @@ paths:
         "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/Unprocessable" }
         default: { $ref: "#/components/responses/DefaultError" }
+  /threads/{threadId}/model:
+    post:
+      operationId: setThreadModel
+      summary: Switch the active session to another model its harness reported
+      description: >-
+        The model must be an option ID from the session's latest models event.
+        The harness switches from its next turn and reports its models again;
+        an ID it does not offer produces a model_unavailable error event. A
+        session whose harness reports no models answers 422.
+      tags: [threads]
+      parameters:
+        - $ref: "#/components/parameters/ThreadId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ThreadModelRequest" }
+      responses:
+        "202": { $ref: "#/components/responses/ThreadSessionMutation" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        default: { $ref: "#/components/responses/DefaultError" }
   /threads/{threadId}/cancel:
     post:
       operationId: cancelThread
@@ -3464,6 +3488,12 @@ components:
         responseTo: { type: string, minLength: 1, maxLength: 160 }
         choice: { type: string, minLength: 1, maxLength: 1024 }
         input: { type: string, maxLength: 131072 }
+    ThreadModelRequest:
+      type: object
+      required: [expectedResourceVersion, model]
+      properties:
+        expectedResourceVersion: { type: integer, format: int64, minimum: 1 }
+        model: { type: string, minLength: 1, maxLength: 256 }
     ThreadState:
       type: string
       enum: [active, paused, archived, deleted]
@@ -3580,7 +3610,7 @@ components:
           type: string
           enum: [assistant_delta, assistant_message, tool_start, tool_result, status, error,
                  permission_request, permission_response, input_request, input_response, gap, end,
-                 commands]
+                 commands, models, set_model]
         runtimeSequence: { type: integer, format: int64, minimum: 1 }
         messageId: { type: string }
         responseTo:
@@ -3608,6 +3638,31 @@ components:
             The latest commands event replaces earlier ones. Send a command as an
             ordinary message `/name arguments`.
           items: { $ref: "#/components/schemas/ThreadCommand" }
+        models: { $ref: "#/components/schemas/ThreadModels" }
+        model:
+          type: string
+          maxLength: 256
+          description: On set_model events, the model ID the operator asked for.
+    ThreadModels:
+      type: object
+      required: [options]
+      description: >-
+        On models events, the harness's current model and every model it offers.
+        The latest models event replaces earlier ones. current may be empty, and
+        need not be one of the options.
+      properties:
+        current: { type: string, maxLength: 256 }
+        options:
+          type: array
+          maxItems: 128
+          items: { $ref: "#/components/schemas/ThreadModelOption" }
+    ThreadModelOption:
+      type: object
+      required: [id, label]
+      properties:
+        id: { type: string, minLength: 1, maxLength: 256 }
+        label: { type: string, minLength: 1, maxLength: 128 }
+        description: { type: string, maxLength: 512 }
     ThreadCommand:
       type: object
       required: [name, kind]

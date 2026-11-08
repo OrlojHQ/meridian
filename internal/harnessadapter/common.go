@@ -32,6 +32,7 @@ type Stream struct {
 	output   io.Writer
 	mu       sync.Mutex
 	commands bool
+	models   bool
 }
 
 func NewStream(input io.Reader, output io.Writer) *Stream {
@@ -72,6 +73,8 @@ func (s *Stream) Handshake(capabilities adapterproto.Capabilities) error {
 	}
 	s.commands = capabilities.Commands && frame.Capabilities.Commands
 	capabilities.Commands = s.commands
+	s.models = capabilities.Models && frame.Capabilities.Models
+	capabilities.Models = s.models
 	return s.Write(adapterproto.Frame{
 		Protocol:     adapterproto.Version,
 		Type:         adapterproto.KindHello,

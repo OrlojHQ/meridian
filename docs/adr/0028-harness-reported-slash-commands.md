@@ -4,7 +4,8 @@
 - Date: 2026-11-07
 - Extends: ADRs 0013 and 0026
 - Amended by: ADR 0030 (OpenCode reports ACP commands as `prompt`; the
-  `opencode-server` driver is removed)
+  `opencode-server` driver is removed) and ADR 0031 (the operator can switch a
+  session's model)
 
 ## Context
 
@@ -91,7 +92,9 @@ Exclusions come from the harness, never from a Meridian list.
   profile.
 - Model switching is not offered. A structured session's model comes from
   the Project's provider connection and harness setup (ADR 0024), and a
-  per-Thread switch would bypass that. It needs its own decision. A harness
+  per-Thread switch would bypass that. It needs its own decision. (ADR 0031
+  later made it: the operator may switch among the models the harness itself
+  reports.) A harness
   that reports its own `/model`, as Claude Code does, keeps it, because the
   harness runs it inside the configuration Meridian gave it.
 

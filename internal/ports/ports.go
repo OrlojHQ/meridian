@@ -215,6 +215,8 @@ type RuntimeRun struct {
 	Cursor     uint64
 	PTY        bool
 	Structured bool
+	// Models says the structured adapter negotiated models frames.
+	Models bool
 }
 
 type RuntimeStructuredStartRequest struct {

@@ -74,6 +74,13 @@ type codexSession struct {
 	// the outer turn's completion ends the Meridian turn.
 	reviewing  bool
 	reviewTurn string
+
+	// models is what model/list reported and threadModel what the thread
+	// opened with. nextModel is an operator switch still to be sent on
+	// turn/start, which Codex keeps for later turns.
+	models      *modelSet
+	threadModel string
+	nextModel   string
 }
 
 const (
@@ -96,7 +103,7 @@ func RunCodexAppServer(
 	if err := stream.Handshake(adapterproto.Capabilities{
 		Resume: true, ToolEvents: true, Permissions: config.ApprovalPolicy != "never",
 		InputRequests: config.ApprovalPolicy != "never", Heartbeat: false, OpaqueMetadata: true,
-		Commands: true,
+		Commands: true, Models: true,
 	}); err != nil {
 		return err
 	}
@@ -241,6 +248,17 @@ func (s *codexSession) idle() error {
 
 func (s *codexSession) controller(frame adapterproto.Frame) (bool, error) {
 	switch frame.Type {
+	case adapterproto.KindSetModel:
+		if !s.models.has(frame.Model) {
+			return false, s.stream.modelUnavailable("Codex does not offer that model")
+		}
+		// Codex takes the model on the next turn/start and keeps it.
+		s.nextModel = frame.Model
+		if frame.Model == s.threadModel {
+			s.nextModel = ""
+		}
+		s.models.setCurrent(frame.Model)
+		return false, s.stream.ReportModels(s.models)
 	case adapterproto.KindUserMessage:
 		steer, err := codexSteer(frame.Metadata)
 		if err != nil {
@@ -346,6 +364,9 @@ func (s *codexSession) startTurn(frame adapterproto.Frame) error {
 	}
 	method, params := "turn/start", map[string]any{
 		"threadId": s.threadID, "input": codexInput(frame.Content),
+	}
+	if s.nextModel != "" {
+		params["model"] = s.nextModel
 	}
 	if name, arguments, ok := slashCommand(frame.Content); ok {
 		switch {
@@ -517,8 +538,19 @@ func (s *codexSession) response(rawID json.RawMessage, record map[string]json.Ra
 			return false, s.fail(code, errors.New("Codex could not open its thread"))
 		}
 		s.threadID = result.Thread.ID
+		var opened struct {
+			Model string `json:"model"`
+		}
+		if field(record, "result", &opened) == nil {
+			s.threadModel = opened.Model
+		}
 		if err := s.idle(); err != nil {
 			return false, err
+		}
+		if s.stream.ModelsNegotiated() {
+			if err := s.call("model/list", map[string]any{}); err != nil {
+				return false, s.fail("codex_write_failed", err)
+			}
 		}
 		if s.stream.commands {
 			if err := s.call("skills/list", map[string]any{}); err != nil {
@@ -539,6 +571,17 @@ func (s *codexSession) response(rawID json.RawMessage, record map[string]json.Ra
 			}); err != nil {
 				return false, err
 			}
+			if s.nextModel != "" {
+				// The switch may be why Codex refused; fall back so later
+				// turns do not repeat it.
+				s.nextModel = ""
+				if s.models != nil {
+					s.models.setCurrent(s.threadModel)
+					if err := s.stream.ReportModels(s.models); err != nil {
+						return false, err
+					}
+				}
+			}
 			return false, s.finishTurn()
 		}
 		var result struct {
@@ -548,6 +591,9 @@ func (s *codexSession) response(rawID json.RawMessage, record map[string]json.Ra
 		}
 		if field(record, "result", &result) != nil || result.Turn.ID == "" {
 			return false, s.fail("codex_response_invalid", errors.New("Codex turn response is malformed"))
+		}
+		if s.nextModel != "" {
+			s.threadModel, s.nextModel = s.nextModel, ""
 		}
 		if s.starting {
 			return false, s.turnStarted(result.Turn.ID)
@@ -595,8 +641,39 @@ func (s *codexSession) response(rawID json.RawMessage, record map[string]json.Ra
 		s.turnID = result.Turn.ID
 	case "skills/list":
 		return false, s.reportCommands(record)
+	case "model/list":
+		if failed {
+			return false, nil
+		}
+		return false, s.reportModels(record)
 	}
 	return false, nil
+}
+
+// reportModels lists the visible models model/list returned. A malformed
+// listing reports nothing.
+func (s *codexSession) reportModels(record map[string]json.RawMessage) error {
+	var result struct {
+		Data []struct {
+			ID          string `json:"id"`
+			Model       string `json:"model"`
+			DisplayName string `json:"displayName"`
+			Description string `json:"description"`
+			Hidden      bool   `json:"hidden"`
+		} `json:"data"`
+	}
+	if field(record, "result", &result) != nil {
+		return nil
+	}
+	models := newModelSet()
+	for _, model := range result.Data[:min(len(result.Data), 4*adapterproto.MaxModels)] {
+		if !model.Hidden {
+			models.add(defaultString(model.Model, model.ID), model.DisplayName, model.Description)
+		}
+	}
+	models.setCurrent(defaultString(s.nextModel, s.threadModel))
+	s.models = models
+	return s.stream.ReportModels(models)
 }
 
 func (s *codexSession) notification(method string, raw json.RawMessage) error {

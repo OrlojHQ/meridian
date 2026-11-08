@@ -269,6 +269,10 @@ type SendThreadMessageRes interface {
 	sendThreadMessageRes()
 }
 
+type SetThreadModelRes interface {
+	setThreadModelRes()
+}
+
 type StartRunRes interface {
 	startRunRes()
 }

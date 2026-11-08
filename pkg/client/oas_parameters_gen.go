@@ -429,6 +429,12 @@ type SetProjectHarnessSetupParams struct {
 	Harness   string
 }
 
+// SetThreadModelParams is parameters of setThreadModel operation.
+type SetThreadModelParams struct {
+	ThreadId       string
+	IdempotencyKey string
+}
+
 // StartRunParams is parameters of startRun operation.
 type StartRunParams struct {
 	CapsuleId      string

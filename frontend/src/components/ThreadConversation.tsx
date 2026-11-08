@@ -43,6 +43,8 @@ import {
 } from "./slashCommands";
 import { ThreadError } from "./ThreadError";
 import { SubagentsButton } from "./ThreadSubagents";
+import { ThreadModelPicker } from "./ThreadModelPicker";
+import { latestThreadModels, type ThreadModels } from "./threadModels";
 import {
   CheckIcon,
   ChevronIcon,
@@ -504,6 +506,7 @@ function ThreadComposer({
   onSent,
   onConflict,
   toolbar,
+  models,
 }: {
   thread: Thread;
   activity: ChatActivity;
@@ -515,8 +518,10 @@ function ThreadComposer({
   onNewSession?: () => void;
   onSent: () => void;
   onConflict: () => Promise<void>;
-  // Controls under the message box, such as the lead's Agents button.
+  // Controls above the message box, such as the lead's Agents button.
   toolbar?: ReactNode;
+  // The harness's latest reported models; absent when it reports none.
+  models?: ThreadModels;
 }) {
   const [message, setMessage] = useState("");
   const [queue, setQueue] = useState<QueuedFollowUp[]>([]);
@@ -548,6 +553,22 @@ function ThreadComposer({
     element.style.height = "auto";
     element.style.height = `${element.scrollHeight}px`;
   }, [message]);
+  // The height also depends on the width, which changes as controls beside
+  // the box (the model picker) appear or the window resizes. Re-measure then,
+  // or a height taken while the box was narrow sticks until the next keystroke.
+  useEffect(() => {
+    const element = textarea.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    let width = element.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (element.clientWidth === width) return;
+      width = element.clientWidth;
+      element.style.height = "auto";
+      element.style.height = `${element.scrollHeight}px`;
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
   const turnRunning = activity !== "idle";
   const canSteer = adapterCanSteer(adapterKind);
   const canStop = turnRunning && onStop !== undefined && !stopPending && activity !== "stopping";
@@ -744,6 +765,15 @@ function ThreadComposer({
             title={title}
           />
           <div className="composer-actions">
+            {models && (
+              <ThreadModelPicker
+                thread={thread}
+                models={models}
+                disabled={ended}
+                onSwitched={onSent}
+                onConflict={onConflict}
+              />
+            )}
             {turnRunning && onStop && (
               <button
                 type="button"
@@ -825,6 +855,7 @@ export function ThreadConversation({
   onRefresh: () => Promise<void>;
 }) {
   const commands = useMemo(() => latestThreadCommands(blocks), [blocks]);
+  const models = useMemo(() => latestThreadModels(blocks), [blocks]);
   const isLead = Boolean(thread.coordinationGrantId && !thread.parentThreadId);
   const profiles = useQuery(queries.harnessProfiles(thread.capsuleId));
   const adapterKind = profileAdapterKind(profiles.data?.items, thread.harness);
@@ -897,6 +928,7 @@ export function ThreadConversation({
       {canCompose && (
         <ThreadComposer
           toolbar={toolbar}
+          models={models}
           thread={thread}
           activity={chat.activity}
           adapterKind={adapterKind}

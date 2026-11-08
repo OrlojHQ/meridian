@@ -40,8 +40,76 @@ func runACPFixture(
 	t.Cleanup(func() { _ = controller.Close() })
 	done := make(chan error, 1)
 	go func() { done <- RunACP(context.Background(), adapter, adapter, config) }()
-	decoder, encoder := negotiateTestAdapter(t, controller, initial, resume)
+	decoder, encoder := negotiateTestAdapterWith(t, controller, initial, resume, mode == "models")
 	return decoder, encoder, log, done
+}
+
+func sendSetModel(t *testing.T, encoder *adapterproto.Encoder, id, model string) {
+	t.Helper()
+	writeTestFrame(t, encoder, adapterproto.Frame{
+		Protocol: adapterproto.Version, Type: adapterproto.KindSetModel, ID: id, Model: model,
+	})
+}
+
+func TestACPReportsAndSwitchesModels(t *testing.T) {
+	decoder, encoder, log, _ := runACPFixture(t, "models", ACPConfig{Permissions: true}, adapterproto.KindStart, "")
+	_ = readStatus(t, decoder, adapterproto.StatusStarting)
+	models := readKind(t, decoder, adapterproto.KindModels).Models
+	if models.Current != "gw/flash" || len(models.Options) != 3 ||
+		models.Options[0].ID != "gw/flash" || models.Options[0].Label != "Gateway · Flash" ||
+		models.Options[1].ID != "gw/pro" || models.Options[1].Description != "Slower, smarter" ||
+		models.Options[2].ID != "solo" || models.Options[2].Label != "Solo" {
+		t.Fatalf("models = %#v", models)
+	}
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+
+	sendSetModel(t, encoder, "switch-1", "not-offered")
+	if failure := readKind(t, decoder, adapterproto.KindError); failure.Code != "model_unavailable" {
+		t.Fatalf("unknown model = %#v", failure)
+	}
+	sendSetModel(t, encoder, "switch-2", "gw/pro")
+	switched := readKind(t, decoder, adapterproto.KindModels).Models
+	if switched.Current != "gw/pro" || len(switched.Options) != 3 {
+		t.Fatalf("switched = %#v", switched)
+	}
+	sendSetModel(t, encoder, "switch-3", "solo")
+	if failure := readKind(t, decoder, adapterproto.KindError); failure.Code != "model_unavailable" ||
+		!strings.Contains(failure.Summary, "quota") {
+		t.Fatalf("refused switch = %#v", failure)
+	}
+	sendTestMessage(t, encoder, "message-1", "hello")
+	var updated *adapterproto.ModelSet
+	for _, frame := range readUntil(t, decoder, adapterproto.KindAssistantMessage) {
+		if frame.Type == adapterproto.KindModels {
+			updated = frame.Models
+		}
+	}
+	if updated == nil || updated.Current != "solo" || len(updated.Options) != 1 {
+		t.Fatalf("config_option_update = %#v", updated)
+	}
+	call := findACP(t, readACPLog(t, log), func(record acpRecord) bool {
+		return record.Method == "session/set_config_option" && strings.Contains(string(record.Params), `"gw/pro"`)
+	})
+	var params map[string]string
+	if json.Unmarshal(call.Params, &params) != nil || params["sessionId"] != "sess-1" ||
+		params["configId"] != "model" || params["value"] != "gw/pro" {
+		t.Fatalf("set_config_option params = %s", call.Params)
+	}
+}
+
+func TestACPWithoutModelsCapabilityReportsNothing(t *testing.T) {
+	controller, adapter := net.Pipe()
+	t.Cleanup(func() { _ = controller.Close() })
+	log := filepath.Join(t.TempDir(), "agent.jsonl")
+	t.Setenv("MERIDIAN_ACP_HELPER", "models")
+	t.Setenv("MERIDIAN_ACP_HELPER_LOG", log)
+	config := ACPConfig{Permissions: true, Command: []string{os.Args[0], "-test.run=^TestACPAgentHelper$"}}
+	go func() { _ = RunACP(context.Background(), adapter, adapter, config) }()
+	decoder, _ := negotiateTestAdapter(t, controller, adapterproto.KindStart, "")
+	_ = readStatus(t, decoder, adapterproto.StatusStarting)
+	if next := readStatus(t, decoder, adapterproto.StatusIdle); next.Type != adapterproto.KindStatus {
+		t.Fatalf("next = %#v", next)
+	}
 }
 
 func readACPLog(t *testing.T, path string) []acpRecord {
@@ -426,6 +494,24 @@ func TestACPAgentHelper(t *testing.T) {
 				send(map[string]any{"id": record.ID, "error": map[string]any{"code": -32000, "message": "log in first"}})
 				continue
 			}
+			if mode == "models" {
+				send(map[string]any{"id": record.ID, "result": map[string]any{"sessionId": "sess-1", "configOptions": []any{
+					map[string]any{"id": "mode", "category": "mode", "type": "select", "currentValue": "build",
+						"options": []any{map[string]any{"value": "build", "name": "build"}}},
+					map[string]any{"id": "model", "category": "model", "type": "select", "currentValue": "gw/flash",
+						"options": []any{
+							map[string]any{"group": "gw", "name": "Gateway", "options": []any{
+								map[string]any{"value": "gw/flash", "name": "Flash"},
+								map[string]any{"value": "gw/pro", "name": "Pro", "description": "Slower,\n smarter"},
+								map[string]any{"value": "", "name": "No value"},
+								map[string]any{"value": "gw/flash", "name": "Duplicate"},
+							}},
+							map[string]any{"value": "solo", "name": "Solo"},
+							map[string]any{"value": "bad\u0007id", "name": "Control"},
+						}},
+				}}})
+				continue
+			}
 			send(map[string]any{"id": record.ID, "result": map[string]any{"sessionId": "sess-1"}})
 			update(map[string]any{"sessionUpdate": "available_commands_update", "availableCommands": []any{
 				map[string]any{"name": "review", "description": "Review changes", "input": map[string]any{"hint": "[commit|branch]"}},
@@ -457,6 +543,12 @@ func TestACPAgentHelper(t *testing.T) {
 			case "hello":
 				update(text("m1", "hello "))
 				update(text("m1", "there"))
+				if mode == "models" {
+					update(map[string]any{"sessionUpdate": "config_option_update", "configOptions": []any{
+						map[string]any{"id": "model", "category": "model", "type": "select", "currentValue": "solo",
+							"options": []any{map[string]any{"value": "solo", "name": "Solo"}}},
+					}})
+				}
 				update(map[string]any{"sessionUpdate": "agent_thought_chunk", "content": map[string]any{"type": "text", "text": "secret thoughts"}})
 				end("end_turn")
 			case "tool":
@@ -493,6 +585,25 @@ func TestACPAgentHelper(t *testing.T) {
 				end("refusal")
 			case "slow":
 			}
+		case "session/set_config_option":
+			var params struct {
+				Value string `json:"value"`
+			}
+			_ = json.Unmarshal(record.Params, &params)
+			if params.Value == "solo" {
+				send(map[string]any{"id": record.ID, "error": map[string]any{"code": -32000, "message": "over quota for solo"}})
+				continue
+			}
+			send(map[string]any{"id": record.ID, "result": map[string]any{"configOptions": []any{
+				map[string]any{"id": "model", "category": "model", "type": "select", "currentValue": params.Value,
+					"options": []any{
+						map[string]any{"group": "gw", "name": "Gateway", "options": []any{
+							map[string]any{"value": "gw/flash", "name": "Flash"},
+							map[string]any{"value": "gw/pro", "name": "Pro", "description": "Slower, smarter"},
+						}},
+						map[string]any{"value": "solo", "name": "Solo"},
+					}},
+			}}})
 		case "session/cancel":
 			if prompt != nil {
 				send(map[string]any{"id": prompt, "result": map[string]any{"stopReason": "cancelled"}})

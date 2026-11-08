@@ -195,6 +195,49 @@ func TestStructuredCommandsRequireNegotiation(t *testing.T) {
 	}
 }
 
+func TestStructuredModelsRequireNegotiation(t *testing.T) {
+	client := structuredTestClient(t, "models", 16)
+	startStructuredTestRun(t, client, "models-run")
+	events := waitStructuredEvents(t, client, "models-run", 0, 2)
+	if frame := events.Events[1].Frame; frame.Type != adapterproto.KindModels || frame.Models.Current != "fast" {
+		t.Fatalf("models event = %#v", events.Events)
+	}
+	if status, err := client.StructuredStatus(context.Background(), "models-run"); err != nil ||
+		status.Capabilities == nil || !status.Capabilities.Models {
+		t.Fatalf("status = %#v, %v", status, err)
+	}
+	if err := client.SendStructured(context.Background(), "models-run", adapterproto.Frame{
+		Protocol: adapterproto.Version, Type: adapterproto.KindSetModel, ID: "switch-1", Model: "smart",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	events = waitStructuredEvents(t, client, "models-run", events.NextCursor, 1)
+	if frame := events.Events[0].Frame; frame.Type != adapterproto.KindModels || frame.Models.Current != "smart" {
+		t.Fatalf("switched event = %#v", events.Events)
+	}
+	_, _ = client.CancelStructured(context.Background(), "models-run")
+	waitStructuredTerminal(t, client, "models-run")
+
+	plain := structuredTestClient(t, "echo", 16)
+	startStructuredTestRun(t, plain, "plain-run")
+	_ = waitStructuredEvents(t, plain, "plain-run", 0, 1)
+	err := plain.SendStructured(context.Background(), "plain-run", adapterproto.Frame{
+		Protocol: adapterproto.Version, Type: adapterproto.KindSetModel, ID: "switch-1", Model: "smart",
+	})
+	var protocolError *Error
+	if !errors.As(err, &protocolError) || protocolError.Status != 409 || protocolError.Code != "models_unsupported" {
+		t.Fatalf("set_model without negotiation = %v", err)
+	}
+	_, _ = plain.CancelStructured(context.Background(), "plain-run")
+	waitStructuredTerminal(t, plain, "plain-run")
+
+	unnegotiated := structuredTestClient(t, "unnegotiated-models", 16)
+	startStructuredTestRun(t, unnegotiated, "unnegotiated-models-run")
+	if status := waitStructuredTerminal(t, unnegotiated, "unnegotiated-models-run"); status.State != RunFailed {
+		t.Fatalf("unnegotiated models status = %#v", status)
+	}
+}
+
 func TestStructuredAuthenticationAndVersion(t *testing.T) {
 	client := structuredTestClient(t, "echo", 16)
 	startStructuredTestRun(t, client, "auth-run")
@@ -327,7 +370,7 @@ func TestStructuredAdapterHelper(t *testing.T) {
 		Capabilities: &adapterproto.Capabilities{
 			Resume: true, ToolEvents: true, Permissions: true,
 			InputRequests: true, Heartbeat: true, OpaqueMetadata: true,
-			Commands: mode == "commands",
+			Commands: mode == "commands", Models: mode == "models",
 		},
 	}); err != nil {
 		os.Exit(21)
@@ -344,6 +387,14 @@ func TestStructuredAdapterHelper(t *testing.T) {
 			Protocol: adapterproto.Version, Type: adapterproto.KindCommands,
 			Commands: []adapterproto.Command{{
 				Name: "compact", Description: "Summarize the conversation", Kind: adapterproto.CommandAction,
+			}},
+		})
+	}
+	if mode == "models" || mode == "unnegotiated-models" {
+		_ = encoder.Encode(adapterproto.Frame{
+			Protocol: adapterproto.Version, Type: adapterproto.KindModels,
+			Models: &adapterproto.ModelSet{Current: "fast", Options: []adapterproto.ModelOption{
+				{ID: "fast", Label: "Fast"}, {ID: "smart", Label: "Smart"},
 			}},
 		})
 	}
@@ -370,6 +421,15 @@ func TestStructuredAdapterHelper(t *testing.T) {
 		}
 		if frame.Type == adapterproto.KindCancel {
 			os.Exit(0)
+		}
+		if frame.Type == adapterproto.KindSetModel {
+			_ = encoder.Encode(adapterproto.Frame{
+				Protocol: adapterproto.Version, Type: adapterproto.KindModels,
+				Models: &adapterproto.ModelSet{Current: frame.Model, Options: []adapterproto.ModelOption{
+					{ID: "fast", Label: "Fast"}, {ID: "smart", Label: "Smart"},
+				}},
+			})
+			continue
 		}
 		if frame.Type != adapterproto.KindUserMessage {
 			continue

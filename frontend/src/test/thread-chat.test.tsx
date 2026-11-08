@@ -18,6 +18,7 @@ import {
   profileAdapterKind,
 } from "../components/composerDelivery";
 import { buildThreadChat } from "../components/threadChat";
+import { latestThreadModels } from "../components/threadModels";
 import { safeLinkTarget, ThreadMarkdown } from "../components/ThreadMarkdown";
 import { ThreadDetail } from "../components/Threads";
 import { reportedScreenshotTranscript, transcript } from "./threadFixtures";
@@ -364,6 +365,93 @@ describe("Slash command model", () => {
     expect(names("s")).toEqual(["usage", "ship", "new-session"]);
     expect(names("session")).toEqual(["new-session"]);
     expect(names("hello")).toEqual([]);
+  });
+});
+
+describe("Model picker", () => {
+  const reported = {
+    current: "default",
+    options: [
+      { id: "default", label: "Default (recommended)", description: "Opus 5.5" },
+      { id: "sonnet", label: "Sonnet" },
+      { id: "haiku", label: "Haiku" },
+    ],
+  };
+
+  it("reads the latest report and repeats the daemon's bounds", () => {
+    const t = transcript();
+    expect(latestThreadModels(t.blocks)).toBeUndefined();
+    t.models({ current: "old", options: [{ id: "old", label: "Old" }] });
+    t.models({
+      current: "claude-opus-5-5",
+      options: [
+        { id: "sonnet", label: "Son\u0007net" },
+        { id: "sonnet", label: "Duplicate" },
+        { id: "", label: "Empty" },
+        { id: "haiku", label: "" },
+      ],
+    });
+    expect(latestThreadModels(t.blocks)).toEqual({
+      current: "claude-opus-5-5",
+      currentLabel: "claude-opus-5-5",
+      options: [
+        { id: "sonnet", label: "Sonnet", description: "" },
+        { id: "haiku", label: "haiku", description: "" },
+      ],
+    });
+  });
+
+  it("names switches and refusals in the transcript", () => {
+    const t = transcript();
+    t.models(reported);
+    t.setModel("sonnet");
+    t.modelError("Model not available");
+    expect(buildThreadChat(t.blocks, "Running").items).toEqual([
+      { kind: "notice", key: "block-2", text: "Model → Sonnet" },
+      { kind: "error", key: "block-3", text: "Model not switched: Model not available" },
+    ]);
+  });
+
+  it("shows the current model inside the box and switches from its menu", async () => {
+    const t = transcript();
+    t.models(reported);
+    const switched = vi.spyOn(api, "setThreadModel").mockResolvedValue({ thread });
+    const user = userEvent.setup();
+    renderThread(t.blocks);
+    const button = await screen.findByRole("button", { name: "Model: Default (recommended)" });
+    expect(button.closest(".composer-box")).not.toBeNull();
+    await user.click(button);
+    const menu = screen.getByRole("menu", { name: "Models" });
+    const items = within(menu).getAllByRole("menuitemradio");
+    expect(items.map((item) => item.textContent)).toEqual([
+      "Default (recommended)Opus 5.5",
+      "Sonnet",
+      "Haiku",
+    ]);
+    expect(items[0]).toHaveAttribute("aria-checked", "true");
+    await user.click(items[1]);
+    expect(switched).toHaveBeenCalledWith(thread.id, thread.resourceVersion, "sonnet");
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Model: Sonnet, switching" })).toBeInTheDocument();
+    act(() => {
+      pushBlock(t.models({ ...reported, current: "sonnet" }));
+    });
+    expect(await screen.findByRole("button", { name: "Model: Sonnet" })).toBeInTheDocument();
+  });
+
+  it("closes on Escape and shows no picker when the harness reports nothing", async () => {
+    const t = transcript();
+    t.models(reported);
+    const user = userEvent.setup();
+    const { unmount } = renderThread(t.blocks);
+    await user.click(await screen.findByRole("button", { name: "Model: Default (recommended)" }));
+    expect(screen.getByRole("menu", { name: "Models" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    unmount();
+    renderThread(transcript().blocks);
+    await screen.findByRole("combobox", { name: "Message" });
+    expect(screen.queryByRole("button", { name: /^Model:/ })).not.toBeInTheDocument();
   });
 });
 

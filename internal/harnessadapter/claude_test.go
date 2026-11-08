@@ -22,6 +22,17 @@ func runClaudeFixture(
 	resume string,
 ) (*adapterproto.Decoder, *adapterproto.Encoder, string, chan error) {
 	t.Helper()
+	return runClaudeFixtureWith(t, config, initial, resume, false)
+}
+
+func runClaudeFixtureWith(
+	t *testing.T,
+	config ClaudeConfig,
+	initial adapterproto.Kind,
+	resume string,
+	models bool,
+) (*adapterproto.Decoder, *adapterproto.Encoder, string, chan error) {
+	t.Helper()
 	arguments := filepath.Join(t.TempDir(), "arguments.json")
 	t.Setenv("MERIDIAN_CLAUDE_HELPER", "1")
 	t.Setenv("MERIDIAN_CLAUDE_HELPER_ARGUMENTS", arguments)
@@ -32,8 +43,32 @@ func runClaudeFixture(
 	go func() {
 		done <- RunClaudeStream(context.Background(), adapter, adapter, config)
 	}()
-	decoder, encoder := negotiateTestAdapter(t, controller, initial, resume)
+	decoder, encoder := negotiateTestAdapterWith(t, controller, initial, resume, models)
 	return decoder, encoder, arguments, done
+}
+
+func TestClaudeStreamReportsAndSwitchesModels(t *testing.T) {
+	decoder, encoder, _, _ := runClaudeFixtureWith(t, ClaudeConfig{Permissions: true}, adapterproto.KindStart, "", true)
+	_ = readStatus(t, decoder, adapterproto.StatusStarting)
+	models := readKind(t, decoder, adapterproto.KindModels).Models
+	if models.Current != "default" || len(models.Options) != 3 ||
+		models.Options[0].Label != "Default (recommended)" || models.Options[1].ID != "sonnet" ||
+		models.Options[2].Description != "Locked for this account" {
+		t.Fatalf("models = %#v", models)
+	}
+	sendSetModel(t, encoder, "switch-1", "gpt-6")
+	if failure := readKind(t, decoder, adapterproto.KindError); failure.Code != "model_unavailable" {
+		t.Fatalf("unknown model = %#v", failure)
+	}
+	sendSetModel(t, encoder, "switch-2", "sonnet")
+	if switched := readKind(t, decoder, adapterproto.KindModels).Models; switched.Current != "sonnet" {
+		t.Fatalf("switched = %#v", switched)
+	}
+	sendSetModel(t, encoder, "switch-3", "opus-locked")
+	failure := readKind(t, decoder, adapterproto.KindError)
+	if failure.Code != "model_unavailable" || !strings.Contains(failure.Summary, "not available") {
+		t.Fatalf("refused switch = %#v", failure)
+	}
 }
 
 func sendTestMessage(t *testing.T, encoder *adapterproto.Encoder, id, content string) {
@@ -389,7 +424,17 @@ func TestClaudeStreamHelper(t *testing.T) {
 			}
 			body := map[string]any{}
 			if request["subtype"] == "initialize" {
-				body = map[string]any{"commands": claudeFixtureCommands, "models": []any{}}
+				body = map[string]any{"commands": claudeFixtureCommands, "models": []any{
+					map[string]any{"value": "default", "displayName": "Default (recommended)", "description": "Opus"},
+					map[string]any{"value": "sonnet", "displayName": "Sonnet"},
+					map[string]any{"value": "opus-locked", "displayName": "Opus", "description": "Locked for\nthis account"},
+				}}
+			}
+			if request["subtype"] == "set_model" && request["model"] == "opus-locked" {
+				emit(map[string]any{"type": "control_response", "response": map[string]any{
+					"subtype": "error", "request_id": record["request_id"], "error": "Model not available",
+				}})
+				continue
 			}
 			emit(map[string]any{
 				"type": "control_response",

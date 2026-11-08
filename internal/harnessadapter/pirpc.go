@@ -68,7 +68,7 @@ func RunPiRPC(
 	if err := stream.Handshake(adapterproto.Capabilities{
 		Resume: true, ToolEvents: true, Permissions: true,
 		InputRequests: true, Heartbeat: false, OpaqueMetadata: true,
-		Commands: true,
+		Commands: true, Models: true,
 	}); err != nil {
 		return err
 	}
@@ -165,6 +165,7 @@ func RunPiRPC(
 	messageSequence := 0
 	currentMessage := ""
 	pendingUI := map[string]piPendingUI{}
+	models := &piModels{switches: map[string]string{}}
 	for {
 		select {
 		case <-startupDeadline:
@@ -249,6 +250,11 @@ func RunPiRPC(
 					stream.Fail("pi_write_failed")
 					return err
 				}
+			case adapterproto.KindSetModel:
+				if err := models.request(stream, rpc, pending, frame.Model); err != nil {
+					stream.Fail("pi_write_failed")
+					return err
+				}
 			case adapterproto.KindCancel:
 				pending["pi-abort"] = "abort"
 				if err := rpc.Write(map[string]any{"id": "pi-abort", "type": "abort"}); err != nil {
@@ -277,6 +283,12 @@ func RunPiRPC(
 					return errors.New("Pi response correlation failed")
 				}
 				delete(pending, record.ID)
+				if record.Command == "get_available_models" || record.Command == "set_model" {
+					if err := models.answered(stream, record); err != nil {
+						return err
+					}
+					continue
+				}
 				if record.Command == "get_commands" {
 					if err := stream.ReportCommands(piCommands(record)); err != nil {
 						return err
@@ -309,6 +321,7 @@ func RunPiRPC(
 					continue
 				}
 				if record.Command == "get_state" {
+					models.state(record.Data)
 					resumeState, stateErr := piState(record.Data)
 					if stateErr != nil {
 						stream.Fail("pi_state_invalid")
@@ -328,6 +341,13 @@ func RunPiRPC(
 							}
 						}
 						startupDeadline = nil
+						if stream.ModelsNegotiated() {
+							pending["pi-models"] = "get_available_models"
+							if err := rpc.Write(map[string]any{"id": "pi-models", "type": "get_available_models"}); err != nil {
+								stream.Fail("pi_write_failed")
+								return err
+							}
+						}
 						if stream.commands {
 							pending["pi-commands"] = "get_commands"
 							if err := rpc.Write(map[string]any{"id": "pi-commands", "type": "get_commands"}); err != nil {
@@ -693,4 +713,95 @@ func piResumePath(raw, sessionDir string) (string, error) {
 		}
 	}
 	return state.SessionPath, nil
+}
+
+// piModels tracks Pi's model list. Option IDs are "provider/id"; targets maps
+// each option back to the provider and model ID set_model takes, because a
+// model ID may itself contain "/".
+type piModels struct {
+	list     *modelSet
+	targets  map[string][2]string
+	current  string
+	switches map[string]string
+	sequence int
+}
+
+// state records the model get_state reports. Pi says "unknown" before any
+// provider is configured.
+func (m *piModels) state(raw json.RawMessage) {
+	var state struct {
+		Model *struct {
+			Provider string `json:"provider"`
+			ID       string `json:"id"`
+		} `json:"model"`
+	}
+	if json.Unmarshal(raw, &state) != nil || state.Model == nil ||
+		state.Model.Provider == "" || state.Model.ID == "" ||
+		state.Model.Provider == "unknown" || state.Model.ID == "unknown" {
+		return
+	}
+	m.current = state.Model.Provider + "/" + state.Model.ID
+	if m.list != nil {
+		m.list.setCurrent(m.current)
+	}
+}
+
+func (m *piModels) request(
+	stream *Stream, rpc *JSONLines, pending map[string]string, model string,
+) error {
+	target, exists := m.targets[model]
+	if !exists || !m.list.has(model) {
+		return stream.modelUnavailable("Pi does not offer that model")
+	}
+	m.sequence++
+	id := "pi-model-" + jsonNumber(m.sequence)
+	pending[id] = "set_model"
+	m.switches[id] = model
+	return rpc.Write(map[string]any{
+		"id": id, "type": "set_model", "provider": target[0], "modelId": target[1],
+	})
+}
+
+// answered handles get_available_models and set_model responses. A failed
+// listing reports nothing; a failed switch keeps the previous model.
+func (m *piModels) answered(stream *Stream, record piRecord) error {
+	if record.Command == "set_model" {
+		model := m.switches[record.ID]
+		delete(m.switches, record.ID)
+		if !*record.Success || model == "" {
+			return stream.modelUnavailable(commandLine(
+				defaultString(record.Error, "Pi did not switch models"), adapterproto.MaxToolSummaryBytes))
+		}
+		m.current = model
+		m.list.setCurrent(model)
+		return stream.ReportModels(m.list)
+	}
+	if !*record.Success {
+		return nil
+	}
+	var data struct {
+		Models []struct {
+			Provider string `json:"provider"`
+			ID       string `json:"id"`
+			Name     string `json:"name"`
+		} `json:"models"`
+	}
+	if json.Unmarshal(record.Data, &data) != nil {
+		return nil
+	}
+	m.list = newModelSet()
+	m.targets = map[string][2]string{}
+	for _, model := range data.Models[:min(len(data.Models), 4*adapterproto.MaxModels)] {
+		if model.Provider == "" || model.ID == "" {
+			continue
+		}
+		id := model.Provider + "/" + model.ID
+		label := defaultString(model.Name, model.ID)
+		m.list.add(id, label, model.Provider)
+		if m.list.has(id) {
+			m.targets[id] = [2]string{model.Provider, model.ID}
+		}
+	}
+	m.list.setCurrent(m.current)
+	return stream.ReportModels(m.list)
 }

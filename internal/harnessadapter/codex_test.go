@@ -22,6 +22,17 @@ func runCodexFixture(
 	resume string,
 ) (*adapterproto.Decoder, *adapterproto.Encoder, string, chan error) {
 	t.Helper()
+	return runCodexFixtureWith(t, config, initial, resume, false)
+}
+
+func runCodexFixtureWith(
+	t *testing.T,
+	config CodexConfig,
+	initial adapterproto.Kind,
+	resume string,
+	models bool,
+) (*adapterproto.Decoder, *adapterproto.Encoder, string, chan error) {
+	t.Helper()
 	directory := t.TempDir()
 	arguments := filepath.Join(directory, "arguments.json")
 	// The adapter places its subcommand right after the executable, which
@@ -40,8 +51,47 @@ func runCodexFixture(
 	go func() {
 		done <- RunCodexAppServer(context.Background(), adapter, adapter, config)
 	}()
-	decoder, encoder := negotiateTestAdapter(t, controller, initial, resume)
+	decoder, encoder := negotiateTestAdapterWith(t, controller, initial, resume, models)
 	return decoder, encoder, arguments, done
+}
+
+func TestCodexAppServerReportsAndSwitchesModels(t *testing.T) {
+	decoder, encoder, argumentsPath, _ := runCodexFixtureWith(t, CodexConfig{
+		ApprovalPolicy: "on-request", Sandbox: "workspace-write",
+	}, adapterproto.KindStart, "", true)
+	_ = readStatus(t, decoder, adapterproto.StatusStarting)
+	models := readKind(t, decoder, adapterproto.KindModels).Models
+	if models.Current != "gpt-fixture" || len(models.Options) != 2 ||
+		models.Options[0].ID != "gpt-fixture" || models.Options[1].ID != "gpt-fast" ||
+		models.Options[1].Label != "GPT Fast" {
+		t.Fatalf("models = %#v", models)
+	}
+	sendSetModel(t, encoder, "switch-1", "gpt-secret")
+	if failure := readKind(t, decoder, adapterproto.KindError); failure.Code != "model_unavailable" {
+		t.Fatalf("hidden model = %#v", failure)
+	}
+	sendSetModel(t, encoder, "switch-2", "gpt-fast")
+	if switched := readKind(t, decoder, adapterproto.KindModels).Models; switched.Current != "gpt-fast" {
+		t.Fatalf("switched = %#v", switched)
+	}
+	sendTestMessage(t, encoder, "message-1", "hello")
+	_ = readUntil(t, decoder, adapterproto.KindAssistantMessage)
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+	sendTestMessage(t, encoder, "message-2", "hello")
+	_ = readUntil(t, decoder, adapterproto.KindAssistantMessage)
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+	turns := 0
+	for _, entry := range readHelperArguments(t, argumentsPath) {
+		if strings.HasPrefix(entry, "turn model=") {
+			turns++
+			if entry != "turn model=gpt-fast" || turns > 1 {
+				t.Fatalf("turn model entries = %v", readHelperArguments(t, argumentsPath))
+			}
+		}
+	}
+	if turns != 1 {
+		t.Fatalf("model sent on %d turns, want the first only", turns)
+	}
 }
 
 func TestCodexAppServerContract(t *testing.T) {
@@ -367,8 +417,14 @@ func TestCodexAppServerHelper(t *testing.T) {
 			}
 			log = append(log, entry)
 			save()
-			reply(map[string]any{"thread": map[string]any{"id": codexFixtureThread}})
+			reply(map[string]any{"thread": map[string]any{"id": codexFixtureThread}, "model": "gpt-fixture"})
 			notify("thread/started", map[string]any{"thread": map[string]any{"id": codexFixtureThread}})
+		case "model/list":
+			reply(map[string]any{"data": []any{
+				map[string]any{"id": "gpt-fixture", "model": "gpt-fixture", "displayName": "GPT Fixture", "hidden": false},
+				map[string]any{"id": "gpt-fast", "model": "gpt-fast", "displayName": "GPT\nFast", "hidden": false},
+				map[string]any{"id": "gpt-secret", "model": "gpt-secret", "displayName": "Hidden", "hidden": true},
+			}, "nextCursor": nil})
 		case "skills/list":
 			reply(map[string]any{"data": []any{map[string]any{
 				"cwd": "/workspace", "errors": []any{},
@@ -410,6 +466,10 @@ func TestCodexAppServerHelper(t *testing.T) {
 			turnID = outer
 			complete("completed", nil)
 		case "turn/start":
+			if model, exists := params["model"]; exists {
+				log = append(log, "turn model="+model.(string))
+				save()
+			}
 			inputs := params["input"].([]any)
 			input := inputs[0].(map[string]any)
 			if len(inputs) > 1 {

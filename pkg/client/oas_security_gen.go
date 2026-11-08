@@ -93,6 +93,7 @@ var operationRolesBearerAuth = map[string][]string{
 	SealCapsuleOperation:                    []string{},
 	SendThreadMessageOperation:              []string{},
 	SetProjectHarnessSetupOperation:         []string{},
+	SetThreadModelOperation:                 []string{},
 	StartRunOperation:                       []string{},
 	StartThreadOperation:                    []string{},
 	StreamRunEventsOperation:                []string{},

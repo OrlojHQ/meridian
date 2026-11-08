@@ -836,6 +836,11 @@ export type ThreadResponseRequest = {
     input?: string;
 };
 
+export type ThreadModelRequest = {
+    expectedResourceVersion: number;
+    model: string;
+};
+
 export type ThreadState = 'active' | 'paused' | 'archived' | 'deleted';
 
 export type Thread = {
@@ -921,7 +926,7 @@ export type ThreadInput = {
 };
 
 export type ThreadAdapterEvent = {
-    type: 'assistant_delta' | 'assistant_message' | 'tool_start' | 'tool_result' | 'status' | 'error' | 'permission_request' | 'permission_response' | 'input_request' | 'input_response' | 'gap' | 'end' | 'commands';
+    type: 'assistant_delta' | 'assistant_message' | 'tool_start' | 'tool_result' | 'status' | 'error' | 'permission_request' | 'permission_response' | 'input_request' | 'input_response' | 'gap' | 'end' | 'commands' | 'models' | 'set_model';
     runtimeSequence?: number;
     messageId?: string;
     /**
@@ -944,6 +949,25 @@ export type ThreadAdapterEvent = {
      * On commands events, the commands the harness reported for this session. The latest commands event replaces earlier ones. Send a command as an ordinary message `/name arguments`.
      */
     commands?: Array<ThreadCommand>;
+    models?: ThreadModels;
+    /**
+     * On set_model events, the model ID the operator asked for.
+     */
+    model?: string;
+};
+
+/**
+ * On models events, the harness's current model and every model it offers. The latest models event replaces earlier ones. current may be empty, and need not be one of the options.
+ */
+export type ThreadModels = {
+    current?: string;
+    options: Array<ThreadModelOption>;
+};
+
+export type ThreadModelOption = {
+    id: string;
+    label: string;
+    description?: string;
 };
 
 export type ThreadCommand = {
@@ -3104,6 +3128,48 @@ export type RespondThreadResponses = {
 };
 
 export type RespondThreadResponse = RespondThreadResponses[keyof RespondThreadResponses];
+
+export type SetThreadModelData = {
+    body: ThreadModelRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        threadId: string;
+    };
+    query?: never;
+    url: '/threads/{threadId}/model';
+};
+
+export type SetThreadModelErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type SetThreadModelError = SetThreadModelErrors[keyof SetThreadModelErrors];
+
+export type SetThreadModelResponses = {
+    /**
+     * Structured session mutation accepted
+     */
+    202: ThreadMutationResult;
+};
+
+export type SetThreadModelResponse = SetThreadModelResponses[keyof SetThreadModelResponses];
 
 export type CancelThreadData = {
     body: LifecycleMutation;

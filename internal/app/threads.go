@@ -66,6 +66,8 @@ type ThreadAdapterEvent struct {
 	RequestedAfter  uint64                   `json:"requestedAfter,omitempty"`
 	AvailableFrom   uint64                   `json:"availableFrom,omitempty"`
 	Commands        []adapterproto.Command   `json:"commands,omitempty"`
+	Models          *adapterproto.ModelSet   `json:"models,omitempty"`
+	Model           string                   `json:"model,omitempty"`
 }
 
 type ThreadBlockPage struct {
@@ -691,6 +693,54 @@ func (s *Service) RespondThread(
 		return result
 	}
 	return s.appendAndSend(ctx, id, expected, key, "respond", domain.ThreadRoleUser,
+		domain.ThreadMessageStatus, domain.ThreadBlockJSON, payload, frame)
+}
+
+// SetThreadModel asks the current session's harness to use another of the
+// models it reported. The request is persisted in the encrypted transcript
+// and delivered like a permission response; the adapter accepts only an ID
+// from its own latest list and reports the list again once it has switched.
+func (s *Service) SetThreadModel(
+	ctx context.Context, id domain.ThreadID, expected domain.ResourceVersion, model, key string,
+) (ThreadMutationResult, error) {
+	if !adapterproto.ValidModelID(model) {
+		return ThreadMutationResult{}, fmt.Errorf("%w: model must be a bounded identifier", domain.ErrInvalid)
+	}
+	if s.structured == nil {
+		return ThreadMutationResult{}, domain.ErrUnsupported
+	}
+	thread, err := s.GetThread(ctx, id)
+	if err != nil {
+		return ThreadMutationResult{}, err
+	}
+	if thread.State != domain.ThreadActive || thread.CurrentRunID == "" {
+		return ThreadMutationResult{}, fmt.Errorf("%w: Thread has no active structured session", domain.ErrIllegalTransition)
+	}
+	capsule, err := s.GetCapsule(ctx, thread.CapsuleID)
+	if err != nil {
+		return ThreadMutationResult{}, err
+	}
+	runtimeRun, err := s.structured.GetStructured(ctx, capsule.ProviderResourceID, thread.CurrentRunID)
+	if err != nil {
+		return ThreadMutationResult{}, err
+	}
+	if !runtimeRun.Models {
+		return ThreadMutationResult{}, fmt.Errorf("%w: this harness session does not report models", domain.ErrUnsupported)
+	}
+	payload := persistedThreadBlock{Event: &ThreadAdapterEvent{Type: adapterproto.KindSetModel, Model: model}}
+	frame := func(
+		messageID domain.ThreadMessageID, thread domain.Thread, saved persistedThreadBlock,
+	) adapterproto.Frame {
+		result := adapterproto.Frame{
+			Protocol: adapterproto.Version, Type: adapterproto.KindSetModel,
+			ID: string(messageID), SessionID: string(thread.ID),
+		}
+		if saved.Event != nil {
+			result.Model = saved.Event.Model
+		}
+		return result
+	}
+	return s.appendAndSend(ctx, id, expected, key, "model", domain.ThreadRoleUser,
 		domain.ThreadMessageStatus, domain.ThreadBlockJSON, payload, frame)
 }
 
@@ -1561,6 +1611,7 @@ func mapStructuredEvent(event ports.RuntimeStructuredEvent) (
 		Result: frame.Result, Status: frame.Status, Code: frame.Code,
 		Retryable: frame.Retryable, Reason: frame.Reason,
 		Permission: frame.Permission, Input: frame.Input, Commands: frame.Commands,
+		Models: frame.Models,
 	}
 	if (frame.Type == adapterproto.KindPermissionRequest ||
 		frame.Type == adapterproto.KindInputRequest) && frame.ID != "" {
@@ -1584,7 +1635,8 @@ func mapStructuredEvent(event ports.RuntimeStructuredEvent) (
 	case adapterproto.KindError:
 		return domain.ThreadRoleSystem, domain.ThreadMessageStatus, domain.ThreadBlockError, payload, true
 	case adapterproto.KindStatus, adapterproto.KindPermissionRequest,
-		adapterproto.KindInputRequest, adapterproto.KindEnd, adapterproto.KindCommands:
+		adapterproto.KindInputRequest, adapterproto.KindEnd, adapterproto.KindCommands,
+		adapterproto.KindModels:
 		return domain.ThreadRoleSystem, domain.ThreadMessageStatus, domain.ThreadBlockJSON, payload, true
 	default:
 		return "", "", "", persistedThreadBlock{}, false
