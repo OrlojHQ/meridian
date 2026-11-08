@@ -262,12 +262,14 @@ export function NewWorkspaceDialog({
                     key={`${current.id}-${harness}`}
                     project={current}
                     harness={harness}
+                    onStarted={onClose}
                   />
                 ) : (
                   <StructuredLauncher
                     key={`${current.id}-${harness}`}
                     project={current}
                     harness={harness}
+                    onStarted={onClose}
                   />
                 ))}
               <ProjectEnvironment key={current.id + "-environment"} projectId={current.id} />

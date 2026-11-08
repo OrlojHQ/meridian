@@ -371,6 +371,150 @@ describe("Native harness launcher", () => {
     expect(await screen.findByRole("button", { name: "Start Mock (test)" })).toBeInTheDocument();
     expect(screen.queryByRole("tablist", { name: "How to start" })).not.toBeInTheDocument();
   });
+
+  it("closes the dialog as soon as a task starts", async () => {
+    localStorage.clear();
+    vi.spyOn(api, "capabilities").mockResolvedValue(structuredCapabilities);
+    const spawn = vi.spyOn(api, "createProjectThread").mockResolvedValue({
+      id: "intent-1",
+      projectId: "project-start-task",
+      capsuleId: "capsule-new",
+      capsuleName: "new-session",
+      threadId: "thread-new",
+      runId: "run-new",
+      messageId: "message-new",
+      harness: "mock",
+      state: "provisioning",
+      createdAt: "2026-08-24T12:00:00Z",
+      updatedAt: "2026-08-24T12:00:00Z",
+      resourceVersion: 1,
+    });
+    const onClose = vi.fn();
+    wrapper(
+      <NewWorkspaceDialog
+        open
+        project={{ ...project, id: "project-start-task", harnessImages: [mockPack] }}
+        onClose={onClose}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole("tab", { name: "Give it a task" }));
+    await userEvent.type(screen.getByLabelText("Task"), "inspect");
+    await userEvent.click(screen.getByRole("button", { name: "Start task" }));
+    await waitFor(() =>
+      expect(spawn).toHaveBeenCalledWith(
+        "project-start-task",
+        "mock",
+        "inspect",
+        undefined,
+        undefined,
+      ),
+    );
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  it("closes the dialog as soon as a Capsule is created", async () => {
+    localStorage.clear();
+    vi.spyOn(api, "capabilities").mockResolvedValue({
+      ...structuredCapabilities,
+      structured: false,
+    });
+    const launched: Capsule = {
+      ...capsule,
+      id: "capsule-native",
+      name: "native-work",
+      harness: "opencode",
+      state: "Creating",
+    };
+    const create = vi.spyOn(api, "createCapsule").mockResolvedValue(launched);
+    vi.spyOn(api, "capsule").mockResolvedValue(launched);
+    vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
+    const onClose = vi.fn();
+    wrapper(
+      <NewWorkspaceDialog open project={launcherProject} onClose={onClose} />,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Start OpenCode" })).toBeEnabled(),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Start OpenCode" }));
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith(
+        launcherProject.id,
+        expect.any(String),
+        "opencode",
+        undefined,
+        "",
+      ),
+    );
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  it("keeps the dialog open when starting a task fails", async () => {
+    localStorage.clear();
+    vi.spyOn(api, "capabilities").mockResolvedValue(structuredCapabilities);
+    vi.spyOn(api, "createProjectThread").mockRejectedValue(
+      new MeridianAPIError("Capsule quota exceeded", "resource_exhausted", 429),
+    );
+    const onClose = vi.fn();
+    wrapper(
+      <NewWorkspaceDialog
+        open
+        project={{ ...project, id: "project-start-fail", harnessImages: [mockPack] }}
+        onClose={onClose}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole("tab", { name: "Give it a task" }));
+    await userEvent.type(screen.getByLabelText("Task"), "inspect");
+    await userEvent.click(screen.getByRole("button", { name: "Start task" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Capsule quota exceeded");
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "Start work in Project" })).toBeInTheDocument();
+  });
+
+  it("keeps the dialog open when Capsule creation fails", async () => {
+    localStorage.clear();
+    vi.spyOn(api, "capabilities").mockResolvedValue({
+      ...structuredCapabilities,
+      structured: false,
+    });
+    vi.spyOn(api, "createCapsule").mockRejectedValue(
+      new MeridianAPIError("Capsule quota exceeded", "resource_exhausted", 429),
+    );
+    const onClose = vi.fn();
+    wrapper(
+      <NewWorkspaceDialog open project={launcherProject} onClose={onClose} />,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Start OpenCode" })).toBeEnabled(),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Start OpenCode" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Capsule quota exceeded");
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "Start work in Project" })).toBeInTheDocument();
+  });
+
+  it("keeps the dialog open when the task is empty", async () => {
+    localStorage.clear();
+    vi.spyOn(api, "capabilities").mockResolvedValue(structuredCapabilities);
+    const spawn = vi.spyOn(api, "createProjectThread");
+    const onClose = vi.fn();
+    wrapper(
+      <NewWorkspaceDialog
+        open
+        project={{ ...project, id: "project-empty-task", harnessImages: [mockPack] }}
+        onClose={onClose}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole("tab", { name: "Give it a task" }));
+    await userEvent.click(screen.getByRole("button", { name: "Start task" }));
+    expect(spawn).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "Start work in Project" })).toBeInTheDocument();
+  });
 });
 
 describe("Capsule detail states", () => {

@@ -223,6 +223,12 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Starting a Capsule or task from the New Capsule dialog closes the dialog as
+  soon as `createCapsule` or `createProjectThread` succeeds, then opens the
+  workspace. The dialog stays open on validation or API errors so the
+  operator can retry. Previously it only closed on a later navigation, so a
+  successful start could leave the operator stuck behind the modal.
+
 - Helm NetworkPolicy allows Capsule egress to the in-namespace provider
   gateway (control-plane TCP 8080) and control-plane HTTPS egress to
   operator-selected model-provider CIDRs (`api.openai.com:443`,

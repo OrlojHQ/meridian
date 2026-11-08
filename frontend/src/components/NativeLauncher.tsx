@@ -5,7 +5,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { api, normalizeAPIError } from "../api/client";
 import type { Capsule, Project } from "../api/generated/types.gen";
 import { queries } from "../api/queries";
-import { harnessName } from "../shell/capsuleActivity";
+import { harnessName, sessionPath } from "../shell/capsuleActivity";
 
 import { HarnessSetupImport } from "./HarnessSetupImport";
 import { PreparationProgress } from "./PreparationProgress";
@@ -19,9 +19,11 @@ type PendingLaunch = {
 export function NativeLauncher({
   project,
   harness,
+  onStarted,
 }: {
   project: Project;
   harness: string;
+  onStarted?: () => void;
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -57,15 +59,20 @@ export function NativeLauncher({
       await queryClient.invalidateQueries({
         queryKey: ["capsules", created.projectId],
       });
+      if (onStarted) {
+        navigate(sessionPath(created.id));
+        onStarted();
+      }
     },
   });
 
   const firstRun = runs.data?.items[0];
   useEffect(() => {
+    if (onStarted) return;
     if (launch && firstRun && firstRun.state !== "Queued" && firstRun.state !== "Starting") {
       navigate(`/ui/runs/${encodeURIComponent(firstRun.id)}/terminal`);
     }
-  }, [firstRun, launch, navigate]);
+  }, [firstRun, launch, navigate, onStarted]);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

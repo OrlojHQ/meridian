@@ -103,6 +103,123 @@ describe("application shell", () => {
     expect(screen.getByRole("dialog", { name: "Start work in Meridian" })).toBeInTheDocument();
   });
 
+  it("closes the launcher as soon as a task starts", async () => {
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
+    vi.spyOn(api, "capsules").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "capabilities").mockResolvedValue({ ...capabilities, structured: true });
+    vi.spyOn(api, "harnessSetups").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "providerConnections").mockResolvedValue({ items: [], enabled: false });
+    vi.spyOn(api, "projectHarnessSetup").mockResolvedValue({ setup: "" });
+    vi.spyOn(api, "projectConnection").mockResolvedValue({ connectionId: "" });
+    const spawn = vi.spyOn(api, "createProjectThread").mockResolvedValue({
+      id: "intent-1",
+      projectId: project.id,
+      capsuleId: "capsule-new",
+      capsuleName: "new-session",
+      threadId: "thread-new",
+      runId: "run-new",
+      messageId: "message-new",
+      harness: "opencode",
+      state: "provisioning",
+      createdAt: "2026-08-26T12:00:00Z",
+      updatedAt: "2026-08-26T12:00:00Z",
+      resourceVersion: 1,
+    });
+    wrapper(
+      <Routes>
+        <Route path="/ui" element={<AppShell />}>
+          <Route index element={<p>Activity home</p>} />
+          <Route path="capsules/:capsuleId" element={<p>Capsule workspace</p>} />
+        </Route>
+      </Routes>,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "New Capsule in Meridian" }));
+    expect(screen.getByRole("dialog", { name: "Start work in Meridian" })).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("tab", { name: "Give it a task" }));
+    await userEvent.type(screen.getByLabelText("Task"), "inspect");
+    await userEvent.click(screen.getByRole("button", { name: "Start task" }));
+    await waitFor(() =>
+      expect(spawn).toHaveBeenCalledWith(project.id, "opencode", "inspect", undefined, undefined),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "Start work in Meridian" }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(await screen.findByText("Capsule workspace")).toBeInTheDocument();
+  });
+
+  it("closes the launcher as soon as a Capsule is created", async () => {
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
+    vi.spyOn(api, "capsules").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "capabilities").mockResolvedValue(capabilities);
+    vi.spyOn(api, "harnessSetups").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "providerConnections").mockResolvedValue({ items: [], enabled: false });
+    vi.spyOn(api, "projectHarnessSetup").mockResolvedValue({ setup: "" });
+    vi.spyOn(api, "projectConnection").mockResolvedValue({ connectionId: "" });
+    const launched: Capsule = {
+      ...capsule,
+      id: "capsule-native",
+      name: "native-work",
+      harness: "opencode",
+      state: "Creating",
+    };
+    const create = vi.spyOn(api, "createCapsule").mockResolvedValue(launched);
+    vi.spyOn(api, "capsule").mockResolvedValue(launched);
+    wrapper(
+      <Routes>
+        <Route path="/ui" element={<AppShell />}>
+          <Route index element={<p>Activity home</p>} />
+          <Route path="capsules/:capsuleId" element={<p>Capsule workspace</p>} />
+        </Route>
+      </Routes>,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "New Capsule in Meridian" }));
+    expect(screen.getByRole("dialog", { name: "Start work in Meridian" })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Start OpenCode" })).toBeEnabled(),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Start OpenCode" }));
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith(project.id, expect.any(String), "opencode", undefined, ""),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "Start work in Meridian" }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(await screen.findByText("Capsule workspace")).toBeInTheDocument();
+  });
+
+  it("keeps the launcher open when starting a task fails", async () => {
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
+    vi.spyOn(api, "capsules").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "capabilities").mockResolvedValue({ ...capabilities, structured: true });
+    vi.spyOn(api, "harnessSetups").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "providerConnections").mockResolvedValue({ items: [], enabled: false });
+    vi.spyOn(api, "projectHarnessSetup").mockResolvedValue({ setup: "" });
+    vi.spyOn(api, "projectConnection").mockResolvedValue({ connectionId: "" });
+    vi.spyOn(api, "createProjectThread").mockRejectedValue(
+      new MeridianAPIError("Capsule quota exceeded", "resource_exhausted", 429),
+    );
+    wrapper(
+      <Routes>
+        <Route path="/ui" element={<AppShell />}>
+          <Route index element={<p>Activity home</p>} />
+        </Route>
+      </Routes>,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "New Capsule in Meridian" }));
+    await userEvent.click(await screen.findByRole("tab", { name: "Give it a task" }));
+    await userEvent.type(screen.getByLabelText("Task"), "inspect");
+    await userEvent.click(screen.getByRole("button", { name: "Start task" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Capsule quota exceeded");
+    expect(screen.getByRole("dialog", { name: "Start work in Meridian" })).toBeInTheDocument();
+  });
+
   it("creates Projects globally and Capsules within a Project", async () => {
     vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
     vi.spyOn(api, "capsules").mockResolvedValue({
