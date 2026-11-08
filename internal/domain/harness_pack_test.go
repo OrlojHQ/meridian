@@ -77,7 +77,7 @@ func TestInstallationHarnessPacksMatchPackDirectories(t *testing.T) {
 
 func TestStructuredUnsupported(t *testing.T) {
 	packs := domain.InstallationHarnessImages("meridian-capsule:dev", "")
-	for _, name := range []string{"claude", "codex", "opencode", "pi"} {
+	for _, name := range []string{"claude", "codex", "dsh", "opencode", "pi"} {
 		image := domain.HarnessImage{Name: name, ImageReference: "meridian-capsule-" + name + ":dev"}
 		if domain.StructuredUnsupported(packs, image) {
 			t.Fatalf("official %s pack must allow structured sessions", name)

@@ -2,8 +2,10 @@ package httpapi
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -89,6 +91,18 @@ func TestAttachTicketRegistryPrunesUnusedExpiryAndBoundsCapacity(t *testing.T) {
 	writeError(response, domain.ErrResourceExhausted)
 	if response.Code != http.StatusTooManyRequests {
 		t.Fatalf("capacity HTTP status = %d", response.Code)
+	}
+}
+
+func TestWriteErrorMapsWorkspaceGitToGitFailed(t *testing.T) {
+	response := httptest.NewRecorder()
+	writeError(response, fmt.Errorf("%w: capsuled git_failed", domain.ErrWorkspaceGit))
+	if response.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("git_failed HTTP status = %d", response.Code)
+	}
+	body := response.Body.String()
+	if !strings.Contains(body, `"git_failed"`) || strings.Contains(body, "illegal_transition") {
+		t.Fatalf("git_failed envelope = %s", body)
 	}
 }
 

@@ -1,10 +1,12 @@
 # Copy this file into a repository as .meridian/project.yaml.
 # The Capsule image must contain /usr/local/bin/pi
 # (make capsule-pi-image → meridian-capsule-pi:dev).
-# Terminal sessions (native) sign in inside the Pi TUI.
-# Threads (structured) run Pi RPC mode through the Meridian adapter; attach a
-# provider connection for credentials. Pi has no MCP client, so the structured
-# profile loads a skill that teaches a lead Thread the meridian-coord CLI.
+# Terminal sessions (native) sign in inside the Pi TUI (`pi login` / provider
+# setup). Threads (structured) run Pi RPC mode through the Meridian adapter;
+# the adapter does not collect credentials. Attach a provider connection, or
+# sign in once in a terminal session in the same Capsule. Pi has no MCP
+# client, so the structured profile loads a skill that teaches a lead Thread
+# the meridian-coord CLI.
 # Neither profile injects provider credentials itself, and a repository
 # cannot define profiles or secretReferences under this name.
 version: v1

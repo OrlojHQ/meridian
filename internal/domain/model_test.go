@@ -246,3 +246,27 @@ func TestImageForHarnessAllowlist(t *testing.T) {
 		t.Fatal("registry qualification mismatch")
 	}
 }
+
+func TestMapCapsuleProtocolError(t *testing.T) {
+	if got := MapCapsuleProtocolError(422, "git_failed"); !errors.Is(got, ErrWorkspaceGit) {
+		t.Fatalf("git_failed = %v", got)
+	}
+	if errors.Is(MapCapsuleProtocolError(422, "git_failed"), ErrIllegalTransition) {
+		t.Fatal("git_failed must not be an illegal lifecycle transition")
+	}
+	if got := MapCapsuleProtocolError(422, "structured_interaction_unavailable"); !errors.Is(got, ErrUnsupported) {
+		t.Fatalf("structured_interaction_unavailable = %v", got)
+	}
+	if got := MapCapsuleProtocolError(422, "harness_configuration_invalid"); !errors.Is(got, ErrUnsupported) {
+		t.Fatalf("harness_configuration_invalid = %v", got)
+	}
+	if got := MapCapsuleProtocolError(422, "secrets_unresolved"); !errors.Is(got, ErrIllegalTransition) {
+		t.Fatalf("other 422 = %v", got)
+	}
+	if got := MapCapsuleProtocolError(404, "missing"); !errors.Is(got, ErrNotFound) {
+		t.Fatalf("404 = %v", got)
+	}
+	if got := MapCapsuleProtocolError(500, "internal"); got != nil {
+		t.Fatalf("unmapped status = %v", got)
+	}
+}

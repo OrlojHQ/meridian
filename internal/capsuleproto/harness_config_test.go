@@ -184,6 +184,15 @@ func TestOfficialPacksInstallNativeAndStructuredProfiles(t *testing.T) {
 			"--check", root).CombinedOutput(); err != nil {
 			t.Fatalf("%s pack.env: %v: %s", name, err, output)
 		}
+		if name == "opencode" {
+			env, err := os.ReadFile(filepath.Join(root, "pack.env"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(env), "PACK_VERSION=2.") {
+				t.Fatalf("OpenCode pack must pin a 2.x release: %s", env)
+			}
+		}
 		file, err := os.Open(filepath.Join(root, "project.yaml"))
 		if err != nil {
 			t.Fatal(err)

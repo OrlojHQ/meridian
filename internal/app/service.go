@@ -96,8 +96,8 @@ func (s *Service) ConfigureHarnessProfiles(runtime ports.HarnessProfileRuntime) 
 }
 
 // ConfigureHarnessPacks sets the installation harness catalog, whose declared
-// interaction modes let Project Thread spawn refuse a native-only pack before
-// provisioning.
+// interaction modes let Project Thread spawn and createThread-with-Start
+// refuse a native-only pack before provisioning.
 func (s *Service) ConfigureHarnessPacks(packs []domain.HarnessPack) {
 	s.harnessPacks = append([]domain.HarnessPack(nil), packs...)
 }

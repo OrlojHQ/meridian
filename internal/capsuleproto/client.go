@@ -38,7 +38,15 @@ type CaptureResponse struct {
 }
 
 func (e *Error) Error() string {
+	if e.Code != "" {
+		return fmt.Sprintf("capsuled %s", e.Code)
+	}
 	return fmt.Sprintf("capsuled request failed with status %d", e.Status)
+}
+
+// ProtocolCode is the capsuled error.code, when the supervisor sent one.
+func (e *Error) ProtocolCode() string {
+	return e.Code
 }
 
 func NewClient(baseURL, token string, client *http.Client) (*Client, error) {

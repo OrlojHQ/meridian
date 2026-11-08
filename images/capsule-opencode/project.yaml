@@ -1,10 +1,12 @@
 # Copy this file into a repository as .meridian/project.yaml.
 # The Capsule image must contain /usr/local/bin/opencode
 # (make capsule-opencode-image → meridian-capsule-opencode:dev).
-# Terminal sessions (native) sign in inside the OpenCode TUI.
-# Threads (structured) run `opencode acp` (Agent Client Protocol over stdio)
-# through the Meridian adapter, with a fresh password on OpenCode's loopback
-# server for each launch; attach a provider connection for credentials.
+# Terminal sessions (native) sign in inside the OpenCode TUI
+# (`opencode auth login`). Threads (structured) run `opencode acp`
+# (Agent Client Protocol over stdio) through the Meridian adapter; ACP does
+# not collect credentials. Attach a provider connection, or sign in once in
+# a terminal session in the same Capsule. A fresh password is set on
+# OpenCode's loopback server for each launch.
 # meridian-coord is registered as a stdio MCP server through ACP session/new,
 # so a lead Thread gets the coordination tools.
 # Neither profile injects provider credentials itself, and a repository

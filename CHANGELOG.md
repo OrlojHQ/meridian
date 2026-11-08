@@ -190,9 +190,11 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   `models.json` as a literal key.
 
 - The OpenCode pack's Threads run `opencode acp` through the `acp` driver,
-  with a fresh password per launch on OpenCode's loopback server. The
-  `opencode-server` driver is removed, and the `adapterKind` value `opencode`
-  is now `acp`. Provider connections work as before.
+  with a fresh password per launch on OpenCode's loopback server. The pack
+  pins OpenCode 2.2.6. The `opencode-server` driver is removed, and the
+  `adapterKind` value `opencode` is now `acp`. Provider connections work as
+  before. ACP does not collect credentials; sign in in a native terminal
+  session or attach a provider connection.
 
 - `meridian thread spawn --follow` exits when the first turn goes idle or the
   session ends instead of streaming until the connection closes.
@@ -243,6 +245,15 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   and session tabs label ended sessions "Ended" or "Stopped" instead of
   "Idle". After a restart, replies from an adapter that reuses message IDs
   across sessions no longer overwrite the previous session's reply.
+
+- Starting a structured session now persists the capsuled protocol error
+  (`structured_interaction_unavailable`, and other supervisor codes) on the
+  Run instead of the generic "Capsule runtime rejected structured session
+  start". `createThread` with `start` refuses a native-only catalog pack
+  before it creates a Thread, the same way Project Thread spawn does.
+
+- Capsule git status, diff, and patch failures (`git_failed`) no longer map
+  to "illegal lifecycle transition". Changes shows a workspace git failure.
 
 ### Security
 

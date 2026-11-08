@@ -849,7 +849,40 @@ var (
 	ErrCorrupt           = errors.New("artifact corruption")
 	ErrTranscriptCorrupt = errors.New("transcript corruption")
 	ErrKeyMismatch       = errors.New("transcript key mismatch")
+	// ErrWorkspaceGit is a failed git status/diff/patch inside a Capsule.
+	// It is not a lifecycle transition: Changes must not show
+	// ErrIllegalTransition for capsuled git_failed.
+	ErrWorkspaceGit = errors.New("workspace git command failed")
 )
+
+// MapCapsuleProtocolError translates a capsuled HTTP status and protocol code
+// into a domain error. Unmapped statuses return nil so the caller keeps the
+// original protocol error.
+func MapCapsuleProtocolError(status int, code string) error {
+	switch code {
+	case "harness_dependency_install_failed":
+		return ErrHarnessDependencies
+	case "git_failed":
+		return ErrWorkspaceGit
+	}
+	switch status {
+	case 404:
+		return ErrNotFound
+	case 429:
+		return ErrResourceExhausted
+	case 409:
+		return ErrConflict
+	case 400:
+		return ErrInvalid
+	case 422:
+		if code == "structured_interaction_unavailable" ||
+			strings.HasPrefix(code, "harness_configuration_") {
+			return ErrUnsupported
+		}
+		return ErrIllegalTransition
+	}
+	return nil
+}
 
 func (s CapsuleState) Valid() bool {
 	switch s {
