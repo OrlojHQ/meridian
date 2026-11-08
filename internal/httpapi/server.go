@@ -217,6 +217,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /capsules/{capsuleId}/deliveries", s.createDelivery)
 	s.mux.HandleFunc("GET /capsules/{capsuleId}/deliveries", s.listDeliveries)
 	s.mux.HandleFunc("GET /deliveries/{deliveryId}", s.getDelivery)
+	s.mux.HandleFunc("POST /deliveries/{deliveryId}/approve", s.approveDelivery)
+	s.mux.HandleFunc("POST /deliveries/{deliveryId}/reject", s.rejectDelivery)
 	s.mux.HandleFunc("POST /capsules/{capsuleId}/moments", s.captureMoment)
 	s.mux.HandleFunc("GET /capsules/{capsuleId}/moments", s.listMoments)
 	s.mux.HandleFunc("GET /moments/{momentId}", s.getMoment)
@@ -1455,6 +1457,54 @@ func (s *Server) createDelivery(writer http.ResponseWriter, request *http.Reques
 	writeJSON(writer, http.StatusCreated, deliveryResponse(result))
 }
 
+func (s *Server) approveDelivery(writer http.ResponseWriter, request *http.Request) {
+	if !s.capabilities.Delivery {
+		writeError(writer, domain.ErrUnsupported)
+		return
+	}
+	var input approveDeliveryRequest
+	if !decode(writer, request, &input) {
+		return
+	}
+	result, err := s.service.ApproveDelivery(
+		request.Context(),
+		domain.DeliveryID(request.PathValue("deliveryId")),
+		domain.ResourceVersion(input.ExpectedResourceVersion),
+		app.ApproveDeliveryInput{
+			ExpectedCapsuleVersion: domain.ResourceVersion(input.ExpectedCapsuleVersion),
+			ExpectedHEAD:           input.ExpectedHead, ExpectedTree: input.ExpectedTree,
+			RemoteBranch: input.RemoteBranch, CommitMessage: input.CommitMessage,
+			PullRequestTitle: input.PullRequestTitle, PullRequestBody: input.PullRequestBody,
+			BaseBranch: input.BaseBranch, IdempotencyKey: request.Header.Get("Idempotency-Key"),
+		},
+	)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	writer.Header().Set("ETag", etag(result.ResourceVersion))
+	writeJSON(writer, http.StatusOK, deliveryResponse(result))
+}
+
+func (s *Server) rejectDelivery(writer http.ResponseWriter, request *http.Request) {
+	var input rejectDeliveryRequest
+	if !decode(writer, request, &input) {
+		return
+	}
+	result, err := s.service.RejectDelivery(
+		request.Context(),
+		domain.DeliveryID(request.PathValue("deliveryId")),
+		domain.ResourceVersion(input.ExpectedResourceVersion),
+		request.Header.Get("Idempotency-Key"),
+	)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	writer.Header().Set("ETag", etag(result.ResourceVersion))
+	writeJSON(writer, http.StatusOK, deliveryResponse(result))
+}
+
 func (s *Server) getDelivery(writer http.ResponseWriter, request *http.Request) {
 	result, err := s.service.GetDelivery(
 		request.Context(), domain.DeliveryID(request.PathValue("deliveryId")),
@@ -1780,6 +1830,22 @@ type createDeliveryRequest struct {
 	BaseBranch              string `json:"baseBranch,omitempty"`
 }
 
+type approveDeliveryRequest struct {
+	ExpectedResourceVersion int64  `json:"expectedResourceVersion"`
+	ExpectedCapsuleVersion  int64  `json:"expectedCapsuleVersion"`
+	ExpectedHead            string `json:"expectedHead"`
+	ExpectedTree            string `json:"expectedTree"`
+	RemoteBranch            string `json:"remoteBranch,omitempty"`
+	CommitMessage           string `json:"commitMessage,omitempty"`
+	PullRequestTitle        string `json:"pullRequestTitle,omitempty"`
+	PullRequestBody         string `json:"pullRequestBody,omitempty"`
+	BaseBranch              string `json:"baseBranch,omitempty"`
+}
+
+type rejectDeliveryRequest struct {
+	ExpectedResourceVersion int64 `json:"expectedResourceVersion"`
+}
+
 type putSecretRequest struct {
 	Purpose                 string `json:"purpose"`
 	Value                   string `json:"value,omitempty"`
@@ -2098,11 +2164,12 @@ type deliveryJSON struct {
 	ProjectID               string `json:"projectId"`
 	State                   string `json:"state"`
 	Action                  string `json:"action"`
+	ProposedBy              string `json:"proposedBy"`
 	Approved                bool   `json:"approved"`
-	ApprovedAt              string `json:"approvedAt"`
-	ExpectedResourceVersion int64  `json:"expectedResourceVersion"`
-	ExpectedHead            string `json:"expectedHead"`
-	ExpectedTree            string `json:"expectedTree"`
+	ApprovedAt              string `json:"approvedAt,omitempty"`
+	ExpectedResourceVersion int64  `json:"expectedResourceVersion,omitempty"`
+	ExpectedHead            string `json:"expectedHead,omitempty"`
+	ExpectedTree            string `json:"expectedTree,omitempty"`
 	RemoteBranch            string `json:"remoteBranch"`
 	DestinationRef          string `json:"destinationRef"`
 	BaseBranch              string `json:"baseBranch,omitempty"`
@@ -2177,8 +2244,8 @@ func deliveryResponse(delivery domain.Delivery) deliveryJSON {
 	return deliveryJSON{
 		ID: string(delivery.ID), CapsuleID: string(delivery.CapsuleID),
 		ProjectID: string(delivery.ProjectID), State: string(delivery.State),
-		Action: string(delivery.Action), Approved: delivery.Approved,
-		ApprovedAt:              delivery.ApprovedAt.UTC().Format(time.RFC3339Nano),
+		Action: string(delivery.Action), ProposedBy: string(delivery.ProposedBy),
+		Approved: delivery.Approved, ApprovedAt: formatOptionalTime(delivery.ApprovedAt),
 		ExpectedResourceVersion: int64(delivery.ExpectedCapsuleVersion),
 		ExpectedHead:            delivery.ExpectedHEAD, ExpectedTree: delivery.ExpectedTree,
 		RemoteBranch: delivery.RemoteBranch, DestinationRef: delivery.DestinationRef,

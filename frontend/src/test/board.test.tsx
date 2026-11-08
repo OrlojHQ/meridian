@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -199,6 +199,78 @@ describe("Board", () => {
     expect(reason.textContent!.length).toBeLessThanOrEqual(280);
     expect(view.container.querySelector("img")).toBeNull();
     expect(within(row).getByRole("link", { name: "Open" })).toBeTruthy();
+  });
+
+  it("shows a proposed Delivery for operator approval and treats the text as hostile", async () => {
+    const hostileTitle = `\u202eCRASH\u202c\u0007${"x".repeat(80)}`;
+    const hostileBody = `<img src=x onerror=alert(1)>\n${"y".repeat(80)}`;
+    vi.spyOn(api, "board").mockResolvedValue({
+      truncated: false,
+      items: [{
+        capsule: capsule("capsule-lead", "release lead", "main"),
+        thread: thread("thread-lead", "capsule-lead"),
+        status: "needs_you",
+        needsYou: "proposed_delivery",
+        since: "2026-11-01T00:04:00Z",
+        surfaced: false,
+        latestDelivery: {
+          id: "delivery-proposed",
+          state: "proposed",
+          action: "open_pull_request",
+          updatedAt: "2026-11-01T00:04:00Z",
+        },
+      }],
+    });
+    vi.spyOn(api, "delivery").mockResolvedValue({
+      id: "delivery-proposed",
+      capsuleId: "capsule-lead",
+      projectId: "project-1",
+      state: "proposed",
+      action: "open_pull_request",
+      proposedBy: "agent",
+      approved: false,
+      remoteBranch: "feature/parser",
+      destinationRef: "refs/heads/feature/parser",
+      pullRequestTitle: hostileTitle,
+      pullRequestBody: hostileBody,
+      createdAt: "2026-11-01T00:04:00Z",
+      updatedAt: "2026-11-01T00:04:00Z",
+      resourceVersion: 1,
+    });
+    vi.spyOn(api, "deliveryInspection").mockResolvedValue({
+      capsuleResourceVersion: 1,
+      head: "a".repeat(40),
+      tree: "b".repeat(40),
+      branch: "feature/local",
+      defaultBranch: "main",
+      dirty: true,
+    });
+    const approve = vi.spyOn(api, "approveDelivery").mockResolvedValue({
+      id: "delivery-proposed",
+      capsuleId: "capsule-lead",
+      projectId: "project-1",
+      state: "queued",
+      action: "open_pull_request",
+      proposedBy: "agent",
+      approved: true,
+      remoteBranch: "feature/parser",
+      destinationRef: "refs/heads/feature/parser",
+      createdAt: "2026-11-01T00:04:00Z",
+      updatedAt: "2026-11-01T00:04:00Z",
+      resourceVersion: 2,
+    });
+    const view = renderBoard();
+    expect(await screen.findByText("Waiting for Delivery approval")).toBeTruthy();
+    const row = (await screen.findByRole("link", { name: "release lead" })).closest("li")!;
+    expect(within(row).queryByRole("link", { name: "Respond" })).toBeNull();
+    expect(view.container.querySelector("img")).toBeNull();
+    expect(within(row).getByText(/CRASH/)).toBeTruthy();
+    const approveButton = within(row).getByRole("button", { name: "Approve Delivery" });
+    expect(approveButton).toBeDisabled();
+    await userEvent.type(within(row).getByLabelText("Approve confirmation"), "approve");
+    expect(approveButton).toBeEnabled();
+    await userEvent.click(approveButton);
+    await waitFor(() => expect(approve).toHaveBeenCalled());
   });
 
   it("summarizes a rollup", () => {

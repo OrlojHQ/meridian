@@ -138,7 +138,7 @@ func TestMCPServerExposesToolsOnlyToLeads(t *testing.T) {
 		t.Fatalf("initialize = %v", initialize)
 	}
 	tools := byID(responses, 2)["result"].(map[string]any)["tools"].([]any)
-	if len(tools) != 9 {
+	if len(tools) != 10 {
 		t.Fatalf("tools = %d", len(tools))
 	}
 	spawn := byID(responses, 3)["result"].(map[string]any)
@@ -169,14 +169,15 @@ func TestMCPServerListsReportToolsForSubagents(t *testing.T) {
 	socket := mailbox.serve(t)
 	responses := exchange(t, socket, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
 	tools := responses[0]["result"].(map[string]any)["tools"].([]any)
-	if len(tools) != 2 {
+	if len(tools) != 3 {
 		t.Fatalf("subagent tools = %d", len(tools))
 	}
 	names := map[string]bool{}
 	for _, item := range tools {
 		names[item.(map[string]any)["name"].(string)] = true
 	}
-	if !names["meridian_report"] || !names["meridian_whoami"] || names["meridian_spawn"] {
+	if !names["meridian_report"] || !names["meridian_whoami"] || !names["meridian_propose_delivery"] ||
+		names["meridian_spawn"] {
 		t.Fatalf("subagent tools = %v", names)
 	}
 }

@@ -12,6 +12,7 @@ import {
 } from "../shell/capsuleActivity";
 import { BlockerPeek } from "./BlockerPeek";
 import { PromoteSubagent } from "./PromoteSubagent";
+import { DeliveryDecision } from "./DeliveryDecision";
 import { SpawnDecision } from "./SpawnApprovals";
 import { failureText, safeInline } from "./threadChat";
 import { ThreadError } from "./ThreadError";
@@ -34,6 +35,7 @@ const needsYouLabels: Record<NonNullable<BoardItem["needsYou"]>, string> = {
   input: "Waiting for input",
   failed: "Failed",
   spawn_approval: "Waiting for spawn approval",
+  proposed_delivery: "Waiting for Delivery approval",
 };
 
 export function boardFailure(item: BoardItem) {
@@ -132,6 +134,9 @@ function BoardRow({
         {item.thread && (item.needsYou === "permission" || item.needsYou === "input") && (
           <BlockerPeek thread={item.thread} kind={item.needsYou} />
         )}
+        {item.needsYou === "proposed_delivery" && item.latestDelivery && (
+          <DeliveryDecision capsuleId={item.capsule.id} deliveryId={item.latestDelivery.id} />
+        )}
         {expanded && subagents && (
           <ul className="board-subagents" aria-label={`Subagents of ${itemName(item)}`}>
             {subagents.filter((subagent) => !subagent.link?.archivedAt).map(subagentRow)}
@@ -162,7 +167,10 @@ function BoardRow({
         )}
         {spawnRequest && <SpawnDecision request={spawnRequest} />}
         <Link className="button-link primary-button" to={boardRowPath(item)}>
-          {item.status === "needs_you" && item.needsYou !== "failed" && item.needsYou !== "spawn_approval"
+          {item.status === "needs_you" &&
+          item.needsYou !== "failed" &&
+          item.needsYou !== "spawn_approval" &&
+          item.needsYou !== "proposed_delivery"
             ? "Respond"
             : "Open"}
         </Link>

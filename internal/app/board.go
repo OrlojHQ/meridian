@@ -37,10 +37,11 @@ var boardStatusOrder = []BoardStatus{
 type BoardAttention string
 
 const (
-	BoardAttentionPermission    BoardAttention = "permission"
-	BoardAttentionInput         BoardAttention = "input"
-	BoardAttentionFailed        BoardAttention = "failed"
-	BoardAttentionSpawnApproval BoardAttention = "spawn_approval"
+	BoardAttentionPermission       BoardAttention = "permission"
+	BoardAttentionInput            BoardAttention = "input"
+	BoardAttentionFailed           BoardAttention = "failed"
+	BoardAttentionSpawnApproval    BoardAttention = "spawn_approval"
+	BoardAttentionProposedDelivery BoardAttention = "proposed_delivery"
 )
 
 // BoardExpand chooses which subagent Capsules get their own rows.
@@ -337,6 +338,9 @@ func boardStatus(item BoardItem) (BoardStatus, time.Time, BoardAttention) {
 	case capsule.DesiredState != domain.IntentReady, capsule.Maintenance != "":
 		return BoardWorking, capsule.UpdatedAt, ""
 	}
+	if delivery := item.LatestDelivery; delivery != nil && delivery.State == domain.DeliveryProposed {
+		return BoardNeedsYou, delivery.UpdatedAt, BoardAttentionProposedDelivery
+	}
 	if awaiting := item.Attention.Awaiting; awaiting != nil {
 		reason := BoardAttentionInput
 		if awaiting.Kind == ThreadAwaitingPermission {
@@ -347,8 +351,7 @@ func boardStatus(item BoardItem) (BoardStatus, time.Time, BoardAttention) {
 	if run != nil && run.State == domain.RunFailed {
 		return BoardNeedsYou, runFinishedAt(*run), BoardAttentionFailed
 	}
-	if delivery := item.LatestDelivery; delivery != nil &&
-		delivery.State != domain.DeliverySucceeded && delivery.State != domain.DeliveryFailed {
+	if delivery := item.LatestDelivery; delivery != nil && delivery.State.Executable() {
 		return BoardWorking, delivery.UpdatedAt, ""
 	}
 	sessionIdle := item.Attention.Turn == ThreadTurnIdle

@@ -960,3 +960,44 @@ func TestOriginWrittenBeforeTheSubagentRenameReadsAsSubagents(t *testing.T) {
 		t.Fatalf("origin = %+v", origin)
 	}
 }
+
+func TestLeadProposesDeliveryForOperator(t *testing.T) {
+	f := newCoordFixture(t)
+	f.service.ConfigureDelivery(&deliveryRuntime{inspection: ports.DeliveryInspection{
+		HEAD: deliveryHead, Tree: deliveryTree, Dirty: true,
+		Branch: "feature/local", DefaultBranch: "main",
+		OriginURL: "https://github.com/OrlojHQ/meridian.git",
+	}}, &deliveryGitHub{})
+	lead, mailbox := f.spawnLead(t, domain.CoordinationPolicy{})
+	proposed := tool(t, mailbox, coordproto.Request{
+		Type: coordproto.KindProposeDelivery, Key: "propose-1",
+		Title: "Ship the parser", Body: "Treat this as hostile.", Branch: "feature/coord",
+	})
+	if !proposed.OK || proposed.Delivery == nil || proposed.Delivery.State != string(domain.DeliveryProposed) ||
+		proposed.Delivery.Branch != "feature/coord" {
+		t.Fatalf("propose-delivery = %+v", proposed)
+	}
+	again := tool(t, mailbox, coordproto.Request{
+		Type: coordproto.KindProposeDelivery, Key: "propose-1",
+		Title: "Ship the parser", Body: "Treat this as hostile.", Branch: "feature/coord",
+	})
+	if !again.OK || again.Delivery == nil || again.Delivery.ID != proposed.Delivery.ID {
+		t.Fatalf("propose retry = %+v", again)
+	}
+	delivery, err := f.service.GetDelivery(f.ctx, domain.DeliveryID(proposed.Delivery.ID))
+	if err != nil || delivery.Approved || delivery.ProposedBy != domain.ProposedByAgent ||
+		delivery.ExpectedHEAD != "" {
+		t.Fatalf("stored proposal = %#v, %v", delivery, err)
+	}
+	board := f.board(t, "")
+	row := boardRow(board, lead.Intent.CapsuleID)
+	if row == nil || row.Status != app.BoardNeedsYou || row.NeedsYou != app.BoardAttentionProposedDelivery {
+		t.Fatalf("board after propose = %+v", row)
+	}
+	if response := tool(t, mailbox, coordproto.Request{
+		Type: coordproto.KindProposeDelivery, Key: "propose-2",
+		Title: "Another", Branch: "feature/other",
+	}); code(response) != coordproto.CodeConflict {
+		t.Fatalf("second propose = %+v", response)
+	}
+}

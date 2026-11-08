@@ -453,7 +453,7 @@ export type BoardItem = {
     /**
      * Why the row needs the operator; set only with status needs_you.
      */
-    needsYou?: 'permission' | 'input' | 'failed' | 'spawn_approval';
+    needsYou?: 'permission' | 'input' | 'failed' | 'spawn_approval' | 'proposed_delivery';
     latestDelivery?: DeliverySummary;
     /**
      * The subagent's link to its lead, on sub-Capsules.
@@ -491,7 +491,23 @@ export type DeliverySummary = {
     updatedAt: string;
 };
 
-export type DeliveryState = 'queued' | 'committing' | 'pushing' | 'opening_pr' | 'succeeded' | 'failed';
+export type DeliveryState = 'proposed' | 'queued' | 'committing' | 'pushing' | 'opening_pr' | 'succeeded' | 'failed' | 'rejected';
+
+export type ApproveDeliveryRequest = {
+    expectedResourceVersion: number;
+    expectedCapsuleVersion: number;
+    expectedHead: string;
+    expectedTree: string;
+    remoteBranch?: string;
+    commitMessage?: string;
+    pullRequestTitle?: string;
+    pullRequestBody?: string;
+    baseBranch?: string;
+};
+
+export type RejectDeliveryRequest = {
+    expectedResourceVersion: number;
+};
 
 export type Delivery = {
     id: string;
@@ -499,11 +515,12 @@ export type Delivery = {
     projectId: string;
     state: DeliveryState;
     action: 'push' | 'open_pull_request';
-    approved: true;
-    approvedAt: string;
-    expectedResourceVersion: number;
-    expectedHead: string;
-    expectedTree: string;
+    proposedBy: 'agent' | 'operator';
+    approved: boolean;
+    approvedAt?: string;
+    expectedResourceVersion?: number;
+    expectedHead?: string;
+    expectedTree?: string;
     remoteBranch: string;
     destinationRef: string;
     baseBranch?: string;
@@ -4248,6 +4265,98 @@ export type GetDeliveryResponses = {
 };
 
 export type GetDeliveryResponse = GetDeliveryResponses[keyof GetDeliveryResponses];
+
+export type ApproveDeliveryData = {
+    body: ApproveDeliveryRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        deliveryId: string;
+    };
+    query?: never;
+    url: '/deliveries/{deliveryId}/approve';
+};
+
+export type ApproveDeliveryErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ApproveDeliveryError = ApproveDeliveryErrors[keyof ApproveDeliveryErrors];
+
+export type ApproveDeliveryResponses = {
+    /**
+     * Approved Delivery, possibly still executing
+     */
+    200: Delivery;
+};
+
+export type ApproveDeliveryResponse = ApproveDeliveryResponses[keyof ApproveDeliveryResponses];
+
+export type RejectDeliveryData = {
+    body: RejectDeliveryRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        deliveryId: string;
+    };
+    query?: never;
+    url: '/deliveries/{deliveryId}/reject';
+};
+
+export type RejectDeliveryErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type RejectDeliveryError = RejectDeliveryErrors[keyof RejectDeliveryErrors];
+
+export type RejectDeliveryResponses = {
+    /**
+     * Rejected Delivery
+     */
+    200: Delivery;
+};
+
+export type RejectDeliveryResponse = RejectDeliveryResponses[keyof RejectDeliveryResponses];
 
 export type ListMomentsData = {
     body?: never;

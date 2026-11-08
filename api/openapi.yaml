@@ -1854,6 +1854,63 @@ paths:
               schema: { $ref: "#/components/schemas/Delivery" }
         "404": { $ref: "#/components/responses/NotFound" }
         default: { $ref: "#/components/responses/DefaultError" }
+  /deliveries/{deliveryId}/approve:
+    post:
+      operationId: approveDelivery
+      summary: Approve a proposed Delivery and bind the reviewed Git objects
+      description: >-
+        Operator-only. Turns a proposed Delivery into the existing queued
+        execute path. Approval binds the exact Capsule resource version, HEAD,
+        and worktree tree. Capsules cannot call this.
+      tags: [deliveries]
+      parameters:
+        - $ref: "#/components/parameters/DeliveryId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ApproveDeliveryRequest" }
+      responses:
+        "200":
+          description: Approved Delivery, possibly still executing
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Delivery" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /deliveries/{deliveryId}/reject:
+    post:
+      operationId: rejectDelivery
+      summary: Reject a proposed Delivery
+      description: Operator-only. Capsules cannot call this. A rejected Delivery is terminal and is never executed.
+      tags: [deliveries]
+      parameters:
+        - $ref: "#/components/parameters/DeliveryId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RejectDeliveryRequest" }
+      responses:
+        "200":
+          description: Rejected Delivery
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Delivery" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        default: { $ref: "#/components/responses/DefaultError" }
   /capsules/{capsuleId}/moments:
     post:
       operationId: captureMoment
@@ -2919,7 +2976,7 @@ components:
         since: { type: string, format: date-time }
         needsYou:
           type: string
-          enum: [permission, input, failed, spawn_approval]
+          enum: [permission, input, failed, spawn_approval, proposed_delivery]
           description: Why the row needs the operator; set only with status needs_you.
         latestDelivery: { $ref: "#/components/schemas/DeliverySummary" }
         link:
@@ -2958,13 +3015,30 @@ components:
         updatedAt: { type: string, format: date-time }
     DeliveryState:
       type: string
-      enum: [queued, committing, pushing, opening_pr, succeeded, failed]
+      enum: [proposed, queued, committing, pushing, opening_pr, succeeded, failed, rejected]
+    ApproveDeliveryRequest:
+      type: object
+      required: [expectedResourceVersion, expectedCapsuleVersion, expectedHead, expectedTree]
+      properties:
+        expectedResourceVersion: { type: integer, format: int64, minimum: 1 }
+        expectedCapsuleVersion: { type: integer, format: int64, minimum: 1 }
+        expectedHead: { type: string, pattern: "^[0-9a-f]{40}([0-9a-f]{24})?$" }
+        expectedTree: { type: string, pattern: "^[0-9a-f]{40}([0-9a-f]{24})?$" }
+        remoteBranch: { type: string, minLength: 1, maxLength: 255 }
+        commitMessage: { type: string, maxLength: 16384 }
+        pullRequestTitle: { type: string, maxLength: 512 }
+        pullRequestBody: { type: string, maxLength: 65536 }
+        baseBranch: { type: string, maxLength: 255 }
+    RejectDeliveryRequest:
+      type: object
+      required: [expectedResourceVersion]
+      properties:
+        expectedResourceVersion: { type: integer, format: int64, minimum: 1 }
     Delivery:
       type: object
       required:
-        [id, capsuleId, projectId, state, action, approved, approvedAt,
-         expectedResourceVersion, expectedHead, expectedTree, remoteBranch,
-         destinationRef, createdAt, updatedAt, resourceVersion]
+        [id, capsuleId, projectId, state, action, proposedBy, approved,
+         remoteBranch, destinationRef, createdAt, updatedAt, resourceVersion]
       properties:
         id: { type: string }
         capsuleId: { type: string }
@@ -2973,7 +3047,10 @@ components:
         action:
           type: string
           enum: [push, open_pull_request]
-        approved: { type: boolean, const: true }
+        proposedBy:
+          type: string
+          enum: [agent, operator]
+        approved: { type: boolean }
         approvedAt: { type: string, format: date-time }
         expectedResourceVersion: { type: integer, format: int64, minimum: 1 }
         expectedHead: { type: string }

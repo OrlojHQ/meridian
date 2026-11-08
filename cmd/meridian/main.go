@@ -648,6 +648,7 @@ func newCapsuleCommand(config *cliConfig) *cobra.Command {
 	capsule.AddCommand(newCapsuleGitCommand(config, false), newCapsuleGitCommand(config, true))
 	capsule.AddCommand(
 		newCapsuleFilesCommand(config), newCapsuleSyncCommand(config), newCapsuleShipCommand(config),
+		newCapsuleApproveDeliveryCommand(config), newCapsuleRejectDeliveryCommand(config),
 	)
 	return capsule
 }

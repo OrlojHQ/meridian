@@ -372,6 +372,11 @@ func (s *Service) handleCoordinationRequest(
 		s.auditRejection(ctx, domain.CoordinationGrant{}, request.Type, response)
 		return response
 	}
+	if request.Type == coordproto.KindProposeDelivery {
+		response := s.coordProposeDelivery(ctx, capsule, request)
+		s.auditRejection(ctx, domain.CoordinationGrant{}, request.Type, response)
+		return response
+	}
 	grant, thread, failure := s.coordinationAuthority(ctx, capsule, request.Mutating())
 	if failure != nil {
 		s.auditRejection(ctx, grant, request.Type, *failure)

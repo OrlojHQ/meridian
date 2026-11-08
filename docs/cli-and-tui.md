@@ -84,6 +84,18 @@ the Project's named purpose-scoped secrets. TUI browse, sync, and ship controls
 are intentionally deferred; use these scriptable commands or the browser review
 UI.
 
+A coordinated Thread may propose a Delivery (`meridian-coord propose-delivery
+--title TEXT --branch BRANCH`). That creates an unapproved Delivery and never
+ships. Approve or reject it as the operator:
+
+```console
+meridian capsule approve-delivery DELIVERY_ID --yes
+meridian capsule reject-delivery DELIVERY_ID --expected-version N --yes
+```
+
+`--yes` is required. Approve inspects Git and binds the exact HEAD and tree.
+There is no auto-approve.
+
 ## Project-first sessions
 
 The primary session command accepts a Project, structured harness, and first
@@ -132,7 +144,9 @@ and stops the subagents (`--keep-subagents` leaves them running).
 ordinary Thread: its permission and input requests come to you, never to its
 lead. If you message a subagent directly, the lead's next report wake says so
 (without your text), and the message does not count against
-`--max-messages-per-link`.
+`--max-messages-per-link`. The lead or a subagent can
+`meridian-coord propose-delivery --title TEXT --branch BRANCH` for its own
+Capsule; you still approve that Delivery.
 
 A finished subagent is paused and archived once it has been idle for
 `--archive-after` (default 24h, 1m to 720h; `0` disables it). Its Thread

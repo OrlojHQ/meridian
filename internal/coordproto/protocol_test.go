@@ -19,6 +19,7 @@ func TestDecodeRequestAcceptsClosedFieldSets(t *testing.T) {
 		`{"protocol":"meridian.coord.v1","type":"result","link":"link-1"}`,
 		`{"protocol":"meridian.coord.v1","type":"patch","link":"link-1","maxBytes":1048576}`,
 		`{"protocol":"meridian.coord.v1","type":"report","key":"r","status":"done","summary":"finished the task"}`,
+		`{"protocol":"meridian.coord.v1","type":"propose-delivery","key":"p","title":"Ship the parser","body":"notes","branch":"feature/parser"}`,
 		`{"protocol":"meridian.coord.v1","type":"list"}`,
 		`{"protocol":"meridian.coord.v1","type":"whoami"}`,
 	}
@@ -36,6 +37,8 @@ func TestDecodeRequestRejectsHostileRecords(t *testing.T) {
 		"unknown type":             record(`{"protocol":"meridian.coord.v1","type":"promote"}`),
 		"lead cannot report extra": record(`{"protocol":"meridian.coord.v1","type":"report","key":"k","status":"done","summary":"x","link":"l"}`),
 		"bad report status":        record(`{"protocol":"meridian.coord.v1","type":"report","key":"k","status":"turn_ended","summary":"x"}`),
+		"propose missing title":    record(`{"protocol":"meridian.coord.v1","type":"propose-delivery","key":"k","branch":"feature/x"}`),
+		"propose newline title":    record(`{"protocol":"meridian.coord.v1","type":"propose-delivery","key":"k","title":"a\nb","branch":"feature/x"}`),
 		"patch too large":          record(`{"protocol":"meridian.coord.v1","type":"patch","link":"l","maxBytes":4194305}`),
 		"field not allowed":        record(`{"protocol":"meridian.coord.v1","type":"list","link":"x"}`),
 		"spawn without key":        record(`{"protocol":"meridian.coord.v1","type":"spawn","name":"a","harness":"h","prompt":"p"}`),

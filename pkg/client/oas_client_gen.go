@@ -36,6 +36,13 @@ type Invoker interface {
 	//
 	// POST /coordination-requests/{requestId}/approve
 	ApproveCoordinationRequest(ctx context.Context, request *DecideCoordinationRequest, params ApproveCoordinationRequestParams) (ApproveCoordinationRequestRes, error)
+	// ApproveDelivery invokes approveDelivery operation.
+	//
+	// Operator-only. Turns a proposed Delivery into the existing queued execute path. Approval binds the
+	// exact Capsule resource version, HEAD, and worktree tree. Capsules cannot call this.
+	//
+	// POST /deliveries/{deliveryId}/approve
+	ApproveDelivery(ctx context.Context, request *ApproveDeliveryRequest, params ApproveDeliveryParams) (ApproveDeliveryRes, error)
 	// ArchiveThread invokes archiveThread operation.
 	//
 	// Archive a Thread history.
@@ -474,6 +481,12 @@ type Invoker interface {
 	//
 	// GET /capsules/{capsuleId}/files/content
 	ReadCapsuleFile(ctx context.Context, params ReadCapsuleFileParams) (ReadCapsuleFileRes, error)
+	// RejectDelivery invokes rejectDelivery operation.
+	//
+	// Operator-only. Capsules cannot call this. A rejected Delivery is terminal and is never executed.
+	//
+	// POST /deliveries/{deliveryId}/reject
+	RejectDelivery(ctx context.Context, request *RejectDeliveryRequest, params RejectDeliveryParams) (RejectDeliveryRes, error)
 	// RespondThread invokes respondThread operation.
 	//
 	// Answer one permission or input request.
@@ -762,6 +775,156 @@ func (c *Client) sendApproveCoordinationRequest(ctx context.Context, request *De
 
 	stage = "DecodeResponse"
 	result, err := decodeApproveCoordinationRequestResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// ApproveDelivery invokes approveDelivery operation.
+//
+// Operator-only. Turns a proposed Delivery into the existing queued execute path. Approval binds the
+// exact Capsule resource version, HEAD, and worktree tree. Capsules cannot call this.
+//
+// POST /deliveries/{deliveryId}/approve
+func (c *Client) ApproveDelivery(ctx context.Context, request *ApproveDeliveryRequest, params ApproveDeliveryParams) (ApproveDeliveryRes, error) {
+	res, err := c.sendApproveDelivery(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendApproveDelivery(ctx context.Context, request *ApproveDeliveryRequest, params ApproveDeliveryParams) (res ApproveDeliveryRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("approveDelivery"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/deliveries/{deliveryId}/approve"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, ApproveDeliveryOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/deliveries/"
+	{
+		// Encode "deliveryId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "deliveryId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.DeliveryId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/approve"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeApproveDeliveryRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "EncodeHeaderParams"
+	h := uri.NewHeaderEncoder(r.Header)
+	{
+		cfg := uri.HeaderParameterEncodingConfig{
+			Name:    "Idempotency-Key",
+			Explode: false,
+		}
+		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.IdempotencyKey))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode header")
+		}
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, ApproveDeliveryOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeApproveDeliveryResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -10349,6 +10512,155 @@ func (c *Client) sendReadCapsuleFile(ctx context.Context, params ReadCapsuleFile
 
 	stage = "DecodeResponse"
 	result, err := decodeReadCapsuleFileResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// RejectDelivery invokes rejectDelivery operation.
+//
+// Operator-only. Capsules cannot call this. A rejected Delivery is terminal and is never executed.
+//
+// POST /deliveries/{deliveryId}/reject
+func (c *Client) RejectDelivery(ctx context.Context, request *RejectDeliveryRequest, params RejectDeliveryParams) (RejectDeliveryRes, error) {
+	res, err := c.sendRejectDelivery(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendRejectDelivery(ctx context.Context, request *RejectDeliveryRequest, params RejectDeliveryParams) (res RejectDeliveryRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("rejectDelivery"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/deliveries/{deliveryId}/reject"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, RejectDeliveryOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/deliveries/"
+	{
+		// Encode "deliveryId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "deliveryId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.DeliveryId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/reject"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeRejectDeliveryRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "EncodeHeaderParams"
+	h := uri.NewHeaderEncoder(r.Header)
+	{
+		cfg := uri.HeaderParameterEncodingConfig{
+			Name:    "Idempotency-Key",
+			Explode: false,
+		}
+		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.IdempotencyKey))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode header")
+		}
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, RejectDeliveryOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeRejectDeliveryResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}

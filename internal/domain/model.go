@@ -291,27 +291,36 @@ func splitImageRef(ref string) (registry, name, tag, digest string) {
 	return "", ref, tag, digest
 }
 
+type ProposedBy string
+
 const (
+	DeliveryProposed   DeliveryState = "proposed"
 	DeliveryQueued     DeliveryState = "queued"
 	DeliveryCommitting DeliveryState = "committing"
 	DeliveryPushing    DeliveryState = "pushing"
 	DeliveryOpeningPR  DeliveryState = "opening_pr"
 	DeliverySucceeded  DeliveryState = "succeeded"
 	DeliveryFailed     DeliveryState = "failed"
+	DeliveryRejected   DeliveryState = "rejected"
 
 	DeliveryPush            DeliveryAction = "push"
 	DeliveryOpenPullRequest DeliveryAction = "open_pull_request"
+
+	ProposedByAgent    ProposedBy = "agent"
+	ProposedByOperator ProposedBy = "operator"
 )
 
 // Delivery binds an explicit approval to exact reviewed Git objects. It
 // contains bounded metadata only; credentials, diffs, and source content are
-// deliberately absent.
+// deliberately absent. A proposed Delivery has no approval facts until the
+// operator approves it.
 type Delivery struct {
 	ID                      DeliveryID
 	CapsuleID               CapsuleID
 	ProjectID               ProjectID
 	State                   DeliveryState
 	Action                  DeliveryAction
+	ProposedBy              ProposedBy
 	Approved                bool
 	ApprovedAt              time.Time
 	ExpectedCapsuleVersion  ResourceVersion
@@ -335,8 +344,8 @@ type Delivery struct {
 
 func (s DeliveryState) Valid() bool {
 	switch s {
-	case DeliveryQueued, DeliveryCommitting, DeliveryPushing, DeliveryOpeningPR,
-		DeliverySucceeded, DeliveryFailed:
+	case DeliveryProposed, DeliveryQueued, DeliveryCommitting, DeliveryPushing,
+		DeliveryOpeningPR, DeliverySucceeded, DeliveryFailed, DeliveryRejected:
 		return true
 	default:
 		return false
@@ -344,7 +353,16 @@ func (s DeliveryState) Valid() bool {
 }
 
 func (s DeliveryState) Terminal() bool {
-	return s == DeliverySucceeded || s == DeliveryFailed
+	return s == DeliverySucceeded || s == DeliveryFailed || s == DeliveryRejected
+}
+
+func (s DeliveryState) Executable() bool {
+	return s == DeliveryQueued || s == DeliveryCommitting || s == DeliveryPushing ||
+		s == DeliveryOpeningPR
+}
+
+func (p ProposedBy) Valid() bool {
+	return p == ProposedByAgent || p == ProposedByOperator
 }
 
 func (a DeliveryAction) Valid() bool {
@@ -355,10 +373,12 @@ func CanTransitionDelivery(from, to DeliveryState) bool {
 	if from == to {
 		return true
 	}
-	if to == DeliveryFailed && !from.Terminal() {
+	if to == DeliveryFailed && from.Executable() {
 		return true
 	}
 	switch from {
+	case DeliveryProposed:
+		return to == DeliveryQueued || to == DeliveryRejected
 	case DeliveryQueued:
 		return to == DeliveryCommitting || to == DeliveryPushing
 	case DeliveryCommitting:
@@ -384,12 +404,21 @@ func (d *Delivery) Transition(to DeliveryState, now time.Time) error {
 
 func (d Delivery) Validate() error {
 	if d.ID == "" || d.CapsuleID == "" || d.ProjectID == "" || !d.State.Valid() ||
-		!d.Action.Valid() || !d.Approved || d.ApprovedAt.IsZero() ||
-		d.ExpectedCapsuleVersion <= 0 || d.ExpectedHEAD == "" || d.ExpectedTree == "" ||
+		!d.Action.Valid() || !d.ProposedBy.Valid() ||
 		d.RemoteBranch == "" || d.DestinationRef != "refs/heads/"+d.RemoteBranch ||
 		d.IdempotencyKey == "" || d.CreatedAt.IsZero() || d.UpdatedAt.IsZero() ||
 		d.ResourceVersion <= 0 {
 		return fmt.Errorf("%w: invalid Delivery", ErrInvalid)
+	}
+	unapproved := d.State == DeliveryProposed || d.State == DeliveryRejected
+	if unapproved {
+		if d.Approved || !d.ApprovedAt.IsZero() || d.ExpectedCapsuleVersion != 0 ||
+			d.ExpectedHEAD != "" || d.ExpectedTree != "" {
+			return fmt.Errorf("%w: proposed Delivery must not carry approval facts", ErrInvalid)
+		}
+	} else if !d.Approved || d.ApprovedAt.IsZero() || d.ExpectedCapsuleVersion <= 0 ||
+		d.ExpectedHEAD == "" || d.ExpectedTree == "" {
+		return fmt.Errorf("%w: approved Delivery is missing approval facts", ErrInvalid)
 	}
 	if len(d.ExpectedHEAD) > 128 || len(d.ExpectedTree) > 128 ||
 		len(d.RemoteBranch) > 255 || len(d.BaseBranch) > 255 ||

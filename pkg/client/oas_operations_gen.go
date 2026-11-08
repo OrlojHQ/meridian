@@ -7,6 +7,7 @@ type OperationName = string
 
 const (
 	ApproveCoordinationRequestOperation     OperationName = "ApproveCoordinationRequest"
+	ApproveDeliveryOperation                OperationName = "ApproveDelivery"
 	ArchiveThreadOperation                  OperationName = "ArchiveThread"
 	AttachRunWebSocketOperation             OperationName = "AttachRunWebSocket"
 	CancelRunOperation                      OperationName = "CancelRun"
@@ -75,6 +76,7 @@ const (
 	ProxyProviderInferenceOperation         OperationName = "ProxyProviderInference"
 	PutSecretOperation                      OperationName = "PutSecret"
 	ReadCapsuleFileOperation                OperationName = "ReadCapsuleFile"
+	RejectDeliveryOperation                 OperationName = "RejectDelivery"
 	RespondThreadOperation                  OperationName = "RespondThread"
 	ResumeCapsuleOperation                  OperationName = "ResumeCapsule"
 	ResumeThreadOperation                   OperationName = "ResumeThread"

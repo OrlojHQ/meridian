@@ -18,6 +18,7 @@ type SecuritySource interface {
 // operationRolesBearerAuth is a private map storing roles per operation.
 var operationRolesBearerAuth = map[string][]string{
 	ApproveCoordinationRequestOperation:     []string{},
+	ApproveDeliveryOperation:                []string{},
 	ArchiveThreadOperation:                  []string{},
 	CancelRunOperation:                      []string{},
 	CancelThreadOperation:                   []string{},
@@ -82,6 +83,7 @@ var operationRolesBearerAuth = map[string][]string{
 	PromoteCapsuleOperation:                 []string{},
 	PutSecretOperation:                      []string{},
 	ReadCapsuleFileOperation:                []string{},
+	RejectDeliveryOperation:                 []string{},
 	RespondThreadOperation:                  []string{},
 	ResumeCapsuleOperation:                  []string{},
 	ResumeThreadOperation:                   []string{},

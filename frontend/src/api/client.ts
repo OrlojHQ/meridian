@@ -24,6 +24,10 @@ import {
   getProject,
   patchProject,
   inspectCapsuleDelivery,
+  getDelivery,
+  listCapsuleDeliveries,
+  approveDelivery as postApproveDelivery,
+  rejectDelivery as postRejectDelivery,
   getMoment,
   getRun,
   getThread,
@@ -87,6 +91,7 @@ import type { HarnessSetupUpload, HarnessSetupPreview, ImportHarnessSetupRequest
   RunPage,
   SealResult,
   TimelineView,
+  ApproveDeliveryRequest,
   CreateDeliveryRequest,
   Delivery,
   DeliveryInspection,
@@ -549,6 +554,39 @@ export const api = {
       inspectCapsuleDelivery({
         ...generatedOptions(signal),
         path: { capsuleId },
+      }),
+    ),
+  delivery: (deliveryId: string, signal?: AbortSignal) =>
+    call<Delivery>(
+      getDelivery({
+        ...generatedOptions(signal),
+        path: { deliveryId },
+      }),
+    ),
+  deliveries: (capsuleId: string, signal?: AbortSignal) =>
+    call<{ items: Delivery[] }>(
+      listCapsuleDeliveries({
+        ...generatedOptions(signal),
+        path: { capsuleId },
+        query: { limit: 20 },
+      }),
+    ),
+  approveDelivery: (delivery: Delivery, body: ApproveDeliveryRequest, signal?: AbortSignal) =>
+    call<Delivery>(
+      postApproveDelivery({
+        ...generatedOptions(signal),
+        path: { deliveryId: delivery.id },
+        headers: idempotencyHeaders(),
+        body,
+      }),
+    ),
+  rejectDelivery: (delivery: Delivery, signal?: AbortSignal) =>
+    call<Delivery>(
+      postRejectDelivery({
+        ...generatedOptions(signal),
+        path: { deliveryId: delivery.id },
+        headers: idempotencyHeaders(),
+        body: { expectedResourceVersion: delivery.resourceVersion },
       }),
     ),
   createDelivery: (

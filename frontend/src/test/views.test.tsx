@@ -965,6 +965,7 @@ describe("Workspace browsing and shipping", () => {
       projectId: project.id,
       state: "succeeded",
       action: "push",
+      proposedBy: "operator",
       approved: true,
       approvedAt: "2026-08-24T00:00:00Z",
       expectedResourceVersion: capsule.resourceVersion,

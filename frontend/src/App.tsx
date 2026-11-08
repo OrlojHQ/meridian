@@ -39,6 +39,7 @@ import type {
 import { queries } from "./api/queries";
 import { BlockerPeek } from "./components/BlockerPeek";
 import { Board } from "./components/Board";
+import { DeliveryDecision } from "./components/DeliveryDecision";
 import {
   ThreadCreate,
   ThreadDetail,
@@ -1060,6 +1061,10 @@ export function CapsuleDetail() {
     ...queries.harnessProfiles(capsuleId),
     enabled: Boolean(capsuleId) && structured && capsule.data?.state === "Ready",
   });
+  const deliveries = useQuery({
+    ...queries.deliveries(capsuleId),
+    enabled: Boolean(capsuleId) && capabilities.data?.delivery === true,
+  });
   if (capsule.isPending) return <p className="loading" role="status">Loading Capsule…</p>;
   if (capsule.isError) return <ErrorState error={capsule.error} />;
   const value = capsule.data;
@@ -1118,6 +1123,11 @@ export function CapsuleDetail() {
         </div>
       </header>
       {value.failure && <p className="error-state" role="alert">{value.failure}</p>}
+      {deliveries.data?.items[0]?.state === "proposed" && (
+        <section className="workspace-drawer" aria-label="Proposed Delivery">
+          <DeliveryDecision capsuleId={value.id} deliveryId={deliveries.data.items[0].id} />
+        </section>
+      )}
       {shipOpen && (
         <section className="workspace-drawer" aria-label="Ship reviewed changes">
           <ShipPanel capsule={value} />

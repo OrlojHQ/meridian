@@ -149,7 +149,8 @@ func (s *Service) CreateDelivery(
 	now := s.clock.Now().UTC()
 	result := domain.Delivery{
 		ID: domain.DeliveryID(s.ids.NewID()), CapsuleID: capsule.ID, ProjectID: project.ID,
-		State: domain.DeliveryQueued, Action: input.Action, Approved: true, ApprovedAt: now,
+		State: domain.DeliveryQueued, Action: input.Action, ProposedBy: domain.ProposedByOperator,
+		Approved: true, ApprovedAt: now,
 		ExpectedCapsuleVersion: input.ExpectedCapsuleVersion,
 		ExpectedHEAD:           input.ExpectedHEAD, ExpectedTree: input.ExpectedTree,
 		RemoteBranch: input.RemoteBranch, DestinationRef: "refs/heads/" + input.RemoteBranch,
@@ -255,7 +256,7 @@ func (s *Service) executeDelivery(
 	ctx context.Context, id domain.DeliveryID,
 ) (result domain.Delivery, returnedErr error) {
 	result, err := s.GetDelivery(ctx, id)
-	if err != nil || result.State.Terminal() {
+	if err != nil || !result.State.Executable() {
 		return result, err
 	}
 	var capsule domain.Capsule

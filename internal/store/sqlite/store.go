@@ -32,7 +32,7 @@ type Store struct {
 }
 
 // CurrentSchemaVersion is the newest migration this binary understands.
-const CurrentSchemaVersion = 18
+const CurrentSchemaVersion = 19
 
 func Open(ctx context.Context, dataDir string) (*Store, error) {
 	if strings.TrimSpace(dataDir) == "" {
@@ -1864,36 +1864,43 @@ func ensureThreadAffected(
 }
 
 const deliverySelect = `
-	SELECT id, capsule_id, project_id, state, action, approved, approved_at,
+	SELECT id, capsule_id, project_id, state, action, proposed_by, approved, approved_at,
 		expected_capsule_version, expected_head, expected_tree, remote_branch,
 		destination_ref, base_branch, commit_message, pr_title, pr_body,
 		result_commit_sha, result_pr_url, result_pr_number, failure,
 		idempotency_key, created_at, updated_at, resource_version
 	FROM deliveries`
 
+func deliveryApprovedAt(value time.Time) string {
+	if value.IsZero() {
+		return ""
+	}
+	return formatTime(value)
+}
+
 func (r *repository) InsertDelivery(ctx context.Context, delivery domain.Delivery) error {
 	if err := delivery.Validate(); err != nil {
 		return err
 	}
-	if delivery.State != domain.DeliveryQueued {
-		return fmt.Errorf("%w: new Delivery must be queued", domain.ErrInvalid)
+	if delivery.State != domain.DeliveryQueued && delivery.State != domain.DeliveryProposed {
+		return fmt.Errorf("%w: new Delivery must be proposed or queued", domain.ErrInvalid)
 	}
 	_, err := r.q.ExecContext(ctx, `
 		INSERT INTO deliveries(
-			id, capsule_id, project_id, state, action, approved, approved_at,
+			id, capsule_id, project_id, state, action, proposed_by, approved, approved_at,
 			expected_capsule_version, expected_head, expected_tree, remote_branch,
 			destination_ref, base_branch, commit_message, pr_title, pr_body,
 			result_commit_sha, result_pr_url, result_pr_number, failure,
 			idempotency_key, created_at, updated_at, resource_version
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		delivery.ID, delivery.CapsuleID, delivery.ProjectID, delivery.State, delivery.Action,
-		delivery.Approved, formatTime(delivery.ApprovedAt), delivery.ExpectedCapsuleVersion,
-		delivery.ExpectedHEAD, delivery.ExpectedTree, delivery.RemoteBranch,
-		delivery.DestinationRef, delivery.BaseBranch, delivery.CommitMessage,
-		delivery.PullRequestTitle, delivery.PullRequestBody, delivery.ResultCommitSHA,
-		delivery.ResultPullRequestURL, delivery.ResultPullRequestNumber, delivery.Failure,
-		delivery.IdempotencyKey, formatTime(delivery.CreatedAt), formatTime(delivery.UpdatedAt),
-		delivery.ResourceVersion,
+		delivery.ProposedBy, delivery.Approved, deliveryApprovedAt(delivery.ApprovedAt),
+		delivery.ExpectedCapsuleVersion, delivery.ExpectedHEAD, delivery.ExpectedTree,
+		delivery.RemoteBranch, delivery.DestinationRef, delivery.BaseBranch,
+		delivery.CommitMessage, delivery.PullRequestTitle, delivery.PullRequestBody,
+		delivery.ResultCommitSHA, delivery.ResultPullRequestURL, delivery.ResultPullRequestNumber,
+		delivery.Failure, delivery.IdempotencyKey, formatTime(delivery.CreatedAt),
+		formatTime(delivery.UpdatedAt), delivery.ResourceVersion,
 	)
 	return mapError(err)
 }
@@ -1938,11 +1945,68 @@ func (r *repository) UpdateDelivery(
 	return domain.ErrConflict
 }
 
+func (r *repository) ApplyDeliveryApproval(
+	ctx context.Context,
+	delivery domain.Delivery,
+	expected domain.ResourceVersion,
+) error {
+	if err := delivery.Validate(); err != nil {
+		return err
+	}
+	if delivery.ResourceVersion != expected+1 {
+		return fmt.Errorf("%w: invalid Delivery resource version", domain.ErrInvalid)
+	}
+	if delivery.State != domain.DeliveryQueued && delivery.State != domain.DeliveryRejected {
+		return fmt.Errorf("%w: Delivery decision must queue or reject", domain.ErrInvalid)
+	}
+	result, err := r.q.ExecContext(ctx, `
+		UPDATE deliveries SET state = ?, approved = ?, approved_at = ?,
+			expected_capsule_version = ?, expected_head = ?, expected_tree = ?,
+			remote_branch = ?, destination_ref = ?, base_branch = ?,
+			commit_message = ?, pr_title = ?, pr_body = ?,
+			updated_at = ?, resource_version = ?
+		WHERE id = ? AND resource_version = ? AND state = 'proposed'`,
+		delivery.State, delivery.Approved, deliveryApprovedAt(delivery.ApprovedAt),
+		delivery.ExpectedCapsuleVersion, delivery.ExpectedHEAD, delivery.ExpectedTree,
+		delivery.RemoteBranch, delivery.DestinationRef, delivery.BaseBranch,
+		delivery.CommitMessage, delivery.PullRequestTitle, delivery.PullRequestBody,
+		formatTime(delivery.UpdatedAt), delivery.ResourceVersion, delivery.ID, expected,
+	)
+	if err != nil {
+		return mapError(err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 1 {
+		return nil
+	}
+	var exists int
+	if err := r.q.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM deliveries WHERE id = ?", delivery.ID).Scan(&exists); err != nil {
+		return err
+	}
+	if exists == 0 {
+		return domain.ErrNotFound
+	}
+	return domain.ErrConflict
+}
+
 func (r *repository) GetDelivery(
 	ctx context.Context,
 	id domain.DeliveryID,
 ) (domain.Delivery, error) {
 	return scanDelivery(r.q.QueryRowContext(ctx, deliverySelect+" WHERE id = ?", id))
+}
+
+func (r *repository) GetDeliveryByIdempotency(
+	ctx context.Context,
+	capsuleID domain.CapsuleID,
+	key string,
+) (domain.Delivery, error) {
+	return scanDelivery(r.q.QueryRowContext(ctx,
+		deliverySelect+" WHERE capsule_id = ? AND idempotency_key = ?", capsuleID, key))
 }
 
 func (r *repository) ListDeliveries(
@@ -1980,7 +2044,7 @@ func (r *repository) ListDeliveries(
 
 func (r *repository) ListRecoverableDeliveries(ctx context.Context) ([]domain.Delivery, error) {
 	rows, err := r.q.QueryContext(ctx, deliverySelect+`
-		WHERE state NOT IN ('succeeded', 'failed') ORDER BY created_at, id`)
+		WHERE state NOT IN ('succeeded', 'failed', 'proposed', 'rejected') ORDER BY created_at, id`)
 	if err != nil {
 		return nil, err
 	}
@@ -2001,7 +2065,7 @@ func scanDelivery(row scanner) (domain.Delivery, error) {
 	var approvedAt, createdAt, updatedAt string
 	if err := row.Scan(
 		&delivery.ID, &delivery.CapsuleID, &delivery.ProjectID, &delivery.State,
-		&delivery.Action, &delivery.Approved, &approvedAt,
+		&delivery.Action, &delivery.ProposedBy, &delivery.Approved, &approvedAt,
 		&delivery.ExpectedCapsuleVersion, &delivery.ExpectedHEAD, &delivery.ExpectedTree,
 		&delivery.RemoteBranch, &delivery.DestinationRef, &delivery.BaseBranch,
 		&delivery.CommitMessage, &delivery.PullRequestTitle, &delivery.PullRequestBody,
@@ -2012,7 +2076,9 @@ func scanDelivery(row scanner) (domain.Delivery, error) {
 		return domain.Delivery{}, mapError(err)
 	}
 	var err error
-	delivery.ApprovedAt, err = parseTime(approvedAt)
+	if approvedAt != "" {
+		delivery.ApprovedAt, err = parseTime(approvedAt)
+	}
 	if err == nil {
 		delivery.CreatedAt, err = parseTime(createdAt)
 	}

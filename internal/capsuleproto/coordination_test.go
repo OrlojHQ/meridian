@@ -195,6 +195,23 @@ func TestMailboxSubagentMayOnlyReport(t *testing.T) {
 	}); response.Error == nil || response.Error.Code != coordproto.CodeCoordinationDisabled {
 		t.Fatalf("subagent patch: %+v", response)
 	}
+	proposeDone := make(chan coordproto.Response, 1)
+	go func() {
+		proposeDone <- mailbox.Handle(context.Background(), coordproto.Request{
+			Protocol: coordproto.Version, Type: coordproto.KindProposeDelivery,
+			Key: "p-1", Title: "Ship it", Branch: "feature/sub",
+		})
+	}()
+	proposePoll := mailbox.Poll(context.Background(), 0, 0, 2*time.Second)
+	if len(proposePoll.Requests) != 1 || proposePoll.Requests[0].Request.Type != coordproto.KindProposeDelivery {
+		t.Fatalf("propose-delivery was not relayed: %+v", proposePoll.Requests)
+	}
+	proposeReply := coordproto.OK()
+	proposeReply.Delivery = &coordproto.DeliveryView{ID: "delivery-1", State: "proposed", Branch: "feature/sub"}
+	mailbox.Reply([]coordproto.Reply{{Cursor: proposePoll.Requests[0].Cursor, Response: proposeReply}})
+	if response := <-proposeDone; !response.OK || response.Delivery == nil || response.Delivery.ID != "delivery-1" {
+		t.Fatalf("propose-delivery: %+v", response)
+	}
 	done := make(chan coordproto.Response, 1)
 	go func() {
 		done <- mailbox.Handle(context.Background(), coordproto.Request{

@@ -128,6 +128,8 @@ func (m *Mailbox) Handle(ctx context.Context, request coordproto.Request) coordp
 			return coordproto.Fail(coordproto.CodeInvalidRequest, "only a subagent Thread can report")
 		}
 		return m.relay(ctx, request)
+	case coordproto.KindProposeDelivery:
+		return m.relay(ctx, request)
 	}
 	if role != "lead" {
 		return coordproto.Fail(coordproto.CodeCoordinationDisabled, "this Thread has no lead coordination grant")

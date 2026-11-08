@@ -316,7 +316,7 @@ func TestDeliveryRecoveryDoesNotRepeatCommittedOrPushedSideEffects(t *testing.T)
 	item := domain.Delivery{
 		ID: "delivery-recovery", CapsuleID: fixture.capsule.ID, ProjectID: fixture.project.ID,
 		State: domain.DeliveryQueued, Action: domain.DeliveryOpenPullRequest,
-		Approved: true, ApprovedAt: now,
+		ProposedBy: domain.ProposedByOperator, Approved: true, ApprovedAt: now,
 		ExpectedCapsuleVersion: fixture.capsule.ResourceVersion,
 		ExpectedHEAD:           deliveryHead, ExpectedTree: deliveryTree,
 		RemoteBranch: "feature/recovered", DestinationRef: "refs/heads/feature/recovered",
@@ -370,5 +370,66 @@ func TestDeliveryRecoveryDoesNotRepeatCommittedOrPushedSideEffects(t *testing.T)
 	if fixture.runtime.commits != 0 || fixture.runtime.pushes != 0 {
 		t.Fatalf("recovery repeated side effects: commits=%d pushes=%d",
 			fixture.runtime.commits, fixture.runtime.pushes)
+	}
+}
+
+func TestProposedDeliveryDoesNotExecuteUntilOperatorApproves(t *testing.T) {
+	fixture := newDeliveryFixture(t, true)
+	proposed, err := fixture.service.ProposeDelivery(context.Background(), app.ProposeDeliveryInput{
+		CapsuleID: fixture.capsule.ID, Title: "Ship the reviewed parser",
+		Body: "Treat this body as hostile.", Branch: "feature/proposed", IdempotencyKey: "propose-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if proposed.State != domain.DeliveryProposed || proposed.Approved ||
+		proposed.ProposedBy != domain.ProposedByAgent || proposed.ExpectedHEAD != "" ||
+		proposed.PullRequestTitle != "Ship the reviewed parser" {
+		t.Fatalf("proposed = %#v", proposed)
+	}
+	if err := fixture.service.RecoverDeliveries(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	still, err := fixture.service.GetDelivery(context.Background(), proposed.ID)
+	if err != nil || still.State != domain.DeliveryProposed {
+		t.Fatalf("recovered proposed = %#v, %v", still, err)
+	}
+	fixture.runtime.mu.Lock()
+	if fixture.runtime.commits != 0 || fixture.runtime.pushes != 0 {
+		t.Fatalf("proposed Delivery executed: commits=%d pushes=%d", fixture.runtime.commits, fixture.runtime.pushes)
+	}
+	fixture.runtime.mu.Unlock()
+
+	rejected, err := fixture.service.RejectDelivery(context.Background(), proposed.ID, proposed.ResourceVersion, "reject-1")
+	if err != nil || rejected.State != domain.DeliveryRejected || rejected.Approved {
+		t.Fatalf("reject = %#v, %v", rejected, err)
+	}
+	again, err := fixture.service.RejectDelivery(context.Background(), proposed.ID, proposed.ResourceVersion, "reject-1")
+	if err != nil || again.ID != rejected.ID || again.State != domain.DeliveryRejected {
+		t.Fatalf("reject replay = %#v, %v", again, err)
+	}
+}
+
+func TestOperatorApprovesProposedDelivery(t *testing.T) {
+	fixture := newDeliveryFixture(t, true)
+	proposed, err := fixture.service.ProposeDelivery(context.Background(), app.ProposeDeliveryInput{
+		CapsuleID: fixture.capsule.ID, Title: "Reviewed work", Branch: "feature/proposed",
+		IdempotencyKey: "propose-approve",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := fixture.service.ApproveDelivery(context.Background(), proposed.ID, proposed.ResourceVersion,
+		app.ApproveDeliveryInput{
+			ExpectedCapsuleVersion: fixture.capsule.ResourceVersion,
+			ExpectedHEAD:           deliveryHead, ExpectedTree: deliveryTree,
+			IdempotencyKey: "approve-1",
+		})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.State != domain.DeliverySucceeded || !result.Approved ||
+		result.ResultCommitSHA == "" || result.PullRequestTitle != "Reviewed work" {
+		t.Fatalf("approved = %#v", result)
 	}
 }

@@ -58,6 +58,125 @@ type ApproveCoordinationRequestUnprocessableEntity ErrorEnvelope
 
 func (*ApproveCoordinationRequestUnprocessableEntity) approveCoordinationRequestRes() {}
 
+type ApproveDeliveryBadRequest ErrorEnvelope
+
+func (*ApproveDeliveryBadRequest) approveDeliveryRes() {}
+
+type ApproveDeliveryConflict ErrorEnvelope
+
+func (*ApproveDeliveryConflict) approveDeliveryRes() {}
+
+type ApproveDeliveryNotFound ErrorEnvelope
+
+func (*ApproveDeliveryNotFound) approveDeliveryRes() {}
+
+// Ref: #/components/schemas/ApproveDeliveryRequest
+type ApproveDeliveryRequest struct {
+	ExpectedResourceVersion int64     `json:"expectedResourceVersion"`
+	ExpectedCapsuleVersion  int64     `json:"expectedCapsuleVersion"`
+	ExpectedHead            string    `json:"expectedHead"`
+	ExpectedTree            string    `json:"expectedTree"`
+	RemoteBranch            OptString `json:"remoteBranch"`
+	CommitMessage           OptString `json:"commitMessage"`
+	PullRequestTitle        OptString `json:"pullRequestTitle"`
+	PullRequestBody         OptString `json:"pullRequestBody"`
+	BaseBranch              OptString `json:"baseBranch"`
+}
+
+// GetExpectedResourceVersion returns the value of ExpectedResourceVersion.
+func (s *ApproveDeliveryRequest) GetExpectedResourceVersion() int64 {
+	return s.ExpectedResourceVersion
+}
+
+// GetExpectedCapsuleVersion returns the value of ExpectedCapsuleVersion.
+func (s *ApproveDeliveryRequest) GetExpectedCapsuleVersion() int64 {
+	return s.ExpectedCapsuleVersion
+}
+
+// GetExpectedHead returns the value of ExpectedHead.
+func (s *ApproveDeliveryRequest) GetExpectedHead() string {
+	return s.ExpectedHead
+}
+
+// GetExpectedTree returns the value of ExpectedTree.
+func (s *ApproveDeliveryRequest) GetExpectedTree() string {
+	return s.ExpectedTree
+}
+
+// GetRemoteBranch returns the value of RemoteBranch.
+func (s *ApproveDeliveryRequest) GetRemoteBranch() OptString {
+	return s.RemoteBranch
+}
+
+// GetCommitMessage returns the value of CommitMessage.
+func (s *ApproveDeliveryRequest) GetCommitMessage() OptString {
+	return s.CommitMessage
+}
+
+// GetPullRequestTitle returns the value of PullRequestTitle.
+func (s *ApproveDeliveryRequest) GetPullRequestTitle() OptString {
+	return s.PullRequestTitle
+}
+
+// GetPullRequestBody returns the value of PullRequestBody.
+func (s *ApproveDeliveryRequest) GetPullRequestBody() OptString {
+	return s.PullRequestBody
+}
+
+// GetBaseBranch returns the value of BaseBranch.
+func (s *ApproveDeliveryRequest) GetBaseBranch() OptString {
+	return s.BaseBranch
+}
+
+// SetExpectedResourceVersion sets the value of ExpectedResourceVersion.
+func (s *ApproveDeliveryRequest) SetExpectedResourceVersion(val int64) {
+	s.ExpectedResourceVersion = val
+}
+
+// SetExpectedCapsuleVersion sets the value of ExpectedCapsuleVersion.
+func (s *ApproveDeliveryRequest) SetExpectedCapsuleVersion(val int64) {
+	s.ExpectedCapsuleVersion = val
+}
+
+// SetExpectedHead sets the value of ExpectedHead.
+func (s *ApproveDeliveryRequest) SetExpectedHead(val string) {
+	s.ExpectedHead = val
+}
+
+// SetExpectedTree sets the value of ExpectedTree.
+func (s *ApproveDeliveryRequest) SetExpectedTree(val string) {
+	s.ExpectedTree = val
+}
+
+// SetRemoteBranch sets the value of RemoteBranch.
+func (s *ApproveDeliveryRequest) SetRemoteBranch(val OptString) {
+	s.RemoteBranch = val
+}
+
+// SetCommitMessage sets the value of CommitMessage.
+func (s *ApproveDeliveryRequest) SetCommitMessage(val OptString) {
+	s.CommitMessage = val
+}
+
+// SetPullRequestTitle sets the value of PullRequestTitle.
+func (s *ApproveDeliveryRequest) SetPullRequestTitle(val OptString) {
+	s.PullRequestTitle = val
+}
+
+// SetPullRequestBody sets the value of PullRequestBody.
+func (s *ApproveDeliveryRequest) SetPullRequestBody(val OptString) {
+	s.PullRequestBody = val
+}
+
+// SetBaseBranch sets the value of BaseBranch.
+func (s *ApproveDeliveryRequest) SetBaseBranch(val OptString) {
+	s.BaseBranch = val
+}
+
+type ApproveDeliveryUnprocessableEntity ErrorEnvelope
+
+func (*ApproveDeliveryUnprocessableEntity) approveDeliveryRes() {}
+
 type ArchiveThreadConflict ErrorEnvelope
 
 func (*ArchiveThreadConflict) archiveThreadRes() {}
@@ -257,10 +376,11 @@ func (s *BoardItem) SetSurfaced(val bool) {
 type BoardItemNeedsYou string
 
 const (
-	BoardItemNeedsYouPermission    BoardItemNeedsYou = "permission"
-	BoardItemNeedsYouInput         BoardItemNeedsYou = "input"
-	BoardItemNeedsYouFailed        BoardItemNeedsYou = "failed"
-	BoardItemNeedsYouSpawnApproval BoardItemNeedsYou = "spawn_approval"
+	BoardItemNeedsYouPermission       BoardItemNeedsYou = "permission"
+	BoardItemNeedsYouInput            BoardItemNeedsYou = "input"
+	BoardItemNeedsYouFailed           BoardItemNeedsYou = "failed"
+	BoardItemNeedsYouSpawnApproval    BoardItemNeedsYou = "spawn_approval"
+	BoardItemNeedsYouProposedDelivery BoardItemNeedsYou = "proposed_delivery"
 )
 
 // AllValues returns all BoardItemNeedsYou values.
@@ -270,6 +390,7 @@ func (BoardItemNeedsYou) AllValues() []BoardItemNeedsYou {
 		BoardItemNeedsYouInput,
 		BoardItemNeedsYouFailed,
 		BoardItemNeedsYouSpawnApproval,
+		BoardItemNeedsYouProposedDelivery,
 	}
 }
 
@@ -283,6 +404,8 @@ func (s BoardItemNeedsYou) MarshalText() ([]byte, error) {
 	case BoardItemNeedsYouFailed:
 		return []byte(s), nil
 	case BoardItemNeedsYouSpawnApproval:
+		return []byte(s), nil
+	case BoardItemNeedsYouProposedDelivery:
 		return []byte(s), nil
 	default:
 		return nil, errors.Errorf("invalid value: %q", s)
@@ -303,6 +426,9 @@ func (s *BoardItemNeedsYou) UnmarshalText(data []byte) error {
 		return nil
 	case BoardItemNeedsYouSpawnApproval:
 		*s = BoardItemNeedsYouSpawnApproval
+		return nil
+	case BoardItemNeedsYouProposedDelivery:
+		*s = BoardItemNeedsYouProposedDelivery
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)
@@ -2946,29 +3072,30 @@ func (s *DeleteThreadRequestConfirmation) UnmarshalText(data []byte) error {
 
 // Ref: #/components/schemas/Delivery
 type Delivery struct {
-	ID                      string         `json:"id"`
-	CapsuleId               string         `json:"capsuleId"`
-	ProjectId               string         `json:"projectId"`
-	State                   DeliveryState  `json:"state"`
-	Action                  DeliveryAction `json:"action"`
-	Approved                bool           `json:"approved"`
-	ApprovedAt              time.Time      `json:"approvedAt"`
-	ExpectedResourceVersion int64          `json:"expectedResourceVersion"`
-	ExpectedHead            string         `json:"expectedHead"`
-	ExpectedTree            string         `json:"expectedTree"`
-	RemoteBranch            string         `json:"remoteBranch"`
-	DestinationRef          string         `json:"destinationRef"`
-	BaseBranch              OptString      `json:"baseBranch"`
-	CommitMessage           OptString      `json:"commitMessage"`
-	PullRequestTitle        OptString      `json:"pullRequestTitle"`
-	PullRequestBody         OptString      `json:"pullRequestBody"`
-	ResultCommitSha         OptString      `json:"resultCommitSha"`
-	ResultPullRequestUrl    OptURI         `json:"resultPullRequestUrl"`
-	ResultPullRequestNumber OptInt64       `json:"resultPullRequestNumber"`
-	Failure                 OptString      `json:"failure"`
-	CreatedAt               time.Time      `json:"createdAt"`
-	UpdatedAt               time.Time      `json:"updatedAt"`
-	ResourceVersion         int64          `json:"resourceVersion"`
+	ID                      string             `json:"id"`
+	CapsuleId               string             `json:"capsuleId"`
+	ProjectId               string             `json:"projectId"`
+	State                   DeliveryState      `json:"state"`
+	Action                  DeliveryAction     `json:"action"`
+	ProposedBy              DeliveryProposedBy `json:"proposedBy"`
+	Approved                bool               `json:"approved"`
+	ApprovedAt              OptDateTime        `json:"approvedAt"`
+	ExpectedResourceVersion OptInt64           `json:"expectedResourceVersion"`
+	ExpectedHead            OptString          `json:"expectedHead"`
+	ExpectedTree            OptString          `json:"expectedTree"`
+	RemoteBranch            string             `json:"remoteBranch"`
+	DestinationRef          string             `json:"destinationRef"`
+	BaseBranch              OptString          `json:"baseBranch"`
+	CommitMessage           OptString          `json:"commitMessage"`
+	PullRequestTitle        OptString          `json:"pullRequestTitle"`
+	PullRequestBody         OptString          `json:"pullRequestBody"`
+	ResultCommitSha         OptString          `json:"resultCommitSha"`
+	ResultPullRequestUrl    OptURI             `json:"resultPullRequestUrl"`
+	ResultPullRequestNumber OptInt64           `json:"resultPullRequestNumber"`
+	Failure                 OptString          `json:"failure"`
+	CreatedAt               time.Time          `json:"createdAt"`
+	UpdatedAt               time.Time          `json:"updatedAt"`
+	ResourceVersion         int64              `json:"resourceVersion"`
 }
 
 // GetID returns the value of ID.
@@ -2996,28 +3123,33 @@ func (s *Delivery) GetAction() DeliveryAction {
 	return s.Action
 }
 
+// GetProposedBy returns the value of ProposedBy.
+func (s *Delivery) GetProposedBy() DeliveryProposedBy {
+	return s.ProposedBy
+}
+
 // GetApproved returns the value of Approved.
 func (s *Delivery) GetApproved() bool {
 	return s.Approved
 }
 
 // GetApprovedAt returns the value of ApprovedAt.
-func (s *Delivery) GetApprovedAt() time.Time {
+func (s *Delivery) GetApprovedAt() OptDateTime {
 	return s.ApprovedAt
 }
 
 // GetExpectedResourceVersion returns the value of ExpectedResourceVersion.
-func (s *Delivery) GetExpectedResourceVersion() int64 {
+func (s *Delivery) GetExpectedResourceVersion() OptInt64 {
 	return s.ExpectedResourceVersion
 }
 
 // GetExpectedHead returns the value of ExpectedHead.
-func (s *Delivery) GetExpectedHead() string {
+func (s *Delivery) GetExpectedHead() OptString {
 	return s.ExpectedHead
 }
 
 // GetExpectedTree returns the value of ExpectedTree.
-func (s *Delivery) GetExpectedTree() string {
+func (s *Delivery) GetExpectedTree() OptString {
 	return s.ExpectedTree
 }
 
@@ -3111,28 +3243,33 @@ func (s *Delivery) SetAction(val DeliveryAction) {
 	s.Action = val
 }
 
+// SetProposedBy sets the value of ProposedBy.
+func (s *Delivery) SetProposedBy(val DeliveryProposedBy) {
+	s.ProposedBy = val
+}
+
 // SetApproved sets the value of Approved.
 func (s *Delivery) SetApproved(val bool) {
 	s.Approved = val
 }
 
 // SetApprovedAt sets the value of ApprovedAt.
-func (s *Delivery) SetApprovedAt(val time.Time) {
+func (s *Delivery) SetApprovedAt(val OptDateTime) {
 	s.ApprovedAt = val
 }
 
 // SetExpectedResourceVersion sets the value of ExpectedResourceVersion.
-func (s *Delivery) SetExpectedResourceVersion(val int64) {
+func (s *Delivery) SetExpectedResourceVersion(val OptInt64) {
 	s.ExpectedResourceVersion = val
 }
 
 // SetExpectedHead sets the value of ExpectedHead.
-func (s *Delivery) SetExpectedHead(val string) {
+func (s *Delivery) SetExpectedHead(val OptString) {
 	s.ExpectedHead = val
 }
 
 // SetExpectedTree sets the value of ExpectedTree.
-func (s *Delivery) SetExpectedTree(val string) {
+func (s *Delivery) SetExpectedTree(val OptString) {
 	s.ExpectedTree = val
 }
 
@@ -3268,8 +3405,10 @@ func (s *DeliveryHeaders) SetResponse(val Delivery) {
 	s.Response = val
 }
 
+func (*DeliveryHeaders) approveDeliveryRes()       {}
 func (*DeliveryHeaders) createCapsuleDeliveryRes() {}
 func (*DeliveryHeaders) getDeliveryRes()           {}
+func (*DeliveryHeaders) rejectDeliveryRes()        {}
 
 // Ref: #/components/schemas/DeliveryInspection
 type DeliveryInspection struct {
@@ -3382,33 +3521,80 @@ func (s *DeliveryPage) SetNextCursor(val OptString) {
 
 func (*DeliveryPage) listCapsuleDeliveriesRes() {}
 
+type DeliveryProposedBy string
+
+const (
+	DeliveryProposedByAgent    DeliveryProposedBy = "agent"
+	DeliveryProposedByOperator DeliveryProposedBy = "operator"
+)
+
+// AllValues returns all DeliveryProposedBy values.
+func (DeliveryProposedBy) AllValues() []DeliveryProposedBy {
+	return []DeliveryProposedBy{
+		DeliveryProposedByAgent,
+		DeliveryProposedByOperator,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s DeliveryProposedBy) MarshalText() ([]byte, error) {
+	switch s {
+	case DeliveryProposedByAgent:
+		return []byte(s), nil
+	case DeliveryProposedByOperator:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *DeliveryProposedBy) UnmarshalText(data []byte) error {
+	switch DeliveryProposedBy(data) {
+	case DeliveryProposedByAgent:
+		*s = DeliveryProposedByAgent
+		return nil
+	case DeliveryProposedByOperator:
+		*s = DeliveryProposedByOperator
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
 // Ref: #/components/schemas/DeliveryState
 type DeliveryState string
 
 const (
+	DeliveryStateProposed   DeliveryState = "proposed"
 	DeliveryStateQueued     DeliveryState = "queued"
 	DeliveryStateCommitting DeliveryState = "committing"
 	DeliveryStatePushing    DeliveryState = "pushing"
 	DeliveryStateOpeningPr  DeliveryState = "opening_pr"
 	DeliveryStateSucceeded  DeliveryState = "succeeded"
 	DeliveryStateFailed     DeliveryState = "failed"
+	DeliveryStateRejected   DeliveryState = "rejected"
 )
 
 // AllValues returns all DeliveryState values.
 func (DeliveryState) AllValues() []DeliveryState {
 	return []DeliveryState{
+		DeliveryStateProposed,
 		DeliveryStateQueued,
 		DeliveryStateCommitting,
 		DeliveryStatePushing,
 		DeliveryStateOpeningPr,
 		DeliveryStateSucceeded,
 		DeliveryStateFailed,
+		DeliveryStateRejected,
 	}
 }
 
 // MarshalText implements encoding.TextMarshaler.
 func (s DeliveryState) MarshalText() ([]byte, error) {
 	switch s {
+	case DeliveryStateProposed:
+		return []byte(s), nil
 	case DeliveryStateQueued:
 		return []byte(s), nil
 	case DeliveryStateCommitting:
@@ -3421,6 +3607,8 @@ func (s DeliveryState) MarshalText() ([]byte, error) {
 		return []byte(s), nil
 	case DeliveryStateFailed:
 		return []byte(s), nil
+	case DeliveryStateRejected:
+		return []byte(s), nil
 	default:
 		return nil, errors.Errorf("invalid value: %q", s)
 	}
@@ -3429,6 +3617,9 @@ func (s DeliveryState) MarshalText() ([]byte, error) {
 // UnmarshalText implements encoding.TextUnmarshaler.
 func (s *DeliveryState) UnmarshalText(data []byte) error {
 	switch DeliveryState(data) {
+	case DeliveryStateProposed:
+		*s = DeliveryStateProposed
+		return nil
 	case DeliveryStateQueued:
 		*s = DeliveryStateQueued
 		return nil
@@ -3446,6 +3637,9 @@ func (s *DeliveryState) UnmarshalText(data []byte) error {
 		return nil
 	case DeliveryStateFailed:
 		*s = DeliveryStateFailed
+		return nil
+	case DeliveryStateRejected:
+		*s = DeliveryStateRejected
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)
@@ -8474,6 +8668,37 @@ func (*ReadCapsuleFileRequestEntityTooLarge) readCapsuleFileRes() {}
 type ReadCapsuleFileUnprocessableEntity ErrorEnvelope
 
 func (*ReadCapsuleFileUnprocessableEntity) readCapsuleFileRes() {}
+
+type RejectDeliveryBadRequest ErrorEnvelope
+
+func (*RejectDeliveryBadRequest) rejectDeliveryRes() {}
+
+type RejectDeliveryConflict ErrorEnvelope
+
+func (*RejectDeliveryConflict) rejectDeliveryRes() {}
+
+type RejectDeliveryNotFound ErrorEnvelope
+
+func (*RejectDeliveryNotFound) rejectDeliveryRes() {}
+
+// Ref: #/components/schemas/RejectDeliveryRequest
+type RejectDeliveryRequest struct {
+	ExpectedResourceVersion int64 `json:"expectedResourceVersion"`
+}
+
+// GetExpectedResourceVersion returns the value of ExpectedResourceVersion.
+func (s *RejectDeliveryRequest) GetExpectedResourceVersion() int64 {
+	return s.ExpectedResourceVersion
+}
+
+// SetExpectedResourceVersion sets the value of ExpectedResourceVersion.
+func (s *RejectDeliveryRequest) SetExpectedResourceVersion(val int64) {
+	s.ExpectedResourceVersion = val
+}
+
+type RejectDeliveryUnprocessableEntity ErrorEnvelope
+
+func (*RejectDeliveryUnprocessableEntity) rejectDeliveryRes() {}
 
 type RespondThreadBadRequest ErrorEnvelope
 

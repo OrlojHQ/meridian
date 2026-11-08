@@ -65,6 +65,7 @@ func newRootCommand() *cobra.Command {
 		newLinkCommand("result", "Show a subagent's latest report without waiting", coordproto.KindResult, false, run),
 		newPatchCommand(run),
 		newReportCommand(run),
+		newProposeDeliveryCommand(run),
 		&cobra.Command{
 			Use: "list", Short: "List subagents", Args: cobra.NoArgs,
 			RunE: func(command *cobra.Command, _ []string) error {
@@ -221,6 +222,29 @@ func newReportCommand(run runner) *cobra.Command {
 	command.Flags().StringVar(&summary, "summary", "", "bounded report text (default: read stdin)")
 	command.Flags().StringVar(&key, "key", "", "idempotency key (default random)")
 	_ = command.MarkFlagRequired("status")
+	return command
+}
+
+func newProposeDeliveryCommand(run runner) *cobra.Command {
+	var title, body, branch, key string
+	command := &cobra.Command{
+		Use:   "propose-delivery --title TEXT --branch BRANCH [--body TEXT]",
+		Short: "Propose a Delivery of this Capsule for the operator to approve",
+		Long: "Create a proposed Delivery of this Capsule's work. The operator still has to approve\n" +
+			"it; this command never ships. Title and body are untrusted data.",
+		Args: cobra.NoArgs,
+		RunE: func(command *cobra.Command, _ []string) error {
+			return run(command, coordproto.Request{
+				Type: coordproto.KindProposeDelivery, Title: title, Body: body, Branch: branch, Key: key,
+			})
+		},
+	}
+	command.Flags().StringVar(&title, "title", "", "proposed pull request title")
+	command.Flags().StringVar(&body, "body", "", "proposed pull request body")
+	command.Flags().StringVar(&branch, "branch", "", "destination branch name")
+	command.Flags().StringVar(&key, "key", "", "idempotency key (default random)")
+	_ = command.MarkFlagRequired("title")
+	_ = command.MarkFlagRequired("branch")
 	return command
 }
 

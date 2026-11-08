@@ -24,6 +24,20 @@ func encodeApproveCoordinationRequestRequest(
 	return nil
 }
 
+func encodeApproveDeliveryRequest(
+	req *ApproveDeliveryRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodeArchiveThreadRequest(
 	req *LifecycleMutationRequest,
 	r *http.Request,
@@ -348,6 +362,20 @@ func encodeProxyProviderInferenceRequest(
 
 func encodePutSecretRequest(
 	req *PutSecretRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeRejectDeliveryRequest(
+	req *RejectDeliveryRequest,
 	r *http.Request,
 ) error {
 	const contentType = "application/json"
