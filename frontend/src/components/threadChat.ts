@@ -4,7 +4,7 @@ import {
   isCoordinationWakeEcho,
   parseSubagentReports,
   type SubagentReport,
-} from "./subagentReports";
+} from "./subagentReportModel";
 import { boundedThreadText, safeInline } from "./threadText";
 
 export { boundedThreadText, safeInline, sanitizeThreadText } from "./threadText";

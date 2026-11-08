@@ -7,7 +7,7 @@ import {
   subagentHref,
   subagentPhaseLabels,
   subagentsNeedingYou,
-} from "./subagentReports";
+} from "./subagentReportModel";
 
 export function SubagentReportGroup({
   item,

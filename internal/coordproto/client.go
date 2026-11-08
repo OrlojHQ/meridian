@@ -42,7 +42,7 @@ func Do(ctx context.Context, socketPath string, request Request) (Response, erro
 	var dialer net.Dialer
 	conn, err := dialer.DialContext(ctx, "unix", socketPath)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+		if mailboxAbsent(socketPath, err) {
 			return Fail(CodeCoordinationDisabled, "coordination mailbox is not available in this Capsule"), nil
 		}
 		return Fail(CodeMailboxLost, "coordination mailbox is unreachable"), nil
@@ -79,4 +79,16 @@ func Do(ctx context.Context, socketPath string, request Request) (Response, erro
 		return Response{}, fmt.Errorf("decode coordination response: %w", err)
 	}
 	return response, nil
+}
+
+// mailboxAbsent reports whether a failed dial means no mailbox socket exists.
+// connect(2) rejects paths longer than sun_path (104 bytes on Darwin, 108 on
+// Linux) with EINVAL before it looks for the file, so a missing socket at a
+// long path never yields ENOENT. Lstat has no such limit and settles it.
+func mailboxAbsent(socketPath string, dialErr error) bool {
+	if errors.Is(dialErr, os.ErrNotExist) {
+		return true
+	}
+	_, err := os.Lstat(socketPath)
+	return errors.Is(err, os.ErrNotExist)
 }
