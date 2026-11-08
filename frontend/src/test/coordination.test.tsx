@@ -21,7 +21,7 @@ import {
   hideLinkIds,
   MAX_REPORT_SUMMARY,
   parseSubagentReports,
-} from "../components/subagentReports";
+} from "../components/subagentReportModel";
 import { nestSubagents, type WorkingSetItem } from "../shell/useWorkingSet";
 
 const project: Project = {
