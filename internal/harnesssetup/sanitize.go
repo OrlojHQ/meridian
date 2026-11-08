@@ -24,7 +24,7 @@ func credentialKey(key string) bool {
 // Sanitize preserves configuration by default and removes only individual
 // credential values and explicit machine trust decisions. It never executes it.
 func Sanitize(harness, p, content string) (string, []Issue, error) {
-	value, err := parseConfig(p, content)
+	parsed, err := parseConfig(p, content)
 	if err != nil {
 		return "", nil, err
 	}
@@ -88,15 +88,17 @@ func Sanitize(harness, p, content string) (string, []Issue, error) {
 		}
 		return item, true
 	}
-	clean(p, "", value)
+	value, _ := clean(p, "", parsed)
 	// Imported npx dependencies must remain reproducible under the runtime's
 	// pinned/offline dependency contract. Keep other portable command definitions.
-	for _, key := range []string{"mcp", "mcp_servers", "mcpServers"} {
-		servers, _ := value[key].(map[string]any)
-		for name, server := range servers {
-			if _, _, err := npxPackage(server); err != nil {
-				delete(servers, name)
-				issues = append(issues, Issue{p + ":" + key + ":" + name, "MCP server excluded: npx requires an exact package version"})
+	if object, ok := value.(map[string]any); ok {
+		for _, key := range []string{"mcp", "mcp_servers", "mcpServers"} {
+			servers, _ := object[key].(map[string]any)
+			for name, server := range servers {
+				if _, _, err := npxPackage(server); err != nil {
+					delete(servers, name)
+					issues = append(issues, Issue{p + ":" + key + ":" + name, "MCP server excluded: npx requires an exact package version"})
+				}
 			}
 		}
 	}

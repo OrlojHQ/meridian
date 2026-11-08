@@ -9,6 +9,11 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Harness settings and `meridian harness import` can import a DeepSeek Harness
+  (`dsh`) setup from the real local home (`~/.dsh` / `$DSH_HOME`), including
+  `settings.yaml`, `cordis.patch.yml`, `skills/`, and `profiles/`. Credentials
+  and `!!js` YAML tags are excluded. Capsule images are unchanged.
+
 - Coordinated Threads can `propose-delivery` (`title`, `body`, `branch`) for
   the operator to approve. The proposal is persisted as an unapproved
   Delivery (`proposedBy: agent`) and never ships on its own.

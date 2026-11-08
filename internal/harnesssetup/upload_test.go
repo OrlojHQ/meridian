@@ -14,6 +14,7 @@ func TestReviewSelectedFilesMatchesCLI(t *testing.T) {
 		{"codex", ".codex/config.toml", "model='test'\n[projects.test]\ntrust_level='trusted'"},
 		{"claude", ".claude/settings.json", `{"model":"test","env":{"ANTHROPIC_API_KEY":"private-value"}}`},
 		{"pi", ".pi/agent/settings.json", `{"defaultModel":"test","defaultProvider":"openai"}`},
+		{"dsh", ".dsh/settings.yaml", "model: test\napiKey: private-value\n"},
 	} {
 		t.Run(tc.harness, func(t *testing.T) {
 			home := t.TempDir()

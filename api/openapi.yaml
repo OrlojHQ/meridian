@@ -3708,7 +3708,7 @@ components:
       type: object
       required: [harness, files]
       properties:
-        harness: {type: string, enum: [claude, codex, opencode, pi]}
+        harness: {type: string, enum: [claude, codex, dsh, opencode, pi]}
         files:
           type: array
           maxItems: 256
@@ -3748,7 +3748,7 @@ components:
           description: Exact npm package versions installed inside the Capsule before harness startup.
         harness:
           type: string
-          enum: [claude, codex, opencode, pi]
+          enum: [claude, codex, dsh, opencode, pi]
         files:
           type: array
           maxItems: 256

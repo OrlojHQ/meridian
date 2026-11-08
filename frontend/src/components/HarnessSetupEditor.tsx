@@ -19,7 +19,7 @@ export function HarnessSetupEditor({setup, onClose}: {setup: HarnessSetup; onClo
     void api.harnessSetupContents(setup.id).then(value => { if (active) setDraft(value); }).catch(cause => { if (active) setError(normalizeAPIError(cause).message); });
     return () => { active = false; };
   }, [setup.id]);
-  const roots: Record<string, string> = {opencode: ".config/opencode", codex: ".codex", claude: ".claude", pi: ".pi/agent"};
+  const roots: Record<string, string> = {opencode: ".config/opencode", codex: ".codex", claude: ".claude", pi: ".pi/agent", dsh: ".dsh"};
   function addFile(path: string, content: string) {
     if (!draft) return;
     if (draft.bundle.files.some(file => file.path === path)) {setError("A file already exists at that path."); return;}

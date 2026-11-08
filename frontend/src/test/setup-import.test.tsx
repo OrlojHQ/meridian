@@ -34,6 +34,16 @@ it("reviews only eligible files, requires exclusion review, and retries the same
  expect(save.mock.calls[0]?.[1]).toBe(save.mock.calls[1]?.[1]);
  expect(save.mock.calls[0]?.[0].bundle).toEqual(bundle);
 });
+it("lists DeepSeek Harness and maps its local config files",()=>{
+ show(<HarnessSetupImport setups={[]}/>);
+ expect(screen.getByRole("option",{name:"DeepSeek Harness"})).toHaveValue("dsh");
+ const skill=file("SKILL.md","instructions","dsh/skills/review/SKILL.md");
+ const patch=file("cordis.patch.yml","- id: acp\n","dsh/cordis.patch.yml");
+ const creds=file(".credentials.yaml","token: never-upload","dsh/.credentials.yaml");
+ const selected=selectLocalFiles("dsh",[skill,patch,creds,file("settings.yaml","model: example")]);
+ expect(selected.included.map(item=>item.path)).toEqual([".dsh/skills/review/SKILL.md",".dsh/cordis.patch.yml",".dsh/settings.yaml"]);
+ expect(selected.excluded).toHaveLength(1);expect(creds.arrayBuffer).not.toHaveBeenCalled();
+});
 it("preserves nested folder paths and rejects credential files before reading",()=>{
  const skill=file("SKILL.md","instructions","opencode/skills/tool/SKILL.md");
  const key=file("private.key","private","opencode/skills/tool/private.key");

@@ -23,7 +23,12 @@ func (s *Server) prepareHarnessSetup(ctx context.Context, setup *harnesssetup.Ru
 	if err := setup.Bundle.Validate(); err != nil {
 		return nil, err
 	}
-	return s.materializeSetupHome(ctx, setup.Revision, setup.Bundle.Files, setup.Bundle.Dependencies)
+	env, err := s.materializeSetupHome(ctx, setup.Revision, setup.Bundle.Files, setup.Bundle.Dependencies)
+	if err != nil || setup.Bundle.Harness != "dsh" {
+		return env, err
+	}
+	env["DSH_HOME"] = filepath.Join(env["HOME"], ".dsh")
+	return env, nil
 }
 
 // materializeSetupHome creates the private home for a validated revision

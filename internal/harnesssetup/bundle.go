@@ -33,7 +33,7 @@ type RuntimeSetup struct {
 
 func Supported(name string) bool {
 	switch name {
-	case "claude", "codex", "opencode", "pi":
+	case "claude", "codex", "dsh", "opencode", "pi":
 		return true
 	}
 	return false
@@ -123,10 +123,12 @@ func AllowedPath(harness, p string) bool {
 		roots = []string{".config/opencode/opencode.json", ".config/opencode/opencode.jsonc", ".config/opencode/AGENTS.md", ".config/opencode/agents/", ".config/opencode/commands/", ".config/opencode/skills/", ".config/opencode/plugins/", ".config/opencode/themes/", ".config/opencode/agent/", ".config/opencode/command/", ".config/opencode/plugin/", ".config/opencode/skill/"}
 	case "pi":
 		roots = []string{".pi/agent/settings.json", ".pi/agent/AGENTS.md", ".pi/agent/models.json", ".pi/agent/skills/", ".pi/agent/prompts/", ".pi/agent/extensions/", ".pi/agent/themes/"}
+	case "dsh":
+		roots = []string{".dsh/settings.yaml", ".dsh/settings.yml", ".dsh/cordis.patch.yml", ".dsh/cordis.yml", ".dsh/skills/", ".dsh/profiles/", ".agents/skills/"}
 	}
 	for _, part := range strings.Split(p, "/") {
 		lower := strings.ToLower(part)
-		if strings.HasPrefix(lower, ".env") || lower == "auth.json" || lower == ".credentials.json" || lower == "node_modules" || lower == ".git" || strings.HasSuffix(lower, ".pem") || strings.HasSuffix(lower, ".key") {
+		if strings.HasPrefix(lower, ".env") || lower == "auth.json" || strings.HasPrefix(lower, ".credentials") || lower == "node_modules" || lower == ".git" || strings.HasSuffix(lower, ".pem") || strings.HasSuffix(lower, ".key") {
 			return false
 		}
 	}
@@ -180,9 +182,9 @@ func ValidModel(model string) bool {
 }
 
 // ConnectionHarness reports whether capsuled can configure the harness for a
-// provider connection. It includes harnesses that have no personal setups.
+// provider connection. Every harness with personal setups is included.
 func ConnectionHarness(name string) bool {
-	return Supported(name) || name == "dsh"
+	return Supported(name)
 }
 
 // ConnectionSupported pairs a harness with the provider connection types its
