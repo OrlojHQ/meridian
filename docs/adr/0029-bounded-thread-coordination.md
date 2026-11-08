@@ -135,7 +135,8 @@ untrusted multi-tenant isolation.
 ## Amendment: OpenCode and Pi leads
 
 Every official pack except `dsh` now exposes `meridian-coord` to its
-structured profile, so OpenCode and Pi Threads can lead.
+structured profile, so OpenCode and Pi Threads can lead. (`dsh` followed in
+the amendment below.)
 
 - OpenCode registers it as a stdio MCP server in the `mcpServers` list the
   ACP adapter sends on `session/new` and on resume, from the profile's
@@ -156,6 +157,16 @@ structured profile, so OpenCode and Pi Threads can lead.
 Registration changes how the agent discovers the tool, not what any process
 in a Capsule may do: `meridian-coord` was already on every Capsule's `PATH`
 and the mailbox still refuses everything outside an active grant.
+
+## Amendment: DeepSeek Harness leads
+
+The `dsh` structured profile registers `meridian-coord` the same way as
+OpenCode: one `--mcp-server` entry in the trusted image profile, sent in the
+`mcpServers` list of ACP `session/new` and of the resume call. Every official
+pack now exposes the tool, so a `dsh` Thread can lead. Nothing is written
+into `dsh`'s home or the workspace for it, and the Cordis patch that
+`capsuled` writes for a provider connection is unchanged. A `dsh` child
+needs a usable provider connection like any other `dsh` Thread.
 
 ## Amendment: subagent lifecycle
 

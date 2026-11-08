@@ -9,6 +9,10 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- DeepSeek Harness (`dsh`) Threads can lead subagents: the `dsh` structured
+  profile registers `meridian-coord` through ACP `session/new`, like
+  OpenCode (ADR 0029).
+
 - Harness settings and `meridian harness import` can import a DeepSeek Harness
   (`dsh`) setup from the real local home (`~/.dsh` / `$DSH_HOME`), including
   `settings.yaml`, `cordis.patch.yml`, `skills/`, and `profiles/`. Credentials

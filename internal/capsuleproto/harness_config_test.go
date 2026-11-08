@@ -256,7 +256,7 @@ func TestOfficialPacksInstallNativeAndStructuredProfiles(t *testing.T) {
 // Packs whose harness has an MCP client register meridian-coord as an MCP
 // server; Pi has none, so its profile loads a skill describing the CLI.
 var (
-	coordinationMCP   = map[string]bool{"claude": true, "codex": true, "opencode": true}
+	coordinationMCP   = map[string]bool{"claude": true, "codex": true, "opencode": true, "dsh": true}
 	coordinationSkill = map[string]bool{"pi": true}
 )
 
