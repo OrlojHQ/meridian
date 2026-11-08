@@ -62,7 +62,13 @@ the provider version, and counts of Capsules that need attention, are working,
 or are ready for review, each linking to the Activity view. When the provider is
 `fake`, the bar turns to a warning that Capsules are simulated and no agents
 run. It shows no resource use because the API exposes no resource metrics
-(`capabilities.resourceMetrics` is false).
+(`capabilities.resourceMetrics` is false). "Notify me" asks this browser for
+the Notification permission. Granted alerts fire only while the tab is hidden
+and only when a Capsule the operator is not already viewing enters needs-you;
+the payload is a count plus "Meridian needs you", never a Thread title, prompt,
+permission details, or transcript text. The document title shows `(N) Meridian`
+for the same count. The permission lives in the browser; Meridian does not
+write it, or any prompt draft, to browser storage, and there is no phone push.
 
 The Terminal tool appears only when the primary surface is not already showing
 that native PTY, avoiding duplicate attachments while keeping PTY access beside
@@ -156,9 +162,12 @@ Capsule's profiles decide. Native launch lists only harness packs applied to
 that Project, follows provisioning, and opens the first PTY Run. Structured
 launch retains the encrypted Thread intent workflow.
 
-Keyboard shortcuts `n`, `/`, `j`/`k`, the arrow keys, and `?` open Project
-creation, focus filtering, move through the Capsule working set, and list every
-shortcut, only while focus is outside terminals and form controls. The command
+Keyboard shortcuts `n`, `/`, `j`/`k`, the arrow keys, `g` then `n`, and `?`
+open Project creation, focus filtering, move through the Capsule working set,
+jump to the next Capsule that needs the operator, and list every shortcut, only
+while focus is outside terminals and form controls. `g` then `n` is the same
+command as the palette's "Next item needing me": it cycles oldest-first through
+Board and Activity items that need you. The command
 palette opens with ⌘K on macOS and Ctrl+K elsewhere, or from "Commands" in the
 sidebar. ⌘K works from anywhere, including a focused terminal. Ctrl+K is the
 shell's kill-line, so the palette never takes it from a terminal. The palette

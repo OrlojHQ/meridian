@@ -9,6 +9,14 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Browser notifications, a tab badge, and a `G` then `N` shortcut for Capsules
+  that need the operator. Notifications are opt-in from the status bar, fire
+  only while the tab is hidden, skip the Capsule already open, and carry only a
+  count plus "Meridian needs you" — never Thread titles, prompts, permission
+  details, or transcript text. The document title shows `(N) Meridian`. The
+  permission choice stays in the browser; no prompt drafts are written to
+  browser storage, and there is no phone push.
+
 - Subagent lifecycle. A finished subagent is paused and archived after its
   grant's `archiveAfter` (default 24 hours, 0 disables it; `--archive-after`,
   `archiveAfterSeconds`): its session ends and its Thread pauses, while the

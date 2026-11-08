@@ -500,7 +500,12 @@ Board and Activity peek reads one Thread's transcript tail through the same
 authenticated block and response endpoints as the Thread view, and only when
 the operator expands that row; it is never prefetched, polled, or cached, and
 shows agent-authored request text as capped plain text without control or
-bidirectional characters.
+bidirectional characters. Browser notifications, when the operator opts in,
+are derived only from that content-free `awaiting` flag and Capsule failure:
+a count plus "Meridian needs you", never Thread titles, prompts, permission
+details, or transcript text, because OS notifications surface on lock screens
+and in logs. They are local to the open tab; there is no phone push. Prompt
+drafts stay in page memory, and browser storage may hold only harness names.
 
 Crypto-shred removes the wrapped DEK and opaque live linkage while retaining
 content-free metadata and unreadable ciphertext. It is logical erasure and does

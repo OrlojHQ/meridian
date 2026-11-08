@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
@@ -43,12 +44,17 @@ import {
 } from "./capsuleActivity";
 import { CommandPalette, KeyboardShortcutsDialog } from "./CommandPalette";
 import {
+  GO_PREFIX_MS,
+  nextNeedingMePath,
+} from "./needsYou";
+import {
   buildPaletteCommands,
   isApplePlatform,
   paletteShortcut,
   type CapsuleActionRequest,
   type PaletteCommand,
 } from "./paletteCommands";
+import { useNeedsYouAlerts } from "./useNeedsYouAlerts";
 import { nestSubagents, useWorkingSet, type WorkingSetItem } from "./useWorkingSet";
 import { WorkspaceContext } from "./WorkspaceContext";
 
@@ -143,6 +149,71 @@ function useOnline() {
   return online;
 }
 
+function notificationPermission(): NotificationPermission | "unsupported" {
+  return typeof Notification === "undefined" ? "unsupported" : Notification.permission;
+}
+
+// Opt-in uses the browser Notification permission only. Nothing is written to
+// browser storage: drafts stay in memory, and there is no phone push.
+function NotificationOptIn() {
+  const [permission, setPermission] = useState(notificationPermission);
+  useEffect(() => {
+    if (typeof Notification === "undefined") return;
+    let cancelled = false;
+    let status: PermissionStatus | undefined;
+    const sync = () => {
+      if (!cancelled) setPermission(Notification.permission);
+    };
+    navigator.permissions
+      ?.query({ name: "notifications" as PermissionName })
+      .then((result) => {
+        if (cancelled) return;
+        status = result;
+        sync();
+        result.addEventListener("change", sync);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+      status?.removeEventListener("change", sync);
+    };
+  }, []);
+  if (permission === "unsupported") return null;
+  if (permission === "granted") {
+    return (
+      <span
+        className="status-notify-state"
+        title='Alerts stay content-free: a count and "Meridian needs you". Nothing is sent to a phone.'
+      >
+        Alerts on
+      </span>
+    );
+  }
+  if (permission === "denied") {
+    return (
+      <span
+        className="status-notify-state"
+        title="This browser has blocked notifications for Meridian."
+      >
+        Alerts blocked
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className="status-notify"
+      aria-label="Enable browser notifications"
+      title='Ask this browser for notifications. Alerts stay content-free: a count and "Meridian needs you".'
+      onClick={() => {
+        void Notification.requestPermission().then((result) => setPermission(result));
+      }}
+    >
+      Notify me
+    </button>
+  );
+}
+
 const statusGroups: { group: ActivityGroup; label: string }[] = [
   { group: "attention", label: "Needs attention" },
   { group: "working", label: "Working" },
@@ -197,26 +268,29 @@ function StatusBar({ items }: { items: WorkingSetItem[] }) {
           </span>
         </strong>
       )}
-      <nav className="status-counts" aria-label="Capsule activity summary">
-        {statusGroups.map(({ group, label }) => {
-          const count = items.filter((item) => item.activity.group === group).length;
-          return (
-            <Link
-              key={group}
-              to="/ui/"
-              className={count === 0 ? "empty" : undefined}
-              aria-label={`${label}: ${count}`}
-              title={label}
-            >
-              <ActivityDot group={group} />
-              {count}
-              <span className="status-long" aria-hidden="true">
-                {label.toLowerCase()}
-              </span>
-            </Link>
-          );
-        })}
-      </nav>
+      <div className="status-trailing">
+        <NotificationOptIn />
+        <nav className="status-counts" aria-label="Capsule activity summary">
+          {statusGroups.map(({ group, label }) => {
+            const count = items.filter((item) => item.activity.group === group).length;
+            return (
+              <Link
+                key={group}
+                to="/ui/"
+                className={count === 0 ? "empty" : undefined}
+                aria-label={`${label}: ${count}`}
+                title={label}
+              >
+                <ActivityDot group={group} />
+                {count}
+                <span className="status-long" aria-hidden="true">
+                  {label.toLowerCase()}
+                </span>
+              </Link>
+            );
+          })}
+        </nav>
+      </div>
     </footer>
   );
 }
@@ -244,7 +318,7 @@ export function AppShell() {
     setLaunchProject(undefined);
   }, [location.key]);
 
-  const { projects, projectItems, items } = useWorkingSet();
+  const { projects, projectItems, items, ready } = useWorkingSet();
 
   const threadId = pathID(location.pathname, "threads");
   const runId = pathID(location.pathname, "runs");
@@ -280,6 +354,9 @@ export function AppShell() {
   const attentionCount = items.filter(
     (item) => item.activity.group === "attention",
   ).length;
+  useNeedsYouAlerts({ items, viewedCapsuleId: capsuleId, ready });
+  const goPrefix = useRef(false);
+  const goPrefixTimer = useRef(0);
 
   useEffect(() => {
     setSidebarOpen(false);
@@ -289,6 +366,27 @@ export function AppShell() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (isTypingTarget(event.target) || event.metaKey || event.ctrlKey || event.altKey) {
+        goPrefix.current = false;
+        window.clearTimeout(goPrefixTimer.current);
+        return;
+      }
+      const key = event.key.toLowerCase();
+      if (goPrefix.current) {
+        goPrefix.current = false;
+        window.clearTimeout(goPrefixTimer.current);
+        if (key === "n") {
+          event.preventDefault();
+          const path = nextNeedingMePath(items, capsuleId);
+          if (path) navigate(path);
+          return;
+        }
+      }
+      if (key === "g") {
+        goPrefix.current = true;
+        window.clearTimeout(goPrefixTimer.current);
+        goPrefixTimer.current = window.setTimeout(() => {
+          goPrefix.current = false;
+        }, GO_PREFIX_MS);
         return;
       }
       if (event.key === "?") {
@@ -320,8 +418,11 @@ export function AppShell() {
       navigate(`/ui/capsules/${encodeURIComponent(visibleCapsules[next].id)}`);
     };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [capsuleId, navigate, visibleCapsules]);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.clearTimeout(goPrefixTimer.current);
+    };
+  }, [capsuleId, items, navigate, visibleCapsules]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {

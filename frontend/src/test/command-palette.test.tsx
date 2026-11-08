@@ -159,6 +159,7 @@ const options = () => screen.getAllByRole("option").map((option) => option.textC
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  document.title = "";
 });
 
 describe("command palette", () => {
@@ -297,11 +298,32 @@ describe("command palette", () => {
     await screen.findByRole("link", { name: /Fix flaky tests/ });
     await openPalette();
     await userEvent.type(screen.getByRole("combobox"), "next needing");
-    expect(screen.getByRole("option", { name: /Next item needing me/ })).toHaveTextContent(
-      "Fix flaky tests",
-    );
+    const next = screen.getByRole("option", { name: /Next item needing me/ });
+    expect(next).toHaveTextContent("Fix flaky tests");
+    expect(next).toHaveAttribute("aria-keyshortcuts", "G+N");
     await userEvent.keyboard("{Enter}");
     expect(screen.getByTestId("location")).toHaveTextContent("/ui/capsules/capsule-2");
+  });
+
+  it("jumps with G then N and cycles to the next Capsule that needs the operator", async () => {
+    onPlatform("Linux x86_64");
+    mockAPI();
+    vi.spyOn(api, "capsules").mockResolvedValue({
+      items: [
+        { ...capsule, state: "Failed", updatedAt: "2026-08-26T00:01:00Z" },
+        { ...other, state: "Failed", updatedAt: "2026-08-26T00:00:30Z" },
+      ],
+    });
+    renderShell("/ui/capsules/capsule-2");
+    await screen.findByRole("link", { name: /Fix flaky tests/ });
+    await waitFor(() =>
+      expect(screen.getByTestId("location")).toHaveTextContent("/ui/capsules/capsule-2"),
+    );
+    await userEvent.keyboard("gn");
+    expect(screen.getByTestId("location")).toHaveTextContent("/ui/capsules/capsule-1");
+    await userEvent.keyboard("gn");
+    expect(screen.getByTestId("location")).toHaveTextContent("/ui/capsules/capsule-2");
+    expect(screen.queryByRole("dialog", { name: "Create a Project" })).not.toBeInTheDocument();
   });
 
   it("lists keyboard shortcuts from ? and from the palette", async () => {
@@ -312,6 +334,7 @@ describe("command palette", () => {
     await userEvent.keyboard("?");
     const dialog = screen.getByRole("dialog", { name: "Keyboard shortcuts" });
     expect(dialog).toHaveTextContent("⌘ KOpen the command palette");
+    expect(dialog).toHaveTextContent("Next item needing me");
     expect(dialog).toHaveTextContent("Previous Capsule");
     await userEvent.keyboard("{Escape}");
     expect(screen.queryByRole("dialog", { name: "Keyboard shortcuts" })).not.toBeInTheDocument();
