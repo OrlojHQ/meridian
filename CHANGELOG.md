@@ -215,6 +215,10 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- A failed Pi prompt now settles the Thread to idle. Before, the adapter
+  emitted `error` and skipped `idle`, so the session stayed "working" with
+  the composer disabled even though the turn had ended.
+
 - A Thread whose session failed, stopped, or exited no longer shows "active"
   and "Reconnecting…" forever. It says "Session ended", shows the Run's
   failure reason as bounded plain text, and offers Restart session, Copy last

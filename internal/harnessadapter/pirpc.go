@@ -289,9 +289,7 @@ func RunPiRPC(
 					if err := piCompactFinished(stream, record); err != nil {
 						return err
 					}
-					id := "pi-state-" + record.ID
-					pending[id] = "get_state"
-					if err := rpc.Write(map[string]any{"id": id, "type": "get_state"}); err != nil {
+					if err := piAskState(rpc, pending, record.ID); err != nil {
 						return err
 					}
 				}
@@ -300,6 +298,14 @@ func RunPiRPC(
 						Protocol: adapterproto.Version, Type: adapterproto.KindError,
 						Code: "pi_command_failed", Summary: bounded(record.Error, adapterproto.MaxToolSummaryBytes),
 					})
+					switch record.Command {
+					case "prompt", "steer", "follow_up":
+						// Failed prompts are not agent runs, so no
+						// agent_settled follows; ask for state to report idle.
+						if err := piAskState(rpc, pending, record.ID); err != nil {
+							return err
+						}
+					}
 					continue
 				}
 				if record.Command == "get_state" {
@@ -478,6 +484,12 @@ func piCompactStarted(stream *Stream, id string) error {
 		Role: adapterproto.RoleAssistant, ToolCallID: safeID(id, "pi-compact"),
 		ToolName: piCompactCommand, Summary: "Summarize the conversation",
 	})
+}
+
+func piAskState(rpc *JSONLines, pending map[string]string, id string) error {
+	stateID := "pi-state-" + id
+	pending[stateID] = "get_state"
+	return rpc.Write(map[string]any{"id": stateID, "type": "get_state"})
 }
 
 func piCompactFinished(stream *Stream, record piRecord) error {

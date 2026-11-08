@@ -169,6 +169,49 @@ func TestPiRPCCommands(t *testing.T) {
 	}
 }
 
+func TestPiRPCFailedPromptSettlesIdle(t *testing.T) {
+	t.Setenv("MERIDIAN_PI_HELPER", "1")
+	controller, adapter := net.Pipe()
+	defer controller.Close()
+	done := make(chan error, 1)
+	go func() {
+		done <- RunPiRPC(context.Background(), adapter, adapter, PiConfig{
+			Command: []string{os.Args[0], "-test.run=TestPiRPCContractHelper", "--"},
+		})
+	}()
+	decoder, encoder := negotiateTestAdapter(t, controller, adapterproto.KindStart, "")
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+	for _, test := range []struct {
+		id       string
+		metadata json.RawMessage
+	}{
+		{id: "message-fail"},
+		{id: "steer-fail", metadata: json.RawMessage(`{"pi":{"command":"steer"}}`)},
+		{id: "follow-up-fail", metadata: json.RawMessage(`{"pi":{"command":"follow_up"}}`)},
+	} {
+		writeTestFrame(t, encoder, adapterproto.Frame{
+			Protocol: adapterproto.Version, Type: adapterproto.KindUserMessage,
+			ID: test.id, SessionID: "session-1", Role: adapterproto.RoleUser,
+			Content: "fail", Metadata: test.metadata,
+		})
+		failure := readKind(t, decoder, adapterproto.KindError)
+		if failure.Code != "pi_command_failed" || failure.Summary != "Prompt rejected: not logged in" {
+			t.Fatalf("%s failure = %#v", test.id, failure)
+		}
+		idle := readStatus(t, decoder, adapterproto.StatusIdle)
+		if idle.ResumeState == "" {
+			t.Fatalf("idle after failed %s has no resume state: %#v", test.id, idle)
+		}
+	}
+	writeTestFrame(t, encoder, adapterproto.Frame{
+		Protocol: adapterproto.Version, Type: adapterproto.KindCancel, ID: "cancel-1",
+	})
+	_ = readKind(t, decoder, adapterproto.KindEnd)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestPiRPCContractHelper(t *testing.T) {
 	if os.Getenv("MERIDIAN_PI_HELPER") != "1" {
 		return
@@ -200,7 +243,17 @@ func TestPiRPCContractHelper(t *testing.T) {
 					"sessionName": "contract",
 				},
 			})
-		case "prompt":
+		case "prompt", "steer", "follow_up":
+			if command["message"] == "fail" {
+				_ = writer.Encode(map[string]any{
+					"type": "response", "id": id, "command": commandType, "success": false,
+					"error": "Prompt rejected: not logged in",
+				})
+				continue
+			}
+			if commandType != "prompt" {
+				os.Exit(4)
+			}
 			_ = writer.Encode(map[string]any{
 				"type": "response", "id": id, "command": "prompt", "success": true,
 			})
