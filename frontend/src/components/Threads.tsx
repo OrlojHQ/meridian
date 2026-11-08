@@ -90,18 +90,26 @@ function ThreadMeta({
   thread,
   project,
   role,
+  lead,
   children,
 }: {
   thread: Thread;
   project?: string;
   role?: string;
+  lead?: { name: string; href: string };
   children?: ReactNode;
 }) {
   return (
     <p className="thread-meta">
       <span>{safeInline(harnessName(thread.harness)) || "Agent"}</span>
       {project && <span>{safeInline(project)}</span>}
-      {role && <span>{role}</span>}
+      {lead ? (
+        <span className="thread-breadcrumb">
+          Subagent of <Link to={lead.href}>{safeInline(lead.name)}</Link>
+        </span>
+      ) : (
+        role && <span>{role}</span>
+      )}
       {children}
     </p>
   );
@@ -551,6 +559,14 @@ export function ThreadDetail({
                 projects.data?.items.find((item) => item.id === owner.data?.projectId)?.name
               }
               role={threadRole(thread, leadCapsule.data?.name)}
+              lead={
+                thread.parentThreadId && lead.data
+                  ? {
+                      name: leadCapsule.data?.name ?? "lead",
+                      href: `/ui/capsules/${encodeURIComponent(lead.data.capsuleId)}?session=${encodeURIComponent(lead.data.id)}`,
+                    }
+                  : undefined
+              }
             >
               <Link to={`/ui/capsules/${encodeURIComponent(thread.capsuleId)}?session=${encodeURIComponent(thread.id)}`}>
                 Open in Capsule

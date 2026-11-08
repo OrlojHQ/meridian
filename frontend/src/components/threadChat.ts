@@ -1,19 +1,13 @@
 import type { RunState, Thread, ThreadBlock } from "../api/generated/types.gen";
 
-const MAX_CONTENT = 64 * 1024;
+import {
+  isCoordinationWakeEcho,
+  parseSubagentReports,
+  type SubagentReport,
+} from "./subagentReports";
+import { boundedThreadText, safeInline } from "./threadText";
 
-export const sanitizeThreadText = (value = "") =>
-  value.replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, "");
-
-export const boundedThreadText = (value = "") => {
-  const safe = sanitizeThreadText(value);
-  return safe.length > MAX_CONTENT
-    ? `${safe.slice(0, MAX_CONTENT)}\n… content truncated …`
-    : safe;
-};
-
-export const safeInline = (value = "") =>
-  sanitizeThreadText(value).replace(/[\n\t]+/g, " ");
+export { boundedThreadText, safeInline, sanitizeThreadText } from "./threadText";
 
 export const MAX_FAILURE_TEXT = 280;
 
@@ -48,6 +42,14 @@ export type ChatRequest = {
 
 export type ChatItem =
   | { kind: "user"; key: string; text: string; origin?: "from_lead" | "from_subagents" }
+  | {
+      kind: "subagent_reports";
+      key: string;
+      reports: SubagentReport[];
+      notices: string[];
+      count: number;
+      wakeText: string;
+    }
   | { kind: "assistant"; key: string; text: string; streaming: boolean }
   | { kind: "tools"; key: string; calls: ToolCall[] }
   | { kind: "request"; key: string; request: ChatRequest; actionable: boolean }
@@ -195,12 +197,17 @@ export function buildThreadChat(
       if (block.role === "user" && block.kind === "text") {
         turn += 1;
         busy = true;
-        items.push({
-          kind: "user",
-          key: block.id,
-          text: boundedThreadText(block.content),
-          ...(block.origin ? { origin: block.origin.kind } : {}),
-        });
+        if (block.origin?.kind === "from_subagents") {
+          const parsed = parseSubagentReports(block.content, block.origin.linkIds ?? []);
+          items.push({ kind: "subagent_reports", key: block.id, ...parsed });
+        } else {
+          items.push({
+            kind: "user",
+            key: block.id,
+            text: boundedThreadText(block.content),
+            ...(block.origin ? { origin: block.origin.kind } : {}),
+          });
+        }
       } else if (block.kind === "error") {
         items.push({ kind: "error", key: block.id, text: boundedThreadText(block.content) });
       } else if (block.kind === "text" && block.content) {
@@ -322,6 +329,12 @@ export function buildThreadChat(
   }
   for (const item of assistants.values()) {
     if (!running) item.streaming = false;
+  }
+  if (items.some((item) => item.kind === "subagent_reports")) {
+    return {
+      items: items.filter((item) => item.kind !== "assistant" || !isCoordinationWakeEcho(item.text)),
+      activity,
+    };
   }
   return { items, activity };
 }

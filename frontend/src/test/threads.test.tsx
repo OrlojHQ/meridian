@@ -714,6 +714,7 @@ it("removes terminal control characters while preserving safe text layout", () =
   expect(sanitizeThreadText("one\u001b[31m\ntwo\u009b0m\tthree")).toBe(
     "one[31m\ntwo0m\tthree",
   );
+  expect(sanitizeThreadText("safe\u202eCRASH\u202c\u2066hid")).toBe("safeCRASHhid");
 });
 
 it("does not persist or log Thread content", async () => {
