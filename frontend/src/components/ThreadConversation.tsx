@@ -1,4 +1,4 @@
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   type KeyboardEvent,
   lazy,
@@ -14,8 +14,10 @@ import {
 } from "react";
 
 import { api, normalizeAPIError } from "../api/client";
-import type { Thread, ThreadBlock } from "../api/generated/types.gen";
+import type { Thread, ThreadBlock, ThreadLink } from "../api/generated/types.gen";
+import { queries } from "../api/queries";
 import { plainAgentText } from "./agentText";
+import { SubagentNeedsYouTray, SubagentReportGroup } from "./SubagentReports";
 import {
   boundedThreadText,
   buildThreadChat,
@@ -269,11 +271,13 @@ const activityLabels: Partial<Record<ChatActivity, string>> = {
 function ChatEntry({
   item,
   thread,
+  links,
   onAnswered,
   onConflict,
 }: {
   item: ChatItem;
   thread: Thread;
+  links: readonly ThreadLink[];
   onAnswered: (id: string, answer: string) => void;
   onConflict: () => Promise<void>;
 }) {
@@ -287,6 +291,12 @@ function ChatEntry({
             </span>
           )}
           <div className="chat-bubble">{item.text}</div>
+        </li>
+      );
+    case "subagent_reports":
+      return (
+        <li className="chat-subagent-reports">
+          <SubagentReportGroup item={item} links={links} />
         </li>
       );
     case "assistant":
@@ -686,6 +696,12 @@ export function ThreadConversation({
   onRefresh: () => Promise<void>;
 }) {
   const commands = useMemo(() => latestThreadCommands(blocks), [blocks]);
+  const isLead = Boolean(thread.coordinationGrantId && !thread.parentThreadId);
+  const links = useQuery({
+    ...queries.threadLinks(thread.id),
+    enabled: isLead,
+  });
+  const subagents = links.data?.items ?? [];
   const [answers, setAnswers] = useState<ReadonlyMap<string, string>>(new Map());
   const chat = useMemo(
     () => buildThreadChat(blocks, thread.currentRunState, answers),
@@ -717,6 +733,7 @@ export function ThreadConversation({
                     key={item.key}
                     item={item}
                     thread={thread}
+                    links={subagents}
                     onAnswered={onAnswered}
                     onConflict={onRefresh}
                   />
@@ -737,6 +754,7 @@ export function ThreadConversation({
           </button>
         )}
       </div>
+      {isLead && <SubagentNeedsYouTray links={subagents} />}
       {canCompose && (
         <ThreadComposer
           thread={thread}

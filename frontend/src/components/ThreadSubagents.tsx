@@ -7,23 +7,16 @@ import type { CoordinationGrant, Thread, ThreadLink } from "../api/generated/typ
 import { queries } from "../api/queries";
 import { harnessName } from "../shell/capsuleActivity";
 import { PromoteSubagent } from "./PromoteSubagent";
+import { subagentHref, subagentPhaseLabels } from "./subagentReports";
+import { safeInline } from "./threadText";
 import { StateBadge } from "./ui/StateBadge";
-
-const phaseLabels: Record<ThreadLink["phase"], string> = {
-  provisioning: "Starting",
-  working: "Working",
-  idle: "Reported",
-  awaiting_operator: "Needs you",
-  ended: "Ended",
-  failed: "Failed",
-};
 
 function subagentRow(link: ThreadLink) {
   return (
     <li key={link.id}>
       <Link to={subagentHref(link)} className="subagent-name">{link.name}</Link>
       <span className="muted-copy">{harnessName(link.harness)}</span>
-      <span className={`badge subagent-phase phase-${link.phase}`}>{phaseLabels[link.phase]}</span>
+      <span className={`badge subagent-phase phase-${link.phase}`}>{subagentPhaseLabels[link.phase]}</span>
       {link.promotedAt && (
         <span className="badge">{link.closeReason === "detached" ? "Promoted, detached" : "Promoted"}</span>
       )}
@@ -63,10 +56,6 @@ export function grantLimits(
   return parts.join(" · ");
 }
 
-function subagentHref(link: Pick<ThreadLink, "childCapsuleId" | "childThreadId">) {
-  return `/ui/capsules/${encodeURIComponent(link.childCapsuleId)}?session=${encodeURIComponent(link.childThreadId)}`;
-}
-
 // Lead Threads list their subagents and can stop the whole tree; subagent
 // Threads name their lead. Neither view shows report text: that lives only in
 // each subagent's encrypted transcript.
@@ -79,22 +68,36 @@ export function ThreadSubagents({ thread }: { thread: Thread }) {
 function SubagentOf({ thread }: { thread: Thread }) {
   const lead = useQuery(queries.thread(thread.parentThreadId ?? ""));
   const capsule = useQuery(queries.capsule(thread.capsuleId));
-  const leadLink = lead.data ? (
-    <Link to={`/ui/capsules/${encodeURIComponent(lead.data.capsuleId)}?session=${encodeURIComponent(lead.data.id)}`}>
-      Open the lead
+  const leadCapsule = useQuery({
+    ...queries.capsule(lead.data?.capsuleId ?? ""),
+    enabled: Boolean(lead.data?.capsuleId),
+  });
+  const leadHref = lead.data
+    ? `/ui/capsules/${encodeURIComponent(lead.data.capsuleId)}?session=${encodeURIComponent(lead.data.id)}`
+    : undefined;
+  const leadName = leadCapsule.data ? safeInline(leadCapsule.data.name) || "Lead" : "Lead";
+  const leadLink = leadHref ? (
+    <Link to={leadHref} aria-label="Open the lead">
+      {leadName}
     </Link>
   ) : null;
   const promoted = capsule.data?.role === "main";
   return (
     <div className="notice subagent-of" role="status">
+      {!promoted && (
+        <nav className="thread-breadcrumb" aria-label="Lead Thread">
+          {leadLink ?? <span>Lead</span>}
+          <span aria-hidden="true"> / </span>
+          <span>This subagent</span>
+        </nav>
+      )}
       <p>
         {promoted
           ? capsule.data?.linkId
             ? "Promoted from a subagent; its lead can still message it."
             : "Promoted from a subagent and detached from its lead."
-          : "Subagent Thread started by a lead."}{" "}
-        {leadLink}
-        {promoted ? "" : ". Its permission and input requests come to you, not the lead."}
+          : "Permission and input requests come to you, not the lead."}{" "}
+        {promoted ? leadLink : null}
       </p>
       {capsule.data && <PromoteSubagent capsule={capsule.data} />}
     </div>

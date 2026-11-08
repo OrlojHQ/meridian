@@ -9,6 +9,12 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Lead Threads render subagent reports as cards (name, status, summary, and a
+  link to the subagent Thread) instead of the raw coordination wake prompt, and
+  pin a tray above the composer for subagents that need the operator. Report
+  text is treated as hostile: control and bidi characters are stripped, length
+  is capped, and link IDs stay out of the main view.
+
 - Browser notifications, a tab badge, and a `G` then `N` shortcut for Capsules
   that need the operator. Notifications are opt-in from the status bar, fire
   only while the tab is hidden, skip the Capsule already open, and carry only a
