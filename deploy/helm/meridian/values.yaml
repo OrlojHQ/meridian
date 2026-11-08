@@ -82,7 +82,14 @@ networkPolicy:
     kubernetes.io/metadata.name: kube-system
   dnsPodSelector:
     k8s-app: kube-dns
-  # Capsule package/repository egress is denied unless explicitly scoped.
+  # Control-plane HTTPS to model providers. NetworkPolicy cannot select
+  # api.openai.com or api.anthropic.com by name; set their routable CIDRs,
+  # plus any HTTPS custom endpoint. Empty denies provider traffic. These
+  # CIDRs are not granted to Capsules; inference leaves through the gateway.
+  providerEgressCIDRs: []
+  # Capsule package/repository egress and the HTTPS gateway origin are
+  # denied unless explicitly scoped. Capsules already receive in-namespace
+  # TCP to the control-plane provider gateway.
   capsuleEgressCIDRs: []
 
 resourceQuota:

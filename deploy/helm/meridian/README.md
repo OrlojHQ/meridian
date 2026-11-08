@@ -5,9 +5,12 @@ ClusterIP Service, quotas, and NetworkPolicies. Agent Sandbox v0.5.6 CRDs and
 controller are external prerequisites. The chart never installs CRDs,
 RuntimeClasses, CSI components, or cluster-scoped RBAC.
 
-Safe defaults deny API-server and Capsule internet egress until CIDRs are
-configured, keep preview/PTY without public ingress, use the Restricted Pod
-Security shape, and run the control plane non-root with a read-only root
+Safe defaults deny API-server, model-provider, and Capsule internet egress
+until CIDRs are configured. Capsules may reach the in-namespace provider
+gateway on the control-plane Service; they do not receive provider CIDRs,
+a host Docker socket, or default internet egress. The chart keeps
+preview/PTY without public ingress, uses the Restricted Pod Security
+shape, and runs the control plane non-root with a read-only root
 filesystem. Pin both images with `image.digest` and `capsuleImage.digest`.
 When the Capsule image is digest-pinned, set `capsuleImage.tag` to the
 verified release version so official harness packs advertise

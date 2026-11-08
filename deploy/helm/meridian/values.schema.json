@@ -99,12 +99,13 @@
     },
     "networkPolicy": {
       "type": "object", "additionalProperties": false,
-      "required": ["enabled", "kubernetesAPIServerCIDRs", "dnsNamespaceSelector", "dnsPodSelector", "capsuleEgressCIDRs"],
+      "required": ["enabled", "kubernetesAPIServerCIDRs", "dnsNamespaceSelector", "dnsPodSelector", "providerEgressCIDRs", "capsuleEgressCIDRs"],
       "properties": {
         "enabled": {"type": "boolean"},
         "kubernetesAPIServerCIDRs": {"type": "array", "items": {"type": "string", "minLength": 3}},
         "dnsNamespaceSelector": {"type": "object", "additionalProperties": {"type": "string"}},
         "dnsPodSelector": {"type": "object", "additionalProperties": {"type": "string"}},
+        "providerEgressCIDRs": {"type": "array", "items": {"type": "string", "minLength": 3}},
         "capsuleEgressCIDRs": {"type": "array", "items": {"type": "string"}}
       }
     },

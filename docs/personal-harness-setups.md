@@ -75,9 +75,13 @@ meridiand --provider=docker --provider-gateway-url=https://meridian.example
 This flag does not configure TLS or expose an extra listener. Your reverse
 proxy must forward `/provider-gateway/` to Meridian, disable response buffering
 for streaming, preserve Authorization and X-Api-Key, and avoid body/credential
-logging. Permit the origin in Capsule egress policy. Permit the control plane
-to reach `api.openai.com:443` and `api.anthropic.com:443`. Keep broader control-plane
-access restricted using the existing installation authentication.
+logging. Permit the origin in Capsule egress policy
+(`networkPolicy.capsuleEgressCIDRs` on Kubernetes). The chart already allows
+Capsules to reach the in-namespace control-plane gateway on TCP 8080. Permit
+the control plane to reach `api.openai.com:443` and `api.anthropic.com:443`
+(`networkPolicy.providerEgressCIDRs`; NetworkPolicy is IP-based, so set the
+hosts' routable CIDRs). Keep broader control-plane access restricted using
+the existing installation authentication.
 
 Add your own OpenAI or Anthropic API key under Provider connections in Harness
 settings. Alternatively, pipe a key from your secret manager into:
