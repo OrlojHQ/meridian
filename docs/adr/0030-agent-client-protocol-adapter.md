@@ -40,7 +40,9 @@ group, and maps ACP v1 onto `meridian.adapter.v1`:
 - `initialize` must answer protocol version 1. The adapter advertises
   `fs.readTextFile: false`, `fs.writeTextFile: false`, and `terminal: false`.
 - A Thread start calls `session/new` with the Capsule working directory and
-  the profile's `--mcp-server` entries. Resume state is only
+  the profile's `--mcp-server` entries. That cwd is the adapter process
+  directory after confirming it is a real directory under `/workspace` with
+  no symlink components; a host `Getwd()` path is rejected. Resume state is only
   `{"driver":"acp","sessionId":...}`. Resume uses `session/resume` when the
   agent offers it, else `session/load` with the replayed history dropped, else
   fails with `acp_resume_unsupported`.

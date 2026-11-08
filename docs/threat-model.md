@@ -172,7 +172,10 @@ unsupported and must remain unadvertised until that complete route exists.
 Repository-controlled harness configuration and executables are hostile.
 Configuration is parsed only inside the Capsule with strict fields, bounded
 sizes, direct argument arrays, workspace-contained working directories,
-explicit modes, and process-group timeouts. No shell concatenation is used.
+explicit modes, and process-group timeouts. Harness adapters re-resolve that
+working directory under `/workspace` with `Lstat` before starting a child or
+sending ACP `cwd`: a host path, an escaping path, or a symlink in the chain
+fails closed. No shell concatenation is used.
 Inline credentials are rejected. The broker resolves only purpose-checked
 `harness_env` references into session-only process material without persisting
 values.
@@ -230,7 +233,9 @@ enter resume state; and queued messages, open permission
 requests, tracked tool calls, and plan entries have fixed caps. The adapter
 advertises no `fs` or `terminal` client capability and refuses every
 agent-to-client request except `session/request_permission`, so an agent
-cannot read or write host files or start processes through Meridian. A
+cannot read or write host files or start processes through Meridian.
+`session/new` and resume receive only a Capsule-contained cwd; adapters never
+inherit a host `Getwd()` path or follow a symlink out of `/workspace`. A
 permission answer is always one of the options the agent offered for that
 request: the controller's choice is matched by label or option ID, and
 anything else selects the agent's reject option or `cancelled`. With
@@ -709,6 +714,9 @@ they are not a statement that every planned path is already implemented.
   advertised, from an ordinary user message.
 - ACP agents get no file-system or terminal client capability, and their
   permission requests resolve only to options they offered.
+- Harness adapter working directories are re-checked inside the Capsule:
+  they must be a real directory under `/workspace`, with no symlink
+  components, and never a host path.
 - No coordination credential exists in any Capsule. The daemon pulls
   coordination requests; Capsules never call the public API. Coordination
   authority is a subset of an operator-created grant, which is a subset of

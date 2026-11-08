@@ -227,15 +227,18 @@ type process struct {
 type processConfig struct {
 	Command []string
 	Env     []string
-	Dir     string
 }
 
 func startProcess(config processConfig) (*process, error) {
 	if len(config.Command) == 0 || strings.TrimSpace(config.Command[0]) == "" {
 		return nil, errors.New("child executable is required")
 	}
+	directory, err := sessionWorkingDirectory()
+	if err != nil {
+		return nil, err
+	}
 	command := exec.Command(config.Command[0], append([]string(nil), config.Command[1:]...)...)
-	command.Dir = config.Dir
+	command.Dir = directory
 	if config.Env != nil {
 		command.Env = config.Env
 	}

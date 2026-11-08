@@ -94,7 +94,9 @@ Omitting `interactionMode` preserves the existing `native` behavior exactly.
 A structured profile cannot set native `executable`, `arguments`,
 `promptMode`, or `outputMode` fields and cannot request a PTY. Its adapter is
 executed directly, with the configured argument array and validated
-workspace-contained working directory. Only `meridian.adapter.v1` is accepted.
+workspace-contained working directory. Adapters re-check that directory
+themselves: they refuse a host path, an escape from `/workspace`, or a
+symlink, and start the harness child there. Only `meridian.adapter.v1` is accepted.
 Inline credential-shaped adapter arguments are rejected; unresolved or
 unauthorized `secretReferences` fail closed when the session starts.
 

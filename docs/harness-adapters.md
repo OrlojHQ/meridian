@@ -264,7 +264,8 @@ harness-specific:
   an upstream queue primitive explicitly:
   `{"pi":{"command":"prompt|steer|follow_up"}}`. The default is `prompt`.
 - `acp -- <agent> [args...]` runs an Agent Client Protocol (ACP v1) agent
-  over stdio: `initialize`, `session/new` in the working directory,
+  over stdio: `initialize`, `session/new` in the Capsule working directory
+  (a real path under `/workspace`, never a host cwd or a symlink escape),
   `session/prompt` per message, and the `session/cancel` notification. The
   command and its arguments come only from the trusted profile; the agent is
   started directly, never through a shell, `npx`, or a package manager.

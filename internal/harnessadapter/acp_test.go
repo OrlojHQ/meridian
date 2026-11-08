@@ -213,8 +213,9 @@ func TestACPContract(t *testing.T) {
 		t.Fatalf("initialize = %s", initialize.Params)
 	}
 	created := findACP(t, records, func(r acpRecord) bool { return r.Method == "session/new" })
-	cwd, _ := os.Getwd()
-	if !strings.Contains(string(created.Params), `"cwd":"`+cwd+`"`) ||
+	if !strings.Contains(string(created.Params), `"cwd":"`+capsuleWorkspace+`"`) ||
+		strings.Contains(string(created.Params), `/home/`) ||
+		strings.Contains(string(created.Params), `/Users/`) ||
 		!strings.Contains(string(created.Params), `"mcpServers":[{"args":["serve"],"command":"/usr/local/bin/tools","env":[],"name":"tools"}]`) {
 		t.Fatalf("session/new = %s", created.Params)
 	}
