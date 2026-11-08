@@ -92,8 +92,9 @@ into the workspace; OpenCode names the tools `meridian-coord_meridian_spawn`
 and so on. Pi has no MCP client, so the Pi pack ships a `meridian-coord`
 skill that teaches the agent the CLI through its bash tool, and the profile
 loads it with `--skill` (Pi loads explicit `--skill` paths even when skill
-discovery is off). A subagent Capsule lists `meridian_report` and
-`meridian_whoami` only. In a Capsule that is neither a lead nor a subagent,
+discovery is off). A subagent Capsule lists `meridian_report`,
+`meridian_propose_delivery`, and `meridian_whoami`. In a Capsule that is
+neither a lead nor a subagent,
 the MCP server lists no tools and the CLI answers `coordination_disabled`.
 `dsh` registers nothing yet.
 

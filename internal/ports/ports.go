@@ -64,6 +64,7 @@ type Reader interface {
 	GetProjectThreadIntentByKey(context.Context, domain.ProjectID, string) (domain.ProjectThreadIntent, error)
 	ListProvisioningProjectThreadIntents(context.Context) ([]domain.ProjectThreadIntent, error)
 	GetDelivery(context.Context, domain.DeliveryID) (domain.Delivery, error)
+	GetDeliveryByIdempotency(context.Context, domain.CapsuleID, string) (domain.Delivery, error)
 	ListDeliveries(context.Context, domain.CapsuleID, Page) ([]domain.Delivery, bool, error)
 	ListRecoverableDeliveries(context.Context) ([]domain.Delivery, error)
 	GetCoordinationGrant(context.Context, domain.CoordinationGrantID) (domain.CoordinationGrant, error)
@@ -129,6 +130,7 @@ type Transaction interface {
 	) error
 	InsertDelivery(context.Context, domain.Delivery) error
 	UpdateDelivery(context.Context, domain.Delivery, domain.ResourceVersion) error
+	ApplyDeliveryApproval(context.Context, domain.Delivery, domain.ResourceVersion) error
 	InsertCoordinationGrant(context.Context, domain.CoordinationGrant) error
 	UpdateCoordinationGrant(context.Context, domain.CoordinationGrant, domain.ResourceVersion) error
 	InsertThreadLink(context.Context, domain.ThreadLink) error

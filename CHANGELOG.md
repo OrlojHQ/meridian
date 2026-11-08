@@ -9,6 +9,14 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Coordinated Threads can `propose-delivery` (`title`, `body`, `branch`) for
+  the operator to approve. The proposal is persisted as an unapproved
+  Delivery (`proposedBy: agent`) and never ships on its own.
+  `POST /deliveries/{id}/approve` binds the reviewed HEAD and tree and then
+  follows the existing execute path; `POST /deliveries/{id}/reject` is
+  terminal. The board shows `needs_you` / `proposed_delivery`. Title and body
+  are treated as hostile. Capsules cannot approve or reject (ADR 0029).
+
 - Subagents can send an explicit `report` (`done`, `blocked`, or `failed`
   plus a ≤16 KiB summary) to their lead, and a lead can `patch` a bounded
   `git format-patch` plus working-tree diff from the child's Capsule
@@ -16,8 +24,9 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   turn-end default until a later assistant message; ending the child's
   session does not replace them. They are persisted only in the child's
   encrypted transcript. Patch bytes are never stored; link views carry HEAD, base
-  commit, and a content-free diffstat. Subagent mailboxes expose `report`
-  and `whoami` only. Reports and patches are untrusted data (ADR 0029).
+  commit, and a content-free diffstat. Subagent mailboxes expose `report`,
+  `propose-delivery`, and `whoami`. Reports and patches are untrusted data
+  (ADR 0029).
 
 - Operator spawn approvals and grant updates. A Coordination Grant may set
   `spawnApproval: operator` (`--spawn-approval operator`, "Approve each

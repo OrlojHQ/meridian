@@ -37,6 +37,9 @@ const (
 	MaxWaitSeconds        = 3600
 	DefaultWaitSeconds    = 600
 	MaxReportSummaryBytes = 16 << 10
+	MaxTitleBytes         = 512
+	MaxBodyBytes          = 64 << 10
+	MaxBranchBytes        = 255
 	MaxMessageBytes       = 512
 	DefaultPatchBytes     = 1 << 20
 	MaxPatchBytes         = 4 << 20
@@ -62,16 +65,17 @@ var (
 type Kind string
 
 const (
-	KindSpawn  Kind = "spawn"
-	KindSend   Kind = "send"
-	KindWait   Kind = "wait"
-	KindCancel Kind = "cancel"
-	KindStatus Kind = "status"
-	KindList   Kind = "list"
-	KindResult Kind = "result"
-	KindPatch  Kind = "patch"
-	KindReport Kind = "report"
-	KindWhoAmI Kind = "whoami"
+	KindSpawn           Kind = "spawn"
+	KindSend            Kind = "send"
+	KindWait            Kind = "wait"
+	KindCancel          Kind = "cancel"
+	KindStatus          Kind = "status"
+	KindList            Kind = "list"
+	KindResult          Kind = "result"
+	KindPatch           Kind = "patch"
+	KindReport          Kind = "report"
+	KindProposeDelivery Kind = "propose-delivery"
+	KindWhoAmI          Kind = "whoami"
 )
 
 // Request is one tool request. Which fields are allowed depends on Type; see
@@ -90,11 +94,15 @@ type Request struct {
 	Status         string   `json:"status,omitempty"`
 	Summary        string   `json:"summary,omitempty"`
 	MaxBytes       int      `json:"maxBytes,omitempty"`
+	Title          string   `json:"title,omitempty"`
+	Body           string   `json:"body,omitempty"`
+	Branch         string   `json:"branch,omitempty"`
 }
 
 // Mutating requests carry an idempotency key and are recorded by meridiand.
 func (r Request) Mutating() bool {
-	return r.Type == KindSpawn || r.Type == KindSend || r.Type == KindCancel || r.Type == KindReport
+	return r.Type == KindSpawn || r.Type == KindSend || r.Type == KindCancel ||
+		r.Type == KindReport || r.Type == KindProposeDelivery
 }
 
 // Remote requests are relayed to meridiand. The rest are served by capsuled.
@@ -115,7 +123,7 @@ func (r Request) Validate() error {
 		return fmt.Errorf("%w: unsupported protocol", ErrInvalidRecord)
 	}
 	type fields struct {
-		key, name, harness, prompt, link, links, all, timeout, status, summary, maxBytes bool
+		key, name, harness, prompt, link, links, all, timeout, status, summary, maxBytes, title, body, branch bool
 	}
 	var allowed fields
 	switch r.Type {
@@ -131,6 +139,8 @@ func (r Request) Validate() error {
 		allowed = fields{link: true, maxBytes: true}
 	case KindReport:
 		allowed = fields{key: true, status: true, summary: true}
+	case KindProposeDelivery:
+		allowed = fields{key: true, title: true, body: true, branch: true}
 	case KindWait:
 		allowed = fields{links: true, all: true, timeout: true}
 	case KindList, KindWhoAmI:
@@ -142,13 +152,15 @@ func (r Request) Validate() error {
 		prompt: r.Prompt != "", link: r.Link != "", links: r.Links != nil,
 		all: r.All, timeout: r.TimeoutSeconds != 0, status: r.Status != "",
 		summary: r.Summary != "", maxBytes: r.MaxBytes != 0,
+		title: r.Title != "", body: r.Body != "", branch: r.Branch != "",
 	}
 	if (present.key && !allowed.key) || (present.name && !allowed.name) ||
 		(present.harness && !allowed.harness) || (present.prompt && !allowed.prompt) ||
 		(present.link && !allowed.link) || (present.links && !allowed.links) ||
 		(present.all && !allowed.all) || (present.timeout && !allowed.timeout) ||
 		(present.status && !allowed.status) || (present.summary && !allowed.summary) ||
-		(present.maxBytes && !allowed.maxBytes) {
+		(present.maxBytes && !allowed.maxBytes) || (present.title && !allowed.title) ||
+		(present.body && !allowed.body) || (present.branch && !allowed.branch) {
 		return fmt.Errorf("%w: field not allowed for %s", ErrInvalidRecord, r.Type)
 	}
 	if allowed.key && !validToken(r.Key, MaxKeyBytes) {
@@ -189,7 +201,38 @@ func (r Request) Validate() error {
 	if r.MaxBytes < 0 || r.MaxBytes > MaxPatchBytes {
 		return fmt.Errorf("%w: maxBytes must be between 1 and %d", ErrInvalidRecord, MaxPatchBytes)
 	}
+	if allowed.title && !validTitle(r.Title) {
+		return fmt.Errorf("%w: title must be 1-%d bytes of UTF-8 without newlines", ErrInvalidRecord, MaxTitleBytes)
+	}
+	if r.Body != "" && (!utf8.ValidString(r.Body) || strings.ContainsRune(r.Body, 0) || len(r.Body) > MaxBodyBytes) {
+		return fmt.Errorf("%w: body must be at most %d bytes of UTF-8", ErrInvalidRecord, MaxBodyBytes)
+	}
+	if allowed.branch && !ValidBranch(r.Branch) {
+		return fmt.Errorf("%w: invalid branch", ErrInvalidRecord)
+	}
 	return nil
+}
+
+func validTitle(value string) bool {
+	return validText(value, MaxTitleBytes) && !strings.ContainsAny(value, "\r\n")
+}
+
+// ValidBranch is the closed git branch grammar a propose-delivery request may name.
+func ValidBranch(value string) bool {
+	if value == "" || len(value) > MaxBranchBytes || strings.HasPrefix(value, "-") ||
+		strings.HasPrefix(value, "/") || strings.HasSuffix(value, "/") ||
+		strings.HasSuffix(value, ".") || strings.Contains(value, "..") ||
+		strings.Contains(value, "//") || strings.Contains(value, "@{") ||
+		strings.ContainsAny(value, " ~^:?*[\\\x00\r\n") {
+		return false
+	}
+	for _, component := range strings.Split(value, "/") {
+		if component == "" || component == "." || component == ".." ||
+			strings.HasPrefix(component, ".") || strings.HasSuffix(component, ".lock") {
+			return false
+		}
+	}
+	return true
 }
 
 func ValidName(name string) bool {
@@ -260,22 +303,31 @@ func Fail(code, message string) Response {
 }
 
 type Response struct {
-	Protocol     string   `json:"protocol"`
-	OK           bool     `json:"ok"`
-	Error        *Error   `json:"error,omitempty"`
-	Link         *Link    `json:"link,omitempty"`
-	Links        []Link   `json:"links,omitempty"`
-	Reports      []Report `json:"reports,omitempty"`
-	MessageID    string   `json:"messageId,omitempty"`
-	TimedOut     bool     `json:"timedOut,omitempty"`
-	Self         *Self    `json:"self,omitempty"`
-	Patch        string   `json:"patch,omitempty"`
-	Truncated    bool     `json:"truncated,omitempty"`
-	Head         string   `json:"head,omitempty"`
-	BaseCommit   string   `json:"baseCommit,omitempty"`
-	FilesChanged int      `json:"filesChanged,omitempty"`
-	Insertions   int      `json:"insertions,omitempty"`
-	Deletions    int      `json:"deletions,omitempty"`
+	Protocol     string        `json:"protocol"`
+	OK           bool          `json:"ok"`
+	Error        *Error        `json:"error,omitempty"`
+	Link         *Link         `json:"link,omitempty"`
+	Links        []Link        `json:"links,omitempty"`
+	Reports      []Report      `json:"reports,omitempty"`
+	MessageID    string        `json:"messageId,omitempty"`
+	TimedOut     bool          `json:"timedOut,omitempty"`
+	Self         *Self         `json:"self,omitempty"`
+	Patch        string        `json:"patch,omitempty"`
+	Truncated    bool          `json:"truncated,omitempty"`
+	Head         string        `json:"head,omitempty"`
+	BaseCommit   string        `json:"baseCommit,omitempty"`
+	FilesChanged int           `json:"filesChanged,omitempty"`
+	Insertions   int           `json:"insertions,omitempty"`
+	Deletions    int           `json:"deletions,omitempty"`
+	Delivery     *DeliveryView `json:"delivery,omitempty"`
+}
+
+// DeliveryView is a content-free proposed Delivery. Title and body stay on
+// the operator API; they are hostile and never copied into the mailbox.
+type DeliveryView struct {
+	ID     string `json:"id"`
+	State  string `json:"state"`
+	Branch string `json:"branch"`
 }
 
 func OK() Response {

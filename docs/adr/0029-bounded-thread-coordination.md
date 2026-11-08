@@ -60,8 +60,9 @@ Three ways to carry a request out of the Capsule were considered:
 - A child is an ordinary Project Thread in its own fresh Capsule (ADR 0016),
   linked to its parent by a ThreadLink with an operator-visible name limited
   to `[a-z0-9-]{1,48}`. A Capsule may address only links whose parent is its
-  own Thread. With depth fixed at 1, children receive only `report` and
-  `whoami`; they cannot spawn, send, wait, cancel, list, result, or patch.
+  own Thread. With depth fixed at 1, children receive `report`,
+  `propose-delivery`, and `whoami`; they cannot spawn, send, wait, cancel,
+  list, result, or patch.
 - Every Capsule carries an immutable, content-free `role` of `main` or `sub`.
   Sub-Capsules record their lead Thread and link. The UI nests subagents under
   their lead and labels them; `role` is presentation only, is never read by an
@@ -107,13 +108,14 @@ Three ways to carry a request out of the Capsule were considered:
   A notice never wakes a lead on its own. Messages to a
   subagent whose link has closed are not counted and leave the link untouched,
   so resuming a stopped subagent does not restart its stop window.
-- Not in this decision, and left for later ADR amendments: depth above 1,
-  proposed Deliveries, and queueing spawns over capacity. Auto-archive and
-  promotion are covered by the subagent lifecycle amendment below. Operator
-  spawn approval and grant updates are covered by the amendment after that.
-  Explicit reports and bounded patches are covered by the amendment after
-  that. Delivery approval under ADR 0020 is unchanged; agents cannot propose
-  or approve a Delivery.
+- Not in this decision, and left for later ADR amendments: depth above 1
+  and queueing spawns over capacity. Auto-archive and promotion are covered
+  by the subagent lifecycle amendment below. Operator spawn approval and grant
+  updates are covered by the amendment after that. Explicit reports and
+  bounded patches are covered by the amendment after that. Proposed Deliveries
+  are covered by the amendment after that. Delivery approval under ADR 0020 is
+  unchanged: an agent may propose a Delivery, and only the operator can approve
+  it.
 
 ## Consequences
 
@@ -250,8 +252,8 @@ hostile.
   `blocked` and `failed` stay until the operator or a later report. Leads
   cannot report.
 - **Mailbox for subagents.** The daemon enables the mailbox on a Ready
-  sub-Capsule with `role=sub` and `depth=1`. Subagents see `report` and
-  `whoami` only. The lead still cannot approve a subagent's permission or
+  sub-Capsule with `role=sub` and `depth=1`. Subagents see `report`,
+  `propose-delivery`, and `whoami`. The lead still cannot approve a subagent's permission or
   input requests. meridiand polls Ready children the same way it polls the
   lead: pull-only, no Capsule credential, not counted as activity.
 - **Patch.** `patch {link, maxBytes}` is a lead-only remote read. `capsuled`
@@ -266,3 +268,34 @@ hostile.
   non-negative diffstat counts, and allows coordination request kind
   `report`. `base_commit` is immutable once set. Report summaries stay in
   transcript ciphertext.
+
+## Amendment: proposed Deliveries
+
+A coordinated Thread may propose a Delivery of its own Capsule for the
+operator to approve. The agent never ships.
+
+- **`propose-delivery {title, body, branch}`.** Mutating and Capsule-scoped.
+  Lead and subagent mailboxes both relay it. meridiand inspects git, refuses
+  a protected or default branch, and persists a Delivery in state `proposed`
+  with `proposedBy: agent`. Title (≤512) and body (≤64 KiB) are hostile
+  plaintext. They are stored as bounded PR metadata the same way operator
+  ship already stores them. The mailbox response is content-free: id, state,
+  and branch. Expected HEAD, tree, Capsule version, and `approvedAt` stay
+  empty until the operator approves. The proposal does not acquire the
+  capture lock, does not check delivery secrets, and is never executed.
+  Recovery skips `proposed` and `rejected`. One proposed or in-flight
+  Delivery at a time per Capsule.
+- **Operator approval.** `POST /deliveries/{id}/approve` binds
+  `expectedResourceVersion` (the Delivery), `expectedCapsuleVersion`,
+  `expectedHead`, and `expectedTree`, optionally edits title/body/branch, and
+  then follows the existing queued execute path (ADR 0020).
+  `POST /deliveries/{id}/reject` is terminal. Both are installation-bearer
+  operator APIs; a Capsule cannot call them. There is no auto-approve.
+- **Board.** A proposed Delivery is `needs_you` / `proposed_delivery`. The
+  UI sanitizes title and body before display and requires the operator to
+  type `approve` and bind the freshly inspected HEAD and tree. Auto-archive
+  still skips a Capsule that needs the operator or has a Delivery in flight.
+- **Store.** Migration 0019 rebuilds `deliveries`: states `proposed` and
+  `rejected`, `proposed_by` agent|operator, `approved` 0|1, nullable approval
+  facts until approve, and identity that keeps `proposed_by` immutable.
+  Approval fields may change only from `proposed`.

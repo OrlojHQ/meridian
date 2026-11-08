@@ -5,6 +5,10 @@ type ApproveCoordinationRequestRes interface {
 	approveCoordinationRequestRes()
 }
 
+type ApproveDeliveryRes interface {
+	approveDeliveryRes()
+}
+
 type ArchiveThreadRes interface {
 	archiveThreadRes()
 }
@@ -227,6 +231,10 @@ type PutSecretRes interface {
 
 type ReadCapsuleFileRes interface {
 	readCapsuleFileRes()
+}
+
+type RejectDeliveryRes interface {
+	rejectDeliveryRes()
 }
 
 type RespondThreadRes interface {

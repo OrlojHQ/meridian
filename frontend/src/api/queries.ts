@@ -173,6 +173,20 @@ export const queries = {
       queryFn: ({ signal }) => api.deliveryInspection(capsuleId, signal),
       enabled: Boolean(capsuleId),
     }),
+  delivery: (deliveryId: string) =>
+    queryOptions({
+      queryKey: ["delivery", deliveryId],
+      queryFn: ({ signal }) => api.delivery(deliveryId, signal),
+      enabled: Boolean(deliveryId),
+      refetchInterval: 3_000,
+    }),
+  deliveries: (capsuleId: string) =>
+    queryOptions({
+      queryKey: ["deliveries", capsuleId],
+      queryFn: ({ signal }) => api.deliveries(capsuleId, signal),
+      enabled: Boolean(capsuleId),
+      refetchInterval: 3_000,
+    }),
   moments: (capsuleId: string) =>
     queryOptions({
       queryKey: ["moments", capsuleId],

@@ -8,6 +8,12 @@ type ApproveCoordinationRequestParams struct {
 	IdempotencyKey string
 }
 
+// ApproveDeliveryParams is parameters of approveDelivery operation.
+type ApproveDeliveryParams struct {
+	DeliveryId     string
+	IdempotencyKey string
+}
+
 // ArchiveThreadParams is parameters of archiveThread operation.
 type ArchiveThreadParams struct {
 	ThreadId       string
@@ -361,6 +367,12 @@ type PutSecretParams struct {
 type ReadCapsuleFileParams struct {
 	CapsuleId string
 	Path      string
+}
+
+// RejectDeliveryParams is parameters of rejectDelivery operation.
+type RejectDeliveryParams struct {
+	DeliveryId     string
+	IdempotencyKey string
 }
 
 // RespondThreadParams is parameters of respondThread operation.

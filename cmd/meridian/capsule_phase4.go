@@ -195,6 +195,152 @@ func newCapsuleShipCommand(config *cliConfig) *cobra.Command {
 	return command
 }
 
+func newCapsuleApproveDeliveryCommand(config *cliConfig) *cobra.Command {
+	var yes bool
+	var message, title, body, base, branch, keyFlag string
+	command := &cobra.Command{
+		Use:   "approve-delivery DELIVERY_ID",
+		Short: "Approve a proposed Delivery and bind the inspected HEAD and tree",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(command *cobra.Command, args []string) error {
+			if !yes {
+				return errors.New("--yes is required; review Git status and diff before approving a proposed Delivery")
+			}
+			if config.json {
+				return errors.New("--json is not supported by approve-delivery because review output precedes mutation")
+			}
+			api, err := newAPI(config)
+			if err != nil {
+				return err
+			}
+			got, err := api.GetDelivery(command.Context(), client.GetDeliveryParams{DeliveryId: args[0]})
+			if err != nil {
+				return apiCallError(err)
+			}
+			headers, ok := got.(*client.DeliveryHeaders)
+			if !ok {
+				return responseError(got)
+			}
+			delivery := headers.Response
+			if err := printCapsuleReview(command.Context(), config, api, delivery.CapsuleId); err != nil {
+				return err
+			}
+			inspectionResponse, err := api.InspectCapsuleDelivery(
+				command.Context(), client.InspectCapsuleDeliveryParams{CapsuleId: delivery.CapsuleId},
+			)
+			if err != nil {
+				return apiCallError(err)
+			}
+			inspection, ok := inspectionResponse.(*client.DeliveryInspection)
+			if !ok {
+				return responseError(inspectionResponse)
+			}
+			fmt.Fprintf(config.stdout, "Reviewed HEAD: %s\nReviewed tree: %s\n",
+				inspection.Head, inspection.Tree)
+			key, err := idempotencyKey(keyFlag)
+			if err != nil {
+				return err
+			}
+			input := &client.ApproveDeliveryRequest{
+				ExpectedResourceVersion: delivery.ResourceVersion,
+				ExpectedCapsuleVersion:  inspection.CapsuleResourceVersion,
+				ExpectedHead:            inspection.Head, ExpectedTree: inspection.Tree,
+			}
+			if branch != "" {
+				input.RemoteBranch = client.NewOptString(branch)
+			}
+			if message != "" {
+				input.CommitMessage = client.NewOptString(message)
+			}
+			if title != "" {
+				input.PullRequestTitle = client.NewOptString(title)
+			}
+			if body != "" {
+				input.PullRequestBody = client.NewOptString(body)
+			}
+			if base != "" {
+				input.BaseBranch = client.NewOptString(base)
+			}
+			response, err := api.ApproveDelivery(
+				command.Context(), input, client.ApproveDeliveryParams{
+					DeliveryId: args[0], IdempotencyKey: key,
+				},
+			)
+			if err != nil {
+				return apiCallError(err)
+			}
+			result, ok := response.(*client.DeliveryHeaders)
+			if !ok {
+				return responseError(response)
+			}
+			commit, _ := result.Response.ResultCommitSha.Get()
+			pr, _ := result.Response.ResultPullRequestUrl.Get()
+			fmt.Fprintf(config.stdout, "%s\tstate=%s\tcommit=%s", result.Response.ID, result.Response.State, commit)
+			if pr.String() != "" {
+				fmt.Fprintf(config.stdout, "\tpr=%s", pr.String())
+			}
+			_, err = fmt.Fprintln(config.stdout)
+			return err
+		},
+	}
+	command.Flags().BoolVar(&yes, "yes", false, "approve shipping the exact inspected HEAD and tree")
+	command.Flags().StringVar(&branch, "branch", "", "override destination branch")
+	command.Flags().StringVar(&message, "commit-message", "", "override commit message")
+	command.Flags().StringVar(&title, "title", "", "override pull request title")
+	command.Flags().StringVar(&body, "body", "", "override pull request body")
+	command.Flags().StringVar(&base, "base", "", "override pull request base branch")
+	command.Flags().StringVar(&keyFlag, "idempotency-key", "", "mutation replay key (generated if omitted)")
+	return command
+}
+
+func newCapsuleRejectDeliveryCommand(config *cliConfig) *cobra.Command {
+	var yes bool
+	var expected int64
+	var keyFlag string
+	command := &cobra.Command{
+		Use:   "reject-delivery DELIVERY_ID",
+		Short: "Reject a proposed Delivery without shipping",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(command *cobra.Command, args []string) error {
+			if !yes {
+				return errors.New("--yes is required to reject a proposed Delivery")
+			}
+			if expected <= 0 {
+				return errors.New("--expected-version must be greater than zero")
+			}
+			api, err := newAPI(config)
+			if err != nil {
+				return err
+			}
+			key, err := idempotencyKey(keyFlag)
+			if err != nil {
+				return err
+			}
+			response, err := api.RejectDelivery(
+				command.Context(),
+				&client.RejectDeliveryRequest{ExpectedResourceVersion: expected},
+				client.RejectDeliveryParams{DeliveryId: args[0], IdempotencyKey: key},
+			)
+			if err != nil {
+				return apiCallError(err)
+			}
+			result, ok := response.(*client.DeliveryHeaders)
+			if !ok {
+				return responseError(response)
+			}
+			if config.json {
+				return writeJSON(config.stdout, &result.Response)
+			}
+			_, err = fmt.Fprintf(config.stdout, "%s\tstate=%s\n", result.Response.ID, result.Response.State)
+			return err
+		},
+	}
+	command.Flags().BoolVar(&yes, "yes", false, "confirm rejecting this proposed Delivery")
+	command.Flags().Int64Var(&expected, "expected-version", 0, "Delivery resource version")
+	command.Flags().StringVar(&keyFlag, "idempotency-key", "", "mutation replay key (generated if omitted)")
+	return command
+}
+
 func printCapsuleReview(
 	ctx context.Context, config *cliConfig, api *client.Client, capsuleID string,
 ) error {

@@ -313,8 +313,9 @@ Repository content, issues, web pages, logs, and tool output can instruct an age
 
 Model and Capsule output can cause bounded lifecycle effects, namely spawning,
 messaging, and cancelling subagent Threads, but only under an operator-created
-Coordination Grant on that lead (ADR 0029). Delivery, credential, network, and
-policy actions are unchanged. A subagent's permission and input requests go to
+Coordination Grant on that lead (ADR 0029). Delivery approval, credential, network, and
+policy actions are unchanged: an agent may propose a Delivery and cannot
+approve one. A subagent's permission and input requests go to
 the operator, never to its lead, so a hostile lead cannot approve its subagents'
 tool use. Delegated prompts and subagent reports carry encrypted
 coordination provenance and are labelled "from the lead" or "from subagents";
@@ -333,7 +334,7 @@ by the Capsule it dialed; Capsules never call the public API, receive no host
 runtime socket, and gain no new network route, so coordination works under
 deny-all egress. The mailbox refuses every request until the daemon
 configures it for a lead or a subagent, and again once the grant ends.
-A subagent mailbox relays only `report` and `whoami`.
+A subagent mailbox relays `report`, `propose-delivery`, and `whoami`.
 
 Authority is the intersection of the grant, the Project policy, the
 requester's links, and the grant's remaining counters. A grant is created only
@@ -411,6 +412,15 @@ limit does not cancel work already started; loosening does not start queued
 spawns. Denied children stay on disk until the operator deletes them and still
 count toward descendants, so a lead cannot free budget by issuing and
 withdrawing hostile names.
+
+Proposed Deliveries add no Capsule authority. `propose-delivery` persists an
+unapproved Delivery for the requester's own Capsule only; it never binds
+HEAD, tree, or Capsule version, never checks delivery secrets, and never
+executes. Approve and reject are installation-bearer operator APIs; a Capsule
+cannot approve its own proposal. Title and body are hostile bounded plaintext
+and are sanitized before display. Recovery and auto-archive skip proposed and
+in-flight Deliveries, so a lead cannot use a proposal to hide work or to
+force a ship.
 
 ### Supply-chain and setup execution
 

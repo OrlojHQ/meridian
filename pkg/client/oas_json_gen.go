@@ -278,6 +278,391 @@ func (s *ApproveCoordinationRequestUnprocessableEntity) UnmarshalJSON(data []byt
 	return s.Decode(d)
 }
 
+// Encode encodes ApproveDeliveryBadRequest as json.
+func (s *ApproveDeliveryBadRequest) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes ApproveDeliveryBadRequest from json.
+func (s *ApproveDeliveryBadRequest) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode ApproveDeliveryBadRequest to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = ApproveDeliveryBadRequest(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *ApproveDeliveryBadRequest) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *ApproveDeliveryBadRequest) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes ApproveDeliveryConflict as json.
+func (s *ApproveDeliveryConflict) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes ApproveDeliveryConflict from json.
+func (s *ApproveDeliveryConflict) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode ApproveDeliveryConflict to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = ApproveDeliveryConflict(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *ApproveDeliveryConflict) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *ApproveDeliveryConflict) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes ApproveDeliveryNotFound as json.
+func (s *ApproveDeliveryNotFound) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes ApproveDeliveryNotFound from json.
+func (s *ApproveDeliveryNotFound) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode ApproveDeliveryNotFound to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = ApproveDeliveryNotFound(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *ApproveDeliveryNotFound) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *ApproveDeliveryNotFound) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s *ApproveDeliveryRequest) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *ApproveDeliveryRequest) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("expectedResourceVersion")
+		e.Int64(s.ExpectedResourceVersion)
+	}
+	{
+		e.FieldStart("expectedCapsuleVersion")
+		e.Int64(s.ExpectedCapsuleVersion)
+	}
+	{
+		e.FieldStart("expectedHead")
+		e.Str(s.ExpectedHead)
+	}
+	{
+		e.FieldStart("expectedTree")
+		e.Str(s.ExpectedTree)
+	}
+	{
+		if s.RemoteBranch.Set {
+			e.FieldStart("remoteBranch")
+			s.RemoteBranch.Encode(e)
+		}
+	}
+	{
+		if s.CommitMessage.Set {
+			e.FieldStart("commitMessage")
+			s.CommitMessage.Encode(e)
+		}
+	}
+	{
+		if s.PullRequestTitle.Set {
+			e.FieldStart("pullRequestTitle")
+			s.PullRequestTitle.Encode(e)
+		}
+	}
+	{
+		if s.PullRequestBody.Set {
+			e.FieldStart("pullRequestBody")
+			s.PullRequestBody.Encode(e)
+		}
+	}
+	{
+		if s.BaseBranch.Set {
+			e.FieldStart("baseBranch")
+			s.BaseBranch.Encode(e)
+		}
+	}
+}
+
+var jsonFieldsNameOfApproveDeliveryRequest = [9]string{
+	0: "expectedResourceVersion",
+	1: "expectedCapsuleVersion",
+	2: "expectedHead",
+	3: "expectedTree",
+	4: "remoteBranch",
+	5: "commitMessage",
+	6: "pullRequestTitle",
+	7: "pullRequestBody",
+	8: "baseBranch",
+}
+
+// Decode decodes ApproveDeliveryRequest from json.
+func (s *ApproveDeliveryRequest) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode ApproveDeliveryRequest to nil")
+	}
+	var requiredBitSet [2]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "expectedResourceVersion":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				v, err := d.Int64()
+				s.ExpectedResourceVersion = int64(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"expectedResourceVersion\"")
+			}
+		case "expectedCapsuleVersion":
+			requiredBitSet[0] |= 1 << 1
+			if err := func() error {
+				v, err := d.Int64()
+				s.ExpectedCapsuleVersion = int64(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"expectedCapsuleVersion\"")
+			}
+		case "expectedHead":
+			requiredBitSet[0] |= 1 << 2
+			if err := func() error {
+				v, err := d.Str()
+				s.ExpectedHead = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"expectedHead\"")
+			}
+		case "expectedTree":
+			requiredBitSet[0] |= 1 << 3
+			if err := func() error {
+				v, err := d.Str()
+				s.ExpectedTree = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"expectedTree\"")
+			}
+		case "remoteBranch":
+			if err := func() error {
+				s.RemoteBranch.Reset()
+				if err := s.RemoteBranch.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"remoteBranch\"")
+			}
+		case "commitMessage":
+			if err := func() error {
+				s.CommitMessage.Reset()
+				if err := s.CommitMessage.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"commitMessage\"")
+			}
+		case "pullRequestTitle":
+			if err := func() error {
+				s.PullRequestTitle.Reset()
+				if err := s.PullRequestTitle.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"pullRequestTitle\"")
+			}
+		case "pullRequestBody":
+			if err := func() error {
+				s.PullRequestBody.Reset()
+				if err := s.PullRequestBody.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"pullRequestBody\"")
+			}
+		case "baseBranch":
+			if err := func() error {
+				s.BaseBranch.Reset()
+				if err := s.BaseBranch.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"baseBranch\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode ApproveDeliveryRequest")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [2]uint8{
+		0b00001111,
+		0b00000000,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfApproveDeliveryRequest) {
+					name = jsonFieldsNameOfApproveDeliveryRequest[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *ApproveDeliveryRequest) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *ApproveDeliveryRequest) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes ApproveDeliveryUnprocessableEntity as json.
+func (s *ApproveDeliveryUnprocessableEntity) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes ApproveDeliveryUnprocessableEntity from json.
+func (s *ApproveDeliveryUnprocessableEntity) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode ApproveDeliveryUnprocessableEntity to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = ApproveDeliveryUnprocessableEntity(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *ApproveDeliveryUnprocessableEntity) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *ApproveDeliveryUnprocessableEntity) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
 // Encode encodes ArchiveThreadConflict as json.
 func (s *ArchiveThreadConflict) Encode(e *jx.Encoder) {
 	unwrapped := (*ErrorEnvelope)(s)
@@ -754,6 +1139,8 @@ func (s *BoardItemNeedsYou) Decode(d *jx.Decoder) error {
 		*s = BoardItemNeedsYouFailed
 	case BoardItemNeedsYouSpawnApproval:
 		*s = BoardItemNeedsYouSpawnApproval
+	case BoardItemNeedsYouProposedDelivery:
+		*s = BoardItemNeedsYouProposedDelivery
 	default:
 		*s = BoardItemNeedsYou(v)
 	}
@@ -6996,24 +7383,36 @@ func (s *Delivery) encodeFields(e *jx.Encoder) {
 		s.Action.Encode(e)
 	}
 	{
+		e.FieldStart("proposedBy")
+		s.ProposedBy.Encode(e)
+	}
+	{
 		e.FieldStart("approved")
-		e.Bool(true)
+		e.Bool(s.Approved)
 	}
 	{
-		e.FieldStart("approvedAt")
-		json.EncodeDateTime(e, s.ApprovedAt)
+		if s.ApprovedAt.Set {
+			e.FieldStart("approvedAt")
+			s.ApprovedAt.Encode(e, json.EncodeDateTime)
+		}
 	}
 	{
-		e.FieldStart("expectedResourceVersion")
-		e.Int64(s.ExpectedResourceVersion)
+		if s.ExpectedResourceVersion.Set {
+			e.FieldStart("expectedResourceVersion")
+			s.ExpectedResourceVersion.Encode(e)
+		}
 	}
 	{
-		e.FieldStart("expectedHead")
-		e.Str(s.ExpectedHead)
+		if s.ExpectedHead.Set {
+			e.FieldStart("expectedHead")
+			s.ExpectedHead.Encode(e)
+		}
 	}
 	{
-		e.FieldStart("expectedTree")
-		e.Str(s.ExpectedTree)
+		if s.ExpectedTree.Set {
+			e.FieldStart("expectedTree")
+			s.ExpectedTree.Encode(e)
+		}
 	}
 	{
 		e.FieldStart("remoteBranch")
@@ -7085,30 +7484,31 @@ func (s *Delivery) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfDelivery = [23]string{
+var jsonFieldsNameOfDelivery = [24]string{
 	0:  "id",
 	1:  "capsuleId",
 	2:  "projectId",
 	3:  "state",
 	4:  "action",
-	5:  "approved",
-	6:  "approvedAt",
-	7:  "expectedResourceVersion",
-	8:  "expectedHead",
-	9:  "expectedTree",
-	10: "remoteBranch",
-	11: "destinationRef",
-	12: "baseBranch",
-	13: "commitMessage",
-	14: "pullRequestTitle",
-	15: "pullRequestBody",
-	16: "resultCommitSha",
-	17: "resultPullRequestUrl",
-	18: "resultPullRequestNumber",
-	19: "failure",
-	20: "createdAt",
-	21: "updatedAt",
-	22: "resourceVersion",
+	5:  "proposedBy",
+	6:  "approved",
+	7:  "approvedAt",
+	8:  "expectedResourceVersion",
+	9:  "expectedHead",
+	10: "expectedTree",
+	11: "remoteBranch",
+	12: "destinationRef",
+	13: "baseBranch",
+	14: "commitMessage",
+	15: "pullRequestTitle",
+	16: "pullRequestBody",
+	17: "resultCommitSha",
+	18: "resultPullRequestUrl",
+	19: "resultPullRequestNumber",
+	20: "failure",
+	21: "createdAt",
+	22: "updatedAt",
+	23: "resourceVersion",
 }
 
 // Decode decodes Delivery from json.
@@ -7176,8 +7576,18 @@ func (s *Delivery) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"action\"")
 			}
-		case "approved":
+		case "proposedBy":
 			requiredBitSet[0] |= 1 << 5
+			if err := func() error {
+				if err := s.ProposedBy.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"proposedBy\"")
+			}
+		case "approved":
+			requiredBitSet[0] |= 1 << 6
 			if err := func() error {
 				v, err := d.Bool()
 				s.Approved = bool(v)
@@ -7189,11 +7599,9 @@ func (s *Delivery) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"approved\"")
 			}
 		case "approvedAt":
-			requiredBitSet[0] |= 1 << 6
 			if err := func() error {
-				v, err := json.DecodeDateTime(d)
-				s.ApprovedAt = v
-				if err != nil {
+				s.ApprovedAt.Reset()
+				if err := s.ApprovedAt.Decode(d, json.DecodeDateTime); err != nil {
 					return err
 				}
 				return nil
@@ -7201,11 +7609,9 @@ func (s *Delivery) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"approvedAt\"")
 			}
 		case "expectedResourceVersion":
-			requiredBitSet[0] |= 1 << 7
 			if err := func() error {
-				v, err := d.Int64()
-				s.ExpectedResourceVersion = int64(v)
-				if err != nil {
+				s.ExpectedResourceVersion.Reset()
+				if err := s.ExpectedResourceVersion.Decode(d); err != nil {
 					return err
 				}
 				return nil
@@ -7213,11 +7619,9 @@ func (s *Delivery) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"expectedResourceVersion\"")
 			}
 		case "expectedHead":
-			requiredBitSet[1] |= 1 << 0
 			if err := func() error {
-				v, err := d.Str()
-				s.ExpectedHead = string(v)
-				if err != nil {
+				s.ExpectedHead.Reset()
+				if err := s.ExpectedHead.Decode(d); err != nil {
 					return err
 				}
 				return nil
@@ -7225,11 +7629,9 @@ func (s *Delivery) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"expectedHead\"")
 			}
 		case "expectedTree":
-			requiredBitSet[1] |= 1 << 1
 			if err := func() error {
-				v, err := d.Str()
-				s.ExpectedTree = string(v)
-				if err != nil {
+				s.ExpectedTree.Reset()
+				if err := s.ExpectedTree.Decode(d); err != nil {
 					return err
 				}
 				return nil
@@ -7237,7 +7639,7 @@ func (s *Delivery) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"expectedTree\"")
 			}
 		case "remoteBranch":
-			requiredBitSet[1] |= 1 << 2
+			requiredBitSet[1] |= 1 << 3
 			if err := func() error {
 				v, err := d.Str()
 				s.RemoteBranch = string(v)
@@ -7249,7 +7651,7 @@ func (s *Delivery) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"remoteBranch\"")
 			}
 		case "destinationRef":
-			requiredBitSet[1] |= 1 << 3
+			requiredBitSet[1] |= 1 << 4
 			if err := func() error {
 				v, err := d.Str()
 				s.DestinationRef = string(v)
@@ -7341,7 +7743,7 @@ func (s *Delivery) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"failure\"")
 			}
 		case "createdAt":
-			requiredBitSet[2] |= 1 << 4
+			requiredBitSet[2] |= 1 << 5
 			if err := func() error {
 				v, err := json.DecodeDateTime(d)
 				s.CreatedAt = v
@@ -7353,7 +7755,7 @@ func (s *Delivery) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"createdAt\"")
 			}
 		case "updatedAt":
-			requiredBitSet[2] |= 1 << 5
+			requiredBitSet[2] |= 1 << 6
 			if err := func() error {
 				v, err := json.DecodeDateTime(d)
 				s.UpdatedAt = v
@@ -7365,7 +7767,7 @@ func (s *Delivery) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"updatedAt\"")
 			}
 		case "resourceVersion":
-			requiredBitSet[2] |= 1 << 6
+			requiredBitSet[2] |= 1 << 7
 			if err := func() error {
 				v, err := d.Int64()
 				s.ResourceVersion = int64(v)
@@ -7386,9 +7788,9 @@ func (s *Delivery) Decode(d *jx.Decoder) error {
 	// Validate required fields.
 	var failures []validate.FieldError
 	for i, mask := range [3]uint8{
-		0b11111111,
-		0b00001111,
-		0b01110000,
+		0b01111111,
+		0b00011000,
+		0b11100000,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.
@@ -7795,6 +8197,46 @@ func (s *DeliveryPage) UnmarshalJSON(data []byte) error {
 	return s.Decode(d)
 }
 
+// Encode encodes DeliveryProposedBy as json.
+func (s DeliveryProposedBy) Encode(e *jx.Encoder) {
+	e.Str(string(s))
+}
+
+// Decode decodes DeliveryProposedBy from json.
+func (s *DeliveryProposedBy) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode DeliveryProposedBy to nil")
+	}
+	v, err := d.StrBytes()
+	if err != nil {
+		return err
+	}
+	// Try to use constant string.
+	switch DeliveryProposedBy(v) {
+	case DeliveryProposedByAgent:
+		*s = DeliveryProposedByAgent
+	case DeliveryProposedByOperator:
+		*s = DeliveryProposedByOperator
+	default:
+		*s = DeliveryProposedBy(v)
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s DeliveryProposedBy) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *DeliveryProposedBy) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
 // Encode encodes DeliveryState as json.
 func (s DeliveryState) Encode(e *jx.Encoder) {
 	e.Str(string(s))
@@ -7811,6 +8253,8 @@ func (s *DeliveryState) Decode(d *jx.Decoder) error {
 	}
 	// Try to use constant string.
 	switch DeliveryState(v) {
+	case DeliveryStateProposed:
+		*s = DeliveryStateProposed
 	case DeliveryStateQueued:
 		*s = DeliveryStateQueued
 	case DeliveryStateCommitting:
@@ -7823,6 +8267,8 @@ func (s *DeliveryState) Decode(d *jx.Decoder) error {
 		*s = DeliveryStateSucceeded
 	case DeliveryStateFailed:
 		*s = DeliveryStateFailed
+	case DeliveryStateRejected:
+		*s = DeliveryStateRejected
 	default:
 		*s = DeliveryState(v)
 	}
@@ -17906,6 +18352,254 @@ func (s *ReadCapsuleFileUnprocessableEntity) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
 func (s *ReadCapsuleFileUnprocessableEntity) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes RejectDeliveryBadRequest as json.
+func (s *RejectDeliveryBadRequest) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes RejectDeliveryBadRequest from json.
+func (s *RejectDeliveryBadRequest) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode RejectDeliveryBadRequest to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = RejectDeliveryBadRequest(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *RejectDeliveryBadRequest) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *RejectDeliveryBadRequest) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes RejectDeliveryConflict as json.
+func (s *RejectDeliveryConflict) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes RejectDeliveryConflict from json.
+func (s *RejectDeliveryConflict) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode RejectDeliveryConflict to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = RejectDeliveryConflict(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *RejectDeliveryConflict) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *RejectDeliveryConflict) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes RejectDeliveryNotFound as json.
+func (s *RejectDeliveryNotFound) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes RejectDeliveryNotFound from json.
+func (s *RejectDeliveryNotFound) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode RejectDeliveryNotFound to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = RejectDeliveryNotFound(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *RejectDeliveryNotFound) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *RejectDeliveryNotFound) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s *RejectDeliveryRequest) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *RejectDeliveryRequest) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("expectedResourceVersion")
+		e.Int64(s.ExpectedResourceVersion)
+	}
+}
+
+var jsonFieldsNameOfRejectDeliveryRequest = [1]string{
+	0: "expectedResourceVersion",
+}
+
+// Decode decodes RejectDeliveryRequest from json.
+func (s *RejectDeliveryRequest) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode RejectDeliveryRequest to nil")
+	}
+	var requiredBitSet [1]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "expectedResourceVersion":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				v, err := d.Int64()
+				s.ExpectedResourceVersion = int64(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"expectedResourceVersion\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode RejectDeliveryRequest")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [1]uint8{
+		0b00000001,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfRejectDeliveryRequest) {
+					name = jsonFieldsNameOfRejectDeliveryRequest[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *RejectDeliveryRequest) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *RejectDeliveryRequest) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes RejectDeliveryUnprocessableEntity as json.
+func (s *RejectDeliveryUnprocessableEntity) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes RejectDeliveryUnprocessableEntity from json.
+func (s *RejectDeliveryUnprocessableEntity) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode RejectDeliveryUnprocessableEntity to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = RejectDeliveryUnprocessableEntity(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *RejectDeliveryUnprocessableEntity) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *RejectDeliveryUnprocessableEntity) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }

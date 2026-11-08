@@ -184,6 +184,28 @@ func TestSyncTargetRemoteAndDirtyChecks(t *testing.T) {
 	}
 }
 
+func TestApproveDeliveryRequiresApprovalBeforeAPIAccess(t *testing.T) {
+	command := newCapsuleApproveDeliveryCommand(&cliConfig{tokenFile: filepath.Join(t.TempDir(), "missing")})
+	command.SilenceErrors = true
+	command.SilenceUsage = true
+	command.SetArgs([]string{"delivery-1"})
+	err := command.Execute()
+	if err == nil || !strings.Contains(err.Error(), "--yes is required") {
+		t.Fatalf("expected local approval refusal, got %v", err)
+	}
+}
+
+func TestRejectDeliveryRequiresApprovalBeforeAPIAccess(t *testing.T) {
+	command := newCapsuleRejectDeliveryCommand(&cliConfig{tokenFile: filepath.Join(t.TempDir(), "missing")})
+	command.SilenceErrors = true
+	command.SilenceUsage = true
+	command.SetArgs([]string{"delivery-1", "--expected-version", "1"})
+	err := command.Execute()
+	if err == nil || !strings.Contains(err.Error(), "--yes is required") {
+		t.Fatalf("expected local approval refusal, got %v", err)
+	}
+}
+
 func TestShipRequiresApprovalBeforeAPIAccess(t *testing.T) {
 	command := newCapsuleShipCommand(&cliConfig{tokenFile: filepath.Join(t.TempDir(), "missing")})
 	command.SilenceErrors = true
