@@ -180,3 +180,47 @@ so a later `dsh` release that moves these features into other plugins could
 re-enable them; the pack's pinned lockfile makes that a reviewed change.
 A process in the Capsule can edit the patch, but it already holds the lease,
 so editing grants nothing beyond the Capsule's own gateway access.
+
+## Amendment: OpenCode 2's `acp` command
+
+- Date: 2026-11-08
+
+The OpenCode pack pins OpenCode 2.2.6. Its `opencode acp` command accepts only
+`--login`. With the 1.x flags `--hostname 127.0.0.1 --mdns=false` it prints
+its help text to stdout and exits, and the adapter rejects the first line as a
+malformed record, so every OpenCode Thread failed with `acp_protocol_failed`.
+The 2.x release notes do not mention the change.
+
+The OpenCode structured profile now runs
+`acp --mcp-server meridian-coord=/usr/local/bin/meridian-coord,mcp --
+/usr/local/bin/opencode acp`, with no harness flags and no `--secret-env`.
+`meridian-coord` stays registered through `session/new`.
+
+The loopback protection the original decision relied on still holds, but
+OpenCode now provides it rather than the profile. This was checked against
+the 2.2.6 binary in the pack image: its help text, its bundled source, and its
+listening sockets during a session.
+
+- `opencode acp` always starts a private child, `opencode serve --stdio
+  --port 0`. It never uses OpenCode's shared background service, and the child
+  exits with the ACP process.
+- The child binds `127.0.0.1` at a random port. In stdio mode the hostname
+  comes only from a `--hostname` flag, which `opencode acp` does not pass, so
+  neither OpenCode configuration nor the repository can move it off loopback.
+- `opencode acp` generates a fresh 32-byte base64url password for each launch,
+  passes it only in the child's environment, and authenticates as `opencode`
+  with HTTP Basic. The child removes the password from the environment its
+  tools inherit. The `/api` routes answer `401` without it. The static
+  web-app shell is served without authentication and contains no session
+  data.
+- `OPENCODE_SERVER_PASSWORD` has no effect: `opencode acp` always sets its own
+  password for the child. The profile's per-launch value no longer protected
+  anything, so the flag is removed.
+- OpenCode 2 has no mDNS advertisement, and the child opens no UDP socket.
+
+Nothing changes for code running as the Capsule user, which could already
+read the password from the server's process environment. If a later OpenCode
+release passes a hostname from configuration, reuses the background service,
+or drops the generated password, the pin update must restore the protection
+or amend this ADR. `--secret-env` remains a driver option for agents that need
+it.

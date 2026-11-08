@@ -43,9 +43,7 @@ func TestRealOpenCodeACPSmoke(t *testing.T) {
 		t.Skip("MERIDIAN_OPENCODE_SMOKE_PROMPT is unset; provider credentials/model are not confirmed")
 	}
 	runRealSmoke(t, prompt, func(ctx context.Context, connection net.Conn) error {
-		return RunACP(ctx, connection, connection, ACPConfig{
-			Command: []string{path, "acp"}, SecretEnv: []string{"OPENCODE_SERVER_PASSWORD"},
-		})
+		return RunACP(ctx, connection, connection, ACPConfig{Command: []string{path, "acp"}})
 	})
 }
 
