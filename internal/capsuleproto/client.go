@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/OrlojHQ/meridian/internal/adapterproto"
+	"github.com/OrlojHQ/meridian/internal/coordproto"
 	"github.com/coder/websocket"
 )
 
@@ -209,6 +210,36 @@ func (c *Client) GitDiff(ctx context.Context) (GitResponse, error) {
 	var response GitResponse
 	err := c.call(ctx, http.MethodGet, GitDiffPath, nil, &response, true)
 	return response, err
+}
+
+func (c *Client) GitPatch(ctx context.Context, request GitPatchRequest) (GitPatchResponse, error) {
+	values := url.Values{}
+	if request.BaseCommit != "" {
+		values.Set("base", request.BaseCommit)
+	}
+	if request.MaxBytes > 0 {
+		values.Set("maxBytes", strconv.Itoa(request.MaxBytes))
+	}
+	if request.IncludePatch {
+		values.Set("includePatch", "1")
+	}
+	path := GitPatchPath
+	if encoded := values.Encode(); encoded != "" {
+		path += "?" + encoded
+	}
+	var response GitPatchResponse
+	limit := int64(coordproto.MaxResponseBytes)
+	if request.MaxBytes > 0 {
+		limit = int64(request.MaxBytes) + 64<<10
+	}
+	err := c.callLimit(ctx, http.MethodGet, path, nil, &response, true, limit)
+	return response, err
+}
+
+type GitPatchRequest struct {
+	BaseCommit   string
+	MaxBytes     int
+	IncludePatch bool
 }
 
 func (c *Client) CaptureWorkspace(ctx context.Context) (CaptureResponse, error) {

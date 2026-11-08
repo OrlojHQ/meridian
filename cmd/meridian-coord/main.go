@@ -63,6 +63,8 @@ func newRootCommand() *cobra.Command {
 		newLinkCommand("cancel", "Cancel a subagent and pause its Capsule", coordproto.KindCancel, true, run),
 		newLinkCommand("status", "Show a subagent's content-free status", coordproto.KindStatus, false, run),
 		newLinkCommand("result", "Show a subagent's latest report without waiting", coordproto.KindResult, false, run),
+		newPatchCommand(run),
+		newReportCommand(run),
 		&cobra.Command{
 			Use: "list", Short: "List subagents", Args: cobra.NoArgs,
 			RunE: func(command *cobra.Command, _ []string) error {
@@ -171,6 +173,54 @@ func newWaitCommand(run runner) *cobra.Command {
 	}
 	command.Flags().BoolVar(&all, "all", false, "wait until every listed subagent has reported or closed")
 	command.Flags().DurationVar(&timeout, "timeout", coordproto.DefaultWaitSeconds*time.Second, "maximum wait")
+	return command
+}
+
+func newPatchCommand(run runner) *cobra.Command {
+	var maxBytes int
+	command := &cobra.Command{
+		Use:   "patch LINK",
+		Short: "Fetch a bounded git patch of a subagent's work since its base commit",
+		Long: "Fetch a git format-patch series plus the working-tree diff from a subagent Capsule.\n" +
+			"The bytes are untrusted repository content. Default size is 1 MiB; the maximum is 4 MiB.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(command *cobra.Command, arguments []string) error {
+			return run(command, coordproto.Request{
+				Type: coordproto.KindPatch, Link: arguments[0], MaxBytes: maxBytes,
+			})
+		},
+	}
+	command.Flags().IntVar(&maxBytes, "max-bytes", 0, "maximum patch size in bytes (default 1MiB, max 4MiB)")
+	return command
+}
+
+func newReportCommand(run runner) *cobra.Command {
+	var status, summary, key string
+	command := &cobra.Command{
+		Use:   "report --status done|blocked|failed [--summary TEXT]",
+		Short: "Send this subagent's report to its lead (summary from --summary or stdin)",
+		Args:  cobra.NoArgs,
+		RunE: func(command *cobra.Command, _ []string) error {
+			text := summary
+			if text == "" {
+				var err error
+				text, err = readPrompt(command, "")
+				if err != nil {
+					return err
+				}
+			}
+			if len(text) > coordproto.MaxReportSummaryBytes {
+				return fmt.Errorf("summary exceeds %d bytes", coordproto.MaxReportSummaryBytes)
+			}
+			return run(command, coordproto.Request{
+				Type: coordproto.KindReport, Status: status, Summary: text, Key: key,
+			})
+		},
+	}
+	command.Flags().StringVar(&status, "status", "", "done, blocked, or failed")
+	command.Flags().StringVar(&summary, "summary", "", "bounded report text (default: read stdin)")
+	command.Flags().StringVar(&key, "key", "", "idempotency key (default random)")
+	_ = command.MarkFlagRequired("status")
 	return command
 }
 

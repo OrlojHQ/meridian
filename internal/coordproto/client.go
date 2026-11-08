@@ -67,7 +67,7 @@ func Do(ctx context.Context, socketPath string, request Request) (Response, erro
 	if _, err := conn.Write(record); err != nil {
 		return Fail(CodeMailboxLost, "coordination mailbox closed the connection"), nil
 	}
-	line, err := ReadRecord(bufio.NewReaderSize(conn, 64<<10))
+	line, err := ReadRecordLimit(bufio.NewReaderSize(conn, 64<<10), MaxResponseBytes)
 	if err != nil {
 		if ctx.Err() != nil {
 			return Response{}, ctx.Err()

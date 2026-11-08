@@ -28,7 +28,7 @@ const (
 	coordinationConnLimit     = 32
 	coordinationReadTimeout   = 10 * time.Second
 	coordinationReplyCache    = 128
-	coordinationReplyBodySize = 1 << 20
+	coordinationReplyBodySize = 2*coordproto.MaxPatchBytes + 256<<10
 	coordinationNotifySize    = 4 << 20
 )
 
@@ -102,6 +102,10 @@ func (m *Mailbox) Handle(ctx context.Context, request coordproto.Request) coordp
 	if !enabled {
 		return coordproto.Fail(coordproto.CodeCoordinationDisabled, "this Thread has no coordination grant")
 	}
+	role := ""
+	if self != nil {
+		role = self.Role
+	}
 	switch request.Type {
 	case coordproto.KindWhoAmI:
 		response := coordproto.OK()
@@ -110,9 +114,23 @@ func (m *Mailbox) Handle(ctx context.Context, request coordproto.Request) coordp
 		response.Self = &copied
 		return response
 	case coordproto.KindWait:
+		if role != "lead" {
+			return coordproto.Fail(coordproto.CodeCoordinationDisabled, "only a lead Thread can wait on subagents")
+		}
 		return m.wait(ctx, request)
 	case coordproto.KindResult:
+		if role != "lead" {
+			return coordproto.Fail(coordproto.CodeCoordinationDisabled, "only a lead Thread can read subagent results")
+		}
 		return m.result(request)
+	case coordproto.KindReport:
+		if role != "sub" {
+			return coordproto.Fail(coordproto.CodeInvalidRequest, "only a subagent Thread can report")
+		}
+		return m.relay(ctx, request)
+	}
+	if role != "lead" {
+		return coordproto.Fail(coordproto.CodeCoordinationDisabled, "this Thread has no lead coordination grant")
 	}
 	return m.relay(ctx, request)
 }
@@ -480,7 +498,7 @@ func (s *Server) serveCoordinationConn(conn net.Conn) {
 }
 
 func writeCoordinationResponse(conn net.Conn, response coordproto.Response) {
-	record, err := coordproto.Encode(response)
+	record, err := coordproto.EncodeLimit(response, coordproto.MaxResponseBytes)
 	if err != nil {
 		record, _ = coordproto.Encode(coordproto.Fail(coordproto.CodeInternal, "response too large"))
 	}

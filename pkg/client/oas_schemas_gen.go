@@ -10527,10 +10527,17 @@ type ThreadLink struct {
 	// Set while the subagent is auto-archived; cleared when its Thread resumes.
 	ArchivedAt OptDateTime `json:"archivedAt"`
 	// When the subagent was promoted to a main Capsule. Promoted subagents are never archived.
-	PromotedAt      OptDateTime `json:"promotedAt"`
-	CreatedAt       time.Time   `json:"createdAt"`
-	UpdatedAt       time.Time   `json:"updatedAt"`
-	ResourceVersion int64       `json:"resourceVersion"`
+	PromotedAt OptDateTime `json:"promotedAt"`
+	// Child workspace HEAD when the Capsule became Ready. Patch bytes are never stored.
+	BaseCommit OptString `json:"baseCommit"`
+	// Latest observed child HEAD. Content-free.
+	Head            OptString `json:"head"`
+	FilesChanged    OptInt    `json:"filesChanged"`
+	Insertions      OptInt    `json:"insertions"`
+	Deletions       OptInt    `json:"deletions"`
+	CreatedAt       time.Time `json:"createdAt"`
+	UpdatedAt       time.Time `json:"updatedAt"`
+	ResourceVersion int64     `json:"resourceVersion"`
 }
 
 // GetID returns the value of ID.
@@ -10641,6 +10648,31 @@ func (s *ThreadLink) GetArchivedAt() OptDateTime {
 // GetPromotedAt returns the value of PromotedAt.
 func (s *ThreadLink) GetPromotedAt() OptDateTime {
 	return s.PromotedAt
+}
+
+// GetBaseCommit returns the value of BaseCommit.
+func (s *ThreadLink) GetBaseCommit() OptString {
+	return s.BaseCommit
+}
+
+// GetHead returns the value of Head.
+func (s *ThreadLink) GetHead() OptString {
+	return s.Head
+}
+
+// GetFilesChanged returns the value of FilesChanged.
+func (s *ThreadLink) GetFilesChanged() OptInt {
+	return s.FilesChanged
+}
+
+// GetInsertions returns the value of Insertions.
+func (s *ThreadLink) GetInsertions() OptInt {
+	return s.Insertions
+}
+
+// GetDeletions returns the value of Deletions.
+func (s *ThreadLink) GetDeletions() OptInt {
+	return s.Deletions
 }
 
 // GetCreatedAt returns the value of CreatedAt.
@@ -10766,6 +10798,31 @@ func (s *ThreadLink) SetArchivedAt(val OptDateTime) {
 // SetPromotedAt sets the value of PromotedAt.
 func (s *ThreadLink) SetPromotedAt(val OptDateTime) {
 	s.PromotedAt = val
+}
+
+// SetBaseCommit sets the value of BaseCommit.
+func (s *ThreadLink) SetBaseCommit(val OptString) {
+	s.BaseCommit = val
+}
+
+// SetHead sets the value of Head.
+func (s *ThreadLink) SetHead(val OptString) {
+	s.Head = val
+}
+
+// SetFilesChanged sets the value of FilesChanged.
+func (s *ThreadLink) SetFilesChanged(val OptInt) {
+	s.FilesChanged = val
+}
+
+// SetInsertions sets the value of Insertions.
+func (s *ThreadLink) SetInsertions(val OptInt) {
+	s.Insertions = val
+}
+
+// SetDeletions sets the value of Deletions.
+func (s *ThreadLink) SetDeletions(val OptInt) {
+	s.Deletions = val
 }
 
 // SetCreatedAt sets the value of CreatedAt.
@@ -10947,6 +11004,8 @@ type ThreadLinkLastReportStatus string
 const (
 	ThreadLinkLastReportStatusTurnEnded ThreadLinkLastReportStatus = "turn_ended"
 	ThreadLinkLastReportStatusFailed    ThreadLinkLastReportStatus = "failed"
+	ThreadLinkLastReportStatusDone      ThreadLinkLastReportStatus = "done"
+	ThreadLinkLastReportStatusBlocked   ThreadLinkLastReportStatus = "blocked"
 )
 
 // AllValues returns all ThreadLinkLastReportStatus values.
@@ -10954,6 +11013,8 @@ func (ThreadLinkLastReportStatus) AllValues() []ThreadLinkLastReportStatus {
 	return []ThreadLinkLastReportStatus{
 		ThreadLinkLastReportStatusTurnEnded,
 		ThreadLinkLastReportStatusFailed,
+		ThreadLinkLastReportStatusDone,
+		ThreadLinkLastReportStatusBlocked,
 	}
 }
 
@@ -10963,6 +11024,10 @@ func (s ThreadLinkLastReportStatus) MarshalText() ([]byte, error) {
 	case ThreadLinkLastReportStatusTurnEnded:
 		return []byte(s), nil
 	case ThreadLinkLastReportStatusFailed:
+		return []byte(s), nil
+	case ThreadLinkLastReportStatusDone:
+		return []byte(s), nil
+	case ThreadLinkLastReportStatusBlocked:
 		return []byte(s), nil
 	default:
 		return nil, errors.Errorf("invalid value: %q", s)
@@ -10977,6 +11042,12 @@ func (s *ThreadLinkLastReportStatus) UnmarshalText(data []byte) error {
 		return nil
 	case ThreadLinkLastReportStatusFailed:
 		*s = ThreadLinkLastReportStatusFailed
+		return nil
+	case ThreadLinkLastReportStatusDone:
+		*s = ThreadLinkLastReportStatusDone
+		return nil
+	case ThreadLinkLastReportStatusBlocked:
+		*s = ThreadLinkLastReportStatusBlocked
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)

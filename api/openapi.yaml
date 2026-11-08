@@ -3253,7 +3253,7 @@ components:
           enum: [provisioning, working, idle, awaiting_operator, ended, failed]
         reportSeq: { type: integer, minimum: 0 }
         reportDeliveredSeq: { type: integer, minimum: 0 }
-        lastReportStatus: { type: string, enum: [turn_ended, failed] }
+        lastReportStatus: { type: string, enum: [turn_ended, failed, done, blocked] }
         lastReportReason: { type: string, enum: [cancelled, capsule_failed, session_ended, revoked, denied] }
         lastReportAt: { type: string, format: date-time }
         messagesForwarded: { type: integer, minimum: 0 }
@@ -3269,6 +3269,15 @@ components:
           type: string
           format: date-time
           description: When the subagent was promoted to a main Capsule. Promoted subagents are never archived.
+        baseCommit:
+          type: string
+          description: Child workspace HEAD when the Capsule became Ready. Patch bytes are never stored.
+        head:
+          type: string
+          description: Latest observed child HEAD. Content-free.
+        filesChanged: { type: integer, minimum: 0 }
+        insertions: { type: integer, minimum: 0 }
+        deletions: { type: integer, minimum: 0 }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
         resourceVersion: { type: integer, format: int64, minimum: 1 }

@@ -50,7 +50,7 @@ type Service struct {
 	coordination  ports.CoordinationRuntime
 	coordMaxLive  int
 	coordMu       sync.Mutex
-	coordPollers  map[domain.CoordinationGrantID]context.CancelFunc
+	coordPollers  map[domain.CapsuleID]context.CancelFunc
 	coordPushed   map[domain.ThreadID]string
 	coordStopped  map[domain.ThreadLinkID]bool
 }

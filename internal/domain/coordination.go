@@ -250,6 +250,8 @@ type ReportStatus string
 const (
 	ReportTurnEnded ReportStatus = "turn_ended"
 	ReportFailed    ReportStatus = "failed"
+	ReportDone      ReportStatus = "done"
+	ReportBlocked   ReportStatus = "blocked"
 )
 
 // ReportReason qualifies a failed report. Turn-end reports carry no reason.
@@ -292,8 +294,16 @@ type ThreadLink struct {
 	OperatorNoticed  int
 	// ArchivedAt is set when the auto-archive sweep paused a finished subagent
 	// and cleared when its Thread resumes. PromotedAt is permanent.
-	ArchivedAt      time.Time
-	PromotedAt      time.Time
+	ArchivedAt time.Time
+	PromotedAt time.Time
+	// BaseCommit is the child workspace HEAD when the Capsule became Ready.
+	// Head, FilesChanged, Insertions and Deletions are content-free counts
+	// from the child's git state; patch bytes are never stored.
+	BaseCommit      string
+	Head            string
+	FilesChanged    int
+	Insertions      int
+	Deletions       int
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 	ResourceVersion ResourceVersion
@@ -317,6 +327,7 @@ const (
 	CoordinationSpawn  CoordinationRequestKind = "spawn"
 	CoordinationSend   CoordinationRequestKind = "send"
 	CoordinationCancel CoordinationRequestKind = "cancel"
+	CoordinationReport CoordinationRequestKind = "report"
 )
 
 type CoordinationRequestState string

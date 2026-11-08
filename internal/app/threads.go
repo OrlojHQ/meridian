@@ -746,11 +746,13 @@ func (s *Service) appendAndSendHook(
 		if err := tx.AppendThreadMessage(ctx, message); err != nil {
 			return err
 		}
-		if err := tx.InsertThreadDelivery(ctx, domain.ThreadDelivery{
-			ThreadID: id, MessageID: messageID, RunID: run.ID,
-			ControllerID: string(messageID), CreatedAt: now,
-		}); err != nil {
-			return err
+		if makeFrame != nil {
+			if err := tx.InsertThreadDelivery(ctx, domain.ThreadDelivery{
+				ThreadID: id, MessageID: messageID, RunID: run.ID,
+				ControllerID: string(messageID), CreatedAt: now,
+			}); err != nil {
+				return err
+			}
 		}
 		result.Thread, err = tx.GetThread(ctx, id)
 		if err != nil {
@@ -770,6 +772,9 @@ func (s *Service) appendAndSendHook(
 	})
 	if err != nil {
 		return ThreadMutationResult{}, err
+	}
+	if makeFrame == nil {
+		return result, nil
 	}
 	acknowledged, err := s.threadDeliveryAcknowledged(
 		ctx, result.Thread.ID, result.Run.ID, result.MessageID,

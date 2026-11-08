@@ -92,9 +92,10 @@ into the workspace; OpenCode names the tools `meridian-coord_meridian_spawn`
 and so on. Pi has no MCP client, so the Pi pack ships a `meridian-coord`
 skill that teaches the agent the CLI through its bash tool, and the profile
 loads it with `--skill` (Pi loads explicit `--skill` paths even when skill
-discovery is off). In a Capsule that is not a lead, the MCP server lists no
-tools and the CLI answers `coordination_disabled`. `dsh` registers nothing
-yet.
+discovery is off). A subagent Capsule lists `meridian_report` and
+`meridian_whoami` only. In a Capsule that is neither a lead nor a subagent,
+the MCP server lists no tools and the CLI answers `coordination_disabled`.
+`dsh` registers nothing yet.
 
 The terminal launcher picks the native profile, and Threads pick the
 structured one. Because the image owns every mode of its names and a repository

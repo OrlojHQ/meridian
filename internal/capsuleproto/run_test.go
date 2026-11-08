@@ -142,6 +142,56 @@ harnesses:
 	}
 }
 
+func TestGitPatchReturnsBoundedSeriesAndIgnoresHooks(t *testing.T) {
+	workspace := runWorkspace(t, `
+version: v1
+harnesses:
+  - name: echo
+    executable: /bin/true
+    workingDirectory: .
+    promptMode: none
+    pty: false
+    outputMode: text
+    timeout: 1s
+`)
+	runGitFixture(t, workspace)
+	hooks := filepath.Join(workspace, ".git", "hooks")
+	if err := os.MkdirAll(hooks, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(hooks, "pre-commit"), []byte("#!/bin/sh\nexit 1\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "tracked.txt"), []byte("working tree\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	server, err := NewServer(ServerConfig{Token: testToken, Workspace: workspace})
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpServer := newAuthenticatedTestServer(t, server)
+	client, _ := NewClient(httpServer.URL, testToken, httpServer.Client())
+	result, err := client.GitPatch(context.Background(), GitPatchRequest{
+		MaxBytes: 4096, IncludePatch: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.FilesChanged < 1 || result.Head == "" || result.BaseCommit == "" ||
+		!strings.Contains(result.Patch, "working tree") {
+		t.Fatalf("patch = %#v", result)
+	}
+	tiny, err := client.GitPatch(context.Background(), GitPatchRequest{
+		BaseCommit: result.BaseCommit, MaxBytes: 8, IncludePatch: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !tiny.Truncated || len(tiny.Patch) > 8 {
+		t.Fatalf("truncated patch = %#v", tiny)
+	}
+}
+
 func TestPTYResizeDetachAndReplay(t *testing.T) {
 	workspace := runWorkspace(t, `
 version: v1

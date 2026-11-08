@@ -32,6 +32,7 @@ const (
 	RunStartPath  = "/v1/runs"
 	GitStatusPath = "/v1/git/status"
 	GitDiffPath   = "/v1/git/diff"
+	GitPatchPath  = "/v1/git/patch"
 	CapturePath   = "/v1/workspace/capture"
 	RestorePath   = "/v1/workspace/restore"
 	PreviewsPath  = "/v1/previews"
@@ -194,6 +195,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /v1/harness-profiles", s.authenticate(http.HandlerFunc(s.harnessProfiles)))
 	mux.Handle("GET "+GitStatusPath, s.authenticate(http.HandlerFunc(s.gitStatus)))
 	mux.Handle("GET "+GitDiffPath, s.authenticate(http.HandlerFunc(s.gitDiff)))
+	mux.Handle("GET "+GitPatchPath, s.authenticate(http.HandlerFunc(s.gitPatch)))
 	mux.Handle("GET "+CapturePath, s.authenticate(http.HandlerFunc(s.captureWorkspace)))
 	mux.Handle("PUT "+RestorePath, s.authenticate(http.HandlerFunc(s.restoreWorkspace)))
 	mux.Handle("POST "+BrowseListPath, s.authenticate(http.HandlerFunc(s.browseList)))

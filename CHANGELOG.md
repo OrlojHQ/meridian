@@ -9,6 +9,16 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Subagents can send an explicit `report` (`done`, `blocked`, or `failed`
+  plus a ≤16 KiB summary) to their lead, and a lead can `patch` a bounded
+  `git format-patch` plus working-tree diff from the child's Capsule
+  (default 1 MiB, max 4 MiB, hooks disabled). Explicit reports override the
+  turn-end default until a later assistant message; ending the child's
+  session does not replace them. They are persisted only in the child's
+  encrypted transcript. Patch bytes are never stored; link views carry HEAD, base
+  commit, and a content-free diffstat. Subagent mailboxes expose `report`
+  and `whoami` only. Reports and patches are untrusted data (ADR 0029).
+
 - Operator spawn approvals and grant updates. A Coordination Grant may set
   `spawnApproval: operator` (`--spawn-approval operator`, "Approve each
   subagent spawn") so each lead spawn waits on the board until

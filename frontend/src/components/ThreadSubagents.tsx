@@ -8,7 +8,7 @@ import { queries } from "../api/queries";
 import { harnessName } from "../shell/capsuleActivity";
 import { PromoteSubagent } from "./PromoteSubagent";
 import { SpawnDecision } from "./SpawnApprovals";
-import { subagentHref, subagentPhaseLabels } from "./subagentReports";
+import { subagentDiffstat, subagentHref, subagentPhaseLabels, subagentReportStatusLabel } from "./subagentReports";
 import { safeInline } from "./threadText";
 import { StateBadge } from "./ui/StateBadge";
 
@@ -26,6 +26,10 @@ function subagentRow(link: ThreadLink, request?: CoordinationRequest) {
       <span className="muted-copy">
         {link.reportSeq === 1 ? "1 report" : `${link.reportSeq} reports`}
       </span>
+      {link.lastReportStatus && (
+        <span className="muted-copy">{subagentReportStatusLabel(link.lastReportStatus)}</span>
+      )}
+      {subagentDiffstat(link) && <span className="muted-copy">{subagentDiffstat(link)}</span>}
       {request && <SpawnDecision request={request} />}
     </li>
   );

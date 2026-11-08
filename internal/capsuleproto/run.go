@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/OrlojHQ/meridian/internal/harnesssetup"
 	"io"
 	"net/http"
 	"os"
@@ -19,7 +18,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/OrlojHQ/meridian/internal/coordproto"
 	"github.com/OrlojHQ/meridian/internal/harness"
+	"github.com/OrlojHQ/meridian/internal/harnesssetup"
 	"github.com/coder/websocket"
 	"github.com/creack/pty"
 )
@@ -154,6 +155,16 @@ func clearSecretValues(values map[string]string) {
 type GitResponse struct {
 	Content   string `json:"content"`
 	Truncated bool   `json:"truncated,omitempty"`
+}
+
+type GitPatchResponse struct {
+	Patch        string `json:"patch,omitempty"`
+	Truncated    bool   `json:"truncated,omitempty"`
+	Head         string `json:"head"`
+	BaseCommit   string `json:"baseCommit"`
+	FilesChanged int    `json:"filesChanged"`
+	Insertions   int    `json:"insertions"`
+	Deletions    int    `json:"deletions"`
 }
 
 type supervisedRun struct {
@@ -796,6 +807,149 @@ func (s *Server) git(writer http.ResponseWriter, request *http.Request, argument
 		return
 	}
 	writeJSON(writer, http.StatusOK, GitResponse{Content: output.String(), Truncated: output.truncated})
+}
+
+func (s *Server) gitPatch(writer http.ResponseWriter, request *http.Request) {
+	query := request.URL.Query()
+	base := strings.ToLower(strings.TrimSpace(query.Get("base")))
+	if base != "" && !validGitSHA(base) {
+		writeProtocolError(writer, http.StatusBadRequest, "invalid_request")
+		return
+	}
+	includePatch := query.Get("includePatch") == "1" || query.Get("includePatch") == "true"
+	maxBytes := coordproto.DefaultPatchBytes
+	if raw := query.Get("maxBytes"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > coordproto.MaxPatchBytes {
+			writeProtocolError(writer, http.StatusBadRequest, "invalid_request")
+			return
+		}
+		maxBytes = parsed
+	}
+	ctx, cancel := context.WithTimeout(request.Context(), 10*time.Second)
+	defer cancel()
+	head, err := s.gitOutput(ctx, "rev-parse", "HEAD")
+	if err != nil {
+		if ctx.Err() != nil {
+			writeProtocolError(writer, http.StatusGatewayTimeout, "git_timeout")
+			return
+		}
+		writeProtocolError(writer, http.StatusUnprocessableEntity, "git_failed")
+		return
+	}
+	head = strings.ToLower(strings.TrimSpace(head))
+	if !validGitSHA(head) {
+		writeProtocolError(writer, http.StatusUnprocessableEntity, "git_failed")
+		return
+	}
+	if base == "" {
+		base = head
+	}
+	stat, err := s.gitOutput(ctx, "diff", "--numstat", base)
+	if err != nil {
+		if ctx.Err() != nil {
+			writeProtocolError(writer, http.StatusGatewayTimeout, "git_timeout")
+			return
+		}
+		writeProtocolError(writer, http.StatusUnprocessableEntity, "git_failed")
+		return
+	}
+	files, insertions, deletions := parseNumstat(stat)
+	response := GitPatchResponse{
+		Head: head, BaseCommit: base, FilesChanged: files, Insertions: insertions, Deletions: deletions,
+	}
+	if !includePatch {
+		writeJSON(writer, http.StatusOK, response)
+		return
+	}
+	var patch boundedBuffer
+	patch.limit = int64(maxBytes)
+	if err := s.gitWrite(ctx, &patch, "format-patch", "--stdout", base); err != nil &&
+		!errors.Is(err, errOutputTruncated) {
+		if ctx.Err() != nil {
+			writeProtocolError(writer, http.StatusGatewayTimeout, "git_timeout")
+			return
+		}
+		writeProtocolError(writer, http.StatusUnprocessableEntity, "git_failed")
+		return
+	}
+	if err := s.gitWrite(ctx, &patch, "diff", "--no-ext-diff", "--no-color", "HEAD", "--"); err != nil &&
+		!errors.Is(err, errOutputTruncated) {
+		if ctx.Err() != nil {
+			writeProtocolError(writer, http.StatusGatewayTimeout, "git_timeout")
+			return
+		}
+		writeProtocolError(writer, http.StatusUnprocessableEntity, "git_failed")
+		return
+	}
+	response.Patch = patch.String()
+	response.Truncated = patch.truncated
+	writeJSON(writer, http.StatusOK, response)
+}
+
+func (s *Server) gitCommand(ctx context.Context, arguments ...string) *exec.Cmd {
+	command := exec.CommandContext(ctx, "git", append([]string{
+		"-c", "core.hooksPath=/dev/null", "-C", s.config.Workspace,
+	}, arguments...)...)
+	command.Env = append(os.Environ(),
+		"GIT_CONFIG_GLOBAL=/dev/null",
+		"GIT_CONFIG_SYSTEM=/dev/null",
+		"GIT_TERMINAL_PROMPT=0",
+	)
+	return command
+}
+
+func (s *Server) gitOutput(ctx context.Context, arguments ...string) (string, error) {
+	command := s.gitCommand(ctx, arguments...)
+	command.Stderr = io.Discard
+	output, err := command.Output()
+	if err != nil {
+		return "", err
+	}
+	return string(output), nil
+}
+
+func (s *Server) gitWrite(ctx context.Context, output *boundedBuffer, arguments ...string) error {
+	command := s.gitCommand(ctx, arguments...)
+	command.Stdout, command.Stderr = output, io.Discard
+	return command.Run()
+}
+
+func parseNumstat(output string) (files, insertions, deletions int) {
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 3 {
+			continue
+		}
+		files++
+		if fields[0] != "-" {
+			if n, err := strconv.Atoi(fields[0]); err == nil {
+				insertions += n
+			}
+		}
+		if fields[1] != "-" {
+			if n, err := strconv.Atoi(fields[1]); err == nil {
+				deletions += n
+			}
+		}
+	}
+	return files, insertions, deletions
+}
+
+func validGitSHA(value string) bool {
+	if len(value) < 7 || len(value) > 64 {
+		return false
+	}
+	for _, r := range value {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 var errOutputTruncated = errors.New("output truncated")

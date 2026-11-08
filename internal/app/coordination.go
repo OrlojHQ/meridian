@@ -367,6 +367,11 @@ func (s *Service) handleCoordinationRequest(
 	if err := request.Validate(); err != nil || !request.Remote() {
 		return coordproto.Fail(coordproto.CodeInvalidRequest, "invalid coordination request")
 	}
+	if request.Type == coordproto.KindReport {
+		response := s.coordReport(ctx, capsule, request)
+		s.auditRejection(ctx, domain.CoordinationGrant{}, request.Type, response)
+		return response
+	}
 	grant, thread, failure := s.coordinationAuthority(ctx, capsule, request.Mutating())
 	if failure != nil {
 		s.auditRejection(ctx, grant, request.Type, *failure)
@@ -414,10 +419,16 @@ func (s *Service) dispatchCoordinationRequest(
 		response = s.coordSend(ctx, grant, thread, capsule, request)
 	case coordproto.KindCancel:
 		response = s.coordCancel(ctx, grant, thread, capsule, request)
+	case coordproto.KindPatch:
+		response = s.coordPatch(ctx, thread, request)
 	case coordproto.KindStatus:
 		link, ok := s.ownedLink(ctx, thread.ID, request.Link)
 		if !ok {
 			return coordproto.Fail(coordproto.CodeNotFound, "no such link")
+		}
+		s.refreshChildGit(ctx, link)
+		if fresh, err := s.GetThreadLink(ctx, link.ID); err == nil {
+			link = fresh
 		}
 		response = coordproto.OK()
 		view := s.linkView(ctx, link)
@@ -430,6 +441,10 @@ func (s *Service) dispatchCoordinationRequest(
 		response = coordproto.OK()
 		response.Links = make([]coordproto.Link, 0, len(links))
 		for _, link := range links {
+			s.refreshChildGit(ctx, link)
+			if fresh, err := s.GetThreadLink(ctx, link.ID); err == nil {
+				link = fresh
+			}
 			response.Links = append(response.Links, s.linkView(ctx, link))
 		}
 	}
@@ -739,6 +754,253 @@ func (s *Service) coordSend(
 	return response
 }
 
+func (s *Service) coordReport(
+	ctx context.Context, capsule domain.Capsule, request coordproto.Request,
+) coordproto.Response {
+	grant, link, thread, failure := s.childCoordinationAuthority(ctx, capsule)
+	if failure != nil {
+		s.auditRejection(ctx, grant, request.Type, *failure)
+		return *failure
+	}
+	if record, existing := s.existingCoordinationRequest(ctx, capsule, request); existing != nil {
+		return *existing
+	} else if record.ID != "" {
+		return s.reportResponse(ctx, record.LinkID)
+	}
+	status := domain.ReportStatus(request.Status)
+	payload := persistedThreadBlock{Content: request.Summary}
+	result, err := s.appendAndSendHook(ctx, thread.ID, 0, request.Key, "coord-report",
+		domain.ThreadRoleAssistant, domain.ThreadMessageResponse, domain.ThreadBlockText,
+		payload, nil,
+		func(tx ports.Transaction, saved domain.Thread, messageID domain.ThreadMessageID, now time.Time) error {
+			current, err := tx.GetThreadLink(ctx, link.ID)
+			if err != nil {
+				return err
+			}
+			if current.State != domain.LinkActive || !current.ArchivedAt.IsZero() {
+				return errCoordinationRejected
+			}
+			previous := current.ResourceVersion
+			current.ReportSeq++
+			current.ReportMessageSeq = int(saved.MessageCount)
+			current.LastReportStatus, current.LastReportReason, current.LastReportAt = status, "", now
+			current.UpdatedAt = now
+			current.ResourceVersion++
+			if err := tx.UpdateThreadLink(ctx, current, previous); err != nil {
+				return err
+			}
+			if err := tx.InsertCoordinationRequest(ctx, domain.CoordinationRequest{
+				ID: domain.CoordinationRequestID(s.ids.NewID()), GrantID: grant.ID, CapsuleID: capsule.ID,
+				Key: request.Key, CanonicalDigest: request.Digest(), Kind: domain.CoordinationReport,
+				LinkID: link.ID, ResultMessageID: messageID, State: domain.RequestCompleted,
+				CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
+			}); err != nil {
+				return err
+			}
+			return s.appendEvent(ctx, tx, "thread_link", string(link.ID), "thread_link.reported",
+				current.ResourceVersion, []byte(`{"status":"`+string(status)+`"}`))
+		})
+	if errors.Is(err, errCoordinationRejected) {
+		return coordproto.Fail(coordproto.CodeLinkClosed, "this subagent is no longer reporting")
+	}
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrNotFound):
+			return coordproto.Fail(coordproto.CodeUnavailable, "subagent session is still starting; retry later")
+		case errors.Is(err, domain.ErrIllegalTransition):
+			return coordproto.Fail(coordproto.CodeUnavailable, "subagent session is not accepting a report")
+		case errors.Is(err, domain.ErrConflict):
+			return coordproto.Fail(coordproto.CodePending, "request is being processed; retry with the same key")
+		default:
+			return coordproto.Fail(coordproto.CodeInternal, "report failed")
+		}
+	}
+	_ = result
+	s.refreshChildGit(ctx, link)
+	s.invalidateCoordinationPush(link.ParentThreadID)
+	return s.reportResponse(ctx, link.ID)
+}
+
+func (s *Service) reportResponse(ctx context.Context, id domain.ThreadLinkID) coordproto.Response {
+	link, err := s.GetThreadLink(ctx, id)
+	if err != nil {
+		return coordproto.Fail(coordproto.CodeInternal, "report lookup failed")
+	}
+	response := coordproto.OK()
+	view := s.linkView(ctx, link)
+	response.Link = &view
+	if link.ReportSeq > 0 {
+		response.Reports = []coordproto.Report{s.report(ctx, link)}
+	}
+	return response
+}
+
+func (s *Service) childCoordinationAuthority(
+	ctx context.Context, capsule domain.Capsule,
+) (domain.CoordinationGrant, domain.ThreadLink, domain.Thread, *coordproto.Response) {
+	fail := func(code, message string) (domain.CoordinationGrant, domain.ThreadLink, domain.Thread, *coordproto.Response) {
+		response := coordproto.Fail(code, message)
+		return domain.CoordinationGrant{}, domain.ThreadLink{}, domain.Thread{}, &response
+	}
+	if capsule.LinkID == "" {
+		return fail(coordproto.CodeInvalidRequest, "only a subagent Thread can report")
+	}
+	var grant domain.CoordinationGrant
+	var link domain.ThreadLink
+	var thread domain.Thread
+	err := s.store.View(ctx, func(reader ports.Reader) error {
+		var err error
+		link, err = reader.GetThreadLink(ctx, capsule.LinkID)
+		if err != nil {
+			return err
+		}
+		if link.ChildCapsuleID != capsule.ID {
+			return domain.ErrNotFound
+		}
+		if grant, err = reader.GetCoordinationGrant(ctx, link.GrantID); err != nil {
+			return err
+		}
+		thread, err = reader.GetThread(ctx, link.ChildThreadID)
+		return err
+	})
+	if err != nil {
+		return fail(coordproto.CodeCoordinationDisabled, "this Thread has no coordination grant")
+	}
+	if link.State != domain.LinkActive || !link.ArchivedAt.IsZero() {
+		return fail(coordproto.CodeLinkClosed, "this subagent is no longer reporting")
+	}
+	if !grant.Usable(s.clock.Now()) {
+		return fail(coordproto.CodeGrantInactive, "coordination grant is not active")
+	}
+	if thread.State != domain.ThreadActive || thread.CapsuleID != capsule.ID {
+		return fail(coordproto.CodeGrantInactive, "subagent Thread is not active")
+	}
+	if capsule.State != domain.CapsuleReady || capsule.DesiredState != domain.IntentReady || capsule.Maintenance != "" {
+		return fail(coordproto.CodeUnavailable, "subagent Capsule is not Ready")
+	}
+	return grant, link, thread, nil
+}
+
+func (s *Service) coordPatch(
+	ctx context.Context, parent domain.Thread, request coordproto.Request,
+) coordproto.Response {
+	link, ok := s.ownedLink(ctx, parent.ID, request.Link)
+	if !ok {
+		return coordproto.Fail(coordproto.CodeNotFound, "no such link")
+	}
+	if s.runtime == nil {
+		return coordproto.Fail(coordproto.CodeUnavailable, "git patch is not available")
+	}
+	capsule, err := s.GetCapsule(ctx, link.ChildCapsuleID)
+	if err != nil {
+		return coordproto.Fail(coordproto.CodeNotFound, "no such subagent")
+	}
+	if capsule.State != domain.CapsuleReady || capsule.DesiredState != domain.IntentReady || capsule.Maintenance != "" {
+		return coordproto.Fail(coordproto.CodeUnavailable, "subagent Capsule is not Ready")
+	}
+	maxBytes := request.MaxBytes
+	if maxBytes == 0 {
+		maxBytes = coordproto.DefaultPatchBytes
+	}
+	result, err := s.runtime.GitPatch(ctx, capsule.ProviderResourceID, ports.GitPatchRequest{
+		BaseCommit: link.BaseCommit, MaxBytes: maxBytes, IncludePatch: true,
+	})
+	if err != nil {
+		if errors.Is(err, domain.ErrUnsupported) {
+			return coordproto.Fail(coordproto.CodeUnavailable, "git patch is not available")
+		}
+		return coordproto.Fail(coordproto.CodeUnavailable, "git patch failed")
+	}
+	s.storeGitMetadata(ctx, link, result)
+	if fresh, err := s.GetThreadLink(ctx, link.ID); err == nil {
+		link = fresh
+	}
+	response := coordproto.OK()
+	view := s.linkView(ctx, link)
+	response.Link = &view
+	response.Patch = result.Patch
+	response.Truncated = result.Truncated
+	response.Head = result.Head
+	response.BaseCommit = link.BaseCommit
+	if response.BaseCommit == "" {
+		response.BaseCommit = result.BaseCommit
+	}
+	response.FilesChanged = result.FilesChanged
+	response.Insertions = result.Insertions
+	response.Deletions = result.Deletions
+	s.invalidateCoordinationPush(parent.ID)
+	return response
+}
+
+func (s *Service) refreshChildGit(ctx context.Context, link domain.ThreadLink) {
+	if s.runtime == nil || link.State != domain.LinkActive {
+		return
+	}
+	capsule, err := s.GetCapsule(ctx, link.ChildCapsuleID)
+	if err != nil || capsule.State != domain.CapsuleReady || capsule.ProviderResourceID == "" {
+		return
+	}
+	result, err := s.runtime.GitPatch(ctx, capsule.ProviderResourceID, ports.GitPatchRequest{
+		BaseCommit: link.BaseCommit,
+	})
+	if err != nil {
+		return
+	}
+	s.storeGitMetadata(ctx, link, result)
+}
+
+func (s *Service) storeGitMetadata(ctx context.Context, link domain.ThreadLink, result ports.GitPatchResult) {
+	head := strings.ToLower(strings.TrimSpace(result.Head))
+	base := strings.ToLower(strings.TrimSpace(result.BaseCommit))
+	if link.BaseCommit == "" {
+		if base == "" {
+			base = head
+		}
+	} else {
+		base = link.BaseCommit
+	}
+	if (head != "" && !validStoredGitSHA(head)) || (base != "" && !validStoredGitSHA(base)) {
+		return
+	}
+	err := s.store.Transact(ctx, func(tx ports.Transaction) error {
+		current, err := tx.GetThreadLink(ctx, link.ID)
+		if err != nil {
+			return err
+		}
+		previous := current.ResourceVersion
+		if current.BaseCommit == "" {
+			current.BaseCommit = base
+		}
+		current.Head = head
+		current.FilesChanged = max(result.FilesChanged, 0)
+		current.Insertions = max(result.Insertions, 0)
+		current.Deletions = max(result.Deletions, 0)
+		if current.BaseCommit == link.BaseCommit && current.Head == link.Head &&
+			current.FilesChanged == link.FilesChanged && current.Insertions == link.Insertions &&
+			current.Deletions == link.Deletions {
+			return nil
+		}
+		current.UpdatedAt = s.clock.Now().UTC()
+		current.ResourceVersion++
+		return tx.UpdateThreadLink(ctx, current, previous)
+	})
+	if err == nil {
+		s.invalidateCoordinationPush(link.ParentThreadID)
+	}
+}
+
+func validStoredGitSHA(value string) bool {
+	if len(value) < 7 || len(value) > 64 {
+		return false
+	}
+	for _, r := range value {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
 func (s *Service) coordCancel(
 	ctx context.Context,
 	grant domain.CoordinationGrant,
@@ -835,6 +1097,8 @@ func (s *Service) linkView(ctx context.Context, link domain.ThreadLink) coordpro
 		ID: string(link.ID), Name: link.Name, Harness: link.Harness, State: string(link.State),
 		CloseReason: string(link.CloseReason), ReportSeq: link.ReportSeq,
 		LastReportStatus: string(link.LastReportStatus), MessagesForwarded: link.MessagesForwarded,
+		Head: link.Head, BaseCommit: link.BaseCommit, FilesChanged: link.FilesChanged,
+		Insertions: link.Insertions, Deletions: link.Deletions,
 	}
 	view.Phase = s.linkPhase(ctx, link)
 	return view
@@ -944,9 +1208,29 @@ func coordinationSelf(grant domain.CoordinationGrant) *coordproto.Self {
 	}
 }
 
-// configureLeadMailbox enables the mailbox before a lead's harness starts so
-// its coordination tools are listed. Failure leaves the mailbox disabled.
+func coordinationSelfSub(grant domain.CoordinationGrant) *coordproto.Self {
+	self := coordinationSelf(grant)
+	self.Role = "sub"
+	self.Depth = 1
+	return self
+}
+
+func coordinationConfigFor(grant domain.CoordinationGrant, role domain.CapsuleRole) coordproto.Config {
+	self := coordinationSelf(grant)
+	if role == domain.CapsuleSub {
+		self = coordinationSelfSub(grant)
+	}
+	return coordproto.Config{Enabled: true, Self: self}
+}
+
+// configureCoordinationMailbox enables the mailbox before a harness starts so
+// coordination tools are listed. Leads get spawn/wait/patch; subagents get
+// report and whoami. Failure leaves the mailbox disabled.
 func (s *Service) configureLeadMailbox(ctx context.Context, capsuleID domain.CapsuleID, threadID domain.ThreadID) {
+	s.configureCoordinationMailbox(ctx, capsuleID, threadID)
+}
+
+func (s *Service) configureCoordinationMailbox(ctx context.Context, capsuleID domain.CapsuleID, threadID domain.ThreadID) {
 	if s.coordination == nil {
 		return
 	}
@@ -954,17 +1238,34 @@ func (s *Service) configureLeadMailbox(ctx context.Context, capsuleID domain.Cap
 	var capsule domain.Capsule
 	if err := s.store.View(ctx, func(reader ports.Reader) error {
 		var err error
-		grant, err = reader.GetCoordinationGrantByRootThread(ctx, threadID)
+		capsule, err = reader.GetCapsule(ctx, capsuleID)
 		if err != nil {
 			return err
 		}
-		capsule, err = reader.GetCapsule(ctx, capsuleID)
+		grant, err = reader.GetCoordinationGrantByRootThread(ctx, threadID)
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, domain.ErrNotFound) || capsule.LinkID == "" {
+			return err
+		}
+		link, err := reader.GetThreadLink(ctx, capsule.LinkID)
+		if err != nil {
+			return err
+		}
+		if link.ChildCapsuleID != capsule.ID {
+			return domain.ErrNotFound
+		}
+		grant, err = reader.GetCoordinationGrant(ctx, link.GrantID)
 		return err
 	}); err != nil || grant.State != domain.GrantActive {
 		return
 	}
-	_ = s.coordination.ConfigureCoordination(ctx, capsule.ProviderResourceID,
-		coordproto.Config{Enabled: true, Self: coordinationSelf(grant)})
+	role := domain.CapsuleMain
+	if grant.RootCapsuleID != capsule.ID {
+		role = domain.CapsuleSub
+	}
+	_ = s.coordination.ConfigureCoordination(ctx, capsule.ProviderResourceID, coordinationConfigFor(grant, role))
 }
 
 // lastAssistantMessage returns the sequence of the newest assistant response

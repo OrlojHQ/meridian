@@ -3075,10 +3075,8 @@ button.tool-line:hover {
 }
 
 .subagent-list li {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  grid-auto-columns: auto;
-  grid-auto-flow: column;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.6rem;
   font-size: 0.78rem;

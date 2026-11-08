@@ -67,11 +67,22 @@ func (s *Service) CoordinationTick(ctx context.Context) {
 	}); err != nil {
 		return
 	}
-	wanted := make(map[domain.CoordinationGrantID]domain.CapsuleID, len(grants))
+	wanted := make(map[domain.CapsuleID]domain.CoordinationGrantID)
 	for _, grant := range grants {
 		grant = s.enforceGrantLifecycle(ctx, grant)
 		if mailboxOpen(grant) {
-			wanted[grant.ID] = grant.RootCapsuleID
+			wanted[grant.RootCapsuleID] = grant.ID
+			var links []domain.ThreadLink
+			_ = s.store.View(ctx, func(reader ports.Reader) error {
+				var err error
+				links, err = reader.ListThreadLinksByGrant(ctx, grant.ID)
+				return err
+			})
+			for _, link := range links {
+				if link.State == domain.LinkActive && link.ArchivedAt.IsZero() {
+					wanted[link.ChildCapsuleID] = grant.ID
+				}
+			}
 		}
 		s.scanLinkReports(ctx, grant)
 		s.sweepClosedChildren(ctx, grant)
@@ -158,14 +169,30 @@ func (s *Service) afterGrantEnded(ctx context.Context, grant domain.Coordination
 	if mailboxOpen(grant) {
 		return
 	}
-	s.stopCoordinationPoller(grant.ID)
-	var capsule domain.Capsule
-	if err := s.store.View(ctx, func(reader ports.Reader) error {
-		var err error
-		capsule, err = reader.GetCapsule(ctx, grant.RootCapsuleID)
-		return err
-	}); err == nil && capsule.State == domain.CapsuleReady {
-		_ = s.coordination.ConfigureCoordination(ctx, capsule.ProviderResourceID, coordproto.Config{})
+	s.stopCoordinationPoller(grant.RootCapsuleID)
+	var capsules []domain.Capsule
+	_ = s.store.View(ctx, func(reader ports.Reader) error {
+		root, err := reader.GetCapsule(ctx, grant.RootCapsuleID)
+		if err == nil {
+			capsules = append(capsules, root)
+		}
+		links, err := reader.ListThreadLinksByGrant(ctx, grant.ID)
+		if err != nil {
+			return err
+		}
+		for _, link := range links {
+			s.stopCoordinationPoller(link.ChildCapsuleID)
+			child, err := reader.GetCapsule(ctx, link.ChildCapsuleID)
+			if err == nil {
+				capsules = append(capsules, child)
+			}
+		}
+		return nil
+	})
+	for _, capsule := range capsules {
+		if capsule.State == domain.CapsuleReady && capsule.ProviderResourceID != "" {
+			_ = s.coordination.ConfigureCoordination(ctx, capsule.ProviderResourceID, coordproto.Config{})
+		}
 	}
 	s.sweepClosedChildren(ctx, grant)
 }
@@ -186,6 +213,10 @@ func (s *Service) scanLinkReports(ctx context.Context, grant domain.Coordination
 		// subagent, so it reports nothing until it resumes.
 		if link.State != domain.LinkActive || !link.ArchivedAt.IsZero() {
 			continue
+		}
+		s.refreshChildGit(ctx, link)
+		if fresh, err := s.GetThreadLink(ctx, link.ID); err == nil {
+			link = fresh
 		}
 		s.scanLinkReport(ctx, link)
 	}
@@ -223,11 +254,18 @@ func (s *Service) scanLinkReport(ctx context.Context, link domain.ThreadLink) {
 		live = err == nil && !run.State.Terminal() && run.State != domain.RunCancelling
 	}
 	if !live {
-		status, reason := domain.ReportFailed, domain.ReportSessionEnded
 		if lastAssistant > link.ReportMessageSeq {
-			status, reason = domain.ReportTurnEnded, ""
+			s.recordLinkReport(ctx, link, true, domain.LinkEnded, domain.ReportTurnEnded, "", lastAssistant)
+			return
 		}
-		s.recordLinkReport(ctx, link, true, domain.LinkEnded, status, reason, lastAssistant)
+		switch link.LastReportStatus {
+		case domain.ReportDone, domain.ReportBlocked, domain.ReportFailed:
+			// An explicit report, or an earlier recorded failure, already
+			// settled this link. Ending the session is not a later assistant
+			// message, so it must not replace that status.
+			return
+		}
+		s.recordLinkReport(ctx, link, true, domain.LinkEnded, domain.ReportFailed, domain.ReportSessionEnded, lastAssistant)
 		return
 	}
 	attention, err := s.ThreadAttention(ctx, thread)
@@ -625,11 +663,11 @@ func (s *Service) applyConsumedReports(ctx context.Context, capsuleID domain.Cap
 	})
 }
 
-func (s *Service) reconcileCoordinationPollers(ctx context.Context, wanted map[domain.CoordinationGrantID]domain.CapsuleID) {
+func (s *Service) reconcileCoordinationPollers(ctx context.Context, wanted map[domain.CapsuleID]domain.CoordinationGrantID) {
 	s.coordMu.Lock()
 	defer s.coordMu.Unlock()
 	if s.coordPollers == nil {
-		s.coordPollers = make(map[domain.CoordinationGrantID]context.CancelFunc)
+		s.coordPollers = make(map[domain.CapsuleID]context.CancelFunc)
 	}
 	for id, cancel := range s.coordPollers {
 		if _, ok := wanted[id]; !ok {
@@ -637,17 +675,17 @@ func (s *Service) reconcileCoordinationPollers(ctx context.Context, wanted map[d
 			delete(s.coordPollers, id)
 		}
 	}
-	for id, capsuleID := range wanted {
-		if _, ok := s.coordPollers[id]; ok {
+	for capsuleID, grantID := range wanted {
+		if _, ok := s.coordPollers[capsuleID]; ok {
 			continue
 		}
 		pollCtx, cancel := context.WithCancel(ctx)
-		s.coordPollers[id] = cancel
-		go s.runCoordinationPoller(pollCtx, id, capsuleID)
+		s.coordPollers[capsuleID] = cancel
+		go s.runCoordinationPoller(pollCtx, grantID, capsuleID)
 	}
 }
 
-func (s *Service) stopCoordinationPoller(id domain.CoordinationGrantID) {
+func (s *Service) stopCoordinationPoller(id domain.CapsuleID) {
 	s.coordMu.Lock()
 	defer s.coordMu.Unlock()
 	if cancel, ok := s.coordPollers[id]; ok {
@@ -665,7 +703,7 @@ func (s *Service) stopAllCoordinationPollers() {
 	}
 }
 
-// runCoordinationPoller pulls one lead's mailbox. It polls only while the
+// runCoordinationPoller pulls one Capsule mailbox. It polls only while the
 // Capsule is Ready and never records Capsule activity.
 func (s *Service) runCoordinationPoller(ctx context.Context, grantID domain.CoordinationGrantID, capsuleID domain.CapsuleID) {
 	var epoch string
@@ -720,16 +758,22 @@ func (s *Service) runCoordinationPoller(ctx context.Context, grantID domain.Coor
 		backoff = time.Second
 		if poll.Epoch != epoch {
 			epoch, after, consumedGeneration = poll.Epoch, 0, 0
+			role := domain.CapsuleMain
+			if grant.RootCapsuleID != capsule.ID {
+				role = domain.CapsuleSub
+			}
 			if err := s.coordination.ConfigureCoordination(ctx, capsule.ProviderResourceID,
-				coordproto.Config{Enabled: true, Self: coordinationSelf(grant)}); err != nil {
+				coordinationConfigFor(grant, role)); err != nil {
 				epoch = ""
 				continue
 			}
-			s.invalidateCoordinationPush(grant.RootThreadID)
-			s.pushCoordinationState(ctx, grant)
+			if grant.RootCapsuleID == capsule.ID {
+				s.invalidateCoordinationPush(grant.RootThreadID)
+				s.pushCoordinationState(ctx, grant)
+			}
 			continue
 		}
-		if poll.ConsumedGeneration != consumedGeneration {
+		if grant.RootCapsuleID == capsule.ID && poll.ConsumedGeneration != consumedGeneration {
 			s.applyConsumedReports(ctx, capsule.ID, poll.Consumed)
 			consumedGeneration = poll.ConsumedGeneration
 		}
@@ -748,6 +792,10 @@ func (s *Service) runCoordinationPoller(ctx context.Context, grantID domain.Coor
 			continue
 		}
 		after = highest
-		s.pushCoordinationState(ctx, grant)
+		if grant.RootCapsuleID == capsule.ID {
+			s.pushCoordinationState(ctx, grant)
+		} else {
+			s.invalidateCoordinationPush(grant.RootThreadID)
+		}
 	}
 }

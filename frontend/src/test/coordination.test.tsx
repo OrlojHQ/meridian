@@ -102,8 +102,12 @@ const link = (name: string, phase: ThreadLink["phase"], reportSeq: number): Thre
   phase,
   reportSeq,
   reportDeliveredSeq: 0,
+  lastReportStatus: reportSeq > 0 ? "done" : undefined,
   messagesForwarded: 0,
   operatorMessages: 0,
+  filesChanged: reportSeq > 0 ? 2 : 0,
+  insertions: reportSeq > 0 ? 4 : 0,
+  deletions: reportSeq > 0 ? 1 : 0,
   createdAt: "2026-11-01T00:00:00Z",
   updatedAt: "2026-11-01T00:00:00Z",
   resourceVersion: 1,
@@ -185,6 +189,8 @@ describe("Subagents panel", () => {
     expect(first).toHaveAttribute("href", "/ui/capsules/capsule-subagent-1?session=thread-subagent-1");
     expect(within(panel).getByText("Reported")).toBeInTheDocument();
     expect(within(panel).getByText("Needs you")).toBeInTheDocument();
+    expect(within(panel).getByText("done")).toBeInTheDocument();
+    expect(within(panel).getByText("+4 −1 · 2 files")).toBeInTheDocument();
     expect(
       within(panel).getByText("2 of 4 started · up to 4 at a time", { exact: false }),
     ).toBeInTheDocument();

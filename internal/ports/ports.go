@@ -267,6 +267,24 @@ type GitResult struct {
 	Truncated bool
 }
 
+// GitPatchRequest asks capsuled for a bounded format-patch plus working-tree
+// diff, or for content-free git metadata when IncludePatch is false.
+type GitPatchRequest struct {
+	BaseCommit   string
+	MaxBytes     int
+	IncludePatch bool
+}
+
+type GitPatchResult struct {
+	Patch        string
+	Truncated    bool
+	Head         string
+	BaseCommit   string
+	FilesChanged int
+	Insertions   int
+	Deletions    int
+}
+
 type WorkspaceFileEntry struct {
 	Name       string
 	Type       string
@@ -354,6 +372,7 @@ type CapsuleRuntime interface {
 	AttachRun(context.Context, string, domain.RunID, uint64) (RuntimeAttachment, error)
 	GitStatus(context.Context, string) (GitResult, error)
 	GitDiff(context.Context, string) (GitResult, error)
+	GitPatch(context.Context, string, GitPatchRequest) (GitPatchResult, error)
 }
 
 // HarnessProfileRuntime exposes validated Capsule-local profile metadata

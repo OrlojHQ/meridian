@@ -106,6 +106,9 @@ func (*runtime) GitStatus(context.Context, string) (ports.GitResult, error) {
 func (*runtime) GitDiff(context.Context, string) (ports.GitResult, error) {
 	return ports.GitResult{Content: "diff --git"}, nil
 }
+func (*runtime) GitPatch(context.Context, string, ports.GitPatchRequest) (ports.GitPatchResult, error) {
+	return ports.GitPatchResult{}, domain.ErrUnsupported
+}
 func (r *runtime) StartStructured(
 	_ context.Context, request ports.RuntimeStructuredStartRequest,
 ) (ports.RuntimeRun, error) {
