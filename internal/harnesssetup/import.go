@@ -3,6 +3,7 @@ package harnesssetup
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/goccy/go-yaml"
 	"github.com/pelletier/go-toml/v2"
 	"github.com/tidwall/jsonc"
 	"io"
@@ -63,6 +64,12 @@ func Discover(home, harness string, env func(string) string) (Preview, error) {
 				xdg = filepath.Join(home, ".config")
 			}
 			rootName = filepath.Join(xdg, "opencode")
+		}
+	case "dsh":
+		rootName = env("DSH_HOME")
+		target = ".dsh"
+		if rootName == "" {
+			rootName = filepath.Join(home, target)
 		}
 	}
 	rootName, err := filepath.Abs(rootName)
@@ -186,8 +193,8 @@ func Discover(home, harness string, env func(string) string) (Preview, error) {
 			}
 		}
 	}
-	if err == nil && harness == "codex" {
-		if sharedErr := collectSharedSkills(home, &result); sharedErr != nil {
+	if err == nil && (harness == "codex" || harness == "dsh") {
+		if sharedErr := collectSharedSkills(home, harness, &result); sharedErr != nil {
 			return result, sharedErr
 		}
 	}
@@ -227,18 +234,37 @@ func IsConfig(p string) bool {
 	case ".claude.json", ".codex/config.toml", ".claude/settings.json", ".config/opencode/opencode.json", ".config/opencode/opencode.jsonc", ".pi/agent/settings.json", ".pi/agent/models.json":
 		return true
 	}
+	if strings.HasPrefix(p, ".dsh/") {
+		switch filepath.Base(p) {
+		case "settings.yaml", "settings.yml", "cordis.patch.yml", "cordis.yml":
+			return true
+		}
+	}
 	return false
 }
-func parseConfig(p, content string) (map[string]any, error) {
-	var value map[string]any
-	if strings.HasSuffix(p, ".toml") {
+func yamlConfig(p string) bool {
+	return strings.HasSuffix(p, ".yml") || strings.HasSuffix(p, ".yaml")
+}
+func parseConfig(p, content string) (any, error) {
+	if yamlConfig(p) && strings.Contains(content, "!!js") {
+		return nil, fmt.Errorf("executable YAML tags")
+	}
+	switch {
+	case strings.HasSuffix(p, ".toml"):
+		value := map[string]any{}
 		err := toml.Unmarshal([]byte(content), &value)
 		return value, err
+	case yamlConfig(p):
+		var value any
+		err := yaml.Unmarshal([]byte(content), &value)
+		return value, err
+	default:
+		var value any
+		err := json.Unmarshal(jsonc.ToJSON([]byte(content)), &value)
+		return value, err
 	}
-	err := json.Unmarshal(jsonc.ToJSON([]byte(content)), &value)
-	return value, err
 }
-func collectSharedSkills(home string, result *Preview) error {
+func collectSharedSkills(home, harness string, result *Preview) error {
 	root, err := os.OpenRoot(filepath.Join(home, ".agents", "skills"))
 	if os.IsNotExist(err) {
 		return nil
@@ -265,12 +291,12 @@ func collectSharedSkills(home string, result *Preview) error {
 			return nil
 		}
 		if d.IsDir() {
-			if !AllowedPath("codex", destination+"/entry") {
+			if !AllowedPath(harness, destination+"/entry") {
 				return fs.SkipDir
 			}
 			return nil
 		}
-		if !d.Type().IsRegular() || !AllowedPath("codex", destination) {
+		if !d.Type().IsRegular() || !AllowedPath(harness, destination) {
 			result.Issues = append(result.Issues, Issue{destination, "Unsupported skill file excluded"})
 			return nil
 		}
@@ -287,7 +313,7 @@ func collectSharedSkills(home string, result *Preview) error {
 			return closeErr
 		}
 		item := File{Path: destination, Content: string(raw)}
-		if err := (Bundle{Harness: "codex", Files: []File{item}}).Validate(); err != nil {
+		if err := (Bundle{Harness: harness, Files: []File{item}}).Validate(); err != nil {
 			result.Issues = append(result.Issues, Issue{destination, "Oversized or sensitive skill file excluded"})
 			return nil
 		}

@@ -6,7 +6,8 @@ individual configuration files, select **Review import**, inspect the portable
 files and exclusions, then select **Save setup**. The launcher selects the saved setup and
 returns you to Capsule creation. No CLI command is required.
 
-For OpenCode, select `~/.config/opencode`. On macOS, use Command-Shift-G in the
+For OpenCode, select `~/.config/opencode`. For DeepSeek Harness, select `~/.dsh`
+(or `$DSH_HOME` if you override it). On macOS, use Command-Shift-G in the
 picker to enter a hidden folder path. Use the location field or show hidden files
 on other systems. Folder selection preserves nested skills and plugins; choosing
 individual files is intended for top-level configuration files. More files can be
@@ -31,7 +32,7 @@ the import. Native account sign-in is separate.
 ## CLI import
 
 Run `meridian harness import` on the computer containing your configuration.
-Choose all detected harnesses, or specify `claude`, `codex`, `opencode`, or `pi`.
+Choose all detected harnesses, or specify `claude`, `codex`, `dsh`, `opencode`, or `pi`.
 Meridian shows included files and excluded settings before asking to save.
 It never prints imported file contents or imports native login caches.
 

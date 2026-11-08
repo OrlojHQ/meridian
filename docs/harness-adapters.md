@@ -152,7 +152,8 @@ pass a raw provider key into the Capsule instead.
 
 Besides its DeepSeek adapters, `dsh` mounts `@deepseek-ai/dsh-llm-pi-ai` in
 every shipped profile (`dsh-base`), with no routes until settings declare
-them. For a connection, `capsuled` sets `DSH_HOME` to `.dsh` in the
+them. Personal setups import from `~/.dsh` (`$DSH_HOME`) into that same
+tree. For a connection, `capsuled` sets `DSH_HOME` to `.dsh` in the
 Meridian-owned setup home, puts the gateway lease in
 `MERIDIAN_PROVIDER_TOKEN`, and rewrites `$DSH_HOME/cordis.patch.yml` on every
 launch. The patch is JSON, which `dsh`'s YAML loader reads without evaluating

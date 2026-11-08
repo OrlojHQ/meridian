@@ -1007,7 +1007,7 @@ export type HarnessSetupFile = {
 };
 
 export type HarnessSetupUpload = {
-    harness: 'claude' | 'codex' | 'opencode' | 'pi';
+    harness: 'claude' | 'codex' | 'dsh' | 'opencode' | 'pi';
     files: Array<HarnessSetupFile>;
 };
 
@@ -1032,7 +1032,7 @@ export type HarnessSetupBundle = {
      * Exact npm package versions installed inside the Capsule before harness startup.
      */
     dependencies?: Array<string>;
-    harness: 'claude' | 'codex' | 'opencode' | 'pi';
+    harness: 'claude' | 'codex' | 'dsh' | 'opencode' | 'pi';
     files: Array<HarnessSetupFile>;
 };
 

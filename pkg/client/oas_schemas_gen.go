@@ -4542,6 +4542,7 @@ type HarnessSetupBundleHarness string
 const (
 	HarnessSetupBundleHarnessClaude   HarnessSetupBundleHarness = "claude"
 	HarnessSetupBundleHarnessCodex    HarnessSetupBundleHarness = "codex"
+	HarnessSetupBundleHarnessDsh      HarnessSetupBundleHarness = "dsh"
 	HarnessSetupBundleHarnessOpencode HarnessSetupBundleHarness = "opencode"
 	HarnessSetupBundleHarnessPi       HarnessSetupBundleHarness = "pi"
 )
@@ -4551,6 +4552,7 @@ func (HarnessSetupBundleHarness) AllValues() []HarnessSetupBundleHarness {
 	return []HarnessSetupBundleHarness{
 		HarnessSetupBundleHarnessClaude,
 		HarnessSetupBundleHarnessCodex,
+		HarnessSetupBundleHarnessDsh,
 		HarnessSetupBundleHarnessOpencode,
 		HarnessSetupBundleHarnessPi,
 	}
@@ -4562,6 +4564,8 @@ func (s HarnessSetupBundleHarness) MarshalText() ([]byte, error) {
 	case HarnessSetupBundleHarnessClaude:
 		return []byte(s), nil
 	case HarnessSetupBundleHarnessCodex:
+		return []byte(s), nil
+	case HarnessSetupBundleHarnessDsh:
 		return []byte(s), nil
 	case HarnessSetupBundleHarnessOpencode:
 		return []byte(s), nil
@@ -4580,6 +4584,9 @@ func (s *HarnessSetupBundleHarness) UnmarshalText(data []byte) error {
 		return nil
 	case HarnessSetupBundleHarnessCodex:
 		*s = HarnessSetupBundleHarnessCodex
+		return nil
+	case HarnessSetupBundleHarnessDsh:
+		*s = HarnessSetupBundleHarnessDsh
 		return nil
 	case HarnessSetupBundleHarnessOpencode:
 		*s = HarnessSetupBundleHarnessOpencode
@@ -4874,6 +4881,7 @@ type HarnessSetupUploadHarness string
 const (
 	HarnessSetupUploadHarnessClaude   HarnessSetupUploadHarness = "claude"
 	HarnessSetupUploadHarnessCodex    HarnessSetupUploadHarness = "codex"
+	HarnessSetupUploadHarnessDsh      HarnessSetupUploadHarness = "dsh"
 	HarnessSetupUploadHarnessOpencode HarnessSetupUploadHarness = "opencode"
 	HarnessSetupUploadHarnessPi       HarnessSetupUploadHarness = "pi"
 )
@@ -4883,6 +4891,7 @@ func (HarnessSetupUploadHarness) AllValues() []HarnessSetupUploadHarness {
 	return []HarnessSetupUploadHarness{
 		HarnessSetupUploadHarnessClaude,
 		HarnessSetupUploadHarnessCodex,
+		HarnessSetupUploadHarnessDsh,
 		HarnessSetupUploadHarnessOpencode,
 		HarnessSetupUploadHarnessPi,
 	}
@@ -4894,6 +4903,8 @@ func (s HarnessSetupUploadHarness) MarshalText() ([]byte, error) {
 	case HarnessSetupUploadHarnessClaude:
 		return []byte(s), nil
 	case HarnessSetupUploadHarnessCodex:
+		return []byte(s), nil
+	case HarnessSetupUploadHarnessDsh:
 		return []byte(s), nil
 	case HarnessSetupUploadHarnessOpencode:
 		return []byte(s), nil
@@ -4912,6 +4923,9 @@ func (s *HarnessSetupUploadHarness) UnmarshalText(data []byte) error {
 		return nil
 	case HarnessSetupUploadHarnessCodex:
 		*s = HarnessSetupUploadHarnessCodex
+		return nil
+	case HarnessSetupUploadHarnessDsh:
+		*s = HarnessSetupUploadHarnessDsh
 		return nil
 	case HarnessSetupUploadHarnessOpencode:
 		*s = HarnessSetupUploadHarnessOpencode

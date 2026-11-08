@@ -31,8 +31,9 @@ func (s *Server) prepareProviderConnection(ctx context.Context, connection *harn
 	switch {
 	case setup != nil:
 		revision = setup.Revision
-	case !harnesssetup.Supported(harness):
-		// Harnesses without personal setups get an empty Meridian-owned home.
+	case !harnesssetup.Supported(harness) || harness == "dsh":
+		// dsh has personal setups but no dummy native config file; without a
+		// saved setup it still gets an empty Meridian-owned home.
 		env, err = s.materializeSetupHome(ctx, revision, nil, nil)
 	default:
 		paths := map[string]string{"codex": ".codex/AGENTS.md", "claude": ".claude/CLAUDE.md", "opencode": ".config/opencode/AGENTS.md", "pi": ".pi/agent/AGENTS.md"}

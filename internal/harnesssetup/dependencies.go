@@ -56,8 +56,9 @@ func DependenciesForFiles(files []File) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
+		object, _ := config.(map[string]any)
 		for _, key := range []string{"mcp", "mcp_servers", "mcpServers"} {
-			servers, _ := config[key].(map[string]any)
+			servers, _ := object[key].(map[string]any)
 			for _, server := range servers {
 				pkg, found, err := npxPackage(server)
 				if err != nil {
@@ -84,8 +85,12 @@ func OfflineNpx(p, content string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	object, ok := value.(map[string]any)
+	if !ok {
+		return content, nil
+	}
 	for _, key := range []string{"mcp", "mcp_servers", "mcpServers"} {
-		servers, _ := value[key].(map[string]any)
+		servers, _ := object[key].(map[string]any)
 		for _, server := range servers {
 			_, found, err := npxPackage(server)
 			if err != nil {
@@ -104,5 +109,5 @@ func OfflineNpx(p, content string) (string, error) {
 			}
 		}
 	}
-	return encodeConfig(p, value)
+	return encodeConfig(p, object)
 }

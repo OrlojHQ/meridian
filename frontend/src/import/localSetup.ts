@@ -3,14 +3,18 @@ import type { HarnessSetupFile, HarnessSetupUpload } from "../api/generated/type
 export class LocalSetupError extends Error {}
 
 export type Harness = HarnessSetupUpload["harness"];
-export const harnessFolders: Record<Harness, string> = { opencode: "~/.config/opencode", codex: "~/.codex", claude: "~/.claude", pi: "~/.pi/agent" };
-const roots: Record<Harness, string> = { opencode: ".config/opencode", codex: ".codex", claude: ".claude", pi: ".pi/agent" };
+export const harnessFolders: Record<Harness, string> = { opencode: "~/.config/opencode", codex: "~/.codex", claude: "~/.claude", pi: "~/.pi/agent", dsh: "~/.dsh" };
+const roots: Record<Harness, string> = { opencode: ".config/opencode", codex: ".codex", claude: ".claude", pi: ".pi/agent", dsh: ".dsh" };
 const names: Record<Harness, string[]> = {
   opencode: ["opencode.json", "opencode.jsonc", "AGENTS.md", "agents/", "commands/", "skills/", "plugins/", "themes/", "agent/", "command/", "plugin/", "skill/"],
   codex: ["config.toml", "AGENTS.md", "AGENTS.override.md", "skills/", "prompts/", "agents/"],
   claude: ["settings.json", "CLAUDE.md", "skills/", "commands/", "agents/", "hooks/"],
   pi: ["settings.json", "models.json", "AGENTS.md", "skills/", "prompts/", "extensions/", "themes/"],
+  dsh: ["settings.yaml", "settings.yml", "cordis.patch.yml", "cordis.yml", "skills/", "profiles/"],
 };
+export function isImportableHarness(name: string): name is Harness {
+  return Object.hasOwn(harnessFolders, name);
+}
 export type Selection = { file: File; path: string };
 export type Exclusion = { path: string; reason: string };
 // This filter avoids reading known authentication/runtime files in the browser.
@@ -27,7 +31,7 @@ export function selectLocalFiles(harness: Harness, files: File[], prefix = "") {
     const allowed = special || names[harness].some(name => name.endsWith("/") ? relative.startsWith(name) : relative === name);
     const unsafe = !relative || relative.length > 1000 || /[\\\x00-\x1f\x7f]/.test(relative) || parts.some(part => {
       const name = part.toLowerCase();
-      return ["", ".", "..", "auth.json", ".credentials.json", "node_modules", ".git"].includes(name) || name.startsWith(".env") || name.endsWith(".pem") || name.endsWith(".key");
+      return ["", ".", "..", "auth.json", "node_modules", ".git"].includes(name) || name.startsWith(".credentials") || name.startsWith(".env") || name.endsWith(".pem") || name.endsWith(".key");
     });
     if (!allowed || unsafe) { excluded.push({ path: relative, reason: "Authentication, runtime state, or unsupported file; not uploaded" }); continue; }
     const path = special ? ".claude.json" : `${roots[harness]}/${relative}`;

@@ -6,7 +6,7 @@ import { LocalSetupError, directoryPicker, scanSetupDirectory, harnessFolders, r
 
 function importError(cause: unknown) {return cause instanceof LocalSetupError ? cause.message : normalizeAPIError(cause).message;}
 
-const displayNames: Record<Harness, string> = { opencode: "OpenCode", codex: "Codex", claude: "Claude", pi: "Pi" };
+const displayNames: Record<Harness, string> = { opencode: "OpenCode", codex: "Codex", claude: "Claude", pi: "Pi", dsh: "DeepSeek Harness" };
 export function HarnessSetupImport({ title = "Import your setup", initialHarness = "opencode", setups, onSaved, onCancel }: {
   title?: string; initialHarness?: Harness; setups: HarnessSetup[]; onSaved?: (setup: HarnessSetup) => void; onCancel?: () => void;
 }) {
@@ -93,6 +93,7 @@ export function HarnessSetupImport({ title = "Import your setup", initialHarness
         </div>
         <p className="setup-import-hint">Keep skills somewhere else, such as <code>~/.agents/skills</code> or <code>~/.claude/skills</code>? Add that folder too and its skills are copied into this harness’s skills folder. Resolve duplicate paths before import.</p>
         {harness === "claude" && <p className="setup-import-hint">For global MCP settings, also choose <code>~/.claude.json</code> as an individual file.</p>}
+        {harness === "dsh" && <p className="setup-import-hint">DeepSeek Harness reads <code>~/.dsh</code> (<code>$DSH_HOME</code>). Credentials in <code>.credentials.yaml</code> are never imported; use a provider connection for models.</p>}
         {!directoryPicker() && <p className="setup-import-hint">This browser’s folder picker counts every file in its confirmation, including excluded dependencies. Meridian filters them afterward; nothing is sent until Review import.</p>}
       </div>
       <p className="setup-import-hint">Review import uploads the selected files to your Meridian server for checks. Dependency folders such as node_modules and login caches are excluded; you sign in to each harness separately.</p>

@@ -10532,6 +10532,8 @@ func (s *HarnessSetupBundleHarness) Decode(d *jx.Decoder) error {
 		*s = HarnessSetupBundleHarnessClaude
 	case HarnessSetupBundleHarnessCodex:
 		*s = HarnessSetupBundleHarnessCodex
+	case HarnessSetupBundleHarnessDsh:
+		*s = HarnessSetupBundleHarnessDsh
 	case HarnessSetupBundleHarnessOpencode:
 		*s = HarnessSetupBundleHarnessOpencode
 	case HarnessSetupBundleHarnessPi:
@@ -11607,6 +11609,8 @@ func (s *HarnessSetupUploadHarness) Decode(d *jx.Decoder) error {
 		*s = HarnessSetupUploadHarnessClaude
 	case HarnessSetupUploadHarnessCodex:
 		*s = HarnessSetupUploadHarnessCodex
+	case HarnessSetupUploadHarnessDsh:
+		*s = HarnessSetupUploadHarnessDsh
 	case HarnessSetupUploadHarnessOpencode:
 		*s = HarnessSetupUploadHarnessOpencode
 	case HarnessSetupUploadHarnessPi:

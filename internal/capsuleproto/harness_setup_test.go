@@ -63,6 +63,22 @@ func TestSetupRejectsSymlinkEscape(t *testing.T) {
 	}
 }
 
+func TestDeepSeekHarnessSetupSetsHome(t *testing.T) {
+	setup := &harnesssetup.RuntimeSetup{Revision: "rev-dsh", Bundle: harnesssetup.Bundle{Harness: "dsh", Files: []harnesssetup.File{{Path: ".dsh/settings.yaml", Content: "model: example\n"}}}}
+	s := &Server{config: ServerConfig{HarnessHome: t.TempDir()}}
+	env, err := s.prepareHarnessSetup(context.Background(), setup, "dsh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if env["DSH_HOME"] != filepath.Join(env["HOME"], ".dsh") {
+		t.Fatalf("DSH_HOME=%s HOME=%s", env["DSH_HOME"], env["HOME"])
+	}
+	raw, err := os.ReadFile(filepath.Join(env["DSH_HOME"], "settings.yaml"))
+	if err != nil || !strings.Contains(string(raw), "example") {
+		t.Fatalf("imported settings missing: %s %v", raw, err)
+	}
+}
+
 func TestGatewayConfigurationDoesNotWriteLeaseToken(t *testing.T) {
 	for _, harness := range []string{"codex", "claude", "opencode", "pi", "dsh"} {
 		t.Run(harness, func(t *testing.T) {

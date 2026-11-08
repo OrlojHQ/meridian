@@ -155,12 +155,13 @@ an OpenAI Chat Completions or Anthropic Messages endpoint, a base URL, models,
 and an environment credential reference.
 
 - `harnesssetup.ConnectionHarness` lists the harnesses `capsuled` can
-  configure for a connection: the four with personal setups, plus `dsh`.
-  Project grants and runtime leases are gated on it and on
-  `ConnectionSupported`, which pairs `dsh` only with an `openai-compatible`
-  or `anthropic-compatible` connection that names a default model.
-- `capsuled` gives `dsh` an empty Meridian-owned setup home, sets `DSH_HOME`
-  inside it, puts the lease in `MERIDIAN_PROVIDER_TOKEN`, and rewrites the
+  configure for a connection, including `dsh`. Project grants and runtime
+  leases are gated on it and on `ConnectionSupported`, which pairs `dsh`
+  only with an `openai-compatible` or `anthropic-compatible` connection that
+  names a default model.
+- `capsuled` materializes an imported `dsh` setup when one is pinned,
+  otherwise an empty Meridian-owned home, sets `DSH_HOME` inside it, puts
+  the lease in `MERIDIAN_PROVIDER_TOKEN`, and rewrites the
   home-level `cordis.patch.yml` on each launch. The patch declares a
   `meridian` route at the connection's gateway URL that reads that variable,
   selects it for ACP sessions (`acp`) and subagents

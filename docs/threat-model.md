@@ -875,6 +875,10 @@ The private staged setup endpoint accepts no provider/harness credentials. Impor
 personal homes and runtime identities are applied after preparation and excluded
 from reusable workspace artifacts. Legacy cache keys cannot select new entries.
 
+DeepSeek Harness YAML is parsed without evaluating tags. Files that contain
+`!!js` are excluded; sanitized YAML is rewritten as JSON, which `dsh`'s YAML
+loader accepts. `.credentials.yaml` is never an allowed import path.
+
 Browser setup imports are untrusted file content. The authenticated preview route
 accepts at most a 4 MiB JSON body and enforces the 256-file, 128 KiB-per-file and
 512 KiB aggregate content bounds. It never opens uploaded paths on the server,

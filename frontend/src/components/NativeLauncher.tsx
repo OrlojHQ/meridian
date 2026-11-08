@@ -5,6 +5,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { api, normalizeAPIError } from "../api/client";
 import type { Capsule, Project } from "../api/generated/types.gen";
 import { queries } from "../api/queries";
+import { isImportableHarness } from "../import/localSetup";
 import { harnessName, sessionPath } from "../shell/capsuleActivity";
 
 import { HarnessSetupImport } from "./HarnessSetupImport";
@@ -86,7 +87,7 @@ export function NativeLauncher({
       ? currentCapsule.failure || "Capsule provisioning failed"
       : undefined;
 
-  if (importing && ["opencode", "codex", "claude", "pi"].includes(harness)) return <HarnessSetupImport initialHarness={harness as "opencode" | "codex" | "claude" | "pi"} setups={setups.data?.items ?? []} onCancel={() => setImporting(false)} onSaved={saved => {setSetup(saved.id);setImporting(false);}} />;
+  if (importing && isImportableHarness(harness)) return <HarnessSetupImport initialHarness={harness} setups={setups.data?.items ?? []} onCancel={() => setImporting(false)} onSaved={saved => {setSetup(saved.id);setImporting(false);}} />;
 
   return (
     <section className="launcher-pane">
@@ -96,7 +97,7 @@ export function NativeLauncher({
       <form className="launcher-form" onSubmit={submit}>
         {setups.isError ? <p role="alert">Saved setups could not be loaded. <button type="button" onClick={() => void setups.refetch()}>Retry</button></p> :
           <p>{shownSetup ? `Using ${shownSetup.name}` : "Using harness defaults"}. Native account login is separate.</p>}
-        {!defaultSetup && ["opencode", "codex", "claude", "pi"].includes(harness) && <button type="button" disabled={busy || setups.isPending || setups.isError} onClick={() => setImporting(true)}>Import my setup</button>}
+        {!defaultSetup && isImportableHarness(harness) && <button type="button" disabled={busy || setups.isPending || setups.isError} onClick={() => setImporting(true)}>Import my setup</button>}
         {(grant.isError || connections.isError || projectSetup.isError) && <p role="alert">Launch settings could not be loaded. <button type="button" onClick={()=>{void grant.refetch();void connections.refetch();void projectSetup.refetch();}}>Retry</button></p>}
         {connectable && <label>Provider connection<select value={selectedConnection} onChange={event=>setConnection(event.target.value)} disabled={busy}>
           <option value="">Sign in inside the harness</option>{availableConnections.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}

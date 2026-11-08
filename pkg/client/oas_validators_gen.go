@@ -3898,6 +3898,8 @@ func (s HarnessSetupBundleHarness) Validate() error {
 		return nil
 	case "codex":
 		return nil
+	case "dsh":
+		return nil
 	case "opencode":
 		return nil
 	case "pi":
@@ -4097,6 +4099,8 @@ func (s HarnessSetupUploadHarness) Validate() error {
 	case "claude":
 		return nil
 	case "codex":
+		return nil
+	case "dsh":
 		return nil
 	case "opencode":
 		return nil

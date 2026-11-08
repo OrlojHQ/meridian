@@ -2,6 +2,7 @@ package harnesssetup
 
 import (
 	"encoding/json"
+	"errors"
 	"github.com/pelletier/go-toml/v2"
 	"path/filepath"
 	"strings"
@@ -24,11 +25,15 @@ func transformStrings(value any, replace func(string) string) any {
 	}
 	return value
 }
-func encodeConfig(p string, value map[string]any) (string, error) {
+func encodeConfig(p string, value any) (string, error) {
 	var raw []byte
 	var err error
 	if strings.HasSuffix(p, ".toml") {
-		raw, err = toml.Marshal(value)
+		object, ok := value.(map[string]any)
+		if !ok {
+			return "", errors.New("invalid configuration")
+		}
+		raw, err = toml.Marshal(object)
 	} else {
 		raw, err = json.MarshalIndent(value, "", "  ")
 	}
