@@ -290,7 +290,7 @@ describe("application shell", () => {
     expect(threads.mock.calls.map(([id]) => id).sort()).toEqual([blocked.id, lead.id]);
   });
 
-  it("places Activity, Board, Threads, and Harness settings at the top of the sidebar", async () => {
+  it("places Inbox, Threads, and Harness settings at the top of the sidebar", async () => {
     vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
     vi.spyOn(api, "capsules").mockResolvedValue({
       items: [{ ...capsule, name: "Setup broke", state: "Failed" }],
@@ -310,14 +310,12 @@ describe("application shell", () => {
     const views = within(sidebar).getByRole("navigation", { name: "Views" });
     const links = within(views).getAllByRole("link");
     expect(links.map((link) => link.textContent?.replace(/\d+$/, ""))).toEqual([
-      "Activity",
-      "Board",
+      "Inbox",
       "Threads",
       "Harness settings",
     ]);
     expect(links.map((link) => link.getAttribute("href"))).toEqual([
       "/ui/",
-      "/ui/board",
       "/ui/threads",
       "/ui/settings/harnesses",
     ]);

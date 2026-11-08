@@ -194,7 +194,7 @@ subagent to a main Capsule.
   together, on a promoted Capsule. A link's `promotedAt` is permanent, a link
   can close as `detached` only once promoted, and a link is never archived
   and promoted at once. Promotion and archive events carry identifiers only.
-- **Presentation.** The sidebar and Activity inbox list main Capsules
+- **Presentation.** The sidebar and Inbox list main Capsules
   (`role=main`) plus subagents that need the operator or whose lead is gone,
   and take every lead's rollup from one board read, so hidden subagents add no
   per-Capsule polling. Rollups count archived subagents (also counted as done),

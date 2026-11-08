@@ -541,7 +541,7 @@ and never persists, logs, or emits them; they omit request summaries, options,
 and prompts, so SQLite and backup exposure are unchanged. Background runtime
 refresh ingests frames for Threads nobody is watching into the same encrypted
 store; it never sends, resends, or resumes a session (ADR 0025). The browser's
-Board and Activity peek reads one Thread's transcript tail through the same
+Inbox peek reads one Thread's transcript tail through the same
 authenticated block and response endpoints as the Thread view, and only when
 the operator expands that row; it is never prefetched, polled, or cached, and
 shows agent-authored request text as capped plain text without control or

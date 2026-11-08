@@ -4,7 +4,6 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { CapsuleList } from "../App";
 import { MeridianAPIError, api } from "../api/client";
 import type { BoardItem, Capsule, Thread, ThreadBlock } from "../api/generated/types.gen";
 import { plainAgentText } from "../components/agentText";
@@ -70,12 +69,30 @@ function blocksFor(threadId: string): ThreadBlock[] {
 }
 
 function renderWith(node: React.ReactNode) {
+  vi.spyOn(api, "coordinationRequests").mockResolvedValue({ items: [] });
+  vi.spyOn(api, "projects").mockResolvedValue({
+    items: [{ id: "project-1", name: "Project", createdAt: "", updatedAt: "", resourceVersion: 1 }],
+  });
+  vi.spyOn(api, "capabilities").mockResolvedValue({
+    providerVersion: "fake/v1",
+    attach: false,
+    run: false,
+    structured: true,
+    git: false,
+    pause: false,
+    snapshot: false,
+    clone: false,
+    preview: false,
+    browse: false,
+    delivery: false,
+    resourceMetrics: false,
+  });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return {
     client,
     ...render(
       <QueryClientProvider client={client}>
-        <MemoryRouter initialEntries={["/ui/board"]}>{node}</MemoryRouter>
+        <MemoryRouter initialEntries={["/ui/"]}>{node}</MemoryRouter>
       </QueryClientProvider>,
     ),
   };
@@ -191,44 +208,6 @@ describe("Board blocker peek", () => {
     renderWith(<Board />);
     expect(await screen.findByText("Failed")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Peek/ })).toBeNull();
-  });
-});
-
-describe("Activity blocker peek", () => {
-  it("peeks at a waiting session from its inbox row", async () => {
-    vi.spyOn(api, "projects").mockResolvedValue({
-      items: [{ id: "project-1", name: "Project", createdAt: "", updatedAt: "", resourceVersion: 1 }],
-    });
-    vi.spyOn(api, "capabilities").mockResolvedValue({
-      providerVersion: "fake/v1",
-      attach: false,
-      run: false,
-      structured: true,
-      git: false,
-      pause: false,
-      snapshot: false,
-      clone: false,
-      preview: false,
-      browse: false,
-      delivery: false,
-      resourceMetrics: false,
-    });
-    vi.spyOn(api, "board").mockResolvedValue({ truncated: false, items: [] });
-    vi.spyOn(api, "capsules").mockResolvedValue({ items: [capsule("capsule-tests", "fix tests")] });
-    vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
-    vi.spyOn(api, "threads").mockResolvedValue({ items: [thread("thread-tests", "capsule-tests")] });
-    const blocks = vi
-      .spyOn(api, "threadBlocks")
-      .mockResolvedValue({ items: blocksFor("thread-tests"), nextCursor: 300, more: false });
-    vi.spyOn(api, "thread").mockResolvedValue(thread("thread-tests", "capsule-tests"));
-    renderWith(<CapsuleList />);
-
-    const attention = await screen.findByRole("region", { name: /Needs attention/ });
-    const toggle = await within(attention).findByRole("button", { name: "Peek at permission request" });
-    expect(blocks).not.toHaveBeenCalled();
-    await userEvent.click(toggle);
-    const card = await within(attention).findByRole("region", { name: "Permission required" });
-    expect(within(card).getByRole("button", { name: "Deny" })).toBeInTheDocument();
   });
 });
 

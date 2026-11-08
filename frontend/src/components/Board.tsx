@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useOutletContext } from "react-router-dom";
 
-import type { BoardItem, CoordinationRequest } from "../api/generated/types.gen";
+import type { BoardItem, CoordinationRequest, Project } from "../api/generated/types.gen";
 import { queries } from "../api/queries";
 import {
   relativeTime,
@@ -11,12 +11,13 @@ import {
   type ActivityGroup,
 } from "../shell/capsuleActivity";
 import { BlockerPeek } from "./BlockerPeek";
-import { PromoteSubagent } from "./PromoteSubagent";
 import { DeliveryDecision } from "./DeliveryDecision";
+import { PromoteSubagent } from "./PromoteSubagent";
 import { SpawnDecision } from "./SpawnApprovals";
 import { failureText, safeInline } from "./threadChat";
 import { ThreadError } from "./ThreadError";
 import { HarnessMark } from "./ui/HarnessMark";
+import { PlusIcon } from "./ui/Icons";
 
 type BoardStatus = BoardItem["status"];
 
@@ -62,6 +63,45 @@ function itemName(item: BoardItem) {
   return safeInline(item.link?.name ?? item.capsule.name);
 }
 
+function plural(count: number, one: string, many: string) {
+  return `${count} ${count === 1 ? one : many}`;
+}
+
+function StartWork({
+  projects,
+  openLauncher,
+  openNewProject,
+}: {
+  projects: Project[];
+  openLauncher?: (project: Project) => void;
+  openNewProject?: () => void;
+}) {
+  if (!openLauncher && !openNewProject) {
+    return (
+      <p>
+        Use <strong>+</strong> next to a project in the sidebar to start an
+        agent in a new Capsule.
+      </p>
+    );
+  }
+  return (
+    <div className="inbox-start">
+      {openLauncher &&
+        projects.map((project) => (
+          <button key={project.id} type="button" onClick={() => openLauncher(project)}>
+            <PlusIcon />
+            Start work in {project.name}
+          </button>
+        ))}
+      {openNewProject && (
+        <button type="button" className="secondary" onClick={openNewProject}>
+          New project
+        </button>
+      )}
+    </div>
+  );
+}
+
 function subagentRow(subagent: BoardItem) {
   const subagentGroup = boardGroups.find((entry) => entry.status === subagent.status);
   return (
@@ -83,11 +123,15 @@ function subagentRow(subagent: BoardItem) {
 function BoardRow({
   item,
   leadNames,
+  projectName,
+  git,
   subagents,
   spawnRequest,
 }: {
   item: BoardItem;
   leadNames: Map<string, { name: string; capsuleId: string }>;
+  projectName?: string;
+  git: boolean;
   subagents?: BoardItem[];
   spawnRequest?: CoordinationRequest;
 }) {
@@ -110,6 +154,7 @@ function BoardRow({
         <p className="inbox-meta">
           <span className={`state-dot activity-dot-${group?.activity ?? "idle"}`} aria-hidden="true" />
           <span className="inbox-status">{label}</span>
+          {projectName && <span>{projectName}</span>}
           {item.link && (
             <span className="board-breadcrumb">
               {item.capsule.promotedAt ? "promoted from" : "subagent of"}{" "}
@@ -166,6 +211,14 @@ function BoardRow({
           <PromoteSubagent capsule={item.capsule} />
         )}
         {spawnRequest && <SpawnDecision request={spawnRequest} />}
+        {git && item.status === "ready_for_review" && (
+          <Link
+            className="button-link"
+            to={`/ui/capsules/${encodeURIComponent(item.capsule.id)}/diff`}
+          >
+            Open diff
+          </Link>
+        )}
         <Link className="button-link primary-button" to={boardRowPath(item)}>
           {item.status === "needs_you" &&
           item.needsYou !== "failed" &&
@@ -179,7 +232,13 @@ function BoardRow({
   );
 }
 
+type InboxOutlet = {
+  openNewProject: () => void;
+  openLauncher: (project: Project) => void;
+};
+
 export function Board() {
+  const outlet = useOutletContext<InboxOutlet | undefined>();
   const [showAll, setShowAll] = useState(false);
   const board = useQuery(queries.board(showAll ? "all" : "attention"));
   const pending = useQuery(queries.coordinationRequests());
@@ -187,11 +246,13 @@ export function Board() {
   // Every subagent row, for the per-lead folds; one content-free read shared by
   // all leads.
   const everything = useQuery(queries.board("all"));
+  const projects = useQuery(queries.projects());
+  const capabilities = useQuery(queries.capabilities());
 
   if (board.isPending) {
     return (
       <p className="loading" role="status">
-        Loading board…
+        Loading inbox…
       </p>
     );
   }
@@ -199,6 +260,9 @@ export function Board() {
 
   const items = board.data.items;
   const all = everything.data?.items ?? items;
+  const projectItems = projects.data?.items ?? [];
+  const projectNames = new Map(projectItems.map((project) => [project.id, project.name]));
+  const git = capabilities.data?.git === true;
   const leadNames = new Map(
     all.flatMap((item) =>
       item.thread && item.capsule.role !== "sub"
@@ -211,12 +275,65 @@ export function Board() {
       ? all.filter((candidate) => candidate.link?.parentThreadId === item.thread?.id)
       : [];
   const needsYou = items.filter((item) => item.status === "needs_you").length;
+  const working = items.filter((item) => item.status === "working").length;
+
+  if (items.length === 0 && projects.isPending) {
+    return (
+      <p className="loading" role="status">
+        Loading inbox…
+      </p>
+    );
+  }
+
+  if (projects.isSuccess && projectItems.length === 0 && items.length === 0) {
+    return (
+      <section className="empty-state">
+        <h1>No projects yet</h1>
+        <p>
+          A Project points Meridian at a repository. Every agent session then
+          runs in its own disposable Capsule with a fresh clone.
+        </p>
+        {outlet?.openNewProject && (
+          <button type="button" onClick={outlet.openNewProject}>
+            New project
+          </button>
+        )}
+      </section>
+    );
+  }
+
+  if (items.length === 0) {
+    return (
+      <section className="fleet-view board-view activity-inbox">
+        <header className="workspace-view-header">
+          <div>
+            <p className="eyebrow">Inbox</p>
+            <h1>Nothing running yet</h1>
+          </div>
+        </header>
+        <div className="empty-state">
+          <p>Start an agent in a new Capsule.</p>
+          <StartWork
+            projects={projectItems}
+            openLauncher={outlet?.openLauncher}
+            openNewProject={outlet?.openNewProject}
+          />
+        </div>
+      </section>
+    );
+  }
+
+  const headline =
+    needsYou > 0
+      ? `${needsYou} need${needsYou === 1 ? "s" : ""} attention`
+      : "All caught up";
+
   return (
-    <section className="fleet-view board-view">
+    <section className="fleet-view board-view activity-inbox">
       <header className="workspace-view-header">
         <div>
-          <p className="eyebrow">Board</p>
-          <h1>{needsYou > 0 ? `${needsYou} need${needsYou === 1 ? "s" : ""} you` : "Everything"}</h1>
+          <p className="eyebrow">Inbox</p>
+          <h1>{headline}</h1>
           <p className="view-description">
             Every Capsule by status. Subagents fold under their lead unless they need you.
           </p>
@@ -230,7 +347,7 @@ export function Board() {
             />
             Show all subagents
           </label>
-          <span className="count-label">{items.length} rows</span>
+          <span className="count-label">{plural(items.length, "Capsule", "Capsules")}</span>
         </div>
       </header>
       {board.data.truncated && (
@@ -238,35 +355,44 @@ export function Board() {
           Only the first 500 Capsules are shown.
         </p>
       )}
-      {items.length === 0 ? (
-        <div className="empty-state">
-          <h2>Nothing on the board</h2>
-          <p>Start an agent in a new Capsule from the sidebar.</p>
+      {needsYou === 0 && (
+        <div className="inbox-clear">
+          <p>
+            Nothing needs you right now.
+            {working > 0 &&
+              ` ${plural(working, "agent is", "agents are")} still working.`}
+          </p>
+          <StartWork
+            projects={projectItems}
+            openLauncher={outlet?.openLauncher}
+            openNewProject={outlet?.openNewProject}
+          />
         </div>
-      ) : (
-        boardGroups.map(({ status, title }) => {
-          const rows = items.filter((item) => item.status === status);
-          if (rows.length === 0) return null;
-          return (
-            <section className="inbox-group" key={status} aria-labelledby={`board-${status}`}>
-              <h2 id={`board-${status}`}>
-                {title} <small>{rows.length}</small>
-              </h2>
-              <ul>
-                {rows.map((item) => (
-                  <BoardRow
-                    key={item.capsule.id}
-                    item={item}
-                    leadNames={leadNames}
-                    subagents={item.childRollup ? subagentsOf(item) : undefined}
-                    spawnRequest={item.link ? pendingByLink.get(item.link.id) : undefined}
-                  />
-                ))}
-              </ul>
-            </section>
-          );
-        })
       )}
+      {boardGroups.map(({ status, title }) => {
+        const rows = items.filter((item) => item.status === status);
+        if (rows.length === 0) return null;
+        return (
+          <section className="inbox-group" key={status} aria-labelledby={`board-${status}`}>
+            <h2 id={`board-${status}`}>
+              {title} <small>{rows.length}</small>
+            </h2>
+            <ul>
+              {rows.map((item) => (
+                <BoardRow
+                  key={item.capsule.id}
+                  item={item}
+                  leadNames={leadNames}
+                  projectName={projectNames.get(item.capsule.projectId)}
+                  git={git}
+                  subagents={item.childRollup ? subagentsOf(item) : undefined}
+                  spawnRequest={item.link ? pendingByLink.get(item.link.id) : undefined}
+                />
+              ))}
+            </ul>
+          </section>
+        );
+      })}
     </section>
   );
 }

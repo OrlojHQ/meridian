@@ -202,8 +202,7 @@ export function buildPaletteCommands({
       keywords,
       run: () => actions.navigate(path),
     });
-  go("activity", "Activity", "/ui/", "inbox home");
-  go("board", "Board", "/ui/board", "status subagents leads everything");
+  go("inbox", "Inbox", "/ui/", "activity board home status subagents leads everything");
   go("threads", "Threads", "/ui/threads", "sessions structured");
   go("harnesses", "Harness settings", "/ui/settings/harnesses", "providers setups");
 

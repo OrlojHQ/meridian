@@ -23,7 +23,6 @@ import { NewWorkspaceDialog } from "../components/NewWorkspaceDialog";
 import { HarnessMark } from "../components/ui/HarnessMark";
 import {
   ActivityIcon,
-  BoardIcon,
   ChevronIcon,
   CommandIcon,
   MenuIcon,
@@ -581,7 +580,7 @@ export function AppShell() {
         onKeyDown={onSidebarKeyDown}
       >
         <header className="sidebar-header">
-          <Link className="brand" to="/ui/" aria-label="Meridian activity">
+          <Link className="brand" to="/ui/" aria-label="Meridian inbox">
             <span className="brand-mark">M</span>
             <span>Meridian</span>
           </Link>
@@ -608,7 +607,7 @@ export function AppShell() {
         <nav className="sidebar-links" aria-label="Views">
           <NavLink to="/ui/" end>
             <ActivityIcon />
-            Activity
+            Inbox
             {attentionCount > 0 && (
               <span
                 className="attention-count"
@@ -617,10 +616,6 @@ export function AppShell() {
                 {attentionCount}
               </span>
             )}
-          </NavLink>
-          <NavLink to="/ui/board">
-            <BoardIcon />
-            Board
           </NavLink>
           <NavLink to="/ui/threads">
             <ThreadIcon />

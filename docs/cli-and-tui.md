@@ -168,7 +168,7 @@ Leads show a subagent rollup; subagents stay folded under their lead unless they
 need you, in which case they get their own row. `--all` lists every subagent,
 `--expand none` lists only main Capsules, and `--project PROJECT_ID` limits the
 board to one Project. Rollups also count archived subagents. The browser has the
-same view at `/ui/board`, with "Show all subagents" and a per-lead subagent fold
+same view in the browser Inbox at `/ui/` (`/ui/board` redirects there), with "Show all subagents" and a per-lead subagent fold
 whose archived subagents sit in an "Archived (n)" fold; the command palette's
 "Next item needing me" (`g` then `n` in the browser) cycles through items that
 need you, oldest first. The browser

@@ -91,6 +91,8 @@ function mockAPI(overrides: Partial<Capabilities> = {}, threads: Thread[] = []) 
     items: threads.filter((item) => item.capsuleId === id),
   }));
   vi.spyOn(api, "capabilities").mockResolvedValue({ ...capabilities, ...overrides });
+  vi.spyOn(api, "board").mockResolvedValue({ truncated: false, items: [] });
+  vi.spyOn(api, "coordinationRequests").mockResolvedValue({ items: [] });
   vi.spyOn(api, "moments").mockResolvedValue({ items: [] });
   vi.spyOn(api, "harnessProfiles").mockResolvedValue({ items: [] });
   vi.spyOn(api, "harnessSetups").mockResolvedValue({ items: [] });
