@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { api, normalizeAPIError } from "../api/client";
 import type {
@@ -10,17 +10,20 @@ import type {
 } from "../api/generated/types.gen";
 
 import { queries } from "../api/queries";
-import { harnessName } from "../shell/capsuleActivity";
+import { harnessName, sessionPath } from "../shell/capsuleActivity";
 import { PreparationProgress } from "./PreparationProgress";
 import { connectableHarnesses, connectionSupports } from "./ProviderConnections";
 
 export function StructuredLauncher({
   project,
   harness,
+  onStarted,
 }: {
   project: Project;
   harness: string;
+  onStarted?: () => void;
 }) {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [result, setResult] = useState<ProjectThreadIntent>();
   const [lead, setLead] = useState(false);
@@ -57,6 +60,10 @@ export function StructuredLauncher({
       await queryClient.invalidateQueries({
         queryKey: ["capsules", value.projectId],
       });
+      if (onStarted) {
+        navigate(sessionPath(value.capsuleId, value.threadId));
+        onStarted();
+      }
     },
   });
 
