@@ -447,6 +447,63 @@ func TestThreadDeliveryRetriesCrashBeforeSendAndAcknowledgesSuccess(t *testing.T
 	runtime.mu.Unlock()
 }
 
+func TestSetThreadModelRequiresNegotiatedModelsAndDeliversOnce(t *testing.T) {
+	ctx := context.Background()
+	store, service, runtime, key, capsuleID := threadService(t, ctx)
+	defer store.Close()
+	defer key.Zero()
+	created, err := service.CreateThread(ctx, app.CreateThreadInput{
+		CapsuleID: capsuleID, Harness: "mock", FirstMessage: "hello",
+		Start: true, IdempotencyKey: "create-model",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread, err := service.GetThread(ctx, created.Thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.SetThreadModel(ctx, thread.ID, thread.ResourceVersion, "sonnet", "model-1"); !errors.Is(err, domain.ErrUnsupported) {
+		t.Fatalf("switch without negotiated models = %v", err)
+	}
+	if _, err := service.SetThreadModel(ctx, thread.ID, thread.ResourceVersion, "bad\nmodel", "model-2"); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("control character model = %v", err)
+	}
+	runtime.mu.Lock()
+	run := runtime.runs[thread.CurrentRunID]
+	run.Models = true
+	runtime.runs[thread.CurrentRunID] = run
+	runtime.mu.Unlock()
+	switched, err := service.SetThreadModel(ctx, thread.ID, thread.ResourceVersion, "sonnet", "model-3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.SetThreadModel(ctx, thread.ID, thread.ResourceVersion, "sonnet", "model-3"); err != nil {
+		t.Fatalf("replay: %v", err)
+	}
+	runtime.mu.Lock()
+	frame := runtime.frames[string(switched.MessageID)]
+	sends := runtime.sends[string(switched.MessageID)]
+	runtime.mu.Unlock()
+	if sends != 1 || frame.Type != adapterproto.KindSetModel || frame.Model != "sonnet" ||
+		frame.SessionID != string(thread.ID) {
+		t.Fatalf("set_model delivery = %d %#v", sends, frame)
+	}
+	page, err := service.ThreadBlocks(ctx, thread.ID, 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, block := range page.Items {
+		if block.Event != nil && block.Event.Type == adapterproto.KindSetModel && block.Event.Model == "sonnet" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("set_model request is missing from the transcript")
+	}
+}
+
 func TestCancelThreadReturnsRuntimeFailureAndRetriesCancelling(t *testing.T) {
 	ctx := context.Background()
 	store, service, runtime, key, capsuleID := threadService(t, ctx)

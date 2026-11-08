@@ -306,9 +306,22 @@ message, and the adapter maps a name to a harness protocol call (Codex
 compaction, review, and skills, Pi compaction) only when it
 advertised that name as an action itself. Those calls run with the same harness
 permissions as a prompt. Meridian's own controls (stop, new session) are API
-calls the UI makes and are never sent to the harness. Model switching is not
-exposed, so a reported command cannot move a session off its provider
-connection.
+calls the UI makes and are never sent to the harness. A reported command
+cannot switch models through Meridian; only the operator's model mutation
+sends `set_model`.
+
+Model lists come from the harness and its configuration, so they are hostile
+too (ADR 0031). A `models` frame is accepted only after both hellos negotiate
+it, and `adapterproto` bounds it to 128 options with unique IDs, bounded
+labels and descriptions, and no control characters. It is stored only inside
+the encrypted transcript and rendered as text. A switch is an authenticated
+operator API call, persisted and delivered like a permission answer; a
+Capsule cannot request one. The adapter switches only to an ID it reported.
+Switching does not widen what the session can reach: the endpoint and
+credential still come from the connection or harness setup, the list holds
+only models that configuration already lets the harness use, and the
+provider gateway already forwards whatever model name the harness sends. A
+switch can raise cost, because a pricier model may be listed.
 
 Normal Run prompts remain transient. Run records and events do not persist
 prompts, raw terminal bytes, full diffs, setup output, or secrets. An explicitly
@@ -719,6 +732,9 @@ they are not a statement that every planned path is already implemented.
 - Harness-reported slash commands are negotiated, bounded, encrypted with the
   transcript, and grant no authority: an adapter runs only the actions it
   advertised, from an ordinary user message.
+- Harness-reported model lists are negotiated, bounded, encrypted with the
+  transcript, and rendered as text. A switch runs only from an operator API
+  mutation, and an adapter accepts only a model it reported (ADR 0031).
 - ACP agents get no file-system or terminal client capability, and their
   permission requests resolve only to options they offered.
 - Harness adapter working directories are re-checked inside the Capsule:

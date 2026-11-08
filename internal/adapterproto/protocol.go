@@ -34,6 +34,13 @@ const (
 	MaxCommandDescriptionBytes = 512
 	MaxCommandHintBytes        = 128
 	MaxCommandAliases          = 4
+
+	// Model lists come from harness configuration; option IDs are opaque to
+	// everyone but the adapter that reported them.
+	MaxModels                = 128
+	MaxModelIDBytes          = 256
+	MaxModelLabelBytes       = 128
+	MaxModelDescriptionBytes = 512
 )
 
 var (
@@ -67,6 +74,8 @@ const (
 	KindGap                Kind = "gap"
 	KindEnd                Kind = "end"
 	KindCommands           Kind = "commands"
+	KindModels             Kind = "models"
+	KindSetModel           Kind = "set_model"
 )
 
 // CommandKind says how an adapter runs a reported command. A prompt command
@@ -86,6 +95,20 @@ type Command struct {
 	ArgumentHint string      `json:"argumentHint,omitempty"`
 	Kind         CommandKind `json:"kind"`
 	Aliases      []string    `json:"aliases,omitempty"`
+}
+
+// ModelOption is one model a harness offers. ID is what set_model names.
+type ModelOption struct {
+	ID          string `json:"id"`
+	Label       string `json:"label"`
+	Description string `json:"description,omitempty"`
+}
+
+// ModelSet is the harness's current model and every model it offers. Current
+// may be empty when the harness does not say, and need not be an option.
+type ModelSet struct {
+	Current string        `json:"current,omitempty"`
+	Options []ModelOption `json:"options"`
 }
 
 type Role string
@@ -120,6 +143,8 @@ type Capabilities struct {
 	// Commands says the peer understands commands frames. An adapter
 	// reports commands only when both hellos set it.
 	Commands bool `json:"commands,omitempty"`
+	// Models says the peer understands models and set_model frames.
+	Models bool `json:"models,omitempty"`
 }
 
 type Permission struct {
@@ -166,6 +191,8 @@ type Frame struct {
 	Input        *Input          `json:"input,omitempty"`
 	Metadata     json.RawMessage `json:"metadata,omitempty"`
 	Commands     []Command       `json:"commands,omitempty"`
+	Models       *ModelSet       `json:"models,omitempty"`
+	Model        string          `json:"model,omitempty"`
 	Cursor       uint64          `json:"cursor,omitempty"`
 	Gap          *Gap            `json:"gap,omitempty"`
 }
@@ -317,11 +344,48 @@ func validateShape(f Frame) error {
 		if !validCommands(f.Commands) {
 			return invalid("commands")
 		}
+	case KindModels:
+		if f.Models == nil || !validModels(*f.Models) {
+			return invalid("models")
+		}
+	case KindSetModel:
+		if err := requireID(); err != nil || !ValidModelID(f.Model) {
+			return invalid("set model")
+		}
 	}
 	if f.Type != KindCommands && f.Commands != nil {
 		return invalid("commands")
 	}
+	if f.Type != KindModels && f.Models != nil {
+		return invalid("models")
+	}
+	if f.Type != KindSetModel && f.Model != "" {
+		return invalid("model")
+	}
 	return nil
+}
+
+func validModels(models ModelSet) bool {
+	if len(models.Options) > MaxModels ||
+		(models.Current != "" && !ValidModelID(models.Current)) {
+		return false
+	}
+	ids := make(map[string]bool, len(models.Options))
+	for _, option := range models.Options {
+		if !ValidModelID(option.ID) || ids[option.ID] || option.Label == "" ||
+			!validLine(option.Label, MaxModelLabelBytes) ||
+			!validLine(option.Description, MaxModelDescriptionBytes) {
+			return false
+		}
+		ids[option.ID] = true
+	}
+	return true
+}
+
+// ValidModelID accepts a non-empty, bounded model identifier without control
+// characters. Its meaning belongs to the adapter that reported it.
+func ValidModelID(id string) bool {
+	return id != "" && validLine(id, MaxModelIDBytes)
 }
 
 func validCommands(commands []Command) bool {
@@ -402,7 +466,7 @@ func knownKind(kind Kind) bool {
 		KindAssistantMessage, KindToolStart, KindToolResult, KindStatus, KindError,
 		KindPermissionRequest, KindPermissionResponse, KindInputRequest,
 		KindInputResponse, KindHeartbeat, KindCancel, KindAck, KindCursor,
-		KindGap, KindEnd, KindCommands:
+		KindGap, KindEnd, KindCommands, KindModels, KindSetModel:
 		return true
 	default:
 		return false

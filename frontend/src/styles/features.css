@@ -3399,3 +3399,126 @@ button.tool-line:hover {
 .composer-popover .thread-subagents header .checkbox-label {
   white-space: nowrap;
 }
+
+/* Model picker inside the message box, next to the send button. */
+.composer-model {
+  position: static;
+  display: flex;
+  align-items: center;
+}
+
+.composer-model-button {
+  display: inline-flex;
+  max-width: 14rem;
+  min-height: 1.85rem;
+  align-items: center;
+  gap: 0.2rem;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 0.45rem 0 0.6rem;
+  color: var(--muted);
+  background: transparent;
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.composer-model-button:hover:not(:disabled),
+.composer-model-button[aria-expanded="true"] {
+  color: var(--text);
+  background: color-mix(in srgb, var(--border) 60%, transparent);
+}
+
+.composer-model-button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.composer-model-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-model-button svg {
+  width: 0.85rem;
+  height: 0.85rem;
+  flex: none;
+}
+
+.composer-model-menu {
+  position: absolute;
+  z-index: 6;
+  right: 0;
+  bottom: calc(100% + 0.4rem);
+  width: min(22rem, 100%);
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+  box-shadow: 0 10px 32px rgb(28 33 29 / 16%);
+}
+
+.composer-model-menu ul {
+  max-height: min(20rem, 45dvh);
+  margin: 0;
+  padding: 0.3rem;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.composer-model-option {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  border: 0;
+  border-radius: var(--radius-md);
+  padding: 0.45rem 0.6rem;
+  color: var(--text);
+  background: transparent;
+  text-align: left;
+}
+
+.composer-model-option:hover,
+.composer-model-option:focus-visible {
+  background: color-mix(in srgb, var(--border) 55%, transparent);
+}
+
+.composer-model-option svg {
+  width: 0.9rem;
+  height: 0.9rem;
+  flex: none;
+  color: var(--accent);
+}
+
+.composer-model-option-text {
+  display: grid;
+  min-width: 0;
+  gap: 0.1rem;
+}
+
+.composer-model-option-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.composer-model-option-description {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-model-error {
+  position: absolute;
+  right: 0.5rem;
+  bottom: calc(100% + 0.4rem);
+  margin: 0;
+  border-radius: var(--radius-md);
+  padding: 0.3rem 0.55rem;
+  color: var(--danger, var(--text));
+  background: var(--surface-raised);
+  font-size: 0.72rem;
+}

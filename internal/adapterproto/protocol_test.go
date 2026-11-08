@@ -167,6 +167,69 @@ func TestCommandsFrameIsBoundedAndValidated(t *testing.T) {
 	}
 }
 
+func TestModelsFramesAreBoundedAndValidated(t *testing.T) {
+	option := func(id string) ModelOption { return ModelOption{ID: id, Label: "Model " + id} }
+	full := make([]ModelOption, 0, MaxModels)
+	for index := range MaxModels {
+		full = append(full, ModelOption{
+			ID:          strings.Repeat("m", MaxModelIDBytes-4) + fmt.Sprintf("%04d", index),
+			Label:       strings.Repeat("l", MaxModelLabelBytes),
+			Description: strings.Repeat("d", MaxModelDescriptionBytes),
+		})
+	}
+	valid := []ModelSet{
+		{Options: []ModelOption{}},
+		{Current: "default", Options: []ModelOption{option("default"), option("sonnet")}},
+		{Current: "claude-opus-5-5", Options: []ModelOption{option("opus")}},
+		{Current: `["deepseek-official","deepseek-v4-flash"]`, Options: []ModelOption{option("anthropic/claude-sonnet-5")}},
+		{Options: full},
+	}
+	for _, models := range valid {
+		frame := Frame{Protocol: Version, Type: KindModels, Models: &models}
+		if err := frame.Validate(); err != nil {
+			t.Fatalf("valid models rejected: %v", err)
+		}
+	}
+	invalid := map[string]*ModelSet{
+		"missing":          nil,
+		"too many":         {Options: append(append([]ModelOption(nil), full...), option("extra"))},
+		"empty id":         {Options: []ModelOption{option("")}},
+		"duplicate":        {Options: []ModelOption{option("a"), option("a")}},
+		"empty label":      {Options: []ModelOption{{ID: "a"}}},
+		"long id":          {Options: []ModelOption{option(strings.Repeat("x", MaxModelIDBytes+1))}},
+		"long current":     {Current: strings.Repeat("x", MaxModelIDBytes+1), Options: []ModelOption{}},
+		"control current":  {Current: "a\nb", Options: []ModelOption{}},
+		"control in label": {Options: []ModelOption{{ID: "a", Label: "one\ntwo"}}},
+		"C1 description":   {Options: []ModelOption{{ID: "a", Label: "A", Description: "\u009b31m"}}},
+		"long label":       {Options: []ModelOption{{ID: "a", Label: strings.Repeat("l", MaxModelLabelBytes+1)}}},
+	}
+	for name, models := range invalid {
+		t.Run(name, func(t *testing.T) {
+			frame := Frame{Protocol: Version, Type: KindModels, Models: models}
+			if err := frame.Validate(); err == nil {
+				t.Fatal("invalid models accepted")
+			}
+		})
+	}
+	set := Frame{Protocol: Version, Type: KindSetModel, ID: "switch-1", Model: "sonnet"}
+	if err := set.Validate(); err != nil {
+		t.Fatalf("valid set_model rejected: %v", err)
+	}
+	for name, frame := range map[string]Frame{
+		"set without id":    {Protocol: Version, Type: KindSetModel, Model: "sonnet"},
+		"set without model": {Protocol: Version, Type: KindSetModel, ID: "switch-1"},
+		"set control model": {Protocol: Version, Type: KindSetModel, ID: "switch-1", Model: "a\tb"},
+		"stray models":      {Protocol: Version, Type: KindStatus, Status: StatusIdle, Models: &ModelSet{Options: []ModelOption{}}},
+		"stray model":       {Protocol: Version, Type: KindStatus, Status: StatusIdle, Model: "sonnet"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := frame.Validate(); err == nil {
+				t.Fatal("invalid frame accepted")
+			}
+		})
+	}
+}
+
 func FuzzDecoderNeverAcceptsMalformedFraming(f *testing.F) {
 	f.Add([]byte(`{"protocol":"meridian.adapter.v1","type":"heartbeat"}` + "\n"))
 	f.Add([]byte("{"))

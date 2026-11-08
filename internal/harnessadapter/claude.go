@@ -69,6 +69,12 @@ type claudeSession struct {
 	// later system/init record.
 	commands     []claudeReportedCommand
 	terminalOnly map[string]bool
+
+	// models is what initialize reported; modelRequests maps pending
+	// set_model control requests to the value they asked for.
+	models        *modelSet
+	modelRequests map[string]string
+	modelSequence int
 }
 
 type claudeReportedCommand struct {
@@ -93,7 +99,7 @@ func RunClaudeStream(
 	if err := stream.Handshake(adapterproto.Capabilities{
 		Resume: true, ToolEvents: true, Permissions: config.Permissions,
 		InputRequests: config.Permissions, Heartbeat: false, OpaqueMetadata: true,
-		Commands: true,
+		Commands: true, Models: true,
 	}); err != nil {
 		return err
 	}
@@ -127,7 +133,7 @@ func RunClaudeStream(
 		stream: stream, rpc: NewJSONLinesLimit(child.stdout, child.stdin, claudeRecordLimit),
 		sessionID: resumeID, resuming: resumeID != "", streamBlocks: map[int]string{}, messageTexts: map[string]int{},
 		prompts: map[string]*claudePrompt{}, byFrame: map[string]string{}, retired: retiredPrompts{},
-		controls: map[string]string{},
+		controls: map[string]string{}, modelRequests: map[string]string{},
 	}
 	records, recordErrors := readUpstream(ctx, session.rpc)
 	frames, frameErrors := readController(ctx, stream)
@@ -291,6 +297,16 @@ func (s *claudeSession) controller(frame adapterproto.Frame) (bool, error) {
 		if err := s.respond(requestID, map[string]any{"behavior": "allow", "updatedInput": input}); err != nil {
 			return false, s.fail("claude_write_failed", err)
 		}
+	case adapterproto.KindSetModel:
+		if !s.ready || !s.models.has(frame.Model) {
+			return false, s.stream.modelUnavailable("Claude Code does not offer that model")
+		}
+		s.modelSequence++
+		id := "claude-model-" + strconv.Itoa(s.modelSequence)
+		s.modelRequests[id] = frame.Model
+		if err := s.control(id, map[string]any{"subtype": "set_model", "model": frame.Model}); err != nil {
+			return false, s.fail("claude_write_failed", err)
+		}
 	case adapterproto.KindCancel:
 		_ = s.control("claude-interrupt", map[string]any{"subtype": "interrupt"})
 		_ = s.write(adapterproto.Frame{Type: adapterproto.KindEnd, Status: adapterproto.StatusCancelled})
@@ -382,6 +398,9 @@ func (s *claudeSession) controlResponse(record map[string]json.RawMessage) (bool
 		return false, s.fail("claude_response_invalid", errors.New("Claude control response correlation failed"))
 	}
 	delete(s.controls, response.RequestID)
+	if subtype == "set_model" {
+		return false, s.modelSwitched(record, response.RequestID, response.Subtype == "success")
+	}
 	if subtype != "initialize" {
 		return false, nil
 	}
@@ -392,7 +411,50 @@ func (s *claudeSession) controlResponse(record map[string]json.RawMessage) (bool
 	if err := s.initializeCommands(response.Response); err != nil {
 		return false, err
 	}
+	if err := s.initializeModels(response.Response); err != nil {
+		return false, err
+	}
 	return true, s.idle()
+}
+
+// initializeModels reports the models Claude Code lists in its initialize
+// response. The session starts on "default" until a set_model succeeds; a
+// missing or malformed list reports nothing.
+func (s *claudeSession) initializeModels(raw json.RawMessage) error {
+	var value struct {
+		Models []struct {
+			Value       string `json:"value"`
+			DisplayName string `json:"displayName"`
+			Description string `json:"description"`
+		} `json:"models"`
+	}
+	if len(raw) == 0 || json.Unmarshal(raw, &value) != nil || len(value.Models) == 0 {
+		return nil
+	}
+	s.models = newModelSet()
+	for _, model := range value.Models[:min(len(value.Models), 4*adapterproto.MaxModels)] {
+		s.models.add(model.Value, model.DisplayName, model.Description)
+	}
+	if s.models.has("default") {
+		s.models.setCurrent("default")
+	}
+	return s.stream.ReportModels(s.models)
+}
+
+// modelSwitched reports the outcome of a set_model control request.
+func (s *claudeSession) modelSwitched(record map[string]json.RawMessage, requestID string, ok bool) error {
+	model := s.modelRequests[requestID]
+	delete(s.modelRequests, requestID)
+	if !ok || model == "" {
+		var failure struct {
+			Error string `json:"error"`
+		}
+		_ = field(record, "response", &failure)
+		return s.stream.modelUnavailable(commandLine(
+			defaultString(failure.Error, "Claude Code did not switch models"), adapterproto.MaxToolSummaryBytes))
+	}
+	s.models.setCurrent(model)
+	return s.stream.ReportModels(s.models)
 }
 
 // initializeCommands reports the commands Claude Code lists in its

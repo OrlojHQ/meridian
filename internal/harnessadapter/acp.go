@@ -118,6 +118,13 @@ type acpSession struct {
 	sequence int
 
 	cancelled bool
+
+	// models is the agent's model config option, if it reported one;
+	// modelConfig is that option's ID and switching the value a pending
+	// session/set_config_option asked for.
+	models      *modelSet
+	modelConfig string
+	switching   string
 }
 
 // RunACP launches an Agent Client Protocol agent over stdio and maps its
@@ -133,6 +140,7 @@ func RunACP(ctx context.Context, input io.Reader, output io.Writer, config ACPCo
 	if err := stream.Handshake(adapterproto.Capabilities{
 		Resume: true, ToolEvents: true, Permissions: config.Permissions,
 		InputRequests: false, Heartbeat: false, OpaqueMetadata: true, Commands: true,
+		Models: true,
 	}); err != nil {
 		return err
 	}
@@ -347,6 +355,8 @@ func (s *acpSession) controller(frame adapterproto.Frame) (bool, error) {
 			return true, s.endCancelled()
 		}
 		return false, nil
+	case adapterproto.KindSetModel:
+		return false, s.setModel(frame.Model)
 	case adapterproto.KindHeartbeat, adapterproto.KindAck:
 		return false, nil
 	default:
@@ -428,10 +438,32 @@ func (s *acpSession) response(rawID json.RawMessage, record map[string]json.RawM
 		}
 		s.ready = true
 		s.loading = false
+		if err := s.reportConfigOptions(record["result"]); err != nil {
+			return false, err
+		}
 		if err := s.idle(); err != nil {
 			return false, err
 		}
 		return false, s.next()
+	case "session/set_config_option":
+		requested := s.switching
+		s.switching = ""
+		if failed {
+			return false, s.stream.modelUnavailable(acpLine(
+				defaultString(failure.Message, "The agent did not switch models"), adapterproto.MaxToolSummaryBytes))
+		}
+		if s.models != nil && requested != "" {
+			s.models.setCurrent(requested)
+		}
+		before := s.models
+		if err := s.reportConfigOptions(record["result"]); err != nil {
+			return false, err
+		}
+		if s.models == before {
+			// The response carried no options; report the switch ourselves.
+			return false, s.stream.ReportModels(s.models)
+		}
+		return false, nil
 	case "session/prompt":
 		if id != s.promptID {
 			return false, s.fail("acp_response_invalid", errors.New("ACP prompt response correlation failed"))
@@ -546,6 +578,9 @@ func (s *acpSession) notification(method string, raw json.RawMessage) error {
 		}
 		if kind.SessionUpdate == "available_commands_update" {
 			return s.reportCommands(params.Update)
+		}
+		if kind.SessionUpdate == "config_option_update" {
+			return s.reportConfigOptions(params.Update)
 		}
 		if !s.ready || s.loading || s.cancelled && s.promptID == 0 {
 			return nil
@@ -1075,4 +1110,91 @@ func validateACPConfig(config ACPConfig) error {
 		seen[name] = true
 	}
 	return nil
+}
+
+// setModel switches the agent's model config option to a value it reported.
+func (s *acpSession) setModel(id string) error {
+	switch {
+	case !s.ready || s.sessionID == "" || s.modelConfig == "":
+		return s.stream.modelUnavailable("The agent has not reported a model option")
+	case s.switching != "":
+		return s.stream.modelUnavailable("The agent is already switching models")
+	case !s.models.has(id):
+		return s.stream.modelUnavailable("The agent does not offer that model")
+	}
+	s.switching = id
+	if err := s.call("session/set_config_option", map[string]any{
+		"sessionId": s.sessionID, "configId": s.modelConfig, "value": id,
+	}); err != nil {
+		return s.fail("acp_write_failed", err)
+	}
+	return nil
+}
+
+// reportConfigOptions reads the model option from a configOptions list (a
+// session response, a set_config_option response, or config_option_update)
+// and reports it. Lists without a model option change nothing.
+func (s *acpSession) reportConfigOptions(raw json.RawMessage) error {
+	var holder struct {
+		ConfigOptions []json.RawMessage `json:"configOptions"`
+	}
+	if len(raw) == 0 || json.Unmarshal(raw, &holder) != nil {
+		return nil
+	}
+	configID, models := acpModelOption(holder.ConfigOptions)
+	if models == nil {
+		return nil
+	}
+	s.modelConfig, s.models = configID, models
+	return s.stream.ReportModels(models)
+}
+
+// acpModelOption finds the first select option whose category is model and
+// flattens its grouped or ungrouped values into a model set.
+func acpModelOption(options []json.RawMessage) (string, *modelSet) {
+	type value struct {
+		Value       string            `json:"value"`
+		Name        string            `json:"name"`
+		Description string            `json:"description"`
+		Options     []json.RawMessage `json:"options"`
+	}
+	for _, raw := range options {
+		var option struct {
+			ID           string            `json:"id"`
+			Category     string            `json:"category"`
+			Type         string            `json:"type"`
+			CurrentValue json.RawMessage   `json:"currentValue"`
+			Options      []json.RawMessage `json:"options"`
+		}
+		if json.Unmarshal(raw, &option) != nil || option.Category != "model" ||
+			option.Type != "select" || option.ID == "" || len(option.ID) > adapterproto.MaxIDBytes {
+			continue
+		}
+		models := newModelSet()
+		var current string
+		if json.Unmarshal(option.CurrentValue, &current) == nil {
+			models.setCurrent(current)
+		}
+		var add func([]json.RawMessage, string, int)
+		add = func(entries []json.RawMessage, group string, depth int) {
+			for _, entry := range entries {
+				var item value
+				if json.Unmarshal(entry, &item) != nil {
+					continue
+				}
+				if item.Value == "" && len(item.Options) > 0 && depth == 0 {
+					add(item.Options, defaultString(item.Name, group), depth+1)
+					continue
+				}
+				label := item.Name
+				if group != "" && label != "" && !strings.HasPrefix(label, group) {
+					label = group + " · " + label
+				}
+				models.add(item.Value, label, item.Description)
+			}
+		}
+		add(option.Options, "", 0)
+		return option.ID, models
+	}
+	return "", nil
 }

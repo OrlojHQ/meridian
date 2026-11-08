@@ -66,6 +66,8 @@ func RunGeneric(
 	}
 	commands := childHello.Capabilities.Commands && controllerHello.Capabilities.Commands
 	childHello.Capabilities.Commands = commands
+	models := childHello.Capabilities.Models && controllerHello.Capabilities.Models
+	childHello.Capabilities.Models = models
 	if err := parent.Write(childHello); err != nil {
 		return err
 	}
@@ -85,7 +87,7 @@ func RunGeneric(
 					return
 				}
 				started = true
-			} else if !controllerKind(frame.Type) {
+			} else if !controllerKind(frame.Type) && (frame.Type != adapterproto.KindSetModel || !models) {
 				parentErrors <- errors.New("invalid controller frame")
 				return
 			}
@@ -104,7 +106,8 @@ func RunGeneric(
 				childErrors <- readErr
 				return
 			}
-			if !adapterKind(frame.Type) && (frame.Type != adapterproto.KindCommands || !commands) {
+			if !adapterKind(frame.Type) && (frame.Type != adapterproto.KindCommands || !commands) &&
+				(frame.Type != adapterproto.KindModels || !models) {
 				childErrors <- errors.New("invalid child adapter frame")
 				return
 			}

@@ -169,6 +169,37 @@ func TestPiRPCCommands(t *testing.T) {
 	}
 }
 
+func TestPiRPCReportsAndSwitchesModels(t *testing.T) {
+	t.Setenv("MERIDIAN_PI_HELPER", "1")
+	controller, adapter := net.Pipe()
+	defer controller.Close()
+	go func() {
+		_ = RunPiRPC(context.Background(), adapter, adapter, PiConfig{
+			Command: []string{os.Args[0], "-test.run=TestPiRPCContractHelper", "--"},
+		})
+	}()
+	decoder, encoder := negotiateTestAdapterWith(t, controller, adapterproto.KindStart, "", true)
+	models := readKind(t, decoder, adapterproto.KindModels).Models
+	if models.Current != "anthropic/claude-sonnet-5" || len(models.Options) != 3 ||
+		models.Options[0].ID != "anthropic/claude-sonnet-5" || models.Options[0].Label != "Sonnet 5" ||
+		models.Options[1].ID != "openrouter/meta/llama-5" || models.Options[2].ID != "openrouter/locked" {
+		t.Fatalf("models = %#v", models)
+	}
+	sendSetModel(t, encoder, "switch-1", "openai/gpt-6")
+	if failure := readKind(t, decoder, adapterproto.KindError); failure.Code != "model_unavailable" {
+		t.Fatalf("unknown model = %#v", failure)
+	}
+	sendSetModel(t, encoder, "switch-2", "openrouter/meta/llama-5")
+	if switched := readKind(t, decoder, adapterproto.KindModels).Models; switched.Current != "openrouter/meta/llama-5" {
+		t.Fatalf("switched = %#v", switched)
+	}
+	sendSetModel(t, encoder, "switch-3", "openrouter/locked")
+	failure := readKind(t, decoder, adapterproto.KindError)
+	if failure.Code != "model_unavailable" || !strings.Contains(failure.Summary, "no API key") {
+		t.Fatalf("refused switch = %#v", failure)
+	}
+}
+
 func TestPiRPCFailedPromptSettlesIdle(t *testing.T) {
 	t.Setenv("MERIDIAN_PI_HELPER", "1")
 	controller, adapter := net.Pipe()
@@ -241,7 +272,33 @@ func TestPiRPCContractHelper(t *testing.T) {
 				"data": map[string]any{
 					"sessionFile": "/tmp/pi-session.jsonl", "sessionId": "pi-session",
 					"sessionName": "contract",
+					"model":       map[string]any{"provider": "anthropic", "id": "claude-sonnet-5"},
 				},
+			})
+		case "get_available_models":
+			_ = writer.Encode(map[string]any{
+				"type": "response", "id": id, "command": "get_available_models", "success": true,
+				"data": map[string]any{"models": []any{
+					map[string]any{"provider": "anthropic", "id": "claude-sonnet-5", "name": "Sonnet 5"},
+					map[string]any{"provider": "openrouter", "id": "meta/llama-5", "name": "Llama 5"},
+					map[string]any{"provider": "", "id": "orphan", "name": "No provider"},
+					map[string]any{"provider": "openrouter", "id": "locked"},
+				}},
+			})
+		case "set_model":
+			if command["provider"] == "openrouter" && command["modelId"] == "locked" {
+				_ = writer.Encode(map[string]any{
+					"type": "response", "id": id, "command": "set_model", "success": false,
+					"error": "openrouter has no API key",
+				})
+				continue
+			}
+			if command["provider"] != "openrouter" || command["modelId"] != "meta/llama-5" {
+				os.Exit(5)
+			}
+			_ = writer.Encode(map[string]any{
+				"type": "response", "id": id, "command": "set_model", "success": true,
+				"data": map[string]any{"provider": "openrouter", "id": "meta/llama-5"},
 			})
 		case "prompt", "steer", "follow_up":
 			if command["message"] == "fail" {
@@ -331,6 +388,19 @@ func negotiateTestAdapter(
 	resume string,
 ) (*adapterproto.Decoder, *adapterproto.Encoder) {
 	t.Helper()
+	return negotiateTestAdapterWith(t, connection, initialType, resume, false)
+}
+
+// negotiateTestAdapterWith is negotiateTestAdapter with the models capability
+// optionally offered, so older contract tests keep their frame sequences.
+func negotiateTestAdapterWith(
+	t *testing.T,
+	connection net.Conn,
+	initialType adapterproto.Kind,
+	resume string,
+	models bool,
+) (*adapterproto.Decoder, *adapterproto.Encoder) {
+	t.Helper()
 	_ = connection.SetDeadline(time.Now().Add(5 * time.Second))
 	decoder := adapterproto.NewDecoder(connection)
 	encoder := adapterproto.NewEncoder(connection)
@@ -339,7 +409,7 @@ func negotiateTestAdapter(
 		Capabilities: &adapterproto.Capabilities{
 			Resume: true, ToolEvents: true, Permissions: true,
 			InputRequests: true, Heartbeat: true, OpaqueMetadata: true,
-			Commands: true,
+			Commands: true, Models: models,
 		},
 	})
 	if hello, err := decoder.Decode(); err != nil || hello.Type != adapterproto.KindHello {

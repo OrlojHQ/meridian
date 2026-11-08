@@ -6880,6 +6880,52 @@ func (o OptThreadLinkLastReportStatus) Or(d ThreadLinkLastReportStatus) ThreadLi
 	return d
 }
 
+// NewOptThreadModels returns new OptThreadModels with value set to v.
+func NewOptThreadModels(v ThreadModels) OptThreadModels {
+	return OptThreadModels{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptThreadModels is optional ThreadModels.
+type OptThreadModels struct {
+	Value ThreadModels
+	Set   bool
+}
+
+// IsSet returns true if OptThreadModels was set.
+func (o OptThreadModels) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptThreadModels) Reset() {
+	var v ThreadModels
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptThreadModels) SetTo(v ThreadModels) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptThreadModels) Get() (v ThreadModels, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptThreadModels) Or(d ThreadModels) ThreadModels {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptThreadOrigin returns new OptThreadOrigin with value set to v.
 func NewOptThreadOrigin(v ThreadOrigin) OptThreadOrigin {
 	return OptThreadOrigin{
@@ -9582,6 +9628,18 @@ type SendThreadMessageUnprocessableEntity ErrorEnvelope
 
 func (*SendThreadMessageUnprocessableEntity) sendThreadMessageRes() {}
 
+type SetThreadModelBadRequest ErrorEnvelope
+
+func (*SetThreadModelBadRequest) setThreadModelRes() {}
+
+type SetThreadModelConflict ErrorEnvelope
+
+func (*SetThreadModelConflict) setThreadModelRes() {}
+
+type SetThreadModelUnprocessableEntity ErrorEnvelope
+
+func (*SetThreadModelUnprocessableEntity) setThreadModelRes() {}
+
 type StartRunBadRequest ErrorEnvelope
 
 func (*StartRunBadRequest) startRunRes() {}
@@ -9983,6 +10041,9 @@ type ThreadAdapterEvent struct {
 	// On commands events, the commands the harness reported for this session. The latest commands event
 	// replaces earlier ones. Send a command as an ordinary message `/name arguments`.
 	Commands []ThreadCommand `json:"commands"`
+	Models   OptThreadModels `json:"models"`
+	// On set_model events, the model ID the operator asked for.
+	Model OptString `json:"model"`
 }
 
 // GetType returns the value of Type.
@@ -10070,6 +10131,16 @@ func (s *ThreadAdapterEvent) GetCommands() []ThreadCommand {
 	return s.Commands
 }
 
+// GetModels returns the value of Models.
+func (s *ThreadAdapterEvent) GetModels() OptThreadModels {
+	return s.Models
+}
+
+// GetModel returns the value of Model.
+func (s *ThreadAdapterEvent) GetModel() OptString {
+	return s.Model
+}
+
 // SetType sets the value of Type.
 func (s *ThreadAdapterEvent) SetType(val ThreadAdapterEventType) {
 	s.Type = val
@@ -10153,6 +10224,16 @@ func (s *ThreadAdapterEvent) SetAvailableFrom(val OptInt64) {
 // SetCommands sets the value of Commands.
 func (s *ThreadAdapterEvent) SetCommands(val []ThreadCommand) {
 	s.Commands = val
+}
+
+// SetModels sets the value of Models.
+func (s *ThreadAdapterEvent) SetModels(val OptThreadModels) {
+	s.Models = val
+}
+
+// SetModel sets the value of Model.
+func (s *ThreadAdapterEvent) SetModel(val OptString) {
+	s.Model = val
 }
 
 type ThreadAdapterEventStatus string
@@ -10254,6 +10335,8 @@ const (
 	ThreadAdapterEventTypeGap                ThreadAdapterEventType = "gap"
 	ThreadAdapterEventTypeEnd                ThreadAdapterEventType = "end"
 	ThreadAdapterEventTypeCommands           ThreadAdapterEventType = "commands"
+	ThreadAdapterEventTypeModels             ThreadAdapterEventType = "models"
+	ThreadAdapterEventTypeSetModel           ThreadAdapterEventType = "set_model"
 )
 
 // AllValues returns all ThreadAdapterEventType values.
@@ -10272,6 +10355,8 @@ func (ThreadAdapterEventType) AllValues() []ThreadAdapterEventType {
 		ThreadAdapterEventTypeGap,
 		ThreadAdapterEventTypeEnd,
 		ThreadAdapterEventTypeCommands,
+		ThreadAdapterEventTypeModels,
+		ThreadAdapterEventTypeSetModel,
 	}
 }
 
@@ -10303,6 +10388,10 @@ func (s ThreadAdapterEventType) MarshalText() ([]byte, error) {
 	case ThreadAdapterEventTypeEnd:
 		return []byte(s), nil
 	case ThreadAdapterEventTypeCommands:
+		return []byte(s), nil
+	case ThreadAdapterEventTypeModels:
+		return []byte(s), nil
+	case ThreadAdapterEventTypeSetModel:
 		return []byte(s), nil
 	default:
 		return nil, errors.Errorf("invalid value: %q", s)
@@ -10350,6 +10439,12 @@ func (s *ThreadAdapterEventType) UnmarshalText(data []byte) error {
 		return nil
 	case ThreadAdapterEventTypeCommands:
 		*s = ThreadAdapterEventTypeCommands
+		return nil
+	case ThreadAdapterEventTypeModels:
+		*s = ThreadAdapterEventTypeModels
+		return nil
+	case ThreadAdapterEventTypeSetModel:
+		*s = ThreadAdapterEventTypeSetModel
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)
@@ -11644,6 +11739,97 @@ func (s *ThreadMessageRole) UnmarshalText(data []byte) error {
 	}
 }
 
+// Ref: #/components/schemas/ThreadModelOption
+type ThreadModelOption struct {
+	ID          string    `json:"id"`
+	Label       string    `json:"label"`
+	Description OptString `json:"description"`
+}
+
+// GetID returns the value of ID.
+func (s *ThreadModelOption) GetID() string {
+	return s.ID
+}
+
+// GetLabel returns the value of Label.
+func (s *ThreadModelOption) GetLabel() string {
+	return s.Label
+}
+
+// GetDescription returns the value of Description.
+func (s *ThreadModelOption) GetDescription() OptString {
+	return s.Description
+}
+
+// SetID sets the value of ID.
+func (s *ThreadModelOption) SetID(val string) {
+	s.ID = val
+}
+
+// SetLabel sets the value of Label.
+func (s *ThreadModelOption) SetLabel(val string) {
+	s.Label = val
+}
+
+// SetDescription sets the value of Description.
+func (s *ThreadModelOption) SetDescription(val OptString) {
+	s.Description = val
+}
+
+// Ref: #/components/schemas/ThreadModelRequest
+type ThreadModelRequest struct {
+	ExpectedResourceVersion int64  `json:"expectedResourceVersion"`
+	Model                   string `json:"model"`
+}
+
+// GetExpectedResourceVersion returns the value of ExpectedResourceVersion.
+func (s *ThreadModelRequest) GetExpectedResourceVersion() int64 {
+	return s.ExpectedResourceVersion
+}
+
+// GetModel returns the value of Model.
+func (s *ThreadModelRequest) GetModel() string {
+	return s.Model
+}
+
+// SetExpectedResourceVersion sets the value of ExpectedResourceVersion.
+func (s *ThreadModelRequest) SetExpectedResourceVersion(val int64) {
+	s.ExpectedResourceVersion = val
+}
+
+// SetModel sets the value of Model.
+func (s *ThreadModelRequest) SetModel(val string) {
+	s.Model = val
+}
+
+// On models events, the harness's current model and every model it offers. The latest models event
+// replaces earlier ones. current may be empty, and need not be one of the options.
+// Ref: #/components/schemas/ThreadModels
+type ThreadModels struct {
+	Current OptString           `json:"current"`
+	Options []ThreadModelOption `json:"options"`
+}
+
+// GetCurrent returns the value of Current.
+func (s *ThreadModels) GetCurrent() OptString {
+	return s.Current
+}
+
+// GetOptions returns the value of Options.
+func (s *ThreadModels) GetOptions() []ThreadModelOption {
+	return s.Options
+}
+
+// SetCurrent sets the value of Current.
+func (s *ThreadModels) SetCurrent(val OptString) {
+	s.Current = val
+}
+
+// SetOptions sets the value of Options.
+func (s *ThreadModels) SetOptions(val []ThreadModelOption) {
+	s.Options = val
+}
+
 // ThreadMutationHeaders wraps Thread with response headers.
 type ThreadMutationHeaders struct {
 	ETag     OptString
@@ -12051,6 +12237,7 @@ func (*ThreadSessionMutationHeaders) cancelThreadRes()      {}
 func (*ThreadSessionMutationHeaders) respondThreadRes()     {}
 func (*ThreadSessionMutationHeaders) resumeThreadRes()      {}
 func (*ThreadSessionMutationHeaders) sendThreadMessageRes() {}
+func (*ThreadSessionMutationHeaders) setThreadModelRes()    {}
 func (*ThreadSessionMutationHeaders) startThreadRes()       {}
 
 // Ref: #/components/schemas/ThreadState

@@ -50,6 +50,7 @@ import {
   startRun,
   startThread,
   respondThread,
+  setThreadModel,
   readCapsuleFile,
   getCoordinationGrant,
   listThreadLinks,
@@ -483,6 +484,20 @@ export const api = {
         path: { threadId },
         headers: idempotencyHeaders(),
         body,
+      }),
+    ),
+  setThreadModel: (
+    threadId: string,
+    expectedResourceVersion: number,
+    model: string,
+    signal?: AbortSignal,
+  ) =>
+    call<ThreadMutationResult>(
+      setThreadModel({
+        ...generatedOptions(signal),
+        path: { threadId },
+        headers: idempotencyHeaders(),
+        body: { expectedResourceVersion, model },
       }),
     ),
   archiveThread: (

@@ -158,6 +158,8 @@ export function buildThreadChat(
   const answers = answeredRequests(blocks);
   const items: ChatItem[] = [];
   const assistants = new Map<string, Extract<ChatItem, { kind: "assistant" }>>();
+  // Labels from the models reports seen so far name an operator's switch.
+  const modelLabels = new Map<string, string>();
   const tools = new Map<string, ToolCall>();
   const turnOf = new Map<ToolCall, number>();
   let turn = 0;
@@ -266,6 +268,14 @@ export function buildThreadChat(
         }
         break;
       case "error":
+        if (event.code === "model_unavailable") {
+          items.push({
+            kind: "error",
+            key: block.id,
+            text: `Model not switched: ${safeInline(event.summary ?? "").slice(0, 300) || "the harness refused"}`,
+          });
+          break;
+        }
         items.push({
           kind: "error",
           key: block.id,
@@ -273,6 +283,17 @@ export function buildThreadChat(
           code: event.code ? safeInline(event.code) : undefined,
         });
         break;
+      case "models":
+        for (const option of event.models?.options ?? []) {
+          modelLabels.set(option.id, safeInline(option.label).slice(0, 128));
+        }
+        break;
+      case "set_model": {
+        const id = event.model ?? "";
+        const label = modelLabels.get(id) || safeInline(id).slice(0, 128);
+        items.push({ kind: "notice", key: block.id, text: `Model → ${label}` });
+        break;
+      }
       case "permission_request":
       case "input_request": {
         const isInput = event.type === "input_request";

@@ -1,10 +1,11 @@
 import type {
   ThreadAdapterEvent,
   ThreadBlock,
-  ThreadMessageKind,
-  ThreadMessageRole,
   ThreadBlockKind,
   ThreadCommand,
+  ThreadMessageKind,
+  ThreadMessageRole,
+  ThreadModels,
 } from "../api/generated/types.gen";
 
 // Builds blocks the way the server maps adapter frames (mapStructuredEvent in
@@ -75,6 +76,12 @@ export function transcript(start = 1) {
       push("system", "status", "error", { type: "error", code, reason }),
     commands: (commands: ThreadCommand[]) =>
       push("system", "status", "json", { type: "commands", commands }),
+    models: (models: ThreadModels) =>
+      push("system", "status", "json", { type: "models", models }),
+    setModel: (model: string) =>
+      push("user", "status", "json", { type: "set_model", model }),
+    modelError: (summary: string) =>
+      push("system", "status", "error", { type: "error", code: "model_unavailable", summary }),
   };
   return api;
 }
