@@ -4,13 +4,16 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/OrlojHQ/meridian/internal/adapterproto"
 	"github.com/OrlojHQ/meridian/internal/app"
+	"github.com/OrlojHQ/meridian/internal/capsuleproto"
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/ports"
 	"github.com/OrlojHQ/meridian/internal/store/sqlite"
@@ -27,6 +30,7 @@ type structuredRuntime struct {
 	events       ports.RuntimeStructuredEvents
 	cancels      int
 	cancelErr    error
+	startErr     error
 }
 
 func (r *structuredRuntime) StartStructured(
@@ -41,6 +45,9 @@ func (r *structuredRuntime) StartStructured(
 		r.frames = make(map[string]adapterproto.Frame)
 	}
 	r.starts[request.RunID]++
+	if r.startErr != nil {
+		return ports.RuntimeRun{}, r.startErr
+	}
 	run := ports.RuntimeRun{State: domain.RunRunning, Structured: true}
 	r.runs[request.RunID] = run
 	return run, nil
@@ -716,5 +723,96 @@ func TestThreadSteerAttachesAdapterMetadataAndRetries(t *testing.T) {
 	}
 	if frame.Content != "change course" {
 		t.Fatalf("steer content = %q", frame.Content)
+	}
+}
+
+func TestCreateThreadStartRejectsNativeOnlyPack(t *testing.T) {
+	ctx := context.Background()
+	store, service, runtime, key, _ := threadService(t, ctx)
+	defer store.Close()
+	defer key.Zero()
+	packs := domain.InstallationHarnessImages("meridian-capsule:dev", "")
+	for index := range packs {
+		if packs[index].Name != "mock" && packs[index].Name != "dsh" {
+			packs[index].InteractionModes = []domain.HarnessInteractionMode{domain.HarnessInteractionNative}
+		}
+	}
+	service.ConfigureHarnessPacks(packs)
+	now := time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)
+	if err := store.Transact(ctx, func(tx ports.Transaction) error {
+		return tx.InsertCapsule(ctx, domain.Capsule{
+			ID: "capsule-opencode", ProjectID: "project-thread", Name: "opencode",
+			State: domain.CapsuleReady, DesiredState: domain.IntentReady,
+			ProviderResourceID: "resource-opencode",
+			ImageReference:     "meridian-capsule-opencode:dev",
+			CreatedAt:          now, UpdatedAt: now, ResourceVersion: 1,
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := service.CreateThread(ctx, app.CreateThreadInput{
+		CapsuleID: "capsule-opencode", Harness: "opencode", FirstMessage: "hello",
+		Start: true, IdempotencyKey: "native-only-start",
+	})
+	if !errors.Is(err, domain.ErrUnsupported) || !strings.Contains(err.Error(), "runs only in a terminal") {
+		t.Fatalf("native-only start error = %v", err)
+	}
+	page, err := service.ListThreads(ctx, "capsule-opencode", 0, 100)
+	if err != nil || len(page.Items) != 0 {
+		t.Fatalf("rejected start provisioned %#v, %v", page.Items, err)
+	}
+	runtime.mu.Lock()
+	starts := len(runtime.starts)
+	runtime.mu.Unlock()
+	if starts != 0 {
+		t.Fatalf("rejected start still called StartStructured %d times", starts)
+	}
+
+	if err := store.Transact(ctx, func(tx ports.Transaction) error {
+		return tx.InsertCapsule(ctx, domain.Capsule{
+			ID: "capsule-dsh", ProjectID: "project-thread", Name: "dsh",
+			State: domain.CapsuleReady, DesiredState: domain.IntentReady,
+			ProviderResourceID: "resource-dsh",
+			ImageReference:     "meridian-capsule-dsh:dev",
+			CreatedAt:          now, UpdatedAt: now, ResourceVersion: 1,
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.CreateThread(ctx, app.CreateThreadInput{
+		CapsuleID: "capsule-dsh", Harness: "dsh", FirstMessage: "hello",
+		Start: true, IdempotencyKey: "dsh-structured-start",
+	}); err != nil {
+		t.Fatalf("structured-only dsh start = %v", err)
+	}
+}
+
+func TestCreateThreadPersistsCapsuledStructuredStartError(t *testing.T) {
+	ctx := context.Background()
+	store, service, runtime, key, capsuleID := threadService(t, ctx)
+	defer store.Close()
+	defer key.Zero()
+	runtime.startErr = &capsuleproto.Error{
+		Status: http.StatusUnprocessableEntity, Code: "structured_interaction_unavailable",
+	}
+	created, err := service.CreateThread(ctx, app.CreateThreadInput{
+		CapsuleID: capsuleID, Harness: "mock", FirstMessage: "hello",
+		Start: true, IdempotencyKey: "start-protocol-error",
+	})
+	if err == nil {
+		t.Fatal("expected structured start failure")
+	}
+	if created.Run == nil || created.Run.State != domain.RunFailed {
+		t.Fatalf("run = %#v", created.Run)
+	}
+	if created.Run.Failure != "Capsule runtime rejected structured session start: structured_interaction_unavailable" {
+		t.Fatalf("run failure = %q", created.Run.Failure)
+	}
+	stored, err := service.GetRunStored(ctx, created.Run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Failure != created.Run.Failure {
+		t.Fatalf("stored failure = %q", stored.Failure)
 	}
 }

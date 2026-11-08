@@ -188,6 +188,18 @@ func (s *Service) CreateThread(ctx context.Context, input CreateThreadInput) (Th
 			if active {
 				return fmt.Errorf("%w: Capsule already has an active Run", domain.ErrConflict)
 			}
+			project, err := tx.GetProject(ctx, capsule.ProjectID)
+			if err != nil {
+				return err
+			}
+			if domain.StructuredUnsupported(s.harnessPacks, domain.HarnessImage{
+				Name: input.Harness, ImageReference: capsule.WorkspaceImage(project),
+			}) {
+				return fmt.Errorf(
+					"%w: harness pack %q runs only in a terminal and cannot start a structured session",
+					domain.ErrUnsupported, input.Harness,
+				)
+			}
 		}
 		now := s.clock.Now().UTC()
 		threadID := domain.ThreadID(s.ids.NewID())
@@ -1277,12 +1289,8 @@ func (s *Service) startStructuredRuntime(
 	}
 	clearStringMap(secretValues)
 	if err != nil {
-		failure := "Capsule runtime rejected structured session start"
-		if errors.Is(err, domain.ErrHarnessDependencies) {
-			failure = "Tool installation failed; check Capsule access to registry.npmjs.org, package versions, and available storage, then retry"
-		}
 		failed, transitionErr := s.transitionRun(ctx, run.ID, domain.RunFailed, &runCompletion{
-			Failure: failure,
+			Failure: structuredSessionStartFailure(err),
 		})
 		if transitionErr != nil {
 			return run, transitionErr
@@ -1303,6 +1311,34 @@ func (s *Service) startStructuredRuntime(
 		return run, nil
 	}
 	return run, nil
+}
+
+func structuredSessionStartFailure(err error) string {
+	if errors.Is(err, domain.ErrHarnessDependencies) {
+		return "Tool installation failed; check Capsule access to registry.npmjs.org, package versions, and available storage, then retry"
+	}
+	if code := protocolErrorCode(err); code != "" {
+		return "Capsule runtime rejected structured session start: " + code
+	}
+	return "Capsule runtime rejected structured session start"
+}
+
+func protocolErrorCode(err error) string {
+	var coded interface{ ProtocolCode() string }
+	if !errors.As(err, &coded) {
+		return ""
+	}
+	code := coded.ProtocolCode()
+	if len(code) == 0 || len(code) > 64 {
+		return ""
+	}
+	for i := 0; i < len(code); i++ {
+		c := code[i]
+		if c != '_' && (c < 'a' || c > 'z') && (c < '0' || c > '9') {
+			return ""
+		}
+	}
+	return code
 }
 
 func (s *Service) deliverThreadMessage(

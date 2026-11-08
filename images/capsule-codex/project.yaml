@@ -1,10 +1,11 @@
 # Copy this file into a repository as .meridian/project.yaml.
 # The Capsule image must contain /usr/local/bin/codex
 # (make capsule-codex-image → meridian-capsule-codex:dev).
-# Terminal sessions (native) sign in inside the Codex TUI.
-# Threads (structured) run `codex app-server` through the Meridian adapter.
-# They cannot sign in interactively: attach an OpenAI provider connection so
-# capsuled writes the gateway model provider into ~/.codex/config.toml.
+# Terminal sessions (native) sign in inside the Codex TUI (`codex login`).
+# Threads (structured) run `codex app-server` through the Meridian adapter;
+# the adapter does not collect credentials. Attach an OpenAI provider
+# connection so capsuled writes the gateway model provider into
+# ~/.codex/config.toml, or sign in once in a terminal session.
 # Codex's own sandbox needs user namespaces the Capsule does not grant, so the
 # Capsule is the boundary and every non-read-only command asks the operator.
 # Neither profile injects provider credentials itself, and a repository

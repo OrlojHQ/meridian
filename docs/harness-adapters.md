@@ -220,9 +220,11 @@ process in the Capsule can still edit the patch or save a credential in
 `$DSH_HOME`, which outranks the environment, but it already holds the lease,
 which is valid only at the gateway for that Capsule.
 
-Structured sessions have no terminal to sign in with. Attach a provider
-connection (see [personal harness setups](personal-harness-setups.md)) to the
-Project and harness:
+Structured sessions have no terminal to sign in with, and ACP does not
+collect credentials. Sign in in a native terminal session (`opencode auth
+login`, `claude auth login`, `codex login`, or the Pi TUI), or attach a
+provider connection (see [personal harness setups](personal-harness-setups.md))
+to the Project and harness:
 
 - for `claude`, `capsuled` sets `ANTHROPIC_BASE_URL` and a gateway lease in
   `ANTHROPIC_API_KEY`;
@@ -467,10 +469,13 @@ JSON-RPC 2.0, `initialize` with protocol version 1, `session/new`,
 `tool_call_update`, `plan`, `available_commands_update`, and the ignored
 kinds), `session/request_permission` with `allow_once`, `allow_always`,
 `reject_once`, and `reject_always` options, and `$/cancel_request`. It was
-recorded against `opencode acp` from OpenCode 1.18.32, which also runs
-`/name args` prompts as its own commands. Unknown update kinds are ignored;
-malformed or oversized records, uncorrelated responses, and a protocol version
-other than 1 end the adapter.
+recorded against `opencode acp` from OpenCode 1.18.32 and pinned in the
+official pack at OpenCode 2.2.6, which also runs `/name args` prompts as its
+own commands. Unknown update kinds are ignored; malformed or oversized
+records, uncorrelated responses, and a protocol version other than 1 end the
+adapter. `opencode acp` does not collect credentials: sign in with
+`opencode auth login` in a native terminal session, or attach a provider
+connection.
 
 The driver also runs `dsh --profile acp` from DeepSeek Harness 0.2.2-rc.1
 (agent `deepseek-harness-acp` 0.0.1), recorded on 2026-11-07 against local

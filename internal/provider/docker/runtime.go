@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 
 	"github.com/OrlojHQ/meridian/internal/capsuleproto"
 	"github.com/OrlojHQ/meridian/internal/domain"
@@ -470,24 +469,8 @@ func mapRuntimeError(err error) error {
 	}
 	var protocolError *capsuleproto.Error
 	if errors.As(err, &protocolError) {
-		if protocolError.Code == "harness_dependency_install_failed" {
-			return domain.ErrHarnessDependencies
-		}
-		switch protocolError.Status {
-		case http.StatusNotFound:
-			return domain.ErrNotFound
-		case http.StatusTooManyRequests:
-			return domain.ErrResourceExhausted
-		case http.StatusConflict:
-			return domain.ErrConflict
-		case http.StatusBadRequest:
-			return domain.ErrInvalid
-		case http.StatusUnprocessableEntity:
-			if protocolError.Code == "structured_interaction_unavailable" ||
-				strings.HasPrefix(protocolError.Code, "harness_configuration_") {
-				return domain.ErrUnsupported
-			}
-			return domain.ErrIllegalTransition
+		if mapped := domain.MapCapsuleProtocolError(protocolError.Status, protocolError.Code); mapped != nil {
+			return fmt.Errorf("%w: %w", mapped, protocolError)
 		}
 	}
 	return err
