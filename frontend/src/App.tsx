@@ -37,6 +37,7 @@ import type {
   TimelineView,
 } from "./api/generated/types.gen";
 import { queries } from "./api/queries";
+import { BlockerPeek } from "./components/BlockerPeek";
 import { Board } from "./components/Board";
 import {
   ThreadCreate,
@@ -210,6 +211,9 @@ function InboxRow({
 }) {
   const { capsule, activity } = item;
   const actions = inboxActions(item, git);
+  const waiting = item.threads.flatMap((thread) =>
+    thread.state === "active" && thread.awaiting ? [{ thread, kind: thread.awaiting.kind }] : [],
+  );
   return (
     <li className={`inbox-row inbox-row-${activity.group}`}>
       <HarnessMark harness={itemHarness(item)} size="md" />
@@ -229,6 +233,14 @@ function InboxRow({
           ) : null}
         </p>
         {activity.detail && <p className="inbox-detail">{activity.detail}</p>}
+        {waiting.map(({ thread, kind }) => (
+          <BlockerPeek
+            key={thread.id}
+            thread={thread}
+            kind={kind}
+            label={waiting.length > 1 ? harnessName(thread.harness) : undefined}
+          />
+        ))}
       </div>
       <div className="inbox-actions">
         {actions.map((action, index) => (

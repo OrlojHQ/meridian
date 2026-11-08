@@ -7,6 +7,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/OrlojHQ/meridian/internal/coordproto"
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/ports"
 )
@@ -106,13 +107,11 @@ func (s *Service) Board(ctx context.Context, query BoardQuery) (Board, error) {
 	}
 	items := make([]BoardItem, 0, len(capsules))
 	byThread := make(map[domain.ThreadID]int)
-	byCapsule := make(map[domain.CapsuleID]int)
 	for _, capsule := range capsules {
 		item, err := s.boardItem(ctx, capsule)
 		if err != nil {
 			return Board{}, err
 		}
-		byCapsule[capsule.ID] = len(items)
 		if item.Thread != nil {
 			byThread[item.Thread.ID] = len(items)
 		}
@@ -132,27 +131,22 @@ func (s *Service) Board(ctx context.Context, query BoardQuery) (Board, error) {
 		}
 		rollup := ChildRollup{Total: len(links)}
 		for _, link := range links {
-			child, ok := byCapsule[link.ChildCapsuleID]
-			var status BoardStatus
-			if ok {
-				status = items[child].Status
-			}
 			if !link.ArchivedAt.IsZero() {
 				rollup.Archived++
 				rollup.Done++
 				continue
 			}
-			switch {
-			case status == BoardNeedsYou:
+			switch s.linkPhase(ctx, link) {
+			case coordproto.PhaseAwaiting:
 				rollup.NeedsYou++
-			case link.State == domain.LinkClosed && link.CloseReason == domain.LinkFailed:
+			case coordproto.PhaseFailed:
 				rollup.Failed++
-			case link.State == domain.LinkClosed:
+			case coordproto.PhaseEnded:
 				rollup.Done++
-			case status == BoardWorking:
-				rollup.Working++
-			default:
+			case coordproto.PhaseIdle:
 				rollup.Idle++
+			default:
+				rollup.Working++
 			}
 		}
 		item.Rollup = &rollup

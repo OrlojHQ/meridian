@@ -801,9 +801,11 @@ func (s *Service) ThreadLinkPhase(ctx context.Context, link domain.ThreadLink) s
 	return s.linkPhase(ctx, link)
 }
 
+// linkPhase is the one derivation behind a lead's subagent panel and its
+// board rollup, so the two never disagree.
 func (s *Service) linkPhase(ctx context.Context, link domain.ThreadLink) string {
 	if link.State == domain.LinkClosed {
-		if link.CloseReason == domain.LinkFailed {
+		if link.CloseReason == domain.LinkFailed || s.childRunFailed(ctx, link) {
 			return coordproto.PhaseFailed
 		}
 		return coordproto.PhaseEnded
@@ -822,6 +824,12 @@ func (s *Service) linkPhase(ctx context.Context, link domain.ThreadLink) string 
 	if err != nil || thread.State != domain.ThreadActive || thread.CurrentRunID == "" {
 		return coordproto.PhaseEnded
 	}
+	if run, err := s.GetRunStored(ctx, thread.CurrentRunID); err == nil && run.State.Terminal() {
+		if run.State == domain.RunFailed {
+			return coordproto.PhaseFailed
+		}
+		return coordproto.PhaseEnded
+	}
 	attention, err := s.ThreadAttention(ctx, thread)
 	if err != nil {
 		return coordproto.PhaseWorking
@@ -833,6 +841,17 @@ func (s *Service) linkPhase(ctx context.Context, link domain.ThreadLink) string 
 		return coordproto.PhaseIdle
 	}
 	return coordproto.PhaseWorking
+}
+
+// childRunFailed reports whether a closed link's child session ended because
+// its Run failed, as when a harness times out.
+func (s *Service) childRunFailed(ctx context.Context, link domain.ThreadLink) bool {
+	thread, err := s.GetThread(ctx, link.ChildThreadID)
+	if err != nil || thread.CurrentRunID == "" {
+		return false
+	}
+	run, err := s.GetRunStored(ctx, thread.CurrentRunID)
+	return err == nil && run.State == domain.RunFailed
 }
 
 // reportSummary re-derives a report's text from the child's encrypted

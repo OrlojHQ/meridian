@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api, normalizeAPIError } from "../api/client";
-import type { Thread, ThreadLink } from "../api/generated/types.gen";
+import type { CoordinationGrant, Thread, ThreadLink } from "../api/generated/types.gen";
 import { queries } from "../api/queries";
 import { harnessName } from "../shell/capsuleActivity";
 import { PromoteSubagent } from "./PromoteSubagent";
@@ -32,6 +32,35 @@ function subagentRow(link: ThreadLink) {
       </span>
     </li>
   );
+}
+
+export function untilDeadline(deadlineAt: string, now = Date.now()) {
+  const minutes = Math.ceil((Date.parse(deadlineAt) - now) / 60_000);
+  if (!(minutes > 0)) return "deadline passed";
+  const days = Math.floor(minutes / 1_440);
+  const hours = Math.floor((minutes % 1_440) / 60);
+  const rest = minutes % 60;
+  if (days > 0) return `ends in ${days}d ${hours}h`;
+  return hours > 0 ? `ends in ${hours}h ${rest}m` : `ends in ${rest}m`;
+}
+
+// Leads have depth 1, so every descendant is a direct subagent and the lead
+// can start at most the smaller of the two caps.
+export function grantLimits(
+  grant: Pick<
+    CoordinationGrant,
+    "descendantsCreated" | "maxChildren" | "maxDescendants" | "maxLiveCapsules" | "deadlineAt"
+  >,
+  active: boolean,
+  now = Date.now(),
+) {
+  const total = Math.min(grant.maxChildren, grant.maxDescendants);
+  const parts = [
+    `${grant.descendantsCreated} of ${total} started`,
+    `up to ${grant.maxLiveCapsules} at a time`,
+  ];
+  if (active) parts.push(untilDeadline(grant.deadlineAt, now));
+  return parts.join(" · ");
 }
 
 function subagentHref(link: Pick<ThreadLink, "childCapsuleId" | "childThreadId">) {
@@ -99,9 +128,11 @@ function LeadSubagents({ thread, grantId }: { thread: Thread; grantId: string })
       <header>
         <h2 id="thread-subagents-title">Subagents</h2>
         {grant.data && (
-          <span className="muted-copy">
-            {grant.data.descendantsCreated} of {grant.data.maxDescendants} started
-            {active ? ` · until ${new Date(grant.data.deadlineAt).toLocaleString()}` : ""}
+          <span
+            className="muted-copy"
+            title={active ? `Ends ${new Date(grant.data.deadlineAt).toLocaleString()}` : undefined}
+          >
+            {grantLimits(grant.data, active)}
           </span>
         )}
         {grant.data && <StateBadge state={grant.data.state} />}
