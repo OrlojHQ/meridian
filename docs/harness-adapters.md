@@ -81,14 +81,14 @@ Each official pack installs a structured profile under its name, and all but
 | `codex` | `codex-app-server` | `codex-app-server --approval-policy untrusted --sandbox danger-full-access -- /usr/local/bin/codex` |
 | `opencode` | `acp` | `acp --secret-env OPENCODE_SERVER_PASSWORD --mcp-server meridian-coord=/usr/local/bin/meridian-coord,mcp -- /usr/local/bin/opencode acp --hostname 127.0.0.1 --mdns=false` |
 | `pi` | `pi-rpc` | `pi-rpc --session-dir /home/capsule/.pi-sessions -- /usr/local/bin/pi --skill /usr/local/share/meridian/pi/skills/meridian-coord` |
-| `dsh` | `acp` | `acp -- /usr/local/bin/dsh --profile acp` |
+| `dsh` | `acp` | `acp --mcp-server meridian-coord=/usr/local/bin/meridian-coord,mcp -- /usr/local/bin/dsh --profile acp` |
 
 A lead Thread reaches the in-Capsule `meridian-coord` tool (ADR 0029) through
 its structured profile. Claude Code and Codex register it as a stdio MCP
-server with `--mcp-server` (shown in the profile files). OpenCode receives it
-in the `mcpServers` list of ACP `session/new` and of the resume call, so the
-registration is per session and Meridian writes no OpenCode configuration
-into the workspace; OpenCode names the tools `meridian-coord_meridian_spawn`
+server with `--mcp-server` (shown in the profile files). OpenCode and `dsh`
+receive it in the `mcpServers` list of ACP `session/new` and of the resume
+call, so the registration is per session and Meridian writes no OpenCode or
+DeepSeek Harness configuration into the workspace; OpenCode names the tools `meridian-coord_meridian_spawn`
 and so on. Pi has no MCP client, so the Pi pack ships a `meridian-coord`
 skill that teaches the agent the CLI through its bash tool, and the profile
 loads it with `--skill` (Pi loads explicit `--skill` paths even when skill
@@ -96,7 +96,6 @@ discovery is off). A subagent Capsule lists `meridian_report`,
 `meridian_propose_delivery`, and `meridian_whoami`. In a Capsule that is
 neither a lead nor a subagent,
 the MCP server lists no tools and the CLI answers `coordination_disabled`.
-`dsh` registers nothing yet.
 
 The terminal launcher picks the native profile, and Threads pick the
 structured one. Because the image owns every mode of its names and a repository
