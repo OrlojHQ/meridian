@@ -263,6 +263,8 @@ harness-specific:
   `--session-dir` are adapter flags. A user-message metadata object may select
   an upstream queue primitive explicitly:
   `{"pi":{"command":"prompt|steer|follow_up"}}`. The default is `prompt`.
+  The Thread composer's Steer control sends `steer`; queued follow-ups are
+  held in the UI until the turn is idle, then sent as ordinary prompts.
 - `acp -- <agent> [args...]` runs an Agent Client Protocol (ACP v1) agent
   over stdio: `initialize`, `session/new` in the Capsule working directory
   (a real path under `/workspace`, never a host cwd or a symlink escape),
@@ -297,7 +299,8 @@ harness-specific:
   choice that is not an allow word declines. Codex runs one turn at a time, so
   messages sent during a turn queue as follow-up turns. User-message metadata
   `{"codex":{"delivery":"steer"}}` adds the message to the running turn with
-  `turn/steer` instead.
+  `turn/steer` instead. The Thread composer's Steer control sets that
+  metadata; queued follow-ups wait in the UI until the turn is idle.
 - `mock` is deterministic and credential-free. `--fault` accepts `gap`,
   `duplicate`, `crash`, `crash-start`, `hang`, `oversize`, or `malformed`.
 

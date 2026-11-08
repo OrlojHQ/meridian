@@ -534,7 +534,7 @@ func (s *Server) sendThreadMessage(writer http.ResponseWriter, request *http.Req
 	result, err := s.service.SendThreadMessage(
 		request.Context(), domain.ThreadID(request.PathValue("threadId")),
 		domain.ResourceVersion(input.ExpectedResourceVersion), input.Content,
-		request.Header.Get("Idempotency-Key"))
+		request.Header.Get("Idempotency-Key"), input.Delivery)
 	if err != nil {
 		writeError(writer, err)
 		return
@@ -1908,6 +1908,7 @@ type deleteThreadRequest struct {
 type sendThreadMessageRequest struct {
 	ExpectedResourceVersion int64  `json:"expectedResourceVersion"`
 	Content                 string `json:"content"`
+	Delivery                string `json:"delivery,omitempty"`
 }
 
 type threadResponseRequest struct {

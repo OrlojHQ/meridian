@@ -294,11 +294,7 @@ func (s *Service) CreateThread(ctx context.Context, input CreateThreadInput) (Th
 		if startErr == nil && firstMessage.ID != "" && !acknowledged {
 			startErr = s.deliverThreadMessage(ctx, result.Thread, run, firstMessage,
 				func(saved persistedThreadBlock) adapterproto.Frame {
-					return adapterproto.Frame{
-						Protocol: adapterproto.Version, Type: adapterproto.KindUserMessage,
-						ID: string(firstMessage.ID), SessionID: string(result.Thread.ID),
-						Role: adapterproto.RoleUser, Content: saved.Content,
-					}
+					return userMessageFrame(firstMessage.ID, result.Thread.ID, saved)
 				})
 		}
 		if fresh, getErr := s.GetThread(ctx, result.Thread.ID); getErr == nil {
@@ -585,11 +581,7 @@ func (s *Service) beginThreadSession(
 		} else {
 			err = s.deliverThreadMessage(ctx, result.Thread, run, message,
 				func(saved persistedThreadBlock) adapterproto.Frame {
-					return adapterproto.Frame{
-						Protocol: adapterproto.Version, Type: adapterproto.KindUserMessage,
-						ID: string(message.ID), SessionID: string(result.Thread.ID),
-						Role: adapterproto.RoleUser, Content: saved.Content,
-					}
+					return userMessageFrame(message.ID, result.Thread.ID, saved)
 				})
 		}
 	}
@@ -601,26 +593,51 @@ func (s *Service) beginThreadSession(
 
 func (s *Service) SendThreadMessage(
 	ctx context.Context, id domain.ThreadID, expected domain.ResourceVersion,
-	content, key string,
+	content, key, delivery string,
 ) (ThreadMutationResult, error) {
 	if content == "" || len(content) > adapterproto.MaxContentBytes {
 		return ThreadMutationResult{}, fmt.Errorf("%w: message must be non-empty and bounded", domain.ErrInvalid)
 	}
+	metadata, err := userMessageDeliveryMetadata(delivery)
+	if err != nil {
+		return ThreadMutationResult{}, err
+	}
 	frame := func(
 		messageID domain.ThreadMessageID, thread domain.Thread, saved persistedThreadBlock,
 	) adapterproto.Frame {
-		return adapterproto.Frame{
-			Protocol: adapterproto.Version, Type: adapterproto.KindUserMessage,
-			ID: string(messageID), SessionID: string(thread.ID), Role: adapterproto.RoleUser,
-			Content: saved.Content,
-		}
+		return userMessageFrame(messageID, thread.ID, saved)
 	}
 	if expected <= 0 {
 		return ThreadMutationResult{}, fmt.Errorf("%w: expected resource version is required", domain.ErrInvalid)
 	}
 	return s.appendAndSendHook(ctx, id, expected, key, "message", domain.ThreadRoleUser,
-		domain.ThreadMessagePrompt, domain.ThreadBlockText, persistedThreadBlock{Content: content}, frame,
+		domain.ThreadMessagePrompt, domain.ThreadBlockText,
+		persistedThreadBlock{Content: content, Metadata: metadata}, frame,
 		s.countOperatorMessage(ctx))
+}
+
+func userMessageFrame(
+	messageID domain.ThreadMessageID, threadID domain.ThreadID, saved persistedThreadBlock,
+) adapterproto.Frame {
+	return adapterproto.Frame{
+		Protocol: adapterproto.Version, Type: adapterproto.KindUserMessage,
+		ID: string(messageID), SessionID: string(threadID), Role: adapterproto.RoleUser,
+		Content: saved.Content, Metadata: saved.Metadata,
+	}
+}
+
+// userMessageDeliveryMetadata maps the HTTP delivery field onto the opaque
+// user-message metadata Pi and Codex already document. Other adapters ignore
+// unknown keys. An empty value is a normal prompt.
+func userMessageDeliveryMetadata(delivery string) (json.RawMessage, error) {
+	switch strings.TrimSpace(delivery) {
+	case "":
+		return nil, nil
+	case "steer":
+		return json.RawMessage(`{"codex":{"delivery":"steer"},"pi":{"command":"steer"}}`), nil
+	default:
+		return nil, fmt.Errorf("%w: delivery must be steer when set", domain.ErrInvalid)
+	}
 }
 
 func (s *Service) RespondThread(

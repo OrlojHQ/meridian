@@ -413,6 +413,9 @@ describe("Coordination transcript origin", () => {
   });
 
   it("renders report cards and a needs-you tray, keeping provenance and hiding link IDs", async () => {
+    vi.spyOn(api, "harnessProfiles").mockResolvedValue({
+      items: [{ name: "mock", structured: true, adapterKind: "mock", protocol: "meridian.adapter.v1", pty: false }],
+    });
     vi.spyOn(api, "threadLinks").mockResolvedValue({
       items: [
         { ...link("subagent-1", "idle", 1), id: linkId },

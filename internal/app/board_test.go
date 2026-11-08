@@ -243,10 +243,10 @@ func TestOperatorMessageToSubagentIsNoticedOnTheLeadsNextWake(t *testing.T) {
 		t.Fatal(err)
 	}
 	secret := "operator steering text stays out of the lead"
-	if _, err := f.service.SendThreadMessage(f.ctx, child.ID, 0, secret, "op-1"); !errors.Is(err, domain.ErrInvalid) {
+	if _, err := f.service.SendThreadMessage(f.ctx, child.ID, 0, secret, "op-1", ""); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("send without a version = %v", err)
 	}
-	if _, err := f.service.SendThreadMessage(f.ctx, child.ID, child.ResourceVersion, secret, "op-1"); err != nil {
+	if _, err := f.service.SendThreadMessage(f.ctx, child.ID, child.ResourceVersion, secret, "op-1", ""); err != nil {
 		t.Fatal(err)
 	}
 	counted, err := f.service.GetThreadLink(f.ctx, link.ID)
@@ -300,7 +300,7 @@ func TestOperatorMessagesAfterTheLinkClosesAreNotCounted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.service.SendThreadMessage(f.ctx, child.ID, child.ResourceVersion, "carry on", "op-1"); err != nil {
+	if _, err := f.service.SendThreadMessage(f.ctx, child.ID, child.ResourceVersion, "carry on", "op-1", ""); err != nil {
 		t.Fatal(err)
 	}
 	after, err := f.service.GetThreadLink(f.ctx, link.ID)

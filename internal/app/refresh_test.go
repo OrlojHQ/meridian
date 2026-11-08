@@ -194,7 +194,7 @@ func TestThreadAttentionTracksTheLiveTurn(t *testing.T) {
 
 	thread, _ := service.GetThread(ctx, created.Thread.ID)
 	if _, err := service.SendThreadMessage(
-		ctx, thread.ID, thread.ResourceVersion, "next", "send-next",
+		ctx, thread.ID, thread.ResourceVersion, "next", "send-next", "",
 	); err != nil {
 		t.Fatal(err)
 	}

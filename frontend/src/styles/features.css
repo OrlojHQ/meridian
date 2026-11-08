@@ -1197,6 +1197,9 @@ button.tool-line:hover {
 
 .composer-frame {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
   max-width: 48rem;
   margin: 0 auto;
 }
@@ -1298,10 +1301,11 @@ button.tool-line:hover {
 
 .composer-box {
   display: flex;
+  width: 100%;
   max-width: 48rem;
   align-items: flex-end;
   gap: 0.35rem;
-  margin: 0 auto;
+  margin: 0;
   border: 1px solid var(--border-strong);
   border-radius: 1.25rem;
   padding: 0.3rem 0.3rem 0.3rem 0.9rem;
@@ -1338,6 +1342,81 @@ button.tool-line:hover {
   outline-offset: 1px;
 }
 
+.composer-queue {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.composer-queue-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.15rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 0.5rem 0.65rem;
+  background: var(--surface-subtle);
+}
+
+.composer-queue-when {
+  grid-column: 1;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.composer-queue-text {
+  grid-column: 1;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-queue-actions {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  align-self: center;
+}
+
+.composer-queue-actions button {
+  font-size: 0.72rem;
+}
+
+.composer-queue-remove {
+  display: grid;
+  width: 1.6rem;
+  min-height: 1.6rem;
+  place-items: center;
+  border-color: transparent;
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+}
+
+.composer-queue-remove svg {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+.composer-hint {
+  margin: 0;
+  padding: 0 0.15rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
 .composer-actions {
   display: flex;
   flex: none;
@@ -1361,9 +1440,26 @@ button.tool-line:hover {
   height: 0.95rem;
 }
 
-.composer-send:disabled {
+.composer-send:disabled,
+.composer-queue-send:disabled,
+.composer-steer:disabled {
   cursor: default;
   opacity: 0.35;
+}
+
+.composer-queue-send,
+.composer-steer {
+  min-height: 1.85rem;
+  border-radius: 999px;
+  padding: 0 0.7rem;
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+.composer-steer {
+  border-color: var(--border-strong);
+  color: var(--text);
+  background: var(--surface-raised);
 }
 
 .composer-stop {

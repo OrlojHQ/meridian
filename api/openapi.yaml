@@ -3447,6 +3447,15 @@ components:
           minLength: 1
           maxLength: 131072
           description: Encrypted before SQLite persistence.
+        delivery:
+          type: string
+          enum: [steer]
+          description: >
+            Inject into the running turn at the next tool boundary. The daemon
+            sets the documented Pi and Codex user-message metadata; other
+            adapters ignore it. Omit when idle. Queued follow-ups stay in the
+            web UI's memory until the turn is idle and are never written to
+            browser storage.
     ThreadResponseRequest:
       type: object
       required: [expectedResourceVersion, responseTo]

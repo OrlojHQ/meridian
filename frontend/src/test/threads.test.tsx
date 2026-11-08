@@ -334,9 +334,10 @@ describe("Thread detail transcript and controls", () => {
       ),
     );
     const composer = screen.getByLabelText("Message");
-    await user.type(composer, "next task{Enter}");
+    await user.type(composer, "next task");
+    await user.click(screen.getByRole("button", { name: "Steer" }));
     await waitFor(() =>
-      expect(send).toHaveBeenCalledWith(thread.id, thread.resourceVersion, "next task"),
+      expect(send).toHaveBeenCalledWith(thread.id, thread.resourceVersion, "next task", "steer"),
     );
 
     const abort = vi.spyOn(AbortController.prototype, "abort");

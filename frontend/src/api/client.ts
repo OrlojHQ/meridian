@@ -457,6 +457,7 @@ export const api = {
     threadId: string,
     expectedResourceVersion: number,
     content: string,
+    delivery?: "steer",
     signal?: AbortSignal,
   ) =>
     call<ThreadMutationResult>(
@@ -464,7 +465,11 @@ export const api = {
         ...generatedOptions(signal),
         path: { threadId },
         headers: idempotencyHeaders(),
-        body: { expectedResourceVersion, content },
+        body: {
+          expectedResourceVersion,
+          content,
+          ...(delivery === "steer" ? { delivery } : {}),
+        },
       }),
     ),
   respondThread: (
