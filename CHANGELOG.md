@@ -231,6 +231,11 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Security
 
+- Harness adapters pin a session working directory to a real path under
+  `/workspace`. They refuse a host `Getwd()` path, a path that escapes the
+  Capsule workspace, or a symlink in that chain, and start child processes
+  with that directory instead of inheriting the host cwd.
+
 - The dependency scan now runs on changes to `images/**/package*.json`, so
   the `dsh` pack's npm lockfile gates `main`. DeepSeek Harness 0.2.2-rc.1, the
   newest release, pins `undici` 8.11.2, which has four HIGH advisories fixed

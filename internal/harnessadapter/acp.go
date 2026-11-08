@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -156,10 +155,10 @@ func RunACP(ctx context.Context, input io.Reader, output io.Writer, config ACPCo
 			return err
 		}
 	}
-	session.cwd, err = os.Getwd()
-	if err != nil || !filepath.IsAbs(session.cwd) {
+	session.cwd, err = sessionWorkingDirectory()
+	if err != nil {
 		stream.Fail("acp_start_failed")
-		return errors.New("resolve ACP working directory")
+		return err
 	}
 	env, err := acpEnvironment(config.SecretEnv)
 	if err != nil {
