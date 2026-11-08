@@ -133,7 +133,7 @@ func TestSubagentLifecycleMigrationKeepsLinksAndRequests(t *testing.T) {
 			t.Fatalf("migrated link = %#v", link)
 		}
 		request, err := reader.GetCoordinationRequest(ctx, "lead", "spawn-one")
-		if err != nil || request.LinkID != "link1" {
+		if err != nil || request.LinkID != "link1" || request.State != domain.RequestCompleted {
 			t.Fatalf("migrated request = %#v, %v", request, err)
 		}
 		reportedAt := time.Date(2026, 1, 1, 0, 5, 0, 0, time.UTC)
@@ -177,5 +177,83 @@ func TestSubagentLifecycleMigrationKeepsLinksAndRequests(t *testing.T) {
 	}
 	if _, err := raw.Exec(`UPDATE thread_links SET promoted_at = NULL WHERE id = 'link1'`); err == nil {
 		t.Fatal("promotion was reverted")
+	}
+}
+
+func TestSpawnApprovalMigrationAllowsGrantUpdates(t *testing.T) {
+	ctx := context.Background()
+	dataDir := t.TempDir()
+	db, err := sql.Open("sqlite", filepath.Join(dataDir, "meridian.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	applyMigrationsBefore(t, db, 17)
+	seed, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		`INSERT INTO projects(id, name, created_at, updated_at, resource_version)
+			VALUES ('p1', 'p', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 1)`,
+		`INSERT INTO capsules(id, project_id, timeline_id, name, state, desired_state, created_at, updated_at, resource_version)
+			VALUES ('lead', 'p1', 'tl-lead', 'lead', 'Ready', 'Ready', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 1)`,
+		`INSERT INTO timelines(id, project_id, capsule_id, reason, created_at)
+			VALUES ('tl-lead', 'p1', 'lead', 'root', '2026-01-01T00:00:00Z')`,
+		`INSERT INTO coordination_grants(id, project_id, root_thread_id, root_capsule_id, state, spawn_approval,
+				max_depth, max_children, max_descendants, max_live_capsules, max_messages_per_link, allowed_harnesses,
+				deadline_at, on_deadline, descendants_created, archive_after_seconds, created_at, updated_at, resource_version)
+			VALUES ('g1', 'p1', 'lead-thread', 'lead', 'active', 'auto', 1, 4, 8, 4, 50, '["mock"]',
+				'2026-01-02T00:00:00Z', 'cancel_and_pause', 3, 86400, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 1)`,
+	} {
+		if _, err := seed.Exec(statement); err != nil {
+			t.Fatalf("seed: %v\n%s", err, statement)
+		}
+	}
+	if err := seed.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := sqlite.Open(ctx, dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.View(ctx, func(reader ports.Reader) error {
+		grant, err := reader.GetCoordinationGrant(ctx, "g1")
+		if err != nil {
+			return err
+		}
+		if grant.SpawnApproval != domain.SpawnAuto || grant.MaxChildren != 4 {
+			t.Fatalf("migrated grant = %#v", grant)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	raw, err := sql.Open("sqlite", store.Path()+"?_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	for name, statement := range map[string]string{
+		"identity project": `UPDATE coordination_grants SET project_id = 'p2' WHERE id = 'g1'`,
+		"identity depth":   `UPDATE coordination_grants SET max_depth = 2 WHERE id = 'g1'`,
+		"bad approval":     `UPDATE coordination_grants SET spawn_approval = 'lead' WHERE id = 'g1'`,
+	} {
+		if _, err := raw.Exec(statement); err == nil {
+			t.Errorf("%s was accepted", name)
+		}
+	}
+	for _, statement := range []string{
+		`UPDATE coordination_grants SET spawn_approval = 'operator', max_children = 8, max_descendants = 8 WHERE id = 'g1'`,
+		`UPDATE coordination_grants SET max_children = 2, max_descendants = 2 WHERE id = 'g1'`,
+	} {
+		if _, err := raw.Exec(statement); err != nil {
+			t.Fatalf("grant update %q: %v", statement, err)
+		}
 	}
 }

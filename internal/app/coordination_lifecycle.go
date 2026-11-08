@@ -65,6 +65,9 @@ func (s *Service) PromoteCapsule(
 		if err != nil {
 			return err
 		}
+		if spawnHeld(link) {
+			return fmt.Errorf("%w: spawn is waiting for operator approval", domain.ErrIllegalTransition)
+		}
 		parent = link.ParentThreadID
 		now := s.clock.Now().UTC()
 		previousLink := link.ResourceVersion

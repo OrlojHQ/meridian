@@ -453,7 +453,7 @@ export type BoardItem = {
     /**
      * Why the row needs the operator; set only with status needs_you.
      */
-    needsYou?: 'permission' | 'input' | 'failed';
+    needsYou?: 'permission' | 'input' | 'failed' | 'spawn_approval';
     latestDelivery?: DeliverySummary;
     /**
      * The subagent's link to its lead, on sub-Capsules.
@@ -599,7 +599,11 @@ export type CoordinationPolicy = {
      */
     archiveAfterSeconds?: number;
     onDeadline?: 'cancel_and_pause' | 'stop_new_work';
-    spawnApproval?: 'auto';
+    /**
+     * auto starts each accepted spawn. operator queues it until the operator approves or denies it. The grant itself is still the bound on how many may be requested.
+     *
+     */
+    spawnApproval?: 'auto' | 'operator';
 };
 
 export type CoordinationGrantState = 'active' | 'revoked' | 'expired';
@@ -610,7 +614,7 @@ export type CoordinationGrant = {
     rootThreadId: string;
     rootCapsuleId: string;
     state: CoordinationGrantState;
-    spawnApproval: 'auto';
+    spawnApproval: 'auto' | 'operator';
     maxDepth: number;
     maxChildren: number;
     maxDescendants: number;
@@ -633,7 +637,51 @@ export type RevokeCoordinationGrantRequest = {
     cancelDescendants?: boolean;
 };
 
-export type ThreadLinkState = 'active' | 'closed';
+/**
+ * Operator update to an active grant. Omitted fields stay unchanged. allowedHarnesses, when present, replaces the allowlist and must not be empty. deadlineSeconds is remaining time from now.
+ *
+ */
+export type UpdateCoordinationGrantRequest = {
+    expectedResourceVersion: number;
+    spawnApproval?: 'auto' | 'operator';
+    maxChildren?: number;
+    maxDescendants?: number;
+    maxLiveCapsules?: number;
+    maxMessagesPerLink?: number;
+    allowedHarnesses?: Array<string>;
+    deadlineSeconds?: number;
+    onDeadline?: 'cancel_and_pause' | 'stop_new_work';
+    archiveAfterSeconds?: number;
+};
+
+export type CoordinationRequestState = 'pending_approval' | 'completed' | 'rejected';
+
+/**
+ * Durable idempotency record for one mutating coordination request, and the operator queue when spawnApproval is operator. Prompts are never included.
+ *
+ */
+export type CoordinationRequest = {
+    id: string;
+    grantId: string;
+    capsuleId: string;
+    key: string;
+    kind: 'spawn' | 'send' | 'cancel';
+    linkId: string;
+    state: CoordinationRequestState;
+    createdAt: string;
+    updatedAt: string;
+    resourceVersion: number;
+};
+
+export type CoordinationRequestPage = {
+    items: Array<CoordinationRequest>;
+};
+
+export type DecideCoordinationRequest = {
+    expectedResourceVersion: number;
+};
+
+export type ThreadLinkState = 'pending_approval' | 'active' | 'closed';
 
 /**
  * Content-free handle from a lead Thread to one subagent. Report text is re-derived from the subagent's encrypted transcript and is never stored on the link.
@@ -651,12 +699,12 @@ export type ThreadLink = {
     name: string;
     harness: string;
     state: ThreadLinkState;
-    closeReason?: 'cancelled' | 'failed' | 'ended' | 'revoked' | 'detached';
+    closeReason?: 'cancelled' | 'failed' | 'ended' | 'revoked' | 'denied' | 'detached';
     phase: 'provisioning' | 'working' | 'idle' | 'awaiting_operator' | 'ended' | 'failed';
     reportSeq: number;
     reportDeliveredSeq: number;
     lastReportStatus?: 'turn_ended' | 'failed';
-    lastReportReason?: 'cancelled' | 'capsule_failed' | 'session_ended' | 'revoked';
+    lastReportReason?: 'cancelled' | 'capsule_failed' | 'session_ended' | 'revoked' | 'denied';
     lastReportAt?: string;
     messagesForwarded: number;
     /**
@@ -1232,6 +1280,8 @@ export type ProjectThreadIntentId = string;
 export type LinkId = string;
 
 export type GrantId = string;
+
+export type RequestId = string;
 
 export type MomentId = string;
 
@@ -2251,6 +2301,56 @@ export type GetCoordinationGrantResponses = {
 
 export type GetCoordinationGrantResponse = GetCoordinationGrantResponses[keyof GetCoordinationGrantResponses];
 
+export type UpdateCoordinationGrantData = {
+    body: UpdateCoordinationGrantRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        grantId: string;
+    };
+    query?: never;
+    url: '/coordination-grants/{grantId}';
+};
+
+export type UpdateCoordinationGrantErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Request rate limit exceeded
+     */
+    429: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type UpdateCoordinationGrantError = UpdateCoordinationGrantErrors[keyof UpdateCoordinationGrantErrors];
+
+export type UpdateCoordinationGrantResponses = {
+    /**
+     * Updated grant
+     */
+    200: CoordinationGrant;
+};
+
+export type UpdateCoordinationGrantResponse = UpdateCoordinationGrantResponses[keyof UpdateCoordinationGrantResponses];
+
 export type RevokeCoordinationGrantData = {
     body: RevokeCoordinationGrantRequest;
     headers: {
@@ -2300,6 +2400,144 @@ export type RevokeCoordinationGrantResponses = {
 };
 
 export type RevokeCoordinationGrantResponse = RevokeCoordinationGrantResponses[keyof RevokeCoordinationGrantResponses];
+
+export type ListCoordinationRequestsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Defaults to pending_approval.
+         */
+        state?: CoordinationRequestState;
+    };
+    url: '/coordination-requests';
+};
+
+export type ListCoordinationRequestsErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Request rate limit exceeded
+     */
+    429: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ListCoordinationRequestsError = ListCoordinationRequestsErrors[keyof ListCoordinationRequestsErrors];
+
+export type ListCoordinationRequestsResponses = {
+    /**
+     * Coordination requests
+     */
+    200: CoordinationRequestPage;
+};
+
+export type ListCoordinationRequestsResponse = ListCoordinationRequestsResponses[keyof ListCoordinationRequestsResponses];
+
+export type ApproveCoordinationRequestData = {
+    body: DecideCoordinationRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        requestId: string;
+    };
+    query?: never;
+    url: '/coordination-requests/{requestId}/approve';
+};
+
+export type ApproveCoordinationRequestErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Request rate limit exceeded
+     */
+    429: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ApproveCoordinationRequestError = ApproveCoordinationRequestErrors[keyof ApproveCoordinationRequestErrors];
+
+export type ApproveCoordinationRequestResponses = {
+    /**
+     * Approved request
+     */
+    200: CoordinationRequest;
+};
+
+export type ApproveCoordinationRequestResponse = ApproveCoordinationRequestResponses[keyof ApproveCoordinationRequestResponses];
+
+export type DenyCoordinationRequestData = {
+    body: DecideCoordinationRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        requestId: string;
+    };
+    query?: never;
+    url: '/coordination-requests/{requestId}/deny';
+};
+
+export type DenyCoordinationRequestErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Request rate limit exceeded
+     */
+    429: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type DenyCoordinationRequestError = DenyCoordinationRequestErrors[keyof DenyCoordinationRequestErrors];
+
+export type DenyCoordinationRequestResponses = {
+    /**
+     * Denied request
+     */
+    200: CoordinationRequest;
+};
+
+export type DenyCoordinationRequestResponse = DenyCoordinationRequestResponses[keyof DenyCoordinationRequestResponses];
 
 export type ListCapsulesData = {
     body?: never;

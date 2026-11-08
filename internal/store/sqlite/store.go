@@ -32,7 +32,7 @@ type Store struct {
 }
 
 // CurrentSchemaVersion is the newest migration this binary understands.
-const CurrentSchemaVersion = 16
+const CurrentSchemaVersion = 17
 
 func Open(ctx context.Context, dataDir string) (*Store, error) {
 	if strings.TrimSpace(dataDir) == "" {

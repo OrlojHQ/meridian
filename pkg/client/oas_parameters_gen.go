@@ -2,6 +2,12 @@
 
 package client
 
+// ApproveCoordinationRequestParams is parameters of approveCoordinationRequest operation.
+type ApproveCoordinationRequestParams struct {
+	RequestId      string
+	IdempotencyKey string
+}
+
 // ArchiveThreadParams is parameters of archiveThread operation.
 type ArchiveThreadParams struct {
 	ThreadId       string
@@ -94,6 +100,12 @@ type DeleteSecretParams struct {
 // DeleteThreadParams is parameters of deleteThread operation.
 type DeleteThreadParams struct {
 	ThreadId       string
+	IdempotencyKey string
+}
+
+// DenyCoordinationRequestParams is parameters of denyCoordinationRequest operation.
+type DenyCoordinationRequestParams struct {
+	RequestId      string
 	IdempotencyKey string
 }
 
@@ -236,6 +248,12 @@ type ListCapsulesParams struct {
 	Limit     OptInt    `json:",omitempty,omitzero"`
 	// Only main Capsules or only subagent Capsules.
 	Role OptCapsuleRole `json:",omitempty,omitzero"`
+}
+
+// ListCoordinationRequestsParams is parameters of listCoordinationRequests operation.
+type ListCoordinationRequestsParams struct {
+	// Defaults to pending_approval.
+	State OptCoordinationRequestState `json:",omitempty,omitzero"`
 }
 
 // ListHarnessProfilesParams is parameters of listHarnessProfiles operation.
@@ -423,6 +441,12 @@ type StreamThreadBlocksParams struct {
 	ThreadId    string
 	After       OptInt64  `json:",omitempty,omitzero"`
 	LastEventID OptString `json:",omitempty,omitzero"`
+}
+
+// UpdateCoordinationGrantParams is parameters of updateCoordinationGrant operation.
+type UpdateCoordinationGrantParams struct {
+	GrantId        string
+	IdempotencyKey string
 }
 
 // UpdateProjectEnvironmentParams is parameters of updateProjectEnvironment operation.

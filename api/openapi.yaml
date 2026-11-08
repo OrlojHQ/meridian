@@ -747,6 +747,38 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
         default: { $ref: "#/components/responses/DefaultError" }
+    patch:
+      operationId: updateCoordinationGrant
+      summary: Update a Coordination Grant's limits
+      description: >
+        Changes spawn approval, limits, harnesses, deadline, deadline action,
+        or archiveAfter on an active grant. The operator may loosen or tighten
+        limits. Switching spawnApproval to auto does not start spawns already
+        waiting for approval. Deadline is remaining time from now, between 5
+        minutes and 72 hours, and cannot pass createdAt+72h.
+      tags: [threads]
+      parameters:
+        - $ref: "#/components/parameters/GrantId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateCoordinationGrantRequest" }
+      responses:
+        "200":
+          description: Updated grant
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CoordinationGrant" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        default: { $ref: "#/components/responses/DefaultError" }
   /coordination-grants/{grantId}/revoke:
     post:
       operationId: revokeCoordinationGrant
@@ -772,6 +804,91 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/CoordinationGrant" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /coordination-requests:
+    get:
+      operationId: listCoordinationRequests
+      summary: List coordination requests
+      description: >
+        The operator queue for spawn approvals. Prompts are not included;
+        they stay in the child Thread's encrypted intent.
+      tags: [threads]
+      parameters:
+        - name: state
+          in: query
+          schema:
+            $ref: "#/components/schemas/CoordinationRequestState"
+          description: Defaults to pending_approval.
+      responses:
+        "200":
+          description: Coordination requests
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CoordinationRequestPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /coordination-requests/{requestId}/approve:
+    post:
+      operationId: approveCoordinationRequest
+      summary: Approve a queued spawn
+      description: >
+        Starts a subagent the lead spawned under spawnApproval=operator.
+        The child Capsule is not provisioned until this call. Denied or
+        completed requests cannot be approved.
+      tags: [threads]
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DecideCoordinationRequest" }
+      responses:
+        "200":
+          description: Approved request
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CoordinationRequest" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /coordination-requests/{requestId}/deny:
+    post:
+      operationId: denyCoordinationRequest
+      summary: Deny a queued spawn
+      description: >
+        Refuses a subagent the lead spawned under spawnApproval=operator.
+        The child Capsule is not deleted and still counts toward the grant's
+        descendantsCreated.
+      tags: [threads]
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DecideCoordinationRequest" }
+      responses:
+        "200":
+          description: Denied request
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CoordinationRequest" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
@@ -1961,6 +2078,13 @@ components:
       schema:
         type: string
         minLength: 1
+    RequestId:
+      name: requestId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
     MomentId:
       name: momentId
       in: path
@@ -2795,7 +2919,7 @@ components:
         since: { type: string, format: date-time }
         needsYou:
           type: string
-          enum: [permission, input, failed]
+          enum: [permission, input, failed, spawn_approval]
           description: Why the row needs the operator; set only with status needs_you.
         latestDelivery: { $ref: "#/components/schemas/DeliverySummary" }
         link:
@@ -2992,8 +3116,12 @@ components:
           default: cancel_and_pause
         spawnApproval:
           type: string
-          enum: [auto]
+          enum: [auto, operator]
           default: auto
+          description: >
+            auto starts each accepted spawn. operator queues it until the
+            operator approves or denies it. The grant itself is still the
+            bound on how many may be requested.
     CoordinationGrantState:
       type: string
       enum: [active, revoked, expired]
@@ -3010,7 +3138,7 @@ components:
         rootThreadId: { type: string }
         rootCapsuleId: { type: string }
         state: { $ref: "#/components/schemas/CoordinationGrantState" }
-        spawnApproval: { type: string, enum: [auto] }
+        spawnApproval: { type: string, enum: [auto, operator] }
         maxDepth: { type: integer, minimum: 1 }
         maxChildren: { type: integer, minimum: 1 }
         maxDescendants: { type: integer, minimum: 1 }
@@ -3036,9 +3164,66 @@ components:
         cancelDescendants:
           type: boolean
           default: true
+    UpdateCoordinationGrantRequest:
+      type: object
+      required: [expectedResourceVersion]
+      description: >
+        Operator update to an active grant. Omitted fields stay unchanged.
+        allowedHarnesses, when present, replaces the allowlist and must not
+        be empty. deadlineSeconds is remaining time from now.
+      properties:
+        expectedResourceVersion: { type: integer, format: int64, minimum: 1 }
+        spawnApproval: { type: string, enum: [auto, operator] }
+        maxChildren: { type: integer, minimum: 1, maximum: 16 }
+        maxDescendants: { type: integer, minimum: 1, maximum: 32 }
+        maxLiveCapsules: { type: integer, minimum: 1, maximum: 16 }
+        maxMessagesPerLink: { type: integer, minimum: 1, maximum: 500 }
+        allowedHarnesses:
+          type: array
+          minItems: 1
+          maxItems: 16
+          items: { type: string, minLength: 1, maxLength: 128 }
+        deadlineSeconds: { type: integer, minimum: 300, maximum: 259200 }
+        onDeadline: { type: string, enum: [cancel_and_pause, stop_new_work] }
+        archiveAfterSeconds: { type: integer, minimum: 0, maximum: 2592000 }
+    CoordinationRequestState:
+      type: string
+      enum: [pending_approval, completed, rejected]
+    CoordinationRequest:
+      type: object
+      description: >
+        Durable idempotency record for one mutating coordination request, and
+        the operator queue when spawnApproval is operator. Prompts are never
+        included.
+      required:
+        [id, grantId, capsuleId, key, kind, linkId, state, createdAt, updatedAt,
+         resourceVersion]
+      properties:
+        id: { type: string }
+        grantId: { type: string }
+        capsuleId: { type: string }
+        key: { type: string }
+        kind: { type: string, enum: [spawn, send, cancel] }
+        linkId: { type: string }
+        state: { $ref: "#/components/schemas/CoordinationRequestState" }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        resourceVersion: { type: integer, format: int64, minimum: 1 }
+    CoordinationRequestPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/CoordinationRequest" }
+    DecideCoordinationRequest:
+      type: object
+      required: [expectedResourceVersion]
+      properties:
+        expectedResourceVersion: { type: integer, format: int64, minimum: 1 }
     ThreadLinkState:
       type: string
-      enum: [active, closed]
+      enum: [pending_approval, active, closed]
     ThreadLink:
       type: object
       description: >
@@ -3062,14 +3247,14 @@ components:
         name: { type: string, pattern: "^[a-z0-9-]{1,48}$" }
         harness: { type: string }
         state: { $ref: "#/components/schemas/ThreadLinkState" }
-        closeReason: { type: string, enum: [cancelled, failed, ended, revoked, detached] }
+        closeReason: { type: string, enum: [cancelled, failed, ended, revoked, denied, detached] }
         phase:
           type: string
           enum: [provisioning, working, idle, awaiting_operator, ended, failed]
         reportSeq: { type: integer, minimum: 0 }
         reportDeliveredSeq: { type: integer, minimum: 0 }
         lastReportStatus: { type: string, enum: [turn_ended, failed] }
-        lastReportReason: { type: string, enum: [cancelled, capsule_failed, session_ended, revoked] }
+        lastReportReason: { type: string, enum: [cancelled, capsule_failed, session_ended, revoked, denied] }
         lastReportAt: { type: string, format: date-time }
         messagesForwarded: { type: integer, minimum: 0 }
         operatorMessages:

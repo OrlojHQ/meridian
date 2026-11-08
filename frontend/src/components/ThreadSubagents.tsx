@@ -3,26 +3,30 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api, normalizeAPIError } from "../api/client";
-import type { CoordinationGrant, Thread, ThreadLink } from "../api/generated/types.gen";
+import type { CoordinationGrant, CoordinationRequest, Thread, ThreadLink } from "../api/generated/types.gen";
 import { queries } from "../api/queries";
 import { harnessName } from "../shell/capsuleActivity";
 import { PromoteSubagent } from "./PromoteSubagent";
+import { SpawnDecision } from "./SpawnApprovals";
 import { subagentHref, subagentPhaseLabels } from "./subagentReports";
 import { safeInline } from "./threadText";
 import { StateBadge } from "./ui/StateBadge";
 
-function subagentRow(link: ThreadLink) {
+function subagentRow(link: ThreadLink, request?: CoordinationRequest) {
   return (
     <li key={link.id}>
       <Link to={subagentHref(link)} className="subagent-name">{link.name}</Link>
       <span className="muted-copy">{harnessName(link.harness)}</span>
-      <span className={`badge subagent-phase phase-${link.phase}`}>{subagentPhaseLabels[link.phase]}</span>
+      <span className={`badge subagent-phase phase-${link.phase}`}>
+        {link.state === "pending_approval" ? "Waiting for approval" : subagentPhaseLabels[link.phase]}
+      </span>
       {link.promotedAt && (
         <span className="badge">{link.closeReason === "detached" ? "Promoted, detached" : "Promoted"}</span>
       )}
       <span className="muted-copy">
         {link.reportSeq === 1 ? "1 report" : `${link.reportSeq} reports`}
       </span>
+      {request && <SpawnDecision request={request} />}
     </li>
   );
 }
@@ -42,7 +46,12 @@ export function untilDeadline(deadlineAt: string, now = Date.now()) {
 export function grantLimits(
   grant: Pick<
     CoordinationGrant,
-    "descendantsCreated" | "maxChildren" | "maxDescendants" | "maxLiveCapsules" | "deadlineAt"
+    | "descendantsCreated"
+    | "maxChildren"
+    | "maxDescendants"
+    | "maxLiveCapsules"
+    | "deadlineAt"
+    | "spawnApproval"
   >,
   active: boolean,
   now = Date.now(),
@@ -53,6 +62,7 @@ export function grantLimits(
     `up to ${grant.maxLiveCapsules} at a time`,
   ];
   if (active) parts.push(untilDeadline(grant.deadlineAt, now));
+  if (grant.spawnApproval === "operator") parts.push("approve each spawn");
   return parts.join(" · ");
 }
 
@@ -109,6 +119,19 @@ function LeadSubagents({ thread, grantId }: { thread: Thread; grantId: string })
   const [confirm, setConfirm] = useState(false);
   const grant = useQuery(queries.coordinationGrant(grantId));
   const links = useQuery(queries.threadLinks(thread.id));
+  const pending = useQuery(queries.coordinationRequests());
+  const pendingByLink = new Map(
+    (pending.data?.items ?? []).filter((item) => item.grantId === grantId).map((item) => [item.linkId, item]),
+  );
+  const approval = useMutation({
+    mutationFn: (spawnApproval: "auto" | "operator") => {
+      if (!grant.data) throw new Error("Grant is not loaded");
+      return api.updateCoordinationGrant(grant.data, { spawnApproval });
+    },
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["coordination-grant", grantId] });
+    },
+  });
   const revoke = useMutation({
     mutationFn: () => {
       if (!grant.data) throw new Error("Grant is not loaded");
@@ -139,6 +162,18 @@ function LeadSubagents({ thread, grantId }: { thread: Thread; grantId: string })
           </span>
         )}
         {grant.data && <StateBadge state={grant.data.state} />}
+        {active && grant.data && (
+          <label className="checkbox-label" htmlFor={`grant-spawn-approval-${grantId}`}>
+            <input
+              id={`grant-spawn-approval-${grantId}`}
+              type="checkbox"
+              checked={grant.data.spawnApproval === "operator"}
+              disabled={approval.isPending}
+              onChange={(event) => approval.mutate(event.currentTarget.checked ? "operator" : "auto")}
+            />
+            Approve each spawn
+          </label>
+        )}
         {active && !confirm && (
           <button type="button" className="danger" onClick={() => setConfirm(true)}>
             Stop subagents
@@ -157,16 +192,19 @@ function LeadSubagents({ thread, grantId }: { thread: Thread; grantId: string })
       {revoke.isError && (
         <p role="alert" className="inline-error">{normalizeAPIError(revoke.error).message}</p>
       )}
+      {approval.isError && (
+        <p role="alert" className="inline-error">{normalizeAPIError(approval.error).message}</p>
+      )}
       {items.length === 0 ? (
         <p className="muted-copy">{links.isPending ? "Loading subagents…" : "No subagents yet."}</p>
       ) : (
         <ul className="subagent-list">
-          {current.map(subagentRow)}
+          {current.map((link) => subagentRow(link, pendingByLink.get(link.id)))}
           {archived.length > 0 && (
             <li className="subagent-archived">
               <details>
                 <summary>Archived ({archived.length})</summary>
-                <ul className="subagent-list">{archived.map(subagentRow)}</ul>
+                <ul className="subagent-list">{archived.map((link) => subagentRow(link))}</ul>
               </details>
             </li>
           )}

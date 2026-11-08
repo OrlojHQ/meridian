@@ -50,12 +50,22 @@ func (r *repository) UpdateCoordinationGrant(
 	if grant.ResourceVersion != expected+1 {
 		return fmt.Errorf("%w: invalid grant resource version", domain.ErrInvalid)
 	}
+	harnesses, err := json.Marshal(nonNilStrings(grant.AllowedHarnesses))
+	if err != nil {
+		return err
+	}
 	result, err := r.q.ExecContext(ctx, `
-		UPDATE coordination_grants SET state = ?, descendants_created = ?,
-			revoked_at = ?, revoke_reason = ?, updated_at = ?, resource_version = ?
+		UPDATE coordination_grants SET state = ?, spawn_approval = ?, max_children = ?,
+			max_descendants = ?, max_live_capsules = ?, max_messages_per_link = ?,
+			allowed_harnesses = ?, deadline_at = ?, on_deadline = ?, descendants_created = ?,
+			revoked_at = ?, revoke_reason = ?, archive_after_seconds = ?,
+			updated_at = ?, resource_version = ?
 		WHERE id = ? AND resource_version = ?`,
-		grant.State, grant.DescendantsCreated, nullableTime(grant.RevokedAt),
-		grant.RevokeReason, formatTime(grant.UpdatedAt), grant.ResourceVersion,
+		grant.State, grant.SpawnApproval, grant.MaxChildren, grant.MaxDescendants,
+		grant.MaxLiveCapsules, grant.MaxMessagesPerLink, string(harnesses),
+		formatTime(grant.DeadlineAt), grant.OnDeadline, grant.DescendantsCreated,
+		nullableTime(grant.RevokedAt), grant.RevokeReason, int64(grant.ArchiveAfter/time.Second),
+		formatTime(grant.UpdatedAt), grant.ResourceVersion,
 		grant.ID, expected,
 	)
 	return r.expectOneRow(ctx, result, err, "coordination_grants", string(grant.ID))
@@ -314,37 +324,97 @@ func scanLink(row scanner) (domain.ThreadLink, error) {
 	return link, err
 }
 
+const coordinationRequestSelect = `
+	SELECT id, grant_id, capsule_id, request_key, canonical_digest, kind, link_id,
+		state, result_message_id, created_at, updated_at, resource_version
+	FROM coordination_requests`
+
 func (r *repository) InsertCoordinationRequest(ctx context.Context, request domain.CoordinationRequest) error {
+	if request.State == "" {
+		request.State = domain.RequestCompleted
+	}
+	if request.UpdatedAt.IsZero() {
+		request.UpdatedAt = request.CreatedAt
+	}
+	if request.ResourceVersion == 0 {
+		request.ResourceVersion = 1
+	}
 	_, err := r.q.ExecContext(ctx, `
 		INSERT INTO coordination_requests(
 			id, grant_id, capsule_id, request_key, canonical_digest, kind, link_id,
-			result_message_id, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			state, result_message_id, created_at, updated_at, resource_version
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		request.ID, request.GrantID, request.CapsuleID, request.Key, request.CanonicalDigest,
-		request.Kind, request.LinkID, request.ResultMessageID, formatTime(request.CreatedAt),
+		request.Kind, request.LinkID, request.State, request.ResultMessageID,
+		formatTime(request.CreatedAt), formatTime(request.UpdatedAt), request.ResourceVersion,
 	)
 	return mapError(err)
+}
+
+func (r *repository) UpdateCoordinationRequest(
+	ctx context.Context, request domain.CoordinationRequest, expected domain.ResourceVersion,
+) error {
+	if request.ResourceVersion != expected+1 {
+		return fmt.Errorf("%w: invalid coordination request resource version", domain.ErrInvalid)
+	}
+	result, err := r.q.ExecContext(ctx, `
+		UPDATE coordination_requests SET state = ?, updated_at = ?, resource_version = ?
+		WHERE id = ? AND resource_version = ?`,
+		request.State, formatTime(request.UpdatedAt), request.ResourceVersion,
+		request.ID, expected,
+	)
+	return r.expectOneRow(ctx, result, err, "coordination_requests", string(request.ID))
+}
+
+func scanCoordinationRequest(row scanner) (domain.CoordinationRequest, error) {
+	var request domain.CoordinationRequest
+	var created, updated string
+	if err := row.Scan(
+		&request.ID, &request.GrantID, &request.CapsuleID, &request.Key, &request.CanonicalDigest,
+		&request.Kind, &request.LinkID, &request.State, &request.ResultMessageID, &created, &updated,
+		&request.ResourceVersion,
+	); err != nil {
+		return domain.CoordinationRequest{}, mapError(err)
+	}
+	var err error
+	if request.CreatedAt, err = parseTime(created); err != nil {
+		return domain.CoordinationRequest{}, err
+	}
+	request.UpdatedAt, err = parseTime(updated)
+	return request, err
 }
 
 func (r *repository) GetCoordinationRequest(
 	ctx context.Context, capsuleID domain.CapsuleID, key string,
 ) (domain.CoordinationRequest, error) {
-	var request domain.CoordinationRequest
-	var created string
-	if err := r.q.QueryRowContext(ctx, `
-		SELECT id, grant_id, capsule_id, request_key, canonical_digest, kind, link_id,
-			result_message_id, created_at
-		FROM coordination_requests WHERE capsule_id = ? AND request_key = ?`,
-		capsuleID, key,
-	).Scan(
-		&request.ID, &request.GrantID, &request.CapsuleID, &request.Key, &request.CanonicalDigest,
-		&request.Kind, &request.LinkID, &request.ResultMessageID, &created,
-	); err != nil {
-		return domain.CoordinationRequest{}, mapError(err)
+	return scanCoordinationRequest(r.q.QueryRowContext(ctx,
+		coordinationRequestSelect+" WHERE capsule_id = ? AND request_key = ?", capsuleID, key))
+}
+
+func (r *repository) GetCoordinationRequestByID(
+	ctx context.Context, id domain.CoordinationRequestID,
+) (domain.CoordinationRequest, error) {
+	return scanCoordinationRequest(r.q.QueryRowContext(ctx, coordinationRequestSelect+" WHERE id = ?", id))
+}
+
+func (r *repository) ListCoordinationRequests(
+	ctx context.Context, state domain.CoordinationRequestState,
+) ([]domain.CoordinationRequest, error) {
+	rows, err := r.q.QueryContext(ctx,
+		coordinationRequestSelect+" WHERE state = ? ORDER BY created_at, id LIMIT 100", state)
+	if err != nil {
+		return nil, err
 	}
-	var err error
-	request.CreatedAt, err = parseTime(created)
-	return request, err
+	defer rows.Close()
+	var requests []domain.CoordinationRequest
+	for rows.Next() {
+		request, err := scanCoordinationRequest(rows)
+		if err != nil {
+			return nil, err
+		}
+		requests = append(requests, request)
+	}
+	return requests, rows.Err()
 }
 
 // CountLiveCapsules counts Capsules that hold, or are about to hold, provider
@@ -352,10 +422,15 @@ func (r *repository) GetCoordinationRequest(
 func (r *repository) CountLiveCapsules(ctx context.Context) (int, error) {
 	var count int
 	err := r.q.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM capsules
-		WHERE state NOT IN (?, ?, ?, ?) AND desired_state <> ?`,
+		SELECT COUNT(*) FROM capsules c
+		WHERE c.state NOT IN (?, ?, ?, ?) AND c.desired_state <> ?
+			AND NOT EXISTS (
+				SELECT 1 FROM thread_links l
+				WHERE l.child_capsule_id = c.id
+					AND (l.state = ? OR l.close_reason = ?)
+			)`,
 		domain.CapsulePaused, domain.CapsuleSealed, domain.CapsuleFailed, domain.CapsuleDeleted,
-		domain.IntentDeleted,
+		domain.IntentDeleted, domain.LinkPendingApproval, domain.LinkDenied,
 	).Scan(&count)
 	return count, err
 }

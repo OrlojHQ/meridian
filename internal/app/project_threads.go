@@ -246,7 +246,14 @@ func (s *Service) GetProjectThreadIntent(
 		return s.loadProjectThreadResult(ctx, reader, &result)
 	})
 	if err == nil && result.Intent.State == domain.ProjectThreadProvisioning {
-		_ = s.queue.Enqueue(ctx, result.Intent.CapsuleID)
+		var held bool
+		_ = s.store.View(ctx, func(reader ports.Reader) error {
+			held, _ = s.spawnHeldForCapsule(ctx, reader, result.Intent.CapsuleID)
+			return nil
+		})
+		if !held {
+			_ = s.queue.Enqueue(ctx, result.Intent.CapsuleID)
+		}
 	}
 	return result, err
 }
@@ -397,6 +404,11 @@ func (s *Service) promoteProjectThread(
 		capsule, err := tx.GetCapsule(ctx, capsuleID)
 		if err != nil {
 			return err
+		}
+		if held, err := s.spawnHeldForCapsule(ctx, tx, capsuleID); err != nil {
+			return err
+		} else if held {
+			return nil
 		}
 		if capsule.State != domain.CapsuleReady || capsule.DesiredState != domain.IntentReady ||
 			capsule.Maintenance != "" {

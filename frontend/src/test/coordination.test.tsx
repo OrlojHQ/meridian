@@ -150,11 +150,13 @@ describe("Lead launcher", () => {
     await userEvent.clear(subagents);
     await userEvent.type(subagents, "2");
     await userEvent.type(screen.getByLabelText("Task"), "split the work");
+    await userEvent.click(screen.getByLabelText("Approve each subagent spawn"));
     await userEvent.click(screen.getByRole("button", { name: "Start task" }));
     await waitFor(() =>
       expect(spawn).toHaveBeenCalledWith(project.id, "mock", "split the work", undefined, {
         maxChildren: 2,
         deadlineSeconds: 8 * 3600,
+        spawnApproval: "operator",
       }),
     );
   });
@@ -170,6 +172,7 @@ describe("Lead launcher", () => {
 describe("Subagents panel", () => {
   it("lists subagents with their phase and stops the tree on confirmation", async () => {
     vi.spyOn(api, "coordinationGrant").mockResolvedValue(grant);
+    vi.spyOn(api, "coordinationRequests").mockResolvedValue({ items: [] });
     vi.spyOn(api, "threadLinks").mockResolvedValue({
       items: [link("subagent-1", "idle", 1), link("subagent-2", "awaiting_operator", 0)],
     });
@@ -196,6 +199,9 @@ describe("Subagents panel", () => {
     expect(grantLimits({ ...grant, maxChildren: 16 }, false, now)).toBe(
       "2 of 8 started · up to 4 at a time",
     );
+    expect(grantLimits({ ...grant, spawnApproval: "operator" }, true, now)).toBe(
+      "2 of 4 started · up to 4 at a time · ends in 7h 52m · approve each spawn",
+    );
     expect(untilDeadline("2026-11-03T02:00:00Z", now)).toBe("ends in 2d 1h");
     expect(untilDeadline("2026-11-01T00:30:00Z", now)).toBe("ends in 22m");
     expect(untilDeadline("2026-11-01T00:00:00Z", now)).toBe("deadline passed");
@@ -203,6 +209,7 @@ describe("Subagents panel", () => {
 
   it("folds archived subagents and marks promoted ones", async () => {
     vi.spyOn(api, "coordinationGrant").mockResolvedValue(grant);
+    vi.spyOn(api, "coordinationRequests").mockResolvedValue({ items: [] });
     vi.spyOn(api, "threadLinks").mockResolvedValue({
       items: [
         { ...link("kept", "idle", 1), promotedAt: "2026-11-01T01:00:00Z" },

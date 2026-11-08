@@ -76,6 +76,8 @@ type Reader interface {
 	ListThreadLinksByGrant(context.Context, domain.CoordinationGrantID) ([]domain.ThreadLink, error)
 	ListArchivableThreadLinks(context.Context, time.Time, int) ([]domain.ThreadLink, error)
 	GetCoordinationRequest(context.Context, domain.CapsuleID, string) (domain.CoordinationRequest, error)
+	GetCoordinationRequestByID(context.Context, domain.CoordinationRequestID) (domain.CoordinationRequest, error)
+	ListCoordinationRequests(context.Context, domain.CoordinationRequestState) ([]domain.CoordinationRequest, error)
 }
 
 type Transaction interface {
@@ -133,6 +135,7 @@ type Transaction interface {
 	UpdateThreadLink(context.Context, domain.ThreadLink, domain.ResourceVersion) error
 	PromoteCapsule(context.Context, domain.Capsule, domain.ResourceVersion) error
 	InsertCoordinationRequest(context.Context, domain.CoordinationRequest) error
+	UpdateCoordinationRequest(context.Context, domain.CoordinationRequest, domain.ResourceVersion) error
 }
 
 type Store interface {

@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
-import type { BoardItem } from "../api/generated/types.gen";
+import type { BoardItem, CoordinationRequest } from "../api/generated/types.gen";
 import { queries } from "../api/queries";
 import {
   relativeTime,
@@ -12,6 +12,7 @@ import {
 } from "../shell/capsuleActivity";
 import { BlockerPeek } from "./BlockerPeek";
 import { PromoteSubagent } from "./PromoteSubagent";
+import { SpawnDecision } from "./SpawnApprovals";
 import { failureText, safeInline } from "./threadChat";
 import { ThreadError } from "./ThreadError";
 import { HarnessMark } from "./ui/HarnessMark";
@@ -32,6 +33,7 @@ const needsYouLabels: Record<NonNullable<BoardItem["needsYou"]>, string> = {
   permission: "Waiting for permission",
   input: "Waiting for input",
   failed: "Failed",
+  spawn_approval: "Waiting for spawn approval",
 };
 
 export function boardFailure(item: BoardItem) {
@@ -80,10 +82,12 @@ function BoardRow({
   item,
   leadNames,
   subagents,
+  spawnRequest,
 }: {
   item: BoardItem;
   leadNames: Map<string, { name: string; capsuleId: string }>;
   subagents?: BoardItem[];
+  spawnRequest?: CoordinationRequest;
 }) {
   const [expanded, setExpanded] = useState(false);
   const group = boardGroups.find((entry) => entry.status === item.status);
@@ -153,9 +157,14 @@ function BoardRow({
             {expanded ? "Hide subagents" : `Subagents (${subagents.length})`}
           </button>
         )}
-        {item.surfaced && item.capsule.role === "sub" && <PromoteSubagent capsule={item.capsule} />}
+        {item.surfaced && item.capsule.role === "sub" && item.needsYou !== "spawn_approval" && (
+          <PromoteSubagent capsule={item.capsule} />
+        )}
+        {spawnRequest && <SpawnDecision request={spawnRequest} />}
         <Link className="button-link primary-button" to={boardRowPath(item)}>
-          {item.status === "needs_you" && item.needsYou !== "failed" ? "Respond" : "Open"}
+          {item.status === "needs_you" && item.needsYou !== "failed" && item.needsYou !== "spawn_approval"
+            ? "Respond"
+            : "Open"}
         </Link>
       </div>
     </li>
@@ -165,6 +174,8 @@ function BoardRow({
 export function Board() {
   const [showAll, setShowAll] = useState(false);
   const board = useQuery(queries.board(showAll ? "all" : "attention"));
+  const pending = useQuery(queries.coordinationRequests());
+  const pendingByLink = new Map((pending.data?.items ?? []).map((item) => [item.linkId, item]));
   // Every subagent row, for the per-lead folds; one content-free read shared by
   // all leads.
   const everything = useQuery(queries.board("all"));
@@ -240,6 +251,7 @@ export function Board() {
                     item={item}
                     leadNames={leadNames}
                     subagents={item.childRollup ? subagentsOf(item) : undefined}
+                    spawnRequest={item.link ? pendingByLink.get(item.link.id) : undefined}
                   />
                 ))}
               </ul>

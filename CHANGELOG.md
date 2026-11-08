@@ -9,6 +9,16 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Operator spawn approvals and grant updates. A Coordination Grant may set
+  `spawnApproval: operator` (`--spawn-approval operator`, "Approve each
+  subagent spawn") so each lead spawn waits on the board until
+  `POST /coordination-requests/{id}/approve` or `/deny` (`meridian approvals`).
+  Pending children keep their encrypted prompt, are not provisioned, do not
+  count as live, and cannot be promoted. `PATCH /coordination-grants/{id}`
+  (`meridian grant update`) lets the operator loosen or tighten limits,
+  harnesses, remaining deadline, archiveAfter and spawn approval; switching
+  to `auto` leaves already queued spawns queued (ADR 0029).
+
 - Lead Threads render subagent reports as cards (name, status, summary, and a
   link to the subagent Thread) instead of the raw coordination wake prompt, and
   pin a tray above the composer for subagents that need the operator. Report

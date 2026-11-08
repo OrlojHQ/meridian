@@ -20,6 +20,7 @@ type leadFlags struct {
 	deadline           time.Duration
 	onDeadline         string
 	archiveAfter       time.Duration
+	spawnApproval      string
 }
 
 func (f *leadFlags) register(command *cobra.Command) {
@@ -37,13 +38,15 @@ func (f *leadFlags) register(command *cobra.Command) {
 		"at the deadline: cancel_and_pause (default) or stop_new_work")
 	flags.DurationVar(&f.archiveAfter, "archive-after", 0,
 		"idle time before a finished subagent is paused and archived (default 24h, 1m to 720h; 0 disables)")
+	flags.StringVar(&f.spawnApproval, "spawn-approval", "",
+		"auto (default) starts each spawn; operator queues it until you approve")
 }
 
 func (f *leadFlags) policy(command *cobra.Command) (client.OptCoordinationPolicy, error) {
 	if !f.lead {
 		for _, name := range []string{
 			"max-children", "max-descendants", "max-live-capsules", "max-messages-per-link",
-			"allow-harness", "lead-deadline", "on-deadline", "archive-after",
+			"allow-harness", "lead-deadline", "on-deadline", "archive-after", "spawn-approval",
 		} {
 			if command.Flags().Changed(name) {
 				return client.OptCoordinationPolicy{}, fmt.Errorf("--%s requires --lead", name)
@@ -80,6 +83,13 @@ func (f *leadFlags) policy(command *cobra.Command) (client.OptCoordinationPolicy
 		policy.OnDeadline = client.NewOptCoordinationPolicyOnDeadline(client.CoordinationPolicyOnDeadline(f.onDeadline))
 	default:
 		return client.OptCoordinationPolicy{}, errors.New("--on-deadline must be cancel_and_pause or stop_new_work")
+	}
+	switch f.spawnApproval {
+	case "":
+	case "auto", "operator":
+		policy.SpawnApproval = client.NewOptCoordinationPolicySpawnApproval(client.CoordinationPolicySpawnApproval(f.spawnApproval))
+	default:
+		return client.OptCoordinationPolicy{}, errors.New("--spawn-approval must be auto or operator")
 	}
 	return client.NewOptCoordinationPolicy(policy), nil
 }
@@ -220,7 +230,7 @@ func writeBoard(config *cliConfig, page *client.BoardPage) error {
 }
 
 func newGrantCommand(config *cliConfig) *cobra.Command {
-	root := &cobra.Command{Use: "grant", Short: "Inspect or revoke a lead Thread's coordination grant"}
+	root := &cobra.Command{Use: "grant", Short: "Inspect, update, or revoke a lead Thread's coordination grant"}
 	show := &cobra.Command{
 		Use: "show GRANT_ID", Short: "Show a coordination grant and its limits", Args: cobra.ExactArgs(1),
 		RunE: func(command *cobra.Command, args []string) error {
@@ -277,8 +287,213 @@ func newGrantCommand(config *cliConfig) *cobra.Command {
 	revoke.Flags().Int64Var(&expected, "expected-version", 0, "current grant resource version")
 	revoke.Flags().BoolVar(&keep, "keep-subagents", false, "leave running subagents alone instead of cancelling and pausing them")
 	revoke.Flags().StringVar(&key, "idempotency-key", "", "mutation replay key (generated if omitted)")
-	root.AddCommand(show, revoke)
+	root.AddCommand(show, newGrantUpdateCommand(config), revoke)
 	return root
+}
+
+func newGrantUpdateCommand(config *cliConfig) *cobra.Command {
+	var expected int64
+	var key, spawnApproval, onDeadline string
+	var maxChildren, maxDescendants, maxLive, maxMessages int
+	var allowHarnesses []string
+	var deadline, archiveAfter time.Duration
+	command := &cobra.Command{
+		Use: "update GRANT_ID", Short: "Change an active grant's limits or spawn approval",
+		Long: "Change an active grant's limits, harnesses, deadline, or spawn approval.\n" +
+			"You may loosen or tighten limits. Switching to auto does not start spawns\n" +
+			"already waiting for approval. --lead-deadline is remaining time from now.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(command *cobra.Command, args []string) error {
+			if expected <= 0 {
+				return errors.New("--expected-version is required")
+			}
+			body := &client.UpdateCoordinationGrantRequest{ExpectedResourceVersion: expected}
+			changed := false
+			if command.Flags().Changed("spawn-approval") {
+				switch spawnApproval {
+				case "auto", "operator":
+					body.SpawnApproval = client.NewOptUpdateCoordinationGrantRequestSpawnApproval(
+						client.UpdateCoordinationGrantRequestSpawnApproval(spawnApproval))
+					changed = true
+				default:
+					return errors.New("--spawn-approval must be auto or operator")
+				}
+			}
+			setInt := func(name string, value int, set func(client.OptInt)) error {
+				if !command.Flags().Changed(name) {
+					return nil
+				}
+				if value < 1 {
+					return fmt.Errorf("--%s must be at least 1", name)
+				}
+				set(client.NewOptInt(value))
+				changed = true
+				return nil
+			}
+			if err := setInt("max-children", maxChildren, func(v client.OptInt) { body.MaxChildren = v }); err != nil {
+				return err
+			}
+			if err := setInt("max-descendants", maxDescendants, func(v client.OptInt) { body.MaxDescendants = v }); err != nil {
+				return err
+			}
+			if err := setInt("max-live-capsules", maxLive, func(v client.OptInt) { body.MaxLiveCapsules = v }); err != nil {
+				return err
+			}
+			if err := setInt("max-messages-per-link", maxMessages, func(v client.OptInt) { body.MaxMessagesPerLink = v }); err != nil {
+				return err
+			}
+			if command.Flags().Changed("allow-harness") {
+				body.AllowedHarnesses = allowHarnesses
+				changed = true
+			}
+			if command.Flags().Changed("lead-deadline") {
+				if deadline%time.Second != 0 {
+					return errors.New("--lead-deadline must be whole seconds")
+				}
+				body.DeadlineSeconds = client.NewOptInt(int(deadline / time.Second))
+				changed = true
+			}
+			if command.Flags().Changed("archive-after") {
+				if archiveAfter < 0 || archiveAfter%time.Second != 0 {
+					return errors.New("--archive-after must be 0 or whole seconds")
+				}
+				body.ArchiveAfterSeconds = client.NewOptInt(int(archiveAfter / time.Second))
+				changed = true
+			}
+			if command.Flags().Changed("on-deadline") {
+				switch onDeadline {
+				case string(client.UpdateCoordinationGrantRequestOnDeadlineCancelAndPause),
+					string(client.UpdateCoordinationGrantRequestOnDeadlineStopNewWork):
+					body.OnDeadline = client.NewOptUpdateCoordinationGrantRequestOnDeadline(
+						client.UpdateCoordinationGrantRequestOnDeadline(onDeadline))
+					changed = true
+				default:
+					return errors.New("--on-deadline must be cancel_and_pause or stop_new_work")
+				}
+			}
+			if !changed {
+				return errors.New("provide at least one field to change")
+			}
+			idempotency, err := idempotencyKey(key)
+			if err != nil {
+				return err
+			}
+			api, err := newAPI(config)
+			if err != nil {
+				return err
+			}
+			result, err := api.UpdateCoordinationGrant(command.Context(), body,
+				client.UpdateCoordinationGrantParams{GrantId: args[0], IdempotencyKey: idempotency})
+			if err != nil {
+				return apiCallError(err)
+			}
+			success, ok := result.(*client.CoordinationGrantHeaders)
+			if !ok {
+				return responseError(result)
+			}
+			return config.writeCoordinationGrant(success.Response)
+		},
+	}
+	command.Flags().Int64Var(&expected, "expected-version", 0, "current grant resource version")
+	command.Flags().StringVar(&spawnApproval, "spawn-approval", "", "auto or operator")
+	command.Flags().IntVar(&maxChildren, "max-children", 0, "subagents the lead may start")
+	command.Flags().IntVar(&maxDescendants, "max-descendants", 0, "subagents started over the grant's lifetime")
+	command.Flags().IntVar(&maxLive, "max-live-capsules", 0, "subagent Capsules running at once")
+	command.Flags().IntVar(&maxMessages, "max-messages-per-link", 0, "lead messages per subagent")
+	command.Flags().StringArrayVar(&allowHarnesses, "allow-harness", nil, "replace the allowed harness list")
+	command.Flags().DurationVar(&deadline, "lead-deadline", 0, "remaining time the lead may coordinate")
+	command.Flags().StringVar(&onDeadline, "on-deadline", "", "cancel_and_pause or stop_new_work")
+	command.Flags().DurationVar(&archiveAfter, "archive-after", 0, "idle time before a finished subagent is archived")
+	command.Flags().StringVar(&key, "idempotency-key", "", "mutation replay key (generated if omitted)")
+	return command
+}
+
+func newApprovalsCommand(config *cliConfig) *cobra.Command {
+	root := &cobra.Command{Use: "approvals", Short: "List, approve, or deny queued subagent spawns"}
+	list := &cobra.Command{
+		Use: "list", Short: "List spawn requests waiting for approval", Args: cobra.NoArgs,
+		RunE: func(command *cobra.Command, _ []string) error {
+			api, err := newAPI(config)
+			if err != nil {
+				return err
+			}
+			result, err := api.ListCoordinationRequests(command.Context(), client.ListCoordinationRequestsParams{
+				State: client.NewOptCoordinationRequestState(client.CoordinationRequestStatePendingApproval),
+			})
+			if err != nil {
+				return apiCallError(err)
+			}
+			page, ok := result.(*client.CoordinationRequestPage)
+			if !ok {
+				return responseError(result)
+			}
+			if config.json {
+				return writeJSON(config.stdout, page)
+			}
+			for _, item := range page.Items {
+				if _, err := fmt.Fprintf(config.stdout, "%s\t%s\t%s\tlink=%s\tlead=%s\tversion=%d\n",
+					item.ID, item.Kind, item.State, item.LinkId, item.CapsuleId, item.ResourceVersion,
+				); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	}
+	root.AddCommand(list, newApprovalDecideCommand(config, true), newApprovalDecideCommand(config, false))
+	return root
+}
+
+func newApprovalDecideCommand(config *cliConfig, approve bool) *cobra.Command {
+	use, short := "deny REQUEST_ID", "Refuse a queued subagent spawn"
+	if approve {
+		use, short = "approve REQUEST_ID", "Start a queued subagent spawn"
+	}
+	var expected int64
+	var key string
+	command := &cobra.Command{
+		Use: use, Short: short, Args: cobra.ExactArgs(1),
+		RunE: func(command *cobra.Command, args []string) error {
+			if expected <= 0 {
+				return errors.New("--expected-version is required")
+			}
+			idempotency, err := idempotencyKey(key)
+			if err != nil {
+				return err
+			}
+			api, err := newAPI(config)
+			if err != nil {
+				return err
+			}
+			body := &client.DecideCoordinationRequest{ExpectedResourceVersion: expected}
+			params := client.ApproveCoordinationRequestParams{RequestId: args[0], IdempotencyKey: idempotency}
+			var result any
+			if approve {
+				result, err = api.ApproveCoordinationRequest(command.Context(), body, params)
+			} else {
+				result, err = api.DenyCoordinationRequest(command.Context(), body, client.DenyCoordinationRequestParams{
+					RequestId: args[0], IdempotencyKey: idempotency,
+				})
+			}
+			if err != nil {
+				return apiCallError(err)
+			}
+			success, ok := result.(*client.CoordinationRequestHeaders)
+			if !ok {
+				return responseError(result)
+			}
+			if config.json {
+				return writeJSON(config.stdout, &success.Response)
+			}
+			item := success.Response
+			_, err = fmt.Fprintf(config.stdout, "%s\t%s\t%s\tlink=%s\tversion=%d\n",
+				item.ID, item.Kind, item.State, item.LinkId, item.ResourceVersion)
+			return err
+		},
+	}
+	command.Flags().Int64Var(&expected, "expected-version", 0, "current request resource version")
+	command.Flags().StringVar(&key, "idempotency-key", "", "mutation replay key (generated if omitted)")
+	return command
 }
 
 func (c *cliConfig) writeCoordinationGrant(grant client.CoordinationGrant) error {
@@ -286,8 +501,8 @@ func (c *cliConfig) writeCoordinationGrant(grant client.CoordinationGrant) error
 		return writeJSON(c.stdout, &grant)
 	}
 	_, err := fmt.Fprintf(c.stdout,
-		"%s\tstate=%s\tlead=%s\tsubagents=%d/%d\tchildren=%d\tlive=%d\tharnesses=%s\tdeadline=%s\tarchive-after=%s\tversion=%d\n",
-		grant.ID, grant.State, grant.RootThreadId, grant.DescendantsCreated, grant.MaxDescendants,
+		"%s\tstate=%s\tlead=%s\tapproval=%s\tsubagents=%d/%d\tchildren=%d\tlive=%d\tharnesses=%s\tdeadline=%s\tarchive-after=%s\tversion=%d\n",
+		grant.ID, grant.State, grant.RootThreadId, grant.SpawnApproval, grant.DescendantsCreated, grant.MaxDescendants,
 		grant.MaxChildren, grant.MaxLiveCapsules, strings.Join(grant.AllowedHarnesses, ","),
 		grant.DeadlineAt.Format(time.RFC3339), archiveAfterText(grant.ArchiveAfterSeconds), grant.ResourceVersion,
 	)

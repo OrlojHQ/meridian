@@ -50,6 +50,10 @@ import {
   getCoordinationGrant,
   listThreadLinks,
   revokeCoordinationGrant,
+  updateCoordinationGrant,
+  listCoordinationRequests,
+  approveCoordinationRequest,
+  denyCoordinationRequest,
   getBoard,
   promoteCapsule,
 } from "./generated/sdk.gen";
@@ -88,6 +92,8 @@ import type { HarnessSetupUpload, HarnessSetupPreview, ImportHarnessSetupRequest
   DeliveryInspection,
   Thread,
   ThreadBlockPage,
+  CoordinationRequest,
+  CoordinationRequestPage,
   ThreadLinkPage,
   ThreadMutationResult,
   ThreadPage,
@@ -292,6 +298,46 @@ export const api = {
           expectedResourceVersion: grant.resourceVersion,
           cancelDescendants: true,
         },
+      }),
+    ),
+  updateCoordinationGrant: (
+    grant: CoordinationGrant,
+    body: { spawnApproval?: "auto" | "operator" },
+  ) =>
+    call<CoordinationGrant>(
+      updateCoordinationGrant({
+        ...generatedOptions(),
+        path: { grantId: grant.id },
+        headers: idempotencyHeaders(),
+        body: {
+          expectedResourceVersion: grant.resourceVersion,
+          ...body,
+        },
+      }),
+    ),
+  coordinationRequests: (signal?: AbortSignal) =>
+    call<CoordinationRequestPage>(
+      listCoordinationRequests({
+        ...generatedOptions(signal),
+        query: { state: "pending_approval" },
+      }),
+    ),
+  approveCoordinationRequest: (request: CoordinationRequest) =>
+    call<CoordinationRequest>(
+      approveCoordinationRequest({
+        ...generatedOptions(),
+        path: { requestId: request.id },
+        headers: idempotencyHeaders(),
+        body: { expectedResourceVersion: request.resourceVersion },
+      }),
+    ),
+  denyCoordinationRequest: (request: CoordinationRequest) =>
+    call<CoordinationRequest>(
+      denyCoordinationRequest({
+        ...generatedOptions(),
+        path: { requestId: request.id },
+        headers: idempotencyHeaders(),
+        body: { expectedResourceVersion: request.resourceVersion },
       }),
     ),
   previewHarnessSetup: (body: HarnessSetupUpload) => call<HarnessSetupPreview>(previewHarnessSetup({...generatedOptions(), body})),
