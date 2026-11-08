@@ -232,15 +232,19 @@ func TestOfficialPacksInstallNativeAndStructuredProfiles(t *testing.T) {
 			t.Fatalf("%s structured profile = %#v", name, structured)
 		}
 		adapterFlags := arguments[1:separator]
-		if name == "opencode" && !hasArguments(adapterFlags, "--secret-env", "OPENCODE_SERVER_PASSWORD") {
-			t.Fatalf("OpenCode must protect its loopback server with a per-launch password: %#v", arguments)
+		harnessFlags := arguments[separator+2:]
+		// OpenCode 2's `acp` accepts only --login and prints help for anything
+		// else. It generates its own per-launch password for its loopback
+		// server, so the profile sets none (ADR 0030).
+		if name == "opencode" && (len(harnessFlags) != 1 || harnessFlags[0] != "acp" ||
+			slices.Contains(adapterFlags, "--secret-env")) {
+			t.Fatalf("OpenCode 2 structured profile must run `opencode acp` with no flags or secret env: %#v", arguments)
 		}
 		if coordinationMCP[name] != hasArguments(adapterFlags, "--mcp-server", "meridian-coord=/usr/local/bin/meridian-coord,mcp") {
 			t.Fatalf("%s meridian-coord MCP registration = %v, want %v: %#v",
 				name, !coordinationMCP[name], coordinationMCP[name], arguments)
 		}
 		skill := "/usr/local/share/meridian/" + name + "/skills/meridian-coord"
-		harnessFlags := arguments[separator+2:]
 		if coordinationSkill[name] != hasArguments(harnessFlags, "--skill", skill) {
 			t.Fatalf("%s meridian-coord skill = %v, want %v: %#v",
 				name, !coordinationSkill[name], coordinationSkill[name], arguments)

@@ -79,7 +79,7 @@ Each official pack installs a structured profile under its name, and all but
 | --- | --- | --- |
 | `claude` | `claude-stream` | `claude-stream -- /usr/local/bin/claude` |
 | `codex` | `codex-app-server` | `codex-app-server --approval-policy untrusted --sandbox danger-full-access -- /usr/local/bin/codex` |
-| `opencode` | `acp` | `acp --secret-env OPENCODE_SERVER_PASSWORD --mcp-server meridian-coord=/usr/local/bin/meridian-coord,mcp -- /usr/local/bin/opencode acp --hostname 127.0.0.1 --mdns=false` |
+| `opencode` | `acp` | `acp --mcp-server meridian-coord=/usr/local/bin/meridian-coord,mcp -- /usr/local/bin/opencode acp` |
 | `pi` | `pi-rpc` | `pi-rpc --session-dir /home/capsule/.pi-sessions -- /usr/local/bin/pi --skill /usr/local/share/meridian/pi/skills/meridian-coord` |
 | `dsh` | `acp` | `acp --mcp-server meridian-coord=/usr/local/bin/meridian-coord,mcp -- /usr/local/bin/dsh --profile acp` |
 
@@ -276,9 +276,9 @@ harness-specific:
   `--permissions=false` answers every `session/request_permission` with the
   agent's own reject option and advertises no permission capability.
   `--secret-env NAME`, repeatable, sets `NAME` to a fresh random 256-bit value
-  for each launch (the OpenCode pack uses it for the password on OpenCode's
-  loopback server). `--mcp-server` registers stdio MCP servers through
-  `session/new`, with the syntax below.
+  for each launch, for an agent that protects a side channel with a password
+  it does not generate itself; no official pack uses it. `--mcp-server`
+  registers stdio MCP servers through `session/new`, with the syntax below.
 - `claude-stream -- <claude> [args...]` runs Claude Code headless with
   `--print --input-format stream-json --output-format stream-json --verbose
   --include-partial-messages`. Claude Code queues messages sent during a turn.
@@ -485,9 +485,19 @@ turns, tool calls, a shell escalation permission prompt resolved by "Allow
 once", and no command list. Its first `session/request_permission` uses
 JSON-RPC id `0`.
 
-`opencode acp` also starts OpenCode's HTTP server on `127.0.0.1`. The pack
-gives it a fresh random `OPENCODE_SERVER_PASSWORD` per launch and disables
-mDNS, so other Capsule processes cannot drive that API without the password.
+OpenCode 2's `opencode acp` accepts no flags but `--login`; given any other
+flag it prints its help to stdout and exits, which the adapter reports as
+`acp_protocol_failed`. The profile therefore runs it bare. Each launch starts a
+private child, `opencode serve --stdio --port 0`, that listens on
+`127.0.0.1` at a random port and ends with the ACP process. `opencode acp`
+generates a fresh 32-byte password for that child and passes it only in the
+child's environment, and the child drops it from the environment its tools
+inherit. The `/api` routes require HTTP Basic authentication with that
+password; the static web-app shell is served without it. The stdio-mode
+server does not read a hostname or password from OpenCode's configuration, and
+OpenCode 2 has no mDNS advertisement. `opencode acp` never connects to
+OpenCode's shared background service (`opencode service`). This was observed
+in the 2.2.6 pack image on 2026-11-08.
 
 The Claude Code driver follows the stream-json control protocol of Claude Code
 2.1.283, recorded against the real binary on 2026-11-07: an `initialize`

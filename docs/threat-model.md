@@ -251,10 +251,16 @@ another session and replayed history from `session/load` are dropped. ACP
 agents are installed from pinned artifacts at image build time; the driver
 never runs a package manager. `--secret-env` values are fresh random strings
 generated per launch, never credentials, and are passed only to the agent
-process. `opencode acp` also listens on Capsule loopback; the OpenCode pack
-protects that API with such a per-launch password and disables mDNS, which
-keeps other Capsule processes out but is not a boundary against code running
-as the same user. Provider credentials keep the lease design of ADR 0024.
+process. `opencode acp` also starts a private OpenCode API server on Capsule
+loopback at a random port. In OpenCode 2 the agent itself generates a fresh
+256-bit Basic-auth password for that server on each launch, keeps it out of
+the environment its tools inherit, and binds `127.0.0.1` regardless of
+OpenCode configuration; OpenCode 2 has no mDNS advertisement. This keeps
+other Capsule processes off the API, but it is not a boundary against code
+running as the same user, which can read the password from the server
+process's environment. The OpenCode profile no longer sets a password with
+`--secret-env`, which has no effect in OpenCode 2. Provider credentials keep
+the lease design of ADR 0024.
 
 The DeepSeek Harness pack (`dsh`) is installed from an npm lockfile of about
 700 third-party packages. Each is pinned to a `registry.npmjs.org` tarball and
