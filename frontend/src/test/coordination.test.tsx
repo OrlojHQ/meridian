@@ -15,7 +15,13 @@ import type {
 } from "../api/generated/types.gen";
 import { StructuredLauncher } from "../components/StructuredLauncher";
 import { ThreadConversation } from "../components/ThreadConversation";
-import { grantLimits, ThreadSubagents, untilDeadline } from "../components/ThreadSubagents";
+import {
+  grantLimits,
+  SubagentsButton,
+  SubagentsPanel,
+  ThreadSubagents,
+  untilDeadline,
+} from "../components/ThreadSubagents";
 import { buildThreadChat } from "../components/threadChat";
 import {
   hideLinkIds,
@@ -183,7 +189,7 @@ describe("Subagents panel", () => {
     const revoke = vi
       .spyOn(api, "revokeCoordinationGrant")
       .mockResolvedValue({ ...grant, state: "revoked", revokeReason: "operator" });
-    wrapper(<ThreadSubagents thread={leadThread} />);
+    wrapper(<SubagentsPanel thread={leadThread} grantId={grant.id} />);
     const panel = await screen.findByRole("region", { name: "Subagents" });
     const first = await within(panel).findByRole("link", { name: "subagent-1" });
     expect(first).toHaveAttribute("href", "/ui/capsules/capsule-subagent-1?session=thread-subagent-1");
@@ -197,6 +203,37 @@ describe("Subagents panel", () => {
     await userEvent.click(within(panel).getByRole("button", { name: "Stop subagents" }));
     await userEvent.click(within(panel).getByRole("button", { name: "Confirm stop" }));
     await waitFor(() => expect(revoke).toHaveBeenCalledWith(grant));
+  });
+
+  it("keeps a lead's subagents behind the composer's Agents button", async () => {
+    vi.spyOn(api, "coordinationGrant").mockResolvedValue(grant);
+    vi.spyOn(api, "coordinationRequests").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "threadLinks").mockResolvedValue({
+      items: [
+        link("subagent-1", "idle", 1),
+        link("subagent-2", "awaiting_operator", 0),
+        { ...link("parked", "idle", 1), archivedAt: "2026-11-02T00:00:00Z" },
+      ],
+    });
+    const top = wrapper(<ThreadSubagents thread={leadThread} />);
+    expect(top.container).toBeEmptyDOMElement();
+    top.unmount();
+
+    wrapper(<SubagentsButton thread={leadThread} />);
+    const button = await screen.findByRole("button", { name: "2 agents, 1 need you" });
+    expect(button).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("region", { name: "Subagents" })).not.toBeInTheDocument();
+    await userEvent.click(button);
+    const panel = await screen.findByRole("region", { name: "Subagents" });
+    expect(await within(panel).findByRole("link", { name: "subagent-1" })).toBeInTheDocument();
+    expect(button).toHaveAttribute("aria-expanded", "true");
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("region", { name: "Subagents" })).not.toBeInTheDocument();
+  });
+
+  it("renders no Agents button for Threads that are not leads", () => {
+    const plain = wrapper(<SubagentsButton thread={{ ...leadThread, coordinationGrantId: undefined }} />);
+    expect(plain.container).toBeEmptyDOMElement();
   });
 
   it("words the grant limits and its deadline relative to now", () => {
@@ -228,7 +265,7 @@ describe("Subagents panel", () => {
         },
       ],
     });
-    wrapper(<ThreadSubagents thread={leadThread} />);
+    wrapper(<SubagentsPanel thread={leadThread} grantId={grant.id} />);
     const panel = await screen.findByRole("region", { name: "Subagents" });
     await within(panel).findByRole("link", { name: "kept" });
     expect(within(panel).getByText("Promoted")).toBeInTheDocument();

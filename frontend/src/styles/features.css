@@ -3291,3 +3291,111 @@ button.tool-line:hover {
   color: var(--muted);
   font-size: 0.68rem;
 }
+
+/* Composer toolbar: chips under the message box (the lead's Agents button). */
+.composer-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 1.6rem;
+  padding: 0 0.2rem;
+}
+
+.composer-agents {
+  position: static;
+}
+
+.composer-chip {
+  display: inline-flex;
+  min-height: 1.6rem;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 0.6rem;
+  color: var(--muted);
+  background: transparent;
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.composer-chip:hover,
+.composer-chip[aria-expanded="true"] {
+  border-color: var(--border-strong);
+  color: var(--text);
+  background: var(--surface-raised);
+}
+
+.composer-chip svg {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
+.composer-chip.needs-you {
+  border-color: color-mix(in srgb, var(--warning) 55%, var(--border));
+  color: var(--text);
+}
+
+.composer-chip-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--warning);
+}
+
+.composer-popover {
+  position: absolute;
+  z-index: 6;
+  right: 0;
+  bottom: calc(100% + 0.4rem);
+  left: 0;
+  max-height: min(26rem, 55dvh);
+  overflow-y: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+  box-shadow: 0 10px 32px rgb(28 33 29 / 16%);
+}
+
+.composer-popover .thread-subagents {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.composer-chip-count {
+  min-width: 1.1rem;
+  border-radius: 999px;
+  padding: 0 0.3rem;
+  color: var(--text);
+  background: var(--border);
+  font-size: 0.68rem;
+  text-align: center;
+}
+
+.composer-popover .thread-subagents header .checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+  font-size: 0.76rem;
+}
+
+.composer-popover .thread-subagents header .checkbox-label input {
+  margin: 0;
+}
+
+.composer-popover .thread-subagents header .checkbox-label,
+.composer-popover .thread-subagents header button {
+  margin-left: 0;
+}
+
+.composer-popover .thread-subagents header .checkbox-label {
+  margin-left: auto;
+}
+
+.composer-popover .thread-subagents header .checkbox-label {
+  white-space: nowrap;
+}
