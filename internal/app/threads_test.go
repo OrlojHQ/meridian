@@ -714,6 +714,58 @@ func threadServiceWithClock(
 	return store, service, runtime, key, capsuleID
 }
 
+func TestThreadModelsSummaryIsDerivedInMemory(t *testing.T) {
+	ctx := context.Background()
+	clock := &testClock{now: time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)}
+	store, service, runtime, key, capsuleID := threadServiceWithClock(t, ctx, clock)
+	defer store.Close()
+	defer key.Zero()
+	created, err := service.CreateThread(ctx, app.CreateThreadInput{
+		CapsuleID: capsuleID, Harness: "mock", FirstMessage: "hello",
+		Start: true, IdempotencyKey: "create-summary",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread, err := service.GetThread(ctx, created.Thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := service.ThreadModels(ctx, thread); ok {
+		t.Fatal("summary before any models report")
+	}
+	runtime.events = ports.RuntimeStructuredEvents{
+		Items: []ports.RuntimeStructuredEvent{{Sequence: 1, Frame: adapterproto.Frame{
+			Protocol: adapterproto.Version, Type: adapterproto.KindModels,
+			Models: &adapterproto.ModelSet{
+				Current: "sonnet", Options: []adapterproto.ModelOption{{ID: "sonnet", Label: "Sonnet"}},
+				Effort: &adapterproto.EffortSet{Current: "high", Options: []adapterproto.ModelOption{
+					{ID: "low", Label: "Low"}, {ID: "high", Label: "High"},
+				}},
+			},
+		}}},
+		NextCursor: 1,
+	}
+	if err := service.SyncThread(ctx, thread.ID); err != nil {
+		t.Fatal(err)
+	}
+	thread, err = service.GetThread(ctx, thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := app.ThreadModelSummary{Model: "Sonnet", Effort: "High"}
+	if summary, ok := service.ThreadModels(ctx, thread); !ok || summary != want {
+		t.Fatalf("summary = %#v, %v", summary, ok)
+	}
+	// A restarted daemon has no memory of the report; it finds it in the
+	// trailing transcript window instead.
+	restarted := app.NewService(store, clock, &testIDs{}, &recordingQueue{})
+	restarted.ConfigureThreads(runtime, key)
+	if summary, ok := restarted.ThreadModels(ctx, thread); !ok || summary != want {
+		t.Fatalf("summary after restart = %#v, %v", summary, ok)
+	}
+}
+
 func TestThreadCommandsPersistEncryptedAsStatusEvent(t *testing.T) {
 	ctx := context.Background()
 	store, service, runtime, key, capsuleID := threadService(t, ctx)

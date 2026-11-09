@@ -4,7 +4,8 @@
 - Date: 2026-11-08
 - Extends: ADRs 0013, 0026, 0028, and 0030
 - Amends: ADR 0028 (model switching is no longer excluded)
-- Amended by: ADR 0033 (reasoning effort travels with the model list)
+- Amended by: ADR 0033 (reasoning effort travels with the model list), and
+  the amendment below (subagent models in the Agents list)
 
 ## Context
 
@@ -113,3 +114,27 @@ custom adapter that does not negotiate `models` shows no picker.
 
 Reasoning effort, which Claude Code, Codex, and `dsh` also report, is not part
 of this decision. (ADR 0033 later adds it to the model list.)
+
+## Amendment: subagent models in the Agents list
+
+A lead's Agents list showed each subagent's name, harness, and phase, but not
+which model it runs, so the operator had to open each subagent to see it.
+
+The model a session runs is in its encrypted transcript. A link row stays
+content-free in SQLite, so the label is derived like a link's phase: in
+memory, never persisted.
+
+- When the daemon ingests a `models` frame, it remembers the labels of the
+  current model and effort for that Thread, after the transcript write
+  commits.
+- After a restart, before the session reports again, the labels come from
+  the latest `models` block in the trailing transcript window that the
+  attention derivation already decrypts. A report older than that window is
+  not found until the session reports again.
+- `ThreadLink` gains optional `model` and `effort` labels, filled only for a
+  live child session. Labels are one line of at most 128 bytes and are
+  rendered as text.
+
+The labels go only to the authenticated operator API. The lead's
+`meridian-coord` link view is unchanged, so a lead still cannot see or choose
+its subagents' models.

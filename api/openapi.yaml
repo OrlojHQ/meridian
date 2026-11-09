@@ -3376,6 +3376,19 @@ components:
         phase:
           type: string
           enum: [provisioning, working, idle, awaiting_operator, ended, failed]
+        model:
+          type: string
+          maxLength: 128
+          description: >-
+            The label of the model the subagent's live session last reported,
+            derived in memory from its encrypted transcript and never stored.
+            Absent when the session has ended or has not reported one.
+        effort:
+          type: string
+          maxLength: 128
+          description: >-
+            The label of the reasoning effort the subagent's live session last
+            reported, when it reports one and is not on the harness default.
         reportSeq: { type: integer, minimum: 0 }
         reportDeliveredSeq: { type: integer, minimum: 0 }
         lastReportStatus: { type: string, enum: [turn_ended, failed, done, blocked] }

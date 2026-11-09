@@ -718,6 +718,14 @@ export type ThreadLink = {
     state: ThreadLinkState;
     closeReason?: 'cancelled' | 'failed' | 'ended' | 'revoked' | 'denied' | 'detached';
     phase: 'provisioning' | 'working' | 'idle' | 'awaiting_operator' | 'ended' | 'failed';
+    /**
+     * The label of the model the subagent's live session last reported, derived in memory from its encrypted transcript and never stored. Absent when the session has ended or has not reported one.
+     */
+    model?: string;
+    /**
+     * The label of the reasoning effort the subagent's live session last reported, when it reports one and is not on the harness default.
+     */
+    effort?: string;
     reportSeq: number;
     reportDeliveredSeq: number;
     lastReportStatus?: 'turn_ended' | 'failed' | 'done' | 'blocked';

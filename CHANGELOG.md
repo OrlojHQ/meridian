@@ -9,6 +9,11 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- A lead Thread's Agents list shows the model and reasoning effort each live
+  subagent last reported (`ThreadLink.model` and `ThreadLink.effort`). The
+  daemon derives them in memory from the subagent's transcript and never
+  stores them.
+
 - The model picker has a search field when the harness lists more than eight
   models; it matches labels, IDs, and descriptions, and Enter picks the first
   match.

@@ -49,6 +49,9 @@ type ThreadAttention struct {
 type cachedThreadAttention struct {
 	messageCount int64
 	attention    ThreadAttention
+	// models is the latest models report in the scanned window, the
+	// fallback for ThreadModels after a daemon restart.
+	models *ThreadModelSummary
 }
 
 // ThreadAwaiting derives, in memory, whether the Thread's live adapter session
@@ -98,6 +101,7 @@ func (s *Service) ThreadAttention(ctx context.Context, thread domain.Thread) (Th
 	// Mirror the browser's pending-request rule: a response answers the
 	// request it names, or the most recent outstanding one of its kind.
 	var permissions, inputs []pendingThreadRequest
+	var models *ThreadModelSummary
 	working := false
 	for _, message := range messages {
 		if message.Role == domain.ThreadRoleUser && message.Kind == domain.ThreadMessagePrompt {
@@ -131,6 +135,11 @@ func (s *Service) ThreadAttention(ctx context.Context, thread domain.Thread) (Th
 				permissions = answerRequest(permissions, payload.Event.ResponseTo)
 			case adapterproto.KindInputResponse:
 				inputs = answerRequest(inputs, payload.Event.ResponseTo)
+			case adapterproto.KindModels:
+				if payload.Event.Models != nil {
+					summary := summarizeThreadModels(payload.Event.Models)
+					models = &summary
+				}
 			}
 		}
 		transcripts.ZeroPlaintextBlocks(plaintext)
@@ -150,7 +159,7 @@ func (s *Service) ThreadAttention(ctx context.Context, thread domain.Thread) (Th
 	}
 	s.attentionMu.Lock()
 	s.attention[thread.ID] = cachedThreadAttention{
-		messageCount: thread.MessageCount, attention: attention,
+		messageCount: thread.MessageCount, attention: attention, models: models,
 	}
 	s.attentionMu.Unlock()
 	return attention, nil

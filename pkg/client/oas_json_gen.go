@@ -24503,6 +24503,18 @@ func (s *ThreadLink) encodeFields(e *jx.Encoder) {
 		s.Phase.Encode(e)
 	}
 	{
+		if s.Model.Set {
+			e.FieldStart("model")
+			s.Model.Encode(e)
+		}
+	}
+	{
+		if s.Effort.Set {
+			e.FieldStart("effort")
+			s.Effort.Encode(e)
+		}
+	}
+	{
 		e.FieldStart("reportSeq")
 		e.Int(s.ReportSeq)
 	}
@@ -24592,7 +24604,7 @@ func (s *ThreadLink) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfThreadLink = [30]string{
+var jsonFieldsNameOfThreadLink = [32]string{
 	0:  "id",
 	1:  "grantId",
 	2:  "parentThreadId",
@@ -24606,23 +24618,25 @@ var jsonFieldsNameOfThreadLink = [30]string{
 	10: "state",
 	11: "closeReason",
 	12: "phase",
-	13: "reportSeq",
-	14: "reportDeliveredSeq",
-	15: "lastReportStatus",
-	16: "lastReportReason",
-	17: "lastReportAt",
-	18: "messagesForwarded",
-	19: "operatorMessages",
-	20: "archivedAt",
-	21: "promotedAt",
-	22: "baseCommit",
-	23: "head",
-	24: "filesChanged",
-	25: "insertions",
-	26: "deletions",
-	27: "createdAt",
-	28: "updatedAt",
-	29: "resourceVersion",
+	13: "model",
+	14: "effort",
+	15: "reportSeq",
+	16: "reportDeliveredSeq",
+	17: "lastReportStatus",
+	18: "lastReportReason",
+	19: "lastReportAt",
+	20: "messagesForwarded",
+	21: "operatorMessages",
+	22: "archivedAt",
+	23: "promotedAt",
+	24: "baseCommit",
+	25: "head",
+	26: "filesChanged",
+	27: "insertions",
+	28: "deletions",
+	29: "createdAt",
+	30: "updatedAt",
+	31: "resourceVersion",
 }
 
 // Decode decodes ThreadLink from json.
@@ -24784,8 +24798,28 @@ func (s *ThreadLink) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"phase\"")
 			}
+		case "model":
+			if err := func() error {
+				s.Model.Reset()
+				if err := s.Model.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"model\"")
+			}
+		case "effort":
+			if err := func() error {
+				s.Effort.Reset()
+				if err := s.Effort.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"effort\"")
+			}
 		case "reportSeq":
-			requiredBitSet[1] |= 1 << 5
+			requiredBitSet[1] |= 1 << 7
 			if err := func() error {
 				v, err := d.Int()
 				s.ReportSeq = int(v)
@@ -24797,7 +24831,7 @@ func (s *ThreadLink) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"reportSeq\"")
 			}
 		case "reportDeliveredSeq":
-			requiredBitSet[1] |= 1 << 6
+			requiredBitSet[2] |= 1 << 0
 			if err := func() error {
 				v, err := d.Int()
 				s.ReportDeliveredSeq = int(v)
@@ -24839,7 +24873,7 @@ func (s *ThreadLink) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"lastReportAt\"")
 			}
 		case "messagesForwarded":
-			requiredBitSet[2] |= 1 << 2
+			requiredBitSet[2] |= 1 << 4
 			if err := func() error {
 				v, err := d.Int()
 				s.MessagesForwarded = int(v)
@@ -24851,7 +24885,7 @@ func (s *ThreadLink) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"messagesForwarded\"")
 			}
 		case "operatorMessages":
-			requiredBitSet[2] |= 1 << 3
+			requiredBitSet[2] |= 1 << 5
 			if err := func() error {
 				v, err := d.Int()
 				s.OperatorMessages = int(v)
@@ -24933,7 +24967,7 @@ func (s *ThreadLink) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"deletions\"")
 			}
 		case "createdAt":
-			requiredBitSet[3] |= 1 << 3
+			requiredBitSet[3] |= 1 << 5
 			if err := func() error {
 				v, err := json.DecodeDateTime(d)
 				s.CreatedAt = v
@@ -24945,7 +24979,7 @@ func (s *ThreadLink) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"createdAt\"")
 			}
 		case "updatedAt":
-			requiredBitSet[3] |= 1 << 4
+			requiredBitSet[3] |= 1 << 6
 			if err := func() error {
 				v, err := json.DecodeDateTime(d)
 				s.UpdatedAt = v
@@ -24957,7 +24991,7 @@ func (s *ThreadLink) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"updatedAt\"")
 			}
 		case "resourceVersion":
-			requiredBitSet[3] |= 1 << 5
+			requiredBitSet[3] |= 1 << 7
 			if err := func() error {
 				v, err := d.Int64()
 				s.ResourceVersion = int64(v)
@@ -24979,9 +25013,9 @@ func (s *ThreadLink) Decode(d *jx.Decoder) error {
 	var failures []validate.FieldError
 	for i, mask := range [4]uint8{
 		0b11111111,
-		0b01110111,
-		0b00001100,
-		0b00111000,
+		0b10010111,
+		0b00110001,
+		0b11100000,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.
