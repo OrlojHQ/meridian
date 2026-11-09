@@ -88,6 +88,8 @@ type threadLinkJSON struct {
 	Harness            string `json:"harness"`
 	State              string `json:"state"`
 	CloseReason        string `json:"closeReason,omitempty"`
+	Model              string `json:"model,omitempty"`
+	Effort             string `json:"effort,omitempty"`
 	Phase              string `json:"phase"`
 	ReportSeq          int    `json:"reportSeq"`
 	ReportDeliveredSeq int    `json:"reportDeliveredSeq"`
@@ -227,7 +229,9 @@ func grantResponse(grant domain.CoordinationGrant) coordinationGrantJSON {
 }
 
 func (s *Server) linkResponse(request *http.Request, link domain.ThreadLink) threadLinkJSON {
+	models, _ := s.service.ThreadLinkModels(request.Context(), link)
 	return threadLinkJSON{
+		Model: models.Model, Effort: models.Effort,
 		ID: string(link.ID), GrantID: string(link.GrantID), ParentThreadID: string(link.ParentThreadID),
 		ParentCapsuleID: string(link.ParentCapsuleID), ChildThreadID: string(link.ChildThreadID),
 		ChildCapsuleID: string(link.ChildCapsuleID), ChildIntentID: string(link.ChildIntentID),

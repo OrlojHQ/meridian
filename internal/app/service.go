@@ -47,6 +47,8 @@ type Service struct {
 	deliverySync  [64]sync.Mutex
 	attentionMu   sync.Mutex
 	attention     map[domain.ThreadID]cachedThreadAttention
+	modelsMu      sync.Mutex
+	models        map[domain.ThreadID]ThreadModelSummary
 	coordination  ports.CoordinationRuntime
 	coordMaxLive  int
 	coordMu       sync.Mutex
@@ -120,6 +122,7 @@ func NewService(
 	service := &Service{
 		store: store, clock: clock, ids: ids, queue: queue,
 		attention: make(map[domain.ThreadID]cachedThreadAttention),
+		models:    make(map[domain.ThreadID]ThreadModelSummary),
 	}
 	if len(runtime) > 0 {
 		service.runtime = runtime[0]

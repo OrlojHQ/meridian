@@ -1094,7 +1094,9 @@ func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
 		return nil
 	}
 	var endStatus adapterproto.Status
+	var reportedModels *adapterproto.ModelSet
 	err = s.store.Transact(ctx, func(tx ports.Transaction) error {
+		reportedModels = nil
 		currentThread, err := tx.GetThread(ctx, id)
 		if err != nil {
 			return err
@@ -1169,6 +1171,9 @@ func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
 			if event.Frame.Type == adapterproto.KindEnd {
 				endStatus = event.Frame.Status
 			}
+			if event.Frame.Type == adapterproto.KindModels && event.Frame.Models != nil {
+				reportedModels = event.Frame.Models
+			}
 			cursor = event.Sequence
 		}
 		if events.NextCursor > cursor {
@@ -1197,6 +1202,9 @@ func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
 	})
 	if err != nil {
 		return err
+	}
+	if reportedModels != nil {
+		s.rememberThreadModels(id, reportedModels)
 	}
 	if endStatus != "" {
 		status := domain.RunFailed

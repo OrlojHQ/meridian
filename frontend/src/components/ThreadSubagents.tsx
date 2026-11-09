@@ -12,11 +12,26 @@ import { subagentDiffstat, subagentHref, subagentPhaseLabels, subagentReportStat
 import { safeInline } from "./threadText";
 import { StateBadge } from "./ui/StateBadge";
 
+// subagentModel names the model (and effort) the subagent's live session last
+// reported. The daemon derives it in memory; it is harness text, so it is
+// folded to one bounded line before display.
+export function subagentModel(link: Pick<ThreadLink, "model" | "effort">) {
+  const model = safeInline(link.model ?? "").trim().slice(0, 128);
+  if (!model) return "";
+  const effort = safeInline(link.effort ?? "").trim().slice(0, 128);
+  return effort ? `${model} · ${effort}` : model;
+}
+
 function subagentRow(link: ThreadLink, request?: CoordinationRequest) {
   return (
     <li key={link.id}>
       <Link to={subagentHref(link)} className="subagent-name">{link.name}</Link>
       <span className="muted-copy">{harnessName(link.harness)}</span>
+      {subagentModel(link) && (
+        <span className="muted-copy subagent-model" title="Model the subagent last reported">
+          {subagentModel(link)}
+        </span>
+      )}
       <span className={`badge subagent-phase phase-${link.phase}`}>
         {link.state === "pending_approval" ? "Waiting for approval" : subagentPhaseLabels[link.phase]}
       </span>

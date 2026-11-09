@@ -184,7 +184,10 @@ describe("Subagents panel", () => {
     vi.spyOn(api, "coordinationGrant").mockResolvedValue(grant);
     vi.spyOn(api, "coordinationRequests").mockResolvedValue({ items: [] });
     vi.spyOn(api, "threadLinks").mockResolvedValue({
-      items: [link("subagent-1", "idle", 1), link("subagent-2", "awaiting_operator", 0)],
+      items: [
+        { ...link("subagent-1", "idle", 1), model: "GPT-5.5", effort: "High" },
+        { ...link("subagent-2", "awaiting_operator", 0), model: "Son\u0007net" },
+      ],
     });
     const revoke = vi
       .spyOn(api, "revokeCoordinationGrant")
@@ -197,6 +200,8 @@ describe("Subagents panel", () => {
     expect(within(panel).getByText("Needs you")).toBeInTheDocument();
     expect(within(panel).getByText("done")).toBeInTheDocument();
     expect(within(panel).getByText("+4 −1 · 2 files")).toBeInTheDocument();
+    expect(within(panel).getByText("GPT-5.5 · High")).toBeInTheDocument();
+    expect(within(panel).getByText("Sonnet")).toBeInTheDocument();
     expect(
       within(panel).getByText("2 of 4 started · up to 4 at a time", { exact: false }),
     ).toBeInTheDocument();

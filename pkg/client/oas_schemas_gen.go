@@ -11064,19 +11064,25 @@ func (s *ThreadInput) SetSecret(val OptBool) {
 // subagent's encrypted transcript and is never stored on the link.
 // Ref: #/components/schemas/ThreadLink
 type ThreadLink struct {
-	ID                 string                        `json:"id"`
-	GrantId            string                        `json:"grantId"`
-	ParentThreadId     string                        `json:"parentThreadId"`
-	ParentCapsuleId    string                        `json:"parentCapsuleId"`
-	ChildThreadId      string                        `json:"childThreadId"`
-	ChildCapsuleId     string                        `json:"childCapsuleId"`
-	ChildIntentId      string                        `json:"childIntentId"`
-	Depth              int                           `json:"depth"`
-	Name               string                        `json:"name"`
-	Harness            string                        `json:"harness"`
-	State              ThreadLinkState               `json:"state"`
-	CloseReason        OptThreadLinkCloseReason      `json:"closeReason"`
-	Phase              ThreadLinkPhase               `json:"phase"`
+	ID              string                   `json:"id"`
+	GrantId         string                   `json:"grantId"`
+	ParentThreadId  string                   `json:"parentThreadId"`
+	ParentCapsuleId string                   `json:"parentCapsuleId"`
+	ChildThreadId   string                   `json:"childThreadId"`
+	ChildCapsuleId  string                   `json:"childCapsuleId"`
+	ChildIntentId   string                   `json:"childIntentId"`
+	Depth           int                      `json:"depth"`
+	Name            string                   `json:"name"`
+	Harness         string                   `json:"harness"`
+	State           ThreadLinkState          `json:"state"`
+	CloseReason     OptThreadLinkCloseReason `json:"closeReason"`
+	Phase           ThreadLinkPhase          `json:"phase"`
+	// The label of the model the subagent's live session last reported, derived in memory from its
+	// encrypted transcript and never stored. Absent when the session has ended or has not reported one.
+	Model OptString `json:"model"`
+	// The label of the reasoning effort the subagent's live session last reported, when it reports one and
+	// is not on the harness default.
+	Effort             OptString                     `json:"effort"`
 	ReportSeq          int                           `json:"reportSeq"`
 	ReportDeliveredSeq int                           `json:"reportDeliveredSeq"`
 	LastReportStatus   OptThreadLinkLastReportStatus `json:"lastReportStatus"`
@@ -11165,6 +11171,16 @@ func (s *ThreadLink) GetCloseReason() OptThreadLinkCloseReason {
 // GetPhase returns the value of Phase.
 func (s *ThreadLink) GetPhase() ThreadLinkPhase {
 	return s.Phase
+}
+
+// GetModel returns the value of Model.
+func (s *ThreadLink) GetModel() OptString {
+	return s.Model
+}
+
+// GetEffort returns the value of Effort.
+func (s *ThreadLink) GetEffort() OptString {
+	return s.Effort
 }
 
 // GetReportSeq returns the value of ReportSeq.
@@ -11315,6 +11331,16 @@ func (s *ThreadLink) SetCloseReason(val OptThreadLinkCloseReason) {
 // SetPhase sets the value of Phase.
 func (s *ThreadLink) SetPhase(val ThreadLinkPhase) {
 	s.Phase = val
+}
+
+// SetModel sets the value of Model.
+func (s *ThreadLink) SetModel(val OptString) {
+	s.Model = val
+}
+
+// SetEffort sets the value of Effort.
+func (s *ThreadLink) SetEffort(val OptString) {
+	s.Effort = val
 }
 
 // SetReportSeq sets the value of ReportSeq.

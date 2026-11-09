@@ -573,7 +573,13 @@ while an active session has an unanswered permission or input request, and a
 content-free `turn` (`working` or `idle`) while the session is live. The
 daemon derives both in memory from a bounded tail of the decrypted transcript
 and never persists, logs, or emits them; they omit request summaries, options,
-and prompts, so SQLite and backup exposure are unchanged. Background runtime
+and prompts, so SQLite and backup exposure are unchanged. A lead's link list
+also names the model and reasoning effort each live subagent last reported.
+That label is harness-reported text, not content, but it comes from the
+transcript, so it is kept the same way: in memory, taken from the frames the
+daemon ingests or from the same bounded transcript tail after a restart,
+bounded to one 128-byte line, served only to the authenticated operator API,
+and never persisted, logged, or sent to the lead (ADR 0031). Background runtime
 refresh ingests frames for Threads nobody is watching into the same encrypted
 store; it never sends, resends, or resumes a session (ADR 0025). The browser's
 Inbox peek reads one Thread's transcript tail through the same
