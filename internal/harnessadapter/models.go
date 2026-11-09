@@ -1,6 +1,10 @@
 package harnessadapter
 
 import (
+	"slices"
+	"unicode"
+	"unicode/utf8"
+
 	"github.com/OrlojHQ/meridian/internal/adapterproto"
 )
 
@@ -12,6 +16,9 @@ type modelSet struct {
 	current string
 	options []adapterproto.ModelOption
 	ids     map[string]bool
+	// effort is the current model's reasoning effort levels, reported only
+	// when the controller negotiated effort.
+	effort *modelSet
 }
 
 func newModelSet() *modelSet {
@@ -72,7 +79,38 @@ func (m *modelSet) set() *adapterproto.ModelSet {
 		}
 		options = kept
 	}
-	return &adapterproto.ModelSet{Current: m.current, Options: options}
+	set := &adapterproto.ModelSet{Current: m.current, Options: options}
+	if m.effort != nil && len(m.effort.options) != 0 {
+		efforts := m.effort.options[:min(len(m.effort.options), adapterproto.MaxEfforts)]
+		current := m.effort.current
+		if !slices.ContainsFunc(efforts, func(option adapterproto.ModelOption) bool { return option.ID == current }) {
+			current = ""
+		}
+		set.Effort = &adapterproto.EffortSet{Current: current, Options: append([]adapterproto.ModelOption{}, efforts...)}
+	}
+	return set
+}
+
+// effortLevels builds an effort list from bare level names, labelled with
+// the name capitalized.
+func effortLevels(levels []string, current string) *modelSet {
+	efforts := newModelSet()
+	for _, level := range levels {
+		efforts.add(level, effortLabel(level), "")
+	}
+	efforts.setCurrent(current)
+	return efforts
+}
+
+func effortLabel(level string) string {
+	switch level {
+	case "xhigh":
+		return "Extra high"
+	case "":
+		return ""
+	}
+	first, size := utf8.DecodeRuneInString(level)
+	return string(unicode.ToUpper(first)) + level[size:]
 }
 
 // ReportModels sends the harness's model list when the controller negotiated
@@ -81,9 +119,27 @@ func (s *Stream) ReportModels(models *modelSet) error {
 	if !s.models || models == nil {
 		return nil
 	}
+	set := models.set()
+	if !s.effort {
+		set.Effort = nil
+	}
 	return s.Write(adapterproto.Frame{
 		Protocol: adapterproto.Version, Type: adapterproto.KindModels,
-		Models: models.set(),
+		Models: set,
+	})
+}
+
+// EffortNegotiated reports whether set_effort frames can arrive.
+func (s *Stream) EffortNegotiated() bool {
+	return s.effort
+}
+
+// effortUnavailable reports a refused effort change without ending the
+// session.
+func (s *Stream) effortUnavailable(summary string) error {
+	return s.Write(adapterproto.Frame{
+		Protocol: adapterproto.Version, Type: adapterproto.KindError,
+		Code: "effort_unavailable", Summary: defaultString(summary, "The harness did not change its reasoning effort"),
 	})
 }
 

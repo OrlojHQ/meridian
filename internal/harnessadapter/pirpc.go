@@ -68,7 +68,7 @@ func RunPiRPC(
 	if err := stream.Handshake(adapterproto.Capabilities{
 		Resume: true, ToolEvents: true, Permissions: true,
 		InputRequests: true, Heartbeat: false, OpaqueMetadata: true,
-		Commands: true, Models: true,
+		Commands: true, Models: true, Effort: true,
 	}); err != nil {
 		return err
 	}
@@ -255,6 +255,11 @@ func RunPiRPC(
 					stream.Fail("pi_write_failed")
 					return err
 				}
+			case adapterproto.KindSetEffort:
+				if err := models.requestEffort(stream, rpc, pending, frame.Effort); err != nil {
+					stream.Fail("pi_write_failed")
+					return err
+				}
 			case adapterproto.KindCancel:
 				pending["pi-abort"] = "abort"
 				if err := rpc.Write(map[string]any{"id": "pi-abort", "type": "abort"}); err != nil {
@@ -283,8 +288,10 @@ func RunPiRPC(
 					return errors.New("Pi response correlation failed")
 				}
 				delete(pending, record.ID)
-				if record.Command == "get_available_models" || record.Command == "set_model" {
-					if err := models.answered(stream, record); err != nil {
+				switch record.Command {
+				case "get_available_models", "set_model", "get_available_thinking_levels", "set_thinking_level":
+					if err := models.answered(stream, rpc, pending, record); err != nil {
+						stream.Fail("pi_write_failed")
 						return err
 					}
 					continue
@@ -724,6 +731,41 @@ type piModels struct {
 	current  string
 	switches map[string]string
 	sequence int
+	// thinking is the level get_state reports and levels what
+	// get_available_thinking_levels returned for the current model.
+	thinking string
+	levels   []string
+}
+
+// attachEffort puts the current model's thinking levels on the list.
+func (m *piModels) attachEffort() {
+	if m.list != nil {
+		m.list.effort = effortLevels(m.levels, m.thinking)
+	}
+}
+
+// askLevels requests the thinking levels of the current model.
+func (m *piModels) askLevels(stream *Stream, rpc *JSONLines, pending map[string]string) error {
+	if !stream.EffortNegotiated() {
+		return nil
+	}
+	m.sequence++
+	id := "pi-thinking-levels-" + jsonNumber(m.sequence)
+	pending[id] = "get_available_thinking_levels"
+	return rpc.Write(map[string]any{"id": id, "type": "get_available_thinking_levels"})
+}
+
+func (m *piModels) requestEffort(
+	stream *Stream, rpc *JSONLines, pending map[string]string, level string,
+) error {
+	if m.list == nil || !m.list.effort.has(level) {
+		return stream.effortUnavailable("Pi does not offer that thinking level for this model")
+	}
+	m.sequence++
+	id := "pi-thinking-" + jsonNumber(m.sequence)
+	pending[id] = "set_thinking_level"
+	m.switches[id] = level
+	return rpc.Write(map[string]any{"id": id, "type": "set_thinking_level", "level": level})
 }
 
 // state records the model get_state reports. Pi says "unknown" before any
@@ -734,6 +776,11 @@ func (m *piModels) state(raw json.RawMessage) {
 			Provider string `json:"provider"`
 			ID       string `json:"id"`
 		} `json:"model"`
+		ThinkingLevel string `json:"thinkingLevel"`
+	}
+	if json.Unmarshal(raw, &state) == nil && state.ThinkingLevel != "" {
+		m.thinking = state.ThinkingLevel
+		m.attachEffort()
 	}
 	if json.Unmarshal(raw, &state) != nil || state.Model == nil ||
 		state.Model.Provider == "" || state.Model.ID == "" ||
@@ -762,10 +809,12 @@ func (m *piModels) request(
 	})
 }
 
-// answered handles get_available_models and set_model responses. A failed
-// listing reports nothing; a failed switch keeps the previous model.
-func (m *piModels) answered(stream *Stream, record piRecord) error {
-	if record.Command == "set_model" {
+// answered handles model and thinking-level responses. A failed listing
+// reports nothing; a failed switch keeps the previous model or level. A
+// model switch asks for the new model's thinking levels.
+func (m *piModels) answered(stream *Stream, rpc *JSONLines, pending map[string]string, record piRecord) error {
+	switch record.Command {
+	case "set_model":
 		model := m.switches[record.ID]
 		delete(m.switches, record.ID)
 		if !*record.Success || model == "" {
@@ -774,6 +823,29 @@ func (m *piModels) answered(stream *Stream, record piRecord) error {
 		}
 		m.current = model
 		m.list.setCurrent(model)
+		if err := stream.ReportModels(m.list); err != nil {
+			return err
+		}
+		return m.askLevels(stream, rpc, pending)
+	case "set_thinking_level":
+		level := m.switches[record.ID]
+		delete(m.switches, record.ID)
+		if !*record.Success || level == "" {
+			return stream.effortUnavailable(commandLine(
+				defaultString(record.Error, "Pi did not change its thinking level"), adapterproto.MaxToolSummaryBytes))
+		}
+		m.thinking = level
+		m.attachEffort()
+		return stream.ReportModels(m.list)
+	case "get_available_thinking_levels":
+		var data struct {
+			Levels []string `json:"levels"`
+		}
+		if !*record.Success || json.Unmarshal(record.Data, &data) != nil || m.list == nil {
+			return nil
+		}
+		m.levels = data.Levels[:min(len(data.Levels), adapterproto.MaxEfforts)]
+		m.attachEffort()
 		return stream.ReportModels(m.list)
 	}
 	if !*record.Success {
@@ -803,5 +875,9 @@ func (m *piModels) answered(stream *Stream, record piRecord) error {
 		}
 	}
 	m.list.setCurrent(m.current)
-	return stream.ReportModels(m.list)
+	m.attachEffort()
+	if err := stream.ReportModels(m.list); err != nil {
+		return err
+	}
+	return m.askLevels(stream, rpc, pending)
 }

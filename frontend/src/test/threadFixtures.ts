@@ -82,6 +82,10 @@ export function transcript(start = 1) {
       push("user", "status", "json", { type: "set_model", model }),
     modelError: (summary: string) =>
       push("system", "status", "error", { type: "error", code: "model_unavailable", summary }),
+    setEffort: (effort: string) =>
+      push("user", "status", "json", { type: "set_effort", effort }),
+    effortError: (summary: string) =>
+      push("system", "status", "error", { type: "error", code: "effort_unavailable", summary }),
   };
   return api;
 }

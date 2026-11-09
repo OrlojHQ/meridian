@@ -269,6 +269,10 @@ type SendThreadMessageRes interface {
 	sendThreadMessageRes()
 }
 
+type SetThreadEffortRes interface {
+	setThreadEffortRes()
+}
+
 type SetThreadModelRes interface {
 	setThreadModelRes()
 }

@@ -71,6 +71,35 @@ func TestClaudeStreamReportsAndSwitchesModels(t *testing.T) {
 	}
 }
 
+func TestClaudeStreamReportsAndChangesEffort(t *testing.T) {
+	decoder, encoder, _, _ := runClaudeFixtureWith(t, ClaudeConfig{Permissions: true}, adapterproto.KindStart, "", true)
+	_ = readStatus(t, decoder, adapterproto.StatusStarting)
+	effort := readKind(t, decoder, adapterproto.KindModels).Models.Effort
+	if effort == nil || effort.Current != "" || len(effort.Options) != 3 || effort.Options[2].Label != "Max" {
+		t.Fatalf("effort = %#v", effort)
+	}
+	sendSetEffort(t, encoder, "effort-1", "medium")
+	if failure := readKind(t, decoder, adapterproto.KindError); failure.Code != "effort_unavailable" {
+		t.Fatalf("unlisted effort = %#v", failure)
+	}
+	sendSetEffort(t, encoder, "effort-2", "max")
+	if failure := readKind(t, decoder, adapterproto.KindError); failure.Code != "effort_unavailable" ||
+		!strings.Contains(failure.Summary, "CLAUDE_CODE_EFFORT_LEVEL") {
+		t.Fatalf("refused effort = %#v", failure)
+	}
+	sendSetEffort(t, encoder, "effort-3", "high")
+	if changed := readKind(t, decoder, adapterproto.KindModels).Models.Effort; changed.Current != "high" {
+		t.Fatalf("changed = %#v", changed)
+	}
+	sendSetModel(t, encoder, "switch-1", "sonnet")
+	if switched := readKind(t, decoder, adapterproto.KindModels).Models; switched.Effort == nil ||
+		switched.Effort.Current != "high" || len(switched.Effort.Options) != 2 {
+		t.Fatalf("switched = %#v", switched)
+	}
+	sendSetModel(t, encoder, "switch-2", "opus-locked")
+	_ = readKind(t, decoder, adapterproto.KindError)
+}
+
 func sendTestMessage(t *testing.T, encoder *adapterproto.Encoder, id, content string) {
 	t.Helper()
 	writeTestFrame(t, encoder, adapterproto.Frame{
@@ -425,10 +454,20 @@ func TestClaudeStreamHelper(t *testing.T) {
 			body := map[string]any{}
 			if request["subtype"] == "initialize" {
 				body = map[string]any{"commands": claudeFixtureCommands, "models": []any{
-					map[string]any{"value": "default", "displayName": "Default (recommended)", "description": "Opus"},
-					map[string]any{"value": "sonnet", "displayName": "Sonnet"},
+					map[string]any{"value": "default", "displayName": "Default (recommended)", "description": "Opus",
+						"supportsEffort": true, "supportedEffortLevels": []any{"low", "high", "max"}},
+					map[string]any{"value": "sonnet", "displayName": "Sonnet",
+						"supportsEffort": true, "supportedEffortLevels": []any{"low", "high"}},
 					map[string]any{"value": "opus-locked", "displayName": "Opus", "description": "Locked for\nthis account"},
 				}}
+			}
+			if settings, _ := request["settings"].(map[string]any); request["subtype"] == "apply_flag_settings" &&
+				settings["effortLevel"] == "max" {
+				emit(map[string]any{"type": "control_response", "response": map[string]any{
+					"subtype": "error", "request_id": record["request_id"],
+					"error": "apply_flag_settings: CLAUDE_CODE_EFFORT_LEVEL overrides effort for this session",
+				}})
+				continue
 			}
 			if request["subtype"] == "set_model" && request["model"] == "opus-locked" {
 				emit(map[string]any{"type": "control_response", "response": map[string]any{

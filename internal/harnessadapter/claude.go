@@ -75,6 +75,12 @@ type claudeSession struct {
 	models        *modelSet
 	modelRequests map[string]string
 	modelSequence int
+
+	// efforts holds each listed model's effort levels, and effort the level
+	// an apply_flag_settings request set; empty means Claude Code's own
+	// default.
+	efforts map[string][]string
+	effort  string
 }
 
 type claudeReportedCommand struct {
@@ -99,7 +105,7 @@ func RunClaudeStream(
 	if err := stream.Handshake(adapterproto.Capabilities{
 		Resume: true, ToolEvents: true, Permissions: config.Permissions,
 		InputRequests: config.Permissions, Heartbeat: false, OpaqueMetadata: true,
-		Commands: true, Models: true,
+		Commands: true, Models: true, Effort: true,
 	}); err != nil {
 		return err
 	}
@@ -307,6 +313,18 @@ func (s *claudeSession) controller(frame adapterproto.Frame) (bool, error) {
 		if err := s.control(id, map[string]any{"subtype": "set_model", "model": frame.Model}); err != nil {
 			return false, s.fail("claude_write_failed", err)
 		}
+	case adapterproto.KindSetEffort:
+		if !s.ready || s.models == nil || !s.models.effort.has(frame.Effort) {
+			return false, s.stream.effortUnavailable("Claude Code does not offer that effort for this model")
+		}
+		s.modelSequence++
+		id := "claude-effort-" + strconv.Itoa(s.modelSequence)
+		s.modelRequests[id] = frame.Effort
+		if err := s.control(id, map[string]any{
+			"subtype": "apply_flag_settings", "settings": map[string]any{"effortLevel": frame.Effort},
+		}); err != nil {
+			return false, s.fail("claude_write_failed", err)
+		}
 	case adapterproto.KindCancel:
 		_ = s.control("claude-interrupt", map[string]any{"subtype": "interrupt"})
 		_ = s.write(adapterproto.Frame{Type: adapterproto.KindEnd, Status: adapterproto.StatusCancelled})
@@ -401,6 +419,9 @@ func (s *claudeSession) controlResponse(record map[string]json.RawMessage) (bool
 	if subtype == "set_model" {
 		return false, s.modelSwitched(record, response.RequestID, response.Subtype == "success")
 	}
+	if subtype == "apply_flag_settings" {
+		return false, s.effortChanged(record, response.RequestID, response.Subtype == "success")
+	}
 	if subtype != "initialize" {
 		return false, nil
 	}
@@ -423,21 +444,46 @@ func (s *claudeSession) controlResponse(record map[string]json.RawMessage) (bool
 func (s *claudeSession) initializeModels(raw json.RawMessage) error {
 	var value struct {
 		Models []struct {
-			Value       string `json:"value"`
-			DisplayName string `json:"displayName"`
-			Description string `json:"description"`
+			Value                 string   `json:"value"`
+			DisplayName           string   `json:"displayName"`
+			Description           string   `json:"description"`
+			SupportsEffort        bool     `json:"supportsEffort"`
+			SupportedEffortLevels []string `json:"supportedEffortLevels"`
 		} `json:"models"`
 	}
 	if len(raw) == 0 || json.Unmarshal(raw, &value) != nil || len(value.Models) == 0 {
 		return nil
 	}
 	s.models = newModelSet()
+	s.efforts = map[string][]string{}
 	for _, model := range value.Models[:min(len(value.Models), 4*adapterproto.MaxModels)] {
 		s.models.add(model.Value, model.DisplayName, model.Description)
+		if model.SupportsEffort && s.models.has(model.Value) {
+			s.efforts[model.Value] = model.SupportedEffortLevels[:min(len(model.SupportedEffortLevels), adapterproto.MaxEfforts)]
+		}
 	}
 	if s.models.has("default") {
 		s.models.setCurrent("default")
 	}
+	s.models.effort = effortLevels(s.efforts[s.models.current], s.effort)
+	return s.stream.ReportModels(s.models)
+}
+
+// effortChanged reports the outcome of an apply_flag_settings request that
+// set effortLevel.
+func (s *claudeSession) effortChanged(record map[string]json.RawMessage, requestID string, ok bool) error {
+	effort := s.modelRequests[requestID]
+	delete(s.modelRequests, requestID)
+	if !ok || effort == "" {
+		var failure struct {
+			Error string `json:"error"`
+		}
+		_ = field(record, "response", &failure)
+		return s.stream.effortUnavailable(commandLine(
+			defaultString(failure.Error, "Claude Code did not change its effort"), adapterproto.MaxToolSummaryBytes))
+	}
+	s.effort = effort
+	s.models.effort = effortLevels(s.efforts[s.models.current], s.effort)
 	return s.stream.ReportModels(s.models)
 }
 
@@ -454,6 +500,7 @@ func (s *claudeSession) modelSwitched(record map[string]json.RawMessage, request
 			defaultString(failure.Error, "Claude Code did not switch models"), adapterproto.MaxToolSummaryBytes))
 	}
 	s.models.setCurrent(model)
+	s.models.effort = effortLevels(s.efforts[model], s.effort)
 	return s.stream.ReportModels(s.models)
 }
 

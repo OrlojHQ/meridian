@@ -217,6 +217,8 @@ type RuntimeRun struct {
 	Structured bool
 	// Models says the structured adapter negotiated models frames.
 	Models bool
+	// Effort says it also negotiated reasoning effort.
+	Effort bool
 }
 
 type RuntimeStructuredStartRequest struct {

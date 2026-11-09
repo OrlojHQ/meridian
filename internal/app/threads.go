@@ -68,6 +68,7 @@ type ThreadAdapterEvent struct {
 	Commands        []adapterproto.Command   `json:"commands,omitempty"`
 	Models          *adapterproto.ModelSet   `json:"models,omitempty"`
 	Model           string                   `json:"model,omitempty"`
+	Effort          string                   `json:"effort,omitempty"`
 }
 
 type ThreadBlockPage struct {
@@ -706,6 +707,26 @@ func (s *Service) SetThreadModel(
 	if !adapterproto.ValidModelID(model) {
 		return ThreadMutationResult{}, fmt.Errorf("%w: model must be a bounded identifier", domain.ErrInvalid)
 	}
+	return s.setThreadOption(ctx, id, expected, key, &ThreadAdapterEvent{Type: adapterproto.KindSetModel, Model: model})
+}
+
+// SetThreadEffort asks the current session's harness to use another of the
+// reasoning effort levels it reported for its model. Like a model switch, the
+// request is persisted in the encrypted transcript and delivered once.
+func (s *Service) SetThreadEffort(
+	ctx context.Context, id domain.ThreadID, expected domain.ResourceVersion, effort, key string,
+) (ThreadMutationResult, error) {
+	if !adapterproto.ValidModelID(effort) {
+		return ThreadMutationResult{}, fmt.Errorf("%w: effort must be a bounded identifier", domain.ErrInvalid)
+	}
+	return s.setThreadOption(ctx, id, expected, key, &ThreadAdapterEvent{Type: adapterproto.KindSetEffort, Effort: effort})
+}
+
+// setThreadOption delivers a set_model or set_effort frame to the active
+// session after checking that its adapter negotiated the matching frames.
+func (s *Service) setThreadOption(
+	ctx context.Context, id domain.ThreadID, expected domain.ResourceVersion, key string, event *ThreadAdapterEvent,
+) (ThreadMutationResult, error) {
 	if s.structured == nil {
 		return ThreadMutationResult{}, domain.ErrUnsupported
 	}
@@ -724,23 +745,29 @@ func (s *Service) SetThreadModel(
 	if err != nil {
 		return ThreadMutationResult{}, err
 	}
-	if !runtimeRun.Models {
+	operation := "model"
+	if event.Type == adapterproto.KindSetEffort {
+		operation = "effort"
+		if !runtimeRun.Effort {
+			return ThreadMutationResult{}, fmt.Errorf("%w: this harness session does not report reasoning effort", domain.ErrUnsupported)
+		}
+	} else if !runtimeRun.Models {
 		return ThreadMutationResult{}, fmt.Errorf("%w: this harness session does not report models", domain.ErrUnsupported)
 	}
-	payload := persistedThreadBlock{Event: &ThreadAdapterEvent{Type: adapterproto.KindSetModel, Model: model}}
+	payload := persistedThreadBlock{Event: event}
 	frame := func(
 		messageID domain.ThreadMessageID, thread domain.Thread, saved persistedThreadBlock,
 	) adapterproto.Frame {
 		result := adapterproto.Frame{
-			Protocol: adapterproto.Version, Type: adapterproto.KindSetModel,
+			Protocol: adapterproto.Version, Type: event.Type,
 			ID: string(messageID), SessionID: string(thread.ID),
 		}
 		if saved.Event != nil {
-			result.Model = saved.Event.Model
+			result.Model, result.Effort = saved.Event.Model, saved.Event.Effort
 		}
 		return result
 	}
-	return s.appendAndSend(ctx, id, expected, key, "model", domain.ThreadRoleUser,
+	return s.appendAndSend(ctx, id, expected, key, operation, domain.ThreadRoleUser,
 		domain.ThreadMessageStatus, domain.ThreadBlockJSON, payload, frame)
 }
 

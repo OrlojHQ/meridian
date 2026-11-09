@@ -97,6 +97,37 @@ func TestACPReportsAndSwitchesModels(t *testing.T) {
 	}
 }
 
+func TestACPReportsAndChangesEffort(t *testing.T) {
+	decoder, encoder, log, _ := runACPFixture(t, "models", ACPConfig{Permissions: true}, adapterproto.KindStart, "")
+	_ = readStatus(t, decoder, adapterproto.StatusStarting)
+	effort := readKind(t, decoder, adapterproto.KindModels).Models.Effort
+	if effort == nil || effort.Current != "medium" || len(effort.Options) != 3 ||
+		effort.Options[1].Description != "Balanced" {
+		t.Fatalf("effort = %#v", effort)
+	}
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+	sendSetEffort(t, encoder, "effort-1", "max")
+	if failure := readKind(t, decoder, adapterproto.KindError); failure.Code != "effort_unavailable" {
+		t.Fatalf("unlisted effort = %#v", failure)
+	}
+	sendSetEffort(t, encoder, "effort-2", "high")
+	if failure := readKind(t, decoder, adapterproto.KindError); failure.Code != "effort_unavailable" ||
+		!strings.Contains(failure.Summary, "disabled") {
+		t.Fatalf("refused effort = %#v", failure)
+	}
+	sendSetEffort(t, encoder, "effort-3", "low")
+	if changed := readKind(t, decoder, adapterproto.KindModels).Models; changed.Effort == nil ||
+		changed.Effort.Current != "low" || changed.Current != "gw/flash" {
+		t.Fatalf("changed = %#v", changed)
+	}
+	call := findACP(t, readACPLog(t, log), func(record acpRecord) bool {
+		return record.Method == "session/set_config_option" && strings.Contains(string(record.Params), `"low"`)
+	})
+	if !strings.Contains(string(call.Params), `"configId":"effort"`) {
+		t.Fatalf("set_config_option params = %s", call.Params)
+	}
+}
+
 func TestACPWithoutModelsCapabilityReportsNothing(t *testing.T) {
 	controller, adapter := net.Pipe()
 	t.Cleanup(func() { _ = controller.Close() })
@@ -610,6 +641,7 @@ func TestACPAgentHelper(t *testing.T) {
 	var prompt json.RawMessage
 	scanner := bufio.NewScanner(os.Stdin)
 	scanner.Buffer(make([]byte, 1<<20), 1<<20)
+	effortValue := "medium"
 	for scanner.Scan() {
 		_, _ = log.Write(append(append([]byte(nil), scanner.Bytes()...), '\n'))
 		var record acpRecord
@@ -645,6 +677,12 @@ func TestACPAgentHelper(t *testing.T) {
 				send(map[string]any{"id": record.ID, "result": map[string]any{"sessionId": "sess-1", "configOptions": []any{
 					map[string]any{"id": "mode", "category": "mode", "type": "select", "currentValue": "build",
 						"options": []any{map[string]any{"value": "build", "name": "build"}}},
+					map[string]any{"id": "effort", "category": "thought_level", "type": "select", "currentValue": effortValue,
+						"options": []any{
+							map[string]any{"value": "low", "name": "Low"},
+							map[string]any{"value": "medium", "name": "Medium", "description": "Balanced"},
+							map[string]any{"value": "high", "name": "High"},
+						}},
 					map[string]any{"id": "model", "category": "model", "type": "select", "currentValue": "gw/flash",
 						"options": []any{
 							map[string]any{"group": "gw", "name": "Gateway", "options": []any{
@@ -754,9 +792,28 @@ func TestACPAgentHelper(t *testing.T) {
 			}
 		case "session/set_config_option":
 			var params struct {
-				Value string `json:"value"`
+				ConfigID string `json:"configId"`
+				Value    string `json:"value"`
 			}
 			_ = json.Unmarshal(record.Params, &params)
+			if params.ConfigID == "effort" {
+				if params.Value == "high" {
+					send(map[string]any{"id": record.ID, "error": map[string]any{"code": -32000, "message": "high effort is disabled"}})
+					continue
+				}
+				effortValue = params.Value
+				send(map[string]any{"id": record.ID, "result": map[string]any{"configOptions": []any{
+					map[string]any{"id": "model", "category": "model", "type": "select", "currentValue": "gw/flash",
+						"options": []any{map[string]any{"value": "gw/flash", "name": "Flash"}}},
+					map[string]any{"id": "effort", "category": "thought_level", "type": "select", "currentValue": effortValue,
+						"options": []any{
+							map[string]any{"value": "low", "name": "Low"},
+							map[string]any{"value": "medium", "name": "Medium", "description": "Balanced"},
+							map[string]any{"value": "high", "name": "High"},
+						}},
+				}}})
+				continue
+			}
 			if params.Value == "solo" {
 				send(map[string]any{"id": record.ID, "error": map[string]any{"code": -32000, "message": "over quota for solo"}})
 				continue

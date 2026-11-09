@@ -231,6 +231,19 @@ func TestStructuredModelsRequireNegotiation(t *testing.T) {
 	_, _ = plain.CancelStructured(context.Background(), "plain-run")
 	waitStructuredTerminal(t, plain, "plain-run")
 
+	err = client.SendStructured(context.Background(), "models-run", adapterproto.Frame{
+		Protocol: adapterproto.Version, Type: adapterproto.KindSetEffort, ID: "effort-1", Effort: "high",
+	})
+	if !errors.As(err, &protocolError) || protocolError.Status != 409 || protocolError.Code != "effort_unsupported" {
+		t.Fatalf("set_effort without negotiation = %v", err)
+	}
+
+	effort := structuredTestClient(t, "unnegotiated-effort", 16)
+	startStructuredTestRun(t, effort, "unnegotiated-effort-run")
+	if status := waitStructuredTerminal(t, effort, "unnegotiated-effort-run"); status.State != RunFailed {
+		t.Fatalf("unnegotiated effort status = %#v", status)
+	}
+
 	unnegotiated := structuredTestClient(t, "unnegotiated-models", 16)
 	startStructuredTestRun(t, unnegotiated, "unnegotiated-models-run")
 	if status := waitStructuredTerminal(t, unnegotiated, "unnegotiated-models-run"); status.State != RunFailed {
@@ -370,7 +383,7 @@ func TestStructuredAdapterHelper(t *testing.T) {
 		Capabilities: &adapterproto.Capabilities{
 			Resume: true, ToolEvents: true, Permissions: true,
 			InputRequests: true, Heartbeat: true, OpaqueMetadata: true,
-			Commands: mode == "commands", Models: mode == "models",
+			Commands: mode == "commands", Models: mode == "models" || mode == "unnegotiated-effort",
 		},
 	}); err != nil {
 		os.Exit(21)
@@ -388,6 +401,13 @@ func TestStructuredAdapterHelper(t *testing.T) {
 			Commands: []adapterproto.Command{{
 				Name: "compact", Description: "Summarize the conversation", Kind: adapterproto.CommandAction,
 			}},
+		})
+	}
+	if mode == "unnegotiated-effort" {
+		_ = encoder.Encode(adapterproto.Frame{
+			Protocol: adapterproto.Version, Type: adapterproto.KindModels,
+			Models: &adapterproto.ModelSet{Current: "fast", Options: []adapterproto.ModelOption{{ID: "fast", Label: "Fast"}},
+				Effort: &adapterproto.EffortSet{Options: []adapterproto.ModelOption{{ID: "high", Label: "High"}}}},
 		})
 	}
 	if mode == "models" || mode == "unnegotiated-models" {

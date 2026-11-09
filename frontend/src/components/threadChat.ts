@@ -160,6 +160,7 @@ export function buildThreadChat(
   const assistants = new Map<string, Extract<ChatItem, { kind: "assistant" }>>();
   // Labels from the models reports seen so far name an operator's switch.
   const modelLabels = new Map<string, string>();
+  const effortLabels = new Map<string, string>();
   const tools = new Map<string, ToolCall>();
   const turnOf = new Map<ToolCall, number>();
   let turn = 0;
@@ -276,6 +277,14 @@ export function buildThreadChat(
           });
           break;
         }
+        if (event.code === "effort_unavailable") {
+          items.push({
+            kind: "error",
+            key: block.id,
+            text: `Effort not changed: ${safeInline(event.summary ?? "").slice(0, 300) || "the harness refused"}`,
+          });
+          break;
+        }
         items.push({
           kind: "error",
           key: block.id,
@@ -287,11 +296,20 @@ export function buildThreadChat(
         for (const option of event.models?.options ?? []) {
           modelLabels.set(option.id, safeInline(option.label).slice(0, 128));
         }
+        for (const option of event.models?.effort?.options ?? []) {
+          effortLabels.set(option.id, safeInline(option.label).slice(0, 128));
+        }
         break;
       case "set_model": {
         const id = event.model ?? "";
         const label = modelLabels.get(id) || safeInline(id).slice(0, 128);
         items.push({ kind: "notice", key: block.id, text: `Model → ${label}` });
+        break;
+      }
+      case "set_effort": {
+        const id = event.effort ?? "";
+        const label = effortLabels.get(id) || safeInline(id).slice(0, 128);
+        items.push({ kind: "notice", key: block.id, text: `Effort → ${label}` });
         break;
       }
       case "permission_request":

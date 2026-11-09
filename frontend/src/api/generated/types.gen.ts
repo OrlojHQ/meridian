@@ -841,6 +841,11 @@ export type ThreadModelRequest = {
     model: string;
 };
 
+export type ThreadEffortRequest = {
+    expectedResourceVersion: number;
+    effort: string;
+};
+
 export type ThreadState = 'active' | 'paused' | 'archived' | 'deleted';
 
 export type Thread = {
@@ -926,7 +931,7 @@ export type ThreadInput = {
 };
 
 export type ThreadAdapterEvent = {
-    type: 'assistant_delta' | 'assistant_message' | 'tool_start' | 'tool_result' | 'status' | 'error' | 'permission_request' | 'permission_response' | 'input_request' | 'input_response' | 'gap' | 'end' | 'commands' | 'models' | 'set_model';
+    type: 'assistant_delta' | 'assistant_message' | 'tool_start' | 'tool_result' | 'status' | 'error' | 'permission_request' | 'permission_response' | 'input_request' | 'input_response' | 'gap' | 'end' | 'commands' | 'models' | 'set_model' | 'set_effort';
     runtimeSequence?: number;
     messageId?: string;
     /**
@@ -954,12 +959,25 @@ export type ThreadAdapterEvent = {
      * On set_model events, the model ID the operator asked for.
      */
     model?: string;
+    /**
+     * On set_effort events, the effort level the operator asked for.
+     */
+    effort?: string;
 };
 
 /**
  * On models events, the harness's current model and every model it offers. The latest models event replaces earlier ones. current may be empty, and need not be one of the options.
  */
 export type ThreadModels = {
+    current?: string;
+    options: Array<ThreadModelOption>;
+    effort?: ThreadEffort;
+};
+
+/**
+ * The reasoning effort levels the current model offers. current is empty while the harness uses its own default.
+ */
+export type ThreadEffort = {
     current?: string;
     options: Array<ThreadModelOption>;
 };
@@ -3170,6 +3188,48 @@ export type SetThreadModelResponses = {
 };
 
 export type SetThreadModelResponse = SetThreadModelResponses[keyof SetThreadModelResponses];
+
+export type SetThreadEffortData = {
+    body: ThreadEffortRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        threadId: string;
+    };
+    query?: never;
+    url: '/threads/{threadId}/effort';
+};
+
+export type SetThreadEffortErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type SetThreadEffortError = SetThreadEffortErrors[keyof SetThreadEffortErrors];
+
+export type SetThreadEffortResponses = {
+    /**
+     * Structured session mutation accepted
+     */
+    202: ThreadMutationResult;
+};
+
+export type SetThreadEffortResponse = SetThreadEffortResponses[keyof SetThreadEffortResponses];
 
 export type CancelThreadData = {
     body: LifecycleMutation;

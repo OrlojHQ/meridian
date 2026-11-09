@@ -185,6 +185,23 @@ func TestPiRPCReportsAndSwitchesModels(t *testing.T) {
 		models.Options[1].ID != "openrouter/meta/llama-5" || models.Options[2].ID != "openrouter/locked" {
 		t.Fatalf("models = %#v", models)
 	}
+	effort := readKind(t, decoder, adapterproto.KindModels).Models.Effort
+	if effort == nil || effort.Current != "low" || len(effort.Options) != 3 || effort.Options[2].Label != "High" {
+		t.Fatalf("effort = %#v", effort)
+	}
+	sendSetEffort(t, encoder, "effort-1", "medium")
+	if failure := readKind(t, decoder, adapterproto.KindError); failure.Code != "effort_unavailable" {
+		t.Fatalf("unlisted effort = %#v", failure)
+	}
+	sendSetEffort(t, encoder, "effort-2", "off")
+	if failure := readKind(t, decoder, adapterproto.KindError); failure.Code != "effort_unavailable" ||
+		!strings.Contains(failure.Summary, "level not supported") {
+		t.Fatalf("refused effort = %#v", failure)
+	}
+	sendSetEffort(t, encoder, "effort-3", "high")
+	if changed := readKind(t, decoder, adapterproto.KindModels).Models.Effort; changed.Current != "high" {
+		t.Fatalf("changed effort = %#v", changed)
+	}
 	sendSetModel(t, encoder, "switch-1", "openai/gpt-6")
 	if failure := readKind(t, decoder, adapterproto.KindError); failure.Code != "model_unavailable" {
 		t.Fatalf("unknown model = %#v", failure)
@@ -192,6 +209,11 @@ func TestPiRPCReportsAndSwitchesModels(t *testing.T) {
 	sendSetModel(t, encoder, "switch-2", "openrouter/meta/llama-5")
 	if switched := readKind(t, decoder, adapterproto.KindModels).Models; switched.Current != "openrouter/meta/llama-5" {
 		t.Fatalf("switched = %#v", switched)
+	}
+	// The new model has its own levels; "high" is not among them.
+	if levels := readKind(t, decoder, adapterproto.KindModels).Models.Effort; levels == nil ||
+		len(levels.Options) != 1 || levels.Current != "" {
+		t.Fatalf("levels after switch = %#v", levels)
 	}
 	sendSetModel(t, encoder, "switch-3", "openrouter/locked")
 	failure := readKind(t, decoder, adapterproto.KindError)
@@ -258,6 +280,7 @@ func TestPiRPCContractHelper(t *testing.T) {
 	}
 	scanner := bufio.NewScanner(os.Stdin)
 	writer := json.NewEncoder(os.Stdout)
+	piModel := "claude-sonnet-5"
 	for scanner.Scan() {
 		var command map[string]any
 		if json.Unmarshal(scanner.Bytes(), &command) != nil {
@@ -266,13 +289,32 @@ func TestPiRPCContractHelper(t *testing.T) {
 		commandType, _ := command["type"].(string)
 		id, _ := command["id"].(string)
 		switch commandType {
+		case "get_available_thinking_levels":
+			levels := []string{"off", "low", "high"}
+			if piModel == "meta/llama-5" {
+				levels = []string{"off"}
+			}
+			_ = writer.Encode(map[string]any{
+				"type": "response", "id": id, "command": commandType, "success": true,
+				"data": map[string]any{"levels": levels},
+			})
+		case "set_thinking_level":
+			if command["level"] != "high" {
+				_ = writer.Encode(map[string]any{
+					"type": "response", "id": id, "command": commandType, "success": false,
+					"error": "level not supported",
+				})
+				continue
+			}
+			_ = writer.Encode(map[string]any{"type": "response", "id": id, "command": commandType, "success": true})
 		case "get_state":
 			_ = writer.Encode(map[string]any{
 				"type": "response", "id": id, "command": "get_state", "success": true,
 				"data": map[string]any{
 					"sessionFile": "/tmp/pi-session.jsonl", "sessionId": "pi-session",
-					"sessionName": "contract",
-					"model":       map[string]any{"provider": "anthropic", "id": "claude-sonnet-5"},
+					"sessionName":   "contract",
+					"model":         map[string]any{"provider": "anthropic", "id": "claude-sonnet-5"},
+					"thinkingLevel": "low",
 				},
 			})
 		case "get_available_models":
@@ -296,6 +338,7 @@ func TestPiRPCContractHelper(t *testing.T) {
 			if command["provider"] != "openrouter" || command["modelId"] != "meta/llama-5" {
 				os.Exit(5)
 			}
+			piModel = "meta/llama-5"
 			_ = writer.Encode(map[string]any{
 				"type": "response", "id": id, "command": "set_model", "success": true,
 				"data": map[string]any{"provider": "openrouter", "id": "meta/llama-5"},
@@ -409,7 +452,7 @@ func negotiateTestAdapterWith(
 		Capabilities: &adapterproto.Capabilities{
 			Resume: true, ToolEvents: true, Permissions: true,
 			InputRequests: true, Heartbeat: true, OpaqueMetadata: true,
-			Commands: true, Models: models,
+			Commands: true, Models: models, Effort: models,
 		},
 	})
 	if hello, err := decoder.Decode(); err != nil || hello.Type != adapterproto.KindHello {
@@ -420,6 +463,13 @@ func negotiateTestAdapterWith(
 		SessionID: "session-1", ResumeState: resume,
 	})
 	return decoder, encoder
+}
+
+func sendSetEffort(t *testing.T, encoder *adapterproto.Encoder, id, effort string) {
+	t.Helper()
+	writeTestFrame(t, encoder, adapterproto.Frame{
+		Protocol: adapterproto.Version, Type: adapterproto.KindSetEffort, ID: id, Effort: effort,
+	})
 }
 
 func writeTestFrame(t *testing.T, encoder *adapterproto.Encoder, frame adapterproto.Frame) {

@@ -81,6 +81,18 @@ type codexSession struct {
 	models      *modelSet
 	threadModel string
 	nextModel   string
+
+	// catalog holds each listed model's reasoning effort levels.
+	// threadEffort is the effort Codex holds and nextEffort an operator
+	// change still to be sent on turn/start, which Codex also keeps.
+	catalog      map[string]codexEfforts
+	threadEffort string
+	nextEffort   string
+}
+
+type codexEfforts struct {
+	levels   []adapterproto.ModelOption
+	fallback string
 }
 
 const (
@@ -103,7 +115,7 @@ func RunCodexAppServer(
 	if err := stream.Handshake(adapterproto.Capabilities{
 		Resume: true, ToolEvents: true, Permissions: config.ApprovalPolicy != "never",
 		InputRequests: config.ApprovalPolicy != "never", Heartbeat: false, OpaqueMetadata: true,
-		Commands: true, Models: true,
+		Commands: true, Models: true, Effort: true,
 	}); err != nil {
 		return err
 	}
@@ -258,6 +270,17 @@ func (s *codexSession) controller(frame adapterproto.Frame) (bool, error) {
 			s.nextModel = ""
 		}
 		s.models.setCurrent(frame.Model)
+		s.refreshEffort()
+		return false, s.stream.ReportModels(s.models)
+	case adapterproto.KindSetEffort:
+		if s.models == nil || !s.models.effort.has(frame.Effort) {
+			return false, s.stream.effortUnavailable("Codex does not offer that reasoning effort for this model")
+		}
+		s.models.effort.setCurrent(frame.Effort)
+		s.nextEffort = frame.Effort
+		if frame.Effort == s.threadEffort {
+			s.nextEffort = ""
+		}
 		return false, s.stream.ReportModels(s.models)
 	case adapterproto.KindUserMessage:
 		steer, err := codexSteer(frame.Metadata)
@@ -367,6 +390,9 @@ func (s *codexSession) startTurn(frame adapterproto.Frame) error {
 	}
 	if s.nextModel != "" {
 		params["model"] = s.nextModel
+	}
+	if s.nextEffort != "" {
+		params["effort"] = s.nextEffort
 	}
 	if name, arguments, ok := slashCommand(frame.Content); ok {
 		switch {
@@ -539,10 +565,14 @@ func (s *codexSession) response(rawID json.RawMessage, record map[string]json.Ra
 		}
 		s.threadID = result.Thread.ID
 		var opened struct {
-			Model string `json:"model"`
+			Model           string  `json:"model"`
+			ReasoningEffort *string `json:"reasoningEffort"`
 		}
 		if field(record, "result", &opened) == nil {
 			s.threadModel = opened.Model
+			if opened.ReasoningEffort != nil {
+				s.threadEffort = *opened.ReasoningEffort
+			}
 		}
 		if err := s.idle(); err != nil {
 			return false, err
@@ -571,12 +601,13 @@ func (s *codexSession) response(rawID json.RawMessage, record map[string]json.Ra
 			}); err != nil {
 				return false, err
 			}
-			if s.nextModel != "" {
-				// The switch may be why Codex refused; fall back so later
+			if s.nextModel != "" || s.nextEffort != "" {
+				// A switch may be why Codex refused; fall back so later
 				// turns do not repeat it.
-				s.nextModel = ""
+				s.nextModel, s.nextEffort = "", ""
 				if s.models != nil {
 					s.models.setCurrent(s.threadModel)
+					s.refreshEffort()
 					if err := s.stream.ReportModels(s.models); err != nil {
 						return false, err
 					}
@@ -594,6 +625,9 @@ func (s *codexSession) response(rawID json.RawMessage, record map[string]json.Ra
 		}
 		if s.nextModel != "" {
 			s.threadModel, s.nextModel = s.nextModel, ""
+		}
+		if s.nextEffort != "" {
+			s.threadEffort, s.nextEffort = s.nextEffort, ""
 		}
 		if s.starting {
 			return false, s.turnStarted(result.Turn.ID)
@@ -658,11 +692,16 @@ func (s *codexSession) response(rawID json.RawMessage, record map[string]json.Ra
 func (s *codexSession) reportModels(record map[string]json.RawMessage) error {
 	var result struct {
 		Data []struct {
-			ID          string `json:"id"`
-			Model       string `json:"model"`
-			DisplayName string `json:"displayName"`
-			Description string `json:"description"`
-			Hidden      bool   `json:"hidden"`
+			ID                        string `json:"id"`
+			Model                     string `json:"model"`
+			DisplayName               string `json:"displayName"`
+			Description               string `json:"description"`
+			Hidden                    bool   `json:"hidden"`
+			DefaultReasoningEffort    string `json:"defaultReasoningEffort"`
+			SupportedReasoningEfforts []struct {
+				ReasoningEffort string `json:"reasoningEffort"`
+				Description     string `json:"description"`
+			} `json:"supportedReasoningEfforts"`
 		} `json:"data"`
 	}
 	if field(record, "result", &result) != nil {
@@ -679,14 +718,59 @@ func (s *codexSession) reportModels(record map[string]json.RawMessage) error {
 	if !catalogued {
 		models.add(s.threadModel, s.threadModel, "Configured for this Thread")
 	}
+	s.catalog = map[string]codexEfforts{}
 	for _, model := range listed {
-		if !model.Hidden {
-			models.add(defaultString(model.Model, model.ID), model.DisplayName, model.Description)
+		if model.Hidden {
+			continue
 		}
+		id := defaultString(model.Model, model.ID)
+		models.add(id, model.DisplayName, model.Description)
+		if !models.has(id) {
+			continue
+		}
+		var efforts codexEfforts
+		for _, effort := range model.SupportedReasoningEfforts[:min(len(model.SupportedReasoningEfforts), adapterproto.MaxEfforts)] {
+			efforts.levels = append(efforts.levels, adapterproto.ModelOption{
+				ID: effort.ReasoningEffort, Description: effort.Description,
+			})
+		}
+		efforts.fallback = model.DefaultReasoningEffort
+		s.catalog[id] = efforts
 	}
 	models.setCurrent(defaultString(s.nextModel, s.threadModel))
 	s.models = models
+	s.refreshEffort()
 	return s.stream.ReportModels(models)
+}
+
+// refreshEffort attaches the effort levels of the model the next turn will
+// use. When that model does not offer the effort Codex holds, its default
+// is shown and sent with the next turn. A model outside the catalog has no
+// known levels and offers no effort change.
+func (s *codexSession) refreshEffort() {
+	if s.models == nil {
+		return
+	}
+	s.models.effort = nil
+	entry, listed := s.catalog[defaultString(s.nextModel, s.threadModel)]
+	if !listed || len(entry.levels) == 0 {
+		s.nextEffort = ""
+		return
+	}
+	efforts := newModelSet()
+	for _, level := range entry.levels {
+		efforts.add(level.ID, effortLabel(level.ID), level.Description)
+	}
+	want := defaultString(s.nextEffort, s.threadEffort)
+	if !efforts.has(want) {
+		want = entry.fallback
+	}
+	efforts.setCurrent(want)
+	s.models.effort = efforts
+	s.nextEffort = ""
+	if efforts.current != "" && efforts.current != s.threadEffort {
+		s.nextEffort = efforts.current
+	}
 }
 
 func (s *codexSession) notification(method string, raw json.RawMessage) error {

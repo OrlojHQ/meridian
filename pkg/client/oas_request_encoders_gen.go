@@ -514,6 +514,20 @@ func encodeSetProjectHarnessSetupRequest(
 	return nil
 }
 
+func encodeSetThreadEffortRequest(
+	req *ThreadEffortRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodeSetThreadModelRequest(
 	req *ThreadModelRequest,
 	r *http.Request,
