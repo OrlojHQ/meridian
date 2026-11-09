@@ -168,11 +168,19 @@ export const permissionOptionLabel = (option: string) => {
   return words.charAt(0).toUpperCase() + words.slice(1);
 };
 
-const isDenial = (option: string) => /^(deny|reject|no|cancel|abort)/i.test(option);
+const isDenial = (option: string) => /^(deny|reject|no|cancel|abort|decline)/i.test(option);
+
+// An agent's question (an ACP elicitation) is answered with one of its own
+// choices, so the summary names the choice rather than approving or denying.
+const isQuestion = (request: ChatRequest) => request.type === "permission" && request.kind === "question";
 
 function answerText(request: ChatRequest) {
   if (request.type === "input") return "Answered";
   const choice = request.answer ?? "";
+  if (isQuestion(request)) {
+    if (/^decline$/i.test(choice)) return "Declined";
+    return choice && choice !== "answered" ? `Chose ${permissionOptionLabel(choice)}` : "Answered";
+  }
   if (/^(allow|approve|yes)/i.test(choice)) return "Approved";
   if (isDenial(choice)) return "Denied";
   return choice && choice !== "answered" ? `Chose ${permissionOptionLabel(choice)}` : "Answered";
@@ -209,6 +217,7 @@ export function RequestCard({
     },
   });
   const isInput = request.type === "input";
+  const title = isInput ? "Input required" : isQuestion(request) ? "Question" : "Permission required";
   if (!actionable) {
     const answered = request.answer !== undefined;
     return (
@@ -224,10 +233,10 @@ export function RequestCard({
     );
   }
   return (
-    <section className="chat-request" aria-label={isInput ? "Input required" : "Permission required"}>
+    <section className="chat-request" aria-label={title}>
       <header>
-        <strong>{isInput ? "Input required" : "Permission required"}</strong>
-        {request.kind && <span className="chat-request-kind">{request.kind}</span>}
+        <strong>{title}</strong>
+        {request.kind && !isQuestion(request) && <span className="chat-request-kind">{request.kind}</span>}
       </header>
       {request.summary && <p className="chat-request-body">{request.summary}</p>}
       {isInput ? (

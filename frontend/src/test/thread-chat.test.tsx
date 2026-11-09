@@ -243,6 +243,39 @@ describe("Thread chat view", () => {
     );
   });
 
+  it("asks an agent's question with its choices and records the choice", async () => {
+    const t = transcript();
+    t.user("deploy");
+    t.status("running");
+    t.permission("q-1", "Deploy settings\n\n(1 of 2) Environment", ["Staging", "Production", "Decline"], "question");
+    const respond = vi.spyOn(api, "respondThread").mockResolvedValue({ thread });
+    const user = userEvent.setup();
+    const view = renderThread(t.blocks);
+    const card = await screen.findByRole("region", { name: "Question" });
+    expect(within(card).queryByText("question")).not.toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: "Decline" })).toHaveClass("secondary");
+    expect(within(card).getByRole("button", { name: "Production" })).not.toHaveClass("secondary");
+    await user.click(within(card).getByRole("button", { name: "Production" }));
+    await waitFor(() =>
+      expect(respond).toHaveBeenCalledWith(
+        thread.id,
+        expect.objectContaining({ responseTo: "q-1", choice: "Production" }),
+      ),
+    );
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Question" })).not.toBeInTheDocument());
+    expect(view.container.querySelector(".chat-request-summary")).toHaveTextContent("Chose Production");
+  });
+
+  it("shows a declined question as declined", async () => {
+    const t = transcript();
+    t.permission("q-1", "Deploy settings", ["Accept", "Decline", "Cancel"], "question");
+    t.permissionResponse("q-1", "Decline");
+    const view = renderThread(t.blocks);
+    await waitFor(() =>
+      expect(view.container.querySelector(".chat-request-summary")).toHaveTextContent("DeclinedDeploy settings"),
+    );
+  });
+
   it("shows adapter errors as one inline line", async () => {
     const t = transcript();
     t.user("go");
