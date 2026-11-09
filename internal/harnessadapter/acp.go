@@ -85,6 +85,19 @@ type acpPermission struct {
 	labels  map[string]string
 	ids     map[string]bool
 	rejects string
+	// elicit is set for an elicitation/create request; input says whether
+	// its open question is an input prompt rather than a choice.
+	elicit *acpElicitation
+	input  bool
+}
+
+// cancelled is the answer to an open request the operator can no longer
+// reach.
+func (p *acpPermission) cancelled() map[string]any {
+	if p.elicit != nil {
+		return map[string]any{"action": "cancel"}
+	}
+	return acpCancelledOutcome()
 }
 
 type acpSession struct {
@@ -130,8 +143,10 @@ type acpSession struct {
 // RunACP launches an Agent Client Protocol agent over stdio and maps its
 // sessions, streamed updates, tool calls, plans, permission requests, and
 // available commands to Meridian frames. The client advertises no file
-// system, terminal, authentication, or elicitation capability, so the agent
-// can never ask Meridian to act on its behalf.
+// system, terminal, or authentication capability, so the agent can never ask
+// Meridian to act on its behalf. With permissions enabled it advertises
+// form-mode elicitation: the agent may ask the operator questions, and every
+// answer is checked against the agent's schema before it is returned.
 func RunACP(ctx context.Context, input io.Reader, output io.Writer, config ACPConfig) error {
 	if err := validateACPConfig(config); err != nil {
 		return err
@@ -139,7 +154,7 @@ func RunACP(ctx context.Context, input io.Reader, output io.Writer, config ACPCo
 	stream := NewStream(input, output)
 	if err := stream.Handshake(adapterproto.Capabilities{
 		Resume: true, ToolEvents: true, Permissions: config.Permissions,
-		InputRequests: false, Heartbeat: false, OpaqueMetadata: true, Commands: true,
+		InputRequests: config.Permissions, Heartbeat: false, OpaqueMetadata: true, Commands: true,
 		Models: true,
 	}); err != nil {
 		return err
@@ -188,12 +203,16 @@ func RunACP(ctx context.Context, input io.Reader, output io.Writer, config ACPCo
 	}); err != nil {
 		return err
 	}
+	clientCapabilities := map[string]any{
+		"fs":       map[string]any{"readTextFile": false, "writeTextFile": false},
+		"terminal": false,
+	}
+	if config.Permissions {
+		clientCapabilities["elicitation"] = map[string]any{"form": map[string]any{}}
+	}
 	if err := session.call("initialize", map[string]any{
-		"protocolVersion": acpProtocolVersion,
-		"clientCapabilities": map[string]any{
-			"fs":       map[string]any{"readTextFile": false, "writeTextFile": false},
-			"terminal": false,
-		},
+		"protocolVersion":    acpProtocolVersion,
+		"clientCapabilities": clientCapabilities,
 		"clientInfo": map[string]any{
 			"name": "meridian", "title": "Meridian", "version": buildinfo.Current().Version,
 		},
@@ -332,17 +351,30 @@ func (s *acpSession) controller(frame adapterproto.Frame) (bool, error) {
 		if prompt == nil && s.retired.take(frame.ResponseTo) {
 			return false, nil
 		}
-		if prompt == nil || frame.Permission == nil {
+		if prompt == nil || frame.Permission == nil || prompt.input {
 			return false, s.fail("acp_response_invalid", errors.New("unexpected ACP permission response"))
 		}
 		s.forget(frame.ResponseTo)
+		if prompt.elicit != nil {
+			return false, s.answerElicitation(prompt, frame.Permission.Choice, nil)
+		}
 		return false, s.reply(prompt.rpcID, prompt.outcome(frame.Permission.Choice))
+	case adapterproto.KindInputResponse:
+		prompt := s.prompts[frame.ResponseTo]
+		if prompt == nil && s.retired.take(frame.ResponseTo) {
+			return false, nil
+		}
+		if prompt == nil || frame.Input == nil || !prompt.input {
+			return false, s.fail("acp_response_invalid", errors.New("unexpected ACP input response"))
+		}
+		s.forget(frame.ResponseTo)
+		return false, s.answerElicitation(prompt, "", &frame.Input.Value)
 	case adapterproto.KindCancel:
 		s.cancelled = true
 		s.queue = nil
 		for id, prompt := range s.prompts {
 			s.forget(id)
-			if err := s.reply(prompt.rpcID, acpCancelledOutcome()); err != nil {
+			if err := s.reply(prompt.rpcID, prompt.cancelled()); err != nil {
 				return false, s.fail("acp_write_failed", err)
 			}
 		}
@@ -852,14 +884,17 @@ func (s *acpSession) reportCommands(raw json.RawMessage) error {
 }
 
 func (s *acpSession) agentRequest(rawID json.RawMessage, method string, raw json.RawMessage) error {
-	if method != "session/request_permission" {
-		// File system, terminal, elicitation, and extension requests need
-		// capabilities this client never advertises.
+	if method != "session/request_permission" && method != "elicitation/create" {
+		// File system, terminal, and extension requests need capabilities
+		// this client never advertises.
 		return s.refuse(rawID, acpErrorMethodNotFound, "method is not supported by the Meridian client")
 	}
 	key := string(compactJSON(rawID))
 	if _, exists := s.byRPC[key]; exists || len(s.prompts) >= acpMaxPending {
 		return s.fail("acp_request_invalid", errors.New("ACP permission request is invalid"))
+	}
+	if method == "elicitation/create" {
+		return s.elicit(rawID, key, raw)
 	}
 	var params struct {
 		SessionID string        `json:"sessionId"`

@@ -4,6 +4,7 @@
 - Date: 2026-11-07
 - Extends: ADRs 0013, 0026, and 0028
 - Supersedes: the `opencode-server` driver
+- Amended by: ADR 0032 (form-mode elicitation reaches the operator)
 
 ## Context
 
@@ -66,7 +67,8 @@ group, and maps ACP v1 onto `meridian.adapter.v1`:
   seconds pass.
 - Every other agent-to-client request (`fs/*`, `terminal/*`, elicitation,
   unknown methods) is refused with "method not found". The agent works with
-  its own tools inside the Capsule.
+  its own tools inside the Capsule. (ADR 0032 later lets form-mode
+  `elicitation/create` reach the operator.)
 
 The adapter does not implement ACP authentication. Credentials come from the
 agent's own configuration in the setup home: a personal setup or a provider

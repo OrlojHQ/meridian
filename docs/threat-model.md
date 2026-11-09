@@ -239,14 +239,25 @@ are not safe frame IDs, and session IDs are bounded and validated before they
 enter resume state; and queued messages, open permission
 requests, tracked tool calls, and plan entries have fixed caps. The adapter
 advertises no `fs` or `terminal` client capability and refuses every
-agent-to-client request except `session/request_permission`, so an agent
-cannot read or write host files or start processes through Meridian.
+agent-to-client request except `session/request_permission` and form-mode
+`elicitation/create`, so an agent cannot read or write host files or start
+processes through Meridian.
 `session/new` and resume receive only a Capsule-contained cwd; adapters never
 inherit a host `Getwd()` path or follow a symlink out of `/workspace`. A
 permission answer is always one of the options the agent offered for that
 request: the controller's choice is matched by label or option ID, and
 anything else selects the agent's reject option or `cancelled`. With
-permissions disabled, every request is rejected without a prompt. Updates for
+permissions disabled, every request is rejected without a prompt.
+Elicitation (ADR 0032) is advertised only with permissions enabled and only in
+form mode: URL, request-scoped, other-session, and unsupported-schema
+elicitations are declined without reaching the operator, so an agent cannot
+make Meridian open a URL. A form is bounded to 16 flat properties and asked
+one field at a time through ordinary permission and input prompts; the
+adapter checks every answer against the agent's schema, with `pattern`
+evaluated by linear-time RE2, and returns content only after every field is
+accepted. Answers are operator text sent to a hostile agent and stored in the
+encrypted transcript like any input answer. ACP cannot mark a field secret,
+so an agent may ask for a credential; operators must not supply one. Updates for
 another session and replayed history from `session/load` are dropped. ACP
 agents are installed from pinned artifacts at image build time; the driver
 never runs a package manager. `--secret-env` values are fresh random strings
@@ -742,7 +753,9 @@ they are not a statement that every planned path is already implemented.
   transcript, and rendered as text. A switch runs only from an operator API
   mutation, and an adapter accepts only a model it reported (ADR 0031).
 - ACP agents get no file-system or terminal client capability, and their
-  permission requests resolve only to options they offered.
+  permission requests resolve only to options they offered. Their
+  elicitations are form-only, bounded, operator-answered, and schema-checked;
+  URL elicitation is never offered (ADR 0032).
 - Harness adapter working directories are re-checked inside the Capsule:
   they must be a real directory under `/workspace`, with no symlink
   components, and never a host path.

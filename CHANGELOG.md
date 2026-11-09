@@ -9,6 +9,12 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- ACP agents can ask the operator questions. The `acp` driver accepts
+  form-mode `elicitation/create` when permissions are enabled and asks each
+  field in turn as a button question or a typed answer, checks every answer
+  against the agent's schema, and declines URL-mode and unsupported forms
+  (ADR 0032).
+
 - The Thread composer shows the session's current model inside the message
   box and switches it from a menu of the models the harness reports
   (`POST /threads/{threadId}/model`). Claude Code, Codex, Pi, OpenCode, and

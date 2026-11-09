@@ -274,7 +274,8 @@ harness-specific:
   command and its arguments come only from the trusted profile; the agent is
   started directly, never through a shell, `npx`, or a package manager.
   `--permissions=false` answers every `session/request_permission` with the
-  agent's own reject option and advertises no permission capability.
+  agent's own reject option, declines every elicitation, and advertises no
+  permission, input, or elicitation capability.
   `--secret-env NAME`, repeatable, sets `NAME` to a fresh random 256-bit value
   for each launch, for an agent that protects a side channel with a password
   it does not generate itself; no official pack uses it. `--mcp-server`
@@ -460,15 +461,32 @@ The `acp` driver maps ACP onto `meridian.adapter.v1` like this:
 | `plan` | a `plan` tool with a checklist; an unchanged plan is not repeated |
 | `available_commands_update` | `commands` |
 | `session/request_permission` | `permission_request` whose options are the agent's own option names |
+| `elicitation/create` (form mode) | one question per field, in order: `permission_request` of kind `question` for confirmations, booleans, and single-selects; `input_request` for typed answers (see below) |
 | stop reason `end_turn` / `cancelled` | `idle` / `end: cancelled` |
 | stop reason `max_tokens`, `max_turn_requests`, `refusal` | `error` (`acp_max_tokens`, `acp_max_turn_requests`, `acp_refusal`), then `idle` |
-| controller `cancel` | answers open permission prompts with `cancelled`, sends `session/cancel`, and ends after the agent stops or 2 seconds |
+| controller `cancel` | answers open permission prompts with `cancelled` and open elicitations with `cancel`, sends `session/cancel`, and ends after the agent stops or 2 seconds |
 
 Thoughts, user-message replays, mode, model, usage, and session-info updates
 are dropped. The adapter advertises no `fs` or `terminal` client capability
 and refuses every other agent-to-client request, so the agent edits files and
 runs commands with its own tools inside the Capsule, under its own permission
-prompts. Resume uses `session/resume` when offered and otherwise
+prompts.
+
+With permissions enabled the adapter advertises form-mode elicitation
+(ADR 0032), so an agent can ask the operator questions. A form without fields
+is an **Accept**/**Decline**/**Cancel** confirmation. Otherwise each field is
+asked in turn, prefixed "(n of m)" with the agent's message: a boolean or a
+single-select string with at most 30 choices gets one button per choice, then
+**Skip** for an optional field and **Decline**; numbers, integers, free text,
+multi-selects (comma-separated), and larger single-selects get a text prompt
+that says what the answer must look like, and an optional one accepts `-` to
+leave it out. The adapter checks each answer against the schema (ranges,
+choices, lengths, the `email`, `uri`, `date`, and `date-time` formats, and a
+`pattern` when Go's RE2 compiles it) and asks again with the reason when it
+does not fit; the agent receives `accept` with typed content only after every
+field is answered. URL-mode, request-scoped, and unsupported schemas (more
+than 16 fields, nested objects, unknown types or formats) are declined
+without asking. Resume uses `session/resume` when offered and otherwise
 `session/load`, whose replayed history is not re-emitted; an agent with
 neither fails resume with `acp_resume_unsupported`. Authentication is the
 agent's own configuration (a personal setup or provider connection); an
@@ -563,7 +581,10 @@ brittle external script:
 - adapter contract tests cover mock multi-turn, tool events, permission/input
   round trips, resume, cancellation, Pi RPC fixtures, and an ACP agent fixture
   covering streaming, tools, plans, permissions, commands, resume and load,
-  cancellation, refused client requests, and hostile records. Claude Code and
+  cancellation, refused client requests, hostile records, and form
+  elicitations (field order, choice buttons, typed-answer checks and retries,
+  skip and omit, decline, confirmation, URL and unsupported schemas, cancel,
+  and permissions disabled). Claude Code and
   Codex fixtures replay recorded upstream records for streaming, final
   messages, tools, permissions, questions, MCP approval, queueing and steering,
   withdrawn prompts, failed turns, resume, and MCP registration. Every driver

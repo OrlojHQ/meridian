@@ -54,11 +54,11 @@ export function transcript(start = 1) {
       }),
     result: (toolCallId: string, result: string) =>
       push("tool", "tool_result", "tool_result", { type: "tool_result", toolCallId, result }),
-    permission: (messageId: string, summary: string, options = ["allow", "deny"]) =>
+    permission: (messageId: string, summary: string, options = ["allow", "deny"], kind = "shell") =>
       push("system", "status", "json", {
         type: "permission_request",
         messageId,
-        permission: { kind: "shell", summary, options },
+        permission: { kind, summary, options },
       }),
     permissionResponse: (responseTo: string, choice: string) =>
       push("user", "status", "json", {

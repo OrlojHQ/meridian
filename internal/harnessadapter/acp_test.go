@@ -334,6 +334,153 @@ func TestACPCancelAnswersOpenPermission(t *testing.T) {
 	}
 }
 
+func respondInput(t *testing.T, encoder *adapterproto.Encoder, request adapterproto.Frame, value string) {
+	t.Helper()
+	writeTestFrame(t, encoder, adapterproto.Frame{
+		Protocol: adapterproto.Version, Type: adapterproto.KindInputResponse,
+		ID: "response-" + request.ID, ResponseTo: request.ID,
+		Input: &adapterproto.Input{Value: value},
+	})
+}
+
+func elicitationAnswer(t *testing.T, log string) string {
+	t.Helper()
+	return string(findACP(t, readACPLog(t, log), func(r acpRecord) bool {
+		return string(r.ID) == `"e1"` && r.Method == ""
+	}).Result)
+}
+
+func TestACPElicitationAsksEachFieldAndChecksAnswers(t *testing.T) {
+	decoder, encoder, log, _ := runACPFixture(t, "new", ACPConfig{Permissions: true}, adapterproto.KindStart, "")
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+	initialize := findACP(t, readACPLog(t, log), func(r acpRecord) bool { return r.Method == "initialize" })
+	if !strings.Contains(string(initialize.Params), `"elicitation":{"form":{}}`) {
+		t.Fatalf("initialize = %s", initialize.Params)
+	}
+	sendTestMessage(t, encoder, "message-1", "ask")
+
+	env := readKind(t, decoder, adapterproto.KindPermissionRequest)
+	if env.Permission.Kind != "question" ||
+		!strings.Contains(env.Permission.Summary, "Deploy settings\n\n(1 of 5) Environment\nWhere to deploy") ||
+		strings.Join(env.Permission.Options, ",") != "Staging,Production,Decline" {
+		t.Fatalf("environment question = %#v", env.Permission)
+	}
+	respondPermission(t, encoder, env, "Production")
+
+	replicas := readKind(t, decoder, adapterproto.KindInputRequest)
+	if !strings.Contains(replicas.Input.Prompt, "(2 of 5) Replicas") ||
+		!strings.Contains(replicas.Input.Prompt, "Reply with a whole number from 1 to 5.") {
+		t.Fatalf("replicas question = %q", replicas.Input.Prompt)
+	}
+	respondInput(t, encoder, replicas, "9")
+	again := readKind(t, decoder, adapterproto.KindInputRequest)
+	if again.ID == replicas.ID ||
+		!strings.HasPrefix(again.Input.Prompt, "That answer was not accepted: the number is out of range.") {
+		t.Fatalf("retry = %#v", again)
+	}
+	respondInput(t, encoder, again, "3")
+
+	notify := readKind(t, decoder, adapterproto.KindPermissionRequest)
+	if strings.Join(notify.Permission.Options, ",") != "Yes,No,Skip,Decline" {
+		t.Fatalf("notify options = %v", notify.Permission.Options)
+	}
+	respondPermission(t, encoder, notify, "Skip")
+
+	tags := readKind(t, decoder, adapterproto.KindInputRequest)
+	if !strings.Contains(tags.Input.Prompt, "Choose from: Alpha, Beta.") {
+		t.Fatalf("tags question = %q", tags.Input.Prompt)
+	}
+	respondInput(t, encoder, tags, "alpha, b, Alpha")
+
+	note := readKind(t, decoder, adapterproto.KindInputRequest)
+	if !strings.Contains(note.Input.Prompt, "Optional: reply - to leave it out.") {
+		t.Fatalf("note question = %q", note.Input.Prompt)
+	}
+	respondInput(t, encoder, note, "-")
+
+	_ = readUntil(t, decoder, adapterproto.KindAssistantMessage)
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+	if answer := elicitationAnswer(t, log); answer !=
+		`{"action":"accept","content":{"env":"prod","replicas":3,"tags":["a","b"]}}` {
+		t.Fatalf("elicitation answer = %s", answer)
+	}
+}
+
+func TestACPElicitationDeclineConfirmAndRefusals(t *testing.T) {
+	cases := []struct {
+		prompt, choice, want string
+	}{
+		{"ask", "Decline", `{"action":"decline"}`},
+		{"ask", "Not offered", `{"action":"decline"}`},
+		{"confirm", "Accept", `{"action":"accept","content":{}}`},
+		{"confirm", "Cancel", `{"action":"cancel"}`},
+		{"url", "", `{"action":"decline"}`},
+		{"unsupported", "", `{"action":"decline"}`},
+	}
+	for _, test := range cases {
+		t.Run(test.prompt+"/"+test.choice, func(t *testing.T) {
+			decoder, encoder, log, _ := runACPFixture(t, "new", ACPConfig{Permissions: true}, adapterproto.KindStart, "")
+			_ = readStatus(t, decoder, adapterproto.StatusIdle)
+			sendTestMessage(t, encoder, "message-1", test.prompt)
+			if test.choice != "" {
+				request := readKind(t, decoder, adapterproto.KindPermissionRequest)
+				if test.prompt == "confirm" &&
+					(request.Permission.Summary != "Deploy settings" ||
+						strings.Join(request.Permission.Options, ",") != "Accept,Decline,Cancel") {
+					t.Fatalf("confirmation = %#v", request.Permission)
+				}
+				respondPermission(t, encoder, request, test.choice)
+			}
+			frames := readUntil(t, decoder, adapterproto.KindAssistantMessage)
+			for _, frame := range frames {
+				if frame.Type == adapterproto.KindPermissionRequest || frame.Type == adapterproto.KindInputRequest {
+					t.Fatalf("unexpected question %#v", frame)
+				}
+			}
+			_ = readStatus(t, decoder, adapterproto.StatusIdle)
+			if answer := elicitationAnswer(t, log); answer != test.want {
+				t.Fatalf("elicitation answer = %s, want %s", answer, test.want)
+			}
+		})
+	}
+}
+
+func TestACPCancelAnswersOpenElicitation(t *testing.T) {
+	decoder, encoder, log, done := runACPFixture(t, "new", ACPConfig{Permissions: true}, adapterproto.KindStart, "")
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+	sendTestMessage(t, encoder, "message-1", "ask")
+	question := readKind(t, decoder, adapterproto.KindPermissionRequest)
+	respondPermission(t, encoder, question, "Staging")
+	_ = readKind(t, decoder, adapterproto.KindInputRequest)
+	writeTestFrame(t, encoder, adapterproto.Frame{
+		Protocol: adapterproto.Version, Type: adapterproto.KindCancel, ID: "cancel-1",
+	})
+	if end := readKind(t, decoder, adapterproto.KindEnd); end.Status != adapterproto.StatusCancelled {
+		t.Fatalf("end = %#v", end)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if answer := elicitationAnswer(t, log); answer != `{"action":"cancel"}` {
+		t.Fatalf("elicitation answer = %s", answer)
+	}
+}
+
+func TestACPElicitationWithoutPermissionsIsDeclined(t *testing.T) {
+	decoder, encoder, log, _ := runACPFixture(t, "new", ACPConfig{Permissions: false}, adapterproto.KindStart, "")
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+	initialize := findACP(t, readACPLog(t, log), func(r acpRecord) bool { return r.Method == "initialize" })
+	if strings.Contains(string(initialize.Params), "elicitation") {
+		t.Fatalf("initialize advertised elicitation without permissions: %s", initialize.Params)
+	}
+	sendTestMessage(t, encoder, "message-1", "confirm")
+	_ = readUntil(t, decoder, adapterproto.KindAssistantMessage)
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+	if answer := elicitationAnswer(t, log); answer != `{"action":"decline"}` {
+		t.Fatalf("elicitation answer = %s", answer)
+	}
+}
+
 func TestACPDisabledPermissionsRejectWithoutPrompt(t *testing.T) {
 	decoder, encoder, log, _ := runACPFixture(t, "new", ACPConfig{Permissions: false}, adapterproto.KindStart, "")
 	_ = readStatus(t, decoder, adapterproto.StatusIdle)
@@ -581,6 +728,26 @@ func TestACPAgentHelper(t *testing.T) {
 					"status": "completed", "content": []any{map[string]any{"type": "diff", "path": "/w/x.go", "newText": "x"}}})
 				update(map[string]any{"sessionUpdate": "future_update_kind", "anything": true})
 				end("end_turn")
+			case "ask", "confirm", "url", "unsupported":
+				schema := map[string]string{
+					"ask": `{"type":"object","properties":{
+						"env":{"type":"string","title":"Environment","description":"Where to deploy",
+							"oneOf":[{"const":"stage","title":"Staging"},{"const":"prod","title":"Production"}]},
+						"replicas":{"type":"integer","title":"Replicas","minimum":1,"maximum":5},
+						"notify":{"type":"boolean","title":"Notify the team"},
+						"tags":{"type":"array","title":"Tags","items":{"anyOf":[{"const":"a","title":"Alpha"},{"const":"b","title":"Beta"}]}},
+						"note":{"type":"string","title":"Note","maxLength":20}},
+						"required":["env","replicas","tags"]}`,
+					"confirm":     `{"type":"object","properties":{}}`,
+					"unsupported": `{"type":"object","properties":{"blob":{"type":"object"}}}`,
+				}[params.Prompt[0].Text]
+				request := map[string]any{"sessionId": "sess-1", "mode": "form",
+					"message": "Deploy settings", "requestedSchema": json.RawMessage(defaultString(schema, "{}"))}
+				if params.Prompt[0].Text == "url" {
+					request = map[string]any{"sessionId": "sess-1", "mode": "url", "message": "Sign in",
+						"elicitationId": "el-1", "url": "https://example.test/login"}
+				}
+				send(map[string]any{"id": "e1", "method": "elicitation/create", "params": request})
 			case "refuse":
 				end("refusal")
 			case "slow":
@@ -610,6 +777,12 @@ func TestACPAgentHelper(t *testing.T) {
 				prompt = nil
 			}
 		case "":
+			if string(record.ID) == `"e1"` && prompt != nil {
+				update(text("", "answered"))
+				send(map[string]any{"id": prompt, "result": map[string]any{"stopReason": "end_turn"}})
+				prompt = nil
+				continue
+			}
 			if string(record.ID) == "7" && prompt != nil {
 				if strings.Contains(string(record.Result), `"once"`) {
 					update(map[string]any{"sessionUpdate": "tool_call_update", "toolCallId": "call-1", "status": "completed",
