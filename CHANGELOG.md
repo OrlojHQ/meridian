@@ -14,7 +14,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   (`POST /threads/{threadId}/model`). Claude Code, Codex, Pi, OpenCode, and
   DeepSeek Harness report their models; the switch applies from the next turn,
   and a model the harness does not offer is refused without ending the session
-  (ADR 0031).
+  (ADR 0031). Codex also lists the model the Thread opened with, such as a
+  provider connection's default, when its own catalog lacks it.
 
 - DeepSeek Harness (`dsh`) Threads can lead subagents: the `dsh` structured
   profile registers `meridian-coord` through ACP `session/new`, like

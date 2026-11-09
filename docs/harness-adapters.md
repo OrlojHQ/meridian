@@ -421,14 +421,16 @@ model inside the message box and switches from its menu
 | Driver | List | Current | Switch |
 | --- | --- | --- | --- |
 | `claude-stream` | `initialize` `models[]` | `default` until a switch succeeds | control request `set_model` |
-| `codex-app-server` | `model/list`, without hidden models | `thread/start` or `thread/resume` `model` | `model` on the next `turn/start`, which Codex keeps |
+| `codex-app-server` | `model/list`, without hidden models, plus the Thread's opening model first when the catalog lacks it | `thread/start` or `thread/resume` `model` | `model` on the next `turn/start`, which Codex keeps |
 | `pi-rpc` | `get_available_models`, as `provider/id` | `get_state` `model` | `set_model` with provider and model ID |
 | `acp` | the `select` config option with category `model`, flattened | its `currentValue` | `session/set_config_option` |
 | `generic` | the child adapter | as reported | forwarded |
 
 Each list is what the harness's configuration already lets it use: Pi lists
 providers with credentials, the `dsh` connection route names one model, and
-Claude Code and Codex list their vendor's models. An adapter switches only to
+Claude Code and Codex list their vendor's models. Codex's catalog never
+names a provider connection's default model, so the adapter lists the model
+the Thread opened with first, and the operator can switch back to it. An adapter switches only to
 an ID from its own latest list. Anything else, or a harness that refuses, is a
 non-fatal `model_unavailable` error and the session keeps its model. Frames
 hold at most 128 options with unique IDs up to 256 bytes, labels up to 128,

@@ -66,7 +66,9 @@ Option IDs are opaque strings that only the reporting adapter interprets.
 - `claude-stream` reports the `initialize` models, with `current` set to
   `default` until a `set_model` control request succeeds.
 - `codex-app-server` calls `model/list`, skips hidden models, and takes
-  `current` from `thread/start` or `thread/resume`. A switch is stored and sent
+  `current` from `thread/start` or `thread/resume`. When the catalog lacks
+  that opening model, as it does for a provider connection's default model,
+  the adapter lists it first so a switch away can be undone. A switch is stored and sent
   as `model` on the next `turn/start`, which Codex keeps for later turns.
 - `pi-rpc` calls `get_available_models` and `get_state`. Option IDs are
   `provider/id`. A switch is `set_model` with that provider and model ID.
