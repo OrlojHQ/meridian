@@ -22,6 +22,21 @@ function CheckIcon() {
 }
 
 type Setting = "model" | "effort";
+
+// Long model lists (OpenCode lists every provider it is configured for) get a
+// search field; short ones do not need it.
+const SEARCH_THRESHOLD = 8;
+
+// matches keeps options whose label, ID, or description contains every
+// whitespace-separated term of the query, ignoring case.
+function matches(option: { id: string; label: string; description: string }, query: string) {
+  const haystack = `${option.label} ${option.id} ${option.description}`.toLowerCase();
+  return query
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .every((term) => haystack.includes(term));
+}
 type Request = { setting: Setting; id: string };
 
 // pendingLabel is the label a requested switch will show, or undefined once
@@ -88,6 +103,7 @@ export function ThreadModelPicker({
   onConflict: () => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const [requestedModel, setRequestedModel] = useState<string>();
   const [requestedEffort, setRequestedEffort] = useState<string>();
   const menuId = useId();
@@ -113,7 +129,10 @@ export function ThreadModelPicker({
     if (requestedEffort !== undefined && models.effort?.current === requestedEffort) setRequestedEffort(undefined);
   }, [models.effort?.current, requestedEffort]);
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setQuery("");
+      return;
+    }
     const onPointer = (event: PointerEvent) => {
       if (root.current && !root.current.contains(event.target as Node)) setOpen(false);
     };
@@ -134,6 +153,8 @@ export function ThreadModelPicker({
   const modelShown = modelPending ?? (models.currentLabel || "Model");
   const effortShown = effortPending ?? models.effort?.currentLabel;
   const shown = effortShown ? `${modelShown} · ${effortShown}` : modelShown;
+  const searchable = models.options.length > SEARCH_THRESHOLD;
+  const shownModels = searchable && query ? models.options.filter((option) => matches(option, query)) : models.options;
   const choose = (setting: Setting, id: string) => {
     setOpen(false);
     const current = setting === "model" ? models.current : models.effort?.current;
@@ -160,14 +181,38 @@ export function ThreadModelPicker({
       </button>
       {open && (
         <div className="composer-model-menu" id={menuId} role="menu" aria-label="Models">
-          {models.options.length > 0 && (
-            <OptionGroup
-              title="Model · applies from the next turn"
-              set={models}
-              selected={requestedModel ?? models.current}
-              onChoose={(id) => choose("model", id)}
+          {searchable && (
+            <input
+              className="composer-model-search"
+              type="search"
+              aria-label="Search models"
+              placeholder="Search models"
+              autoComplete="off"
+              spellCheck={false}
+              autoFocus
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                // Enter picks the first match, so a few letters and Enter
+                // switch models without the pointer.
+                if (event.key === "Enter" && shownModels[0]) {
+                  event.preventDefault();
+                  choose("model", shownModels[0].id);
+                }
+              }}
             />
           )}
+          {models.options.length > 0 &&
+            (shownModels.length > 0 ? (
+              <OptionGroup
+                title="Model · applies from the next turn"
+                set={{ ...models, options: shownModels }}
+                selected={requestedModel ?? models.current}
+                onChoose={(id) => choose("model", id)}
+              />
+            ) : (
+              <p className="composer-model-empty">No models match “{query}”</p>
+            ))}
           {models.effort && (
             <OptionGroup
               title="Reasoning effort"

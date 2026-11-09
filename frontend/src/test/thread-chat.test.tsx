@@ -530,6 +530,45 @@ describe("Model picker", () => {
     expect(await screen.findByRole("button", { name: "Model: Default (recommended) · Low" })).toBeInTheDocument();
   });
 
+  it("searches a long model list and picks the first match with Enter", async () => {
+    const t = transcript();
+    const options = [
+      { id: "meridian/glm", label: "GLM-5.3-Flash", description: "meridian" },
+      { id: "opencode/big-pickle", label: "Big Pickle", description: "opencode" },
+      ...Array.from({ length: 8 }, (_, index) => ({ id: `opencode/free-${index}`, label: `Free ${index}` })),
+      { id: "spark/glm", label: "glm-5.3-flash", description: "spark-home" },
+    ];
+    t.models({ current: "meridian/glm", options });
+    const switched = vi.spyOn(api, "setThreadModel").mockResolvedValue({ thread });
+    const user = userEvent.setup();
+    renderThread(t.blocks);
+    await user.click(await screen.findByRole("button", { name: "Model: GLM-5.3-Flash" }));
+    const search = screen.getByRole("searchbox", { name: "Search models" });
+    expect(search).toHaveFocus();
+    await user.type(search, "glm spark");
+    const menu = screen.getByRole("menu", { name: "Models" });
+    expect(within(menu).getAllByRole("menuitemradio").map((item) => item.textContent)).toEqual([
+      "glm-5.3-flashspark-home",
+    ]);
+    await user.clear(search);
+    await user.type(search, "nothing here");
+    expect(within(menu).queryAllByRole("menuitemradio")).toHaveLength(0);
+    expect(within(menu).getByText("No models match “nothing here”")).toBeInTheDocument();
+    await user.clear(search);
+    await user.type(search, "pickle{Enter}");
+    expect(switched).toHaveBeenCalledWith(thread.id, thread.resourceVersion, "opencode/big-pickle");
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("shows no search for a short model list", async () => {
+    const t = transcript();
+    t.models(reported);
+    const user = userEvent.setup();
+    renderThread(t.blocks);
+    await user.click(await screen.findByRole("button", { name: "Model: Default (recommended)" }));
+    expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
+  });
+
   it("closes on Escape and shows no picker when the harness reports nothing", async () => {
     const t = transcript();
     t.models(reported);
