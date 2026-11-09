@@ -17,6 +17,7 @@ import (
 	"github.com/OrlojHQ/meridian/internal/apiauth"
 	"github.com/OrlojHQ/meridian/internal/app"
 	"github.com/OrlojHQ/meridian/internal/artifacts"
+	"github.com/OrlojHQ/meridian/internal/datadir"
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/httpapi"
 	"github.com/OrlojHQ/meridian/internal/observability"
@@ -36,20 +37,22 @@ type Config struct {
 	Listen             string
 	PreviewListen      string
 	DataDir            string
-	APITokenFile       string
-	AllowNonLoopback   bool
-	TranscriptKeyFile  string
-	SecretKeyFile      string
-	IdlePause          time.Duration
-	IdleScanInterval   time.Duration
-	RuntimeRefresh     time.Duration
-	MaxLiveCapsules    int
-	OfficialPackTag    string
-	Logger             *log.Logger
-	Docker             dockerprovider.Config
-	DockerCPUs         float64
-	AgentSandbox       agentsandboxprovider.Config
-	Observability      observability.Config
+	// DataLease tunes the data directory lease; zero uses the defaults.
+	DataLease         datadir.Options
+	APITokenFile      string
+	AllowNonLoopback  bool
+	TranscriptKeyFile string
+	SecretKeyFile     string
+	IdlePause         time.Duration
+	IdleScanInterval  time.Duration
+	RuntimeRefresh    time.Duration
+	MaxLiveCapsules   int
+	OfficialPackTag   string
+	Logger            *log.Logger
+	Docker            dockerprovider.Config
+	DockerCPUs        float64
+	AgentSandbox      agentsandboxprovider.Config
+	Observability     observability.Config
 
 	// ProviderGatewayAllowPrivateHTTP lets custom provider connections opt in
 	// to plaintext HTTP upstreams on private-network addresses.
@@ -63,6 +66,13 @@ func Run(ctx context.Context, config Config) error {
 	if config.Listen == "" {
 		return fmt.Errorf("listen address is required")
 	}
+	// Take the data directory before anything writes to it. A second daemon
+	// on the same directory, even across a VM boundary, corrupts SQLite.
+	lease, err := datadir.Acquire(ctx, config.DataDir, "meridiand", config.DataLease)
+	if err != nil {
+		return fmt.Errorf("acquire data directory: %w", err)
+	}
+	defer lease.Release()
 	apiTokenPath := config.APITokenFile
 	if apiTokenPath == "" {
 		apiTokenPath = apiauth.DefaultTokenPath(config.DataDir)
@@ -473,6 +483,10 @@ func Run(ctx context.Context, config Config) error {
 
 	select {
 	case <-ctx.Done():
+	case err := <-lease.Lost():
+		// Another owner now writes here; stop at once rather than shut down
+		// gracefully, so this daemon writes nothing more.
+		return fmt.Errorf("stop using data directory: %w", err)
 	case err := <-serverErrors:
 		if err != nil {
 			return fmt.Errorf("serve API: %w", err)

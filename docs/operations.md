@@ -264,6 +264,20 @@ Back up the control-plane PVC and Capsule PVC/PV state consistently. A local
 Meridian backup does not capture Kubernetes PVC contents or reconstruct
 provider-owned Secrets.
 
+## One owner per data directory
+
+Run exactly one `meridiand` per data directory, on local storage. `meridiand`
+and the mutating `admin` commands (backup, restore, transcript-key rotation,
+CAS deletion) take the data directory with an exclusive lock and a heartbeat
+lease file, `meridiand.lease`, and refuse to start while another owner holds
+it. The error names that owner. A lease from another host expires 30 seconds
+after its owner stops; on the same host a crashed daemon's lease is replaced
+at once. Remove `meridiand.lease` by hand only after confirming its owner is
+gone. A daemon that finds its lease taken over exits immediately. Never share
+one data directory between a host daemon and a container through a bind
+mount: SQLite's locks do not cross that boundary, and the database can be
+corrupted (ADR 0035).
+
 ## Backup and verification
 
 Stop `meridiand` and ensure no backup, restore, GC, migration, or provider
@@ -382,7 +396,8 @@ backups, copied wrapped keys, filesystem snapshots, swap, or physical media.
 
 There is no downgrade mechanism. Before upgrading:
 
-1. stop/quiesce `meridiand` and all maintenance commands;
+1. stop/quiesce `meridiand` and all maintenance commands (a new daemon refuses
+   to start while the old one still holds the data directory);
 2. create and independently verify a backup;
 3. record verified daemon and Capsule image digests;
 4. upgrade the binary/image and start one control-plane replica; and

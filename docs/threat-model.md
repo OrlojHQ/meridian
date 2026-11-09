@@ -645,7 +645,14 @@ transport: no host path, bind mount, Docker `cp`, Docker archive extraction,
 SQLite, WAL files, and local artifacts may expose metadata or be replaced through symlink and path traversal attacks. Use explicit directories with restrictive permissions, canonicalize paths, avoid following attacker-controlled links, use atomic writes, and keep database and artifacts out of Capsule mounts. Back up SQLite consistently with its WAL state. Local storage is not suitable for mutually untrusted host users without OS-level separation and encryption.
 
 Backup, restore, transcript-key rotation, upgrade, and CAS deletion require a
-stopped control plane.
+stopped control plane. A data directory lease enforces this and the
+single-replica rule (ADR 0035): `meridiand` and every mutating maintenance
+operation hold an exclusive `flock` plus a heartbeat lease file that crosses
+bind mounts, so a second daemon, including one across a Docker Desktop VM
+boundary where SQLite's locks and WAL shared memory do not reach, or a
+maintenance command beside a running daemon, refuses to start instead of
+corrupting the database. A daemon that loses its lease exits without further
+writes.
 Restore verifies into a sibling temporary directory before atomic publication
 and preserves an existing installation on failure. Migrations are forward-only;
 a newer schema fails closed, and rollback requires the pre-upgrade backup plus

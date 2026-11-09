@@ -2,13 +2,17 @@ package daemon_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/OrlojHQ/meridian/internal/app"
 	"github.com/OrlojHQ/meridian/internal/daemon"
+	"github.com/OrlojHQ/meridian/internal/datadir"
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/provider/fake"
 	"github.com/OrlojHQ/meridian/internal/store/sqlite"
@@ -130,5 +134,44 @@ func TestRestartRecoversPersistedNonterminalCapsule(t *testing.T) {
 	persistedProject, err := secondService.GetProject(ctx, project.ID)
 	if err != nil || persistedProject.Name != project.Name {
 		t.Fatalf("persisted project = %#v, %v", persistedProject, err)
+	}
+}
+
+func TestSecondDaemonOnOneDataDirectoryIsRefused(t *testing.T) {
+	directory := t.TempDir()
+	config := daemon.Config{
+		Provider: "fake", Listen: "127.0.0.1:0", PreviewListen: "127.0.0.1:0", DataDir: directory,
+		DataLease: datadir.Options{Interval: 50 * time.Millisecond, Settle: time.Millisecond},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	first := make(chan error, 1)
+	go func() { first <- daemon.Run(ctx, config) }()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if _, err := os.Stat(filepath.Join(directory, datadir.LeaseFile)); err == nil {
+			break
+		}
+		select {
+		case err := <-first:
+			t.Fatalf("first daemon stopped: %v", err)
+		default:
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("first daemon never took the data directory")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	err := daemon.Run(context.Background(), config)
+	if !errors.Is(err, datadir.ErrInUse) {
+		t.Fatalf("second daemon = %v", err)
+	}
+	cancel()
+	// The lease is taken before the rest of startup, so the first daemon
+	// may still be starting; cancelling it then is not a failure.
+	if err := <-first; err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatalf("first daemon: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(directory, datadir.LeaseFile)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("lease left after shutdown: %v", err)
 	}
 }
