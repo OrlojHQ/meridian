@@ -195,7 +195,7 @@ release-snapshot:
 		--snapshot --clean --skip=docker --skip=sbom
 
 release-docker-validate:
-	@tmp="$$(mktemp -d)"; trap 'rm -rf "$$tmp"' EXIT; \
+	@set -e; tmp="$$(mktemp -d)"; trap 'rm -rf "$$tmp"' EXIT; \
 	for arch in amd64 arm64; do \
 		mkdir -p "$$tmp/meridiand-$$arch" "$$tmp/capsule-$$arch"; \
 		CGO_ENABLED=0 GOOS=linux GOARCH="$$arch" go build -trimpath \
@@ -205,6 +205,9 @@ release-docker-validate:
 		CGO_ENABLED=0 GOOS=linux GOARCH="$$arch" go build -trimpath \
 			-ldflags "$(LDFLAGS)" -o "$$tmp/capsule-$$arch/meridian-harness-adapter" \
 			./cmd/meridian-harness-adapter; \
+		CGO_ENABLED=0 GOOS=linux GOARCH="$$arch" go build -trimpath \
+			-ldflags "$(LDFLAGS)" -o "$$tmp/capsule-$$arch/meridian-coord" \
+			./cmd/meridian-coord; \
 		docker buildx build --load --platform="linux/$$arch" \
 			-t "meridiand:release-validation-$$arch" \
 			--build-arg VERSION="$(VERSION)" --build-arg COMMIT="$(COMMIT)" \
