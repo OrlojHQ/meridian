@@ -339,6 +339,11 @@ credential still come from the connection or harness setup, the list holds
 only models that configuration already lets the harness use, and the
 provider gateway already forwards whatever model name the harness sends. A
 switch can raise cost, because a pricier model may be listed.
+Reasoning effort (ADR 0033) is reported inside the same frame under a
+separately negotiated `effort` capability, bounded to 16 levels, and changed
+only by an operator `set_effort` mutation to a level the adapter reported.
+`capsuled` fails a run whose adapter reports effort without negotiating it.
+A higher effort can raise cost and latency but reaches nothing new.
 
 Normal Run prompts remain transient. Run records and events do not persist
 prompts, raw terminal bytes, full diffs, setup output, or secrets. An explicitly
@@ -752,6 +757,8 @@ they are not a statement that every planned path is already implemented.
 - Harness-reported model lists are negotiated, bounded, encrypted with the
   transcript, and rendered as text. A switch runs only from an operator API
   mutation, and an adapter accepts only a model it reported (ADR 0031).
+  Reasoning effort follows the same rules under its own negotiated
+  capability (ADR 0033).
 - ACP agents get no file-system or terminal client capability, and their
   permission requests resolve only to options they offered. Their
   elicitations are form-only, bounded, operator-answered, and schema-checked;

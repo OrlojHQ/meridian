@@ -3,7 +3,7 @@ import { useEffect, useId, useRef, useState } from "react";
 
 import { api, normalizeAPIError } from "../api/client";
 import type { Thread } from "../api/generated/types.gen";
-import type { ThreadModels } from "./threadModels";
+import type { ThreadModels, ThreadOptionSet } from "./threadModels";
 
 function ChevronIcon() {
   return (
@@ -21,9 +21,59 @@ function CheckIcon() {
   );
 }
 
+type Setting = "model" | "effort";
+type Request = { setting: Setting; id: string };
+
+// pendingLabel is the label a requested switch will show, or undefined once
+// the harness reports it (or while nothing is pending).
+function pendingLabel(set: ThreadOptionSet | undefined, requested: string | undefined) {
+  if (!set || requested === undefined || requested === set.current) return undefined;
+  return set.options.find((option) => option.id === requested)?.label ?? requested;
+}
+
+function OptionGroup({
+  title,
+  set,
+  selected,
+  onChoose,
+}: {
+  title: string;
+  set: ThreadOptionSet;
+  selected: string;
+  onChoose: (id: string) => void;
+}) {
+  return (
+    <div role="group" aria-label={title}>
+      <p className="slash-group">{title}</p>
+      <ul>
+        {set.options.map((option) => (
+          <li key={option.id}>
+            <button
+              type="button"
+              role="menuitemradio"
+              aria-checked={option.id === selected}
+              className="composer-model-option"
+              onClick={() => onChoose(option.id)}
+            >
+              <span className="composer-model-option-text">
+                <span className="composer-model-option-label">{option.label}</span>
+                {option.description && (
+                  <span className="composer-model-option-description">{option.description}</span>
+                )}
+              </span>
+              {option.id === selected && <CheckIcon />}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 // The model picker sits inside the message box. It lists only what the
-// session's harness reported; the switch applies from the next turn, and the
-// harness reports its models again once it has switched.
+// session's harness reported: its models and, when the harness reports them,
+// the current model's reasoning effort levels. A change applies from the next
+// turn, and the harness reports its models again once it has applied it.
 export function ThreadModelPicker({
   thread,
   models,
@@ -38,22 +88,30 @@ export function ThreadModelPicker({
   onConflict: () => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
-  const [requested, setRequested] = useState<string>();
+  const [requestedModel, setRequestedModel] = useState<string>();
+  const [requestedEffort, setRequestedEffort] = useState<string>();
   const menuId = useId();
   const root = useRef<HTMLDivElement>(null);
   const mutation = useMutation({
-    mutationFn: (model: string) => api.setThreadModel(thread.id, thread.resourceVersion, model),
+    mutationFn: ({ setting, id }: Request) =>
+      setting === "model"
+        ? api.setThreadModel(thread.id, thread.resourceVersion, id)
+        : api.setThreadEffort(thread.id, thread.resourceVersion, id),
     onSuccess: () => onSwitched(),
-    onError: async (error) => {
-      setRequested(undefined);
+    onError: async (error, { setting }) => {
+      if (setting === "model") setRequestedModel(undefined);
+      else setRequestedEffort(undefined);
       if (normalizeAPIError(error).code === "conflict") await onConflict();
     },
   });
-  // Once the harness reports the model it switched to, stop showing the
-  // request as pending.
+  // Once the harness reports what it switched to, stop showing the request
+  // as pending.
   useEffect(() => {
-    if (requested !== undefined && models.current === requested) setRequested(undefined);
-  }, [models.current, requested]);
+    if (requestedModel !== undefined && models.current === requestedModel) setRequestedModel(undefined);
+  }, [models.current, requestedModel]);
+  useEffect(() => {
+    if (requestedEffort !== undefined && models.effort?.current === requestedEffort) setRequestedEffort(undefined);
+  }, [models.effort?.current, requestedEffort]);
   useEffect(() => {
     if (!open) return;
     const onPointer = (event: PointerEvent) => {
@@ -70,15 +128,19 @@ export function ThreadModelPicker({
     };
   }, [open]);
   if (models.options.length === 0 && !models.current) return null;
-  const pending = requested !== undefined && requested !== models.current;
-  const shown = pending
-    ? (models.options.find((option) => option.id === requested)?.label ?? requested)
-    : models.currentLabel || "Model";
-  const choose = (id: string) => {
+  const modelPending = pendingLabel(models, requestedModel);
+  const effortPending = pendingLabel(models.effort, requestedEffort);
+  const pending = modelPending !== undefined || effortPending !== undefined;
+  const modelShown = modelPending ?? (models.currentLabel || "Model");
+  const effortShown = effortPending ?? models.effort?.currentLabel;
+  const shown = effortShown ? `${modelShown} · ${effortShown}` : modelShown;
+  const choose = (setting: Setting, id: string) => {
     setOpen(false);
-    if (id === models.current || mutation.isPending) return;
-    setRequested(id);
-    mutation.mutate(id);
+    const current = setting === "model" ? models.current : models.effort?.current;
+    if (id === current || mutation.isPending) return;
+    if (setting === "model") setRequestedModel(id);
+    else setRequestedEffort(id);
+    mutation.mutate({ setting, id });
   };
   return (
     <div className="composer-model" ref={root}>
@@ -90,7 +152,7 @@ export function ThreadModelPicker({
         aria-controls={open ? menuId : undefined}
         aria-label={`Model: ${shown}${pending ? ", switching" : ""}`}
         title={pending ? "Switching from the next turn" : "Model for the next turn"}
-        disabled={disabled || models.options.length === 0}
+        disabled={disabled || (models.options.length === 0 && !models.effort)}
         onClick={() => setOpen((value) => !value)}
       >
         <span className={pending ? "composer-model-label shimmer" : "composer-model-label"}>{shown}</span>
@@ -98,31 +160,22 @@ export function ThreadModelPicker({
       </button>
       {open && (
         <div className="composer-model-menu" id={menuId} role="menu" aria-label="Models">
-          <p className="slash-group">Model · applies from the next turn</p>
-          <ul>
-            {models.options.map((option) => {
-              const selected = option.id === (pending ? requested : models.current);
-              return (
-                <li key={option.id}>
-                  <button
-                    type="button"
-                    role="menuitemradio"
-                    aria-checked={selected}
-                    className="composer-model-option"
-                    onClick={() => choose(option.id)}
-                  >
-                    <span className="composer-model-option-text">
-                      <span className="composer-model-option-label">{option.label}</span>
-                      {option.description && (
-                        <span className="composer-model-option-description">{option.description}</span>
-                      )}
-                    </span>
-                    {selected && <CheckIcon />}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+          {models.options.length > 0 && (
+            <OptionGroup
+              title="Model · applies from the next turn"
+              set={models}
+              selected={requestedModel ?? models.current}
+              onChoose={(id) => choose("model", id)}
+            />
+          )}
+          {models.effort && (
+            <OptionGroup
+              title="Reasoning effort"
+              set={models.effort}
+              selected={requestedEffort ?? models.effort.current}
+              onChoose={(id) => choose("effort", id)}
+            />
+          )}
         </div>
       )}
       {mutation.isError && (

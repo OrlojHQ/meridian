@@ -94,6 +94,51 @@ func TestCodexAppServerReportsAndSwitchesModels(t *testing.T) {
 	}
 }
 
+func TestCodexAppServerReportsAndChangesEffort(t *testing.T) {
+	decoder, encoder, argumentsPath, _ := runCodexFixtureWith(t, CodexConfig{
+		ApprovalPolicy: "on-request", Sandbox: "workspace-write",
+	}, adapterproto.KindStart, "", true)
+	_ = readStatus(t, decoder, adapterproto.StatusStarting)
+	effort := readKind(t, decoder, adapterproto.KindModels).Models.Effort
+	if effort == nil || effort.Current != "medium" || len(effort.Options) != 3 ||
+		effort.Options[2].ID != "xhigh" || effort.Options[2].Label != "Extra high" ||
+		effort.Options[0].Description != "Fast" {
+		t.Fatalf("effort = %#v", effort)
+	}
+	sendSetEffort(t, encoder, "effort-1", "max")
+	if failure := readKind(t, decoder, adapterproto.KindError); failure.Code != "effort_unavailable" {
+		t.Fatalf("unlisted effort = %#v", failure)
+	}
+	sendSetEffort(t, encoder, "effort-2", "xhigh")
+	if changed := readKind(t, decoder, adapterproto.KindModels).Models.Effort; changed.Current != "xhigh" {
+		t.Fatalf("changed = %#v", changed)
+	}
+	sendTestMessage(t, encoder, "message-1", "hello")
+	_ = readUntil(t, decoder, adapterproto.KindAssistantMessage)
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+	// gpt-fast offers only low, so the switch carries its default with it.
+	sendSetModel(t, encoder, "switch-1", "gpt-fast")
+	if switched := readKind(t, decoder, adapterproto.KindModels).Models; switched.Current != "gpt-fast" ||
+		switched.Effort == nil || switched.Effort.Current != "low" || len(switched.Effort.Options) != 1 {
+		t.Fatalf("switched = %#v", switched)
+	}
+	sendTestMessage(t, encoder, "message-2", "hello")
+	_ = readUntil(t, decoder, adapterproto.KindAssistantMessage)
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+	sendTestMessage(t, encoder, "message-3", "hello")
+	_ = readUntil(t, decoder, adapterproto.KindAssistantMessage)
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+	var turns []string
+	for _, entry := range readHelperArguments(t, argumentsPath) {
+		if strings.HasPrefix(entry, "turn ") {
+			turns = append(turns, entry)
+		}
+	}
+	if strings.Join(turns, ",") != "turn effort=xhigh,turn model=gpt-fast,turn effort=low" {
+		t.Fatalf("turn overrides = %v", turns)
+	}
+}
+
 func TestCodexAppServerListsAConfiguredModelOutsideItsCatalog(t *testing.T) {
 	// A provider connection's default model is not in Codex's catalog; it
 	// stays selectable so the operator can switch back to it.
@@ -450,12 +495,21 @@ func TestCodexAppServerHelper(t *testing.T) {
 			log = append(log, entry)
 			save()
 			reply(map[string]any{"thread": map[string]any{"id": codexFixtureThread},
-				"model": defaultString(os.Getenv("MERIDIAN_CODEX_HELPER_MODEL"), "gpt-fixture")})
+				"model":           defaultString(os.Getenv("MERIDIAN_CODEX_HELPER_MODEL"), "gpt-fixture"),
+				"reasoningEffort": "medium"})
 			notify("thread/started", map[string]any{"thread": map[string]any{"id": codexFixtureThread}})
 		case "model/list":
 			reply(map[string]any{"data": []any{
-				map[string]any{"id": "gpt-fixture", "model": "gpt-fixture", "displayName": "GPT Fixture", "hidden": false},
-				map[string]any{"id": "gpt-fast", "model": "gpt-fast", "displayName": "GPT\nFast", "hidden": false},
+				map[string]any{"id": "gpt-fixture", "model": "gpt-fixture", "displayName": "GPT Fixture", "hidden": false,
+					"defaultReasoningEffort": "medium", "supportedReasoningEfforts": []any{
+						map[string]any{"reasoningEffort": "low", "description": "Fast"},
+						map[string]any{"reasoningEffort": "medium", "description": "Balanced"},
+						map[string]any{"reasoningEffort": "xhigh", "description": "Deepest"},
+					}},
+				map[string]any{"id": "gpt-fast", "model": "gpt-fast", "displayName": "GPT\nFast", "hidden": false,
+					"defaultReasoningEffort": "low", "supportedReasoningEfforts": []any{
+						map[string]any{"reasoningEffort": "low", "description": "Fast"},
+					}},
 				map[string]any{"id": "gpt-secret", "model": "gpt-secret", "displayName": "Hidden", "hidden": true},
 			}, "nextCursor": nil})
 		case "skills/list":
@@ -501,6 +555,10 @@ func TestCodexAppServerHelper(t *testing.T) {
 		case "turn/start":
 			if model, exists := params["model"]; exists {
 				log = append(log, "turn model="+model.(string))
+				save()
+			}
+			if effort, exists := params["effort"]; exists {
+				log = append(log, "turn effort="+effort.(string))
 				save()
 			}
 			inputs := params["input"].([]any)

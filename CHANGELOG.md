@@ -9,6 +9,12 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- The Thread composer's model picker also shows and changes reasoning effort
+  when the harness reports levels for its current model ("Sonnet · High").
+  Claude Code, Codex, Pi, and ACP agents such as DeepSeek Harness report their
+  levels; a change applies from the next turn
+  (`POST /threads/{threadId}/effort`, ADR 0033).
+
 - ACP agents can ask the operator questions. The `acp` driver accepts
   form-mode `elicitation/create` when permissions are enabled and asks each
   field in turn as a button question or a typed answer, checks every answer

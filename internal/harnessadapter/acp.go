@@ -132,12 +132,17 @@ type acpSession struct {
 
 	cancelled bool
 
-	// models is the agent's model config option, if it reported one;
-	// modelConfig is that option's ID and switching the value a pending
-	// session/set_config_option asked for.
-	models      *modelSet
-	modelConfig string
-	switching   string
+	// models is the agent's model config option, if it reported one, and
+	// efforts its thought_level option; modelConfig and effortConfig are
+	// those options' IDs. switching is the value a pending
+	// session/set_config_option asked for, and switchingEffort whether it
+	// was for the effort option.
+	models          *modelSet
+	modelConfig     string
+	efforts         *modelSet
+	effortConfig    string
+	switching       string
+	switchingEffort bool
 }
 
 // RunACP launches an Agent Client Protocol agent over stdio and maps its
@@ -155,7 +160,7 @@ func RunACP(ctx context.Context, input io.Reader, output io.Writer, config ACPCo
 	if err := stream.Handshake(adapterproto.Capabilities{
 		Resume: true, ToolEvents: true, Permissions: config.Permissions,
 		InputRequests: config.Permissions, Heartbeat: false, OpaqueMetadata: true, Commands: true,
-		Models: true,
+		Models: true, Effort: true,
 	}); err != nil {
 		return err
 	}
@@ -389,6 +394,8 @@ func (s *acpSession) controller(frame adapterproto.Frame) (bool, error) {
 		return false, nil
 	case adapterproto.KindSetModel:
 		return false, s.setModel(frame.Model)
+	case adapterproto.KindSetEffort:
+		return false, s.setEffort(frame.Effort)
 	case adapterproto.KindHeartbeat, adapterproto.KindAck:
 		return false, nil
 	default:
@@ -470,7 +477,7 @@ func (s *acpSession) response(rawID json.RawMessage, record map[string]json.RawM
 		}
 		s.ready = true
 		s.loading = false
-		if err := s.reportConfigOptions(record["result"]); err != nil {
+		if _, err := s.reportConfigOptions(record["result"]); err != nil {
 			return false, err
 		}
 		if err := s.idle(); err != nil {
@@ -478,24 +485,28 @@ func (s *acpSession) response(rawID json.RawMessage, record map[string]json.RawM
 		}
 		return false, s.next()
 	case "session/set_config_option":
-		requested := s.switching
-		s.switching = ""
+		requested, effort := s.switching, s.switchingEffort
+		s.switching, s.switchingEffort = "", false
+		if failed && effort {
+			return false, s.stream.effortUnavailable(acpLine(
+				defaultString(failure.Message, "The agent did not change its reasoning effort"), adapterproto.MaxToolSummaryBytes))
+		}
 		if failed {
 			return false, s.stream.modelUnavailable(acpLine(
 				defaultString(failure.Message, "The agent did not switch models"), adapterproto.MaxToolSummaryBytes))
 		}
-		if s.models != nil && requested != "" {
+		switch {
+		case effort && s.efforts != nil && requested != "":
+			s.efforts.setCurrent(requested)
+		case !effort && s.models != nil && requested != "":
 			s.models.setCurrent(requested)
 		}
-		before := s.models
-		if err := s.reportConfigOptions(record["result"]); err != nil {
+		reported, err := s.reportConfigOptions(record["result"])
+		if err != nil || reported {
 			return false, err
 		}
-		if s.models == before {
-			// The response carried no options; report the switch ourselves.
-			return false, s.stream.ReportModels(s.models)
-		}
-		return false, nil
+		// The response carried no options; report the switch ourselves.
+		return false, s.reportModels()
 	case "session/prompt":
 		if id != s.promptID {
 			return false, s.fail("acp_response_invalid", errors.New("ACP prompt response correlation failed"))
@@ -612,7 +623,8 @@ func (s *acpSession) notification(method string, raw json.RawMessage) error {
 			return s.reportCommands(params.Update)
 		}
 		if kind.SessionUpdate == "config_option_update" {
-			return s.reportConfigOptions(params.Update)
+			_, err := s.reportConfigOptions(params.Update)
+			return err
 		}
 		if !s.ready || s.loading || s.cancelled && s.promptID == 0 {
 			return nil
@@ -1153,11 +1165,11 @@ func (s *acpSession) setModel(id string) error {
 	case !s.ready || s.sessionID == "" || s.modelConfig == "":
 		return s.stream.modelUnavailable("The agent has not reported a model option")
 	case s.switching != "":
-		return s.stream.modelUnavailable("The agent is already switching models")
+		return s.stream.modelUnavailable("The agent is already changing a setting")
 	case !s.models.has(id):
 		return s.stream.modelUnavailable("The agent does not offer that model")
 	}
-	s.switching = id
+	s.switching, s.switchingEffort = id, false
 	if err := s.call("session/set_config_option", map[string]any{
 		"sessionId": s.sessionID, "configId": s.modelConfig, "value": id,
 	}); err != nil {
@@ -1166,27 +1178,65 @@ func (s *acpSession) setModel(id string) error {
 	return nil
 }
 
-// reportConfigOptions reads the model option from a configOptions list (a
-// session response, a set_config_option response, or config_option_update)
-// and reports it. Lists without a model option change nothing.
-func (s *acpSession) reportConfigOptions(raw json.RawMessage) error {
+// setEffort changes the agent's thought_level config option to a value it
+// reported.
+func (s *acpSession) setEffort(id string) error {
+	switch {
+	case !s.ready || s.sessionID == "" || s.effortConfig == "":
+		return s.stream.effortUnavailable("The agent has not reported a reasoning effort option")
+	case s.switching != "":
+		return s.stream.effortUnavailable("The agent is already changing a setting")
+	case !s.efforts.has(id):
+		return s.stream.effortUnavailable("The agent does not offer that reasoning effort")
+	}
+	s.switching, s.switchingEffort = id, true
+	if err := s.call("session/set_config_option", map[string]any{
+		"sessionId": s.sessionID, "configId": s.effortConfig, "value": id,
+	}); err != nil {
+		return s.fail("acp_write_failed", err)
+	}
+	return nil
+}
+
+// reportModels reports the model option with the current effort option.
+func (s *acpSession) reportModels() error {
+	if s.models == nil {
+		return nil
+	}
+	s.models.effort = s.efforts
+	return s.stream.ReportModels(s.models)
+}
+
+// reportConfigOptions reads the model and thought_level options from a
+// configOptions list (a session response, a set_config_option response, or
+// config_option_update) and reports them. A list that names the model
+// option replaces the effort option too, so an option the agent dropped
+// disappears; a list with only a thought_level option updates the effort.
+// It reports whether anything was reported.
+func (s *acpSession) reportConfigOptions(raw json.RawMessage) (bool, error) {
 	var holder struct {
 		ConfigOptions []json.RawMessage `json:"configOptions"`
 	}
 	if len(raw) == 0 || json.Unmarshal(raw, &holder) != nil {
-		return nil
+		return false, nil
 	}
-	configID, models := acpModelOption(holder.ConfigOptions)
-	if models == nil {
-		return nil
+	modelID, models := acpSelectOption(holder.ConfigOptions, "model")
+	effortID, efforts := acpSelectOption(holder.ConfigOptions, "thought_level")
+	switch {
+	case models != nil:
+		s.modelConfig, s.models = modelID, models
+		s.effortConfig, s.efforts = effortID, efforts
+	case efforts != nil:
+		s.effortConfig, s.efforts = effortID, efforts
+	default:
+		return false, nil
 	}
-	s.modelConfig, s.models = configID, models
-	return s.stream.ReportModels(models)
+	return s.models != nil, s.reportModels()
 }
 
-// acpModelOption finds the first select option whose category is model and
-// flattens its grouped or ungrouped values into a model set.
-func acpModelOption(options []json.RawMessage) (string, *modelSet) {
+// acpSelectOption finds the first select option of the category and
+// flattens its grouped or ungrouped values into a set.
+func acpSelectOption(options []json.RawMessage, category string) (string, *modelSet) {
 	type value struct {
 		Value       string            `json:"value"`
 		Name        string            `json:"name"`
@@ -1201,7 +1251,7 @@ func acpModelOption(options []json.RawMessage) (string, *modelSet) {
 			CurrentValue json.RawMessage   `json:"currentValue"`
 			Options      []json.RawMessage `json:"options"`
 		}
-		if json.Unmarshal(raw, &option) != nil || option.Category != "model" ||
+		if json.Unmarshal(raw, &option) != nil || option.Category != category ||
 			option.Type != "select" || option.ID == "" || len(option.ID) > adapterproto.MaxIDBytes {
 			continue
 		}

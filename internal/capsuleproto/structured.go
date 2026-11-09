@@ -327,6 +327,10 @@ func (s *Server) sendStructured(writer http.ResponseWriter, request *http.Reques
 		writeProtocolError(writer, http.StatusConflict, "models_unsupported")
 		return
 	}
+	if input.Frame.Type == adapterproto.KindSetEffort && !session.negotiatedEffort() {
+		writeProtocolError(writer, http.StatusConflict, "effort_unsupported")
+		return
+	}
 	ctx, cancel := context.WithTimeout(request.Context(), structuredWriteTimeout)
 	defer cancel()
 	if err := session.sendControllerFrame(ctx, input.Frame); err != nil {
@@ -340,7 +344,8 @@ func controllerFrame(kind adapterproto.Kind) bool {
 	switch kind {
 	case adapterproto.KindUserMessage, adapterproto.KindPermissionResponse,
 		adapterproto.KindInputResponse, adapterproto.KindCancel,
-		adapterproto.KindHeartbeat, adapterproto.KindAck, adapterproto.KindSetModel:
+		adapterproto.KindHeartbeat, adapterproto.KindAck, adapterproto.KindSetModel,
+		adapterproto.KindSetEffort:
 		return true
 	default:
 		return false
@@ -451,7 +456,7 @@ func (s *structuredSession) execute() {
 		ID: "capsuled-hello", Capabilities: &adapterproto.Capabilities{
 			Resume: true, ToolEvents: true, Permissions: true,
 			InputRequests: true, Heartbeat: true, OpaqueMetadata: true,
-			Commands: true, Models: true,
+			Commands: true, Models: true, Effort: true,
 		},
 	}
 	handshakeContext, handshakeCancel := context.WithTimeout(ctx, structuredHandshakeTimeout)
@@ -649,7 +654,8 @@ func (s *structuredSession) readerLoop(
 		}
 		if !adapterFrame(frame.Type) || frame.Cursor != 0 || frame.Gap != nil ||
 			(frame.Type == adapterproto.KindCommands && !capabilities.Commands) ||
-			(frame.Type == adapterproto.KindModels && !capabilities.Models) {
+			(frame.Type == adapterproto.KindModels && !capabilities.Models) ||
+			(frame.Type == adapterproto.KindModels && frame.Models.Effort != nil && !capabilities.Effort) {
 			return adapterproto.ErrInvalidFrame
 		}
 		s.addEvent(frame)
@@ -736,6 +742,14 @@ func (s *structuredSession) negotiatedModels() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.capabilities != nil && s.capabilities.Models
+}
+
+// negotiatedEffort reports whether the adapter accepted effort reports and
+// set_effort frames.
+func (s *structuredSession) negotiatedEffort() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.capabilities != nil && s.capabilities.Models && s.capabilities.Effort
 }
 
 func (s *structuredSession) status() StructuredStatusResponse {

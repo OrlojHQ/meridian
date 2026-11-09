@@ -429,6 +429,12 @@ type SetProjectHarnessSetupParams struct {
 	Harness   string
 }
 
+// SetThreadEffortParams is parameters of setThreadEffort operation.
+type SetThreadEffortParams struct {
+	ThreadId       string
+	IdempotencyKey string
+}
+
 // SetThreadModelParams is parameters of setThreadModel operation.
 type SetThreadModelParams struct {
 	ThreadId       string

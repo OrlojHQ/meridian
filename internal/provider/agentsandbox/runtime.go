@@ -597,6 +597,7 @@ func structuredRuntimeRun(value capsuleproto.StructuredStatusResponse) ports.Run
 	result := runtimeRun(value.RunStatusResponse)
 	result.Structured = true
 	result.Models = value.Capabilities != nil && value.Capabilities.Models
+	result.Effort = result.Models && value.Capabilities.Effort
 	return result
 }
 

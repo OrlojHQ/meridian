@@ -437,6 +437,26 @@ non-fatal `model_unavailable` error and the session keeps its model. Frames
 hold at most 128 options with unique IDs up to 256 bytes, labels up to 128,
 and descriptions up to 512, with no control characters.
 
+### Reasoning effort
+
+When both hellos also negotiate `effort` (ADR 0033), a `models` frame carries
+the current model's effort levels as `effort: {current, options}`, at most 16
+options with the same bounds, and a `set_effort` frame changes it
+(`POST /threads/{threadId}/effort`). An empty `current` means the harness's
+own default. The composer shows "Model · Effort" on the picker and lists the
+levels below the models; a single level is not shown.
+
+| Driver | Levels | Current | Change |
+| --- | --- | --- | --- |
+| `claude-stream` | the current model's `supportedEffortLevels` | empty until a change succeeds | control request `apply_flag_settings` with `effortLevel` |
+| `codex-app-server` | the current model's `supportedReasoningEfforts`; none for a model outside the catalog | `thread/start` or `thread/resume` `reasoningEffort`, or the model's default after a switch to a model without it | `effort` on the next `turn/start`, which Codex keeps |
+| `pi-rpc` | `get_available_thinking_levels`, asked again after each model switch | `get_state` `thinkingLevel` | `set_thinking_level` |
+| `acp` | the `select` config option with category `thought_level` | its `currentValue` | `session/set_config_option` |
+| `generic` | the child adapter | as reported | forwarded |
+
+A level outside the latest list, or a refused change, is a non-fatal
+`effort_unavailable` error.
+
 ## Adding an ACP harness
 
 A harness that speaks ACP over stdio needs no new Go code (ADR 0030). Add a
@@ -590,7 +610,8 @@ brittle external script:
   withdrawn prompts, failed turns, resume, and MCP registration. Every driver
   has a slash-command fixture covering discovery, bounds, actions, and unknown
   `/text`, and a models fixture covering the reported list, a switch, an
-  unlisted ID, and a refused switch;
+  unlisted ID, and a refused switch, plus the same for effort levels and how a
+  model switch changes them;
 - supervisor tests cover strict negotiation, malformed/oversized/deep JSON,
   LF framing (including U+2028/U+2029 content), concurrent writes, replay gaps,
   crash/hang/process-group cleanup, stale auth/version, and bounded consumers;

@@ -183,6 +183,8 @@ func TestModelsFramesAreBoundedAndValidated(t *testing.T) {
 		{Current: "claude-opus-5-5", Options: []ModelOption{option("opus")}},
 		{Current: `["deepseek-official","deepseek-v4-flash"]`, Options: []ModelOption{option("anthropic/claude-sonnet-5")}},
 		{Options: full},
+		{Current: "gpt", Options: []ModelOption{option("gpt")}, Effort: &EffortSet{Options: []ModelOption{option("low")}}},
+		{Options: []ModelOption{}, Effort: &EffortSet{Current: "high", Options: []ModelOption{option("low"), option("high")}}},
 	}
 	for _, models := range valid {
 		frame := Frame{Protocol: Version, Type: KindModels, Models: &models}
@@ -202,6 +204,9 @@ func TestModelsFramesAreBoundedAndValidated(t *testing.T) {
 		"control in label": {Options: []ModelOption{{ID: "a", Label: "one\ntwo"}}},
 		"C1 description":   {Options: []ModelOption{{ID: "a", Label: "A", Description: "\u009b31m"}}},
 		"long label":       {Options: []ModelOption{{ID: "a", Label: strings.Repeat("l", MaxModelLabelBytes+1)}}},
+		"too many efforts": {Options: []ModelOption{}, Effort: &EffortSet{Options: full[:MaxEfforts+1]}},
+		"duplicate effort": {Options: []ModelOption{}, Effort: &EffortSet{Options: []ModelOption{option("a"), option("a")}}},
+		"control effort":   {Options: []ModelOption{}, Effort: &EffortSet{Current: "a\nb", Options: []ModelOption{}}},
 	}
 	for name, models := range invalid {
 		t.Run(name, func(t *testing.T) {
@@ -215,12 +220,19 @@ func TestModelsFramesAreBoundedAndValidated(t *testing.T) {
 	if err := set.Validate(); err != nil {
 		t.Fatalf("valid set_model rejected: %v", err)
 	}
+	effort := Frame{Protocol: Version, Type: KindSetEffort, ID: "effort-1", Effort: "high"}
+	if err := effort.Validate(); err != nil {
+		t.Fatalf("valid set_effort rejected: %v", err)
+	}
 	for name, frame := range map[string]Frame{
-		"set without id":    {Protocol: Version, Type: KindSetModel, Model: "sonnet"},
-		"set without model": {Protocol: Version, Type: KindSetModel, ID: "switch-1"},
-		"set control model": {Protocol: Version, Type: KindSetModel, ID: "switch-1", Model: "a\tb"},
-		"stray models":      {Protocol: Version, Type: KindStatus, Status: StatusIdle, Models: &ModelSet{Options: []ModelOption{}}},
-		"stray model":       {Protocol: Version, Type: KindStatus, Status: StatusIdle, Model: "sonnet"},
+		"set without id":       {Protocol: Version, Type: KindSetModel, Model: "sonnet"},
+		"set without model":    {Protocol: Version, Type: KindSetModel, ID: "switch-1"},
+		"set control model":    {Protocol: Version, Type: KindSetModel, ID: "switch-1", Model: "a\tb"},
+		"stray models":         {Protocol: Version, Type: KindStatus, Status: StatusIdle, Models: &ModelSet{Options: []ModelOption{}}},
+		"stray model":          {Protocol: Version, Type: KindStatus, Status: StatusIdle, Model: "sonnet"},
+		"effort without id":    {Protocol: Version, Type: KindSetEffort, Effort: "high"},
+		"effort without value": {Protocol: Version, Type: KindSetEffort, ID: "effort-1"},
+		"stray effort":         {Protocol: Version, Type: KindSetModel, ID: "switch-1", Model: "sonnet", Effort: "high"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			if err := frame.Validate(); err == nil {

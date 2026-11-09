@@ -1188,6 +1188,30 @@ paths:
         "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/Unprocessable" }
         default: { $ref: "#/components/responses/DefaultError" }
+  /threads/{threadId}/effort:
+    post:
+      operationId: setThreadEffort
+      summary: Change the active session's reasoning effort to a level its harness reported
+      description: >-
+        The effort must be an option ID from the effort of the session's latest
+        models event. The harness applies it from its next turn and reports its
+        models again; a level it does not offer produces an effort_unavailable
+        error event. A session whose harness reports no effort answers 422.
+      tags: [threads]
+      parameters:
+        - $ref: "#/components/parameters/ThreadId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ThreadEffortRequest" }
+      responses:
+        "202": { $ref: "#/components/responses/ThreadSessionMutation" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        default: { $ref: "#/components/responses/DefaultError" }
   /threads/{threadId}/cancel:
     post:
       operationId: cancelThread
@@ -3494,6 +3518,12 @@ components:
       properties:
         expectedResourceVersion: { type: integer, format: int64, minimum: 1 }
         model: { type: string, minLength: 1, maxLength: 256 }
+    ThreadEffortRequest:
+      type: object
+      required: [expectedResourceVersion, effort]
+      properties:
+        expectedResourceVersion: { type: integer, format: int64, minimum: 1 }
+        effort: { type: string, minLength: 1, maxLength: 256 }
     ThreadState:
       type: string
       enum: [active, paused, archived, deleted]
@@ -3610,7 +3640,7 @@ components:
           type: string
           enum: [assistant_delta, assistant_message, tool_start, tool_result, status, error,
                  permission_request, permission_response, input_request, input_response, gap, end,
-                 commands, models, set_model]
+                 commands, models, set_model, set_effort]
         runtimeSequence: { type: integer, format: int64, minimum: 1 }
         messageId: { type: string }
         responseTo:
@@ -3643,6 +3673,10 @@ components:
           type: string
           maxLength: 256
           description: On set_model events, the model ID the operator asked for.
+        effort:
+          type: string
+          maxLength: 256
+          description: On set_effort events, the effort level the operator asked for.
     ThreadModels:
       type: object
       required: [options]
@@ -3655,6 +3689,19 @@ components:
         options:
           type: array
           maxItems: 128
+          items: { $ref: "#/components/schemas/ThreadModelOption" }
+        effort: { $ref: "#/components/schemas/ThreadEffort" }
+    ThreadEffort:
+      type: object
+      required: [options]
+      description: >-
+        The reasoning effort levels the current model offers. current is empty
+        while the harness uses its own default.
+      properties:
+        current: { type: string, maxLength: 256 }
+        options:
+          type: array
+          maxItems: 16
           items: { $ref: "#/components/schemas/ThreadModelOption" }
     ThreadModelOption:
       type: object

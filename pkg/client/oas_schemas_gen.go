@@ -6650,6 +6650,52 @@ func (o OptThreadAwaiting) Or(d ThreadAwaiting) ThreadAwaiting {
 	return d
 }
 
+// NewOptThreadEffort returns new OptThreadEffort with value set to v.
+func NewOptThreadEffort(v ThreadEffort) OptThreadEffort {
+	return OptThreadEffort{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptThreadEffort is optional ThreadEffort.
+type OptThreadEffort struct {
+	Value ThreadEffort
+	Set   bool
+}
+
+// IsSet returns true if OptThreadEffort was set.
+func (o OptThreadEffort) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptThreadEffort) Reset() {
+	var v ThreadEffort
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptThreadEffort) SetTo(v ThreadEffort) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptThreadEffort) Get() (v ThreadEffort, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptThreadEffort) Or(d ThreadEffort) ThreadEffort {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptThreadInput returns new OptThreadInput with value set to v.
 func NewOptThreadInput(v ThreadInput) OptThreadInput {
 	return OptThreadInput{
@@ -9628,6 +9674,18 @@ type SendThreadMessageUnprocessableEntity ErrorEnvelope
 
 func (*SendThreadMessageUnprocessableEntity) sendThreadMessageRes() {}
 
+type SetThreadEffortBadRequest ErrorEnvelope
+
+func (*SetThreadEffortBadRequest) setThreadEffortRes() {}
+
+type SetThreadEffortConflict ErrorEnvelope
+
+func (*SetThreadEffortConflict) setThreadEffortRes() {}
+
+type SetThreadEffortUnprocessableEntity ErrorEnvelope
+
+func (*SetThreadEffortUnprocessableEntity) setThreadEffortRes() {}
+
 type SetThreadModelBadRequest ErrorEnvelope
 
 func (*SetThreadModelBadRequest) setThreadModelRes() {}
@@ -10044,6 +10102,8 @@ type ThreadAdapterEvent struct {
 	Models   OptThreadModels `json:"models"`
 	// On set_model events, the model ID the operator asked for.
 	Model OptString `json:"model"`
+	// On set_effort events, the effort level the operator asked for.
+	Effort OptString `json:"effort"`
 }
 
 // GetType returns the value of Type.
@@ -10141,6 +10201,11 @@ func (s *ThreadAdapterEvent) GetModel() OptString {
 	return s.Model
 }
 
+// GetEffort returns the value of Effort.
+func (s *ThreadAdapterEvent) GetEffort() OptString {
+	return s.Effort
+}
+
 // SetType sets the value of Type.
 func (s *ThreadAdapterEvent) SetType(val ThreadAdapterEventType) {
 	s.Type = val
@@ -10234,6 +10299,11 @@ func (s *ThreadAdapterEvent) SetModels(val OptThreadModels) {
 // SetModel sets the value of Model.
 func (s *ThreadAdapterEvent) SetModel(val OptString) {
 	s.Model = val
+}
+
+// SetEffort sets the value of Effort.
+func (s *ThreadAdapterEvent) SetEffort(val OptString) {
+	s.Effort = val
 }
 
 type ThreadAdapterEventStatus string
@@ -10337,6 +10407,7 @@ const (
 	ThreadAdapterEventTypeCommands           ThreadAdapterEventType = "commands"
 	ThreadAdapterEventTypeModels             ThreadAdapterEventType = "models"
 	ThreadAdapterEventTypeSetModel           ThreadAdapterEventType = "set_model"
+	ThreadAdapterEventTypeSetEffort          ThreadAdapterEventType = "set_effort"
 )
 
 // AllValues returns all ThreadAdapterEventType values.
@@ -10357,6 +10428,7 @@ func (ThreadAdapterEventType) AllValues() []ThreadAdapterEventType {
 		ThreadAdapterEventTypeCommands,
 		ThreadAdapterEventTypeModels,
 		ThreadAdapterEventTypeSetModel,
+		ThreadAdapterEventTypeSetEffort,
 	}
 }
 
@@ -10392,6 +10464,8 @@ func (s ThreadAdapterEventType) MarshalText() ([]byte, error) {
 	case ThreadAdapterEventTypeModels:
 		return []byte(s), nil
 	case ThreadAdapterEventTypeSetModel:
+		return []byte(s), nil
+	case ThreadAdapterEventTypeSetEffort:
 		return []byte(s), nil
 	default:
 		return nil, errors.Errorf("invalid value: %q", s)
@@ -10445,6 +10519,9 @@ func (s *ThreadAdapterEventType) UnmarshalText(data []byte) error {
 		return nil
 	case ThreadAdapterEventTypeSetModel:
 		*s = ThreadAdapterEventTypeSetModel
+		return nil
+	case ThreadAdapterEventTypeSetEffort:
+		*s = ThreadAdapterEventTypeSetEffort
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)
@@ -10862,6 +10939,60 @@ func (s *ThreadCommandKind) UnmarshalText(data []byte) error {
 	default:
 		return errors.Errorf("invalid value: %q", data)
 	}
+}
+
+// The reasoning effort levels the current model offers. current is empty while the harness uses its
+// own default.
+// Ref: #/components/schemas/ThreadEffort
+type ThreadEffort struct {
+	Current OptString           `json:"current"`
+	Options []ThreadModelOption `json:"options"`
+}
+
+// GetCurrent returns the value of Current.
+func (s *ThreadEffort) GetCurrent() OptString {
+	return s.Current
+}
+
+// GetOptions returns the value of Options.
+func (s *ThreadEffort) GetOptions() []ThreadModelOption {
+	return s.Options
+}
+
+// SetCurrent sets the value of Current.
+func (s *ThreadEffort) SetCurrent(val OptString) {
+	s.Current = val
+}
+
+// SetOptions sets the value of Options.
+func (s *ThreadEffort) SetOptions(val []ThreadModelOption) {
+	s.Options = val
+}
+
+// Ref: #/components/schemas/ThreadEffortRequest
+type ThreadEffortRequest struct {
+	ExpectedResourceVersion int64  `json:"expectedResourceVersion"`
+	Effort                  string `json:"effort"`
+}
+
+// GetExpectedResourceVersion returns the value of ExpectedResourceVersion.
+func (s *ThreadEffortRequest) GetExpectedResourceVersion() int64 {
+	return s.ExpectedResourceVersion
+}
+
+// GetEffort returns the value of Effort.
+func (s *ThreadEffortRequest) GetEffort() string {
+	return s.Effort
+}
+
+// SetExpectedResourceVersion sets the value of ExpectedResourceVersion.
+func (s *ThreadEffortRequest) SetExpectedResourceVersion(val int64) {
+	s.ExpectedResourceVersion = val
+}
+
+// SetEffort sets the value of Effort.
+func (s *ThreadEffortRequest) SetEffort(val string) {
+	s.Effort = val
 }
 
 // ThreadHeaders wraps Thread with response headers.
@@ -11808,6 +11939,7 @@ func (s *ThreadModelRequest) SetModel(val string) {
 type ThreadModels struct {
 	Current OptString           `json:"current"`
 	Options []ThreadModelOption `json:"options"`
+	Effort  OptThreadEffort     `json:"effort"`
 }
 
 // GetCurrent returns the value of Current.
@@ -11820,6 +11952,11 @@ func (s *ThreadModels) GetOptions() []ThreadModelOption {
 	return s.Options
 }
 
+// GetEffort returns the value of Effort.
+func (s *ThreadModels) GetEffort() OptThreadEffort {
+	return s.Effort
+}
+
 // SetCurrent sets the value of Current.
 func (s *ThreadModels) SetCurrent(val OptString) {
 	s.Current = val
@@ -11828,6 +11965,11 @@ func (s *ThreadModels) SetCurrent(val OptString) {
 // SetOptions sets the value of Options.
 func (s *ThreadModels) SetOptions(val []ThreadModelOption) {
 	s.Options = val
+}
+
+// SetEffort sets the value of Effort.
+func (s *ThreadModels) SetEffort(val OptThreadEffort) {
+	s.Effort = val
 }
 
 // ThreadMutationHeaders wraps Thread with response headers.
@@ -12237,6 +12379,7 @@ func (*ThreadSessionMutationHeaders) cancelThreadRes()      {}
 func (*ThreadSessionMutationHeaders) respondThreadRes()     {}
 func (*ThreadSessionMutationHeaders) resumeThreadRes()      {}
 func (*ThreadSessionMutationHeaders) sendThreadMessageRes() {}
+func (*ThreadSessionMutationHeaders) setThreadEffortRes()   {}
 func (*ThreadSessionMutationHeaders) setThreadModelRes()    {}
 func (*ThreadSessionMutationHeaders) startThreadRes()       {}
 

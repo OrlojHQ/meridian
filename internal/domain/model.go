@@ -864,7 +864,7 @@ func MapCapsuleProtocolError(status int, code string) error {
 		return ErrHarnessDependencies
 	case "git_failed":
 		return ErrWorkspaceGit
-	case "models_unsupported":
+	case "models_unsupported", "effort_unsupported":
 		return ErrUnsupported
 	}
 	switch status {

@@ -3456,6 +3456,12 @@ button.tool-line:hover {
   border-radius: var(--radius-lg);
   background: var(--surface-raised);
   box-shadow: 0 10px 32px rgb(28 33 29 / 16%);
+  max-height: min(32rem, 70dvh);
+  overflow-y: auto;
+}
+
+.composer-model-menu [role="group"] + [role="group"] {
+  border-top: 1px solid var(--border);
 }
 
 .composer-model-menu ul {

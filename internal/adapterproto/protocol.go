@@ -41,6 +41,9 @@ const (
 	MaxModelIDBytes          = 256
 	MaxModelLabelBytes       = 128
 	MaxModelDescriptionBytes = 512
+	// Reasoning effort levels are a short list per model, with the same
+	// ID, label, and description bounds as models.
+	MaxEfforts = 16
 )
 
 var (
@@ -76,6 +79,7 @@ const (
 	KindCommands           Kind = "commands"
 	KindModels             Kind = "models"
 	KindSetModel           Kind = "set_model"
+	KindSetEffort          Kind = "set_effort"
 )
 
 // CommandKind says how an adapter runs a reported command. A prompt command
@@ -106,7 +110,18 @@ type ModelOption struct {
 
 // ModelSet is the harness's current model and every model it offers. Current
 // may be empty when the harness does not say, and need not be an option.
+// Effort, when both peers negotiated it, is the reasoning effort the current
+// model offers.
 type ModelSet struct {
+	Current string        `json:"current,omitempty"`
+	Options []ModelOption `json:"options"`
+	Effort  *EffortSet    `json:"effort,omitempty"`
+}
+
+// EffortSet is the current model's reasoning effort and the levels it
+// offers. Current is empty while the harness uses its own default. IDs are
+// what set_effort names.
+type EffortSet struct {
 	Current string        `json:"current,omitempty"`
 	Options []ModelOption `json:"options"`
 }
@@ -145,6 +160,9 @@ type Capabilities struct {
 	Commands bool `json:"commands,omitempty"`
 	// Models says the peer understands models and set_model frames.
 	Models bool `json:"models,omitempty"`
+	// Effort says the peer understands a models frame's effort and
+	// set_effort frames. It requires Models.
+	Effort bool `json:"effort,omitempty"`
 }
 
 type Permission struct {
@@ -193,6 +211,7 @@ type Frame struct {
 	Commands     []Command       `json:"commands,omitempty"`
 	Models       *ModelSet       `json:"models,omitempty"`
 	Model        string          `json:"model,omitempty"`
+	Effort       string          `json:"effort,omitempty"`
 	Cursor       uint64          `json:"cursor,omitempty"`
 	Gap          *Gap            `json:"gap,omitempty"`
 }
@@ -352,6 +371,10 @@ func validateShape(f Frame) error {
 		if err := requireID(); err != nil || !ValidModelID(f.Model) {
 			return invalid("set model")
 		}
+	case KindSetEffort:
+		if err := requireID(); err != nil || !ValidModelID(f.Effort) {
+			return invalid("set effort")
+		}
 	}
 	if f.Type != KindCommands && f.Commands != nil {
 		return invalid("commands")
@@ -362,16 +385,25 @@ func validateShape(f Frame) error {
 	if f.Type != KindSetModel && f.Model != "" {
 		return invalid("model")
 	}
+	if f.Type != KindSetEffort && f.Effort != "" {
+		return invalid("effort")
+	}
 	return nil
 }
 
 func validModels(models ModelSet) bool {
-	if len(models.Options) > MaxModels ||
-		(models.Current != "" && !ValidModelID(models.Current)) {
+	if models.Effort != nil && !validOptions(models.Effort.Current, models.Effort.Options, MaxEfforts) {
 		return false
 	}
-	ids := make(map[string]bool, len(models.Options))
-	for _, option := range models.Options {
+	return validOptions(models.Current, models.Options, MaxModels)
+}
+
+func validOptions(current string, options []ModelOption, limit int) bool {
+	if len(options) > limit || (current != "" && !ValidModelID(current)) {
+		return false
+	}
+	ids := make(map[string]bool, len(options))
+	for _, option := range options {
 		if !ValidModelID(option.ID) || ids[option.ID] || option.Label == "" ||
 			!validLine(option.Label, MaxModelLabelBytes) ||
 			!validLine(option.Description, MaxModelDescriptionBytes) {
@@ -466,7 +498,7 @@ func knownKind(kind Kind) bool {
 		KindAssistantMessage, KindToolStart, KindToolResult, KindStatus, KindError,
 		KindPermissionRequest, KindPermissionResponse, KindInputRequest,
 		KindInputResponse, KindHeartbeat, KindCancel, KindAck, KindCursor,
-		KindGap, KindEnd, KindCommands, KindModels, KindSetModel:
+		KindGap, KindEnd, KindCommands, KindModels, KindSetModel, KindSetEffort:
 		return true
 	default:
 		return false

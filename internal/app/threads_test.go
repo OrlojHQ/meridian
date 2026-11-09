@@ -504,6 +504,54 @@ func TestSetThreadModelRequiresNegotiatedModelsAndDeliversOnce(t *testing.T) {
 	}
 }
 
+func TestSetThreadEffortRequiresNegotiatedEffortAndDeliversOnce(t *testing.T) {
+	ctx := context.Background()
+	store, service, runtime, key, capsuleID := threadService(t, ctx)
+	defer store.Close()
+	defer key.Zero()
+	created, err := service.CreateThread(ctx, app.CreateThreadInput{
+		CapsuleID: capsuleID, Harness: "mock", FirstMessage: "hello",
+		Start: true, IdempotencyKey: "create-effort",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread, err := service.GetThread(ctx, created.Thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime.mu.Lock()
+	run := runtime.runs[thread.CurrentRunID]
+	run.Models = true
+	runtime.runs[thread.CurrentRunID] = run
+	runtime.mu.Unlock()
+	if _, err := service.SetThreadEffort(ctx, thread.ID, thread.ResourceVersion, "high", "effort-1"); !errors.Is(err, domain.ErrUnsupported) {
+		t.Fatalf("effort without negotiated effort = %v", err)
+	}
+	if _, err := service.SetThreadEffort(ctx, thread.ID, thread.ResourceVersion, "", "effort-2"); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("empty effort = %v", err)
+	}
+	runtime.mu.Lock()
+	run = runtime.runs[thread.CurrentRunID]
+	run.Effort = true
+	runtime.runs[thread.CurrentRunID] = run
+	runtime.mu.Unlock()
+	changed, err := service.SetThreadEffort(ctx, thread.ID, thread.ResourceVersion, "high", "effort-3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.SetThreadEffort(ctx, thread.ID, thread.ResourceVersion, "high", "effort-3"); err != nil {
+		t.Fatalf("replay: %v", err)
+	}
+	runtime.mu.Lock()
+	frame := runtime.frames[string(changed.MessageID)]
+	sends := runtime.sends[string(changed.MessageID)]
+	runtime.mu.Unlock()
+	if sends != 1 || frame.Type != adapterproto.KindSetEffort || frame.Effort != "high" || frame.Model != "" {
+		t.Fatalf("set_effort delivery = %d %#v", sends, frame)
+	}
+}
+
 func TestCancelThreadReturnsRuntimeFailureAndRetriesCancelling(t *testing.T) {
 	ctx := context.Background()
 	store, service, runtime, key, capsuleID := threadService(t, ctx)

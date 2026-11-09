@@ -472,6 +472,64 @@ describe("Model picker", () => {
     expect(await screen.findByRole("button", { name: "Model: Sonnet" })).toBeInTheDocument();
   });
 
+  const withEffort = {
+    ...reported,
+    effort: {
+      current: "high",
+      options: [
+        { id: "low", label: "Low", description: "Fastest" },
+        { id: "high", label: "High" },
+        { id: "max", label: "Max" },
+      ],
+    },
+  };
+
+  it("reads the current model's effort levels and ignores a single level", () => {
+    const t = transcript();
+    t.models({ ...reported, effort: { current: "off", options: [{ id: "off", label: "Off" }] } });
+    expect(latestThreadModels(t.blocks)?.effort).toBeUndefined();
+    t.models({ ...reported, effort: { options: [{ id: "low", label: "Low" }, { id: "high", label: "Hi\u0007gh" }] } });
+    expect(latestThreadModels(t.blocks)?.effort).toEqual({
+      current: "",
+      currentLabel: "",
+      options: [
+        { id: "low", label: "Low", description: "" },
+        { id: "high", label: "High", description: "" },
+      ],
+    });
+  });
+
+  it("names effort changes and refusals in the transcript", () => {
+    const t = transcript();
+    t.models(withEffort);
+    t.setEffort("max");
+    t.effortError("high effort is disabled");
+    expect(buildThreadChat(t.blocks, "Running").items).toEqual([
+      { kind: "notice", key: "block-2", text: "Effort → Max" },
+      { kind: "error", key: "block-3", text: "Effort not changed: high effort is disabled" },
+    ]);
+  });
+
+  it("shows the effort next to the model and changes it from the same menu", async () => {
+    const t = transcript();
+    t.models(withEffort);
+    const changed = vi.spyOn(api, "setThreadEffort").mockResolvedValue({ thread });
+    const user = userEvent.setup();
+    renderThread(t.blocks);
+    await user.click(await screen.findByRole("button", { name: "Model: Default (recommended) · High" }));
+    const effort = within(screen.getByRole("menu", { name: "Models" })).getByRole("group", { name: "Reasoning effort" });
+    const levels = within(effort).getAllByRole("menuitemradio");
+    expect(levels.map((level) => level.textContent)).toEqual(["LowFastest", "High", "Max"]);
+    expect(levels[1]).toHaveAttribute("aria-checked", "true");
+    await user.click(levels[0]);
+    expect(changed).toHaveBeenCalledWith(thread.id, thread.resourceVersion, "low");
+    expect(await screen.findByRole("button", { name: "Model: Default (recommended) · Low, switching" })).toBeInTheDocument();
+    act(() => {
+      pushBlock(t.models({ ...withEffort, effort: { ...withEffort.effort, current: "low" } }));
+    });
+    expect(await screen.findByRole("button", { name: "Model: Default (recommended) · Low" })).toBeInTheDocument();
+  });
+
   it("closes on Escape and shows no picker when the harness reports nothing", async () => {
     const t = transcript();
     t.models(reported);

@@ -4,6 +4,7 @@
 - Date: 2026-11-08
 - Extends: ADRs 0013, 0026, 0028, and 0030
 - Amends: ADR 0028 (model switching is no longer excluded)
+- Amended by: ADR 0033 (reasoning effort travels with the model list)
 
 ## Context
 
@@ -111,4 +112,4 @@ pack images share the daemon's release tag (ADR 0021), so they stay in step. A
 custom adapter that does not negotiate `models` shows no picker.
 
 Reasoning effort, which Claude Code, Codex, and `dsh` also report, is not part
-of this decision.
+of this decision. (ADR 0033 later adds it to the model list.)
