@@ -57,7 +57,7 @@ Official harness packs are published on the same tag as
 `ghcr.io/orlojhq/meridian-capsule`. Verify each pack the same way:
 
 ```console
-for pack in opencode pi claude codex; do
+for pack in opencode pi claude codex dsh; do
   cosign verify \
     --certificate-identity "https://github.com/OrlojHQ/meridian/.github/workflows/release.yml@refs/tags/v${VERSION}" \
     --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
