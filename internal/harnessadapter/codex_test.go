@@ -94,6 +94,38 @@ func TestCodexAppServerReportsAndSwitchesModels(t *testing.T) {
 	}
 }
 
+func TestCodexAppServerListsAConfiguredModelOutsideItsCatalog(t *testing.T) {
+	// A provider connection's default model is not in Codex's catalog; it
+	// stays selectable so the operator can switch back to it.
+	t.Setenv("MERIDIAN_CODEX_HELPER_MODEL", "glm-local")
+	decoder, encoder, argumentsPath, _ := runCodexFixtureWith(t, CodexConfig{
+		ApprovalPolicy: "on-request", Sandbox: "workspace-write",
+	}, adapterproto.KindStart, "", true)
+	_ = readStatus(t, decoder, adapterproto.StatusStarting)
+	models := readKind(t, decoder, adapterproto.KindModels).Models
+	if models.Current != "glm-local" || len(models.Options) != 3 ||
+		models.Options[0].ID != "glm-local" || models.Options[0].Label != "glm-local" ||
+		models.Options[1].ID != "gpt-fixture" {
+		t.Fatalf("models = %#v", models)
+	}
+	sendSetModel(t, encoder, "switch-1", "gpt-fast")
+	if switched := readKind(t, decoder, adapterproto.KindModels).Models; switched.Current != "gpt-fast" {
+		t.Fatalf("switched = %#v", switched)
+	}
+	sendSetModel(t, encoder, "switch-2", "glm-local")
+	if back := readKind(t, decoder, adapterproto.KindModels).Models; back.Current != "glm-local" {
+		t.Fatalf("switched back = %#v", back)
+	}
+	sendTestMessage(t, encoder, "message-1", "hello")
+	_ = readUntil(t, decoder, adapterproto.KindAssistantMessage)
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+	for _, entry := range readHelperArguments(t, argumentsPath) {
+		if strings.HasPrefix(entry, "turn model=") {
+			t.Fatalf("switching back to the opening model still sent %q", entry)
+		}
+	}
+}
+
 func TestCodexAppServerContract(t *testing.T) {
 	decoder, encoder, argumentsPath, done := runCodexFixture(t, CodexConfig{
 		Command:        []string{"-c", "model=\"gpt-fixture\""},
@@ -417,7 +449,8 @@ func TestCodexAppServerHelper(t *testing.T) {
 			}
 			log = append(log, entry)
 			save()
-			reply(map[string]any{"thread": map[string]any{"id": codexFixtureThread}, "model": "gpt-fixture"})
+			reply(map[string]any{"thread": map[string]any{"id": codexFixtureThread},
+				"model": defaultString(os.Getenv("MERIDIAN_CODEX_HELPER_MODEL"), "gpt-fixture")})
 			notify("thread/started", map[string]any{"thread": map[string]any{"id": codexFixtureThread}})
 		case "model/list":
 			reply(map[string]any{"data": []any{

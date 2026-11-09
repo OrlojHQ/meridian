@@ -651,7 +651,10 @@ func (s *codexSession) response(rawID json.RawMessage, record map[string]json.Ra
 }
 
 // reportModels lists the visible models model/list returned. A malformed
-// listing reports nothing.
+// listing reports nothing. model/list names only Codex's built-in catalog, so
+// a model the Thread opened with from configuration, such as a provider
+// connection's default model, is listed first when the catalog lacks it; the
+// operator can then switch back to it.
 func (s *codexSession) reportModels(record map[string]json.RawMessage) error {
 	var result struct {
 		Data []struct {
@@ -665,8 +668,18 @@ func (s *codexSession) reportModels(record map[string]json.RawMessage) error {
 	if field(record, "result", &result) != nil {
 		return nil
 	}
+	listed := result.Data[:min(len(result.Data), 4*adapterproto.MaxModels)]
 	models := newModelSet()
-	for _, model := range result.Data[:min(len(result.Data), 4*adapterproto.MaxModels)] {
+	catalogued := false
+	for _, model := range listed {
+		if !model.Hidden && defaultString(model.Model, model.ID) == s.threadModel {
+			catalogued = true
+		}
+	}
+	if !catalogued {
+		models.add(s.threadModel, s.threadModel, "Configured for this Thread")
+	}
+	for _, model := range listed {
 		if !model.Hidden {
 			models.add(defaultString(model.Model, model.ID), model.DisplayName, model.Description)
 		}
