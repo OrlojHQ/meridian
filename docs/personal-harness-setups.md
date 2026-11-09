@@ -201,12 +201,12 @@ keys.
 Harness behavior:
 
 - **Codex** uses a `meridian` model provider with `wire_api = "responses"`,
-  because Codex 0.157 accepts no other wire API. The default model becomes
+  because Codex 0.167 accepts no other wire API. The default model becomes
   `model`. Codex has no metadata for non-OpenAI models, so it warns at start
   and assumes a 272k-token context window. If the server's context limit is
   smaller (vLLM `--max-model-len`), add `model_context_window` with that limit
   to your imported `~/.codex/config.toml`. Meridian keeps your other settings.
-  Codex 0.157 also sends a built-in `web_search` tool and, for multi-agent
+  Codex 0.167 also sends a built-in `web_search` tool and, for multi-agent
   work, a `namespace` tool. Neither is a function tool, and servers that accept
   only function tools reject the whole request; TabbyAPI does. For
   `openai-compatible` connections Meridian therefore writes

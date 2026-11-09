@@ -563,7 +563,8 @@ OpenCode's shared background service (`opencode service`). This was observed
 in the 2.2.6 pack image on 2026-11-08.
 
 The Claude Code driver follows the stream-json control protocol of Claude Code
-2.1.283, recorded against the real binary on 2026-11-07: an `initialize`
+2.1.319, checked against the real binary on 2026-11-08 (the fixtures were
+recorded from 2.1.283 on 2026-11-07 and still match): an `initialize`
 control request, `user` input records, `stream_event` partial messages whose
 text deltas share an ID with the authoritative per-block `assistant` records,
 `user` tool results, `result` turn ends (including `is_error` results such as
@@ -574,7 +575,8 @@ the `initialize` response's `commands` and `system/init`'s
 `terminal_slash_commands`.
 
 The Codex driver follows the `codex app-server generate-json-schema` output of
-Codex 0.157.1: `initialize` and `initialized`, `thread/start`,
+Codex 0.167.0, compared with the 0.157.1 schema the fixtures were recorded
+from on 2026-11-08: `initialize` and `initialized`, `thread/start`,
 `thread/resume`, `turn/start`, `turn/steer`, `turn/interrupt`, `turn/*` and
 `item/*` notifications, `item/agentMessage/delta`, `error` with `willRetry`,
 `serverRequest/resolved`, the v2 approval, user-input, and elicitation
