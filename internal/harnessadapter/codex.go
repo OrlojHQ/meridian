@@ -34,6 +34,28 @@ type CodexConfig struct {
 	ApprovalPolicy string
 	Sandbox        string
 	MCPServers     []MCPServer
+	// ModelEfforts are the reasoning effort levels of a configured model
+	// Codex's catalog does not list, such as a provider connection's default
+	// model. capsuled sets them through MERIDIAN_MODEL_EFFORTS.
+	ModelEfforts []string
+}
+
+// CodexModelEfforts parses MERIDIAN_MODEL_EFFORTS, a comma-separated list
+// of effort levels. Anything malformed yields none.
+func CodexModelEfforts(value string) []string {
+	if value == "" {
+		return nil
+	}
+	levels := strings.Split(value, ",")
+	if len(levels) > adapterproto.MaxEfforts {
+		return nil
+	}
+	for _, level := range levels {
+		if !adapterproto.ValidModelID(level) || len(level) > 32 {
+			return nil
+		}
+	}
+	return levels
 }
 
 type codexPrompt struct {
@@ -719,6 +741,13 @@ func (s *codexSession) reportModels(record map[string]json.RawMessage) error {
 		models.add(s.threadModel, s.threadModel, "Configured for this Thread")
 	}
 	s.catalog = map[string]codexEfforts{}
+	if !catalogued && models.has(s.threadModel) && len(s.config.ModelEfforts) != 0 {
+		var efforts codexEfforts
+		for _, level := range s.config.ModelEfforts {
+			efforts.levels = append(efforts.levels, adapterproto.ModelOption{ID: level})
+		}
+		s.catalog[s.threadModel] = efforts
+	}
 	for _, model := range listed {
 		if model.Hidden {
 			continue

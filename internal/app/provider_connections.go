@@ -19,6 +19,7 @@ type ConnectionInput struct {
 	BaseURL                 string                 `json:"baseUrl,omitempty"`
 	DefaultModel            string                 `json:"defaultModel,omitempty"`
 	AllowPrivateHTTP        bool                   `json:"allowPrivateHttp,omitempty"`
+	ReasoningEfforts        []string               `json:"reasoningEfforts,omitempty"`
 	ExpectedResourceVersion domain.ResourceVersion `json:"expectedResourceVersion"`
 	Revoked                 bool                   `json:"revoked,omitempty"`
 }
@@ -107,6 +108,7 @@ func (s *Service) PutProviderConnection(ctx context.Context, id string, input Co
 		result.Revoked = input.Revoked
 		if !input.Revoked {
 			result.BaseURL, result.DefaultModel, result.AllowPrivateHTTP = input.BaseURL, input.DefaultModel, input.AllowPrivateHTTP
+			result.ReasoningEfforts = input.ReasoningEfforts
 		}
 		result.KeyID = s.secretKey.ID
 		// Keep a valid encrypted empty envelope on revocation, never old key material.
@@ -139,7 +141,7 @@ func (s *Service) validateConnectionInput(input ConnectionInput) (ConnectionInpu
 		if len(input.APIKey) < 8 {
 			return input, fmt.Errorf("%w: invalid API key", domain.ErrInvalid)
 		}
-		if input.BaseURL != "" || input.DefaultModel != "" || input.AllowPrivateHTTP {
+		if input.BaseURL != "" || input.DefaultModel != "" || input.AllowPrivateHTTP || len(input.ReasoningEfforts) != 0 {
 			return input, fmt.Errorf("%w: official providers use fixed upstreams; choose a custom endpoint type", domain.ErrInvalid)
 		}
 		return input, nil
@@ -153,6 +155,17 @@ func (s *Service) validateConnectionInput(input ConnectionInput) (ConnectionInpu
 	}
 	if input.DefaultModel != "" && !harnesssetup.ValidModel(input.DefaultModel) {
 		return input, fmt.Errorf("%w: invalid default model name", domain.ErrInvalid)
+	}
+	if len(input.ReasoningEfforts) != 0 {
+		if input.DefaultModel == "" {
+			return input, fmt.Errorf("%w: reasoning effort levels describe the default model; set one", domain.ErrInvalid)
+		}
+		levels, ok := harnesssetup.ValidEfforts(input.ReasoningEfforts)
+		if !ok {
+			return input, fmt.Errorf("%w: reasoning effort levels must be distinct values of %s",
+				domain.ErrInvalid, strings.Join(harnesssetup.EffortLevels, ", "))
+		}
+		input.ReasoningEfforts = levels
 	}
 	input.BaseURL = base
 	return input, nil
@@ -261,5 +274,5 @@ func (s *Service) runtimeProviderConnection(ctx context.Context, capsule domain.
 	if err != nil {
 		return nil, err
 	}
-	return &harnesssetup.Connection{Provider: connection.Provider, URL: s.gatewayURL + "/" + connection.Provider, Token: token, Model: connection.DefaultModel}, nil
+	return &harnesssetup.Connection{Provider: connection.Provider, URL: s.gatewayURL + "/" + connection.Provider, Token: token, Model: connection.DefaultModel, Efforts: connection.ReasoningEfforts}, nil
 }

@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -136,6 +137,41 @@ func TestCodexAppServerReportsAndChangesEffort(t *testing.T) {
 	}
 	if strings.Join(turns, ",") != "turn effort=xhigh,turn model=gpt-fast,turn effort=low" {
 		t.Fatalf("turn overrides = %v", turns)
+	}
+}
+
+func TestCodexAppServerOffersConnectionEffortForItsConfiguredModel(t *testing.T) {
+	t.Setenv("MERIDIAN_CODEX_HELPER_MODEL", "glm-local")
+	decoder, encoder, argumentsPath, _ := runCodexFixtureWith(t, CodexConfig{
+		ApprovalPolicy: "on-request", Sandbox: "workspace-write",
+		ModelEfforts: CodexModelEfforts("low,high,max"),
+	}, adapterproto.KindStart, "", true)
+	_ = readStatus(t, decoder, adapterproto.StatusStarting)
+	models := readKind(t, decoder, adapterproto.KindModels).Models
+	if models.Current != "glm-local" || models.Effort == nil || len(models.Effort.Options) != 3 ||
+		models.Effort.Options[2].Label != "Max" || models.Effort.Current != "" {
+		t.Fatalf("models = %#v", models)
+	}
+	sendSetEffort(t, encoder, "effort-1", "max")
+	if changed := readKind(t, decoder, adapterproto.KindModels).Models.Effort; changed.Current != "max" {
+		t.Fatalf("changed = %#v", changed)
+	}
+	sendTestMessage(t, encoder, "message-1", "hello")
+	_ = readUntil(t, decoder, adapterproto.KindAssistantMessage)
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+	if !slices.Contains(readHelperArguments(t, argumentsPath), "turn effort=max") {
+		t.Fatalf("turns = %v", readHelperArguments(t, argumentsPath))
+	}
+	// A catalog model keeps its own levels after a switch.
+	sendSetModel(t, encoder, "switch-1", "gpt-fast")
+	if switched := readKind(t, decoder, adapterproto.KindModels).Models; switched.Effort == nil ||
+		len(switched.Effort.Options) != 1 || switched.Effort.Options[0].ID != "low" {
+		t.Fatalf("switched = %#v", switched)
+	}
+	for _, bad := range []string{"low,,high", "a\tb", strings.Repeat("x,", 20) + "x"} {
+		if CodexModelEfforts(bad) != nil {
+			t.Errorf("accepted %q", bad)
+		}
 	}
 }
 

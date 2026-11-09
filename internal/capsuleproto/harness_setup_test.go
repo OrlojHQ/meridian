@@ -265,6 +265,107 @@ func TestCustomEndpointHarnessConfiguration(t *testing.T) {
 	}
 }
 
+func TestConnectionEffortLevelsReachEachHarness(t *testing.T) {
+	token := strings.Repeat("c", 64)
+	prepare := func(t *testing.T, harness, provider string, efforts []string) (map[string]string, error) {
+		s := &Server{config: ServerConfig{HarnessHome: t.TempDir()}}
+		return s.prepareProviderConnection(context.Background(), &harnesssetup.Connection{
+			Provider: provider, URL: "https://meridian.example/provider-gateway/" + provider,
+			Token: token, Model: "glm-5", Efforts: efforts,
+		}, nil, harness, nil)
+	}
+	readJSON := func(t *testing.T, path string, value any) {
+		t.Helper()
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(raw, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Levels arrive out of order and are written in canonical order.
+	levels := []string{"max", "low", "high"}
+
+	t.Run("pi", func(t *testing.T) {
+		env, err := prepare(t, "pi", "openai-compatible", levels)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var config map[string]any
+		readJSON(t, filepath.Join(env["HOME"], ".pi/agent/models.json"), &config)
+		model := config["providers"].(map[string]any)["meridian"].(map[string]any)["models"].([]any)[0].(map[string]any)
+		levels := model["thinkingLevelMap"].(map[string]any)
+		if model["reasoning"] != true || model["compat"].(map[string]any)["supportsReasoningEffort"] != true ||
+			levels["low"] != "low" || levels["high"] != "high" || levels["max"] != "max" ||
+			levels["medium"] != nil || levels["minimal"] != nil || levels["xhigh"] != nil {
+			t.Fatalf("pi model = %v", model)
+		}
+		if _, declared := levels["medium"]; !declared {
+			t.Fatal("an undeclared base level must be pinned to null, or Pi offers it")
+		}
+	})
+	t.Run("dsh", func(t *testing.T) {
+		env, err := prepare(t, "dsh", "openai-compatible", levels)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var entries []map[string]any
+		readJSON(t, filepath.Join(env["DSH_HOME"], "cordis.patch.yml"), &entries)
+		model := entries[0]["config"].(map[string]any)["providers"].(map[string]any)["meridian"].(map[string]any)["models"].([]any)[0].(map[string]any)
+		efforts := model["reasoningEfforts"].(map[string]any)
+		if _, off := efforts["off"]; !off || efforts["off"] != nil || efforts["low"] != "low" || efforts["max"] != "max" ||
+			len(efforts) != 4 || model["compat"].(map[string]any)["supportsReasoningEffort"] != true {
+			t.Fatalf("dsh model = %v", model)
+		}
+	})
+	t.Run("opencode", func(t *testing.T) {
+		env, err := prepare(t, "opencode", "openai-compatible", levels)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var config map[string]any
+		readJSON(t, filepath.Join(env["HOME"], ".config/opencode/opencode.json"), &config)
+		model := config["provider"].(map[string]any)["meridian"].(map[string]any)["models"].(map[string]any)["glm-5"].(map[string]any)
+		variants := model["variants"].(map[string]any)
+		if model["reasoning"] != true || len(variants) != 3 ||
+			variants["high"].(map[string]any)["reasoningEffort"] != "high" {
+			t.Fatalf("opencode model = %v", model)
+		}
+	})
+	t.Run("codex", func(t *testing.T) {
+		env, err := prepare(t, "codex", "openai-compatible", levels)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, err := os.ReadFile(filepath.Join(env["HOME"], ".codex/config.toml"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		config := map[string]any{}
+		if err := toml.Unmarshal(raw, &config); err != nil {
+			t.Fatal(err)
+		}
+		if env["MERIDIAN_MODEL_EFFORTS"] != "low,high,max" || config["model_supports_reasoning_summaries"] != true {
+			t.Fatalf("codex env %q config %v", env["MERIDIAN_MODEL_EFFORTS"], config)
+		}
+	})
+	t.Run("no levels leave configs unchanged", func(t *testing.T) {
+		env, err := prepare(t, "codex", "openai-compatible", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, set := env["MERIDIAN_MODEL_EFFORTS"]; set {
+			t.Fatal("effort levels set without a declaration")
+		}
+	})
+	for _, bad := range [][]string{{"ultra"}, {"low", "low"}, {"off"}} {
+		if _, err := prepare(t, "pi", "openai-compatible", bad); err == nil {
+			t.Errorf("accepted effort levels %v", bad)
+		}
+	}
+}
+
 func TestCodexToolDefaultsApplyOnlyToCustomEndpoints(t *testing.T) {
 	token := strings.Repeat("c", 64)
 	render := func(t *testing.T, provider, imported string) map[string]any {

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -164,6 +165,37 @@ type Connection struct {
 	URL      string `json:"url"`
 	Token    string `json:"token"`
 	Model    string `json:"model,omitempty"`
+	// Efforts are the reasoning effort levels the model accepts, validated
+	// by ValidEfforts. Empty means the harness's own view of the model.
+	Efforts []string `json:"efforts,omitempty"`
+}
+
+// EffortLevels is the effort vocabulary a connection may declare, from least
+// to greatest. Every harness that reads a connection's levels shares these
+// names: Pi and DeepSeek Harness thinking levels, OpenCode variants, and
+// Codex's reasoning efforts. "off" is always offered and never declared.
+var EffortLevels = []string{"minimal", "low", "medium", "high", "xhigh", "max"}
+
+// ValidEfforts accepts a non-empty list of distinct EffortLevels and returns
+// it in canonical order.
+func ValidEfforts(levels []string) ([]string, bool) {
+	if len(levels) == 0 || len(levels) > len(EffortLevels) {
+		return nil, false
+	}
+	seen := map[string]bool{}
+	for _, level := range levels {
+		if seen[level] || !slices.Contains(EffortLevels, level) {
+			return nil, false
+		}
+		seen[level] = true
+	}
+	ordered := make([]string, 0, len(levels))
+	for _, level := range EffortLevels {
+		if seen[level] {
+			ordered = append(ordered, level)
+		}
+	}
+	return ordered, true
 }
 
 // ValidModel bounds a configured model name. It is written into native

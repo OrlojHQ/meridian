@@ -3975,6 +3975,13 @@ components:
         allowPrivateHttp:
           type: boolean
           description: Whether this custom endpoint uses plaintext HTTP to a private-network address.
+        reasoningEfforts:
+          type: array
+          maxItems: 6
+          items: { $ref: '#/components/schemas/ReasoningEffortLevel' }
+          description: >-
+            The reasoning effort levels the default model accepts, in order.
+            Harnesses offer exactly these, plus off, for that model.
         createdAt:
           type: string
           format: date-time
@@ -3996,6 +4003,12 @@ components:
         privateHttpAllowed:
           type: boolean
           description: Whether the daemon permits custom endpoints to opt in to plaintext HTTP on private networks.
+    ReasoningEffortLevel:
+      type: string
+      enum: [minimal, low, medium, high, xhigh, max]
+      description: >-
+        An effort level a custom endpoint's model accepts. The name is sent
+        upstream as the request's reasoning effort.
     ProviderConnectionType:
       type: string
       enum: [openai, anthropic, openai-compatible, anthropic-compatible]
@@ -4029,6 +4042,13 @@ components:
         allowPrivateHttp:
           type: boolean
           description: Opt in to a plaintext http baseUrl. Requires the daemon's --provider-gateway-allow-private-http flag.
+        reasoningEfforts:
+          type: array
+          maxItems: 6
+          items: { $ref: '#/components/schemas/ReasoningEffortLevel' }
+          description: >-
+            Optional, custom endpoints with a defaultModel only: distinct
+            effort levels the model accepts. Stored in canonical order.
         expectedResourceVersion:
           type: integer
           format: int64

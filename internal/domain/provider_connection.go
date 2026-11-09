@@ -14,8 +14,12 @@ type ProviderConnection struct {
 	Ciphertext      []byte          `json:"-"`
 
 	// Custom endpoint types only. These stay on the control plane and are
-	// never sent to a Capsule, except the model name.
+	// never sent to a Capsule, except the model name and its effort levels.
 	BaseURL          string `json:"baseUrl,omitempty"`
 	DefaultModel     string `json:"defaultModel,omitempty"`
 	AllowPrivateHTTP bool   `json:"allowPrivateHttp,omitempty"`
+	// ReasoningEfforts are the effort levels the default model accepts, in
+	// harnesssetup.EffortLevels order. Harnesses offer exactly these (plus
+	// off) for that model and send each level's name upstream.
+	ReasoningEfforts []string `json:"reasoningEfforts,omitempty"`
 }
