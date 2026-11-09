@@ -9,6 +9,12 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `meridiand` and the mutating `admin` commands hold the data directory with
+  an exclusive lock and a heartbeat lease file, and refuse to start while
+  another daemon or maintenance command holds it, including one across a
+  Docker Desktop bind mount, where two daemons could corrupt the SQLite
+  database (ADR 0035).
+
 - Custom endpoint connections can declare the reasoning effort levels their
   default model accepts (`--effort low,high,max`, or checkboxes in Harness
   settings). Pi, DeepSeek Harness, OpenCode, and Codex then offer those levels

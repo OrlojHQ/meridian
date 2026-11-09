@@ -124,7 +124,10 @@ Docker ownership labels and deterministic names support adoption after restart. 
 from this repo and defaults to `meridian-capsule:dev`. It does **not** build the
 dynamically selected Capsule image. The service mounts the Docker socket into
 `meridiand` only. Daemon state is bind-mounted from `.local/meridian-data` so
-the host CLI/TUI can read the installation token.
+the host CLI/TUI can read the installation token. Do not start a second
+`meridiand` on the host with that directory while the stack runs: SQLite's
+locks do not cross Docker Desktop's bind mount, so the host daemon now refuses
+to start (ADR 0035). Give a host daemon its own `--data-dir`.
 
 `deploy/docker/compose.release.yaml` pulls a published `meridiand` image. Set
 `MERIDIAN_VERSION` to a verified release tag. See the README **Run a published

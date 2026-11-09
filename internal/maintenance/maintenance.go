@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/OrlojHQ/meridian/internal/datadir"
 	"github.com/OrlojHQ/meridian/internal/domain"
 	credentialsecrets "github.com/OrlojHQ/meridian/internal/secrets"
 	"github.com/OrlojHQ/meridian/internal/store/sqlite"
@@ -71,6 +72,10 @@ type TranscriptKeyRotationReport struct {
 
 var rotationTestHook func(int) error
 
+// leaseOptions is the data directory lease every mutating maintenance
+// operation holds, so it cannot run beside meridiand or another operation.
+var leaseOptions = datadir.Options{}
+
 // RotateTranscriptKey performs an offline all-Thread rewrap. meridiand and all
 // other maintenance commands must remain stopped for the entire operation.
 // A transitional restrictive keyring keeps both sides decryptable across a
@@ -87,6 +92,11 @@ func RotateTranscriptKey(
 	if err != nil {
 		return TranscriptKeyRotationReport{}, err
 	}
+	lease, err := datadir.Acquire(ctx, dataDir, "meridian admin transcript-key rotate", leaseOptions)
+	if err != nil {
+		return TranscriptKeyRotationReport{}, err
+	}
+	defer lease.Release()
 	if activeKeyFile == "" {
 		activeKeyFile = transcripts.DefaultKeyPath(dataDir)
 	}
@@ -216,6 +226,11 @@ func CreateBackup(ctx context.Context, dataDir, destination string) (Manifest, e
 	if err != nil {
 		return Manifest{}, err
 	}
+	lease, err := datadir.Acquire(ctx, dataDir, "meridian admin backup create", leaseOptions)
+	if err != nil {
+		return Manifest{}, err
+	}
+	defer lease.Release()
 	parent, base, err := destinationParent(destination)
 	if err != nil {
 		return Manifest{}, err
@@ -557,6 +572,14 @@ func RestoreBackupWithOptions(
 		if existing && !options.Replace {
 			return Manifest{}, fmt.Errorf("restore destination is not empty; pass --replace and --yes after stopping meridiand")
 		}
+		if existing {
+			// The replaced installation moves aside with its lease files.
+			lease, err := datadir.Acquire(ctx, dataDir, "meridian admin restore", leaseOptions)
+			if err != nil {
+				return Manifest{}, err
+			}
+			defer lease.Release()
+		}
 	} else if !errors.Is(statErr, os.ErrNotExist) {
 		return Manifest{}, statErr
 	}
@@ -672,6 +695,13 @@ func VerifyCAS(ctx context.Context, dataDir string, deleteEligible bool) (CASRep
 	dataDir, err := filepath.EvalSymlinks(dataDir)
 	if err != nil {
 		return CASReport{}, err
+	}
+	if deleteEligible {
+		lease, err := datadir.Acquire(ctx, dataDir, "meridian admin cas verify --delete", leaseOptions)
+		if err != nil {
+			return CASReport{}, err
+		}
+		defer lease.Release()
 	}
 	dbPath := filepath.Join(dataDir, "meridian.db")
 	if _, err := inspectDatabase(ctx, dbPath, false); err != nil {
