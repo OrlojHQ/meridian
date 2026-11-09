@@ -7,123 +7,27 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-08
+
+### Upgrade notes
+
+- Stop the old `meridiand` before starting 0.3.0 on the same data directory.
+  0.3.0 holds the directory with a lease and refuses to start beside another
+  0.3.0 daemon or maintenance command, but a 0.2.x daemon writes no lease and
+  is not detected. Never share one data directory between two daemons,
+  including a host daemon and a container through a bind mount.
+- Startup applies forward-only migrations 0014 to 0019 (coordination,
+  operator notices, subagent lifecycle, spawn approval, subagent results, and
+  Delivery proposals). Create and verify a backup with the 0.2.x binary first;
+  rolling back requires that backup and the old binary.
+- Official harness pack images move with the release tag. The packs pin
+  Claude Code 2.1.319, Codex 0.167.0, OpenCode 2.2.6, Pi 0.87.1, and DeepSeek
+  Harness 0.2.2-rc.1 (a developer preview).
+- New provider connection features (custom endpoints, reasoning effort
+  levels) still need the provider gateway, as in 0.2.x: an HTTPS
+  `--provider-gateway-url` that Capsules can reach.
+
 ### Added
-
-- `meridiand` and the mutating `admin` commands hold the data directory with
-  an exclusive lock and a heartbeat lease file, and refuse to start while
-  another daemon or maintenance command holds it, including one across a
-  Docker Desktop bind mount, where two daemons could corrupt the SQLite
-  database (ADR 0035).
-
-- Custom endpoint connections can declare the reasoning effort levels their
-  default model accepts (`--effort low,high,max`, or checkboxes in Harness
-  settings). Pi, DeepSeek Harness, OpenCode, and Codex then offer those levels
-  in the composer's effort picker and send them upstream (ADR 0034).
-
-- A lead Thread's Agents list shows the model and reasoning effort each live
-  subagent last reported (`ThreadLink.model` and `ThreadLink.effort`). The
-  daemon derives them in memory from the subagent's transcript and never
-  stores them.
-
-- The model picker has a search field when the harness lists more than eight
-  models; it matches labels, IDs, and descriptions, and Enter picks the first
-  match.
-
-- The Thread composer's model picker also shows and changes reasoning effort
-  when the harness reports levels for its current model ("Sonnet · High").
-  Claude Code, Codex, Pi, and ACP agents such as DeepSeek Harness report their
-  levels; a change applies from the next turn
-  (`POST /threads/{threadId}/effort`, ADR 0033).
-
-- ACP agents can ask the operator questions. The `acp` driver accepts
-  form-mode `elicitation/create` when permissions are enabled and asks each
-  field in turn as a button question or a typed answer, checks every answer
-  against the agent's schema, and declines URL-mode and unsupported forms
-  (ADR 0032).
-
-- The Thread composer shows the session's current model inside the message
-  box and switches it from a menu of the models the harness reports
-  (`POST /threads/{threadId}/model`). Claude Code, Codex, Pi, OpenCode, and
-  DeepSeek Harness report their models; the switch applies from the next turn,
-  and a model the harness does not offer is refused without ending the session
-  (ADR 0031). Codex also lists the model the Thread opened with, such as a
-  provider connection's default, when its own catalog lacks it.
-
-- DeepSeek Harness (`dsh`) Threads can lead subagents: the `dsh` structured
-  profile registers `meridian-coord` through ACP `session/new`, like
-  OpenCode (ADR 0029).
-
-- Harness settings and `meridian harness import` can import a DeepSeek Harness
-  (`dsh`) setup from the real local home (`~/.dsh` / `$DSH_HOME`), including
-  `settings.yaml`, `cordis.patch.yml`, `skills/`, and `profiles/`. Credentials
-  and `!!js` YAML tags are excluded. Capsule images are unchanged.
-
-- Coordinated Threads can `propose-delivery` (`title`, `body`, `branch`) for
-  the operator to approve. The proposal is persisted as an unapproved
-  Delivery (`proposedBy: agent`) and never ships on its own.
-  `POST /deliveries/{id}/approve` binds the reviewed HEAD and tree and then
-  follows the existing execute path; `POST /deliveries/{id}/reject` is
-  terminal. The board shows `needs_you` / `proposed_delivery`. Title and body
-  are treated as hostile. Capsules cannot approve or reject (ADR 0029).
-
-- Subagents can send an explicit `report` (`done`, `blocked`, or `failed`
-  plus a ≤16 KiB summary) to their lead, and a lead can `patch` a bounded
-  `git format-patch` plus working-tree diff from the child's Capsule
-  (default 1 MiB, max 4 MiB, hooks disabled). Explicit reports override the
-  turn-end default until a later assistant message; ending the child's
-  session does not replace them. They are persisted only in the child's
-  encrypted transcript. Patch bytes are never stored; link views carry HEAD, base
-  commit, and a content-free diffstat. Subagent mailboxes expose `report`,
-  `propose-delivery`, and `whoami`. Reports and patches are untrusted data
-  (ADR 0029).
-
-- Operator spawn approvals and grant updates. A Coordination Grant may set
-  `spawnApproval: operator` (`--spawn-approval operator`, "Approve each
-  subagent spawn") so each lead spawn waits on the board until
-  `POST /coordination-requests/{id}/approve` or `/deny` (`meridian approvals`).
-  Pending children keep their encrypted prompt, are not provisioned, do not
-  count as live, and cannot be promoted. `PATCH /coordination-grants/{id}`
-  (`meridian grant update`) lets the operator loosen or tighten limits,
-  harnesses, remaining deadline, archiveAfter and spawn approval; switching
-  to `auto` leaves already queued spawns queued (ADR 0029).
-
-- Lead Threads render subagent reports as cards (name, status, summary, and a
-  link to the subagent Thread) instead of the raw coordination wake prompt, and
-  pin a tray above the composer for subagents that need the operator. Report
-  text is treated as hostile: control and bidi characters are stripped, length
-  is capped, and link IDs stay out of the main view.
-
-- Browser notifications, a tab badge, and a `G` then `N` shortcut for Capsules
-  that need the operator. Notifications are opt-in from the status bar, fire
-  only while the tab is hidden, skip the Capsule already open, and carry only a
-  count plus "Meridian needs you" — never Thread titles, prompts, permission
-  details, or transcript text. The document title shows `(N) Meridian`. The
-  permission choice stays in the browser; no prompt drafts are written to
-  browser storage, and there is no phone push.
-
-- Subagent lifecycle. A finished subagent is paused and archived after its
-  grant's `archiveAfter` (default 24 hours, 0 disables it; `--archive-after`,
-  `archiveAfterSeconds`): its session ends and its Thread pauses, while the
-  workspace and transcript stay. Subagents that need you, failed, or were
-  promoted are never archived, and resuming the Thread brings a subagent back.
-  `POST /capsules/{id}/promote` (`meridian capsule promote`, "Promote to
-  main") makes a subagent a main Capsule that keeps its link to the lead
-  unless `detach` is set; promotion is permanent and grants no coordination
-  authority. The browser sidebar now lists main Capsules with each lead's
-  subagent rollup, plus subagents that need you, and the board and Subagents
-  panel fold archived subagents under "Archived (n)". Links gain `archivedAt`,
-  `promotedAt` and the `detached` close reason; Capsules gain `promotedAt`;
-  rollups gain `archived` (ADR 0029).
-
-- A board of every Capsule by status. `GET /board`, `meridian board` and the
-  browser's Board view group Capsules across Projects into needs you, working,
-  PR open, ready for review, idle, paused and sealed, with the latest Delivery
-  and, for leads, a subagent rollup. Subagents fold under their lead unless
-  they need you; `expand=all` (`--all`, "Show all subagents") lists every
-  subagent. The command palette gains "Next item needing me". When the
-  operator messages a subagent directly, its lead's next report wake says so
-  without the message text, and the message does not count against the lead's
-  per-subagent limit; thread links gain `operatorMessages` (ADR 0029).
 
 - A structured Thread can lead subagent Threads. Spawning it with a
   Coordination Grant (`meridian thread spawn --lead`, the browser's "Lead
@@ -146,6 +50,64 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   validated `skills/<name>/SKILL.md` files, installed under
   `/usr/local/share/meridian/<pack>/skills/`.
 
+- DeepSeek Harness (`dsh`) Threads can lead subagents: the `dsh` structured
+  profile registers `meridian-coord` through ACP `session/new`, like
+  OpenCode (ADR 0029).
+
+- Subagent lifecycle. A finished subagent is paused and archived after its
+  grant's `archiveAfter` (default 24 hours, 0 disables it; `--archive-after`,
+  `archiveAfterSeconds`): its session ends and its Thread pauses, while the
+  workspace and transcript stay. Subagents that need you, failed, or were
+  promoted are never archived, and resuming the Thread brings a subagent back.
+  `POST /capsules/{id}/promote` (`meridian capsule promote`, "Promote to
+  main") makes a subagent a main Capsule that keeps its link to the lead
+  unless `detach` is set; promotion is permanent and grants no coordination
+  authority. The browser sidebar now lists main Capsules with each lead's
+  subagent rollup, plus subagents that need you, and the board and Subagents
+  panel fold archived subagents under "Archived (n)". Links gain `archivedAt`,
+  `promotedAt` and the `detached` close reason; Capsules gain `promotedAt`;
+  rollups gain `archived` (ADR 0029).
+
+- Subagents can send an explicit `report` (`done`, `blocked`, or `failed`
+  plus a ≤16 KiB summary) to their lead, and a lead can `patch` a bounded
+  `git format-patch` plus working-tree diff from the child's Capsule
+  (default 1 MiB, max 4 MiB, hooks disabled). Explicit reports override the
+  turn-end default until a later assistant message; ending the child's
+  session does not replace them. They are persisted only in the child's
+  encrypted transcript. Patch bytes are never stored; link views carry HEAD, base
+  commit, and a content-free diffstat. Subagent mailboxes expose `report`,
+  `propose-delivery`, and `whoami`. Reports and patches are untrusted data
+  (ADR 0029).
+
+- Lead Threads render subagent reports as cards (name, status, summary, and a
+  link to the subagent Thread) instead of the raw coordination wake prompt, and
+  pin a tray above the composer for subagents that need the operator. Report
+  text is treated as hostile: control and bidi characters are stripped, length
+  is capped, and link IDs stay out of the main view.
+
+- Coordinated Threads can `propose-delivery` (`title`, `body`, `branch`) for
+  the operator to approve. The proposal is persisted as an unapproved
+  Delivery (`proposedBy: agent`) and never ships on its own.
+  `POST /deliveries/{id}/approve` binds the reviewed HEAD and tree and then
+  follows the existing execute path; `POST /deliveries/{id}/reject` is
+  terminal. The board shows `needs_you` / `proposed_delivery`. Title and body
+  are treated as hostile. Capsules cannot approve or reject (ADR 0029).
+
+- Operator spawn approvals and grant updates. A Coordination Grant may set
+  `spawnApproval: operator` (`--spawn-approval operator`, "Approve each
+  subagent spawn") so each lead spawn waits on the board until
+  `POST /coordination-requests/{id}/approve` or `/deny` (`meridian approvals`).
+  Pending children keep their encrypted prompt, are not provisioned, do not
+  count as live, and cannot be promoted. `PATCH /coordination-grants/{id}`
+  (`meridian grant update`) lets the operator loosen or tighten limits,
+  harnesses, remaining deadline, archiveAfter and spawn approval; switching
+  to `auto` leaves already queued spawns queued (ADR 0029).
+
+- A lead Thread's Agents list shows the model and reasoning effort each live
+  subagent last reported (`ThreadLink.model` and `ThreadLink.effort`). The
+  daemon derives them in memory from the subagent's transcript and never
+  stores them.
+
 - Browser Threads work with every official pack. Each pack now installs a
   structured profile next to its native one under the same name. New
   `claude-stream` and `codex-app-server` adapter drivers run Claude Code's
@@ -154,29 +116,6 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   `meridian.adapter.v1`, and end every turn with `idle`. Both accept
   `--mcp-server` to register a stdio MCP server in the harness. Threads
   authenticate through provider connections (ADR 0026).
-
-- Custom endpoint provider connections. `openai-compatible` and
-  `anthropic-compatible` connections send gateway traffic to a self-hosted
-  server such as vLLM, Ollama, or LiteLLM. The base URL, optional key, and
-  default model are set on the connection and never reach a Capsule. Codex,
-  OpenCode, and Pi use OpenAI-compatible endpoints; Claude Code uses
-  Anthropic-compatible ones. Plaintext HTTP to private-network hosts needs
-  `meridiand --provider-gateway-allow-private-http` and a per-connection
-  opt-in. Use `meridian harness connect openai-compatible --base-url URL`
-  or the Provider connections form (ADR 0027). For these connections, Codex
-  turns off its `web_search` tool and `multi_agent` feature by default,
-  because many compatible servers accept only function tools.
-
-- Typing `/` in the Thread composer opens a filterable menu of the commands
-  the harness reports for this session. Claude Code reports its commands at
-  startup, Pi through `get_commands`, and OpenCode through ACP
-  `available_commands_update`.
-  Codex reports `compact`, `review`, and its skills, which the adapter runs
-  through app-server calls, and Pi gains a `compact` action. Adapters send
-  the list in a new negotiated, bounded `commands` frame of
-  `meridian.adapter.v1`, and Thread blocks expose it as a `commands` event.
-  Unknown `/text` is still sent as a prompt. Stop and New session appear as
-  Meridian controls (ADR 0028).
 
 - A new `acp` adapter driver runs any Agent Client Protocol agent as a
   structured harness. It maps prompts, streamed messages, tool calls, plans,
@@ -203,9 +142,76 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   harnesses `capsuled` can configure. The gateway accepts Anthropic SDK
   clients' `?beta=true` marker and does not forward it.
 
+- Harness settings and `meridian harness import` can import a DeepSeek Harness
+  (`dsh`) setup from the real local home (`~/.dsh` / `$DSH_HOME`), including
+  `settings.yaml`, `cordis.patch.yml`, `skills/`, and `profiles/`. Credentials
+  and `!!js` YAML tags are excluded. Capsule images are unchanged.
+
+- ACP agents can ask the operator questions. The `acp` driver accepts
+  form-mode `elicitation/create` when permissions are enabled and asks each
+  field in turn as a button question or a typed answer, checks every answer
+  against the agent's schema, and declines URL-mode and unsupported forms
+  (ADR 0032).
+
 - `meridian project apply-harness PROJECT_ID NAME=IMAGE` allowlists a custom
   harness image on an existing Project. `meridian thread follow --until-idle`
   exits when the turn that answers the latest prompt goes idle.
+
+- Custom endpoint provider connections. `openai-compatible` and
+  `anthropic-compatible` connections send gateway traffic to a self-hosted
+  server such as vLLM, Ollama, or LiteLLM. The base URL, optional key, and
+  default model are set on the connection and never reach a Capsule. Codex,
+  OpenCode, and Pi use OpenAI-compatible endpoints; Claude Code uses
+  Anthropic-compatible ones. Plaintext HTTP to private-network hosts needs
+  `meridiand --provider-gateway-allow-private-http` and a per-connection
+  opt-in. Use `meridian harness connect openai-compatible --base-url URL`
+  or the Provider connections form (ADR 0027). For these connections, Codex
+  turns off its `web_search` tool and `multi_agent` feature by default,
+  because many compatible servers accept only function tools.
+
+- The Thread composer shows the session's current model inside the message
+  box and switches it from a menu of the models the harness reports
+  (`POST /threads/{threadId}/model`). Claude Code, Codex, Pi, OpenCode, and
+  DeepSeek Harness report their models; the switch applies from the next turn,
+  and a model the harness does not offer is refused without ending the session
+  (ADR 0031). Codex also lists the model the Thread opened with, such as a
+  provider connection's default, when its own catalog lacks it.
+
+- The Thread composer's model picker also shows and changes reasoning effort
+  when the harness reports levels for its current model ("Sonnet · High").
+  Claude Code, Codex, Pi, and ACP agents such as DeepSeek Harness report their
+  levels; a change applies from the next turn
+  (`POST /threads/{threadId}/effort`, ADR 0033).
+
+- Custom endpoint connections can declare the reasoning effort levels their
+  default model accepts (`--effort low,high,max`, or checkboxes in Harness
+  settings). Pi, DeepSeek Harness, OpenCode, and Codex then offer those levels
+  in the composer's effort picker and send them upstream (ADR 0034).
+
+- The model picker has a search field when the harness lists more than eight
+  models; it matches labels, IDs, and descriptions, and Enter picks the first
+  match.
+
+- Typing `/` in the Thread composer opens a filterable menu of the commands
+  the harness reports for this session. Claude Code reports its commands at
+  startup, Pi through `get_commands`, and OpenCode through ACP
+  `available_commands_update`.
+  Codex reports `compact`, `review`, and its skills, which the adapter runs
+  through app-server calls, and Pi gains a `compact` action. Adapters send
+  the list in a new negotiated, bounded `commands` frame of
+  `meridian.adapter.v1`, and Thread blocks expose it as a `commands` event.
+  Unknown `/text` is still sent as a prompt. Stop and New session appear as
+  Meridian controls (ADR 0028).
+
+- A board of every Capsule by status. `GET /board`, `meridian board` and the
+  browser's Board view group Capsules across Projects into needs you, working,
+  PR open, ready for review, idle, paused and sealed, with the latest Delivery
+  and, for leads, a subagent rollup. Subagents fold under their lead unless
+  they need you; `expand=all` (`--all`, "Show all subagents") lists every
+  subagent. The command palette gains "Next item needing me". When the
+  operator messages a subagent directly, its lead's next report wake says so
+  without the message text, and the message does not count against the lead's
+  per-subagent limit; thread links gain `operatorMessages` (ADR 0029).
 
 - Board and Activity rows that wait for permission or input can be peeked
   open to see which permission, tool or command is being asked for, and
@@ -213,6 +219,20 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   only an explicit peek reads that Thread's transcript tail, and nothing is
   cached or polled. Agent-supplied request text is shown as capped plain text
   with control and bidirectional characters removed.
+
+- Browser notifications, a tab badge, and a `G` then `N` shortcut for Capsules
+  that need the operator. Notifications are opt-in from the status bar, fire
+  only while the tab is hidden, skip the Capsule already open, and carry only a
+  count plus "Meridian needs you" — never Thread titles, prompts, permission
+  details, or transcript text. The document title shows `(N) Meridian`. The
+  permission choice stays in the browser; no prompt drafts are written to
+  browser storage, and there is no phone push.
+
+- `meridiand` and the mutating `admin` commands hold the data directory with
+  an exclusive lock and a heartbeat lease file, and refuse to start while
+  another daemon or maintenance command holds it, including one across a
+  Docker Desktop bind mount, where two daemons could corrupt the SQLite
+  database (ADR 0035).
 
 ### Changed
 
@@ -528,7 +548,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - Docker and Agent Sandbox are not claimed as hostile multi-tenant isolation
   boundaries; hardened runtime deployment and external review remain required.
 
-[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/OrlojHQ/meridian/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/OrlojHQ/meridian/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/OrlojHQ/meridian/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/OrlojHQ/meridian/releases/tag/v0.1.0
