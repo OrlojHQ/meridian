@@ -210,6 +210,10 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- The Claude Code pack pins Claude Code 2.1.319 (was 2.1.283) and the Codex
+  pack pins Codex 0.167.0 (was 0.157.1). Both adapters' upstream contracts
+  are unchanged; Pi stays on 0.87.1.
+
 - Activity and Board are one Inbox at `/ui/`. The page keeps Board status
   lanes (needs you, working, PR open, ready for review, idle, paused, sealed)
   and the Activity headline ("N need attention", or "All caught up"), with
