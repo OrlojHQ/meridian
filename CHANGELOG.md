@@ -9,6 +9,10 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- The model picker has a search field when the harness lists more than eight
+  models; it matches labels, IDs, and descriptions, and Enter picks the first
+  match.
+
 - The Thread composer's model picker also shows and changes reasoning effort
   when the harness reports levels for its current model ("Sonnet · High").
   Claude Code, Codex, Pi, and ACP agents such as DeepSeek Harness report their
