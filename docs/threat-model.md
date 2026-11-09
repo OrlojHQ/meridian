@@ -289,8 +289,9 @@ traffic uses the lease design: for an `openai-compatible` or
 `anthropic-compatible` connection with a default model, `capsuled` writes a
 home-level Cordis patch whose only model route is the connection's gateway
 URL, reading the lease from `MERIDIAN_PROVIDER_TOKEN`. The patch is JSON, so
-no `!!js` tag reaches `dsh`'s evaluating YAML loader, and the model name is
-validated. It disables the DeepSeek adapters, which are the only senders of a
+no `!!js` tag reaches `dsh`'s evaluating YAML loader, and the model name and
+any declared reasoning effort levels (ADR 0034, a fixed vocabulary, checked
+again by `capsuled`) are validated. It disables the DeepSeek adapters, which are the only senders of a
 `dsh_session_log` copy of the session's events and the only users of
 DeepSeek's Files API, the session-log uploader, and DeepSeek web search,
 which reads its own `DEEPSEEK_API_KEY`. `web_fetch` stays and is bounded by

@@ -174,6 +174,11 @@ func TestCustomEndpointConnectionValidation(t *testing.T) {
 		{Name: "x", Provider: "openai-compatible", BaseURL: "https://key@models.example"},
 		{Name: "x", Provider: "openai-compatible", BaseURL: "https://models.example", DefaultModel: "bad model"},
 		{Name: "x", Provider: "openai-compatible", BaseURL: "https://models.example", APIKey: "line\nbreak"},
+		{Name: "x", Provider: "openai", APIKey: "upstream-private-key", ReasoningEfforts: []string{"high"}},
+		{Name: "x", Provider: "openai-compatible", BaseURL: "https://models.example", ReasoningEfforts: []string{"high"}},
+		{Name: "x", Provider: "openai-compatible", BaseURL: "https://models.example", DefaultModel: "m", ReasoningEfforts: []string{"ultra"}},
+		{Name: "x", Provider: "openai-compatible", BaseURL: "https://models.example", DefaultModel: "m", ReasoningEfforts: []string{"high", "high"}},
+		{Name: "x", Provider: "openai-compatible", BaseURL: "https://models.example", DefaultModel: "m", ReasoningEfforts: []string{"off"}},
 	} {
 		if _, err := s.PutProviderConnection(ctx, "", input); !errors.Is(err, domain.ErrInvalid) {
 			t.Errorf("accepted %+v: %v", input, err)
@@ -185,6 +190,16 @@ func TestCustomEndpointConnectionValidation(t *testing.T) {
 	}
 	if saved.BaseURL != "http://dgx.lan:8000" || !saved.AllowPrivateHTTP || saved.DefaultModel != "Qwen/Qwen3-Coder-30B-A3B-Instruct" {
 		t.Fatalf("unexpected saved connection %+v", saved)
+	}
+	reasoning, err := s.PutProviderConnection(ctx, "", ConnectionInput{
+		Name: "GLM", Provider: "openai-compatible", BaseURL: "https://models.example",
+		DefaultModel: "glm-5", ReasoningEfforts: []string{"max", "low", "high"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(reasoning.ReasoningEfforts, ",") != "low,high,max" {
+		t.Fatalf("levels = %v, want canonical order", reasoning.ReasoningEfforts)
 	}
 }
 

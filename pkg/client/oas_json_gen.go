@@ -17321,6 +17321,16 @@ func (s *ProviderConnection) encodeFields(e *jx.Encoder) {
 		}
 	}
 	{
+		if s.ReasoningEfforts != nil {
+			e.FieldStart("reasoningEfforts")
+			e.ArrStart()
+			for _, elem := range s.ReasoningEfforts {
+				elem.Encode(e)
+			}
+			e.ArrEnd()
+		}
+	}
+	{
 		e.FieldStart("createdAt")
 		json.EncodeDateTime(e, s.CreatedAt)
 	}
@@ -17334,16 +17344,17 @@ func (s *ProviderConnection) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfProviderConnection = [9]string{
+var jsonFieldsNameOfProviderConnection = [10]string{
 	0: "id",
 	1: "provider",
 	2: "name",
 	3: "baseUrl",
 	4: "defaultModel",
 	5: "allowPrivateHttp",
-	6: "createdAt",
-	7: "resourceVersion",
-	8: "revoked",
+	6: "reasoningEfforts",
+	7: "createdAt",
+	8: "resourceVersion",
+	9: "revoked",
 }
 
 // Decode decodes ProviderConnection from json.
@@ -17419,8 +17430,25 @@ func (s *ProviderConnection) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"allowPrivateHttp\"")
 			}
+		case "reasoningEfforts":
+			if err := func() error {
+				s.ReasoningEfforts = make([]ReasoningEffortLevel, 0)
+				if err := d.Arr(func(d *jx.Decoder) error {
+					var elem ReasoningEffortLevel
+					if err := elem.Decode(d); err != nil {
+						return err
+					}
+					s.ReasoningEfforts = append(s.ReasoningEfforts, elem)
+					return nil
+				}); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"reasoningEfforts\"")
+			}
 		case "createdAt":
-			requiredBitSet[0] |= 1 << 6
+			requiredBitSet[0] |= 1 << 7
 			if err := func() error {
 				v, err := json.DecodeDateTime(d)
 				s.CreatedAt = v
@@ -17432,7 +17460,7 @@ func (s *ProviderConnection) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"createdAt\"")
 			}
 		case "resourceVersion":
-			requiredBitSet[0] |= 1 << 7
+			requiredBitSet[1] |= 1 << 0
 			if err := func() error {
 				v, err := d.Int64()
 				s.ResourceVersion = int64(v)
@@ -17444,7 +17472,7 @@ func (s *ProviderConnection) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"resourceVersion\"")
 			}
 		case "revoked":
-			requiredBitSet[1] |= 1 << 0
+			requiredBitSet[1] |= 1 << 1
 			if err := func() error {
 				v, err := d.Bool()
 				s.Revoked = bool(v)
@@ -17465,8 +17493,8 @@ func (s *ProviderConnection) Decode(d *jx.Decoder) error {
 	// Validate required fields.
 	var failures []validate.FieldError
 	for i, mask := range [2]uint8{
-		0b11000111,
-		0b00000001,
+		0b10000111,
+		0b00000011,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.
@@ -17692,6 +17720,16 @@ func (s *ProviderConnectionRequest) encodeFields(e *jx.Encoder) {
 		}
 	}
 	{
+		if s.ReasoningEfforts != nil {
+			e.FieldStart("reasoningEfforts")
+			e.ArrStart()
+			for _, elem := range s.ReasoningEfforts {
+				elem.Encode(e)
+			}
+			e.ArrEnd()
+		}
+	}
+	{
 		e.FieldStart("expectedResourceVersion")
 		e.Int64(s.ExpectedResourceVersion)
 	}
@@ -17703,15 +17741,16 @@ func (s *ProviderConnectionRequest) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfProviderConnectionRequest = [8]string{
+var jsonFieldsNameOfProviderConnectionRequest = [9]string{
 	0: "name",
 	1: "provider",
 	2: "apiKey",
 	3: "baseUrl",
 	4: "defaultModel",
 	5: "allowPrivateHttp",
-	6: "expectedResourceVersion",
-	7: "revoked",
+	6: "reasoningEfforts",
+	7: "expectedResourceVersion",
+	8: "revoked",
 }
 
 // Decode decodes ProviderConnectionRequest from json.
@@ -17719,7 +17758,7 @@ func (s *ProviderConnectionRequest) Decode(d *jx.Decoder) error {
 	if s == nil {
 		return errors.New("invalid: unable to decode ProviderConnectionRequest to nil")
 	}
-	var requiredBitSet [1]uint8
+	var requiredBitSet [2]uint8
 
 	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
 		switch string(k) {
@@ -17787,8 +17826,25 @@ func (s *ProviderConnectionRequest) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"allowPrivateHttp\"")
 			}
+		case "reasoningEfforts":
+			if err := func() error {
+				s.ReasoningEfforts = make([]ReasoningEffortLevel, 0)
+				if err := d.Arr(func(d *jx.Decoder) error {
+					var elem ReasoningEffortLevel
+					if err := elem.Decode(d); err != nil {
+						return err
+					}
+					s.ReasoningEfforts = append(s.ReasoningEfforts, elem)
+					return nil
+				}); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"reasoningEfforts\"")
+			}
 		case "expectedResourceVersion":
-			requiredBitSet[0] |= 1 << 6
+			requiredBitSet[0] |= 1 << 7
 			if err := func() error {
 				v, err := d.Int64()
 				s.ExpectedResourceVersion = int64(v)
@@ -17818,8 +17874,9 @@ func (s *ProviderConnectionRequest) Decode(d *jx.Decoder) error {
 	}
 	// Validate required fields.
 	var failures []validate.FieldError
-	for i, mask := range [1]uint8{
-		0b01000111,
+	for i, mask := range [2]uint8{
+		0b10000111,
+		0b00000000,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.
@@ -18455,6 +18512,54 @@ func (s *ReadCapsuleFileUnprocessableEntity) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
 func (s *ReadCapsuleFileUnprocessableEntity) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes ReasoningEffortLevel as json.
+func (s ReasoningEffortLevel) Encode(e *jx.Encoder) {
+	e.Str(string(s))
+}
+
+// Decode decodes ReasoningEffortLevel from json.
+func (s *ReasoningEffortLevel) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode ReasoningEffortLevel to nil")
+	}
+	v, err := d.StrBytes()
+	if err != nil {
+		return err
+	}
+	// Try to use constant string.
+	switch ReasoningEffortLevel(v) {
+	case ReasoningEffortLevelMinimal:
+		*s = ReasoningEffortLevelMinimal
+	case ReasoningEffortLevelLow:
+		*s = ReasoningEffortLevelLow
+	case ReasoningEffortLevelMedium:
+		*s = ReasoningEffortLevelMedium
+	case ReasoningEffortLevelHigh:
+		*s = ReasoningEffortLevelHigh
+	case ReasoningEffortLevelXhigh:
+		*s = ReasoningEffortLevelXhigh
+	case ReasoningEffortLevelMax:
+		*s = ReasoningEffortLevelMax
+	default:
+		*s = ReasoningEffortLevel(v)
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s ReasoningEffortLevel) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *ReasoningEffortLevel) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }

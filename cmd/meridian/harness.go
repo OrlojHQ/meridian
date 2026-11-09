@@ -214,6 +214,7 @@ func offerHarnessSetupUpdate(ctx context.Context, config *cliConfig, harness str
 func newHarnessConnectCommand(config *cliConfig) *cobra.Command {
 	var stdin, noKey, allowPrivateHTTP bool
 	var name, id, baseURL, model string
+	var efforts []string
 	var expected int64
 	cmd := &cobra.Command{Use: "connect openai|anthropic|openai-compatible|anthropic-compatible", Short: "Save a reusable API or self-hosted endpoint connection; keys come from stdin", Long: `Save a reusable provider connection for Capsule harnesses.
 
@@ -225,6 +226,7 @@ proxies for Claude Code) send requests through Meridian's gateway to
 Keys are read only from stdin. Pass --no-api-key for a custom endpoint that
 needs no authentication.`, Example: `  meridian harness connect openai --stdin < key.txt
   meridian harness connect openai-compatible --base-url https://vllm.example.com --model Qwen/Qwen3-Coder-30B-A3B-Instruct --stdin < key.txt
+  meridian harness connect openai-compatible --base-url https://models.example.com --model glm-5.3-flash --effort low,high,max --stdin < key.txt
   meridian harness connect openai-compatible --base-url http://192.168.1.20:11434 --allow-private-http --model qwen2.5-coder:32b --no-api-key`, Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		endpoint, err := url.Parse(config.server)
 		if err != nil || endpoint.User != nil || endpoint.Scheme != "https" && !(endpoint.Scheme == "http" && (endpoint.Hostname() == "localhost" || endpoint.Hostname() == "127.0.0.1" || endpoint.Hostname() == "::1")) {
@@ -238,8 +240,8 @@ needs no authentication.`, Example: `  meridian harness connect openai --stdin <
 		if custom && baseURL == "" {
 			return errors.New("--base-url is required for " + provider)
 		}
-		if !custom && (baseURL != "" || model != "" || allowPrivateHTTP || noKey) {
-			return errors.New("--base-url, --model, --allow-private-http and --no-api-key apply only to custom endpoints")
+		if !custom && (baseURL != "" || model != "" || allowPrivateHTTP || noKey || len(efforts) != 0) {
+			return errors.New("--base-url, --model, --effort, --allow-private-http and --no-api-key apply only to custom endpoints")
 		}
 		if stdin == noKey {
 			return errors.New("pass --stdin, or --no-api-key for an endpoint without authentication; API keys must not appear in flags or command history")
@@ -276,6 +278,9 @@ needs no authentication.`, Example: `  meridian harness connect openai --stdin <
 			if model != "" {
 				input.DefaultModel = client.NewOptString(model)
 			}
+			for _, level := range efforts {
+				input.ReasoningEfforts = append(input.ReasoningEfforts, client.ReasoningEffortLevel(level))
+			}
 		}
 		var saved *client.ProviderConnection
 		if id == "" {
@@ -292,6 +297,7 @@ needs no authentication.`, Example: `  meridian harness connect openai --stdin <
 	cmd.Flags().BoolVar(&noKey, "no-api-key", false, "custom endpoint without authentication")
 	cmd.Flags().StringVar(&baseURL, "base-url", "", "custom endpoint base URL, for example https://vllm.example.com (a trailing /v1 is accepted)")
 	cmd.Flags().StringVar(&model, "model", "", "default model name served by the custom endpoint (required for OpenCode and Pi)")
+	cmd.Flags().StringSliceVar(&efforts, "effort", nil, "reasoning effort levels the --model accepts, comma-separated or repeated (minimal, low, medium, high, xhigh, max)")
 	cmd.Flags().BoolVar(&allowPrivateHTTP, "allow-private-http", false, "allow a plaintext http:// base URL on a loopback or private-network address (the daemon must also allow it)")
 	cmd.Flags().StringVar(&name, "name", "", "connection display name")
 	cmd.Flags().StringVar(&id, "id", "", "existing connection to replace")

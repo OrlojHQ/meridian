@@ -126,7 +126,8 @@ func newCodexCommand() *cobra.Command {
 				command.Context(), command.InOrStdin(), command.OutOrStdout(),
 				harnessadapter.CodexConfig{
 					Command: arguments, ApprovalPolicy: approvalPolicy, Sandbox: sandbox,
-					MCPServers: servers,
+					MCPServers:   servers,
+					ModelEfforts: harnessadapter.CodexModelEfforts(os.Getenv("MERIDIAN_MODEL_EFFORTS")),
 				},
 			)
 		},

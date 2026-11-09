@@ -228,6 +228,16 @@ Harness behavior:
   DeepSeek's own adapters, web search, and session-log upload. See
   [harness adapters](harness-adapters.md#deepseek-harness).
 
+**Reasoning effort.** If the model reasons, declare the effort levels it
+accepts with `--effort` (for example `--effort low,high,max`) or the
+checkboxes under the default model in Harness settings. Levels come from
+`minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Pi, DeepSeek
+Harness, OpenCode, and Codex then offer exactly those levels, plus off, in
+the composer's model picker and send the chosen name as `reasoning_effort`
+(Chat Completions) or `reasoning.effort` (Responses); off sends nothing.
+Claude Code lists its own levels. Declare only levels your server accepts:
+a level it rejects fails that turn. See ADR 0034.
+
 Model quality and tool-calling support depend on your model and server.
 Meridian does not translate between APIs.
 

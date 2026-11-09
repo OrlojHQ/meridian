@@ -9,6 +9,11 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Custom endpoint connections can declare the reasoning effort levels their
+  default model accepts (`--effort low,high,max`, or checkboxes in Harness
+  settings). Pi, DeepSeek Harness, OpenCode, and Codex then offer those levels
+  in the composer's effort picker and send them upstream (ADR 0034).
+
 - A lead Thread's Agents list shows the model and reasoning effort each live
   subagent last reported (`ThreadLink.model` and `ThreadLink.effort`). The
   daemon derives them in memory from the subagent's transcript and never

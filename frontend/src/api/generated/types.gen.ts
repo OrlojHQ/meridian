@@ -1145,6 +1145,10 @@ export type ProviderConnection = {
      * Whether this custom endpoint uses plaintext HTTP to a private-network address.
      */
     allowPrivateHttp?: boolean;
+    /**
+     * The reasoning effort levels the default model accepts, in order. Harnesses offer exactly these, plus off, for that model.
+     */
+    reasoningEfforts?: Array<ReasoningEffortLevel>;
     createdAt: string;
     resourceVersion: number;
     revoked: boolean;
@@ -1158,6 +1162,11 @@ export type ProviderConnectionPage = {
      */
     privateHttpAllowed?: boolean;
 };
+
+/**
+ * An effort level a custom endpoint's model accepts. The name is sent upstream as the request's reasoning effort.
+ */
+export type ReasoningEffortLevel = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 /**
  * openai and anthropic use fixed official upstreams. openai-compatible and anthropic-compatible use an operator-configured baseUrl.
@@ -1179,6 +1188,10 @@ export type ProviderConnectionRequest = {
      * Opt in to a plaintext http baseUrl. Requires the daemon's --provider-gateway-allow-private-http flag.
      */
     allowPrivateHttp?: boolean;
+    /**
+     * Optional, custom endpoints with a defaultModel only: distinct effort levels the model accepts. Stored in canonical order.
+     */
+    reasoningEfforts?: Array<ReasoningEffortLevel>;
     expectedResourceVersion: number;
     revoked?: boolean;
 };
@@ -1346,6 +1359,10 @@ export type ProviderConnectionRequestWritable = {
      * Opt in to a plaintext http baseUrl. Requires the daemon's --provider-gateway-allow-private-http flag.
      */
     allowPrivateHttp?: boolean;
+    /**
+     * Optional, custom endpoints with a defaultModel only: distinct effort levels the model accepts. Stored in canonical order.
+     */
+    reasoningEfforts?: Array<ReasoningEffortLevel>;
     expectedResourceVersion: number;
     revoked?: boolean;
 };

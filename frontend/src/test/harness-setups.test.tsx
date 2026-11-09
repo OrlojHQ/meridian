@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vitest";
@@ -87,6 +87,21 @@ it("saves a self-hosted endpoint with an explicit private HTTP opt-in",async()=>
  expect(screen.getByRole("note")).toHaveTextContent("unencrypted");
  await userEvent.click(screen.getByRole("button",{name:"Save connection"}));
  await waitFor(()=>expect(save).toHaveBeenCalledWith({name:"DGX",provider:"openai-compatible",apiKey:"",expectedResourceVersion:0,baseUrl:"http://192.168.1.20:8000",defaultModel:"qwen3-coder",allowPrivateHttp:true},undefined));
+});
+it("saves the reasoning effort levels a self-hosted model accepts",async()=>{
+ vi.spyOn(api,"harnessSetups").mockResolvedValue({items:[]});vi.spyOn(api,"providerConnections").mockResolvedValue({items:[],enabled:true});
+ const save=vi.spyOn(api,"saveProviderConnection").mockResolvedValue({id:"c",provider:"openai-compatible",name:"GLM",createdAt:setup.createdAt,resourceVersion:1,revoked:false});
+ show(<HarnessSetups/>);
+ await userEvent.selectOptions(await screen.findByLabelText("Provider"),"openai-compatible");
+ expect(screen.queryByRole("group",{name:"Reasoning effort levels (optional)"})).toBeNull();
+ await userEvent.type(screen.getByLabelText("Base URL"),"https://models.example.com");
+ await userEvent.type(screen.getByLabelText("Default model"),"glm-5.3-flash");
+ const levels=screen.getByRole("group",{name:"Reasoning effort levels (optional)"});
+ await userEvent.click(within(levels).getByLabelText("Max"));
+ await userEvent.click(within(levels).getByLabelText("Low"));
+ await userEvent.click(within(levels).getByLabelText("High"));
+ await userEvent.click(screen.getByRole("button",{name:"Save connection"}));
+ await waitFor(()=>expect(save).toHaveBeenCalledWith(expect.objectContaining({defaultModel:"glm-5.3-flash",reasoningEfforts:["low","high","max"]}),undefined));
 });
 it("hides the private HTTP opt-in unless the daemon allows it",async()=>{
  vi.spyOn(api,"harnessSetups").mockResolvedValue({items:[]});vi.spyOn(api,"providerConnections").mockResolvedValue({items:[],enabled:true});

@@ -8293,10 +8293,13 @@ type ProviderConnection struct {
 	// Model name configured in harnesses that use this custom endpoint.
 	DefaultModel OptString `json:"defaultModel"`
 	// Whether this custom endpoint uses plaintext HTTP to a private-network address.
-	AllowPrivateHttp OptBool   `json:"allowPrivateHttp"`
-	CreatedAt        time.Time `json:"createdAt"`
-	ResourceVersion  int64     `json:"resourceVersion"`
-	Revoked          bool      `json:"revoked"`
+	AllowPrivateHttp OptBool `json:"allowPrivateHttp"`
+	// The reasoning effort levels the default model accepts, in order. Harnesses offer exactly these, plus
+	// off, for that model.
+	ReasoningEfforts []ReasoningEffortLevel `json:"reasoningEfforts"`
+	CreatedAt        time.Time              `json:"createdAt"`
+	ResourceVersion  int64                  `json:"resourceVersion"`
+	Revoked          bool                   `json:"revoked"`
 }
 
 // GetID returns the value of ID.
@@ -8327,6 +8330,11 @@ func (s *ProviderConnection) GetDefaultModel() OptString {
 // GetAllowPrivateHttp returns the value of AllowPrivateHttp.
 func (s *ProviderConnection) GetAllowPrivateHttp() OptBool {
 	return s.AllowPrivateHttp
+}
+
+// GetReasoningEfforts returns the value of ReasoningEfforts.
+func (s *ProviderConnection) GetReasoningEfforts() []ReasoningEffortLevel {
+	return s.ReasoningEfforts
 }
 
 // GetCreatedAt returns the value of CreatedAt.
@@ -8372,6 +8380,11 @@ func (s *ProviderConnection) SetDefaultModel(val OptString) {
 // SetAllowPrivateHttp sets the value of AllowPrivateHttp.
 func (s *ProviderConnection) SetAllowPrivateHttp(val OptBool) {
 	s.AllowPrivateHttp = val
+}
+
+// SetReasoningEfforts sets the value of ReasoningEfforts.
+func (s *ProviderConnection) SetReasoningEfforts(val []ReasoningEffortLevel) {
+	s.ReasoningEfforts = val
 }
 
 // SetCreatedAt sets the value of CreatedAt.
@@ -8441,9 +8454,12 @@ type ProviderConnectionRequest struct {
 	DefaultModel OptString `json:"defaultModel"`
 	// Opt in to a plaintext http baseUrl. Requires the daemon's --provider-gateway-allow-private-http
 	// flag.
-	AllowPrivateHttp        OptBool `json:"allowPrivateHttp"`
-	ExpectedResourceVersion int64   `json:"expectedResourceVersion"`
-	Revoked                 OptBool `json:"revoked"`
+	AllowPrivateHttp OptBool `json:"allowPrivateHttp"`
+	// Optional, custom endpoints with a defaultModel only: distinct effort levels the model accepts.
+	// Stored in canonical order.
+	ReasoningEfforts        []ReasoningEffortLevel `json:"reasoningEfforts"`
+	ExpectedResourceVersion int64                  `json:"expectedResourceVersion"`
+	Revoked                 OptBool                `json:"revoked"`
 }
 
 // GetName returns the value of Name.
@@ -8474,6 +8490,11 @@ func (s *ProviderConnectionRequest) GetDefaultModel() OptString {
 // GetAllowPrivateHttp returns the value of AllowPrivateHttp.
 func (s *ProviderConnectionRequest) GetAllowPrivateHttp() OptBool {
 	return s.AllowPrivateHttp
+}
+
+// GetReasoningEfforts returns the value of ReasoningEfforts.
+func (s *ProviderConnectionRequest) GetReasoningEfforts() []ReasoningEffortLevel {
+	return s.ReasoningEfforts
 }
 
 // GetExpectedResourceVersion returns the value of ExpectedResourceVersion.
@@ -8514,6 +8535,11 @@ func (s *ProviderConnectionRequest) SetDefaultModel(val OptString) {
 // SetAllowPrivateHttp sets the value of AllowPrivateHttp.
 func (s *ProviderConnectionRequest) SetAllowPrivateHttp(val OptBool) {
 	s.AllowPrivateHttp = val
+}
+
+// SetReasoningEfforts sets the value of ReasoningEfforts.
+func (s *ProviderConnectionRequest) SetReasoningEfforts(val []ReasoningEffortLevel) {
+	s.ReasoningEfforts = val
 }
 
 // SetExpectedResourceVersion sets the value of ExpectedResourceVersion.
@@ -8820,6 +8846,78 @@ func (*ReadCapsuleFileRequestEntityTooLarge) readCapsuleFileRes() {}
 type ReadCapsuleFileUnprocessableEntity ErrorEnvelope
 
 func (*ReadCapsuleFileUnprocessableEntity) readCapsuleFileRes() {}
+
+// An effort level a custom endpoint's model accepts. The name is sent upstream as the request's
+// reasoning effort.
+// Ref: #/components/schemas/ReasoningEffortLevel
+type ReasoningEffortLevel string
+
+const (
+	ReasoningEffortLevelMinimal ReasoningEffortLevel = "minimal"
+	ReasoningEffortLevelLow     ReasoningEffortLevel = "low"
+	ReasoningEffortLevelMedium  ReasoningEffortLevel = "medium"
+	ReasoningEffortLevelHigh    ReasoningEffortLevel = "high"
+	ReasoningEffortLevelXhigh   ReasoningEffortLevel = "xhigh"
+	ReasoningEffortLevelMax     ReasoningEffortLevel = "max"
+)
+
+// AllValues returns all ReasoningEffortLevel values.
+func (ReasoningEffortLevel) AllValues() []ReasoningEffortLevel {
+	return []ReasoningEffortLevel{
+		ReasoningEffortLevelMinimal,
+		ReasoningEffortLevelLow,
+		ReasoningEffortLevelMedium,
+		ReasoningEffortLevelHigh,
+		ReasoningEffortLevelXhigh,
+		ReasoningEffortLevelMax,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s ReasoningEffortLevel) MarshalText() ([]byte, error) {
+	switch s {
+	case ReasoningEffortLevelMinimal:
+		return []byte(s), nil
+	case ReasoningEffortLevelLow:
+		return []byte(s), nil
+	case ReasoningEffortLevelMedium:
+		return []byte(s), nil
+	case ReasoningEffortLevelHigh:
+		return []byte(s), nil
+	case ReasoningEffortLevelXhigh:
+		return []byte(s), nil
+	case ReasoningEffortLevelMax:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *ReasoningEffortLevel) UnmarshalText(data []byte) error {
+	switch ReasoningEffortLevel(data) {
+	case ReasoningEffortLevelMinimal:
+		*s = ReasoningEffortLevelMinimal
+		return nil
+	case ReasoningEffortLevelLow:
+		*s = ReasoningEffortLevelLow
+		return nil
+	case ReasoningEffortLevelMedium:
+		*s = ReasoningEffortLevelMedium
+		return nil
+	case ReasoningEffortLevelHigh:
+		*s = ReasoningEffortLevelHigh
+		return nil
+	case ReasoningEffortLevelXhigh:
+		*s = ReasoningEffortLevelXhigh
+		return nil
+	case ReasoningEffortLevelMax:
+		*s = ReasoningEffortLevelMax
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
 
 type RejectDeliveryBadRequest ErrorEnvelope
 

@@ -27,6 +27,17 @@ func (s *Server) prepareProviderConnection(ctx context.Context, connection *harn
 	if !custom && connection.Model != "" || !harnesssetup.ConnectionSupported(harness, connection.Provider, connection.Model) {
 		return nil, errors.New("provider does not support this harness")
 	}
+	efforts := connection.Efforts
+	if len(efforts) != 0 {
+		ordered, ok := harnesssetup.ValidEfforts(efforts)
+		if !ok || !custom || connection.Model == "" {
+			return nil, errors.New("invalid provider connection")
+		}
+		efforts = ordered
+	}
+	// Chat Completions servers take the level as reasoning_effort; Pi and
+	// DeepSeek Harness send it only when told the server supports it.
+	completions := connection.Provider == "openai-compatible"
 	revision := "connection-" + harness
 	switch {
 	case setup != nil:
@@ -88,7 +99,20 @@ func (s *Server) prepareProviderConnection(ctx context.Context, connection *harn
 			}
 			providers := object(config, "model_providers")
 			providers["meridian"] = map[string]any{"name": "Meridian", "base_url": connection.URL + "/v1", "wire_api": "responses", "env_key": "MERIDIAN_PROVIDER_TOKEN"}
+			if len(efforts) != 0 {
+				// Codex sends reasoning settings only for models it knows
+				// reason; the connection says this one does. An imported
+				// setting still wins.
+				if _, set := config["model_supports_reasoning_summaries"]; !set {
+					config["model_supports_reasoning_summaries"] = true
+				}
+			}
 		})
+		if len(efforts) != 0 {
+			// Codex's catalog never lists a connection's model, so the
+			// adapter takes that model's levels from here.
+			env["MERIDIAN_MODEL_EFFORTS"] = strings.Join(efforts, ",")
+		}
 	case "opencode":
 		p := ".config/opencode/opencode.json"
 		if _, e := root.Stat(".config/opencode/opencode.jsonc"); e == nil {
@@ -97,10 +121,21 @@ func (s *Server) prepareProviderConnection(ctx context.Context, connection *harn
 		err = editNativeConfig(root, p, func(config map[string]any) {
 			providers := object(config, "provider")
 			if custom {
+				entry := map[string]any{"name": model}
+				if len(efforts) != 0 {
+					// OpenCode offers a model's variants as its ACP effort
+					// option; each sends its level as reasoning_effort.
+					variants := map[string]any{}
+					for _, level := range efforts {
+						variants[level] = map[string]any{"reasoningEffort": level}
+					}
+					entry["reasoning"] = true
+					entry["variants"] = variants
+				}
 				providers["meridian"] = map[string]any{
 					"npm": "@ai-sdk/openai-compatible", "name": "Meridian",
 					"options": map[string]any{"baseURL": connection.URL + "/v1", "apiKey": "{env:MERIDIAN_PROVIDER_TOKEN}"},
-					"models":  map[string]any{model: map[string]any{"name": model}},
+					"models":  map[string]any{model: entry},
 				}
 				config["model"] = "meridian/" + model
 				return
@@ -114,7 +149,13 @@ func (s *Server) prepareProviderConnection(ctx context.Context, connection *harn
 		err = editNativeConfig(root, ".pi/agent/models.json", func(config map[string]any) {
 			providers := object(config, "providers")
 			if custom {
-				providers["meridian"] = map[string]any{"name": "Meridian", "baseUrl": connection.URL + "/v1", "api": "openai-completions", "apiKey": "$MERIDIAN_PROVIDER_TOKEN", "models": []any{map[string]any{"id": model}}}
+				entry := map[string]any{"id": model}
+				if len(efforts) != 0 {
+					entry["reasoning"] = true
+					entry["thinkingLevelMap"] = piThinkingLevelMap(efforts)
+					entry["compat"] = map[string]any{"supportsReasoningEffort": true}
+				}
+				providers["meridian"] = map[string]any{"name": "Meridian", "baseUrl": connection.URL + "/v1", "api": "openai-completions", "apiKey": "$MERIDIAN_PROVIDER_TOKEN", "models": []any{entry}}
 				return
 			}
 			provider := object(providers, connection.Provider)
@@ -130,7 +171,7 @@ func (s *Server) prepareProviderConnection(ctx context.Context, connection *harn
 	case "dsh":
 		env["DSH_HOME"] = filepath.Join(env["HOME"], ".dsh")
 		var patch []byte
-		patch, err = dshProviderPatch(connection)
+		patch, err = dshProviderPatch(connection, efforts, completions)
 		if err == nil {
 			err = writeSetupFile(root, ".dsh/cordis.patch.yml", patch)
 		}
@@ -143,17 +184,30 @@ func (s *Server) prepareProviderConnection(ctx context.Context, connection *harn
 // evaluating tags. Each entry replaces that entry's whole configuration.
 // The DeepSeek adapters, DeepSeek web search, and the session-log upload are
 // disabled so the gateway route is the only model endpoint.
-func dshProviderPatch(connection *harnesssetup.Connection) ([]byte, error) {
+func dshProviderPatch(connection *harnesssetup.Connection, efforts []string, completions bool) ([]byte, error) {
 	api, base := "openai-completions", connection.URL+"/v1"
 	if connection.Provider == "anthropic-compatible" {
 		// The Anthropic client appends /v1/messages itself.
 		api, base = "anthropic-messages", connection.URL
 	}
 	selection := map[string]any{"provider": "meridian", "model": connection.Model}
+	model := map[string]any{"id": connection.Model}
+	if len(efforts) != 0 {
+		// Each declared level is sent under its own name; "off" sends
+		// nothing, which leaves the server's default.
+		declared := map[string]any{"off": nil}
+		for _, level := range efforts {
+			declared[level] = level
+		}
+		model["reasoningEfforts"] = declared
+		if completions {
+			model["compat"] = map[string]any{"supportsReasoningEffort": true}
+		}
+	}
 	entries := []map[string]any{
 		{"id": "llm-pi-ai", "config": map[string]any{"providers": map[string]any{"meridian": map[string]any{
 			"displayName": "Meridian", "api": api, "baseURL": base,
-			"apiKeyEnv": "MERIDIAN_PROVIDER_TOKEN", "models": []any{map[string]any{"id": connection.Model}},
+			"apiKeyEnv": "MERIDIAN_PROVIDER_TOKEN", "models": []any{model},
 		}}}},
 		{"id": "acp", "config": selection},
 		{"id": "agent-default-model", "config": selection},
@@ -224,4 +278,19 @@ func writeSetupFile(root *os.Root, p string, raw []byte) error {
 		return writeErr
 	}
 	return closeErr
+}
+
+// piThinkingLevelMap offers exactly the declared levels: Pi treats an absent
+// base level as supported and an absent xhigh or max as unsupported, so
+// every level is decided explicitly. "off" stays absent, which Pi reads as
+// supported and sends nothing for.
+func piThinkingLevelMap(efforts []string) map[string]any {
+	levels := map[string]any{}
+	for _, level := range harnesssetup.EffortLevels {
+		levels[level] = nil
+	}
+	for _, level := range efforts {
+		levels[level] = level
+	}
+	return levels
 }
