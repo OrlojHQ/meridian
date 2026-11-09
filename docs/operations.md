@@ -403,6 +403,15 @@ There is no downgrade mechanism. Before upgrading:
 4. upgrade the binary/image and start one control-plane replica; and
 5. verify `/healthz`, `/readyz`, provider adoption, and `admin cas verify`.
 
+With Homebrew, run `brew services stop meridian` and take the backup before
+`brew upgrade meridian`, then `brew services start meridian`. The tap only
+receives published, non-prerelease versions. When a release is published,
+`.github/workflows/homebrew.yml` verifies the release's signed `checksums.txt`,
+renders `deploy/homebrew/meridian.rb.tmpl` with
+`scripts/render-homebrew-formula.sh`, and commits it to `OrlojHQ/homebrew-tap`
+using the `HOMEBREW_TAP_TOKEN` repository secret. Run the workflow manually
+with a tag to retry or backfill a release.
+
 Startup applies forward-only SQLite migrations transactionally. A database with
 a newer schema is rejected. Rollback is possible only by stopping the new
 binary and restoring the pre-upgrade backup with the old binary. Provider-side

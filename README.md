@@ -99,6 +99,18 @@ Every UI action is also a CLI command and a documented
 
 You need Docker. Then pick an install path.
 
+### With Homebrew (macOS or Linux)
+
+```console
+brew install orlojhq/tap/meridian
+brew services start meridian
+meridian tui --harness claude
+```
+
+`brew services` keeps `meridiand` running in the background and restarts it at
+login; its log is in `$(brew --prefix)/var/log/meridiand.log`. Upgrade with
+`brew upgrade meridian`. Stop with `brew services stop meridian`.
+
 ### From a release
 
 Download the archive for your platform from

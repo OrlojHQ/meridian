@@ -7,6 +7,13 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Homebrew install: `brew install orlojhq/tap/meridian` installs `meridian`
+  and `meridiand`, and `brew services start meridian` runs the daemon in the
+  background. The tap is updated only after a release is published;
+  prereleases are skipped.
+
 ## [0.3.0] - 2026-11-08
 
 ### Upgrade notes
