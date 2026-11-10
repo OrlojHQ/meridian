@@ -13,7 +13,7 @@ func TestStartupLinePrintsPhaseAndPullProgress(t *testing.T) {
 		Phase: client.CapsuleStartupPhasePullingImage,
 		Phases: []client.CapsuleStartupPhase{
 			client.CapsuleStartupPhasePullingImage,
-			client.CapsuleStartupPhaseCreatingContainer,
+			client.CapsuleStartupPhaseCreatingCapsule,
 		},
 		Pull: client.NewOptImagePullProgress(client.ImagePullProgress{
 			CurrentBytes: 312_000_000,

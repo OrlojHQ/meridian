@@ -905,7 +905,7 @@ func (s CapsuleStartupPhase) Validate() error {
 	switch s {
 	case "pulling_image":
 		return nil
-	case "creating_container":
+	case "creating_capsule":
 		return nil
 	case "starting_harness":
 		return nil

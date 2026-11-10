@@ -784,7 +784,7 @@ func TestSandboxStartupPhasesAndPullFailure(t *testing.T) {
 			if report.Phase == domain.PhasePullingImage {
 				sawPull = true
 				for _, phase := range report.Phases {
-					if phase != domain.PhasePullingImage && phase != domain.PhaseCreatingContainer &&
+					if phase != domain.PhasePullingImage && phase != domain.PhaseCreatingCapsule &&
 						phase != domain.PhaseStartingHarness && phase != domain.PhaseConnecting {
 						t.Errorf("unexpected phase %q", phase)
 					}

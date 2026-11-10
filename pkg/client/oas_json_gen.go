@@ -2859,8 +2859,8 @@ func (s *CapsuleStartupPhase) Decode(d *jx.Decoder) error {
 	switch CapsuleStartupPhase(v) {
 	case CapsuleStartupPhasePullingImage:
 		*s = CapsuleStartupPhasePullingImage
-	case CapsuleStartupPhaseCreatingContainer:
-		*s = CapsuleStartupPhaseCreatingContainer
+	case CapsuleStartupPhaseCreatingCapsule:
+		*s = CapsuleStartupPhaseCreatingCapsule
 	case CapsuleStartupPhaseStartingHarness:
 		*s = CapsuleStartupPhaseStartingHarness
 	case CapsuleStartupPhaseConnecting:

@@ -37,7 +37,7 @@ func TestStartupProgressBoundsAndSanitizes(t *testing.T) {
 		t.Fatalf("unknown total = %#v, %v", unknown.Pull, err)
 	}
 	creating, err := NewStartupProgress(
-		"capsule-1", PhaseCreatingContainer, LocalImagePhases(), 10, 10, now,
+		"capsule-1", PhaseCreatingCapsule, LocalImagePhases(), 10, 10, now,
 	)
 	if err != nil || creating.Pull != nil {
 		t.Fatalf("non-pull progress = %#v, %v", creating, err)
@@ -73,12 +73,12 @@ func TestFormatStartupUsesOnlyNumbersAndPhaseNames(t *testing.T) {
 
 func TestIncludePhaseKeepsCanonicalOrder(t *testing.T) {
 	phases := IncludePhase(
-		[]StartupPhase{PhaseCreatingContainer, PhaseConnecting},
+		[]StartupPhase{PhaseCreatingCapsule, PhaseConnecting},
 		PhasePullingImage,
 	)
 	phases = IncludePhase(phases, PhaseStartingHarness)
 	want := []StartupPhase{
-		PhasePullingImage, PhaseCreatingContainer, PhaseStartingHarness, PhaseConnecting,
+		PhasePullingImage, PhaseCreatingCapsule, PhaseStartingHarness, PhaseConnecting,
 	}
 	if len(phases) != len(want) {
 		t.Fatalf("phases = %#v", phases)

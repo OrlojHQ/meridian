@@ -17,7 +17,7 @@ function stepState(
   failed: boolean,
   passed: boolean,
 ): "done" | "active" | "upcoming" | "failed" {
-  const order = ["pulling_image", "creating_container", "starting_harness", "connecting"];
+  const order = ["pulling_image", "creating_capsule", "starting_harness", "connecting"];
   const phaseIndex = order.indexOf(phase);
   const currentIndex = order.indexOf(current);
   if (failed && phase === current) return "failed";

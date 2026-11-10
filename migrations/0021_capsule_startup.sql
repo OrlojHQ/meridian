@@ -7,7 +7,7 @@ ALTER TABLE capsules ADD COLUMN failure_code TEXT NOT NULL DEFAULT ''
 CREATE TABLE capsule_startup (
     capsule_id TEXT PRIMARY KEY REFERENCES capsules(id),
     phase TEXT NOT NULL CHECK (phase IN (
-        'pulling_image', 'creating_container', 'starting_harness', 'connecting'
+        'pulling_image', 'creating_capsule', 'starting_harness', 'connecting'
     )),
     phases TEXT NOT NULL CHECK (length(phases) BETWEEN 1 AND 128),
     current_bytes INTEGER NOT NULL DEFAULT 0 CHECK (

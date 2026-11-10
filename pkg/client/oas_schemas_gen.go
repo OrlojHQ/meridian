@@ -1369,17 +1369,17 @@ func (s *CapsuleStartup) SetUpdatedAt(val time.Time) {
 type CapsuleStartupPhase string
 
 const (
-	CapsuleStartupPhasePullingImage      CapsuleStartupPhase = "pulling_image"
-	CapsuleStartupPhaseCreatingContainer CapsuleStartupPhase = "creating_container"
-	CapsuleStartupPhaseStartingHarness   CapsuleStartupPhase = "starting_harness"
-	CapsuleStartupPhaseConnecting        CapsuleStartupPhase = "connecting"
+	CapsuleStartupPhasePullingImage    CapsuleStartupPhase = "pulling_image"
+	CapsuleStartupPhaseCreatingCapsule CapsuleStartupPhase = "creating_capsule"
+	CapsuleStartupPhaseStartingHarness CapsuleStartupPhase = "starting_harness"
+	CapsuleStartupPhaseConnecting      CapsuleStartupPhase = "connecting"
 )
 
 // AllValues returns all CapsuleStartupPhase values.
 func (CapsuleStartupPhase) AllValues() []CapsuleStartupPhase {
 	return []CapsuleStartupPhase{
 		CapsuleStartupPhasePullingImage,
-		CapsuleStartupPhaseCreatingContainer,
+		CapsuleStartupPhaseCreatingCapsule,
 		CapsuleStartupPhaseStartingHarness,
 		CapsuleStartupPhaseConnecting,
 	}
@@ -1390,7 +1390,7 @@ func (s CapsuleStartupPhase) MarshalText() ([]byte, error) {
 	switch s {
 	case CapsuleStartupPhasePullingImage:
 		return []byte(s), nil
-	case CapsuleStartupPhaseCreatingContainer:
+	case CapsuleStartupPhaseCreatingCapsule:
 		return []byte(s), nil
 	case CapsuleStartupPhaseStartingHarness:
 		return []byte(s), nil
@@ -1407,8 +1407,8 @@ func (s *CapsuleStartupPhase) UnmarshalText(data []byte) error {
 	case CapsuleStartupPhasePullingImage:
 		*s = CapsuleStartupPhasePullingImage
 		return nil
-	case CapsuleStartupPhaseCreatingContainer:
-		*s = CapsuleStartupPhaseCreatingContainer
+	case CapsuleStartupPhaseCreatingCapsule:
+		*s = CapsuleStartupPhaseCreatingCapsule
 		return nil
 	case CapsuleStartupPhaseStartingHarness:
 		*s = CapsuleStartupPhaseStartingHarness

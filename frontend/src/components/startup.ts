@@ -2,7 +2,7 @@ import type { Capsule, CapsuleStartupPhase } from "../api/generated/types.gen";
 
 export const phaseLabels: Record<CapsuleStartupPhase, string> = {
   pulling_image: "Pulling image",
-  creating_container: "Creating container",
+  creating_capsule: "Creating Capsule",
   starting_harness: "Starting harness",
   connecting: "Connecting",
 };

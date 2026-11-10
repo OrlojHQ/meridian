@@ -306,7 +306,7 @@ export type CapsuleStartup = {
     updatedAt: string;
 };
 
-export type CapsuleStartupPhase = 'pulling_image' | 'creating_container' | 'starting_harness' | 'connecting';
+export type CapsuleStartupPhase = 'pulling_image' | 'creating_capsule' | 'starting_harness' | 'connecting';
 
 export type ImagePullProgress = {
     currentBytes: number;

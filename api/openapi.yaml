@@ -2991,7 +2991,7 @@ components:
           format: date-time
     CapsuleStartupPhase:
       type: string
-      enum: [pulling_image, creating_container, starting_harness, connecting]
+      enum: [pulling_image, creating_capsule, starting_harness, connecting]
     ImagePullProgress:
       type: object
       required: [currentBytes]

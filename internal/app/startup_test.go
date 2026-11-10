@@ -39,7 +39,7 @@ func TestStartupProgressIsThrottledAndPullFailuresAreSpecific(t *testing.T) {
 			})
 		}
 		request.ReportStartup(ports.StartupReport{
-			Phase: domain.PhaseCreatingContainer, Phases: domain.ImagePullPhases(),
+			Phase: domain.PhaseCreatingCapsule, Phases: domain.ImagePullPhases(),
 		})
 		return &domain.StartupFailure{Code: domain.PullAuthRequired}
 	}})
@@ -75,7 +75,7 @@ func TestStartupProgressIsThrottledAndPullFailuresAreSpecific(t *testing.T) {
 		strings.Contains(capsule.Failure, secret) {
 		t.Fatalf("failure = %q %q", capsule.FailureCode, capsule.Failure)
 	}
-	if capsule.Startup == nil || capsule.Startup.Phase != domain.PhaseCreatingContainer {
+	if capsule.Startup == nil || capsule.Startup.Phase != domain.PhaseCreatingCapsule {
 		t.Fatalf("startup = %#v", capsule.Startup)
 	}
 	if capsule.Startup.Pull != nil {

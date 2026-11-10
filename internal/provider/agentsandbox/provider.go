@@ -327,8 +327,8 @@ func (p *Provider) Create(
 		return ports.ProviderResource{}, fmt.Errorf("%w: image reference is invalid", domain.ErrInvalid)
 	}
 	plan := &ports.StartupPublisher{Report: request.ReportStartup}
-	plan.SetPhases([]domain.StartupPhase{domain.PhaseCreatingContainer, domain.PhaseConnecting})
-	plan.Progress(domain.PhaseCreatingContainer, 0, 0)
+	plan.SetPhases([]domain.StartupPhase{domain.PhaseCreatingCapsule, domain.PhaseConnecting})
+	plan.Progress(domain.PhaseCreatingCapsule, 0, 0)
 	opctx, cancel := context.WithTimeout(ctx, p.config.OperationTimeout)
 	defer cancel()
 	sandbox, err := p.sandboxes.Get(opctx, name, metav1.GetOptions{})

@@ -58,10 +58,10 @@ func FormatBytes(n int64) string {
 type StartupPhase string
 
 const (
-	PhasePullingImage      StartupPhase = "pulling_image"
-	PhaseCreatingContainer StartupPhase = "creating_container"
-	PhaseStartingHarness   StartupPhase = "starting_harness"
-	PhaseConnecting        StartupPhase = "connecting"
+	PhasePullingImage    StartupPhase = "pulling_image"
+	PhaseCreatingCapsule StartupPhase = "creating_capsule"
+	PhaseStartingHarness StartupPhase = "starting_harness"
+	PhaseConnecting      StartupPhase = "connecting"
 )
 
 // MaxPullBytes is the largest image-pull byte count Meridian will store or
@@ -69,10 +69,10 @@ const (
 const MaxPullBytes int64 = 1 << 40
 
 var startupRank = map[StartupPhase]int{
-	PhasePullingImage:      0,
-	PhaseCreatingContainer: 1,
-	PhaseStartingHarness:   2,
-	PhaseConnecting:        3,
+	PhasePullingImage:    0,
+	PhaseCreatingCapsule: 1,
+	PhaseStartingHarness: 2,
+	PhaseConnecting:      3,
 }
 
 func (p StartupPhase) Valid() bool {
@@ -84,8 +84,8 @@ func (p StartupPhase) Label() string {
 	switch p {
 	case PhasePullingImage:
 		return "Pulling image"
-	case PhaseCreatingContainer:
-		return "Creating container"
+	case PhaseCreatingCapsule:
+		return "Creating Capsule"
 	case PhaseStartingHarness:
 		return "Starting harness"
 	case PhaseConnecting:
@@ -98,13 +98,13 @@ func (p StartupPhase) Label() string {
 // ImagePullPhases is the ordered plan when a provider has to pull an image.
 func ImagePullPhases() []StartupPhase {
 	return []StartupPhase{
-		PhasePullingImage, PhaseCreatingContainer, PhaseStartingHarness, PhaseConnecting,
+		PhasePullingImage, PhaseCreatingCapsule, PhaseStartingHarness, PhaseConnecting,
 	}
 }
 
 // LocalImagePhases is the ordered plan when the image is already present.
 func LocalImagePhases() []StartupPhase {
-	return []StartupPhase{PhaseCreatingContainer, PhaseStartingHarness, PhaseConnecting}
+	return []StartupPhase{PhaseCreatingCapsule, PhaseStartingHarness, PhaseConnecting}
 }
 
 // IncludePhase inserts phase into phases in canonical order.
@@ -120,7 +120,7 @@ func IncludePhase(phases []StartupPhase, phase StartupPhase) []StartupPhase {
 	next := append(append([]StartupPhase(nil), phases...), phase)
 	ordered := make([]StartupPhase, 0, len(startupRank))
 	for _, candidate := range []StartupPhase{
-		PhasePullingImage, PhaseCreatingContainer, PhaseStartingHarness, PhaseConnecting,
+		PhasePullingImage, PhaseCreatingCapsule, PhaseStartingHarness, PhaseConnecting,
 	} {
 		for _, item := range next {
 			if item == candidate {

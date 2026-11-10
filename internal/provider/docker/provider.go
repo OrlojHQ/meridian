@@ -201,7 +201,7 @@ func (p *Provider) Create(
 	if err != nil {
 		return ports.ProviderResource{}, err
 	}
-	plan.Progress(domain.PhaseCreatingContainer, 0, 0)
+	plan.Progress(domain.PhaseCreatingCapsule, 0, 0)
 	token, err := p.tokens.loadOrCreate(request.CapsuleID)
 	if err != nil {
 		return ports.ProviderResource{}, err

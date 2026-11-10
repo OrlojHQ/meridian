@@ -77,7 +77,7 @@ describe("Capsule activity", () => {
       state: "Creating",
       startup: {
         phase: "pulling_image",
-        phases: ["pulling_image", "creating_container", "starting_harness", "connecting"],
+        phases: ["pulling_image", "creating_capsule", "starting_harness", "connecting"],
         pull: { currentBytes: 312_000_000, totalBytes: 540_000_000 },
         updatedAt: "2026-11-10T12:00:00Z",
       },

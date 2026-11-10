@@ -29,7 +29,7 @@ const capsule = (startup: CapsuleStartup, overrides: Partial<Capsule> = {}): Cap
 
 const phases: CapsuleStartup["phases"] = [
   "pulling_image",
-  "creating_container",
+  "creating_capsule",
   "starting_harness",
   "connecting",
 ];
@@ -84,7 +84,7 @@ describe("startup progress", () => {
     const items = screen.getAllByRole("listitem");
     expect(items.map((item) => item.textContent)).toEqual([
       "Pulling image",
-      "Creating container",
+      "Creating Capsule",
       "Starting harness",
       "Connecting",
     ]);

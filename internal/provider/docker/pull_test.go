@@ -187,8 +187,8 @@ func TestResolveImageReportsPullPhasesAndClassifiesAPIErrors(t *testing.T) {
 	if len(engine.pulled) != 0 || !plan.HasPhases() {
 		t.Fatalf("present image pulled=%#v hasPhases=%v", engine.pulled, plan.HasPhases())
 	}
-	plan.Progress(domain.PhaseCreatingContainer, 0, 0)
-	if len(local) != 3 || local[0] != domain.PhaseCreatingContainer {
+	plan.Progress(domain.PhaseCreatingCapsule, 0, 0)
+	if len(local) != 3 || local[0] != domain.PhaseCreatingCapsule {
 		t.Fatalf("present image phases = %#v", local)
 	}
 }
