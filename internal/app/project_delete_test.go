@@ -190,9 +190,7 @@ func TestProjectDeleteCascadesDestroysCredentialsAndIsIdempotent(t *testing.T) {
 	if count, err := queryCount(store, "SELECT COUNT(*) FROM project_preparation_policy WHERE project_id = ?", project.ID); err != nil || count != 0 {
 		t.Fatalf("environment rows = %d, %v", count, err)
 	}
-	if _, _, err := artifactStore.Open(ctx, manifest.Digest); !errors.Is(err, domain.ErrNotFound) {
-		t.Fatalf("manifest blob = %v", err)
-	}
+	waitArtifactGone(t, ctx, artifactStore, manifest.Digest)
 	if _, _, err := artifactStore.Open(ctx, shared.Digest); err != nil {
 		t.Fatalf("shared archive was removed while another project references it: %v", err)
 	}
@@ -218,12 +216,8 @@ func TestProjectDeleteCascadesDestroysCredentialsAndIsIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitProject(t, ctx, service, other.ID, domain.ProjectDeleted)
-	if _, _, err := artifactStore.Open(ctx, shared.Digest); !errors.Is(err, domain.ErrNotFound) {
-		t.Fatalf("shared archive remained after its last project was deleted: %v", err)
-	}
-	if _, _, err := artifactStore.Open(ctx, archive.Digest); !errors.Is(err, domain.ErrNotFound) {
-		t.Fatalf("other manifest blob = %v", err)
-	}
+	waitArtifactGone(t, ctx, artifactStore, shared.Digest)
+	waitArtifactGone(t, ctx, artifactStore, archive.Digest)
 }
 
 func TestProjectDeleteKeepsASecretAnotherProjectStillNames(t *testing.T) {
@@ -416,6 +410,26 @@ func waitCapsule(
 		}
 		if time.Now().After(deadline) {
 			t.Fatalf("capsule state = %s, want %s (%s)", capsule.State, want, capsule.Failure)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// Artifact bytes are removed after the Project tombstone commits, so a reader
+// can observe Deleted before the unreferenced blobs are gone.
+func waitArtifactGone(t *testing.T, ctx context.Context, store *artifacts.Store, digest string) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		reader, _, err := store.Open(ctx, digest)
+		if errors.Is(err, domain.ErrNotFound) {
+			return
+		}
+		if reader != nil {
+			reader.Close()
+		}
+		if err != nil || time.Now().After(deadline) {
+			t.Fatalf("artifact %s = %v", digest, err)
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
