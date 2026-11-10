@@ -71,6 +71,20 @@ describe("Capsule activity", () => {
     expect(activity.label).toBe(label);
   });
 
+  it("names the startup phase the Capsule is actually in", () => {
+    const activity = describeCapsule({
+      ...capsule,
+      state: "Creating",
+      startup: {
+        phase: "pulling_image",
+        phases: ["pulling_image", "creating_capsule", "starting_harness", "connecting"],
+        pull: { currentBytes: 312_000_000, totalBytes: 540_000_000 },
+        updatedAt: "2026-11-10T12:00:00Z",
+      },
+    });
+    expect(activity.label).toBe("Pulling image");
+  });
+
   it("puts a Thread waiting on the operator ahead of Run state", () => {
     const thread: Thread = {
       id: "thread-1",

@@ -148,6 +148,14 @@ func launcherState(detail CapsuleDetail) (string, string) {
 	case client.CapsuleStateFailed:
 		return "Failed", "failed"
 	case client.CapsuleStateCreating, client.CapsuleStatePreparing:
+		if detail.Capsule.State == client.CapsuleStatePreparing {
+			if p, ok := detail.Capsule.Preparation.Get(); ok {
+				return preparationLabel(string(p.Stage)), "waiting"
+			}
+		}
+		if line, ok := startupLine(detail.Capsule); ok {
+			return line, "waiting"
+		}
 		if p, ok := detail.Capsule.Preparation.Get(); ok {
 			return preparationLabel(string(p.Stage)), "waiting"
 		}

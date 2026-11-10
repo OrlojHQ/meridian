@@ -33,6 +33,7 @@ import {
   type ToolCall,
 } from "./threadChat";
 import { harnessName } from "../shell/capsuleActivity";
+import { ActivityDot, ProgressBar } from "./ui/loading";
 import {
   filterSlashEntries,
   latestThreadCommands,
@@ -912,7 +913,13 @@ export function ThreadConversation({
                 ))}
                 {label && (
                   <li className="chat-working" role="status">
-                    <span className="shimmer">{label}</span>
+                    <span className="chat-working-label">
+                      <ActivityDot />
+                      <span className="shimmer">{label}</span>
+                    </span>
+                    {chat.activity === "starting" && (
+                      <ProgressBar label="Waiting for the first response" />
+                    )}
                   </li>
                 )}
               </ol>

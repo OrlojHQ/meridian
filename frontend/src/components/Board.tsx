@@ -18,6 +18,7 @@ import { failureText, safeInline } from "./threadChat";
 import { ThreadError } from "./ThreadError";
 import { HarnessMark } from "./ui/HarnessMark";
 import { PlusIcon } from "./ui/Icons";
+import { ListSkeleton } from "./ui/loading";
 
 type BoardStatus = BoardItem["status"];
 
@@ -250,11 +251,7 @@ export function Board() {
   const capabilities = useQuery(queries.capabilities());
 
   if (board.isPending) {
-    return (
-      <p className="loading" role="status">
-        Loading inbox…
-      </p>
-    );
+    return <ListSkeleton label="Loading inbox…" />;
   }
   if (board.isError) return <ThreadError error={board.error} />;
 
@@ -278,11 +275,7 @@ export function Board() {
   const working = items.filter((item) => item.status === "working").length;
 
   if (items.length === 0 && projects.isPending) {
-    return (
-      <p className="loading" role="status">
-        Loading inbox…
-      </p>
-    );
+    return <ListSkeleton label="Loading inbox…" />;
   }
 
   if (projects.isSuccess && projectItems.length === 0 && items.length === 0) {
