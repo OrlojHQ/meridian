@@ -110,6 +110,7 @@ const (
 	ActionProjectThreadSpawn    Action = "project-thread-spawn"
 	ActionProjectCreate         Action = "project-create"
 	ActionProjectApplyHarnesses Action = "project-apply-harnesses"
+	ActionProjectDelete         Action = "project-delete"
 )
 
 type ActionRequest struct {
@@ -814,6 +815,20 @@ func (a *generatedAPI) Execute(ctx context.Context, request ActionRequest) (Acti
 		return ActionResult{
 			Message: string(request.Action) + " completed", ThreadID: success.Response.ID,
 		}, nil
+	case ActionProjectDelete:
+		response, err := a.client.DeleteProject(
+			ctx,
+			&client.LifecycleMutationRequest{ExpectedResourceVersion: request.ResourceVersion},
+			client.DeleteProjectParams{ProjectId: request.ProjectID, IdempotencyKey: key},
+		)
+		if err != nil {
+			return ActionResult{}, transportError(err)
+		}
+		deleted, ok := response.(*client.ProjectHeaders)
+		if !ok {
+			return ActionResult{}, responseError(response)
+		}
+		return ActionResult{Message: "Project deletion requested", ProjectID: deleted.Response.ID}, nil
 	default:
 		return ActionResult{}, fmt.Errorf("unsupported dashboard action %q", request.Action)
 	}

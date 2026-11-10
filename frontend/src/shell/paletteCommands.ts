@@ -58,6 +58,7 @@ export type PaletteActions = {
   requestCapsuleAction: (capsuleId: string, action: CapsuleActionRequest) => void;
   openNewProject: () => void;
   openLauncher: (project: Project) => void;
+  openDeleteProject: (project: Project) => void;
   openShortcuts: () => void;
 };
 
@@ -178,12 +179,21 @@ export function buildPaletteCommands({
   }
 
   for (const project of projects) {
+    if (project.state === "deleted") continue;
     commands.push({
       id: `new-capsule:${project.id}`,
       group: "Create",
       label: `New Capsule in ${project.name}`,
       keywords: "launch start agent",
       run: () => actions.openLauncher(project),
+    });
+    commands.push({
+      id: `delete-project:${project.id}`,
+      group: "Create",
+      label: `Delete project ${project.name}`,
+      keywords: "remove destroy confirm",
+      danger: true,
+      run: () => actions.openDeleteProject(project),
     });
   }
   commands.push({

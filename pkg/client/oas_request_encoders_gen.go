@@ -248,6 +248,20 @@ func encodeDeleteCapsuleRequest(
 	return nil
 }
 
+func encodeDeleteProjectRequest(
+	req *LifecycleMutationRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodeDeleteSecretRequest(
 	req *DeleteSecretRequest,
 	r *http.Request,

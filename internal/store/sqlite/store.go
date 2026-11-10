@@ -32,7 +32,7 @@ type Store struct {
 }
 
 // CurrentSchemaVersion is the newest migration this binary understands.
-const CurrentSchemaVersion = 19
+const CurrentSchemaVersion = 20
 
 func Open(ctx context.Context, dataDir string) (*Store, error) {
 	if strings.TrimSpace(dataDir) == "" {
@@ -217,6 +217,12 @@ type repository struct {
 	q queryer
 }
 
+const projectColumns = `id, name, repository_url, setup_argv, image_reference, harness_images,
+			git_secret_name, harness_secret_names,
+			git_push_secret_name, github_api_secret_name, commit_author_name,
+			commit_author_email, default_base_branch,
+			created_at, updated_at, resource_version, state, failure`
+
 func (r *repository) InsertProject(ctx context.Context, project domain.Project) error {
 	setup, err := json.Marshal(project.Setup)
 	if err != nil {
@@ -234,20 +240,25 @@ func (r *repository) InsertProject(ctx context.Context, project domain.Project) 
 	if err != nil {
 		return fmt.Errorf("encode harness images: %w", err)
 	}
+	state := project.State
+	if state == "" {
+		state = domain.ProjectActive
+	}
 	_, err = r.q.ExecContext(ctx, `
 		INSERT INTO projects(
 			id, name, repository_url, setup_argv, image_reference, harness_images,
 			git_secret_name, harness_secret_names,
 			git_push_secret_name, github_api_secret_name, commit_author_name,
 			commit_author_email, default_base_branch,
-			created_at, updated_at, resource_version
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			created_at, updated_at, resource_version, state, failure
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		project.ID, project.Name, project.RepositoryURL, string(setup), project.ImageReference,
 		string(harnessImages),
 		project.GitSecretName, string(harnessSecrets), project.GitPushSecretName,
 		project.GitHubAPISecretName, project.CommitAuthorName, project.CommitAuthorEmail,
 		project.DefaultBaseBranch,
 		formatTime(project.CreatedAt), formatTime(project.UpdatedAt), project.ResourceVersion,
+		state, project.Failure,
 	)
 	return mapError(err)
 }
@@ -299,11 +310,7 @@ func (r *repository) UpdateProject(
 
 func (r *repository) GetProject(ctx context.Context, id domain.ProjectID) (domain.Project, error) {
 	return scanProject(r.q.QueryRowContext(ctx, `
-		SELECT id, name, repository_url, setup_argv, image_reference, harness_images,
-			git_secret_name, harness_secret_names,
-			git_push_secret_name, github_api_secret_name, commit_author_name,
-			commit_author_email, default_base_branch,
-			created_at, updated_at, resource_version
+		SELECT `+projectColumns+`
 		FROM projects WHERE id = ?`, id,
 	))
 }
@@ -313,12 +320,9 @@ func (r *repository) ListProjects(
 	page ports.Page,
 ) ([]domain.Project, bool, error) {
 	rows, err := r.q.QueryContext(ctx, `
-		SELECT id, name, repository_url, setup_argv, image_reference, harness_images,
-			git_secret_name, harness_secret_names,
-			git_push_secret_name, github_api_secret_name, commit_author_name,
-			commit_author_email, default_base_branch,
-			created_at, updated_at, resource_version
-		FROM projects ORDER BY created_at, id LIMIT ? OFFSET ?`,
+		SELECT `+projectColumns+`
+		FROM projects WHERE state <> 'deleted'
+		ORDER BY created_at, id LIMIT ? OFFSET ?`,
 		page.Limit+1, page.Offset,
 	)
 	if err != nil {
@@ -345,14 +349,14 @@ func (r *repository) ListProjects(
 
 func scanProject(row scanner) (domain.Project, error) {
 	var project domain.Project
-	var setup, harnessImages, harnessSecrets, created, updated string
+	var setup, harnessImages, harnessSecrets, created, updated, state string
 	err := row.Scan(
 		&project.ID, &project.Name, &project.RepositoryURL, &setup, &project.ImageReference,
 		&harnessImages,
 		&project.GitSecretName, &harnessSecrets,
 		&project.GitPushSecretName, &project.GitHubAPISecretName,
 		&project.CommitAuthorName, &project.CommitAuthorEmail, &project.DefaultBaseBranch,
-		&created, &updated, &project.ResourceVersion,
+		&created, &updated, &project.ResourceVersion, &state, &project.Failure,
 	)
 	if err != nil {
 		return domain.Project{}, mapError(err)
@@ -365,6 +369,10 @@ func scanProject(row scanner) (domain.Project, error) {
 	}
 	if err := json.Unmarshal([]byte(harnessSecrets), &project.HarnessSecretNames); err != nil {
 		return domain.Project{}, fmt.Errorf("decode harness secret names: %w", err)
+	}
+	project.State = domain.ProjectState(state)
+	if project.State == "" {
+		project.State = domain.ProjectActive
 	}
 	project.CreatedAt, err = parseTime(created)
 	if err != nil {

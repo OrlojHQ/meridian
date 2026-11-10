@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useCallback,
   useEffect,
@@ -18,6 +18,7 @@ import {
 import { normalizeAPIError } from "../api/client";
 import type { Project } from "../api/generated/types.gen";
 import { queries } from "../api/queries";
+import { DeleteProjectDialog } from "../components/DeleteProjectDialog";
 import { NewProjectDialog } from "../components/NewProjectDialog";
 import { NewWorkspaceDialog } from "../components/NewWorkspaceDialog";
 import { HarnessMark } from "../components/ui/HarnessMark";
@@ -34,6 +35,7 @@ import {
 } from "../components/ui/Icons";
 import {
   defaultSession,
+  destinationAfterProjectDelete,
   harnessName,
   relativeTime,
   rollupSummary,
@@ -301,6 +303,8 @@ export function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [contextOpen, setContextOpen] = useState(toolsOpenByDefault);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
+  const [deleteProject, setDeleteProject] = useState<Project>();
+  const queryClient = useQueryClient();
   const [launchProject, setLaunchProject] = useState<Project>();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -464,6 +468,7 @@ export function AppShell() {
               requestCapsuleAction,
               openNewProject: () => setNewProjectOpen(true),
               openLauncher: setLaunchProject,
+              openDeleteProject: setDeleteProject,
               openShortcuts: () => setShortcutsOpen(true),
             },
           })
@@ -647,6 +652,15 @@ export function AppShell() {
                     <small>{projectCapsules.length}</small>
                     <button
                       type="button"
+                      className="project-delete-button"
+                      aria-label={`Delete ${project.name}`}
+                      title={`Delete ${project.name}`}
+                      onClick={() => setDeleteProject(project)}
+                    >
+                      Delete
+                    </button>
+                    <button
+                      type="button"
                       className="project-add-button"
                       aria-label={`New Capsule in ${project.name}`}
                       title={`New Capsule in ${project.name}`}
@@ -656,6 +670,11 @@ export function AppShell() {
                     </button>
                   </span>
                 </header>
+                {project.state === "failed" && (
+                  <p className="project-delete-failure" role="status">
+                    Deletion stopped{project.failure ? `: ${project.failure}` : ""}
+                  </p>
+                )}
                 {projectCapsules.length === 0 ? (
                   <p className="project-empty">
                     {filter ? "No matches" : "No Capsules"}
@@ -700,6 +719,26 @@ export function AppShell() {
           }
         />
       </main>
+
+      {deleteProject && (
+        <DeleteProjectDialog
+          project={deleteProject}
+          onCancel={() => setDeleteProject(undefined)}
+          onDeleted={(deleted) => {
+            navigate(
+              destinationAfterProjectDelete(
+                deleted.id,
+                projectItems,
+                items.map((item) => item.capsule),
+              ),
+              { replace: true },
+            );
+            setDeleteProject(undefined);
+            void queryClient.invalidateQueries({ queryKey: ["projects"] });
+            void queryClient.invalidateQueries({ queryKey: ["capsules", deleted.id] });
+          }}
+        />
+      )}
 
       {hasContext && (
         <>

@@ -169,6 +169,18 @@ type Invoker interface {
 	//
 	// POST /capsules/{capsuleId}/delete
 	DeleteCapsule(ctx context.Context, request *LifecycleMutationRequest, params DeleteCapsuleParams) (DeleteCapsuleRes, error)
+	// DeleteProject invokes deleteProject operation.
+	//
+	// Deletes the Project's Capsules through the same path as deleteCapsule, so the provider removes owned
+	// containers and volumes. Then deletes its threads, transcripts, artifacts, project environment, and
+	// project-scoped named secrets. Named-secret ciphertext, nonce, and envelope metadata are destroyed
+	// when no other live Project still names that secret. Transcripts and Moment artifacts are deleted
+	// with the Project and are not retained. If an owned container cannot be removed, the Project stays in
+	// state failed with the reason and a later delete resumes from that point. Repeating a delete is
+	// idempotent.
+	//
+	// POST /projects/{projectId}/delete
+	DeleteProject(ctx context.Context, request *LifecycleMutationRequest, params DeleteProjectParams) (DeleteProjectRes, error)
 	// DeleteSecret invokes deleteSecret operation.
 	//
 	// Crypto-shred a named secret by deleting its envelope.
@@ -3652,6 +3664,161 @@ func (c *Client) sendDeleteCapsule(ctx context.Context, request *LifecycleMutati
 
 	stage = "DecodeResponse"
 	result, err := decodeDeleteCapsuleResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// DeleteProject invokes deleteProject operation.
+//
+// Deletes the Project's Capsules through the same path as deleteCapsule, so the provider removes owned
+// containers and volumes. Then deletes its threads, transcripts, artifacts, project environment, and
+// project-scoped named secrets. Named-secret ciphertext, nonce, and envelope metadata are destroyed
+// when no other live Project still names that secret. Transcripts and Moment artifacts are deleted
+// with the Project and are not retained. If an owned container cannot be removed, the Project stays in
+// state failed with the reason and a later delete resumes from that point. Repeating a delete is
+// idempotent.
+//
+// POST /projects/{projectId}/delete
+func (c *Client) DeleteProject(ctx context.Context, request *LifecycleMutationRequest, params DeleteProjectParams) (DeleteProjectRes, error) {
+	res, err := c.sendDeleteProject(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendDeleteProject(ctx context.Context, request *LifecycleMutationRequest, params DeleteProjectParams) (res DeleteProjectRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("deleteProject"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/projects/{projectId}/delete"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, DeleteProjectOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/projects/"
+	{
+		// Encode "projectId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "projectId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ProjectId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/delete"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeDeleteProjectRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "EncodeHeaderParams"
+	h := uri.NewHeaderEncoder(r.Header)
+	{
+		cfg := uri.HeaderParameterEncodingConfig{
+			Name:    "Idempotency-Key",
+			Explode: false,
+		}
+		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.IdempotencyKey))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode header")
+		}
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, DeleteProjectOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeDeleteProjectResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
