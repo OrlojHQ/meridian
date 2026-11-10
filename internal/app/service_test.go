@@ -673,3 +673,47 @@ func TestCapsuleLauncherStartsOnceAndDoesNotRestartFailedRun(t *testing.T) {
 		t.Fatalf("launcher Run = %#v, %v", runs.Items, err)
 	}
 }
+
+func TestCreateProjectNormalizesGitHubRepository(t *testing.T) {
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	service := app.NewService(store, &testClock{now: time.Date(2026, 8, 25, 0, 0, 0, 0, time.UTC)}, &testIDs{}, &recordingQueue{})
+	cases := []struct {
+		name   string
+		input  string
+		want   string
+		secret string
+	}{
+		{name: "shorthand", input: "Example/project", want: "https://github.com/Example/project"},
+		{name: "github-host", input: "github.com/Example/project", want: "https://github.com/Example/project"},
+		{name: "ssh-scp", input: "git@github.com:Example/project.git", want: "https://github.com/Example/project.git"},
+		{name: "ssh-url", input: "ssh://git@github.com/Example/project.git", want: "https://github.com/Example/project.git"},
+		{name: "https", input: "https://gitlab.com/Example/project.git", want: "https://gitlab.com/Example/project.git"},
+		{name: "other-ssh", input: "ssh://gitlab.com/Example/project.git", want: "ssh://gitlab.com/Example/project.git"},
+		{name: "local", input: "/tmp/fixture", want: "/tmp/fixture"},
+		{name: "private", input: "Example/private", want: "https://github.com/Example/private", secret: "clone_token"},
+	}
+	for index, tc := range cases {
+		project, err := service.CreateProjectConfigured(ctx, tc.name, app.ProjectConfiguration{
+			RepositoryURL: tc.input,
+			GitSecretName: tc.secret,
+		}, fmt.Sprintf("repo-%d", index))
+		if err != nil || project.RepositoryURL != tc.want || project.GitSecretName != tc.secret {
+			t.Fatalf("%s: project = %#v, %v", tc.name, project, err)
+		}
+	}
+	if _, err := service.CreateProjectConfigured(ctx, "bad", app.ProjectConfiguration{
+		RepositoryURL: "git@github.com:not a repo",
+	}, "repo-bad"); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("invalid GitHub path = %v", err)
+	}
+	if _, err := service.CreateProjectConfigured(ctx, "creds", app.ProjectConfiguration{
+		RepositoryURL: "https://user:secret@github.com/Example/project.git",
+	}, "repo-creds"); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("credentialed URL = %v", err)
+	}
+}

@@ -100,6 +100,19 @@ it("maps additional skill folders consistently in both browser pickers", async (
  expect(scanned.included[0]?.path).toBe(".config/opencode/skills/review/SKILL.md");
 });
 
+it("tells Mac users how to open the hidden harness folder", async () => {
+ show(<HarnessSetupImport setups={[]}/>);
+ const mac = screen.getByText(/On a Mac, press Command-Shift-G and paste/);
+ expect(mac).toHaveTextContent("~/.config/opencode");
+ expect(mac.nextElementSibling).toHaveTextContent("meridian harness import");
+ await userEvent.selectOptions(screen.getByLabelText("Harness"), "codex");
+ expect(screen.getByText(/On a Mac, press Command-Shift-G and paste/)).toHaveTextContent("~/.codex");
+ cleanup();
+ show(<HarnessSetupImport setups={[]} onCancel={() => undefined} initialHarness="claude"/>);
+ expect(screen.getByText(/On a Mac, press Command-Shift-G and paste/)).toHaveTextContent("~/.claude");
+ expect(screen.queryByText(/Prefer the terminal/)).not.toBeInTheDocument();
+});
+
 it("uses read-only directory access without uploading until review", async () => {
  const picker = vi.fn().mockResolvedValue({kind:"directory",name:"opencode",async *values() {
    yield {kind:"file",name:"opencode.json",getFile:async()=>file("opencode.json","{}")};

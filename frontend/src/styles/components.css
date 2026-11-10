@@ -614,6 +614,10 @@ textarea:hover {
   color: #ffffff;
 }
 
+.startup-frame {
+  margin: 1rem 1.25rem 0;
+}
+
 .harness-settings {
   padding-bottom: 2rem;
 }

@@ -15,6 +15,13 @@ const names: Record<Harness, string[]> = {
 export function isImportableHarness(name: string): name is Harness {
   return Object.hasOwn(harnessFolders, name);
 }
+const localNames: Record<Harness, string> = {
+  opencode: "OpenCode", codex: "Codex", claude: "Claude", pi: "Pi", dsh: "DeepSeek Harness",
+};
+export function noLocalSetupMessage(harness: string) {
+  const name = isImportableHarness(harness) ? localNames[harness] : harness;
+  return `This Capsule will not have your local ${name} settings.`;
+}
 export type Selection = { file: File; path: string };
 export type Exclusion = { path: string; reason: string };
 // This filter avoids reading known authentication/runtime files in the browser.

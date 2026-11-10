@@ -20,7 +20,7 @@ import { HarnessMark } from "./ui/HarnessMark";
 import { PlusIcon } from "./ui/Icons";
 import { Button } from "./ui/Button";
 import { Card } from "./ui/Card";
-import { LoadingState } from "./ui/Skeleton";
+import { ListSkeleton } from "./ui/loading";
 
 type BoardStatus = BoardItem["status"];
 
@@ -253,7 +253,7 @@ export function Board() {
   const capabilities = useQuery(queries.capabilities());
 
   if (board.isPending) {
-    return <LoadingState label="Loading inbox…" />;
+    return <ListSkeleton label="Loading inbox…" />;
   }
   if (board.isError) return <ThreadError error={board.error} />;
 
@@ -277,7 +277,7 @@ export function Board() {
   const working = items.filter((item) => item.status === "working").length;
 
   if (items.length === 0 && projects.isPending) {
-    return <LoadingState label="Loading inbox…" />;
+    return <ListSkeleton label="Loading inbox…" />;
   }
 
   if (projects.isSuccess && projectItems.length === 0 && items.length === 0) {

@@ -1,13 +1,13 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { type FormEvent, useEffect, useMemo, useRef } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import { api, normalizeAPIError } from "../api/client";
 import type { HarnessImage, Project } from "../api/generated/types.gen";
 import { projectHarnessImage } from "../api/harnessPacks";
+import { isGitHubRepositoryInput } from "./repositoryUrl";
 import { Button } from "./ui/Button";
-import { Input } from "./ui/Field";
-import { Select } from "./ui/Field";
 import { Dialog } from "./ui/Dialog";
+import { Input, Select } from "./ui/Field";
 
 const harnessPreferenceKey = "meridian.newProjectHarness";
 
@@ -52,20 +52,42 @@ export function NewProjectDialog({
 }) {
   const queryClient = useQueryClient();
   const closeRef = useRef<HTMLButtonElement>(null);
+  const [repositoryUrl, setRepositoryUrl] = useState("");
+  const [privateRepo, setPrivateRepo] = useState(false);
+  const [token, setToken] = useState("");
+  const github = isGitHubRepositoryInput(repositoryUrl);
   const mutation = useMutation({
-    mutationFn: ({
+    mutationFn: async ({
       name,
-      repositoryUrl,
+      repositoryUrl: repository,
       harnessName,
+      token: cloneToken,
     }: {
       name: string;
       repositoryUrl?: string;
       harnessName?: string;
+      token?: string;
     }) => {
       const harness = harnessImages.find((item) => item.name === harnessName);
+      let gitSecretName: string | undefined;
+      if (cloneToken) {
+        gitSecretName = `git_${crypto.randomUUID().replaceAll("-", "")}`;
+        const secret = await api.putGitHTTPSSecret(gitSecretName, cloneToken);
+        try {
+          return await api.createProject({
+            name,
+            ...(repository ? { repositoryUrl: repository } : {}),
+            gitSecretName,
+            ...(harness ? { harnessImages: [projectHarnessImage(harness)] } : {}),
+          });
+        } catch (error) {
+          await api.deleteSecret(gitSecretName, secret.resourceVersion).catch(() => undefined);
+          throw error;
+        }
+      }
       return api.createProject({
         name,
-        ...(repositoryUrl ? { repositoryUrl } : {}),
+        ...(repository ? { repositoryUrl: repository } : {}),
         ...(harness ? { harnessImages: [projectHarnessImage(harness)] } : {}),
       });
     },
@@ -84,6 +106,13 @@ export function NewProjectDialog({
   );
 
   useEffect(() => {
+    if (open) return;
+    setRepositoryUrl("");
+    setPrivateRepo(false);
+    setToken("");
+  }, [open]);
+
+  useEffect(() => {
     if (!open) return;
     closeRef.current?.focus();
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -96,10 +125,12 @@ export function NewProjectDialog({
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
+    const cloneToken = privateRepo ? token.trim() : "";
     mutation.mutate({
       name: String(data.get("name") ?? ""),
-      repositoryUrl: String(data.get("repositoryUrl") ?? "") || undefined,
+      repositoryUrl: repositoryUrl.trim() || undefined,
       harnessName: String(data.get("harness") ?? "") || undefined,
+      ...(cloneToken ? { token: cloneToken } : {}),
     });
   }
 
@@ -132,12 +163,55 @@ export function NewProjectDialog({
           Repository URL <span className="optional-label">Optional</span>
           <Input
             id="project-repository"
-            name="repositoryUrl"
+            value={repositoryUrl}
             maxLength={2048}
             disabled={mutation.isPending}
-            placeholder="https://github.com/org/repository.git"
+            placeholder="owner/repo or https://github.com/org/repository"
+            onChange={(event) => {
+              const next = event.target.value;
+              setRepositoryUrl(next);
+              if (!isGitHubRepositoryInput(next)) {
+                setPrivateRepo(false);
+                setToken("");
+              }
+            }}
           />
         </label>
+        {github && <p className="field-hint">Stored as HTTPS.</p>}
+        {github && (
+          <label className="checkbox-label" htmlFor="project-private">
+            <input
+              id="project-private"
+              type="checkbox"
+              checked={privateRepo}
+              disabled={mutation.isPending}
+              onChange={(event) => {
+                setPrivateRepo(event.target.checked);
+                if (!event.target.checked) setToken("");
+              }}
+            />
+            Private repository
+          </label>
+        )}
+        {github && privateRepo && (
+          <label htmlFor="project-git-token">
+            GitHub token
+            <Input
+              id="project-git-token"
+              type="password"
+              autoComplete="off"
+              spellCheck={false}
+              required
+              maxLength={4096}
+              value={token}
+              disabled={mutation.isPending}
+              onChange={(event) => setToken(event.target.value)}
+            />
+          </label>
+        )}
+        {github && privateRepo && (
+          <p className="field-hint">Used only to clone. Stored encrypted.</p>
+        )}
         {harnessImages.length > 0 ? (
           <label htmlFor="project-harness">
             Initial harness pack

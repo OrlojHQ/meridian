@@ -10,7 +10,9 @@ import "./styles.css";
 import "./styles/tokens.css";
 import "./styles/shell.css";
 import "./styles/features.css";
+import "./styles/features.css";
 import "./styles/components.css";
+import "./styles/loading.css";
 
 applyTheme(readTheme());
 

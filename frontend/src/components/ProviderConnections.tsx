@@ -23,6 +23,22 @@ export function connectionSupports(harness:string,item:ProviderConnection){
  }
 }
 
+// A ChatGPT sign-in that needs to be repeated cannot serve a turn.
+export function preferredConnectionId(chosen: string | undefined, grantLoaded: boolean, granted: string | undefined, available: ProviderConnection[]) {
+ if (chosen !== undefined) return chosen;
+ if (!grantLoaded) return "";
+ if (granted && available.some(item => item.id === granted)) return granted;
+ const usable = available.filter(item => !item.needsSignIn);
+ return usable.length === 1 ? usable[0].id : "";
+}
+
+export function connectionModelNote(item: ProviderConnection | undefined) {
+ if (!item) return "";
+ if (item.defaultModel) return `Default model: ${item.defaultModel}`;
+ if (item.provider === "openai" || item.provider === "anthropic" || item.provider === "chatgpt") return "The harness will choose";
+ return "";
+}
+
 const effortLevels:ReasoningEffortLevel[]=["minimal","low","medium","high","xhigh","max"];
 const effortLabels:Record<ReasoningEffortLevel,string>={minimal:"Minimal",low:"Low",medium:"Medium",high:"High",xhigh:"Extra high",max:"Max"};
 
@@ -55,6 +71,7 @@ function ChatGPTSignInPanel({connection,autoStart,onDone}:{connection?:ProviderC
  return <div className="chatgpt-sign-in">
   <p><a href={signIn.authorizationUrl} target="_blank" rel="noopener noreferrer">Open ChatGPT sign-in</a> and approve Meridian. This page updates when you finish.</p>
   {current?.state==="failed" && <p role="alert">{current.failure||"ChatGPT sign-in did not complete."} Start again.</p>}
+  <p>If this page is not on the same computer as <code>meridiand</code>, run <code>meridian harness connect chatgpt</code> there.</p>
   <label>{signIn.listening?"If the page after approving doesn't load, paste its address":"After approving, paste the address of the page that doesn't load"}<input value={callback} maxLength={8192} autoComplete="off" spellCheck={false} placeholder="http://127.0.0.1:1455/auth/callback?code=…" onChange={event=>setCallback(event.target.value)}/></label>
   <button type="button" disabled={!callback||complete.isPending} onClick={()=>complete.mutate(callback)}>Finish sign-in</button> <button type="button" onClick={onDone}>Cancel</button>
   {complete.isError && <p role="alert">{normalizeAPIError(complete.error).message}</p>}
@@ -115,7 +132,7 @@ export function ProviderConnections(){
   finally{setBusy(false);}
  }
  const savedKind=loginKind==="oauth"?"setup token":"API key";
- return <section className="panel"><h2>Provider connections</h2><p>Sign in with ChatGPT or Claude, or connect an API key or a self-hosted model server such as vLLM, Ollama, or a LiteLLM proxy, once. Then authorize it for each Project.</p>
+ return <section className="panel" id="provider-connections"><h2>Provider connections</h2><p>Sign in with ChatGPT or Claude, or connect an API key or a self-hosted model server such as vLLM, Ollama, or a LiteLLM proxy, once. Then authorize it for each Project.</p>
  {connections.isPending && <p role="status">Loading connections…</p>}
  {connections.isError && <p role="alert">{normalizeAPIError(connections.error).message}</p>}
  {connections.data && !connections.data.enabled && <p>Reusable connections need the provider gateway, which is off on this installation. On Docker, meridiand starts it on its own unless the engine is remote or rootless; the daemon log says why it did not. Otherwise ask the installation administrator to set --provider-gateway-listen or --provider-gateway-url.</p>}

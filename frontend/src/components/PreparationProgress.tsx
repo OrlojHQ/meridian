@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api, normalizeAPIError } from "../api/client";
 import type { Capsule } from "../api/generated/types.gen";
-import { ProgressBar } from "./ui/ProgressBar";
+import { CapsuleStartup } from "./CapsuleStartup";
 
 const labels = {
   checkout: "Checking out your repository…",
@@ -11,15 +11,6 @@ const labels = {
   reclone: "Refreshing the checkout before preparing again…",
   saving: "Saving preparation for future Capsules…",
   ready: "Project environment ready.",
-};
-
-const progressValue = {
-  checkout: 18,
-  preparing: 46,
-  restoring: 38,
-  reclone: 28,
-  saving: 78,
-  ready: 100,
 };
 
 export function PreparationProgress({ capsule }: { capsule: Capsule }) {
@@ -33,15 +24,14 @@ export function PreparationProgress({ capsule }: { capsule: Capsule }) {
   });
   const preparation = capsule.preparation;
   const failed = capsule.state === "Failed";
+  const startupView = Boolean(capsule.startup || capsule.failureCode);
   return (
-    <div className={failed ? "error-state" : "notice"} role={failed ? "alert" : "status"}>
-      <p>{failed ? capsule.failure || "Capsule preparation failed" : preparation ? labels[preparation.stage] : "Starting your environment…"}</p>
-      {!failed && (
-        <ProgressBar
-          label="Preparation progress"
-          value={preparation ? progressValue[preparation.stage] : undefined}
-        />
+    <div className={failed && !startupView ? "error-state" : startupView ? "startup-frame" : "notice"} role={failed && !startupView ? "alert" : "status"}>
+      {startupView && <CapsuleStartup capsule={capsule} />}
+      {!startupView && (
+        <p>{failed ? capsule.failure || "Capsule preparation failed" : preparation ? labels[preparation.stage] : "Starting your environment…"}</p>
       )}
+      {startupView && preparation && !failed && <p>{labels[preparation.stage]}</p>}
       {preparation?.reused && <p>Reused your prepared project environment.</p>}
       {preparation && (
         <details>
@@ -51,7 +41,7 @@ export function PreparationProgress({ capsule }: { capsule: Capsule }) {
           {preparation.sourceRevision && <p>Source: <code>{preparation.sourceRevision.slice(0, 12)}</code></p>}
         </details>
       )}
-      {failed && (
+      {failed && !startupView && (
         <p>
           {preparation && preparation.stage !== "ready" && (
             <button type="button" disabled={retry.isPending} onClick={() => retry.mutate()}>

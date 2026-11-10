@@ -5,8 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ActivityDot } from "../shell/AppShell";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
-import { ProgressBar } from "../components/ui/ProgressBar";
-import { LoadingState } from "../components/ui/Skeleton";
+import { ProgressBar, Skeleton } from "../components/ui/loading";
 import { applyTheme, readTheme, rememberTheme } from "../components/ui/theme";
 
 describe("design system", () => {
@@ -38,11 +37,14 @@ describe("design system", () => {
     expect(document.querySelector(".activity-dot-working")).toBeTruthy();
   });
 
-  it("exposes preparation progress and loading text", () => {
+  it("exposes preparation progress and a skeleton status", () => {
     render(
       <>
-        <ProgressBar value={46} label="Preparation progress" />
-        <LoadingState label="Loading Capsule…" />
+        <ProgressBar value={46} max={100} label="Preparation progress" />
+        <div role="status">
+          <Skeleton className="skeleton-line" />
+          <span className="sr-only">Loading Capsule…</span>
+        </div>
       </>,
     );
     expect(screen.getByRole("progressbar", { name: "Preparation progress" })).toHaveAttribute(
@@ -50,6 +52,7 @@ describe("design system", () => {
       "46",
     );
     expect(screen.getByRole("status")).toHaveTextContent("Loading Capsule");
+    expect(document.querySelector(".skeleton")).toBeTruthy();
   });
 
   it("switches the document between light and dark themes", async () => {

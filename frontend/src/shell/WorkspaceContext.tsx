@@ -10,6 +10,8 @@ import type {
   Run,
 } from "../api/generated/types.gen";
 import { queries } from "../api/queries";
+import { isStarting } from "../components/startup";
+import { WorkspaceSkeleton } from "../components/ui/loading";
 import {
   type DiffStats,
   diffStats,
@@ -364,7 +366,11 @@ export function WorkspaceContext({
   useEffect(() => setTab(tabFromPath(pathname)), [pathname]);
 
   if (capsule.isPending || runs.isPending) {
-    return <aside className="context-panel"><p className="tool-loading">Loading workspace…</p></aside>;
+    return (
+      <aside className="context-panel">
+        <WorkspaceSkeleton label="Loading workspace…" />
+      </aside>
+    );
   }
   if (capsule.isError) {
     return <aside className="context-panel"><InlineError error={capsule.error} /></aside>;
@@ -446,24 +452,27 @@ export function WorkspaceContext({
         role="tabpanel"
         aria-label={tabs.find((item) => item.id === tab)?.label}
       >
-        {tab === "changes" && (
+        {isStarting(capsule.data) ? (
+          <WorkspaceSkeleton label="Starting the workspace" />
+        ) : null}
+        {!isStarting(capsule.data) && tab === "changes" && (
           <ChangesPane
             capsule={capsule.data}
             supported={capabilities?.git === true}
             structured={capabilities?.structured === true || !capsule.data.harness}
           />
         )}
-        {tab === "preview" && (
+        {!isStarting(capsule.data) && tab === "preview" && (
           <PreviewPane capsule={capsule.data} supported={capabilities?.preview === true} />
         )}
-        {tab === "files" && (
+        {!isStarting(capsule.data) && tab === "files" && (
           <FilesPane
             key={capsule.data.id}
             capsule={capsule.data}
             supported={capabilities?.browse === true}
           />
         )}
-        {tab === "terminal" && (
+        {!isStarting(capsule.data) && tab === "terminal" && (
           <TerminalPane
             capsule={capsule.data}
             runs={runs.data.items}
@@ -471,7 +480,7 @@ export function WorkspaceContext({
             focused={pathname.endsWith("/terminal")}
           />
         )}
-        {tab === "activity" && (
+        {!isStarting(capsule.data) && tab === "activity" && (
           <ActivityPane
             capsule={capsule.data}
             runs={runs.data.items}

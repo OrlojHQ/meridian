@@ -90,6 +90,20 @@ func (p *Provider) ownedPod(
 	ctx context.Context,
 	sandbox *sandboxv1beta1.Sandbox,
 ) (*corev1.Pod, error) {
+	found, err := p.controlledPod(ctx, sandbox)
+	if err != nil {
+		return nil, err
+	}
+	if found.Status.Phase != corev1.PodRunning {
+		return nil, fmt.Errorf("%w: Sandbox pod is not running", domain.ErrIllegalTransition)
+	}
+	return found, nil
+}
+
+func (p *Provider) controlledPod(
+	ctx context.Context,
+	sandbox *sandboxv1beta1.Sandbox,
+) (*corev1.Pod, error) {
 	capsuleID, err := p.verifySandboxIdentity(sandbox, "")
 	if err != nil {
 		return nil, err
@@ -115,10 +129,50 @@ func (p *Provider) ownedPod(
 	if found == nil {
 		return nil, fmt.Errorf("%w: Sandbox pod is unavailable", domain.ErrNotFound)
 	}
-	if found.Status.Phase != corev1.PodRunning {
-		return nil, fmt.Errorf("%w: Sandbox pod is not running", domain.ErrIllegalTransition)
-	}
 	return found, nil
+}
+
+func (p *Provider) observeSandboxStartup(
+	ctx context.Context,
+	sandbox *sandboxv1beta1.Sandbox,
+	plan *ports.StartupPublisher,
+) error {
+	pod, err := p.controlledPod(ctx, sandbox)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil
+		}
+		return err
+	}
+	for _, status := range pod.Status.ContainerStatuses {
+		if status.Name != "capsule" {
+			continue
+		}
+		phase, failure := sandboxStartupPhase(status)
+		if failure != nil {
+			plan.Progress(domain.PhasePullingImage, 0, 0)
+			return failure
+		}
+		if phase.Valid() {
+			plan.Progress(phase, 0, 0)
+		}
+	}
+	return nil
+}
+
+func sandboxStartupPhase(status corev1.ContainerStatus) (domain.StartupPhase, *domain.StartupFailure) {
+	if status.State.Waiting != nil {
+		if failure := domain.ClassifyImagePullWait(status.State.Waiting.Reason, status.State.Waiting.Message); failure != nil {
+			return domain.PhasePullingImage, failure
+		}
+		if status.State.Waiting.Reason == "Pulling" {
+			return domain.PhasePullingImage, nil
+		}
+	}
+	if status.State.Running != nil {
+		return domain.PhaseStartingHarness, nil
+	}
+	return "", nil
 }
 
 func (p *Provider) CaptureWorkspace(

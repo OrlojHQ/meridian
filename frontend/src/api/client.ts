@@ -21,6 +21,7 @@ import {
   createThread,
   deleteCapsule,
   deleteProject as deleteProjectOperation,
+  deleteSecret as deleteSecretOperation,
   deleteThread,
   getCapabilities,
   getCapsule,
@@ -47,6 +48,7 @@ import {
   listHarnessProfiles,
   listThreadBlocks,
   listThreads,
+  putSecret,
   pauseCapsule,
   resumeCapsule, retryCapsule, getProjectThreadIntent,
   resumeThread,
@@ -96,6 +98,7 @@ import type { HarnessSetupUpload, HarnessSetupPreview, ImportHarnessSetupRequest
   PreviewTicket,
   Run,
   RunEventPage,
+  Secret,
   RunPage,
   SealResult,
   TimelineView,
@@ -222,6 +225,29 @@ export const api = {
         ...generatedOptions(signal),
         headers: idempotencyHeaders(),
         body: request,
+      }),
+    ),
+  // GitHub HTTPS clone credential. The token is the password and is never returned.
+  putGitHTTPSSecret: (name: string, token: string) =>
+    call<Secret>(
+      putSecret({
+        ...generatedOptions(),
+        path: { secretName: name },
+        headers: idempotencyHeaders(),
+        body: {
+          purpose: "git_https",
+          username: "x-access-token",
+          password: token,
+        },
+      }),
+    ),
+  deleteSecret: (name: string, expectedResourceVersion: number) =>
+    call<Secret>(
+      deleteSecretOperation({
+        ...generatedOptions(),
+        path: { secretName: name },
+        headers: idempotencyHeaders(),
+        body: { expectedResourceVersion },
       }),
     ),
   deleteProject: (project: Project) =>

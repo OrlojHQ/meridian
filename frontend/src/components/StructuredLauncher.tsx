@@ -12,7 +12,7 @@ import type {
 import { queries } from "../api/queries";
 import { harnessName, sessionPath } from "../shell/capsuleActivity";
 import { PreparationProgress } from "./PreparationProgress";
-import { connectableHarnesses, connectionSupports } from "./ProviderConnections";
+import { connectableHarnesses, connectionModelNote, connectionSupports, preferredConnectionId } from "./ProviderConnections";
 
 export function StructuredLauncher({
   project,
@@ -35,9 +35,16 @@ export function StructuredLauncher({
   const [connection, setConnection] = useState<string>();
   const connections = useQuery({queryKey: ["provider-connections"], queryFn: api.providerConnections});
   const grant = useQuery({queryKey: ["project-connection", project.id, harness], queryFn: () => api.projectConnection(project.id, harness), enabled: !!harness});
-  const selectedConnection = connection ?? grant.data?.connectionId ?? "";
-  const connectable = connectableHarnesses.includes(harness) && !!connections.data?.enabled;
+  const supportsConnections = connectableHarnesses.includes(harness);
+  const connectable = supportsConnections && !!connections.data?.enabled;
   const availableConnections = connections.data?.items.filter(item => !item.revoked && connectionSupports(harness, item)) ?? [];
+  const selectedConnection = preferredConnectionId(connection, grant.isSuccess || grant.isError, grant.data?.connectionId, availableConnections);
+  const usableConnections = availableConnections.filter(item => !item.needsSignIn);
+  const soleConnection = usableConnections.length === 1 ? usableConnections[0] : undefined;
+  const modelNote = connectionModelNote(availableConnections.find(item => item.id === selectedConnection));
+  const missingConnection = connectable && usableConnections.length === 0;
+  const connectionBlocked = connectable && !usableConnections.some(item => item.id === selectedConnection);
+  const waitingForConnections = supportsConnections && (connections.isPending || grant.isPending);
   const mutation = useMutation({
     mutationFn: async ({
       projectId,
@@ -76,6 +83,7 @@ export function StructuredLauncher({
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (connectionBlocked) return;
     const form = event.currentTarget;
     const data = new FormData(form);
     mutation.mutate({
@@ -121,7 +129,10 @@ export function StructuredLauncher({
             </select>
           </label>
         )}
+        {modelNote && <p>{modelNote}</p>}
+        {soleConnection && selectedConnection === soleConnection.id && <p>Threads will use this; they cannot show a browser login.</p>}
         {!result && selectedConnection && selectedConnection !== grant.data?.connectionId && <p>Starting this task authorizes this API connection for {project.name} and future {harnessName(harness)} sessions.</p>}
+        {missingConnection && <p>Add a provider connection first.</p>}
         {connectable && availableConnections.length === 0 && <Link to="/ui/settings/harnesses">Connect provider</Link>}
         <label htmlFor="spawn-name">
           Capsule name <span className="optional-label">Optional</span>
@@ -182,7 +193,7 @@ export function StructuredLauncher({
         )}
         <button
           type="submit"
-          disabled={mutation.isPending || Boolean(result) || !harness}
+          disabled={mutation.isPending || Boolean(result) || !harness || waitingForConnections || connectionBlocked}
         >
           {mutation.isPending ? "Starting…" : "Start task"}
         </button>

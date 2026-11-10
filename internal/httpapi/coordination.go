@@ -368,7 +368,7 @@ func (s *Server) promoteCapsule(writer http.ResponseWriter, request *http.Reques
 		writeError(writer, err)
 		return
 	}
-	writeCapsule(writer, http.StatusOK, capsule)
+	s.writeCapsule(writer, request, http.StatusOK, capsule)
 }
 
 func (s *Server) listThreadLinks(writer http.ResponseWriter, request *http.Request) {
