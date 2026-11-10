@@ -113,12 +113,13 @@ func NewAttempt(clientID string) (Attempt, error) {
 }
 
 // AuthorizationURL is opened in the user's browser. hostID is the
-// installation's stable ext_agent_host_id. loginHint is optional.
+// installation's stable ext_agent_host_id, or empty to omit it: OpenAI's
+// reference client sends it only where the authorization server supports
+// it. loginHint is optional.
 func (c *Client) AuthorizationURL(attempt Attempt, hostID, loginHint string) string {
 	challenge := sha256.Sum256([]byte(attempt.Verifier))
 	query := url.Values{
 		"client_id":             {attempt.ClientID},
-		"ext_agent_host_id":     {hostID},
 		"response_type":         {"code"},
 		"redirect_uri":          {RedirectURI},
 		"scope":                 {scopes},
@@ -127,6 +128,9 @@ func (c *Client) AuthorizationURL(attempt Attempt, hostID, loginHint string) str
 		"nonce":                 {attempt.Nonce},
 		"code_challenge_method": {"S256"},
 		"code_challenge":        {base64.RawURLEncoding.EncodeToString(challenge[:])},
+	}
+	if hostID != "" {
+		query.Set("ext_agent_host_id", hostID)
 	}
 	if attempt.ClientID == DynamicClient {
 		query.Set("agent_name_hint", AgentName)
@@ -197,6 +201,9 @@ type tokenResponse struct {
 	ExpiresIn    int64  `json:"expires_in"`
 	Scope        string `json:"scope"`
 	Error        string `json:"error"`
+	Description  string `json:"error_description"`
+	Message      string `json:"message"`
+	Detail       any    `json:"detail"`
 }
 
 // Complete validates a callback against its attempt, exchanges the code, and
@@ -340,11 +347,33 @@ func (c *Client) token(ctx context.Context, form url.Values) (tokenResponse, err
 	if err := json.NewDecoder(io.LimitReader(response.Body, maxBody)).Decode(&decoded); err != nil {
 		return tokenResponse{}, fmt.Errorf("ChatGPT token request failed (HTTP %d)", response.StatusCode)
 	}
+	text := decoded.Description
+	if text == "" {
+		text = decoded.Message
+	}
+	if value, ok := decoded.Detail.(string); ok && text == "" {
+		text = value
+	}
+	detail := boundedDescription(text)
+	// OpenAI's request ID lets support trace a refused grant.
+	if id := boundedCode(response.Header.Get("X-Request-Id")); id != "" {
+		if detail != "" {
+			detail += "; "
+		}
+		detail += "request " + id
+	}
 	if decoded.Error == "invalid_grant" {
+		if detail != "" {
+			return tokenResponse{}, fmt.Errorf("%w: %s", ErrInvalidGrant, detail)
+		}
 		return tokenResponse{}, ErrInvalidGrant
 	}
 	if response.StatusCode != http.StatusOK || decoded.Error != "" {
-		return tokenResponse{}, fmt.Errorf("ChatGPT token request failed (HTTP %d %s)", response.StatusCode, boundedCode(decoded.Error))
+		message := fmt.Sprintf("ChatGPT token request failed (HTTP %d %s)", response.StatusCode, boundedCode(decoded.Error))
+		if detail != "" {
+			message += ": " + detail
+		}
+		return tokenResponse{}, errors.New(message)
 	}
 	return decoded, nil
 }
@@ -530,6 +559,35 @@ func constantEqual(a, b string) bool {
 		diff |= a[index] ^ b[index]
 	}
 	return diff == 0
+}
+
+// boundedDescription keeps an OAuth error_description readable for the
+// operator: letters, digits, spaces, and common punctuation, at most 200
+// characters. Anything token-shaped is dropped by the character filter's
+// length cap and by removing words longer than 40 characters.
+func boundedDescription(text string) string {
+	var builder strings.Builder
+	for _, r := range text {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9',
+			strings.ContainsRune(" .,:;'()-_/", r):
+			builder.WriteRune(r)
+		case r == '\n' || r == '\t':
+			builder.WriteRune(' ')
+		}
+	}
+	words := strings.Fields(builder.String())
+	kept := words[:0]
+	for _, word := range words {
+		if len(word) <= 40 {
+			kept = append(kept, word)
+		}
+	}
+	result := strings.Join(kept, " ")
+	if len(result) > 200 {
+		result = result[:200]
+	}
+	return result
 }
 
 // boundedCode keeps an OAuth error code printable and short; it is shown to

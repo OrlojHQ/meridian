@@ -191,6 +191,12 @@ for any other connection.
   running Capsules resume on their next request.
 - **Sign out** deletes the tokens and revokes them at OpenAI. If OpenAI does
   not confirm, Meridian says so; disconnect Meridian in ChatGPT's settings.
+- On a ChatGPT Business, Enterprise, or Edu workspace, an admin must allow
+  the app under **External access** in the Global Admin Console and set
+  **Use ChatGPT plan** to **Allowed**. Otherwise OpenAI shows "This app needs
+  your organization's permission" (`3p_delegated_access_policy_denied`), or
+  Meridian reports that OpenAI rejected the sign-in code. Failures include
+  OpenAI's request ID for support.
 - OpenAI's terms require that the installation is controlled by you alone.
   Do not share a ChatGPT connection with other people or offer it as a hosted
   service.

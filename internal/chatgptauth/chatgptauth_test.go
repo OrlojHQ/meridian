@@ -123,6 +123,9 @@ func TestAuthorizationURLRegistersAndReauthorizes(t *testing.T) {
 		strings.Contains(parsed.String(), attempt.Verifier) {
 		t.Fatalf("authorization URL = %s", parsed)
 	}
+	if query := mustQuery(t, c.AuthorizationURL(attempt, "", "")); query.Has("ext_agent_host_id") {
+		t.Fatalf("empty host ID sent: %v", query)
+	}
 	again, _ := NewAttempt("oaiapp_issued")
 	query = mustQuery(t, c.AuthorizationURL(again, "urn:uuid:host", "dev@example.com"))
 	if query.Get("client_id") != "oaiapp_issued" || query.Has("agent_name_hint") || query.Get("login_hint") != "dev@example.com" {

@@ -36,10 +36,10 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   daemon runs the OAuth flow, keeps the token set encrypted, and refreshes it;
   Capsules get only their 24-hour gateway lease. The gateway allows only
   `POST /v1/responses` for these connections and requires `stream: true` and
-  `store: false`. Signing out revokes the token at OpenAI. Requires the
-  provider gateway (`--provider-gateway-url`). Claude subscriptions are not
-  supported, because Anthropic restricts their OAuth tokens to Claude Code and
-  Claude.ai.
+  `store: false`. Signing out revokes the token at OpenAI. Uses the provider
+  gateway, which local Docker installs now start on their own. Claude
+  subscriptions are not supported, because Anthropic restricts their OAuth
+  tokens to Claude Code and Claude.ai.
 
 ### Security
 

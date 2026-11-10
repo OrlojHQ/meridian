@@ -43,6 +43,7 @@ type fakeOpenAIAuth struct {
 	invalid      bool
 	revoked      []string
 	revokeStatus int
+	failExchange string
 }
 
 func newFakeOpenAIAuth(t *testing.T) *fakeOpenAIAuth {
@@ -76,6 +77,13 @@ func (f *fakeOpenAIAuth) serve(w http.ResponseWriter, r *http.Request) {
 		if f.invalid {
 			w.WriteHeader(http.StatusBadRequest)
 			_, _ = io.WriteString(w, `{"error":"invalid_grant"}`)
+			return
+		}
+		if f.failExchange != "" && r.PostForm.Get("grant_type") == "authorization_code" {
+			w.Header().Set("X-Request-Id", "req-123")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid_grant", "error_description": f.failExchange})
+			f.failExchange = ""
 			return
 		}
 		scope := "openid email offline_access " + chatgptauth.PlanScope
@@ -158,6 +166,14 @@ func TestChatGPTSignInStoresSealedTokens(t *testing.T) {
 	if !s.ChatGPTAvailable() {
 		t.Fatal("ChatGPT sign-in unavailable")
 	}
+	plain, _ := f.signIn(t, s, "")
+	if strings.Contains(plain.AuthorizationURL, "ext_agent_host_id") {
+		t.Fatalf("host ID sent by default: %s", plain.AuthorizationURL)
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, chatGPTHostIDFile)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("host ID file created without use: %v", err)
+	}
+	s.chatgpt.sendHostID = true
 	view, callback := f.signIn(t, s, "")
 	if view.State != ChatGPTSignInPending || view.RedirectURI != chatgptauth.RedirectURI || view.Listening {
 		t.Fatalf("start = %+v", view)
@@ -417,4 +433,32 @@ func connectionByID(t *testing.T, db ports.Store, id string) domain.ProviderConn
 		t.Fatal(err)
 	}
 	return item
+}
+
+func TestChatGPTFailedExchangeReportsReasonAndKeepsIssuedClient(t *testing.T) {
+	ctx := context.Background()
+	s, _, f, _ := chatGPTService(t)
+	f.mu.Lock()
+	f.failExchange = "Authorization code was issued to another client\x1b[31m sk-proj-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	f.mu.Unlock()
+	view, callback := f.signIn(t, s, "")
+	failed, err := s.CompleteChatGPTSignIn(ctx, view.ID, callback)
+	if err == nil || failed.State != ChatGPTSignInFailed ||
+		!strings.Contains(failed.Failure, "OpenAI rejected the sign-in code (Authorization code was issued to another client") ||
+		!strings.Contains(failed.Failure, "request req-123") ||
+		strings.Contains(failed.Failure, "sk-proj") || strings.ContainsRune(failed.Failure, 0x1b) {
+		t.Fatalf("failure = %q, %v", failed.Failure, err)
+	}
+	retry, callback := f.signIn(t, s, "")
+	if !strings.Contains(retry.AuthorizationURL, "client_id=oaiapp_meridian") || strings.Contains(retry.AuthorizationURL, "agent_name_hint") {
+		t.Fatalf("retry did not reuse the issued client: %s", retry.AuthorizationURL)
+	}
+	done, err := s.CompleteChatGPTSignIn(ctx, retry.ID, callback)
+	if err != nil || done.State != ChatGPTSignInCompleted {
+		t.Fatalf("retry = %+v, %v", done, err)
+	}
+	next, _ := f.signIn(t, s, "")
+	if !strings.Contains(next.AuthorizationURL, "client_id=dynamic_agent_client") {
+		t.Fatalf("issued client kept after success: %s", next.AuthorizationURL)
+	}
 }

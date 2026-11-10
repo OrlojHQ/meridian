@@ -28,7 +28,7 @@ import (
 // a token to a Capsule, the browser, or the CLI.
 
 const (
-	chatGPTAttemptTTL     = 10 * time.Minute
+	chatGPTAttemptTTL     = 20 * time.Minute
 	chatGPTMaxAttempts    = 8
 	chatGPTRefreshMargin  = 5 * time.Minute
 	chatGPTHostIDFile     = "chatgpt-host-id"
@@ -68,12 +68,20 @@ type chatGPTAttempt struct {
 type chatGPTState struct {
 	client     *chatgptauth.Client
 	hostIDPath string
+	// sendHostID adds ext_agent_host_id to authorization requests. OpenAI's
+	// reference client leaves it off by default; production sign-ins that
+	// sent it were refused at code exchange.
+	sendHostID bool
 	listen     string
 
 	mu       sync.Mutex
 	attempts map[string]*chatGPTAttempt
-	server   *http.Server
-	refresh  map[string]*sync.Mutex
+	// issued is the oaiapp_ client ID from a registration whose code
+	// exchange failed. OpenAI asks apps to retry with it rather than
+	// register again.
+	issued  string
+	server  *http.Server
+	refresh map[string]*sync.Mutex
 }
 
 // ConfigureChatGPT enables ChatGPT plan sign-in. dataDir holds the
@@ -157,16 +165,23 @@ func (s *Service) StartChatGPTSignIn(ctx context.Context, connectionID string, l
 		return ChatGPTSignIn{}, domain.ErrUnsupported
 	}
 	clientID, loginHint := "", ""
-	if connectionID != "" {
+	if connectionID == "" {
+		s.chatgpt.mu.Lock()
+		clientID = s.chatgpt.issued
+		s.chatgpt.mu.Unlock()
+	} else {
 		connection, set, err := s.chatGPTTokens(ctx, connectionID)
 		if err != nil {
 			return ChatGPTSignIn{}, err
 		}
 		clientID, loginHint = set.ClientID, connection.Account
 	}
-	hostID, err := s.chatGPTHostID()
-	if err != nil {
-		return ChatGPTSignIn{}, err
+	hostID := ""
+	if s.chatgpt.sendHostID {
+		var err error
+		if hostID, err = s.chatGPTHostID(); err != nil {
+			return ChatGPTSignIn{}, err
+		}
 	}
 	attempt, err := chatgptauth.NewAttempt(clientID)
 	if err != nil {
@@ -264,8 +279,14 @@ func (s *Service) completeChatGPT(ctx context.Context, match func(*chatGPTAttemp
 	item.completing = false
 	if err != nil {
 		item.view.State, item.view.Failure = ChatGPTSignInFailed, chatGPTFailure(err)
+		if connectionID == "" && attempt.ClientID == chatgptauth.DynamicClient && strings.HasPrefix(callback.ClientID, "oaiapp_") && len(callback.ClientID) <= 256 {
+			state.issued = callback.ClientID
+		}
 	} else {
 		item.view.State, item.view.ConnectionID = ChatGPTSignInCompleted, connection.ID
+		if connectionID == "" {
+			state.issued = ""
+		}
 	}
 	view := item.view
 	state.mu.Unlock()
@@ -281,7 +302,10 @@ func chatGPTFailure(err error) string {
 	case errors.Is(err, chatgptauth.ErrDenied):
 		return "ChatGPT sign-in was declined"
 	case errors.Is(err, chatgptauth.ErrInvalidGrant):
-		return "The sign-in code expired or was already used; start again"
+		if detail := strings.TrimPrefix(err.Error(), chatgptauth.ErrInvalidGrant.Error()+": "); detail != err.Error() {
+			return "OpenAI rejected the sign-in code (" + detail + "); start again"
+		}
+		return "OpenAI rejected the sign-in code; start again"
 	case errors.Is(err, domain.ErrConflict):
 		return "The connection changed during sign-in; start again"
 	}

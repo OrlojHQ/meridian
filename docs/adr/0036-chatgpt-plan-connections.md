@@ -61,10 +61,12 @@ registration guide. Only the installation-authenticated principal (ADR 0015)
 can start or complete it.
 
 - The daemon generates `state`, `nonce`, and the PKCE verifier, keeps them
-  in memory for one attempt with a ten-minute expiry, and returns only the
+  in memory for one attempt with a twenty-minute expiry, and returns only the
   authorization URL. First registration uses `client_id=dynamic_agent_client`
-  and `agent_name_hint=Meridian`. Reauthorization uses the issued client ID,
-  the installation host ID, and the account email as `login_hint`. The ID
+  and `agent_name_hint=Meridian`. Reauthorization uses the issued client ID
+  and the account email as `login_hint`. If a first registration's code
+  exchange fails, the daemon keeps the issued client ID and the next attempt
+  reuses it instead of registering again, as OpenAI asks. The ID
   token is verified and then discarded, so it is never stored or sent as
   `id_token_hint`.
 - The redirect URI is `http://127.0.0.1:<port>/auth/callback`, as OpenAI
@@ -88,11 +90,14 @@ can start or complete it.
 
 ### Host identity
 
-Each installation has one OAuth host. On first use the daemon creates a
-random `urn:uuid:` `ext_agent_host_id` and keeps it in the data directory.
-It is not a credential and is not derived from user identity. Capsules are
-runtimes of that host, not separate hosts. Signing out or switching accounts
-keeps the host ID and the issued client ID.
+Each installation is one OAuth host, and Capsules are runtimes of that host,
+not separate hosts. The registration guide describes an `ext_agent_host_id`,
+but OpenAI's reference client sends it only where the authorization server
+supports it, and defaults to not sending it. Production sign-ins that sent
+it were refused at code exchange, so Meridian does not send it by default.
+When enabled, the daemon creates a random `urn:uuid:` host ID in the data
+directory on first use. It is not a credential and is not derived from user
+identity.
 
 ### Token storage and refresh
 
@@ -152,9 +157,9 @@ plan usage not to be pooled, shared, or resold.
 
 ### Prerequisite
 
-ChatGPT plan connections use the provider gateway, which today requires
-`--provider-gateway-url`. Enabling the gateway by default on local Docker
-installations is a separate decision and does not block this one.
+ChatGPT plan connections use the provider gateway. Local Docker
+installations start it on their own (ADR 0037); other deployments still set
+`--provider-gateway-url`.
 
 ## Consequences
 
@@ -178,10 +183,17 @@ installations is a separate decision and does not block this one.
 
 ## Open questions
 
-- Whether first registration accepts a loopback port other than 1455.
-  Codex CLI's own login uses 1455, so a fixed port conflicts with
-  `codex login` running on the same machine. When the port is busy, the
-  daemon and CLI fall back to a pasted redirect address.
+- Which loopback port to use. OpenAI's reference example registers on port
+  8787 and allows any port, but Meridian keeps 1455 for now. Codex CLI's own
+  login also uses 1455, so the two conflict on one machine; when the port is
+  busy, the daemon and CLI fall back to a pasted redirect address.
+- Whether to send `ext_agent_host_id` once OpenAI's production authorization
+  server supports it.
+- Why test sign-ins from a ChatGPT workspace account were refused at code
+  exchange (`invalid_grant`, no description) after the workspace first
+  returned `3p_delegated_access_policy_denied`. A workspace admin must allow
+  "Use ChatGPT plan" for the app; whether that alone resolves it is not yet
+  confirmed.
 - Whether to list the account's models from `GET /v1/models`
   (`visibility == "list"`) for the model picker, instead of Codex's bundled
   catalog.
