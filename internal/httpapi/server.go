@@ -169,6 +169,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /projects", s.listProjects)
 	s.mux.HandleFunc("GET /projects/{projectId}", s.getProject)
 	s.mux.HandleFunc("PATCH /projects/{projectId}", s.patchProject)
+	s.mux.HandleFunc("POST /projects/{projectId}/delete", s.deleteProject)
 	s.mux.HandleFunc("POST /projects/{projectId}/threads", s.createProjectThread)
 	s.mux.HandleFunc("GET /project-thread-intents/{intentId}", s.getProjectThreadIntent)
 	s.mux.HandleFunc("GET /board", s.getBoard)
@@ -1020,6 +1021,42 @@ func (s *Server) patchProject(writer http.ResponseWriter, request *http.Request)
 	}
 	writer.Header().Set("ETag", etag(project.ResourceVersion))
 	writeJSON(writer, http.StatusOK, projectResponse(project))
+}
+
+func (s *Server) deleteProject(writer http.ResponseWriter, request *http.Request) {
+	var input lifecycleRequest
+	if !decode(writer, request, &input) {
+		return
+	}
+	projectID := domain.ProjectID(request.PathValue("projectId"))
+	project, err := s.service.DeleteProject(
+		request.Context(),
+		projectID,
+		domain.ResourceVersion(input.ExpectedResourceVersion),
+		request.Header.Get("Idempotency-Key"),
+	)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	if s.previews != nil {
+		offset := 0
+		for {
+			page, err := s.service.ListCapsules(request.Context(), projectID, "", offset, 100)
+			if err != nil {
+				break
+			}
+			for _, capsule := range page.Items {
+				s.previews.revokeCapsule(capsule.ID)
+			}
+			if page.NextOffset == 0 {
+				break
+			}
+			offset = page.NextOffset
+		}
+	}
+	writer.Header().Set("ETag", etag(project.ResourceVersion))
+	writeJSON(writer, http.StatusAccepted, projectResponse(project))
 }
 
 func (s *Server) createCapsule(writer http.ResponseWriter, request *http.Request) {
@@ -1989,6 +2026,8 @@ type projectJSON struct {
 	CommitAuthorName    string             `json:"commitAuthorName,omitempty"`
 	CommitAuthorEmail   string             `json:"commitAuthorEmail,omitempty"`
 	DefaultBaseBranch   string             `json:"defaultBaseBranch,omitempty"`
+	State               string             `json:"state,omitempty"`
+	Failure             string             `json:"failure,omitempty"`
 	CreatedAt           string             `json:"createdAt"`
 	UpdatedAt           string             `json:"updatedAt"`
 	ResourceVersion     int64              `json:"resourceVersion"`
@@ -2277,6 +2316,13 @@ type errorEnvelope struct {
 	Error apiError `json:"error"`
 }
 
+func projectStateJSON(state domain.ProjectState) string {
+	if state == "" {
+		return string(domain.ProjectActive)
+	}
+	return string(state)
+}
+
 func projectResponse(project domain.Project) projectJSON {
 	return projectJSON{
 		ID:                  string(project.ID),
@@ -2292,6 +2338,8 @@ func projectResponse(project domain.Project) projectJSON {
 		CommitAuthorName:    project.CommitAuthorName,
 		CommitAuthorEmail:   project.CommitAuthorEmail,
 		DefaultBaseBranch:   project.DefaultBaseBranch,
+		State:               projectStateJSON(project.State),
+		Failure:             project.Failure,
 		CreatedAt:           project.CreatedAt.UTC().Format(time.RFC3339Nano),
 		UpdatedAt:           project.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		ResourceVersion:     int64(project.ResourceVersion),

@@ -20,6 +20,7 @@ import {
   createRunAttachTicket,
   createThread,
   deleteCapsule,
+  deleteProject as deleteProjectOperation,
   deleteThread,
   getCapabilities,
   getCapsule,
@@ -221,6 +222,15 @@ export const api = {
         ...generatedOptions(signal),
         headers: idempotencyHeaders(),
         body: request,
+      }),
+    ),
+  deleteProject: (project: Project) =>
+    call<Project>(
+      deleteProjectOperation({
+        ...generatedOptions(),
+        path: { projectId: project.id },
+        headers: idempotencyHeaders(),
+        body: { expectedResourceVersion: project.resourceVersion },
       }),
     ),
   // Adds one installation-known harness pack to the Project allowlist,

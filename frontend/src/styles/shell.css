@@ -180,6 +180,31 @@
   color: var(--text);
 }
 
+.project-delete-button {
+  width: auto;
+  min-height: 1.35rem;
+  border-color: transparent;
+  padding: 0 0.2rem;
+  color: var(--muted);
+  background: transparent;
+  font-size: 0.68rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.project-delete-button:hover {
+  color: var(--danger);
+}
+
+.project-delete-failure {
+  margin: 0;
+  padding: 0 0.45rem 0.35rem;
+  color: var(--danger);
+  font-size: 0.68rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
 .project-add-button svg {
   width: 0.8rem;
   height: 0.8rem;

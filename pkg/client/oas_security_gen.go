@@ -37,6 +37,7 @@ var operationRolesBearerAuth = map[string][]string{
 	CreateShardOperation:                    []string{},
 	CreateThreadOperation:                   []string{},
 	DeleteCapsuleOperation:                  []string{},
+	DeleteProjectOperation:                  []string{},
 	DeleteSecretOperation:                   []string{},
 	DeleteThreadOperation:                   []string{},
 	DenyCoordinationRequestOperation:        []string{},
