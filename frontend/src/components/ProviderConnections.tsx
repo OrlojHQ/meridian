@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, normalizeAPIError } from "../api/client";
 import type { ProviderConnection, ProviderConnectionRequestWritable, ProviderConnectionType, ReasoningEffortLevel } from "../api/generated/types.gen";
@@ -28,16 +28,58 @@ export function ProviderConnections(){
  const [provider,setProvider]=useState<ProviderConnectionType>("openai");const [name,setName]=useState("");const [key,setKey]=useState("");const [editing,setEditing]=useState<ProviderConnection>();
  const [baseUrl,setBaseUrl]=useState("");const [model,setModel]=useState("");const [privateHttp,setPrivateHttp]=useState(false);const [efforts,setEfforts]=useState<ReasoningEffortLevel[]>([]);
  const [loginKind,setLoginKind]=useState<"api_key"|"oauth">("api_key");
+ const [fallback,setFallback]=useState(false);const [busy,setBusy]=useState(false);const [message,setMessage]=useState("");const [continueURL,setContinueURL]=useState("");
+ const [active,setActive]=useState<{id:string,manual:boolean}|undefined>();const [wantCode,setWantCode]=useState(false);const [code,setCode]=useState("");
+ const polls=useRef(0);
+ useEffect(()=>()=>{polls.current++;},[]);
  const custom=isCustom(provider);const claude=provider==="anthropic";const privateHttpAllowed=!!connections.data?.privateHttpAllowed;
- const reset=()=>{setKey("");setEditing(undefined);setBaseUrl("");setModel("");setPrivateHttp(false);setEfforts([]);setLoginKind("api_key");};
+ const reset=()=>{setKey("");setEditing(undefined);setBaseUrl("");setModel("");setPrivateHttp(false);setEfforts([]);setLoginKind("api_key");setFallback(false);};
  const save=useMutation({mutationFn:({body,id}:{body:ProviderConnectionRequestWritable,id?:string})=>api.saveProviderConnection(body,id),onSuccess:()=>{reset();save.reset();return cache.invalidateQueries({queryKey:["provider-connections"]});}});
  const body=():ProviderConnectionRequestWritable=>({name:name||(custom?providerLabels[provider]:claude?"Claude":`${provider} API`),provider,apiKey:key,expectedResourceVersion:editing?.resourceVersion??0,...(claude&&loginKind==="oauth"?{credentialKind:"oauth"}:{}),...(custom?{baseUrl,defaultModel:model||undefined,allowPrivateHttp:privateHttp,...(model&&efforts.length>0?{reasoningEfforts:effortLevels.filter(level=>efforts.includes(level))}:{})}:{})});
+ async function signIn(connectionId?:string){
+  const generation=++polls.current;
+  const popup=window.open("about:blank","meridian-claude-login","popup,width=520,height=760");
+  setBusy(true);setMessage("");setWantCode(false);setContinueURL("");
+  try{
+   const started=await api.beginClaudeLogin(connectionId?{connectionId}:{});
+   if(generation!==polls.current){popup?.close();return;}
+   if(popup&&!popup.closed)popup.location.href=started.authorizeUrl;
+   else setContinueURL(started.authorizeUrl);
+   setActive({id:started.loginId,manual:started.manual});
+   const deadline=Date.now()+10*60*1000;
+   while(Date.now()<deadline&&generation===polls.current){
+    const status=await api.getClaudeLogin(started.loginId);
+    if(generation!==polls.current)return;
+    if(status.status==="complete"){
+     popup?.close();setContinueURL("");setActive(undefined);setCode("");
+     setMessage("Signed in. Meridian stored the login encrypted and will not show it.");
+     await cache.invalidateQueries({queryKey:["provider-connections"]});
+     return;
+    }
+    if(status.status==="failed"){setMessage("Claude sign-in failed. Try again.");return;}
+    await new Promise(resolve=>setTimeout(resolve,1000));
+   }
+  }catch(error){if(generation===polls.current)setMessage(normalizeAPIError(error).message);}
+  finally{if(generation===polls.current)setBusy(false);}
+ }
+ async function finish(){
+  if(!active)return;
+  const value=code.trim();
+  setCode("");setBusy(true);
+  try{
+   await api.finishClaudeLogin(active.id,value);
+   setActive(undefined);setWantCode(false);setContinueURL("");
+   setMessage("Signed in. Meridian stored the login encrypted and will not show it.");
+   await cache.invalidateQueries({queryKey:["provider-connections"]});
+  }catch(error){setMessage(normalizeAPIError(error).message);}
+  finally{setBusy(false);}
+ }
  return <section className="panel"><h2>Provider connections</h2><p>Connect an OpenAI or Anthropic credential, or a self-hosted model server such as vLLM, Ollama, or a LiteLLM proxy, once. Then authorize it for each Project on its first launch. A Claude login is stored encrypted and attached by the provider gateway; a Capsule never receives that token. Codex, OpenCode, Pi, and DeepSeek Harness subscription logins stay in the harness and are never imported.</p>
  {connections.isPending && <p role="status">Loading connections…</p>}
  {connections.isError && <p role="alert">{normalizeAPIError(connections.error).message}</p>}
  {connections.data && !connections.data.enabled && <p>Reusable connections require an HTTPS Meridian address reachable from Capsules. Ask the installation administrator to enable the provider gateway.</p>}
- {connections.data?.enabled && <form onSubmit={event=>{event.preventDefault();save.mutate({id:editing?.id,body:body()});}}>
- <label>Provider<select value={provider} disabled={!!editing} onChange={event=>{setProvider(event.target.value as ProviderConnectionType);setPrivateHttp(false);setLoginKind("api_key");}}>{(Object.keys(providerLabels) as ProviderConnectionType[]).map(value=><option key={value} value={value}>{providerLabels[value]}</option>)}</select></label>
+ {connections.data?.enabled && <form onSubmit={event=>{event.preventDefault();if(claude&&!fallback)return;if(!custom&&!key)return;save.mutate({id:editing?.id,body:body()});}}>
+ <label>Provider<select value={provider} disabled={!!editing} onChange={event=>{setProvider(event.target.value as ProviderConnectionType);setPrivateHttp(false);setLoginKind("api_key");setFallback(false);}}>{(Object.keys(providerLabels) as ProviderConnectionType[]).map(value=><option key={value} value={value}>{providerLabels[value]}</option>)}</select></label>
  <label>Connection name<input value={name} maxLength={128} onChange={event=>setName(event.target.value)}/></label>
  {custom && <>
  <p>{provider==="openai-compatible"?"Codex, OpenCode, and Pi use this endpoint. Codex needs the Responses API (/v1/responses); OpenCode and Pi use Chat Completions and need a default model.":"Claude Code uses this endpoint through the Anthropic Messages API."} Meridian sends requests from the server; Capsules never see this address or key.</p>
@@ -47,13 +89,22 @@ export function ProviderConnections(){
  {privateHttpAllowed && <label><input type="checkbox" checked={privateHttp} onChange={event=>setPrivateHttp(event.target.checked)}/>Use plain HTTP to a private-network server</label>}
  {privateHttp && <p role="note">Plain HTTP sends prompts, code, and any API key unencrypted between Meridian and the model server. Use it only on a network you trust, such as a LAN or tailnet. Meridian connects only to loopback and private addresses in this mode.</p>}
  </>}
- {claude && <fieldset className="effort-levels"><legend>Claude login type</legend><label><input type="radio" name="claude-login-kind" checked={loginKind==="api_key"} onChange={()=>setLoginKind("api_key")}/>API key</label><label><input type="radio" name="claude-login-kind" checked={loginKind==="oauth"} onChange={()=>setLoginKind("oauth")}/>Setup token</label></fieldset>}
- {claude && <p>Meridian stores this login encrypted. The provider gateway attaches an API key as X-Api-Key, or a setup token from <code>claude setup-token</code> as Authorization: Bearer. A Capsule receives a gateway lease only, never this token. There is no browser sign-in, and the saved value is not shown again.</p>}
+ {claude && <>
+ <p>Click Sign in with Claude. Meridian opens Claude's login, receives the result, and stores it encrypted. You do not run <code>claude setup-token</code> or paste a token from somewhere else. The provider gateway attaches the login. A Capsule receives a gateway lease only, never this token. The saved value is not shown again.</p>
+ <button type="button" disabled={busy} onClick={()=>void signIn(editing?.provider==="anthropic"?editing.id:undefined)}>{editing?"Sign in again":"Sign in with Claude"}</button>
+ {continueURL && <p><a href={continueURL} target="_blank" rel="noopener noreferrer">Continue to Claude</a></p>}
+ {active&&(active.manual||wantCode) && <><p>{active.manual?"This browser cannot return here automatically. Paste the code Claude shows. Meridian exchanges it and does not keep the code.":"Paste the code Claude shows if the window did not return. Meridian exchanges it and does not keep the code."}</p><label>Authorization code<input type="password" autoComplete="off" value={code} maxLength={2048} onChange={event=>setCode(event.target.value)}/></label><button type="button" disabled={busy||!code.trim()} onClick={()=>void finish()}>Finish sign-in</button></>}
+ {active&&!active.manual&&!wantCode && <button type="button" onClick={()=>setWantCode(true)}>Enter the code from Claude</button>}
+ {message && <p role="status">{message}</p>}
+ {!fallback && <button type="button" onClick={()=>setFallback(true)}>Use an API key or a setup token instead</button>}
+ {fallback && <fieldset className="effort-levels"><legend>Fallback credential</legend><label><input type="radio" name="claude-login-kind" checked={loginKind==="api_key"} onChange={()=>setLoginKind("api_key")}/>API key</label><label><input type="radio" name="claude-login-kind" checked={loginKind==="oauth"} onChange={()=>setLoginKind("oauth")}/>Setup token</label><label>Claude login<input type="password" autoComplete="off" value={key} maxLength={4096} onChange={event=>setKey(event.target.value)}/></label><button disabled={save.isPending||!key}>{editing?"Replace Claude login":"Save Claude login"}</button></fieldset>}
+ </>}
  {editing && custom && <p>Saving replaces the stored key. Enter it again, or leave it empty if the server needs none.</p>}
- {editing && claude && <p>Saving replaces the stored login. Enter the new value. The previous one is not shown.</p>}
- <label>{custom?"API key (optional)":claude?"Claude login":"API key"}<input type="password" autoComplete="off" value={key} required={!custom} maxLength={4096} onChange={event=>setKey(event.target.value)}/></label>
- <button disabled={save.isPending || (!custom && !key) || (custom && !baseUrl)}>{editing?(custom?"Save endpoint":claude?"Replace Claude login":"Replace API key"):(claude?"Save Claude login":"Save connection")}</button>{editing && <button type="button" onClick={reset}>Cancel</button>}</form>}
+ {!claude && <label>{custom?"API key (optional)":"API key"}<input type="password" autoComplete="off" value={key} required={!custom} maxLength={4096} onChange={event=>setKey(event.target.value)}/></label>}
+ {!claude && <button disabled={save.isPending || (!custom && !key) || (custom && !baseUrl)}>{editing?(custom?"Save endpoint":"Replace API key"):"Save connection"}</button>}
+ {editing && <button type="button" onClick={reset}>Cancel</button>}
+ </form>}
  {save.isError && <p role="alert">{normalizeAPIError(save.error).message}</p>}
- <ul>{connections.data?.items.map(item=><li key={item.id}>{item.name} · {providerLabels[item.provider]}{item.provider==="anthropic"?` · ${item.credentialKind==="oauth"?"Setup token":"API key"}`:""}{item.baseUrl?` · ${item.baseUrl}`:""}{item.defaultModel?` · ${item.defaultModel}`:""}{item.reasoningEfforts?.length?` · effort ${item.reasoningEfforts.join("/")}`:""} · {item.revoked?"Revoked":"Saved"} <button onClick={()=>{setEditing(item);setProvider(item.provider);setName(item.name);setKey("");setBaseUrl(item.baseUrl??"");setModel(item.defaultModel??"");setPrivateHttp(!!item.allowPrivateHttp);setEfforts(item.reasoningEfforts??[]);setLoginKind(item.credentialKind==="oauth"?"oauth":"api_key");}}>{item.provider==="anthropic"?"Replace login":"Reconnect"}</button> {!item.revoked && <button disabled={save.isPending} onClick={()=>save.mutate({id:item.id,body:{provider:item.provider,name:item.name,apiKey:"",expectedResourceVersion:item.resourceVersion,revoked:true}})}>{item.provider==="anthropic"?"Clear login":"Revoke"}</button>}</li>)}</ul>
+ <ul>{connections.data?.items.map(item=><li key={item.id}>{item.name} · {providerLabels[item.provider]}{item.provider==="anthropic"?` · ${item.credentialKind==="oauth"?"Signed in":"API key"}`:""}{item.baseUrl?` · ${item.baseUrl}`:""}{item.defaultModel?` · ${item.defaultModel}`:""}{item.reasoningEfforts?.length?` · effort ${item.reasoningEfforts.join("/")}`:""} · {item.revoked?"Revoked":"Saved"} {item.provider==="anthropic" && <button type="button" disabled={busy} onClick={()=>void signIn(item.id)}>Sign in again</button>} <button onClick={()=>{setEditing(item);setProvider(item.provider);setName(item.name);setKey("");setBaseUrl(item.baseUrl??"");setModel(item.defaultModel??"");setPrivateHttp(!!item.allowPrivateHttp);setEfforts(item.reasoningEfforts??[]);setLoginKind(item.credentialKind==="oauth"?"oauth":"api_key");setFallback(item.provider==="anthropic");}}>{item.provider==="anthropic"?"Replace login":"Reconnect"}</button> {!item.revoked && <button disabled={save.isPending} onClick={()=>save.mutate({id:item.id,body:{provider:item.provider,name:item.name,apiKey:"",expectedResourceVersion:item.resourceVersion,revoked:true}})}>{item.provider==="anthropic"?"Clear login":"Revoke"}</button>}</li>)}</ul>
  </section>;
 }

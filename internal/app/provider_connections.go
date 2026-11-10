@@ -234,6 +234,8 @@ func (s *Service) ProjectProviderConnection(ctx context.Context, project domain.
 }
 func (s *Service) authorizeProviderLease(ctx context.Context, lease providergateway.Lease) (providergateway.Upstream, error) {
 	var upstream providergateway.Upstream
+	var connection domain.ProviderConnection
+	var raw []byte
 	err := s.store.View(ctx, func(r ports.Reader) error {
 		capsule, err := r.GetCapsule(ctx, domain.CapsuleID(lease.Capsule))
 		if err != nil {
@@ -249,7 +251,7 @@ func (s *Service) authorizeProviderLease(ctx context.Context, lease providergate
 		if grant != lease.Connection {
 			return domain.ErrConflict
 		}
-		connection, err := r.GetProviderConnection(ctx, grant)
+		connection, err = r.GetProviderConnection(ctx, grant)
 		if err != nil {
 			return err
 		}
@@ -259,15 +261,26 @@ func (s *Service) authorizeProviderLease(ctx context.Context, lease providergate
 		if connection.CredentialKind == providergateway.CredentialOAuth && connection.Provider != providergateway.Anthropic {
 			return domain.ErrConflict
 		}
-		raw, err := s.secretKey.OpenSetup(connectionEnvelopeID(connection), connection.KeyID, connection.Nonce, connection.Ciphertext)
+		opened, err := s.secretKey.OpenSetup(connectionEnvelopeID(connection), connection.KeyID, connection.Nonce, connection.Ciphertext)
 		if err != nil {
 			return err
 		}
-		defer wipe(raw)
-		upstream = providergateway.Upstream{Key: string(raw), BaseURL: connection.BaseURL, AllowPrivateHTTP: connection.AllowPrivateHTTP, CredentialKind: connection.CredentialKind}
+		raw = append([]byte(nil), opened...)
+		wipe(opened)
+		upstream = providergateway.Upstream{BaseURL: connection.BaseURL, AllowPrivateHTTP: connection.AllowPrivateHTTP, CredentialKind: connection.CredentialKind}
 		return nil
 	})
-	return upstream, err
+	if err != nil {
+		wipe(raw)
+		return providergateway.Upstream{}, err
+	}
+	defer wipe(raw)
+	key, err := s.claudeAccess(ctx, connection, raw)
+	if err != nil {
+		return providergateway.Upstream{}, err
+	}
+	upstream.Key = key
+	return upstream, nil
 }
 func (s *Service) runtimeProviderConnection(ctx context.Context, capsule domain.Capsule, harness string) (*harnesssetup.Connection, error) {
 	harness = strings.TrimSuffix(harness, "-structured")

@@ -44,6 +44,11 @@ type CaptureMomentParams struct {
 	IdempotencyKey string
 }
 
+// CompleteClaudeLoginParams is parameters of completeClaudeLogin operation.
+type CompleteClaudeLoginParams struct {
+	LoginId string
+}
+
 // CreateCapsuleParams is parameters of createCapsule operation.
 type CreateCapsuleParams struct {
 	ProjectId      string
@@ -142,6 +147,11 @@ type GetCapsuleGitDiffParams struct {
 // GetCapsuleGitStatusParams is parameters of getCapsuleGitStatus operation.
 type GetCapsuleGitStatusParams struct {
 	CapsuleId string
+}
+
+// GetClaudeLoginParams is parameters of getClaudeLogin operation.
+type GetClaudeLoginParams struct {
+	LoginId string
 }
 
 // GetCoordinationGrantParams is parameters of getCoordinationGrant operation.

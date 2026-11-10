@@ -142,6 +142,11 @@ func (s *Server) SetReady(ready bool) {
 func (s *Server) routes() {
 	s.mux.HandleFunc("GET /projects/{projectId}/harnesses/{harness}/setup", s.projectHarnessSetup)
 	s.mux.HandleFunc("PUT /projects/{projectId}/harnesses/{harness}/setup", s.projectHarnessSetup)
+	s.mux.HandleFunc("POST /claude-login", s.beginClaudeLogin)
+	s.mux.HandleFunc("GET /claude-login/finished", s.claudeLoginFinished)
+	s.mux.HandleFunc("GET /claude-login/{loginId}", s.getClaudeLogin)
+	s.mux.HandleFunc("POST /claude-login/{loginId}", s.completeClaudeLogin)
+	s.mux.HandleFunc("GET /callback", s.claudeLoginCallback)
 	s.mux.HandleFunc("GET /provider-connections", s.listProviderConnections)
 	s.mux.HandleFunc("POST /provider-connections", s.putProviderConnection)
 	s.mux.HandleFunc("PUT /provider-connections/{connectionId}", s.putProviderConnection)
@@ -313,7 +318,8 @@ func (s *Server) setBrowserCookie(writer http.ResponseWriter, request *http.Requ
 
 func authExempt(request *http.Request) bool {
 	if request.Method == http.MethodGet &&
-		(request.URL.Path == "/healthz" || request.URL.Path == "/readyz") {
+		(request.URL.Path == "/healthz" || request.URL.Path == "/readyz" ||
+			request.URL.Path == "/callback" || request.URL.Path == "/claude-login/finished") {
 		return true
 	}
 	if request.Method != http.MethodGet {

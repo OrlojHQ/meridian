@@ -223,10 +223,11 @@ LM Studio, SGLang, LiteLLM) and anthropic-compatible (LiteLLM and similar
 proxies for Claude Code) send requests through Meridian's gateway to
 --base-url. Capsules never see the base URL or the key.
 
-For anthropic, --oauth means the stdin value is a Claude Code setup token
-(claude setup-token). The gateway attaches it as Authorization: Bearer.
-Without --oauth the value is an API key. The login is not returned and is
-not placed in a Capsule.
+Sign in to Claude from Harness settings. Meridian runs that login. For
+anthropic, --oauth is the fallback: the stdin value is a Claude Code setup
+token. The gateway attaches it as Authorization: Bearer. Without --oauth
+the value is an API key. The login is not returned and is not placed in a
+Capsule.
 
 Keys are read only from stdin. Pass --no-api-key for a custom endpoint that
 needs no authentication.`, Example: `  meridian harness connect openai --stdin < key.txt

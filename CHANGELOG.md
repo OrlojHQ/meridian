@@ -9,12 +9,13 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- Claude login stays on the control plane (ADR 0036). Harness settings can
-  set, replace, and clear an Anthropic API key or a Claude Code setup token.
-  The value is stored as authenticated ciphertext and is not shown again.
-  The provider gateway attaches it to `api.anthropic.com`. A Capsule receives
-  only a gateway lease. Codex, OpenCode, Pi, and DeepSeek Harness credential
-  setup is unchanged.
+- Claude login stays on the control plane (ADR 0036). Harness settings sign
+  in to Claude from the page: Meridian runs the OAuth login, stores the
+  access and refresh tokens as authenticated ciphertext, and does not show
+  them again. Pasting an API key or a setup token remains a fallback. The
+  provider gateway attaches the current access token to `api.anthropic.com`.
+  A Capsule receives only a gateway lease. Codex, OpenCode, Pi, and DeepSeek
+  Harness credential setup is unchanged.
 
 - Homebrew install: `brew install orlojhq/tap/meridian` installs `meridian`
   and `meridiand`, and `brew services start meridian` runs the daemon in the

@@ -52,6 +52,20 @@ func encodeArchiveThreadRequest(
 	return nil
 }
 
+func encodeBeginClaudeLoginRequest(
+	req *ClaudeLoginRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodeCancelRunRequest(
 	req *LifecycleMutationRequest,
 	r *http.Request,
@@ -82,6 +96,20 @@ func encodeCancelThreadRequest(
 
 func encodeCaptureMomentRequest(
 	req *CaptureMomentRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeCompleteClaudeLoginRequest(
+	req *ClaudeLoginCode,
 	r *http.Request,
 ) error {
 	const contentType = "application/json"

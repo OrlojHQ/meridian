@@ -1129,6 +1129,41 @@ export type MutateHarnessSetupRequest = {
     expectedResourceVersion: number;
 };
 
+export type ClaudeLoginRequest = {
+    /**
+     * Official Anthropic connection to replace. Empty creates or replaces the existing Claude login.
+     */
+    connectionId?: string;
+};
+
+export type ClaudeLogin = {
+    loginId: string;
+    /**
+     * Claude's authorize page. It contains the PKCE challenge and state, not the verifier or a token.
+     */
+    authorizeUrl: string;
+    expiresAt: string;
+    /**
+     * When true, the browser cannot return to this daemon, so the operator submits the code Claude displays.
+     */
+    manual: boolean;
+};
+
+export type ClaudeLoginCode = {
+    /**
+     * Authorization code from the Claude page, optionally code#state. Not an access token. Not stored.
+     */
+    code: string;
+};
+
+export type ClaudeLoginStatus = {
+    status: 'pending' | 'complete' | 'failed';
+    /**
+     * Set when status is complete. Not a secret.
+     */
+    connectionId?: string;
+};
+
 export type ProviderConnection = {
     id: string;
     provider: ProviderConnectionType;
@@ -1175,7 +1210,7 @@ export type ReasoningEffortLevel = 'minimal' | 'low' | 'medium' | 'high' | 'xhig
 export type ProviderConnectionType = 'openai' | 'anthropic' | 'openai-compatible' | 'anthropic-compatible';
 
 /**
- * How the provider gateway attaches an official Anthropic Claude login. api_key sends X-Api-Key. oauth sends Authorization: Bearer for a Claude Code setup token. Omitted means api_key. This value is not the secret. Only the anthropic provider accepts oauth.
+ * How the provider gateway attaches an official Anthropic Claude login. api_key sends X-Api-Key. oauth sends Authorization: Bearer for the access token from in-UI sign-in, or for a setup token. Omitted means api_key. This value is not the secret. Only the anthropic provider accepts oauth.
  */
 export type AnthropicCredentialKind = 'api_key' | 'oauth';
 
@@ -1351,7 +1386,7 @@ export type ProviderConnectionRequestWritable = {
     name: string;
     provider: ProviderConnectionType;
     /**
-     * Required for official providers. For anthropic this is the Claude login: an API key, or a setup token when credentialKind is oauth. Custom endpoints accept an empty key and then send no upstream credential. The value is write-only and is not returned.
+     * Required for official providers. For anthropic this is the fallback Claude login: an API key, or a setup token when credentialKind is oauth. In-UI sign-in uses /claude-login and does not send a token here. Custom endpoints accept an empty key and then send no upstream credential. The value is write-only and is not returned.
      */
     apiKey: string;
     credentialKind?: AnthropicCredentialKind;
@@ -1454,6 +1489,85 @@ export type ProxyProviderInferenceResponses = {
 };
 
 export type ProxyProviderInferenceResponse = ProxyProviderInferenceResponses[keyof ProxyProviderInferenceResponses];
+
+export type BeginClaudeLoginData = {
+    body: ClaudeLoginRequest;
+    path?: never;
+    query?: never;
+    url: '/claude-login';
+};
+
+export type BeginClaudeLoginErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type BeginClaudeLoginError = BeginClaudeLoginErrors[keyof BeginClaudeLoginErrors];
+
+export type BeginClaudeLoginResponses = {
+    /**
+     * Successful operation
+     */
+    200: ClaudeLogin;
+};
+
+export type BeginClaudeLoginResponse = BeginClaudeLoginResponses[keyof BeginClaudeLoginResponses];
+
+export type GetClaudeLoginData = {
+    body?: never;
+    path: {
+        loginId: string;
+    };
+    query?: never;
+    url: '/claude-login/{loginId}';
+};
+
+export type GetClaudeLoginErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type GetClaudeLoginError = GetClaudeLoginErrors[keyof GetClaudeLoginErrors];
+
+export type GetClaudeLoginResponses = {
+    /**
+     * Successful operation
+     */
+    200: ClaudeLoginStatus;
+};
+
+export type GetClaudeLoginResponse = GetClaudeLoginResponses[keyof GetClaudeLoginResponses];
+
+export type CompleteClaudeLoginData = {
+    body: ClaudeLoginCode;
+    path: {
+        loginId: string;
+    };
+    query?: never;
+    url: '/claude-login/{loginId}';
+};
+
+export type CompleteClaudeLoginErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type CompleteClaudeLoginError = CompleteClaudeLoginErrors[keyof CompleteClaudeLoginErrors];
+
+export type CompleteClaudeLoginResponses = {
+    /**
+     * Successful operation
+     */
+    200: ClaudeLoginStatus;
+};
+
+export type CompleteClaudeLoginResponse = CompleteClaudeLoginResponses[keyof CompleteClaudeLoginResponses];
 
 export type ListProviderConnectionsData = {
     body?: never;

@@ -104,7 +104,27 @@ it("saves the reasoning effort levels a self-hosted model accepts",async()=>{
  await userEvent.click(screen.getByRole("button",{name:"Save connection"}));
  await waitFor(()=>expect(save).toHaveBeenCalledWith(expect.objectContaining({defaultModel:"glm-5.3-flash",reasoningEfforts:["low","high","max"]}),undefined));
 });
-it("saves, replaces, and clears a Claude login without showing it again",async()=>{
+it("signs in to Claude from the settings page and does not show a token",async()=>{
+ const user=userEvent.setup();
+ vi.spyOn(api,"harnessSetups").mockResolvedValue({items:[]});
+ vi.spyOn(api,"providerConnections").mockResolvedValue({items:[],enabled:true});
+ const popup={closed:false,close:vi.fn(),location:{href:""}} as unknown as Window;
+ vi.spyOn(window,"open").mockReturnValue(popup);
+ const begin=vi.spyOn(api,"beginClaudeLogin").mockResolvedValue({loginId:"login-1",authorizeUrl:"https://claude.ai/oauth/authorize?code_challenge=abc&state=state-1",expiresAt:setup.createdAt,manual:false});
+ vi.spyOn(api,"getClaudeLogin").mockResolvedValue({status:"complete",connectionId:"claude-login"});
+ show(<HarnessSetups/>);
+ await user.selectOptions(await screen.findByLabelText("Provider"),"anthropic");
+ expect(screen.getByRole("button",{name:"Sign in with Claude"})).toBeInTheDocument();
+ expect(screen.queryByLabelText("Claude login")).toBeNull();
+ await user.click(screen.getByRole("button",{name:"Sign in with Claude"}));
+ await waitFor(()=>expect(begin).toHaveBeenCalledWith({}));
+ expect(window.open).toHaveBeenCalledWith("about:blank","meridian-claude-login","popup,width=520,height=760");
+ await waitFor(()=>expect(popup.location.href).toBe("https://claude.ai/oauth/authorize?code_challenge=abc&state=state-1"));
+ await waitFor(()=>expect(screen.getByRole("status")).toHaveTextContent("Signed in. Meridian stored the login encrypted and will not show it."));
+ expect(document.body.textContent).not.toContain("sk-ant");
+ expect(popup.close).toHaveBeenCalled();
+});
+it("saves, replaces, and clears a pasted Claude login without showing it again",async()=>{
  const user=userEvent.setup();
  const saved={id:"claude-login",provider:"anthropic" as const,name:"Claude",credentialKind:"oauth" as const,createdAt:setup.createdAt,resourceVersion:1,revoked:false};
  vi.spyOn(api,"harnessSetups").mockResolvedValue({items:[]});
@@ -112,6 +132,7 @@ it("saves, replaces, and clears a Claude login without showing it again",async()
  const save=vi.spyOn(api,"saveProviderConnection").mockResolvedValue(saved);
  show(<HarnessSetups/>);
  await user.selectOptions(await screen.findByLabelText("Provider"),"anthropic");
+ await user.click(screen.getByRole("button",{name:"Use an API key or a setup token instead"}));
  expect(screen.getByRole("radio",{name:"API key"})).toBeChecked();
  await user.click(screen.getByRole("radio",{name:"Setup token"}));
  const secret="sk-ant-oat-claude-login-canary";
@@ -124,7 +145,7 @@ it("saves, replaces, and clears a Claude login without showing it again",async()
  vi.spyOn(api,"providerConnections").mockResolvedValue({items:[saved],enabled:true});
  cleanup();
  show(<HarnessSetups/>);
- expect(await screen.findByText(/Setup token/)).toBeInTheDocument();
+ expect(await screen.findByText(/Signed in/)).toBeInTheDocument();
  expect(document.body.textContent).not.toContain(secret);
  await user.click(screen.getByRole("button",{name:"Replace login"}));
  expect(screen.getByLabelText("Claude login")).toHaveValue("");

@@ -43,8 +43,8 @@ func (s *APIError) SetMessage(val string) {
 }
 
 // How the provider gateway attaches an official Anthropic Claude login. api_key sends X-Api-Key. oauth
-// sends Authorization: Bearer for a Claude Code setup token. Omitted means api_key. This value is not
-// the secret. Only the anthropic provider accepts oauth.
+// sends Authorization: Bearer for the access token from in-UI sign-in, or for a setup token. Omitted
+// means api_key. This value is not the secret. Only the anthropic provider accepts oauth.
 // Ref: #/components/schemas/AnthropicCredentialKind
 type AnthropicCredentialKind string
 
@@ -1448,6 +1448,164 @@ func (s *ChildRollup) SetFailed(val int) {
 // SetArchived sets the value of Archived.
 func (s *ChildRollup) SetArchived(val int) {
 	s.Archived = val
+}
+
+// Ref: #/components/schemas/ClaudeLogin
+type ClaudeLogin struct {
+	LoginId string `json:"loginId"`
+	// Claude's authorize page. It contains the PKCE challenge and state, not the verifier or a token.
+	AuthorizeUrl string    `json:"authorizeUrl"`
+	ExpiresAt    time.Time `json:"expiresAt"`
+	// When true, the browser cannot return to this daemon, so the operator submits the code Claude
+	// displays.
+	Manual bool `json:"manual"`
+}
+
+// GetLoginId returns the value of LoginId.
+func (s *ClaudeLogin) GetLoginId() string {
+	return s.LoginId
+}
+
+// GetAuthorizeUrl returns the value of AuthorizeUrl.
+func (s *ClaudeLogin) GetAuthorizeUrl() string {
+	return s.AuthorizeUrl
+}
+
+// GetExpiresAt returns the value of ExpiresAt.
+func (s *ClaudeLogin) GetExpiresAt() time.Time {
+	return s.ExpiresAt
+}
+
+// GetManual returns the value of Manual.
+func (s *ClaudeLogin) GetManual() bool {
+	return s.Manual
+}
+
+// SetLoginId sets the value of LoginId.
+func (s *ClaudeLogin) SetLoginId(val string) {
+	s.LoginId = val
+}
+
+// SetAuthorizeUrl sets the value of AuthorizeUrl.
+func (s *ClaudeLogin) SetAuthorizeUrl(val string) {
+	s.AuthorizeUrl = val
+}
+
+// SetExpiresAt sets the value of ExpiresAt.
+func (s *ClaudeLogin) SetExpiresAt(val time.Time) {
+	s.ExpiresAt = val
+}
+
+// SetManual sets the value of Manual.
+func (s *ClaudeLogin) SetManual(val bool) {
+	s.Manual = val
+}
+
+// Ref: #/components/schemas/ClaudeLoginCode
+type ClaudeLoginCode struct {
+	// Authorization code from the Claude page, optionally code#state. Not an access token. Not stored.
+	Code string `json:"code"`
+}
+
+// GetCode returns the value of Code.
+func (s *ClaudeLoginCode) GetCode() string {
+	return s.Code
+}
+
+// SetCode sets the value of Code.
+func (s *ClaudeLoginCode) SetCode(val string) {
+	s.Code = val
+}
+
+// Ref: #/components/schemas/ClaudeLoginRequest
+type ClaudeLoginRequest struct {
+	// Official Anthropic connection to replace. Empty creates or replaces the existing Claude login.
+	ConnectionId OptString `json:"connectionId"`
+}
+
+// GetConnectionId returns the value of ConnectionId.
+func (s *ClaudeLoginRequest) GetConnectionId() OptString {
+	return s.ConnectionId
+}
+
+// SetConnectionId sets the value of ConnectionId.
+func (s *ClaudeLoginRequest) SetConnectionId(val OptString) {
+	s.ConnectionId = val
+}
+
+// Ref: #/components/schemas/ClaudeLoginStatus
+type ClaudeLoginStatus struct {
+	Status ClaudeLoginStatusStatus `json:"status"`
+	// Set when status is complete. Not a secret.
+	ConnectionId OptString `json:"connectionId"`
+}
+
+// GetStatus returns the value of Status.
+func (s *ClaudeLoginStatus) GetStatus() ClaudeLoginStatusStatus {
+	return s.Status
+}
+
+// GetConnectionId returns the value of ConnectionId.
+func (s *ClaudeLoginStatus) GetConnectionId() OptString {
+	return s.ConnectionId
+}
+
+// SetStatus sets the value of Status.
+func (s *ClaudeLoginStatus) SetStatus(val ClaudeLoginStatusStatus) {
+	s.Status = val
+}
+
+// SetConnectionId sets the value of ConnectionId.
+func (s *ClaudeLoginStatus) SetConnectionId(val OptString) {
+	s.ConnectionId = val
+}
+
+type ClaudeLoginStatusStatus string
+
+const (
+	ClaudeLoginStatusStatusPending  ClaudeLoginStatusStatus = "pending"
+	ClaudeLoginStatusStatusComplete ClaudeLoginStatusStatus = "complete"
+	ClaudeLoginStatusStatusFailed   ClaudeLoginStatusStatus = "failed"
+)
+
+// AllValues returns all ClaudeLoginStatusStatus values.
+func (ClaudeLoginStatusStatus) AllValues() []ClaudeLoginStatusStatus {
+	return []ClaudeLoginStatusStatus{
+		ClaudeLoginStatusStatusPending,
+		ClaudeLoginStatusStatusComplete,
+		ClaudeLoginStatusStatusFailed,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s ClaudeLoginStatusStatus) MarshalText() ([]byte, error) {
+	switch s {
+	case ClaudeLoginStatusStatusPending:
+		return []byte(s), nil
+	case ClaudeLoginStatusStatusComplete:
+		return []byte(s), nil
+	case ClaudeLoginStatusStatusFailed:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *ClaudeLoginStatusStatus) UnmarshalText(data []byte) error {
+	switch ClaudeLoginStatusStatus(data) {
+	case ClaudeLoginStatusStatusPending:
+		*s = ClaudeLoginStatusStatusPending
+		return nil
+	case ClaudeLoginStatusStatusComplete:
+		*s = ClaudeLoginStatusStatusComplete
+		return nil
+	case ClaudeLoginStatusStatusFailed:
+		*s = ClaudeLoginStatusStatusFailed
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
 }
 
 // Ref: #/components/schemas/CoordinationCapability
@@ -8546,9 +8704,10 @@ func (s *ProviderConnectionPage) SetPrivateHttpAllowed(val OptBool) {
 type ProviderConnectionRequest struct {
 	Name     string                 `json:"name"`
 	Provider ProviderConnectionType `json:"provider"`
-	// Required for official providers. For anthropic this is the Claude login: an API key, or a setup
-	// token when credentialKind is oauth. Custom endpoints accept an empty key and then send no upstream
-	// credential. The value is write-only and is not returned.
+	// Required for official providers. For anthropic this is the fallback Claude login: an API key, or a
+	// setup token when credentialKind is oauth. In-UI sign-in uses /claude-login and does not send a token
+	// here. Custom endpoints accept an empty key and then send no upstream credential. The value is
+	// write-only and is not returned.
 	ApiKey         string                     `json:"apiKey"`
 	CredentialKind OptAnthropicCredentialKind `json:"credentialKind"`
 	// Required for custom endpoint types; rejected for official ones. An https URL, or an http URL on a

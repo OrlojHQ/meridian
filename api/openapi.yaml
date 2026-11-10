@@ -23,8 +23,9 @@ paths:
         are supported; unsupported provider/operation combinations return 404.
         The origin must be enabled explicitly by the deployment operator.
         Official Anthropic requests attach the stored Claude login: an API key
-        as X-Api-Key, or a setup token as Authorization: Bearer. The Capsule
-        lease is checked and then dropped; it is never forwarded upstream.
+        as X-Api-Key, or an OAuth access token from in-UI sign-in (or a setup
+        token) as Authorization: Bearer. The Capsule lease is checked and then
+        dropped; it is never forwarded upstream.
         When the upstream provider rejects a request, the gateway returns its 4xx or
         5xx status (other statuses become 502), sets error.upstreamStatus, and
         includes at most 300 characters of sanitized upstream reason in error.message.
@@ -76,6 +77,78 @@ paths:
             text/event-stream:
               schema:
                 type: string
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /claude-login:
+    post:
+      operationId: beginClaudeLogin
+      summary: beginClaudeLogin
+      description: >-
+        Start a Claude account sign-in. The response authorizeUrl is opened in
+        the browser. The PKCE verifier stays on the daemon and is not returned.
+        A loopback browser is redirected back to this daemon. Any other host
+        sets manual, and the operator submits the code Claude displays.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClaudeLoginRequest"
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClaudeLogin"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /claude-login/{loginId}:
+    get:
+      operationId: getClaudeLogin
+      summary: getClaudeLogin
+      description: Sign-in status. Never includes a token or an authorization code.
+      parameters:
+        - name: loginId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClaudeLoginStatus"
+        default:
+          $ref: "#/components/responses/DefaultError"
+    post:
+      operationId: completeClaudeLogin
+      summary: completeClaudeLogin
+      description: >-
+        Exchange an authorization code from the Claude sign-in page. This is
+        the fallback when the browser cannot return to the daemon. The code is
+        not a token and is not stored.
+      parameters:
+        - name: loginId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClaudeLoginCode"
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClaudeLoginStatus"
         default:
           $ref: "#/components/responses/DefaultError"
   /provider-connections:
@@ -3959,6 +4032,45 @@ components:
         expectedResourceVersion:
           type: integer
           format: int64
+    ClaudeLoginRequest:
+      type: object
+      properties:
+        connectionId:
+          type: string
+          description: Official Anthropic connection to replace. Empty creates or replaces the existing Claude login.
+    ClaudeLogin:
+      type: object
+      required: [loginId, authorizeUrl, expiresAt, manual]
+      properties:
+        loginId:
+          type: string
+        authorizeUrl:
+          type: string
+          description: Claude's authorize page. It contains the PKCE challenge and state, not the verifier or a token.
+        expiresAt:
+          type: string
+          format: date-time
+        manual:
+          type: boolean
+          description: When true, the browser cannot return to this daemon, so the operator submits the code Claude displays.
+    ClaudeLoginCode:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+          maxLength: 2048
+          description: Authorization code from the Claude page, optionally code#state. Not an access token. Not stored.
+    ClaudeLoginStatus:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [pending, complete, failed]
+        connectionId:
+          type: string
+          description: Set when status is complete. Not a secret.
     ProviderConnection:
       type: object
       required: [id, provider, name, createdAt, resourceVersion, revoked]
@@ -4025,9 +4137,10 @@ components:
       enum: [api_key, oauth]
       description: >-
         How the provider gateway attaches an official Anthropic Claude login.
-        api_key sends X-Api-Key. oauth sends Authorization: Bearer for a
-        Claude Code setup token. Omitted means api_key. This value is not the
-        secret. Only the anthropic provider accepts oauth.
+        api_key sends X-Api-Key. oauth sends Authorization: Bearer for the
+        access token from in-UI sign-in, or for a setup token. Omitted means
+        api_key. This value is not the secret. Only the anthropic provider
+        accepts oauth.
     ProviderConnectionRequest:
       type: object
       required: [name, provider, apiKey, expectedResourceVersion]
@@ -4041,10 +4154,11 @@ components:
           writeOnly: true
           maxLength: 4096
           description: >-
-            Required for official providers. For anthropic this is the Claude
-            login: an API key, or a setup token when credentialKind is oauth.
-            Custom endpoints accept an empty key and then send no upstream
-            credential. The value is write-only and is not returned.
+            Required for official providers. For anthropic this is the fallback
+            Claude login: an API key, or a setup token when credentialKind is
+            oauth. In-UI sign-in uses /claude-login and does not send a token
+            here. Custom endpoints accept an empty key and then send no
+            upstream credential. The value is write-only and is not returned.
         credentialKind:
           $ref: '#/components/schemas/AnthropicCredentialKind'
         baseUrl:
