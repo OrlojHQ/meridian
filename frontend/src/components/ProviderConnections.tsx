@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, normalizeAPIError } from "../api/client";
 import type { ProviderConnection, ProviderConnectionRequestWritable, ProviderConnectionType, ReasoningEffortLevel } from "../api/generated/types.gen";
+// Official Claude mark, unchanged, from https://claude.com/icon.svg.
+// It only identifies the sign-in. Anthropic's mark stays its own.
+import claudeMark from "../assets/claude-mark.svg";
 
 const providerLabels:Record<ProviderConnectionType,string>={openai:"OpenAI",anthropic:"Anthropic","openai-compatible":"OpenAI-compatible endpoint","anthropic-compatible":"Anthropic-compatible endpoint"};
 const isCustom=(provider:ProviderConnectionType)=>provider==="openai-compatible"||provider==="anthropic-compatible";
@@ -89,16 +92,23 @@ export function ProviderConnections(){
  {privateHttpAllowed && <label><input type="checkbox" checked={privateHttp} onChange={event=>setPrivateHttp(event.target.checked)}/>Use plain HTTP to a private-network server</label>}
  {privateHttp && <p role="note">Plain HTTP sends prompts, code, and any API key unencrypted between Meridian and the model server. Use it only on a network you trust, such as a LAN or tailnet. Meridian connects only to loopback and private addresses in this mode.</p>}
  </>}
- {claude && <>
- <p>Click Sign in with Claude. Meridian opens Claude's login, receives the result, and stores it encrypted. You do not run <code>claude setup-token</code> or paste a token from somewhere else. The provider gateway attaches the login. A Capsule receives a gateway lease only, never this token. The saved value is not shown again.</p>
- <button type="button" disabled={busy} onClick={()=>void signIn(editing?.provider==="anthropic"?editing.id:undefined)}>{editing?"Sign in again":"Sign in with Claude"}</button>
+ {claude && <div className="claude-login">
+ <p>Sign in with your Claude account.</p>
+ <button type="button" className="primary-button claude-sign-in" disabled={busy} onClick={()=>void signIn(editing?.provider==="anthropic"?editing.id:undefined)}><img src={claudeMark} alt="" />{editing?"Sign in again":"Sign in with Claude"}</button>
  {continueURL && <p><a href={continueURL} target="_blank" rel="noopener noreferrer">Continue to Claude</a></p>}
  {active&&(active.manual||wantCode) && <><p>{active.manual?"This browser cannot return here automatically. Paste the code Claude shows. Meridian exchanges it and does not keep the code.":"Paste the code Claude shows if the window did not return. Meridian exchanges it and does not keep the code."}</p><label>Authorization code<input type="password" autoComplete="off" value={code} maxLength={2048} onChange={event=>setCode(event.target.value)}/></label><button type="button" disabled={busy||!code.trim()} onClick={()=>void finish()}>Finish sign-in</button></>}
- {active&&!active.manual&&!wantCode && <button type="button" onClick={()=>setWantCode(true)}>Enter the code from Claude</button>}
+ {active&&!active.manual&&!wantCode && <button type="button" className="secondary" onClick={()=>setWantCode(true)}>Enter the code from Claude</button>}
  {message && <p role="status">{message}</p>}
- {!fallback && <button type="button" onClick={()=>setFallback(true)}>Use an API key or a setup token instead</button>}
- {fallback && <fieldset className="effort-levels"><legend>Fallback credential</legend><label><input type="radio" name="claude-login-kind" checked={loginKind==="api_key"} onChange={()=>setLoginKind("api_key")}/>API key</label><label><input type="radio" name="claude-login-kind" checked={loginKind==="oauth"} onChange={()=>setLoginKind("oauth")}/>Setup token</label><label>Claude login<input type="password" autoComplete="off" value={key} maxLength={4096} onChange={event=>setKey(event.target.value)}/></label><button disabled={save.isPending||!key}>{editing?"Replace Claude login":"Save Claude login"}</button></fieldset>}
- </>}
+ {!fallback && <button type="button" className="secondary" onClick={()=>setFallback(true)}>Use an API key or a setup token instead</button>}
+ {fallback && <div className="claude-login-fallback">
+  <div className="choice-row">
+   <label><input type="radio" name="claude-login-kind" checked={loginKind==="api_key"} onChange={()=>setLoginKind("api_key")}/>API key</label>
+   <label><input type="radio" name="claude-login-kind" checked={loginKind==="oauth"} onChange={()=>setLoginKind("oauth")}/>Setup token</label>
+  </div>
+  <input type="password" aria-label={loginKind==="api_key"?"API key":"Setup token"} autoComplete="off" value={key} maxLength={4096} onChange={event=>setKey(event.target.value)}/>
+  <button disabled={save.isPending||!key}>{editing?"Replace Claude login":"Save Claude login"}</button>
+ </div>}
+</div>}
  {editing && custom && <p>Saving replaces the stored key. Enter it again, or leave it empty if the server needs none.</p>}
  {!claude && <label>{custom?"API key (optional)":"API key"}<input type="password" autoComplete="off" value={key} required={!custom} maxLength={4096} onChange={event=>setKey(event.target.value)}/></label>}
  {!claude && <button disabled={save.isPending || (!custom && !key) || (custom && !baseUrl)}>{editing?(custom?"Save endpoint":"Replace API key"):"Save connection"}</button>}
