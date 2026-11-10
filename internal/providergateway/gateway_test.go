@@ -536,3 +536,82 @@ func TestGatewayChatGPTShapeRefreshAndSignIn(t *testing.T) {
 		t.Fatalf("sign-in required: %d %s", w.Code, w.Body.String())
 	}
 }
+
+func TestGatewayAttachesClaudeLoginAndLeavesCodexAlone(t *testing.T) {
+	const login = "sk-ant-oat-claude-login-canary"
+	const codexKey = "codex-upstream-key-canary"
+	var sawClaude, sawCodex bool
+	var claudeLease, codexLease string
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/messages":
+			sawClaude = true
+			if r.Header.Get("Authorization") != "Bearer "+login || r.Header.Get("X-Api-Key") != "" {
+				t.Errorf("claude login headers: authorization %q x-api-key %q", r.Header.Get("Authorization"), r.Header.Get("X-Api-Key"))
+			}
+			joined := r.Header.Get("Authorization") + r.Header.Get("X-Api-Key") + r.Header.Get("Cookie")
+			if claudeLease != "" && strings.Contains(joined, claudeLease) {
+				t.Errorf("lease forwarded: %v", r.Header)
+			}
+			beta := r.Header.Get("Anthropic-Beta")
+			if !strings.Contains(beta, oauthBeta) || !strings.Contains(beta, "prompt-caching-2024-07-31") {
+				t.Errorf("beta = %q", beta)
+			}
+			if r.Header.Get("Anthropic-Version") != "2023-06-01" || r.Header.Get("Cookie") != "" {
+				t.Errorf("unexpected headers %v", r.Header)
+			}
+		case "/v1/responses":
+			sawCodex = true
+			if r.Header.Get("Authorization") != "Bearer "+codexKey || r.Header.Get("X-Api-Key") != "" || r.Header.Get("Anthropic-Beta") != "" {
+				t.Errorf("codex headers changed: %v", r.Header)
+			}
+		default:
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{}`)
+	}))
+	defer upstream.Close()
+	g := New(func(_ context.Context, lease Lease) (Upstream, error) {
+		if lease.Provider == OpenAI {
+			return Upstream{Key: codexKey}, nil
+		}
+		return Upstream{Key: login, CredentialKind: CredentialOAuth}, nil
+	}, Options{})
+	defer g.Close()
+	g.client = upstream.Client()
+	g.upstream[Anthropic] = upstream.URL
+	g.upstream[OpenAI] = upstream.URL
+	var err error
+	claudeLease, err = g.Issue(Lease{Provider: Anthropic, Connection: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	codexLease, err = g.Issue(Lease{Provider: OpenAI, Connection: "codex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	claude := send(g, "/provider-gateway/anthropic/v1/messages", claudeLease, http.Header{"Anthropic-Beta": {"prompt-caching-2024-07-31"}, "X-Api-Key": {"lease-" + claudeLease}, "Cookie": {"session=lease"}})
+	if claude.Code != 200 {
+		t.Fatalf("claude gateway %d %s", claude.Code, claude.Body.String())
+	}
+	codex := send(g, "/provider-gateway/openai/v1/responses", codexLease, nil)
+	if codex.Code != 200 {
+		t.Fatalf("codex gateway %d %s", codex.Code, codex.Body.String())
+	}
+	if !sawClaude || !sawCodex {
+		t.Fatalf("upstream calls claude=%v codex=%v", sawClaude, sawCodex)
+	}
+	refused := New(func(context.Context, Lease) (Upstream, error) {
+		return Upstream{Key: login, CredentialKind: CredentialOAuth}, nil
+	}, Options{})
+	defer refused.Close()
+	refused.upstream[AnthropicCompatible] = upstream.URL
+	token, err := refused.Issue(Lease{Provider: AnthropicCompatible, Connection: "custom"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := send(refused, "/provider-gateway/anthropic-compatible/v1/messages", token, nil); got.Code != http.StatusForbidden {
+		t.Fatalf("oauth kind on a custom endpoint: %d", got.Code)
+	}
+}

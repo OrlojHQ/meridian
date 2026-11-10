@@ -899,6 +899,94 @@
   gap: 0.75rem;
   margin-block: 0.75rem;
 }
+.chatgpt-sign-in {
+  display: grid;
+  gap: 0.75rem;
+  justify-items: start;
+  margin-top: 0.35rem;
+}
+
+.chatgpt-sign-in p {
+  margin: 0;
+  max-width: 36rem;
+}
+
+.claude-login {
+  display: grid;
+  gap: 0.75rem;
+  justify-items: start;
+  margin-top: 0.35rem;
+}
+
+.claude-login p {
+  margin: 0;
+  max-width: 36rem;
+}
+
+.claude-sign-in {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 2.75rem;
+  padding: 0.35rem 0.9rem 0.35rem 0.55rem;
+  font-size: 0.95rem;
+}
+
+.claude-sign-in img {
+  width: 1.75rem;
+  height: 1.75rem;
+  flex: none;
+}
+
+.claude-login-fallback {
+  display: grid;
+  gap: 0.75rem;
+  width: 100%;
+  justify-items: start;
+}
+
+.choice-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1.15rem;
+}
+
+.choice-row label {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: auto;
+  margin: 0;
+  color: inherit;
+  font-size: 0.95rem;
+  font-weight: 650;
+}
+
+.choice-row input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
+  flex: none;
+}
+
+.claude-login-fallback > input {
+  width: 100%;
+}
+
+@media (max-width: 720px) {
+  .claude-sign-in,
+  .claude-login > button.secondary,
+  .claude-login-fallback > button {
+    width: 100%;
+  }
+
+  .claude-sign-in {
+    justify-content: center;
+  }
+}
+
 .settings-section > .panel {
   padding-inline: 0;
 }

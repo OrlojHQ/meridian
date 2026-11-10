@@ -366,6 +366,71 @@ func TestConnectionEffortLevelsReachEachHarness(t *testing.T) {
 	}
 }
 
+func TestClaudeLoginAbsentFromHarnessEnvAndCodexUnchanged(t *testing.T) {
+	const login = "sk-ant-oat-claude-login-canary"
+	lease := strings.Repeat("ab", 32)
+	s := &Server{config: ServerConfig{HarnessHome: t.TempDir()}}
+	env, err := s.prepareProviderConnection(context.Background(), &harnesssetup.Connection{
+		Provider: "anthropic", URL: "https://meridian.example/provider-gateway/anthropic", Token: lease,
+	}, nil, "claude", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if env["ANTHROPIC_API_KEY"] != lease || env["MERIDIAN_PROVIDER_TOKEN"] != lease || env["ANTHROPIC_BASE_URL"] != "https://meridian.example/provider-gateway/anthropic" {
+		t.Fatalf("claude env = %v", env)
+	}
+	for name, value := range env {
+		if strings.Contains(value, login) {
+			t.Fatalf("claude env %s contains the login", name)
+		}
+	}
+	if err := filepath.WalkDir(env["HOME"], func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if strings.Contains(string(raw), login) || strings.Contains(string(raw), lease) {
+			t.Fatalf("claude home file %s contains credential material", path)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	codex, err := s.prepareProviderConnection(context.Background(), &harnesssetup.Connection{
+		Provider: "openai", URL: "https://meridian.example/provider-gateway/openai", Token: lease,
+	}, nil, "codex", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if codex["MERIDIAN_PROVIDER_TOKEN"] != lease {
+		t.Fatalf("codex token = %q", codex["MERIDIAN_PROVIDER_TOKEN"])
+	}
+	if _, ok := codex["ANTHROPIC_API_KEY"]; ok {
+		t.Fatal("codex env gained ANTHROPIC_API_KEY")
+	}
+	raw, err := os.ReadFile(filepath.Join(codex["HOME"], ".codex", "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), login) {
+		t.Fatalf("codex config contains the claude login: %s", raw)
+	}
+	config := map[string]any{}
+	if err := toml.Unmarshal(raw, &config); err != nil {
+		t.Fatal(err)
+	}
+	provider := config["model_providers"].(map[string]any)["meridian"].(map[string]any)
+	if config["model_provider"] != "meridian" || provider["base_url"] != "https://meridian.example/provider-gateway/openai/v1" || provider["wire_api"] != "responses" || provider["env_key"] != "MERIDIAN_PROVIDER_TOKEN" {
+		t.Fatalf("codex path changed: %v", config)
+	}
+	if _, ok := config["web_search"]; ok {
+		t.Fatalf("official codex config changed: %v", config)
+	}
+}
+
 func TestCodexToolDefaultsApplyOnlyToCustomEndpoints(t *testing.T) {
 	token := strings.Repeat("c", 64)
 	render := func(t *testing.T, provider, imported string) map[string]any {

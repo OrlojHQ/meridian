@@ -42,6 +42,51 @@ func (s *APIError) SetMessage(val string) {
 	s.Message = val
 }
 
+// How the provider gateway attaches an official Anthropic Claude login. api_key sends X-Api-Key. oauth
+// sends Authorization: Bearer for the access token from in-UI sign-in, or for a setup token. Omitted
+// means api_key. This value is not the secret. Only the anthropic provider accepts oauth.
+// Ref: #/components/schemas/AnthropicCredentialKind
+type AnthropicCredentialKind string
+
+const (
+	AnthropicCredentialKindAPIKey AnthropicCredentialKind = "api_key"
+	AnthropicCredentialKindOAuth  AnthropicCredentialKind = "oauth"
+)
+
+// AllValues returns all AnthropicCredentialKind values.
+func (AnthropicCredentialKind) AllValues() []AnthropicCredentialKind {
+	return []AnthropicCredentialKind{
+		AnthropicCredentialKindAPIKey,
+		AnthropicCredentialKindOAuth,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s AnthropicCredentialKind) MarshalText() ([]byte, error) {
+	switch s {
+	case AnthropicCredentialKindAPIKey:
+		return []byte(s), nil
+	case AnthropicCredentialKindOAuth:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *AnthropicCredentialKind) UnmarshalText(data []byte) error {
+	switch AnthropicCredentialKind(data) {
+	case AnthropicCredentialKindAPIKey:
+		*s = AnthropicCredentialKindAPIKey
+		return nil
+	case AnthropicCredentialKindOAuth:
+		*s = AnthropicCredentialKindOAuth
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
 type ApproveCoordinationRequestBadRequest ErrorEnvelope
 
 func (*ApproveCoordinationRequestBadRequest) approveCoordinationRequestRes() {}
@@ -1590,6 +1635,164 @@ func (s *ChildRollup) SetFailed(val int) {
 // SetArchived sets the value of Archived.
 func (s *ChildRollup) SetArchived(val int) {
 	s.Archived = val
+}
+
+// Ref: #/components/schemas/ClaudeLogin
+type ClaudeLogin struct {
+	LoginId string `json:"loginId"`
+	// Claude's authorize page. It contains the PKCE challenge and state, not the verifier or a token.
+	AuthorizeUrl string    `json:"authorizeUrl"`
+	ExpiresAt    time.Time `json:"expiresAt"`
+	// When true, the browser cannot return to this daemon, so the operator submits the code Claude
+	// displays.
+	Manual bool `json:"manual"`
+}
+
+// GetLoginId returns the value of LoginId.
+func (s *ClaudeLogin) GetLoginId() string {
+	return s.LoginId
+}
+
+// GetAuthorizeUrl returns the value of AuthorizeUrl.
+func (s *ClaudeLogin) GetAuthorizeUrl() string {
+	return s.AuthorizeUrl
+}
+
+// GetExpiresAt returns the value of ExpiresAt.
+func (s *ClaudeLogin) GetExpiresAt() time.Time {
+	return s.ExpiresAt
+}
+
+// GetManual returns the value of Manual.
+func (s *ClaudeLogin) GetManual() bool {
+	return s.Manual
+}
+
+// SetLoginId sets the value of LoginId.
+func (s *ClaudeLogin) SetLoginId(val string) {
+	s.LoginId = val
+}
+
+// SetAuthorizeUrl sets the value of AuthorizeUrl.
+func (s *ClaudeLogin) SetAuthorizeUrl(val string) {
+	s.AuthorizeUrl = val
+}
+
+// SetExpiresAt sets the value of ExpiresAt.
+func (s *ClaudeLogin) SetExpiresAt(val time.Time) {
+	s.ExpiresAt = val
+}
+
+// SetManual sets the value of Manual.
+func (s *ClaudeLogin) SetManual(val bool) {
+	s.Manual = val
+}
+
+// Ref: #/components/schemas/ClaudeLoginCode
+type ClaudeLoginCode struct {
+	// Authorization code from the Claude page, optionally code#state. Not an access token. Not stored.
+	Code string `json:"code"`
+}
+
+// GetCode returns the value of Code.
+func (s *ClaudeLoginCode) GetCode() string {
+	return s.Code
+}
+
+// SetCode sets the value of Code.
+func (s *ClaudeLoginCode) SetCode(val string) {
+	s.Code = val
+}
+
+// Ref: #/components/schemas/ClaudeLoginRequest
+type ClaudeLoginRequest struct {
+	// Official Anthropic connection to replace. Empty creates or replaces the existing Claude login.
+	ConnectionId OptString `json:"connectionId"`
+}
+
+// GetConnectionId returns the value of ConnectionId.
+func (s *ClaudeLoginRequest) GetConnectionId() OptString {
+	return s.ConnectionId
+}
+
+// SetConnectionId sets the value of ConnectionId.
+func (s *ClaudeLoginRequest) SetConnectionId(val OptString) {
+	s.ConnectionId = val
+}
+
+// Ref: #/components/schemas/ClaudeLoginStatus
+type ClaudeLoginStatus struct {
+	Status ClaudeLoginStatusStatus `json:"status"`
+	// Set when status is complete. Not a secret.
+	ConnectionId OptString `json:"connectionId"`
+}
+
+// GetStatus returns the value of Status.
+func (s *ClaudeLoginStatus) GetStatus() ClaudeLoginStatusStatus {
+	return s.Status
+}
+
+// GetConnectionId returns the value of ConnectionId.
+func (s *ClaudeLoginStatus) GetConnectionId() OptString {
+	return s.ConnectionId
+}
+
+// SetStatus sets the value of Status.
+func (s *ClaudeLoginStatus) SetStatus(val ClaudeLoginStatusStatus) {
+	s.Status = val
+}
+
+// SetConnectionId sets the value of ConnectionId.
+func (s *ClaudeLoginStatus) SetConnectionId(val OptString) {
+	s.ConnectionId = val
+}
+
+type ClaudeLoginStatusStatus string
+
+const (
+	ClaudeLoginStatusStatusPending  ClaudeLoginStatusStatus = "pending"
+	ClaudeLoginStatusStatusComplete ClaudeLoginStatusStatus = "complete"
+	ClaudeLoginStatusStatusFailed   ClaudeLoginStatusStatus = "failed"
+)
+
+// AllValues returns all ClaudeLoginStatusStatus values.
+func (ClaudeLoginStatusStatus) AllValues() []ClaudeLoginStatusStatus {
+	return []ClaudeLoginStatusStatus{
+		ClaudeLoginStatusStatusPending,
+		ClaudeLoginStatusStatusComplete,
+		ClaudeLoginStatusStatusFailed,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s ClaudeLoginStatusStatus) MarshalText() ([]byte, error) {
+	switch s {
+	case ClaudeLoginStatusStatusPending:
+		return []byte(s), nil
+	case ClaudeLoginStatusStatusComplete:
+		return []byte(s), nil
+	case ClaudeLoginStatusStatusFailed:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *ClaudeLoginStatusStatus) UnmarshalText(data []byte) error {
+	switch ClaudeLoginStatusStatus(data) {
+	case ClaudeLoginStatusStatusPending:
+		*s = ClaudeLoginStatusStatusPending
+		return nil
+	case ClaudeLoginStatusStatusComplete:
+		*s = ClaudeLoginStatusStatusComplete
+		return nil
+	case ClaudeLoginStatusStatusFailed:
+		*s = ClaudeLoginStatusStatusFailed
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
 }
 
 // Ref: #/components/schemas/CoordinationCapability
@@ -5549,6 +5752,52 @@ func (s *MutateHarnessSetupRequest) SetExpectedResourceVersion(val int64) {
 	s.ExpectedResourceVersion = val
 }
 
+// NewOptAnthropicCredentialKind returns new OptAnthropicCredentialKind with value set to v.
+func NewOptAnthropicCredentialKind(v AnthropicCredentialKind) OptAnthropicCredentialKind {
+	return OptAnthropicCredentialKind{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptAnthropicCredentialKind is optional AnthropicCredentialKind.
+type OptAnthropicCredentialKind struct {
+	Value AnthropicCredentialKind
+	Set   bool
+}
+
+// IsSet returns true if OptAnthropicCredentialKind was set.
+func (o OptAnthropicCredentialKind) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptAnthropicCredentialKind) Reset() {
+	var v AnthropicCredentialKind
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptAnthropicCredentialKind) SetTo(v AnthropicCredentialKind) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptAnthropicCredentialKind) Get() (v AnthropicCredentialKind, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptAnthropicCredentialKind) Or(d AnthropicCredentialKind) AnthropicCredentialKind {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptBoardItemNeedsYou returns new OptBoardItemNeedsYou with value set to v.
 func NewOptBoardItemNeedsYou(v BoardItemNeedsYou) OptBoardItemNeedsYou {
 	return OptBoardItemNeedsYou{
@@ -8490,10 +8739,11 @@ type ProviderConnection struct {
 	NeedsSignIn OptBool `json:"needsSignIn"`
 	// ChatGPT connections only. Local tokens were deleted but OpenAI did not confirm revocation;
 	// disconnect Meridian in ChatGPT's settings.
-	RevocationUnconfirmed OptBool   `json:"revocationUnconfirmed"`
-	CreatedAt             time.Time `json:"createdAt"`
-	ResourceVersion       int64     `json:"resourceVersion"`
-	Revoked               bool      `json:"revoked"`
+	RevocationUnconfirmed OptBool                    `json:"revocationUnconfirmed"`
+	CredentialKind        OptAnthropicCredentialKind `json:"credentialKind"`
+	CreatedAt             time.Time                  `json:"createdAt"`
+	ResourceVersion       int64                      `json:"resourceVersion"`
+	Revoked               bool                       `json:"revoked"`
 }
 
 // GetID returns the value of ID.
@@ -8544,6 +8794,11 @@ func (s *ProviderConnection) GetNeedsSignIn() OptBool {
 // GetRevocationUnconfirmed returns the value of RevocationUnconfirmed.
 func (s *ProviderConnection) GetRevocationUnconfirmed() OptBool {
 	return s.RevocationUnconfirmed
+}
+
+// GetCredentialKind returns the value of CredentialKind.
+func (s *ProviderConnection) GetCredentialKind() OptAnthropicCredentialKind {
+	return s.CredentialKind
 }
 
 // GetCreatedAt returns the value of CreatedAt.
@@ -8609,6 +8864,11 @@ func (s *ProviderConnection) SetNeedsSignIn(val OptBool) {
 // SetRevocationUnconfirmed sets the value of RevocationUnconfirmed.
 func (s *ProviderConnection) SetRevocationUnconfirmed(val OptBool) {
 	s.RevocationUnconfirmed = val
+}
+
+// SetCredentialKind sets the value of CredentialKind.
+func (s *ProviderConnection) SetCredentialKind(val OptAnthropicCredentialKind) {
+	s.CredentialKind = val
 }
 
 // SetCreatedAt sets the value of CreatedAt.
@@ -8680,9 +8940,12 @@ func (s *ProviderConnectionPage) SetChatgptAvailable(val OptBool) {
 type ProviderConnectionRequest struct {
 	Name     string                 `json:"name"`
 	Provider ProviderConnectionType `json:"provider"`
-	// Required for official providers. Custom endpoints accept an empty key and then send no upstream
-	// credential.
-	ApiKey string `json:"apiKey"`
+	// Required for official providers. For anthropic this is the fallback Claude login: an API key, or a
+	// setup token when credentialKind is oauth. In-UI sign-in uses /claude-login and does not send a token
+	// here. Custom endpoints accept an empty key and then send no upstream credential. The value is
+	// write-only and is not returned.
+	ApiKey         string                     `json:"apiKey"`
+	CredentialKind OptAnthropicCredentialKind `json:"credentialKind"`
 	// Required for custom endpoint types; rejected for official ones. An https URL, or an http URL on a
 	// loopback or private-network address when allowPrivateHttp is set. A trailing /v1 is removed.
 	BaseUrl OptString `json:"baseUrl"`
@@ -8711,6 +8974,11 @@ func (s *ProviderConnectionRequest) GetProvider() ProviderConnectionType {
 // GetApiKey returns the value of ApiKey.
 func (s *ProviderConnectionRequest) GetApiKey() string {
 	return s.ApiKey
+}
+
+// GetCredentialKind returns the value of CredentialKind.
+func (s *ProviderConnectionRequest) GetCredentialKind() OptAnthropicCredentialKind {
+	return s.CredentialKind
 }
 
 // GetBaseUrl returns the value of BaseUrl.
@@ -8756,6 +9024,11 @@ func (s *ProviderConnectionRequest) SetProvider(val ProviderConnectionType) {
 // SetApiKey sets the value of ApiKey.
 func (s *ProviderConnectionRequest) SetApiKey(val string) {
 	s.ApiKey = val
+}
+
+// SetCredentialKind sets the value of CredentialKind.
+func (s *ProviderConnectionRequest) SetCredentialKind(val OptAnthropicCredentialKind) {
+	s.CredentialKind = val
 }
 
 // SetBaseUrl sets the value of BaseUrl.

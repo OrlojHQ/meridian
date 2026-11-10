@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import { api } from "../api/client";
@@ -36,7 +36,9 @@ it("signs in with ChatGPT through the daemon and never offers it as a key form",
     .mockResolvedValue({ ...signIn, state: "completed", connectionId: "chatgpt" });
   show();
   const provider = await screen.findByLabelText("Provider");
-  expect(within(provider).queryByRole("option", { name: "ChatGPT plan" })).toBeNull();
+  await userEvent.selectOptions(provider, "chatgpt");
+  expect(screen.queryByLabelText(/^API key/)).toBeNull();
+  expect(screen.queryByRole("button", { name: "Save connection" })).toBeNull();
   await userEvent.click(screen.getByRole("button", { name: "Continue with ChatGPT" }));
   expect(start).toHaveBeenCalledWith(undefined);
   expect(await screen.findByRole("link", { name: "Open ChatGPT sign-in" })).toHaveAttribute("href", signIn.authorizationUrl);
@@ -50,7 +52,8 @@ it("finishes from a pasted redirect when the daemon cannot catch it", async () =
   vi.spyOn(api, "chatGPTSignIn").mockResolvedValue({ ...signIn, listening: false });
   const complete = vi.spyOn(api, "completeChatGPTSignIn").mockResolvedValue({ ...signIn, state: "completed", connectionId: "chatgpt" });
   show();
-  await userEvent.click(await screen.findByRole("button", { name: "Continue with ChatGPT" }));
+  await userEvent.selectOptions(await screen.findByLabelText("Provider"), "chatgpt");
+  await userEvent.click(screen.getByRole("button", { name: "Continue with ChatGPT" }));
   const address = "http://127.0.0.1:1455/auth/callback?code=c&state=s";
   await userEvent.type(await screen.findByLabelText(/paste the address/), address);
   await userEvent.click(screen.getByRole("button", { name: "Finish sign-in" }));

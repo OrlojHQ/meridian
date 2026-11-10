@@ -49,6 +49,11 @@ type CompleteChatGPTSignInParams struct {
 	SignInId string
 }
 
+// CompleteClaudeLoginParams is parameters of completeClaudeLogin operation.
+type CompleteClaudeLoginParams struct {
+	LoginId string
+}
+
 // CreateCapsuleParams is parameters of createCapsule operation.
 type CreateCapsuleParams struct {
 	ProjectId      string
@@ -152,6 +157,11 @@ type GetCapsuleGitStatusParams struct {
 // GetChatGPTSignInParams is parameters of getChatGPTSignIn operation.
 type GetChatGPTSignInParams struct {
 	SignInId string
+}
+
+// GetClaudeLoginParams is parameters of getClaudeLogin operation.
+type GetClaudeLoginParams struct {
+	LoginId string
 }
 
 // GetCoordinationGrantParams is parameters of getCoordinationGrant operation.

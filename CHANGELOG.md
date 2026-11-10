@@ -23,6 +23,13 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   rootless engines have no default and still need one of the two flags.
   Capsules created before upgrading need recreating to use connections. With
   a local gateway, the API listener no longer serves `/provider-gateway/`.
+- Claude login stays on the control plane (ADR 0036). Harness settings sign
+  in to Claude from the page: Meridian runs the OAuth login, stores the
+  access and refresh tokens as authenticated ciphertext, and does not show
+  them again. Pasting an API key or a setup token remains a fallback. The
+  provider gateway attaches the current access token to `api.anthropic.com`.
+  A Capsule receives only a gateway lease. Codex, OpenCode, Pi, and DeepSeek
+  Harness credential setup is unchanged.
 
 - Homebrew install: `brew install orlojhq/tap/meridian` installs `meridian`
   and `meridiand`, and `brew services start meridian` runs the daemon in the
@@ -30,16 +37,15 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   prereleases are skipped.
 - `make vulncheck` runs `govulncheck` (v1.9.0) in CI and in the release
   verify job, failing on known vulnerabilities in code Meridian reaches.
-- Sign in with ChatGPT (ADR 0036): sign in once from Harness settings or
+- Sign in with ChatGPT (ADR 0038): sign in once from Harness settings or
   `meridian harness connect chatgpt`, and Codex uses your ChatGPT plan in
   every Capsule, for terminals and Threads, without signing in again. The
   daemon runs the OAuth flow, keeps the token set encrypted, and refreshes it;
   Capsules get only their 24-hour gateway lease. The gateway allows only
   `POST /v1/responses` for these connections and requires `stream: true` and
   `store: false`. Signing out revokes the token at OpenAI. Uses the provider
-  gateway, which local Docker installs now start on their own. Claude
-  subscriptions are not supported, because Anthropic restricts their OAuth
-  tokens to Claude Code and Claude.ai.
+  gateway, which local Docker installs now start on their own. Claude login
+  is the separate control-plane sign-in above.
 
 ### Security
 

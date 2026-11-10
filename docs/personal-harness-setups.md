@@ -140,6 +140,25 @@ settings. Alternatively, pipe a key from your secret manager into:
 meridian harness connect openai --stdin
 ```
 
+A Claude login is the same kind of stored connection, for the official
+Anthropic provider only. In Harness settings, choose Anthropic and click
+"Sign in with Claude". Meridian opens Claude's login, receives the redirect
+on the daemon, and stores the result as authenticated ciphertext. You do not
+run `claude setup-token` or paste a token minted elsewhere. If that browser
+cannot return to the daemon, paste the authorization code the Claude page
+shows; Meridian exchanges it and does not keep the code. An API key, or a
+setup token you already have, can still be saved from the same form or from
+stdin. The gateway sends an API key as `X-Api-Key` and an OAuth login or
+setup token as `Authorization: Bearer`. A Capsule receives the gateway URL
+and a 24-hour lease, not the login. Replacing or clearing it does not show
+the previous value. Codex, OpenCode, Pi, and DeepSeek Harness credential
+setup is unchanged.
+
+```console
+meridian harness connect anthropic --stdin
+printf %s "$CLAUDE_SETUP_TOKEN" | meridian harness connect anthropic --oauth --stdin
+```
+
 The key must come from stdin, never a plaintext command-line argument. On first
 launch, choose the connection to authorize it for the Project and harness.
 That grant is reused on future launches. Revoke a connection in Settings to stop
@@ -165,8 +184,9 @@ Codex Capsule, terminal or Thread, uses it without its own sign-in. This uses
 OpenAI's Sign in with ChatGPT plan usage for self-hosted apps, so usage counts
 against your plan's Codex limits. It needs the provider gateway, as above.
 
-In **Harness settings → Provider connections**, select **Continue with
-ChatGPT**, open the sign-in page, and approve Meridian. If your browser runs
+In **Harness settings → Provider connections**, choose **ChatGPT plan** and
+select **Continue with ChatGPT**. Open the sign-in page and approve Meridian.
+If your browser runs
 on the same computer as `meridiand`, the page reports success and Meridian
 updates by itself. Otherwise the browser lands on a `127.0.0.1:1455` page that
 fails to load; copy that address into Meridian and select **Finish sign-in**.
@@ -201,10 +221,9 @@ for any other connection.
   Do not share a ChatGPT connection with other people or offer it as a hosted
   service.
 
-Claude Code subscriptions cannot be shared this way: Anthropic restricts
-Claude Free, Pro, and Max OAuth tokens to Claude Code and Claude.ai. Claude
-Code still signs in inside each Capsule, or uses an Anthropic API connection.
-See ADR 0036.
+Claude login is a separate connection. Choose Anthropic in Provider
+connections and use Sign in with Claude, described above. See ADR 0036 for
+Claude and ADR 0038 for ChatGPT.
 
 ### Self-hosted models (vLLM, Ollama, LiteLLM)
 

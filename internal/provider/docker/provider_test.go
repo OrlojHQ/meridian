@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"iter"
@@ -225,6 +226,44 @@ func TestContainerRequestIsHardenedAndLoopbackOnly(t *testing.T) {
 		if strings.Contains(key, "token") || strings.Contains(value, "secret-token") {
 			t.Fatalf("token leaked into label %q", key)
 		}
+	}
+}
+
+func TestCapsuleSpecOmitsClaudeLogin(t *testing.T) {
+	const login = "sk-ant-claude-login-canary"
+	engine := newFakeEngine()
+	provider := testProvider(t, engine)
+	names := provider.resourceNames("capsule-1")
+	options := provider.ContainerCreateOptions(names, engine.image.ID, "supervisor-token", provider.labels("capsule-1", "capsule", engine.image.ID))
+	raw, err := json.Marshal(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{login, "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-"} {
+		if strings.Contains(string(raw), forbidden) {
+			t.Fatalf("capsule spec contains %s", forbidden)
+		}
+	}
+	if len(options.Config.Env) != 2 {
+		t.Fatalf("env = %#v", options.Config.Env)
+	}
+	for _, env := range options.Config.Env {
+		name, value, _ := strings.Cut(env, "=")
+		switch name {
+		case "MERIDIAN_CAPSULE_TOKEN":
+			if value != "supervisor-token" {
+				t.Fatalf("supervisor token = %q", value)
+			}
+		case "HOME":
+			if value != "/home/capsule" {
+				t.Fatalf("HOME = %q", value)
+			}
+		default:
+			t.Fatalf("unexpected capsule env %s", name)
+		}
+	}
+	if len(options.HostConfig.Mounts) != 1 || options.HostConfig.Mounts[0].Type != "volume" || options.HostConfig.Mounts[0].Target != workspace {
+		t.Fatalf("mounts = %#v", options.HostConfig.Mounts)
 	}
 }
 

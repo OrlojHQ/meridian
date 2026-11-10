@@ -21,6 +21,7 @@ type ConnectionInput struct {
 	DefaultModel            string                 `json:"defaultModel,omitempty"`
 	AllowPrivateHTTP        bool                   `json:"allowPrivateHttp,omitempty"`
 	ReasoningEfforts        []string               `json:"reasoningEfforts,omitempty"`
+	CredentialKind          string                 `json:"credentialKind,omitempty"`
 	ExpectedResourceVersion domain.ResourceVersion `json:"expectedResourceVersion"`
 	Revoked                 bool                   `json:"revoked,omitempty"`
 }
@@ -30,12 +31,18 @@ type ConnectionInput struct {
 func connectionEnvelopeID(item domain.ProviderConnection) string {
 	if item.Provider == providergateway.ChatGPT {
 		// Token sets rotate without a resource version change, so they are
-		// bound to their credential generation instead (ADR 0036).
+		// bound to their credential generation instead (ADR 0038).
 		return fmt.Sprintf("connection:%s:%s:generation:%d:%t", item.ID, item.Provider, item.CredentialGeneration, item.Revoked)
 	}
 	id := fmt.Sprintf("connection:%s:%s:%d:%t", item.ID, item.Provider, item.ResourceVersion, item.Revoked)
 	if providergateway.Custom(item.Provider) {
 		id += fmt.Sprintf(":%q:%t", item.BaseURL, item.AllowPrivateHTTP)
+	}
+	// API-key rows keep the historical envelope id so existing ciphertext
+	// still opens. A setup token is bound to oauth so editing the stored
+	// kind cannot change how the gateway attaches it.
+	if item.CredentialKind == providergateway.CredentialOAuth {
+		id += ":oauth"
 	}
 	return id
 }
@@ -139,6 +146,9 @@ func (s *Service) PutProviderConnection(ctx context.Context, id string, input Co
 		if !input.Revoked {
 			result.BaseURL, result.DefaultModel, result.AllowPrivateHTTP = input.BaseURL, input.DefaultModel, input.AllowPrivateHTTP
 			result.ReasoningEfforts = input.ReasoningEfforts
+			result.CredentialKind = input.CredentialKind
+		} else {
+			result.CredentialKind = ""
 		}
 		result.KeyID = s.secretKey.ID
 		// Keep a valid encrypted empty envelope on revocation, never old key material.
@@ -164,6 +174,16 @@ func (s *Service) PutProviderConnection(ctx context.Context, id string, input Co
 // Custom endpoints may omit the key; official providers require one and use
 // fixed upstreams.
 func (s *Service) validateConnectionInput(input ConnectionInput) (ConnectionInput, error) {
+	switch input.CredentialKind {
+	case "", providergateway.CredentialAPIKey:
+		input.CredentialKind = ""
+	case providergateway.CredentialOAuth:
+		if input.Provider != providergateway.Anthropic {
+			return input, fmt.Errorf("%w: a Claude setup token is only valid for the official Anthropic connection", domain.ErrInvalid)
+		}
+	default:
+		return input, fmt.Errorf("%w: invalid Claude login type", domain.ErrInvalid)
+	}
 	if len(input.APIKey) > 4096 || strings.ContainsAny(input.APIKey, "\r\n\x00") {
 		return input, fmt.Errorf("%w: invalid API key", domain.ErrInvalid)
 	}
@@ -244,6 +264,8 @@ func (s *Service) ProjectProviderConnection(ctx context.Context, project domain.
 }
 func (s *Service) authorizeProviderLease(ctx context.Context, lease providergateway.Lease) (providergateway.Upstream, error) {
 	var upstream providergateway.Upstream
+	var connection domain.ProviderConnection
+	var raw []byte
 	err := s.store.View(ctx, func(r ports.Reader) error {
 		capsule, err := r.GetCapsule(ctx, domain.CapsuleID(lease.Capsule))
 		if err != nil {
@@ -259,7 +281,7 @@ func (s *Service) authorizeProviderLease(ctx context.Context, lease providergate
 		if grant != lease.Connection {
 			return domain.ErrConflict
 		}
-		connection, err := r.GetProviderConnection(ctx, grant)
+		connection, err = r.GetProviderConnection(ctx, grant)
 		if err != nil {
 			return err
 		}
@@ -270,18 +292,33 @@ func (s *Service) authorizeProviderLease(ctx context.Context, lease providergate
 			// Resolved below: a refresh may need the network and a write.
 			return nil
 		}
-		raw, err := s.secretKey.OpenSetup(connectionEnvelopeID(connection), connection.KeyID, connection.Nonce, connection.Ciphertext)
+		if connection.CredentialKind == providergateway.CredentialOAuth && connection.Provider != providergateway.Anthropic {
+			return domain.ErrConflict
+		}
+		opened, err := s.secretKey.OpenSetup(connectionEnvelopeID(connection), connection.KeyID, connection.Nonce, connection.Ciphertext)
 		if err != nil {
 			return err
 		}
-		defer wipe(raw)
-		upstream = providergateway.Upstream{Key: string(raw), BaseURL: connection.BaseURL, AllowPrivateHTTP: connection.AllowPrivateHTTP}
+		raw = append([]byte(nil), opened...)
+		wipe(opened)
+		upstream = providergateway.Upstream{BaseURL: connection.BaseURL, AllowPrivateHTTP: connection.AllowPrivateHTTP, CredentialKind: connection.CredentialKind}
 		return nil
 	})
-	if err == nil && lease.Provider == providergateway.ChatGPT {
+	if err != nil {
+		wipe(raw)
+		return providergateway.Upstream{}, err
+	}
+	if lease.Provider == providergateway.ChatGPT {
+		wipe(raw)
 		return s.chatGPTUpstream(ctx, lease.Connection)
 	}
-	return upstream, err
+	defer wipe(raw)
+	key, err := s.claudeAccess(ctx, connection, raw)
+	if err != nil {
+		return providergateway.Upstream{}, err
+	}
+	upstream.Key = key
+	return upstream, nil
 }
 
 // putChatGPTConnection handles the only edits a ChatGPT connection accepts
@@ -291,8 +328,8 @@ func (s *Service) putChatGPTConnection(ctx context.Context, id, name string, inp
 	if id == "" {
 		return domain.ProviderConnection{}, fmt.Errorf("%w: sign in with ChatGPT to create this connection", domain.ErrInvalid)
 	}
-	if input.APIKey != "" || input.BaseURL != "" || input.DefaultModel != "" || input.AllowPrivateHTTP || len(input.ReasoningEfforts) != 0 {
-		return domain.ProviderConnection{}, fmt.Errorf("%w: a ChatGPT connection takes no key or endpoint; sign in again to change its account", domain.ErrInvalid)
+	if input.APIKey != "" || input.BaseURL != "" || input.DefaultModel != "" || input.AllowPrivateHTTP || len(input.ReasoningEfforts) != 0 || input.CredentialKind != "" {
+		return domain.ProviderConnection{}, fmt.Errorf("%w: a ChatGPT connection takes no key, endpoint, or Claude login type; sign in again to change its account", domain.ErrInvalid)
 	}
 	var result domain.ProviderConnection
 	var tokens *chatgptauth.TokenSet

@@ -1,4 +1,4 @@
-# ADR 0036: ChatGPT plan connections
+# ADR 0038: ChatGPT plan connections
 
 - Status: Proposed
 - Date: 2026-11-09
@@ -29,9 +29,9 @@ documented Codex integration runs `codex app-server` with a custom
 the shape Meridian already uses for API-key connections, with the gateway
 lease standing in for the upstream credential.
 
-Anthropic's consumer terms reserve Claude Free, Pro, and Max OAuth tokens
-for Claude Code and Claude.ai and forbid third parties from routing requests
-through them. Meridian therefore does not broker Claude subscription logins.
+Claude login is a separate decision (ADR 0036): the daemon runs Claude
+Code's own OAuth client and keeps that login on the provider gateway. This
+decision covers only ChatGPT plan usage for Codex.
 
 ## Decision
 
@@ -176,8 +176,7 @@ installations start it on their own (ADR 0037); other deployments still set
   only reads the `stream`, `store`, `previous_response_id`, and `background`
   fields.
 - Native Codex sign-in inside a Capsule still works and remains
-  Capsule-local. Claude Code subscription sign-in is unchanged and stays
-  per-Capsule.
+  Capsule-local. Claude login is ADR 0036.
 - OpenAI marks this route as a preview. Its parameters, scopes, or terms may
   change and need tracking.
 

@@ -56,6 +56,14 @@ type Invoker interface {
 	//
 	// GET /runs/{runId}/attach
 	AttachRunWebSocket(ctx context.Context, params AttachRunWebSocketParams) (AttachRunWebSocketRes, error)
+	// BeginClaudeLogin invokes beginClaudeLogin operation.
+	//
+	// Start a Claude account sign-in. The response authorizeUrl is opened in the browser. The PKCE
+	// verifier stays on the daemon and is not returned. A loopback browser is redirected back to this
+	// daemon. Any other host sets manual, and the operator submits the code Claude displays.
+	//
+	// POST /claude-login
+	BeginClaudeLogin(ctx context.Context, request *ClaudeLoginRequest) (*ClaudeLogin, error)
 	// CancelRun invokes cancelRun operation.
 	//
 	// Request Run cancellation.
@@ -80,6 +88,13 @@ type Invoker interface {
 	//
 	// POST /provider-connections/chatgpt/sign-ins/{signInId}/complete
 	CompleteChatGPTSignIn(ctx context.Context, request *ChatGPTSignInCompletion, params CompleteChatGPTSignInParams) (*ChatGPTSignIn, error)
+	// CompleteClaudeLogin invokes completeClaudeLogin operation.
+	//
+	// Exchange an authorization code from the Claude sign-in page. This is the fallback when the browser
+	// cannot return to the daemon. The code is not a token and is not stored.
+	//
+	// POST /claude-login/{loginId}
+	CompleteClaudeLogin(ctx context.Context, request *ClaudeLoginCode, params CompleteClaudeLoginParams) (*ClaudeLoginStatus, error)
 	// CreateBrowserSession invokes createBrowserSession operation.
 	//
 	// The installation token is accepted only in the Authorization header and is never returned. The
@@ -220,6 +235,12 @@ type Invoker interface {
 	//
 	// GET /provider-connections/chatgpt/sign-ins/{signInId}
 	GetChatGPTSignIn(ctx context.Context, params GetChatGPTSignInParams) (*ChatGPTSignIn, error)
+	// GetClaudeLogin invokes getClaudeLogin operation.
+	//
+	// Sign-in status. Never includes a token or an authorization code.
+	//
+	// GET /claude-login/{loginId}
+	GetClaudeLogin(ctx context.Context, params GetClaudeLoginParams) (*ClaudeLoginStatus, error)
 	// GetCoordinationGrant invokes getCoordinationGrant operation.
 	//
 	// Get a lead Thread's Coordination Grant.
@@ -473,10 +494,13 @@ type Invoker interface {
 	// Requires a live Capsule gateway lease in Authorization (Bearer) or X-Api-Key. Installation API
 	// tokens and browser sessions do not authorize this operation. Only OpenAI responses/chat completions
 	// and Anthropic messages/token counting are supported; unsupported provider/operation combinations
-	// return 404. The origin must be enabled explicitly by the deployment operator. When the upstream
-	// provider rejects a request, the gateway returns its 4xx or 5xx status (other statuses become 502),
-	// sets error.upstreamStatus, and includes at most 300 characters of sanitized upstream reason in
-	// error.message. Upstream headers and raw bodies are never copied.
+	// return 404. The origin must be enabled explicitly by the deployment operator. Official Anthropic
+	// requests attach the stored Claude login: an API key as X-Api-Key, or an OAuth access token from
+	// in-UI sign-in (or a setup token) as Authorization: Bearer. The Capsule lease is checked and then
+	// dropped; it is never forwarded upstream. When the upstream provider rejects a request, the gateway
+	// returns its 4xx or 5xx status (other statuses become 502), sets error.upstreamStatus, and includes
+	// at most 300 characters of sanitized upstream reason in error.message. Upstream headers and raw
+	// bodies are never copied.
 	//
 	// POST /provider-gateway/{provider}/v1/{operation}
 	ProxyProviderInference(ctx context.Context, request ProxyProviderInferenceReq, params ProxyProviderInferenceParams) (ProxyProviderInferenceRes, error)
@@ -1235,6 +1259,124 @@ func (c *Client) sendAttachRunWebSocket(ctx context.Context, params AttachRunWeb
 	return result, nil
 }
 
+// BeginClaudeLogin invokes beginClaudeLogin operation.
+//
+// Start a Claude account sign-in. The response authorizeUrl is opened in the browser. The PKCE
+// verifier stays on the daemon and is not returned. A loopback browser is redirected back to this
+// daemon. Any other host sets manual, and the operator submits the code Claude displays.
+//
+// POST /claude-login
+func (c *Client) BeginClaudeLogin(ctx context.Context, request *ClaudeLoginRequest) (*ClaudeLogin, error) {
+	res, err := c.sendBeginClaudeLogin(ctx, request)
+	return res, err
+}
+
+func (c *Client) sendBeginClaudeLogin(ctx context.Context, request *ClaudeLoginRequest) (res *ClaudeLogin, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("beginClaudeLogin"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/claude-login"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, BeginClaudeLoginOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/claude-login"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeBeginClaudeLoginRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, BeginClaudeLoginOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeBeginClaudeLoginResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // CancelRun invokes cancelRun operation.
 //
 // Request Run cancellation.
@@ -1810,6 +1952,141 @@ func (c *Client) sendCompleteChatGPTSignIn(ctx context.Context, request *ChatGPT
 
 	stage = "DecodeResponse"
 	result, err := decodeCompleteChatGPTSignInResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// CompleteClaudeLogin invokes completeClaudeLogin operation.
+//
+// Exchange an authorization code from the Claude sign-in page. This is the fallback when the browser
+// cannot return to the daemon. The code is not a token and is not stored.
+//
+// POST /claude-login/{loginId}
+func (c *Client) CompleteClaudeLogin(ctx context.Context, request *ClaudeLoginCode, params CompleteClaudeLoginParams) (*ClaudeLoginStatus, error) {
+	res, err := c.sendCompleteClaudeLogin(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendCompleteClaudeLogin(ctx context.Context, request *ClaudeLoginCode, params CompleteClaudeLoginParams) (res *ClaudeLoginStatus, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("completeClaudeLogin"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/claude-login/{loginId}"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, CompleteClaudeLoginOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [2]string
+	pathParts[0] = "/claude-login/"
+	{
+		// Encode "loginId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "loginId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.LoginId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeCompleteClaudeLoginRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, CompleteClaudeLoginOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeCompleteClaudeLoginResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -4749,6 +5026,137 @@ func (c *Client) sendGetChatGPTSignIn(ctx context.Context, params GetChatGPTSign
 
 	stage = "DecodeResponse"
 	result, err := decodeGetChatGPTSignInResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// GetClaudeLogin invokes getClaudeLogin operation.
+//
+// Sign-in status. Never includes a token or an authorization code.
+//
+// GET /claude-login/{loginId}
+func (c *Client) GetClaudeLogin(ctx context.Context, params GetClaudeLoginParams) (*ClaudeLoginStatus, error) {
+	res, err := c.sendGetClaudeLogin(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendGetClaudeLogin(ctx context.Context, params GetClaudeLoginParams) (res *ClaudeLoginStatus, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getClaudeLogin"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/claude-login/{loginId}"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetClaudeLoginOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [2]string
+	pathParts[0] = "/claude-login/"
+	{
+		// Encode "loginId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "loginId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.LoginId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, GetClaudeLoginOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeGetClaudeLoginResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -10370,10 +10778,13 @@ func (c *Client) sendPromoteCapsule(ctx context.Context, request *PromoteCapsule
 // Requires a live Capsule gateway lease in Authorization (Bearer) or X-Api-Key. Installation API
 // tokens and browser sessions do not authorize this operation. Only OpenAI responses/chat completions
 // and Anthropic messages/token counting are supported; unsupported provider/operation combinations
-// return 404. The origin must be enabled explicitly by the deployment operator. When the upstream
-// provider rejects a request, the gateway returns its 4xx or 5xx status (other statuses become 502),
-// sets error.upstreamStatus, and includes at most 300 characters of sanitized upstream reason in
-// error.message. Upstream headers and raw bodies are never copied.
+// return 404. The origin must be enabled explicitly by the deployment operator. Official Anthropic
+// requests attach the stored Claude login: an API key as X-Api-Key, or an OAuth access token from
+// in-UI sign-in (or a setup token) as Authorization: Bearer. The Capsule lease is checked and then
+// dropped; it is never forwarded upstream. When the upstream provider rejects a request, the gateway
+// returns its 4xx or 5xx status (other statuses become 502), sets error.upstreamStatus, and includes
+// at most 300 characters of sanitized upstream reason in error.message. Upstream headers and raw
+// bodies are never copied.
 //
 // POST /provider-gateway/{provider}/v1/{operation}
 func (c *Client) ProxyProviderInference(ctx context.Context, request ProxyProviderInferenceReq, params ProxyProviderInferenceParams) (ProxyProviderInferenceRes, error) {

@@ -23,7 +23,7 @@ type ProviderConnection struct {
 	// off) for that model and send each level's name upstream.
 	ReasoningEfforts []string `json:"reasoningEfforts,omitempty"`
 
-	// ChatGPT plan connections only (ADR 0036). Account is the signed-in
+	// ChatGPT plan connections only (ADR 0038). Account is the signed-in
 	// email from the validated ID token, for display. NeedsSignIn is set when
 	// the refresh token stops working. RevocationUnconfirmed is set when a
 	// revoked connection's token could not be revoked at OpenAI.
@@ -34,4 +34,8 @@ type ProviderConnection struct {
 	// every rotation, so a stale ciphertext cannot be swapped back in. It is
 	// persisted metadata, not part of the public API.
 	CredentialGeneration int64 `json:"credentialGeneration,omitempty"`
+	// CredentialKind selects how the gateway attaches an official Anthropic
+	// login. Empty means an API key (X-Api-Key). "oauth" is a Claude Code
+	// setup token or in-UI sign-in (Authorization: Bearer). It is not the secret.
+	CredentialKind string `json:"credentialKind,omitempty"`
 }

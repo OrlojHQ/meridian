@@ -22,7 +22,7 @@ import (
 	"github.com/OrlojHQ/meridian/internal/providergateway"
 )
 
-// ChatGPT plan connections (ADR 0036). The daemon owns every sign-in secret:
+// ChatGPT plan connections (ADR 0038). The daemon owns every sign-in secret:
 // the PKCE verifier, state, and nonce stay in memory here, and the resulting
 // token set is sealed in the connection envelope. Nothing in this file sends
 // a token to a Capsule, the browser, or the CLI.

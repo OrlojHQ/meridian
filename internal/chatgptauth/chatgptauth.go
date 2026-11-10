@@ -1,7 +1,7 @@
 // Package chatgptauth implements the client side of OpenAI's Sign in with
 // ChatGPT plan usage flow for open-source and self-hosted apps: per-host
 // dynamic registration, authorization code with PKCE, ID token checks,
-// refresh, and revocation (ADR 0036).
+// refresh, and revocation (ADR 0038).
 //
 // Tokens returned by this package are credentials. Callers keep them on the
 // control plane, seal them at rest, and never log them or put them in URLs.

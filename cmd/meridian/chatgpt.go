@@ -16,7 +16,7 @@ import (
 	"github.com/OrlojHQ/meridian/pkg/client"
 )
 
-// connectChatGPT runs Sign in with ChatGPT (ADR 0036). The daemon holds the
+// connectChatGPT runs Sign in with ChatGPT (ADR 0038). The daemon holds the
 // PKCE verifier and exchanges the code; this command only relays the
 // browser's loopback redirect, so no token ever reaches this machine.
 func connectChatGPT(ctx context.Context, config *cliConfig, api *client.Client, connectionID string) error {
