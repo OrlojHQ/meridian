@@ -81,7 +81,7 @@ export function ProviderConnections(){
  return <section className="panel"><h2>Provider connections</h2><p>Connect a provider once, then authorize it for each Project.</p>
  {connections.isPending && <p role="status">Loading connections…</p>}
  {connections.isError && <p role="alert">{normalizeAPIError(connections.error).message}</p>}
- {connections.data && !connections.data.enabled && <p>Reusable connections require an HTTPS Meridian address reachable from Capsules. Ask the installation administrator to enable the provider gateway.</p>}
+ {connections.data && !connections.data.enabled && <p>Reusable connections need the provider gateway, which is off on this installation. On Docker, meridiand starts it on its own unless the engine is remote or rootless; the daemon log says why it did not. Otherwise ask the installation administrator to set --provider-gateway-listen or --provider-gateway-url.</p>}
  {connections.data?.enabled && <form onSubmit={event=>{event.preventDefault();if(claude&&!fallback)return;if(!custom&&!key)return;save.mutate({id:editing?.id,body:body()});}}>
  <label>Provider<select value={provider} disabled={!!editing} onChange={event=>{setProvider(event.target.value as ProviderConnectionType);setPrivateHttp(false);setLoginKind("api_key");setFallback(false);}}>{(Object.keys(providerLabels) as ProviderConnectionType[]).map(value=><option key={value} value={value}>{providerLabels[value]}</option>)}</select></label>
  <label>Connection name<input value={name} maxLength={128} onChange={event=>setName(event.target.value)}/></label>

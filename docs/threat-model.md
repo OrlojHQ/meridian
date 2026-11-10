@@ -759,6 +759,10 @@ they are not a statement that every planned path is already implemented.
 - Security and durability requirements fail closed when a provider lacks a capability.
 - Reusable credential plaintext is not persisted; encrypted named secrets use
   a dedicated externally custodied credential KEK and cannot cross purpose.
+- The local provider gateway listener serves only lease-authenticated
+  `/provider-gateway/` routes, never binds a wildcard address by default, and
+  its CA private key exists only in `meridiand` memory; Capsules receive only
+  the name-constrained CA certificates.
 - Per-Capsule supervisor bearer tokens are high entropy, stored outside SQLite in mode-0600 provider state, omitted from labels/logs/public APIs, and removed after owned-resource cleanup.
 - Kubernetes supervisor tokens exist only in immutable namespaced,
   owner-referenced Secrets with private 0400/0440 projection; cluster/node/backup
@@ -848,6 +852,15 @@ Subagents run the
 same Project's repository for the same operator, so coordination exposes no
 new data, and it adds no confidentiality or isolation guarantee.
 
+The local provider gateway (ADR 0037) is reachable from every container on
+the Docker engine, not only Capsules, and on native Linux from the host's own
+processes through the bridge address. Without a lease it returns 401, but it
+still parses TLS and HTTP from hostile clients. On Docker Desktop and OrbStack,
+`host-gateway` also reaches every other host loopback service, including the
+token-authenticated API listener; that was true before this gateway and is
+not something the gateway can close. A host firewall that drops
+container-to-host traffic disables the gateway rather than weakening it.
+
 These risks must be stated in deployment documentation and revisited before implementing a provider, credentials, PTY access, Moments, delivery, multi-user access, or internet-facing operation.
 
 ## Personal harness setup and provider gateway boundary
@@ -874,8 +887,24 @@ Ready state. Tokens are held only in memory and injected into the child
 process environment; they expire in 24 hours. Revocation cancels active streams.
 The gateway fixes upstream hosts and operation paths, strips caller credentials
 and cookies, rejects redirects and query strings, bounds requests/responses,
-and imposes request deadlines. It does not log inference payloads. TLS and
-Capsule-to-gateway routing are explicit deployment prerequisites. On
+and imposes request deadlines. It does not log inference payloads. With
+`--provider-gateway-url`, TLS and Capsule-to-gateway routing are explicit
+deployment prerequisites. On Docker without that flag (ADR 0037), `meridiand`
+serves the gateway on a dedicated TLS listener that answers only
+`/provider-gateway/` routes and returns 404 for everything else, so the API,
+UI, and their authentication are never reachable through it. It binds host
+loopback when the engine runs in a VM (Docker Desktop, OrbStack, Colima) and
+the default bridge gateway address on native Linux, never a wildcard address,
+and has no default for remote or rootless engines. Any container on the
+engine can connect, so the listener's whole surface is the lease-authenticated
+gateway. Its certificate chains to an in-memory CA that is never written to
+disk, is name-constrained to `provider-gateway.meridian.internal` with no IP
+addresses, lives 30 days, and rotates with an overlap longer than the 24-hour
+lease. Capsules receive only the CA certificates, which `capsuled` places in
+the tmpfs setup home and names through `SSL_CERT_FILE` (system roots plus the
+CA) and `NODE_EXTRA_CA_CERTS`; a Capsule that copies the CA gains no ability
+to impersonate any other host. TLS handshake errors are not logged, because
+any container can cause them. On
 Kubernetes, Capsule NetworkPolicy allows in-namespace TCP to that gateway;
 upstream `api.openai.com:443` / `api.anthropic.com:443` CIDRs attach only to
 the control plane. Compromised

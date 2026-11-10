@@ -98,7 +98,7 @@ func (f snoopHandlerFunc) ServeHTTP(writer http.ResponseWriter, request *http.Re
 }
 
 func (s *Server) serveHTTP(writer http.ResponseWriter, request *http.Request) {
-	if strings.HasPrefix(request.URL.Path, "/provider-gateway/") && s.service.ProviderGatewayEnabled() {
+	if strings.HasPrefix(request.URL.Path, "/provider-gateway/") && s.service.ProviderGatewayOnAPIListener() {
 		s.service.ProviderGateway().ServeHTTP(writer, request)
 		return
 	}

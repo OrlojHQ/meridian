@@ -9,6 +9,20 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Provider connections work out of the box on Docker (ADR 0037). Without
+  `--provider-gateway-url`, `meridiand` serves the provider gateway on a
+  second TLS listener that answers only `/provider-gateway/` routes, bound to
+  host loopback on Docker Desktop, OrbStack, and other VM-backed engines, or
+  to the default bridge address on native Linux. Its certificate chains to an
+  in-memory CA, name-constrained to `provider-gateway.meridian.internal`, that
+  is never written to disk and rotates without breaking live leases. Capsules
+  get a hosts entry for that name, and `capsuled` makes each harness trust the
+  CA through `SSL_CERT_FILE` and `NODE_EXTRA_CA_CERTS`, so Codex, Claude Code,
+  OpenCode, Pi, and DeepSeek Harness all reach it without a reverse proxy or
+  tunnel. `--provider-gateway-listen` sets the address (or `off`); remote and
+  rootless engines have no default and still need one of the two flags.
+  Capsules created before upgrading need recreating to use connections. With
+  a local gateway, the API listener no longer serves `/provider-gateway/`.
 - Claude login stays on the control plane (ADR 0036). Harness settings sign
   in to Claude from the page: Meridian runs the OAuth login, stores the
   access and refresh tokens as authenticated ciphertext, and does not show

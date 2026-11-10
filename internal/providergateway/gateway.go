@@ -54,6 +54,9 @@ func Custom(provider string) bool {
 	return provider == OpenAICompatible || provider == AnthropicCompatible
 }
 
+// LeaseLifetime is how long a Capsule gateway lease is valid.
+const LeaseLifetime = 24 * time.Hour
+
 type Lease struct {
 	Connection, Project, Capsule, Harness, Provider string
 	Expires                                         time.Time
@@ -211,7 +214,7 @@ func (g *Gateway) Issue(lease Lease) (string, error) {
 		return "", err
 	}
 	token := hex.EncodeToString(raw)
-	lease.Expires = now.Add(24 * time.Hour)
+	lease.Expires = now.Add(LeaseLifetime)
 	ctx, cancel := context.WithDeadline(context.Background(), lease.Expires)
 	g.leases[sha256.Sum256([]byte(token))] = entry{lease: lease, ctx: ctx, cancel: cancel, slots: make(chan struct{}, 4)}
 	return token, nil

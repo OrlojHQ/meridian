@@ -208,11 +208,14 @@ The patch also closes `dsh`'s other outbound model paths:
 `dsh` itself accepts `http://` routes; the gateway origin is HTTPS because
 `meridiand` requires it for every harness. `dsh` runs on the pack's Node 24,
 which trusts its bundled public roots, so a gateway origin with a publicly
-trusted certificate needs no Capsule setup. For a private CA, build a derived
-image that adds the CA and either sets `NODE_EXTRA_CA_CERTS` to its path or
-installs it with `update-ca-certificates` and sets `NODE_USE_SYSTEM_CA=1`.
-Node ignores the system store without that variable, and the turn fails with
-"Connection error."
+trusted certificate needs no Capsule setup. The local Docker gateway
+(ADR 0037) uses a private CA, and `capsuled` sets `NODE_EXTRA_CA_CERTS` and
+`SSL_CERT_FILE` for every harness that uses it. For an explicit
+`--provider-gateway-url` with a private CA, build a derived image that adds
+the CA and either sets `NODE_EXTRA_CA_CERTS` to its path or installs it with
+`update-ca-certificates` and sets `NODE_USE_SYSTEM_CA=1`. Node ignores the
+system store without that variable, and the turn fails with "Connection
+error."
 
 A repository's `.env` ranks below the launch environment in `dsh` and cannot
 set `DSH_*` variables, so it cannot replace the lease or move `DSH_HOME`. A

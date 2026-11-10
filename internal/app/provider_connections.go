@@ -47,7 +47,7 @@ func connectionEnvelopeID(item domain.ProviderConnection) string {
 func (s *Service) ConfigureProviderGateway(baseURL string, allowPrivateHTTP bool) error {
 	if baseURL == "" {
 		if allowPrivateHTTP {
-			return fmt.Errorf("private-network HTTP provider upstreams require a provider gateway URL")
+			return fmt.Errorf("private-network HTTP provider upstreams require the provider gateway (--provider-gateway-url, or the local gateway on Docker)")
 		}
 		return nil
 	}
@@ -60,8 +60,29 @@ func (s *Service) ConfigureProviderGateway(baseURL string, allowPrivateHTTP bool
 	s.gateway = providergateway.New(s.authorizeProviderLease, providergateway.Options{AllowPrivateHTTP: allowPrivateHTTP})
 	return nil
 }
-func (s *Service) ProviderGateway() http.Handler          { return s.gateway }
-func (s *Service) ProviderGatewayEnabled() bool           { return s.gateway != nil }
+
+// ConfigureLocalProviderGateway enables the gateway behind meridiand's own
+// TLS listener (ADR 0037). trust returns the CA certificates a Capsule given
+// a lease now must trust; they travel with the lease. The API listener then
+// does not serve gateway routes.
+func (s *Service) ConfigureLocalProviderGateway(origin string, trust func() (string, error), allowPrivateHTTP bool) error {
+	if trust == nil {
+		return fmt.Errorf("local provider gateway requires a trust source")
+	}
+	if err := s.ConfigureProviderGateway(origin, allowPrivateHTTP); err != nil {
+		return err
+	}
+	s.gatewayTrust = trust
+	return nil
+}
+func (s *Service) ProviderGateway() http.Handler { return s.gateway }
+func (s *Service) ProviderGatewayEnabled() bool  { return s.gateway != nil }
+
+// ProviderGatewayOnAPIListener reports whether the API listener serves
+// gateway routes; the local gateway has a listener of its own.
+func (s *Service) ProviderGatewayOnAPIListener() bool {
+	return s.gateway != nil && s.gatewayTrust == nil
+}
 func (s *Service) ProviderGatewayAllowsPrivateHTTP() bool { return s.gateway != nil && s.privateHTTP }
 func (s *Service) CloseProviderGateway() {
 	if s.gateway != nil {
@@ -306,9 +327,17 @@ func (s *Service) runtimeProviderConnection(ctx context.Context, capsule domain.
 	if !harnesssetup.ConnectionSupported(harness, connection.Provider, connection.DefaultModel) {
 		return nil, fmt.Errorf("%w: this connection type cannot be used with %s", domain.ErrInvalid, harness)
 	}
+	// Take the trust bundle before the lease, so the bundle covers the
+	// lease's whole life (ADR 0037).
+	var ca string
+	if s.gatewayTrust != nil {
+		if ca, err = s.gatewayTrust(); err != nil {
+			return nil, err
+		}
+	}
 	token, err := s.gateway.Issue(providergateway.Lease{Connection: id, Project: string(capsule.ProjectID), Capsule: string(capsule.ID), Harness: harness, Provider: connection.Provider})
 	if err != nil {
 		return nil, err
 	}
-	return &harnesssetup.Connection{Provider: connection.Provider, URL: s.gatewayURL + "/" + connection.Provider, Token: token, Model: connection.DefaultModel, Efforts: connection.ReasoningEfforts}, nil
+	return &harnesssetup.Connection{Provider: connection.Provider, URL: s.gatewayURL + "/" + connection.Provider, Token: token, Model: connection.DefaultModel, Efforts: connection.ReasoningEfforts, CA: ca}, nil
 }
