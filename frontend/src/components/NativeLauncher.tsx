@@ -5,12 +5,12 @@ import { Link, useNavigate } from "react-router-dom";
 import { api, normalizeAPIError } from "../api/client";
 import type { Capsule, Project } from "../api/generated/types.gen";
 import { queries } from "../api/queries";
-import { isImportableHarness } from "../import/localSetup";
+import { isImportableHarness, noLocalSetupMessage } from "../import/localSetup";
 import { harnessName, sessionPath } from "../shell/capsuleActivity";
 
 import { HarnessSetupImport } from "./HarnessSetupImport";
 import { PreparationProgress } from "./PreparationProgress";
-import { connectableHarnesses, connectionSupports } from "./ProviderConnections";
+import { connectableHarnesses, connectionModelNote, connectionSupports, preferredConnectionId } from "./ProviderConnections";
 
 type PendingLaunch = {
   capsule: Capsule;
@@ -36,12 +36,14 @@ export function NativeLauncher({
   const [connection,setConnection]=useState<string>();
   const connections=useQuery({queryKey:["provider-connections"],queryFn:api.providerConnections});
   const grant=useQuery({queryKey:["project-connection",project.id,harness],queryFn:()=>api.projectConnection(project.id,harness),enabled:!!harness});
-  const selectedConnection=connection ?? grant.data?.connectionId ?? "";
   const connectable=connectableHarnesses.includes(harness) && !!connections.data?.enabled;
   const availableConnections=connections.data?.items.filter(item=>!item.revoked && connectionSupports(harness,item)) ?? [];
+  const selectedConnection=preferredConnectionId(connection, grant.isSuccess || grant.isError, grant.data?.connectionId, availableConnections);
+  const modelNote=connectionModelNote(availableConnections.find(item=>item.id===selectedConnection));
   const setups = useQuery({queryKey:["harness-setups"], queryFn:api.harnessSetups});
   const choices = setups.data?.items.filter(item => item.harness === harness && !item.deleted) ?? [];
   const defaultSetup = choices.find(item => item.default);
+  const noSavedSetup = setups.isSuccess && choices.length === 0 && isImportableHarness(harness);
   const inheritedSetup=projectSetup.data?.setup;
   const shownSetup=choices.find(item=>item.id===(setup || inheritedSetup)) ?? (inheritedSetup === "clean" || setup === "clean" ? undefined : defaultSetup);
   const capsuleName = () => name.trim() || `${harness}-${crypto.randomUUID().slice(0,8)}`;
@@ -91,17 +93,22 @@ export function NativeLauncher({
 
   return (
     <section className="launcher-pane">
+      {noSavedSetup && <>
+        <p>{noLocalSetupMessage(harness)}</p>
+        <button type="button" disabled={busy} onClick={() => setImporting(true)}>Import my setup</button>
+      </>}
       <p className="muted-copy">
         Start {harnessName(harness)} in a fresh Capsule and open its terminal.
       </p>
       <form className="launcher-form" onSubmit={submit}>
         {setups.isError ? <p role="alert">Saved setups could not be loaded. <button type="button" onClick={() => void setups.refetch()}>Retry</button></p> :
-          <p>{shownSetup ? `Using ${shownSetup.name}` : "Using harness defaults"}. Native account login is separate.</p>}
-        {!defaultSetup && isImportableHarness(harness) && <button type="button" disabled={busy || setups.isPending || setups.isError} onClick={() => setImporting(true)}>Import my setup</button>}
+          !setups.isSuccess || noSavedSetup ? null : <p>{shownSetup ? `Using ${shownSetup.name}` : "Using harness defaults"}. Native account login is separate.</p>}
+        {setups.isSuccess && !noSavedSetup && !defaultSetup && isImportableHarness(harness) && <button type="button" disabled={busy} onClick={() => setImporting(true)}>Import my setup</button>}
         {(grant.isError || connections.isError || projectSetup.isError) && <p role="alert">Launch settings could not be loaded. <button type="button" onClick={()=>{void grant.refetch();void connections.refetch();void projectSetup.refetch();}}>Retry</button></p>}
         {connectable && <label>Provider connection<select value={selectedConnection} onChange={event=>setConnection(event.target.value)} disabled={busy}>
           <option value="">Sign in inside the harness</option>{availableConnections.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}
         </select></label>}
+        {modelNote && <p>{modelNote}</p>}
         {selectedConnection && selectedConnection!==grant.data?.connectionId && <p>Creating this Capsule authorizes this API connection for {project.name} and future {harness} sessions.</p>}
         {connectable && availableConnections.length===0 && <Link to="/ui/settings/harnesses">Connect provider</Link>}
         <details><summary>Customize</summary>
