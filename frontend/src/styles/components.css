@@ -614,6 +614,13 @@ textarea:hover {
   color: #ffffff;
 }
 
+.first-run a,
+.first-run button {
+  justify-content: flex-start;
+  box-shadow: none;
+  color: var(--accent-text);
+}
+
 .startup-frame {
   margin: 1rem 1.25rem 0;
 }
