@@ -159,18 +159,21 @@ dashboard. Also available: `make try-codex`, `make try-opencode`,
 
 Threads can also use a reusable **provider connection** instead of a sign-in:
 an OpenAI or Anthropic API key, or your own endpoint. Connections go through
-Meridian's provider gateway, so `meridiand` needs an HTTPS address that
-Capsules can reach (for example, behind a reverse proxy or Tailscale):
+Meridian's provider gateway, so Capsules never see the key. With Docker, which
+includes Homebrew's `brew services start meridian`, the daemon runs a local
+gateway for Capsules on its own; there is nothing to configure. Add a key
+under Provider connections in Harness settings, or from the CLI:
 
 ```console
-./meridiand --provider=docker --provider-gateway-url=https://meridian.example
+./meridian harness connect openai --stdin < key.txt
 ./meridian harness connect openai-compatible \
   --base-url https://models.example --model glm-5.3-flash \
   --effort low,high,max --stdin < key.txt
 ```
 
 See [Bring your harness setup](docs/personal-harness-setups.md) for every
-option, including vLLM, Ollama, and LiteLLM.
+option, including vLLM, Ollama, LiteLLM, and `--provider-gateway-url` for a
+reverse proxy or Kubernetes.
 
 ### Troubleshooting
 
@@ -185,6 +188,13 @@ option, including vLLM, Ollama, and LiteLLM.
   ```
 
   The browser workspace is then at `http://127.0.0.1:18080/ui/`.
+- **`provider connections are unavailable: no local provider gateway`**: the
+  Docker engine is remote or rootless, so `meridiand` cannot pick an address
+  Capsules reach. Set `--provider-gateway-listen=IP:PORT` or
+  `--provider-gateway-url`; see
+  [Reusable API connections](docs/personal-harness-setups.md#reusable-api-connections).
+  On Linux, also check that a firewall such as `ufw` allows containers to
+  reach the host.
 - **`data directory is in use`**: another `meridiand`, or a maintenance
   command, already holds that data directory. Stop it, or give this daemon
   its own `--data-dir`. Never point two daemons at one directory.

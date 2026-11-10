@@ -24,6 +24,7 @@ type Service struct {
 	gateway       *providergateway.Gateway
 	gatewayURL    string
 	privateHTTP   bool
+	gatewayTrust  func() (string, error)
 	store         ports.Store
 	clock         ports.Clock
 	ids           ports.IDSource

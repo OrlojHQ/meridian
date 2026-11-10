@@ -19,12 +19,14 @@ import (
 	"github.com/OrlojHQ/meridian/internal/artifacts"
 	"github.com/OrlojHQ/meridian/internal/datadir"
 	"github.com/OrlojHQ/meridian/internal/domain"
+	"github.com/OrlojHQ/meridian/internal/gatewaytls"
 	"github.com/OrlojHQ/meridian/internal/httpapi"
 	"github.com/OrlojHQ/meridian/internal/observability"
 	"github.com/OrlojHQ/meridian/internal/ports"
 	agentsandboxprovider "github.com/OrlojHQ/meridian/internal/provider/agentsandbox"
 	dockerprovider "github.com/OrlojHQ/meridian/internal/provider/docker"
 	"github.com/OrlojHQ/meridian/internal/provider/fake"
+	"github.com/OrlojHQ/meridian/internal/providergateway"
 	"github.com/OrlojHQ/meridian/internal/secrets"
 	"github.com/OrlojHQ/meridian/internal/store/sqlite"
 	"github.com/OrlojHQ/meridian/internal/system"
@@ -57,6 +59,10 @@ type Config struct {
 	// ProviderGatewayAllowPrivateHTTP lets custom provider connections opt in
 	// to plaintext HTTP upstreams on private-network addresses.
 	ProviderGatewayAllowPrivateHTTP bool
+	// ProviderGatewayListen is the local provider gateway's listen address
+	// (ADR 0037): empty chooses one from the Docker engine, "off" disables
+	// it. It applies only to Docker without ProviderGatewayURL.
+	ProviderGatewayListen string
 }
 
 func Run(ctx context.Context, config Config) error {
@@ -65,6 +71,9 @@ func Run(ctx context.Context, config Config) error {
 	}
 	if config.Listen == "" {
 		return fmt.Errorf("listen address is required")
+	}
+	if err := ValidateProviderGatewayListen(config); err != nil {
+		return err
 	}
 	// Take the data directory before anything writes to it. A second daemon
 	// on the same directory, even across a VM boundary, corrupts SQLite.
@@ -248,6 +257,8 @@ func Run(ctx context.Context, config Config) error {
 
 	var provider ports.CapsuleProvider
 	var closeProvider func() error
+	var gatewayListener net.Listener
+	var gatewayOrigin string
 	switch config.Provider {
 	case "fake":
 		config.Logger.Printf(
@@ -271,6 +282,23 @@ func Run(ctx context.Context, config Config) error {
 		}
 		provider = dockerProvider
 		closeProvider = dockerProvider.Close
+		if config.ProviderGatewayURL == "" && config.ProviderGatewayListen != LocalGatewayOff {
+			gatewayListener, gatewayOrigin, err = openLocalGateway(ctx, config.ProviderGatewayListen, dockerProvider)
+			switch {
+			case err != nil && config.ProviderGatewayListen != "":
+				_ = dockerProvider.Close()
+				_ = httpServer.Close()
+				_ = previewHTTPServer.Close()
+				return err
+			case err != nil:
+				config.Logger.Printf(
+					"WARNING: provider connections are unavailable: no local provider gateway (%v); "+
+						"set --provider-gateway-listen or --provider-gateway-url", err,
+				)
+			default:
+				defer gatewayListener.Close()
+			}
+		}
 	case "agentsandbox":
 		agentSandboxProvider, err := agentsandboxprovider.New(config.AgentSandbox)
 		if err != nil {
@@ -311,10 +339,35 @@ func Run(ctx context.Context, config Config) error {
 	}
 	service := app.NewService(store, clock, ids, reconciler, runtime)
 	service.ConfigureSecrets(secretKey)
-	if err := service.ConfigureProviderGateway(config.ProviderGatewayURL, config.ProviderGatewayAllowPrivateHTTP); err != nil {
+	var gatewayServer *http.Server
+	if gatewayListener != nil {
+		authority, err := gatewaytls.NewAuthority(nil, providergateway.LeaseLifetime)
+		if err != nil {
+			return fmt.Errorf("create provider gateway CA: %w", err)
+		}
+		if err := service.ConfigureLocalProviderGateway(gatewayOrigin, authority.Trust, config.ProviderGatewayAllowPrivateHTTP); err != nil {
+			return err
+		}
+		gatewayServer = gatewaytls.Server(authority, service.ProviderGateway())
+	} else if err := service.ConfigureProviderGateway(config.ProviderGatewayURL, config.ProviderGatewayAllowPrivateHTTP); err != nil {
 		return err
 	}
 	defer service.CloseProviderGateway()
+	gatewayServerErrors := make(chan error, 1)
+	if gatewayServer != nil {
+		go func() {
+			err := gatewayServer.ServeTLS(gatewayListener, "", "")
+			if err != nil && !errors.Is(err, http.ErrServerClosed) {
+				gatewayServerErrors <- err
+			}
+			close(gatewayServerErrors)
+		}()
+		defer gatewayServer.Close()
+		config.Logger.Printf(
+			"provider gateway for Capsules at %s (listening on %s)",
+			gatewayOrigin, gatewayListener.Addr(),
+		)
+	}
 	service.ConfigureObserver(metrics, config.Provider)
 	harnessPacks := domain.InstallationHarnessImages(installationDefaultImage(config), config.OfficialPackTag)
 	service.ConfigureHarnessPacks(harnessPacks)
@@ -499,6 +552,10 @@ func Run(ctx context.Context, config Config) error {
 		if err != nil {
 			return fmt.Errorf("serve metrics: %w", err)
 		}
+	case err := <-gatewayServerErrors:
+		if err != nil {
+			return fmt.Errorf("serve provider gateway: %w", err)
+		}
 	}
 	api.SetReady(false)
 	metrics.SetHealthy(false)
@@ -513,6 +570,13 @@ func Run(ctx context.Context, config Config) error {
 	if metricsListener != nil {
 		if err := metricsHTTPServer.Shutdown(shutdownCtx); err != nil {
 			return fmt.Errorf("shutdown metrics: %w", err)
+		}
+	}
+	if gatewayServer != nil {
+		// Streams may be open; revocation on CloseProviderGateway ends them.
+		service.CloseProviderGateway()
+		if err := gatewayServer.Shutdown(shutdownCtx); err != nil {
+			return fmt.Errorf("shutdown provider gateway: %w", err)
 		}
 	}
 	return nil
