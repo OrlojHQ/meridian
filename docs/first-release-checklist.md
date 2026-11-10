@@ -5,8 +5,8 @@ No step in this checklist authorizes a release from an unreviewed working tree.
 - [ ] Confirm every source file is committed and the release commit is reviewed.
 - [ ] Confirm the version tag matches `vMAJOR.MINOR.PATCH` and points to the
       intended commit without moving an existing tag.
-- [ ] Run `make bootstrap generate check-generated build test lint ui-build
-      ui-test helm-test`.
+- [ ] Run `make bootstrap generate check-generated build test lint vulncheck
+      ui-build ui-test helm-test`.
 - [ ] Run `go test -race ./... -count=1`, `make docker-integration`, and
       `make release-smoke`.
 - [ ] Re-run `make agentsandbox-integration` against the pinned Agent Sandbox

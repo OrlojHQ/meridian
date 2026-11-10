@@ -13,6 +13,18 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   and `meridiand`, and `brew services start meridian` runs the daemon in the
   background. The tap is updated only after a release is published;
   prereleases are skipped.
+- `make vulncheck` runs `govulncheck` (v1.9.0) in CI and in the release
+  verify job, failing on known vulnerabilities in code Meridian reaches.
+
+### Security
+
+- Go toolchain bumped from 1.26.5 to 1.26.10 in `go.mod`, CI, release, and
+  every Go build image (`golang:1.26.10-bookworm`, pinned by digest). This
+  resolves the 20 standard library advisories `govulncheck` reported in code
+  paths Meridian's binaries reach, including `crypto/x509` distrust of
+  compromised intermediates (GO-2026-6809), `crypto/tls` (GO-2026-6607),
+  `net/textproto` (GO-2026-6608), and several `net/http` issues
+  (GO-2026-6605, GO-2026-6609 to GO-2026-6613, and GO-2026-6617).
 
 ## [0.3.0] - 2026-11-08
 
