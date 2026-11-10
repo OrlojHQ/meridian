@@ -393,7 +393,13 @@ func (s *Service) stopIdleChatGPTListener() {
 	}
 	state.mu.Unlock()
 	if !waiting && server != nil {
-		_ = server.Close()
+		// Shut down gracefully: the callback that just completed may still be
+		// writing its result page. Close would reset that connection.
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if server.Shutdown(ctx) != nil {
+			_ = server.Close()
+		}
 	}
 }
 
