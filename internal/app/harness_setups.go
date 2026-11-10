@@ -235,6 +235,22 @@ func (s *Service) HarnessSetupRevisions(ctx context.Context, id string) ([]domai
 	return items, err
 }
 
+// PinnedHarnessSetups returns the revisions pinned to each Capsule.
+// A Capsule that started clean is absent from the map. Names follow renames;
+// the revision and its save time do not.
+func (s *Service) PinnedHarnessSetups(ctx context.Context, ids []domain.CapsuleID) (map[domain.CapsuleID][]domain.PinnedHarnessSetup, error) {
+	result := map[domain.CapsuleID][]domain.PinnedHarnessSetup{}
+	if len(ids) == 0 {
+		return result, nil
+	}
+	err := s.store.View(ctx, func(r ports.Reader) error {
+		var err error
+		result, err = r.ListPinnedHarnessSetups(ctx, ids)
+		return err
+	})
+	return result, err
+}
+
 // pinHarnessSetups snapshots defaults inside Capsule creation's transaction.
 // The sentinel "clean" opts out. An explicit setup applies only to its harness.
 func (s *Service) pinHarnessSetups(ctx context.Context, tx ports.Transaction, id domain.CapsuleID, selection string) error {

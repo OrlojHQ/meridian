@@ -1,4 +1,4 @@
-import type { Capsule, ChildRollup, Run, Thread } from "../api/generated/types.gen";
+import type { Capsule, ChildRollup, PinnedHarnessSetup, Run, Thread } from "../api/generated/types.gen";
 import { endedSessionState, failureText } from "../components/threadChat";
 
 // Activity is derived only from Capsule and Run resources. Git status,
@@ -292,6 +292,28 @@ export function capsuleSessions(
     .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
     .map(threadSession);
   return capsule.harness ? [terminalSession(capsule.harness, runs), ...sessions] : sessions;
+}
+
+const revisionMonths = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+export function revisionStamp(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const hours = String(date.getUTCHours()).padStart(2, "0");
+  const minutes = String(date.getUTCMinutes()).padStart(2, "0");
+  return `${revisionMonths[date.getUTCMonth()]} ${date.getUTCDate()}, ${hours}:${minutes} UTC`;
+}
+
+// One line for the Capsule page: which saved setup this Capsule is pinned to.
+// Settings edits apply to the next Capsule, not this one.
+export function pinnedSetupText(pins: PinnedHarnessSetup[] = []) {
+  if (pins.length === 0) return "";
+  const parts = pins.map((pin) => {
+    const label = pins.length > 1 ? `${pin.name} (${harnessName(pin.harness)})` : pin.name;
+    const stamp = revisionStamp(pin.revisedAt);
+    return stamp ? `${label} · revised ${stamp}` : label;
+  });
+  return `${parts.join("; ")}. Edits in Settings apply to the next Capsule.`;
 }
 
 export function relativeTime(value?: string, now = Date.now()) {

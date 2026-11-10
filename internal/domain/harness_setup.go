@@ -26,4 +26,14 @@ type HarnessSetupRevision struct {
 	Ciphertext []byte    `json:"-"`
 }
 
+// PinnedHarnessSetup is the revision a Capsule was created with.
+// Name follows a later rename. RevisedAt is when that revision was saved.
+type PinnedHarnessSetup struct {
+	Harness   string
+	SetupID   string
+	Name      string
+	Revision  string
+	RevisedAt time.Time
+}
+
 var ErrHarnessDependencies = errors.New("harness dependency preparation failed")

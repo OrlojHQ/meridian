@@ -54,10 +54,19 @@ func (s *Server) getBoard(writer http.ResponseWriter, request *http.Request) {
 		writeError(writer, err)
 		return
 	}
+	capsules := make([]domain.Capsule, len(board.Items))
+	for i, item := range board.Items {
+		capsules[i] = item.Capsule
+	}
+	encoded, err := s.capsulesJSON(request.Context(), capsules)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
 	response := boardPageJSON{Items: make([]boardItemJSON, 0, len(board.Items)), Truncated: board.Truncated}
-	for _, item := range board.Items {
+	for i, item := range board.Items {
 		row := boardItemJSON{
-			Capsule: capsuleResponse(item.Capsule), Status: string(item.Status),
+			Capsule: encoded[i], Status: string(item.Status),
 			Since: formatOptionalTime(item.Since), NeedsYou: string(item.NeedsYou),
 			Surfaced: item.Surfaced,
 		}

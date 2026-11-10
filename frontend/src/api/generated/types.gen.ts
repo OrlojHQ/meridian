@@ -252,6 +252,10 @@ export type Capsule = {
      * Immutable native launcher harness selected when the Capsule was created.
      */
     harness?: string;
+    /**
+     * Harness setup revisions pinned when this Capsule was created. Absent when the Capsule started without a saved setup. A later edit in Settings does not change this Capsule.
+     */
+    pinnedHarnessSetups?: Array<PinnedHarnessSetup>;
     state: CapsuleState;
     desiredState: CapsuleIntent;
     failure?: string;
@@ -1111,6 +1115,23 @@ export type HarnessSetupRevision = {
 
 export type HarnessSetupRevisionPage = {
     items: Array<HarnessSetupRevision>;
+};
+
+/**
+ * One harness setup revision pinned to a Capsule at creation.
+ */
+export type PinnedHarnessSetup = {
+    harness: string;
+    setupId: string;
+    /**
+     * Current name of the setup. A rename shows here; the pinned files do not change.
+     */
+    name: string;
+    revision: string;
+    /**
+     * When this pinned revision was saved.
+     */
+    revisedAt: string;
 };
 
 export type ImportHarnessSetupRequest = {

@@ -5,6 +5,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
+
 	"github.com/OrlojHQ/meridian/internal/domain"
 )
 
@@ -81,6 +84,70 @@ func (r *repository) PinHarnessSetup(ctx context.Context, id domain.CapsuleID, h
 	_, err := r.q.ExecContext(ctx, "INSERT INTO capsule_harness_setups(capsule_id,harness,revision_id) VALUES(?,?,?)", id, harness, revision)
 	return err
 }
+func (r *repository) ListPinnedHarnessSetups(ctx context.Context, ids []domain.CapsuleID) (map[domain.CapsuleID][]domain.PinnedHarnessSetup, error) {
+	result := map[domain.CapsuleID][]domain.PinnedHarnessSetup{}
+	if len(ids) == 0 {
+		return result, nil
+	}
+	const chunk = 100
+	for start := 0; start < len(ids); start += chunk {
+		end := start + chunk
+		if end > len(ids) {
+			end = len(ids)
+		}
+		if err := r.appendPinnedHarnessSetups(ctx, ids[start:end], result); err != nil {
+			return nil, err
+		}
+	}
+	return result, nil
+}
+
+func (r *repository) appendPinnedHarnessSetups(ctx context.Context, ids []domain.CapsuleID, result map[domain.CapsuleID][]domain.PinnedHarnessSetup) error {
+	placeholders := make([]string, len(ids))
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = string(id)
+	}
+	rows, err := r.q.QueryContext(ctx, `
+		SELECT p.capsule_id, p.harness, p.revision_id, s.metadata, rev.metadata
+		FROM capsule_harness_setups p
+		LEFT JOIN harness_setup_revisions rev ON rev.id = p.revision_id
+		LEFT JOIN harness_setups s ON s.id = rev.setup_id
+		WHERE p.capsule_id IN (`+strings.Join(placeholders, ",")+`)
+		ORDER BY p.harness`, args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var capsuleID, harness, revision string
+		var setupRaw, revisionRaw sql.NullString
+		if err := rows.Scan(&capsuleID, &harness, &revision, &setupRaw, &revisionRaw); err != nil {
+			return err
+		}
+		if !setupRaw.Valid || !revisionRaw.Valid {
+			return fmt.Errorf("%w: pinned harness setup %s/%s is missing", domain.ErrCorrupt, capsuleID, harness)
+		}
+		var setup domain.HarnessSetup
+		var saved domain.HarnessSetupRevision
+		if err := json.Unmarshal([]byte(setupRaw.String), &setup); err != nil {
+			return fmt.Errorf("%w: pinned harness setup", domain.ErrCorrupt)
+		}
+		if err := json.Unmarshal([]byte(revisionRaw.String), &saved); err != nil {
+			return fmt.Errorf("%w: pinned harness setup", domain.ErrCorrupt)
+		}
+		if setup.ID == "" || setup.ID != saved.SetupID || saved.ID != revision || setup.Harness != harness {
+			return fmt.Errorf("%w: pinned harness setup %s/%s does not match its revision", domain.ErrCorrupt, capsuleID, harness)
+		}
+		id := domain.CapsuleID(capsuleID)
+		result[id] = append(result[id], domain.PinnedHarnessSetup{
+			Harness: harness, SetupID: setup.ID, Name: setup.Name, Revision: revision, RevisedAt: saved.CreatedAt,
+		})
+	}
+	return rows.Err()
+}
+
 func (r *repository) GetPinnedHarnessSetup(ctx context.Context, id domain.CapsuleID, harness string) (string, error) {
 	var revision string
 	err := r.q.QueryRowContext(ctx, "SELECT revision_id FROM capsule_harness_setups WHERE capsule_id=? AND harness=?", id, harness).Scan(&revision)

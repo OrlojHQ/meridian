@@ -8,8 +8,10 @@ import {
   describeCapsule,
   destinationAfterCapsuleDelete,
   latestRun,
+  pinnedSetupText,
   projectPath,
   relativeTime,
+  revisionStamp,
   sessionPath,
 } from "../shell/capsuleActivity";
 
@@ -314,6 +316,28 @@ describe("Capsule activity", () => {
       projectPath(current.projectId),
     );
     expect(destinationAfterCapsuleDelete(current, [current], false)).toBe("/ui/");
+  });
+
+  it("names the pinned setup, its revision time, and that Settings edits wait", () => {
+    expect(revisionStamp("not-a-date")).toBe("");
+    expect(revisionStamp("2026-11-09T14:05:00Z")).toBe("Nov 9, 14:05 UTC");
+    const pin = {
+      harness: "codex",
+      setupId: "setup",
+      name: "Codex home",
+      revision: "rev-1",
+      revisedAt: "2026-11-09T14:05:00Z",
+    };
+    expect(pinnedSetupText([pin])).toBe(
+      "Codex home · revised Nov 9, 14:05 UTC. Edits in Settings apply to the next Capsule.",
+    );
+    expect(pinnedSetupText([
+      pin,
+      { ...pin, harness: "claude", name: "Claude home", revision: "rev-2", revisedAt: "2026-11-10T09:00:00Z" },
+    ])).toBe(
+      "Codex home (Codex) · revised Nov 9, 14:05 UTC; Claude home (Claude Code) · revised Nov 10, 09:00 UTC. Edits in Settings apply to the next Capsule.",
+    );
+    expect(pinnedSetupText([])).toBe("");
   });
 
   it("formats compact relative times", () => {

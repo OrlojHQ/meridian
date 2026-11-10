@@ -55,6 +55,7 @@ function ChatGPTSignInPanel({connection,autoStart,onDone}:{connection?:ProviderC
  return <div className="chatgpt-sign-in">
   <p><a href={signIn.authorizationUrl} target="_blank" rel="noopener noreferrer">Open ChatGPT sign-in</a> and approve Meridian. This page updates when you finish.</p>
   {current?.state==="failed" && <p role="alert">{current.failure||"ChatGPT sign-in did not complete."} Start again.</p>}
+  <p>If this page is not on the same computer as <code>meridiand</code>, run <code>meridian harness connect chatgpt</code> there.</p>
   <label>{signIn.listening?"If the page after approving doesn't load, paste its address":"After approving, paste the address of the page that doesn't load"}<input value={callback} maxLength={8192} autoComplete="off" spellCheck={false} placeholder="http://127.0.0.1:1455/auth/callback?code=…" onChange={event=>setCallback(event.target.value)}/></label>
   <button type="button" disabled={!callback||complete.isPending} onClick={()=>complete.mutate(callback)}>Finish sign-in</button> <button type="button" onClick={onDone}>Cancel</button>
   {complete.isError && <p role="alert">{normalizeAPIError(complete.error).message}</p>}

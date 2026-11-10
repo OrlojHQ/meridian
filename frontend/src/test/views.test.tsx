@@ -576,6 +576,7 @@ describe("Capsule detail states", () => {
       "true",
     );
     expect(screen.getByText(/Project · updated/)).toBeInTheDocument();
+    expect(screen.queryByText(/Edits in Settings apply to the next Capsule/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Pause" })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Capsule actions" }));
     expect(screen.getByRole("menuitem", { name: "Pause" })).toBeInTheDocument();
@@ -584,6 +585,50 @@ describe("Capsule detail states", () => {
       screen.getByRole("alertdialog", { name: `Delete ${capsule.name}?` }),
     ).toBeInTheDocument();
     expect(moments).not.toHaveBeenCalled();
+  });
+
+  it("shows the pinned harness setup and that Settings edits wait for the next Capsule", async () => {
+    vi.spyOn(api, "capsule").mockResolvedValue({
+      ...capsule,
+      pinnedHarnessSetups: [{
+        harness: "codex",
+        setupId: "setup",
+        name: "Codex home",
+        revision: "rev-1",
+        revisedAt: "2026-11-09T14:05:00Z",
+      }],
+    });
+    vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "threads").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
+    vi.spyOn(api, "harnessProfiles").mockResolvedValue({
+      items: [{ name: "opencode-structured", structured: true, pty: false }],
+    });
+    vi.spyOn(api, "capabilities").mockResolvedValue({
+      providerVersion: "fake/v1",
+      attach: false,
+      run: false,
+      structured: true,
+      git: false,
+      pause: false,
+      snapshot: false,
+      clone: false,
+      browse: false,
+      delivery: false,
+      preview: false,
+      resourceMetrics: false,
+    });
+    wrapper(
+      <Routes>
+        <Route path="/ui/capsules/:capsuleId" element={<CapsuleDetail />} />
+      </Routes>,
+      "/ui/capsules/capsule-1",
+    );
+    expect(
+      await screen.findByText(
+        "Codex home · revised Nov 9, 14:05 UTC. Edits in Settings apply to the next Capsule.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("offers no new session when the Capsule's harness is terminal-only", async () => {
