@@ -152,6 +152,15 @@ export function CommandIcon(props: IconProps) {
   );
 }
 
+export function ThemeIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="10" cy="10" r="3.25" />
+      <path d="M10 2.75v1.5M10 15.75v1.5M2.75 10h1.5M15.75 10h1.5M4.7 4.7l1.05 1.05M14.25 14.25l1.05 1.05M15.3 4.7l-1.05 1.05M5.75 14.25l-1.05 1.05" />
+    </Icon>
+  );
+}
+
 export function SettingsIcon(props: IconProps) {
   return (
     <Icon {...props}>

@@ -30,9 +30,11 @@ import {
   PlusIcon,
   SearchIcon,
   SettingsIcon,
+  ThemeIcon,
   ThreadIcon,
   WarningIcon,
 } from "../components/ui/Icons";
+import { applyTheme, nextTheme, readTheme, rememberTheme, themeLabel, type ThemePreference } from "../components/ui/theme";
 import {
   defaultSession,
   destinationAfterProjectDelete,
@@ -97,7 +99,30 @@ export type ShellOutletContext = {
 };
 
 export function ActivityDot({ group }: { group: ActivityGroup }) {
-  return <span className={`state-dot activity-dot-${group}`} aria-hidden="true" />;
+  return <span className={`state-dot ui-activity-dot activity-dot-${group}`} aria-hidden="true" />;
+}
+
+function ThemeControl() {
+  const [theme, setTheme] = useState<ThemePreference>(() => readTheme());
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
+  const label = themeLabel(theme);
+  return (
+    <button
+      type="button"
+      className="palette-trigger theme-trigger"
+      aria-label={`Color theme, ${label}. Switch color theme.`}
+      onClick={() => {
+        const value = nextTheme(theme);
+        setTheme(value);
+        rememberTheme(value);
+      }}
+    >
+      <ThemeIcon />
+      {label}
+    </button>
+  );
 }
 
 export { sessionPath };
@@ -689,6 +714,7 @@ export function AppShell() {
           )}
         </nav>
         <footer className="sidebar-footer">
+          <ThemeControl />
           <button
             type="button"
             className="palette-trigger"

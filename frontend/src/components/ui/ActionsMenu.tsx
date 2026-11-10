@@ -64,7 +64,7 @@ export function ActionsMenu({
   };
 
   return (
-    <div className="actions-menu" ref={rootRef} onKeyDown={onKeyDown}>
+    <div className="actions-menu ui-menu" ref={rootRef} onKeyDown={onKeyDown}>
       <button
         ref={buttonRef}
         type="button"
@@ -78,7 +78,7 @@ export function ActionsMenu({
         {children ?? <MoreIcon />}
       </button>
       {open && (
-        <div className="actions-menu-list" role="menu" id={menuId} aria-label={label}>
+        <div className="actions-menu-list ui-menu-list" role="menu" id={menuId} aria-label={label}>
           {items.map((item) => (
             <button
               key={item.label}

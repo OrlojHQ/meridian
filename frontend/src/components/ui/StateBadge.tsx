@@ -1,7 +1,5 @@
+import { Badge } from "./Badge";
+
 export function StateBadge({ state }: { state: string }) {
-  return (
-    <span className={`badge state-${state.toLowerCase()}`}>
-      {state}
-    </span>
-  );
+  return <Badge tone={state.toLowerCase()}>{state}</Badge>;
 }

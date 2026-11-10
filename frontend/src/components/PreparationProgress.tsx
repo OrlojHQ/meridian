@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api, normalizeAPIError } from "../api/client";
 import type { Capsule } from "../api/generated/types.gen";
+import { ProgressBar } from "./ui/ProgressBar";
 
 const labels = {
   checkout: "Checking out your repository…",
@@ -10,6 +11,15 @@ const labels = {
   reclone: "Refreshing the checkout before preparing again…",
   saving: "Saving preparation for future Capsules…",
   ready: "Project environment ready.",
+};
+
+const progressValue = {
+  checkout: 18,
+  preparing: 46,
+  restoring: 38,
+  reclone: 28,
+  saving: 78,
+  ready: 100,
 };
 
 export function PreparationProgress({ capsule }: { capsule: Capsule }) {
@@ -26,6 +36,12 @@ export function PreparationProgress({ capsule }: { capsule: Capsule }) {
   return (
     <div className={failed ? "error-state" : "notice"} role={failed ? "alert" : "status"}>
       <p>{failed ? capsule.failure || "Capsule preparation failed" : preparation ? labels[preparation.stage] : "Starting your environment…"}</p>
+      {!failed && (
+        <ProgressBar
+          label="Preparation progress"
+          value={preparation ? progressValue[preparation.stage] : undefined}
+        />
+      )}
       {preparation?.reused && <p>Reused your prepared project environment.</p>}
       {preparation && (
         <details>

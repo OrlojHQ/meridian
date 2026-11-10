@@ -31,7 +31,8 @@ import {
 import { ThreadConversation } from "./ThreadConversation";
 import { ThreadSubagents } from "./ThreadSubagents";
 import { ThreadError } from "./ThreadError";
-import { ActionsMenu, type ActionsMenuItem } from "./ui/ActionsMenu";
+import { LoadingState } from "./ui/Skeleton";
+import { Menu as ActionsMenu, type MenuItem as ActionsMenuItem } from "./ui/Menu";
 import { HarnessMark } from "./ui/HarnessMark";
 
 export { sanitizeThreadText } from "./threadChat";
@@ -204,11 +205,7 @@ export function ThreadFleet() {
     capsuleResults.some((result) => result.isPending) ||
     threadResults.some((result) => result.isPending)
   ) {
-    return (
-      <p className="loading" role="status">
-        Loading Threads…
-      </p>
-    );
+    return <LoadingState label="Loading Threads…" />;
   }
   if (projects.isError) return <ThreadError error={projects.error} />;
   const failed =
@@ -231,7 +228,7 @@ export function ThreadFleet() {
         <span className="count-label">{threads.length} retained</span>
       </header>
       {threads.length === 0 ? (
-        <div className="empty-state">
+        <div className="empty-state ui-card">
           <h2>No Threads yet</h2>
           <p>Select a Capsule to create a structured Thread and send its first task.</p>
           {capsules[0] && (
@@ -502,11 +499,7 @@ export function ThreadDetail({
   });
 
   if (threadQuery.isPending || replay.isPending) {
-    return (
-      <p className="loading" role="status">
-        Loading Thread…
-      </p>
-    );
+    return <LoadingState label="Loading Thread…" />;
   }
   if (threadQuery.isError) return <ThreadError error={threadQuery.error} />;
   if (replay.isError) return <ThreadError error={replay.error} />;

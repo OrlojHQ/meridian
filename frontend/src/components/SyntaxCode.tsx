@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
+import { useDarkTheme } from "./ui/theme";
+
 export type HighlightToken = {
   content: string;
   color?: string;
@@ -136,18 +138,8 @@ export function CodeViewer({
     [content],
   );
   const language = languageForPath(path);
-  const [dark, setDark] = useState(() =>
-    window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false,
-  );
+  const dark = useDarkTheme();
   const [tokens, setTokens] = useState<HighlightToken[][]>();
-
-  useEffect(() => {
-    const media = window.matchMedia?.("(prefers-color-scheme: dark)");
-    if (!media) return;
-    const update = () => setDark(media.matches);
-    media.addEventListener("change", update);
-    return () => media.removeEventListener("change", update);
-  }, []);
 
   useEffect(() => {
     let active = true;
