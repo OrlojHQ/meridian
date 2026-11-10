@@ -438,13 +438,18 @@ export function AppShell() {
 
   const requestCapsuleAction = useCallback(
     (id: string, action: CapsuleActionRequest) => {
-      const search = id === capsuleId && directCapsuleId ? location.search : "";
+      // Already viewing this Capsule, including its diff. Replace so a later
+      // delete can drop the page in one step and Back cannot return to it.
+      const onThisCapsule = id === directCapsuleId;
       navigate(
-        { pathname: `/ui/capsules/${encodeURIComponent(id)}`, search },
-        { state: { capsuleAction: action } },
+        {
+          pathname: `/ui/capsules/${encodeURIComponent(id)}`,
+          search: onThisCapsule ? location.search : "",
+        },
+        { replace: onThisCapsule, state: { capsuleAction: action } },
       );
     },
-    [capsuleId, directCapsuleId, location.search, navigate],
+    [directCapsuleId, location.search, navigate],
   );
   const paletteCommands = useMemo(
     () =>
