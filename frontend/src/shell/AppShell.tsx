@@ -22,6 +22,7 @@ import { DeleteProjectDialog } from "../components/DeleteProjectDialog";
 import { NewProjectDialog } from "../components/NewProjectDialog";
 import { NewWorkspaceDialog } from "../components/NewWorkspaceDialog";
 import { HarnessMark } from "../components/ui/HarnessMark";
+import { ListSkeleton } from "../components/ui/loading";
 import {
   ActivityIcon,
   ChevronIcon,
@@ -638,11 +639,21 @@ export function AppShell() {
         </nav>
         <nav className="activity-nav" aria-label="Capsule activity">
           {projects.isPending ? (
-            <p className="sidebar-status" role="status">
-              Loading activity…
+            <ListSkeleton label="Loading activity…" />
+          ) : projects.isError ? (
+            <p className="sidebar-status" role="alert">
+              Projects could not be loaded
             </p>
           ) : grouped.length === 0 ? (
-            <p className="sidebar-status">No Projects</p>
+            <nav className="first-run" aria-label="Get started">
+              <Link to="/ui/settings/harnesses#import-setup">Import setup</Link>
+              <Link to="/ui/settings/harnesses#provider-connections">
+                Connect a provider
+              </Link>
+              <button type="button" onClick={() => setNewProjectOpen(true)}>
+                Create a Project
+              </button>
+            </nav>
           ) : (
             grouped.map(({ project, items: projectCapsules }) => (
               <section className="project-group" key={project.id}>

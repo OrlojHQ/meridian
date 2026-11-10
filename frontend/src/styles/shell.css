@@ -414,6 +414,34 @@
   font-size: 0.7rem;
 }
 
+.first-run {
+  display: grid;
+  gap: 0.15rem;
+  margin: 0.35rem 0.45rem;
+}
+
+.first-run a,
+.first-run button {
+  display: flex;
+  align-items: center;
+  min-height: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.5rem;
+  color: var(--accent);
+  background: transparent;
+  font-size: 0.72rem;
+  font-weight: 650;
+  text-align: left;
+  text-decoration: none;
+}
+
+.first-run a:hover,
+.first-run button:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
 .sidebar-footer {
   display: grid;
   gap: 0.12rem;

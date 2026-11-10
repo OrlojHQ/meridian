@@ -716,6 +716,91 @@ func TestPreviewRuntimeUsesCapsuledAndOwnsAttachTunnel(t *testing.T) {
 	}
 }
 
+func TestSandboxStartupPhasesAndPullFailure(t *testing.T) {
+	secret := "registry-token-SECRET"
+	phase, failure := sandboxStartupPhase(corev1.ContainerStatus{
+		State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{Reason: "Pulling"}},
+	})
+	if phase != domain.PhasePullingImage || failure != nil {
+		t.Fatalf("pulling = %s %#v", phase, failure)
+	}
+	phase, failure = sandboxStartupPhase(corev1.ContainerStatus{
+		State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}},
+	})
+	if phase != domain.PhaseStartingHarness || failure != nil {
+		t.Fatalf("running = %s %#v", phase, failure)
+	}
+	_, failure = sandboxStartupPhase(corev1.ContainerStatus{
+		State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{
+			Reason: "ImagePullBackOff", Message: "unauthorized: authentication required " + secret,
+		}},
+	})
+	if failure == nil || failure.Code != domain.PullAuthRequired || strings.Contains(failure.Error(), secret) {
+		t.Fatalf("backoff = %#v", failure)
+	}
+
+	provider, agents, core := testProvider(t)
+	namespace := "test"
+	agents.PrependReactor("create", "sandboxes", func(action ktesting.Action) (bool, runtime.Object, error) {
+		create := action.(ktesting.CreateAction)
+		sandbox := create.GetObject().(*sandboxv1beta1.Sandbox).DeepCopy()
+		sandbox.UID = "pull-uid"
+		sandbox.ResourceVersion = "1"
+		if err := agents.Tracker().Create(
+			sandboxv1beta1.GroupVersion.WithResource("sandboxes"), sandbox, namespace,
+		); err != nil {
+			return true, nil, err
+		}
+		controller := true
+		pod := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: sandbox.Name + "-pod", Namespace: namespace,
+				Labels: sandbox.Spec.PodTemplate.ObjectMeta.Labels,
+				OwnerReferences: []metav1.OwnerReference{{
+					APIVersion: sandboxv1beta1.GroupVersion.String(), Kind: "Sandbox",
+					Name: sandbox.Name, UID: sandbox.UID, Controller: &controller,
+				}},
+			},
+			Status: corev1.PodStatus{
+				Phase: corev1.PodPending,
+				ContainerStatuses: []corev1.ContainerStatus{{
+					Name: "capsule",
+					State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{
+						Reason:  "ErrImagePull",
+						Message: "manifest unknown: " + secret,
+					}},
+				}},
+			},
+		}
+		if _, err := core.CoreV1().Pods(namespace).Create(context.Background(), pod, metav1.CreateOptions{}); err != nil {
+			return true, nil, err
+		}
+		return true, sandbox, nil
+	})
+	var sawPull bool
+	_, err := provider.Create(context.Background(), ports.CreateCapsuleRequest{
+		CapsuleID: "capsule-pull",
+		ReportStartup: func(report ports.StartupReport) {
+			if report.Phase == domain.PhasePullingImage {
+				sawPull = true
+				for _, phase := range report.Phases {
+					if phase != domain.PhasePullingImage && phase != domain.PhaseCreatingCapsule &&
+						phase != domain.PhaseStartingHarness && phase != domain.PhaseConnecting {
+						t.Errorf("unexpected phase %q", phase)
+					}
+				}
+			}
+		},
+	})
+	var pull *domain.StartupFailure
+	if !errors.As(err, &pull) || pull.Code != domain.PullImageNotFound || !sawPull {
+		t.Fatalf("create = %v sawPull=%v", err, sawPull)
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("create error retained registry text: %s", err.Error())
+	}
+}
+
 func TestConfigValidation(t *testing.T) {
 	for _, config := range []Config{
 		{InCluster: true, Kubeconfig: "config"},

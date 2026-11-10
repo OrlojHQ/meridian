@@ -2099,6 +2099,8 @@ type secretPageJSON struct {
 
 type capsuleJSON struct {
 	Preparation         *domain.PreparationProgress `json:"preparation,omitempty"`
+	Startup             *domain.StartupProgress     `json:"startup,omitempty"`
+	FailureCode         domain.PullFailureCode      `json:"failureCode,omitempty"`
 	ID                  string                      `json:"id"`
 	ProjectID           string                      `json:"projectId"`
 	TimelineID          string                      `json:"timelineId"`
@@ -2437,6 +2439,8 @@ type pinnedHarnessSetupJSON struct {
 func capsuleResponse(capsule domain.Capsule, pins []domain.PinnedHarnessSetup) capsuleJSON {
 	item := capsuleJSON{
 		Preparation:     capsule.Preparation,
+		Startup:         capsule.Startup,
+		FailureCode:     capsule.FailureCode,
 		ID:              string(capsule.ID),
 		ProjectID:       string(capsule.ProjectID),
 		TimelineID:      string(capsule.TimelineID),

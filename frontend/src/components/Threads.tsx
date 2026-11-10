@@ -31,6 +31,7 @@ import {
 import { ThreadConversation } from "./ThreadConversation";
 import { ThreadSubagents } from "./ThreadSubagents";
 import { ThreadError } from "./ThreadError";
+import { ListSkeleton } from "./ui/loading";
 import { ActionsMenu, type ActionsMenuItem } from "./ui/ActionsMenu";
 import { HarnessMark } from "./ui/HarnessMark";
 
@@ -204,11 +205,7 @@ export function ThreadFleet() {
     capsuleResults.some((result) => result.isPending) ||
     threadResults.some((result) => result.isPending)
   ) {
-    return (
-      <p className="loading" role="status">
-        Loading Threads…
-      </p>
-    );
+    return <ListSkeleton label="Loading Threads…" />;
   }
   if (projects.isError) return <ThreadError error={projects.error} />;
   const failed =

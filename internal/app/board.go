@@ -237,6 +237,9 @@ func (s *Service) boardCapsules(ctx context.Context, projectID domain.ProjectID)
 func (s *Service) boardItem(ctx context.Context, capsule domain.Capsule) (BoardItem, error) {
 	item := BoardItem{Capsule: capsule}
 	err := s.store.View(ctx, func(reader ports.Reader) error {
+		if err := loadStartup(ctx, reader, &item.Capsule); err != nil {
+			return err
+		}
 		threads, _, err := reader.ListThreads(ctx, capsule.ID, ports.Page{Limit: 100})
 		if err != nil {
 			return err

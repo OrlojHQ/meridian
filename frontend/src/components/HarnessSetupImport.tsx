@@ -75,14 +75,13 @@ export function HarnessSetupImport({ title = "Import your setup", initialHarness
     } catch (cause) { setError(importError(cause)); }
     finally { setBusy(false); }
   }
-  return <section className="panel setup-import">
+  return <section className="panel setup-import" id="import-setup">
     <h2>{title}</h2>
     {!onCancel && <label>Harness<select value={harness} disabled={busy} onChange={event => {setHarness(event.target.value as Harness);setSelection([]);setExcluded([]);setPreview(undefined);setSaved(undefined);setError("");}}>{Object.entries(displayNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>}
     {!preview && !saved && <>
       <p>Choose your {displayNames[harness]} configuration folder. You review every file before anything is saved, and new Capsules reuse the saved setup.</p>
       <div className="setup-import-picker">
         <p><strong>Configuration folder</strong> <code>{harnessFolders[harness]}</code></p>
-        <p className="setup-import-hint">Hidden folder? On macOS, press <kbd>Cmd + Shift + G</kbd> in the picker and paste the path. Elsewhere, use the picker’s location field or show hidden files.</p>
         <input ref={folderInput} hidden aria-label="Choose configuration folder" type="file" multiple {...{ webkitdirectory: "" }} disabled={busy} onChange={event => choose(event)} />
         <input ref={skillsInput} hidden aria-label="Choose skills folder" type="file" multiple {...{ webkitdirectory: "" }} disabled={busy} onChange={event => choose(event, "skills/")} />
         <input ref={filesInput} hidden aria-label="Choose configuration files" type="file" multiple disabled={busy} onChange={event => choose(event)} />
@@ -97,6 +96,7 @@ export function HarnessSetupImport({ title = "Import your setup", initialHarness
         {!directoryPicker() && <p className="setup-import-hint">This browser’s folder picker counts every file in its confirmation, including excluded dependencies. Meridian filters them afterward; nothing is sent until Review import.</p>}
       </div>
       <p className="setup-import-hint">Review import uploads the selected files to your Meridian server for checks. Dependency folders such as node_modules and login caches are excluded; you sign in to each harness separately.</p>
+      <p className="setup-import-hint">On a Mac, press Command-Shift-G and paste <code>{harnessFolders[harness]}</code>. Elsewhere, show hidden files.</p>
       {!onCancel && <p className="setup-import-hint">Prefer the terminal? Run <code>meridian harness import</code> on your computer. For a remote installation, point it at this Meridian server.</p>}
       {selection.length > 0 && <><p>{selection.length} files selected</p><ul>{selection.map(item => <li key={item.path}>{item.path} <button type="button" disabled={busy} aria-label={`Remove ${item.path}`} onClick={() => setSelection(current => current.filter(value => value.path !== item.path))}>Remove</button></li>)}</ul><button type="button" disabled={busy} onClick={() => void review()}>{busy ? "Reviewing…" : "Review import"}</button></>}
       {!selection.length && excluded.length > 0 && <p>No supported files selected. Choose the configuration folder shown above.</p>}

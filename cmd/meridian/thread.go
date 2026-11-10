@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -93,11 +94,18 @@ func newThreadSpawnCommand(config *cliConfig) *cobra.Command {
 			}
 			ticker := time.NewTicker(500 * time.Millisecond)
 			defer ticker.Stop()
+			var printedStartup string
 			for intent.State == client.ProjectThreadIntentStateProvisioning {
 				select {
 				case <-command.Context().Done():
 					return command.Context().Err()
 				case <-ticker.C:
+				}
+				if line := capsuleStartupLine(command.Context(), api, intent.CapsuleId); line != "" && line != printedStartup {
+					if _, err := fmt.Fprintln(os.Stderr, line); err != nil {
+						return err
+					}
+					printedStartup = line
 				}
 				current, err := api.GetProjectThreadIntent(
 					command.Context(),

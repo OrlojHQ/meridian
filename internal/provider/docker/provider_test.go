@@ -39,6 +39,8 @@ type fakeEngine struct {
 	imageWait   <-chan struct{}
 	missing     bool
 	pulled      []string
+	pullBody    client.ImagePullResponse
+	pullErr     error
 }
 
 func newFakeEngine() *fakeEngine {
@@ -75,7 +77,13 @@ func (nopPull) Wait(context.Context) error { return nil }
 
 func (e *fakeEngine) ImagePull(_ context.Context, reference string, _ client.ImagePullOptions) (client.ImagePullResponse, error) {
 	e.pulled = append(e.pulled, reference)
+	if e.pullErr != nil {
+		return nil, e.pullErr
+	}
 	e.missing = false
+	if e.pullBody != nil {
+		return e.pullBody, nil
+	}
 	return nopPull{}, nil
 }
 func (e *fakeEngine) VolumeInspect(_ context.Context, id string, _ client.VolumeInspectOptions) (client.VolumeInspectResult, error) {
@@ -270,12 +278,12 @@ func TestCapsuleSpecOmitsClaudeLogin(t *testing.T) {
 func TestImageResolutionRecordsImmutableIdentity(t *testing.T) {
 	engine := newFakeEngine()
 	provider := testProvider(t, engine)
-	resolved, err := provider.resolveImage(context.Background(), "mutable:tag")
+	resolved, err := provider.resolveImage(context.Background(), "mutable:tag", nil)
 	if err != nil || resolved != engine.image.ID {
 		t.Fatalf("resolve = %q, %v", resolved, err)
 	}
 	engine.image.ID = "mutable:tag"
-	if _, err := provider.resolveImage(context.Background(), "mutable:tag"); err == nil {
+	if _, err := provider.resolveImage(context.Background(), "mutable:tag", nil); err == nil {
 		t.Fatal("expected unresolved mutable image rejection")
 	}
 }
@@ -285,7 +293,7 @@ func TestRegistryImageIsPulledWhenMissing(t *testing.T) {
 	engine.missing = true
 	provider := testProvider(t, engine)
 	reference := "ghcr.io/orlojhq/meridian-capsule-opencode:v1.2.3"
-	resolved, err := provider.resolveImage(context.Background(), reference)
+	resolved, err := provider.resolveImage(context.Background(), reference, nil)
 	if err != nil || resolved != engine.image.ID {
 		t.Fatalf("resolve = %q, %v", resolved, err)
 	}
@@ -298,7 +306,7 @@ func TestLocalImageIsNotPulledFromDockerHub(t *testing.T) {
 	engine := newFakeEngine()
 	engine.missing = true
 	provider := testProvider(t, engine)
-	if _, err := provider.resolveImage(context.Background(), "meridian-capsule-opencode:dev"); err == nil {
+	if _, err := provider.resolveImage(context.Background(), "meridian-capsule-opencode:dev", nil); err == nil {
 		t.Fatal("expected local missing image to fail without a pull")
 	}
 	if len(engine.pulled) != 0 {

@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/base32"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -325,6 +326,9 @@ func (p *Provider) Create(
 	if strings.TrimSpace(image) == "" || strings.ContainsAny(image, "\x00\r\n") {
 		return ports.ProviderResource{}, fmt.Errorf("%w: image reference is invalid", domain.ErrInvalid)
 	}
+	plan := &ports.StartupPublisher{Report: request.ReportStartup}
+	plan.SetPhases([]domain.StartupPhase{domain.PhaseCreatingCapsule, domain.PhaseConnecting})
+	plan.Progress(domain.PhaseCreatingCapsule, 0, 0)
 	opctx, cancel := context.WithTimeout(ctx, p.config.OperationTimeout)
 	defer cancel()
 	sandbox, err := p.sandboxes.Get(opctx, name, metav1.GetOptions{})
@@ -344,10 +348,17 @@ func (p *Provider) Create(
 	if err != nil {
 		return ports.ProviderResource{}, err
 	}
-	ready, err := p.waitForState(opctx, name, ports.ProviderReady)
+	ready, err := p.waitForStateHook(opctx, name, ports.ProviderReady, func(ctx context.Context, sandbox *sandboxv1beta1.Sandbox) error {
+		return p.observeSandboxStartup(ctx, sandbox, plan)
+	})
 	if err != nil {
+		var pull *domain.StartupFailure
+		if errors.As(err, &pull) {
+			return ports.ProviderResource{}, pull
+		}
 		return ports.ProviderResource{}, err
 	}
+	plan.Progress(domain.PhaseConnecting, 0, 0)
 	setupContext, setupCancel := context.WithTimeout(ctx, p.config.SetupTimeout)
 	defer setupCancel()
 	client, session, err := p.runtimeClient(setupContext, name)
@@ -679,6 +690,15 @@ func (p *Provider) waitForState(
 	name string,
 	target ports.ProviderState,
 ) (ports.ProviderResource, error) {
+	return p.waitForStateHook(ctx, name, target, nil)
+}
+
+func (p *Provider) waitForStateHook(
+	ctx context.Context,
+	name string,
+	target ports.ProviderState,
+	hook func(context.Context, *sandboxv1beta1.Sandbox) error,
+) (ports.ProviderResource, error) {
 	var result ports.ProviderResource
 	var lastError error
 	err := wait.PollUntilContextCancel(ctx, 200*time.Millisecond, true, func(ctx context.Context) (bool, error) {
@@ -692,6 +712,11 @@ func (p *Provider) waitForState(
 		}
 		if _, err := p.verifySandboxIdentity(sandbox, ""); err != nil {
 			return false, err
+		}
+		if hook != nil {
+			if err := hook(ctx, sandbox); err != nil {
+				return false, err
+			}
 		}
 		result, err = p.resource(ctx, sandbox)
 		if err != nil {
