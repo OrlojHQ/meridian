@@ -14,6 +14,7 @@ import {
   Routes,
   useLocation,
   useNavigate,
+  useOutletContext,
   useParams,
   useSearchParams,
 } from "react-router-dom";
@@ -26,8 +27,10 @@ import type {
   CreateDeliveryRequest,
   Delivery,
   GitResult,
+  CapsulePage,
   Moment,
   PreviewTicket,
+  ProjectPage,
   Run,
   RunEvent,
   RunPage,
@@ -51,10 +54,12 @@ import {
   ActivityDot,
   AppShell,
   sessionPath,
+  type ShellOutletContext,
 } from "./shell/AppShell";
 import {
   capsuleSessions,
   defaultSession,
+  destinationAfterCapsuleDelete,
   harnessName,
   relativeTime,
   TERMINAL_SESSION,
@@ -313,6 +318,10 @@ function CapsuleMenu({
   const location = useLocation();
   const handledRequest = useRef("");
   const [pendingAction, setPendingAction] = useState<"delete" | "seal">();
+  // Same list the sidebar groups under the Project. Kept warm so a delete can
+  // choose a sibling from cache the moment the daemon accepts it.
+  const siblings = useQuery(queries.mainCapsules(capsule.projectId));
+  const projects = useQuery(queries.projects());
   const mutation = useMutation<unknown, Error, "pause" | "resume" | "delete" | "seal">({
     mutationFn: (action: "pause" | "resume" | "delete" | "seal") => {
       if (action === "seal") {
@@ -320,7 +329,41 @@ function CapsuleMenu({
       }
       return api.lifecycle(action, capsule.id, capsule.resourceVersion);
     },
-    onSuccess: async () => {
+    onSuccess: async (_value, action) => {
+      // Leave on the accepted delete, while the Capsule is still Deleting.
+      // Waiting for state Deleted would keep this page up, and would also
+      // send a direct visit to an already-deleted Capsule away.
+      if (action === "delete") {
+        const siblingKey = queries.mainCapsules(capsule.projectId).queryKey;
+        let items =
+          queryClient.getQueryData<CapsulePage>(siblingKey)?.items ?? siblings.data?.items;
+        if (!items) {
+          try {
+            items = (await queryClient.ensureQueryData(queries.mainCapsules(capsule.projectId)))
+              .items;
+          } catch {
+            items = [];
+          }
+        }
+        let knownProjects =
+          queryClient.getQueryData<ProjectPage>(queries.projects().queryKey)?.items ??
+          projects.data?.items;
+        if (!knownProjects) {
+          try {
+            knownProjects = (await queryClient.ensureQueryData(queries.projects())).items;
+          } catch {
+            knownProjects = [];
+          }
+        }
+        navigate(
+          destinationAfterCapsuleDelete(
+            capsule,
+            items,
+            knownProjects.some((item) => item.id === capsule.projectId),
+          ),
+          { replace: true },
+        );
+      }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["capsule", capsule.id] }),
         queryClient.invalidateQueries({ queryKey: ["capsules", capsule.projectId] }),
@@ -1138,6 +1181,48 @@ function NotFound() {
   return <section className="empty-state"><h1>Page not found</h1><Link to="/ui/">Return to Capsules</Link></section>;
 }
 
+function ProjectHome() {
+  const { projectId = "" } = useParams();
+  const outlet = useOutletContext<ShellOutletContext | undefined>();
+  const projects = useQuery(queries.projects());
+  if (projects.isPending) {
+    return (
+      <p className="loading" role="status">
+        Loading project…
+      </p>
+    );
+  }
+  if (projects.isError) return <Navigate to="/ui/" replace />;
+  const project = projects.data.items.find((item) => item.id === projectId);
+  if (!project) return <Navigate to="/ui/" replace />;
+  return (
+    <section className="fleet-view board-view">
+      <header className="workspace-view-header">
+        <div>
+          <p className="eyebrow">Project</p>
+          <h1>{project.name}</h1>
+        </div>
+      </header>
+      <div className="empty-state">
+        <p>No Capsules in this Project.</p>
+        {outlet?.openLauncher ? (
+          <div className="inbox-start">
+            <button type="button" onClick={() => outlet.openLauncher(project)}>
+              <PlusIcon />
+              Start work in {project.name}
+            </button>
+          </div>
+        ) : (
+          <p>
+            Use <strong>+</strong> next to {project.name} in the sidebar to start
+            an agent in a new Capsule.
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
 export function App() {
   return (
     <Routes>
@@ -1146,6 +1231,7 @@ export function App() {
         <Route path="settings/harnesses" element={<HarnessSetups />} />
         <Route path="capsules/:capsuleId" element={<CapsuleDetail />} />
         <Route path="capsules/:capsuleId/diff" element={<DiffPage />} />
+        <Route path="projects/:projectId" element={<ProjectHome />} />
         <Route path="board" element={<Navigate to="/ui/" replace />} />
         <Route path="threads" element={<ThreadFleet />} />
         <Route path="threads/:threadId" element={<ThreadDetail />} />

@@ -185,6 +185,56 @@ export const sessionPath = (capsuleId: string, sessionId?: string) =>
     sessionId ? `?session=${encodeURIComponent(sessionId)}` : ""
   }`;
 
+export const projectPath = (projectId: string) =>
+  `/ui/projects/${encodeURIComponent(projectId)}`;
+
+const timeValue = (value: string) => {
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? 0 : parsed;
+};
+
+// A Capsule that is already leaving is not a place to land. The comparison
+// stays inside one Project so a newer Capsule elsewhere cannot win.
+function isRemainingCapsule(
+  candidate: Capsule,
+  deleted: { id: string; projectId: string },
+) {
+  return (
+    candidate.id !== deleted.id &&
+    candidate.projectId === deleted.projectId &&
+    candidate.state !== "Deleting" &&
+    candidate.state !== "Deleted" &&
+    candidate.desiredState !== "Deleted"
+  );
+}
+
+function compareRecency(left: Capsule, right: Capsule) {
+  const updated = timeValue(left.updatedAt) - timeValue(right.updatedAt);
+  if (updated !== 0) return updated;
+  const created = timeValue(left.createdAt) - timeValue(right.createdAt);
+  if (created !== 0) return created;
+  if (left.id === right.id) return 0;
+  return left.id > right.id ? 1 : -1;
+}
+
+// After the daemon accepts a delete, leave that Capsule for the most recently
+// updated sibling that is still in the Project. Otherwise open the Project's
+// empty state, or the Inbox when that Project is not available to show.
+export function destinationAfterCapsuleDelete(
+  deleted: { id: string; projectId: string },
+  siblings: readonly Capsule[],
+  projectAvailable: boolean,
+): string {
+  let next: Capsule | undefined;
+  for (const candidate of siblings) {
+    if (!isRemainingCapsule(candidate, deleted)) continue;
+    if (!next || compareRecency(candidate, next) > 0) next = candidate;
+  }
+  if (next) return sessionPath(next.id);
+  if (projectAvailable) return projectPath(deleted.projectId);
+  return "/ui/";
+}
+
 function terminalSession(harness: string, runs: Run[]): CapsuleSession {
   const run = latestRun(runs);
   const base = { id: TERMINAL_SESSION, kind: "terminal" as const, harness };

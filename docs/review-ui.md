@@ -19,7 +19,14 @@ The UI uses a full-height, Capsule-centered workspace:
   Pause, Resume, Seal, and Delete, or a resource inspector. meridiand refuses
   to delete a Capsule with an active Run, so the Delete confirmation lists
   running sessions with Stop buttons and enables Delete once they end; a
-  running native terminal can also be stopped from its session heading; and
+  running native terminal can also be stopped from its session heading.
+  When the daemon accepts the delete, and while the Capsule is still
+  Deleting, the workspace leaves that page with a history replace: the most
+  recently updated remaining Capsule in the same Project, otherwise that
+  Project's empty state, or the Inbox when the Project is not available. A
+  direct visit to a Capsule that is already Deleted stays on its read-only
+  page. The Capsule page, a Capsule opened from the sidebar, and the command
+  palette all confirm through this menu; and
 - the contextual tool pane provides capability-gated Changes, Preview, Files,
   Terminal, and Activity tabs for the selected Capsule.
 
@@ -187,7 +194,10 @@ Capsule, for the same idle-pausing reason the working set never polls Git
 status, files, or previews. Lifecycle items go through the Capsule workspace's
 actions menu, which owns those mutations: Pause and Resume run there with the
 Capsule's current resource version, while Seal and Delete only open its
-existing confirmation and never run from the palette.
+existing confirmation and never run from the palette. A delete the daemon
+accepts then leaves the Capsule, as described above. The palette replaces the
+current history entry when it asks the menu to act on the Capsule already on
+screen, so Back does not return to a Capsule that was deleted.
 
 ## Development and production assets
 
@@ -212,6 +222,8 @@ The production routes are:
   redirects here;
 - `/ui/capsules/:id` — unified Capsule workspace, with native PTY or structured
   Thread controls in the primary surface and review tools beside it;
+- `/ui/projects/:id` — empty Project, offering to start work in that Project.
+  An unknown Project redirects to the Inbox;
 - `/ui/capsules/:id/diff` — exact-state Delivery approval in the primary
   surface while the contextual Changes tab shows the bounded Git diff;
 - `/ui/threads` and `/ui/threads/:id` — retained structured Thread fleet,
