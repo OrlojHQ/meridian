@@ -1,8 +1,13 @@
 package capsuleproto
 
 import (
+	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"github.com/OrlojHQ/meridian/internal/harnesssetup"
 	"github.com/pelletier/go-toml/v2"
@@ -20,7 +25,7 @@ func (s *Server) prepareProviderConnection(ctx context.Context, connection *harn
 	}
 	harness = strings.TrimSuffix(harness, "-structured")
 	u, err := url.Parse(connection.URL)
-	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || len(connection.Token) != 64 || connection.Model != "" && !harnesssetup.ValidModel(connection.Model) {
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || len(connection.Token) != 64 || connection.Model != "" && !harnesssetup.ValidModel(connection.Model) || !validGatewayCA(connection.CA) {
 		return nil, errors.New("invalid provider connection")
 	}
 	custom := connection.Provider == "openai-compatible" || connection.Provider == "anthropic-compatible"
@@ -68,6 +73,11 @@ func (s *Server) prepareProviderConnection(ctx context.Context, connection *harn
 		return nil, err
 	}
 	defer root.Close()
+	if connection.CA != "" {
+		if err := trustGatewayCA(root, filepath.Join(base, ".meridian-setup-"+revision), connection.CA, env); err != nil {
+			return nil, err
+		}
+	}
 	model := connection.Model
 	switch harness {
 	case "claude":
@@ -217,6 +227,110 @@ func dshProviderPatch(connection *harnesssetup.Connection, efforts []string, com
 		entries = append(entries, map[string]any{"id": id, "disabled": true})
 	}
 	return json.MarshalIndent(entries, "", "  ")
+}
+
+// systemCABundles are the image trust bundles the gateway CA is appended
+// to, after an inherited SSL_CERT_FILE.
+var systemCABundles = []string{"/etc/ssl/certs/ca-certificates.crt", "/etc/pki/tls/certs/ca-bundle.crt", "/etc/ssl/cert.pem"}
+
+const maxSystemCABundle = 4 << 20
+
+// validGatewayCA accepts an empty value or one to four CA certificates in at
+// most 16 KiB of PEM with nothing else in it.
+func validGatewayCA(raw string) bool {
+	if raw == "" {
+		return true
+	}
+	if len(raw) > 16<<10 {
+		return false
+	}
+	rest, count := []byte(raw), 0
+	for {
+		var block *pem.Block
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			break
+		}
+		if block.Type != "CERTIFICATE" || len(block.Headers) != 0 {
+			return false
+		}
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil || !cert.IsCA {
+			return false
+		}
+		count++
+	}
+	return count >= 1 && count <= 4 && len(bytes.TrimSpace(rest)) == 0
+}
+
+// trustGatewayCA makes the harness trust the local provider gateway
+// (ADR 0037). The root filesystem is read-only, and Codex and Node ignore
+// the system store, so trust goes through the environment: SSL_CERT_FILE
+// names the image's bundle plus the CA (Codex, Bun, OpenSSL, Git), and
+// NODE_EXTRA_CA_CERTS names the CA alone (Node, Bun).
+func trustGatewayCA(root *os.Root, home, ca string, env map[string]string) error {
+	system, err := readSystemCABundle()
+	if err != nil {
+		return err
+	}
+	if len(system) != 0 && !bytes.HasSuffix(system, []byte("\n")) {
+		system = append(system, '\n')
+	}
+	if err := replaceSetupFile(root, ".meridian/provider-ca.pem", []byte(ca)); err != nil {
+		return err
+	}
+	if err := replaceSetupFile(root, ".meridian/provider-ca-bundle.pem", append(system, ca...)); err != nil {
+		return err
+	}
+	env["SSL_CERT_FILE"] = filepath.Join(home, ".meridian", "provider-ca-bundle.pem")
+	env["NODE_EXTRA_CA_CERTS"] = filepath.Join(home, ".meridian", "provider-ca.pem")
+	return nil
+}
+func readSystemCABundle() ([]byte, error) {
+	candidates := systemCABundles
+	if inherited := os.Getenv("SSL_CERT_FILE"); inherited != "" {
+		candidates = append([]string{inherited}, candidates...)
+	}
+	for _, p := range candidates {
+		f, err := os.Open(p)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		raw, readErr := io.ReadAll(io.LimitReader(f, maxSystemCABundle+1))
+		closeErr := f.Close()
+		if readErr != nil {
+			return nil, readErr
+		}
+		if closeErr != nil {
+			return nil, closeErr
+		}
+		if len(raw) > maxSystemCABundle {
+			return nil, errors.New("system CA bundle exceeds limit")
+		}
+		return raw, nil
+	}
+	return nil, nil
+}
+
+// replaceSetupFile writes p atomically, so a harness starting beside this
+// one never reads a partial trust file.
+func replaceSetupFile(root *os.Root, p string, raw []byte) error {
+	suffix := make([]byte, 8)
+	if _, err := rand.Read(suffix); err != nil {
+		return err
+	}
+	temp := p + ".tmp-" + hex.EncodeToString(suffix)
+	if err := writeSetupFile(root, temp, raw); err != nil {
+		return err
+	}
+	if err := root.Rename(temp, p); err != nil {
+		_ = root.Remove(temp)
+		return err
+	}
+	return nil
 }
 func object(parent map[string]any, key string) map[string]any {
 	value, ok := parent[key].(map[string]any)

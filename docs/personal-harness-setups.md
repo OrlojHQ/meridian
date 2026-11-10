@@ -66,16 +66,63 @@ meridian capsule create PROJECT_ID scratch --harness codex --setup clean
 
 ## Reusable API connections
 
-Enable the gateway on the daemon using an HTTPS origin reachable and trusted
-from inside Capsules:
+Connections go through Meridian's provider gateway, so Capsules never see an
+upstream key. With `--provider=docker` (the default, including Homebrew's
+`brew services start meridian`), it works with no extra flags: `meridiand`
+starts a local gateway (ADR 0037). Look for this line in the daemon log:
+
+```text
+provider gateway for Capsules at https://provider-gateway.meridian.internal:PORT (listening on 127.0.0.1:PORT)
+```
+
+The local gateway is a second listener that serves TLS and only
+`/provider-gateway/` routes. Its certificate comes from a CA that `meridiand`
+creates in memory at startup, that can sign only that one name, and that is
+never written to disk. Capsules reach it by that name, which `meridiand` adds
+to each Capsule's hosts file:
+
+- On Docker Desktop, OrbStack, Colima, and other engines that run in a VM, it
+  listens on host loopback, which Docker's `host-gateway` forwards to.
+- On native Linux Docker, it listens on the default bridge's gateway address
+  (usually `172.17.0.1`), never on all interfaces.
+
+`capsuled` gives each harness that uses a connection the CA through
+`SSL_CERT_FILE` (the image's public roots plus the CA) and
+`NODE_EXTRA_CA_CERTS`. Every official harness trusts it that way; nothing
+else in the image changes.
+
+Capsules created before upgrading to this version have no hosts entry for the
+gateway. Recreate them to use connections. A daemon restart picks a new port
+and CA, which only matters to running sessions, and those already need
+restarting because leases end with the daemon.
+
+If the daemon log says `provider connections are unavailable: no local
+provider gateway`, the engine gave no route: it is remote (`tcp://` or
+`ssh://`) or rootless. Set the listener yourself with a literal IP and port
+that Capsules can reach, or use an explicit URL as below:
+
+```console
+meridiand --provider=docker --provider-gateway-listen=10.0.0.4:7443
+```
+
+On Linux, a host firewall that drops traffic from containers to the host
+(for example `ufw` with its default incoming policy) blocks the gateway, and
+harness turns fail with a connection error. Allow the port from the Docker
+bridges, or pin it with `--provider-gateway-listen=172.17.0.1:7443` and allow
+that. `--provider-gateway-listen=off` turns the local gateway off.
+
+### Behind a reverse proxy, or on Kubernetes
+
+Agent Sandbox (Kubernetes) and installations that already publish Meridian
+over HTTPS use an explicit origin that Capsules can reach and trust instead:
 
 ```console
 meridiand --provider=docker --provider-gateway-url=https://meridian.example
 ```
 
-This flag does not configure TLS or expose an extra listener. Your reverse
-proxy must forward `/provider-gateway/` to Meridian, disable response buffering
-for streaming, preserve Authorization and X-Api-Key, and avoid body/credential
+This flag replaces the local gateway, does not configure TLS, and exposes no
+extra listener. Your reverse proxy must forward `/provider-gateway/` to
+Meridian, disable response buffering for streaming, preserve Authorization and X-Api-Key, and avoid body/credential
 logging. Permit the origin in Capsule egress policy
 (`networkPolicy.capsuleEgressCIDRs` on Kubernetes). The chart already allows
 Capsules to reach the in-namespace control-plane gateway on TCP 8080. Permit
@@ -83,6 +130,8 @@ the control plane to reach `api.openai.com:443` and `api.anthropic.com:443`
 (`networkPolicy.providerEgressCIDRs`; NetworkPolicy is IP-based, so set the
 hosts' routable CIDRs). Keep broader control-plane access restricted using
 the existing installation authentication.
+
+### Adding a connection
 
 Add your own OpenAI or Anthropic API key under Provider connections in Harness
 settings. Alternatively, pipe a key from your secret manager into:
@@ -172,8 +221,7 @@ For a plain `http://` server on your LAN or tailnet, the daemon operator must
 allow it once, and each connection must opt in too:
 
 ```console
-meridiand --provider=docker --provider-gateway-url=https://meridian.example \
-  --provider-gateway-allow-private-http
+meridiand --provider=docker --provider-gateway-allow-private-http
 printf %s "$VLLM_KEY" | meridian harness connect openai-compatible \
   --name "DGX GLM" --base-url http://192.168.1.20:8000 --allow-private-http \
   --model glm-5.3-flash --stdin

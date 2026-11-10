@@ -168,6 +168,9 @@ type Connection struct {
 	// Efforts are the reasoning effort levels the model accepts, validated
 	// by ValidEfforts. Empty means the harness's own view of the model.
 	Efforts []string `json:"efforts,omitempty"`
+	// CA is the PEM certificate set the harness must trust for URL, set
+	// only for the local provider gateway (ADR 0037).
+	CA string `json:"ca,omitempty"`
 }
 
 // EffortLevels is the effort vocabulary a connection may declare, from least

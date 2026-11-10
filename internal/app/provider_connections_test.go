@@ -291,3 +291,80 @@ func TestCustomEndpointGrantsAndRuntimeLease(t *testing.T) {
 		t.Fatalf("revocation failed: %+v %v", revoked, err)
 	}
 }
+
+func TestLocalProviderGatewayCarriesTrust(t *testing.T) {
+	ctx := context.Background()
+	db, err := sqlite.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	key, err := secrets.OpenOrCreateKey(filepath.Join(t.TempDir(), "keys", "key"), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer key.Zero()
+	s := NewService(db, connectionClock{}, &connectionIDs{}, connectionQueue{})
+	s.ConfigureSecrets(key)
+	if err := s.ConfigureLocalProviderGateway("https://provider-gateway.meridian.internal:4433", nil, false); err == nil {
+		t.Fatal("local gateway accepted without trust")
+	}
+	if err := s.ConfigureLocalProviderGateway("http://provider-gateway.meridian.internal:4433", func() (string, error) { return "ca", nil }, false); err == nil {
+		t.Fatal("local gateway accepted without HTTPS")
+	}
+	calls := 0
+	trust := func() (string, error) { calls++; return "-----BEGIN CERTIFICATE-----\n", nil }
+	if err := s.ConfigureLocalProviderGateway("https://provider-gateway.meridian.internal:4433", trust, true); err != nil {
+		t.Fatal(err)
+	}
+	defer s.CloseProviderGateway()
+	if !s.ProviderGatewayEnabled() || s.ProviderGatewayOnAPIListener() || !s.ProviderGatewayAllowsPrivateHTTP() {
+		t.Fatal("local gateway state is wrong")
+	}
+	project, err := s.CreateProject(ctx, "project", "project")
+	if err != nil {
+		t.Fatal(err)
+	}
+	capsule, err := s.CreateCapsule(ctx, project.ID, "capsule", "capsule")
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection, err := s.PutProviderConnection(ctx, "", ConnectionInput{Name: "OpenAI", Provider: "openai", APIKey: "upstream-private-key"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.GrantProviderConnection(ctx, project.ID, "codex", connection.ID); err != nil {
+		t.Fatal(err)
+	}
+	runtime, err := s.runtimeProviderConnection(ctx, capsule, "codex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.URL != "https://provider-gateway.meridian.internal:4433/provider-gateway/openai" || runtime.CA != "-----BEGIN CERTIFICATE-----\n" || calls != 1 {
+		t.Fatalf("runtime connection %q %q after %d trust calls", runtime.URL, runtime.CA, calls)
+	}
+	failing := NewService(db, connectionClock{}, &connectionIDs{}, connectionQueue{})
+	failing.ConfigureSecrets(key)
+	if err := failing.ConfigureLocalProviderGateway("https://provider-gateway.meridian.internal:4433", func() (string, error) { return "", errors.New("no CA") }, false); err != nil {
+		t.Fatal(err)
+	}
+	defer failing.CloseProviderGateway()
+	if _, err := failing.runtimeProviderConnection(ctx, capsule, "codex"); err == nil {
+		t.Fatal("connection issued without trust")
+	}
+	// An explicit gateway URL carries no CA and stays on the API listener.
+	explicit, _, project2, capsule2 := newConnectionService(t, false)
+	if !explicit.ProviderGatewayOnAPIListener() {
+		t.Fatal("explicit gateway not on the API listener")
+	}
+	item, err := explicit.PutProviderConnection(ctx, "", ConnectionInput{Name: "OpenAI", Provider: "openai", APIKey: "upstream-private-key"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := explicit.GrantProviderConnection(ctx, project2.ID, "codex", item.ID); err != nil {
+		t.Fatal(err)
+	}
+	if runtime, err := explicit.runtimeProviderConnection(ctx, capsule2, "codex"); err != nil || runtime.CA != "" {
+		t.Fatalf("explicit gateway connection: %v %q", err, runtime.CA)
+	}
+}

@@ -110,6 +110,9 @@ type Provider struct {
 	engine Engine
 	owned  *client.Client
 	tokens *tokenStore
+	// gatewayHost is the extra hosts entry naming the local provider
+	// gateway, or empty.
+	gatewayHost string
 }
 
 func New(config Config) (*Provider, error) {
@@ -625,6 +628,10 @@ func (p *Provider) ContainerCreateOptions(
 	port := network.MustParsePort(protocolPort)
 	init := true
 	pids := p.config.PIDs
+	var extraHosts []string
+	if p.gatewayHost != "" {
+		extraHosts = []string{p.gatewayHost}
+	}
 	return client.ContainerCreateOptions{
 		Name: names.container,
 		Config: &container.Config{
@@ -642,6 +649,7 @@ func (p *Provider) ContainerCreateOptions(
 		},
 		HostConfig: &container.HostConfig{
 			NetworkMode:    container.NetworkMode(names.network),
+			ExtraHosts:     extraHosts,
 			PortBindings:   network.PortMap{port: {{HostIP: netip.MustParseAddr("127.0.0.1")}}},
 			ReadonlyRootfs: true,
 			Privileged:     false,
