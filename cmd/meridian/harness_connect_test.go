@@ -43,6 +43,31 @@ func TestHarnessConnectCustomEndpointReadsKeyFromStdin(t *testing.T) {
 	}
 }
 
+func TestHarnessConnectClaudeSetupTokenStaysOutOfOutput(t *testing.T) {
+	const token = "sk-ant-oat-claude-login-canary"
+	var body map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		raw, _ := io.ReadAll(request.Body)
+		_ = json.Unmarshal(raw, &body)
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(writer, `{"id":"c1","provider":"anthropic","name":"Claude","credentialKind":"oauth","createdAt":"2026-11-10T00:00:00Z","resourceVersion":1,"revoked":false}`)
+	}))
+	defer server.Close()
+	var output bytes.Buffer
+	config := &cliConfig{server: server.URL, tokenFile: testAPITokenFile(t), stdout: &output, stdin: strings.NewReader(token + "\n")}
+	command := harnessTestRoot(config)
+	command.SetArgs([]string{"harness", "connect", "anthropic", "--oauth", "--stdin"})
+	if err := command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if body["apiKey"] != token || body["credentialKind"] != "oauth" || body["provider"] != "anthropic" {
+		t.Fatalf("unexpected request %v", body)
+	}
+	if strings.Contains(output.String(), token) {
+		t.Fatal("setup token printed")
+	}
+}
+
 func TestHarnessConnectFlagRules(t *testing.T) {
 	requests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -66,6 +91,8 @@ func TestHarnessConnectFlagRules(t *testing.T) {
 		{[]string{"openai-compatible", "--base-url", "https://x.example", "--stdin", "--no-api-key"}, false},
 		{[]string{"ollama", "--stdin"}, false},
 		{[]string{"anthropic-compatible", "--base-url", "https://litellm.example", "--no-api-key"}, true},
+		{[]string{"openai", "--oauth", "--stdin"}, false},
+		{[]string{"anthropic", "--oauth"}, false},
 	} {
 		config := &cliConfig{server: server.URL, tokenFile: testAPITokenFile(t), stdout: io.Discard, stdin: strings.NewReader("ignored")}
 		command := harnessTestRoot(config)

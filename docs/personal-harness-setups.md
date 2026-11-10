@@ -140,6 +140,25 @@ settings. Alternatively, pipe a key from your secret manager into:
 meridian harness connect openai --stdin
 ```
 
+A Claude login is the same kind of stored connection, for the official
+Anthropic provider only. In Harness settings, choose Anthropic and click
+"Sign in with Claude". Meridian opens Claude's login, receives the redirect
+on the daemon, and stores the result as authenticated ciphertext. You do not
+run `claude setup-token` or paste a token minted elsewhere. If that browser
+cannot return to the daemon, paste the authorization code the Claude page
+shows; Meridian exchanges it and does not keep the code. An API key, or a
+setup token you already have, can still be saved from the same form or from
+stdin. The gateway sends an API key as `X-Api-Key` and an OAuth login or
+setup token as `Authorization: Bearer`. A Capsule receives the gateway URL
+and a 24-hour lease, not the login. Replacing or clearing it does not show
+the previous value. Codex, OpenCode, Pi, and DeepSeek Harness credential
+setup is unchanged.
+
+```console
+meridian harness connect anthropic --stdin
+printf %s "$CLAUDE_SETUP_TOKEN" | meridian harness connect anthropic --oauth --stdin
+```
+
 The key must come from stdin, never a plaintext command-line argument. On first
 launch, choose the connection to authorize it for the Project and harness.
 That grant is reused on future launches. Revoke a connection in Settings to stop

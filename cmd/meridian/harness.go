@@ -212,7 +212,7 @@ func offerHarnessSetupUpdate(ctx context.Context, config *cliConfig, harness str
 	return nil
 }
 func newHarnessConnectCommand(config *cliConfig) *cobra.Command {
-	var stdin, noKey, allowPrivateHTTP bool
+	var stdin, noKey, allowPrivateHTTP, oauth bool
 	var name, id, baseURL, model string
 	var efforts []string
 	var expected int64
@@ -223,8 +223,16 @@ LM Studio, SGLang, LiteLLM) and anthropic-compatible (LiteLLM and similar
 proxies for Claude Code) send requests through Meridian's gateway to
 --base-url. Capsules never see the base URL or the key.
 
+Sign in to Claude from Harness settings. Meridian runs that login. For
+anthropic, --oauth is the fallback: the stdin value is a Claude Code setup
+token. The gateway attaches it as Authorization: Bearer. Without --oauth
+the value is an API key. The login is not returned and is not placed in a
+Capsule.
+
 Keys are read only from stdin. Pass --no-api-key for a custom endpoint that
 needs no authentication.`, Example: `  meridian harness connect openai --stdin < key.txt
+  meridian harness connect anthropic --stdin < key.txt
+  printf %s "$CLAUDE_SETUP_TOKEN" | meridian harness connect anthropic --oauth --stdin
   meridian harness connect openai-compatible --base-url https://vllm.example.com --model Qwen/Qwen3-Coder-30B-A3B-Instruct --stdin < key.txt
   meridian harness connect openai-compatible --base-url https://models.example.com --model glm-5.3-flash --effort low,high,max --stdin < key.txt
   meridian harness connect openai-compatible --base-url http://192.168.1.20:11434 --allow-private-http --model qwen2.5-coder:32b --no-api-key`, Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
@@ -236,6 +244,9 @@ needs no authentication.`, Example: `  meridian harness connect openai --stdin <
 		custom := provider == "openai-compatible" || provider == "anthropic-compatible"
 		if !custom && provider != "openai" && provider != "anthropic" {
 			return errors.New("supported providers: openai, anthropic, openai-compatible, anthropic-compatible")
+		}
+		if oauth && provider != "anthropic" {
+			return errors.New("--oauth applies only to anthropic")
 		}
 		if custom && baseURL == "" {
 			return errors.New("--base-url is required for " + provider)
@@ -272,6 +283,9 @@ needs no authentication.`, Example: `  meridian harness connect openai --stdin <
 			return err
 		}
 		input := &client.ProviderConnectionRequest{Name: name, Provider: client.ProviderConnectionType(provider), ApiKey: strings.TrimSpace(string(raw)), ExpectedResourceVersion: expected}
+		if oauth {
+			input.CredentialKind = client.NewOptAnthropicCredentialKind(client.AnthropicCredentialKindOAuth)
+		}
 		if custom {
 			input.BaseUrl = client.NewOptString(baseURL)
 			input.AllowPrivateHttp = client.NewOptBool(allowPrivateHTTP)
@@ -293,7 +307,8 @@ needs no authentication.`, Example: `  meridian harness connect openai --stdin <
 		}
 		return writeJSON(config.stdout, saved)
 	}}
-	cmd.Flags().BoolVar(&stdin, "stdin", false, "read the API key from stdin")
+	cmd.Flags().BoolVar(&stdin, "stdin", false, "read the API key or Claude setup token from stdin")
+	cmd.Flags().BoolVar(&oauth, "oauth", false, "anthropic only: stdin is a Claude Code setup token, attached by the gateway as a bearer token")
 	cmd.Flags().BoolVar(&noKey, "no-api-key", false, "custom endpoint without authentication")
 	cmd.Flags().StringVar(&baseURL, "base-url", "", "custom endpoint base URL, for example https://vllm.example.com (a trailing /v1 is accepted)")
 	cmd.Flags().StringVar(&model, "model", "", "default model name served by the custom endpoint (required for OpenCode and Pi)")

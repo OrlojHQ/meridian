@@ -22,4 +22,8 @@ type ProviderConnection struct {
 	// harnesssetup.EffortLevels order. Harnesses offer exactly these (plus
 	// off) for that model and send each level's name upstream.
 	ReasoningEfforts []string `json:"reasoningEfforts,omitempty"`
+	// CredentialKind selects how the gateway attaches an official Anthropic
+	// login. Empty means an API key (X-Api-Key). "oauth" is a Claude Code
+	// setup token (Authorization: Bearer). It is not the secret.
+	CredentialKind string `json:"credentialKind,omitempty"`
 }

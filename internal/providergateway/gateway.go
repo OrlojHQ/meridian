@@ -27,6 +27,13 @@ const (
 	Anthropic           = "anthropic"
 	OpenAICompatible    = "openai-compatible"
 	AnthropicCompatible = "anthropic-compatible"
+	// CredentialAPIKey is the default official Anthropic login: X-Api-Key.
+	CredentialAPIKey = "api_key"
+	// CredentialOAuth is a Claude Code setup token. The gateway sends it as
+	// Authorization: Bearer and adds the beta marker Claude Code already
+	// sends with that token. The token itself never enters a Capsule.
+	CredentialOAuth = "oauth"
+	oauthBeta       = "oauth-2025-04-20"
 )
 
 // API returns the wire protocol family of a provider connection type, or ""
@@ -62,6 +69,10 @@ type Upstream struct {
 	Key              string
 	BaseURL          string
 	AllowPrivateHTTP bool
+	// CredentialKind is empty or CredentialAPIKey for an API key, or
+	// CredentialOAuth for a Claude setup token. Only official Anthropic
+	// accepts oauth; other providers ignore a key sent under that kind.
+	CredentialKind string
 }
 type Authorize func(context.Context, Lease) (Upstream, error)
 
@@ -295,7 +306,16 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			upstream.Header.Set("Authorization", "Bearer "+resolved.Key)
 		}
 	} else {
-		if resolved.Key != "" {
+		// A setup token is attached only on the fixed Anthropic host. Any
+		// other provider with that kind fails closed rather than forwarding
+		// the login as an API key.
+		if resolved.CredentialKind == CredentialOAuth && provider != Anthropic {
+			gatewayError(w, "provider connection unavailable", http.StatusForbidden)
+			return
+		}
+		if resolved.Key != "" && resolved.CredentialKind == CredentialOAuth {
+			upstream.Header.Set("Authorization", "Bearer "+resolved.Key)
+		} else if resolved.Key != "" {
 			upstream.Header.Set("X-Api-Key", resolved.Key)
 			// Self-hosted servers such as vLLM authenticate only bearer tokens,
 			// including on their Anthropic Messages routes.
@@ -304,7 +324,15 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		upstream.Header.Set("Anthropic-Version", "2023-06-01")
-		if beta := r.Header.Get("Anthropic-Beta"); beta != "" && len(beta) <= 2048 {
+		beta := r.Header.Get("Anthropic-Beta")
+		if resolved.CredentialKind == CredentialOAuth {
+			beta = appendBeta(beta, oauthBeta)
+		}
+		if len(beta) > 2048 {
+			gatewayError(w, "provider connection unavailable", http.StatusForbidden)
+			return
+		}
+		if beta != "" {
 			upstream.Header.Set("Anthropic-Beta", beta)
 		}
 	}
@@ -349,6 +377,18 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+}
+
+func appendBeta(existing, marker string) string {
+	for _, part := range strings.Split(existing, ",") {
+		if strings.TrimSpace(part) == marker {
+			return existing
+		}
+	}
+	if existing == "" {
+		return marker
+	}
+	return existing + "," + marker
 }
 
 func gatewayError(w http.ResponseWriter, message string, status int) {

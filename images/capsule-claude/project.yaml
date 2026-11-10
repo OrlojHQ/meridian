@@ -1,13 +1,14 @@
 # Copy this file into a repository as .meridian/project.yaml.
 # The Capsule image must contain /usr/local/bin/claude
 # (make capsule-claude-image → meridian-capsule-claude:dev).
-# Terminal sessions (native) sign in inside the Claude Code TUI
-# (`claude auth login`). Threads (structured) run Claude Code headless through
-# the Meridian adapter; the adapter does not collect credentials. Attach an
-# Anthropic provider connection so capsuled sets ANTHROPIC_BASE_URL and a
-# gateway lease in ANTHROPIC_API_KEY, or sign in once in a terminal session.
-# Neither profile injects provider credentials itself, and a repository
-# cannot define profiles or secretReferences under this name.
+# Threads (structured) run Claude Code headless through the Meridian adapter.
+# The adapter does not collect credentials. Sign in to Claude from Meridian's
+# Harness settings. An API key or setup token is only a fallback. The login is
+# stored encrypted and the provider gateway attaches it to api.anthropic.com. capsuled sets
+# ANTHROPIC_BASE_URL and a gateway lease in ANTHROPIC_API_KEY. The login is
+# not an environment variable, file, volume, image layer, or prompt in this
+# Capsule. Neither profile injects provider credentials itself, and a
+# repository cannot define profiles or secretReferences under this name.
 version: v1
 harnesses:
   - name: claude

@@ -23,6 +23,13 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   rootless engines have no default and still need one of the two flags.
   Capsules created before upgrading need recreating to use connections. With
   a local gateway, the API listener no longer serves `/provider-gateway/`.
+- Claude login stays on the control plane (ADR 0036). Harness settings sign
+  in to Claude from the page: Meridian runs the OAuth login, stores the
+  access and refresh tokens as authenticated ciphertext, and does not show
+  them again. Pasting an API key or a setup token remains a fallback. The
+  provider gateway attaches the current access token to `api.anthropic.com`.
+  A Capsule receives only a gateway lease. Codex, OpenCode, Pi, and DeepSeek
+  Harness credential setup is unchanged.
 
 - Homebrew install: `brew install orlojhq/tap/meridian` installs `meridian`
   and `meridiand`, and `brew services start meridian` runs the daemon in the

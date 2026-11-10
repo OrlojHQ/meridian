@@ -230,7 +230,11 @@ provider connection (see [personal harness setups](personal-harness-setups.md))
 to the Project and harness:
 
 - for `claude`, `capsuled` sets `ANTHROPIC_BASE_URL` and a gateway lease in
-  `ANTHROPIC_API_KEY`;
+  `ANTHROPIC_API_KEY`. The Claude login itself stays encrypted on the control
+  plane. Sign in from Harness settings; Meridian runs the OAuth login and the
+  provider gateway attaches an API key as `X-Api-Key`, or the OAuth access
+  token (or a setup token) as `Authorization: Bearer`. The login is not
+  written into the Capsule environment, files, volume, image, or prompt;
 - for `codex`, it writes a `meridian` model provider into the setup home's
   `~/.codex/config.toml` that reads the lease from `MERIDIAN_PROVIDER_TOKEN`;
 - for OpenCode and Pi, it writes their native provider configuration the same

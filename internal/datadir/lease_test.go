@@ -115,15 +115,25 @@ func TestHeartbeatRefreshesAndReportsTakeover(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	writeForeign(t, dir, Record{Instance: "intruder", Owner: "meridiand", PID: 7, Host: "docker-desktop",
-		HeartbeatAt: time.Now()})
-	select {
-	case err := <-lease.Lost():
-		if !errors.Is(err, ErrLost) || !strings.Contains(err.Error(), "pid 7 on docker-desktop") {
-			t.Fatalf("lost = %v", err)
+	foreign := Record{Instance: "intruder", Owner: "meridiand", PID: 7, Host: "docker-desktop",
+		HeartbeatAt: time.Now()}
+	// A refresh that has already read its own record can rename that record
+	// back over one replacement. Leave the intruder in place until a later
+	// heartbeat reads it.
+	deadline = time.Now().Add(2 * time.Second)
+	var lost error
+	for lost == nil {
+		writeForeign(t, dir, foreign)
+		select {
+		case lost = <-lease.Lost():
+		case <-time.After(5 * time.Millisecond):
+			if time.Now().After(deadline) {
+				t.Fatal("takeover was not reported")
+			}
 		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("takeover was not reported")
+	}
+	if !errors.Is(lost, ErrLost) || !strings.Contains(lost.Error(), "pid 7 on docker-desktop") {
+		t.Fatalf("lost = %v", lost)
 	}
 	lease.Release()
 	if current, err := readRecord(dir); err != nil || current.Instance != "intruder" {
