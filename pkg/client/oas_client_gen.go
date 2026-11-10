@@ -82,6 +82,12 @@ type Invoker interface {
 	//
 	// POST /capsules/{capsuleId}/moments
 	CaptureMoment(ctx context.Context, request *CaptureMomentRequest, params CaptureMomentParams) (CaptureMomentRes, error)
+	// CompleteChatGPTSignIn invokes completeChatGPTSignIn operation.
+	//
+	// CompleteChatGPTSignIn.
+	//
+	// POST /provider-connections/chatgpt/sign-ins/{signInId}/complete
+	CompleteChatGPTSignIn(ctx context.Context, request *ChatGPTSignInCompletion, params CompleteChatGPTSignInParams) (*ChatGPTSignIn, error)
 	// CompleteClaudeLogin invokes completeClaudeLogin operation.
 	//
 	// Exchange an authorization code from the Claude sign-in page. This is the fallback when the browser
@@ -223,6 +229,12 @@ type Invoker interface {
 	//
 	// GET /capsules/{capsuleId}/git/status
 	GetCapsuleGitStatus(ctx context.Context, params GetCapsuleGitStatusParams) (GetCapsuleGitStatusRes, error)
+	// GetChatGPTSignIn invokes getChatGPTSignIn operation.
+	//
+	// GetChatGPTSignIn.
+	//
+	// GET /provider-connections/chatgpt/sign-ins/{signInId}
+	GetChatGPTSignIn(ctx context.Context, params GetChatGPTSignInParams) (*ChatGPTSignIn, error)
 	// GetClaudeLogin invokes getClaudeLogin operation.
 	//
 	// Sign-in status. Never includes a token or an authorization code.
@@ -584,6 +596,14 @@ type Invoker interface {
 	//
 	// POST /threads/{threadId}/model
 	SetThreadModel(ctx context.Context, request *ThreadModelRequest, params SetThreadModelParams) (SetThreadModelRes, error)
+	// StartChatGPTSignIn invokes startChatGPTSignIn operation.
+	//
+	// Starts Sign in with ChatGPT for a new connection, or reauthorizes an existing one. The daemon keeps
+	// the PKCE verifier; open authorizationUrl in a browser, then complete the attempt with the redirected
+	// address. Responses never contain tokens.
+	//
+	// POST /provider-connections/chatgpt/sign-ins
+	StartChatGPTSignIn(ctx context.Context, request *ChatGPTSignInRequest) (*ChatGPTSignIn, error)
 	// StartRun invokes startRun operation.
 	//
 	// Start a Run from a Capsule harness profile.
@@ -1797,6 +1817,141 @@ func (c *Client) sendCaptureMoment(ctx context.Context, request *CaptureMomentRe
 
 	stage = "DecodeResponse"
 	result, err := decodeCaptureMomentResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// CompleteChatGPTSignIn invokes completeChatGPTSignIn operation.
+//
+// CompleteChatGPTSignIn.
+//
+// POST /provider-connections/chatgpt/sign-ins/{signInId}/complete
+func (c *Client) CompleteChatGPTSignIn(ctx context.Context, request *ChatGPTSignInCompletion, params CompleteChatGPTSignInParams) (*ChatGPTSignIn, error) {
+	res, err := c.sendCompleteChatGPTSignIn(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendCompleteChatGPTSignIn(ctx context.Context, request *ChatGPTSignInCompletion, params CompleteChatGPTSignInParams) (res *ChatGPTSignIn, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("completeChatGPTSignIn"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/provider-connections/chatgpt/sign-ins/{signInId}/complete"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, CompleteChatGPTSignInOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/provider-connections/chatgpt/sign-ins/"
+	{
+		// Encode "signInId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "signInId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.SignInId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/complete"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeCompleteChatGPTSignInRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, CompleteChatGPTSignInOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeCompleteChatGPTSignInResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -4740,6 +4895,137 @@ func (c *Client) sendGetCapsuleGitStatus(ctx context.Context, params GetCapsuleG
 
 	stage = "DecodeResponse"
 	result, err := decodeGetCapsuleGitStatusResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// GetChatGPTSignIn invokes getChatGPTSignIn operation.
+//
+// GetChatGPTSignIn.
+//
+// GET /provider-connections/chatgpt/sign-ins/{signInId}
+func (c *Client) GetChatGPTSignIn(ctx context.Context, params GetChatGPTSignInParams) (*ChatGPTSignIn, error) {
+	res, err := c.sendGetChatGPTSignIn(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendGetChatGPTSignIn(ctx context.Context, params GetChatGPTSignInParams) (res *ChatGPTSignIn, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getChatGPTSignIn"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/provider-connections/chatgpt/sign-ins/{signInId}"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetChatGPTSignInOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [2]string
+	pathParts[0] = "/provider-connections/chatgpt/sign-ins/"
+	{
+		// Encode "signInId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "signInId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.SignInId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, GetChatGPTSignInOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeGetChatGPTSignInResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -12739,6 +13025,124 @@ func (c *Client) sendSetThreadModel(ctx context.Context, request *ThreadModelReq
 
 	stage = "DecodeResponse"
 	result, err := decodeSetThreadModelResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// StartChatGPTSignIn invokes startChatGPTSignIn operation.
+//
+// Starts Sign in with ChatGPT for a new connection, or reauthorizes an existing one. The daemon keeps
+// the PKCE verifier; open authorizationUrl in a browser, then complete the attempt with the redirected
+// address. Responses never contain tokens.
+//
+// POST /provider-connections/chatgpt/sign-ins
+func (c *Client) StartChatGPTSignIn(ctx context.Context, request *ChatGPTSignInRequest) (*ChatGPTSignIn, error) {
+	res, err := c.sendStartChatGPTSignIn(ctx, request)
+	return res, err
+}
+
+func (c *Client) sendStartChatGPTSignIn(ctx context.Context, request *ChatGPTSignInRequest) (res *ChatGPTSignIn, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("startChatGPTSignIn"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/provider-connections/chatgpt/sign-ins"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, StartChatGPTSignInOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/provider-connections/chatgpt/sign-ins"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeStartChatGPTSignInRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, StartChatGPTSignInOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeStartChatGPTSignInResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}

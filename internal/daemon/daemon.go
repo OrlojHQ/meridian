@@ -368,6 +368,8 @@ func Run(ctx context.Context, config Config) error {
 			gatewayOrigin, gatewayListener.Addr(),
 		)
 	}
+	service.ConfigureChatGPT(config.DataDir, nil)
+	defer service.CloseChatGPT()
 	service.ConfigureObserver(metrics, config.Provider)
 	harnessPacks := domain.InstallationHarnessImages(installationDefaultImage(config), config.OfficialPackTag)
 	service.ConfigureHarnessPacks(harnessPacks)

@@ -44,6 +44,11 @@ type CaptureMomentParams struct {
 	IdempotencyKey string
 }
 
+// CompleteChatGPTSignInParams is parameters of completeChatGPTSignIn operation.
+type CompleteChatGPTSignInParams struct {
+	SignInId string
+}
+
 // CompleteClaudeLoginParams is parameters of completeClaudeLogin operation.
 type CompleteClaudeLoginParams struct {
 	LoginId string
@@ -147,6 +152,11 @@ type GetCapsuleGitDiffParams struct {
 // GetCapsuleGitStatusParams is parameters of getCapsuleGitStatus operation.
 type GetCapsuleGitStatusParams struct {
 	CapsuleId string
+}
+
+// GetChatGPTSignInParams is parameters of getChatGPTSignIn operation.
+type GetChatGPTSignInParams struct {
+	SignInId string
 }
 
 // GetClaudeLoginParams is parameters of getClaudeLogin operation.

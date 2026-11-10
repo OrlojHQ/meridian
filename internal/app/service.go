@@ -22,6 +22,7 @@ const defaultPageSize = 50
 
 type Service struct {
 	gateway        *providergateway.Gateway
+	chatgpt        *chatGPTState
 	gatewayURL     string
 	privateHTTP    bool
 	gatewayTrust   func() (string, error)

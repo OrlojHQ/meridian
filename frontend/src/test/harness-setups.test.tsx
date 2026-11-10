@@ -70,7 +70,7 @@ it("groups settings under plain section headings without nested disclosures",asy
  expect(screen.getByRole("button",{name:"Add skills folder"})).toBeInTheDocument();
  expect(view.container).toHaveTextContent("Dependency folders such as node_modules and login caches are excluded; you sign in to each harness separately.");
  expect(view.container).toHaveTextContent("Review import uploads the selected files to your Meridian server for checks.");
- expect(view.container).toHaveTextContent("Connect a provider once, then authorize it for each Project.");
+ expect(view.container).toHaveTextContent("Sign in with ChatGPT or Claude, or connect an API key or a self-hosted model server such as vLLM, Ollama, or a LiteLLM proxy, once. Then authorize it for each Project.");
  expect(view.container).not.toHaveTextContent("Capsule never receives");
  expect(view.container).not.toHaveTextContent("subscription logins stay");
  expect(view.container).toHaveTextContent("meridian harness import");

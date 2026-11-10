@@ -1367,6 +1367,193 @@ type CaptureMomentUnprocessableEntity ErrorEnvelope
 
 func (*CaptureMomentUnprocessableEntity) captureMomentRes() {}
 
+// Ref: #/components/schemas/ChatGPTSignIn
+type ChatGPTSignIn struct {
+	ID string `json:"id"`
+	// OpenAI authorization page to open in the user's browser.
+	AuthorizationUrl string `json:"authorizationUrl"`
+	RedirectUri      string `json:"redirectUri"`
+	// Whether the daemon is accepting the loopback callback itself.
+	Listening    bool               `json:"listening"`
+	ExpiresAt    time.Time          `json:"expiresAt"`
+	State        ChatGPTSignInState `json:"state"`
+	ConnectionId OptString          `json:"connectionId"`
+	Failure      OptString          `json:"failure"`
+}
+
+// GetID returns the value of ID.
+func (s *ChatGPTSignIn) GetID() string {
+	return s.ID
+}
+
+// GetAuthorizationUrl returns the value of AuthorizationUrl.
+func (s *ChatGPTSignIn) GetAuthorizationUrl() string {
+	return s.AuthorizationUrl
+}
+
+// GetRedirectUri returns the value of RedirectUri.
+func (s *ChatGPTSignIn) GetRedirectUri() string {
+	return s.RedirectUri
+}
+
+// GetListening returns the value of Listening.
+func (s *ChatGPTSignIn) GetListening() bool {
+	return s.Listening
+}
+
+// GetExpiresAt returns the value of ExpiresAt.
+func (s *ChatGPTSignIn) GetExpiresAt() time.Time {
+	return s.ExpiresAt
+}
+
+// GetState returns the value of State.
+func (s *ChatGPTSignIn) GetState() ChatGPTSignInState {
+	return s.State
+}
+
+// GetConnectionId returns the value of ConnectionId.
+func (s *ChatGPTSignIn) GetConnectionId() OptString {
+	return s.ConnectionId
+}
+
+// GetFailure returns the value of Failure.
+func (s *ChatGPTSignIn) GetFailure() OptString {
+	return s.Failure
+}
+
+// SetID sets the value of ID.
+func (s *ChatGPTSignIn) SetID(val string) {
+	s.ID = val
+}
+
+// SetAuthorizationUrl sets the value of AuthorizationUrl.
+func (s *ChatGPTSignIn) SetAuthorizationUrl(val string) {
+	s.AuthorizationUrl = val
+}
+
+// SetRedirectUri sets the value of RedirectUri.
+func (s *ChatGPTSignIn) SetRedirectUri(val string) {
+	s.RedirectUri = val
+}
+
+// SetListening sets the value of Listening.
+func (s *ChatGPTSignIn) SetListening(val bool) {
+	s.Listening = val
+}
+
+// SetExpiresAt sets the value of ExpiresAt.
+func (s *ChatGPTSignIn) SetExpiresAt(val time.Time) {
+	s.ExpiresAt = val
+}
+
+// SetState sets the value of State.
+func (s *ChatGPTSignIn) SetState(val ChatGPTSignInState) {
+	s.State = val
+}
+
+// SetConnectionId sets the value of ConnectionId.
+func (s *ChatGPTSignIn) SetConnectionId(val OptString) {
+	s.ConnectionId = val
+}
+
+// SetFailure sets the value of Failure.
+func (s *ChatGPTSignIn) SetFailure(val OptString) {
+	s.Failure = val
+}
+
+// Ref: #/components/schemas/ChatGPTSignInCompletion
+type ChatGPTSignInCompletion struct {
+	// The full address the browser was redirected to after approving.
+	CallbackUrl string `json:"callbackUrl"`
+}
+
+// GetCallbackUrl returns the value of CallbackUrl.
+func (s *ChatGPTSignInCompletion) GetCallbackUrl() string {
+	return s.CallbackUrl
+}
+
+// SetCallbackUrl sets the value of CallbackUrl.
+func (s *ChatGPTSignInCompletion) SetCallbackUrl(val string) {
+	s.CallbackUrl = val
+}
+
+// Ref: #/components/schemas/ChatGPTSignInRequest
+type ChatGPTSignInRequest struct {
+	// Existing ChatGPT connection to reauthorize; omit to create a new one.
+	ConnectionId OptString `json:"connectionId"`
+	// Ask the daemon to accept the browser's loopback callback itself. Use when the browser runs on the
+	// daemon's machine.
+	Listen OptBool `json:"listen"`
+}
+
+// GetConnectionId returns the value of ConnectionId.
+func (s *ChatGPTSignInRequest) GetConnectionId() OptString {
+	return s.ConnectionId
+}
+
+// GetListen returns the value of Listen.
+func (s *ChatGPTSignInRequest) GetListen() OptBool {
+	return s.Listen
+}
+
+// SetConnectionId sets the value of ConnectionId.
+func (s *ChatGPTSignInRequest) SetConnectionId(val OptString) {
+	s.ConnectionId = val
+}
+
+// SetListen sets the value of Listen.
+func (s *ChatGPTSignInRequest) SetListen(val OptBool) {
+	s.Listen = val
+}
+
+type ChatGPTSignInState string
+
+const (
+	ChatGPTSignInStatePending   ChatGPTSignInState = "pending"
+	ChatGPTSignInStateCompleted ChatGPTSignInState = "completed"
+	ChatGPTSignInStateFailed    ChatGPTSignInState = "failed"
+)
+
+// AllValues returns all ChatGPTSignInState values.
+func (ChatGPTSignInState) AllValues() []ChatGPTSignInState {
+	return []ChatGPTSignInState{
+		ChatGPTSignInStatePending,
+		ChatGPTSignInStateCompleted,
+		ChatGPTSignInStateFailed,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s ChatGPTSignInState) MarshalText() ([]byte, error) {
+	switch s {
+	case ChatGPTSignInStatePending:
+		return []byte(s), nil
+	case ChatGPTSignInStateCompleted:
+		return []byte(s), nil
+	case ChatGPTSignInStateFailed:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *ChatGPTSignInState) UnmarshalText(data []byte) error {
+	switch ChatGPTSignInState(data) {
+	case ChatGPTSignInStatePending:
+		*s = ChatGPTSignInStatePending
+		return nil
+	case ChatGPTSignInStateCompleted:
+		*s = ChatGPTSignInStateCompleted
+		return nil
+	case ChatGPTSignInStateFailed:
+		*s = ChatGPTSignInStateFailed
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
 // A lead's subagents by state.
 // Ref: #/components/schemas/ChildRollup
 type ChildRollup struct {
@@ -8545,11 +8732,18 @@ type ProviderConnection struct {
 	AllowPrivateHttp OptBool `json:"allowPrivateHttp"`
 	// The reasoning effort levels the default model accepts, in order. Harnesses offer exactly these, plus
 	// off, for that model.
-	ReasoningEfforts []ReasoningEffortLevel     `json:"reasoningEfforts"`
-	CredentialKind   OptAnthropicCredentialKind `json:"credentialKind"`
-	CreatedAt        time.Time                  `json:"createdAt"`
-	ResourceVersion  int64                      `json:"resourceVersion"`
-	Revoked          bool                       `json:"revoked"`
+	ReasoningEfforts []ReasoningEffortLevel `json:"reasoningEfforts"`
+	// ChatGPT connections only. The signed-in account's email, for display.
+	Account OptString `json:"account"`
+	// ChatGPT connections only. The sign-in stopped working; sign in again to resume.
+	NeedsSignIn OptBool `json:"needsSignIn"`
+	// ChatGPT connections only. Local tokens were deleted but OpenAI did not confirm revocation;
+	// disconnect Meridian in ChatGPT's settings.
+	RevocationUnconfirmed OptBool                    `json:"revocationUnconfirmed"`
+	CredentialKind        OptAnthropicCredentialKind `json:"credentialKind"`
+	CreatedAt             time.Time                  `json:"createdAt"`
+	ResourceVersion       int64                      `json:"resourceVersion"`
+	Revoked               bool                       `json:"revoked"`
 }
 
 // GetID returns the value of ID.
@@ -8585,6 +8779,21 @@ func (s *ProviderConnection) GetAllowPrivateHttp() OptBool {
 // GetReasoningEfforts returns the value of ReasoningEfforts.
 func (s *ProviderConnection) GetReasoningEfforts() []ReasoningEffortLevel {
 	return s.ReasoningEfforts
+}
+
+// GetAccount returns the value of Account.
+func (s *ProviderConnection) GetAccount() OptString {
+	return s.Account
+}
+
+// GetNeedsSignIn returns the value of NeedsSignIn.
+func (s *ProviderConnection) GetNeedsSignIn() OptBool {
+	return s.NeedsSignIn
+}
+
+// GetRevocationUnconfirmed returns the value of RevocationUnconfirmed.
+func (s *ProviderConnection) GetRevocationUnconfirmed() OptBool {
+	return s.RevocationUnconfirmed
 }
 
 // GetCredentialKind returns the value of CredentialKind.
@@ -8642,6 +8851,21 @@ func (s *ProviderConnection) SetReasoningEfforts(val []ReasoningEffortLevel) {
 	s.ReasoningEfforts = val
 }
 
+// SetAccount sets the value of Account.
+func (s *ProviderConnection) SetAccount(val OptString) {
+	s.Account = val
+}
+
+// SetNeedsSignIn sets the value of NeedsSignIn.
+func (s *ProviderConnection) SetNeedsSignIn(val OptBool) {
+	s.NeedsSignIn = val
+}
+
+// SetRevocationUnconfirmed sets the value of RevocationUnconfirmed.
+func (s *ProviderConnection) SetRevocationUnconfirmed(val OptBool) {
+	s.RevocationUnconfirmed = val
+}
+
 // SetCredentialKind sets the value of CredentialKind.
 func (s *ProviderConnection) SetCredentialKind(val OptAnthropicCredentialKind) {
 	s.CredentialKind = val
@@ -8668,6 +8892,8 @@ type ProviderConnectionPage struct {
 	Enabled bool                 `json:"enabled"`
 	// Whether the daemon permits custom endpoints to opt in to plaintext HTTP on private networks.
 	PrivateHttpAllowed OptBool `json:"privateHttpAllowed"`
+	// Whether Sign in with ChatGPT can create plan connections on this installation.
+	ChatgptAvailable OptBool `json:"chatgptAvailable"`
 }
 
 // GetItems returns the value of Items.
@@ -8685,6 +8911,11 @@ func (s *ProviderConnectionPage) GetPrivateHttpAllowed() OptBool {
 	return s.PrivateHttpAllowed
 }
 
+// GetChatgptAvailable returns the value of ChatgptAvailable.
+func (s *ProviderConnectionPage) GetChatgptAvailable() OptBool {
+	return s.ChatgptAvailable
+}
+
 // SetItems sets the value of Items.
 func (s *ProviderConnectionPage) SetItems(val []ProviderConnection) {
 	s.Items = val
@@ -8698,6 +8929,11 @@ func (s *ProviderConnectionPage) SetEnabled(val bool) {
 // SetPrivateHttpAllowed sets the value of PrivateHttpAllowed.
 func (s *ProviderConnectionPage) SetPrivateHttpAllowed(val OptBool) {
 	s.PrivateHttpAllowed = val
+}
+
+// SetChatgptAvailable sets the value of ChatgptAvailable.
+func (s *ProviderConnectionPage) SetChatgptAvailable(val OptBool) {
+	s.ChatgptAvailable = val
 }
 
 // Ref: #/components/schemas/ProviderConnectionRequest
@@ -8826,7 +9062,8 @@ func (s *ProviderConnectionRequest) SetRevoked(val OptBool) {
 }
 
 // Openai and anthropic use fixed official upstreams. openai-compatible and anthropic-compatible use an
-// operator-configured baseUrl.
+// operator-configured baseUrl. chatgpt uses the signed-in user's ChatGPT plan; it is created only by
+// Sign in with ChatGPT and accepts only rename and revocation here.
 // Ref: #/components/schemas/ProviderConnectionType
 type ProviderConnectionType string
 
@@ -8835,6 +9072,7 @@ const (
 	ProviderConnectionTypeAnthropic           ProviderConnectionType = "anthropic"
 	ProviderConnectionTypeOpenaiCompatible    ProviderConnectionType = "openai-compatible"
 	ProviderConnectionTypeAnthropicCompatible ProviderConnectionType = "anthropic-compatible"
+	ProviderConnectionTypeChatgpt             ProviderConnectionType = "chatgpt"
 )
 
 // AllValues returns all ProviderConnectionType values.
@@ -8844,6 +9082,7 @@ func (ProviderConnectionType) AllValues() []ProviderConnectionType {
 		ProviderConnectionTypeAnthropic,
 		ProviderConnectionTypeOpenaiCompatible,
 		ProviderConnectionTypeAnthropicCompatible,
+		ProviderConnectionTypeChatgpt,
 	}
 }
 
@@ -8857,6 +9096,8 @@ func (s ProviderConnectionType) MarshalText() ([]byte, error) {
 	case ProviderConnectionTypeOpenaiCompatible:
 		return []byte(s), nil
 	case ProviderConnectionTypeAnthropicCompatible:
+		return []byte(s), nil
+	case ProviderConnectionTypeChatgpt:
 		return []byte(s), nil
 	default:
 		return nil, errors.Errorf("invalid value: %q", s)
@@ -8877,6 +9118,9 @@ func (s *ProviderConnectionType) UnmarshalText(data []byte) error {
 		return nil
 	case ProviderConnectionTypeAnthropicCompatible:
 		*s = ProviderConnectionTypeAnthropicCompatible
+		return nil
+	case ProviderConnectionTypeChatgpt:
+		*s = ProviderConnectionTypeChatgpt
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)

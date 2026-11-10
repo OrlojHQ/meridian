@@ -12,7 +12,20 @@ func (s *Server) listProviderConnections(w http.ResponseWriter, r *http.Request)
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, 200, map[string]any{"items": items, "enabled": s.service.ProviderGatewayEnabled(), "privateHttpAllowed": s.service.ProviderGatewayAllowsPrivateHTTP()})
+	for index := range items {
+		items[index] = publicConnection(items[index])
+	}
+	writeJSON(w, 200, map[string]any{
+		"items": items, "enabled": s.service.ProviderGatewayEnabled(),
+		"privateHttpAllowed": s.service.ProviderGatewayAllowsPrivateHTTP(),
+		"chatgptAvailable":   s.service.ChatGPTAvailable(),
+	})
+}
+
+// publicConnection drops persisted credential bookkeeping from responses.
+func publicConnection(item domain.ProviderConnection) domain.ProviderConnection {
+	item.CredentialGeneration = 0
+	return item
 }
 func (s *Server) putProviderConnection(w http.ResponseWriter, r *http.Request) {
 	var input app.ConnectionInput
@@ -24,7 +37,50 @@ func (s *Server) putProviderConnection(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, 200, item)
+	writeJSON(w, 200, publicConnection(item))
+}
+
+// ChatGPT sign-in responses carry an authorization URL but never a token,
+// and are not cached.
+func (s *Server) startChatGPTSignIn(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		ConnectionID string `json:"connectionId"`
+		Listen       bool   `json:"listen"`
+	}
+	if !decode(w, r, &input) {
+		return
+	}
+	view, err := s.service.StartChatGPTSignIn(r.Context(), input.ConnectionID, input.Listen)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, 200, view)
+}
+func (s *Server) chatGPTSignIn(w http.ResponseWriter, r *http.Request) {
+	view, err := s.service.ChatGPTSignInStatus(r.PathValue("signInId"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, 200, view)
+}
+func (s *Server) completeChatGPTSignIn(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		CallbackURL string `json:"callbackUrl"`
+	}
+	if !decode(w, r, &input) {
+		return
+	}
+	view, err := s.service.CompleteChatGPTSignIn(r.Context(), r.PathValue("signInId"), input.CallbackURL)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, 200, view)
 }
 func (s *Server) projectProviderConnection(w http.ResponseWriter, r *http.Request) {
 	project := domain.ProjectID(r.PathValue("projectId"))
