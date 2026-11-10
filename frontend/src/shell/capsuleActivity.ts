@@ -188,6 +188,52 @@ export const sessionPath = (capsuleId: string, sessionId?: string) =>
 export const projectPath = (projectId: string) =>
   `/ui/projects/${encodeURIComponent(projectId)}`;
 
+export function projectSecretNames(project: {
+  gitSecretName?: string;
+  gitPushSecretName?: string;
+  githubAPISecretName?: string;
+  harnessSecretNames?: string[];
+}) {
+  const names = [
+    project.gitSecretName,
+    project.gitPushSecretName,
+    project.githubAPISecretName,
+    ...(project.harnessSecretNames ?? []),
+  ].filter((name): name is string => Boolean(name));
+  return [...new Set(names)];
+}
+
+// After the daemon accepts a Project delete, leave that Project for the most
+// recently updated other Project. Open its latest Capsule when it has one, so
+// the empty Project page is only used when that Project has no Capsules.
+// Otherwise open the Inbox.
+export function destinationAfterProjectDelete(
+  deletedId: string,
+  projects: readonly { id: string; createdAt: string; updatedAt: string; state?: string }[],
+  capsules: readonly Capsule[],
+): string {
+  let next: (typeof projects)[number] | undefined;
+  for (const candidate of projects) {
+    if (candidate.id === deletedId || candidate.state === "deleted") continue;
+    if (!next || compareRecency(candidate, next) > 0) next = candidate;
+  }
+  if (!next) return "/ui/";
+  let landing: Capsule | undefined;
+  for (const candidate of capsules) {
+    if (candidate.projectId !== next.id) continue;
+    if (
+      candidate.state === "Deleting" ||
+      candidate.state === "Deleted" ||
+      candidate.desiredState === "Deleted"
+    ) {
+      continue;
+    }
+    if (!landing || compareRecency(candidate, landing) > 0) landing = candidate;
+  }
+  if (landing) return sessionPath(landing.id);
+  return projectPath(next.id);
+}
+
 const timeValue = (value: string) => {
   const parsed = Date.parse(value);
   return Number.isNaN(parsed) ? 0 : parsed;
@@ -208,7 +254,10 @@ function isRemainingCapsule(
   );
 }
 
-function compareRecency(left: Capsule, right: Capsule) {
+function compareRecency(
+  left: { id: string; createdAt: string; updatedAt: string },
+  right: { id: string; createdAt: string; updatedAt: string },
+) {
   const updated = timeValue(left.updatedAt) - timeValue(right.updatedAt);
   if (updated !== 0) return updated;
   const created = timeValue(left.createdAt) - timeValue(right.createdAt);

@@ -7,6 +7,7 @@ import {
   defaultSession,
   describeCapsule,
   destinationAfterCapsuleDelete,
+  destinationAfterProjectDelete,
   latestRun,
   pinnedSetupText,
   projectPath,
@@ -338,6 +339,42 @@ describe("Capsule activity", () => {
       "Codex home (Codex) · revised Nov 9, 14:05 UTC; Claude home (Claude Code) · revised Nov 10, 09:00 UTC. Edits in Settings apply to the next Capsule.",
     );
     expect(pinnedSetupText([])).toBe("");
+  });
+
+  it("leaves a deleted Project for the next Project's latest Capsule or the Inbox", () => {
+    const older = {
+      id: "project-older",
+      createdAt: "2026-08-23T00:00:00Z",
+      updatedAt: "2026-08-23T01:00:00Z",
+    };
+    const newer = {
+      id: "project-newer",
+      createdAt: "2026-08-23T00:00:00Z",
+      updatedAt: "2026-08-23T05:00:00Z",
+    };
+    const deleted = {
+      id: "project-deleted",
+      createdAt: "2026-08-23T00:00:00Z",
+      updatedAt: "2026-08-23T09:00:00Z",
+    };
+    const work = (overrides: Partial<Capsule>): Capsule => ({ ...capsule, ...overrides });
+    const recentWork = work({
+      id: "newer-recent",
+      projectId: newer.id,
+      updatedAt: "2026-08-23T04:00:00Z",
+    });
+    const olderWork = work({
+      id: "newer-old",
+      projectId: newer.id,
+      updatedAt: "2026-08-23T02:00:00Z",
+    });
+    expect(
+      destinationAfterProjectDelete(deleted.id, [older, newer, deleted], [recentWork, olderWork]),
+    ).toBe(sessionPath(recentWork.id));
+    expect(destinationAfterProjectDelete(deleted.id, [older, deleted], [])).toBe(
+      projectPath(older.id),
+    );
+    expect(destinationAfterProjectDelete(deleted.id, [deleted], [])).toBe("/ui/");
   });
 
   it("formats compact relative times", () => {

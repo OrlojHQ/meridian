@@ -88,6 +88,9 @@ func (s *Service) UpdateProjectEnvironment(ctx context.Context, id domain.Projec
 		if err != nil {
 			return err
 		}
+		if err := projectAcceptsWork(project); err != nil {
+			return err
+		}
 		if project.ResourceVersion != input.ExpectedResourceVersion {
 			return domain.ErrConflict
 		}

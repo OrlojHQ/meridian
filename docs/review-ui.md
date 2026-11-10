@@ -295,7 +295,12 @@ error content is rendered as text; raw HTML is never interpreted.
 The composer sends on `Enter` and inserts a newline on `Shift-Enter`. Pending
 select/confirm/input requests are explicit controls; unknown blocks are visible
 but non-executable. Cancel and archive require a reviewable confirmation, while
-crypto-shred additionally requires typing `crypto-shred`. Every mutation uses
+crypto-shred additionally requires typing `crypto-shred`. Deleting a Project
+requires typing that Project's name. The dialog lists how many Capsules,
+threads, and secrets the delete will remove, and says that transcripts and
+artifacts are deleted with the Project. After the daemon accepts it, the page
+replaces the current history entry with the next Project, or with the Inbox
+when none remains. Every mutation uses
 the current Thread resource version and refreshes authoritative state after a
 conflict.
 

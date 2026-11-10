@@ -185,6 +185,32 @@ func (s *Store) Open(ctx context.Context, digest string) (io.ReadCloser, int64, 
 	return file, size, nil
 }
 
+// Remove deletes one unreferenced content-addressed blob. A missing blob is
+// already gone and is not an error.
+func (s *Store) Remove(ctx context.Context, digest string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if !validDigest(digest) {
+		return fmt.Errorf("%w: invalid SHA-256 digest", domain.ErrInvalid)
+	}
+	if err := s.validateRoots(); err != nil {
+		return err
+	}
+	path := filepath.Join(s.blobs, digest[:2], digest)
+	info, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("%w: artifact is not a regular file", domain.ErrCorrupt)
+	}
+	return os.Remove(path)
+}
+
 func (s *Store) validateRoots() error {
 	for _, path := range []string{s.root, s.blobs, s.temp} {
 		info, err := os.Lstat(path)

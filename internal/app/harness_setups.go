@@ -356,7 +356,11 @@ func (s *Service) SetProjectHarnessSetup(ctx context.Context, id domain.ProjectI
 		return domain.ErrInvalid
 	}
 	return s.store.Transact(ctx, func(tx ports.Transaction) error {
-		if _, err := tx.GetProject(ctx, id); err != nil {
+		project, err := tx.GetProject(ctx, id)
+		if err != nil {
+			return err
+		}
+		if err := projectAcceptsWork(project); err != nil {
 			return err
 		}
 		if setup != "" && setup != "clean" {

@@ -3378,6 +3378,22 @@ type DeleteCapsuleUnprocessableEntity ErrorEnvelope
 
 func (*DeleteCapsuleUnprocessableEntity) deleteCapsuleRes() {}
 
+type DeleteProjectBadRequest ErrorEnvelope
+
+func (*DeleteProjectBadRequest) deleteProjectRes() {}
+
+type DeleteProjectConflict ErrorEnvelope
+
+func (*DeleteProjectConflict) deleteProjectRes() {}
+
+type DeleteProjectNotFound ErrorEnvelope
+
+func (*DeleteProjectNotFound) deleteProjectRes() {}
+
+type DeleteProjectUnprocessableEntity ErrorEnvelope
+
+func (*DeleteProjectUnprocessableEntity) deleteProjectRes() {}
+
 type DeleteSecretBadRequest ErrorEnvelope
 
 func (*DeleteSecretBadRequest) deleteSecretRes() {}
@@ -6685,6 +6701,52 @@ func (o OptPreparationProgress) Or(d PreparationProgress) PreparationProgress {
 	return d
 }
 
+// NewOptProjectState returns new OptProjectState with value set to v.
+func NewOptProjectState(v ProjectState) OptProjectState {
+	return OptProjectState{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptProjectState is optional ProjectState.
+type OptProjectState struct {
+	Value ProjectState
+	Set   bool
+}
+
+// IsSet returns true if OptProjectState was set.
+func (o OptProjectState) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptProjectState) Reset() {
+	var v ProjectState
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptProjectState) SetTo(v ProjectState) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptProjectState) Get() (v ProjectState, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptProjectState) Or(d ProjectState) ProjectState {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptRun returns new OptRun with value set to v.
 func NewOptRun(v Run) OptRun {
 	return OptRun{
@@ -8154,22 +8216,25 @@ func (s *ProbeResponseStatus) UnmarshalText(data []byte) error {
 
 // Ref: #/components/schemas/Project
 type Project struct {
-	ID                  string         `json:"id"`
-	Name                string         `json:"name"`
-	RepositoryUrl       OptString      `json:"repositoryUrl"`
-	Setup               []string       `json:"setup"`
-	ImageReference      OptString      `json:"imageReference"`
-	HarnessImages       []HarnessImage `json:"harnessImages"`
-	GitSecretName       OptString      `json:"gitSecretName"`
-	HarnessSecretNames  []string       `json:"harnessSecretNames"`
-	GitPushSecretName   OptString      `json:"gitPushSecretName"`
-	GithubAPISecretName OptString      `json:"githubAPISecretName"`
-	CommitAuthorName    OptString      `json:"commitAuthorName"`
-	CommitAuthorEmail   OptString      `json:"commitAuthorEmail"`
-	DefaultBaseBranch   OptString      `json:"defaultBaseBranch"`
-	CreatedAt           time.Time      `json:"createdAt"`
-	UpdatedAt           time.Time      `json:"updatedAt"`
-	ResourceVersion     int64          `json:"resourceVersion"`
+	ID                  string          `json:"id"`
+	Name                string          `json:"name"`
+	RepositoryUrl       OptString       `json:"repositoryUrl"`
+	Setup               []string        `json:"setup"`
+	ImageReference      OptString       `json:"imageReference"`
+	HarnessImages       []HarnessImage  `json:"harnessImages"`
+	GitSecretName       OptString       `json:"gitSecretName"`
+	HarnessSecretNames  []string        `json:"harnessSecretNames"`
+	GitPushSecretName   OptString       `json:"gitPushSecretName"`
+	GithubAPISecretName OptString       `json:"githubAPISecretName"`
+	CommitAuthorName    OptString       `json:"commitAuthorName"`
+	CommitAuthorEmail   OptString       `json:"commitAuthorEmail"`
+	DefaultBaseBranch   OptString       `json:"defaultBaseBranch"`
+	State               OptProjectState `json:"state"`
+	// Why deletion stopped. Set when state is failed.
+	Failure         OptString `json:"failure"`
+	CreatedAt       time.Time `json:"createdAt"`
+	UpdatedAt       time.Time `json:"updatedAt"`
+	ResourceVersion int64     `json:"resourceVersion"`
 }
 
 // GetID returns the value of ID.
@@ -8235,6 +8300,16 @@ func (s *Project) GetCommitAuthorEmail() OptString {
 // GetDefaultBaseBranch returns the value of DefaultBaseBranch.
 func (s *Project) GetDefaultBaseBranch() OptString {
 	return s.DefaultBaseBranch
+}
+
+// GetState returns the value of State.
+func (s *Project) GetState() OptProjectState {
+	return s.State
+}
+
+// GetFailure returns the value of Failure.
+func (s *Project) GetFailure() OptString {
+	return s.Failure
 }
 
 // GetCreatedAt returns the value of CreatedAt.
@@ -8315,6 +8390,16 @@ func (s *Project) SetCommitAuthorEmail(val OptString) {
 // SetDefaultBaseBranch sets the value of DefaultBaseBranch.
 func (s *Project) SetDefaultBaseBranch(val OptString) {
 	s.DefaultBaseBranch = val
+}
+
+// SetState sets the value of State.
+func (s *Project) SetState(val OptProjectState) {
+	s.State = val
+}
+
+// SetFailure sets the value of Failure.
+func (s *Project) SetFailure(val OptString) {
+	s.Failure = val
 }
 
 // SetCreatedAt sets the value of CreatedAt.
@@ -8445,6 +8530,7 @@ func (s *ProjectHeaders) SetResponse(val Project) {
 }
 
 func (*ProjectHeaders) createProjectRes() {}
+func (*ProjectHeaders) deleteProjectRes() {}
 func (*ProjectHeaders) getProjectRes()    {}
 func (*ProjectHeaders) patchProjectRes()  {}
 
@@ -8490,6 +8576,65 @@ func (s *ProjectProviderConnection) GetConnectionId() string {
 // SetConnectionId sets the value of ConnectionId.
 func (s *ProjectProviderConnection) SetConnectionId(val string) {
 	s.ConnectionId = val
+}
+
+// Active is a live Project. deleting means cascade cleanup is in progress. failed means an owned
+// container could not be removed. deleted means the Project and its transcripts, artifacts,
+// environment, and exclusive named secrets are gone.
+// Ref: #/components/schemas/ProjectState
+type ProjectState string
+
+const (
+	ProjectStateActive   ProjectState = "active"
+	ProjectStateDeleting ProjectState = "deleting"
+	ProjectStateFailed   ProjectState = "failed"
+	ProjectStateDeleted  ProjectState = "deleted"
+)
+
+// AllValues returns all ProjectState values.
+func (ProjectState) AllValues() []ProjectState {
+	return []ProjectState{
+		ProjectStateActive,
+		ProjectStateDeleting,
+		ProjectStateFailed,
+		ProjectStateDeleted,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s ProjectState) MarshalText() ([]byte, error) {
+	switch s {
+	case ProjectStateActive:
+		return []byte(s), nil
+	case ProjectStateDeleting:
+		return []byte(s), nil
+	case ProjectStateFailed:
+		return []byte(s), nil
+	case ProjectStateDeleted:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *ProjectState) UnmarshalText(data []byte) error {
+	switch ProjectState(data) {
+	case ProjectStateActive:
+		*s = ProjectStateActive
+		return nil
+	case ProjectStateDeleting:
+		*s = ProjectStateDeleting
+		return nil
+	case ProjectStateFailed:
+		*s = ProjectStateFailed
+		return nil
+	case ProjectStateDeleted:
+		*s = ProjectStateDeleted
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
 }
 
 // Ref: #/components/schemas/ProjectThreadIntent
@@ -13379,6 +13524,7 @@ func (*TooManyRequestsHeaders) createProjectThreadRes()        {}
 func (*TooManyRequestsHeaders) createRunAttachTicketRes()      {}
 func (*TooManyRequestsHeaders) createThreadRes()               {}
 func (*TooManyRequestsHeaders) deleteCapsuleRes()              {}
+func (*TooManyRequestsHeaders) deleteProjectRes()              {}
 func (*TooManyRequestsHeaders) deleteSecretRes()               {}
 func (*TooManyRequestsHeaders) denyCoordinationRequestRes()    {}
 func (*TooManyRequestsHeaders) getBoardRes()                   {}

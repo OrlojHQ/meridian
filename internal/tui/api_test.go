@@ -2,8 +2,10 @@ package tui
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/OrlojHQ/meridian/pkg/client"
@@ -61,5 +63,34 @@ func TestSnapshotDoesNotQueryDeletedCapsuleRuntime(t *testing.T) {
 	}
 	if snapshot.Capsules[0].EventError == "" {
 		t.Fatal("Run event failure was not retained as a Capsule warning")
+	}
+}
+
+func TestExecuteProjectDelete(t *testing.T) {
+	var method, path, key, body string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		method = request.Method
+		path = request.URL.Path
+		key = request.Header.Get("Idempotency-Key")
+		payload, _ := io.ReadAll(request.Body)
+		body = string(payload)
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusAccepted)
+		_, _ = writer.Write([]byte(`{"id":"project-1","name":"demo","setup":[],"harnessImages":[],"harnessSecretNames":[],"state":"deleting","createdAt":"2026-11-10T00:00:00Z","updatedAt":"2026-11-10T00:00:00Z","resourceVersion":5}`))
+	}))
+	defer server.Close()
+	api, err := NewAPI(server.URL, testSecuritySource{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := api.Execute(context.Background(), ActionRequest{
+		Action: ActionProjectDelete, ProjectID: "project-1", ResourceVersion: 4,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if method != http.MethodPost || path != "/projects/project-1/delete" || key == "" ||
+		!strings.Contains(body, `"expectedResourceVersion":4`) || result.ProjectID != "project-1" {
+		t.Fatalf("delete = %s %s key=%s body=%s result=%#v", method, path, key, body, result)
 	}
 }

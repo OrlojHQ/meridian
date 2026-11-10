@@ -133,6 +133,9 @@ func (s *Service) insertProjectThreadTx(
 	if err != nil {
 		return domain.ProjectThreadIntent{}, err
 	}
+	if err := projectAcceptsWork(project); err != nil {
+		return domain.ProjectThreadIntent{}, err
+	}
 	image, err := s.structuredHarnessImage(project, spec.Harness)
 	if err != nil {
 		return domain.ProjectThreadIntent{}, err

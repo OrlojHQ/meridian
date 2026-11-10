@@ -27,6 +27,7 @@ const (
 	CreateShardOperation                    OperationName = "CreateShard"
 	CreateThreadOperation                   OperationName = "CreateThread"
 	DeleteCapsuleOperation                  OperationName = "DeleteCapsule"
+	DeleteProjectOperation                  OperationName = "DeleteProject"
 	DeleteSecretOperation                   OperationName = "DeleteSecret"
 	DeleteThreadOperation                   OperationName = "DeleteThread"
 	DenyCoordinationRequestOperation        OperationName = "DenyCoordinationRequest"

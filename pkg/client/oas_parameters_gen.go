@@ -107,6 +107,12 @@ type DeleteCapsuleParams struct {
 	IdempotencyKey string
 }
 
+// DeleteProjectParams is parameters of deleteProject operation.
+type DeleteProjectParams struct {
+	ProjectId      string
+	IdempotencyKey string
+}
+
 // DeleteSecretParams is parameters of deleteSecret operation.
 type DeleteSecretParams struct {
 	IdempotencyKey string
