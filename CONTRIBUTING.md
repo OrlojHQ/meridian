@@ -7,7 +7,7 @@ decisions in an ADR. By participating, you agree to the
 
 ## Prerequisites
 
-- Go 1.26.5
+- Go 1.26.10
 - Bun 1.3.0
 - Git and Make
 

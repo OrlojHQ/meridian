@@ -18,7 +18,7 @@ PACKS := $(sort $(patsubst images/capsule-%/pack.env,%,$(wildcard images/capsule
 PACK_IMAGES := $(PACKS:%=capsule-%-image)
 
 .PHONY: bootstrap build test tui-test ui-test lint ui-build generate check-generated api-lint \
-	format-check vet frontend-typecheck capsule-image $(PACK_IMAGES) \
+	format-check vet vulncheck frontend-typecheck capsule-image $(PACK_IMAGES) \
 	capsule-integration-image docker-integration helm-tool helm-test \
 	agentsandbox-integration clean release-check release-snapshot release-smoke \
 	meridiand-image release-docker-validate meridiand-up meridiand-down \
@@ -57,6 +57,11 @@ format-check:
 
 vet:
 	go vet ./...
+
+# Fails on known vulnerabilities in code paths Meridian reaches, including the
+# Go standard library, so a new Go security release can fail CI on its own.
+vulncheck:
+	go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
 frontend-typecheck:
 	cd frontend && bun run typecheck

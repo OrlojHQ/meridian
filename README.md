@@ -144,7 +144,7 @@ Swap `--harness claude` for `codex`, `opencode`, or `pi`.
 
 ### From source
 
-You need Go 1.26.5, Bun 1.3.0, Git, Make, and Docker with BuildKit.
+You need Go 1.26.10, Bun 1.3.0, Git, Make, and Docker with BuildKit.
 
 ```console
 make bootstrap
