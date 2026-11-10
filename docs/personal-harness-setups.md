@@ -348,7 +348,7 @@ accepts with `--effort` (for example `--effort low,high,max`) or the
 checkboxes under the default model in Harness settings. Levels come from
 `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Pi, DeepSeek
 Harness, OpenCode, and Codex then offer exactly those levels, plus off, in
-the composer's model picker and send the chosen name as `reasoning_effort`
+the composer's effort menu and send the chosen name as `reasoning_effort`
 (Chat Completions) or `reasoning.effort` (Responses); off sends nothing.
 Claude Code lists its own levels. Declare only levels your server accepts:
 a level it rejects fails that turn. See ADR 0034.

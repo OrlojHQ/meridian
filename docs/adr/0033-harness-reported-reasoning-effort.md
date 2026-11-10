@@ -67,10 +67,11 @@ The daemon exposes `POST /threads/{threadId}/effort` with
 and the idempotent `appendAndSend` path. A session whose adapter did not
 negotiate effort answers `422 unsupported`.
 
-The composer shows the model and effort together on the picker button
-("Sonnet · High") and lists the effort levels in a "Reasoning effort" section
-below the models. A list with a single level is not shown, since it is not a
-choice.
+The composer shows the model and the reasoning effort as separate buttons in
+the message box (for example "Sonnet" and "High"). Each opens its own menu.
+Only the model menu scrolls, with its search field pinned above the list. The
+effort menu does not scroll. A list with a single level is not shown, since
+it is not a choice, and the effort button is hidden with it.
 
 ## Consequences
 
@@ -84,8 +85,8 @@ setup. A higher effort can raise cost and latency.
 Effort is not shown for a Codex Thread whose model came from a provider
 connection, because Codex has no catalog entry for that model, nor for a Pi
 model its configuration does not mark as reasoning. Claude Code does not
-report the effort it starts with, so the picker shows no level until the
-operator chooses one.
+report the effort it starts with, so the effort button shows no level until
+the operator chooses one.
 
 A coordinated subagent starts with its harness's default effort, as it does
 with its default model.

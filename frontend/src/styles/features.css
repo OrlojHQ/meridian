@@ -1419,14 +1419,18 @@ button.tool-line:hover {
 
 .composer-actions {
   display: flex;
-  flex: none;
+  flex: 0 1 auto;
   align-items: center;
+  justify-content: flex-end;
   gap: 0.3rem;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .composer-send,
 .composer-stop {
   display: grid;
+  flex: none;
   width: 1.85rem;
   min-height: 1.85rem;
   place-items: center;
@@ -1449,6 +1453,7 @@ button.tool-line:hover {
 
 .composer-queue-send,
 .composer-steer {
+  flex: none;
   min-height: 1.85rem;
   border-radius: 999px;
   padding: 0 0.7rem;
@@ -3400,16 +3405,23 @@ button.tool-line:hover {
   white-space: nowrap;
 }
 
-/* Model picker inside the message box, next to the send button. */
+/* Model and reasoning effort sit inside the message box, next to send.
+   Each button opens its own menu. Buttons shrink instead of overflowing the
+   row; a narrow screen gives the message its own line. */
 .composer-model {
   position: static;
   display: flex;
+  flex: 0 1 auto;
   align-items: center;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .composer-model-button {
   display: inline-flex;
-  max-width: 14rem;
+  flex: 0 1 auto;
+  max-width: 12rem;
+  min-width: 0;
   min-height: 1.85rem;
   align-items: center;
   gap: 0.2rem;
@@ -3420,6 +3432,10 @@ button.tool-line:hover {
   background: transparent;
   font-size: 0.76rem;
   font-weight: 600;
+}
+
+.composer-effort-button {
+  max-width: 7rem;
 }
 
 .composer-model-button:hover:not(:disabled),
@@ -3450,18 +3466,27 @@ button.tool-line:hover {
   z-index: 6;
   right: 0;
   bottom: calc(100% + 0.4rem);
+  display: flex;
+  flex-direction: column;
   width: min(22rem, 100%);
+  /* Clip to the rounded corners. This menu does not scroll; the model list
+     is the only scrollport, and the search field stays above it. */
   overflow: hidden;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
   background: var(--surface-raised);
   box-shadow: 0 10px 32px rgb(28 33 29 / 16%);
-  max-height: min(32rem, 70dvh);
-  overflow-y: auto;
+}
+
+.composer-model-menu-effort {
+  width: max-content;
+  max-width: min(22rem, 100%);
+  overflow: visible;
 }
 
 .composer-model-search {
   display: block;
+  flex: none;
   width: calc(100% - 0.6rem);
   margin: 0.3rem;
   padding: 0.4rem 0.55rem;
@@ -3486,15 +3511,17 @@ button.tool-line:hover {
   overflow-wrap: anywhere;
 }
 
-.composer-model-menu [role="group"] + [role="group"] {
-  border-top: 1px solid var(--border);
+.composer-model-scroll {
+  min-height: 0;
+  max-height: min(24rem, 60dvh);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .composer-model-menu ul {
-  max-height: min(20rem, 45dvh);
   margin: 0;
   padding: 0.3rem;
-  overflow-y: auto;
   list-style: none;
 }
 
@@ -3553,4 +3580,28 @@ button.tool-line:hover {
   color: var(--danger, var(--text));
   background: var(--surface-raised);
   font-size: 0.72rem;
+}
+
+@media (max-width: 520px) {
+  .composer-box {
+    flex-wrap: wrap;
+  }
+
+  .composer-box textarea {
+    flex: 1 1 100%;
+  }
+
+  .composer-actions {
+    flex: 1 1 100%;
+    max-width: 100%;
+  }
+
+  .composer-model-button {
+    max-width: 11rem;
+    padding-inline: 0.4rem 0.3rem;
+  }
+
+  .composer-effort-button {
+    max-width: 6rem;
+  }
 }
