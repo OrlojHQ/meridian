@@ -461,10 +461,12 @@ type Invoker interface {
 	// Requires a live Capsule gateway lease in Authorization (Bearer) or X-Api-Key. Installation API
 	// tokens and browser sessions do not authorize this operation. Only OpenAI responses/chat completions
 	// and Anthropic messages/token counting are supported; unsupported provider/operation combinations
-	// return 404. The origin must be enabled explicitly by the deployment operator. When the upstream
-	// provider rejects a request, the gateway returns its 4xx or 5xx status (other statuses become 502),
-	// sets error.upstreamStatus, and includes at most 300 characters of sanitized upstream reason in
-	// error.message. Upstream headers and raw bodies are never copied.
+	// return 404. The origin must be enabled explicitly by the deployment operator. Official Anthropic
+	// requests attach the stored Claude login: an API key as X-Api-Key, or a setup token as Authorization:
+	// Bearer. The Capsule lease is checked and then dropped; it is never forwarded upstream. When the
+	// upstream provider rejects a request, the gateway returns its 4xx or 5xx status (other statuses
+	// become 502), sets error.upstreamStatus, and includes at most 300 characters of sanitized upstream
+	// reason in error.message. Upstream headers and raw bodies are never copied.
 	//
 	// POST /provider-gateway/{provider}/v1/{operation}
 	ProxyProviderInference(ctx context.Context, request ProxyProviderInferenceReq, params ProxyProviderInferenceParams) (ProxyProviderInferenceRes, error)
@@ -10084,10 +10086,12 @@ func (c *Client) sendPromoteCapsule(ctx context.Context, request *PromoteCapsule
 // Requires a live Capsule gateway lease in Authorization (Bearer) or X-Api-Key. Installation API
 // tokens and browser sessions do not authorize this operation. Only OpenAI responses/chat completions
 // and Anthropic messages/token counting are supported; unsupported provider/operation combinations
-// return 404. The origin must be enabled explicitly by the deployment operator. When the upstream
-// provider rejects a request, the gateway returns its 4xx or 5xx status (other statuses become 502),
-// sets error.upstreamStatus, and includes at most 300 characters of sanitized upstream reason in
-// error.message. Upstream headers and raw bodies are never copied.
+// return 404. The origin must be enabled explicitly by the deployment operator. Official Anthropic
+// requests attach the stored Claude login: an API key as X-Api-Key, or a setup token as Authorization:
+// Bearer. The Capsule lease is checked and then dropped; it is never forwarded upstream. When the
+// upstream provider rejects a request, the gateway returns its 4xx or 5xx status (other statuses
+// become 502), sets error.upstreamStatus, and includes at most 300 characters of sanitized upstream
+// reason in error.message. Upstream headers and raw bodies are never copied.
 //
 // POST /provider-gateway/{provider}/v1/{operation}
 func (c *Client) ProxyProviderInference(ctx context.Context, request ProxyProviderInferenceReq, params ProxyProviderInferenceParams) (ProxyProviderInferenceRes, error) {

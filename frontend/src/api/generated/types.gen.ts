@@ -1149,6 +1149,7 @@ export type ProviderConnection = {
      * The reasoning effort levels the default model accepts, in order. Harnesses offer exactly these, plus off, for that model.
      */
     reasoningEfforts?: Array<ReasoningEffortLevel>;
+    credentialKind?: AnthropicCredentialKind;
     createdAt: string;
     resourceVersion: number;
     revoked: boolean;
@@ -1173,9 +1174,15 @@ export type ReasoningEffortLevel = 'minimal' | 'low' | 'medium' | 'high' | 'xhig
  */
 export type ProviderConnectionType = 'openai' | 'anthropic' | 'openai-compatible' | 'anthropic-compatible';
 
+/**
+ * How the provider gateway attaches an official Anthropic Claude login. api_key sends X-Api-Key. oauth sends Authorization: Bearer for a Claude Code setup token. Omitted means api_key. This value is not the secret. Only the anthropic provider accepts oauth.
+ */
+export type AnthropicCredentialKind = 'api_key' | 'oauth';
+
 export type ProviderConnectionRequest = {
     name: string;
     provider: ProviderConnectionType;
+    credentialKind?: AnthropicCredentialKind;
     /**
      * Required for custom endpoint types; rejected for official ones. An https URL, or an http URL on a loopback or private-network address when allowPrivateHttp is set. A trailing /v1 is removed.
      */
@@ -1344,9 +1351,10 @@ export type ProviderConnectionRequestWritable = {
     name: string;
     provider: ProviderConnectionType;
     /**
-     * Required for official providers. Custom endpoints accept an empty key and then send no upstream credential.
+     * Required for official providers. For anthropic this is the Claude login: an API key, or a setup token when credentialKind is oauth. Custom endpoints accept an empty key and then send no upstream credential. The value is write-only and is not returned.
      */
     apiKey: string;
+    credentialKind?: AnthropicCredentialKind;
     /**
      * Required for custom endpoint types; rejected for official ones. An https URL, or an http URL on a loopback or private-network address when allowPrivateHttp is set. A trailing /v1 is removed.
      */

@@ -22,6 +22,9 @@ paths:
         Only OpenAI responses/chat completions and Anthropic messages/token counting
         are supported; unsupported provider/operation combinations return 404.
         The origin must be enabled explicitly by the deployment operator.
+        Official Anthropic requests attach the stored Claude login: an API key
+        as X-Api-Key, or a setup token as Authorization: Bearer. The Capsule
+        lease is checked and then dropped; it is never forwarded upstream.
         When the upstream provider rejects a request, the gateway returns its 4xx or
         5xx status (other statuses become 502), sets error.upstreamStatus, and
         includes at most 300 characters of sanitized upstream reason in error.message.
@@ -3982,6 +3985,8 @@ components:
           description: >-
             The reasoning effort levels the default model accepts, in order.
             Harnesses offer exactly these, plus off, for that model.
+        credentialKind:
+          $ref: '#/components/schemas/AnthropicCredentialKind'
         createdAt:
           type: string
           format: date-time
@@ -4015,6 +4020,14 @@ components:
       description: >-
         openai and anthropic use fixed official upstreams. openai-compatible
         and anthropic-compatible use an operator-configured baseUrl.
+    AnthropicCredentialKind:
+      type: string
+      enum: [api_key, oauth]
+      description: >-
+        How the provider gateway attaches an official Anthropic Claude login.
+        api_key sends X-Api-Key. oauth sends Authorization: Bearer for a
+        Claude Code setup token. Omitted means api_key. This value is not the
+        secret. Only the anthropic provider accepts oauth.
     ProviderConnectionRequest:
       type: object
       required: [name, provider, apiKey, expectedResourceVersion]
@@ -4027,7 +4040,13 @@ components:
           type: string
           writeOnly: true
           maxLength: 4096
-          description: Required for official providers. Custom endpoints accept an empty key and then send no upstream credential.
+          description: >-
+            Required for official providers. For anthropic this is the Claude
+            login: an API key, or a setup token when credentialKind is oauth.
+            Custom endpoints accept an empty key and then send no upstream
+            credential. The value is write-only and is not returned.
+        credentialKind:
+          $ref: '#/components/schemas/AnthropicCredentialKind'
         baseUrl:
           type: string
           maxLength: 2048

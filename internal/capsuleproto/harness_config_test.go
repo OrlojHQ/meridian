@@ -331,6 +331,11 @@ func TestOfficialClaudeLauncherDisablesSelfUpdate(t *testing.T) {
 	if !strings.Contains(string(value), `DISABLE_UPDATES="${DISABLE_UPDATES:-1}"`) {
 		t.Fatalf("Claude launcher does not pin updates: %s", value)
 	}
+	for _, forbidden := range []string{"ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-"} {
+		if strings.Contains(string(value), forbidden) {
+			t.Fatalf("Claude launcher image layer references a login: %s", forbidden)
+		}
+	}
 }
 
 func TestOfficialPackDockerfileUsesConfigurableBase(t *testing.T) {

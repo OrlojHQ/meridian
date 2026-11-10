@@ -9,6 +9,17 @@ import (
 	"github.com/ogen-go/ogen/validate"
 )
 
+func (s AnthropicCredentialKind) Validate() error {
+	switch s {
+	case "api_key":
+		return nil
+	case "oauth":
+		return nil
+	default:
+		return errors.Errorf("invalid value: %v", s)
+	}
+}
+
 func (s *ApproveDeliveryRequest) Validate() error {
 	if s == nil {
 		return validate.ErrNilPointer
@@ -4991,6 +5002,24 @@ func (s *ProviderConnection) Validate() error {
 			Error: err,
 		})
 	}
+	if err := func() error {
+		if value, ok := s.CredentialKind.Get(); ok {
+			if err := func() error {
+				if err := value.Validate(); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return err
+			}
+		}
+		return nil
+	}(); err != nil {
+		failures = append(failures, validate.FieldError{
+			Name:  "credentialKind",
+			Error: err,
+		})
+	}
 	if len(failures) > 0 {
 		return &validate.Error{Fields: failures}
 	}
@@ -5074,6 +5103,24 @@ func (s *ProviderConnectionRequest) Validate() error {
 	}(); err != nil {
 		failures = append(failures, validate.FieldError{
 			Name:  "apiKey",
+			Error: err,
+		})
+	}
+	if err := func() error {
+		if value, ok := s.CredentialKind.Get(); ok {
+			if err := func() error {
+				if err := value.Validate(); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return err
+			}
+		}
+		return nil
+	}(); err != nil {
+		failures = append(failures, validate.FieldError{
+			Name:  "credentialKind",
 			Error: err,
 		})
 	}

@@ -20,6 +20,7 @@ type ConnectionInput struct {
 	DefaultModel            string                 `json:"defaultModel,omitempty"`
 	AllowPrivateHTTP        bool                   `json:"allowPrivateHttp,omitempty"`
 	ReasoningEfforts        []string               `json:"reasoningEfforts,omitempty"`
+	CredentialKind          string                 `json:"credentialKind,omitempty"`
 	ExpectedResourceVersion domain.ResourceVersion `json:"expectedResourceVersion"`
 	Revoked                 bool                   `json:"revoked,omitempty"`
 }
@@ -30,6 +31,12 @@ func connectionEnvelopeID(item domain.ProviderConnection) string {
 	id := fmt.Sprintf("connection:%s:%s:%d:%t", item.ID, item.Provider, item.ResourceVersion, item.Revoked)
 	if providergateway.Custom(item.Provider) {
 		id += fmt.Sprintf(":%q:%t", item.BaseURL, item.AllowPrivateHTTP)
+	}
+	// API-key rows keep the historical envelope id so existing ciphertext
+	// still opens. A setup token is bound to oauth so editing the stored
+	// kind cannot change how the gateway attaches it.
+	if item.CredentialKind == providergateway.CredentialOAuth {
+		id += ":oauth"
 	}
 	return id
 }
@@ -109,6 +116,9 @@ func (s *Service) PutProviderConnection(ctx context.Context, id string, input Co
 		if !input.Revoked {
 			result.BaseURL, result.DefaultModel, result.AllowPrivateHTTP = input.BaseURL, input.DefaultModel, input.AllowPrivateHTTP
 			result.ReasoningEfforts = input.ReasoningEfforts
+			result.CredentialKind = input.CredentialKind
+		} else {
+			result.CredentialKind = ""
 		}
 		result.KeyID = s.secretKey.ID
 		// Keep a valid encrypted empty envelope on revocation, never old key material.
@@ -134,6 +144,16 @@ func (s *Service) PutProviderConnection(ctx context.Context, id string, input Co
 // Custom endpoints may omit the key; official providers require one and use
 // fixed upstreams.
 func (s *Service) validateConnectionInput(input ConnectionInput) (ConnectionInput, error) {
+	switch input.CredentialKind {
+	case "", providergateway.CredentialAPIKey:
+		input.CredentialKind = ""
+	case providergateway.CredentialOAuth:
+		if input.Provider != providergateway.Anthropic {
+			return input, fmt.Errorf("%w: a Claude setup token is only valid for the official Anthropic connection", domain.ErrInvalid)
+		}
+	default:
+		return input, fmt.Errorf("%w: invalid Claude login type", domain.ErrInvalid)
+	}
 	if len(input.APIKey) > 4096 || strings.ContainsAny(input.APIKey, "\r\n\x00") {
 		return input, fmt.Errorf("%w: invalid API key", domain.ErrInvalid)
 	}
@@ -236,12 +256,15 @@ func (s *Service) authorizeProviderLease(ctx context.Context, lease providergate
 		if connection.Revoked || connection.Provider != lease.Provider {
 			return domain.ErrConflict
 		}
+		if connection.CredentialKind == providergateway.CredentialOAuth && connection.Provider != providergateway.Anthropic {
+			return domain.ErrConflict
+		}
 		raw, err := s.secretKey.OpenSetup(connectionEnvelopeID(connection), connection.KeyID, connection.Nonce, connection.Ciphertext)
 		if err != nil {
 			return err
 		}
 		defer wipe(raw)
-		upstream = providergateway.Upstream{Key: string(raw), BaseURL: connection.BaseURL, AllowPrivateHTTP: connection.AllowPrivateHTTP}
+		upstream = providergateway.Upstream{Key: string(raw), BaseURL: connection.BaseURL, AllowPrivateHTTP: connection.AllowPrivateHTTP, CredentialKind: connection.CredentialKind}
 		return nil
 	})
 	return upstream, err

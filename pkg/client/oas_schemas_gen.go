@@ -42,6 +42,51 @@ func (s *APIError) SetMessage(val string) {
 	s.Message = val
 }
 
+// How the provider gateway attaches an official Anthropic Claude login. api_key sends X-Api-Key. oauth
+// sends Authorization: Bearer for a Claude Code setup token. Omitted means api_key. This value is not
+// the secret. Only the anthropic provider accepts oauth.
+// Ref: #/components/schemas/AnthropicCredentialKind
+type AnthropicCredentialKind string
+
+const (
+	AnthropicCredentialKindAPIKey AnthropicCredentialKind = "api_key"
+	AnthropicCredentialKindOAuth  AnthropicCredentialKind = "oauth"
+)
+
+// AllValues returns all AnthropicCredentialKind values.
+func (AnthropicCredentialKind) AllValues() []AnthropicCredentialKind {
+	return []AnthropicCredentialKind{
+		AnthropicCredentialKindAPIKey,
+		AnthropicCredentialKindOAuth,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s AnthropicCredentialKind) MarshalText() ([]byte, error) {
+	switch s {
+	case AnthropicCredentialKindAPIKey:
+		return []byte(s), nil
+	case AnthropicCredentialKindOAuth:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *AnthropicCredentialKind) UnmarshalText(data []byte) error {
+	switch AnthropicCredentialKind(data) {
+	case AnthropicCredentialKindAPIKey:
+		*s = AnthropicCredentialKindAPIKey
+		return nil
+	case AnthropicCredentialKindOAuth:
+		*s = AnthropicCredentialKindOAuth
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
 type ApproveCoordinationRequestBadRequest ErrorEnvelope
 
 func (*ApproveCoordinationRequestBadRequest) approveCoordinationRequestRes() {}
@@ -5362,6 +5407,52 @@ func (s *MutateHarnessSetupRequest) SetExpectedResourceVersion(val int64) {
 	s.ExpectedResourceVersion = val
 }
 
+// NewOptAnthropicCredentialKind returns new OptAnthropicCredentialKind with value set to v.
+func NewOptAnthropicCredentialKind(v AnthropicCredentialKind) OptAnthropicCredentialKind {
+	return OptAnthropicCredentialKind{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptAnthropicCredentialKind is optional AnthropicCredentialKind.
+type OptAnthropicCredentialKind struct {
+	Value AnthropicCredentialKind
+	Set   bool
+}
+
+// IsSet returns true if OptAnthropicCredentialKind was set.
+func (o OptAnthropicCredentialKind) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptAnthropicCredentialKind) Reset() {
+	var v AnthropicCredentialKind
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptAnthropicCredentialKind) SetTo(v AnthropicCredentialKind) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptAnthropicCredentialKind) Get() (v AnthropicCredentialKind, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptAnthropicCredentialKind) Or(d AnthropicCredentialKind) AnthropicCredentialKind {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptBoardItemNeedsYou returns new OptBoardItemNeedsYou with value set to v.
 func NewOptBoardItemNeedsYou(v BoardItemNeedsYou) OptBoardItemNeedsYou {
 	return OptBoardItemNeedsYou{
@@ -8296,10 +8387,11 @@ type ProviderConnection struct {
 	AllowPrivateHttp OptBool `json:"allowPrivateHttp"`
 	// The reasoning effort levels the default model accepts, in order. Harnesses offer exactly these, plus
 	// off, for that model.
-	ReasoningEfforts []ReasoningEffortLevel `json:"reasoningEfforts"`
-	CreatedAt        time.Time              `json:"createdAt"`
-	ResourceVersion  int64                  `json:"resourceVersion"`
-	Revoked          bool                   `json:"revoked"`
+	ReasoningEfforts []ReasoningEffortLevel     `json:"reasoningEfforts"`
+	CredentialKind   OptAnthropicCredentialKind `json:"credentialKind"`
+	CreatedAt        time.Time                  `json:"createdAt"`
+	ResourceVersion  int64                      `json:"resourceVersion"`
+	Revoked          bool                       `json:"revoked"`
 }
 
 // GetID returns the value of ID.
@@ -8335,6 +8427,11 @@ func (s *ProviderConnection) GetAllowPrivateHttp() OptBool {
 // GetReasoningEfforts returns the value of ReasoningEfforts.
 func (s *ProviderConnection) GetReasoningEfforts() []ReasoningEffortLevel {
 	return s.ReasoningEfforts
+}
+
+// GetCredentialKind returns the value of CredentialKind.
+func (s *ProviderConnection) GetCredentialKind() OptAnthropicCredentialKind {
+	return s.CredentialKind
 }
 
 // GetCreatedAt returns the value of CreatedAt.
@@ -8385,6 +8482,11 @@ func (s *ProviderConnection) SetAllowPrivateHttp(val OptBool) {
 // SetReasoningEfforts sets the value of ReasoningEfforts.
 func (s *ProviderConnection) SetReasoningEfforts(val []ReasoningEffortLevel) {
 	s.ReasoningEfforts = val
+}
+
+// SetCredentialKind sets the value of CredentialKind.
+func (s *ProviderConnection) SetCredentialKind(val OptAnthropicCredentialKind) {
+	s.CredentialKind = val
 }
 
 // SetCreatedAt sets the value of CreatedAt.
@@ -8444,9 +8546,11 @@ func (s *ProviderConnectionPage) SetPrivateHttpAllowed(val OptBool) {
 type ProviderConnectionRequest struct {
 	Name     string                 `json:"name"`
 	Provider ProviderConnectionType `json:"provider"`
-	// Required for official providers. Custom endpoints accept an empty key and then send no upstream
-	// credential.
-	ApiKey string `json:"apiKey"`
+	// Required for official providers. For anthropic this is the Claude login: an API key, or a setup
+	// token when credentialKind is oauth. Custom endpoints accept an empty key and then send no upstream
+	// credential. The value is write-only and is not returned.
+	ApiKey         string                     `json:"apiKey"`
+	CredentialKind OptAnthropicCredentialKind `json:"credentialKind"`
 	// Required for custom endpoint types; rejected for official ones. An https URL, or an http URL on a
 	// loopback or private-network address when allowPrivateHttp is set. A trailing /v1 is removed.
 	BaseUrl OptString `json:"baseUrl"`
@@ -8475,6 +8579,11 @@ func (s *ProviderConnectionRequest) GetProvider() ProviderConnectionType {
 // GetApiKey returns the value of ApiKey.
 func (s *ProviderConnectionRequest) GetApiKey() string {
 	return s.ApiKey
+}
+
+// GetCredentialKind returns the value of CredentialKind.
+func (s *ProviderConnectionRequest) GetCredentialKind() OptAnthropicCredentialKind {
+	return s.CredentialKind
 }
 
 // GetBaseUrl returns the value of BaseUrl.
@@ -8520,6 +8629,11 @@ func (s *ProviderConnectionRequest) SetProvider(val ProviderConnectionType) {
 // SetApiKey sets the value of ApiKey.
 func (s *ProviderConnectionRequest) SetApiKey(val string) {
 	s.ApiKey = val
+}
+
+// SetCredentialKind sets the value of CredentialKind.
+func (s *ProviderConnectionRequest) SetCredentialKind(val OptAnthropicCredentialKind) {
+	s.CredentialKind = val
 }
 
 // SetBaseUrl sets the value of BaseUrl.

@@ -126,6 +126,46 @@ func (s *APIError) UnmarshalJSON(data []byte) error {
 	return s.Decode(d)
 }
 
+// Encode encodes AnthropicCredentialKind as json.
+func (s AnthropicCredentialKind) Encode(e *jx.Encoder) {
+	e.Str(string(s))
+}
+
+// Decode decodes AnthropicCredentialKind from json.
+func (s *AnthropicCredentialKind) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode AnthropicCredentialKind to nil")
+	}
+	v, err := d.StrBytes()
+	if err != nil {
+		return err
+	}
+	// Try to use constant string.
+	switch AnthropicCredentialKind(v) {
+	case AnthropicCredentialKindAPIKey:
+		*s = AnthropicCredentialKindAPIKey
+	case AnthropicCredentialKindOAuth:
+		*s = AnthropicCredentialKindOAuth
+	default:
+		*s = AnthropicCredentialKind(v)
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s AnthropicCredentialKind) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *AnthropicCredentialKind) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
 // Encode encodes ApproveCoordinationRequestBadRequest as json.
 func (s *ApproveCoordinationRequestBadRequest) Encode(e *jx.Encoder) {
 	unwrapped := (*ErrorEnvelope)(s)
@@ -13292,6 +13332,39 @@ func (s *MutateHarnessSetupRequest) UnmarshalJSON(data []byte) error {
 	return s.Decode(d)
 }
 
+// Encode encodes AnthropicCredentialKind as json.
+func (o OptAnthropicCredentialKind) Encode(e *jx.Encoder) {
+	if !o.Set {
+		return
+	}
+	e.Str(string(o.Value))
+}
+
+// Decode decodes AnthropicCredentialKind from json.
+func (o *OptAnthropicCredentialKind) Decode(d *jx.Decoder) error {
+	if o == nil {
+		return errors.New("invalid: unable to decode OptAnthropicCredentialKind to nil")
+	}
+	o.Set = true
+	if err := o.Value.Decode(d); err != nil {
+		return err
+	}
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s OptAnthropicCredentialKind) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *OptAnthropicCredentialKind) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
 // Encode encodes BoardItemNeedsYou as json.
 func (o OptBoardItemNeedsYou) Encode(e *jx.Encoder) {
 	if !o.Set {
@@ -17331,6 +17404,12 @@ func (s *ProviderConnection) encodeFields(e *jx.Encoder) {
 		}
 	}
 	{
+		if s.CredentialKind.Set {
+			e.FieldStart("credentialKind")
+			s.CredentialKind.Encode(e)
+		}
+	}
+	{
 		e.FieldStart("createdAt")
 		json.EncodeDateTime(e, s.CreatedAt)
 	}
@@ -17344,17 +17423,18 @@ func (s *ProviderConnection) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfProviderConnection = [10]string{
-	0: "id",
-	1: "provider",
-	2: "name",
-	3: "baseUrl",
-	4: "defaultModel",
-	5: "allowPrivateHttp",
-	6: "reasoningEfforts",
-	7: "createdAt",
-	8: "resourceVersion",
-	9: "revoked",
+var jsonFieldsNameOfProviderConnection = [11]string{
+	0:  "id",
+	1:  "provider",
+	2:  "name",
+	3:  "baseUrl",
+	4:  "defaultModel",
+	5:  "allowPrivateHttp",
+	6:  "reasoningEfforts",
+	7:  "credentialKind",
+	8:  "createdAt",
+	9:  "resourceVersion",
+	10: "revoked",
 }
 
 // Decode decodes ProviderConnection from json.
@@ -17447,8 +17527,18 @@ func (s *ProviderConnection) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"reasoningEfforts\"")
 			}
+		case "credentialKind":
+			if err := func() error {
+				s.CredentialKind.Reset()
+				if err := s.CredentialKind.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"credentialKind\"")
+			}
 		case "createdAt":
-			requiredBitSet[0] |= 1 << 7
+			requiredBitSet[1] |= 1 << 0
 			if err := func() error {
 				v, err := json.DecodeDateTime(d)
 				s.CreatedAt = v
@@ -17460,7 +17550,7 @@ func (s *ProviderConnection) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"createdAt\"")
 			}
 		case "resourceVersion":
-			requiredBitSet[1] |= 1 << 0
+			requiredBitSet[1] |= 1 << 1
 			if err := func() error {
 				v, err := d.Int64()
 				s.ResourceVersion = int64(v)
@@ -17472,7 +17562,7 @@ func (s *ProviderConnection) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"resourceVersion\"")
 			}
 		case "revoked":
-			requiredBitSet[1] |= 1 << 1
+			requiredBitSet[1] |= 1 << 2
 			if err := func() error {
 				v, err := d.Bool()
 				s.Revoked = bool(v)
@@ -17493,8 +17583,8 @@ func (s *ProviderConnection) Decode(d *jx.Decoder) error {
 	// Validate required fields.
 	var failures []validate.FieldError
 	for i, mask := range [2]uint8{
-		0b10000111,
-		0b00000011,
+		0b00000111,
+		0b00000111,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.
@@ -17702,6 +17792,12 @@ func (s *ProviderConnectionRequest) encodeFields(e *jx.Encoder) {
 		e.Str(s.ApiKey)
 	}
 	{
+		if s.CredentialKind.Set {
+			e.FieldStart("credentialKind")
+			s.CredentialKind.Encode(e)
+		}
+	}
+	{
 		if s.BaseUrl.Set {
 			e.FieldStart("baseUrl")
 			s.BaseUrl.Encode(e)
@@ -17741,16 +17837,17 @@ func (s *ProviderConnectionRequest) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfProviderConnectionRequest = [9]string{
+var jsonFieldsNameOfProviderConnectionRequest = [10]string{
 	0: "name",
 	1: "provider",
 	2: "apiKey",
-	3: "baseUrl",
-	4: "defaultModel",
-	5: "allowPrivateHttp",
-	6: "reasoningEfforts",
-	7: "expectedResourceVersion",
-	8: "revoked",
+	3: "credentialKind",
+	4: "baseUrl",
+	5: "defaultModel",
+	6: "allowPrivateHttp",
+	7: "reasoningEfforts",
+	8: "expectedResourceVersion",
+	9: "revoked",
 }
 
 // Decode decodes ProviderConnectionRequest from json.
@@ -17795,6 +17892,16 @@ func (s *ProviderConnectionRequest) Decode(d *jx.Decoder) error {
 				return nil
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"apiKey\"")
+			}
+		case "credentialKind":
+			if err := func() error {
+				s.CredentialKind.Reset()
+				if err := s.CredentialKind.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"credentialKind\"")
 			}
 		case "baseUrl":
 			if err := func() error {
@@ -17844,7 +17951,7 @@ func (s *ProviderConnectionRequest) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"reasoningEfforts\"")
 			}
 		case "expectedResourceVersion":
-			requiredBitSet[0] |= 1 << 7
+			requiredBitSet[1] |= 1 << 0
 			if err := func() error {
 				v, err := d.Int64()
 				s.ExpectedResourceVersion = int64(v)
@@ -17875,8 +17982,8 @@ func (s *ProviderConnectionRequest) Decode(d *jx.Decoder) error {
 	// Validate required fields.
 	var failures []validate.FieldError
 	for i, mask := range [2]uint8{
-		0b10000111,
-		0b00000000,
+		0b00000111,
+		0b00000001,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.

@@ -1,13 +1,16 @@
 package app
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/ports"
 	"github.com/OrlojHQ/meridian/internal/providergateway"
 	"github.com/OrlojHQ/meridian/internal/secrets"
 	"github.com/OrlojHQ/meridian/internal/store/sqlite"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -283,11 +286,176 @@ func TestCustomEndpointGrantsAndRuntimeLease(t *testing.T) {
 		t.Fatal(err)
 	}
 	upstream, err = s.authorizeProviderLease(ctx, providergateway.Lease{Connection: local.ID, Project: string(project.ID), Capsule: string(capsule.ID), Harness: "opencode", Provider: "openai-compatible"})
-	if err != nil || upstream.Key != "" || !upstream.AllowPrivateHTTP {
+	if err != nil || upstream.Key != "" || !upstream.AllowPrivateHTTP || upstream.CredentialKind != "" {
 		t.Fatalf("unexpected upstream %+v %v", upstream, err)
 	}
 	revoked, err := s.PutProviderConnection(ctx, local.ID, ConnectionInput{Name: "Ollama", Provider: "openai-compatible", Revoked: true, ExpectedResourceVersion: local.ResourceVersion})
 	if err != nil || revoked.BaseURL != local.BaseURL {
 		t.Fatalf("revocation failed: %+v %v", revoked, err)
+	}
+}
+
+func TestClaudeLoginIsCiphertextAndStaysOutOfTheCapsule(t *testing.T) {
+	ctx := context.Background()
+	const login = "sk-ant-oat-claude-login-canary"
+	const codexKey = "codex-upstream-key-canary"
+	dataDir := t.TempDir()
+	db, err := sqlite.Open(ctx, dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	key, err := secrets.OpenOrCreateKey(filepath.Join(t.TempDir(), "keys", "key"), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer key.Zero()
+	s := NewService(db, connectionClock{}, &connectionIDs{}, connectionQueue{})
+	s.ConfigureSecrets(key)
+	if err := s.ConfigureProviderGateway("https://meridian.example", false); err != nil {
+		t.Fatal(err)
+	}
+	defer s.CloseProviderGateway()
+	project, err := s.CreateProject(ctx, "project", "project")
+	if err != nil {
+		t.Fatal(err)
+	}
+	capsule, err := s.CreateCapsule(ctx, project.ID, "capsule", "capsule")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = db.Transact(ctx, func(tx ports.Transaction) error {
+		capsule.State = domain.CapsuleReady
+		capsule.ResourceVersion++
+		return tx.UpdateCapsule(ctx, capsule, 1)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.PutProviderConnection(ctx, "", ConnectionInput{Name: "OpenAI", Provider: "openai", APIKey: codexKey, CredentialKind: providergateway.CredentialOAuth}); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatal("oauth login accepted for openai", err)
+	}
+	apiKey, err := s.PutProviderConnection(ctx, "", ConnectionInput{Name: "Claude API", Provider: "anthropic", APIKey: "sk-ant-api-claude-key", CredentialKind: providergateway.CredentialAPIKey})
+	if err != nil || apiKey.CredentialKind != "" {
+		t.Fatalf("api key kind = %q %v", apiKey.CredentialKind, err)
+	}
+	saved, err := s.PutProviderConnection(ctx, "", ConnectionInput{Name: "Claude", Provider: "anthropic", APIKey: login, CredentialKind: providergateway.CredentialOAuth})
+	if err != nil || saved.CredentialKind != providergateway.CredentialOAuth {
+		t.Fatalf("saved = %+v %v", saved, err)
+	}
+	encoded, err := json.Marshal(saved)
+	if err != nil || bytes.Contains(encoded, []byte(login)) {
+		t.Fatalf("API response contains the login: %s", encoded)
+	}
+	err = db.View(ctx, func(r ports.Reader) error {
+		stored, err := r.GetProviderConnection(ctx, saved.ID)
+		if err != nil {
+			return err
+		}
+		if bytes.Contains(stored.Ciphertext, []byte(login)) || bytes.Contains(stored.Nonce, []byte(login)) {
+			t.Fatal("plaintext login stored in ciphertext columns")
+		}
+		opened, err := key.OpenSetup(connectionEnvelopeID(stored), stored.KeyID, stored.Nonce, stored.Ciphertext)
+		if err != nil {
+			return err
+		}
+		if string(opened) != login {
+			t.Fatal("ciphertext did not open to the login")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertLoginAbsent := func() {
+		t.Helper()
+		if err := filepath.WalkDir(dataDir, func(path string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return err
+			}
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			if bytes.Contains(raw, []byte(login)) {
+				t.Errorf("plaintext login in %s", path)
+			}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	assertLoginAbsent()
+	codex, err := s.PutProviderConnection(ctx, "", ConnectionInput{Name: "OpenAI", Provider: "openai", APIKey: codexKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.GrantProviderConnection(ctx, project.ID, "codex", codex.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.GrantProviderConnection(ctx, project.ID, "claude", saved.ID); err != nil {
+		t.Fatal(err)
+	}
+	claudeRuntime, err := s.runtimeProviderConnection(ctx, capsule, "claude")
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtimeRaw, _ := json.Marshal(claudeRuntime)
+	if bytes.Contains(runtimeRaw, []byte(login)) || claudeRuntime.Token == login || len(claudeRuntime.Token) != 64 || claudeRuntime.Provider != "anthropic" || claudeRuntime.URL != "https://meridian.example/provider-gateway/anthropic" {
+		t.Fatalf("claude login crossed into the capsule connection: %s", runtimeRaw)
+	}
+	codexRuntime, err := s.runtimeProviderConnection(ctx, capsule, "codex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if codexRuntime.Token == codexKey || len(codexRuntime.Token) != 64 || codexRuntime.Provider != "openai" || codexRuntime.URL != "https://meridian.example/provider-gateway/openai" || codexRuntime.Model != "" {
+		t.Fatalf("codex path changed: %+v", codexRuntime)
+	}
+	upstream, err := s.authorizeProviderLease(ctx, providergateway.Lease{Connection: saved.ID, Project: string(project.ID), Capsule: string(capsule.ID), Harness: "claude", Provider: "anthropic"})
+	if err != nil || upstream.Key != login || upstream.CredentialKind != providergateway.CredentialOAuth || upstream.BaseURL != "" {
+		t.Fatalf("gateway did not receive the claude login: %+v %v", upstream, err)
+	}
+	codexUpstream, err := s.authorizeProviderLease(ctx, providergateway.Lease{Connection: codex.ID, Project: string(project.ID), Capsule: string(capsule.ID), Harness: "codex", Provider: "openai"})
+	if err != nil || codexUpstream.Key != codexKey || codexUpstream.CredentialKind != "" || codexUpstream.BaseURL != "" {
+		t.Fatalf("codex upstream changed: %+v %v", codexUpstream, err)
+	}
+	err = db.Transact(ctx, func(tx ports.Transaction) error {
+		stored, err := tx.GetProviderConnection(ctx, saved.ID)
+		if err != nil {
+			return err
+		}
+		stored.CredentialKind = ""
+		return tx.PutProviderConnection(ctx, stored)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.authorizeProviderLease(ctx, providergateway.Lease{Connection: saved.ID, Project: string(project.ID), Capsule: string(capsule.ID), Harness: "claude", Provider: "anthropic"}); err == nil {
+		t.Fatal("oauth token released after the stored kind was edited")
+	}
+	cleared, err := s.PutProviderConnection(ctx, saved.ID, ConnectionInput{Name: "Claude", Provider: "anthropic", Revoked: true, ExpectedResourceVersion: saved.ResourceVersion})
+	if err != nil || cleared.CredentialKind != "" || !cleared.Revoked {
+		t.Fatalf("clear failed: %+v %v", cleared, err)
+	}
+	err = db.View(ctx, func(r ports.Reader) error {
+		stored, err := r.GetProviderConnection(ctx, saved.ID)
+		if err != nil {
+			return err
+		}
+		opened, err := key.OpenSetup(connectionEnvelopeID(stored), stored.KeyID, stored.Nonce, stored.Ciphertext)
+		if err != nil {
+			return err
+		}
+		if len(opened) != 0 {
+			t.Fatal("cleared login retained")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertLoginAbsent()
+	if _, err := s.authorizeProviderLease(ctx, providergateway.Lease{Connection: codex.ID, Project: string(project.ID), Capsule: string(capsule.ID), Harness: "codex", Provider: "openai"}); err != nil {
+		t.Fatal("clearing claude broke codex", err)
 	}
 }

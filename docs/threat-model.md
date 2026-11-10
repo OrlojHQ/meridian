@@ -122,6 +122,12 @@ exact-repository, exact-ref, one-shot grant; GitHub pull-request API authority
 stays host-side. Temporary material is revoked or discarded after its single
 operation and omitted from command arguments and ambient credential helpers.
 
+Official Anthropic logins used by Claude Code follow the provider gateway
+instead of `harness_env` (ADR 0036). The operator-supplied API key or Claude
+Code setup token is authenticated ciphertext. The gateway reads it only while
+forwarding a leased request and does not place it in the Capsule spec, the
+harness environment, a volume, an image layer, or a prompt.
+
 Kubernetes Capsules use one high-entropy immutable namespaced Secret solely for
 the private supervisor token. It is owner-referenced and projected with mode
 0400 requested; Kubernetes `fsGroup` handling may expose it to the Capsule
@@ -792,6 +798,12 @@ they are not a statement that every planned path is already implemented.
 - Harness packs are installed at image build time from pinned checksummed
   archives or sha512-locked npm registry tarballs with install scripts
   disabled; no pack downloads code at Capsule start.
+- A Claude login (API key or Claude Code setup token) is stored only as
+  authenticated ciphertext and is attached to upstream Anthropic requests by
+  the provider gateway. It is absent from the Capsule spec, environment,
+  files, volumes, image layers, and prompts. The Capsule receives a gateway
+  lease. This does not make container isolation a multi-tenant boundary
+  (ADR 0036).
 - Network, compute, storage, and lifetime are bounded outside the Capsule.
 - Agent Sandbox lifecycle management is never represented as a sandboxing or
   untrusted multi-tenancy guarantee.
@@ -904,14 +916,23 @@ The redaction is a best-effort filter: a hostile server could still spell a
 secret in a form these patterns miss, so it is not a guarantee against an
 upstream that wants to leak data it holds.
 
-Subscription credentials and MCP account tokens are not imported or managed by
-this feature. Native login state remains ephemeral Capsule-local state.
-Structured sessions cannot sign in interactively; official structured profiles
-rely on the provider connection's gateway lease. The lease reaches the harness
-only through its process environment, and Meridian never writes it to the
-setup home's native configuration, repository YAML, adapter arguments, or
-transcripts. A harness that prints its own environment can still expose the
-lease in its output. Backup
+A Claude login — an Anthropic API key or a Claude Code setup token from
+`claude setup-token` — is operator-supplied through the
+installation-authenticated UI or `meridian harness connect`. It is stored as
+authenticated ciphertext and is not returned after save. The provider gateway
+attaches an API key as `X-Api-Key`, or a setup token as `Authorization: Bearer`
+together with the `oauth-2025-04-20` beta marker Claude Code already sends for
+that token. The login never enters a Capsule environment, file, volume, image
+layer, or prompt. There is no browser OAuth flow. Codex, OpenCode, Pi, and
+DeepSeek Harness subscription logins, and MCP account tokens, are not imported;
+that native login state remains ephemeral Capsule-local state. Structured
+sessions cannot sign in interactively; official structured profiles rely on
+the provider connection's gateway lease. The lease reaches the harness only
+through its process environment, and Meridian never writes the lease or the
+login into the setup home's native configuration, repository YAML, adapter
+arguments, or transcripts. A harness that prints its own environment can still
+expose the lease in its output. Holding the Claude login on the control plane
+does not make container isolation suitable for untrusted multi-tenancy. Backup
 and recovery must retain the database and installation encryption key together;
 a missing key must not silently be replaced when saved setups or connections
 exist. A daemon restart invalidates gateway leases and requires active harness
