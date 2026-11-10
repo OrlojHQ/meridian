@@ -29,6 +29,7 @@ type Reconciler struct {
 	secretKey     *secrets.InstallationKey
 	sessionReady  func(context.Context, domain.Capsule) error
 	launcherReady func(context.Context, domain.Capsule) error
+	onSettled     func(context.Context, domain.Capsule)
 
 	mu          sync.Mutex
 	pending     map[domain.CapsuleID]struct{}
@@ -53,6 +54,12 @@ func (r *Reconciler) ConfigureLauncher(
 	coordinator func(context.Context, domain.Capsule) error,
 ) {
 	r.launcherReady = coordinator
+}
+
+// OnCapsuleSettled is invoked after a Capsule reaches Deleted or fails while
+// its desired state is Deleted. Set it before Start.
+func (r *Reconciler) OnCapsuleSettled(fn func(context.Context, domain.Capsule)) {
+	r.onSettled = fn
 }
 
 func (r *Reconciler) ConfigureObserver(observer ports.Observer, providerName string) {
@@ -245,6 +252,9 @@ func (r *Reconciler) reconcile(ctx context.Context, id domain.CapsuleID) error {
 		}
 	}
 	if capsule.State.Terminal() {
+		if capsule.State == domain.CapsuleSealed && capsule.DesiredState == domain.IntentDeleted {
+			return r.reconcileDelete(ctx, capsule)
+		}
 		return nil
 	}
 	if capsule.State == domain.CapsuleReady &&
@@ -500,7 +510,11 @@ func (r *Reconciler) reconcileDelete(ctx context.Context, capsule domain.Capsule
 	if err := capsule.Transition(domain.CapsuleDeleted, r.clock.Now()); err != nil {
 		return err
 	}
-	return r.saveCapsule(ctx, capsule, previous, "capsule.deleted")
+	if err := r.saveCapsule(ctx, capsule, previous, "capsule.deleted"); err != nil {
+		return err
+	}
+	r.settle(ctx, capsule)
+	return nil
 }
 
 func (r *Reconciler) getCapsule(ctx context.Context, id domain.CapsuleID) (domain.Capsule, error) {
@@ -571,7 +585,19 @@ func (r *Reconciler) recordFailure(ctx context.Context, id domain.CapsuleID, cau
 		capsule.FailureCode = ""
 	}
 	r.clearStartupMark(id)
-	return r.saveCapsule(ctx, capsule, previous, "capsule.failed")
+	if err := r.saveCapsule(ctx, capsule, previous, "capsule.failed"); err != nil {
+		return err
+	}
+	if capsule.DesiredState == domain.IntentDeleted {
+		r.settle(ctx, capsule)
+	}
+	return nil
+}
+
+func (r *Reconciler) settle(ctx context.Context, capsule domain.Capsule) {
+	if r.onSettled != nil {
+		r.onSettled(ctx, capsule)
+	}
 }
 
 func (r *Reconciler) forget(id domain.CapsuleID) {

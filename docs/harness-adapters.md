@@ -450,8 +450,9 @@ When both hellos also negotiate `effort` (ADR 0033), a `models` frame carries
 the current model's effort levels as `effort: {current, options}`, at most 16
 options with the same bounds, and a `set_effort` frame changes it
 (`POST /threads/{threadId}/effort`). An empty `current` means the harness's
-own default. The composer shows "Model · Effort" on the picker and lists the
-levels below the models; a single level is not shown.
+own default. The composer shows the model and the reasoning effort as
+separate buttons, each with its own menu; only the model list scrolls, and a
+single level is not shown.
 
 | Driver | Levels | Current | Change |
 | --- | --- | --- | --- |

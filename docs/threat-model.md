@@ -124,6 +124,13 @@ exact-repository, exact-ref, one-shot grant; GitHub pull-request API authority
 stays host-side. Temporary material is revoked or discarded after its single
 operation and omitted from command arguments and ambient credential helpers.
 
+Deleting a Project destroys named secrets that no other live Project still
+names (ADR 0039). The live row is removed, including ciphertext, nonce, and
+envelope metadata. A secret another live Project still names is kept. The
+delete does not shred backups, filesystem snapshots, SQLite free pages, swap,
+or other copies; those follow the installation retention policy. Installation
+provider connections stay; only that Project's grant is removed.
+
 Official Anthropic logins used by Claude Code follow the provider gateway
 instead of `harness_env` (ADR 0036). The operator signs in from the Meridian
 UI. The daemon runs Claude Code's OAuth client, holds the PKCE verifier only
@@ -611,6 +618,12 @@ not guarantee that storage media, swap, filesystem snapshots, copied keys, or
 previous backups have been sanitized. Rotation requires explicit re-wrap and
 verification; retiring an old key before all referenced DEKs are re-wrapped
 causes irreversible loss.
+
+Deleting a Project is the stronger removal (ADR 0039). It deletes that
+Project's Thread rows, wrapped data keys, and transcript ciphertext, and it
+deletes Moment rows plus content-addressed blobs that no remaining Moment
+references. Copies already delivered to another Project's Thread, and any
+backup or snapshot taken earlier, are outside that delete.
 
 ### Git and delivery integrity
 

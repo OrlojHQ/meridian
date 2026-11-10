@@ -1,8 +1,15 @@
+import { readFileSync } from "node:fs";
+
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Vitest's transform does not give this file a file-URL import.meta.url.
+// Node still sets import.meta.dirname beside the test.
+const styleDirectory = (import.meta as ImportMeta & { dirname: string }).dirname;
+const composerCss = readFileSync(`${styleDirectory}/../styles/features.css`, "utf8");
 
 import { api } from "../api/client";
 import type { Thread, ThreadBlock } from "../api/generated/types.gen";
@@ -41,6 +48,14 @@ const thread: Thread = {
 };
 
 let pushBlock: (block: ThreadBlock) => void = () => undefined;
+
+function installComposerCss() {
+  if (document.getElementById("composer-css-under-test")) return;
+  const style = document.createElement("style");
+  style.id = "composer-css-under-test";
+  style.textContent = composerCss;
+  document.head.append(style);
+}
 
 function renderThread(blocks: ThreadBlock[], value: Thread = thread) {
   vi.spyOn(api, "thread").mockResolvedValue(value);
@@ -453,6 +468,7 @@ describe("Model picker", () => {
     renderThread(t.blocks);
     const button = await screen.findByRole("button", { name: "Model: Default (recommended)" });
     expect(button.closest(".composer-box")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: /^Reasoning effort/ })).not.toBeInTheDocument();
     await user.click(button);
     const menu = screen.getByRole("menu", { name: "Models" });
     const items = within(menu).getAllByRole("menuitemradio");
@@ -510,24 +526,59 @@ describe("Model picker", () => {
     ]);
   });
 
-  it("shows the effort next to the model and changes it from the same menu", async () => {
+  it("shows effort on its own button and changes it from its own menu", async () => {
     const t = transcript();
     t.models(withEffort);
     const changed = vi.spyOn(api, "setThreadEffort").mockResolvedValue({ thread });
     const user = userEvent.setup();
     renderThread(t.blocks);
-    await user.click(await screen.findByRole("button", { name: "Model: Default (recommended) · High" }));
-    const effort = within(screen.getByRole("menu", { name: "Models" })).getByRole("group", { name: "Reasoning effort" });
+    const modelButton = await screen.findByRole("button", { name: "Model: Default (recommended)" });
+    const effortButton = screen.getByRole("button", { name: "Reasoning effort: High" });
+    expect(modelButton.closest(".composer-box")).toBe(effortButton.closest(".composer-box"));
+    await user.click(effortButton);
+    expect(screen.queryByRole("menu", { name: "Models" })).not.toBeInTheDocument();
+    const effort = screen.getByRole("menu", { name: "Reasoning effort" });
+    installComposerCss();
+    expect(effort.querySelector(".composer-model-scroll")).toBeNull();
+    expect(getComputedStyle(effort).overflow).toBe("visible");
+    expect(within(effort).queryByRole("searchbox")).not.toBeInTheDocument();
     const levels = within(effort).getAllByRole("menuitemradio");
     expect(levels.map((level) => level.textContent)).toEqual(["LowFastest", "High", "Max"]);
     expect(levels[1]).toHaveAttribute("aria-checked", "true");
+    expect(within(effort).getByRole("group", { name: "Reasoning effort · applies from the next turn" })).toBe(
+      within(effort).getByRole("group"),
+    );
     await user.click(levels[0]);
     expect(changed).toHaveBeenCalledWith(thread.id, thread.resourceVersion, "low");
-    expect(await screen.findByRole("button", { name: "Model: Default (recommended) · Low, switching" })).toBeInTheDocument();
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Reasoning effort: Low, switching" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Model: Default (recommended)" })).toBeInTheDocument();
     act(() => {
       pushBlock(t.models({ ...withEffort, effort: { ...withEffort.effort, current: "low" } }));
     });
-    expect(await screen.findByRole("button", { name: "Model: Default (recommended) · Low" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Reasoning effort: Low" })).toBeInTheDocument();
+  });
+
+  it("hides the effort button when the harness offers no choice", async () => {
+    const t = transcript();
+    t.models({ ...reported, effort: { current: "off", options: [{ id: "off", label: "Off" }] } });
+    renderThread(t.blocks);
+    await screen.findByRole("button", { name: "Model: Default (recommended)" });
+    expect(screen.queryByRole("button", { name: /^Reasoning effort/ })).not.toBeInTheDocument();
+    cleanup();
+
+    const unset = transcript();
+    unset.models({
+      ...reported,
+      effort: {
+        options: [
+          { id: "low", label: "Low" },
+          { id: "high", label: "High" },
+        ],
+      },
+    });
+    renderThread(unset.blocks);
+    expect(await screen.findByRole("button", { name: "Reasoning effort" })).toHaveTextContent("Effort");
   });
 
   it("searches a long model list and picks the first match with Enter", async () => {
@@ -547,6 +598,15 @@ describe("Model picker", () => {
     expect(search).toHaveFocus();
     await user.type(search, "glm spark");
     const menu = screen.getByRole("menu", { name: "Models" });
+    const scroll = menu.querySelector(".composer-model-scroll");
+    expect(scroll).not.toBeNull();
+    expect(menu.querySelectorAll(".composer-model-scroll")).toHaveLength(1);
+    installComposerCss();
+    expect(scroll!.contains(search)).toBe(false);
+    expect(scroll!.querySelector("ul")).not.toBeNull();
+    expect(getComputedStyle(menu).overflow).toBe("hidden");
+    expect(getComputedStyle(scroll as Element).overflowY).toBe("auto");
+    expect(getComputedStyle(scroll!.querySelector("ul") as Element).overflowY).toBe("visible");
     expect(within(menu).getAllByRole("menuitemradio").map((item) => item.textContent)).toEqual([
       "glm-5.3-flashspark-home",
     ]);
@@ -569,6 +629,33 @@ describe("Model picker", () => {
     expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
   });
 
+  it("moves through each menu with the arrow keys", async () => {
+    const t = transcript();
+    t.models(withEffort);
+    const switched = vi.spyOn(api, "setThreadModel").mockResolvedValue({ thread });
+    const user = userEvent.setup();
+    renderThread(t.blocks);
+    await user.click(await screen.findByRole("button", { name: "Model: Default (recommended)" }));
+    const menu = screen.getByRole("menu", { name: "Models" });
+    expect(within(menu).queryByRole("group", { name: /Reasoning effort/ })).not.toBeInTheDocument();
+    await user.keyboard("{ArrowDown}");
+    const items = within(menu).getAllByRole("menuitemradio");
+    expect(items[0]).toHaveFocus();
+    await user.keyboard("{ArrowUp}");
+    expect(items.at(-1)).toHaveFocus();
+    await user.keyboard("{Enter}");
+    expect(switched).toHaveBeenCalledWith(thread.id, thread.resourceVersion, "haiku");
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Reasoning effort: High" }));
+    expect(screen.queryByRole("menu", { name: "Models" })).not.toBeInTheDocument();
+    const effort = screen.getByRole("menu", { name: "Reasoning effort" });
+    await user.keyboard("{ArrowDown}");
+    expect(within(effort).getAllByRole("menuitemradio")[0]).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
   it("closes on Escape and shows no picker when the harness reports nothing", async () => {
     const t = transcript();
     t.models(reported);
@@ -582,6 +669,28 @@ describe("Model picker", () => {
     renderThread(transcript().blocks);
     await screen.findByRole("combobox", { name: "Message" });
     expect(screen.queryByRole("button", { name: /^Model:/ })).not.toBeInTheDocument();
+  });
+
+  it("scrolls only the model list and lets the buttons shrink inside the composer", () => {
+    const css = composerCss;
+    const rule = (selector: string) => {
+      const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const match = css.match(new RegExp(`${escaped}\\s*\\{([^}]*)\\}`));
+      expect(match, selector).not.toBeNull();
+      return match![1];
+    };
+    expect(rule(".composer-model-menu")).toMatch(/overflow:\s*hidden/);
+    expect(rule(".composer-model-menu")).not.toMatch(/overflow-y:\s*auto/);
+    expect(rule(".composer-model-menu")).not.toMatch(/max-height/);
+    expect(rule(".composer-model-scroll")).toMatch(/overflow-y:\s*auto/);
+    expect(rule(".composer-model-menu ul")).not.toMatch(/overflow/);
+    expect(rule(".composer-model-menu ul")).not.toMatch(/max-height/);
+    expect(rule(".composer-model-menu-effort")).toMatch(/overflow:\s*visible/);
+    expect(rule(".composer-model-menu-effort")).not.toMatch(/overflow-y/);
+    expect(rule(".composer-model")).toMatch(/min-width:\s*0/);
+    expect(rule(".composer-model-button")).toMatch(/min-width:\s*0/);
+    expect(rule(".composer-actions")).toMatch(/min-width:\s*0/);
+    expect(css).toMatch(/@media \(max-width: 520px\) \{\s*\.composer-box \{\s*flex-wrap:\s*wrap;/);
   });
 });
 

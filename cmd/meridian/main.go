@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -363,8 +364,209 @@ func newProjectCommand(config *cliConfig) *cobra.Command {
 		},
 	}
 
-	project.AddCommand(create, list, get, apply)
+	var deleteYes bool
+	var deleteKey string
+	deleteProject := &cobra.Command{
+		Use:   "delete PROJECT",
+		Short: "Delete a project and everything it owns",
+		Long: "Delete a project by id or name. Capsules are removed through the Capsule delete path, " +
+			"including owned containers and volumes. Threads, transcripts, artifacts, the project environment, " +
+			"and project-scoped secrets are deleted. A named secret is destroyed when no other live project still uses it. " +
+			"The command prints what will be removed and requires --yes or the project name typed at the prompt.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(command *cobra.Command, args []string) error {
+			api, err := newAPI(config)
+			if err != nil {
+				return err
+			}
+			project, err := resolveProject(command.Context(), api, args[0])
+			if err != nil {
+				return err
+			}
+			capsules, threads, err := countProjectDependents(command.Context(), api, project.ID)
+			if err != nil {
+				return err
+			}
+			secrets := projectSecretCount(project)
+			if !config.json {
+				if _, err := fmt.Fprintf(
+					config.stdout,
+					"Delete project %s (%s)?\nThis permanently removes:\n  %d Capsules\n  %d threads\n  %d secrets\nTranscripts and artifacts are deleted with the project.\n",
+					project.Name, project.ID, capsules, threads, secrets,
+				); err != nil {
+					return err
+				}
+			}
+			if !deleteYes {
+				if !config.json {
+					if _, err := fmt.Fprint(config.stdout, "Type the project name to confirm: "); err != nil {
+						return err
+					}
+				}
+				reader := bufio.NewReader(config.stdin)
+				line, err := reader.ReadString('\n')
+				if err != nil && !errors.Is(err, io.EOF) {
+					return err
+				}
+				if strings.TrimRight(line, "\r\n") != project.Name {
+					return errors.New("confirmation did not match the project name; nothing was deleted")
+				}
+			}
+			key, err := idempotencyKey(deleteKey)
+			if err != nil {
+				return err
+			}
+			result, err := api.DeleteProject(
+				command.Context(),
+				&client.LifecycleMutationRequest{ExpectedResourceVersion: project.ResourceVersion},
+				client.DeleteProjectParams{ProjectId: project.ID, IdempotencyKey: key},
+			)
+			if err != nil {
+				return apiCallError(err)
+			}
+			deleted, ok := result.(*client.ProjectHeaders)
+			if !ok {
+				return responseError(result)
+			}
+			return config.writeProject(deleted.Response)
+		},
+	}
+	deleteProject.Flags().BoolVar(&deleteYes, "yes", false, "confirm deletion of the project and everything it owns")
+	deleteProject.Flags().StringVar(&deleteKey, "idempotency-key", "", "mutation replay key (generated if omitted)")
+
+	project.AddCommand(create, list, get, apply, deleteProject)
 	return project
+}
+
+func resolveProject(ctx context.Context, api *client.Client, ref string) (client.Project, error) {
+	got, err := api.GetProject(ctx, client.GetProjectParams{ProjectId: ref})
+	if err != nil {
+		return client.Project{}, apiCallError(err)
+	}
+	switch found := got.(type) {
+	case *client.ProjectHeaders:
+		return found.Response, nil
+	case *client.ErrorEnvelope:
+		if found.Error.Code != "not_found" {
+			return client.Project{}, responseError(found)
+		}
+	default:
+		return client.Project{}, responseError(got)
+	}
+	var cursor string
+	for {
+		params := client.ListProjectsParams{Limit: client.NewOptInt(100)}
+		if cursor != "" {
+			params.Cursor = client.NewOptString(cursor)
+		}
+		pageResult, err := api.ListProjects(ctx, params)
+		if err != nil {
+			return client.Project{}, apiCallError(err)
+		}
+		page, ok := pageResult.(*client.ProjectPage)
+		if !ok {
+			return client.Project{}, responseError(pageResult)
+		}
+		var match *client.Project
+		for index := range page.Items {
+			if page.Items[index].Name != ref {
+				continue
+			}
+			if match != nil {
+				return client.Project{}, fmt.Errorf("more than one project is named %q; pass the project id", ref)
+			}
+			match = &page.Items[index]
+		}
+		if match != nil {
+			return *match, nil
+		}
+		next, ok := page.NextCursor.Get()
+		if !ok || next == "" {
+			break
+		}
+		cursor = next
+	}
+	return client.Project{}, fmt.Errorf("project %q was not found", ref)
+}
+
+func countProjectDependents(ctx context.Context, api *client.Client, projectID string) (int, int, error) {
+	capsules := 0
+	threads := 0
+	var capsuleCursor string
+	for {
+		params := client.ListCapsulesParams{ProjectId: projectID, Limit: client.NewOptInt(100)}
+		if capsuleCursor != "" {
+			params.Cursor = client.NewOptString(capsuleCursor)
+		}
+		pageResult, err := api.ListCapsules(ctx, params)
+		if err != nil {
+			return 0, 0, apiCallError(err)
+		}
+		page, ok := pageResult.(*client.CapsulePage)
+		if !ok {
+			return 0, 0, responseError(pageResult)
+		}
+		for _, capsule := range page.Items {
+			if capsule.State == client.CapsuleStateDeleted {
+				continue
+			}
+			capsules++
+			count, err := countThreads(ctx, api, capsule.ID)
+			if err != nil {
+				return 0, 0, err
+			}
+			threads += count
+		}
+		next, ok := page.NextCursor.Get()
+		if !ok || next == "" {
+			return capsules, threads, nil
+		}
+		capsuleCursor = next
+	}
+}
+
+func countThreads(ctx context.Context, api *client.Client, capsuleID string) (int, error) {
+	total := 0
+	var cursor string
+	for {
+		params := client.ListThreadsParams{CapsuleId: capsuleID, Limit: client.NewOptInt(100)}
+		if cursor != "" {
+			params.Cursor = client.NewOptString(cursor)
+		}
+		pageResult, err := api.ListThreads(ctx, params)
+		if err != nil {
+			return 0, apiCallError(err)
+		}
+		page, ok := pageResult.(*client.ThreadPage)
+		if !ok {
+			return 0, responseError(pageResult)
+		}
+		total += len(page.Items)
+		next, ok := page.NextCursor.Get()
+		if !ok || next == "" {
+			return total, nil
+		}
+		cursor = next
+	}
+}
+
+func projectSecretCount(project client.Project) int {
+	names := map[string]struct{}{}
+	add := func(value client.OptString) {
+		name, ok := value.Get()
+		if ok && name != "" {
+			names[name] = struct{}{}
+		}
+	}
+	add(project.GitSecretName)
+	add(project.GitPushSecretName)
+	add(project.GithubAPISecretName)
+	for _, name := range project.HarnessSecretNames {
+		if name != "" {
+			names[name] = struct{}{}
+		}
+	}
+	return len(names)
 }
 
 func newSecretCommand(config *cliConfig) *cobra.Command {
@@ -782,7 +984,14 @@ func (c *cliConfig) writeProject(project client.Project) error {
 	if c.json {
 		return writeJSON(c.stdout, &project)
 	}
-	_, err := fmt.Fprintf(c.stdout, "%s\t%s\tversion=%d\n", project.ID, project.Name, project.ResourceVersion)
+	line := fmt.Sprintf("%s\t%s\tversion=%d", project.ID, project.Name, project.ResourceVersion)
+	if state, ok := project.State.Get(); ok && state != "" && state != client.ProjectStateActive {
+		line += "\tstate=" + string(state)
+		if failure, ok := project.Failure.Get(); ok && failure != "" {
+			line += "\tfailure=" + failure
+		}
+	}
+	_, err := fmt.Fprintf(c.stdout, "%s\n", line)
 	return err
 }
 

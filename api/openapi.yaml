@@ -751,6 +751,48 @@ paths:
           $ref: "#/components/responses/TooManyRequests"
         default:
           $ref: "#/components/responses/DefaultError"
+  /projects/{projectId}/delete:
+    post:
+      operationId: deleteProject
+      summary: Delete a Project and everything it owns
+      description: >
+        Deletes the Project's Capsules through the same path as deleteCapsule,
+        so the provider removes owned containers and volumes. Then deletes its
+        threads, transcripts, artifacts, project environment, and
+        project-scoped named secrets. Named-secret ciphertext, nonce, and
+        envelope metadata are destroyed when no other live Project still names
+        that secret. Transcripts and Moment artifacts are deleted with the
+        Project and are not retained. If an owned container cannot be removed,
+        the Project stays in state failed with the reason and a later delete
+        resumes from that point. Repeating a delete is idempotent.
+      tags: [projects]
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        $ref: "#/components/requestBodies/LifecycleMutation"
+      responses:
+        "202":
+          description: Project deletion accepted. The body is the Project in state deleting, failed, or deleted.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        default:
+          $ref: "#/components/responses/DefaultError"
   /projects/{projectId}/threads:
     post:
       operationId: createProjectThread
@@ -2790,6 +2832,11 @@ components:
         commitAuthorName: { type: string }
         commitAuthorEmail: { type: string }
         defaultBaseBranch: { type: string }
+        state:
+          $ref: "#/components/schemas/ProjectState"
+        failure:
+          type: string
+          description: Why deletion stopped. Set when state is failed.
         createdAt:
           type: string
           format: date-time
@@ -2800,6 +2847,14 @@ components:
           type: integer
           format: int64
           minimum: 1
+    ProjectState:
+      type: string
+      description: >
+        active is a live Project. deleting means cascade cleanup is in
+        progress. failed means an owned container could not be removed.
+        deleted means the Project and its transcripts, artifacts, environment,
+        and exclusive named secrets are gone.
+      enum: [active, deleting, failed, deleted]
     Secret:
       type: object
       required: [id, name, purpose, createdAt, updatedAt, resourceVersion]

@@ -230,6 +230,7 @@ func (s *Service) CreateProjectConfigured(
 			CommitAuthorName:    config.CommitAuthorName,
 			CommitAuthorEmail:   config.CommitAuthorEmail,
 			DefaultBaseBranch:   config.DefaultBaseBranch,
+			State:               domain.ProjectActive,
 			CreatedAt:           now,
 			UpdatedAt:           now,
 			ResourceVersion:     1,
@@ -357,6 +358,9 @@ func (s *Service) UpdateProjectHarnessImages(
 		if err != nil {
 			return err
 		}
+		if err := projectAcceptsWork(project); err != nil {
+			return err
+		}
 		if project.ResourceVersion != expected {
 			return domain.ErrConflict
 		}
@@ -454,6 +458,9 @@ func (s *Service) CreateCapsuleForHarness(
 		}
 		project, err := tx.GetProject(ctx, projectID)
 		if err != nil {
+			return err
+		}
+		if err := projectAcceptsWork(project); err != nil {
 			return err
 		}
 		image := ""

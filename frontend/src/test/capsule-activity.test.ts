@@ -6,8 +6,12 @@ import {
   capsuleSessions,
   defaultSession,
   describeCapsule,
+  destinationAfterCapsuleDelete,
+  destinationAfterProjectDelete,
   latestRun,
+  projectPath,
   relativeTime,
+  sessionPath,
 } from "../shell/capsuleActivity";
 
 const capsule: Capsule = {
@@ -253,6 +257,114 @@ describe("Capsule activity", () => {
         run({ state: "Succeeded", finishedAt: "2026-08-23T01:30:00Z" }),
       ]).since,
     ).toBe("2026-08-23T01:30:00Z");
+  });
+
+  it("leaves a deleted Capsule for the newest sibling, the Project, or the Inbox", () => {
+    const sibling = (overrides: Partial<Capsule>): Capsule => ({
+      ...capsule,
+      ...overrides,
+    });
+    const current = sibling({
+      id: "current",
+      updatedAt: "2026-08-23T03:00:00Z",
+      createdAt: "2026-08-23T03:00:00Z",
+    });
+    const recent = sibling({
+      id: "recent",
+      name: "Recent work",
+      updatedAt: "2026-08-23T05:00:00Z",
+      createdAt: "2026-08-23T00:00:00Z",
+    });
+    const createdLater = sibling({
+      id: "created-later",
+      updatedAt: "2026-08-23T01:00:00Z",
+      createdAt: "2026-08-23T04:00:00Z",
+    });
+    const otherProject = sibling({
+      id: "other-project",
+      projectId: "project-2",
+      updatedAt: "2026-08-23T09:00:00Z",
+    });
+    const deleting = sibling({
+      id: "deleting",
+      state: "Deleting",
+      desiredState: "Deleted",
+      updatedAt: "2026-08-23T08:00:00Z",
+    });
+    const desiredDeleted = sibling({
+      id: "desired-deleted",
+      state: "Ready",
+      desiredState: "Deleted",
+      updatedAt: "2026-08-23T07:00:00Z",
+    });
+    const deleted = sibling({
+      id: "already-deleted",
+      state: "Deleted",
+      desiredState: "Deleted",
+      updatedAt: "2026-08-23T06:00:00Z",
+    });
+    const siblings = [
+      current,
+      createdLater,
+      otherProject,
+      deleting,
+      desiredDeleted,
+      deleted,
+      recent,
+    ];
+    expect(destinationAfterCapsuleDelete(current, siblings, true)).toBe(
+      sessionPath(recent.id),
+    );
+    const tied = [
+      sibling({ id: "b", updatedAt: "2026-08-23T02:00:00Z", createdAt: "2026-08-23T01:00:00Z" }),
+      sibling({ id: "a", updatedAt: "2026-08-23T02:00:00Z", createdAt: "2026-08-23T02:00:00Z" }),
+    ];
+    expect(destinationAfterCapsuleDelete(current, tied, true)).toBe(sessionPath("a"));
+    const sameCreated = [
+      sibling({ id: "m", updatedAt: "2026-08-23T02:00:00Z", createdAt: "2026-08-23T02:00:00Z" }),
+      sibling({ id: "z", updatedAt: "2026-08-23T02:00:00Z", createdAt: "2026-08-23T02:00:00Z" }),
+    ];
+    expect(destinationAfterCapsuleDelete(current, sameCreated, true)).toBe(sessionPath("z"));
+    expect(destinationAfterCapsuleDelete(current, [current], true)).toBe(
+      projectPath(current.projectId),
+    );
+    expect(destinationAfterCapsuleDelete(current, [current], false)).toBe("/ui/");
+  });
+
+  it("leaves a deleted Project for the next Project's latest Capsule or the Inbox", () => {
+    const older = {
+      id: "project-older",
+      createdAt: "2026-08-23T00:00:00Z",
+      updatedAt: "2026-08-23T01:00:00Z",
+    };
+    const newer = {
+      id: "project-newer",
+      createdAt: "2026-08-23T00:00:00Z",
+      updatedAt: "2026-08-23T05:00:00Z",
+    };
+    const deleted = {
+      id: "project-deleted",
+      createdAt: "2026-08-23T00:00:00Z",
+      updatedAt: "2026-08-23T09:00:00Z",
+    };
+    const work = (overrides: Partial<Capsule>): Capsule => ({ ...capsule, ...overrides });
+    const recentWork = work({
+      id: "newer-recent",
+      projectId: newer.id,
+      updatedAt: "2026-08-23T04:00:00Z",
+    });
+    const olderWork = work({
+      id: "newer-old",
+      projectId: newer.id,
+      updatedAt: "2026-08-23T02:00:00Z",
+    });
+    expect(
+      destinationAfterProjectDelete(deleted.id, [older, newer, deleted], [recentWork, olderWork]),
+    ).toBe(sessionPath(recentWork.id));
+    expect(destinationAfterProjectDelete(deleted.id, [older, deleted], [])).toBe(
+      projectPath(older.id),
+    );
+    expect(destinationAfterProjectDelete(deleted.id, [deleted], [])).toBe("/ui/");
   });
 
   it("formats compact relative times", () => {

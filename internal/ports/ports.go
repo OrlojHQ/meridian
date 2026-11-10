@@ -33,6 +33,8 @@ type Reader interface {
 	GetPinnedHarnessSetup(context.Context, domain.CapsuleID, string) (string, error)
 	GetProject(context.Context, domain.ProjectID) (domain.Project, error)
 	ListProjects(context.Context, Page) ([]domain.Project, bool, error)
+	ListProjectsInDeletion(context.Context) ([]domain.Project, error)
+	ArtifactReferenced(context.Context, string) (bool, error)
 	GetSecret(context.Context, string) (domain.Secret, error)
 	ListSecrets(context.Context, Page) ([]domain.Secret, bool, error)
 	GetCapsule(context.Context, domain.CapsuleID) (domain.Capsule, error)
@@ -97,6 +99,8 @@ type Transaction interface {
 	Reader
 	InsertProject(context.Context, domain.Project) error
 	UpdateProject(context.Context, domain.Project, domain.ResourceVersion) error
+	UpdateProjectState(context.Context, domain.Project, domain.ResourceVersion) error
+	PurgeProjectContents(context.Context, domain.Project, time.Time) (domain.Project, []string, error)
 	InsertSecret(context.Context, domain.Secret) error
 	UpdateSecret(context.Context, domain.Secret, domain.ResourceVersion) error
 	DeleteSecret(context.Context, string, domain.ResourceVersion) error

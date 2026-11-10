@@ -95,9 +95,31 @@ type Project struct {
 	CommitAuthorName    string
 	CommitAuthorEmail   string
 	DefaultBaseBranch   string
+	State               ProjectState
+	Failure             string
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 	ResourceVersion     ResourceVersion
+}
+
+// ProjectState is the deletion lifecycle of a Project. Empty is treated as
+// active by storage scans of rows written before the state column existed.
+type ProjectState string
+
+const (
+	ProjectActive   ProjectState = "active"
+	ProjectDeleting ProjectState = "deleting"
+	ProjectFailed   ProjectState = "failed"
+	ProjectDeleted  ProjectState = "deleted"
+)
+
+func (s ProjectState) Valid() bool {
+	switch s {
+	case ProjectActive, ProjectDeleting, ProjectFailed, ProjectDeleted:
+		return true
+	default:
+		return false
+	}
 }
 
 func ValidHarnessName(name string) bool {
@@ -1079,7 +1101,11 @@ func CanTransition(from, to CapsuleState) bool {
 			to == CapsulePaused || to == CapsuleDeleting
 	case CapsuleDeleting:
 		return to == CapsuleDeleted || to == CapsuleFailed
-	case CapsuleSealed, CapsuleDeleted:
+	case CapsuleSealed:
+		// Project deletion cleans a sealed Capsule's owned container. The
+		// public Capsule delete API still rejects terminal states.
+		return to == CapsuleDeleting
+	case CapsuleDeleted:
 		return false
 	default:
 		return false

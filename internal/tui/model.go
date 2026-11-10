@@ -2197,6 +2197,61 @@ func (m *Model) openThreadConfirm(action Action, title, note string) {
 	}
 }
 
+func (m *Model) openProjectDelete() {
+	project := m.currentProject()
+	if project == nil || projectState(project) == client.ProjectStateDeleted {
+		m.status = "Project deletion is unavailable"
+		return
+	}
+	capsules, threads := 0, 0
+	for _, detail := range m.snapshot.Capsules {
+		if detail.Project.ID != project.ID || detail.Capsule.State == client.CapsuleStateDeleted {
+			continue
+		}
+		capsules++
+		threads += len(detail.Threads)
+	}
+	m.overlay = overlay{
+		kind: overlayForm, title: "Delete Project",
+		note: fmt.Sprintf(
+			"Delete %s? This removes %d Capsules, %d threads, and %d secrets. Transcripts and artifacts are deleted. Type the project name to confirm.",
+			safeInline(project.Name), capsules, threads, projectSecretCount(*project),
+		),
+		action: ActionRequest{
+			Action: ActionProjectDelete, ProjectID: project.ID,
+			ResourceVersion: project.ResourceVersion, Name: project.Name,
+		},
+		fields: []field{{label: "Project name"}},
+	}
+}
+
+func projectState(project *client.Project) client.ProjectState {
+	if project == nil {
+		return ""
+	}
+	state, _ := project.State.Get()
+	return state
+}
+
+func projectSecretCount(project client.Project) int {
+	names := map[string]struct{}{}
+	add := func(value client.OptString) {
+		name, ok := value.Get()
+		if ok && name != "" {
+			names[name] = struct{}{}
+		}
+	}
+	add(project.GitSecretName)
+	add(project.GitPushSecretName)
+	add(project.GithubAPISecretName)
+	for _, name := range project.HarnessSecretNames {
+		if name != "" {
+			names[name] = struct{}{}
+		}
+	}
+	return len(names)
+}
+
 func (m *Model) openThreadDelete() {
 	thread := m.selectedThread()
 	if thread == nil || thread.Thread.State == client.ThreadStateDeleted {
@@ -2391,6 +2446,10 @@ func (m Model) formRequest() (ActionRequest, error) {
 	case ActionThreadDelete:
 		if strings.TrimSpace(m.overlay.fields[0].value) != "crypto-shred" {
 			return ActionRequest{}, errors.New("type crypto-shred to confirm irreversible deletion")
+		}
+	case ActionProjectDelete:
+		if m.overlay.fields[0].value != request.Name {
+			return ActionRequest{}, errors.New("type the project name to confirm deletion")
 		}
 	}
 	return request, nil

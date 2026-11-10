@@ -47,6 +47,13 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   gateway, which local Docker installs now start on their own. Claude login
   is the separate control-plane sign-in above.
 
+### Fixed
+
+- The Thread composer lists models and reasoning effort in separate menus, so
+  a long model list no longer scrolls inside a second scroll area. The effort
+  button is hidden when the harness reports no choice, and both controls stay
+  inside the message box on a narrow screen.
+
 ### Security
 
 - Go toolchain bumped from 1.26.5 to 1.26.10 in `go.mod`, CI, release, and
