@@ -460,3 +460,79 @@ func TestUpstreamReason(t *testing.T) {
 		t.Fatalf("truncated JSON produced %q", got)
 	}
 }
+
+func TestGatewayChatGPTShapeRefreshAndSignIn(t *testing.T) {
+	var keys []string
+	var bodies []string
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		keys = append(keys, r.Header.Get("Authorization"))
+		bodies = append(bodies, string(body))
+		if r.URL.Path != "/v1/responses" {
+			t.Errorf("upstream path %s", r.URL.Path)
+		}
+		if r.Header.Get("Authorization") == "Bearer stale" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: ok\n\n")
+	}))
+	defer upstream.Close()
+	refreshes := 0
+	signedOut := false
+	g := New(func(context.Context, Lease) (Upstream, error) {
+		if signedOut {
+			return Upstream{}, ErrSignInRequired
+		}
+		return Upstream{Key: "stale", Refresh: func(context.Context) (string, error) {
+			refreshes++
+			return "fresh", nil
+		}}, nil
+	}, Options{})
+	defer g.Close()
+	g.client = upstream.Client()
+	g.upstream[ChatGPT] = upstream.URL
+	token, err := g.Issue(Lease{Provider: ChatGPT, Connection: "c", Project: "p", Capsule: "k"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	send := func(path, body string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("POST", path, strings.NewReader(body))
+		r.Header.Set("Authorization", "Bearer "+token)
+		w := httptest.NewRecorder()
+		g.ServeHTTP(w, r)
+		return w
+	}
+	valid := `{"model":"gpt","stream":true,"store":false,"input":[]}`
+	for _, tc := range []struct {
+		path, body string
+		status     int
+	}{
+		{"/provider-gateway/chatgpt/v1/chat/completions", valid, 404},
+		{"/provider-gateway/chatgpt/v1/responses", `{"stream":true,"input":[]}`, 400},
+		{"/provider-gateway/chatgpt/v1/responses", `{"stream":false,"store":false}`, 400},
+		{"/provider-gateway/chatgpt/v1/responses", `{"stream":true,"store":false,"previous_response_id":"r"}`, 400},
+		{"/provider-gateway/chatgpt/v1/responses", `{"stream":true,"store":false,"background":true}`, 400},
+		{"/provider-gateway/chatgpt/v1/responses", `[]`, 400},
+	} {
+		if w := send(tc.path, tc.body); w.Code != tc.status {
+			t.Fatalf("%s %s: %d want %d", tc.path, tc.body, w.Code, tc.status)
+		}
+	}
+	if len(keys) != 0 {
+		t.Fatalf("rejected requests reached upstream: %d", len(keys))
+	}
+	w := send("/provider-gateway/chatgpt/v1/responses", valid)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "data: ok") {
+		t.Fatalf("valid request: %d %s", w.Code, w.Body.String())
+	}
+	if refreshes != 1 || len(keys) != 2 || keys[0] != "Bearer stale" || keys[1] != "Bearer fresh" || bodies[0] != valid || bodies[1] != valid {
+		t.Fatalf("refresh retry: refreshes=%d keys=%v bodies=%v", refreshes, keys, bodies)
+	}
+	signedOut = true
+	w = send("/provider-gateway/chatgpt/v1/responses", valid)
+	if w.Code != http.StatusUnauthorized || !strings.Contains(w.Body.String(), "sign in to ChatGPT again") {
+		t.Fatalf("sign-in required: %d %s", w.Code, w.Body.String())
+	}
+}

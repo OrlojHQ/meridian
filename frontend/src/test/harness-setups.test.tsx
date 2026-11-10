@@ -70,7 +70,7 @@ it("groups settings under plain section headings without nested disclosures",asy
  expect(screen.getByRole("button",{name:"Add skills folder"})).toBeInTheDocument();
  expect(view.container).toHaveTextContent("Dependency folders such as node_modules and login caches are excluded; you sign in to each harness separately.");
  expect(view.container).toHaveTextContent("Review import uploads the selected files to your Meridian server for checks.");
- expect(view.container).toHaveTextContent("Subscription logins stay in the harness and are never imported.");
+ expect(view.container).toHaveTextContent("Other subscription logins, such as Claude, stay in the harness and are never imported.");
  expect(view.container).toHaveTextContent("meridian harness import");
  expect(screen.getByLabelText("API key")).toHaveAttribute("type","password");
 });

@@ -845,6 +845,12 @@ token-authenticated API listener; that was true before this gateway and is
 not something the gateway can close. A host firewall that drops
 container-to-host traffic disables the gateway rather than weakening it.
 
+A ChatGPT plan connection (ADR 0036, proposed) lets any process in a
+Capsule holding its lease spend the account holder's plan usage until the
+lease expires or the connection is revoked. Compromise of both the daemon
+and the credential KEK reveals the refresh token, which stays usable until
+the user revokes it in ChatGPT.
+
 These risks must be stated in deployment documentation and revisited before implementing a provider, credentials, PTY access, Moments, delivery, multi-user access, or internet-facing operation.
 
 ## Personal harness setup and provider gateway boundary
@@ -933,8 +939,9 @@ The redaction is a best-effort filter: a hostile server could still spell a
 secret in a form these patterns miss, so it is not a guarantee against an
 upstream that wants to leak data it holds.
 
-Subscription credentials and MCP account tokens are not imported or managed by
-this feature. Native login state remains ephemeral Capsule-local state.
+Subscription login caches and MCP account tokens are not imported by this
+feature. Native login state remains ephemeral Capsule-local state. The one
+managed subscription credential is the ChatGPT plan connection below.
 Structured sessions cannot sign in interactively; official structured profiles
 rely on the provider connection's gateway lease. The lease reaches the harness
 only through its process environment, and Meridian never writes it to the
@@ -945,6 +952,42 @@ and recovery must retain the database and installation encryption key together;
 a missing key must not silently be replaced when saved setups or connections
 exist. A daemon restart invalidates gateway leases and requires active harness
 sessions to restart. See ADR 0024 and personal-harness-setups.md.
+
+ChatGPT plan connections (`chatgpt`, ADR 0036, proposed) hold a user's
+ChatGPT OAuth token set on the control plane so Codex can use plan usage
+without a per-Capsule sign-in. The refresh token is the most valuable
+credential Meridian would store: it grants plan inference for that account
+until revoked in ChatGPT. Controls:
+
+- The token set never enters a Capsule. Capsules receive only the gateway
+  URL and their 24-hour lease, exactly as for API-key connections.
+- The daemon alone holds the PKCE verifier, `state`, and `nonce`, so a
+  callback code relayed by the CLI or pasted from the browser cannot be
+  redeemed by anyone else. Only the installation principal can start or
+  complete sign-in. The ID token is verified against OpenAI's JWKS before
+  anything is stored.
+- Tokens are sealed in the credential-KEK connection envelope, bound to the
+  connection, its type, the issued client ID, and a credential generation
+  counter. They never appear in API responses, URLs, events, logs, the
+  browser, or the CLI. Refreshes are single-flight and rotate atomically.
+- The gateway allows only `POST /v1/responses` for `chatgpt`, requires
+  `stream: true` and `store: false`, and rejects `previous_response_id` and
+  `background`. A hostile Capsule can still send arbitrary prompts and spend
+  plan usage within that shape until its lease expires or the connection is
+  revoked. Disconnect revokes the refresh token upstream and reports when
+  revocation was not confirmed.
+- The OAuth loopback listener binds only `127.0.0.1`, only during one
+  attempt, and accepts only the callback path with a matching `state`.
+  Another local process could race for the port and receive the callback,
+  but without the daemon's verifier it cannot redeem the code.
+- OpenAI's terms require that tokens stay under the account holder's
+  control and are not shared. Meridian is single-principal but cannot prove
+  who controls an installation, so a shared or hosted installation using
+  one person's ChatGPT login is a documented operator violation, not a
+  prevented one.
+
+Claude subscription OAuth tokens are not managed. Anthropic restricts them
+to Claude Code and Claude.ai, so Claude Code sign-in stays Capsule-local.
 
 Portable npx MCP dependency preparation executes npm only inside the Capsule,
 using exact top-level package versions, a fixed HTTPS registry, disabled lifecycle

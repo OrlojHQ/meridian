@@ -231,7 +231,7 @@ func ConnectionSupported(harness, provider, model string) bool {
 	case "claude":
 		return provider == "anthropic" || provider == "anthropic-compatible"
 	case "codex":
-		return provider == "openai" || provider == "openai-compatible"
+		return provider == "openai" || provider == "openai-compatible" || provider == "chatgpt"
 	case "opencode", "pi":
 		return provider == "openai" || provider == "anthropic" || provider == "openai-compatible" && model != ""
 	case "dsh":

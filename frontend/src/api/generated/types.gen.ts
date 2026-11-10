@@ -1149,9 +1149,56 @@ export type ProviderConnection = {
      * The reasoning effort levels the default model accepts, in order. Harnesses offer exactly these, plus off, for that model.
      */
     reasoningEfforts?: Array<ReasoningEffortLevel>;
+    /**
+     * ChatGPT connections only. The signed-in account's email, for display.
+     */
+    account?: string;
+    /**
+     * ChatGPT connections only. The sign-in stopped working; sign in again to resume.
+     */
+    needsSignIn?: boolean;
+    /**
+     * ChatGPT connections only. Local tokens were deleted but OpenAI did not confirm revocation; disconnect Meridian in ChatGPT's settings.
+     */
+    revocationUnconfirmed?: boolean;
     createdAt: string;
     resourceVersion: number;
     revoked: boolean;
+};
+
+export type ChatGptSignInRequest = {
+    /**
+     * Existing ChatGPT connection to reauthorize; omit to create a new one.
+     */
+    connectionId?: string;
+    /**
+     * Ask the daemon to accept the browser's loopback callback itself. Use when the browser runs on the daemon's machine.
+     */
+    listen?: boolean;
+};
+
+export type ChatGptSignInCompletion = {
+    /**
+     * The full address the browser was redirected to after approving.
+     */
+    callbackUrl: string;
+};
+
+export type ChatGptSignIn = {
+    id: string;
+    /**
+     * OpenAI authorization page to open in the user's browser.
+     */
+    authorizationUrl: string;
+    redirectUri: string;
+    /**
+     * Whether the daemon is accepting the loopback callback itself.
+     */
+    listening: boolean;
+    expiresAt: string;
+    state: 'pending' | 'completed' | 'failed';
+    connectionId?: string;
+    failure?: string;
 };
 
 export type ProviderConnectionPage = {
@@ -1161,6 +1208,10 @@ export type ProviderConnectionPage = {
      * Whether the daemon permits custom endpoints to opt in to plaintext HTTP on private networks.
      */
     privateHttpAllowed?: boolean;
+    /**
+     * Whether Sign in with ChatGPT can create plan connections on this installation.
+     */
+    chatgptAvailable?: boolean;
 };
 
 /**
@@ -1169,9 +1220,9 @@ export type ProviderConnectionPage = {
 export type ReasoningEffortLevel = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 /**
- * openai and anthropic use fixed official upstreams. openai-compatible and anthropic-compatible use an operator-configured baseUrl.
+ * openai and anthropic use fixed official upstreams. openai-compatible and anthropic-compatible use an operator-configured baseUrl. chatgpt uses the signed-in user's ChatGPT plan; it is created only by Sign in with ChatGPT and accepts only rename and revocation here.
  */
-export type ProviderConnectionType = 'openai' | 'anthropic' | 'openai-compatible' | 'anthropic-compatible';
+export type ProviderConnectionType = 'openai' | 'anthropic' | 'openai-compatible' | 'anthropic-compatible' | 'chatgpt';
 
 export type ProviderConnectionRequest = {
     name: string;
@@ -1523,6 +1574,85 @@ export type UpdateProviderConnectionResponses = {
 };
 
 export type UpdateProviderConnectionResponse = UpdateProviderConnectionResponses[keyof UpdateProviderConnectionResponses];
+
+export type StartChatGptSignInData = {
+    body: ChatGptSignInRequest;
+    path?: never;
+    query?: never;
+    url: '/provider-connections/chatgpt/sign-ins';
+};
+
+export type StartChatGptSignInErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type StartChatGptSignInError = StartChatGptSignInErrors[keyof StartChatGptSignInErrors];
+
+export type StartChatGptSignInResponses = {
+    /**
+     * Successful operation
+     */
+    200: ChatGptSignIn;
+};
+
+export type StartChatGptSignInResponse = StartChatGptSignInResponses[keyof StartChatGptSignInResponses];
+
+export type GetChatGptSignInData = {
+    body?: never;
+    path: {
+        signInId: string;
+    };
+    query?: never;
+    url: '/provider-connections/chatgpt/sign-ins/{signInId}';
+};
+
+export type GetChatGptSignInErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type GetChatGptSignInError = GetChatGptSignInErrors[keyof GetChatGptSignInErrors];
+
+export type GetChatGptSignInResponses = {
+    /**
+     * Successful operation
+     */
+    200: ChatGptSignIn;
+};
+
+export type GetChatGptSignInResponse = GetChatGptSignInResponses[keyof GetChatGptSignInResponses];
+
+export type CompleteChatGptSignInData = {
+    body: ChatGptSignInCompletion;
+    path: {
+        signInId: string;
+    };
+    query?: never;
+    url: '/provider-connections/chatgpt/sign-ins/{signInId}/complete';
+};
+
+export type CompleteChatGptSignInErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type CompleteChatGptSignInError = CompleteChatGptSignInErrors[keyof CompleteChatGptSignInErrors];
+
+export type CompleteChatGptSignInResponses = {
+    /**
+     * Successful operation
+     */
+    200: ChatGptSignIn;
+};
+
+export type CompleteChatGptSignInResponse = CompleteChatGptSignInResponses[keyof CompleteChatGptSignInResponses];
 
 export type GetProjectProviderConnectionData = {
     body?: never;

@@ -158,6 +158,48 @@ the upstream host, and anything that looks like a key with `[url]` or
 `[redacted]`. Upstream headers and other response content are never passed
 on.
 
+### Sign in with ChatGPT
+
+Codex can use your ChatGPT plan instead of an API key. Sign in once and every
+Codex Capsule, terminal or Thread, uses it without its own sign-in. This uses
+OpenAI's Sign in with ChatGPT plan usage for self-hosted apps, so usage counts
+against your plan's Codex limits. It needs the provider gateway, as above.
+
+In **Harness settings → Provider connections**, select **Continue with
+ChatGPT**, open the sign-in page, and approve Meridian. If your browser runs
+on the same computer as `meridiand`, the page reports success and Meridian
+updates by itself. Otherwise the browser lands on a `127.0.0.1:1455` page that
+fails to load; copy that address into Meridian and select **Finish sign-in**.
+From a terminal on the computer where your browser runs:
+
+```console
+meridian harness connect chatgpt
+```
+
+Then authorize the connection for each Project on its first Codex launch, as
+for any other connection.
+
+- The daemon holds the sign-in secrets and exchanges the code itself. The
+  token set is sealed with the installation credential key and refreshed on
+  the control plane. Capsules, the browser, and the CLI never receive it.
+- The gateway allows only `POST /v1/responses` for ChatGPT connections and
+  rejects requests without `stream: true` and `store: false`, as OpenAI
+  requires. Codex already sends both.
+- If the sign-in stops working, for example after you disconnect Meridian in
+  ChatGPT or change your password, the connection shows **Sign-in expired**
+  and Codex reports that it must sign in again. Select **Sign in again** once;
+  running Capsules resume on their next request.
+- **Sign out** deletes the tokens and revokes them at OpenAI. If OpenAI does
+  not confirm, Meridian says so; disconnect Meridian in ChatGPT's settings.
+- OpenAI's terms require that the installation is controlled by you alone.
+  Do not share a ChatGPT connection with other people or offer it as a hosted
+  service.
+
+Claude Code subscriptions cannot be shared this way: Anthropic restricts
+Claude Free, Pro, and Max OAuth tokens to Claude Code and Claude.ai. Claude
+Code still signs in inside each Capsule, or uses an Anthropic API connection.
+See ADR 0036.
+
 ### Self-hosted models (vLLM, Ollama, LiteLLM)
 
 A custom endpoint connection sends a harness's inference requests to your own

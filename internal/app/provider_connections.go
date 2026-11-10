@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"github.com/OrlojHQ/meridian/internal/chatgptauth"
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/harnesssetup"
 	"github.com/OrlojHQ/meridian/internal/ports"
@@ -27,6 +28,11 @@ type ConnectionInput struct {
 // The custom upstream is bound into the envelope context, so a stored key
 // cannot be redirected to another endpoint by editing connection metadata.
 func connectionEnvelopeID(item domain.ProviderConnection) string {
+	if item.Provider == providergateway.ChatGPT {
+		// Token sets rotate without a resource version change, so they are
+		// bound to their credential generation instead (ADR 0036).
+		return fmt.Sprintf("connection:%s:%s:generation:%d:%t", item.ID, item.Provider, item.CredentialGeneration, item.Revoked)
+	}
 	id := fmt.Sprintf("connection:%s:%s:%d:%t", item.ID, item.Provider, item.ResourceVersion, item.Revoked)
 	if providergateway.Custom(item.Provider) {
 		id += fmt.Sprintf(":%q:%t", item.BaseURL, item.AllowPrivateHTTP)
@@ -97,6 +103,9 @@ func (s *Service) PutProviderConnection(ctx context.Context, id string, input Co
 	name, err := requireName(input.Name)
 	if err != nil {
 		return domain.ProviderConnection{}, err
+	}
+	if input.Provider == providergateway.ChatGPT {
+		return s.putChatGPTConnection(ctx, id, name, input)
 	}
 	if !input.Revoked {
 		if input, err = s.validateConnectionInput(input); err != nil {
@@ -257,6 +266,10 @@ func (s *Service) authorizeProviderLease(ctx context.Context, lease providergate
 		if connection.Revoked || connection.Provider != lease.Provider {
 			return domain.ErrConflict
 		}
+		if connection.Provider == providergateway.ChatGPT {
+			// Resolved below: a refresh may need the network and a write.
+			return nil
+		}
 		raw, err := s.secretKey.OpenSetup(connectionEnvelopeID(connection), connection.KeyID, connection.Nonce, connection.Ciphertext)
 		if err != nil {
 			return err
@@ -265,7 +278,87 @@ func (s *Service) authorizeProviderLease(ctx context.Context, lease providergate
 		upstream = providergateway.Upstream{Key: string(raw), BaseURL: connection.BaseURL, AllowPrivateHTTP: connection.AllowPrivateHTTP}
 		return nil
 	})
+	if err == nil && lease.Provider == providergateway.ChatGPT {
+		return s.chatGPTUpstream(ctx, lease.Connection)
+	}
 	return upstream, err
+}
+
+// putChatGPTConnection handles the only edits a ChatGPT connection accepts
+// through the connection API: rename and revoke. Its token set comes only
+// from a completed sign-in, so it is never replaced here.
+func (s *Service) putChatGPTConnection(ctx context.Context, id, name string, input ConnectionInput) (domain.ProviderConnection, error) {
+	if id == "" {
+		return domain.ProviderConnection{}, fmt.Errorf("%w: sign in with ChatGPT to create this connection", domain.ErrInvalid)
+	}
+	if input.APIKey != "" || input.BaseURL != "" || input.DefaultModel != "" || input.AllowPrivateHTTP || len(input.ReasoningEfforts) != 0 {
+		return domain.ProviderConnection{}, fmt.Errorf("%w: a ChatGPT connection takes no key or endpoint; sign in again to change its account", domain.ErrInvalid)
+	}
+	var result domain.ProviderConnection
+	var tokens *chatgptauth.TokenSet
+	unchanged := false
+	err := s.store.Transact(ctx, func(tx ports.Transaction) error {
+		var err error
+		result, err = tx.GetProviderConnection(ctx, id)
+		if err != nil {
+			return err
+		}
+		if result.ResourceVersion != input.ExpectedResourceVersion || result.Provider != input.Provider {
+			return domain.ErrConflict
+		}
+		if result.Revoked {
+			if input.Revoked && name == result.Name {
+				unchanged = true
+				return nil
+			}
+			return fmt.Errorf("%w: this ChatGPT connection is revoked; sign in again to create a new one", domain.ErrConflict)
+		}
+		result.Name = name
+		result.ResourceVersion++
+		if input.Revoked {
+			if set, openErr := s.openChatGPT(result); openErr == nil {
+				tokens = &set
+			}
+			result.Revoked, result.NeedsSignIn = true, false
+			result.CredentialGeneration++
+			result.KeyID = s.secretKey.ID
+			// Keep a valid encrypted empty envelope, never old token material.
+			result.Nonce, result.Ciphertext, err = s.secretKey.SealSetup(connectionEnvelopeID(result), nil)
+			if err != nil {
+				return err
+			}
+		}
+		if err := tx.PutProviderConnection(ctx, result); err != nil {
+			return err
+		}
+		return s.appendEvent(ctx, tx, "provider_connection", result.ID, "provider_connection.updated", result.ResourceVersion, nil)
+	})
+	if err != nil || !input.Revoked || unchanged {
+		return result, err
+	}
+	s.gateway.Revoke(result.ID, "", "")
+	if tokens != nil && s.revokeChatGPTUpstream(ctx, *tokens) {
+		return result, nil
+	}
+	// Local tokens are gone either way; record that OpenAI did not confirm.
+	err = s.store.Transact(ctx, func(tx ports.Transaction) error {
+		current, err := tx.GetProviderConnection(ctx, id)
+		if err != nil {
+			return err
+		}
+		if current.RevocationUnconfirmed {
+			result = current
+			return nil
+		}
+		current.RevocationUnconfirmed = true
+		current.ResourceVersion++
+		if err := tx.PutProviderConnection(ctx, current); err != nil {
+			return err
+		}
+		result = current
+		return s.appendEvent(ctx, tx, "provider_connection", current.ID, "provider_connection.updated", current.ResourceVersion, nil)
+	})
+	return result, err
 }
 func (s *Service) runtimeProviderConnection(ctx context.Context, capsule domain.Capsule, harness string) (*harnesssetup.Connection, error) {
 	harness = strings.TrimSuffix(harness, "-structured")

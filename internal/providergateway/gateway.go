@@ -3,6 +3,7 @@
 package providergateway
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -27,13 +28,20 @@ const (
 	Anthropic           = "anthropic"
 	OpenAICompatible    = "openai-compatible"
 	AnthropicCompatible = "anthropic-compatible"
+	// ChatGPT uses a user's ChatGPT plan through Sign in with ChatGPT
+	// (ADR 0036). Its upstream credential is a refreshable OAuth token.
+	ChatGPT = "chatgpt"
 )
+
+// ErrSignInRequired is returned by Authorize when a ChatGPT connection's
+// sign-in is no longer valid. The gateway tells the harness to sign in again.
+var ErrSignInRequired = errors.New("ChatGPT sign-in required")
 
 // API returns the wire protocol family of a provider connection type, or ""
 // for an unknown type.
 func API(provider string) string {
 	switch provider {
-	case OpenAI, OpenAICompatible:
+	case OpenAI, OpenAICompatible, ChatGPT:
 		return OpenAI
 	case Anthropic, AnthropicCompatible:
 		return Anthropic
@@ -62,6 +70,9 @@ type Upstream struct {
 	Key              string
 	BaseURL          string
 	AllowPrivateHTTP bool
+	// Refresh, when set, forces a new upstream credential. The gateway calls
+	// it once after an upstream 401 and retries the request with the result.
+	Refresh func(context.Context) (string, error)
 }
 type Authorize func(context.Context, Lease) (Upstream, error)
 
@@ -179,7 +190,7 @@ func New(authorize Authorize, options Options) *Gateway {
 		client:   &http.Client{Transport: transport(nil, 30*time.Second), CheckRedirect: noRedirect},
 		custom:   &http.Client{Transport: transport(dialable, customHeaderTimeout), CheckRedirect: noRedirect},
 		private:  &http.Client{Transport: transport(PrivateNetwork, customHeaderTimeout), CheckRedirect: noRedirect},
-		upstream: map[string]string{OpenAI: "https://api.openai.com", Anthropic: "https://api.anthropic.com"},
+		upstream: map[string]string{OpenAI: "https://api.openai.com", ChatGPT: "https://api.openai.com", Anthropic: "https://api.anthropic.com"},
 	}
 }
 func (g *Gateway) Issue(lease Lease) (string, error) {
@@ -250,6 +261,10 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	route = "/" + route
 	api := API(provider)
 	allowed := api == OpenAI && (route == "/v1/responses" || route == "/v1/chat/completions") || api == Anthropic && (route == "/v1/messages" || route == "/v1/messages/count_tokens")
+	if provider == ChatGPT {
+		// Plan usage covers only the Responses API (ADR 0036).
+		allowed = route == "/v1/responses"
+	}
 	// Anthropic SDK beta clients mark requests with ?beta=true. It selects
 	// nothing upstream, so it is accepted and not forwarded.
 	query := r.URL.RawQuery == "" || api == Anthropic && r.URL.RawQuery == "beta=true"
@@ -262,6 +277,10 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resolved, err := g.authorize(r.Context(), item.lease)
+	if errors.Is(err, ErrSignInRequired) {
+		gatewayError(w, "ChatGPT sign-in expired; sign in to ChatGPT again in Meridian's Harness settings", http.StatusUnauthorized)
+		return
+	}
 	if err != nil {
 		gatewayError(w, "provider connection unavailable", http.StatusForbidden)
 		return
@@ -280,11 +299,32 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 8<<20)
 	defer r.Body.Close()
+	// ChatGPT requests are buffered: their shape is checked, and they can be
+	// retried once with a refreshed credential.
+	var buffered []byte
+	if provider == ChatGPT {
+		buffered, err = io.ReadAll(r.Body)
+		if err != nil {
+			gatewayError(w, "provider request too large", http.StatusRequestEntityTooLarge)
+			return
+		}
+		if reason := chatGPTRequestProblem(buffered); reason != "" {
+			gatewayError(w, reason, http.StatusBadRequest)
+			return
+		}
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
 	defer cancel()
 	stop := context.AfterFunc(item.ctx, cancel)
 	defer stop()
-	upstream, err := http.NewRequestWithContext(ctx, http.MethodPost, target+route, r.Body)
+	newRequest := func() (*http.Request, error) {
+		var body io.Reader = r.Body
+		if buffered != nil {
+			body = bytes.NewReader(buffered)
+		}
+		return http.NewRequestWithContext(ctx, http.MethodPost, target+route, body)
+	}
+	upstream, err := newRequest()
 	if err != nil {
 		gatewayError(w, "invalid provider request", 400)
 		return
@@ -309,6 +349,29 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	response, err := client.Do(upstream)
+	if err == nil && response.StatusCode == http.StatusUnauthorized && resolved.Refresh != nil && buffered != nil {
+		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 64<<10))
+		_ = response.Body.Close()
+		key, refreshErr := resolved.Refresh(ctx)
+		if errors.Is(refreshErr, ErrSignInRequired) {
+			gatewayError(w, "ChatGPT sign-in expired; sign in to ChatGPT again in Meridian's Harness settings", http.StatusUnauthorized)
+			return
+		}
+		if refreshErr != nil {
+			gatewayError(w, "provider connection unavailable", http.StatusForbidden)
+			return
+		}
+		resolved.Key = key
+		retry, buildErr := newRequest()
+		if buildErr != nil {
+			gatewayError(w, "invalid provider request", 400)
+			return
+		}
+		retry.Header.Set("Content-Type", "application/json")
+		retry.Header.Set("Authorization", "Bearer "+key)
+		upstream = retry
+		response, err = client.Do(upstream)
+	}
 	if err != nil {
 		gatewayError(w, "provider request failed", http.StatusBadGateway)
 		return
@@ -363,4 +426,29 @@ func writeGatewayError(w http.ResponseWriter, message string, status, upstreamSt
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]any{"error": body})
+}
+
+// chatGPTRequestProblem enforces OpenAI's plan-usage request shape: streamed,
+// not stored, and without server-side continuation or background runs. It
+// returns "" for an acceptable body. Only these fields are read; the body is
+// forwarded unmodified.
+func chatGPTRequestProblem(body []byte) string {
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(body, &fields) != nil {
+		return "provider request must be a JSON object"
+	}
+	literal := func(name string) string { return string(bytes.TrimSpace(fields[name])) }
+	if literal("stream") != "true" {
+		return "ChatGPT plan requests must set stream to true"
+	}
+	if literal("store") != "false" {
+		return "ChatGPT plan requests must set store to false"
+	}
+	if value := literal("previous_response_id"); value != "" && value != "null" {
+		return "ChatGPT plan requests cannot use previous_response_id"
+	}
+	if value := literal("background"); value != "" && value != "null" && value != "false" {
+		return "ChatGPT plan requests cannot run in the background"
+	}
+	return ""
 }
