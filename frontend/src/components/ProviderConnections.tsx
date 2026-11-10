@@ -23,6 +23,22 @@ export function connectionSupports(harness:string,item:ProviderConnection){
  }
 }
 
+// A ChatGPT sign-in that needs to be repeated cannot serve a turn.
+export function preferredConnectionId(chosen: string | undefined, grantLoaded: boolean, granted: string | undefined, available: ProviderConnection[]) {
+ if (chosen !== undefined) return chosen;
+ if (!grantLoaded) return "";
+ if (granted && available.some(item => item.id === granted)) return granted;
+ const usable = available.filter(item => !item.needsSignIn);
+ return usable.length === 1 ? usable[0].id : "";
+}
+
+export function connectionModelNote(item: ProviderConnection | undefined) {
+ if (!item) return "";
+ if (item.defaultModel) return `Default model: ${item.defaultModel}`;
+ if (item.provider === "openai" || item.provider === "anthropic" || item.provider === "chatgpt") return "The harness will choose";
+ return "";
+}
+
 const effortLevels:ReasoningEffortLevel[]=["minimal","low","medium","high","xhigh","max"];
 const effortLabels:Record<ReasoningEffortLevel,string>={minimal:"Minimal",low:"Low",medium:"Medium",high:"High",xhigh:"Extra high",max:"Max"};
 
