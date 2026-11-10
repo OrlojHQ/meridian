@@ -1704,3 +1704,48 @@ func testSnapshot() Snapshot {
 		},
 	}
 }
+
+func TestProjectDeleteRequiresTheProjectName(t *testing.T) {
+	now := fixedNow()
+	project := client.Project{
+		ID: "project-1", Name: "demo", ResourceVersion: 4,
+		GitSecretName:      client.NewOptString("GIT_TOKEN"),
+		HarnessSecretNames: []string{"TOKEN"},
+		CreatedAt:          now, UpdatedAt: now,
+	}
+	snapshot := Snapshot{
+		Projects: []client.Project{project},
+		Capsules: []CapsuleDetail{{
+			Project: project,
+			Capsule: client.Capsule{
+				ID: "capsule-1", ProjectId: project.ID, Name: "work",
+				State: client.CapsuleStateReady, DesiredState: client.CapsuleIntentReady,
+			},
+			Threads: []ThreadDetail{{}, {}},
+		}},
+	}
+	model := NewModel(Options{})
+	model.snapshot = snapshot
+	model.projectID = project.ID
+	model.openProjectDelete()
+	if model.overlay.kind != overlayForm || model.overlay.action.Action != ActionProjectDelete {
+		t.Fatalf("overlay = %#v", model.overlay)
+	}
+	for _, want := range []string{"1 Capsules", "2 threads", "2 secrets", "demo"} {
+		if !strings.Contains(model.overlay.note, want) {
+			t.Fatalf("confirmation note %q missing %q", model.overlay.note, want)
+		}
+	}
+	if _, err := model.formRequest(); err == nil {
+		t.Fatal("delete accepted without the project name")
+	}
+	model.overlay.fields[0].value = "other"
+	if _, err := model.formRequest(); err == nil {
+		t.Fatal("delete accepted with the wrong name")
+	}
+	model.overlay.fields[0].value = "demo"
+	request, err := model.formRequest()
+	if err != nil || request.Action != ActionProjectDelete || request.ProjectID != project.ID || request.ResourceVersion != 4 {
+		t.Fatalf("confirmed request = %#v, %v", request, err)
+	}
+}

@@ -392,6 +392,15 @@ retaining immutable ciphertext and content-free metadata. It makes that
 ciphertext unreadable with the live installation key, but does not erase old
 backups, copied wrapped keys, filesystem snapshots, swap, or physical media.
 
+Deleting a Project is different. `meridian project delete` removes that
+Project's Thread rows, wrapped keys, and transcript ciphertext, and it removes
+the Project's Moment rows and any content-addressed blob no remaining Moment
+references. Named secrets that no other live Project still names are destroyed,
+including ciphertext. A secret another live Project still names is kept. Take
+a verified backup first if any of that must survive. The delete does not erase
+older backups, filesystem snapshots, SQLite free pages, swap, or physical
+media.
+
 ## Upgrades and rollback limits
 
 There is no downgrade mechanism. Before upgrading:
@@ -430,8 +439,10 @@ meridian --json admin cas gc --data-dir="$HOME/.local/state/meridian" --delete -
 ```
 
 Stop `meridiand` and take a verified backup before deletion. Actual deletion is
-explicit and never removes a blob referenced by a visible Moment. Meridian does
-not currently age out Moments automatically.
+explicit and never removes a blob referenced by a visible Moment. Deleting a
+Project removes that Project's Moments first, so their unreferenced blobs are
+deleted with it; a blob still referenced by another Project's Moment stays.
+Meridian does not currently age out Moments automatically.
 
 ## Deterministic smoke and uninstall
 
@@ -449,7 +460,9 @@ encrypted backup/deep-verify/restore/crypto-shred/CAS retention tests. The
 credential-free contract fixtures are the authoritative deterministic
 OpenCode/Pi coverage; real-provider smokes remain explicit opt-ins.
 
-To uninstall, first delete Capsules and wait for terminal `Deleted` state.
+To uninstall, first delete each Project with `meridian project delete` and wait
+until it no longer appears in `meridian project list`, or delete Capsules and
+wait for terminal `Deleted` state.
 Confirm no owned containers, networks, volumes, Sandboxes, Secrets, PVCs, or
 port-forward processes remain. Then stop the daemon, make a final verified
 backup, uninstall the binary/chart/container, and remove the data directory

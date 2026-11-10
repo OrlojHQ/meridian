@@ -91,6 +91,11 @@ func (m Model) paletteItems() []paletteItem {
 	items = append(items, paletteItem{
 		id: "new-project", slash: "project", label: "New Project", hint: "Name a Project, repo, and harness",
 	})
+	if project := m.currentProject(); project != nil && projectState(project) != client.ProjectStateDeleted {
+		items = append(items, paletteItem{
+			id: "delete-project", label: "Delete Project", hint: "Remove this Project and what it owns",
+		})
+	}
 	if m.currentProject() != nil && len(m.snapshot.HarnessImages) > 0 {
 		items = append(items, paletteItem{
 			id: "apply-harness", slash: "harness", label: "Apply harnesses",
@@ -112,6 +117,7 @@ func (m Model) slashItems() []paletteItem {
 	items := []paletteItem{
 		{id: "new", slash: "new", label: "New Capsule", hint: "Name a Capsule and open its harness"},
 		{id: "new-project", slash: "project", label: "New Project", hint: "Name a Project, repo, and harness"},
+		{id: "delete-project", slash: "delete-project", label: "Delete Project", hint: "Remove this Project and what it owns"},
 		{id: "apply-harness", slash: "harness", label: "Apply harnesses", hint: "Choose packs this Project can start"},
 		{id: "help", slash: "help", label: "Help", hint: "Keybindings and slash commands"},
 		{id: "refresh", slash: "refresh", label: "Refresh", hint: "Reload Capsules now"},
@@ -249,6 +255,8 @@ func (m Model) runPaletteID(id string) (tea.Model, tea.Cmd) {
 		m.openSwitchProject()
 	case "new-project":
 		m.openCreateProject()
+	case "delete-project":
+		m.openProjectDelete()
 	case "apply-harness":
 		m.openApplyHarness()
 	case "show-deleted":

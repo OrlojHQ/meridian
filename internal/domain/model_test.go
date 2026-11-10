@@ -34,6 +34,7 @@ func TestCapsuleTransitionTable(t *testing.T) {
 		{CapsuleFailed, CapsuleDeleting}:    true,
 		{CapsuleDeleting, CapsuleDeleted}:   true,
 		{CapsuleDeleting, CapsuleFailed}:    true,
+		{CapsuleSealed, CapsuleDeleting}:    true,
 	}
 	for _, from := range states {
 		for _, to := range states {

@@ -195,10 +195,21 @@ export type Project = {
     commitAuthorName?: string;
     commitAuthorEmail?: string;
     defaultBaseBranch?: string;
+    state?: ProjectState;
+    /**
+     * Why deletion stopped. Set when state is failed.
+     */
+    failure?: string;
     createdAt: string;
     updatedAt: string;
     resourceVersion: number;
 };
+
+/**
+ * active is a live Project. deleting means cascade cleanup is in progress. failed means an owned container could not be removed. deleted means the Project and its transcripts, artifacts, environment, and exclusive named secrets are gone.
+ *
+ */
+export type ProjectState = 'active' | 'deleting' | 'failed' | 'deleted';
 
 /**
  * Secret metadata only; plaintext and ciphertext are never returned.
@@ -1423,6 +1434,11 @@ export type ProjectWritable = {
     commitAuthorName?: string;
     commitAuthorEmail?: string;
     defaultBaseBranch?: string;
+    state?: ProjectState;
+    /**
+     * Why deletion stopped. Set when state is failed.
+     */
+    failure?: string;
     createdAt: string;
     updatedAt: string;
     resourceVersion: number;
@@ -2418,6 +2434,56 @@ export type PatchProjectResponses = {
 };
 
 export type PatchProjectResponse = PatchProjectResponses[keyof PatchProjectResponses];
+
+export type DeleteProjectData = {
+    body: LifecycleMutation;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        projectId: string;
+    };
+    query?: never;
+    url: '/projects/{projectId}/delete';
+};
+
+export type DeleteProjectErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Request rate limit exceeded
+     */
+    429: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type DeleteProjectError = DeleteProjectErrors[keyof DeleteProjectErrors];
+
+export type DeleteProjectResponses = {
+    /**
+     * Project deletion accepted. The body is the Project in state deleting, failed, or deleted.
+     */
+    202: Project;
+};
+
+export type DeleteProjectResponse = DeleteProjectResponses[keyof DeleteProjectResponses];
 
 export type CreateProjectThreadData = {
     body: CreateProjectThreadRequest;

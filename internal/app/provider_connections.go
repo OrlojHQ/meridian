@@ -225,7 +225,11 @@ func (s *Service) GrantProviderConnection(ctx context.Context, project domain.Pr
 		return domain.ErrInvalid
 	}
 	err := s.store.Transact(ctx, func(tx ports.Transaction) error {
-		if _, err := tx.GetProject(ctx, project); err != nil {
+		current, err := tx.GetProject(ctx, project)
+		if err != nil {
+			return err
+		}
+		if err := projectAcceptsWork(current); err != nil {
 			return err
 		}
 		if connection != "" {

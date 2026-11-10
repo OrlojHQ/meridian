@@ -69,6 +69,10 @@ type DeleteCapsuleRes interface {
 	deleteCapsuleRes()
 }
 
+type DeleteProjectRes interface {
+	deleteProjectRes()
+}
+
 type DeleteSecretRes interface {
 	deleteSecretRes()
 }

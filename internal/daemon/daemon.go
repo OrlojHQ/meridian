@@ -339,6 +339,9 @@ func Run(ctx context.Context, config Config) error {
 	}
 	service := app.NewService(store, clock, ids, reconciler, runtime)
 	service.ConfigureSecrets(secretKey)
+	reconciler.OnCapsuleSettled(func(ctx context.Context, capsule domain.Capsule) {
+		_ = service.AdvanceProjectDeletion(ctx, capsule.ProjectID)
+	})
 	var gatewayServer *http.Server
 	if gatewayListener != nil {
 		authority, err := gatewaytls.NewAuthority(nil, providergateway.LeaseLifetime)
@@ -463,6 +466,14 @@ func Run(ctx context.Context, config Config) error {
 		return fmt.Errorf("startup recovery: %w", err)
 	}
 	metrics.StartupRecovery("capsules", "ok", time.Since(recoveryStarted))
+	recoveryStarted = time.Now()
+	if err := service.RecoverProjectDeletions(ctx); err != nil {
+		metrics.StartupRecovery("projects", "error", time.Since(recoveryStarted))
+		_ = httpServer.Close()
+		_ = previewHTTPServer.Close()
+		return fmt.Errorf("project deletion recovery: %w", err)
+	}
+	metrics.StartupRecovery("projects", "ok", time.Since(recoveryStarted))
 	recoveryStarted = time.Now()
 	if err := service.RecoverThreads(ctx); err != nil {
 		metrics.StartupRecovery("threads", "error", time.Since(recoveryStarted))
