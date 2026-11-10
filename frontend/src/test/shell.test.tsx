@@ -798,4 +798,53 @@ describe("application shell", () => {
     ).toBeInTheDocument();
     expect(files).not.toHaveBeenCalled();
   });
+
+  it("offers import, a provider, and a new Project when nothing exists yet", async () => {
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "capabilities").mockResolvedValue(capabilities);
+    vi.spyOn(api, "board").mockResolvedValue({ items: [], truncated: false });
+    const user = userEvent.setup();
+    wrapper(
+      <Routes>
+        <Route path="/ui" element={<AppShell />}>
+          <Route index element={<p>Activity home</p>} />
+          <Route path="settings/harnesses" element={<h1>Harness settings page</h1>} />
+        </Route>
+      </Routes>,
+    );
+
+    const start = await screen.findByRole("navigation", { name: "Get started" });
+    expect(start).not.toHaveTextContent("No Projects");
+    expect(within(start).getByRole("link", { name: "Import setup" })).toHaveAttribute(
+      "href",
+      "/ui/settings/harnesses#import-setup",
+    );
+    expect(within(start).getByRole("link", { name: "Connect a provider" })).toHaveAttribute(
+      "href",
+      "/ui/settings/harnesses#provider-connections",
+    );
+    await user.click(within(start).getByRole("button", { name: "Create a Project" }));
+    expect(screen.getByRole("dialog", { name: "Create a Project" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    await user.click(within(start).getByRole("link", { name: "Import setup" }));
+    expect(await screen.findByRole("heading", { name: "Harness settings page" })).toBeInTheDocument();
+  });
+
+  it("keeps the first-run links hidden once a Project exists", async () => {
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
+    vi.spyOn(api, "capsules").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "capabilities").mockResolvedValue(capabilities);
+    vi.spyOn(api, "board").mockResolvedValue({ items: [], truncated: false });
+    wrapper(
+      <Routes>
+        <Route path="/ui" element={<AppShell />}>
+          <Route index element={<p>Activity home</p>} />
+        </Route>
+      </Routes>,
+    );
+
+    expect(await screen.findByRole("button", { name: "New Capsule in Meridian" })).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Get started" })).not.toBeInTheDocument();
+    expect(screen.queryByText("No Projects")).not.toBeInTheDocument();
+  });
 });

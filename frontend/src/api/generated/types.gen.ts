@@ -58,7 +58,8 @@ export type Capabilities = {
 export type CreateProjectRequest = {
     name: string;
     /**
-     * Public URL or absolute local fixture path visible to the selected provider.
+     * Clone URL, GitHub owner/repo, or GitHub SSH URL. Owner/repo and GitHub SSH are stored as HTTPS. An absolute local path is also accepted.
+     *
      */
     repositoryUrl?: string;
     /**
@@ -1394,7 +1395,8 @@ export type CapabilitiesWritable = {
 export type CreateProjectRequestWritable = {
     name: string;
     /**
-     * Public URL or absolute local fixture path visible to the selected provider.
+     * Clone URL, GitHub owner/repo, or GitHub SSH URL. Owner/repo and GitHub SSH are stored as HTTPS. An absolute local path is also accepted.
+     *
      */
     repositoryUrl?: string;
     /**

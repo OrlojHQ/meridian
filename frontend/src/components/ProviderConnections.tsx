@@ -131,7 +131,7 @@ export function ProviderConnections(){
   finally{setBusy(false);}
  }
  const savedKind=loginKind==="oauth"?"setup token":"API key";
- return <section className="panel"><h2>Provider connections</h2><p>Sign in with ChatGPT or Claude, or connect an API key or a self-hosted model server such as vLLM, Ollama, or a LiteLLM proxy, once. Then authorize it for each Project.</p>
+ return <section className="panel" id="provider-connections"><h2>Provider connections</h2><p>Sign in with ChatGPT or Claude, or connect an API key or a self-hosted model server such as vLLM, Ollama, or a LiteLLM proxy, once. Then authorize it for each Project.</p>
  {connections.isPending && <p role="status">Loading connections…</p>}
  {connections.isError && <p role="alert">{normalizeAPIError(connections.error).message}</p>}
  {connections.data && !connections.data.enabled && <p>Reusable connections need the provider gateway, which is off on this installation. On Docker, meridiand starts it on its own unless the engine is remote or rootless; the daemon log says why it did not. Otherwise ask the installation administrator to set --provider-gateway-listen or --provider-gateway-url.</p>}

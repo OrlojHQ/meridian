@@ -1,7 +1,8 @@
 import { HarnessSetupEditor } from "./HarnessSetupEditor";
 import { HarnessSetupImport } from "./HarnessSetupImport";
 import { ProviderConnections } from "./ProviderConnections";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, normalizeAPIError } from "../api/client";
 import type { HarnessSetup, MutateHarnessSetupRequest } from "../api/generated/types.gen";
@@ -34,8 +35,14 @@ function SetupCard({setup}:{setup:HarnessSetup}) {
  </section>;
 }
 export function HarnessSetups(){
+ const location=useLocation();
  const setups=useQuery({queryKey:["harness-setups"],queryFn:api.harnessSetups});
  const saved=setups.data?.items.filter(item=>!item.deleted) ?? [];
+ useEffect(()=>{
+  const id=location.hash.replace(/^#/, "");
+  if(!id) return;
+  document.getElementById(id)?.scrollIntoView({block:"start"});
+ },[location.hash, setups.data]);
  return <article className="workspace-detail harness-settings">
   <header className="workspace-view-header">
    <div>

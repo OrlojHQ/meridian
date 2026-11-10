@@ -2606,7 +2606,10 @@ components:
         repositoryUrl:
           type: string
           maxLength: 4096
-          description: Public URL or absolute local fixture path visible to the selected provider.
+          description: >
+            Clone URL, GitHub owner/repo, or GitHub SSH URL. Owner/repo and
+            GitHub SSH are stored as HTTPS. An absolute local path is also
+            accepted.
         setup:
           type: array
           maxItems: 128
