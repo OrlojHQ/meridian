@@ -216,7 +216,13 @@ func newHarnessConnectCommand(config *cliConfig) *cobra.Command {
 	var name, id, baseURL, model string
 	var efforts []string
 	var expected int64
-	cmd := &cobra.Command{Use: "connect openai|anthropic|openai-compatible|anthropic-compatible", Short: "Save a reusable API or self-hosted endpoint connection; keys come from stdin", Long: `Save a reusable provider connection for Capsule harnesses.
+	cmd := &cobra.Command{Use: "connect chatgpt|openai|anthropic|openai-compatible|anthropic-compatible", Short: "Sign in with ChatGPT, or save a reusable API or self-hosted endpoint connection", Long: `Save a reusable provider connection for Capsule harnesses.
+
+chatgpt signs in with your ChatGPT account once so Codex uses your plan in
+every Capsule without signing in again. Open the printed page in a browser on
+this computer. Meridian's daemon keeps the login encrypted; Capsules and this
+command never receive the token. Pass --id to sign an existing ChatGPT
+connection in again.
 
 openai and anthropic use the official APIs. openai-compatible (vLLM, Ollama,
 LM Studio, SGLang, LiteLLM) and anthropic-compatible (LiteLLM and similar
@@ -230,7 +236,8 @@ the value is an API key. The login is not returned and is not placed in a
 Capsule.
 
 Keys are read only from stdin. Pass --no-api-key for a custom endpoint that
-needs no authentication.`, Example: `  meridian harness connect openai --stdin < key.txt
+needs no authentication.`, Example: `  meridian harness connect chatgpt
+  meridian harness connect openai --stdin < key.txt
   meridian harness connect anthropic --stdin < key.txt
   printf %s "$CLAUDE_SETUP_TOKEN" | meridian harness connect anthropic --oauth --stdin
   meridian harness connect openai-compatible --base-url https://vllm.example.com --model Qwen/Qwen3-Coder-30B-A3B-Instruct --stdin < key.txt
@@ -241,9 +248,19 @@ needs no authentication.`, Example: `  meridian harness connect openai --stdin <
 			return errors.New("remote provider connections require HTTPS")
 		}
 		provider := args[0]
+		if provider == "chatgpt" {
+			if stdin || noKey || baseURL != "" || model != "" || allowPrivateHTTP || len(efforts) != 0 || name != "" || expected != 0 {
+				return errors.New("chatgpt takes no key, endpoint, name, or version flags; only --id to sign in again")
+			}
+			api, err := newAPI(config)
+			if err != nil {
+				return err
+			}
+			return connectChatGPT(cmd.Context(), config, api, id)
+		}
 		custom := provider == "openai-compatible" || provider == "anthropic-compatible"
 		if !custom && provider != "openai" && provider != "anthropic" {
-			return errors.New("supported providers: openai, anthropic, openai-compatible, anthropic-compatible")
+			return errors.New("supported providers: chatgpt, openai, anthropic, openai-compatible, anthropic-compatible")
 		}
 		if oauth && provider != "anthropic" {
 			return errors.New("--oauth applies only to anthropic")

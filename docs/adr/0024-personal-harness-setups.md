@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-09-06
+- Amended by: ADR 0036, for Claude login at the gateway; ADR 0038 (proposed), for ChatGPT plan sign-in
 
 ## Decision
 

@@ -37,6 +37,15 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   prereleases are skipped.
 - `make vulncheck` runs `govulncheck` (v1.9.0) in CI and in the release
   verify job, failing on known vulnerabilities in code Meridian reaches.
+- Sign in with ChatGPT (ADR 0038): sign in once from Harness settings or
+  `meridian harness connect chatgpt`, and Codex uses your ChatGPT plan in
+  every Capsule, for terminals and Threads, without signing in again. The
+  daemon runs the OAuth flow, keeps the token set encrypted, and refreshes it;
+  Capsules get only their 24-hour gateway lease. The gateway allows only
+  `POST /v1/responses` for these connections and requires `stream: true` and
+  `store: false`. Signing out revokes the token at OpenAI. Uses the provider
+  gateway, which local Docker installs now start on their own. Claude login
+  is the separate control-plane sign-in above.
 
 ### Security
 

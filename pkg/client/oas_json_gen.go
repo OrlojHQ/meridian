@@ -2928,6 +2928,437 @@ func (s *CaptureMomentUnprocessableEntity) UnmarshalJSON(data []byte) error {
 }
 
 // Encode implements json.Marshaler.
+func (s *ChatGPTSignIn) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *ChatGPTSignIn) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("id")
+		e.Str(s.ID)
+	}
+	{
+		e.FieldStart("authorizationUrl")
+		e.Str(s.AuthorizationUrl)
+	}
+	{
+		e.FieldStart("redirectUri")
+		e.Str(s.RedirectUri)
+	}
+	{
+		e.FieldStart("listening")
+		e.Bool(s.Listening)
+	}
+	{
+		e.FieldStart("expiresAt")
+		json.EncodeDateTime(e, s.ExpiresAt)
+	}
+	{
+		e.FieldStart("state")
+		s.State.Encode(e)
+	}
+	{
+		if s.ConnectionId.Set {
+			e.FieldStart("connectionId")
+			s.ConnectionId.Encode(e)
+		}
+	}
+	{
+		if s.Failure.Set {
+			e.FieldStart("failure")
+			s.Failure.Encode(e)
+		}
+	}
+}
+
+var jsonFieldsNameOfChatGPTSignIn = [8]string{
+	0: "id",
+	1: "authorizationUrl",
+	2: "redirectUri",
+	3: "listening",
+	4: "expiresAt",
+	5: "state",
+	6: "connectionId",
+	7: "failure",
+}
+
+// Decode decodes ChatGPTSignIn from json.
+func (s *ChatGPTSignIn) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode ChatGPTSignIn to nil")
+	}
+	var requiredBitSet [1]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "id":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				v, err := d.Str()
+				s.ID = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"id\"")
+			}
+		case "authorizationUrl":
+			requiredBitSet[0] |= 1 << 1
+			if err := func() error {
+				v, err := d.Str()
+				s.AuthorizationUrl = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"authorizationUrl\"")
+			}
+		case "redirectUri":
+			requiredBitSet[0] |= 1 << 2
+			if err := func() error {
+				v, err := d.Str()
+				s.RedirectUri = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"redirectUri\"")
+			}
+		case "listening":
+			requiredBitSet[0] |= 1 << 3
+			if err := func() error {
+				v, err := d.Bool()
+				s.Listening = bool(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"listening\"")
+			}
+		case "expiresAt":
+			requiredBitSet[0] |= 1 << 4
+			if err := func() error {
+				v, err := json.DecodeDateTime(d)
+				s.ExpiresAt = v
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"expiresAt\"")
+			}
+		case "state":
+			requiredBitSet[0] |= 1 << 5
+			if err := func() error {
+				if err := s.State.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"state\"")
+			}
+		case "connectionId":
+			if err := func() error {
+				s.ConnectionId.Reset()
+				if err := s.ConnectionId.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"connectionId\"")
+			}
+		case "failure":
+			if err := func() error {
+				s.Failure.Reset()
+				if err := s.Failure.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"failure\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode ChatGPTSignIn")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [1]uint8{
+		0b00111111,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfChatGPTSignIn) {
+					name = jsonFieldsNameOfChatGPTSignIn[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *ChatGPTSignIn) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *ChatGPTSignIn) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s *ChatGPTSignInCompletion) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *ChatGPTSignInCompletion) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("callbackUrl")
+		e.Str(s.CallbackUrl)
+	}
+}
+
+var jsonFieldsNameOfChatGPTSignInCompletion = [1]string{
+	0: "callbackUrl",
+}
+
+// Decode decodes ChatGPTSignInCompletion from json.
+func (s *ChatGPTSignInCompletion) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode ChatGPTSignInCompletion to nil")
+	}
+	var requiredBitSet [1]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "callbackUrl":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				v, err := d.Str()
+				s.CallbackUrl = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"callbackUrl\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode ChatGPTSignInCompletion")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [1]uint8{
+		0b00000001,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfChatGPTSignInCompletion) {
+					name = jsonFieldsNameOfChatGPTSignInCompletion[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *ChatGPTSignInCompletion) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *ChatGPTSignInCompletion) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s *ChatGPTSignInRequest) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *ChatGPTSignInRequest) encodeFields(e *jx.Encoder) {
+	{
+		if s.ConnectionId.Set {
+			e.FieldStart("connectionId")
+			s.ConnectionId.Encode(e)
+		}
+	}
+	{
+		if s.Listen.Set {
+			e.FieldStart("listen")
+			s.Listen.Encode(e)
+		}
+	}
+}
+
+var jsonFieldsNameOfChatGPTSignInRequest = [2]string{
+	0: "connectionId",
+	1: "listen",
+}
+
+// Decode decodes ChatGPTSignInRequest from json.
+func (s *ChatGPTSignInRequest) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode ChatGPTSignInRequest to nil")
+	}
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "connectionId":
+			if err := func() error {
+				s.ConnectionId.Reset()
+				if err := s.ConnectionId.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"connectionId\"")
+			}
+		case "listen":
+			if err := func() error {
+				s.Listen.Reset()
+				if err := s.Listen.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"listen\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode ChatGPTSignInRequest")
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *ChatGPTSignInRequest) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *ChatGPTSignInRequest) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes ChatGPTSignInState as json.
+func (s ChatGPTSignInState) Encode(e *jx.Encoder) {
+	e.Str(string(s))
+}
+
+// Decode decodes ChatGPTSignInState from json.
+func (s *ChatGPTSignInState) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode ChatGPTSignInState to nil")
+	}
+	v, err := d.StrBytes()
+	if err != nil {
+		return err
+	}
+	// Try to use constant string.
+	switch ChatGPTSignInState(v) {
+	case ChatGPTSignInStatePending:
+		*s = ChatGPTSignInStatePending
+	case ChatGPTSignInStateCompleted:
+		*s = ChatGPTSignInStateCompleted
+	case ChatGPTSignInStateFailed:
+		*s = ChatGPTSignInStateFailed
+	default:
+		*s = ChatGPTSignInState(v)
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s ChatGPTSignInState) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *ChatGPTSignInState) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
 func (s *ChildRollup) Encode(e *jx.Encoder) {
 	e.ObjStart()
 	s.encodeFields(e)
@@ -17863,6 +18294,24 @@ func (s *ProviderConnection) encodeFields(e *jx.Encoder) {
 		}
 	}
 	{
+		if s.Account.Set {
+			e.FieldStart("account")
+			s.Account.Encode(e)
+		}
+	}
+	{
+		if s.NeedsSignIn.Set {
+			e.FieldStart("needsSignIn")
+			s.NeedsSignIn.Encode(e)
+		}
+	}
+	{
+		if s.RevocationUnconfirmed.Set {
+			e.FieldStart("revocationUnconfirmed")
+			s.RevocationUnconfirmed.Encode(e)
+		}
+	}
+	{
 		if s.CredentialKind.Set {
 			e.FieldStart("credentialKind")
 			s.CredentialKind.Encode(e)
@@ -17882,7 +18331,7 @@ func (s *ProviderConnection) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfProviderConnection = [11]string{
+var jsonFieldsNameOfProviderConnection = [14]string{
 	0:  "id",
 	1:  "provider",
 	2:  "name",
@@ -17890,10 +18339,13 @@ var jsonFieldsNameOfProviderConnection = [11]string{
 	4:  "defaultModel",
 	5:  "allowPrivateHttp",
 	6:  "reasoningEfforts",
-	7:  "credentialKind",
-	8:  "createdAt",
-	9:  "resourceVersion",
-	10: "revoked",
+	7:  "account",
+	8:  "needsSignIn",
+	9:  "revocationUnconfirmed",
+	10: "credentialKind",
+	11: "createdAt",
+	12: "resourceVersion",
+	13: "revoked",
 }
 
 // Decode decodes ProviderConnection from json.
@@ -17986,6 +18438,36 @@ func (s *ProviderConnection) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"reasoningEfforts\"")
 			}
+		case "account":
+			if err := func() error {
+				s.Account.Reset()
+				if err := s.Account.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"account\"")
+			}
+		case "needsSignIn":
+			if err := func() error {
+				s.NeedsSignIn.Reset()
+				if err := s.NeedsSignIn.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"needsSignIn\"")
+			}
+		case "revocationUnconfirmed":
+			if err := func() error {
+				s.RevocationUnconfirmed.Reset()
+				if err := s.RevocationUnconfirmed.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"revocationUnconfirmed\"")
+			}
 		case "credentialKind":
 			if err := func() error {
 				s.CredentialKind.Reset()
@@ -17997,7 +18479,7 @@ func (s *ProviderConnection) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"credentialKind\"")
 			}
 		case "createdAt":
-			requiredBitSet[1] |= 1 << 0
+			requiredBitSet[1] |= 1 << 3
 			if err := func() error {
 				v, err := json.DecodeDateTime(d)
 				s.CreatedAt = v
@@ -18009,7 +18491,7 @@ func (s *ProviderConnection) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"createdAt\"")
 			}
 		case "resourceVersion":
-			requiredBitSet[1] |= 1 << 1
+			requiredBitSet[1] |= 1 << 4
 			if err := func() error {
 				v, err := d.Int64()
 				s.ResourceVersion = int64(v)
@@ -18021,7 +18503,7 @@ func (s *ProviderConnection) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"resourceVersion\"")
 			}
 		case "revoked":
-			requiredBitSet[1] |= 1 << 2
+			requiredBitSet[1] |= 1 << 5
 			if err := func() error {
 				v, err := d.Bool()
 				s.Revoked = bool(v)
@@ -18043,7 +18525,7 @@ func (s *ProviderConnection) Decode(d *jx.Decoder) error {
 	var failures []validate.FieldError
 	for i, mask := range [2]uint8{
 		0b00000111,
-		0b00000111,
+		0b00111000,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.
@@ -18116,12 +18598,19 @@ func (s *ProviderConnectionPage) encodeFields(e *jx.Encoder) {
 			s.PrivateHttpAllowed.Encode(e)
 		}
 	}
+	{
+		if s.ChatgptAvailable.Set {
+			e.FieldStart("chatgptAvailable")
+			s.ChatgptAvailable.Encode(e)
+		}
+	}
 }
 
-var jsonFieldsNameOfProviderConnectionPage = [3]string{
+var jsonFieldsNameOfProviderConnectionPage = [4]string{
 	0: "items",
 	1: "enabled",
 	2: "privateHttpAllowed",
+	3: "chatgptAvailable",
 }
 
 // Decode decodes ProviderConnectionPage from json.
@@ -18172,6 +18661,16 @@ func (s *ProviderConnectionPage) Decode(d *jx.Decoder) error {
 				return nil
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"privateHttpAllowed\"")
+			}
+		case "chatgptAvailable":
+			if err := func() error {
+				s.ChatgptAvailable.Reset()
+				if err := s.ChatgptAvailable.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"chatgptAvailable\"")
 			}
 		default:
 			return d.Skip()
@@ -18512,6 +19011,8 @@ func (s *ProviderConnectionType) Decode(d *jx.Decoder) error {
 		*s = ProviderConnectionTypeOpenaiCompatible
 	case ProviderConnectionTypeAnthropicCompatible:
 		*s = ProviderConnectionTypeAnthropicCompatible
+	case ProviderConnectionTypeChatgpt:
+		*s = ProviderConnectionTypeChatgpt
 	default:
 		*s = ProviderConnectionType(v)
 	}

@@ -112,7 +112,8 @@ the Capsule; it does not reduce what a stolen control plane can do with it.
 The daemon refreshes the access token while the refresh token remains valid,
 so the operator does not repeat sign-in on the access token's short lifetime.
 
-Codex subscription login is out of scope and stays on its current path.
+Codex plan sign-in is a separate decision (ADR 0038). This decision does not
+change Codex, OpenCode, Pi, or DeepSeek Harness API-key setup.
 
 The loopback redirect assumes the browser that signs in can open the
 daemon's localhost port. That is the default install. A browser that cannot

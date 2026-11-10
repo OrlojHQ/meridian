@@ -207,6 +207,74 @@ paths:
                 $ref: "#/components/schemas/ProviderConnection"
         default:
           $ref: "#/components/responses/DefaultError"
+  /provider-connections/chatgpt/sign-ins:
+    post:
+      operationId: startChatGPTSignIn
+      summary: startChatGPTSignIn
+      description: >-
+        Starts Sign in with ChatGPT for a new connection, or reauthorizes an
+        existing one. The daemon keeps the PKCE verifier; open
+        authorizationUrl in a browser, then complete the attempt with the
+        redirected address. Responses never contain tokens.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatGPTSignInRequest"
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatGPTSignIn"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /provider-connections/chatgpt/sign-ins/{signInId}:
+    get:
+      operationId: getChatGPTSignIn
+      summary: getChatGPTSignIn
+      parameters:
+        - name: signInId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatGPTSignIn"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /provider-connections/chatgpt/sign-ins/{signInId}/complete:
+    post:
+      operationId: completeChatGPTSignIn
+      summary: completeChatGPTSignIn
+      parameters:
+        - name: signInId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatGPTSignInCompletion"
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatGPTSignIn"
+        default:
+          $ref: "#/components/responses/DefaultError"
   /projects/{projectId}/harnesses/{harness}/connection:
     get:
       operationId: getProjectProviderConnection
@@ -4097,6 +4165,17 @@ components:
           description: >-
             The reasoning effort levels the default model accepts, in order.
             Harnesses offer exactly these, plus off, for that model.
+        account:
+          type: string
+          description: ChatGPT connections only. The signed-in account's email, for display.
+        needsSignIn:
+          type: boolean
+          description: ChatGPT connections only. The sign-in stopped working; sign in again to resume.
+        revocationUnconfirmed:
+          type: boolean
+          description: >-
+            ChatGPT connections only. Local tokens were deleted but OpenAI did
+            not confirm revocation; disconnect Meridian in ChatGPT's settings.
         credentialKind:
           $ref: '#/components/schemas/AnthropicCredentialKind'
         createdAt:
@@ -4107,6 +4186,49 @@ components:
           format: int64
         revoked:
           type: boolean
+    ChatGPTSignInRequest:
+      type: object
+      properties:
+        connectionId:
+          type: string
+          description: Existing ChatGPT connection to reauthorize; omit to create a new one.
+        listen:
+          type: boolean
+          description: >-
+            Ask the daemon to accept the browser's loopback callback itself.
+            Use when the browser runs on the daemon's machine.
+    ChatGPTSignInCompletion:
+      type: object
+      required: [callbackUrl]
+      properties:
+        callbackUrl:
+          type: string
+          maxLength: 8192
+          description: The full address the browser was redirected to after approving.
+    ChatGPTSignIn:
+      type: object
+      required: [id, authorizationUrl, redirectUri, listening, expiresAt, state]
+      properties:
+        id:
+          type: string
+        authorizationUrl:
+          type: string
+          description: OpenAI authorization page to open in the user's browser.
+        redirectUri:
+          type: string
+        listening:
+          type: boolean
+          description: Whether the daemon is accepting the loopback callback itself.
+        expiresAt:
+          type: string
+          format: date-time
+        state:
+          type: string
+          enum: [pending, completed, failed]
+        connectionId:
+          type: string
+        failure:
+          type: string
     ProviderConnectionPage:
       type: object
       required: [items, enabled]
@@ -4120,6 +4242,9 @@ components:
         privateHttpAllowed:
           type: boolean
           description: Whether the daemon permits custom endpoints to opt in to plaintext HTTP on private networks.
+        chatgptAvailable:
+          type: boolean
+          description: Whether Sign in with ChatGPT can create plan connections on this installation.
     ReasoningEffortLevel:
       type: string
       enum: [minimal, low, medium, high, xhigh, max]
@@ -4128,10 +4253,12 @@ components:
         upstream as the request's reasoning effort.
     ProviderConnectionType:
       type: string
-      enum: [openai, anthropic, openai-compatible, anthropic-compatible]
+      enum: [openai, anthropic, openai-compatible, anthropic-compatible, chatgpt]
       description: >-
         openai and anthropic use fixed official upstreams. openai-compatible
-        and anthropic-compatible use an operator-configured baseUrl.
+        and anthropic-compatible use an operator-configured baseUrl. chatgpt
+        uses the signed-in user's ChatGPT plan; it is created only by Sign in
+        with ChatGPT and accepts only rename and revocation here.
     AnthropicCredentialKind:
       type: string
       enum: [api_key, oauth]
