@@ -806,7 +806,7 @@ func (s *Server) createShard(writer http.ResponseWriter, request *http.Request) 
 		writeError(writer, err)
 		return
 	}
-	writeJSON(writer, http.StatusAccepted, descendantResponse(result))
+	s.writeDescendant(writer, request, http.StatusAccepted, result)
 }
 
 func (s *Server) rewindCapsule(writer http.ResponseWriter, request *http.Request) {
@@ -822,7 +822,7 @@ func (s *Server) rewindCapsule(writer http.ResponseWriter, request *http.Request
 		writeError(writer, err)
 		return
 	}
-	writeJSON(writer, http.StatusAccepted, descendantResponse(result))
+	s.writeDescendant(writer, request, http.StatusAccepted, result)
 }
 
 func (s *Server) sealCapsule(writer http.ResponseWriter, request *http.Request) {
@@ -839,7 +839,7 @@ func (s *Server) sealCapsule(writer http.ResponseWriter, request *http.Request) 
 		return
 	}
 	s.previews.revokeCapsule(domain.CapsuleID(request.PathValue("capsuleId")))
-	writeJSON(writer, http.StatusCreated, sealResponse(result))
+	s.writeSeal(writer, request, http.StatusCreated, result)
 }
 
 func (s *Server) health(writer http.ResponseWriter, _ *http.Request) {
@@ -1076,7 +1076,7 @@ func (s *Server) createCapsule(writer http.ResponseWriter, request *http.Request
 		writeError(writer, err)
 		return
 	}
-	writeCapsule(writer, http.StatusAccepted, capsule)
+	s.writeCapsule(writer, request, http.StatusAccepted, capsule)
 }
 
 func (s *Server) listCapsules(writer http.ResponseWriter, request *http.Request) {
@@ -1096,9 +1096,10 @@ func (s *Server) listCapsules(writer http.ResponseWriter, request *http.Request)
 		writeError(writer, err)
 		return
 	}
-	items := make([]capsuleJSON, len(page.Items))
-	for i := range page.Items {
-		items[i] = capsuleResponse(page.Items[i])
+	items, err := s.capsulesJSON(request.Context(), page.Items)
+	if err != nil {
+		writeError(writer, err)
+		return
 	}
 	response := capsulePageJSON{Items: items}
 	if page.NextOffset > 0 {
@@ -1115,7 +1116,7 @@ func (s *Server) getCapsule(writer http.ResponseWriter, request *http.Request) {
 		writeError(writer, err)
 		return
 	}
-	writeCapsule(writer, http.StatusOK, capsule)
+	s.writeCapsule(writer, request, http.StatusOK, capsule)
 }
 
 func (s *Server) listPreviewPorts(writer http.ResponseWriter, request *http.Request) {
@@ -1223,7 +1224,7 @@ func (s *Server) lifecycle(
 		writeError(writer, err)
 		return
 	}
-	writeCapsule(writer, http.StatusAccepted, capsule)
+	s.writeCapsule(writer, request, http.StatusAccepted, capsule)
 }
 
 func (s *Server) startRun(writer http.ResponseWriter, request *http.Request) {
@@ -1753,9 +1754,58 @@ func writeRun(writer http.ResponseWriter, status int, run domain.Run) {
 	writeJSON(writer, status, runResponse(run))
 }
 
-func writeCapsule(writer http.ResponseWriter, status int, capsule domain.Capsule) {
+func (s *Server) writeCapsule(writer http.ResponseWriter, request *http.Request, status int, capsule domain.Capsule) {
+	item, err := s.capsuleJSON(request.Context(), capsule)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
 	writer.Header().Set("ETag", etag(capsule.ResourceVersion))
-	writeJSON(writer, status, capsuleResponse(capsule))
+	writeJSON(writer, status, item)
+}
+
+func (s *Server) writeDescendant(writer http.ResponseWriter, request *http.Request, status int, result app.DescendantResult) {
+	capsule, err := s.capsuleJSON(request.Context(), result.Capsule)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	writeJSON(writer, status, descendantJSON{
+		Capsule: capsule, Timeline: timelineResponse(result.Timeline), Reason: string(result.Reason),
+	})
+}
+
+func (s *Server) writeSeal(writer http.ResponseWriter, request *http.Request, status int, result app.SealResult) {
+	capsule, err := s.capsuleJSON(request.Context(), result.Capsule)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	writeJSON(writer, status, sealJSON{Capsule: capsule, Moment: momentResponse(result.Moment)})
+}
+
+func (s *Server) capsulesJSON(ctx context.Context, capsules []domain.Capsule) ([]capsuleJSON, error) {
+	ids := make([]domain.CapsuleID, len(capsules))
+	for i, capsule := range capsules {
+		ids[i] = capsule.ID
+	}
+	pins, err := s.service.PinnedHarnessSetups(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]capsuleJSON, len(capsules))
+	for i, capsule := range capsules {
+		items[i] = capsuleResponse(capsule, pins[capsule.ID])
+	}
+	return items, nil
+}
+
+func (s *Server) capsuleJSON(ctx context.Context, capsule domain.Capsule) (capsuleJSON, error) {
+	items, err := s.capsulesJSON(ctx, []domain.Capsule{capsule})
+	if err != nil || len(items) != 1 {
+		return capsuleJSON{}, err
+	}
+	return items[0], nil
 }
 
 func decode(writer http.ResponseWriter, request *http.Request, output any) bool {
@@ -2048,27 +2098,28 @@ type secretPageJSON struct {
 }
 
 type capsuleJSON struct {
-	Preparation     *domain.PreparationProgress `json:"preparation,omitempty"`
-	Startup         *domain.StartupProgress     `json:"startup,omitempty"`
-	FailureCode     domain.PullFailureCode      `json:"failureCode,omitempty"`
-	ID              string                      `json:"id"`
-	ProjectID       string                      `json:"projectId"`
-	TimelineID      string                      `json:"timelineId"`
-	OriginMomentID  string                      `json:"originMomentId,omitempty"`
-	Name            string                      `json:"name"`
-	Harness         string                      `json:"harness,omitempty"`
-	State           string                      `json:"state"`
-	DesiredState    string                      `json:"desiredState"`
-	Failure         string                      `json:"failure,omitempty"`
-	RestoreComplete bool                        `json:"restoreComplete"`
-	Maintenance     string                      `json:"maintenance,omitempty"`
-	Role            string                      `json:"role,omitempty"`
-	LeadThreadID    string                      `json:"leadThreadId,omitempty"`
-	LinkID          string                      `json:"linkId,omitempty"`
-	PromotedAt      string                      `json:"promotedAt,omitempty"`
-	CreatedAt       string                      `json:"createdAt"`
-	UpdatedAt       string                      `json:"updatedAt"`
-	ResourceVersion int64                       `json:"resourceVersion"`
+	Preparation         *domain.PreparationProgress `json:"preparation,omitempty"`
+	Startup             *domain.StartupProgress     `json:"startup,omitempty"`
+	FailureCode         domain.PullFailureCode      `json:"failureCode,omitempty"`
+	ID                  string                      `json:"id"`
+	ProjectID           string                      `json:"projectId"`
+	TimelineID          string                      `json:"timelineId"`
+	OriginMomentID      string                      `json:"originMomentId,omitempty"`
+	Name                string                      `json:"name"`
+	Harness             string                      `json:"harness,omitempty"`
+	State               string                      `json:"state"`
+	DesiredState        string                      `json:"desiredState"`
+	Failure             string                      `json:"failure,omitempty"`
+	RestoreComplete     bool                        `json:"restoreComplete"`
+	Maintenance         string                      `json:"maintenance,omitempty"`
+	Role                string                      `json:"role,omitempty"`
+	LeadThreadID        string                      `json:"leadThreadId,omitempty"`
+	LinkID              string                      `json:"linkId,omitempty"`
+	PromotedAt          string                      `json:"promotedAt,omitempty"`
+	PinnedHarnessSetups []pinnedHarnessSetupJSON    `json:"pinnedHarnessSetups,omitempty"`
+	CreatedAt           string                      `json:"createdAt"`
+	UpdatedAt           string                      `json:"updatedAt"`
+	ResourceVersion     int64                       `json:"resourceVersion"`
 }
 
 type momentJSON struct {
@@ -2377,8 +2428,16 @@ func secretResponse(secret domain.Secret) secretJSON {
 	}
 }
 
-func capsuleResponse(capsule domain.Capsule) capsuleJSON {
-	return capsuleJSON{
+type pinnedHarnessSetupJSON struct {
+	Harness   string `json:"harness"`
+	SetupID   string `json:"setupId"`
+	Name      string `json:"name"`
+	Revision  string `json:"revision"`
+	RevisedAt string `json:"revisedAt"`
+}
+
+func capsuleResponse(capsule domain.Capsule, pins []domain.PinnedHarnessSetup) capsuleJSON {
+	item := capsuleJSON{
 		Preparation:     capsule.Preparation,
 		Startup:         capsule.Startup,
 		FailureCode:     capsule.FailureCode,
@@ -2401,6 +2460,17 @@ func capsuleResponse(capsule domain.Capsule) capsuleJSON {
 		UpdatedAt:       capsule.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		ResourceVersion: int64(capsule.ResourceVersion),
 	}
+	if len(pins) == 0 {
+		return item
+	}
+	item.PinnedHarnessSetups = make([]pinnedHarnessSetupJSON, len(pins))
+	for i, pin := range pins {
+		item.PinnedHarnessSetups[i] = pinnedHarnessSetupJSON{
+			Harness: pin.Harness, SetupID: pin.SetupID, Name: pin.Name, Revision: pin.Revision,
+			RevisedAt: pin.RevisedAt.UTC().Format(time.RFC3339Nano),
+		}
+	}
+	return item
 }
 
 func momentResponse(moment domain.Moment) momentJSON {
@@ -2423,17 +2493,6 @@ func timelineResponse(timeline domain.Timeline) timelineJSON {
 		ForkedFromMomentID: string(timeline.ForkedFromMomentID),
 		Reason:             string(timeline.Reason), CreatedAt: timeline.CreatedAt.UTC().Format(time.RFC3339Nano),
 	}
-}
-
-func descendantResponse(result app.DescendantResult) descendantJSON {
-	return descendantJSON{
-		Capsule: capsuleResponse(result.Capsule), Timeline: timelineResponse(result.Timeline),
-		Reason: string(result.Reason),
-	}
-}
-
-func sealResponse(result app.SealResult) sealJSON {
-	return sealJSON{Capsule: capsuleResponse(result.Capsule), Moment: momentResponse(result.Moment)}
 }
 
 func runResponse(run domain.Run) runJSON {

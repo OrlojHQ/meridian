@@ -54,6 +54,8 @@ it("finishes from a pasted redirect when the daemon cannot catch it", async () =
   show();
   await userEvent.selectOptions(await screen.findByLabelText("Provider"), "chatgpt");
   await userEvent.click(screen.getByRole("button", { name: "Continue with ChatGPT" }));
+  expect(await screen.findByText("meridian harness connect chatgpt")).toBeInTheDocument();
+  expect(screen.getByText(/not on the same computer as/)).toBeInTheDocument();
   const address = "http://127.0.0.1:1455/auth/callback?code=c&state=s";
   await userEvent.type(await screen.findByLabelText(/paste the address/), address);
   await userEvent.click(screen.getByRole("button", { name: "Finish sign-in" }));
@@ -75,6 +77,7 @@ it("asks an expired ChatGPT connection to sign in again", async () => {
   await userEvent.click(screen.getByRole("button", { name: "Sign in again" }));
   await waitFor(() => expect(start).toHaveBeenCalledWith("chatgpt"));
   expect(start).toHaveBeenCalledTimes(1);
+  expect(await screen.findByText("meridian harness connect chatgpt")).toBeInTheDocument();
 });
 
 it("pairs ChatGPT plan connections only with Codex", () => {

@@ -2932,6 +2932,14 @@ components:
         harness:
           type: string
           description: Immutable native launcher harness selected when the Capsule was created.
+        pinnedHarnessSetups:
+          description: >-
+            Harness setup revisions pinned when this Capsule was created.
+            Absent when the Capsule started without a saved setup.
+            A later edit in Settings does not change this Capsule.
+          type: array
+          items:
+            $ref: "#/components/schemas/PinnedHarnessSetup"
         state:
           $ref: "#/components/schemas/CapsuleState"
         desiredState:
@@ -4176,6 +4184,24 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/HarnessSetupRevision'
+    PinnedHarnessSetup:
+      type: object
+      required: [harness, setupId, name, revision, revisedAt]
+      description: One harness setup revision pinned to a Capsule at creation.
+      properties:
+        harness:
+          type: string
+        setupId:
+          type: string
+        name:
+          type: string
+          description: Current name of the setup. A rename shows here; the pinned files do not change.
+        revision:
+          type: string
+        revisedAt:
+          type: string
+          format: date-time
+          description: When this pinned revision was saved.
     ImportHarnessSetupRequest:
       type: object
       required: [name, bundle, default, expectedResourceVersion]

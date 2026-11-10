@@ -64,6 +64,7 @@ import {
   defaultSession,
   destinationAfterCapsuleDelete,
   harnessName,
+  pinnedSetupText,
   relativeTime,
   TERMINAL_SESSION,
 } from "./shell/capsuleActivity";
@@ -848,6 +849,9 @@ export function CapsuleDetail() {
             threads={threads.data?.items}
           />
         </div>
+        {value.pinnedHarnessSetups && value.pinnedHarnessSetups.length > 0 && (
+          <p className="capsule-setup-pin">{pinnedSetupText(value.pinnedHarnessSetups)}</p>
+        )}
       </header>
       {(isStarting(value) || value.startup || value.failureCode) && (
         <CapsuleStartup capsule={value} />

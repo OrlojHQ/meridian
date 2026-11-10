@@ -847,9 +847,12 @@ type Capsule struct {
 	OriginMomentId OptString              `json:"originMomentId"`
 	Name           string                 `json:"name"`
 	// Immutable native launcher harness selected when the Capsule was created.
-	Harness      OptString     `json:"harness"`
-	State        CapsuleState  `json:"state"`
-	DesiredState CapsuleIntent `json:"desiredState"`
+	Harness OptString `json:"harness"`
+	// Harness setup revisions pinned when this Capsule was created. Absent when the Capsule started
+	// without a saved setup. A later edit in Settings does not change this Capsule.
+	PinnedHarnessSetups []PinnedHarnessSetup `json:"pinnedHarnessSetups"`
+	State               CapsuleState         `json:"state"`
+	DesiredState        CapsuleIntent        `json:"desiredState"`
 	// Public failure summary. Image-pull failures use a fixed sentence and failureCode; registry text is
 	// never copied here.
 	Failure         OptString      `json:"failure"`
@@ -910,6 +913,11 @@ func (s *Capsule) GetName() string {
 // GetHarness returns the value of Harness.
 func (s *Capsule) GetHarness() OptString {
 	return s.Harness
+}
+
+// GetPinnedHarnessSetups returns the value of PinnedHarnessSetups.
+func (s *Capsule) GetPinnedHarnessSetups() []PinnedHarnessSetup {
+	return s.PinnedHarnessSetups
 }
 
 // GetState returns the value of State.
@@ -1015,6 +1023,11 @@ func (s *Capsule) SetName(val string) {
 // SetHarness sets the value of Harness.
 func (s *Capsule) SetHarness(val OptString) {
 	s.Harness = val
+}
+
+// SetPinnedHarnessSetups sets the value of PinnedHarnessSetups.
+func (s *Capsule) SetPinnedHarnessSetups(val []PinnedHarnessSetup) {
+	s.PinnedHarnessSetups = val
 }
 
 // SetState sets the value of State.
@@ -8192,6 +8205,68 @@ func (*PauseCapsuleNotFound) pauseCapsuleRes() {}
 type PauseCapsuleUnprocessableEntity ErrorEnvelope
 
 func (*PauseCapsuleUnprocessableEntity) pauseCapsuleRes() {}
+
+// One harness setup revision pinned to a Capsule at creation.
+// Ref: #/components/schemas/PinnedHarnessSetup
+type PinnedHarnessSetup struct {
+	Harness string `json:"harness"`
+	SetupId string `json:"setupId"`
+	// Current name of the setup. A rename shows here; the pinned files do not change.
+	Name     string `json:"name"`
+	Revision string `json:"revision"`
+	// When this pinned revision was saved.
+	RevisedAt time.Time `json:"revisedAt"`
+}
+
+// GetHarness returns the value of Harness.
+func (s *PinnedHarnessSetup) GetHarness() string {
+	return s.Harness
+}
+
+// GetSetupId returns the value of SetupId.
+func (s *PinnedHarnessSetup) GetSetupId() string {
+	return s.SetupId
+}
+
+// GetName returns the value of Name.
+func (s *PinnedHarnessSetup) GetName() string {
+	return s.Name
+}
+
+// GetRevision returns the value of Revision.
+func (s *PinnedHarnessSetup) GetRevision() string {
+	return s.Revision
+}
+
+// GetRevisedAt returns the value of RevisedAt.
+func (s *PinnedHarnessSetup) GetRevisedAt() time.Time {
+	return s.RevisedAt
+}
+
+// SetHarness sets the value of Harness.
+func (s *PinnedHarnessSetup) SetHarness(val string) {
+	s.Harness = val
+}
+
+// SetSetupId sets the value of SetupId.
+func (s *PinnedHarnessSetup) SetSetupId(val string) {
+	s.SetupId = val
+}
+
+// SetName sets the value of Name.
+func (s *PinnedHarnessSetup) SetName(val string) {
+	s.Name = val
+}
+
+// SetRevision sets the value of Revision.
+func (s *PinnedHarnessSetup) SetRevision(val string) {
+	s.Revision = val
+}
+
+// SetRevisedAt sets the value of RevisedAt.
+func (s *PinnedHarnessSetup) SetRevisedAt(val time.Time) {
+	s.RevisedAt = val
+}
 
 // Ref: #/components/schemas/PreparationProgress
 type PreparationProgress struct {

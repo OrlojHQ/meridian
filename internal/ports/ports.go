@@ -31,6 +31,7 @@ type Reader interface {
 	GetHarnessSetupRevision(context.Context, string) (domain.HarnessSetupRevision, error)
 	ListHarnessSetupRevisions(context.Context, string) ([]domain.HarnessSetupRevision, error)
 	GetPinnedHarnessSetup(context.Context, domain.CapsuleID, string) (string, error)
+	ListPinnedHarnessSetups(context.Context, []domain.CapsuleID) (map[domain.CapsuleID][]domain.PinnedHarnessSetup, error)
 	GetProject(context.Context, domain.ProjectID) (domain.Project, error)
 	ListProjects(context.Context, Page) ([]domain.Project, bool, error)
 	ListProjectsInDeletion(context.Context) ([]domain.Project, error)

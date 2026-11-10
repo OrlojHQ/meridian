@@ -2059,6 +2059,16 @@ func (s *Capsule) encodeFields(e *jx.Encoder) {
 		}
 	}
 	{
+		if s.PinnedHarnessSetups != nil {
+			e.FieldStart("pinnedHarnessSetups")
+			e.ArrStart()
+			for _, elem := range s.PinnedHarnessSetups {
+				elem.Encode(e)
+			}
+			e.ArrEnd()
+		}
+	}
+	{
 		e.FieldStart("state")
 		s.State.Encode(e)
 	}
@@ -2120,7 +2130,7 @@ func (s *Capsule) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfCapsule = [21]string{
+var jsonFieldsNameOfCapsule = [22]string{
 	0:  "preparation",
 	1:  "startup",
 	2:  "failureCode",
@@ -2130,18 +2140,19 @@ var jsonFieldsNameOfCapsule = [21]string{
 	6:  "originMomentId",
 	7:  "name",
 	8:  "harness",
-	9:  "state",
-	10: "desiredState",
-	11: "failure",
-	12: "restoreComplete",
-	13: "maintenance",
-	14: "role",
-	15: "leadThreadId",
-	16: "linkId",
-	17: "promotedAt",
-	18: "createdAt",
-	19: "updatedAt",
-	20: "resourceVersion",
+	9:  "pinnedHarnessSetups",
+	10: "state",
+	11: "desiredState",
+	12: "failure",
+	13: "restoreComplete",
+	14: "maintenance",
+	15: "role",
+	16: "leadThreadId",
+	17: "linkId",
+	18: "promotedAt",
+	19: "createdAt",
+	20: "updatedAt",
+	21: "resourceVersion",
 }
 
 // Decode decodes Capsule from json.
@@ -2251,8 +2262,25 @@ func (s *Capsule) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"harness\"")
 			}
+		case "pinnedHarnessSetups":
+			if err := func() error {
+				s.PinnedHarnessSetups = make([]PinnedHarnessSetup, 0)
+				if err := d.Arr(func(d *jx.Decoder) error {
+					var elem PinnedHarnessSetup
+					if err := elem.Decode(d); err != nil {
+						return err
+					}
+					s.PinnedHarnessSetups = append(s.PinnedHarnessSetups, elem)
+					return nil
+				}); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"pinnedHarnessSetups\"")
+			}
 		case "state":
-			requiredBitSet[1] |= 1 << 1
+			requiredBitSet[1] |= 1 << 2
 			if err := func() error {
 				if err := s.State.Decode(d); err != nil {
 					return err
@@ -2262,7 +2290,7 @@ func (s *Capsule) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"state\"")
 			}
 		case "desiredState":
-			requiredBitSet[1] |= 1 << 2
+			requiredBitSet[1] |= 1 << 3
 			if err := func() error {
 				if err := s.DesiredState.Decode(d); err != nil {
 					return err
@@ -2282,7 +2310,7 @@ func (s *Capsule) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"failure\"")
 			}
 		case "restoreComplete":
-			requiredBitSet[1] |= 1 << 4
+			requiredBitSet[1] |= 1 << 5
 			if err := func() error {
 				v, err := d.Bool()
 				s.RestoreComplete = bool(v)
@@ -2344,7 +2372,7 @@ func (s *Capsule) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"promotedAt\"")
 			}
 		case "createdAt":
-			requiredBitSet[2] |= 1 << 2
+			requiredBitSet[2] |= 1 << 3
 			if err := func() error {
 				v, err := json.DecodeDateTime(d)
 				s.CreatedAt = v
@@ -2356,7 +2384,7 @@ func (s *Capsule) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"createdAt\"")
 			}
 		case "updatedAt":
-			requiredBitSet[2] |= 1 << 3
+			requiredBitSet[2] |= 1 << 4
 			if err := func() error {
 				v, err := json.DecodeDateTime(d)
 				s.UpdatedAt = v
@@ -2368,7 +2396,7 @@ func (s *Capsule) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"updatedAt\"")
 			}
 		case "resourceVersion":
-			requiredBitSet[2] |= 1 << 4
+			requiredBitSet[2] |= 1 << 5
 			if err := func() error {
 				v, err := d.Int64()
 				s.ResourceVersion = int64(v)
@@ -2390,8 +2418,8 @@ func (s *Capsule) Decode(d *jx.Decoder) error {
 	var failures []validate.FieldError
 	for i, mask := range [3]uint8{
 		0b10111000,
-		0b00010110,
-		0b00011100,
+		0b00101100,
+		0b00111000,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.
@@ -16645,6 +16673,170 @@ func (s *PauseCapsuleUnprocessableEntity) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
 func (s *PauseCapsuleUnprocessableEntity) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s *PinnedHarnessSetup) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *PinnedHarnessSetup) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("harness")
+		e.Str(s.Harness)
+	}
+	{
+		e.FieldStart("setupId")
+		e.Str(s.SetupId)
+	}
+	{
+		e.FieldStart("name")
+		e.Str(s.Name)
+	}
+	{
+		e.FieldStart("revision")
+		e.Str(s.Revision)
+	}
+	{
+		e.FieldStart("revisedAt")
+		json.EncodeDateTime(e, s.RevisedAt)
+	}
+}
+
+var jsonFieldsNameOfPinnedHarnessSetup = [5]string{
+	0: "harness",
+	1: "setupId",
+	2: "name",
+	3: "revision",
+	4: "revisedAt",
+}
+
+// Decode decodes PinnedHarnessSetup from json.
+func (s *PinnedHarnessSetup) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode PinnedHarnessSetup to nil")
+	}
+	var requiredBitSet [1]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "harness":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				v, err := d.Str()
+				s.Harness = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"harness\"")
+			}
+		case "setupId":
+			requiredBitSet[0] |= 1 << 1
+			if err := func() error {
+				v, err := d.Str()
+				s.SetupId = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"setupId\"")
+			}
+		case "name":
+			requiredBitSet[0] |= 1 << 2
+			if err := func() error {
+				v, err := d.Str()
+				s.Name = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"name\"")
+			}
+		case "revision":
+			requiredBitSet[0] |= 1 << 3
+			if err := func() error {
+				v, err := d.Str()
+				s.Revision = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"revision\"")
+			}
+		case "revisedAt":
+			requiredBitSet[0] |= 1 << 4
+			if err := func() error {
+				v, err := json.DecodeDateTime(d)
+				s.RevisedAt = v
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"revisedAt\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode PinnedHarnessSetup")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [1]uint8{
+		0b00011111,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfPinnedHarnessSetup) {
+					name = jsonFieldsNameOfPinnedHarnessSetup[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *PinnedHarnessSetup) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *PinnedHarnessSetup) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }
