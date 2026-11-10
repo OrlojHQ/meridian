@@ -39,7 +39,10 @@ import type {
 } from "./api/generated/types.gen";
 import { queries } from "./api/queries";
 import { Board } from "./components/Board";
+import { CapsuleStartup } from "./components/CapsuleStartup";
 import { DeliveryDecision } from "./components/DeliveryDecision";
+import { isStarting } from "./components/startup";
+import { WorkspaceSkeleton } from "./components/ui/loading";
 import {
   ThreadCreate,
   ThreadDetail,
@@ -719,16 +722,20 @@ function TerminalSession({
         </div>
       </div>
       {runs.isPending || capabilities.isPending ? (
-        <p className="tool-loading" role="status">Preparing terminal…</p>
+        <WorkspaceSkeleton label="Preparing terminal…" />
       ) : runs.isError ? (
         <ErrorState error={runs.error} />
       ) : capabilities.isError ? (
         <ErrorState error={capabilities.error} />
       ) : !currentRun ? (
-        <p className="tool-empty">
-          {harnessName(harness)} is not running yet. Start it to open its
-          interactive terminal.
-        </p>
+        isStarting(capsule) ? (
+          <WorkspaceSkeleton label="Starting the terminal" />
+        ) : (
+          <p className="tool-empty">
+            {harnessName(harness)} is not running yet. Start it to open its
+            interactive terminal.
+          </p>
+        )
       ) : !reconnect ? (
         <div className="run-ended-state" role={currentRun.failure ? "alert" : "status"}>
           <strong>{currentRun.harness} is not running.</strong>
@@ -785,7 +792,7 @@ export function CapsuleDetail() {
     ...queries.deliveries(capsuleId),
     enabled: Boolean(capsuleId) && capabilities.data?.delivery === true,
   });
-  if (capsule.isPending) return <p className="loading" role="status">Loading Capsule…</p>;
+  if (capsule.isPending) return <WorkspaceSkeleton label="Loading Capsule…" />;
   if (capsule.isError) return <ErrorState error={capsule.error} />;
   const value = capsule.data;
   const sessions = capsuleSessions(value, runs.data?.items, threads.data?.items);
@@ -842,7 +849,12 @@ export function CapsuleDetail() {
           />
         </div>
       </header>
-      {value.failure && <p className="error-state" role="alert">{value.failure}</p>}
+      {(isStarting(value) || value.startup || value.failureCode) && (
+        <CapsuleStartup capsule={value} />
+      )}
+      {value.failure && !value.startup && !value.failureCode && (
+        <p className="error-state" role="alert">{value.failure}</p>
+      )}
       {deliveries.data?.items[0]?.state === "proposed" && (
         <section className="workspace-drawer" aria-label="Proposed Delivery">
           <DeliveryDecision capsuleId={value.id} deliveryId={deliveries.data.items[0].id} />
@@ -915,9 +927,11 @@ export function CapsuleDetail() {
         ) : selected ? (
           <ThreadDetail key={selected} threadId={selected} />
         ) : threads.isPending && structured ? (
-          <p className="tool-loading" role="status">Loading sessions…</p>
+          <WorkspaceSkeleton label="Loading sessions…" />
         ) : threads.isError ? (
           <ErrorState error={threads.error} />
+        ) : isStarting(value) ? (
+          <WorkspaceSkeleton label="Starting the session" />
         ) : (
           <p className="tool-empty">
             {value.state === "Ready"

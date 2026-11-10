@@ -130,7 +130,15 @@ func capsuleStatus(detail CapsuleDetail) string {
 		state = "Failed"
 	case client.CapsuleStateCreating, client.CapsuleStatePreparing:
 		state = "Starting"
-		if p, ok := detail.Capsule.Preparation.Get(); ok {
+		if detail.Capsule.State == client.CapsuleStatePreparing {
+			if p, ok := detail.Capsule.Preparation.Get(); ok {
+				state = preparationLabel(string(p.Stage))
+				break
+			}
+		}
+		if line, ok := startupLine(detail.Capsule); ok {
+			state = line
+		} else if p, ok := detail.Capsule.Preparation.Get(); ok {
 			state = preparationLabel(string(p.Stage))
 		}
 	}

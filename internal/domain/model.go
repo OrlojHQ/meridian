@@ -534,7 +534,9 @@ type Capsule struct {
 	RestoreComplete    bool
 	Maintenance        string
 	Failure            string
+	FailureCode        PullFailureCode
 	ImageReference     string
+	Startup            *StartupProgress
 	Role               CapsuleRole
 	LeadThreadID       ThreadID
 	LinkID             ThreadLinkID

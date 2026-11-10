@@ -2049,6 +2049,8 @@ type secretPageJSON struct {
 
 type capsuleJSON struct {
 	Preparation     *domain.PreparationProgress `json:"preparation,omitempty"`
+	Startup         *domain.StartupProgress     `json:"startup,omitempty"`
+	FailureCode     domain.PullFailureCode      `json:"failureCode,omitempty"`
 	ID              string                      `json:"id"`
 	ProjectID       string                      `json:"projectId"`
 	TimelineID      string                      `json:"timelineId"`
@@ -2378,6 +2380,8 @@ func secretResponse(secret domain.Secret) secretJSON {
 func capsuleResponse(capsule domain.Capsule) capsuleJSON {
 	return capsuleJSON{
 		Preparation:     capsule.Preparation,
+		Startup:         capsule.Startup,
+		FailureCode:     capsule.FailureCode,
 		ID:              string(capsule.ID),
 		ProjectID:       string(capsule.ProjectID),
 		TimelineID:      string(capsule.TimelineID),
