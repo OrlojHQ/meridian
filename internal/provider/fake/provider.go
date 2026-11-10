@@ -25,13 +25,17 @@ func (p *Provider) RestoreWorkspace(context.Context, string, string, int64, io.R
 type Options struct {
 	Delay    time.Duration
 	Failures map[string]int
+	// CreateHook runs after an injected failure check and before the fake
+	// resource is recorded. Tests use it to publish startup progress.
+	CreateHook func(context.Context, ports.CreateCapsuleRequest) error
 }
 
 type Provider struct {
-	mu        sync.Mutex
-	resources map[string]ports.ProviderResource
-	delay     time.Duration
-	failures  map[string]int
+	mu         sync.Mutex
+	resources  map[string]ports.ProviderResource
+	delay      time.Duration
+	failures   map[string]int
+	createHook func(context.Context, ports.CreateCapsuleRequest) error
 }
 
 func New(options Options) *Provider {
@@ -40,9 +44,10 @@ func New(options Options) *Provider {
 		failures[operation] = count
 	}
 	return &Provider{
-		resources: make(map[string]ports.ProviderResource),
-		delay:     options.Delay,
-		failures:  failures,
+		resources:  make(map[string]ports.ProviderResource),
+		delay:      options.Delay,
+		failures:   failures,
+		createHook: options.CreateHook,
 	}
 }
 
@@ -133,6 +138,11 @@ func (p *Provider) Create(
 ) (ports.ProviderResource, error) {
 	if err := p.before(ctx, "create"); err != nil {
 		return ports.ProviderResource{}, err
+	}
+	if p.createHook != nil {
+		if err := p.createHook(ctx, request); err != nil {
+			return ports.ProviderResource{}, err
+		}
 	}
 	id := "fake-" + string(request.CapsuleID)
 	p.mu.Lock()

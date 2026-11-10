@@ -34,6 +34,9 @@ type Reconciler struct {
 	pending     map[domain.CapsuleID]struct{}
 	idleStarted bool
 	wg          sync.WaitGroup
+
+	startupMu   sync.Mutex
+	startupSeen map[domain.CapsuleID]startupMark
 }
 
 func (r *Reconciler) ConfigureSecrets(key *secrets.InstallationKey) {
@@ -175,6 +178,10 @@ func (r *Reconciler) process(ctx context.Context, id domain.CapsuleID) {
 		if errors.Is(err, errProjectSetup) {
 			break
 		}
+		var startup *domain.StartupFailure
+		if errors.As(err, &startup) {
+			break
+		}
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return
 		}
@@ -275,12 +282,12 @@ func (r *Reconciler) reconcile(ctx context.Context, id domain.CapsuleID) error {
 			capsule.ImageReference = spec.ImageReference
 			project.Setup = nil // Checkout first; setup runs after exact identity and cache lookup.
 		}
-		createRequest := ports.CreateCapsuleRequest{
+		createRequest := r.startupRequest(ctx, capsule.ID, ports.CreateCapsuleRequest{
 			CapsuleID:      capsule.ID,
 			RepositoryURL:  project.RepositoryURL,
 			Setup:          append([]string(nil), project.Setup...),
 			ImageReference: capsule.WorkspaceImage(project),
-		}
+		})
 		if project.GitSecretName != "" {
 			var secret domain.Secret
 			if err := r.store.View(ctx, func(reader ports.Reader) error {
@@ -516,6 +523,11 @@ func (r *Reconciler) saveCapsule(
 		if err := tx.UpdateCapsule(ctx, capsule, expected); err != nil {
 			return err
 		}
+		if capsule.State == domain.CapsuleReady || capsule.State == domain.CapsuleDeleted {
+			if err := tx.DeleteStartup(ctx, capsule.ID); err != nil {
+				return err
+			}
+		}
 		return tx.AppendEvent(ctx, domain.Event{
 			ID:              domain.EventID(r.ids.NewID()),
 			AggregateType:   "capsule",
@@ -526,6 +538,9 @@ func (r *Reconciler) saveCapsule(
 		})
 	}); err != nil {
 		return err
+	}
+	if capsule.State == domain.CapsuleReady || capsule.State == domain.CapsuleDeleted {
+		r.clearStartupMark(capsule.ID)
 	}
 	if r.sessionReady != nil {
 		if err := r.sessionReady(ctx, capsule); err != nil {
@@ -547,7 +562,15 @@ func (r *Reconciler) recordFailure(ctx context.Context, id domain.CapsuleID, cau
 	if err := capsule.Transition(domain.CapsuleFailed, r.clock.Now()); err != nil {
 		return err
 	}
-	capsule.Failure = cause.Error()
+	var pull *domain.StartupFailure
+	if errors.As(cause, &pull) {
+		capsule.Failure = pull.Error()
+		capsule.FailureCode = pull.Code
+	} else {
+		capsule.Failure = cause.Error()
+		capsule.FailureCode = ""
+	}
+	r.clearStartupMark(id)
 	return r.saveCapsule(ctx, capsule, previous, "capsule.failed")
 }
 

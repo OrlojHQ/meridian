@@ -58,7 +58,10 @@ export const queries = {
       queryKey: ["capsule", capsuleId],
       queryFn: ({ signal }) => api.capsule(capsuleId, signal),
       enabled: Boolean(capsuleId),
-      refetchInterval: 3_000,
+      refetchInterval: (query) =>
+        query.state.data?.state === "Creating" || query.state.data?.state === "Preparing"
+          ? 1_000
+          : 3_000,
     }),
   runs: (capsuleId: string) =>
     queryOptions({

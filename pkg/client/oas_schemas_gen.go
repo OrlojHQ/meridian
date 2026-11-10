@@ -839,15 +839,19 @@ func (s *CapabilitiesStructuredProtocol) UnmarshalText(data []byte) error {
 // Ref: #/components/schemas/Capsule
 type Capsule struct {
 	Preparation    OptPreparationProgress `json:"preparation"`
+	Startup        OptCapsuleStartup      `json:"startup"`
+	FailureCode    OptCapsuleFailureCode  `json:"failureCode"`
 	ID             string                 `json:"id"`
 	ProjectId      string                 `json:"projectId"`
 	TimelineId     string                 `json:"timelineId"`
 	OriginMomentId OptString              `json:"originMomentId"`
 	Name           string                 `json:"name"`
 	// Immutable native launcher harness selected when the Capsule was created.
-	Harness         OptString      `json:"harness"`
-	State           CapsuleState   `json:"state"`
-	DesiredState    CapsuleIntent  `json:"desiredState"`
+	Harness      OptString     `json:"harness"`
+	State        CapsuleState  `json:"state"`
+	DesiredState CapsuleIntent `json:"desiredState"`
+	// Public failure summary. Image-pull failures use a fixed sentence and failureCode; registry text is
+	// never copied here.
 	Failure         OptString      `json:"failure"`
 	RestoreComplete bool           `json:"restoreComplete"`
 	Maintenance     OptString      `json:"maintenance"`
@@ -866,6 +870,16 @@ type Capsule struct {
 // GetPreparation returns the value of Preparation.
 func (s *Capsule) GetPreparation() OptPreparationProgress {
 	return s.Preparation
+}
+
+// GetStartup returns the value of Startup.
+func (s *Capsule) GetStartup() OptCapsuleStartup {
+	return s.Startup
+}
+
+// GetFailureCode returns the value of FailureCode.
+func (s *Capsule) GetFailureCode() OptCapsuleFailureCode {
+	return s.FailureCode
 }
 
 // GetID returns the value of ID.
@@ -961,6 +975,16 @@ func (s *Capsule) GetResourceVersion() int64 {
 // SetPreparation sets the value of Preparation.
 func (s *Capsule) SetPreparation(val OptPreparationProgress) {
 	s.Preparation = val
+}
+
+// SetStartup sets the value of Startup.
+func (s *Capsule) SetStartup(val OptCapsuleStartup) {
+	s.Startup = val
+}
+
+// SetFailureCode sets the value of FailureCode.
+func (s *Capsule) SetFailureCode(val OptCapsuleFailureCode) {
+	s.FailureCode = val
 }
 
 // SetID sets the value of ID.
@@ -1083,6 +1107,56 @@ func (*CapsuleAcceptedHeaders) deleteCapsuleRes() {}
 func (*CapsuleAcceptedHeaders) pauseCapsuleRes()  {}
 func (*CapsuleAcceptedHeaders) resumeCapsuleRes() {}
 func (*CapsuleAcceptedHeaders) retryCapsuleRes()  {}
+
+// Specific image-pull failure. Unset for failures that are not image pulls.
+// Ref: #/components/schemas/CapsuleFailureCode
+type CapsuleFailureCode string
+
+const (
+	CapsuleFailureCodeRegistryUnreachable CapsuleFailureCode = "registry_unreachable"
+	CapsuleFailureCodeAuthRequired        CapsuleFailureCode = "auth_required"
+	CapsuleFailureCodeImageNotFound       CapsuleFailureCode = "image_not_found"
+)
+
+// AllValues returns all CapsuleFailureCode values.
+func (CapsuleFailureCode) AllValues() []CapsuleFailureCode {
+	return []CapsuleFailureCode{
+		CapsuleFailureCodeRegistryUnreachable,
+		CapsuleFailureCodeAuthRequired,
+		CapsuleFailureCodeImageNotFound,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s CapsuleFailureCode) MarshalText() ([]byte, error) {
+	switch s {
+	case CapsuleFailureCodeRegistryUnreachable:
+		return []byte(s), nil
+	case CapsuleFailureCodeAuthRequired:
+		return []byte(s), nil
+	case CapsuleFailureCodeImageNotFound:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *CapsuleFailureCode) UnmarshalText(data []byte) error {
+	switch CapsuleFailureCode(data) {
+	case CapsuleFailureCodeRegistryUnreachable:
+		*s = CapsuleFailureCodeRegistryUnreachable
+		return nil
+	case CapsuleFailureCodeAuthRequired:
+		*s = CapsuleFailureCodeAuthRequired
+		return nil
+	case CapsuleFailureCodeImageNotFound:
+		*s = CapsuleFailureCodeImageNotFound
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
 
 // CapsuleHeaders wraps Capsule with response headers.
 type CapsuleHeaders struct {
@@ -1235,6 +1309,112 @@ func (s *CapsuleRole) UnmarshalText(data []byte) error {
 		return nil
 	case CapsuleRoleSub:
 		*s = CapsuleRoleSub
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Bounded startup progress. phases is the ordered set this provider reports for the current start.
+// pull is present only while an image is pulling and contains byte counts, never registry text.
+// Ref: #/components/schemas/CapsuleStartup
+type CapsuleStartup struct {
+	Phase     CapsuleStartupPhase   `json:"phase"`
+	Phases    []CapsuleStartupPhase `json:"phases"`
+	Pull      OptImagePullProgress  `json:"pull"`
+	UpdatedAt time.Time             `json:"updatedAt"`
+}
+
+// GetPhase returns the value of Phase.
+func (s *CapsuleStartup) GetPhase() CapsuleStartupPhase {
+	return s.Phase
+}
+
+// GetPhases returns the value of Phases.
+func (s *CapsuleStartup) GetPhases() []CapsuleStartupPhase {
+	return s.Phases
+}
+
+// GetPull returns the value of Pull.
+func (s *CapsuleStartup) GetPull() OptImagePullProgress {
+	return s.Pull
+}
+
+// GetUpdatedAt returns the value of UpdatedAt.
+func (s *CapsuleStartup) GetUpdatedAt() time.Time {
+	return s.UpdatedAt
+}
+
+// SetPhase sets the value of Phase.
+func (s *CapsuleStartup) SetPhase(val CapsuleStartupPhase) {
+	s.Phase = val
+}
+
+// SetPhases sets the value of Phases.
+func (s *CapsuleStartup) SetPhases(val []CapsuleStartupPhase) {
+	s.Phases = val
+}
+
+// SetPull sets the value of Pull.
+func (s *CapsuleStartup) SetPull(val OptImagePullProgress) {
+	s.Pull = val
+}
+
+// SetUpdatedAt sets the value of UpdatedAt.
+func (s *CapsuleStartup) SetUpdatedAt(val time.Time) {
+	s.UpdatedAt = val
+}
+
+// Ref: #/components/schemas/CapsuleStartupPhase
+type CapsuleStartupPhase string
+
+const (
+	CapsuleStartupPhasePullingImage      CapsuleStartupPhase = "pulling_image"
+	CapsuleStartupPhaseCreatingContainer CapsuleStartupPhase = "creating_container"
+	CapsuleStartupPhaseStartingHarness   CapsuleStartupPhase = "starting_harness"
+	CapsuleStartupPhaseConnecting        CapsuleStartupPhase = "connecting"
+)
+
+// AllValues returns all CapsuleStartupPhase values.
+func (CapsuleStartupPhase) AllValues() []CapsuleStartupPhase {
+	return []CapsuleStartupPhase{
+		CapsuleStartupPhasePullingImage,
+		CapsuleStartupPhaseCreatingContainer,
+		CapsuleStartupPhaseStartingHarness,
+		CapsuleStartupPhaseConnecting,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s CapsuleStartupPhase) MarshalText() ([]byte, error) {
+	switch s {
+	case CapsuleStartupPhasePullingImage:
+		return []byte(s), nil
+	case CapsuleStartupPhaseCreatingContainer:
+		return []byte(s), nil
+	case CapsuleStartupPhaseStartingHarness:
+		return []byte(s), nil
+	case CapsuleStartupPhaseConnecting:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *CapsuleStartupPhase) UnmarshalText(data []byte) error {
+	switch CapsuleStartupPhase(data) {
+	case CapsuleStartupPhasePullingImage:
+		*s = CapsuleStartupPhasePullingImage
+		return nil
+	case CapsuleStartupPhaseCreatingContainer:
+		*s = CapsuleStartupPhaseCreatingContainer
+		return nil
+	case CapsuleStartupPhaseStartingHarness:
+		*s = CapsuleStartupPhaseStartingHarness
+		return nil
+	case CapsuleStartupPhaseConnecting:
+		*s = CapsuleStartupPhaseConnecting
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)
@@ -5328,6 +5508,33 @@ func (s *HarnessSetupUploadHarness) UnmarshalText(data []byte) error {
 	}
 }
 
+// Ref: #/components/schemas/ImagePullProgress
+type ImagePullProgress struct {
+	CurrentBytes int64 `json:"currentBytes"`
+	// Omitted when the registry did not report a total.
+	TotalBytes OptInt64 `json:"totalBytes"`
+}
+
+// GetCurrentBytes returns the value of CurrentBytes.
+func (s *ImagePullProgress) GetCurrentBytes() int64 {
+	return s.CurrentBytes
+}
+
+// GetTotalBytes returns the value of TotalBytes.
+func (s *ImagePullProgress) GetTotalBytes() OptInt64 {
+	return s.TotalBytes
+}
+
+// SetCurrentBytes sets the value of CurrentBytes.
+func (s *ImagePullProgress) SetCurrentBytes(val int64) {
+	s.CurrentBytes = val
+}
+
+// SetTotalBytes sets the value of TotalBytes.
+func (s *ImagePullProgress) SetTotalBytes(val OptInt64) {
+	s.TotalBytes = val
+}
+
 // Ref: #/components/schemas/ImportHarnessSetupRequest
 type ImportHarnessSetupRequest struct {
 	ID                      OptString          `json:"id"`
@@ -5936,6 +6143,52 @@ func (o OptCapabilitiesStructuredProtocol) Or(d CapabilitiesStructuredProtocol) 
 	return d
 }
 
+// NewOptCapsuleFailureCode returns new OptCapsuleFailureCode with value set to v.
+func NewOptCapsuleFailureCode(v CapsuleFailureCode) OptCapsuleFailureCode {
+	return OptCapsuleFailureCode{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptCapsuleFailureCode is optional CapsuleFailureCode.
+type OptCapsuleFailureCode struct {
+	Value CapsuleFailureCode
+	Set   bool
+}
+
+// IsSet returns true if OptCapsuleFailureCode was set.
+func (o OptCapsuleFailureCode) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptCapsuleFailureCode) Reset() {
+	var v CapsuleFailureCode
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptCapsuleFailureCode) SetTo(v CapsuleFailureCode) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptCapsuleFailureCode) Get() (v CapsuleFailureCode, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptCapsuleFailureCode) Or(d CapsuleFailureCode) CapsuleFailureCode {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptCapsuleRole returns new OptCapsuleRole with value set to v.
 func NewOptCapsuleRole(v CapsuleRole) OptCapsuleRole {
 	return OptCapsuleRole{
@@ -5976,6 +6229,52 @@ func (o OptCapsuleRole) Get() (v CapsuleRole, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptCapsuleRole) Or(d CapsuleRole) CapsuleRole {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptCapsuleStartup returns new OptCapsuleStartup with value set to v.
+func NewOptCapsuleStartup(v CapsuleStartup) OptCapsuleStartup {
+	return OptCapsuleStartup{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptCapsuleStartup is optional CapsuleStartup.
+type OptCapsuleStartup struct {
+	Value CapsuleStartup
+	Set   bool
+}
+
+// IsSet returns true if OptCapsuleStartup was set.
+func (o OptCapsuleStartup) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptCapsuleStartup) Reset() {
+	var v CapsuleStartup
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptCapsuleStartup) SetTo(v CapsuleStartup) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptCapsuleStartup) Get() (v CapsuleStartup, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptCapsuleStartup) Or(d CapsuleStartup) CapsuleStartup {
 	if v, ok := o.Get(); ok {
 		return v
 	}
@@ -6528,6 +6827,52 @@ func (o OptHarnessProfileProtocol) Get() (v HarnessProfileProtocol, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptHarnessProfileProtocol) Or(d HarnessProfileProtocol) HarnessProfileProtocol {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptImagePullProgress returns new OptImagePullProgress with value set to v.
+func NewOptImagePullProgress(v ImagePullProgress) OptImagePullProgress {
+	return OptImagePullProgress{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptImagePullProgress is optional ImagePullProgress.
+type OptImagePullProgress struct {
+	Value ImagePullProgress
+	Set   bool
+}
+
+// IsSet returns true if OptImagePullProgress was set.
+func (o OptImagePullProgress) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptImagePullProgress) Reset() {
+	var v ImagePullProgress
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptImagePullProgress) SetTo(v ImagePullProgress) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptImagePullProgress) Get() (v ImagePullProgress, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptImagePullProgress) Or(d ImagePullProgress) ImagePullProgress {
 	if v, ok := o.Get(); ok {
 		return v
 	}

@@ -869,7 +869,7 @@ func (m Model) advancePendingAttach() (tea.Model, tea.Cmd, bool) {
 	}
 	switch detail.Capsule.State {
 	case client.CapsuleStateCreating, client.CapsuleStatePreparing:
-		m.status = "Provisioning the Capsule…"
+		m.status = provisioningStatus(detail.Capsule)
 	case client.CapsuleStateReady:
 		m.status = "Waiting for the native harness…"
 	default:
@@ -1285,7 +1285,7 @@ func (m Model) enterSelection() (tea.Model, tea.Cmd) {
 	switch detail.Capsule.State {
 	case client.CapsuleStateCreating, client.CapsuleStatePreparing:
 		m.pendingAttachID = detail.Capsule.ID
-		m.status = "Provisioning the Capsule…"
+		m.status = provisioningStatus(detail.Capsule)
 		return m, nil
 	case client.CapsuleStateReady:
 		switch nativeProfile(detail.Profiles, harness) {

@@ -2,13 +2,16 @@
 package docker
 
 import (
+	"bufio"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base32"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/netip"
@@ -193,10 +196,12 @@ func (p *Provider) Create(
 	if imageReference == "" {
 		imageReference = p.config.Image
 	}
-	imageID, err := p.resolveImage(ctx, imageReference)
+	plan := &ports.StartupPublisher{Report: request.ReportStartup}
+	imageID, err := p.resolveImage(ctx, imageReference, plan)
 	if err != nil {
 		return ports.ProviderResource{}, err
 	}
+	plan.Progress(domain.PhaseCreatingContainer, 0, 0)
 	token, err := p.tokens.loadOrCreate(request.CapsuleID)
 	if err != nil {
 		return ports.ProviderResource{}, err
@@ -213,10 +218,12 @@ func (p *Provider) Create(
 	); err != nil {
 		return ports.ProviderResource{}, err
 	}
+	plan.Progress(domain.PhaseStartingHarness, 0, 0)
 	if err := p.ensureStarted(operationContext, names.container, request.CapsuleID); err != nil {
 		return ports.ProviderResource{}, err
 	}
 
+	plan.Progress(domain.PhaseConnecting, 0, 0)
 	readinessContext, readinessCancel := context.WithTimeout(ctx, p.config.OperationTimeout)
 	supervisor, err := p.waitForSupervisor(
 		readinessContext, names.container, request.CapsuleID, token,
@@ -508,18 +515,30 @@ func (p *Provider) verifyLabels(labels map[string]string, capsuleID domain.Capsu
 	return actual, nil
 }
 
-func (p *Provider) resolveImage(ctx context.Context, reference string) (string, error) {
+func (p *Provider) resolveImage(
+	ctx context.Context,
+	reference string,
+	plan *ports.StartupPublisher,
+) (string, error) {
 	if strings.TrimSpace(reference) == "" || strings.ContainsAny(reference, "\x00\r\n") {
 		return "", fmt.Errorf("%w: image reference is invalid", domain.ErrInvalid)
 	}
 	inspection, err := p.inspectImage(ctx, reference)
 	if err != nil && errdefs.IsNotFound(err) && domain.RegistryQualifiedImage(reference) {
-		if err := p.pullImage(ctx, reference); err != nil {
-			return "", fmt.Errorf("pull Capsule image %q: %w", reference, err)
+		plan.SetPhases(domain.ImagePullPhases())
+		plan.Progress(domain.PhasePullingImage, 0, 0)
+		if err := p.pullImage(ctx, reference, plan); err != nil {
+			return "", err
 		}
 		inspection, err = p.inspectImage(ctx, reference)
+	} else if err == nil && plan != nil && !plan.HasPhases() {
+		plan.SetPhases(domain.LocalImagePhases())
 	}
 	if err != nil {
+		var pull *domain.StartupFailure
+		if errors.As(err, &pull) {
+			return "", pull
+		}
 		return "", fmt.Errorf("resolve Capsule image %q: %w", reference, err)
 	}
 	if !strings.HasPrefix(inspection.ID, "sha256:") || len(inspection.ID) != len("sha256:")+64 {
@@ -534,15 +553,82 @@ func (p *Provider) inspectImage(ctx context.Context, reference string) (client.I
 	return p.engine.ImageInspect(inspectCtx, reference)
 }
 
-func (p *Provider) pullImage(ctx context.Context, reference string) error {
+func (p *Provider) pullImage(
+	ctx context.Context,
+	reference string,
+	plan *ports.StartupPublisher,
+) error {
 	pullCtx, cancel := context.WithTimeout(ctx, p.config.SetupTimeout)
 	defer cancel()
 	response, err := p.engine.ImagePull(pullCtx, reference, client.ImagePullOptions{})
 	if err != nil {
-		return err
+		return classifyDockerPull(err)
 	}
 	defer response.Close()
-	return response.Wait(pullCtx)
+	return readPullProgress(pullCtx, response, plan)
+}
+
+// readPullProgress consumes Docker's pull stream. Only numeric byte counts and
+// the pulling_image phase leave this function. Registry text is classified
+// into a fixed error and then discarded.
+func readPullProgress(
+	ctx context.Context,
+	response client.ImagePullResponse,
+	plan *ports.StartupPublisher,
+) error {
+	reader := bufio.NewReaderSize(response, 32<<10)
+	var aggregator pullAggregator
+	var current, total int64
+	var emittedCurrent, emittedTotal int64
+	var lastEmit time.Time
+	emitted := false
+	read := 0
+	lines := 0
+	flush := func(force bool) {
+		if !force && !shouldEmitPull(pullNow(), lastEmit, emittedCurrent, emittedTotal, current, total, emitted) {
+			return
+		}
+		if emitted && current == emittedCurrent && total == emittedTotal {
+			return
+		}
+		plan.Progress(domain.PhasePullingImage, current, total)
+		lastEmit = pullNow()
+		emittedCurrent, emittedTotal = current, total
+		emitted = true
+	}
+	for {
+		if err := ctx.Err(); err != nil {
+			return classifyDockerPull(err)
+		}
+		line, err := readPullLine(reader, &read)
+		if len(line) > 0 {
+			lines++
+			if lines > maxPullLines {
+				return &domain.StartupFailure{}
+			}
+			var message pullMessage
+			if jsonErr := json.Unmarshal(line, &message); jsonErr != nil {
+				return &domain.StartupFailure{}
+			}
+			if pullErr := classifyPullMessage(message); pullErr != nil {
+				return pullErr
+			}
+			if nextCurrent, nextTotal, ok := aggregator.observe(message); ok {
+				current, total = nextCurrent, nextTotal
+				flush(false)
+			}
+		}
+		if errors.Is(err, errPullOversized) || errors.Is(err, io.ErrUnexpectedEOF) {
+			return &domain.StartupFailure{}
+		}
+		if errors.Is(err, io.EOF) {
+			flush(true)
+			return nil
+		}
+		if err != nil {
+			return classifyDockerPull(err)
+		}
+	}
 }
 
 func (p *Provider) ensureVolume(

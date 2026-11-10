@@ -32,7 +32,7 @@ type Store struct {
 }
 
 // CurrentSchemaVersion is the newest migration this binary understands.
-const CurrentSchemaVersion = 19
+const CurrentSchemaVersion = 20
 
 func Open(ctx context.Context, dataDir string) (*Store, error) {
 	if strings.TrimSpace(dataDir) == "" {
@@ -498,14 +498,14 @@ func (r *repository) InsertCapsule(ctx context.Context, capsule domain.Capsule) 
 	_, err := r.q.ExecContext(ctx, `
 		INSERT INTO capsules(
 			id, project_id, timeline_id, name, launcher_harness, state, desired_state, provider_resource_id,
-			origin_moment_id, restore_complete, maintenance, failure, image_reference,
+			origin_moment_id, restore_complete, maintenance, failure, failure_code, image_reference,
 			role, lead_thread_id, link_id,
 			last_activity_at, created_at, updated_at, resource_version
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		capsule.ID, capsule.ProjectID, capsule.TimelineID, capsule.Name, capsule.LauncherHarness,
 		capsule.State, capsule.DesiredState,
 		capsule.ProviderResourceID, nullableString(string(capsule.OriginMomentID)), capsule.RestoreComplete,
-		capsule.Maintenance, capsule.Failure, capsule.ImageReference,
+		capsule.Maintenance, capsule.Failure, capsule.FailureCode, capsule.ImageReference,
 		capsule.Role, nullableString(string(capsule.LeadThreadID)), nullableString(string(capsule.LinkID)),
 		formatTime(capsule.LastActivityAt),
 		formatTime(capsule.CreatedAt), formatTime(capsule.UpdatedAt), capsule.ResourceVersion,
@@ -531,11 +531,11 @@ func (r *repository) UpdateCapsule(
 		UPDATE capsules SET
 			name = ?, state = ?, desired_state = ?, provider_resource_id = ?,
 			origin_moment_id = ?, restore_complete = ?, maintenance = ?,
-			failure = ?, last_activity_at = ?, updated_at = ?, resource_version = ?
+			failure = ?, failure_code = ?, last_activity_at = ?, updated_at = ?, resource_version = ?
 		WHERE id = ? AND resource_version = ?`,
 		capsule.Name, capsule.State, capsule.DesiredState, capsule.ProviderResourceID,
 		nullableString(string(capsule.OriginMomentID)), capsule.RestoreComplete, capsule.Maintenance,
-		capsule.Failure, formatTime(capsule.LastActivityAt), formatTime(capsule.UpdatedAt), capsule.ResourceVersion,
+		capsule.Failure, capsule.FailureCode, formatTime(capsule.LastActivityAt), formatTime(capsule.UpdatedAt), capsule.ResourceVersion,
 		capsule.ID, expected,
 	)
 	if err != nil {
@@ -598,7 +598,7 @@ func (r *repository) TouchCapsuleActivity(
 func (r *repository) GetCapsule(ctx context.Context, id domain.CapsuleID) (domain.Capsule, error) {
 	return scanCapsule(r.q.QueryRowContext(ctx, `
 		SELECT id, project_id, timeline_id, name, launcher_harness, state, desired_state, provider_resource_id,
-			origin_moment_id, restore_complete, maintenance, failure, image_reference,
+			origin_moment_id, restore_complete, maintenance, failure, failure_code, image_reference,
 			role, lead_thread_id, link_id, promoted_at,
 			last_activity_at, created_at, updated_at, resource_version
 		FROM capsules WHERE id = ?`, id,
@@ -613,7 +613,7 @@ func (r *repository) ListCapsules(
 ) ([]domain.Capsule, bool, error) {
 	rows, err := r.q.QueryContext(ctx, `
 		SELECT id, project_id, timeline_id, name, launcher_harness, state, desired_state, provider_resource_id,
-			origin_moment_id, restore_complete, maintenance, failure, image_reference,
+			origin_moment_id, restore_complete, maintenance, failure, failure_code, image_reference,
 			role, lead_thread_id, link_id, promoted_at,
 			last_activity_at, created_at, updated_at, resource_version
 		FROM capsules WHERE project_id = ? AND (? = '' OR role = ?)
@@ -652,7 +652,7 @@ func (r *repository) ListIdleCapsules(
 	}
 	rows, err := r.q.QueryContext(ctx, `
 		SELECT id, project_id, timeline_id, name, launcher_harness, state, desired_state, provider_resource_id,
-			origin_moment_id, restore_complete, maintenance, failure, image_reference,
+			origin_moment_id, restore_complete, maintenance, failure, failure_code, image_reference,
 			role, lead_thread_id, link_id, promoted_at,
 			last_activity_at, created_at, updated_at, resource_version
 		FROM capsules
@@ -678,7 +678,7 @@ func (r *repository) ListIdleCapsules(
 func (r *repository) ListRecoverableCapsules(ctx context.Context) ([]domain.Capsule, error) {
 	rows, err := r.q.QueryContext(ctx, `
 		SELECT id, project_id, timeline_id, name, launcher_harness, state, desired_state, provider_resource_id,
-			origin_moment_id, restore_complete, maintenance, failure, image_reference,
+			origin_moment_id, restore_complete, maintenance, failure, failure_code, image_reference,
 			role, lead_thread_id, link_id, promoted_at,
 			last_activity_at, created_at, updated_at, resource_version
 		FROM capsules WHERE state NOT IN (?, ?)
@@ -711,7 +711,7 @@ func scanCapsule(row scanner) (domain.Capsule, error) {
 		&capsule.ID, &capsule.ProjectID, &capsule.TimelineID, &capsule.Name, &capsule.LauncherHarness,
 		&capsule.State,
 		&capsule.DesiredState, &capsule.ProviderResourceID, &origin, &capsule.RestoreComplete,
-		&capsule.Maintenance, &capsule.Failure, &capsule.ImageReference,
+		&capsule.Maintenance, &capsule.Failure, &capsule.FailureCode, &capsule.ImageReference,
 		&capsule.Role, &leadThread, &link, &promoted,
 		&activity, &created, &updated, &capsule.ResourceVersion,
 	)

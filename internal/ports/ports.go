@@ -22,6 +22,7 @@ type Reader interface {
 	GetPreparationPolicy(context.Context, domain.ProjectID) (domain.PreparationPolicy, error)
 	GetProjectThreadIntentByCapsule(context.Context, domain.CapsuleID) (domain.ProjectThreadIntent, error)
 	GetPreparation(context.Context, domain.CapsuleID) (domain.Preparation, error)
+	GetStartup(context.Context, domain.CapsuleID) (domain.StartupProgress, error)
 	ProjectHarnessSetups(context.Context, domain.ProjectID) (map[string]string, error)
 	ListProviderConnections(context.Context) ([]domain.ProviderConnection, error)
 	GetProviderConnection(context.Context, string) (domain.ProviderConnection, error)
@@ -84,6 +85,8 @@ type Reader interface {
 type Transaction interface {
 	PutPreparationPolicy(context.Context, domain.ProjectID, domain.PreparationPolicy) error
 	PutPreparation(context.Context, domain.Preparation) error
+	PutStartup(context.Context, domain.StartupProgress) error
+	DeleteStartup(context.Context, domain.CapsuleID) error
 	CollectDeletedHarnessSetups(context.Context) error
 	SetProjectHarnessSetup(context.Context, domain.ProjectID, string, string) error
 	PutProviderConnection(context.Context, domain.ProviderConnection) error
@@ -479,6 +482,53 @@ type CreateCapsuleRequest struct {
 	ImageReference   string
 	Restore          bool
 	GitCredential    *GitHTTPSCredential
+	// ReportStartup receives bounded startup phases while Create is running.
+	// It may be nil. Implementations must not pass registry or runtime text,
+	// and the callback must return quickly.
+	ReportStartup func(StartupReport)
+}
+
+// StartupReport is numeric startup progress plus a fixed phase vocabulary.
+type StartupReport struct {
+	Phase        domain.StartupPhase
+	Phases       []domain.StartupPhase
+	CurrentBytes int64
+	TotalBytes   int64
+}
+
+// StartupPublisher remembers the phases a provider has committed to and
+// reports only those, in canonical order.
+type StartupPublisher struct {
+	Report func(StartupReport)
+	phases []domain.StartupPhase
+}
+
+func (p *StartupPublisher) SetPhases(phases []domain.StartupPhase) {
+	if p == nil {
+		return
+	}
+	p.phases = append([]domain.StartupPhase(nil), phases...)
+}
+
+func (p *StartupPublisher) HasPhases() bool {
+	return p != nil && len(p.phases) > 0
+}
+
+func (p *StartupPublisher) Progress(phase domain.StartupPhase, current, total int64) {
+	if p == nil || p.Report == nil || !phase.Valid() {
+		return
+	}
+	if len(p.phases) == 0 {
+		p.phases = domain.IncludePhase(nil, phase)
+	} else {
+		p.phases = domain.IncludePhase(p.phases, phase)
+	}
+	p.Report(StartupReport{
+		Phase:        phase,
+		Phases:       append([]domain.StartupPhase(nil), p.phases...),
+		CurrentBytes: current,
+		TotalBytes:   total,
+	})
 }
 
 type GitHTTPSCredential struct {

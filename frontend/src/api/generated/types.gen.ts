@@ -243,6 +243,8 @@ export type PreparationProgress = {
 
 export type Capsule = {
     preparation?: PreparationProgress;
+    startup?: CapsuleStartup;
+    failureCode?: CapsuleFailureCode;
     id: string;
     projectId: string;
     timelineId: string;
@@ -254,6 +256,9 @@ export type Capsule = {
     harness?: string;
     state: CapsuleState;
     desiredState: CapsuleIntent;
+    /**
+     * Public failure summary. Image-pull failures use a fixed sentence and failureCode; registry text is never copied here.
+     */
     failure?: string;
     restoreComplete: boolean;
     maintenance?: string;
@@ -279,6 +284,31 @@ export type Capsule = {
  * main Capsules are operator-created; sub Capsules were spawned by a lead Thread.
  */
 export type CapsuleRole = 'main' | 'sub';
+
+/**
+ * Bounded startup progress. phases is the ordered set this provider reports for the current start. pull is present only while an image is pulling and contains byte counts, never registry text.
+ */
+export type CapsuleStartup = {
+    phase: CapsuleStartupPhase;
+    phases: Array<CapsuleStartupPhase>;
+    pull?: ImagePullProgress;
+    updatedAt: string;
+};
+
+export type CapsuleStartupPhase = 'pulling_image' | 'creating_container' | 'starting_harness' | 'connecting';
+
+export type ImagePullProgress = {
+    currentBytes: number;
+    /**
+     * Omitted when the registry did not report a total.
+     */
+    totalBytes?: number;
+};
+
+/**
+ * Specific image-pull failure. Unset for failures that are not image pulls.
+ */
+export type CapsuleFailureCode = 'registry_unreachable' | 'auth_required' | 'image_not_found';
 
 export type CapsuleState = 'Creating' | 'Preparing' | 'Ready' | 'Paused' | 'Failed' | 'Sealed' | 'Deleting' | 'Deleted';
 
