@@ -534,10 +534,14 @@ export function ThreadDetail({
       onSelect: () => setConfirmAction("archive"),
     });
   }
-  menu.push({
-    label: "Open terminal",
-    onSelect: () => navigate(`/ui/capsules/${encodeURIComponent(thread.capsuleId)}#terminal`),
-  });
+  // A structured-only pack, such as DeepSeek Harness, has no native profile
+  // and so never starts a Run terminal to attach to.
+  if (profiles.data?.items.some((item) => !item.structured)) {
+    menu.push({
+      label: "Open terminal",
+      onSelect: () => navigate(`/ui/capsules/${encodeURIComponent(thread.capsuleId)}#terminal`),
+    });
+  }
   if (thread.state !== "deleted") {
     menu.push({ label: "Crypto-shred", danger: true, onSelect: () => setConfirmDelete(true) });
   }

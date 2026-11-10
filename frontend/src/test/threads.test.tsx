@@ -222,6 +222,18 @@ describe("Thread detail transcript and controls", () => {
   });
 
   it("collapses deltas into finals, escapes blocks, sends, and answers permissions", async () => {
+    vi.spyOn(api, "harnessProfiles").mockResolvedValue({
+      items: [
+        {
+          name: "mock",
+          structured: true,
+          adapterKind: "mock",
+          protocol: "meridian.adapter.v1",
+          pty: false,
+        },
+        { name: "mock", structured: false, pty: true },
+      ],
+    });
     const blocks: ThreadBlock[] = [
       block("delta", "assistant-1", 1, "partial", "assistant_delta"),
       block("final", "assistant-1", 2, "final <script>x</script>", "assistant_message"),
@@ -387,6 +399,44 @@ describe("Thread detail transcript and controls", () => {
     expect(run).not.toHaveBeenCalled();
     await userEvent.setup().click(screen.getByRole("button", { name: "Thread actions" }));
     expect(screen.getByRole("menuitem", { name: "Crypto-shred" })).toBeInTheDocument();
+  });
+
+  it("offers no terminal for a structured-only pack", async () => {
+    vi.spyOn(api, "harnessProfiles").mockResolvedValue({
+      items: [{
+        name: "dsh",
+        structured: true,
+        adapterKind: "acp",
+        protocol: "meridian.adapter.v1",
+        pty: false,
+      }],
+    });
+    vi.spyOn(api, "thread").mockResolvedValue({ ...thread, harness: "dsh" });
+    vi.spyOn(api, "capsule").mockResolvedValue(capsule);
+    vi.spyOn(api, "threadBlocks").mockResolvedValue({
+      items: [],
+      nextCursor: 0,
+      more: false,
+    });
+    vi.spyOn(threadEvents, "followThreadBlocks").mockImplementation(
+      async (_id, _cursor, signal, _onBlock, onStatus) => {
+        onStatus("live");
+        await new Promise<void>((resolve) =>
+          signal.addEventListener("abort", () => resolve(), { once: true }),
+        );
+      },
+    );
+    wrapper(
+      <Routes>
+        <Route path="/ui/threads/:threadId" element={<ThreadDetail />} />
+      </Routes>,
+    );
+
+    expect(await screen.findByLabelText("Message")).toBeEnabled();
+    await waitFor(() => expect(api.harnessProfiles).toHaveBeenCalled());
+    await userEvent.setup().click(screen.getByRole("button", { name: "Thread actions" }));
+    expect(screen.getByRole("menuitem", { name: "Crypto-shred" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Open terminal" })).not.toBeInTheDocument();
   });
 
   it("ends a failed session honestly, with a bounded reason and a restart path", async () => {
