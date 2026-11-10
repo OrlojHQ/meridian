@@ -3024,7 +3024,8 @@ func (*CreateProjectConflict) createProjectRes() {}
 // Ref: #/components/schemas/CreateProjectRequest
 type CreateProjectRequest struct {
 	Name string `json:"name"`
-	// Public URL or absolute local fixture path visible to the selected provider.
+	// Clone URL, GitHub owner/repo, or GitHub SSH URL. Owner/repo and GitHub SSH are stored as HTTPS. An
+	// absolute local path is also accepted.
 	RepositoryUrl OptString `json:"repositoryUrl"`
 	// Setup executable followed by its arguments; never interpreted by a shell.
 	Setup []string `json:"setup"`

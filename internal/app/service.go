@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/OrlojHQ/meridian/internal/domain"
+	"github.com/OrlojHQ/meridian/internal/localrepo"
 	"github.com/OrlojHQ/meridian/internal/ports"
 	"github.com/OrlojHQ/meridian/internal/providergateway"
 	"github.com/OrlojHQ/meridian/internal/secrets"
@@ -199,6 +200,12 @@ func (s *Service) CreateProjectConfigured(
 	name, err := requireName(name)
 	if err != nil {
 		return domain.Project{}, err
+	}
+	// Same rewrite the TUI and CLI use: owner/repo and GitHub SSH become HTTPS
+	// before validation, so a private clone can use a git_https secret.
+	config.RepositoryURL, err = localrepo.Normalize(config.RepositoryURL)
+	if err != nil {
+		return domain.Project{}, fmt.Errorf("%w: repository URL is invalid", domain.ErrInvalid)
 	}
 	if err := validateProjectConfiguration(config); err != nil {
 		return domain.Project{}, err
