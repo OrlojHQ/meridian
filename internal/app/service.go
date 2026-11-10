@@ -546,6 +546,9 @@ func (s *Service) GetCapsule(ctx context.Context, id domain.CapsuleID) (domain.C
 			} else if !errors.Is(loadErr, domain.ErrNotFound) {
 				return loadErr
 			}
+			if loadErr := loadStartup(ctx, reader, &result); loadErr != nil {
+				return loadErr
+			}
 		}
 		return err
 	})
@@ -573,6 +576,9 @@ func (s *Service) ListCapsules(
 				if loadErr == nil {
 					result.Items[i].Preparation = p.Progress()
 				} else if !errors.Is(loadErr, domain.ErrNotFound) {
+					return loadErr
+				}
+				if loadErr := loadStartup(ctx, reader, &result.Items[i]); loadErr != nil {
 					return loadErr
 				}
 			}
@@ -669,10 +675,14 @@ func (s *Service) mutateCapsule(
 		}
 		if operation == "retry" {
 			preparation, err := tx.GetPreparation(ctx, id)
-			if err != nil {
+			if err != nil && !errors.Is(err, domain.ErrNotFound) {
 				return err
 			}
-			if preparation.Stage == "ready" {
+			hasPreparation := err == nil
+			if hasPreparation && preparation.Stage == "ready" {
+				return fmt.Errorf("%w: only failed preparation can be retried", domain.ErrIllegalTransition)
+			}
+			if !hasPreparation && current.ProviderResourceID != "" {
 				return fmt.Errorf("%w: only failed preparation can be retried", domain.ErrIllegalTransition)
 			}
 			active, err := tx.HasActiveRun(ctx, id)
@@ -696,7 +706,7 @@ func (s *Service) mutateCapsule(
 			} else if err != nil && !errors.Is(err, domain.ErrNotFound) {
 				return err
 			}
-			if current.ProviderResourceID != "" {
+			if current.ProviderResourceID != "" && hasPreparation {
 				preparation.Stage = "reclone"
 				if preparation.Legacy {
 					preparation.Stage = "preparing"
@@ -712,6 +722,10 @@ func (s *Service) mutateCapsule(
 				current.State = domain.CapsuleCreating
 			}
 			current.Failure = ""
+			current.FailureCode = ""
+			if err := tx.DeleteStartup(ctx, id); err != nil {
+				return err
+			}
 		}
 		previousVersion := current.ResourceVersion
 		current.DesiredState = intent

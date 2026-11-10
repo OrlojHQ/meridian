@@ -1,4 +1,5 @@
 import type { Capsule, ChildRollup, Run, Thread } from "../api/generated/types.gen";
+import { phaseLabels } from "../components/startup";
 import { endedSessionState, failureText } from "../components/threadChat";
 
 // Activity is derived only from Capsule and Run resources. Git status,
@@ -86,7 +87,13 @@ export function describeCapsule(
     return { group: "working", label: "Deleting", agent, since: capsule.updatedAt };
   }
   if (capsule.state === "Creating") {
-    return { group: "working", label: "Starting up", agent, since: capsule.createdAt };
+    const phase = capsule.startup?.phase;
+    return {
+      group: "working",
+      label: phase ? phaseLabels[phase] : "Starting up",
+      agent,
+      since: capsule.createdAt,
+    };
   }
   if (capsule.state === "Preparing") {
     return {

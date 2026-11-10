@@ -22,6 +22,7 @@ import { DeleteProjectDialog } from "../components/DeleteProjectDialog";
 import { NewProjectDialog } from "../components/NewProjectDialog";
 import { NewWorkspaceDialog } from "../components/NewWorkspaceDialog";
 import { HarnessMark } from "../components/ui/HarnessMark";
+import { ListSkeleton } from "../components/ui/loading";
 import {
   ActivityIcon,
   ChevronIcon,
@@ -638,9 +639,7 @@ export function AppShell() {
         </nav>
         <nav className="activity-nav" aria-label="Capsule activity">
           {projects.isPending ? (
-            <p className="sidebar-status" role="status">
-              Loading activity…
-            </p>
+            <ListSkeleton label="Loading activity…" />
           ) : projects.isError ? (
             <p className="sidebar-status" role="alert">
               Projects could not be loaded

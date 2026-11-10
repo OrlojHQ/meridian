@@ -75,7 +75,7 @@ func (r *Reconciler) completePreparation(ctx context.Context, c domain.Capsule, 
 		if p.ImageDigest != "" {
 			image = p.ImageDigest
 		}
-		_, err = r.provider.Create(ctx, ports.CreateCapsuleRequest{CapsuleID: c.ID, RepositoryURL: p.RepositoryURL, ImageReference: image, GitCredential: credential, ForcePreparation: true})
+		_, err = r.provider.Create(ctx, r.startupRequest(ctx, c.ID, ports.CreateCapsuleRequest{CapsuleID: c.ID, RepositoryURL: p.RepositoryURL, ImageReference: image, GitCredential: credential, ForcePreparation: true}))
 		if credential != nil {
 			credential.Username, credential.Password = "", ""
 		}
@@ -98,7 +98,7 @@ func (r *Reconciler) completePreparation(ctx context.Context, c domain.Capsule, 
 			if err != nil {
 				return false, err
 			}
-			_, err = r.provider.Create(ctx, ports.CreateCapsuleRequest{CapsuleID: c.ID, RepositoryURL: p.RepositoryURL, ImageReference: p.ImageReference, Setup: p.Setup, GitCredential: credential})
+			_, err = r.provider.Create(ctx, r.startupRequest(ctx, c.ID, ports.CreateCapsuleRequest{CapsuleID: c.ID, RepositoryURL: p.RepositoryURL, ImageReference: p.ImageReference, Setup: p.Setup, GitCredential: credential}))
 			if credential != nil {
 				credential.Username, credential.Password = "", ""
 			}
