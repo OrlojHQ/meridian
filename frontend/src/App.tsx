@@ -49,7 +49,7 @@ import {
   ThreadFleet,
 } from "./components/Threads";
 import { PendingReviewNotice } from "./components/ReviewComments";
-import { ActionsMenu, type ActionsMenuItem } from "./components/ui/ActionsMenu";
+import { Menu as ActionsMenu, type MenuItem as ActionsMenuItem } from "./components/ui/Menu";
 import { HarnessMark } from "./components/ui/HarnessMark";
 import { PlusIcon } from "./components/ui/Icons";
 import { StateBadge } from "./components/ui/StateBadge";
@@ -1204,11 +1204,7 @@ function ProjectHome() {
   const outlet = useOutletContext<ShellOutletContext | undefined>();
   const projects = useQuery(queries.projects());
   if (projects.isPending) {
-    return (
-      <p className="loading" role="status">
-        Loading project…
-      </p>
-    );
+    return <WorkspaceSkeleton label="Loading project…" />;
   }
   if (projects.isError) return <Navigate to="/ui/" replace />;
   const project = projects.data.items.find((item) => item.id === projectId);
@@ -1221,7 +1217,7 @@ function ProjectHome() {
           <h1>{project.name}</h1>
         </div>
       </header>
-      <div className="empty-state">
+      <div className="empty-state ui-card">
         <p>No Capsules in this Project.</p>
         {outlet?.openLauncher ? (
           <div className="inbox-start">

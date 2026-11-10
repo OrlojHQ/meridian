@@ -5,7 +5,9 @@ import { api, normalizeAPIError } from "../api/client";
 import type { HarnessImage, Project } from "../api/generated/types.gen";
 import { projectHarnessImage } from "../api/harnessPacks";
 import { isGitHubRepositoryInput } from "./repositoryUrl";
-import { CloseIcon } from "./ui/Icons";
+import { Button } from "./ui/Button";
+import { Dialog } from "./ui/Dialog";
+import { Input, Select } from "./ui/Field";
 
 const harnessPreferenceKey = "meridian.newProjectHarness";
 
@@ -135,138 +137,114 @@ export function NewProjectDialog({
   if (!open) return null;
 
   return (
-    <div
-      className="dialog-backdrop"
-      onMouseDown={() => {
-        if (!mutation.isPending) onClose();
-      }}
+    <Dialog
+      labelledBy="new-project-title"
+      eyebrow="New project"
+      title="Create a Project"
+      closeLabel="Close new project"
+      closeRef={closeRef}
+      busy={mutation.isPending}
+      onClose={onClose}
+      className="project-dialog"
     >
-      <section
-        className="launch-dialog project-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="new-project-title"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <header className="dialog-header">
-          <div>
-            <p className="eyebrow">New project</p>
-            <h1 id="new-project-title">Create a Project</h1>
-          </div>
-          <button
-            ref={closeRef}
-            type="button"
-            className="icon-button"
-            aria-label="Close new project"
+      <form className="launcher-form" onSubmit={submit}>
+        <label htmlFor="project-name">
+          Project name
+          <Input
+            id="project-name"
+            name="name"
+            required
+            maxLength={128}
             disabled={mutation.isPending}
-            onClick={onClose}
-          >
-            <CloseIcon />
-          </button>
-        </header>
-        <div className="dialog-body">
-          <form className="launcher-form" onSubmit={submit}>
-            <label htmlFor="project-name">
-              Project name
-              <input
-                id="project-name"
-                name="name"
-                required
-                maxLength={128}
-                disabled={mutation.isPending}
-                placeholder="Meridian"
-              />
-            </label>
-            <label htmlFor="project-repository">
-              Repository URL <span className="optional-label">Optional</span>
-              <input
-                id="project-repository"
-                value={repositoryUrl}
-                maxLength={2048}
-                disabled={mutation.isPending}
-                placeholder="owner/repo or https://github.com/org/repository"
-                onChange={(event) => {
-                  const next = event.target.value;
-                  setRepositoryUrl(next);
-                  if (!isGitHubRepositoryInput(next)) {
-                    setPrivateRepo(false);
-                    setToken("");
-                  }
-                }}
-              />
-            </label>
-            {github && (
-              <p className="field-hint">Stored as HTTPS.</p>
-            )}
-            {github && (
-              <label className="checkbox-label" htmlFor="project-private">
-                <input
-                  id="project-private"
-                  type="checkbox"
-                  checked={privateRepo}
-                  disabled={mutation.isPending}
-                  onChange={(event) => {
-                    setPrivateRepo(event.target.checked);
-                    if (!event.target.checked) setToken("");
-                  }}
-                />
-                Private repository
-              </label>
-            )}
-            {github && privateRepo && (
-              <label htmlFor="project-git-token">
-                GitHub token
-                <input
-                  id="project-git-token"
-                  type="password"
-                  autoComplete="off"
-                  spellCheck={false}
-                  required
-                  maxLength={4096}
-                  value={token}
-                  disabled={mutation.isPending}
-                  onChange={(event) => setToken(event.target.value)}
-                />
-              </label>
-            )}
-            {github && privateRepo && (
-              <p className="field-hint">Used only to clone. Stored encrypted.</p>
-            )}
-            {harnessImages.length > 0 ? (
-              <label htmlFor="project-harness">
-                Initial harness pack
-                <select
-                  id="project-harness"
-                  name="harness"
-                  defaultValue={preselected}
-                  disabled={mutation.isPending}
-                >
-                  {harnessImages.map((harness) => (
-                    <option key={harness.name} value={harness.name}>
-                      {harness.name === "mock"
-                        ? "mock (test harness, no agent)"
-                        : harness.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : (
-              <p className="notice">
-                No installation harness packs are available. The Project can be
-                created, but Capsules cannot launch until an operator applies one.
-              </p>
-            )}
-            <button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending ? "Creating…" : "Create Project"}
-            </button>
-          </form>
-          {mutation.isError && (
-            <p className="inline-error" role="alert">
-              {normalizeAPIError(mutation.error).message}
-            </p>
-          )}
-        </div>
-      </section>
-    </div>
+            placeholder="Meridian"
+          />
+        </label>
+        <label htmlFor="project-repository">
+          Repository URL <span className="optional-label">Optional</span>
+          <Input
+            id="project-repository"
+            value={repositoryUrl}
+            maxLength={2048}
+            disabled={mutation.isPending}
+            placeholder="owner/repo or https://github.com/org/repository"
+            onChange={(event) => {
+              const next = event.target.value;
+              setRepositoryUrl(next);
+              if (!isGitHubRepositoryInput(next)) {
+                setPrivateRepo(false);
+                setToken("");
+              }
+            }}
+          />
+        </label>
+        {github && <p className="field-hint">Stored as HTTPS.</p>}
+        {github && (
+          <label className="checkbox-label" htmlFor="project-private">
+            <input
+              id="project-private"
+              type="checkbox"
+              checked={privateRepo}
+              disabled={mutation.isPending}
+              onChange={(event) => {
+                setPrivateRepo(event.target.checked);
+                if (!event.target.checked) setToken("");
+              }}
+            />
+            Private repository
+          </label>
+        )}
+        {github && privateRepo && (
+          <label htmlFor="project-git-token">
+            GitHub token
+            <Input
+              id="project-git-token"
+              type="password"
+              autoComplete="off"
+              spellCheck={false}
+              required
+              maxLength={4096}
+              value={token}
+              disabled={mutation.isPending}
+              onChange={(event) => setToken(event.target.value)}
+            />
+          </label>
+        )}
+        {github && privateRepo && (
+          <p className="field-hint">Used only to clone. Stored encrypted.</p>
+        )}
+        {harnessImages.length > 0 ? (
+          <label htmlFor="project-harness">
+            Initial harness pack
+            <Select
+              id="project-harness"
+              name="harness"
+              defaultValue={preselected}
+              disabled={mutation.isPending}
+            >
+              {harnessImages.map((harness) => (
+                <option key={harness.name} value={harness.name}>
+                  {harness.name === "mock"
+                    ? "mock (test harness, no agent)"
+                    : harness.name}
+                </option>
+              ))}
+            </Select>
+          </label>
+        ) : (
+          <p className="notice">
+            No installation harness packs are available. The Project can be
+            created, but Capsules cannot launch until an operator applies one.
+          </p>
+        )}
+        <Button type="submit" variant="primary" disabled={mutation.isPending}>
+          {mutation.isPending ? "Creating…" : "Create Project"}
+        </Button>
+      </form>
+      {mutation.isError && (
+        <p className="inline-error" role="alert">
+          {normalizeAPIError(mutation.error).message}
+        </p>
+      )}
+    </Dialog>
   );
 }

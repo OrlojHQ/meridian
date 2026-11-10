@@ -15,6 +15,7 @@ import {
   syntaxHighlighter,
   SyntaxTokenLine,
 } from "./SyntaxCode";
+import { useDarkTheme } from "./ui/theme";
 
 type DiffLineKind =
   | "addition"
@@ -217,18 +218,8 @@ export function DiffViewer({
     setDraft(undefined);
   };
   const full = (review?.comments.length ?? 0) >= MAX_REVIEW_COMMENTS;
-  const [dark, setDark] = useState(() =>
-    window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false,
-  );
+  const dark = useDarkTheme();
   const [tokens, setTokens] = useState<Record<string, HighlightToken[]>>({});
-
-  useEffect(() => {
-    const media = window.matchMedia?.("(prefers-color-scheme: dark)");
-    if (!media) return;
-    const update = () => setDark(media.matches);
-    media.addEventListener("change", update);
-    return () => media.removeEventListener("change", update);
-  }, []);
 
   useEffect(() => {
     let active = true;

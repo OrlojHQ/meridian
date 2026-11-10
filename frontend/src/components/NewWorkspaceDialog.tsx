@@ -9,8 +9,10 @@ import { harnessName } from "../shell/capsuleActivity";
 import { ProjectEnvironment } from "./ProjectEnvironment";
 import { NativeLauncher } from "./NativeLauncher";
 import { StructuredLauncher } from "./StructuredLauncher";
+import { Dialog } from "./ui/Dialog";
 import { HarnessMark } from "./ui/HarnessMark";
-import { CloseIcon, PlusIcon, TerminalIcon, ThreadIcon } from "./ui/Icons";
+import { PlusIcon, TerminalIcon, ThreadIcon } from "./ui/Icons";
+import { Tabs } from "./ui/Tabs";
 
 const preferenceKey = (projectId: string) => `meridian.harness.${projectId}`;
 
@@ -192,32 +194,14 @@ export function NewWorkspaceDialog({
   };
 
   return (
-    <div className="dialog-backdrop" onMouseDown={onClose}>
-      <section
-        className="launch-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="new-workspace-title"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <header className="dialog-header">
-          <div>
-            <p className="eyebrow">New Capsule</p>
-            <h1 id="new-workspace-title">
-              {current ? `Start work in ${current.name}` : "Start work"}
-            </h1>
-          </div>
-          <button
-            ref={closeRef}
-            type="button"
-            className="icon-button"
-            aria-label="Close new workspace"
-            onClick={onClose}
-          >
-            <CloseIcon />
-          </button>
-        </header>
-        <div className="dialog-body">
+    <Dialog
+      labelledBy="new-workspace-title"
+      eyebrow="New Capsule"
+      title={current ? `Start work in ${current.name}` : "Start work"}
+      closeLabel="Close new workspace"
+      closeRef={closeRef}
+      onClose={onClose}
+    >
           {!current ? (
             <div className="empty-inline">Select a Project before starting work.</div>
           ) : (
@@ -233,28 +217,15 @@ export function NewWorkspaceDialog({
                 }}
               />
               {harness && structured && native && (
-                <div className="segmented-control" role="tablist" aria-label="How to start">
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={activeMode === "terminal"}
-                    className={activeMode === "terminal" ? "active" : undefined}
-                    onClick={() => setMode("terminal")}
-                  >
-                    <TerminalIcon />
-                    Open terminal
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={activeMode === "task"}
-                    className={activeMode === "task" ? "active" : undefined}
-                    onClick={() => setMode("task")}
-                  >
-                    <ThreadIcon />
-                    Give it a task
-                  </button>
-                </div>
+                <Tabs
+                  label="How to start"
+                  value={activeMode}
+                  onChange={(value) => setMode(value === "task" ? "task" : "terminal")}
+                  tabs={[
+                    { id: "terminal", label: "Open terminal", icon: <TerminalIcon /> },
+                    { id: "task", label: "Give it a task", icon: <ThreadIcon /> },
+                  ]}
+                />
               )}
               {harness &&
                 (activeMode === "terminal" ? (
@@ -275,8 +246,6 @@ export function NewWorkspaceDialog({
               <ProjectEnvironment key={current.id + "-environment"} projectId={current.id} />
             </>
           )}
-        </div>
-      </section>
-    </div>
+    </Dialog>
   );
 }

@@ -6,6 +6,8 @@ import { api } from "../api/client";
 import type { Project } from "../api/generated/types.gen";
 import { queries } from "../api/queries";
 import { projectSecretNames } from "../shell/capsuleActivity";
+import { Button } from "./ui/Button";
+import { Input } from "./ui/Field";
 
 function messageOf(error: unknown) {
   return error instanceof Error ? error.message : "The count could not be loaded";
@@ -58,55 +60,58 @@ export function DeleteProjectDialog({
   }
 
   return createPortal(
-    <section
-      className="confirm-dialog"
-      role="alertdialog"
-      aria-modal="true"
-      aria-labelledby="delete-project-title"
-    >
-      <h2 id="delete-project-title">
-        {retry ? `Retry deleting ${project.name}?` : `Delete ${project.name}?`}
-      </h2>
-      <p>This permanently removes:</p>
-      <ul>
-        <li>{countsReady ? capsuleCount : "…"} Capsules</li>
-        <li>{countsReady ? threadCount : "…"} threads</li>
-        <li>{secretCount} secrets</li>
-      </ul>
-      <p>Transcripts and artifacts are deleted with the project and are not kept.</p>
-      {retry && (
-        <p className="notice" role="status">
-          Deletion stopped{project.failure ? `: ${project.failure}` : ""}. Retrying resumes cleanup.
-        </p>
-      )}
-      {capsules.isError && <p role="alert">{messageOf(capsules.error)}</p>}
-      {threadError && <p role="alert">{messageOf(threadError)}</p>}
-      {error && <p role="alert">{error.message}</p>}
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          void submit();
-        }}
+    <>
+      <div className="dialog-backdrop dialog-backdrop-inert" />
+      <section
+        className="confirm-dialog"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="delete-project-title"
       >
-        <label>
-          Type <strong>{project.name}</strong> to confirm
-          <input
-            aria-label="Project name"
-            value={name}
-            autoComplete="off"
-            onChange={(event) => setName(event.target.value)}
-          />
-        </label>
-        <div className="actions">
-          <button type="submit" className="danger" disabled={!confirmed || !countsReady || pending}>
-            {retry ? "Retry delete" : "Delete project"}
-          </button>
-          <button type="button" className="secondary" autoFocus onClick={onCancel}>
-            Keep project
-          </button>
-        </div>
-      </form>
-    </section>,
+        <h2 id="delete-project-title">
+          {retry ? `Retry deleting ${project.name}?` : `Delete ${project.name}?`}
+        </h2>
+        <p>This permanently removes:</p>
+        <ul>
+          <li>{countsReady ? capsuleCount : "…"} Capsules</li>
+          <li>{countsReady ? threadCount : "…"} threads</li>
+          <li>{secretCount} secrets</li>
+        </ul>
+        <p>Transcripts and artifacts are deleted with the project and are not kept.</p>
+        {retry && (
+          <p className="notice" role="status">
+            Deletion stopped{project.failure ? `: ${project.failure}` : ""}. Retrying resumes cleanup.
+          </p>
+        )}
+        {capsules.isError && <p role="alert">{messageOf(capsules.error)}</p>}
+        {threadError && <p role="alert">{messageOf(threadError)}</p>}
+        {error && <p role="alert">{error.message}</p>}
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submit();
+          }}
+        >
+          <label>
+            Type <strong>{project.name}</strong> to confirm
+            <Input
+              aria-label="Project name"
+              value={name}
+              autoComplete="off"
+              onChange={(event) => setName(event.target.value)}
+            />
+          </label>
+          <div className="actions">
+            <Button type="submit" variant="danger" disabled={!confirmed || !countsReady || pending}>
+              {retry ? "Retry delete" : "Delete project"}
+            </Button>
+            <Button type="button" variant="secondary" autoFocus onClick={onCancel}>
+              Keep project
+            </Button>
+          </div>
+        </form>
+      </section>
+    </>,
     document.body,
   );
 }

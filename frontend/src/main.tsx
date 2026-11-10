@@ -5,11 +5,16 @@ import { BrowserRouter } from "react-router-dom";
 
 import { App } from "./App";
 import { queryClient } from "./api/queries";
+import { applyTheme, readTheme } from "./components/ui/theme";
 import "./styles.css";
 import "./styles/tokens.css";
 import "./styles/shell.css";
 import "./styles/features.css";
+import "./styles/features.css";
+import "./styles/components.css";
 import "./styles/loading.css";
+
+applyTheme(readTheme());
 
 const root = document.getElementById("root");
 if (!root) {

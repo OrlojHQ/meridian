@@ -18,6 +18,8 @@ import { failureText, safeInline } from "./threadChat";
 import { ThreadError } from "./ThreadError";
 import { HarnessMark } from "./ui/HarnessMark";
 import { PlusIcon } from "./ui/Icons";
+import { Button } from "./ui/Button";
+import { Card } from "./ui/Card";
 import { ListSkeleton } from "./ui/loading";
 
 type BoardStatus = BoardItem["status"];
@@ -280,18 +282,18 @@ export function Board() {
 
   if (projects.isSuccess && projectItems.length === 0 && items.length === 0) {
     return (
-      <section className="empty-state">
+      <Card className="empty-state">
         <h1>No projects yet</h1>
         <p>
           A Project points Meridian at a repository. Every agent session then
           runs in its own disposable Capsule with a fresh clone.
         </p>
         {outlet?.openNewProject && (
-          <button type="button" onClick={outlet.openNewProject}>
+          <Button type="button" variant="primary" onClick={outlet.openNewProject}>
             New project
-          </button>
+          </Button>
         )}
-      </section>
+      </Card>
     );
   }
 
@@ -304,7 +306,7 @@ export function Board() {
             <h1>Nothing running yet</h1>
           </div>
         </header>
-        <div className="empty-state">
+        <div className="empty-state ui-card">
           <p>Start an agent in a new Capsule.</p>
           <StartWork
             projects={projectItems}

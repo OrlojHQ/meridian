@@ -82,8 +82,13 @@
   gap: 0.55rem;
 }
 
+.skeleton-line,
+.skeleton-title {
+  border-radius: var(--radius-full);
+}
+
 .skeleton-line {
-  height: 0.7rem;
+  height: 0.72rem;
   width: min(100%, 18rem);
 }
 
