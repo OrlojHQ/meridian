@@ -70,8 +70,9 @@ it("groups settings under plain section headings without nested disclosures",asy
  expect(screen.getByRole("button",{name:"Add skills folder"})).toBeInTheDocument();
  expect(view.container).toHaveTextContent("Dependency folders such as node_modules and login caches are excluded; you sign in to each harness separately.");
  expect(view.container).toHaveTextContent("Review import uploads the selected files to your Meridian server for checks.");
- expect(view.container).toHaveTextContent("A Claude login is stored encrypted and attached by the provider gateway; a Capsule never receives that token.");
- expect(view.container).toHaveTextContent("Codex, OpenCode, Pi, and DeepSeek Harness subscription logins stay in the harness and are never imported.");
+ expect(view.container).toHaveTextContent("Connect a provider once, then authorize it for each Project.");
+ expect(view.container).not.toHaveTextContent("Capsule never receives");
+ expect(view.container).not.toHaveTextContent("subscription logins stay");
  expect(view.container).toHaveTextContent("meridian harness import");
  expect(screen.getByLabelText("API key")).toHaveAttribute("type","password");
 });
@@ -142,7 +143,7 @@ it("saves, replaces, and clears a pasted Claude login without showing it again",
  await user.click(screen.getByRole("radio",{name:"Setup token"}));
  const secret="sk-ant-oat-claude-login-canary";
  await user.type(screen.getByLabelText("Setup token",{selector:"input[type='password']"}),secret);
- await user.click(screen.getByRole("button",{name:"Save Claude login"}));
+ await user.click(screen.getByRole("button",{name:"Save setup token"}));
  await waitFor(()=>expect(save).toHaveBeenCalledWith({name:"Claude",provider:"anthropic",apiKey:secret,credentialKind:"oauth",expectedResourceVersion:0},undefined));
  expect(screen.queryByDisplayValue(secret)).toBeNull();
  expect(document.body.textContent).not.toContain(secret);
@@ -158,7 +159,7 @@ it("saves, replaces, and clears a pasted Claude login without showing it again",
  expect(screen.getByRole("radio",{name:"Setup token"})).toBeChecked();
  const replacement="sk-ant-oat-claude-login-replaced";
  await user.type(screen.getByLabelText("Setup token",{selector:"input[type='password']"}),replacement);
- await user.click(screen.getByRole("button",{name:"Replace Claude login"}));
+ await user.click(screen.getByRole("button",{name:"Replace setup token"}));
  await waitFor(()=>expect(save).toHaveBeenCalledWith({name:"Claude",provider:"anthropic",apiKey:replacement,credentialKind:"oauth",expectedResourceVersion:1},"claude-login"));
  expect(screen.queryByDisplayValue(replacement)).toBeNull();
  await user.click(screen.getByRole("button",{name:"Clear login"}));

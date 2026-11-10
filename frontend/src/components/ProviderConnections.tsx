@@ -77,7 +77,8 @@ export function ProviderConnections(){
   }catch(error){setMessage(normalizeAPIError(error).message);}
   finally{setBusy(false);}
  }
- return <section className="panel"><h2>Provider connections</h2><p>Connect an OpenAI or Anthropic credential, or a self-hosted model server such as vLLM, Ollama, or a LiteLLM proxy, once. Then authorize it for each Project on its first launch. A Claude login is stored encrypted and attached by the provider gateway; a Capsule never receives that token. Codex, OpenCode, Pi, and DeepSeek Harness subscription logins stay in the harness and are never imported.</p>
+ const savedKind=loginKind==="oauth"?"setup token":"API key";
+ return <section className="panel"><h2>Provider connections</h2><p>Connect a provider once, then authorize it for each Project.</p>
  {connections.isPending && <p role="status">Loading connections…</p>}
  {connections.isError && <p role="alert">{normalizeAPIError(connections.error).message}</p>}
  {connections.data && !connections.data.enabled && <p>Reusable connections require an HTTPS Meridian address reachable from Capsules. Ask the installation administrator to enable the provider gateway.</p>}
@@ -106,7 +107,7 @@ export function ProviderConnections(){
    <label><input type="radio" name="claude-login-kind" checked={loginKind==="oauth"} onChange={()=>setLoginKind("oauth")}/>Setup token</label>
   </div>
   <input type="password" aria-label={loginKind==="api_key"?"API key":"Setup token"} autoComplete="off" value={key} maxLength={4096} onChange={event=>setKey(event.target.value)}/>
-  <button disabled={save.isPending||!key}>{editing?"Replace Claude login":"Save Claude login"}</button>
+  <button disabled={save.isPending||!key}>{editing?`Replace ${savedKind}`:`Save ${savedKind}`}</button>
  </div>}
 </div>}
  {editing && custom && <p>Saving replaces the stored key. Enter it again, or leave it empty if the server needs none.</p>}
