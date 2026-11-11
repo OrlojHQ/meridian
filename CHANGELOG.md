@@ -7,6 +7,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-10
+
 ### Upgrade notes
 
 - Stop the 0.3.x `meridiand` before starting this release on the same data
@@ -693,7 +695,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - Docker and Agent Sandbox are not claimed as hostile multi-tenant isolation
   boundaries; hardened runtime deployment and external review remain required.
 
-[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/OrlojHQ/meridian/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/OrlojHQ/meridian/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/OrlojHQ/meridian/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/OrlojHQ/meridian/compare/v0.1.0...v0.1.1

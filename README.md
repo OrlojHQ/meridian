@@ -118,7 +118,7 @@ Download the archive for your platform from
 `arm64` or `amd64`) and [verify it](docs/operations.md#verify-a-release):
 
 ```console
-VERSION=0.3.0
+VERSION=0.4.0
 curl -fsSLO "https://github.com/OrlojHQ/meridian/releases/download/v${VERSION}/meridian_${VERSION}_macOS_arm64.tar.gz"
 tar -xzf "meridian_${VERSION}_macOS_arm64.tar.gz" meridian meridiand
 ```
