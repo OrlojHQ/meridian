@@ -2599,6 +2599,13 @@ button.tool-line:hover {
   font-size: 0.66rem;
 }
 
+.harness-mark-lg {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+}
+
 .harness-mark .harness-logo {
   width: 68%;
   height: 68%;
@@ -2630,6 +2637,10 @@ button.tool-line:hover {
 
 .harness-mark-pi {
   color: var(--harness-pi);
+}
+
+.harness-mark-dsh {
+  color: var(--harness-dsh);
 }
 
 /* Agent picker */

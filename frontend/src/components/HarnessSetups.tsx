@@ -1,11 +1,12 @@
 import { HarnessSetupEditor } from "./HarnessSetupEditor";
 import { HarnessSetupImport } from "./HarnessSetupImport";
 import { connectableHarnesses, connectionSupports, ProviderConnections } from "./ProviderConnections";
+import { HarnessMark } from "./ui/HarnessMark";
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, normalizeAPIError } from "../api/client";
-import type { HarnessSetup, MutateHarnessSetupRequest } from "../api/generated/types.gen";
+import type { HarnessSetup, MutateHarnessSetupRequest, ProviderConnection } from "../api/generated/types.gen";
 import { harnessName } from "../shell/capsuleActivity";
 import type { Harness } from "../import/localSetup";
 
@@ -63,14 +64,20 @@ export function HarnessSetups(){
   {setups.isError && <p role="alert">{normalizeAPIError(setups.error).message}<button onClick={()=>void setups.refetch()}>Retry</button></p>}
   <ul className="harness-list">
    {names.map(harness=>{
-    const setup=saved.find(item=>item.harness===harness);
-    const linked=connections.data?.items.some(item=>!item.revoked && connectionSupports(harness, item));
-    const label=linked?"Connected":setup?"Setup saved":"Not set up";
-    const action=linked||setup?"Manage":"Connect";
+    const setup=saved.find(item=>item.harness===harness&&item.default)??saved.find(item=>item.harness===harness);
+    const supported=connections.data?.items.filter(item=>!item.revoked && connectionSupports(harness, item)) ?? [];
+    const action=setup||supported.length>0?"Manage":"Set up";
     return <li key={harness}>
-     <span className="harness-list-name"><HarnessMarkPlaceholder harness={harness}/> <strong>{harnessName(harness)}</strong></span>
-     <span className="badge">{label}</span>
-     <button type="button" onClick={()=>setOpen(harness)}>{action} {harnessName(harness)}</button>
+     <HarnessMark harness={harness} size="lg" />
+     <span className="harness-list-copy">
+      <strong>{harnessName(harness)}</strong>
+      <span className="harness-list-status">
+       <span className={setup?"is-ready":undefined}>{setup?`Setup “${setup.name}”`:"No setup imported"}</span>
+       <span aria-hidden="true"> · </span>
+       <ConnectionStatus items={supported} />
+      </span>
+     </span>
+     <button type="button" className="harness-list-action" aria-label={`${action} ${harnessName(harness)}`} onClick={()=>setOpen(harness)}>{action}</button>
     </li>;
    })}
   </ul>
@@ -89,6 +96,11 @@ export function HarnessSetups(){
  </article>;
 }
 
-function HarnessMarkPlaceholder({harness}:{harness:string}){
- return <span className="harness-list-mark" aria-hidden="true">{harnessName(harness).slice(0,1)}</span>;
+// One line per harness: what a new Capsule would use, without opening it.
+function ConnectionStatus({items}:{items:ProviderConnection[]}){
+ const usable=items.filter(item=>!item.needsSignIn);
+ if(usable.length===1) return <span className="is-ready">{usable[0].name}</span>;
+ if(usable.length>1) return <span className="is-ready">{usable.length} provider connections</span>;
+ if(items.length>0) return <span className="is-warning">Sign-in expired</span>;
+ return <span>No provider connection</span>;
 }

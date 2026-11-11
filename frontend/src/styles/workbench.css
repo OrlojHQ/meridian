@@ -753,22 +753,58 @@
 
 .harness-list {
   display: grid;
-  width: min(46rem, calc(100% - 2rem));
-  margin: 0 1rem 1rem;
+  width: min(48rem, calc(100% - 2.2rem));
+  margin: 1.25rem 1.1rem 1rem;
   padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
   list-style: none;
 }
 
 .harness-list li {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 0.8rem;
-  min-height: 4rem;
+  gap: 0.9rem;
+  min-height: 4.25rem;
+  padding: 0.7rem 1rem;
+}
+
+.harness-list li + li {
   border-top: 1px solid var(--border);
 }
 
-.harness-list button {
+.harness-list-copy {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.harness-list-copy strong {
+  font-size: 0.95rem;
+  font-weight: 650;
+}
+
+.harness-list-status {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.harness-list-status .is-ready {
+  color: var(--text);
+}
+
+.harness-list-status .is-warning {
+  color: var(--warning);
+}
+
+.harness-list .harness-list-action {
+  min-width: 5.5rem;
   min-height: 2rem;
   border: 1px solid var(--border);
   border-radius: 999px;
@@ -780,9 +816,24 @@
   font-weight: 650;
 }
 
-.harness-list button:hover {
+.harness-list .harness-list-action:hover {
   background: var(--surface-hover);
   filter: none;
+}
+
+/* On a phone, setup and connection each get a line instead of truncating. */
+@media (max-width: 720px) {
+  .harness-list-status {
+    white-space: normal;
+  }
+
+  .harness-list-status > span {
+    display: block;
+  }
+
+  .harness-list-status > span[aria-hidden="true"] {
+    display: none;
+  }
 }
 
 .project-settings header h1 {
@@ -794,24 +845,6 @@
 .project-settings,
 .harness-settings {
   padding-top: 1.75rem;
-}
-
-.harness-list-name {
-  display: flex;
-  align-items: center;
-  gap: 0.7rem;
-  min-width: 0;
-}
-
-.harness-list-mark {
-  display: grid;
-  width: 2rem;
-  height: 2rem;
-  place-items: center;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  font-weight: 720;
 }
 
 .wb-scrim {

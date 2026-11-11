@@ -7,6 +7,16 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Harness settings lists each harness with its logo instead of a one-letter
+  placeholder, and shows what a new Capsule would use: the default setup and
+  the provider connection, or that the sign-in expired. Each row has one
+  Set up or Manage button, and on a phone the status wraps instead of being
+  cut off. DeepSeek Harness now has its own mark everywhere harnesses are
+  shown, from simple-icons 16.33.0 (CC0-1.0), like Claude Code, OpenCode,
+  and Pi.
+
 ## [0.4.0] - 2026-11-10
 
 ### Upgrade notes

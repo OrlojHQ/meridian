@@ -41,6 +41,7 @@
   --harness-codex: #000000;
   --harness-opencode: #1f221e;
   --harness-pi: #1f221e;
+  --harness-dsh: #5786fe;
   --harness-other: #5c6b64;
   --badge-fg: #3c4943;
   --badge-bg: #e6eeea;
@@ -145,6 +146,7 @@
   --harness-codex: #ffffff;
   --harness-opencode: #eceee9;
   --harness-pi: #eceee9;
+  --harness-dsh: #7f9fff;
   --harness-other: #c5d1cb;
   --badge-fg: #d5dfda;
   --badge-bg: #2a342f;
@@ -208,6 +210,7 @@
     --harness-codex: #ffffff;
     --harness-opencode: #eceee9;
     --harness-pi: #eceee9;
+    --harness-dsh: #7f9fff;
     --harness-other: #c5d1cb;
     --badge-fg: #d5dfda;
     --badge-bg: #2a342f;
