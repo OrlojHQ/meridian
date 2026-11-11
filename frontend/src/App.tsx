@@ -51,7 +51,7 @@ import {
 import { PendingReviewNotice } from "./components/ReviewComments";
 import { Menu as ActionsMenu, type MenuItem as ActionsMenuItem } from "./components/ui/Menu";
 import { HarnessMark } from "./components/ui/HarnessMark";
-import { PlusIcon } from "./components/ui/Icons";
+import { PlusIcon, ThreadIcon } from "./components/ui/Icons";
 import { StateBadge } from "./components/ui/StateBadge";
 import {
   ActivityDot,
@@ -833,7 +833,7 @@ export function CapsuleDetail() {
   );
 
   return (
-    <article className={`capsule-workspace${chatSelected ? " chat-session" : ""}${cliSelected ? " cli-session" : ""}`}>
+    <article className={`capsule-workspace${chatSelected ? " chat-session" : ""}${cliSelected ? " cli-session" : ""}${sessions.length <= 1 ? " solo-session" : ""}`}>
       <header className="capsule-bar">
         <div className="capsule-bar-title">
           {harness && <HarnessMark harness={harness} size="md" />}
@@ -847,19 +847,20 @@ export function CapsuleDetail() {
               PR #{pullRequest.resultPullRequestNumber ?? ""}
             </a>
           )}
-          <span className={`pill activity-pill activity-pill-${activity.group}`}>
-            <ActivityDot group={activity.group} />
-            {activity.label}
-          </span>
           {cliSelected && (canCreateThread || threadTarget) && (
             <button
               type="button"
               className="to-thread"
               onClick={() => selectSession(threadTarget?.id ?? NEW_SESSION)}
             >
+              <ThreadIcon />
               Thread
             </button>
           )}
+          <span className={`pill activity-pill activity-pill-${activity.group}`}>
+            <ActivityDot group={activity.group} />
+            {activity.label}
+          </span>
           <span className="capsule-bar-meta">
             {[projectName, `updated ${relativeTime(value.updatedAt)}`]
               .filter(Boolean)

@@ -14,19 +14,26 @@ import "./styles/components.css";
 import "./styles/loading.css";
 import "./styles/workbench.css";
 
-applyTheme(readTheme());
-
 const root = document.getElementById("root");
 if (!root) {
   throw new Error("root element not found");
 }
 
-createRoot(root).render(
-  <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
-    </QueryClientProvider>
-  </StrictMode>,
-);
+async function boot() {
+  if (import.meta.env.DEV && new URLSearchParams(window.location.search).has("shots")) {
+    const { installShotFixture } = await import("./shots/fixture");
+    installShotFixture();
+  }
+  applyTheme(readTheme());
+  createRoot(root!).render(
+    <StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <App />
+        </BrowserRouter>
+      </QueryClientProvider>
+    </StrictMode>,
+  );
+}
+
+void boot();

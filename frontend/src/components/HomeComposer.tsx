@@ -153,30 +153,34 @@ export function HomeComposer() {
           />
         )}
         <div className="launch-bar">
-          {structured && native && (
-            <div className="segmented-control" role="tablist" aria-label="How to start">
+          <div className="segmented-control" role="tablist" aria-label="How to start">
+            <span title={structured ? undefined : "This harness has no structured session"}>
               <button
                 type="button"
                 role="tab"
                 aria-selected={activeMode === "thread"}
                 className={activeMode === "thread" ? "active" : undefined}
+                disabled={!structured}
                 onClick={() => setMode("thread")}
               >
                 <ThreadIcon />
                 Thread
               </button>
+            </span>
+            <span title={native ? undefined : "This harness has no terminal"}>
               <button
                 type="button"
                 role="tab"
                 aria-selected={activeMode === "cli"}
                 className={activeMode === "cli" ? "active" : undefined}
+                disabled={!native}
                 onClick={() => setMode("cli")}
               >
                 <TerminalIcon />
                 CLI
               </button>
-            </div>
-          )}
+            </span>
+          </div>
           <label className="picker">
             <span className="sr-only">Project</span>
             <select
@@ -263,6 +267,11 @@ export function HomeComposer() {
             {recent.map((item) => (
               <li key={item.capsule.id}>
                 <Link to={sessionPath(item.capsule.id)}>
+                  {item.sessions.some((session) => session.kind === "thread" && !session.archived) ? (
+                    <ThreadIcon />
+                  ) : (
+                    <TerminalIcon />
+                  )}
                   <strong>{item.capsule.name}</strong>
                   <em>{item.activity.label}</em>
                   <time dateTime={item.activity.since}>{relativeTime(item.activity.since)}</time>

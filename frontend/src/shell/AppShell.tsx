@@ -24,10 +24,13 @@ import { NewWorkspaceDialog } from "../components/NewWorkspaceDialog";
 import { HarnessMark } from "../components/ui/HarnessMark";
 import { ListSkeleton } from "../components/ui/loading";
 import {
+  ChangesIcon,
   ChevronIcon,
   CommandIcon,
+  FilesIcon,
   MenuIcon,
   PlusIcon,
+  PreviewIcon,
   SearchIcon,
   SettingsIcon,
   ThemeIcon,
@@ -532,6 +535,7 @@ export function AppShell() {
     items: visibleItems.filter((item) => item.capsule.projectId === project.id),
   }));
   const hasContext = Boolean(capsuleId);
+  const showRail = hasContext && !contextOpen;
   const projectName = new Map(projectItems.map((project) => [project.id, project.name]));
   const byTime = (value: WorkingSetItem) => Date.parse(value.activity.since ?? value.capsule.updatedAt);
   const attentionItems = visibleItems
@@ -549,42 +553,37 @@ export function AppShell() {
     const live = sessions.filter((session) => !session.archived);
     const harness = capsule.harness || live[0]?.harness;
     const kind = live.some((session) => session.kind === "thread") ? "thread" : "cli";
+    const project = projectName.get(capsule.projectId);
     return (
       <li key={capsule.id}>
         <NavLink
           to={sessionPath(capsule.id)}
-          className={selected ? "selected" : undefined}
+          className={selected ? "capsule-row selected" : "capsule-row"}
           title={activity.detail}
         >
           <ActivityDot group={activity.group} />
-          <span className="activity-item-copy">
-            <strong>{capsule.name}</strong>
-            <small>
+          <span className="capsule-row-body">
+            <span className="capsule-row-top">
               {kind === "thread" ? <ThreadIcon /> : <TerminalIcon />}
               <span className="sr-only">{kind === "thread" ? "Thread" : "CLI"}</span>
+              <strong>{capsule.name}</strong>
+              <time dateTime={activity.since}>{relativeTime(activity.since, now)}</time>
+            </span>
+            <span className="capsule-row-sub">
               {harness && <HarnessMark harness={harness} />}
-              {projectName.get(capsule.projectId)}
-              {projectName.get(capsule.projectId) ? " · " : ""}
-              {activity.label}
-            </small>
+              <span>
+                {project}
+                {project ? " · " : ""}
+                {activity.label}
+              </span>
+              {!selected && live.length > 1 && (
+                <small className="session-count" aria-label={`${live.length} sessions`}>
+                  {live.length}
+                </small>
+              )}
+            </span>
             {rollup && rollup.total > 0 && (
               <small className="activity-item-rollup">Subagents: {rollupSummary(rollup)}</small>
-            )}
-          </span>
-          <span className="activity-item-side">
-            <time
-              className="activity-item-time"
-              dateTime={activity.since}
-            >
-              {relativeTime(activity.since, now)}
-            </time>
-            {!selected && live.length > 1 && (
-              <small
-                className="session-count"
-                aria-label={`${live.length} sessions`}
-              >
-                {live.length}
-              </small>
             )}
           </span>
         </NavLink>
@@ -608,8 +607,8 @@ export function AppShell() {
   return (
     <div
       className={`app-shell workbench ${hasContext && contextOpen ? "has-context" : "no-context"}${
-        hasContext ? " with-context-toggle" : ""
-      }${cliSession ? " cli-session" : ""}`}
+        showRail ? " with-rail" : ""
+      }${hasContext && contextOpen ? " with-context-toggle" : ""}${cliSession ? " cli-session" : ""}`}
     >
       <a className="skip-link" href="#content">
         Skip to workspace
@@ -778,7 +777,7 @@ export function AppShell() {
                   )}
                 </h2>
                 {attentionItems.length === 0 ? (
-                  <p className="project-empty">None</p>
+                  <p className="capsule-empty">Nothing waiting</p>
                 ) : (
                   <ul>
                     {attentionItems.map((item) => renderItem(item))}
@@ -788,7 +787,7 @@ export function AppShell() {
               <section className="capsule-group">
                 <h2>Recent</h2>
                 {recentItems.length === 0 ? (
-                  <p className="project-empty">{filter ? "No matches" : "None"}</p>
+                  <p className="capsule-empty">{filter ? "No matches" : "Nothing recent"}</p>
                 ) : (
                   <ul>
                     {recentItems.map((item) => renderItem(item))}
@@ -854,29 +853,37 @@ export function AppShell() {
         />
       )}
 
-      {hasContext && cliSession && !contextOpen && (
-        <nav className="tool-rail" aria-label="Open Changes, Files, or Preview">
+      {showRail && (
+        <nav className="tool-rail" aria-label="Capsule tools">
+          <button type="button" className="tool-rail-expand" aria-label="Show Capsule tools" title="Show Capsule tools" onClick={() => setContextOpen(true)}>
+            <ChevronIcon />
+          </button>
           <button type="button" onClick={() => setContextOpen(true)}>
+            <ChangesIcon />
             Changes
           </button>
           <button type="button" onClick={() => setContextOpen(true)}>
+            <FilesIcon />
             Files
           </button>
           <button type="button" onClick={() => setContextOpen(true)}>
+            <PreviewIcon />
             Preview
           </button>
         </nav>
       )}
       {hasContext && (
         <>
+          {contextOpen && (
           <button
             type="button"
-            className={`context-toggle ${contextOpen ? "open" : ""}`}
-            aria-label={contextOpen ? "Hide Capsule tools" : "Show Capsule tools"}
-            onClick={() => setContextOpen((current) => !current)}
+            className="context-toggle open"
+            aria-label="Hide Capsule tools"
+            onClick={() => setContextOpen(false)}
           >
             <ChevronIcon />
           </button>
+          )}
           {contextOpen && (
             <WorkspaceContext
               capsuleId={capsuleId}
