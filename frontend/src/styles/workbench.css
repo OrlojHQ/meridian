@@ -612,6 +612,17 @@
   text-decoration: none;
 }
 
+/* A Capsule built on an older release keeps its image; new ones use the
+   daemon's release (ADR 0041). Informational only. */
+.pack-release-pill {
+  flex: none;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
 .activity-pill {
   display: inline-flex;
   align-items: center;

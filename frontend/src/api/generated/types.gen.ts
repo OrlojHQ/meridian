@@ -267,6 +267,10 @@ export type Capsule = {
      */
     harness?: string;
     /**
+     * Image this Capsule was created from. An official harness pack uses the release of the daemon that created it (ADR 0041), and the Capsule keeps the resolved image digest until it is deleted. Absent for Capsules created before Capsules recorded their image.
+     */
+    imageReference?: string;
+    /**
      * Harness setup revisions pinned when this Capsule was created. Absent when the Capsule started without a saved setup. A later edit in Settings does not change this Capsule.
      */
     pinnedHarnessSetups?: Array<PinnedHarnessSetup>;

@@ -67,11 +67,18 @@ for pack in opencode pi claude codex dsh; do
 done
 ```
 
-Prefer the inspected digest when applying a pack. The daemon catalog
-advertises these registry-qualified tags; Docker still freezes `sha256` at
-Capsule create. A released `meridiand` defaults to this tag and pulls a
-missing registry image on first Capsule create. Publishing pack images is not
-a hosted Capsule service.
+The daemon catalog advertises these registry-qualified tags, and Docker
+freezes `sha256` at Capsule create. A released `meridiand` defaults to its own
+release tag and pulls a missing registry image on first Capsule create.
+Publishing pack images is not a hosted Capsule service.
+
+Official packs follow the daemon's release (ADR 0041). A Project that applied
+`codex` on 0.4.0 stores the `v0.4.0` reference, but after upgrading to 0.4.1
+its new Capsules use `v0.4.1`. Existing Capsules keep the image they were
+created with, and the web UI marks one built on an older release. To keep a
+specific pack, apply it by digest
+(`meridian project apply-harness PROJECT_ID codex=ghcr.io/orlojhq/meridian-capsule-codex@sha256:...`)
+or under a custom tag; those references are used exactly as stored.
 
 The release workflow is tag-only, uses GitHub OIDC keyless signing, records
 GitHub build provenance, and leaves the GitHub release in draft state for human

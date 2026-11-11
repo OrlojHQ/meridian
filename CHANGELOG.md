@@ -17,6 +17,16 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Official harness packs follow the installation release (ADR 0041). A
+  Project stores the pack reference it was given, such as
+  `meridian-capsule-codex:v0.4.0`, but new Capsules now use the pack the
+  running `meridiand` advertises, so after an upgrade they get the new
+  release's harness and `capsuled` without editing each Project. The first
+  Capsule per harness pulls the new image and reruns Project setup once.
+  Existing Capsules keep the image they were created with; the Capsule page
+  marks one built on an older release, and the Capsule API returns
+  `imageReference`. Custom images, custom tags, and digest-pinned references
+  are used as stored.
 - The `mock` harness is test-only. It is no longer in the installation
   catalog, so a real install's API, CLI, TUI, and web UI do not list or
   offer it. On upgrade, migration 0022 drops that name from harness
