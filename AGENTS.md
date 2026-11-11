@@ -7,7 +7,7 @@ Meridian is coding-specific infrastructure, not a general orchestration engine. 
 ## Toolchain
 
 - Go module: `github.com/OrlojHQ/meridian`
-- Go version: 1.26.10
+- Go version: 1.26.11
 - Frontend: Bun, strict TypeScript, React, and Vite
 - API contract: OpenAPI 3.1 in `api/openapi.yaml`
 

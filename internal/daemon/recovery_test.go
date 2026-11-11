@@ -137,6 +137,47 @@ func TestRestartRecoversPersistedNonterminalCapsule(t *testing.T) {
 	}
 }
 
+// A fresh install, such as the Homebrew service, starts with no data
+// directory. The daemon creates it private instead of failing the lease.
+func TestDaemonCreatesMissingDataDirectory(t *testing.T) {
+	directory := filepath.Join(t.TempDir(), "Application Support", "meridian")
+	daemon.UseTestProvider(fake.New(fake.Options{}))
+	t.Cleanup(daemon.ClearTestProvider)
+	config := daemon.Config{
+		Provider: "docker", Listen: "127.0.0.1:0", PreviewListen: "127.0.0.1:0", DataDir: directory,
+		DataLease: datadir.Options{Interval: 50 * time.Millisecond, Settle: time.Millisecond},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- daemon.Run(ctx, config) }()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if _, err := os.Stat(filepath.Join(directory, datadir.LeaseFile)); err == nil {
+			break
+		}
+		select {
+		case err := <-done:
+			t.Fatalf("daemon stopped: %v", err)
+		default:
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("daemon never took the new data directory")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	info, err := os.Lstat(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info.IsDir() || info.Mode().Perm()&0o077 != 0 {
+		t.Fatalf("data directory mode = %v, want private directory", info.Mode())
+	}
+	cancel()
+	if err := <-done; err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatalf("daemon: %v", err)
+	}
+}
+
 func TestSecondDaemonOnOneDataDirectoryIsRefused(t *testing.T) {
 	directory := t.TempDir()
 	daemon.UseTestProvider(fake.New(fake.Options{}))
