@@ -1,17 +1,15 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 
-import { api, normalizeAPIError } from "../api/client";
-import type { HarnessImage, Project } from "../api/generated/types.gen";
+import type { Project } from "../api/generated/types.gen";
 import { packMayRunNative, packMayRunStructured } from "../api/harnessPacks";
 import { queries } from "../api/queries";
-import { harnessName } from "../shell/capsuleActivity";
 import { ProjectEnvironment } from "./ProjectEnvironment";
+import { ProjectHarnesses } from "./ProjectHarnesses";
 import { NativeLauncher } from "./NativeLauncher";
 import { StructuredLauncher } from "./StructuredLauncher";
 import { Dialog } from "./ui/Dialog";
-import { HarnessMark } from "./ui/HarnessMark";
-import { PlusIcon, TerminalIcon, ThreadIcon } from "./ui/Icons";
+import { TerminalIcon, ThreadIcon } from "./ui/Icons";
 import { Tabs } from "./ui/Tabs";
 
 const preferenceKey = (projectId: string) => `meridian.harness.${projectId}`;
@@ -32,115 +30,6 @@ function saveHarness(projectId: string, harness: string) {
   }
 }
 
-function AgentPicker({
-  project,
-  selected,
-  onSelect,
-  onApplied,
-}: {
-  project: Project;
-  selected: string;
-  onSelect: (harness: string) => void;
-  onApplied: (project: Project, harness: string) => void;
-}) {
-  const queryClient = useQueryClient();
-  const capabilities = useQuery(queries.capabilities());
-  const [adding, setAdding] = useState(false);
-  const packs = project.harnessImages ?? [];
-  const available = (capabilities.data?.harnessImages ?? []).filter(
-    (item) => !packs.some((pack) => pack.name === item.name),
-  );
-  const apply = useMutation({
-    mutationFn: (pack: HarnessImage) => api.applyProjectHarness(project.id, pack),
-    onSuccess: async (updated, pack) => {
-      setAdding(false);
-      onApplied(updated, pack.name);
-      await queryClient.invalidateQueries({ queryKey: ["projects"] });
-    },
-  });
-  const showCatalog = packs.length === 0 || adding;
-
-  return (
-    <fieldset className="agent-picker">
-      <legend>Agent</legend>
-      {packs.length > 0 && (
-        <div className="agent-options">
-          {packs.map((pack) => (
-            <label
-              key={pack.name}
-              className={`agent-option ${selected === pack.name ? "selected" : ""}`}
-            >
-              <input
-                type="radio"
-                name="agent"
-                value={pack.name}
-                checked={selected === pack.name}
-                onChange={() => onSelect(pack.name)}
-              />
-              <HarnessMark harness={pack.name} size="md" />
-              <span>{harnessName(pack.name)}</span>
-            </label>
-          ))}
-          {available.length > 0 && (
-            <button
-              type="button"
-              className="agent-add"
-              aria-expanded={adding}
-              onClick={() => setAdding((current) => !current)}
-            >
-              <PlusIcon />
-              Add agent
-            </button>
-          )}
-        </div>
-      )}
-      {showCatalog && (
-        <div className="agent-catalog">
-          <p>
-            {packs.length === 0
-              ? `${project.name} has no agents yet. Add one to start working.`
-              : `Add another agent to ${project.name}.`}
-          </p>
-          {capabilities.isPending ? (
-            <p role="status">Loading installed agents…</p>
-          ) : capabilities.isError ? (
-            <p className="inline-error" role="alert">
-              {normalizeAPIError(capabilities.error).message}
-            </p>
-          ) : available.length === 0 ? (
-            <p className="notice">
-              This Meridian installation has no agent images. Configure harness
-              packs for meridiand before starting work.
-            </p>
-          ) : (
-            <ul className="agent-catalog-list">
-              {available.map((pack) => (
-                <li key={pack.name}>
-                  <button
-                    type="button"
-                    disabled={apply.isPending}
-                    onClick={() => apply.mutate(pack)}
-                  >
-                    <HarnessMark harness={pack.name} size="md" />
-                    {apply.isPending && apply.variables?.name === pack.name
-                      ? `Adding ${harnessName(pack.name)}…`
-                      : `Add ${harnessName(pack.name)}`}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          {apply.isError && (
-            <p className="inline-error" role="alert">
-              {normalizeAPIError(apply.error).message}
-            </p>
-          )}
-        </div>
-      )}
-    </fieldset>
-  );
-}
-
 export function NewWorkspaceDialog({
   open,
   project,
@@ -155,7 +44,9 @@ export function NewWorkspaceDialog({
   const [choice, setChoice] = useState<{ projectId: string; harness: string }>();
   const closeRef = useRef<HTMLButtonElement>(null);
   const capabilities = useQuery(queries.capabilities());
-  const current = applied && applied.id === project?.id ? applied : project;
+  const current = applied && applied.id === project?.id && applied.resourceVersion >= project.resourceVersion
+    ? applied
+    : project;
 
   useEffect(() => {
     if (!open) return;
@@ -206,10 +97,10 @@ export function NewWorkspaceDialog({
             <div className="empty-inline">Select a Project before starting work.</div>
           ) : (
             <>
-              <AgentPicker
+              <ProjectHarnesses
+                key={current.id}
                 project={current}
-                selected={harness}
-                onSelect={select}
+                selection={{ value: harness, onChange: select }}
                 onApplied={(updated, value) => {
                   setApplied(updated);
                   saveHarness(updated.id, value);

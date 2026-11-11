@@ -3,8 +3,8 @@ import { Link, Navigate, useOutletContext, useParams } from "react-router-dom";
 
 import { queries } from "../api/queries";
 import type { ShellOutletContext } from "../shell/AppShell";
-import { harnessName } from "../shell/capsuleActivity";
 import { ProjectEnvironment } from "./ProjectEnvironment";
+import { ProjectHarnesses } from "./ProjectHarnesses";
 
 export function ProjectSettings() {
   const { projectId = "" } = useParams();
@@ -14,7 +14,6 @@ export function ProjectSettings() {
   if (projects.isError) return <Navigate to="/ui/" replace />;
   const project = projects.data.items.find((item) => item.id === projectId);
   if (!project) return <Navigate to="/ui/" replace />;
-  const packs = project.harnessImages ?? [];
   return (
     <section className="project-settings">
       <header>
@@ -34,14 +33,6 @@ export function ProjectSettings() {
           </div>
         )}
         <div>
-          <dt>Harness packs</dt>
-          <dd>
-            {packs.length === 0
-              ? "None"
-              : packs.map((pack) => harnessName(pack.name)).join(", ")}
-          </dd>
-        </div>
-        <div>
           <dt>Git clone secret</dt>
           <dd>{project.gitSecretName ? "Set" : "Not set"}</dd>
         </div>
@@ -50,6 +41,7 @@ export function ProjectSettings() {
           <dd>{project.gitPushSecretName ? "Set" : "Not set"}</dd>
         </div>
       </dl>
+      <ProjectHarnesses key={project.id} project={project} />
       <ProjectEnvironment projectId={project.id} />
       <div className="project-settings-actions">
         <Link className="button-link" to="/ui/">

@@ -69,7 +69,8 @@ export function HomeComposer() {
     available,
   );
   const usable = available.filter((item) => !item.needsSignIn);
-  const blocked = connectable && !usable.some((item) => item.id === selectedConnection);
+  const blocked = activeMode === "thread" && connectable &&
+    !usable.some((item) => item.id === selectedConnection);
 
   const recent = useMemo(
     () =>
@@ -119,6 +120,7 @@ export function HomeComposer() {
 
   function submit(event: FormEvent) {
     event.preventDefault();
+    if (blocked) return;
     if (activeMode === "thread" && prompt.trim() === "") return;
     start.mutate();
   }
@@ -233,6 +235,7 @@ export function HomeComposer() {
           <button
             type="submit"
             className="primary-button"
+            aria-describedby={blocked ? "home-provider-required" : undefined}
             disabled={
               start.isPending ||
               !harnessId ||
@@ -250,9 +253,13 @@ export function HomeComposer() {
           </p>
         )}
         {blocked && (
-          <p className="launch-hint">
-            <Link to="/ui/settings/harnesses">Connect a provider</Link>
+          <p className="launch-hint" id="home-provider-required">
+            Thread mode needs a provider connection. <Link to="/ui/settings/harnesses">Connect a provider</Link>
+            {native && <> or switch to CLI to sign in inside {harnessName(harnessId)}</>}.
           </p>
+        )}
+        {activeMode === "cli" && connectable && !selectedConnection && (
+          <p className="launch-hint">You can sign in inside {harnessName(harnessId)} after it opens.</p>
         )}
         {error && (
           <p className="error-state" role="alert">
