@@ -7,6 +7,17 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-10
+
+### Upgrade notes
+
+- Upgrade from 0.4.0 promptly. 0.4.0 was built with Go 1.26.10 and is
+  affected by GO-2026-6859, an HTTP/1 server crash in `net/http` (see
+  Security). Homebrew installs upgrade with `brew upgrade meridian`, then
+  `brew services restart meridian`.
+- No database migrations. A 0.4.0 data directory starts unchanged, and
+  rolling back to 0.4.0 needs only the old binary.
+
 ### Fixed
 
 - `meridiand` starts on a fresh install again. Since 0.3.0 it exited with
@@ -728,7 +739,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - Docker and Agent Sandbox are not claimed as hostile multi-tenant isolation
   boundaries; hardened runtime deployment and external review remain required.
 
-[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/OrlojHQ/meridian/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/OrlojHQ/meridian/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/OrlojHQ/meridian/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/OrlojHQ/meridian/compare/v0.1.1...v0.2.0
