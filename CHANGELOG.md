@@ -7,6 +7,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-11
+
 ### Upgrade notes
 
 - Startup applies forward-only migration 0022. It removes any saved harness
@@ -17,6 +19,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Meridian has a logo in the sidebar and browser tab, and the README shows
+  the browser workspace, Thread review, and Harness settings.
 - Official harness packs follow the installation release (ADR 0041). A
   Project stores the pack reference it was given, such as
   `meridian-capsule-codex:v0.4.0`, but new Capsules now use the pack the
@@ -795,7 +799,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - Docker and Agent Sandbox are not claimed as hostile multi-tenant isolation
   boundaries; hardened runtime deployment and external review remain required.
 
-[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/OrlojHQ/meridian/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/OrlojHQ/meridian/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/OrlojHQ/meridian/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/OrlojHQ/meridian/compare/v0.2.0...v0.3.0
