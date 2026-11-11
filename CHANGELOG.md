@@ -16,6 +16,20 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   now creates a missing data directory with mode `0700` before taking the
   lease, as 0.2.x did. An existing directory keeps its mode, and a symlink
   or non-directory is still refused.
+- Harness settings lists each harness with its logo instead of a one-letter
+  placeholder, and shows what a new Capsule would use: the default setup and
+  the provider connection, or that the sign-in expired. Each row has one
+  Set up or Manage button, and on a phone the status wraps instead of being
+  cut off. DeepSeek Harness now has its own mark everywhere harnesses are
+  shown, from simple-icons 16.33.0 (CC0-1.0), like Claude Code, OpenCode,
+  and Pi.
+- Connect a provider no longer breaks the page. The settings drawer's
+  backdrop turned opaque under the cursor, hiding everything behind it;
+  Close and Escape did not stick, because the drawer reopened from the link
+  on the next render; and the whole shell shifted up because the phone menu
+  button was laid out below the status bar on desktop. The link now opens a
+  drawer with only provider connections, Close and Escape close it, and the
+  page stays in place.
 
 ### Security
 

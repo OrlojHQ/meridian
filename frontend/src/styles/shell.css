@@ -602,7 +602,10 @@
   transform: rotate(0);
 }
 
-.mobile-menu-button,
+/* .icon-button sets display: grid later in this file, so the phone-only
+   menu button needs the extra class to stay hidden on desktop. Otherwise it
+   sits in an implicit grid row below the status bar and scrolls the shell. */
+.mobile-menu-button.icon-button,
 .sidebar-scrim {
   display: none;
 }
@@ -864,7 +867,7 @@
     background: rgb(20 24 21 / 35%);
   }
 
-  .mobile-menu-button {
+  .mobile-menu-button.icon-button {
     position: fixed;
     z-index: 10;
     top: 0.55rem;
