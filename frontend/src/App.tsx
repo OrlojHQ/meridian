@@ -37,6 +37,7 @@ import type {
   TimelineView,
 } from "./api/generated/types.gen";
 import { queries } from "./api/queries";
+import { olderPackRelease } from "./api/harnessPacks";
 import { HomeComposer } from "./components/HomeComposer";
 import { ProjectSettings } from "./components/ProjectSettings";
 import { CapsuleStartup } from "./components/CapsuleStartup";
@@ -823,6 +824,12 @@ export function CapsuleDetail() {
     (project) => project.id === value.projectId,
   )?.name;
   const harness = value.harness || sessions[0]?.harness;
+  // New Capsules follow the daemon's release (ADR 0041); this one keeps its image.
+  const packRelease = olderPackRelease(
+    value.harness,
+    value.imageReference,
+    capabilities.data?.harnessImages ?? [],
+  );
   const chatSelected =
     selected !== "" && selected !== TERMINAL_SESSION && selected !== NEW_SESSION;
   const cliSelected = selected === TERMINAL_SESSION;
@@ -839,6 +846,17 @@ export function CapsuleDetail() {
           {harness && <HarnessMark harness={harness} size="md" />}
           <h1>{value.name}</h1>
           <StateBadge state={value.state} />
+          {packRelease && harness && (
+            <span
+              className="pill pack-release-pill"
+              title={`New ${harnessName(harness)} Capsules use ${packRelease.current}. This Capsule keeps the image it was created with until you delete it.`}
+            >
+              Built on {packRelease.release}
+              <span className="sr-only">
+                ; new {harnessName(harness)} Capsules use {packRelease.current}
+              </span>
+            </span>
+          )}
           {inspection.data?.branch && (
             <span className="capsule-branch mono">{inspection.data.branch}</span>
           )}

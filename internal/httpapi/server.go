@@ -2107,6 +2107,7 @@ type capsuleJSON struct {
 	OriginMomentID      string                      `json:"originMomentId,omitempty"`
 	Name                string                      `json:"name"`
 	Harness             string                      `json:"harness,omitempty"`
+	ImageReference      string                      `json:"imageReference,omitempty"`
 	State               string                      `json:"state"`
 	DesiredState        string                      `json:"desiredState"`
 	Failure             string                      `json:"failure,omitempty"`
@@ -2447,6 +2448,7 @@ func capsuleResponse(capsule domain.Capsule, pins []domain.PinnedHarnessSetup) c
 		OriginMomentID:  string(capsule.OriginMomentID),
 		Name:            capsule.Name,
 		Harness:         capsule.LauncherHarness,
+		ImageReference:  capsule.ImageReference,
 		State:           string(capsule.State),
 		DesiredState:    string(capsule.DesiredState),
 		Failure:         capsule.Failure,

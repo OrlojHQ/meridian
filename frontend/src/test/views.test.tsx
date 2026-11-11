@@ -631,6 +631,47 @@ describe("Capsule detail states", () => {
     ).toBeInTheDocument();
   });
 
+  it("marks a Capsule built on an older harness release without offering to change it", async () => {
+    vi.spyOn(api, "capsule").mockResolvedValue({
+      ...capsule,
+      harness: "codex",
+      imageReference: "ghcr.io/orlojhq/meridian-capsule-codex:v0.4.0",
+    });
+    vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "threads").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
+    vi.spyOn(api, "harnessProfiles").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "capabilities").mockResolvedValue({
+      providerVersion: "docker/v1",
+      attach: false,
+      run: false,
+      structured: false,
+      git: false,
+      pause: false,
+      snapshot: false,
+      clone: false,
+      browse: false,
+      delivery: false,
+      preview: false,
+      resourceMetrics: false,
+      harnessImages: [{
+        name: "codex",
+        imageReference: "ghcr.io/orlojhq/meridian-capsule-codex:v0.4.1",
+        interactionModes: ["native", "structured"],
+      }],
+    });
+    wrapper(
+      <Routes>
+        <Route path="/ui/capsules/:capsuleId" element={<CapsuleDetail />} />
+      </Routes>,
+      "/ui/capsules/capsule-1",
+    );
+    const pill = await screen.findByText(/Built on v0\.4\.0/);
+    expect(pill).toHaveAttribute("title", expect.stringContaining("New Codex Capsules use v0.4.1"));
+    expect(pill).toHaveTextContent("new Codex Capsules use v0.4.1");
+    expect(screen.queryByRole("button", { name: /upgrade/i })).toBeNull();
+  });
+
   it("offers no new session when the Capsule's harness is terminal-only", async () => {
     vi.spyOn(api, "capsule").mockResolvedValue({ ...capsule, harness: "claude" });
     vi.spyOn(api, "runs").mockResolvedValue({ items: [] });

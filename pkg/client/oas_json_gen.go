@@ -2059,6 +2059,12 @@ func (s *Capsule) encodeFields(e *jx.Encoder) {
 		}
 	}
 	{
+		if s.ImageReference.Set {
+			e.FieldStart("imageReference")
+			s.ImageReference.Encode(e)
+		}
+	}
+	{
 		if s.PinnedHarnessSetups != nil {
 			e.FieldStart("pinnedHarnessSetups")
 			e.ArrStart()
@@ -2130,7 +2136,7 @@ func (s *Capsule) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfCapsule = [22]string{
+var jsonFieldsNameOfCapsule = [23]string{
 	0:  "preparation",
 	1:  "startup",
 	2:  "failureCode",
@@ -2140,19 +2146,20 @@ var jsonFieldsNameOfCapsule = [22]string{
 	6:  "originMomentId",
 	7:  "name",
 	8:  "harness",
-	9:  "pinnedHarnessSetups",
-	10: "state",
-	11: "desiredState",
-	12: "failure",
-	13: "restoreComplete",
-	14: "maintenance",
-	15: "role",
-	16: "leadThreadId",
-	17: "linkId",
-	18: "promotedAt",
-	19: "createdAt",
-	20: "updatedAt",
-	21: "resourceVersion",
+	9:  "imageReference",
+	10: "pinnedHarnessSetups",
+	11: "state",
+	12: "desiredState",
+	13: "failure",
+	14: "restoreComplete",
+	15: "maintenance",
+	16: "role",
+	17: "leadThreadId",
+	18: "linkId",
+	19: "promotedAt",
+	20: "createdAt",
+	21: "updatedAt",
+	22: "resourceVersion",
 }
 
 // Decode decodes Capsule from json.
@@ -2262,6 +2269,16 @@ func (s *Capsule) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"harness\"")
 			}
+		case "imageReference":
+			if err := func() error {
+				s.ImageReference.Reset()
+				if err := s.ImageReference.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"imageReference\"")
+			}
 		case "pinnedHarnessSetups":
 			if err := func() error {
 				s.PinnedHarnessSetups = make([]PinnedHarnessSetup, 0)
@@ -2280,7 +2297,7 @@ func (s *Capsule) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"pinnedHarnessSetups\"")
 			}
 		case "state":
-			requiredBitSet[1] |= 1 << 2
+			requiredBitSet[1] |= 1 << 3
 			if err := func() error {
 				if err := s.State.Decode(d); err != nil {
 					return err
@@ -2290,7 +2307,7 @@ func (s *Capsule) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"state\"")
 			}
 		case "desiredState":
-			requiredBitSet[1] |= 1 << 3
+			requiredBitSet[1] |= 1 << 4
 			if err := func() error {
 				if err := s.DesiredState.Decode(d); err != nil {
 					return err
@@ -2310,7 +2327,7 @@ func (s *Capsule) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"failure\"")
 			}
 		case "restoreComplete":
-			requiredBitSet[1] |= 1 << 5
+			requiredBitSet[1] |= 1 << 6
 			if err := func() error {
 				v, err := d.Bool()
 				s.RestoreComplete = bool(v)
@@ -2372,7 +2389,7 @@ func (s *Capsule) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"promotedAt\"")
 			}
 		case "createdAt":
-			requiredBitSet[2] |= 1 << 3
+			requiredBitSet[2] |= 1 << 4
 			if err := func() error {
 				v, err := json.DecodeDateTime(d)
 				s.CreatedAt = v
@@ -2384,7 +2401,7 @@ func (s *Capsule) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"createdAt\"")
 			}
 		case "updatedAt":
-			requiredBitSet[2] |= 1 << 4
+			requiredBitSet[2] |= 1 << 5
 			if err := func() error {
 				v, err := json.DecodeDateTime(d)
 				s.UpdatedAt = v
@@ -2396,7 +2413,7 @@ func (s *Capsule) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"updatedAt\"")
 			}
 		case "resourceVersion":
-			requiredBitSet[2] |= 1 << 5
+			requiredBitSet[2] |= 1 << 6
 			if err := func() error {
 				v, err := d.Int64()
 				s.ResourceVersion = int64(v)
@@ -2418,8 +2435,8 @@ func (s *Capsule) Decode(d *jx.Decoder) error {
 	var failures []validate.FieldError
 	for i, mask := range [3]uint8{
 		0b10111000,
-		0b00101100,
-		0b00111000,
+		0b01011000,
+		0b01110000,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.
