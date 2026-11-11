@@ -35,8 +35,7 @@ loop.
   overload the PTY WebSocket or expose these endpoints through the public API.
 - Expose structured execution as an optional runtime port. Docker uses its
   protected loopback binding and Agent Sandbox uses its owned pod
-  port-forward. The fake provider remains unsupported and providers advertise
-  the capability only with end-to-end transport.
+  port-forward. Providers advertise the capability only with end-to-end transport.
 - Preserve complete typed frames only in the transient structured runtime
   return path. Existing durable Run lifecycle events contain type and cursor
   metadata only; transcript persistence remains the Thread layer's encrypted

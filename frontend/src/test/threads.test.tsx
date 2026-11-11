@@ -578,7 +578,7 @@ describe("Thread detail transcript and controls", () => {
     vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
     vi.spyOn(api, "projects").mockResolvedValue({ items: [] });
     vi.spyOn(api, "capabilities").mockResolvedValue({
-      providerVersion: "fake/v1",
+      providerVersion: "docker/v1",
       attach: false,
       run: false,
       structured: true,

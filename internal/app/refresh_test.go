@@ -9,8 +9,8 @@ import (
 	"github.com/OrlojHQ/meridian/internal/app"
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/ports"
-	"github.com/OrlojHQ/meridian/internal/provider/fake"
 	"github.com/OrlojHQ/meridian/internal/store/sqlite"
+	fake "github.com/OrlojHQ/meridian/internal/testutil/fakeprovider"
 )
 
 func structuredEvent(sequence uint64, frame adapterproto.Frame) ports.RuntimeStructuredEvent {

@@ -13,9 +13,9 @@ import (
 	"github.com/OrlojHQ/meridian/internal/artifacts"
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/ports"
-	"github.com/OrlojHQ/meridian/internal/provider/fake"
 	"github.com/OrlojHQ/meridian/internal/secrets"
 	"github.com/OrlojHQ/meridian/internal/store/sqlite"
+	fake "github.com/OrlojHQ/meridian/internal/testutil/fakeprovider"
 	_ "modernc.org/sqlite"
 )
 
@@ -303,7 +303,7 @@ func TestProjectDeleteFailureResumes(t *testing.T) {
 		t.Fatalf("accepted = %#v", accepted)
 	}
 	failed := waitProject(t, ctx, service, project.ID, domain.ProjectFailed)
-	if !strings.Contains(failed.Failure, "injected fake provider delete failure") {
+	if !strings.Contains(failed.Failure, "injected test provider delete failure") {
 		t.Fatalf("failure = %q", failed.Failure)
 	}
 	capsule, err = service.GetCapsule(ctx, capsule.ID)

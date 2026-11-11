@@ -7,6 +7,14 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Removed
+
+- The simulated Capsule provider is gone. `meridiand` no longer accepts
+  `--provider=fake`, no longer logs a startup warning for it, and the web UI
+  no longer warns that Capsules are simulated. Docker and Agent Sandbox are
+  the providers. Tests use an in-memory lifecycle double that is not linked
+  into the daemon.
+
 ### Added
 
 - Provider connections work out of the box on Docker (ADR 0037). Without

@@ -620,13 +620,7 @@
   white-space: nowrap;
 }
 
-.status-bar.simulated {
-  border-top-color: color-mix(in srgb, var(--warning) 55%, var(--border));
-  background: var(--warning-soft);
-}
-
 .status-connection,
-.status-simulated,
 .status-counts a {
   display: inline-flex;
   align-items: center;
@@ -656,20 +650,6 @@
 .status-provider {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.64rem;
-}
-
-.status-simulated {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--warning);
-  font-weight: 700;
-  text-overflow: ellipsis;
-}
-
-.status-simulated svg {
-  width: 0.85rem;
-  height: 0.85rem;
-  flex: none;
 }
 
 .status-trailing {
@@ -909,8 +889,7 @@
   }
 
   .status-long,
-  .status-connection.online .status-connection-label,
-  .status-bar.simulated .status-provider {
+  .status-connection.online .status-connection-label {
     display: none;
   }
 

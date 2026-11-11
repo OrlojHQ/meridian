@@ -133,7 +133,7 @@ func (m *Metrics) ObserveReconcile(duration time.Duration, result string) {
 
 func (m *Metrics) ProviderOperation(provider, operation, result string, duration time.Duration) {
 	dimensions := labels(
-		"provider", enum(provider, "fake", "docker", "agentsandbox"),
+		"provider", enum(provider, "docker", "agentsandbox"),
 		"operation", enum(operation, "capabilities", "create", "get", "pause", "resume", "delete", "capture", "restore", "run", "structured", "cancel", "attach", "preview"),
 		"result", resultLabel(result),
 	)
@@ -147,7 +147,7 @@ func (m *Metrics) Retry(operation string) {
 
 func (m *Metrics) Cleanup(provider, result string) {
 	m.increment("meridian_leaked_resource_cleanup_total", labels(
-		"provider", enum(provider, "fake", "docker", "agentsandbox"),
+		"provider", enum(provider, "docker", "agentsandbox"),
 		"result", resultLabel(result),
 	), 1)
 }

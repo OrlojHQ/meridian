@@ -1,6 +1,7 @@
-// Package fake provides a deterministic lifecycle provider for local development.
-// It does not provide workload execution, security isolation, or persistence.
-package fake
+// Package fakeprovider is an in-memory Capsule lifecycle double for tests.
+// It is not a product provider: it has no CLI flag, starts no workload, and
+// is imported only from test files.
+package fakeprovider
 
 import (
 	"context"
@@ -25,7 +26,7 @@ func (p *Provider) RestoreWorkspace(context.Context, string, string, int64, io.R
 type Options struct {
 	Delay    time.Duration
 	Failures map[string]int
-	// CreateHook runs after an injected failure check and before the fake
+	// CreateHook runs after an injected failure check and before the
 	// resource is recorded. Tests use it to publish startup progress.
 	CreateHook func(context.Context, ports.CreateCapsuleRequest) error
 }
@@ -56,7 +57,7 @@ func (p *Provider) Capabilities(ctx context.Context) (ports.ProviderCapabilities
 		return ports.ProviderCapabilities{}, err
 	}
 	return ports.ProviderCapabilities{
-		Version: "fake/v1",
+		Version: "test/v1",
 		Pause:   true,
 	}, nil
 }
@@ -144,7 +145,7 @@ func (p *Provider) Create(
 			return ports.ProviderResource{}, err
 		}
 	}
-	id := "fake-" + string(request.CapsuleID)
+	id := "test-" + string(request.CapsuleID)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if existing, ok := p.resources[id]; ok {
@@ -164,9 +165,9 @@ func (p *Provider) Get(ctx context.Context, id string) (ports.ProviderResource, 
 	if existing, ok := p.resources[id]; ok {
 		return existing, nil
 	}
-	// IDs are deterministic, so a restarted fake provider can reconstruct the
+	// IDs are deterministic, so a restarted double can reconstruct the
 	// ready resource needed by control-plane recovery.
-	if strings.HasPrefix(id, "fake-") {
+	if strings.HasPrefix(id, "test-") {
 		resource := ports.ProviderResource{ID: id, State: ports.ProviderReady}
 		p.resources[id] = resource
 		return resource, nil
@@ -228,7 +229,7 @@ func (p *Provider) before(ctx context.Context, operation string) error {
 	defer p.mu.Unlock()
 	if p.failures[operation] > 0 {
 		p.failures[operation]--
-		return fmt.Errorf("injected fake provider %s failure", operation)
+		return fmt.Errorf("injected test provider %s failure", operation)
 	}
 	return nil
 }

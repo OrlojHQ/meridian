@@ -103,8 +103,7 @@ meridiand --provider=docker \
 ```
 
 `docker` is the default provider, and `meridiand` exits at startup if it cannot
-reach Docker. `--provider=fake` simulates Capsules for tests and UI development
-only; no containers or agents run.
+reach Docker. `--provider=agentsandbox` selects Kubernetes Agent Sandbox.
 
 Startup atomically creates the structured-transcript installation key at
 `<data-dir>/transcript-keys/installation.key` in a mode-0700 directory with a
@@ -208,10 +207,10 @@ attributes.
 
 Pin the verified multi-platform image digest and mount a dedicated writable
 directory. The image is non-root, shell-free, and compatible with a read-only
-root filesystem. This example uses the simulated `fake` provider to show the
-hardened container settings; it starts no real Capsules. For real Capsules on
-one Docker host, use [Docker Compose](#docker-compose-published-images), which
-gives `meridiand` the Docker socket and host networking:
+root filesystem. The daemon uses the Docker provider, so this example also
+mounts the host Docker socket. For real Capsules on one Docker host, use
+[Docker Compose](#docker-compose-published-images), which gives `meridiand`
+the Docker socket and host networking:
 
 ```console
 install -d -m 0700 "$PWD/meridian-data"
@@ -219,8 +218,9 @@ docker run --rm --name meridiand \
   --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m \
   -p 127.0.0.1:8080:8080 \
   -v "$PWD/meridian-data:/var/lib/meridian" \
+  -v /var/run/docker.sock:/var/run/docker.sock \
   "ghcr.io/orlojhq/meridiand@sha256:VERIFIED_DIGEST" \
-  --provider=fake --listen=0.0.0.0:8080 --allow-non-loopback-listen \
+  --provider=docker --listen=0.0.0.0:8080 --allow-non-loopback-listen \
   --preview-listen=127.0.0.1:8081 --data-dir=/var/lib/meridian
 ```
 

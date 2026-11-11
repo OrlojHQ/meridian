@@ -1,4 +1,4 @@
-package fake
+package fakeprovider
 
 import (
 	"context"
@@ -25,15 +25,15 @@ func TestCancellationAndFailures(t *testing.T) {
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := provider.Get(ctx, "fake-any"); !errors.Is(err, context.Canceled) {
+	if _, err := provider.Get(ctx, "test-any"); !errors.Is(err, context.Canceled) {
 		t.Fatalf("Get error = %v", err)
 	}
 
 	provider.delay = 0
-	if _, err := provider.Get(context.Background(), "fake-any"); err == nil {
+	if _, err := provider.Get(context.Background(), "test-any"); err == nil {
 		t.Fatal("expected injected failure")
 	}
-	if _, err := provider.Get(context.Background(), "fake-any"); err != nil {
+	if _, err := provider.Get(context.Background(), "test-any"); err != nil {
 		t.Fatalf("failure was not bounded: %v", err)
 	}
 }
@@ -45,7 +45,7 @@ func TestStructuredRuntimeIsExplicitlyUnsupported(t *testing.T) {
 		t.Fatal(err)
 	}
 	if capabilities.Structured {
-		t.Fatal("fake provider advertised structured runtime")
+		t.Fatal("test provider advertised structured runtime")
 	}
 	_, err = provider.StartStructured(context.Background(), ports.RuntimeStructuredStartRequest{
 		RunID: "run-1", Frame: adapterproto.Frame{

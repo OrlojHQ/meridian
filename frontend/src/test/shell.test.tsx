@@ -43,7 +43,7 @@ const capsule: Capsule = {
 };
 
 const capabilities: Capabilities = {
-  providerVersion: "fake/v1",
+  providerVersion: "docker/v1",
   attach: false,
   run: false,
   structured: false,
@@ -487,8 +487,8 @@ describe("application shell", () => {
     await waitFor(() =>
       expect(within(bar).getByRole("status")).toHaveTextContent("Connected"),
     );
-    expect(bar).toHaveTextContent("fake/v1");
-    expect(bar).toHaveTextContent("Capsules are simulated and no agents run");
+    expect(bar).toHaveTextContent("docker/v1");
+    expect(bar).not.toHaveTextContent(/simulated/i);
     await waitFor(() =>
       expect(within(bar).getByRole("link", { name: "Needs attention: 1" })).toHaveAttribute(
         "href",

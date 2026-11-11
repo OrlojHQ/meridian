@@ -40,7 +40,7 @@ func TestAgentSandboxProviderFlagsAreRegistered(t *testing.T) {
 		}
 	}
 	provider := command.Flags().Lookup("provider")
-	if provider == nil || provider.Usage != "Capsule provider (docker, agentsandbox, or fake for simulated Capsules)" ||
+	if provider == nil || provider.Usage != "Capsule provider (docker or agentsandbox)" ||
 		provider.DefValue != "docker" {
 		t.Fatalf("provider flag must default to docker and advertise every provider: %#v", provider)
 	}

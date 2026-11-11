@@ -26,7 +26,7 @@ const project: Project = {
 };
 
 const capabilities: Capabilities = {
-  providerVersion: "fake/v1",
+  providerVersion: "docker/v1",
   attach: false,
   run: false,
   structured: true,

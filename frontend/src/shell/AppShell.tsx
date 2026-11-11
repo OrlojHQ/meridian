@@ -33,7 +33,6 @@ import {
   ThemeIcon,
   TerminalIcon,
   ThreadIcon,
-  WarningIcon,
 } from "../components/ui/Icons";
 import { applyTheme, nextTheme, readTheme, rememberTheme, themeLabel, type ThemePreference } from "../components/ui/theme";
 import {
@@ -257,7 +256,6 @@ function StatusBar({ items }: { items: WorkingSetItem[] }) {
   const online = useOnline();
   const capabilities = useQuery({ ...queries.capabilities(), refetchInterval: 15_000 });
   const provider = capabilities.data?.providerVersion ?? "";
-  const simulated = provider.startsWith("fake/");
   const failure = capabilities.isError ? normalizeAPIError(capabilities.error) : undefined;
   const connection = !online
     ? { state: "offline", label: "Offline", title: "This browser is offline" }
@@ -269,7 +267,7 @@ function StatusBar({ items }: { items: WorkingSetItem[] }) {
         ? { state: "pending", label: "Connecting…", title: "Contacting the daemon" }
         : { state: "online", label: "Connected", title: "The daemon API is reachable" };
   return (
-    <footer className={`status-bar${simulated ? " simulated" : ""}`} aria-label="Status bar">
+    <footer className="status-bar" aria-label="Status bar">
       <span
         className={`status-connection ${connection.state}`}
         role="status"
@@ -283,20 +281,6 @@ function StatusBar({ items }: { items: WorkingSetItem[] }) {
           <span className="sr-only">Provider </span>
           {provider}
         </span>
-      )}
-      {simulated && (
-        <strong
-          className="status-simulated"
-          title="meridiand is running with --provider=fake. Capsules are simulated and no agents run."
-        >
-          <WarningIcon />
-          <span>
-            Simulated<span className="status-long"> provider</span>
-            {" — "}
-            <span className="status-long">Capsules are simulated and </span>
-            no agents run
-          </span>
-        </strong>
       )}
       <div className="status-trailing">
         <NotificationOptIn />
