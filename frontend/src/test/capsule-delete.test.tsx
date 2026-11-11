@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -170,7 +170,8 @@ describe("delete navigation", () => {
     });
     renderApp("/ui/");
 
-    await userEvent.click(await screen.findByRole("link", { name: /Review the launcher/ }));
+    const sidebar = await screen.findByRole("complementary", { name: "Activity" });
+    await userEvent.click(await within(sidebar).findByRole("link", { name: /Review the launcher/ }));
     expect(location()).toBe("/ui/capsules/capsule-current");
     await screen.findByRole("link", { name: /Recent work/ });
     await confirmDelete();
@@ -194,7 +195,8 @@ describe("delete navigation", () => {
     });
     renderApp("/ui/");
 
-    await userEvent.click(await screen.findByRole("link", { name: /Review the launcher/ }));
+    const sidebar = await screen.findByRole("complementary", { name: "Activity" });
+    await userEvent.click(await within(sidebar).findByRole("link", { name: /Review the launcher/ }));
     expect(location()).toBe("/ui/capsules/capsule-current");
     await confirmDelete();
 

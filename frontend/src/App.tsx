@@ -14,7 +14,6 @@ import {
   Routes,
   useLocation,
   useNavigate,
-  useOutletContext,
   useParams,
   useSearchParams,
 } from "react-router-dom";
@@ -38,7 +37,8 @@ import type {
   TimelineView,
 } from "./api/generated/types.gen";
 import { queries } from "./api/queries";
-import { Board } from "./components/Board";
+import { HomeComposer } from "./components/HomeComposer";
+import { ProjectSettings } from "./components/ProjectSettings";
 import { CapsuleStartup } from "./components/CapsuleStartup";
 import { DeliveryDecision } from "./components/DeliveryDecision";
 import { isStarting } from "./components/startup";
@@ -57,12 +57,12 @@ import {
   ActivityDot,
   AppShell,
   sessionPath,
-  type ShellOutletContext,
 } from "./shell/AppShell";
 import {
   capsuleSessions,
   defaultSession,
   destinationAfterCapsuleDelete,
+  describeCapsule,
   harnessName,
   pinnedSetupText,
   relativeTime,
@@ -793,6 +793,15 @@ export function CapsuleDetail() {
     ...queries.deliveries(capsuleId),
     enabled: Boolean(capsuleId) && capabilities.data?.delivery === true,
   });
+  const inspection = useQuery({
+    ...queries.deliveryInspection(capsuleId),
+    enabled:
+      capabilities.data?.delivery === true &&
+      capabilities.data?.git === true &&
+      capsule.data?.state === "Ready",
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
   if (capsule.isPending) return <WorkspaceSkeleton label="Loading Capsule…" />;
   if (capsule.isError) return <ErrorState error={capsule.error} />;
   const value = capsule.data;
@@ -816,14 +825,41 @@ export function CapsuleDetail() {
   const harness = value.harness || sessions[0]?.harness;
   const chatSelected =
     selected !== "" && selected !== TERMINAL_SESSION && selected !== NEW_SESSION;
+  const cliSelected = selected === TERMINAL_SESSION;
+  const activity = describeCapsule(value, runs.data?.items, threads.data?.items);
+  const pullRequest = deliveries.data?.items.find((item) => item.resultPullRequestUrl);
+  const threadTarget = threads.data?.items.find(
+    (item) => item.state !== "deleted" && item.state !== "archived",
+  );
 
   return (
-    <article className={`capsule-workspace${chatSelected ? " chat-session" : ""}`}>
+    <article className={`capsule-workspace${chatSelected ? " chat-session" : ""}${cliSelected ? " cli-session" : ""}`}>
       <header className="capsule-bar">
         <div className="capsule-bar-title">
           {harness && <HarnessMark harness={harness} size="md" />}
           <h1>{value.name}</h1>
           <StateBadge state={value.state} />
+          {inspection.data?.branch && (
+            <span className="capsule-branch mono">{inspection.data.branch}</span>
+          )}
+          {pullRequest?.resultPullRequestUrl && (
+            <a className="capsule-pr" href={pullRequest.resultPullRequestUrl} target="_blank" rel="noreferrer">
+              PR #{pullRequest.resultPullRequestNumber ?? ""}
+            </a>
+          )}
+          <span className={`pill activity-pill activity-pill-${activity.group}`}>
+            <ActivityDot group={activity.group} />
+            {activity.label}
+          </span>
+          {cliSelected && (canCreateThread || threadTarget) && (
+            <button
+              type="button"
+              className="to-thread"
+              onClick={() => selectSession(threadTarget?.id ?? NEW_SESSION)}
+            >
+              Thread
+            </button>
+          )}
           <span className="capsule-bar-meta">
             {[projectName, `updated ${relativeTime(value.updatedAt)}`]
               .filter(Boolean)
@@ -1199,53 +1235,15 @@ function NotFound() {
   return <section className="empty-state"><h1>Page not found</h1><Link to="/ui/">Return to Capsules</Link></section>;
 }
 
-function ProjectHome() {
-  const { projectId = "" } = useParams();
-  const outlet = useOutletContext<ShellOutletContext | undefined>();
-  const projects = useQuery(queries.projects());
-  if (projects.isPending) {
-    return <WorkspaceSkeleton label="Loading project…" />;
-  }
-  if (projects.isError) return <Navigate to="/ui/" replace />;
-  const project = projects.data.items.find((item) => item.id === projectId);
-  if (!project) return <Navigate to="/ui/" replace />;
-  return (
-    <section className="fleet-view board-view">
-      <header className="workspace-view-header">
-        <div>
-          <p className="eyebrow">Project</p>
-          <h1>{project.name}</h1>
-        </div>
-      </header>
-      <div className="empty-state ui-card">
-        <p>No Capsules in this Project.</p>
-        {outlet?.openLauncher ? (
-          <div className="inbox-start">
-            <button type="button" onClick={() => outlet.openLauncher(project)}>
-              <PlusIcon />
-              Start work in {project.name}
-            </button>
-          </div>
-        ) : (
-          <p>
-            Use <strong>+</strong> next to {project.name} in the sidebar to start
-            an agent in a new Capsule.
-          </p>
-        )}
-      </div>
-    </section>
-  );
-}
-
 export function App() {
   return (
     <Routes>
       <Route path="/ui" element={<AppShell />}>
-        <Route index element={<Board />} />
+        <Route index element={<HomeComposer />} />
         <Route path="settings/harnesses" element={<HarnessSetups />} />
         <Route path="capsules/:capsuleId" element={<CapsuleDetail />} />
         <Route path="capsules/:capsuleId/diff" element={<DiffPage />} />
-        <Route path="projects/:projectId" element={<ProjectHome />} />
+        <Route path="projects/:projectId" element={<ProjectSettings />} />
         <Route path="board" element={<Navigate to="/ui/" replace />} />
         <Route path="threads" element={<ThreadFleet />} />
         <Route path="threads/:threadId" element={<ThreadDetail />} />

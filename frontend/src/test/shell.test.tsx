@@ -76,6 +76,11 @@ afterEach(() => {
   document.title = "";
 });
 
+async function openMeridianLauncher() {
+  await userEvent.click(await screen.findByRole("button", { name: /Commands/ }));
+  await userEvent.click(await screen.findByRole("option", { name: "New Capsule in Meridian" }));
+}
+
 describe("application shell", () => {
   it.each(["/ui/", "/ui/settings/harnesses"])("closes the launcher when navigating to provider settings from %s", async (initial) => {
     vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
@@ -94,12 +99,12 @@ describe("application shell", () => {
         </Route>
       </Routes>, initial,
     );
-    await userEvent.click(await screen.findByRole("button", { name: "New Capsule in Meridian" }));
+    await openMeridianLauncher();
     expect(screen.getByRole("dialog", { name: "Start work in Meridian" })).toBeInTheDocument();
     await userEvent.click(await screen.findByRole("link", { name: "Connect provider" }));
     expect(await screen.findByRole("heading", { name: "Import from your computer" })).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    await userEvent.click(screen.getByRole("button", { name: "New Capsule in Meridian" }));
+    await openMeridianLauncher();
     expect(screen.getByRole("dialog", { name: "Start work in Meridian" })).toBeInTheDocument();
   });
 
@@ -134,7 +139,7 @@ describe("application shell", () => {
         </Route>
       </Routes>,
     );
-    await userEvent.click(await screen.findByRole("button", { name: "New Capsule in Meridian" }));
+    await openMeridianLauncher();
     expect(screen.getByRole("dialog", { name: "Start work in Meridian" })).toBeInTheDocument();
     await userEvent.click(await screen.findByRole("tab", { name: "Give it a task" }));
     await userEvent.type(screen.getByLabelText("Task"), "inspect");
@@ -176,7 +181,7 @@ describe("application shell", () => {
         </Route>
       </Routes>,
     );
-    await userEvent.click(await screen.findByRole("button", { name: "New Capsule in Meridian" }));
+    await openMeridianLauncher();
     expect(screen.getByRole("dialog", { name: "Start work in Meridian" })).toBeInTheDocument();
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Start OpenCode" })).toBeEnabled(),
@@ -212,7 +217,7 @@ describe("application shell", () => {
         </Route>
       </Routes>,
     );
-    await userEvent.click(await screen.findByRole("button", { name: "New Capsule in Meridian" }));
+    await openMeridianLauncher();
     await userEvent.click(await screen.findByRole("tab", { name: "Give it a task" }));
     await userEvent.type(screen.getByLabelText("Task"), "inspect");
     await userEvent.click(screen.getByRole("button", { name: "Start task" }));
@@ -277,9 +282,7 @@ describe("application shell", () => {
       ).not.toBeInTheDocument(),
     );
 
-    await userEvent.click(
-      screen.getByRole("button", { name: "New Capsule in Meridian" }),
-    );
+    await openMeridianLauncher();
     expect(
       screen.getByRole("dialog", { name: "Start work in Meridian" }),
     ).toBeInTheDocument();
@@ -401,8 +404,7 @@ describe("application shell", () => {
 
     const leadRow = await screen.findByRole("link", { name: /Release lead/ });
     expect(leadRow).toHaveTextContent("Subagents: 3/5 done, 1 needs you, 1 working, 2 archived");
-    const subagents = await screen.findByRole("list", { name: "Subagents of Release lead" });
-    expect(within(subagents).getByRole("link", { name: /Blocked subagent/ })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: /Blocked subagent/ })).toBeInTheDocument();
     expect(capsules).toHaveBeenCalledWith(project.id, expect.anything(), "main");
     expect(threads.mock.calls.map(([id]) => id).sort()).toEqual([blocked.id, lead.id]);
   });
@@ -427,17 +429,13 @@ describe("application shell", () => {
     const views = within(sidebar).getByRole("navigation", { name: "Views" });
     const links = within(views).getAllByRole("link");
     expect(links.map((link) => link.textContent?.replace(/\d+$/, ""))).toEqual([
-      "Inbox",
-      "Threads",
       "Harness settings",
     ]);
     expect(links.map((link) => link.getAttribute("href"))).toEqual([
-      "/ui/",
-      "/ui/threads",
       "/ui/settings/harnesses",
     ]);
     links.forEach((link) => expect(link.querySelector("svg")).not.toBeNull());
-    expect(await within(views).findByLabelText("1 need attention")).toHaveTextContent("1");
+    expect(await screen.findByLabelText("1 need attention")).toHaveTextContent("1");
 
     const filter = within(sidebar).getByPlaceholderText("Filter work");
     const work = within(sidebar).getByRole("navigation", { name: "Capsule activity" });
@@ -578,8 +576,11 @@ describe("application shell", () => {
       </Routes>,
     );
 
-    const row = await screen.findByRole("link", { name: /Review the launcher/ });
-    await waitFor(() => expect(row).toHaveTextContent("Waiting for permission"));
+    await waitFor(() =>
+      expect(screen.getByRole("link", { name: /Review the launcher/ })).toHaveTextContent(
+        "Waiting for permission",
+      ),
+    );
     expect(screen.getByLabelText("1 need attention")).toBeInTheDocument();
     await waitFor(() => expect(document.title).toBe("(1) Meridian"));
     expect(document.title).not.toContain("Review the launcher");
@@ -843,7 +844,7 @@ describe("application shell", () => {
       </Routes>,
     );
 
-    expect(await screen.findByRole("button", { name: "New Capsule in Meridian" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "New Capsule" })).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Get started" })).not.toBeInTheDocument();
     expect(screen.queryByText("No Projects")).not.toBeInTheDocument();
   });

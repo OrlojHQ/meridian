@@ -466,14 +466,12 @@ describe("Board", () => {
       </QueryClientProvider>,
     );
     expect(await screen.findByTestId("location")).toHaveTextContent("/ui/");
-    expect(await screen.findByRole("heading", { name: "1 needs attention" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Start" })).toBeTruthy();
     const views = screen.getByRole("navigation", { name: "Views" });
     expect(within(views).getAllByRole("link").map((link) => link.getAttribute("href"))).toEqual([
-      "/ui/",
-      "/ui/threads",
       "/ui/settings/harnesses",
     ]);
-    expect(within(views).getByRole("link", { name: /Inbox/ })).toBeTruthy();
+    expect(within(views).getByRole("link", { name: /Harness settings/ })).toBeTruthy();
     expect(within(views).queryByRole("link", { name: /^Board$/ })).toBeNull();
     expect(within(views).queryByRole("link", { name: /^Activity$/ })).toBeNull();
   });
