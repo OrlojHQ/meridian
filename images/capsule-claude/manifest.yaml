@@ -1,0 +1,20 @@
+# Personal-setup manifest for this harness pack (ADR 0040).
+# It says which laptop files `meridian harness import` reads, which of them
+# are parsed and sanitized as configuration, where capsuled writes them in the
+# Capsule home, and which provider connections the harness can use. It is
+# compiled into meridian, meridiand, and capsuled. It cannot widen the fixed
+# deny list (auth.json, .credentials*, .env*, *.pem, *.key, .git,
+# node_modules), and every path must stay inside the Capsule home.
+version: v1
+name: claude
+root:
+  path: .claude
+  env: CLAUDE_CONFIG_DIR
+paths: [settings.json, CLAUDE.md, skills/, commands/, agents/, hooks/]
+configFiles: [settings.json]
+homeFiles: [.claude.json]
+instructions: CLAUDE.md
+connection:
+  providers:
+    - type: anthropic
+    - type: anthropic-compatible

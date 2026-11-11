@@ -892,6 +892,11 @@ text can still contain sensitive material: heuristics are not a secret detector.
 All persisted bundle content uses an authenticated encrypted envelope distinct
 from named secrets. Revision metadata contains paths and digests only. The
 importer never executes user files or credential helpers on the control plane.
+Which paths may be imported per harness comes from the pack manifests compiled
+into each binary (ADR 0040), never from a pack image at run time. A fixed deny
+list (`auth.json`, `.credentials*`, `.env*`, `*.pem`, `*.key`, `.git`,
+`node_modules`) applies before any manifest, and an invalid manifest leaves its
+harness unsupported.
 
 Capsule-owned homes are populated with rooted filesystem operations, bounded
 files, and atomic revision installation. No host configuration directory is

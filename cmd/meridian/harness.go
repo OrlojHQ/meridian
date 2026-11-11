@@ -17,12 +17,12 @@ import (
 func newHarnessCommand(config *cliConfig) *cobra.Command {
 	root := &cobra.Command{Use: "harness", Short: "Import and manage your personal harness setup"}
 	var yes, acceptExclusions, previewOnly bool
-	command := &cobra.Command{Use: "import [claude|codex|dsh|opencode|pi]", Short: "Preview and save local harness settings for future Capsules", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	command := &cobra.Command{Use: "import [" + strings.Join(harnesssetup.Harnesses(), "|") + "]", Short: "Preview and save local harness settings for future Capsules", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return err
 		}
-		names := []string{"claude", "codex", "dsh", "opencode", "pi"}
+		names := harnesssetup.Harnesses()
 		if len(args) > 0 {
 			names = args
 		}

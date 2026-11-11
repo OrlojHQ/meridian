@@ -32,44 +32,21 @@ type Preview struct {
 // env is injected so tests and callers need not mutate process-global state.
 func Discover(home, harness string, env func(string) string) (Preview, error) {
 	result := Preview{Harness: harness, Bundle: Bundle{Harness: harness}, Files: []string{}, Issues: []Issue{}}
-	if !Supported(harness) {
+	m, ok := LookupManifest(harness)
+	if !ok {
 		return result, fmt.Errorf("unsupported harness %q", harness)
 	}
-	rootName, target := "", ""
-	switch harness {
-	case "codex":
-		rootName = env("CODEX_HOME")
-		target = ".codex"
-		if rootName == "" {
-			rootName = filepath.Join(home, target)
-		}
-	case "claude":
-		rootName = env("CLAUDE_CONFIG_DIR")
-		target = ".claude"
-		if rootName == "" {
-			rootName = filepath.Join(home, target)
-		}
-	case "pi":
-		rootName = env("PI_CODING_AGENT_DIR")
-		target = ".pi/agent"
-		if rootName == "" {
-			rootName = filepath.Join(home, target)
-		}
-	case "opencode":
-		rootName = env("OPENCODE_CONFIG_DIR")
-		target = ".config/opencode"
-		if rootName == "" {
-			xdg := env("XDG_CONFIG_HOME")
-			if xdg == "" {
-				xdg = filepath.Join(home, ".config")
+	target := m.Root.Path
+	rootName := ""
+	if m.Root.Env != "" {
+		rootName = env(m.Root.Env)
+	}
+	if rootName == "" {
+		rootName = filepath.Join(home, filepath.FromSlash(target))
+		if m.Root.XDGConfig {
+			if xdg := env("XDG_CONFIG_HOME"); xdg != "" {
+				rootName = filepath.Join(xdg, filepath.FromSlash(strings.TrimPrefix(target, ".config/")))
 			}
-			rootName = filepath.Join(xdg, "opencode")
-		}
-	case "dsh":
-		rootName = env("DSH_HOME")
-		target = ".dsh"
-		if rootName == "" {
-			rootName = filepath.Join(home, target)
 		}
 	}
 	rootName, err := filepath.Abs(rootName)
@@ -162,40 +139,16 @@ func Discover(home, harness string, env func(string) string) (Preview, error) {
 		result.Files = append(result.Files, dest)
 		return nil
 	})
-	if err == nil && harness == "claude" {
-		homeRoot, openErr := os.OpenRoot(home)
-		if openErr != nil {
-			return result, openErr
-		}
-		defer homeRoot.Close()
-		if info, statErr := homeRoot.Lstat(".claude.json"); statErr == nil && info.Mode().IsRegular() {
-			file, openErr := homeRoot.Open(".claude.json")
-			if openErr != nil {
-				return result, openErr
-			}
-			raw, readErr := io.ReadAll(io.LimitReader(file, (128<<10)+1))
-			closeErr := file.Close()
-			if readErr != nil {
-				return result, readErr
-			}
-			if closeErr != nil {
-				return result, closeErr
-			}
-			if len(raw) <= 128<<10 {
-				content, issues, parseErr := Sanitize(harness, ".claude.json", string(raw))
-				result.Issues = append(result.Issues, issues...)
-				if parseErr == nil {
-					result.Bundle.Files = append(result.Bundle.Files, File{Path: ".claude.json", Content: content})
-					result.Files = append(result.Files, ".claude.json")
-				} else {
-					result.Issues = append(result.Issues, Issue{".claude.json", "Invalid JSON excluded"})
-				}
-			}
+	if err == nil && len(m.HomeFiles) > 0 {
+		if homeErr := collectHomeFiles(home, harness, m.HomeFiles, &result); homeErr != nil {
+			return result, homeErr
 		}
 	}
-	if err == nil && (harness == "codex" || harness == "dsh") {
-		if sharedErr := collectSharedSkills(home, harness, &result); sharedErr != nil {
-			return result, sharedErr
+	if err == nil {
+		for _, dir := range m.Shared {
+			if sharedErr := collectShared(home, harness, dir, &result); sharedErr != nil {
+				return result, sharedErr
+			}
 		}
 	}
 	if err == nil {
@@ -229,14 +182,12 @@ func Discover(home, harness string, env func(string) string) (Preview, error) {
 	result.Digest = result.Bundle.Digest()
 	return result, err
 }
+
+// IsConfig reports whether any manifest parses and sanitizes this
+// home-relative path as configuration.
 func IsConfig(p string) bool {
-	switch p {
-	case ".claude.json", ".codex/config.toml", ".claude/settings.json", ".config/opencode/opencode.json", ".config/opencode/opencode.jsonc", ".pi/agent/settings.json", ".pi/agent/models.json":
-		return true
-	}
-	if strings.HasPrefix(p, ".dsh/") {
-		switch filepath.Base(p) {
-		case "settings.yaml", "settings.yml", "cordis.patch.yml", "cordis.yml":
+	for _, m := range loadManifests().byName {
+		if m.isConfig(p) {
 			return true
 		}
 	}
@@ -264,8 +215,51 @@ func parseConfig(p, content string) (any, error) {
 		return value, err
 	}
 }
-func collectSharedSkills(home, harness string, result *Preview) error {
-	root, err := os.OpenRoot(filepath.Join(home, ".agents", "skills"))
+
+// collectHomeFiles reads configuration files that live directly in the
+// home, such as Claude's .claude.json. They are sanitized, never relocated.
+func collectHomeFiles(home, harness string, names []string, result *Preview) error {
+	homeRoot, err := os.OpenRoot(home)
+	if err != nil {
+		return err
+	}
+	defer homeRoot.Close()
+	for _, name := range names {
+		info, statErr := homeRoot.Lstat(name)
+		if statErr != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		file, err := homeRoot.Open(name)
+		if err != nil {
+			return err
+		}
+		raw, readErr := io.ReadAll(io.LimitReader(file, (128<<10)+1))
+		closeErr := file.Close()
+		if readErr != nil {
+			return readErr
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+		if len(raw) > 128<<10 {
+			continue
+		}
+		content, issues, parseErr := Sanitize(harness, name, string(raw))
+		result.Issues = append(result.Issues, issues...)
+		if parseErr != nil {
+			result.Issues = append(result.Issues, Issue{name, "Invalid configuration excluded"})
+			continue
+		}
+		result.Bundle.Files = append(result.Bundle.Files, File{Path: name, Content: content})
+		result.Files = append(result.Files, name)
+	}
+	return nil
+}
+
+// collectShared reads a home directory several harnesses share, such as
+// ~/.agents/skills for Codex and DeepSeek Harness.
+func collectShared(home, harness, dir string, result *Preview) error {
+	root, err := os.OpenRoot(filepath.Join(home, filepath.FromSlash(dir)))
 	if os.IsNotExist(err) {
 		return nil
 	}
@@ -283,9 +277,9 @@ func collectSharedSkills(home, harness string, result *Preview) error {
 		}
 		count++
 		if count > 4096 {
-			return fmt.Errorf("shared skills exceed entry limit")
+			return fmt.Errorf("shared directory exceeds entry limit")
 		}
-		destination := ".agents/skills/" + p
+		destination := dir + "/" + p
 		if d.Type()&os.ModeSymlink != 0 {
 			result.Issues = append(result.Issues, Issue{destination, "Symbolic link excluded"})
 			return nil

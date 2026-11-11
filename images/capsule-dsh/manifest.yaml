@@ -1,0 +1,24 @@
+# Personal-setup manifest for this harness pack (ADR 0040).
+# It says which laptop files `meridian harness import` reads, which of them
+# are parsed and sanitized as configuration, where capsuled writes them in the
+# Capsule home, and which provider connections the harness can use. It is
+# compiled into meridian, meridiand, and capsuled. It cannot widen the fixed
+# deny list (auth.json, .credentials*, .env*, *.pem, *.key, .git,
+# node_modules), and every path must stay inside the Capsule home.
+version: v1
+name: dsh
+root:
+  path: .dsh
+  env: DSH_HOME
+paths: [settings.yaml, settings.yml, cordis.patch.yml, cordis.yml, skills/, profiles/]
+# DeepSeek Harness reads these names at the root and inside profiles.
+configNames: [settings.yaml, settings.yml, cordis.patch.yml, cordis.yml]
+shared: [.agents/skills]
+# No instructions file: a connection-only Capsule gets an empty home and the
+# gateway route in cordis.patch.yml.
+connection:
+  providers:
+    - type: openai-compatible
+      requiresModel: true
+    - type: anthropic-compatible
+      requiresModel: true

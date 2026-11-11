@@ -32,12 +32,10 @@ type RuntimeSetup struct {
 	Bundle   Bundle `json:"bundle"`
 }
 
+// Supported reports whether a harness has a pack manifest (ADR 0040).
 func Supported(name string) bool {
-	switch name {
-	case "claude", "codex", "dsh", "opencode", "pi":
-		return true
-	}
-	return false
+	_, ok := LookupManifest(name)
+	return ok
 }
 func (b Bundle) Validate() error {
 	if !Supported(b.Harness) || len(b.Files) == 0 || len(b.Files) > MaxFiles {
@@ -114,27 +112,18 @@ func AllowedPath(harness, p string) bool {
 	if p == "" || len(p) > 1024 || path.IsAbs(p) || path.Clean(p) != p || strings.ContainsAny(p, "\\\x00\r\n") || p == ".." || strings.HasPrefix(p, "../") {
 		return false
 	}
-	var roots []string
-	switch harness {
-	case "codex":
-		roots = []string{".codex/config.toml", ".codex/AGENTS.md", ".codex/AGENTS.override.md", ".codex/skills/", ".codex/prompts/", ".codex/agents/", ".agents/skills/"}
-	case "claude":
-		roots = []string{".claude.json", ".claude/settings.json", ".claude/CLAUDE.md", ".claude/skills/", ".claude/commands/", ".claude/agents/", ".claude/hooks/"}
-	case "opencode":
-		roots = []string{".config/opencode/opencode.json", ".config/opencode/opencode.jsonc", ".config/opencode/AGENTS.md", ".config/opencode/agents/", ".config/opencode/commands/", ".config/opencode/skills/", ".config/opencode/plugins/", ".config/opencode/themes/", ".config/opencode/agent/", ".config/opencode/command/", ".config/opencode/plugin/", ".config/opencode/skill/"}
-	case "pi":
-		roots = []string{".pi/agent/settings.json", ".pi/agent/AGENTS.md", ".pi/agent/models.json", ".pi/agent/skills/", ".pi/agent/prompts/", ".pi/agent/extensions/", ".pi/agent/themes/"}
-	case "dsh":
-		roots = []string{".dsh/settings.yaml", ".dsh/settings.yml", ".dsh/cordis.patch.yml", ".dsh/cordis.yml", ".dsh/skills/", ".dsh/profiles/", ".agents/skills/"}
+	if denied(p) {
+		return false
 	}
+	m, ok := LookupManifest(harness)
+	return ok && m.allowed(p)
+}
+
+// denied is the fixed deny list. A manifest can never import these names.
+func denied(p string) bool {
 	for _, part := range strings.Split(p, "/") {
 		lower := strings.ToLower(part)
 		if strings.HasPrefix(lower, ".env") || lower == "auth.json" || strings.HasPrefix(lower, ".credentials") || lower == "node_modules" || lower == ".git" || strings.HasSuffix(lower, ".pem") || strings.HasSuffix(lower, ".key") {
-			return false
-		}
-	}
-	for _, root := range roots {
-		if strings.HasSuffix(root, "/") && strings.HasPrefix(p, root) || p == root {
 			return true
 		}
 	}
@@ -223,19 +212,10 @@ func ConnectionHarness(name string) bool {
 }
 
 // ConnectionSupported pairs a harness with the provider connection types its
-// native configuration can use. OpenCode and Pi need a model name to register
-// a custom OpenAI-compatible provider. DeepSeek Harness reaches the gateway
-// only through a custom endpoint route, which names its model.
+// manifest declares. OpenCode and Pi need a model name to register a custom
+// OpenAI-compatible provider. DeepSeek Harness reaches the gateway only
+// through a custom endpoint route, which names its model.
 func ConnectionSupported(harness, provider, model string) bool {
-	switch harness {
-	case "claude":
-		return provider == "anthropic" || provider == "anthropic-compatible"
-	case "codex":
-		return provider == "openai" || provider == "openai-compatible" || provider == "chatgpt"
-	case "opencode", "pi":
-		return provider == "openai" || provider == "anthropic" || provider == "openai-compatible" && model != ""
-	case "dsh":
-		return (provider == "openai-compatible" || provider == "anthropic-compatible") && model != ""
-	}
-	return false
+	m, ok := LookupManifest(harness)
+	return ok && m.supports(provider, model)
 }
