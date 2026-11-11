@@ -211,3 +211,21 @@ it("lists each harness with its mark, what a new Capsule uses, and one action",a
  expect(dsh).toHaveTextContent("No provider connection");
  expect(screen.queryByText("Not set up")).toBeNull();
 });
+it("opens provider connections from the link and stays closed after Close or Escape",async()=>{
+ vi.spyOn(api,"harnessSetups").mockResolvedValue({items:[]});
+ vi.spyOn(api,"providerConnections").mockResolvedValue({items:[],enabled:true});
+ render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><MemoryRouter initialEntries={["/ui/settings/harnesses#provider-connections"]}><HarnessSetups/></MemoryRouter></QueryClientProvider>);
+ const drawer=await screen.findByRole("dialog",{name:"Connect a provider"});
+ expect(within(drawer).getByRole("heading",{name:"Provider connections"})).toBeInTheDocument();
+ // Connections are installation-wide; the link does not open a harness import.
+ expect(within(drawer).queryByText("Import from this computer")).toBeNull();
+ await userEvent.click(within(drawer).getByRole("button",{name:"Close"}));
+ await waitFor(()=>expect(screen.queryByRole("dialog")).toBeNull());
+ // A later render must not reopen it from the hash.
+ await userEvent.click(screen.getByRole("button",{name:"Set up Codex"}));
+ expect(await screen.findByRole("dialog",{name:"Codex settings"})).toBeInTheDocument();
+ await userEvent.keyboard("{Escape}");
+ await waitFor(()=>expect(screen.queryByRole("dialog")).toBeNull());
+ await new Promise(resolve=>setTimeout(resolve, 50));
+ expect(screen.queryByRole("dialog")).toBeNull();
+});

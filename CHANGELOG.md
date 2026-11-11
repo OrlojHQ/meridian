@@ -23,6 +23,13 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   cut off. DeepSeek Harness now has its own mark everywhere harnesses are
   shown, from simple-icons 16.33.0 (CC0-1.0), like Claude Code, OpenCode,
   and Pi.
+- Connect a provider no longer breaks the page. The settings drawer's
+  backdrop turned opaque under the cursor, hiding everything behind it;
+  Close and Escape did not stick, because the drawer reopened from the link
+  on the next render; and the whole shell shifted up because the phone menu
+  button was laid out below the status bar on desktop. The link now opens a
+  drawer with only provider connections, Close and Escape close it, and the
+  page stays in place.
 
 ### Security
 

@@ -847,13 +847,21 @@
   padding-top: 1.75rem;
 }
 
-.wb-scrim {
+/* The scrim is a full-window <button>, so it must also beat the global
+   button:hover background, which is opaque and hid the whole page. */
+.wb-scrim,
+.wb-scrim:hover {
   position: fixed;
   z-index: 20;
   inset: 0;
+  min-height: 0;
+  padding: 0;
   border: 0;
+  border-radius: 0;
   background: var(--overlay);
   box-shadow: none;
+  filter: none;
+  cursor: default;
 }
 
 .wb-drawer {
@@ -867,7 +875,7 @@
   border-left: 1px solid var(--border);
   background: var(--surface);
   box-shadow: var(--shadow-lg);
-  padding: 0.6rem 1rem 2rem;
+  padding: 0 1rem 2rem;
 }
 
 .wb-drawer > header {
@@ -878,5 +886,6 @@
   position: sticky;
   top: 0;
   z-index: 1;
+  padding-block: 0.6rem;
   background: var(--surface);
 }
