@@ -21,7 +21,7 @@ it("shows saved revision contents and rolls back only future launches",async()=>
  vi.spyOn(api,"harnessSetupRevisions").mockResolvedValue({items:[{id:"rev-1",setupId:setup.id,digest:"abc",files:[".codex/AGENTS.md"],createdAt:setup.createdAt}]});
  const mutate=vi.spyOn(api,"mutateHarnessSetup").mockResolvedValue({...setup,revision:"rev-1",resourceVersion:3});
  show(<HarnessSetups/>);await openHarness("Manage Codex");await userEvent.click(await screen.findByRole("button",{name:"Files and history"}));
- await userEvent.click(await screen.findByText(/1 files/));expect(screen.getByText(".codex/AGENTS.md")).toBeInTheDocument();
+ await userEvent.click(await screen.findByText(/1 file · Current|1 file$/));expect(screen.getByText(".codex/AGENTS.md")).toBeInTheDocument();
  await userEvent.click(screen.getByRole("button",{name:"Use this revision for new Capsules"}));await waitFor(()=>expect(mutate).toHaveBeenCalledWith("setup",{revision:"rev-1",expectedResourceVersion:2}));
 });
 it("launches with an automatic name and requires a deliberate new connection grant",async()=>{
@@ -228,4 +228,23 @@ it("opens provider connections from the link and stays closed after Close or Esc
  await waitFor(()=>expect(screen.queryByRole("dialog")).toBeNull());
  await new Promise(resolve=>setTimeout(resolve, 50));
  expect(screen.queryByRole("dialog")).toBeNull();
+});
+it("leads a saved setup with editing and re-importing, and renames inline",async()=>{
+ vi.spyOn(api,"harnessSetups").mockResolvedValue({items:[setup]});vi.spyOn(api,"providerConnections").mockResolvedValue({items:[],enabled:false});
+ const mutate=vi.spyOn(api,"mutateHarnessSetup").mockResolvedValue({...setup,name:"Work Codex",resourceVersion:3});
+ show(<HarnessSetups/>);await openHarness("Manage Codex");
+ const card=await screen.findByRole("region",{name:"My Codex setup"});
+ expect(card).toHaveTextContent("New Codex Capsules start with this setup.");
+ expect(within(card).getByRole("button",{name:"Edit files and skills"})).toHaveClass("primary-button");
+ expect(within(card).getByRole("button",{name:"Update from this computer"})).toBeInTheDocument();
+ // The import panel says it updates this setup, and keeps the skills folder button.
+ const importPanel=document.getElementById("import-setup")!;
+ expect(importPanel).toHaveTextContent("Import again to update My Codex setup.");
+ expect(within(importPanel).getByRole("button",{name:"Add skills folder"})).toBeInTheDocument();
+ // No name field until Rename is chosen.
+ expect(within(card).queryByLabelText("Setup name")).toBeNull();
+ await userEvent.click(within(card).getByRole("button",{name:"Rename"}));
+ const field=within(card).getByLabelText("Setup name");
+ await userEvent.clear(field);await userEvent.type(field,"Work Codex{Enter}");
+ await waitFor(()=>expect(mutate).toHaveBeenCalledWith("setup",{name:"Work Codex",expectedResourceVersion:2}));
 });

@@ -10,30 +10,59 @@ import type { HarnessSetup, MutateHarnessSetupRequest, ProviderConnection } from
 import { harnessName } from "../shell/capsuleActivity";
 import type { Harness } from "../import/localSetup";
 
+// Scroll the drawer, not the page, to the import steps and focus the folder
+// picker. Re-importing creates a new revision of the default setup.
+function showImport(){
+ const target=document.getElementById("import-setup");
+ const drawer=target?.closest(".wb-drawer");
+ if(!target||!drawer) return;
+ const header=drawer.querySelector(":scope > header")?.getBoundingClientRect().height ?? 0;
+ drawer.scrollTo({top:target.getBoundingClientRect().top-drawer.getBoundingClientRect().top+drawer.scrollTop-header-8,behavior:"smooth"});
+ target.querySelector<HTMLButtonElement>("button.primary-button")?.focus({preventScroll:true});
+}
+
+function files(count:number){return `${count} ${count===1?"file":"files"}`;}
+
 function SetupCard({setup}:{setup:HarnessSetup}) {
  const cache=useQueryClient();
  const [editing,setEditing]=useState(false);
+ const [renaming,setRenaming]=useState(false);
  const [name,setName]=useState(setup.name);
  const [confirmDelete,setConfirmDelete]=useState(false);
  const [expanded,setExpanded]=useState(false);
  const revisions=useQuery({queryKey:["harness-setup-revisions",setup.id,setup.revision],queryFn:()=>api.harnessSetupRevisions(setup.id),enabled:expanded});
- const update=useMutation({mutationFn:(body:Omit<MutateHarnessSetupRequest,"expectedResourceVersion">)=>api.mutateHarnessSetup(setup.id,{...body,expectedResourceVersion:setup.resourceVersion}),onSuccess:()=>cache.invalidateQueries({queryKey:["harness-setups"]})});
- return <section className="panel">
-  <h3>{setup.name} {setup.default && <small>Default</small>}</h3>
-  <p>{harnessName(setup.harness)} · Changes apply to new Capsules.</p>
-  {!editing && <button onClick={()=>setEditing(true)}>Edit files and skills</button>}
-  {editing && <HarnessSetupEditor setup={setup} onClose={()=>setEditing(false)} />}
-  <div className="actions"><label>Name<input value={name} maxLength={128} onChange={event=>setName(event.target.value)}/></label>
-   <button disabled={update.isPending || !name.trim() || name===setup.name} onClick={()=>update.mutate({name})}>Rename</button>
-   <button disabled={update.isPending} onClick={()=>update.mutate({default:!setup.default})}>{setup.default?"Remove default":"Use by default"}</button>
-   <button onClick={()=>setExpanded(!expanded)}>{expanded?"Hide files and history":"Files and history"}</button>
-   <button onClick={()=>setConfirmDelete(true)}>Delete setup</button>
-  </div>
-  {confirmDelete && <div role="alert"><p>Remove this setup from future launches? Existing Capsules retain their revision.</p><button disabled={update.isPending} onClick={()=>update.mutate({deleted:true})}>Remove setup</button><button onClick={()=>setConfirmDelete(false)}>Cancel</button></div>}
+ const update=useMutation({mutationFn:(body:Omit<MutateHarnessSetupRequest,"expectedResourceVersion">)=>api.mutateHarnessSetup(setup.id,{...body,expectedResourceVersion:setup.resourceVersion}),onSuccess:()=>{setRenaming(false);return cache.invalidateQueries({queryKey:["harness-setups"]});}});
+ const harness=harnessName(setup.harness);
+ return <section className="panel setup-card" aria-label={setup.name}>
+  <header className="setup-card-header">
+   <h3>{setup.name}</h3>
+   {setup.default && <span className="badge">Default</span>}
+  </header>
+  <p className="setup-card-meta">{setup.default?`New ${harness} Capsules start with this setup.`:`Not used by default. New ${harness} Capsules can choose it when you customize them.`} Existing Capsules keep the revision they started with.</p>
+  {editing ? <HarnessSetupEditor setup={setup} onClose={()=>setEditing(false)} /> : <>
+   <div className="setup-import-actions">
+    <button type="button" className="primary-button" onClick={()=>setEditing(true)}>Edit files and skills</button>
+    <button type="button" onClick={showImport}>Update from this computer</button>
+    <button type="button" aria-expanded={expanded} onClick={()=>setExpanded(!expanded)}>{expanded?"Hide files and history":"Files and history"}</button>
+   </div>
+   {renaming ? <form className="setup-card-rename" onSubmit={event=>{event.preventDefault();update.mutate({name:name.trim()});}}>
+    <label>Setup name<input value={name} maxLength={128} autoFocus disabled={update.isPending} onChange={event=>setName(event.target.value)}/></label>
+    <button type="submit" disabled={update.isPending || !name.trim() || name.trim()===setup.name}>Save name</button>
+    <button type="button" className="text-button" onClick={()=>{setRenaming(false);setName(setup.name);}}>Cancel</button>
+   </form> : <div className="setup-card-more">
+    <button type="button" className="text-button" onClick={()=>setRenaming(true)}>Rename</button>
+    <button type="button" className="text-button" disabled={update.isPending} onClick={()=>update.mutate({default:!setup.default})}>{setup.default?"Remove default":"Use by default"}</button>
+    <button type="button" className="text-button" onClick={()=>setConfirmDelete(true)}>Delete setup</button>
+   </div>}
+  </>}
+  {confirmDelete && <div role="alert" className="setup-card-confirm"><p>Remove this setup from future launches? Existing Capsules retain their revision.</p><button disabled={update.isPending} onClick={()=>update.mutate({deleted:true})}>Remove setup</button> <button className="text-button" onClick={()=>setConfirmDelete(false)}>Cancel</button></div>}
   {update.isError && <p role="alert">{normalizeAPIError(update.error).message}</p>}
-  {expanded && revisions.isPending && <p role="status">Loading revisions…</p>}
-  {expanded && revisions.isError && <p role="alert">{normalizeAPIError(revisions.error).message}</p>}
-  {expanded && revisions.data?.items.map(revision=><details key={revision.id}><summary>{new Date(revision.createdAt).toLocaleString()} · {revision.files.length} files {revision.id===setup.revision?"· Current":""}</summary><ul>{revision.files.map(path=><li key={path}><code>{path}</code></li>)}</ul>{revision.id!==setup.revision && <button disabled={update.isPending} onClick={()=>update.mutate({revision:revision.id})}>Use this revision for new Capsules</button>}</details>)}
+  {expanded && !editing && <div className="setup-card-history">
+   <h4>Revisions</h4>
+   {revisions.isPending && <p role="status">Loading revisions…</p>}
+   {revisions.isError && <p role="alert">{normalizeAPIError(revisions.error).message}</p>}
+   {revisions.data?.items.map(revision=><details key={revision.id}><summary>{new Date(revision.createdAt).toLocaleString(undefined,{dateStyle:"medium",timeStyle:"short"})} · {files(revision.files.length)}{revision.id===setup.revision?" · Current":""}</summary><ul>{revision.files.map(path=><li key={path}><code>{path}</code></li>)}</ul>{revision.id!==setup.revision && <button disabled={update.isPending} onClick={()=>update.mutate({revision:revision.id})}>Use this revision for new Capsules</button>}</details>)}
+  </div>}
  </section>;
 }
 // The drawer shows one harness, or only provider connections when it was

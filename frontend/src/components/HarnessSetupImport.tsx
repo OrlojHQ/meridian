@@ -2,11 +2,26 @@ import { useState, useRef, type ChangeEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, normalizeAPIError } from "../api/client";
 import type { HarnessSetup, HarnessSetupPreview } from "../api/generated/types.gen";
+import { CopyButton } from "./ui/CopyButton";
 import { LocalSetupError, directoryPicker, scanSetupDirectory, harnessFolders, readLocalFiles, selectLocalFiles, type Harness, type Exclusion, type Selection } from "../import/localSetup";
 
 function importError(cause: unknown) {return cause instanceof LocalSetupError ? cause.message : normalizeAPIError(cause).message;}
 
 const displayNames: Record<Harness, string> = { opencode: "OpenCode", codex: "Codex", claude: "Claude", pi: "Pi", dsh: "DeepSeek Harness" };
+
+// Files outside the configuration folder that only the CLI importer reads,
+// per images/capsule-*/manifest.yaml (homeFiles and shared).
+const cliExtras: Record<Harness, string> = { opencode: "", codex: "~/.agents/skills", claude: "~/.claude.json", pi: "", dsh: "~/.agents/skills" };
+
+// A page served from this computer talks to a local daemon, so the CLI needs
+// no server flag. Otherwise it must be pointed at this server and its token.
+function loopbackPage() {
+  const host = window.location.hostname;
+  return host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host === "::1" || host.endsWith(".localhost");
+}
+function importCommand(harness: Harness) {
+  return loopbackPage() ? `meridian harness import ${harness}` : `meridian --server ${window.location.origin} --token-file TOKEN_FILE harness import ${harness}`;
+}
 export function HarnessSetupImport({ title = "Import your setup", initialHarness = "opencode", setups, onSaved, onCancel }: {
   title?: string; initialHarness?: Harness; setups: HarnessSetup[]; onSaved?: (setup: HarnessSetup) => void; onCancel?: () => void;
 }) {
@@ -78,28 +93,40 @@ export function HarnessSetupImport({ title = "Import your setup", initialHarness
   return <section className="panel setup-import" id="import-setup">
     <h2>{title}</h2>
     {!onCancel && <label>Harness<select value={harness} disabled={busy} onChange={event => {setHarness(event.target.value as Harness);setSelection([]);setExcluded([]);setPreview(undefined);setSaved(undefined);setError("");}}>{Object.entries(displayNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>}
-    {!preview && !saved && <>
-      <p>Choose your {displayNames[harness]} configuration folder. You review every file before anything is saved, and new Capsules reuse the saved setup.</p>
-      <div className="setup-import-picker">
-        <p><strong>Configuration folder</strong> <code>{harnessFolders[harness]}</code></p>
-        <input ref={folderInput} hidden aria-label="Choose configuration folder" type="file" multiple {...{ webkitdirectory: "" }} disabled={busy} onChange={event => choose(event)} />
-        <input ref={skillsInput} hidden aria-label="Choose skills folder" type="file" multiple {...{ webkitdirectory: "" }} disabled={busy} onChange={event => choose(event, "skills/")} />
-        <input ref={filesInput} hidden aria-label="Choose configuration files" type="file" multiple disabled={busy} onChange={event => choose(event)} />
-        <div className="setup-import-actions">
-          <button className="primary-button" type="button" disabled={busy} onClick={() => void chooseFolder()}>Choose folder</button>
-          <button type="button" disabled={busy} onClick={() => filesInput.current?.click()}>Choose individual files</button>
-          <button type="button" disabled={busy} onClick={() => void chooseFolder(true)}>Add skills folder</button>
-        </div>
-        <p className="setup-import-hint">Keep skills somewhere else, such as <code>~/.agents/skills</code> or <code>~/.claude/skills</code>? Add that folder too and its skills are copied into this harness’s skills folder. Resolve duplicate paths before import.</p>
-        {harness === "claude" && <p className="setup-import-hint">For global MCP settings, also choose <code>~/.claude.json</code> as an individual file.</p>}
-        {harness === "dsh" && <p className="setup-import-hint">DeepSeek Harness reads <code>~/.dsh</code> (<code>$DSH_HOME</code>). Credentials in <code>.credentials.yaml</code> are never imported; use a provider connection for models.</p>}
-        {!directoryPicker() && <p className="setup-import-hint">This browser’s folder picker counts every file in its confirmation, including excluded dependencies. Meridian filters them afterward; nothing is sent until Review import.</p>}
-      </div>
-      <p className="setup-import-hint">Review import uploads the selected files to your Meridian server for checks. Dependency folders such as node_modules and login caches are excluded; you sign in to each harness separately.</p>
-      <p className="setup-import-hint">On a Mac, press Command-Shift-G and paste <code>{harnessFolders[harness]}</code>. Elsewhere, show hidden files.</p>
-      {!onCancel && <p className="setup-import-hint">Prefer the terminal? Run <code>meridian harness import</code> on your computer. For a remote installation, point it at this Meridian server.</p>}
-      {selection.length > 0 && <><p>{selection.length} files selected</p><ul>{selection.map(item => <li key={item.path}>{item.path} <button type="button" disabled={busy} aria-label={`Remove ${item.path}`} onClick={() => setSelection(current => current.filter(value => value.path !== item.path))}>Remove</button></li>)}</ul><button type="button" disabled={busy} onClick={() => void review()}>{busy ? "Reviewing…" : "Review import"}</button></>}
-      {!selection.length && excluded.length > 0 && <p>No supported files selected. Choose the configuration folder shown above.</p>}
+    {saved && !preview && <p role="status" className="setup-import-saved">Saved {saved.name}. New {displayNames[harness]} Capsules start with it. Import again here to add more files or skills.</p>}
+    {!preview && <>
+      <p>{existing ? <>Import again to update <strong>{existing.name}</strong>. You review every file, and saving creates a new revision; existing Capsules keep theirs.</> : <>Import your {displayNames[harness]} settings, skills, and commands so new Capsules start with them. You review every file before anything is saved.</>}</p>
+      {!onCancel && <div className="setup-import-cli">
+        <p><strong>Fastest: import from a terminal</strong> {loopbackPage() ? "on this computer" : "on the computer that has these files"}. It reads <code>{harnessFolders[harness]}</code> directly{cliExtras[harness] && <>, plus <code>{cliExtras[harness]}</code></>}, and shows the same review.</p>
+        <p className="setup-import-copy"><code>{importCommand(harness)}</code> <CopyButton text={importCommand(harness)} label="Copy command" /></p>
+      </div>}
+      <ol className="setup-import-steps">
+        <li className="setup-import-picker">
+          <h3>Choose your {displayNames[harness]} folder</h3>
+          <p className="setup-import-copy">Usually <code>{harnessFolders[harness]}</code> <CopyButton text={harnessFolders[harness]} label="Copy path" /></p>
+          <p className="setup-import-hint">A web page cannot open a path by itself, so pick the folder in the file picker. On a Mac, press Command-Shift-G in the picker and paste <code>{harnessFolders[harness]}</code>. Elsewhere, show hidden files.</p>
+          <input ref={folderInput} hidden aria-label="Choose configuration folder" type="file" multiple {...{ webkitdirectory: "" }} disabled={busy} onChange={event => choose(event)} />
+          <input ref={skillsInput} hidden aria-label="Choose skills folder" type="file" multiple {...{ webkitdirectory: "" }} disabled={busy} onChange={event => choose(event, "skills/")} />
+          <input ref={filesInput} hidden aria-label="Choose configuration files" type="file" multiple disabled={busy} onChange={event => choose(event)} />
+          <div className="setup-import-actions">
+            <button className="primary-button" type="button" disabled={busy} onClick={() => void chooseFolder()}>Choose folder</button>
+            <button type="button" disabled={busy} onClick={() => filesInput.current?.click()}>Choose individual files</button>
+            <button type="button" disabled={busy} onClick={() => void chooseFolder(true)}>Add skills folder</button>
+          </div>
+          <p className="setup-import-hint">Skills in another folder, such as <code>~/.agents/skills</code>? Add that folder too; its skills are copied into this harness’s skills folder.</p>
+          {harness === "claude" && <p className="setup-import-hint">For global MCP settings, also choose <code>~/.claude.json</code> as an individual file.</p>}
+          {harness === "dsh" && <p className="setup-import-hint">DeepSeek Harness reads <code>~/.dsh</code> (<code>$DSH_HOME</code>). Credentials in <code>.credentials.yaml</code> are never imported; use a provider connection for models.</p>}
+          {!directoryPicker() && <p className="setup-import-hint">This browser’s folder picker counts every file in its confirmation, including excluded dependencies. Meridian filters them afterward; nothing is sent until Review import.</p>}
+          {selection.length > 0 && <><p>{selection.length} files selected</p><ul>{selection.map(item => <li key={item.path}>{item.path} <button type="button" disabled={busy} aria-label={`Remove ${item.path}`} onClick={() => setSelection(current => current.filter(value => value.path !== item.path))}>Remove</button></li>)}</ul></>}
+          {!selection.length && excluded.length > 0 && <p>No supported files selected. Choose the {harnessFolders[harness]} folder.</p>}
+        </li>
+        <li className="setup-import-picker">
+          <h3>Review and save</h3>
+          <p className="setup-import-hint">Review import uploads the selected files to your Meridian server for checks. Dependency folders such as node_modules and login caches are excluded; you sign in to each harness separately.</p>
+          <button type="button" disabled={busy || !selection.length} onClick={() => void review()}>{busy ? "Reviewing…" : "Review import"}</button>
+          {!selection.length && <span className="setup-import-hint"> Choose a folder or files first.</span>}
+        </li>
+      </ol>
     </>}
     {preview && <>
       <h3>Review what will transfer</h3>
@@ -116,7 +143,6 @@ export function HarnessSetupImport({ title = "Import your setup", initialHarness
       <button type="button" disabled={busy || !name.trim() || !preview.bundle.files.length || (!!issues.length && !acceptExclusions)} onClick={() => void save()}>{busy ? "Saving…" : "Save setup"}</button>{" "}
       <button type="button" disabled={busy} onClick={() => {setPreview(undefined);setExcluded([]);setError("");}}>Choose different files</button>
     </>}
-    {saved && <p role="status">Saved {saved.name}. New Capsules can now use it. <button type="button" onClick={() => setSaved(undefined)}>Import another setup</button></p>}
     {error && <p role="alert">{error}</p>}
     {onCancel && <button type="button" disabled={busy} onClick={onCancel}>Back to Capsule</button>}
   </section>;
