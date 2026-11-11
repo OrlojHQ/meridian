@@ -298,20 +298,22 @@
   gap: 0.25rem;
   grid-row: 1;
   grid-column: 3;
+  width: 5.25rem;
   padding: 0.6rem 0.35rem;
   border-left: 1px solid var(--border);
   background: var(--canvas);
 }
 
 .tool-rail button {
-  min-height: 2.6rem;
+  min-height: 2.4rem;
   border: 0;
   box-shadow: none;
-  padding: 0.3rem 0.35rem;
+  padding: 0.3rem 0.2rem;
   background: transparent;
   color: var(--muted);
   font-size: var(--text-2xs);
   font-weight: 700;
+  white-space: nowrap;
 }
 
 
