@@ -1,0 +1,21 @@
+# Personal-setup manifest for this harness pack (ADR 0040).
+# It says which laptop files `meridian harness import` reads, which of them
+# are parsed and sanitized as configuration, where capsuled writes them in the
+# Capsule home, and which provider connections the harness can use. It is
+# compiled into meridian, meridiand, and capsuled. It cannot widen the fixed
+# deny list (auth.json, .credentials*, .env*, *.pem, *.key, .git,
+# node_modules), and every path must stay inside the Capsule home.
+version: v1
+name: codex
+root:
+  path: .codex
+  env: CODEX_HOME
+paths: [config.toml, AGENTS.md, AGENTS.override.md, skills/, prompts/, agents/]
+configFiles: [config.toml]
+shared: [.agents/skills]
+instructions: AGENTS.md
+connection:
+  providers:
+    - type: openai
+    - type: openai-compatible
+    - type: chatgpt

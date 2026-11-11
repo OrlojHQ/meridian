@@ -9,6 +9,14 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Each official harness pack declares what `meridian harness import` reads
+  in `images/capsule-<name>/manifest.yaml` (ADR 0040): the configuration
+  directory and its override variable, importable paths, which files are
+  parsed as configuration, home-level and shared files, and the provider
+  connection types the harness accepts. The CLI, browser review, `meridiand`,
+  and `capsuled` read the copy compiled into each binary, instead of Go
+  switches in three packages. What each harness imports is unchanged.
+  `capsuled` now also sets `DSH_HOME` in every setup home.
 - Provider connections work out of the box on Docker (ADR 0037). Without
   `--provider-gateway-url`, `meridiand` serves the provider gateway on a
   second TLS listener that answers only `/provider-gateway/` routes, bound to

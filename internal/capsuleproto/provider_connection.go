@@ -44,16 +44,17 @@ func (s *Server) prepareProviderConnection(ctx context.Context, connection *harn
 	// DeepSeek Harness send it only when told the server supports it.
 	completions := connection.Provider == "openai-compatible"
 	revision := "connection-" + harness
+	manifest, _ := harnesssetup.LookupManifest(harness)
 	switch {
 	case setup != nil:
 		revision = setup.Revision
-	case !harnesssetup.Supported(harness) || harness == "dsh":
-		// dsh has personal setups but no dummy native config file; without a
-		// saved setup it still gets an empty Meridian-owned home.
+	case manifest.Instructions == "":
+		// A manifest without an instructions file (DeepSeek Harness) still
+		// gets an empty Meridian-owned home without a saved setup.
 		env, err = s.materializeSetupHome(ctx, revision, nil, nil)
 	default:
-		paths := map[string]string{"codex": ".codex/AGENTS.md", "claude": ".claude/CLAUDE.md", "opencode": ".config/opencode/AGENTS.md", "pi": ".pi/agent/AGENTS.md"}
-		env, err = s.prepareHarnessSetup(ctx, &harnesssetup.RuntimeSetup{Revision: revision, Bundle: harnesssetup.Bundle{Harness: harness, Files: []harnesssetup.File{{Path: paths[harness], Content: ""}}}}, harness)
+		placeholder := manifest.Root.Path + "/" + manifest.Instructions
+		env, err = s.prepareHarnessSetup(ctx, &harnesssetup.RuntimeSetup{Revision: revision, Bundle: harnesssetup.Bundle{Harness: harness, Files: []harnesssetup.File{{Path: placeholder, Content: ""}}}}, harness)
 	}
 	if err != nil {
 		return nil, err
@@ -179,7 +180,6 @@ func (s *Server) prepareProviderConnection(ctx context.Context, connection *harn
 			})
 		}
 	case "dsh":
-		env["DSH_HOME"] = filepath.Join(env["HOME"], ".dsh")
 		var patch []byte
 		patch, err = dshProviderPatch(connection, efforts, completions)
 		if err == nil {

@@ -37,7 +37,8 @@ func ReviewFiles(harness string, files []File) (Preview, error) {
 		if IsConfig(file.Path) {
 			// Browser selection does not expose the laptop's absolute configuration root.
 			// Only portable ~/ references are relocated; external paths are retained with warnings.
-			target := map[string]string{"codex": ".codex", "claude": ".claude", "opencode": ".config/opencode", "pi": ".pi/agent", "dsh": ".dsh"}[harness]
+			m, _ := LookupManifest(harness)
+			target := m.Root.Path
 			relocated, err := RelocateConfig(harness, file.Path, file.Content, "/@meridian-browser-root", target)
 			if err != nil {
 				result.Issues = append(result.Issues, Issue{file.Path, "Configuration could not be parsed"})

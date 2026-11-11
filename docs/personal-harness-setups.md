@@ -47,6 +47,19 @@ to explicitly accept the reported omissions. Imports are bounded to 256 files,
 128 KiB per file, and 512 KiB total content. Symlinks and unsupported paths are
 excluded. Configuration-directory environment overrides are supported.
 
+### What each harness imports
+
+Each official pack declares its importable files in
+`images/capsule-<name>/manifest.yaml` (ADR 0040): the configuration directory
+and its override variable, the files and directories under it, which of them
+are parsed and sanitized, home-level files such as `~/.claude.json`, and
+shared directories such as `~/.agents/skills`. The CLI, the browser review,
+`meridiand`, and `capsuled` all use the copy compiled into the binary.
+`auth.json`, `.credentials*`, `.env*`, `*.pem`, `*.key`, `.git`, and
+`node_modules` are never imported, whatever a manifest lists. To add personal
+setups for a new pack, add its manifest and its name to the harness enum in
+`api/openapi.yaml`.
+
 Harness settings shows saved setups, their files and revisions, defaults,
 rename, rollback, and deletion. Import again to update a default setup. An
 interactive `capsule create --harness NAME` notices changes in an existing local

@@ -23,12 +23,7 @@ func (s *Server) prepareHarnessSetup(ctx context.Context, setup *harnesssetup.Ru
 	if err := setup.Bundle.Validate(); err != nil {
 		return nil, err
 	}
-	env, err := s.materializeSetupHome(ctx, setup.Revision, setup.Bundle.Files, setup.Bundle.Dependencies)
-	if err != nil || setup.Bundle.Harness != "dsh" {
-		return env, err
-	}
-	env["DSH_HOME"] = filepath.Join(env["HOME"], ".dsh")
-	return env, nil
+	return s.materializeSetupHome(ctx, setup.Revision, setup.Bundle.Files, setup.Bundle.Dependencies)
 }
 
 // materializeSetupHome creates the private home for a validated revision
@@ -105,7 +100,14 @@ func (s *Server) materializeSetupHome(ctx context.Context, revision string, file
 		return nil, err
 	}
 	home := filepath.Join(base, target)
-	return map[string]string{"HOME": home, "CODEX_HOME": filepath.Join(home, ".codex"), "CLAUDE_CONFIG_DIR": filepath.Join(home, ".claude"), "PI_CODING_AGENT_DIR": filepath.Join(home, ".pi", "agent"), "XDG_CONFIG_HOME": filepath.Join(home, ".config"), "XDG_DATA_HOME": filepath.Join(home, ".local", "share"), "XDG_CACHE_HOME": filepath.Join(home, ".cache")}, nil
+	// Every pack manifest's root variable points into this home, so the
+	// harness reads the imported files rather than an empty default.
+	env := harnesssetup.CapsuleEnvironment(home)
+	env["HOME"] = home
+	env["XDG_CONFIG_HOME"] = filepath.Join(home, ".config")
+	env["XDG_DATA_HOME"] = filepath.Join(home, ".local", "share")
+	env["XDG_CACHE_HOME"] = filepath.Join(home, ".cache")
+	return env, nil
 }
 func setupEnvironment(env []string, setup map[string]string) []string {
 	if len(setup) == 0 {
