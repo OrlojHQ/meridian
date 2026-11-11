@@ -253,9 +253,7 @@ func TestCreateProjectThreadRejectsNativeOnlyPackBeforeProvisioning(t *testing.T
 	// native for them must still stop spawn before provisioning.
 	packs := domain.InstallationHarnessImages("meridian-capsule:dev", "")
 	for index := range packs {
-		if packs[index].Name != "mock" {
-			packs[index].InteractionModes = []domain.HarnessInteractionMode{domain.HarnessInteractionNative}
-		}
+		packs[index].InteractionModes = []domain.HarnessInteractionMode{domain.HarnessInteractionNative}
 	}
 	service.ConfigureHarnessPacks(packs)
 	projects := []domain.Project{

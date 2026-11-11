@@ -24,10 +24,6 @@ const logos: Record<string, { path: string; viewBox?: string }> = {
   },
 };
 
-const monograms: Record<string, string> = {
-  mock: "M",
-};
-
 export function HarnessMark({
   harness,
   size = "sm",
@@ -37,9 +33,8 @@ export function HarnessMark({
 }) {
   const key = harness ?? "";
   const logo = logos[key];
-  const monogram =
-    monograms[key] ?? (key ? key.slice(0, 2).replace(/^./, (value) => value.toUpperCase()) : "·");
-  const known = logo !== undefined || monograms[key] !== undefined;
+  const monogram = key ? key.slice(0, 2).replace(/^./, (value) => value.toUpperCase()) : "·";
+  const known = logo !== undefined;
   return (
     <span
       className={`harness-mark harness-mark-${size} harness-mark-${known ? key : "other"}`}

@@ -82,7 +82,7 @@ it("asks an expired ChatGPT connection to sign in again", async () => {
 
 it("pairs ChatGPT plan connections only with Codex", () => {
   expect(connectionSupports("codex", chatgpt)).toBe(true);
-  for (const harness of ["claude", "opencode", "pi", "dsh", "mock"]) {
+  for (const harness of ["claude", "opencode", "pi", "dsh", "custom"]) {
     expect(connectionSupports(harness, chatgpt)).toBe(false);
   }
 });

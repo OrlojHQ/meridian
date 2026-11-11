@@ -102,9 +102,10 @@ structured one. Because the image owns every mode of its names and a repository
 cannot define profiles under them, the daemon knows a pack's modes before any
 Capsule exists. It advertises them as `interactionModes` (`[native,
 structured]`, or `[structured]` for `dsh`) on the pack's entry in the
-capabilities `harnessImages` catalog. `mock` uses the supervisor image, which
-installs no trusted profile, so its entry declares no modes and the
-repository's `.meridian/project.yaml` decides. Project Thread spawn rejects a
+capabilities `harnessImages` catalog. The test harness is not in that
+catalog. A Project allowlists it explicitly, and because the supervisor image
+installs no trusted profile under that name, the repository's
+`.meridian/project.yaml` decides its modes. Project Thread spawn rejects a
 pack whose catalog entry, matched by name and image, lacks `structured`, and
 creating a Capsule with a terminal launcher rejects one that lacks `native`,
 both with `422 unsupported` before provisioning. The dashboard offers only

@@ -724,22 +724,27 @@ func TestHarnessCatalogInteractionModes(t *testing.T) {
 	if got := modes["dsh"]; len(got) != 1 || got[0] != client.HarnessImageInteractionModesItemStructured {
 		t.Fatalf("dsh modes = %v", got)
 	}
-	if got, ok := modes["mock"]; !ok || got != nil {
-		t.Fatalf("mock modes = %v, listed %v", got, ok)
+	if _, ok := modes["mock"]; ok {
+		t.Fatal("mock is test-only and must not be in the installation catalog")
 	}
 
 	// Clients apply packs by echoing catalog entries; the read-only modes are
-	// accepted and never stored on the Project.
+	// accepted and never stored on the Project. The test harness is not in
+	// that catalog, so this Project allowlists it explicitly.
+	images := append([]client.HarnessImage(nil), catalog...)
+	images = append(images, client.HarnessImage{
+		Name: "mock", ImageReference: "meridian-capsule:dev",
+	})
 	created, err := api.CreateProject(
 		ctx,
-		&client.CreateProjectRequest{Name: "catalog", HarnessImages: catalog},
+		&client.CreateProjectRequest{Name: "catalog", HarnessImages: images},
 		client.CreateProjectParams{IdempotencyKey: "catalog-project"},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	project, ok := created.(*client.ProjectHeaders)
-	if !ok || len(project.Response.HarnessImages) != len(catalog) {
+	if !ok || len(project.Response.HarnessImages) != len(images) {
 		t.Fatalf("create project response = %#v", created)
 	}
 	for _, item := range project.Response.HarnessImages {

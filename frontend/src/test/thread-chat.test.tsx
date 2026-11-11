@@ -789,7 +789,7 @@ describe("Slash command menu", () => {
     const composer = await screen.findByRole("combobox", { name: "Message" });
     await user.type(composer, "/");
     const menu = screen.getByRole("listbox");
-    expect(menu).toHaveTextContent("Mock (test) has not reported commands for this session.");
+    expect(menu).toHaveTextContent("mock has not reported commands for this session.");
     expect(within(menu).getAllByRole("option").map((option) => option.textContent)).toEqual([
       "New sessionStart a fresh conversation in this Capsule",
     ]);

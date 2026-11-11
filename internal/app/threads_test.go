@@ -890,7 +890,7 @@ func TestCreateThreadStartRejectsNativeOnlyPack(t *testing.T) {
 	defer key.Zero()
 	packs := domain.InstallationHarnessImages("meridian-capsule:dev", "")
 	for index := range packs {
-		if packs[index].Name != "mock" && packs[index].Name != "dsh" {
+		if packs[index].Name != "dsh" {
 			packs[index].InteractionModes = []domain.HarnessInteractionMode{domain.HarnessInteractionNative}
 		}
 	}

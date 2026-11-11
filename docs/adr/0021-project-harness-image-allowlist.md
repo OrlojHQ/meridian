@@ -29,13 +29,15 @@ operator policy: only names the Project already allowlisted.
 - Expose the allowlist on Project create (API, CLI `--harness-image
   name=image`) and on later apply (`PATCH /projects/{id}`, TUI `/harness`,
   CLI `project apply-harness`). `/new` picks among applied names.
-- Advertise official packs on `GET /capabilities` (`mock` = the daemon
-  default image; `opencode`, `pi`, `claude`, and `codex` reuse that
-  registry, organization, and tag on `meridian-capsule-opencode`,
+- Advertise official packs on `GET /capabilities`. `opencode`, `pi`,
+  `claude`, and `codex` reuse the daemon default image's registry,
+  organization, and tag on `meridian-capsule-opencode`,
   `meridian-capsule-pi`, `meridian-capsule-claude`, and
-  `meridian-capsule-codex`). ADR 0023 publishes those pack images on the
+  `meridian-capsule-codex`. ADR 0023 publishes those pack images on the
   same release tag. Applying a pack copies that name and image onto the
-  Project. Clients still cannot invent an image at spawn time.
+  Project. Clients still cannot invent an image at spawn time. The test
+  harness is not part of this catalog; a Project allowlists it with an
+  explicit `name=image`.
 
 ## Consequences
 

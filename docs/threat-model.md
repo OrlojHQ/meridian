@@ -720,7 +720,7 @@ Project configuration, platform, and protocol version. They are verified on
 restore and exclude grants, secret material, runtime tokens, transcripts,
 local overlays, sessions, and post-setup work. When a Project allowlists
 named harness images, the hash uses the image frozen on that Capsule at
-spawn, not only the Project default, so official harness packs and mock do
+spawn, not only the Project default, so distinct allowlisted images do
 not share a prepare archive. Undeclared mutable setup inputs remain a staleness risk, so
 reuse can be disabled and a mismatch runs setup.
 

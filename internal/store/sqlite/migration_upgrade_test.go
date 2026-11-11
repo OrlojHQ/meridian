@@ -3,6 +3,7 @@ package sqlite_test
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -245,5 +246,129 @@ func TestRejectsTamperedMigrationRecord(t *testing.T) {
 	}
 	if _, err := sqlite.Open(context.Background(), dataDir); !errors.Is(err, domain.ErrCorrupt) {
 		t.Fatalf("tampered migration error = %v", err)
+	}
+}
+
+func TestMigrationTwentyTwoDropsSavedMockHarness(t *testing.T) {
+	ctx := context.Background()
+	dataDir := t.TempDir()
+	db, err := sql.Open("sqlite", filepath.Join(dataDir, "meridian.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		CREATE TABLE schema_migrations (
+			version INTEGER PRIMARY KEY,
+			name TEXT NOT NULL UNIQUE,
+			applied_at TEXT NOT NULL
+		)`); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := fs.ReadDir(migrations.Files, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".sql" || entry.Name() >= "0022" {
+			continue
+		}
+		content, err := migrations.Files.ReadFile(entry.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(string(content)); err != nil {
+			t.Fatalf("apply %s: %v", entry.Name(), err)
+		}
+		prefix, _, _ := strings.Cut(entry.Name(), "_")
+		version, _ := strconv.Atoi(prefix)
+		if _, err := db.Exec(
+			"INSERT INTO schema_migrations(version, name, applied_at) VALUES (?, ?, ?)",
+			version, entry.Name(), "2026-01-01T00:00:00Z",
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	created := "2026-08-24T12:00:00Z"
+	encode := func(images []domain.HarnessImage) string {
+		t.Helper()
+		raw, err := json.Marshal(images)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(raw)
+	}
+	insert := func(id string, version int, images []domain.HarnessImage) {
+		t.Helper()
+		if _, err := db.Exec(`
+			INSERT INTO projects(id, name, created_at, updated_at, resource_version, harness_images)
+			VALUES (?, ?, ?, ?, ?, ?)`,
+			id, id, created, created, version, encode(images),
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	insert("mixed", 4, []domain.HarnessImage{
+		{Name: "opencode", ImageReference: "meridian-capsule-opencode:dev"},
+		{Name: "mock", ImageReference: "meridian-capsule:dev"},
+		{Name: "mock-structured", ImageReference: "meridian-capsule-integration:dev"},
+	})
+	insert("only-mock", 2, []domain.HarnessImage{
+		{Name: "mock", ImageReference: "meridian-capsule:dev"},
+	})
+	insert("kept", 7, []domain.HarnessImage{
+		{Name: "pi", ImageReference: "meridian-capsule-pi:dev"},
+	})
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := sqlite.Open(ctx, dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	names := func(id domain.ProjectID) (int64, []string) {
+		t.Helper()
+		var project domain.Project
+		if err := store.View(ctx, func(reader ports.Reader) error {
+			var err error
+			project, err = reader.GetProject(ctx, id)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		got := make([]string, 0, len(project.HarnessImages))
+		for _, image := range project.HarnessImages {
+			got = append(got, image.Name+"="+image.ImageReference)
+		}
+		return int64(project.ResourceVersion), got
+	}
+	if version, got := names("mixed"); version != 5 ||
+		strings.Join(got, ",") != "opencode=meridian-capsule-opencode:dev,mock-structured=meridian-capsule-integration:dev" {
+		t.Fatalf("mixed allowlist = %d %v", version, got)
+	}
+	if version, got := names("only-mock"); version != 3 || len(got) != 0 {
+		t.Fatalf("only-mock allowlist = %d %v", version, got)
+	}
+	if version, got := names("kept"); version != 7 || strings.Join(got, ",") != "pi=meridian-capsule-pi:dev" {
+		t.Fatalf("untouched allowlist = %d %v", version, got)
+	}
+
+	// An allowlist written after the migration, the way tests and local
+	// end-to-end configuration do, is not stripped.
+	now := time.Date(2026, 11, 11, 0, 0, 0, 0, time.UTC)
+	if err := store.Transact(ctx, func(tx ports.Transaction) error {
+		return tx.InsertProject(ctx, domain.Project{
+			ID: "explicit", Name: "explicit", CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
+			HarnessImages: []domain.HarnessImage{
+				{Name: "mock", ImageReference: "meridian-capsule:dev"},
+			},
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if version, got := names("explicit"); version != 1 || strings.Join(got, ",") != "mock=meridian-capsule:dev" {
+		t.Fatalf("explicit allowlist = %d %v", version, got)
 	}
 }

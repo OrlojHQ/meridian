@@ -27,16 +27,13 @@ function rememberHarness(harness: string) {
   }
 }
 
-// The installation orders its catalog (official agents first, mock last), so
-// without a remembered choice the first real agent wins.
+// Without a remembered choice, the first installation pack wins.
 export function initialHarness(harnessImages: HarnessImage[]) {
   const remembered = rememberedHarness();
   if (harnessImages.some((harness) => harness.name === remembered)) {
     return remembered;
   }
-  return (
-    harnessImages.find((harness) => harness.name !== "mock") ?? harnessImages[0]
-  )?.name;
+  return harnessImages[0]?.name;
 }
 
 export function NewProjectDialog({
@@ -223,9 +220,7 @@ export function NewProjectDialog({
             >
               {harnessImages.map((harness) => (
                 <option key={harness.name} value={harness.name}>
-                  {harness.name === "mock"
-                    ? "mock (test harness, no agent)"
-                    : harness.name}
+                  {harness.name}
                 </option>
               ))}
             </Select>

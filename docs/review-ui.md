@@ -145,7 +145,7 @@ operator to paste, and the comments stay pending.
 installation-known harness pack without accepting a free image reference. It
 preselects the harness chosen when the operator last created a Project, if the
 installation still offers it, and otherwise the first pack in installation
-order other than `mock`. Only the harness name is remembered, in the browser's
+order. Only the harness name is remembered, in the browser's
 `meridian.newProjectHarness` storage entry, and only after the Project is
 created; the dialog works unchanged when browser storage is unavailable. Each
 Project heading owns its own `+` launcher, so Capsule creation is already
@@ -162,11 +162,11 @@ launcher with no tab strip, and one that declares `structured` without
 and Pi packs declare both; DeepSeek Harness declares only `structured`, because
 its published package has no terminal UI. The agent picker also offers a
 provider connection only for harnesses whose provider configuration
-`capsuled` writes. `mock` and custom images declare nothing, because
-their profiles come from the repository, so they keep the choice and the
-Capsule's profiles decide. Native launch lists only harness packs applied to
-that Project, follows provisioning, and opens the first PTY Run. Structured
-launch retains the encrypted Thread intent workflow.
+`capsuled` writes. A pack outside the catalog, such as a custom image,
+declares nothing, because its profiles come from the repository, so it keeps
+the choice and the Capsule's profiles decide. Native launch lists only harness
+packs applied to that Project, follows provisioning, and opens the first PTY
+Run. Structured launch retains the encrypted Thread intent workflow.
 
 Keyboard shortcuts `n`, `/`, `j`/`k`, the arrow keys, `g` then `n`, and `?`
 open Project creation, focus filtering, move through the Capsule working set,

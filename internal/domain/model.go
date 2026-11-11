@@ -255,8 +255,9 @@ func InstallationHarnessImages(defaultImage, packTag string) []HarnessPack {
 	}
 	// The official packs install a native and a structured profile under the
 	// pack name in images/capsule-<pack>/project.yaml, and a repository cannot
-	// define profiles under a trusted name. mock uses the supervisor image,
-	// which has no trusted profile, so the repository decides its modes.
+	// define profiles under a trusted name. The test harness is not part of
+	// this catalog; tests and local end-to-end configuration allowlist it
+	// explicitly.
 	official := func(name string, modes ...HarnessInteractionMode) HarnessPack {
 		if len(modes) == 0 {
 			modes = []HarnessInteractionMode{HarnessInteractionNative, HarnessInteractionStructured}
@@ -269,8 +270,7 @@ func InstallationHarnessImages(defaultImage, packTag string) []HarnessPack {
 			InteractionModes: modes,
 		}
 	}
-	// Clients preselect the first entry, so real agents come first. mock is
-	// the harness-free supervisor image used by tests and contributors.
+	// Clients preselect the first entry.
 	return []HarnessPack{
 		official("opencode"),
 		official("pi"),
@@ -278,7 +278,6 @@ func InstallationHarnessImages(defaultImage, packTag string) []HarnessPack {
 		official("codex"),
 		// The published DeepSeek Harness CLI ships no terminal UI.
 		official("dsh", HarnessInteractionStructured),
-		{HarnessImage: HarnessImage{Name: "mock", ImageReference: defaultImage}},
 	}
 }
 
