@@ -1,5 +1,23 @@
 .workbench .activity-sidebar {
+  display: flex;
+  flex-direction: column;
   background: var(--side, var(--canvas));
+}
+
+.workbench .activity-nav {
+  flex: 1;
+  min-height: 0;
+}
+
+.workbench .new-capsule {
+  height: 2.25rem;
+  width: calc(100% - 1.4rem);
+}
+
+.workbench .new-capsule svg {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
 }
 
 .workbench .sidebar-header {
