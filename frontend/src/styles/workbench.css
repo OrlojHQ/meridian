@@ -230,60 +230,181 @@
   min-height: 2.6rem;
 }
 
-.project-switcher {
-  position: relative;
-  margin: 0 0.7rem 0.45rem;
-}
-
-.project-switcher .switcher {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 2.1rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 0 0.7rem;
-  background: var(--surface);
-  box-shadow: none;
-  font-weight: 620;
-}
-
-.switcher-menu {
-  position: absolute;
-  z-index: 8;
-  top: calc(100% + 0.3rem);
-  left: 0;
-  right: 0;
+/* Projects tree: Projects with their Capsules nested. Row actions appear on
+   hover or keyboard focus, and always on touch screens without hover. */
+.project-tree-list {
   display: grid;
   gap: 0.1rem;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-md);
-  padding: 0.3rem;
-  background: var(--surface-raised);
-  box-shadow: var(--shadow-md);
 }
 
-.switcher-menu button,
-.switcher-menu a {
+.project-row {
+  position: relative;
   display: flex;
   align-items: center;
-  min-height: 2rem;
+  min-height: 1.95rem;
+  border-radius: 8px;
+}
+
+.project-row:hover {
+  background: var(--surface-hover);
+}
+
+.workbench .project-toggle {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.35rem;
+  min-height: 1.95rem;
   border: 0;
-  border-radius: var(--radius-xs);
-  padding: 0 0.55rem;
+  padding: 0 0.4rem 0 0.25rem;
   background: transparent;
   box-shadow: none;
   color: var(--text);
   font-size: var(--text-sm);
-  font-weight: 560;
-  text-decoration: none;
+  font-weight: 640;
+  text-align: left;
 }
 
-.switcher-menu button.active,
-.switcher-menu button:hover,
-.switcher-menu a:hover {
-  background: var(--surface-hover);
+.workbench .project-toggle:hover {
+  background: transparent;
+}
+
+.project-chevron {
+  width: 0.85rem;
+  height: 0.85rem;
+  flex: none;
+  color: var(--faint);
+  transition: transform 120ms ease;
+}
+
+.project-toggle[aria-expanded="true"] .project-chevron {
+  transform: rotate(90deg);
+}
+
+.project-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-count {
+  flex: none;
+  color: var(--faint);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 560;
+}
+
+.project-waiting {
+  flex: none;
+  color: var(--danger);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.project-actions {
+  display: flex;
+  flex: none;
+  gap: 0.05rem;
+  padding-right: 0.2rem;
+  opacity: 0;
+}
+
+.project-row:hover .project-actions,
+.project-row:focus-within .project-actions {
+  opacity: 1;
+}
+
+.workbench .project-actions .icon-button,
+.workbench .capsule-row-delete {
+  display: inline-grid;
+  width: 1.55rem;
+  min-height: 1.55rem;
+  place-items: center;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--muted);
+}
+
+.workbench .project-actions .icon-button:hover,
+.workbench .capsule-row-delete:hover {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+.workbench .project-actions .project-delete:hover,
+.workbench .capsule-row-delete:hover {
+  color: var(--danger);
+}
+
+.project-actions svg,
+.capsule-row-delete svg {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+.project-capsules {
+  margin: 0 0 0.25rem 0.85rem !important;
+  border-left: 1px solid var(--border);
+  padding-left: 0.2rem !important;
+}
+
+.project-tree-note {
+  margin: 0.05rem 0.55rem 0.35rem 1.6rem;
+  color: var(--faint);
+  font-size: 0.75rem;
+}
+
+.workbench .project-tree-note .text-button {
+  min-height: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--accent-text);
+  font-size: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+.project-node > .project-delete-failure {
+  padding-left: 1.6rem;
+}
+
+/* A Capsule's delete button takes the place of its time on hover. */
+.capsule-node {
+  position: relative;
+}
+
+.workbench .capsule-row-delete {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.2rem;
+  opacity: 0;
+}
+
+.capsule-node:hover > .capsule-row-delete,
+.capsule-node:focus-within > .capsule-row-delete {
+  opacity: 1;
+}
+
+.capsule-node:hover > a.capsule-row time,
+.capsule-node:focus-within > a.capsule-row time {
+  visibility: hidden;
+}
+
+@media (hover: none) {
+  .project-actions,
+  .workbench .capsule-row-delete {
+    opacity: 1;
+  }
+
+  .capsule-node > a.capsule-row time {
+    visibility: hidden;
+  }
 }
 
 .workbench .new-capsule {

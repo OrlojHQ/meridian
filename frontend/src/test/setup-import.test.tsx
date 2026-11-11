@@ -33,6 +33,10 @@ it("reviews only eligible files, requires exclusion review, and retries the same
  await waitFor(()=>expect(done).toHaveBeenCalledWith(saved));
  expect(save.mock.calls[0]?.[1]).toBe(save.mock.calls[1]?.[1]);
  expect(save.mock.calls[0]?.[0].bundle).toEqual(bundle);
+ // After saving, the import steps stay, so more skills can be added at once.
+ expect(screen.getByRole("status")).toHaveTextContent("Saved My OpenCode setup. New OpenCode Capsules start with it.");
+ expect(screen.getByRole("button",{name:"Add skills folder"})).toBeInTheDocument();
+ expect(screen.getByRole("button",{name:"Choose folder"})).toBeInTheDocument();
 });
 it("lists DeepSeek Harness and maps its local config files",()=>{
  show(<HarnessSetupImport setups={[]}/>);
@@ -100,17 +104,44 @@ it("maps additional skill folders consistently in both browser pickers", async (
  expect(scanned.included[0]?.path).toBe(".config/opencode/skills/review/SKILL.md");
 });
 
-it("tells Mac users how to open the hidden harness folder", async () => {
- show(<HarnessSetupImport setups={[]}/>);
- const mac = screen.getByText(/On a Mac, press Command-Shift-G and paste/);
- expect(mac).toHaveTextContent("~/.config/opencode");
- expect(mac.nextElementSibling).toHaveTextContent("meridian harness import");
- await userEvent.selectOptions(screen.getByLabelText("Harness"), "codex");
- expect(screen.getByText(/On a Mac, press Command-Shift-G and paste/)).toHaveTextContent("~/.codex");
- cleanup();
- show(<HarnessSetupImport setups={[]} onCancel={() => undefined} initialHarness="claude"/>);
- expect(screen.getByText(/On a Mac, press Command-Shift-G and paste/)).toHaveTextContent("~/.claude");
- expect(screen.queryByText(/Prefer the terminal/)).not.toBeInTheDocument();
+it("lays out the browser import as steps and offers the one-step CLI import", async () => {
+ const writeText = vi.fn().mockResolvedValue(undefined);
+ vi.stubGlobal("navigator", {...navigator, clipboard: {writeText}});
+ try {
+   show(<HarnessSetupImport setups={[]}/>);
+   expect(screen.getAllByRole("heading",{level:3}).map(heading=>heading.textContent)).toEqual(["Choose your OpenCode folder","Review and save"]);
+   // The path is a hint for the file picker, not a selection.
+   const hint = screen.getByText(/A web page cannot open a path by itself/);
+   expect(hint).toHaveTextContent("Command-Shift-G in the picker and paste ~/.config/opencode");
+   // Nothing to review until something is chosen.
+   expect(screen.getByRole("button",{name:"Review import"})).toBeDisabled();
+   expect(screen.getByText(/Choose a folder or files first/)).toBeInTheDocument();
+   // The test page is served from localhost, so the command needs no server flag.
+   expect(screen.getByText("meridian harness import opencode")).toBeInTheDocument();
+   expect(screen.getByText(/Fastest: import from a terminal/).closest("p")).not.toHaveTextContent("~/.claude.json");
+   await userEvent.click(screen.getByRole("button",{name:"Copy path: ~/.config/opencode"}));
+   expect(writeText).toHaveBeenCalledWith("~/.config/opencode");
+   expect(await screen.findByRole("status")).toHaveTextContent("Copied");
+   await userEvent.selectOptions(screen.getByLabelText("Harness"), "codex");
+   expect(screen.getByText(/A web page cannot open a path by itself/)).toHaveTextContent("~/.codex");
+   await userEvent.click(screen.getByRole("button",{name:"Copy command: meridian harness import codex"}));
+   expect(writeText).toHaveBeenLastCalledWith("meridian harness import codex");
+   expect(screen.getByText(/Fastest: import from a terminal/).closest("p")).toHaveTextContent("plus ~/.agents/skills");
+   cleanup();
+   // Inside the launcher the panel stays to the browser steps.
+   show(<HarnessSetupImport setups={[]} onCancel={() => undefined} initialHarness="claude"/>);
+   expect(screen.getByText(/A web page cannot open a path by itself/)).toHaveTextContent("~/.claude");
+   expect(screen.queryByText(/Fastest: import from a terminal/)).not.toBeInTheDocument();
+ } finally {vi.unstubAllGlobals();}
+});
+
+it("says when the browser refuses clipboard access", async () => {
+ vi.stubGlobal("navigator", {...navigator, clipboard: {writeText: vi.fn().mockRejectedValue(new Error("denied"))}});
+ try {
+   show(<HarnessSetupImport setups={[]}/>);
+   await userEvent.click(screen.getByRole("button",{name:"Copy path: ~/.config/opencode"}));
+   expect(await screen.findByRole("status")).toHaveTextContent("did not allow clipboard access");
+ } finally {vi.unstubAllGlobals();}
 });
 
 it("uses read-only directory access without uploading until review", async () => {

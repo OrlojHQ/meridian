@@ -14,10 +14,16 @@ it("edits the loaded version, reviews sanitized content, and saves with stable r
  const save = vi.spyOn(api,"importHarnessSetup").mockRejectedValueOnce(new TypeError("fetch failed")).mockResolvedValue(setup);
  const close = vi.fn();const cache = new QueryClient();
  render(<QueryClientProvider client={cache}><HarnessSetupEditor setup={setup} onClose={close}/></QueryClientProvider>);
- await userEvent.click(await screen.findByText(".config/opencode/AGENTS.md"));
+ // Files are listed relative to the harness folder.
+ await userEvent.click(await screen.findByText("AGENTS.md"));
  const editor = screen.getByLabelText("Contents of .config/opencode/AGENTS.md");
  await userEvent.clear(editor);await userEvent.type(editor,"edited");
+ // The skill form opens on demand instead of always taking space.
+ expect(screen.queryByLabelText("Skill name")).toBeNull();
+ await userEvent.click(screen.getByRole("button",{name:"Add a skill"}));
  await userEvent.type(screen.getByLabelText("Skill name"),"review-code");await userEvent.click(screen.getByRole("button",{name:"Add skill"}));
+ expect(screen.queryByLabelText("Skill name")).toBeNull();
+ expect(screen.getByText("skills/review-code/SKILL.md")).toBeInTheDocument();
  await userEvent.click(screen.getByRole("button",{name:"Review changes"}));
  expect(preview.mock.calls[0]?.[0].files).toHaveLength(2);
  expect(preview.mock.calls[0]?.[0].files[0]?.content).toBe("edited");
