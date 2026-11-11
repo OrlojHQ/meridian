@@ -7,16 +7,57 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Removed
+### Upgrade notes
 
-- The simulated Capsule provider is gone. `meridiand` no longer accepts
-  `--provider=fake`, no longer logs a startup warning for it, and the web UI
-  no longer warns that Capsules are simulated. Docker and Agent Sandbox are
-  the providers. Tests use an in-memory lifecycle double that is not linked
-  into the daemon.
+- Stop the 0.3.x `meridiand` before starting this release on the same data
+  directory. Both hold the data-directory lease, so the second daemon refuses
+  to start.
+- Startup applies forward-only migrations 0020 and 0021 (Project lifecycle
+  state for deletion, and bounded Capsule startup progress). Create and
+  verify a backup with the 0.3.x binary first; rolling back requires that
+  backup and the old binary.
+- `--provider=fake` is removed. A daemon started with it exits with
+  `unsupported provider`. Use `docker` (the default) or `agentsandbox`.
+- Provider connections on Docker no longer need `--provider-gateway-url`;
+  `meridiand` starts a local gateway listener (ADR 0037). Capsules created
+  before upgrading need recreating to use a connection. With the local
+  gateway, the API listener no longer serves `/provider-gateway/`.
+  Installations that set `--provider-gateway-url` keep that route.
+- Official harness pack images move with the release tag. The pinned harness
+  versions are unchanged from 0.3.0.
+- The web UI home screen is now a Capsule list and start composer instead of
+  the card Inbox. Existing `/ui/` links still open the same pages.
 
 ### Added
 
+- Delete a Project and what it owns (ADR 0039).
+  `POST /projects/{projectId}/delete`, `meridian project delete`, the web UI,
+  and the TUI (`/delete-project`) remove its Capsules through the provider,
+  then its Threads, transcripts, Moments and unreferenced artifacts,
+  environment, and the ciphertext of named secrets no other Project uses.
+  Each client shows what will be removed and requires the Project name (or
+  `--yes` in the CLI). A container that cannot be removed leaves the Project
+  `failed` with the reason, and deleting again resumes. Projects now carry
+  `state` and `failure`. Backups, snapshots, and free pages are not erased.
+- Capsule startup shows progress. Docker's image pull is read as byte counts
+  and a fixed set of phases (pulling image, creating Capsule, starting
+  harness, connecting), and the Capsule page shows a step tracker, a pull
+  bar, and a specific reason with Retry when a pull fails (registry
+  unreachable, authentication required, or image not found). Registry text
+  is never stored.
+- A Capsule page shows its pinned harness setup, the revision time, and that
+  edits in Settings apply to the next Capsule. Capsule responses include
+  `pinnedHarnessSetups`; a clean Capsule omits it.
+- First run is guided. The empty sidebar offers Import setup, Connect a
+  provider, and Create a Project. The new-Project form accepts `owner/repo`
+  and GitHub SSH URLs, stores them as credential-free HTTPS, and asks for a
+  GitHub token for a private repository, saved as a `git_https` secret.
+- The terminal and Thread start forms use what you already have. With no
+  saved setup, the launcher says the Capsule will not have your local
+  settings and offers Import my setup. When exactly one live connection
+  supports the harness, both forms preselect it and show its default model.
+  A Thread cannot start without a usable connection; a terminal Capsule can
+  still sign in inside the harness.
 - Each official harness pack declares what `meridian harness import` reads
   in `images/capsule-<name>/manifest.yaml` (ADR 0040): the configuration
   directory and its override variable, importable paths, which files are
@@ -63,8 +104,39 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   gateway, which local Docker installs now start on their own. Claude login
   is the separate control-plane sign-in above.
 
+### Changed
+
+- The web UI is reorganized around Capsules. A project switcher and a Capsule
+  list (Needs you, then recent) replace the card Inbox, and New Capsule opens
+  a composer that starts a Thread or the harness CLI. A CLI session gives the
+  terminal the width, with Changes, Files, and Preview on a collapsible rail.
+  Project settings is a short page, and Harness settings opens import and
+  provider connections in a slide-over.
+- The web UI uses one design system: shared color, type, spacing, and motion
+  tokens, first-class light and dark themes that follow the system or a
+  theme switch in the shell, and shared controls. Motion is removed when reduced motion
+  is requested.
+- ChatGPT sign-in leads with `meridian harness connect chatgpt` when the page
+  is not on the same computer as `meridiand`, before the paste box.
+
+### Removed
+
+- The simulated Capsule provider is gone. `meridiand` no longer accepts
+  `--provider=fake`, no longer logs a startup warning for it, and the web UI
+  no longer warns that Capsules are simulated. Docker and Agent Sandbox are
+  the providers. Tests use an in-memory lifecycle double that is not linked
+  into the daemon.
+
 ### Fixed
 
+- Deleting a Capsule leaves its page. The UI moves to the Project's most
+  recently updated Capsule, the Project page, or the Inbox, and Back does not
+  return to the deleted Capsule.
+- A Thread offers Open terminal only when the harness has a native profile,
+  so structured-only packs such as DeepSeek Harness no longer link to an
+  empty terminal.
+- `make release-docker-validate` builds `meridian-coord` and stops on the
+  first error. Published images were not affected.
 - The Thread composer lists models and reasoning effort in separate menus, so
   a long model list no longer scrolls inside a second scroll area. The effort
   button is hidden when the harness reports no choice, and both controls stay
