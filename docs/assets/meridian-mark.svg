@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="Meridian">
+  <rect width="100" height="100" rx="22" fill="#14281f"/>
+  <g transform="translate(9 9) scale(0.82)">
+    <g fill="#f2efe6" opacity="0.5">
+      <rect x="14" y="14.5" width="31.5" height="6" rx="3"/>
+      <rect x="22" y="24.5" width="23.5" height="6" rx="3"/>
+      <rect x="22" y="34.5" width="23.5" height="6" rx="3"/>
+      <rect x="30" y="44.5" width="15.5" height="6" rx="3"/>
+      <rect x="30" y="54.5" width="15.5" height="6" rx="3"/>
+      <rect x="22" y="64.5" width="23.5" height="6" rx="3"/>
+      <rect x="14" y="74.5" width="31.5" height="6" rx="3"/>
+    </g>
+    <g fill="#7fb7a2">
+      <rect x="54.5" y="19.5" width="15.5" height="6" rx="3"/>
+      <rect x="54.5" y="29.5" width="27.5" height="6" rx="3"/>
+      <rect x="54.5" y="39.5" width="9.5" height="6" rx="3"/>
+      <rect x="54.5" y="49.5" width="31.5" height="6" rx="3"/>
+      <rect x="54.5" y="59.5" width="6" height="6" rx="3"/>
+      <rect x="54.5" y="69.5" width="21.5" height="6" rx="3"/>
+      <rect x="54.5" y="79.5" width="11.5" height="6" rx="3"/>
+    </g>
+    <line x1="50" y1="10" x2="50" y2="90" stroke="#f2efe6" stroke-width="3" stroke-linecap="round"/>
+  </g>
+</svg>
