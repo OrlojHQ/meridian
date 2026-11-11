@@ -717,3 +717,40 @@ func TestCreateProjectNormalizesGitHubRepository(t *testing.T) {
 		t.Fatalf("credentialed URL = %v", err)
 	}
 }
+
+// A Project saved its official packs under the release it ran when they were
+// added. After an upgrade, new Capsules use this daemon's release (ADR 0041);
+// a custom image is used as written.
+func TestNewCapsulesFollowTheInstallationRelease(t *testing.T) {
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	service := app.NewService(store, &testClock{now: time.Date(2026, 11, 11, 0, 0, 0, 0, time.UTC)}, &testIDs{}, &recordingQueue{})
+	service.ConfigureHarnessPacks(domain.InstallationHarnessImages("ghcr.io/orlojhq/meridian-capsule:v0.4.1", ""))
+	project, err := service.CreateProjectConfigured(ctx, "upgraded", app.ProjectConfiguration{
+		ImageReference: "ghcr.io/orlojhq/meridian-capsule:v0.4.0",
+		HarnessImages: []domain.HarnessImage{
+			{Name: "codex", ImageReference: "ghcr.io/orlojhq/meridian-capsule-codex:v0.4.0"},
+			{Name: "claude", ImageReference: "example.test/claude:pinned"},
+		},
+	}, "project-upgraded")
+	if err != nil {
+		t.Fatal(err)
+	}
+	codex, err := service.CreateCapsuleForHarness(ctx, project.ID, "codex", "codex", "capsule-codex")
+	if err != nil || codex.ImageReference != "ghcr.io/orlojhq/meridian-capsule-codex:v0.4.1" {
+		t.Fatalf("official pack Capsule = %#v, %v", codex, err)
+	}
+	claude, err := service.CreateCapsuleForHarness(ctx, project.ID, "claude", "claude", "capsule-claude")
+	if err != nil || claude.ImageReference != "example.test/claude:pinned" {
+		t.Fatalf("custom image Capsule = %#v, %v", claude, err)
+	}
+	// The Project's saved allowlist is not rewritten.
+	stored, err := service.GetProject(ctx, project.ID)
+	if err != nil || stored.HarnessImages[0].ImageReference != "ghcr.io/orlojhq/meridian-capsule-codex:v0.4.0" {
+		t.Fatalf("stored project = %#v, %v", stored, err)
+	}
+}

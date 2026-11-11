@@ -217,10 +217,20 @@ func (s *Service) insertProjectThreadTx(
 	)
 }
 
+// harnessImage is the image a new Capsule uses for a harness the Project
+// allowlists. An official pack follows this daemon's release (ADR 0041).
+func (s *Service) harnessImage(project domain.Project, harness string) (string, error) {
+	image, err := project.ImageForHarness(harness)
+	if err != nil {
+		return "", err
+	}
+	return domain.ResolveHarnessImage(s.harnessPacks, domain.HarnessImage{Name: harness, ImageReference: image}), nil
+}
+
 // structuredHarnessImage resolves a harness the Project allowlists and whose
 // pack can run a structured session.
 func (s *Service) structuredHarnessImage(project domain.Project, harness string) (string, error) {
-	image, err := project.ImageForHarness(harness)
+	image, err := s.harnessImage(project, harness)
 	if err != nil {
 		return "", err
 	}

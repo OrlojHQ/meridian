@@ -478,7 +478,7 @@ func (s *Service) CreateCapsuleForHarness(
 					domain.ErrInvalid,
 				)
 			}
-			image, err = project.ImageForHarness(harness)
+			image, err = s.harnessImage(project, harness)
 			if err != nil {
 				return err
 			}

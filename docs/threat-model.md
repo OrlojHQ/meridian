@@ -733,6 +733,11 @@ published and Cosign-signed on the same tag-only release as the thin Capsule
 image. The catalog advertises registry-qualified tags, or `--official-pack-tag`
 when the installation Capsule image is digest-only; it does not copy a Capsule
 digest onto a pack reference. Docker still freezes `sha256` at Capsule create.
+A stored official pack at a release tag resolves to the pack the running
+daemon advertises, so new Capsules follow `meridiand` upgrades (ADR 0041). Only
+a name, same-registry, same-repository match with no digest follows; custom
+images, custom tags, and digest pins are used as stored, and existing Capsules
+keep their frozen digest.
 Operators verify pack images by digest and Cosign like other release images.
 Publishing packs is not a hosted Capsule service, and pack images contain no
 credentials.
@@ -838,8 +843,9 @@ they are not a statement that every planned path is already implemented.
 - Setup-Moment reuse excludes secrets and mutable session state; idle pause,
   absolute lifetime, cache retention, and artifact retention remain distinct.
   Distinct Project harness images use distinct prepare hashes.
-- Project Thread spawn uses only the Project default image or an allowlisted
-  harness image stored at Project create; clients cannot introduce a new
+- Project Thread spawn uses only the Project default image, an allowlisted
+  harness image stored at Project create, or for an official pack the
+  daemon's current release of it (ADR 0041); clients cannot introduce a new
   image at spawn time. Official pack images are signed release artifacts,
   not a hosted Capsule runtime, and contain no credentials.
 - Delivery requires explicit approval, exact-ref one-shot push authority,

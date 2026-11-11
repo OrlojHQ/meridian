@@ -85,8 +85,9 @@ func TestStructuredUnsupported(t *testing.T) {
 		{Name: "mock", ImageReference: "meridian-capsule:dev"},
 		// A custom image under an official name is not the catalog pack.
 		{Name: "claude", ImageReference: "example.test/custom-claude:1"},
-		// A Project may pin an older tag than the catalog advertises.
-		{Name: "pi", ImageReference: "meridian-capsule-pi:v0.1.0"},
+		// A custom tag of an official repository is the operator's image. An
+		// older release tag is the catalog pack instead (ADR 0041).
+		{Name: "pi", ImageReference: "meridian-capsule-pi:my-build"},
 		{Name: "custom", ImageReference: "example.test/custom:1"},
 	} {
 		if domain.StructuredUnsupported(packs, image) {
