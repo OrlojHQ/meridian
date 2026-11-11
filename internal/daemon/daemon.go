@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -77,6 +78,12 @@ func Run(ctx context.Context, config Config) error {
 	}
 	if err := ValidateProviderGatewayListen(config); err != nil {
 		return err
+	}
+	// A fresh install has no data directory yet. Create it private, as the
+	// store did before the lease ran first; an existing directory keeps its
+	// mode, and the lease still refuses a symlink or a non-directory.
+	if err := os.MkdirAll(config.DataDir, 0o700); err != nil {
+		return fmt.Errorf("create data directory: %w", err)
 	}
 	// Take the data directory before anything writes to it. A second daemon
 	// on the same directory, even across a VM boundary, corrupts SQLite.

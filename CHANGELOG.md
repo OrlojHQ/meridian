@@ -7,6 +7,16 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `meridiand` starts on a fresh install again. Since 0.3.0 it exited with
+  `acquire data directory: inspect data directory: ... no such file or
+  directory` when its data directory did not exist yet, which broke the
+  first `brew services start meridian` and the README's release install. It
+  now creates a missing data directory with mode `0700` before taking the
+  lease, as 0.2.x did. An existing directory keeps its mode, and a symlink
+  or non-directory is still refused.
+
 ## [0.4.0] - 2026-11-10
 
 ### Upgrade notes
