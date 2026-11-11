@@ -471,11 +471,21 @@ textarea:hover {
 .brand-mark {
   width: 1.65rem;
   height: 1.65rem;
+  flex: none;
   border: 0;
   border-radius: var(--radius-sm);
-  background: var(--brand);
-  color: #ffffff;
+  background: var(--brand-mark-bg);
+  color: var(--brand-mark-fg);
   box-shadow: var(--shadow-xs);
+}
+
+.brand-mark svg {
+  width: 82%;
+  height: 82%;
+}
+
+.brand-mark .meridian-mark-accent {
+  fill: var(--brand-mark-accent);
 }
 
 .new-work-button {

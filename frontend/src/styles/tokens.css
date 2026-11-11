@@ -1,6 +1,9 @@
 :root {
   color-scheme: light;
   --brand: #315c4e;
+  --brand-mark-bg: #14281f;
+  --brand-mark-fg: #f2efe6;
+  --brand-mark-accent: #7fb7a2;
   --app-bg: #e7eee9;
   --canvas: #f4f7f5;
   --surface: #f7f9f8;

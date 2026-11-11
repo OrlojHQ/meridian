@@ -24,6 +24,7 @@ import { NewWorkspaceDialog } from "../components/NewWorkspaceDialog";
 import { ProjectTree } from "./ProjectTree";
 import { HarnessMark } from "../components/ui/HarnessMark";
 import { ListSkeleton } from "../components/ui/loading";
+import { MeridianMark } from "../components/ui/MeridianMark";
 import {
   ChangesIcon,
   ChevronIcon,
@@ -660,7 +661,9 @@ export function AppShell() {
       >
         <header className="sidebar-header">
           <Link className="brand" to="/ui/" aria-label="Meridian home">
-            <span className="brand-mark">M</span>
+            <span className="brand-mark">
+              <MeridianMark />
+            </span>
             <span>Meridian</span>
           </Link>
           <button type="button" className="new-work-button" onClick={() => setNewProjectOpen(true)}>

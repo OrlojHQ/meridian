@@ -1,3 +1,5 @@
+<img src="docs/assets/meridian-mark.svg" width="72" alt="Meridian logo">
+
 # Meridian
 
 **Self-hosted cloud agents. Run Claude Code, Codex, OpenCode, Pi, or DeepSeek
@@ -22,6 +24,8 @@ don't, throw it away.
 
 It runs on your machine or your cluster, with the agents and models you
 already pay for, or your own model server.
+
+![The Meridian browser workspace: start a task, with Capsules that need you listed first](docs/assets/screenshots/ui-home.png)
 
 ## What you get
 
@@ -49,6 +53,8 @@ answer, and steer from the web UI.
 
 Transcripts are encrypted at rest.
 
+![A Thread waiting for permission to run a shell command, with the Capsule's diff beside it](docs/assets/screenshots/ui-thread.png)
+
 ### A lead agent with subagents
 
 Tick **Lead agent with subagents** when you start a task and the agent can
@@ -75,6 +81,8 @@ instructions, waits for their reports, and reads their diffs.
 - **Other agents**: any CLI agent runs as a custom harness, and any
   [Agent Client Protocol](https://agentclientprotocol.com) agent can also run
   as a browser Thread through the built-in `acp` adapter.
+
+![Harness settings listing OpenCode, Codex, Claude Code, Pi, and DeepSeek Harness](docs/assets/screenshots/ui-harnesses.png)
 
 ### Snapshot, fork, and rewind
 
