@@ -848,6 +848,10 @@ type Capsule struct {
 	Name           string                 `json:"name"`
 	// Immutable native launcher harness selected when the Capsule was created.
 	Harness OptString `json:"harness"`
+	// Image this Capsule was created from. An official harness pack uses the release of the daemon that
+	// created it (ADR 0041), and the Capsule keeps the resolved image digest until it is deleted. Absent
+	// for Capsules created before Capsules recorded their image.
+	ImageReference OptString `json:"imageReference"`
 	// Harness setup revisions pinned when this Capsule was created. Absent when the Capsule started
 	// without a saved setup. A later edit in Settings does not change this Capsule.
 	PinnedHarnessSetups []PinnedHarnessSetup `json:"pinnedHarnessSetups"`
@@ -913,6 +917,11 @@ func (s *Capsule) GetName() string {
 // GetHarness returns the value of Harness.
 func (s *Capsule) GetHarness() OptString {
 	return s.Harness
+}
+
+// GetImageReference returns the value of ImageReference.
+func (s *Capsule) GetImageReference() OptString {
+	return s.ImageReference
 }
 
 // GetPinnedHarnessSetups returns the value of PinnedHarnessSetups.
@@ -1023,6 +1032,11 @@ func (s *Capsule) SetName(val string) {
 // SetHarness sets the value of Harness.
 func (s *Capsule) SetHarness(val OptString) {
 	s.Harness = val
+}
+
+// SetImageReference sets the value of ImageReference.
+func (s *Capsule) SetImageReference(val OptString) {
+	s.ImageReference = val
 }
 
 // SetPinnedHarnessSetups sets the value of PinnedHarnessSetups.

@@ -272,3 +272,39 @@ func TestMapCapsuleProtocolError(t *testing.T) {
 		t.Fatalf("unmapped status = %v", got)
 	}
 }
+
+func TestOfficialPacksFollowTheInstallationRelease(t *testing.T) {
+	packs := InstallationHarnessImages("ghcr.io/orlojhq/meridian-capsule:v0.4.1", "")
+	current := "ghcr.io/orlojhq/meridian-capsule-codex:v0.4.1"
+	for _, tc := range []struct {
+		name, image, want string
+	}{
+		{"older release follows", "ghcr.io/orlojhq/meridian-capsule-codex:v0.4.0", current},
+		{"prerelease follows", "ghcr.io/orlojhq/meridian-capsule-codex:v0.5.0-rc.1", current},
+		{"same release", current, current},
+		{"digest pin is kept", "ghcr.io/orlojhq/meridian-capsule-codex:v0.4.0@sha256:" + strings.Repeat("a", 64), "ghcr.io/orlojhq/meridian-capsule-codex:v0.4.0@sha256:" + strings.Repeat("a", 64)},
+		{"custom tag is kept", "ghcr.io/orlojhq/meridian-capsule-codex:my-fork", "ghcr.io/orlojhq/meridian-capsule-codex:my-fork"},
+		{"other registry is kept", "example.test/meridian-capsule-codex:v0.4.0", "example.test/meridian-capsule-codex:v0.4.0"},
+		{"other repository is kept", "ghcr.io/orlojhq/meridian-capsule-claude:v0.4.0", "ghcr.io/orlojhq/meridian-capsule-claude:v0.4.0"},
+		{"incomplete version is kept", "ghcr.io/orlojhq/meridian-capsule-codex:v0.4", "ghcr.io/orlojhq/meridian-capsule-codex:v0.4"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := ResolveHarnessImage(packs, HarnessImage{Name: "codex", ImageReference: tc.image}); got != tc.want {
+				t.Fatalf("ResolveHarnessImage(%s) = %s, want %s", tc.image, got, tc.want)
+			}
+		})
+	}
+	// A pack is matched by name too: another harness never adopts codex.
+	if got := ResolveHarnessImage(packs, HarnessImage{Name: "custom", ImageReference: "ghcr.io/orlojhq/meridian-capsule-codex:v0.4.0"}); got != "ghcr.io/orlojhq/meridian-capsule-codex:v0.4.0" {
+		t.Fatalf("custom harness adopted the codex pack: %s", got)
+	}
+	// A daemon without a catalog uses every reference as written.
+	if got := ResolveHarnessImage(nil, HarnessImage{Name: "codex", ImageReference: "ghcr.io/orlojhq/meridian-capsule-codex:v0.4.0"}); got != "ghcr.io/orlojhq/meridian-capsule-codex:v0.4.0" {
+		t.Fatalf("no catalog changed the image: %s", got)
+	}
+	// Modes come from the current pack, so an older dsh pack still has no terminal.
+	old := HarnessImage{Name: "dsh", ImageReference: "ghcr.io/orlojhq/meridian-capsule-dsh:v0.4.0"}
+	if !NativeUnsupported(packs, old) || StructuredUnsupported(packs, old) {
+		t.Fatal("an older official dsh pack lost the catalog's interaction modes")
+	}
+}

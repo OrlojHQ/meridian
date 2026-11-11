@@ -223,11 +223,10 @@ func (p HarnessPack) RejectsStructured() bool {
 // StructuredUnsupported reports whether packs declares that the harness name
 // and image pair cannot run a structured session. A pair outside the
 // installation catalog, such as a custom image, is not known to reject it.
+// An official pack at another release tag is the catalog pack (ADR 0041).
 func StructuredUnsupported(packs []HarnessPack, image HarnessImage) bool {
-	for _, pack := range packs {
-		if pack.HarnessImage == image {
-			return pack.RejectsStructured()
-		}
+	if pack, ok := CatalogPack(packs, image); ok {
+		return pack.RejectsStructured()
 	}
 	return false
 }
@@ -236,12 +235,63 @@ func StructuredUnsupported(packs []HarnessPack, image HarnessImage) bool {
 // image pair has no terminal profile, with the same catalog rule as
 // StructuredUnsupported.
 func NativeUnsupported(packs []HarnessPack, image HarnessImage) bool {
-	for _, pack := range packs {
-		if pack.HarnessImage == image {
-			return pack.InteractionModes != nil && !slices.Contains(pack.InteractionModes, HarnessInteractionNative)
-		}
+	if pack, ok := CatalogPack(packs, image); ok {
+		return pack.InteractionModes != nil && !slices.Contains(pack.InteractionModes, HarnessInteractionNative)
 	}
 	return false
+}
+
+// CatalogPack returns the installation catalog pack that image is a copy of:
+// the same harness name and either the same reference, or the same official
+// repository at another release tag such as v0.4.0. A digest-pinned or
+// custom-tagged reference is an operator's choice and matches only exactly.
+func CatalogPack(packs []HarnessPack, image HarnessImage) (HarnessPack, bool) {
+	registry, name, tag, digest := splitImageRef(image.ImageReference)
+	for _, pack := range packs {
+		if pack.Name != image.Name {
+			continue
+		}
+		if pack.ImageReference == image.ImageReference {
+			return pack, true
+		}
+		packRegistry, packName, _, packDigest := splitImageRef(pack.ImageReference)
+		if digest == "" && packDigest == "" && releaseTag(tag) &&
+			registry == packRegistry && name == packName {
+			return pack, true
+		}
+	}
+	return HarnessPack{}, false
+}
+
+// ResolveHarnessImage is the image a new Capsule uses for a Project's pack.
+// An official pack saved at any release tag follows the daemon's catalog
+// (ADR 0041), so new Capsules run the capsuled and harness released with this
+// daemon. Existing Capsules keep the image digest they were created with.
+// Anything else, including a custom image, is used as written.
+func ResolveHarnessImage(packs []HarnessPack, image HarnessImage) string {
+	if pack, ok := CatalogPack(packs, image); ok {
+		return pack.ImageReference
+	}
+	return image.ImageReference
+}
+
+// releaseTag accepts the tags OfficialImageTag produces for published
+// releases: v0.4.1, or a prerelease such as v0.5.0-rc.1.
+func releaseTag(tag string) bool {
+	core, prerelease, hasPrerelease := strings.Cut(strings.TrimPrefix(tag, "v"), "-")
+	if !strings.HasPrefix(tag, "v") || hasPrerelease && prerelease == "" {
+		return false
+	}
+	parts := strings.Split(core, ".")
+	if len(parts) != 3 {
+		return false
+	}
+	for _, part := range parts {
+		if part == "" || strings.Trim(part, "0123456789") != "" {
+			return false
+		}
+	}
+	return strings.Trim(prerelease, "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-") == ""
 }
 
 // InstallationHarnessImages is the daemon-advertised catalog of official
