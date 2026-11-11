@@ -4,7 +4,7 @@ COPY images/harness-node/install /tmp/install-node
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates xz-utils \
     && sh /tmp/install-node
 
-FROM golang:1.26.10-bookworm@sha256:5de7c99eb78ca5e515a4c340235d0955ec5964a5071c492c15503d7c267da473 AS test-build
+FROM golang:1.26.11-bookworm@sha256:dc40a13b61304647ed7e5d581d246b86413dfc29d63c6d018310feb93cd98fc0 AS test-build
 WORKDIR /src
 COPY go.mod go.sum ./
 COPY testing/mock-harness ./testing/mock-harness

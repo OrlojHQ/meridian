@@ -9,6 +9,13 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- `meridiand` starts on a fresh install again. Since 0.3.0 it exited with
+  `acquire data directory: inspect data directory: ... no such file or
+  directory` when its data directory did not exist yet, which broke the
+  first `brew services start meridian` and the README's release install. It
+  now creates a missing data directory with mode `0700` before taking the
+  lease, as 0.2.x did. An existing directory keeps its mode, and a symlink
+  or non-directory is still refused.
 - Harness settings lists each harness with its logo instead of a one-letter
   placeholder, and shows what a new Capsule would use: the default setup and
   the provider connection, or that the sign-in expired. Each row has one
@@ -16,6 +23,15 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   cut off. DeepSeek Harness now has its own mark everywhere harnesses are
   shown, from simple-icons 16.33.0 (CC0-1.0), like Claude Code, OpenCode,
   and Pi.
+
+### Security
+
+- Go toolchain bumped from 1.26.10 to 1.26.11 in `go.mod`, CI, release, and
+  every Go build image (`golang:1.26.11-bookworm`, pinned by digest). This
+  resolves GO-2026-6859, an HTTP/1 server crash caused by a `MaxBytesReader`
+  header race in `net/http`, which `govulncheck` reports as reachable from
+  the `meridiand` API, the provider gateway, and `capsuled`. 0.4.0 was built
+  with 1.26.10 and is affected.
 
 ## [0.4.0] - 2026-11-10
 
