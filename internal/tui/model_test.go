@@ -175,7 +175,7 @@ func TestEmptyProjectShowsAppliedHarnessesOnly(t *testing.T) {
 	snapshot := Snapshot{
 		Projects: []client.Project{project},
 		HarnessImages: []client.HarnessImage{
-			{Name: "mock", ImageReference: "meridian-capsule:dev"},
+			{Name: "pi", ImageReference: "meridian-capsule-pi:dev"},
 			{Name: "opencode", ImageReference: "meridian-capsule-opencode:dev"},
 		},
 	}
@@ -185,7 +185,7 @@ func TestEmptyProjectShowsAppliedHarnessesOnly(t *testing.T) {
 	if !strings.Contains(view, "Capsules") || !strings.Contains(view, "opencode") {
 		t.Fatalf("empty Project view = %q", view)
 	}
-	if strings.Contains(view, "New Capsule") || strings.Contains(view, "mock") ||
+	if strings.Contains(view, "New Capsule") || strings.Contains(view, "pi") ||
 		strings.Contains(view, "not applied") || strings.Contains(view, "applied") {
 		t.Fatalf("empty Project view includes catalog state: %q", view)
 	}
@@ -1291,7 +1291,7 @@ func TestSlashSwitchChangesProjectWithoutStaleCapsule(t *testing.T) {
 func TestPreferredHarnessOpensCreateProjectOnFirstConnect(t *testing.T) {
 	snapshot := Snapshot{
 		HarnessImages: []client.HarnessImage{
-			{Name: "mock", ImageReference: "meridian-capsule:dev"},
+			{Name: "pi", ImageReference: "meridian-capsule-pi:dev"},
 			{Name: "opencode", ImageReference: "meridian-capsule-opencode:dev"},
 		},
 	}
@@ -1313,7 +1313,7 @@ func TestPreferredHarnessOpensCreateProjectOnFirstConnect(t *testing.T) {
 func TestPreferredHarnessLeavesExistingProjectsAlone(t *testing.T) {
 	snapshot := testSnapshot()
 	snapshot.HarnessImages = []client.HarnessImage{
-		{Name: "mock", ImageReference: "meridian-capsule:dev"},
+		{Name: "pi", ImageReference: "meridian-capsule-pi:dev"},
 		{Name: "opencode", ImageReference: "meridian-capsule-opencode:dev"},
 	}
 	model := NewModel(Options{API: &fakeAPI{snapshot: snapshot}, PreferredHarness: "opencode"})
@@ -1334,7 +1334,7 @@ func TestPreferredHarnessLeavesExistingProjectsAlone(t *testing.T) {
 func TestUnknownPreferredHarnessFailsClosed(t *testing.T) {
 	snapshot := Snapshot{
 		HarnessImages: []client.HarnessImage{
-			{Name: "mock", ImageReference: "meridian-capsule:dev"},
+			{Name: "pi", ImageReference: "meridian-capsule-pi:dev"},
 		},
 	}
 	model := NewModel(Options{API: &fakeAPI{snapshot: snapshot}, PreferredHarness: "opencode"})
@@ -1349,7 +1349,7 @@ func TestUnknownPreferredHarnessFailsClosed(t *testing.T) {
 func TestCreateProjectPicksHarness(t *testing.T) {
 	snapshot := Snapshot{
 		HarnessImages: []client.HarnessImage{
-			{Name: "mock", ImageReference: "meridian-capsule:dev"},
+			{Name: "pi", ImageReference: "meridian-capsule-pi:dev"},
 			{Name: "opencode", ImageReference: "meridian-capsule-opencode:dev"},
 		},
 	}
@@ -1362,7 +1362,7 @@ func TestCreateProjectPicksHarness(t *testing.T) {
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	model = updated.(Model)
 	if model.overlay.kind != overlayForm || len(model.overlay.fields) != 4 ||
-		model.overlayField("Harness").value != "mock" {
+		model.overlayField("Harness").value != "pi" {
 		t.Fatalf("create form = %#v", model.overlay.fields)
 	}
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRight})
@@ -1392,8 +1392,8 @@ func TestCreateProjectPicksHarness(t *testing.T) {
 func TestApplyHarnessSavesAllowlist(t *testing.T) {
 	snapshot := testSnapshot()
 	snapshot.HarnessImages = []client.HarnessImage{
-		{Name: "mock", ImageReference: "meridian-capsule:dev"},
 		{Name: "opencode", ImageReference: "meridian-capsule-opencode:dev"},
+		{Name: "pi", ImageReference: "meridian-capsule-pi:dev"},
 	}
 	api := &fakeAPI{snapshot: snapshot}
 	model := NewModel(Options{API: api})
@@ -1416,7 +1416,7 @@ func TestApplyHarnessSavesAllowlist(t *testing.T) {
 	runCmd(t, cmd)
 	got := api.requests[len(api.requests)-1]
 	if got.Action != ActionProjectApplyHarnesses || len(got.HarnessImages) != 1 ||
-		got.HarnessImages[0] != "mock=meridian-capsule:dev" {
+		got.HarnessImages[0] != "opencode=meridian-capsule-opencode:dev" {
 		t.Fatalf("apply = %#v", got)
 	}
 }

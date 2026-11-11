@@ -7,6 +7,13 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- The `mock` harness is test-only. It is no longer in the installation
+  catalog, so a real install's API, CLI, TUI, and web UI do not list or
+  offer it. Tests and local end-to-end configuration allowlist it
+  explicitly. The adapter `mock` subcommand remains for those runs.
+
 ### Fixed
 
 - `meridiand` starts on a fresh install again. Since 0.3.0 it exited with

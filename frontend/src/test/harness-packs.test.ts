@@ -13,7 +13,7 @@ const catalog = [
     imageReference: "agent:1",
     interactionModes: ["native" as const, "structured" as const],
   },
-  { name: "mock", imageReference: "meridian-capsule:dev" },
+  { name: "custom", imageReference: "example.test/custom:1" },
 ];
 
 describe("harness pack interaction modes", () => {

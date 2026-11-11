@@ -8,13 +8,13 @@ import type { HarnessImage, Project } from "../api/generated/types.gen";
 import { NewProjectDialog } from "../components/NewProjectDialog";
 import { isGitHubRepositoryInput } from "../components/repositoryUrl";
 
-// Same order as domain.InstallationHarnessImages: real agents first, mock last.
+// Same order as domain.InstallationHarnessImages.
 const catalog: HarnessImage[] = [
   { name: "opencode", imageReference: "ghcr.io/orlojhq/meridian-capsule-opencode:v0.1.1" },
   { name: "pi", imageReference: "ghcr.io/orlojhq/meridian-capsule-pi:v0.1.1" },
   { name: "claude", imageReference: "ghcr.io/orlojhq/meridian-capsule-claude:v0.1.1" },
   { name: "codex", imageReference: "ghcr.io/orlojhq/meridian-capsule-codex:v0.1.1" },
-  { name: "mock", imageReference: "ghcr.io/orlojhq/meridian-capsule:v0.1.1" },
+  { name: "dsh", imageReference: "ghcr.io/orlojhq/meridian-capsule-dsh:v0.1.1" },
 ];
 
 const preferenceKey = "meridian.newProjectHarness";
@@ -49,23 +49,12 @@ describe("NewProjectDialog", () => {
     localStorage.clear();
   });
 
-  it("preselects a real agent and labels the mock test harness", () => {
+  it("preselects the first installation pack", () => {
     renderDialog();
     expect(harnessSelect()).toHaveValue("opencode");
-    expect(
-      screen.getByRole("option", { name: "mock (test harness, no agent)" }),
-    ).toHaveValue("mock");
+    expect(screen.getByRole("option", { name: "opencode" })).toHaveValue("opencode");
     expect(screen.getByRole("option", { name: "claude" })).toHaveValue("claude");
-  });
-
-  it("skips mock in catalog order unless it is the only pack", () => {
-    const mockFirst = [catalog[4], catalog[3]];
-    const first = renderDialog(mockFirst);
-    expect(harnessSelect()).toHaveValue("codex");
-    first.unmount();
-
-    renderDialog([catalog[4]]);
-    expect(harnessSelect()).toHaveValue("mock");
+    expect(screen.queryByRole("option", { name: "mock" })).not.toBeInTheDocument();
   });
 
   it("preselects the harness remembered from the last Project", () => {

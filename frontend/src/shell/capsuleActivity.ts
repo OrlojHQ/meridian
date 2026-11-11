@@ -37,7 +37,6 @@ const harnessNames: Record<string, string> = {
   dsh: "DeepSeek Harness",
   opencode: "OpenCode",
   pi: "Pi",
-  mock: "Mock (test)",
 };
 
 export function harnessName(harness?: string) {

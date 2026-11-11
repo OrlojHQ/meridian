@@ -298,7 +298,7 @@ describe("Native harness launcher", () => {
     expect(screen.getByRole("radio", { name: "Claude Code" })).toBeChecked();
     expect(screen.queryByRole("tablist", { name: "How to start" })).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("radio", { name: "Mock (test)" }));
+    await userEvent.click(screen.getByRole("radio", { name: "mock" }));
     const modes = await screen.findByRole("tablist", { name: "How to start" });
     expect(within(modes).getByRole("tab", { name: "Open terminal" })).toHaveAttribute(
       "aria-selected",
@@ -368,7 +368,7 @@ describe("Native harness launcher", () => {
       />,
     );
 
-    expect(await screen.findByRole("button", { name: "Start Mock (test)" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Start mock" })).toBeInTheDocument();
     expect(screen.queryByRole("tablist", { name: "How to start" })).not.toBeInTheDocument();
   });
 

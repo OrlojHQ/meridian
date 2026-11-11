@@ -208,25 +208,26 @@ func TestImageForHarnessAllowlist(t *testing.T) {
 	for _, item := range catalog {
 		order = append(order, item.Name)
 	}
-	if strings.Join(order, ",") != "opencode,pi,claude,codex,dsh,mock" {
-		t.Fatalf("catalog order = %v; clients preselect the first entry, so mock must be last", order)
+	if strings.Join(order, ",") != "opencode,pi,claude,codex,dsh" {
+		t.Fatalf("catalog order = %v; clients preselect the first entry", order)
 	}
-	if got := byName(catalog); got["mock"] != "meridian-capsule:dev" ||
-		got["opencode"] != "meridian-capsule-opencode:dev" || got["pi"] != "meridian-capsule-pi:dev" ||
+	if _, ok := byName(catalog)["mock"]; ok {
+		t.Fatal("mock is test-only and must not be in the installation catalog")
+	}
+	if got := byName(catalog); got["opencode"] != "meridian-capsule-opencode:dev" || got["pi"] != "meridian-capsule-pi:dev" ||
 		got["claude"] != "meridian-capsule-claude:dev" || got["codex"] != "meridian-capsule-codex:dev" ||
 		got["dsh"] != "meridian-capsule-dsh:dev" {
 		t.Fatalf("catalog = %#v", catalog)
 	}
-	if got := byName(InstallationHarnessImages("ghcr.io/orlojhq/meridian-capsule:v1.2.3", "")); got["mock"] != "ghcr.io/orlojhq/meridian-capsule:v1.2.3" ||
-		got["opencode"] != "ghcr.io/orlojhq/meridian-capsule-opencode:v1.2.3" ||
+	if got := byName(InstallationHarnessImages("ghcr.io/orlojhq/meridian-capsule:v1.2.3", "")); got["opencode"] != "ghcr.io/orlojhq/meridian-capsule-opencode:v1.2.3" ||
 		got["pi"] != "ghcr.io/orlojhq/meridian-capsule-pi:v1.2.3" ||
 		got["claude"] != "ghcr.io/orlojhq/meridian-capsule-claude:v1.2.3" ||
-		got["codex"] != "ghcr.io/orlojhq/meridian-capsule-codex:v1.2.3" {
+		got["codex"] != "ghcr.io/orlojhq/meridian-capsule-codex:v1.2.3" ||
+		got["dsh"] != "ghcr.io/orlojhq/meridian-capsule-dsh:v1.2.3" {
 		t.Fatalf("published catalog = %#v", got)
 	}
 	const pinnedCapsule = "ghcr.io/orlojhq/meridian-capsule@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	if got := byName(InstallationHarnessImages(pinnedCapsule, "v1.2.3")); got["mock"] != pinnedCapsule ||
-		got["opencode"] != "ghcr.io/orlojhq/meridian-capsule-opencode:v1.2.3" {
+	if got := byName(InstallationHarnessImages(pinnedCapsule, "v1.2.3")); got["opencode"] != "ghcr.io/orlojhq/meridian-capsule-opencode:v1.2.3" {
 		t.Fatalf("digest-pinned catalog = %#v", got)
 	}
 	if got := byName(InstallationHarnessImages(pinnedCapsule, "")); got["opencode"] != "ghcr.io/orlojhq/meridian-capsule-opencode:dev" {

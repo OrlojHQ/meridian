@@ -8,8 +8,8 @@ export function projectHarnessImage(pack: HarnessImage): HarnessImage {
 /**
  * Whether a Project's pack can be asked for a structured session before its
  * Capsule exists. Only an installation catalog entry with the same name and
- * image declares interaction modes. Any other pack, such as `mock` or a custom
- * image, gets its profiles from the repository, so it stays possible until the
+ * image declares interaction modes. Any other pack, such as a custom image,
+ * gets its profiles from the repository, so it stays possible until the
  * daemon says otherwise.
  */
 export function packMayRunStructured(

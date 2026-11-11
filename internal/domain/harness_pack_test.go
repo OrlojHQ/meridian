@@ -13,14 +13,6 @@ import (
 
 func TestInstallationHarnessPackModesMatchOfficialManifests(t *testing.T) {
 	for _, pack := range domain.InstallationHarnessImages("meridian-capsule:dev", "") {
-		if pack.Name == "mock" {
-			// The supervisor image installs no trusted profile, so the
-			// repository decides and the catalog must not claim a mode.
-			if pack.InteractionModes != nil {
-				t.Fatalf("mock declares modes %v", pack.InteractionModes)
-			}
-			continue
-		}
 		path := filepath.Join("..", "..", "images", "capsule-"+pack.Name, "project.yaml")
 		file, err := os.Open(path)
 		if err != nil {
@@ -64,9 +56,7 @@ func TestInstallationHarnessPacksMatchPackDirectories(t *testing.T) {
 	}
 	var advertised []string
 	for _, pack := range domain.InstallationHarnessImages("meridian-capsule:dev", "") {
-		if pack.Name != "mock" {
-			advertised = append(advertised, pack.Name)
-		}
+		advertised = append(advertised, pack.Name)
 	}
 	slices.Sort(built)
 	slices.Sort(advertised)

@@ -537,7 +537,7 @@ describe("Thread detail transcript and controls", () => {
       "href",
       "/ui/capsules/capsule-1?session=thread-1",
     );
-    expect(screen.getByRole("heading", { level: 1, name: "Mock (test)" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "mock" })).toBeInTheDocument();
   });
 
   it("resumes a paused retained Thread", async () => {
@@ -609,15 +609,15 @@ describe("Thread detail transcript and controls", () => {
       `/ui/capsules/${capsule.id}`,
     );
 
-    const working = await screen.findByRole("tab", { name: /Mock \(test\)\s*Working/ });
+    const working = await screen.findByRole("tab", { name: /mock\s*Working/ });
     expect(working).toHaveAttribute("aria-selected", "true");
     await waitFor(() => expect(blocks.mock.calls.map((call) => call[0])).toContain(thread.id));
     expect(await screen.findByText("No messages yet.")).toBeInTheDocument();
     expect(screen.queryByText("Structured Thread")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("tab", { name: /Mock \(test\)\s*Idle/ }));
+    await user.click(screen.getByRole("tab", { name: /mock\s*Idle/ }));
     await waitFor(() => expect(blocks.mock.calls.map((call) => call[0])).toContain(second.id));
-    expect(screen.getByRole("tab", { name: /Mock \(test\)\s*Idle/ })).toHaveAttribute(
+    expect(screen.getByRole("tab", { name: /mock\s*Idle/ })).toHaveAttribute(
       "aria-selected",
       "true",
     );

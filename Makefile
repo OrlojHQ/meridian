@@ -165,10 +165,14 @@ $(PACKS:%=try-%): try-%:
 
 try: build
 	@harness="$(or $(HARNESS),opencode)"; \
+	tui_harness="$$harness"; \
 	if [[ " $(PACKS) " == *" $$harness "* ]]; then \
 		$(MAKE) capsule-$$harness-image; \
 	elif [[ "$$harness" == mock ]]; then \
 		$(MAKE) capsule-image; \
+		tui_harness=""; \
+		echo "mock is a test harness and is not in the installation catalog." >&2; \
+		echo "Allowlist it on a Project with --harness-image=mock=meridian-capsule:dev" >&2; \
 	else \
 		echo "unknown HARNESS=$$harness; expected one of: $(PACKS) mock" >&2; exit 1; \
 	fi; \
@@ -178,7 +182,7 @@ try: build
 	else \
 		$(MAKE) meridiand-ready CAPSULE_IMAGE=meridian-capsule:dev; \
 	fi; \
-	$(MAKE) tui HARNESS="$$harness"
+	$(MAKE) tui HARNESS="$$tui_harness"
 
 .tools/helm:
 	mkdir -p .tools
