@@ -17,6 +17,21 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Importing a harness setup in the browser is laid out as two steps: choose
+  the folder, then review and save. The folder path is shown as a hint with a
+  Copy button, since a web page cannot open a path itself, and Review import
+  is visible but disabled until something is chosen. Harness settings leads
+  with the one-step terminal import, `meridian harness import <harness>`,
+  with a Copy button and `--server` filled in when the page is not on this
+  computer. Repeated hints are merged.
+- A saved harness setup leads with two actions, Edit files and skills and
+  Update from this computer, which jumps to the import steps. Rename, the
+  default switch, and delete are quiet text actions, and rename opens a name
+  field only when chosen. The editor lists files relative to the harness
+  folder and opens the add-a-skill and add-a-file forms on demand, with
+  Review changes and Cancel at the end. After an import is saved, the import
+  steps stay open with a confirmation, so more files or a skills folder can
+  be added without starting over.
 - The `mock` harness is test-only. It is no longer in the installation
   catalog, so a real install's API, CLI, TUI, and web UI do not list or
   offer it. On upgrade, migration 0022 drops that name from harness

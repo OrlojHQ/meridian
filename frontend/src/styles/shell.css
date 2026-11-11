@@ -923,14 +923,141 @@
 .setup-import {
   min-width: 0;
 }
+.setup-card-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.setup-card-header h3 {
+  margin: 0;
+}
+.setup-card-meta {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.setup-card-more,
+.setup-card-rename {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.25rem 1rem;
+}
+.setup-card-rename label {
+  flex: 1 1 14rem;
+  margin: 0;
+}
+.setup-card-history {
+  margin-top: 0.75rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.5rem;
+}
+.setup-card-history h4,
+.setup-editor > h4 {
+  margin: 0.5rem 0 0.25rem;
+  font-size: 0.875rem;
+}
+/* Secondary actions on a saved setup read as quiet text, so the two main
+   actions stand out. */
+.setup-card .text-button,
+.setup-editor .text-button {
+  min-height: 1.75rem;
+  border-color: transparent;
+  padding-inline: 0.15rem;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 600;
+}
+.setup-card .text-button:hover,
+.setup-editor .text-button:hover {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text);
+  text-decoration: underline;
+}
+.setup-editor {
+  margin-top: 0.75rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.25rem;
+}
+.setup-editor-files {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0.5rem 0;
+  padding: 0;
+  list-style: none;
+}
+.setup-editor-files summary {
+  cursor: pointer;
+  padding-block: 0.3rem;
+}
+.setup-editor-add {
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 0.75rem 1rem;
+  margin-block: 0.5rem;
+}
+.setup-editor-add label {
+  margin-top: 0;
+}
+.setup-editor-footer {
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+}
+.setup-import-saved {
+  border-radius: 0.75rem;
+  padding: 0.6rem 0.85rem;
+  background: var(--surface-subtle);
+}
+.setup-import-steps {
+  display: grid;
+  gap: 0.75rem;
+  margin: 1rem 0;
+  padding: 0;
+  counter-reset: setup-step;
+  list-style: none;
+}
 .setup-import-picker {
   border: 1px solid var(--border);
   border-radius: 0.75rem;
   padding: 1rem;
-  margin-block: 1rem;
+  counter-increment: setup-step;
 }
-.setup-import-picker > p:first-child {
+.setup-import-picker > h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
+.setup-import-picker > h3::before {
+  content: counter(setup-step) ". ";
+  color: var(--muted);
+}
+.setup-import-cli {
+  border-radius: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--surface-subtle);
+}
+.setup-import-cli > p:first-child {
   margin-top: 0;
+}
+.setup-import-copy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  overflow-wrap: anywhere;
+}
+.setup-import-copy:last-child {
+  margin-bottom: 0;
+}
+.copy-button {
+  min-height: 1.75rem;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.8rem;
+}
+.copy-button-status {
+  color: var(--muted);
+  font-size: 0.8rem;
 }
 .setup-import-actions {
   display: flex;
