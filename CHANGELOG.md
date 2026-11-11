@@ -7,12 +7,22 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Upgrade notes
+
+- Startup applies forward-only migration 0022. It removes any saved harness
+  allowlist entry named `mock` and does not report an error. Create and
+  verify a backup first; rolling back requires that backup and the old
+  binary. An allowlist written after the upgrade, including a test
+  configuration, is left as stored.
+
 ### Changed
 
 - The `mock` harness is test-only. It is no longer in the installation
   catalog, so a real install's API, CLI, TUI, and web UI do not list or
-  offer it. Tests and local end-to-end configuration allowlist it
-  explicitly. The adapter `mock` subcommand remains for those runs.
+  offer it. On upgrade, migration 0022 drops that name from harness
+  allowlists already saved on Projects. Tests and local end-to-end
+  configuration that allowlist it after startup still keep it. The adapter
+  `mock` subcommand remains for those runs.
 
 ### Fixed
 
