@@ -42,12 +42,26 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   Review changes and Cancel at the end. After an import is saved, the import
   steps stay open with a confirmation, so more files or a skills folder can
   be added without starting over.
+- The sidebar lists Projects as a tree, with each Project's Capsules nested
+  under it and the most recently active Project first. It replaces the "All
+  projects" dropdown and the Recent list. A new Project appears right away,
+  with "No Capsules yet · Start one". Hovering or focusing a Project shows
+  New Capsule, Project settings, and Delete; hovering a Capsule shows Delete.
+  Both deletes open the existing confirmations, and on touch screens the
+  actions are always shown. Capsules that need you stay listed once, under
+  Needs you, and their Project shows how many. A failed Project delete is
+  reported on its row. Collapsed Projects are remembered in this browser.
 - The `mock` harness is test-only. It is no longer in the installation
   catalog, so a real install's API, CLI, TUI, and web UI do not list or
   offer it. On upgrade, migration 0022 drops that name from harness
   allowlists already saved on Projects. Tests and local end-to-end
   configuration that allowlist it after startup still keep it. The adapter
   `mock` subcommand remains for those runs.
+
+### Fixed
+
+- The phone sidebar opens again. The menu button set it open, but the shell
+  closed it on the next render.
 
 ## [0.4.1] - 2026-11-10
 

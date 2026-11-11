@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation, useOutletContext } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { MeridianAPIError, api } from "../api/client";
@@ -11,7 +11,7 @@ import type {
   Project,
   Thread,
 } from "../api/generated/types.gen";
-import { AppShell } from "../shell/AppShell";
+import { AppShell, type ShellOutletContext } from "../shell/AppShell";
 import { WorkspaceContext } from "../shell/WorkspaceContext";
 
 const project: Project = {
@@ -847,5 +847,72 @@ describe("application shell", () => {
     expect(await screen.findByRole("button", { name: "New Capsule" })).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Get started" })).not.toBeInTheDocument();
     expect(screen.queryByText("No Projects")).not.toBeInTheDocument();
+  });
+
+  it("lists Projects as a tree instead of a dropdown, with start and delete on the rows", async () => {
+    function Home() {
+      const outlet = useOutletContext<ShellOutletContext>();
+      const location = useLocation();
+      const state = location.state as { focusComposer?: boolean } | null;
+      return <p data-testid="home">{`composer:${outlet.projectId} focus:${String(state?.focusComposer ?? false)}`}</p>;
+    }
+    function CapsulePage() {
+      const location = useLocation();
+      return <p data-testid="capsule-page">{JSON.stringify(location.state)}</p>;
+    }
+    vi.spyOn(api, "projects").mockResolvedValue({
+      items: [project, { ...project, id: "project-2", name: "Empty", harnessImages: [] }],
+    });
+    vi.spyOn(api, "capsules").mockImplementation(async (projectId) => ({
+      items: projectId === project.id ? [capsule] : [],
+    }));
+    vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "capabilities").mockResolvedValue(capabilities);
+    wrapper(
+      <Routes>
+        <Route path="/ui" element={<AppShell />}>
+          <Route index element={<Home />} />
+          <Route path="capsules/:capsuleId" element={<CapsulePage />} />
+        </Route>
+      </Routes>,
+    );
+
+    const sidebar = screen.getByRole("complementary", { name: "Activity" });
+    expect(within(sidebar).queryByRole("button", { name: "All projects" })).toBeNull();
+    // A Project with no Capsules is listed right away.
+    expect(await within(sidebar).findByText("Empty")).toBeInTheDocument();
+    expect(within(sidebar).getByText(/No Capsules yet/)).toBeInTheDocument();
+    const capsules = await within(sidebar).findByRole("list", { name: "Meridian Capsules" });
+    expect(within(capsules).getByRole("link", { name: /Review the launcher/ })).toBeInTheDocument();
+
+    await userEvent.click(within(sidebar).getByRole("button", { name: "New Capsule in Empty" }));
+    expect(screen.getByTestId("home")).toHaveTextContent("composer:project-2 focus:true");
+
+    // A Capsule's delete opens the Capsule page's own confirmation.
+    await userEvent.click(within(capsules).getByRole("button", { name: "Delete Review the launcher" }));
+    expect(await screen.findByTestId("capsule-page")).toHaveTextContent('{"capsuleAction":"delete"}');
+  });
+
+  it("keeps the phone sidebar open until the operator navigates", async () => {
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
+    vi.spyOn(api, "capsules").mockResolvedValue({ items: [capsule] });
+    vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "capabilities").mockResolvedValue(capabilities);
+    wrapper(
+      <Routes>
+        <Route path="/ui" element={<AppShell />}>
+          <Route index element={<p>Home</p>} />
+          <Route path="capsules/:capsuleId" element={<p>Capsule page</p>} />
+        </Route>
+      </Routes>,
+    );
+    const sidebar = screen.getByRole("complementary", { name: "Activity" });
+    const row = await within(sidebar).findByRole("link", { name: /Review the launcher/ });
+    await userEvent.click(screen.getByRole("button", { name: "Open activity sidebar" }));
+    // The working set re-renders the shell; that must not close the sidebar.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(sidebar).toHaveClass("open");
+    await userEvent.click(row);
+    await waitFor(() => expect(sidebar).not.toHaveClass("open"));
   });
 });
