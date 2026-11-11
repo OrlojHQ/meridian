@@ -12,6 +12,7 @@ export function HarnessSetupEditor({setup, onClose}: {setup: HarnessSetup; onClo
   const [accepted, setAccepted] = useState(false);
   const [skillName, setSkillName] = useState("");
   const [filePath, setFilePath] = useState("");
+  const [adding, setAdding] = useState<"skill" | "file">();
   const attempt = useRef<{fingerprint: string; key: string} | undefined>(undefined);
   useEffect(() => {
     let active = true;
@@ -25,7 +26,7 @@ export function HarnessSetupEditor({setup, onClose}: {setup: HarnessSetup; onClo
     if (draft.bundle.files.some(file => file.path === path)) {setError("A file already exists at that path."); return;}
     if (draft.bundle.files.length >= 256) {setError("A setup can contain at most 256 files."); return;}
     setDraft({...draft, bundle: {...draft.bundle, files: [...draft.bundle.files, {path, content, executable: false}]}});
-    setError(""); setSkillName(""); setFilePath("");
+    setError(""); setSkillName(""); setFilePath(""); setAdding(undefined);
   }
   async function review() {
     if (!draft) return;
@@ -51,24 +52,37 @@ export function HarnessSetupEditor({setup, onClose}: {setup: HarnessSetup; onClo
     } catch (cause) { setError(normalizeAPIError(cause).message); }
     finally { setBusy(false); }
   }
+  const root = draft ? roots[draft.bundle.harness] : "";
+  const validSkill = /^[a-z0-9]+(-[a-z0-9]+)*$/.test(skillName) && skillName.length <= 64;
   return <section className="setup-import setup-editor" aria-label={`Edit ${setup.name}`}>
-    <h3>Edit saved setup</h3>
-    <p>Changes create a new revision for future Capsules. Existing Capsules keep their setup.</p>
+    <h4>Edit files and skills</h4>
+    <p className="setup-import-hint">Saving creates a new revision for future Capsules. Existing Capsules keep theirs.</p>
     {!draft && !error && <p role="status">Loading configuration…</p>}
     {draft && !preview && <>
-      {draft.bundle.files.map((file, index) => <details key={file.path}><summary>{file.path}</summary>
-        <label>Contents of {file.path}<textarea spellCheck={false} rows={12} value={file.content} disabled={busy} onChange={event => {const content = event.target.value; setDraft({...draft, bundle: {...draft.bundle, files: draft.bundle.files.map((item,i) => i === index ? {...item,content} : item)}});}} /></label>
-        <button type="button" disabled={busy} onClick={() => setDraft({...draft, bundle: {...draft.bundle, files: draft.bundle.files.filter((_,i) => i !== index)}})}>Remove {file.path}</button>
-      </details>)}
-      <div className="setup-import-picker"><h4>Add a skill</h4>
-        <label>Skill name<input placeholder="review-code" value={skillName} disabled={busy} onChange={event => setSkillName(event.target.value)} /></label>
-        <button type="button" disabled={busy || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(skillName) || skillName.length > 64} onClick={() => addFile(`${roots[draft.bundle.harness]}/skills/${skillName}/SKILL.md`, `---\nname: ${skillName}\ndescription: Describe when to use this skill.\n---\n\nWrite the instructions for this skill here.\n`)}>Add skill</button>
+      <ul className="setup-editor-files">
+        {draft.bundle.files.map((file, index) => <li key={file.path}><details><summary><code>{file.path.startsWith(`${root}/`) ? file.path.slice(root.length + 1) : file.path}</code></summary>
+          <label>Contents of {file.path}<textarea spellCheck={false} rows={12} value={file.content} disabled={busy} onChange={event => {const content = event.target.value; setDraft({...draft, bundle: {...draft.bundle, files: draft.bundle.files.map((item,i) => i === index ? {...item,content} : item)}});}} /></label>
+          <button type="button" className="text-button" disabled={busy} onClick={() => setDraft({...draft, bundle: {...draft.bundle, files: draft.bundle.files.filter((_,i) => i !== index)}})}>Remove {file.path}</button>
+        </details></li>)}
+      </ul>
+      {!adding && <div className="setup-import-actions">
+        <button type="button" disabled={busy} onClick={() => setAdding("skill")}>Add a skill</button>
+        <button type="button" disabled={busy} onClick={() => setAdding("file")}>Add a file</button>
+      </div>}
+      {adding === "skill" && <form className="setup-editor-add" onSubmit={event => {event.preventDefault(); if (validSkill) addFile(`${root}/skills/${skillName}/SKILL.md`, `---\nname: ${skillName}\ndescription: Describe when to use this skill.\n---\n\nWrite the instructions for this skill here.\n`);}}>
+        <label>Skill name<input placeholder="review-code" value={skillName} autoFocus disabled={busy} onChange={event => setSkillName(event.target.value)} /></label>
+        <p className="setup-import-hint">Lowercase words joined by hyphens. Creates <code>skills/{skillName || "name"}/SKILL.md</code> to fill in. To bring existing skills, use Update from this computer and Add skills folder.</p>
+        <div className="setup-import-actions"><button type="submit" disabled={busy || !validSkill}>Add skill</button><button type="button" className="text-button" onClick={() => {setAdding(undefined); setSkillName("");}}>Cancel</button></div>
+      </form>}
+      {adding === "file" && <form className="setup-editor-add" onSubmit={event => {event.preventDefault(); if (filePath.trim()) addFile(`${root}/${filePath.trim()}`, "");}}>
+        <label>File path<input value={filePath} autoFocus disabled={busy} placeholder="AGENTS.md" onChange={event => setFilePath(event.target.value)} /></label>
+        <p className="setup-import-hint">Relative to <code>{root}</code>. Only supported configuration paths can be saved.</p>
+        <div className="setup-import-actions"><button type="submit" disabled={busy || !filePath.trim()}>Add file</button><button type="button" className="text-button" onClick={() => {setAdding(undefined); setFilePath("");}}>Cancel</button></div>
+      </form>}
+      <div className="setup-import-actions setup-editor-footer">
+        <button type="button" className="primary-button" disabled={busy || !draft.bundle.files.length} onClick={() => void review()}>{busy ? "Checking…" : "Review changes"}</button>
+        <button type="button" disabled={busy} onClick={onClose}>Cancel</button>
       </div>
-      <details><summary>Add another configuration file</summary><p>Use a path relative to <code>{roots[draft.bundle.harness]}</code>. Only supported configuration paths can be saved.</p>
-        <label>File path<input value={filePath} disabled={busy} placeholder="AGENTS.md" onChange={event => setFilePath(event.target.value)} /></label>
-        <button type="button" disabled={busy || !filePath.trim()} onClick={() => addFile(`${roots[draft.bundle.harness]}/${filePath.trim()}`, "")}>Add file</button>
-      </details>
-      <button type="button" disabled={busy || !draft.bundle.files.length} onClick={() => void review()}>{busy ? "Checking…" : "Review changes"}</button>
     </>}
     {preview && <>
       <h4>Review the files that will be saved</h4>
@@ -76,10 +90,10 @@ export function HarnessSetupEditor({setup, onClose}: {setup: HarnessSetup; onClo
       {!!preview.bundle.dependencies?.length && <><h4>Tools included in this setup</h4><ul>{preview.bundle.dependencies.map(pkg => <li key={pkg}>{pkg}</li>)}</ul></>}
       {!!preview.warnings?.length && <><h4>Portability warnings — settings kept</h4><ul>{preview.warnings.map((warning,i) => <li key={i}>{warning.path}: {warning.reason}</li>)}</ul></>}
       {!!preview.issues.length && <><ul>{preview.issues.map((issue,i) => <li key={i}>{issue.path}: {issue.reason}</li>)}</ul><label><input type="checkbox" checked={accepted} onChange={event => setAccepted(event.target.checked)} disabled={busy} />I reviewed the exclusions</label></>}
-      <div className="setup-import-actions"><button type="button" className="primary-button" disabled={busy || !preview.bundle.files.length || (!!preview.issues.length && !accepted)} onClick={() => void save()}>{busy ? "Saving…" : "Save changes"}</button>
+      <div className="setup-import-actions setup-editor-footer"><button type="button" className="primary-button" disabled={busy || !preview.bundle.files.length || (!!preview.issues.length && !accepted)} onClick={() => void save()}>{busy ? "Saving…" : "Save changes"}</button>
       <button type="button" disabled={busy} onClick={() => setPreview(undefined)}>Back to editing</button></div>
     </>}
     {error && <p role="alert">{error}</p>}
-    <button type="button" disabled={busy} onClick={onClose}>Close editor</button>
+    {!draft && <button type="button" disabled={busy} onClick={onClose}>Cancel</button>}
   </section>;
 }
