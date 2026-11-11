@@ -212,3 +212,11 @@ export function StopIcon(props: IconProps) {
     </Icon>
   );
 }
+
+export function TrashIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 6h12M8 6V4.5h4V6M6 6l.7 9.5h6.6L14 6M8.5 9v4M11.5 9v4" />
+    </Icon>
+  );
+}

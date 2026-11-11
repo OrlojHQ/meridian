@@ -21,6 +21,7 @@ import { queries } from "../api/queries";
 import { DeleteProjectDialog } from "../components/DeleteProjectDialog";
 import { NewProjectDialog } from "../components/NewProjectDialog";
 import { NewWorkspaceDialog } from "../components/NewWorkspaceDialog";
+import { ProjectTree } from "./ProjectTree";
 import { HarnessMark } from "../components/ui/HarnessMark";
 import { ListSkeleton } from "../components/ui/loading";
 import {
@@ -36,6 +37,7 @@ import {
   ThemeIcon,
   TerminalIcon,
   ThreadIcon,
+  TrashIcon,
 } from "../components/ui/Icons";
 import { applyTheme, nextTheme, readTheme, rememberTheme, themeLabel, type ThemePreference } from "../components/ui/theme";
 import {
@@ -316,8 +318,8 @@ export function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const [filter, setFilter] = useState("");
-  const [projectFilter, setProjectFilter] = useState("");
-  const [switcherOpen, setSwitcherOpen] = useState(false);
+  // The Project the home composer starts with. A Project row's + sets it.
+  const [composerProject, setComposerProject] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [contextOpen, setContextOpen] = useState(toolsOpenByDefault);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
@@ -363,13 +365,12 @@ export function AppShell() {
   const visibleItems = useMemo(() => {
     const query = filter.trim().toLowerCase();
     return items.filter(({ capsule, activity }) => {
-      if (projectFilter && capsule.projectId !== projectFilter) return false;
       if (!query) return true;
       return [capsule.name, activity.agent, activity.label].some((value) =>
         value.toLowerCase().includes(query),
       );
     });
-  }, [items, filter, projectFilter]);
+  }, [items, filter]);
   const visibleCapsules = useMemo(
     () => visibleItems.map((item) => item.capsule),
     [visibleItems],
@@ -392,8 +393,13 @@ export function AppShell() {
   }, [items, capsuleId, sessionId, location.pathname]);
   const toolsDecision = useRef("");
 
+  // Navigating closes the phone sidebar. This must not depend on the working
+  // set, which is rebuilt on every render and would close it as it opens.
   useEffect(() => {
     setSidebarOpen(false);
+  }, [location.pathname, sessionId]);
+
+  useEffect(() => {
     const key = `${location.pathname}?${sessionId}`;
     if (toolsDecision.current === key) return;
     if (capsuleId && !items.some((item) => item.capsule.id === capsuleId)) return;
@@ -541,21 +547,25 @@ export function AppShell() {
   const attentionItems = visibleItems
     .filter((item) => item.activity.group === "attention")
     .sort((left, right) => byTime(left) - byTime(right));
-  const recentItems = visibleItems
-    .filter((item) => item.activity.group !== "attention")
-    .sort((left, right) => byTime(right) - byTime(left));
-  const filteredProject = projectItems.find((project) => project.id === projectFilter);
+  const activeProjectId = items.find((item) => item.capsule.id === capsuleId)?.capsule.projectId;
+  const startCapsuleIn = (project: Project) => {
+    setComposerProject(project.id);
+    setSidebarOpen(false);
+    navigate("/ui/", { state: { focusComposer: true } });
+  };
   const renderItem = (
     { capsule, activity, sessions, rollup }: WorkingSetItem,
-    subagents: WorkingSetItem[] = [],
+    { showProject = true, subagents = [] }: { showProject?: boolean; subagents?: WorkingSetItem[] } = {},
   ) => {
     const selected = capsule.id === capsuleId;
     const live = sessions.filter((session) => !session.archived);
     const harness = capsule.harness || live[0]?.harness;
     const kind = live.some((session) => session.kind === "thread") ? "thread" : "cli";
-    const project = projectName.get(capsule.projectId);
+    const project = showProject ? projectName.get(capsule.projectId) : undefined;
+    const deletable =
+      capsule.role !== "sub" && !["Sealed", "Deleting", "Deleted"].includes(capsule.state);
     return (
-      <li key={capsule.id}>
+      <li key={capsule.id} className="capsule-node">
         <NavLink
           to={sessionPath(capsule.id)}
           className={selected ? "capsule-row selected" : "capsule-row"}
@@ -587,6 +597,20 @@ export function AppShell() {
             )}
           </span>
         </NavLink>
+        {deletable && (
+          <button
+            type="button"
+            className="icon-button capsule-row-delete"
+            aria-label={`Delete ${capsule.name}`}
+            title="Delete Capsule"
+            onClick={() => {
+              setSidebarOpen(false);
+              requestCapsuleAction(capsule.id, "delete");
+            }}
+          >
+            <TrashIcon />
+          </button>
+        )}
         {selected && live.length > 1 && (
           <SessionList
             capsuleId={capsule.id}
@@ -644,79 +668,6 @@ export function AppShell() {
             New project
           </button>
         </header>
-        <div className="project-switcher">
-          <button
-            type="button"
-            className="switcher"
-            aria-expanded={switcherOpen}
-            aria-controls="project-switcher-menu"
-            onClick={() => setSwitcherOpen((open) => !open)}
-          >
-            {filteredProject?.name ?? "All projects"}
-            <span aria-hidden="true">▾</span>
-          </button>
-          {switcherOpen && (
-            <div className="switcher-menu" id="project-switcher-menu" role="menu">
-              <button
-                type="button"
-                role="menuitem"
-                className={projectFilter === "" ? "active" : undefined}
-                onClick={() => {
-                  setProjectFilter("");
-                  setSwitcherOpen(false);
-                }}
-              >
-                All projects
-              </button>
-              {projectItems.map((project) => (
-                <button
-                  key={project.id}
-                  type="button"
-                  role="menuitem"
-                  className={projectFilter === project.id ? "active" : undefined}
-                  onClick={() => {
-                    setProjectFilter(project.id);
-                    setSwitcherOpen(false);
-                  }}
-                >
-                  {project.name}
-                </button>
-              ))}
-              {filteredProject && (
-                <Link
-                  role="menuitem"
-                  to={`/ui/projects/${encodeURIComponent(filteredProject.id)}`}
-                  onClick={() => setSwitcherOpen(false)}
-                >
-                  Project settings
-                </Link>
-              )}
-              {projectItems.map((project) => (
-                <button
-                  key={`${project.id}-delete`}
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setSwitcherOpen(false);
-                    setDeleteProject(project);
-                  }}
-                >
-                  Delete {project.name}
-                </button>
-              ))}
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setSwitcherOpen(false);
-                  setNewProjectOpen(true);
-                }}
-              >
-                New project
-              </button>
-            </div>
-          )}
-        </div>
         <button
           type="button"
           className="primary-button new-capsule"
@@ -764,11 +715,6 @@ export function AppShell() {
             </nav>
           ) : (
             <>
-              {filteredProject?.state === "failed" && (
-                <p className="project-delete-failure" role="status">
-                  Deletion stopped{filteredProject.failure ? `: ${filteredProject.failure}` : ""}
-                </p>
-              )}
               <section className="capsule-group">
                 <h2>
                   Needs you
@@ -784,16 +730,15 @@ export function AppShell() {
                   </ul>
                 )}
               </section>
-              <section className="capsule-group">
-                <h2>Recent</h2>
-                {recentItems.length === 0 ? (
-                  <p className="capsule-empty">{filter ? "No matches" : "Nothing recent"}</p>
-                ) : (
-                  <ul>
-                    {recentItems.map((item) => renderItem(item))}
-                  </ul>
-                )}
-              </section>
+              <ProjectTree
+                projects={projectItems}
+                items={visibleItems}
+                filter={filter}
+                activeProjectId={activeProjectId}
+                renderItem={(item) => renderItem(item, { showProject: false })}
+                onNewCapsule={startCapsuleIn}
+                onDeleteProject={setDeleteProject}
+              />
             </>
           )}
         </nav>
@@ -826,8 +771,8 @@ export function AppShell() {
               openNewProject: () => setNewProjectOpen(true),
               openLauncher: setLaunchProject,
               openDeleteProject: setDeleteProject,
-              projectId: projectFilter,
-              setProjectId: setProjectFilter,
+              projectId: composerProject,
+              setProjectId: setComposerProject,
             } satisfies ShellOutletContext
           }
         />

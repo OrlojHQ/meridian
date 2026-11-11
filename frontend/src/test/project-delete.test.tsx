@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -156,8 +156,9 @@ describe("project delete", () => {
     renderApp(["/ui/", "/ui/capsules/capsule-current"]);
 
     expect(await screen.findByRole("heading", { name: "Review the launcher" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "All projects" }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "Delete Meridian" }));
+    // The sidebar's Project tree offers delete on each Project row.
+    const sidebar = screen.getByRole("complementary", { name: "Activity" });
+    await userEvent.click(within(sidebar).getByRole("button", { name: "Delete Meridian" }));
     const dialog = await screen.findByRole("alertdialog", { name: "Delete Meridian?" });
     await waitFor(() => expect(dialog).toHaveTextContent("1 Capsules"));
     expect(dialog).toHaveTextContent("2 threads");
@@ -188,7 +189,8 @@ describe("project delete", () => {
     vi.spyOn(api, "deleteProject").mockResolvedValue({ ...project, state: "deleting" });
     renderApp("/ui/projects/project-1");
 
-    await userEvent.click(await screen.findByRole("button", { name: "Delete Meridian" }));
+    // The Project page's own delete button, not the sidebar tree's.
+    await userEvent.click(await within(screen.getByRole("main")).findByRole("button", { name: "Delete Meridian" }));
     await userEvent.type(await screen.findByLabelText("Project name"), "Meridian");
     await userEvent.click(screen.getByRole("button", { name: "Delete project" }));
 
