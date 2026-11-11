@@ -24,16 +24,18 @@ import { NewWorkspaceDialog } from "../components/NewWorkspaceDialog";
 import { HarnessMark } from "../components/ui/HarnessMark";
 import { ListSkeleton } from "../components/ui/loading";
 import {
-  ActivityIcon,
+  ChangesIcon,
   ChevronIcon,
   CommandIcon,
+  FilesIcon,
   MenuIcon,
   PlusIcon,
+  PreviewIcon,
   SearchIcon,
   SettingsIcon,
   ThemeIcon,
+  TerminalIcon,
   ThreadIcon,
-  WarningIcon,
 } from "../components/ui/Icons";
 import { applyTheme, nextTheme, readTheme, rememberTheme, themeLabel, type ThemePreference } from "../components/ui/theme";
 import {
@@ -59,7 +61,7 @@ import {
   type PaletteCommand,
 } from "./paletteCommands";
 import { useNeedsYouAlerts } from "./useNeedsYouAlerts";
-import { nestSubagents, useWorkingSet, type WorkingSetItem } from "./useWorkingSet";
+import { useWorkingSet, type WorkingSetItem } from "./useWorkingSet";
 import { WorkspaceContext } from "./WorkspaceContext";
 
 const pathID = (pathname: string, resource: string) => {
@@ -97,6 +99,9 @@ const toolsOpenByDefault = () => !window.matchMedia?.(PHONE_LAYOUT).matches;
 export type ShellOutletContext = {
   openNewProject: () => void;
   openLauncher: (project: Project) => void;
+  openDeleteProject: (project: Project) => void;
+  projectId: string;
+  setProjectId: (id: string) => void;
 };
 
 export function ActivityDot({ group }: { group: ActivityGroup }) {
@@ -254,7 +259,6 @@ function StatusBar({ items }: { items: WorkingSetItem[] }) {
   const online = useOnline();
   const capabilities = useQuery({ ...queries.capabilities(), refetchInterval: 15_000 });
   const provider = capabilities.data?.providerVersion ?? "";
-  const simulated = provider.startsWith("fake/");
   const failure = capabilities.isError ? normalizeAPIError(capabilities.error) : undefined;
   const connection = !online
     ? { state: "offline", label: "Offline", title: "This browser is offline" }
@@ -266,7 +270,7 @@ function StatusBar({ items }: { items: WorkingSetItem[] }) {
         ? { state: "pending", label: "Connecting…", title: "Contacting the daemon" }
         : { state: "online", label: "Connected", title: "The daemon API is reachable" };
   return (
-    <footer className={`status-bar${simulated ? " simulated" : ""}`} aria-label="Status bar">
+    <footer className="status-bar" aria-label="Status bar">
       <span
         className={`status-connection ${connection.state}`}
         role="status"
@@ -280,20 +284,6 @@ function StatusBar({ items }: { items: WorkingSetItem[] }) {
           <span className="sr-only">Provider </span>
           {provider}
         </span>
-      )}
-      {simulated && (
-        <strong
-          className="status-simulated"
-          title="meridiand is running with --provider=fake. Capsules are simulated and no agents run."
-        >
-          <WarningIcon />
-          <span>
-            Simulated<span className="status-long"> provider</span>
-            {" — "}
-            <span className="status-long">Capsules are simulated and </span>
-            no agents run
-          </span>
-        </strong>
       )}
       <div className="status-trailing">
         <NotificationOptIn />
@@ -326,6 +316,8 @@ export function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const [filter, setFilter] = useState("");
+  const [projectFilter, setProjectFilter] = useState("");
+  const [switcherOpen, setSwitcherOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [contextOpen, setContextOpen] = useState(toolsOpenByDefault);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
@@ -370,12 +362,14 @@ export function AppShell() {
 
   const visibleItems = useMemo(() => {
     const query = filter.trim().toLowerCase();
-    if (!query) return items;
-    return items.filter(({ capsule, activity }) =>
-      [capsule.name, activity.agent, activity.label]
-        .some((value) => value.toLowerCase().includes(query)),
-    );
-  }, [items, filter]);
+    return items.filter(({ capsule, activity }) => {
+      if (projectFilter && capsule.projectId !== projectFilter) return false;
+      if (!query) return true;
+      return [capsule.name, activity.agent, activity.label].some((value) =>
+        value.toLowerCase().includes(query),
+      );
+    });
+  }, [items, filter, projectFilter]);
   const visibleCapsules = useMemo(
     () => visibleItems.map((item) => item.capsule),
     [visibleItems],
@@ -387,10 +381,25 @@ export function AppShell() {
   const goPrefix = useRef(false);
   const goPrefixTimer = useRef(0);
 
+  const cliSession = useMemo(() => {
+    if (!location.pathname.includes("/capsules/")) return false;
+    const current = items.find((item) => item.capsule.id === capsuleId);
+    if (!current) return false;
+    const selected =
+      current.sessions.find((session) => session.id === sessionId) ??
+      defaultSession(current.sessions);
+    return selected?.kind === "terminal";
+  }, [items, capsuleId, sessionId, location.pathname]);
+  const toolsDecision = useRef("");
+
   useEffect(() => {
     setSidebarOpen(false);
-    setContextOpen(toolsOpenByDefault());
-  }, [location.pathname]);
+    const key = `${location.pathname}?${sessionId}`;
+    if (toolsDecision.current === key) return;
+    if (capsuleId && !items.some((item) => item.capsule.id === capsuleId)) return;
+    toolsDecision.current = key;
+    setContextOpen(cliSession ? false : toolsOpenByDefault());
+  }, [location.pathname, sessionId, capsuleId, items, cliSession]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -526,6 +535,16 @@ export function AppShell() {
     items: visibleItems.filter((item) => item.capsule.projectId === project.id),
   }));
   const hasContext = Boolean(capsuleId);
+  const showRail = hasContext && !contextOpen;
+  const projectName = new Map(projectItems.map((project) => [project.id, project.name]));
+  const byTime = (value: WorkingSetItem) => Date.parse(value.activity.since ?? value.capsule.updatedAt);
+  const attentionItems = visibleItems
+    .filter((item) => item.activity.group === "attention")
+    .sort((left, right) => byTime(left) - byTime(right));
+  const recentItems = visibleItems
+    .filter((item) => item.activity.group !== "attention")
+    .sort((left, right) => byTime(right) - byTime(left));
+  const filteredProject = projectItems.find((project) => project.id === projectFilter);
   const renderItem = (
     { capsule, activity, sessions, rollup }: WorkingSetItem,
     subagents: WorkingSetItem[] = [],
@@ -533,38 +552,38 @@ export function AppShell() {
     const selected = capsule.id === capsuleId;
     const live = sessions.filter((session) => !session.archived);
     const harness = capsule.harness || live[0]?.harness;
+    const kind = live.some((session) => session.kind === "thread") ? "thread" : "cli";
+    const project = projectName.get(capsule.projectId);
     return (
       <li key={capsule.id}>
         <NavLink
           to={sessionPath(capsule.id)}
-          className={selected ? "selected" : undefined}
+          className={selected ? "capsule-row selected" : "capsule-row"}
           title={activity.detail}
         >
           <ActivityDot group={activity.group} />
-          <span className="activity-item-copy">
-            <strong>{capsule.name}</strong>
-            <small>
+          <span className="capsule-row-body">
+            <span className="capsule-row-top">
+              {kind === "thread" ? <ThreadIcon /> : <TerminalIcon />}
+              <span className="sr-only">{kind === "thread" ? "Thread" : "CLI"}</span>
+              <strong>{capsule.name}</strong>
+              <time dateTime={activity.since}>{relativeTime(activity.since, now)}</time>
+            </span>
+            <span className="capsule-row-sub">
               {harness && <HarnessMark harness={harness} />}
-              {activity.label}
-            </small>
+              <span>
+                {project}
+                {project ? " · " : ""}
+                {activity.label}
+              </span>
+              {!selected && live.length > 1 && (
+                <small className="session-count" aria-label={`${live.length} sessions`}>
+                  {live.length}
+                </small>
+              )}
+            </span>
             {rollup && rollup.total > 0 && (
               <small className="activity-item-rollup">Subagents: {rollupSummary(rollup)}</small>
-            )}
-          </span>
-          <span className="activity-item-side">
-            <time
-              className="activity-item-time"
-              dateTime={activity.since}
-            >
-              {relativeTime(activity.since, now)}
-            </time>
-            {!selected && live.length > 1 && (
-              <small
-                className="session-count"
-                aria-label={`${live.length} sessions`}
-              >
-                {live.length}
-              </small>
             )}
           </span>
         </NavLink>
@@ -587,9 +606,9 @@ export function AppShell() {
 
   return (
     <div
-      className={`app-shell ${hasContext && contextOpen ? "has-context" : "no-context"}${
-        hasContext ? " with-context-toggle" : ""
-      }`}
+      className={`app-shell workbench ${hasContext && contextOpen ? "has-context" : "no-context"}${
+        showRail ? " with-rail" : ""
+      }${hasContext && contextOpen ? " with-context-toggle" : ""}${cliSession ? " cli-session" : ""}`}
     >
       <a className="skip-link" href="#content">
         Skip to workspace
@@ -616,19 +635,99 @@ export function AppShell() {
         onKeyDown={onSidebarKeyDown}
       >
         <header className="sidebar-header">
-          <Link className="brand" to="/ui/" aria-label="Meridian inbox">
+          <Link className="brand" to="/ui/" aria-label="Meridian home">
             <span className="brand-mark">M</span>
             <span>Meridian</span>
           </Link>
-          <button
-            type="button"
-            className="new-work-button"
-            onClick={() => setNewProjectOpen(true)}
-          >
+          <button type="button" className="new-work-button" onClick={() => setNewProjectOpen(true)}>
             <PlusIcon />
             New project
           </button>
         </header>
+        <div className="project-switcher">
+          <button
+            type="button"
+            className="switcher"
+            aria-expanded={switcherOpen}
+            aria-controls="project-switcher-menu"
+            onClick={() => setSwitcherOpen((open) => !open)}
+          >
+            {filteredProject?.name ?? "All projects"}
+            <span aria-hidden="true">▾</span>
+          </button>
+          {switcherOpen && (
+            <div className="switcher-menu" id="project-switcher-menu" role="menu">
+              <button
+                type="button"
+                role="menuitem"
+                className={projectFilter === "" ? "active" : undefined}
+                onClick={() => {
+                  setProjectFilter("");
+                  setSwitcherOpen(false);
+                }}
+              >
+                All projects
+              </button>
+              {projectItems.map((project) => (
+                <button
+                  key={project.id}
+                  type="button"
+                  role="menuitem"
+                  className={projectFilter === project.id ? "active" : undefined}
+                  onClick={() => {
+                    setProjectFilter(project.id);
+                    setSwitcherOpen(false);
+                  }}
+                >
+                  {project.name}
+                </button>
+              ))}
+              {filteredProject && (
+                <Link
+                  role="menuitem"
+                  to={`/ui/projects/${encodeURIComponent(filteredProject.id)}`}
+                  onClick={() => setSwitcherOpen(false)}
+                >
+                  Project settings
+                </Link>
+              )}
+              {projectItems.map((project) => (
+                <button
+                  key={`${project.id}-delete`}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setSwitcherOpen(false);
+                    setDeleteProject(project);
+                  }}
+                >
+                  Delete {project.name}
+                </button>
+              ))}
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setSwitcherOpen(false);
+                  setNewProjectOpen(true);
+                }}
+              >
+                New project
+              </button>
+            </div>
+          )}
+        </div>
+        <button
+          type="button"
+          className="primary-button new-capsule"
+          onClick={() => {
+            setSidebarOpen(false);
+            navigate("/ui/", { state: { focusComposer: true } });
+          }}
+        >
+          <PlusIcon />
+          New Capsule
+        </button>
         <label className="activity-filter" htmlFor="activity-filter">
           <SearchIcon />
           <span className="sr-only">Filter Capsules</span>
@@ -641,22 +740,6 @@ export function AppShell() {
           <kbd>/</kbd>
         </label>
         <nav className="sidebar-links" aria-label="Views">
-          <NavLink to="/ui/" end>
-            <ActivityIcon />
-            Inbox
-            {attentionCount > 0 && (
-              <span
-                className="attention-count"
-                aria-label={`${attentionCount} need attention`}
-              >
-                {attentionCount}
-              </span>
-            )}
-          </NavLink>
-          <NavLink to="/ui/threads">
-            <ThreadIcon />
-            Threads
-          </NavLink>
           <NavLink to="/ui/settings/harnesses">
             <SettingsIcon />
             Harness settings
@@ -680,48 +763,38 @@ export function AppShell() {
               </button>
             </nav>
           ) : (
-            grouped.map(({ project, items: projectCapsules }) => (
-              <section className="project-group" key={project.id}>
-                <header>
-                  <span>{project.name}</span>
-                  <span className="project-group-actions">
-                    <small>{projectCapsules.length}</small>
-                    <button
-                      type="button"
-                      className="project-delete-button"
-                      aria-label={`Delete ${project.name}`}
-                      title={`Delete ${project.name}`}
-                      onClick={() => setDeleteProject(project)}
-                    >
-                      Delete
-                    </button>
-                    <button
-                      type="button"
-                      className="project-add-button"
-                      aria-label={`New Capsule in ${project.name}`}
-                      title={`New Capsule in ${project.name}`}
-                      onClick={() => setLaunchProject(project)}
-                    >
-                      <PlusIcon />
-                    </button>
-                  </span>
-                </header>
-                {project.state === "failed" && (
-                  <p className="project-delete-failure" role="status">
-                    Deletion stopped{project.failure ? `: ${project.failure}` : ""}
-                  </p>
-                )}
-                {projectCapsules.length === 0 ? (
-                  <p className="project-empty">
-                    {filter ? "No matches" : "No Capsules"}
-                  </p>
+            <>
+              {filteredProject?.state === "failed" && (
+                <p className="project-delete-failure" role="status">
+                  Deletion stopped{filteredProject.failure ? `: ${filteredProject.failure}` : ""}
+                </p>
+              )}
+              <section className="capsule-group">
+                <h2>
+                  Needs you
+                  {attentionItems.length > 0 && (
+                    <b aria-label={`${attentionItems.length} need attention`}>{attentionItems.length}</b>
+                  )}
+                </h2>
+                {attentionItems.length === 0 ? (
+                  <p className="capsule-empty">Nothing waiting</p>
                 ) : (
                   <ul>
-                    {nestSubagents(projectCapsules).map(({ item, subagents }) => renderItem(item, subagents))}
+                    {attentionItems.map((item) => renderItem(item))}
                   </ul>
                 )}
               </section>
-            ))
+              <section className="capsule-group">
+                <h2>Recent</h2>
+                {recentItems.length === 0 ? (
+                  <p className="capsule-empty">{filter ? "No matches" : "Nothing recent"}</p>
+                ) : (
+                  <ul>
+                    {recentItems.map((item) => renderItem(item))}
+                  </ul>
+                )}
+              </section>
+            </>
           )}
         </nav>
         <footer className="sidebar-footer">
@@ -752,6 +825,9 @@ export function AppShell() {
             {
               openNewProject: () => setNewProjectOpen(true),
               openLauncher: setLaunchProject,
+              openDeleteProject: setDeleteProject,
+              projectId: projectFilter,
+              setProjectId: setProjectFilter,
             } satisfies ShellOutletContext
           }
         />
@@ -777,16 +853,37 @@ export function AppShell() {
         />
       )}
 
+      {showRail && (
+        <nav className="tool-rail" aria-label="Capsule tools">
+          <button type="button" className="tool-rail-expand" aria-label="Show Capsule tools" title="Show Capsule tools" onClick={() => setContextOpen(true)}>
+            <ChevronIcon />
+          </button>
+          <button type="button" onClick={() => setContextOpen(true)}>
+            <ChangesIcon />
+            Changes
+          </button>
+          <button type="button" onClick={() => setContextOpen(true)}>
+            <FilesIcon />
+            Files
+          </button>
+          <button type="button" onClick={() => setContextOpen(true)}>
+            <PreviewIcon />
+            Preview
+          </button>
+        </nav>
+      )}
       {hasContext && (
         <>
+          {contextOpen && (
           <button
             type="button"
-            className={`context-toggle ${contextOpen ? "open" : ""}`}
-            aria-label={contextOpen ? "Hide Capsule tools" : "Show Capsule tools"}
-            onClick={() => setContextOpen((current) => !current)}
+            className="context-toggle open"
+            aria-label="Hide Capsule tools"
+            onClick={() => setContextOpen(false)}
           >
             <ChevronIcon />
           </button>
+          )}
           {contextOpen && (
             <WorkspaceContext
               capsuleId={capsuleId}

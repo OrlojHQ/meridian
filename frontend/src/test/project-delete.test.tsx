@@ -30,7 +30,7 @@ const otherProject: Project = {
 };
 
 const capabilities: Capabilities = {
-  providerVersion: "fake/v1",
+  providerVersion: "docker/v1",
   attach: false,
   run: false,
   structured: true,
@@ -156,7 +156,8 @@ describe("project delete", () => {
     renderApp(["/ui/", "/ui/capsules/capsule-current"]);
 
     expect(await screen.findByRole("heading", { name: "Review the launcher" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Delete Meridian" }));
+    await userEvent.click(screen.getByRole("button", { name: "All projects" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Delete Meridian" }));
     const dialog = await screen.findByRole("alertdialog", { name: "Delete Meridian?" });
     await waitFor(() => expect(dialog).toHaveTextContent("1 Capsules"));
     expect(dialog).toHaveTextContent("2 threads");

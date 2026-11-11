@@ -77,7 +77,7 @@ it("returns from a Run inspector to its Capsule workspace", async () => {
     resourceVersion: 5,
   });
   vi.spyOn(api, "capabilities").mockResolvedValue({
-    providerVersion: "fake/v1",
+    providerVersion: "docker/v1",
     attach: true,
     run: true,
     structured: false,

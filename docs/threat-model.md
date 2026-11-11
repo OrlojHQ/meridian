@@ -4,8 +4,7 @@
 
 This threat model establishes security requirements for Meridian's intended
 architecture, including single-user release operations, backup/restore,
-content-free observability, and supply-chain policy. The fake provider executes
-no workload.
+content-free observability, and supply-chain policy.
 Docker is trusted single-user local development. Agent Sandbox orchestrates
 pod/PVC lifecycle but does not itself provide an isolation boundary or justify
 an untrusted multi-tenant claim.
@@ -789,7 +788,7 @@ they are not a statement that every planned path is already implemented.
   persisted; background runtime refresh never sends, resumes, or wakes work.
 - Public PTY access uses expiring Run-scoped tickets rather than Capsule supervisor credentials.
 - Review UI assets cannot shadow API routes and untrusted diffs are never injected as HTML.
-- Preview ingress is loopback-only and exists only with end-to-end bounded Capsule discovery and routing; fake and incomplete providers fail closed.
+- Preview ingress is loopback-only and exists only with end-to-end bounded Capsule discovery and routing; providers that do not implement that transport fail closed.
 - Structured adapter transport is non-PTY, exact-versioned, bounded at both
   framing and private HTTP layers, and advertised only by providers that
   implement the protected Capsule transport end to end.

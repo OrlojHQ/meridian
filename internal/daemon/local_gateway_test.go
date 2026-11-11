@@ -23,7 +23,7 @@ func TestValidateProviderGatewayListen(t *testing.T) {
 		{Config{Provider: "docker", ProviderGatewayListen: "[fe80::1%eth0]:7443"}, false},
 		{Config{Provider: "docker", ProviderGatewayListen: "127.0.0.1:7443", ProviderGatewayURL: "https://meridian.example"}, false},
 		{Config{Provider: "agentsandbox", ProviderGatewayListen: "127.0.0.1:7443"}, false},
-		{Config{Provider: "fake", ProviderGatewayListen: "127.0.0.1:7443"}, false},
+		{Config{Provider: "other", ProviderGatewayListen: "127.0.0.1:7443"}, false},
 	} {
 		if err := ValidateProviderGatewayListen(test.config); (err == nil) != test.ok {
 			t.Fatalf("%+v: %v", test.config, err)

@@ -74,7 +74,7 @@ function renderWith(node: React.ReactNode) {
     items: [{ id: "project-1", name: "Project", createdAt: "", updatedAt: "", resourceVersion: 1 }],
   });
   vi.spyOn(api, "capabilities").mockResolvedValue({
-    providerVersion: "fake/v1",
+    providerVersion: "docker/v1",
     attach: false,
     run: false,
     structured: true,

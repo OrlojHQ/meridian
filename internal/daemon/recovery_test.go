@@ -14,8 +14,8 @@ import (
 	"github.com/OrlojHQ/meridian/internal/daemon"
 	"github.com/OrlojHQ/meridian/internal/datadir"
 	"github.com/OrlojHQ/meridian/internal/domain"
-	"github.com/OrlojHQ/meridian/internal/provider/fake"
 	"github.com/OrlojHQ/meridian/internal/store/sqlite"
+	fake "github.com/OrlojHQ/meridian/internal/testutil/fakeprovider"
 )
 
 func TestPreviewListenerRequiresLiteralLoopback(t *testing.T) {
@@ -30,7 +30,7 @@ func TestPreviewListenerRequiresLiteralLoopback(t *testing.T) {
 		}
 	}
 	if err := daemon.Run(context.Background(), daemon.Config{
-		Provider: "fake", Listen: "127.0.0.1:0",
+		Provider: "docker", Listen: "127.0.0.1:0",
 		PreviewListen: "0.0.0.0:0", DataDir: t.TempDir(),
 	}); err == nil {
 		t.Fatal("daemon startup accepted a non-loopback preview listener")
@@ -139,8 +139,10 @@ func TestRestartRecoversPersistedNonterminalCapsule(t *testing.T) {
 
 func TestSecondDaemonOnOneDataDirectoryIsRefused(t *testing.T) {
 	directory := t.TempDir()
+	daemon.UseTestProvider(fake.New(fake.Options{}))
+	t.Cleanup(daemon.ClearTestProvider)
 	config := daemon.Config{
-		Provider: "fake", Listen: "127.0.0.1:0", PreviewListen: "127.0.0.1:0", DataDir: directory,
+		Provider: "docker", Listen: "127.0.0.1:0", PreviewListen: "127.0.0.1:0", DataDir: directory,
 		DataLease: datadir.Options{Interval: 50 * time.Millisecond, Settle: time.Millisecond},
 	}
 	ctx, cancel := context.WithCancel(context.Background())

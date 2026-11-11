@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Meridian API
   version: 0.5.0
-  description: Control-plane API for fake, trusted-development Docker, and Kubernetes Agent Sandbox Capsules.
+  description: Control-plane API for trusted-development Docker and Kubernetes Agent Sandbox Capsules.
   license:
     name: Apache-2.0
     identifier: Apache-2.0

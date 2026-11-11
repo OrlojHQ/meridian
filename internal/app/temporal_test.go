@@ -19,8 +19,8 @@ import (
 	"github.com/OrlojHQ/meridian/internal/artifacts"
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/ports"
-	"github.com/OrlojHQ/meridian/internal/provider/fake"
 	"github.com/OrlojHQ/meridian/internal/store/sqlite"
+	fake "github.com/OrlojHQ/meridian/internal/testutil/fakeprovider"
 )
 
 type temporalRuntime struct {
@@ -340,7 +340,7 @@ func TestSetupMomentCacheReuseIsolationAndFailureSemantics(t *testing.T) {
 	}
 	snapshotter.mu.Lock()
 	captures := snapshotter.captures
-	restored := append([]byte(nil), snapshotter.restores["fake-"+string(second.ID)]...)
+	restored := append([]byte(nil), snapshotter.restores["test-"+string(second.ID)]...)
 	snapshotter.mu.Unlock()
 	if captures != 1 || string(restored) != "deterministic-workspace" {
 		t.Fatalf("cache captures=%d restored=%q", captures, restored)

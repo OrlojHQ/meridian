@@ -10,23 +10,30 @@ import "./styles.css";
 import "./styles/tokens.css";
 import "./styles/shell.css";
 import "./styles/features.css";
-import "./styles/features.css";
 import "./styles/components.css";
 import "./styles/loading.css";
-
-applyTheme(readTheme());
+import "./styles/workbench.css";
 
 const root = document.getElementById("root");
 if (!root) {
   throw new Error("root element not found");
 }
 
-createRoot(root).render(
-  <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
-    </QueryClientProvider>
-  </StrictMode>,
-);
+async function boot() {
+  if (import.meta.env.DEV && new URLSearchParams(window.location.search).has("shots")) {
+    const { installShotFixture } = await import("./shots/fixture");
+    installShotFixture();
+  }
+  applyTheme(readTheme());
+  createRoot(root!).render(
+    <StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <App />
+        </BrowserRouter>
+      </QueryClientProvider>
+    </StrictMode>,
+  );
+}
+
+void boot();

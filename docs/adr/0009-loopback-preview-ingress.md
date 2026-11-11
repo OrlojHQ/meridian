@@ -17,7 +17,7 @@ destination, or provider control endpoint.
 from its own network namespace. Its authenticated private protocol forwards
 HTTP and WebSocket traffic only to `127.0.0.1` at one of those discovered ports.
 The Docker adapter exposes this through an optional `PreviewRuntime`; lifecycle
-providers and the fake provider do not acquire preview authority implicitly.
+providers do not acquire preview authority implicitly.
 
 `meridiand` serves preview ingress on a separate listener configured with a
 literal loopback IP. Startup rejects wildcard, named, or non-loopback preview
@@ -36,7 +36,7 @@ performs DNS-based target selection.
 ## Consequences
 
 Docker previews are suitable only for the existing trusted, single-user local
-development profile. The fake provider reports previews unsupported. Absolute
+development profile. Providers that do not implement preview report it unsupported. Absolute
 application URLs, redirects, cookies, responses over 8 MiB, ports below 1024,
 and services not reachable through Capsule loopback are intentionally not
 supported. Preview tokens are bearer secrets visible in browser URLs and must

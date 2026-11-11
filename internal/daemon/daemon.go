@@ -25,7 +25,6 @@ import (
 	"github.com/OrlojHQ/meridian/internal/ports"
 	agentsandboxprovider "github.com/OrlojHQ/meridian/internal/provider/agentsandbox"
 	dockerprovider "github.com/OrlojHQ/meridian/internal/provider/docker"
-	"github.com/OrlojHQ/meridian/internal/provider/fake"
 	"github.com/OrlojHQ/meridian/internal/providergateway"
 	"github.com/OrlojHQ/meridian/internal/secrets"
 	"github.com/OrlojHQ/meridian/internal/store/sqlite"
@@ -65,9 +64,13 @@ type Config struct {
 	ProviderGatewayListen string
 }
 
+// testProvider replaces provider construction when tests call UseTestProvider.
+// Production leaves it nil and builds Docker or Agent Sandbox from Config.
+var testProvider func(context.Context, Config) (ports.CapsuleProvider, func() error, error)
+
 func Run(ctx context.Context, config Config) error {
-	if config.Provider != "fake" && config.Provider != "docker" && config.Provider != "agentsandbox" {
-		return fmt.Errorf("unsupported provider %q (supported: fake, docker, agentsandbox)", config.Provider)
+	if config.Provider != "docker" && config.Provider != "agentsandbox" {
+		return fmt.Errorf("unsupported provider %q (supported: docker, agentsandbox)", config.Provider)
 	}
 	if config.Listen == "" {
 		return fmt.Errorf("listen address is required")
@@ -259,55 +262,61 @@ func Run(ctx context.Context, config Config) error {
 	var closeProvider func() error
 	var gatewayListener net.Listener
 	var gatewayOrigin string
-	switch config.Provider {
-	case "fake":
-		config.Logger.Printf(
-			"WARNING: --provider=fake simulates Capsules for tests and UI development; " +
-				"no containers or agents run. Use --provider=docker for real workspaces.",
-		)
-		provider = fake.New(fake.Options{})
-		closeProvider = func() error { return nil }
-	case "docker":
-		if config.Docker.StateDir == "" {
-			config.Docker.StateDir = filepath.Join(config.DataDir, "docker-provider")
-		}
-		if config.DockerCPUs > 0 {
-			config.Docker.NanoCPUs = int64(config.DockerCPUs * 1_000_000_000)
-		}
-		dockerProvider, err := dockerprovider.New(config.Docker)
+	if testProvider != nil {
+		var err error
+		provider, closeProvider, err = testProvider(ctx, config)
 		if err != nil {
 			_ = httpServer.Close()
 			_ = previewHTTPServer.Close()
-			return fmt.Errorf("initialize Docker provider: %w", err)
+			return err
 		}
-		provider = dockerProvider
-		closeProvider = dockerProvider.Close
-		if config.ProviderGatewayURL == "" && config.ProviderGatewayListen != LocalGatewayOff {
-			gatewayListener, gatewayOrigin, err = openLocalGateway(ctx, config.ProviderGatewayListen, dockerProvider)
-			switch {
-			case err != nil && config.ProviderGatewayListen != "":
-				_ = dockerProvider.Close()
+		if closeProvider == nil {
+			closeProvider = func() error { return nil }
+		}
+	} else {
+		switch config.Provider {
+		case "docker":
+			if config.Docker.StateDir == "" {
+				config.Docker.StateDir = filepath.Join(config.DataDir, "docker-provider")
+			}
+			if config.DockerCPUs > 0 {
+				config.Docker.NanoCPUs = int64(config.DockerCPUs * 1_000_000_000)
+			}
+			dockerProvider, err := dockerprovider.New(config.Docker)
+			if err != nil {
 				_ = httpServer.Close()
 				_ = previewHTTPServer.Close()
-				return err
-			case err != nil:
-				config.Logger.Printf(
-					"WARNING: provider connections are unavailable: no local provider gateway (%v); "+
-						"set --provider-gateway-listen or --provider-gateway-url", err,
-				)
-			default:
-				defer gatewayListener.Close()
+				return fmt.Errorf("initialize Docker provider: %w", err)
 			}
+			provider = dockerProvider
+			closeProvider = dockerProvider.Close
+			if config.ProviderGatewayURL == "" && config.ProviderGatewayListen != LocalGatewayOff {
+				gatewayListener, gatewayOrigin, err = openLocalGateway(ctx, config.ProviderGatewayListen, dockerProvider)
+				switch {
+				case err != nil && config.ProviderGatewayListen != "":
+					_ = dockerProvider.Close()
+					_ = httpServer.Close()
+					_ = previewHTTPServer.Close()
+					return err
+				case err != nil:
+					config.Logger.Printf(
+						"WARNING: provider connections are unavailable: no local provider gateway (%v); "+
+							"set --provider-gateway-listen or --provider-gateway-url", err,
+					)
+				default:
+					defer gatewayListener.Close()
+				}
+			}
+		case "agentsandbox":
+			agentSandboxProvider, err := agentsandboxprovider.New(config.AgentSandbox)
+			if err != nil {
+				_ = httpServer.Close()
+				_ = previewHTTPServer.Close()
+				return fmt.Errorf("initialize Agent Sandbox provider: %w", err)
+			}
+			provider = agentSandboxProvider
+			closeProvider = agentSandboxProvider.Close
 		}
-	case "agentsandbox":
-		agentSandboxProvider, err := agentsandboxprovider.New(config.AgentSandbox)
-		if err != nil {
-			_ = httpServer.Close()
-			_ = previewHTTPServer.Close()
-			return fmt.Errorf("initialize Agent Sandbox provider: %w", err)
-		}
-		provider = agentSandboxProvider
-		closeProvider = agentSandboxProvider.Close
 	}
 	defer closeProvider()
 	providerStarted := time.Now()

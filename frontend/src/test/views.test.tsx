@@ -226,7 +226,7 @@ describe("Native harness launcher", () => {
   it("adds an installed agent to a Project without leaving the launcher", async () => {
     const opencode = launcherProject.harnessImages![0]!;
     vi.spyOn(api, "capabilities").mockResolvedValue({
-      providerVersion: "fake/v1",
+      providerVersion: "docker/v1",
       attach: true,
       run: true,
       structured: false,
@@ -551,7 +551,7 @@ describe("Capsule detail states", () => {
     });
     const moments = vi.spyOn(api, "moments").mockResolvedValue({ items: [] });
     vi.spyOn(api, "capabilities").mockResolvedValue({
-      providerVersion: "fake/v1",
+      providerVersion: "docker/v1",
       attach: false,
       run: false,
       structured: true,
@@ -605,7 +605,7 @@ describe("Capsule detail states", () => {
       items: [{ name: "opencode-structured", structured: true, pty: false }],
     });
     vi.spyOn(api, "capabilities").mockResolvedValue({
-      providerVersion: "fake/v1",
+      providerVersion: "docker/v1",
       attach: false,
       run: false,
       structured: true,
@@ -829,7 +829,7 @@ describe("Capsule detail states", () => {
     vi.spyOn(api, "capsule").mockResolvedValue(nativeCapsule);
     vi.spyOn(api, "runs").mockResolvedValue({ items: [failedRun] });
     vi.spyOn(api, "capabilities").mockResolvedValue({
-      providerVersion: "fake/v1",
+      providerVersion: "docker/v1",
       attach: true,
       run: true,
       git: false,

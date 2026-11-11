@@ -12,12 +12,15 @@ const setup={id:"setup",harness:"codex",name:"My Codex setup",revision:"rev-2",d
 const project={id:"project",name:"Project",createdAt:setup.createdAt,updatedAt:setup.createdAt,resourceVersion:1,harnessImages:[{name:"codex",imageReference:"example/codex:v1"}]};
 const capsule={id:"capsule",projectId:project.id,timelineId:"timeline",name:"generated",state:"Creating" as const,desiredState:"Ready" as const,restoreComplete:true,createdAt:setup.createdAt,updatedAt:setup.createdAt,resourceVersion:1};
 function show(ui:React.ReactNode){return render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}})}><MemoryRouter>{ui}</MemoryRouter></QueryClientProvider>);}
+async function openHarness(name: string) {
+  await userEvent.click(await screen.findByRole("button", { name }));
+}
 afterEach(()=>{cleanup();vi.restoreAllMocks();localStorage.clear();});
 it("shows saved revision contents and rolls back only future launches",async()=>{
  vi.spyOn(api,"harnessSetups").mockResolvedValue({items:[setup]});vi.spyOn(api,"providerConnections").mockResolvedValue({items:[],enabled:false});
  vi.spyOn(api,"harnessSetupRevisions").mockResolvedValue({items:[{id:"rev-1",setupId:setup.id,digest:"abc",files:[".codex/AGENTS.md"],createdAt:setup.createdAt}]});
  const mutate=vi.spyOn(api,"mutateHarnessSetup").mockResolvedValue({...setup,revision:"rev-1",resourceVersion:3});
- show(<HarnessSetups/>);await userEvent.click(await screen.findByRole("button",{name:"Files and history"}));
+ show(<HarnessSetups/>);await openHarness("Manage Codex");await userEvent.click(await screen.findByRole("button",{name:"Files and history"}));
  await userEvent.click(await screen.findByText(/1 files/));expect(screen.getByText(".codex/AGENTS.md")).toBeInTheDocument();
  await userEvent.click(screen.getByRole("button",{name:"Use this revision for new Capsules"}));await waitFor(()=>expect(mutate).toHaveBeenCalledWith("setup",{revision:"rev-1",expectedResourceVersion:2}));
 });
@@ -63,9 +66,10 @@ it("grants a custom endpoint connection to a DeepSeek Harness task before spawni
 it("groups settings under plain section headings without nested disclosures",async()=>{
  vi.spyOn(api,"harnessSetups").mockResolvedValue({items:[setup]});vi.spyOn(api,"providerConnections").mockResolvedValue({items:[],enabled:true});
  const view=show(<HarnessSetups/>);
- expect(screen.getByRole("heading",{level:1,name:"Harness settings"})).toBeInTheDocument();
+ expect(screen.getByRole("heading",{level:1,name:"Harnesses"})).toBeInTheDocument();
+ await openHarness("Manage Codex");
  expect(await screen.findByRole("heading",{level:3,name:/My Codex setup/})).toBeInTheDocument();
- expect(screen.getAllByRole("heading",{level:2}).map(heading=>heading.textContent)).toEqual(["Your setups","Import from this computer","Provider connections"]);
+ expect(screen.getAllByRole("heading",{level:2}).map(heading=>heading.textContent)).toEqual(["Codex","Import from this computer","Provider connections"]);
  expect(view.container.querySelector("details")).toBeNull();
  expect(screen.getByRole("button",{name:"Add skills folder"})).toBeInTheDocument();
  expect(view.container).toHaveTextContent("Dependency folders such as node_modules and login caches are excluded; you sign in to each harness separately.");
@@ -80,6 +84,7 @@ it("saves a self-hosted endpoint with an explicit private HTTP opt-in",async()=>
  vi.spyOn(api,"harnessSetups").mockResolvedValue({items:[]});vi.spyOn(api,"providerConnections").mockResolvedValue({items:[],enabled:true,privateHttpAllowed:true});
  const save=vi.spyOn(api,"saveProviderConnection").mockResolvedValue({id:"c",provider:"openai-compatible",name:"DGX",createdAt:setup.createdAt,resourceVersion:1,revoked:false});
  show(<HarnessSetups/>);
+ await openHarness("Connect Codex");
  await userEvent.selectOptions(await screen.findByLabelText("Provider"),"openai-compatible");
  expect(screen.getByLabelText("API key (optional)")).not.toBeRequired();
  await userEvent.type(screen.getByLabelText("Connection name"),"DGX");
@@ -94,6 +99,7 @@ it("saves the reasoning effort levels a self-hosted model accepts",async()=>{
  vi.spyOn(api,"harnessSetups").mockResolvedValue({items:[]});vi.spyOn(api,"providerConnections").mockResolvedValue({items:[],enabled:true});
  const save=vi.spyOn(api,"saveProviderConnection").mockResolvedValue({id:"c",provider:"openai-compatible",name:"GLM",createdAt:setup.createdAt,resourceVersion:1,revoked:false});
  show(<HarnessSetups/>);
+ await openHarness("Connect Codex");
  await userEvent.selectOptions(await screen.findByLabelText("Provider"),"openai-compatible");
  expect(screen.queryByRole("group",{name:"Reasoning effort levels (optional)"})).toBeNull();
  await userEvent.type(screen.getByLabelText("Base URL"),"https://models.example.com");
@@ -114,6 +120,7 @@ it("signs in to Claude from the settings page and does not show a token",async()
  const begin=vi.spyOn(api,"beginClaudeLogin").mockResolvedValue({loginId:"login-1",authorizeUrl:"https://claude.ai/oauth/authorize?code_challenge=abc&state=state-1",expiresAt:setup.createdAt,manual:false});
  vi.spyOn(api,"getClaudeLogin").mockResolvedValue({status:"complete",connectionId:"claude-login"});
  show(<HarnessSetups/>);
+ await openHarness("Connect Claude Code");
  await user.selectOptions(await screen.findByLabelText("Provider"),"anthropic");
  const signIn=screen.getByRole("button",{name:"Sign in with Claude"});
  expect(signIn.querySelector("img")).toHaveAttribute("alt","");
@@ -135,6 +142,7 @@ it("saves, replaces, and clears a pasted Claude login without showing it again",
  vi.spyOn(api,"providerConnections").mockResolvedValue({items:[],enabled:true});
  const save=vi.spyOn(api,"saveProviderConnection").mockResolvedValue(saved);
  show(<HarnessSetups/>);
+ await openHarness("Connect Claude Code");
  await user.selectOptions(await screen.findByLabelText("Provider"),"anthropic");
  await user.click(screen.getByRole("button",{name:"Use an API key or a setup token instead"}));
  expect(screen.queryByText("Fallback credential")).toBeNull();
@@ -151,6 +159,7 @@ it("saves, replaces, and clears a pasted Claude login without showing it again",
  vi.spyOn(api,"providerConnections").mockResolvedValue({items:[saved],enabled:true});
  cleanup();
  show(<HarnessSetups/>);
+ await openHarness("Manage Claude Code");
  expect(await screen.findByText(/Signed in/)).toBeInTheDocument();
  expect(document.body.textContent).not.toContain(secret);
  await user.click(screen.getByRole("button",{name:"Replace login"}));
@@ -168,6 +177,7 @@ it("saves, replaces, and clears a pasted Claude login without showing it again",
 it("hides the private HTTP opt-in unless the daemon allows it",async()=>{
  vi.spyOn(api,"harnessSetups").mockResolvedValue({items:[]});vi.spyOn(api,"providerConnections").mockResolvedValue({items:[],enabled:true});
  show(<HarnessSetups/>);
+ await openHarness("Connect Codex");
  await userEvent.selectOptions(await screen.findByLabelText("Provider"),"anthropic-compatible");
  expect(screen.getByLabelText("Base URL")).toBeRequired();
  expect(screen.queryByLabelText("Use plain HTTP to a private-network server")).toBeNull();

@@ -66,9 +66,8 @@ failed reads as failed in both.
 A slim status bar runs along the bottom of the shell. It shows whether the
 browser is online and whether the daemon API answers the capabilities request,
 the provider version, and counts of Capsules that need attention, are working,
-or are ready for review, each linking to the Inbox. When the provider is
-`fake`, the bar turns to a warning that Capsules are simulated and no agents
-run. It shows no resource use because the API exposes no resource metrics
+or are ready for review, each linking to the Inbox. It shows no resource use
+because the API exposes no resource metrics
 (`capabilities.resourceMetrics` is false). "Notify me" asks this browser for
 the Notification permission. Granted alerts fire only while the tab is hidden
 and only when a Capsule the operator is not already viewing enters needs-you;
@@ -201,11 +200,12 @@ screen, so Back does not return to a Capsule that was deleted.
 
 ## Development and production assets
 
-Install the pinned Bun dependency graph and run the Vite development server:
+Install the pinned Bun dependency graph and run the Vite development server
+against a local Docker daemon:
 
 ```console
 make bootstrap
-go run ./cmd/meridiand --provider=fake --data-dir=/tmp/meridian-ui
+go run ./cmd/meridiand --provider=docker --data-dir=/tmp/meridian-ui
 cd frontend
 bun run dev
 ```
@@ -366,7 +366,7 @@ expose Docker. Hop-by-hop headers, authorization, cookies, and
 discovery, handshakes, frames, and time are bounded. WebSockets are supported
 and close when the ticket expires or is revoked.
 
-The fake provider reports preview unsupported and the UI shows that state.
+A provider that does not implement preview reports it unsupported, and the UI shows that state.
 Preview URLs are bearer secrets: do not log, persist, or share them. Application
 cookies, redirects, absolute root paths, ports below 1024, and bodies over 8 MiB
 are intentionally unsupported. Preview ingress remains part of the trusted
