@@ -883,6 +883,19 @@
   margin-top: 1.2rem;
 }
 
+.project-settings .agent-picker {
+  margin-top: 1.2rem;
+}
+
+.project-harness {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  font-size: var(--text-sm);
+  font-weight: 620;
+}
+
 .harness-list {
   display: grid;
   width: min(48rem, calc(100% - 2.2rem));
