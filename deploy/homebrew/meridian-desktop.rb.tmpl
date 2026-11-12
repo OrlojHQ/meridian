@@ -1,0 +1,47 @@
+# typed: false
+# frozen_string_literal: true
+
+# Generated from deploy/homebrew/meridian-desktop.rb.tmpl in OrlojHQ/meridian
+# by scripts/render-homebrew-cask.sh. Do not edit; changes are overwritten on
+# the next release. The CLI formula is separate and is not changed here.
+cask "meridian-desktop" do
+  version "@VERSION@"
+  sha256 "@SHA256_MACOS_UNIVERSAL@"
+
+  url "https://github.com/OrlojHQ/meridian/releases/download/v#{version}/meridian-desktop_#{version}_macOS_universal.dmg"
+  name "Meridian"
+  desc "Desktop window for the Meridian coding workspace"
+  homepage "https://github.com/OrlojHQ/meridian"
+
+  app "Meridian.app"
+
+  # The disk image is unsigned. Clearing the quarantine flag is what lets
+  # Gatekeeper open it without the "damaged" refusal. must_succeed is false
+  # because the attribute is already absent on a second install.
+  postflight do
+    system_command "/usr/bin/xattr",
+                   args: ["-dr", "com.apple.quarantine", "#{appdir}/Meridian.app"],
+                   must_succeed: false
+  end
+
+  caveats do
+    <<~EOS
+      This desktop build is not code-signed or notarized. After install, the
+      cask removes the com.apple.quarantine flag from Meridian.app.
+
+      If you downloaded the disk image yourself, open it, copy Meridian to
+      Applications, then right-click Meridian and choose Open. Or run:
+        xattr -dr com.apple.quarantine /Applications/Meridian.app
+
+      The app is a window onto meridiand. Install and start the daemon with
+      the meridian formula if it is not already running.
+    EOS
+  end
+
+  zap trash: [
+    "~/Library/Application Support/io.orloj.meridian",
+    "~/Library/Caches/io.orloj.meridian",
+    "~/Library/Logs/io.orloj.meridian",
+    "~/Library/WebKit/io.orloj.meridian",
+  ]
+end

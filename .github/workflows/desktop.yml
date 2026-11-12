@@ -23,6 +23,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
+      - name: Check desktop release scripts
+        run: |
+          set -euo pipefail
+          bash -n scripts/release-desktop.sh
+          bash -n scripts/desktop-apple-signing.sh
+          bash -n scripts/render-homebrew-cask.sh
+          hash="$(printf '%064d' 0 | tr '0-9' 'a')"
+          printf '%s  %s\n' "${hash}" "meridian-desktop_0.0.0_macOS_universal.dmg" > "${RUNNER_TEMP}/checksums.txt"
+          scripts/render-homebrew-cask.sh 0.0.0 "${RUNNER_TEMP}/checksums.txt" > "${RUNNER_TEMP}/meridian-desktop.rb"
+          ruby -c "${RUNNER_TEMP}/meridian-desktop.rb"
+          grep -q 'cask "meridian-desktop"' "${RUNNER_TEMP}/meridian-desktop.rb"
+
       - name: Setup Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:

@@ -119,6 +119,30 @@ meridian tui --harness claude
 login; its log is in `$(brew --prefix)/var/log/meridiand.log`. Upgrade with
 `brew upgrade meridian`. Stop with `brew services stop meridian`.
 
+### Desktop window (macOS)
+
+The desktop app is the same web UI in its own window. It is not code-signed
+yet. On macOS:
+
+```console
+brew install --cask orlojhq/tap/meridian-desktop
+```
+
+The cask removes the `com.apple.quarantine` flag after install so Gatekeeper
+does not report the app as damaged. The `meridian` formula above is unchanged
+and is still how you install the daemon and the CLI.
+
+If you download the disk image from
+[Releases](https://github.com/OrlojHQ/meridian/releases) instead, open it, copy
+Meridian to Applications, then right-click Meridian and choose Open. Or run:
+
+```console
+xattr -dr com.apple.quarantine /Applications/Meridian.app
+```
+
+Linux installs from the release `.deb` (`meridian-desktop_<version>_linux_amd64.deb`).
+There is no Linux cask.
+
 ### From a release
 
 Download the archive for your platform from

@@ -44,8 +44,12 @@ It does not invent a user identity.
   "Meridian needs you" and the body is the same count string the web UI
   already uses. The tray tooltip uses that same count. No Capsule name, prompt,
   or permission text is accepted.
-- v1 builds are macOS and Linux. Windows is a later follow-up. Code signing
-  and auto-update are not part of this decision.
+- v1 builds are macOS and Linux and are distributed unsigned. A tag release
+  attaches a universal macOS disk image and an amd64 Linux package, and the
+  Homebrew tap publishes a cask. Apple code signing and notarization run only
+  when their secrets are configured. Windows is a later follow-up. Code
+  signing without those secrets, and auto-update, are not part of this
+  decision.
 - The bundle identifier is not chosen. Builds use `io.orloj.meridian`, the
   same prefix the daemon already uses for Docker labels, until a final
   identifier is picked. Do not treat that string as the decided id.

@@ -1,9 +1,11 @@
 name: homebrew
 
-# Release drafts are not publicly downloadable, so the formula is rendered and
-# committed to OrlojHQ/homebrew-tap only after a release is published.
-# Prereleases never reach the tap. A release event renders the template from
-# the tagged source; a manual run renders it from the selected branch.
+# Release drafts are not publicly downloadable, so the formula and the
+# desktop cask are rendered and committed to OrlojHQ/homebrew-tap only after
+# a release is published. Prereleases never reach the tap. A release event
+# renders the templates from the tagged source; a manual run renders them
+# from the selected branch. HOMEBREW_TAP_TOKEN must be able to push both
+# Formula/meridian.rb and Casks/meridian-desktop.rb.
 on:
   release:
     types: [published]
@@ -68,34 +70,38 @@ jobs:
             --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/tags/${TAG}" \
             --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
             "${dir}/checksums.txt"
-      - name: Render formula
+      - name: Render formula and desktop cask
         env:
           VERSION: ${{ steps.release.outputs.version }}
         run: |
           set -euo pipefail
           scripts/render-homebrew-formula.sh "${VERSION}" \
             "${RUNNER_TEMP}/release/checksums.txt" > "${RUNNER_TEMP}/meridian.rb"
+          scripts/render-homebrew-cask.sh "${VERSION}" \
+            "${RUNNER_TEMP}/release/checksums.txt" > "${RUNNER_TEMP}/meridian-desktop.rb"
           ruby -c "${RUNNER_TEMP}/meridian.rb"
+          ruby -c "${RUNNER_TEMP}/meridian-desktop.rb"
       - name: Checkout tap
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           repository: OrlojHQ/homebrew-tap
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           path: tap
-      - name: Commit formula
+      - name: Commit formula and desktop cask
         env:
           TAG: ${{ steps.release.outputs.tag }}
         working-directory: tap
         run: |
           set -euo pipefail
-          mkdir -p Formula
+          mkdir -p Formula Casks
           cp "${RUNNER_TEMP}/meridian.rb" Formula/meridian.rb
-          git add Formula/meridian.rb
+          cp "${RUNNER_TEMP}/meridian-desktop.rb" Casks/meridian-desktop.rb
+          git add Formula/meridian.rb Casks/meridian-desktop.rb
           if git diff --cached --quiet; then
-            echo "Formula already at ${TAG}"
+            echo "Formula and desktop cask already at ${TAG}"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "Brew formula update for meridian version ${TAG}"
+          git commit -m "Brew formula and desktop cask update for meridian version ${TAG}"
           git push origin HEAD

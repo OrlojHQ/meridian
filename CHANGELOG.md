@@ -16,6 +16,11 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   app started. Notifications and the tray go through a runtime bridge the
   browser ignores. Windows is a later follow-up. The bundle identifier is
   not chosen; builds use `io.orloj.meridian` until it is.
+- Tag releases attach an unsigned universal macOS disk image and app zip,
+  plus an amd64 Linux `.deb`, with checksums, SPDX SBOMs, and Sigstore
+  bundles. `brew install --cask orlojhq/tap/meridian-desktop` installs the
+  disk image and clears the quarantine flag. Apple signing stays off until
+  its secrets are set. The `meridian` formula is unchanged.
 
 ## [0.6.0] - 2026-11-11
 

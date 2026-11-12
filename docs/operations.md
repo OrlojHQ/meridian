@@ -43,6 +43,23 @@ On macOS, replace `sha256sum` with:
 grep "  ${ARCHIVE}$" checksums.txt | shasum -a 256 -c -
 ```
 
+The desktop app is attached to the same release and listed in `checksums.txt`.
+The macOS file is `meridian-desktop_${VERSION}_macOS_universal.dmg` (a
+universal disk image) plus a zip of `Meridian.app`. The Linux file is
+`meridian-desktop_${VERSION}_linux_amd64.deb`. Each has a `.spdx.json` SBOM
+and a `.sigstore.json` bundle signed by this same workflow. Verify them with
+the commands above. The build is unsigned until Apple signing secrets are
+configured; verification here is the release signature, not an Apple
+Developer ID signature.
+
+With Homebrew on macOS, `brew install --cask orlojhq/tap/meridian-desktop`
+installs that disk image and clears `com.apple.quarantine`. A direct download
+needs the same clearance, or a right-click Open:
+
+```console
+xattr -dr com.apple.quarantine /Applications/Meridian.app
+```
+
 Verify release images by digest, never by an unverified mutable tag:
 
 ```console
@@ -424,9 +441,14 @@ With Homebrew, run `brew services stop meridian` and take the backup before
 receives published, non-prerelease versions. When a release is published,
 `.github/workflows/homebrew.yml` verifies the release's signed `checksums.txt`,
 renders `deploy/homebrew/meridian.rb.tmpl` with
-`scripts/render-homebrew-formula.sh`, and commits it to `OrlojHQ/homebrew-tap`
-using the `HOMEBREW_TAP_TOKEN` repository secret. Run the workflow manually
-with a tag to retry or backfill a release.
+`scripts/render-homebrew-formula.sh` and
+`deploy/homebrew/meridian-desktop.rb.tmpl` with
+`scripts/render-homebrew-cask.sh`, and commits `Formula/meridian.rb` and
+`Casks/meridian-desktop.rb` to `OrlojHQ/homebrew-tap` using the
+`HOMEBREW_TAP_TOKEN` repository secret. That token must be able to create
+`Casks/` as well as update `Formula/`. Run the workflow manually with a tag
+to retry or backfill a release. Do not publish the draft until the desktop
+jobs have uploaded the disk image and rewritten `checksums.txt`.
 
 Startup applies forward-only SQLite migrations transactionally. A database with
 a newer schema is rejected. Rollback is possible only by stopping the new

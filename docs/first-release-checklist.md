@@ -32,6 +32,10 @@ No step in this checklist authorizes a release from an unreviewed working tree.
       pending external security review and a validated hardened runtime.
 - [ ] Publish the already verified draft manually; do not sign, tag, or publish
       from a developer workstation.
-- [ ] Confirm the `homebrew` workflow committed `Formula/meridian.rb` for the
-      tag to `OrlojHQ/homebrew-tap`, then `brew upgrade meridian` and
-      `brew test meridian` on a disposable machine.
+- [ ] Confirm the release draft includes the universal macOS desktop disk
+      image, the app zip, the amd64 Linux `.deb`, their SPDX SBOMs, and
+      Sigstore bundles, and that `checksums.txt` lists them.
+- [ ] Confirm the `homebrew` workflow committed `Formula/meridian.rb` and
+      `Casks/meridian-desktop.rb` for the tag to `OrlojHQ/homebrew-tap`, then
+      `brew upgrade meridian`, `brew test meridian`, and
+      `brew install --cask orlojhq/tap/meridian-desktop` on a disposable Mac.
