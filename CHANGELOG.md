@@ -7,30 +7,56 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-11
+
+### Upgrade notes
+
+- No database migration. Capsules created before the upgrade keep the pack
+  image they were created with, so their composer keeps the harness's own
+  model labels until you start a new Capsule; new Capsules use this
+  release's packs, which report the model and effort that actually run.
+- `POST /projects/{projectId}/threads` now accepts a request without
+  `prompt`. Existing clients that send one are unaffected.
+
+### Added
+
+- A New Capsule dialog replaces the home-page composer. It asks only for
+  Thread or CLI, the Project, the harness, and a provider connection when
+  more than one fits, and opens from the sidebar, the home page, and each
+  Project's `+`. The home page lists recent work.
+- A Thread started from the dialog opens idle, without a first message, so
+  you can pick the harness's model and effort before the first turn.
+  `meridian thread spawn` still requires a prompt.
+- The dialog can start a Thread as a lead agent with subagents, optionally
+  approving each spawn. It asks for no limits: a lead may create up to 16
+  subagents, at most 4 running at once, within the default 8-hour deadline.
+  A lead also starts idle.
+- Project settings can add installation harness packs to a Project, so
+  future Capsules can use more than the initial harness. The per-Project
+  launcher shares these controls.
+
 ### Changed
 
-- New Capsules start from a New Capsule dialog that asks only for Thread or
-  CLI, the Project, and the harness. The home page lists recent work and
-  opens the dialog.
-- A Thread started this way opens idle, without a first message, so you can
-  pick the harness's model and effort before the first turn.
-  `POST /projects/{projectId}/threads` now accepts a request without `prompt`,
-  for a lead (`coordination`) too. `meridian thread spawn` still requires a
-  prompt.
-- The New Capsule dialog can start a Thread as a lead agent with subagents,
-  optionally approving each spawn. It asks for no limits: a lead may create
-  up to 16 subagents, at most 4 running at once, within the default 8-hour
-  deadline.
-- The per-Project launcher's "Subagents" limit is no longer silently capped
-  at 8 by the default tree total.
 - The Thread composer's model button names the model that runs, such as
   "Opus 5.5" rather than "Default (recommended)", and the effort button shows
   the level in effect from the start. Claude Code sessions ask Claude Code
   for both before the first turn (ADR 0042). Adapters and `capsuled`
   negotiate a new `resolvedModel` capability for the `models` frame's
   `resolved` name, exposed as `ThreadModels.resolved`.
+- While a new Capsule provisions, its page shows "Starting the session"
+  instead of offering a second way to start one.
+
+### Fixed
+
+- CLI mode no longer requires a provider connection; it opens the harness
+  for interactive sign-in. Only Thread mode needs one, and it says so.
+- The Capsule header no longer draws a pinned harness setup note over the
+  title, branch, and activity pill.
 - The Thread composer wraps its controls below the message box when its own
-  column is narrow, not only on narrow windows.
+  column is narrow, such as with the Capsule tools open, not only on narrow
+  windows.
+- The per-Project launcher's "Subagents" limit is no longer silently capped
+  at 8 by the default tree total.
 
 ## [0.5.0] - 2026-11-11
 
@@ -824,7 +850,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - Docker and Agent Sandbox are not claimed as hostile multi-tenant isolation
   boundaries; hardened runtime deployment and external review remain required.
 
-[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/OrlojHQ/meridian/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/OrlojHQ/meridian/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/OrlojHQ/meridian/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/OrlojHQ/meridian/compare/v0.3.0...v0.4.0
