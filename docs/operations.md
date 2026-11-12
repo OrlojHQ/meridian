@@ -53,8 +53,20 @@ configured; verification here is the release signature, not an Apple
 Developer ID signature.
 
 With Homebrew on macOS, `brew install --cask orlojhq/tap/meridian-desktop`
-installs that disk image and clears `com.apple.quarantine`. A direct download
-needs the same clearance, or a right-click Open:
+installs that disk image and clears `com.apple.quarantine`. Without Homebrew:
+
+```console
+curl -fsSL https://raw.githubusercontent.com/OrlojHQ/meridian/main/scripts/install-desktop.sh | sh
+```
+
+`scripts/install-desktop.sh` is also uploaded to the release as
+`install-desktop.sh`. It downloads the desktop archive for this machine,
+refuses a checksum mismatch, and installs it. On macOS the target is
+`/Applications` when that directory is writable, otherwise `~/Applications`,
+and the script runs `xattr -dr com.apple.quarantine` on `Meridian.app`. On
+Linux amd64 it installs the `.deb` with `sudo apt install`. `--cli` installs
+the `meridian` and `meridiand` binaries instead. A direct download needs the
+same quarantine clearance, or a right-click Open:
 
 ```console
 xattr -dr com.apple.quarantine /Applications/Meridian.app

@@ -19,8 +19,11 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - Tag releases attach an unsigned universal macOS disk image and app zip,
   plus an amd64 Linux `.deb`, with checksums, SPDX SBOMs, and Sigstore
   bundles. `brew install --cask orlojhq/tap/meridian-desktop` installs the
-  disk image and clears the quarantine flag. Apple signing stays off until
-  its secrets are set. The `meridian` formula is unchanged.
+  disk image and clears the quarantine flag. Without Homebrew,
+  `curl -fsSL https://raw.githubusercontent.com/OrlojHQ/meridian/main/scripts/install-desktop.sh | sh`
+  downloads that release, checks `checksums.txt`, and installs the desktop
+  app (or the CLI binaries with `--cli`). Apple signing stays off until its
+  secrets are set. The `meridian` formula is unchanged.
 
 ## [0.6.0] - 2026-11-11
 

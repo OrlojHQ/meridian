@@ -118,6 +118,11 @@ jobs:
             cosign sign-blob --yes --bundle "${artifact}.sigstore.json" "${artifact}"
           done
           gh release upload "${TAG}" dist/*.sigstore.json --clobber
+      - name: Attach desktop install script
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: gh release upload "${TAG}" scripts/install-desktop.sh --clobber
 
   harness-images:
     name: Publish official harness pack images

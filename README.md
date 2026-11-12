@@ -119,29 +119,55 @@ meridian tui --harness claude
 login; its log is in `$(brew --prefix)/var/log/meridiand.log`. Upgrade with
 `brew upgrade meridian`. Stop with `brew services stop meridian`.
 
-### Desktop window (macOS)
+### Desktop window
 
 The desktop app is the same web UI in its own window. It is not code-signed
-yet. On macOS:
+yet. The `meridian` formula above is unchanged and is still how you install
+the daemon and the CLI on its own.
+
+With Homebrew on macOS:
 
 ```console
 brew install --cask orlojhq/tap/meridian-desktop
 ```
 
 The cask removes the `com.apple.quarantine` flag after install so Gatekeeper
-does not report the app as damaged. The `meridian` formula above is unchanged
-and is still how you install the daemon and the CLI.
+does not report the app as damaged.
+
+Without Homebrew, on macOS or on Linux amd64:
+
+```console
+curl -fsSL https://raw.githubusercontent.com/OrlojHQ/meridian/main/scripts/install-desktop.sh | sh
+```
+
+The script downloads the latest published release, checks it against that
+release's `checksums.txt`, and stops if the check fails. On macOS it installs
+`Meridian.app` to `/Applications` when that directory is writable, and to
+`~/Applications` otherwise, then clears the quarantine flag. On Linux it
+installs the `.deb` with `sudo apt install`. Each release also carries this
+script as `install-desktop.sh`.
+
+Pin a version, or install only the `meridian` and `meridiand` binaries:
+
+```console
+curl -fsSL https://raw.githubusercontent.com/OrlojHQ/meridian/main/scripts/install-desktop.sh | sh -s -- --version 0.6.0
+curl -fsSL https://raw.githubusercontent.com/OrlojHQ/meridian/main/scripts/install-desktop.sh | sh -s -- --cli --version 0.6.0
+```
+
+`MERIDIAN_VERSION` does the same job as `--version`. To remove the app:
+`rm -rf /Applications/Meridian.app` (or `~/Applications/Meridian.app` when it
+was installed there), or `sudo apt remove meridian` on Linux. To remove the
+CLI binaries, delete `meridian` and `meridiand` from the directory the script
+printed. Removing the app does not delete Meridian projects.
 
 If you download the disk image from
-[Releases](https://github.com/OrlojHQ/meridian/releases) instead, open it, copy
-Meridian to Applications, then right-click Meridian and choose Open. Or run:
+[Releases](https://github.com/OrlojHQ/meridian/releases) yourself, open it,
+copy Meridian to Applications, then right-click Meridian and choose Open. Or
+run:
 
 ```console
 xattr -dr com.apple.quarantine /Applications/Meridian.app
 ```
-
-Linux installs from the release `.deb` (`meridian-desktop_<version>_linux_amd64.deb`).
-There is no Linux cask.
 
 ### From a release
 
