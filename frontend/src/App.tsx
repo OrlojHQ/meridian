@@ -38,7 +38,7 @@ import type {
 } from "./api/generated/types.gen";
 import { queries } from "./api/queries";
 import { olderPackRelease } from "./api/harnessPacks";
-import { HomeComposer } from "./components/HomeComposer";
+import { Home } from "./components/Home";
 import { ProjectSettings } from "./components/ProjectSettings";
 import { CapsuleStartup } from "./components/CapsuleStartup";
 import { DeliveryDecision } from "./components/DeliveryDecision";
@@ -812,12 +812,21 @@ export function CapsuleDetail() {
     value.state === "Ready" &&
     profiles.data?.items.some((profile) => profile.structured) === true;
   const requested = searchParams.get("session") ?? "";
+  // A Thread started from the New Capsule dialog exists only once its
+  // Capsule is Ready, so the page can ask for it before it is listed. Wait
+  // for it rather than offering a second way to start one.
+  const awaitingThread =
+    requested !== "" &&
+    requested !== NEW_SESSION &&
+    requested !== TERMINAL_SESSION &&
+    !sessions.some((session) => session.id === requested || session.kind === "thread") &&
+    (value.state === "Ready" || isStarting(value));
   const selected =
     (requested === NEW_SESSION && canCreateThread
       ? NEW_SESSION
       : sessions.find((session) => session.id === requested)?.id) ??
     defaultSession(sessions)?.id ??
-    (canCreateThread ? NEW_SESSION : "");
+    (canCreateThread && !awaitingThread ? NEW_SESSION : "");
   const selectSession = (id: string) =>
     setSearchParams({ session: id }, { replace: true });
   const projectName = projects.data?.items.find(
@@ -989,7 +998,7 @@ export function CapsuleDetail() {
           <WorkspaceSkeleton label="Loading sessions…" />
         ) : threads.isError ? (
           <ErrorState error={threads.error} />
-        ) : isStarting(value) ? (
+        ) : isStarting(value) || awaitingThread ? (
           <WorkspaceSkeleton label="Starting the session" />
         ) : (
           <p className="tool-empty">
@@ -1258,7 +1267,7 @@ export function App() {
   return (
     <Routes>
       <Route path="/ui" element={<AppShell />}>
-        <Route index element={<HomeComposer />} />
+        <Route index element={<Home />} />
         <Route path="settings/harnesses" element={<HarnessSetups />} />
         <Route path="capsules/:capsuleId" element={<CapsuleDetail />} />
         <Route path="capsules/:capsuleId/diff" element={<DiffPage />} />

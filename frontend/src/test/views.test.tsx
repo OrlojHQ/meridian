@@ -587,6 +587,39 @@ describe("Capsule detail states", () => {
     expect(moments).not.toHaveBeenCalled();
   });
 
+  it("waits for a requested Thread that is not listed yet instead of offering a new session", async () => {
+    vi.spyOn(api, "capsule").mockResolvedValue(capsule);
+    vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "threads").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
+    vi.spyOn(api, "harnessProfiles").mockResolvedValue({
+      items: [{ name: "opencode-structured", structured: true, pty: false }],
+    });
+    vi.spyOn(api, "moments").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "capabilities").mockResolvedValue({
+      providerVersion: "docker/v1",
+      attach: false,
+      run: false,
+      structured: true,
+      git: false,
+      pause: true,
+      snapshot: false,
+      clone: false,
+      browse: false,
+      delivery: false,
+      preview: false,
+      resourceMetrics: false,
+    });
+    wrapper(
+      <Routes>
+        <Route path="/ui/capsules/:capsuleId" element={<CapsuleDetail />} />
+      </Routes>,
+      "/ui/capsules/capsule-1?session=thread-pending",
+    );
+    expect(await screen.findByText("Starting the session")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Start a session" })).not.toBeInTheDocument();
+  });
+
   it("shows the pinned harness setup and that Settings edits wait for the next Capsule", async () => {
     vi.spyOn(api, "capsule").mockResolvedValue({
       ...capsule,

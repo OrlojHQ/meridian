@@ -67,7 +67,7 @@ func newThreadSpawnCommand(config *cliConfig) *cobra.Command {
 				return err
 			}
 			input := &client.CreateProjectThreadRequest{
-				Harness: harness, Prompt: content, Coordination: coordination,
+				Harness: harness, Prompt: client.NewOptString(content), Coordination: coordination,
 			}
 			if name != "" {
 				input.Name = client.NewOptString(name)

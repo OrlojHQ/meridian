@@ -81,6 +81,18 @@ type claudeSession struct {
 	// default.
 	efforts map[string][]string
 	effort  string
+
+	// resolvedModels maps each listed model's value to the canonical model
+	// it runs; applied is the model and effort Claude Code last said are in
+	// effect, from get_settings or a turn's system/init record.
+	resolvedModels map[string]string
+	applied        claudeApplied
+}
+
+// claudeApplied is the model and effort Claude Code reports in effect.
+type claudeApplied struct {
+	Model  string `json:"model"`
+	Effort string `json:"effort"`
 }
 
 type claudeReportedCommand struct {
@@ -105,7 +117,7 @@ func RunClaudeStream(
 	if err := stream.Handshake(adapterproto.Capabilities{
 		Resume: true, ToolEvents: true, Permissions: config.Permissions,
 		InputRequests: config.Permissions, Heartbeat: false, OpaqueMetadata: true,
-		Commands: true, Models: true, Effort: true,
+		Commands: true, Models: true, Effort: true, ResolvedModel: true,
 	}); err != nil {
 		return err
 	}
@@ -393,6 +405,9 @@ func (s *claudeSession) upstream(record map[string]json.RawMessage) (bool, error
 		return false, s.result(record)
 	case "system":
 		if stringField(record, "subtype") == "init" {
+			if err := s.turnApplied(record); err != nil {
+				return false, err
+			}
 			return false, s.terminalCommands(record)
 		}
 	default:
@@ -422,6 +437,9 @@ func (s *claudeSession) controlResponse(record map[string]json.RawMessage) (bool
 	if subtype == "apply_flag_settings" {
 		return false, s.effortChanged(record, response.RequestID, response.Subtype == "success")
 	}
+	if subtype == "get_settings" {
+		return false, s.settingsReported(response.Response, response.Subtype == "success")
+	}
 	if subtype != "initialize" {
 		return false, nil
 	}
@@ -445,6 +463,7 @@ func (s *claudeSession) initializeModels(raw json.RawMessage) error {
 	var value struct {
 		Models []struct {
 			Value                 string   `json:"value"`
+			ResolvedModel         string   `json:"resolvedModel"`
 			DisplayName           string   `json:"displayName"`
 			Description           string   `json:"description"`
 			SupportsEffort        bool     `json:"supportsEffort"`
@@ -456,17 +475,133 @@ func (s *claudeSession) initializeModels(raw json.RawMessage) error {
 	}
 	s.models = newModelSet()
 	s.efforts = map[string][]string{}
+	s.resolvedModels = map[string]string{}
 	for _, model := range value.Models[:min(len(value.Models), 4*adapterproto.MaxModels)] {
 		s.models.add(model.Value, model.DisplayName, model.Description)
-		if model.SupportsEffort && s.models.has(model.Value) {
+		if !s.models.has(model.Value) {
+			continue
+		}
+		if model.SupportsEffort {
 			s.efforts[model.Value] = model.SupportedEffortLevels[:min(len(model.SupportedEffortLevels), adapterproto.MaxEfforts)]
+		}
+		if adapterproto.ValidModelID(model.ResolvedModel) {
+			s.resolvedModels[model.Value] = model.ResolvedModel
 		}
 	}
 	if s.models.has("default") {
 		s.models.setCurrent("default")
 	}
-	s.models.effort = effortLevels(s.efforts[s.models.current], s.effort)
+	s.reflectModels()
+	if err := s.stream.ReportModels(s.models); err != nil {
+		return err
+	}
+	return s.requestSettings()
+}
+
+// requestSettings asks Claude Code which model and effort are in effect.
+// Its initialize response lists models but not the effort a model starts
+// on, and a "default" row names an alias rather than a model.
+func (s *claudeSession) requestSettings() error {
+	s.modelSequence++
+	return s.control("claude-settings-"+strconv.Itoa(s.modelSequence), map[string]any{"subtype": "get_settings"})
+}
+
+// settingsReported takes the model and effort in effect from a get_settings
+// response. A Claude Code that refuses or omits it keeps the listed labels.
+func (s *claudeSession) settingsReported(raw json.RawMessage, ok bool) error {
+	var value struct {
+		Applied *struct {
+			Model  string  `json:"model"`
+			Effort *string `json:"effort"`
+		} `json:"applied"`
+	}
+	if !ok || s.models == nil || len(raw) == 0 || json.Unmarshal(raw, &value) != nil || value.Applied == nil {
+		return nil
+	}
+	applied := claudeApplied{Model: value.Applied.Model}
+	if value.Applied.Effort != nil {
+		applied.Effort = *value.Applied.Effort
+	}
+	return s.apply(applied)
+}
+
+// turnApplied takes the model and effort a turn runs from its system/init
+// record, which also catches a change made inside Claude Code, such as a
+// typed /model.
+func (s *claudeSession) turnApplied(record map[string]json.RawMessage) error {
+	if s.models == nil {
+		return nil
+	}
+	applied := claudeApplied{Model: stringField(record, "model"), Effort: stringField(record, "effort")}
+	if applied.Model == "" {
+		return nil
+	}
+	return s.apply(applied)
+}
+
+func (s *claudeSession) apply(applied claudeApplied) error {
+	if !adapterproto.ValidModelID(applied.Model) {
+		applied.Model = ""
+	}
+	if !adapterproto.ValidModelID(applied.Effort) {
+		applied.Effort = ""
+	}
+	if applied == s.applied {
+		return nil
+	}
+	s.applied = applied
+	s.reflectModels()
 	return s.stream.ReportModels(s.models)
+}
+
+// reflectModels sets the reported resolved model and effort levels for the
+// current option. A level Meridian applied wins over the one Claude Code
+// last reported, which may predate it.
+func (s *claudeSession) reflectModels() {
+	model := s.resolvedModels[s.models.current]
+	if s.applied.Model != "" {
+		model = s.applied.Model
+	}
+	s.models.resolved = claudeModelName(model)
+	s.models.effort = effortLevels(s.efforts[s.models.current], defaultString(s.effort, s.applied.Effort))
+}
+
+// claudeModelName turns a canonical Claude model ID such as
+// claude-opus-5-5 or claude-sonnet-4-5-20250929[1m] into a name such as
+// "Opus 5.5" or "Sonnet 4.5 (1M)". An ID in another shape has no name, and
+// the picker keeps the option's own label.
+func claudeModelName(id string) string {
+	suffix := ""
+	if trimmed, ok := strings.CutSuffix(id, "[1m]"); ok {
+		id, suffix = trimmed, " (1M)"
+	}
+	rest, ok := strings.CutPrefix(id, "claude-")
+	if !ok || rest == "" {
+		return ""
+	}
+	var words, numbers []string
+	for _, part := range strings.Split(rest, "-") {
+		switch {
+		case part == "":
+			return ""
+		case strings.Trim(part, "0123456789") == "":
+			if len(part) == 8 {
+				continue // a release date
+			}
+			if len(part) > 3 {
+				return ""
+			}
+			numbers = append(numbers, part)
+		case strings.Trim(part, "abcdefghijklmnopqrstuvwxyz") == "":
+			words = append(words, strings.ToUpper(part[:1])+part[1:])
+		default:
+			return ""
+		}
+	}
+	if len(words) == 0 || len(numbers) == 0 {
+		return ""
+	}
+	return strings.Join(words, " ") + " " + strings.Join(numbers, ".") + suffix
 }
 
 // effortChanged reports the outcome of an apply_flag_settings request that
@@ -483,7 +618,7 @@ func (s *claudeSession) effortChanged(record map[string]json.RawMessage, request
 			defaultString(failure.Error, "Claude Code did not change its effort"), adapterproto.MaxToolSummaryBytes))
 	}
 	s.effort = effort
-	s.models.effort = effortLevels(s.efforts[s.models.current], s.effort)
+	s.reflectModels()
 	return s.stream.ReportModels(s.models)
 }
 
@@ -500,8 +635,13 @@ func (s *claudeSession) modelSwitched(record map[string]json.RawMessage, request
 			defaultString(failure.Error, "Claude Code did not switch models"), adapterproto.MaxToolSummaryBytes))
 	}
 	s.models.setCurrent(model)
-	s.models.effort = effortLevels(s.efforts[model], s.effort)
-	return s.stream.ReportModels(s.models)
+	// The new model may start on another effort; ask again.
+	s.applied = claudeApplied{}
+	s.reflectModels()
+	if err := s.stream.ReportModels(s.models); err != nil {
+		return err
+	}
+	return s.requestSettings()
 }
 
 // initializeCommands reports the commands Claude Code lists in its

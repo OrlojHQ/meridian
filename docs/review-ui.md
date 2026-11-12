@@ -147,9 +147,22 @@ preselects the harness chosen when the operator last created a Project, if the
 installation still offers it, and otherwise the first pack in installation
 order. Only the harness name is remembered, in the browser's
 `meridian.newProjectHarness` storage entry, and only after the Project is
-created; the dialog works unchanged when browser storage is unavailable. Each
-Project heading owns its own `+` launcher, so Capsule creation is already
-scoped and does not ask for a Project again. The launcher starts with an agent
+created; the dialog works unchanged when browser storage is unavailable.
+
+The New Capsule dialog opens from the sidebar's New Capsule button, the home
+page, and each Project heading's `+`, which preselects that Project. It asks
+only for Thread or CLI, the Project, the harness, and a provider connection
+when more than one fits. A Thread starts without a first message: the harness
+starts idle and reports its models, so the operator picks the model and effort
+in the Thread before the first turn. When the provider supports coordination,
+a Thread can start as a lead agent with subagents, optionally approving each
+spawn. The dialog asks for no limits: it allows the largest lifetime subagent
+total (16) and leaves the concurrent subagent Capsule limit (4 by default) and
+the deadline (8 hours) at the daemon's defaults. A lead also starts idle and is
+told to split the work in its first message.
+
+The per-Project launcher (from the board, the command palette, and Project
+settings) is scoped to its Project and does not ask for one. It starts with an agent
 picker over the Project's applied packs; it can add another installation-known
 pack to the Project in place, again without accepting a free image reference.
 Under the picker the operator chooses between opening the agent's terminal

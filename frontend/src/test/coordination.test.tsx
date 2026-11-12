@@ -165,6 +165,7 @@ describe("Lead launcher", () => {
     await waitFor(() =>
       expect(spawn).toHaveBeenCalledWith(project.id, "mock", "split the work", undefined, {
         maxChildren: 2,
+        maxDescendants: 2,
         deadlineSeconds: 8 * 3600,
         spawnApproval: "operator",
       }),

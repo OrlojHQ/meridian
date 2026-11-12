@@ -362,6 +362,10 @@ separately negotiated `effort` capability, bounded to 16 levels, and changed
 only by an operator `set_effort` mutation to a level the adapter reported.
 `capsuled` fails a run whose adapter reports effort without negotiating it.
 A higher effort can raise cost and latency but reaches nothing new.
+A `models` frame's `resolved` model name (ADR 0042) is display-only harness
+output under its own negotiated capability, bounded like a label and free of
+control characters; `capsuled` fails a run that sends it un-negotiated, and
+switches still name only an option ID the adapter reported.
 
 Normal Run prompts remain transient. Run records and events do not persist
 prompts, raw terminal bytes, full diffs, setup output, or secrets. An explicitly

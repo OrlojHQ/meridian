@@ -185,6 +185,7 @@ func TestModelsFramesAreBoundedAndValidated(t *testing.T) {
 		{Options: full},
 		{Current: "gpt", Options: []ModelOption{option("gpt")}, Effort: &EffortSet{Options: []ModelOption{option("low")}}},
 		{Options: []ModelOption{}, Effort: &EffortSet{Current: "high", Options: []ModelOption{option("low"), option("high")}}},
+		{Current: "default", Resolved: "Opus 5.5", Options: []ModelOption{option("default")}},
 	}
 	for _, models := range valid {
 		frame := Frame{Protocol: Version, Type: KindModels, Models: &models}
@@ -207,6 +208,8 @@ func TestModelsFramesAreBoundedAndValidated(t *testing.T) {
 		"too many efforts": {Options: []ModelOption{}, Effort: &EffortSet{Options: full[:MaxEfforts+1]}},
 		"duplicate effort": {Options: []ModelOption{}, Effort: &EffortSet{Options: []ModelOption{option("a"), option("a")}}},
 		"control effort":   {Options: []ModelOption{}, Effort: &EffortSet{Current: "a\nb", Options: []ModelOption{}}},
+		"control resolved": {Options: []ModelOption{}, Resolved: "Opus\u009b5"},
+		"long resolved":    {Options: []ModelOption{}, Resolved: strings.Repeat("r", MaxModelLabelBytes+1)},
 	}
 	for name, models := range invalid {
 		t.Run(name, func(t *testing.T) {

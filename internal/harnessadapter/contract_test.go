@@ -452,7 +452,7 @@ func negotiateTestAdapterWith(
 		Capabilities: &adapterproto.Capabilities{
 			Resume: true, ToolEvents: true, Permissions: true,
 			InputRequests: true, Heartbeat: true, OpaqueMetadata: true,
-			Commands: true, Models: models, Effort: models,
+			Commands: true, Models: models, Effort: models, ResolvedModel: models,
 		},
 	})
 	if hello, err := decoder.Decode(); err != nil || hello.Type != adapterproto.KindHello {

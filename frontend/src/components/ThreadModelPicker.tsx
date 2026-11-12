@@ -176,7 +176,8 @@ export function ThreadModelPicker({
   if (models.options.length === 0 && !models.current) return null;
   const modelPending = pendingLabel(models, requestedModel);
   const effortPending = pendingLabel(effort, requestedEffort);
-  const modelShown = modelPending ?? (models.currentLabel || "Model");
+  // The button names the model that runs, not the alias that picks it.
+  const modelShown = modelPending ?? (models.resolved || models.currentLabel || "Model");
   const effortShown = effortPending ?? effort?.currentLabel;
   const searchable = models.options.length > SEARCH_THRESHOLD;
   const shownModels =

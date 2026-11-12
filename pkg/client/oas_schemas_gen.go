@@ -3392,8 +3392,10 @@ type CreateProjectThreadRequest struct {
 	// Optional name for the fresh Capsule.
 	Name    OptString `json:"name"`
 	Harness string    `json:"harness"`
-	// Encrypted as a transcript envelope before SQLite persistence. Prefer stdin in shells.
-	Prompt       string                `json:"prompt"`
+	// First message, delivered once the session starts. Encrypted as a transcript envelope before SQLite
+	// persistence. Prefer stdin in shells. Omit it to start the harness idle, a lead (`coordination`)
+	// included.
+	Prompt       OptString             `json:"prompt"`
 	Coordination OptCoordinationPolicy `json:"coordination"`
 }
 
@@ -3408,7 +3410,7 @@ func (s *CreateProjectThreadRequest) GetHarness() string {
 }
 
 // GetPrompt returns the value of Prompt.
-func (s *CreateProjectThreadRequest) GetPrompt() string {
+func (s *CreateProjectThreadRequest) GetPrompt() OptString {
 	return s.Prompt
 }
 
@@ -3428,7 +3430,7 @@ func (s *CreateProjectThreadRequest) SetHarness(val string) {
 }
 
 // SetPrompt sets the value of Prompt.
-func (s *CreateProjectThreadRequest) SetPrompt(val string) {
+func (s *CreateProjectThreadRequest) SetPrompt(val OptString) {
 	s.Prompt = val
 }
 
@@ -8999,12 +9001,13 @@ func (s *ProjectState) UnmarshalText(data []byte) error {
 
 // Ref: #/components/schemas/ProjectThreadIntent
 type ProjectThreadIntent struct {
-	ID          string                   `json:"id"`
-	ProjectId   string                   `json:"projectId"`
-	CapsuleId   string                   `json:"capsuleId"`
-	CapsuleName string                   `json:"capsuleName"`
-	ThreadId    string                   `json:"threadId"`
-	RunId       string                   `json:"runId"`
+	ID          string `json:"id"`
+	ProjectId   string `json:"projectId"`
+	CapsuleId   string `json:"capsuleId"`
+	CapsuleName string `json:"capsuleName"`
+	ThreadId    string `json:"threadId"`
+	RunId       string `json:"runId"`
+	// The first message's ID. No message has it when the request had no prompt.
 	MessageId   string                   `json:"messageId"`
 	Harness     string                   `json:"harness"`
 	State       ProjectThreadIntentState `json:"state"`
@@ -12136,8 +12139,8 @@ func (s *ThreadCommandKind) UnmarshalText(data []byte) error {
 	}
 }
 
-// The reasoning effort levels the current model offers. current is empty while the harness uses its
-// own default.
+// The reasoning effort levels the current model offers. current is the level in effect, including the
+// harness's own default when it reports one, and empty when it does not say.
 // Ref: #/components/schemas/ThreadEffort
 type ThreadEffort struct {
 	Current OptString           `json:"current"`
@@ -13158,14 +13161,22 @@ func (s *ThreadModelRequest) SetModel(val string) {
 // replaces earlier ones. current may be empty, and need not be one of the options.
 // Ref: #/components/schemas/ThreadModels
 type ThreadModels struct {
-	Current OptString           `json:"current"`
-	Options []ThreadModelOption `json:"options"`
-	Effort  OptThreadEffort     `json:"effort"`
+	Current OptString `json:"current"`
+	// Display name of the model the current option runs, when the harness reports it, such as "Opus 5.5"
+	// behind a "default" alias.
+	Resolved OptString           `json:"resolved"`
+	Options  []ThreadModelOption `json:"options"`
+	Effort   OptThreadEffort     `json:"effort"`
 }
 
 // GetCurrent returns the value of Current.
 func (s *ThreadModels) GetCurrent() OptString {
 	return s.Current
+}
+
+// GetResolved returns the value of Resolved.
+func (s *ThreadModels) GetResolved() OptString {
+	return s.Resolved
 }
 
 // GetOptions returns the value of Options.
@@ -13181,6 +13192,11 @@ func (s *ThreadModels) GetEffort() OptThreadEffort {
 // SetCurrent sets the value of Current.
 func (s *ThreadModels) SetCurrent(val OptString) {
 	s.Current = val
+}
+
+// SetResolved sets the value of Resolved.
+func (s *ThreadModels) SetResolved(val OptString) {
+	s.Resolved = val
 }
 
 // SetOptions sets the value of Options.

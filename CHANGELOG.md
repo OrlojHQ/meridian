@@ -7,6 +7,31 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- New Capsules start from a New Capsule dialog that asks only for Thread or
+  CLI, the Project, and the harness. The home page lists recent work and
+  opens the dialog.
+- A Thread started this way opens idle, without a first message, so you can
+  pick the harness's model and effort before the first turn.
+  `POST /projects/{projectId}/threads` now accepts a request without `prompt`,
+  for a lead (`coordination`) too. `meridian thread spawn` still requires a
+  prompt.
+- The New Capsule dialog can start a Thread as a lead agent with subagents,
+  optionally approving each spawn. It asks for no limits: a lead may create
+  up to 16 subagents, at most 4 running at once, within the default 8-hour
+  deadline.
+- The per-Project launcher's "Subagents" limit is no longer silently capped
+  at 8 by the default tree total.
+- The Thread composer's model button names the model that runs, such as
+  "Opus 5.5" rather than "Default (recommended)", and the effort button shows
+  the level in effect from the start. Claude Code sessions ask Claude Code
+  for both before the first turn (ADR 0042). Adapters and `capsuled`
+  negotiate a new `resolvedModel` capability for the `models` frame's
+  `resolved` name, exposed as `ThreadModels.resolved`.
+- The Thread composer wraps its controls below the message box when its own
+  column is narrow, not only on narrow windows.
+
 ## [0.5.0] - 2026-11-11
 
 ### Upgrade notes

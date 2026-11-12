@@ -802,7 +802,9 @@ paths:
         provisioning a new Capsule. Idempotent replay returns the same intent
         and resource IDs. A harness pack whose installation catalog entry
         lacks the `structured` interaction mode is rejected with 422
-        `unsupported` before anything is provisioned.
+        `unsupported` before anything is provisioned. Without a prompt the
+        harness starts idle and reports its models, so the first turn can use
+        a model chosen in the Thread.
       tags: [threads]
       parameters:
         - $ref: "#/components/parameters/ProjectId"
@@ -3460,7 +3462,7 @@ components:
           items: { $ref: "#/components/schemas/HarnessProfile" }
     CreateProjectThreadRequest:
       type: object
-      required: [harness, prompt]
+      required: [harness]
       properties:
         name:
           type: string
@@ -3472,7 +3474,11 @@ components:
           type: string
           minLength: 1
           maxLength: 131072
-          description: Encrypted as a transcript envelope before SQLite persistence. Prefer stdin in shells.
+          description: >
+            First message, delivered once the session starts. Encrypted as a
+            transcript envelope before SQLite persistence. Prefer stdin in
+            shells. Omit it to start the harness idle, a lead (`coordination`)
+            included.
         coordination:
           $ref: "#/components/schemas/CoordinationPolicy"
     CoordinationPolicy:
@@ -3730,7 +3736,9 @@ components:
         capsuleName: { type: string }
         threadId: { type: string }
         runId: { type: string }
-        messageId: { type: string }
+        messageId:
+          type: string
+          description: The first message's ID. No message has it when the request had no prompt.
         harness: { type: string }
         state: { $ref: "#/components/schemas/ProjectThreadIntentState" }
         failureCode: { type: string, maxLength: 64 }
@@ -3966,6 +3974,12 @@ components:
         need not be one of the options.
       properties:
         current: { type: string, maxLength: 256 }
+        resolved:
+          type: string
+          maxLength: 128
+          description: >-
+            Display name of the model the current option runs, when the
+            harness reports it, such as "Opus 5.5" behind a "default" alias.
         options:
           type: array
           maxItems: 128
@@ -3975,8 +3989,9 @@ components:
       type: object
       required: [options]
       description: >-
-        The reasoning effort levels the current model offers. current is empty
-        while the harness uses its own default.
+        The reasoning effort levels the current model offers. current is the
+        level in effect, including the harness's own default when it reports
+        one, and empty when it does not say.
       properties:
         current: { type: string, maxLength: 256 }
         options:

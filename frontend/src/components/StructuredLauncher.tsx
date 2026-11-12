@@ -86,6 +86,9 @@ export function StructuredLauncher({
     if (connectionBlocked) return;
     const form = event.currentTarget;
     const data = new FormData(form);
+    // With one level of subagents the tree total is the child total, so it
+    // follows the field instead of silently capping it at its default.
+    const maxChildren = Number(data.get("maxChildren") ?? 4);
     mutation.mutate({
       projectId: project.id,
       harness,
@@ -94,7 +97,8 @@ export function StructuredLauncher({
       coordination:
         coordinationSupported && lead
           ? {
-              maxChildren: Number(data.get("maxChildren") ?? 4),
+              maxChildren,
+              maxDescendants: maxChildren,
               deadlineSeconds: Number(data.get("deadlineHours") ?? 8) * 3600,
               ...(operatorApproval ? { spawnApproval: "operator" as const } : {}),
             }

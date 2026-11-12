@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api } from "../api/client";
 import type { Capabilities, Capsule, Project } from "../api/generated/types.gen";
-import { HomeComposer } from "../components/HomeComposer";
+import { NewSessionDialog } from "../components/NewSessionDialog";
 
 const project: Project = {
   id: "project-1",
@@ -44,7 +44,7 @@ const capsule: Capsule = {
   resourceVersion: 1,
 };
 
-function renderComposer() {
+function renderDialog(onClose = vi.fn()) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -52,12 +52,16 @@ function renderComposer() {
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={["/ui/"]}>
         <Routes>
-          <Route path="/ui/" element={<HomeComposer />} />
+          <Route
+            path="/ui/"
+            element={<NewSessionDialog projectId="" onProjectChange={vi.fn()} onClose={onClose} />}
+          />
           <Route path="/ui/capsules/:capsuleId" element={<p>Capsule opened</p>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  return onClose;
 }
 
 beforeEach(() => {
@@ -74,15 +78,14 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("Home composer provider requirements", () => {
+describe("New Capsule dialog", () => {
   it("explains the Thread requirement and lets CLI start without a saved connection", async () => {
     const create = vi.spyOn(api, "createCapsule").mockResolvedValue(capsule);
     const spawn = vi.spyOn(api, "createProjectThread");
     const grant = vi.spyOn(api, "grantConnection");
-    renderComposer();
+    renderDialog();
 
-    await userEvent.type(await screen.findByRole("textbox", { name: "What should we work on?" }), "Inspect the repository");
-    const start = screen.getByRole("button", { name: "Start" });
+    const start = await screen.findByRole("button", { name: "Start" });
     await waitFor(() => expect(start).toHaveAccessibleDescription(/Thread mode needs a provider connection/));
     expect(start).toBeDisabled();
     expect(screen.getByText(/switch to CLI to sign in inside OpenCode/)).toBeInTheDocument();
@@ -113,13 +116,53 @@ describe("Home composer provider requirements", () => {
       runId: "run-1", messageId: "message-1", harness: "opencode", state: "provisioning",
       createdAt: project.createdAt, updatedAt: project.updatedAt, resourceVersion: 1,
     });
-    renderComposer();
+    const onClose = renderDialog();
 
-    await userEvent.type(await screen.findByRole("textbox", { name: "What should we work on?" }), "Inspect the repository");
+    expect(await screen.findByRole("dialog", { name: "New Capsule" })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Start" })).toBeEnabled());
+    expect(screen.getByText(/model and effort in the Thread before you send anything/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    expect(await screen.findByText("Capsule opened")).toBeInTheDocument();
+    // The Thread starts without a first message.
+    expect(spawn).toHaveBeenCalledWith(project.id, "opencode", "", undefined, undefined);
+    expect(onClose).toHaveBeenCalled();
+    // Without coordination support there is no lead option.
+    expect(screen.queryByRole("checkbox", { name: "Lead agent with subagents" })).not.toBeInTheDocument();
+  });
+
+  it("starts a lead Thread with fixed limits and optional spawn approval", async () => {
+    vi.mocked(api.capabilities).mockResolvedValue({
+      ...capabilities,
+      coordination: { supported: true, maxDepth: 1, maxDescendants: 8 },
+    });
+    vi.mocked(api.providerConnections).mockResolvedValue({
+      enabled: true,
+      items: [{
+        id: "connection-1", name: "OpenAI", provider: "openai", revoked: false,
+        createdAt: project.createdAt, resourceVersion: 1,
+      }],
+    });
+    vi.mocked(api.projectConnection).mockResolvedValue({ connectionId: "connection-1" });
+    const spawn = vi.spyOn(api, "createProjectThread").mockResolvedValue({
+      id: "intent-1", projectId: project.id, capsuleId: capsule.id, capsuleName: "lead", threadId: "thread-1",
+      runId: "run-1", messageId: "message-1", harness: "opencode", state: "provisioning",
+      createdAt: project.createdAt, updatedAt: project.updatedAt, resourceVersion: 1,
+    });
+    renderDialog();
+
+    const lead = await screen.findByRole("checkbox", { name: "Lead agent with subagents" });
+    expect(screen.queryByRole("checkbox", { name: "Approve each subagent spawn" })).not.toBeInTheDocument();
+    await userEvent.click(lead);
+    // No numbers to guess: the daemon keeps its own limits.
+    expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("checkbox", { name: "Approve each subagent spawn" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Start" })).toBeEnabled());
     await userEvent.click(screen.getByRole("button", { name: "Start" }));
     expect(await screen.findByText("Capsule opened")).toBeInTheDocument();
-    expect(spawn).toHaveBeenCalledWith(project.id, "opencode", "Inspect the repository");
+    expect(spawn).toHaveBeenCalledWith(project.id, "opencode", "", undefined, {
+      maxChildren: 16, maxDescendants: 16, spawnApproval: "operator",
+    });
   });
 
   it("allows a terminal-only harness without a provider even when Thread is the initial preference", async () => {
@@ -127,7 +170,7 @@ describe("Home composer provider requirements", () => {
       ...capabilities,
       harnessImages: [{ ...project.harnessImages![0]!, interactionModes: ["native"] }],
     });
-    renderComposer();
+    renderDialog();
 
     await waitFor(() => expect(screen.getByRole("tab", { name: "CLI" })).toHaveAttribute("aria-selected", "true"));
     await waitFor(() => expect(screen.getByRole("button", { name: "Start" })).toBeEnabled());

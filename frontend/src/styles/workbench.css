@@ -562,7 +562,7 @@
   flex: none;
 }
 
-.home-composer {
+.home {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -570,110 +570,94 @@
   padding: 6.75rem 2rem 2rem;
 }
 
-.launch-card {
-  width: min(45rem, 100%);
-  border: 1px solid var(--border-strong);
-  border-radius: 18px;
-  background: var(--surface);
-  box-shadow: none;
-}
-
-.launch-task {
-  width: 100%;
-  min-height: 7.4rem;
-  border: 0;
-  resize: vertical;
-  padding: 1.35rem 1.35rem 0.4rem;
-  background: transparent;
-  color: var(--text);
-  font: inherit;
-  font-size: 1.625rem;
-  font-weight: 520;
-  letter-spacing: -0.035em;
-  line-height: 1.25;
-}
-
-.launch-task::placeholder {
-  color: var(--faint);
-}
-
-.launch-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+.home-start {
+  display: grid;
+  justify-items: center;
   gap: 0.5rem;
-  padding: 0.65rem 0.75rem 0.75rem;
+  width: min(44rem, 100%);
+  text-align: center;
 }
 
-.launch-bar .segmented-control {
+.home-start h1 {
+  margin: 0;
+  font-size: 1.625rem;
+  font-weight: 560;
+  letter-spacing: -0.03em;
+}
+
+.home-start p {
+  margin: 0 0 0.6rem;
+  color: var(--muted);
+}
+
+.home-start .primary-button {
   display: inline-flex;
   align-items: center;
-  height: 2rem;
-  margin: 0;
+  gap: 0.4rem;
+  border-radius: 999px;
+  padding: 0 1.1rem;
+}
+
+.home-start .primary-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.new-session-dialog {
+  width: min(28rem, 100%);
+}
+
+.session-mode {
+  display: flex;
   border: 1px solid var(--border);
   border-radius: 999px;
   padding: 2px;
   background: var(--app-bg);
-  box-shadow: none;
 }
 
-.launch-bar .segmented-control button {
+.session-mode > span {
+  flex: 1;
+  display: flex;
+}
+
+.session-mode button {
   display: inline-flex;
+  flex: 1;
   align-items: center;
-  gap: 0.3rem;
-  height: 1.65rem;
+  justify-content: center;
+  gap: 0.35rem;
+  height: 1.9rem;
   min-height: 0;
   border: 0;
   border-radius: 999px;
-  padding: 0 0.65rem;
+  padding: 0 0.75rem;
   background: transparent;
   box-shadow: none;
   color: var(--muted);
-  font-size: 0.75rem;
+  font-size: 0.8rem;
   font-weight: 700;
 }
 
-.launch-bar .segmented-control button svg {
+.session-mode button svg {
   width: 13px;
   height: 13px;
 }
 
-.launch-bar .segmented-control button.active,
-.launch-bar .segmented-control button[aria-selected="true"] {
+.session-mode button[aria-selected="true"] {
   color: var(--text);
   background: var(--surface-raised);
 }
 
-.launch-bar .segmented-control button:disabled {
+.session-mode button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
 }
 
-.launch-bar .picker {
-  display: inline-flex;
-  margin: 0;
-}
-
-.launch-bar .picker select {
-  height: 2rem;
-  min-height: 2rem;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 0 1.6rem 0 0.75rem;
-  background: var(--surface-subtle);
-  color: var(--text);
-  font: inherit;
-  font-size: 0.8125rem;
-  font-weight: 600;
-}
-
-.launch-bar .primary-button {
-  height: 2.15rem;
-  min-height: 0;
-  margin-left: auto;
-  border-radius: 999px;
-  padding: 0 1rem;
-  font-weight: 670;
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
 }
 
 .launch-hint {
@@ -684,7 +668,7 @@
 
 .home-recent {
   width: min(44rem, 100%);
-  margin-top: 1.6rem;
+  margin-top: 2.5rem;
 }
 
 .home-recent h2 {

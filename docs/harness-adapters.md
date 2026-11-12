@@ -429,7 +429,7 @@ model inside the message box and switches from its menu
 
 | Driver | List | Current | Switch |
 | --- | --- | --- | --- |
-| `claude-stream` | `initialize` `models[]` | `default` until a switch succeeds | control request `set_model` |
+| `claude-stream` | `initialize` `models[]` | `default` until a switch succeeds; `resolved` from each row's `resolvedModel`, then `get_settings` and each turn's `system/init` | control request `set_model` |
 | `codex-app-server` | `model/list`, without hidden models, plus the Thread's opening model first when the catalog lacks it | `thread/start` or `thread/resume` `model` | `model` on the next `turn/start`, which Codex keeps |
 | `pi-rpc` | `get_available_models`, as `provider/id` | `get_state` `model` | `set_model` with provider and model ID |
 | `acp` | the `select` config option with category `model`, flattened | its `currentValue` | `session/set_config_option` |
@@ -445,19 +445,25 @@ non-fatal `model_unavailable` error and the session keeps its model. Frames
 hold at most 128 options with unique IDs up to 256 bytes, labels up to 128,
 and descriptions up to 512, with no control characters.
 
+When both hellos also negotiate `resolvedModel` (ADR 0042), a `models` frame
+may carry `resolved`, the display name of the model the current option runs,
+such as "Opus 5.5" behind Claude Code's `default` alias, bounded like a label.
+The composer's model button shows it instead of the option's label.
+
 ### Reasoning effort
 
 When both hellos also negotiate `effort` (ADR 0033), a `models` frame carries
 the current model's effort levels as `effort: {current, options}`, at most 16
 options with the same bounds, and a `set_effort` frame changes it
-(`POST /threads/{threadId}/effort`). An empty `current` means the harness's
-own default. The composer shows the model and the reasoning effort as
+(`POST /threads/{threadId}/effort`). `current` is the level in effect,
+including the harness's own default when it reports one; it is empty only when
+the harness does not say. The composer shows the model and the reasoning effort as
 separate buttons, each with its own menu; only the model list scrolls, and a
 single level is not shown.
 
 | Driver | Levels | Current | Change |
 | --- | --- | --- | --- |
-| `claude-stream` | the current model's `supportedEffortLevels` | empty until a change succeeds | control request `apply_flag_settings` with `effortLevel` |
+| `claude-stream` | the current model's `supportedEffortLevels` | `get_settings` `applied.effort` after startup and each model switch, then each turn's `system/init` `effort`; a level the operator applied wins | control request `apply_flag_settings` with `effortLevel` |
 | `codex-app-server` | the current model's `supportedReasoningEfforts`; none for a model outside the catalog | `thread/start` or `thread/resume` `reasoningEffort`, or the model's default after a switch to a model without it | `effort` on the next `turn/start`, which Codex keeps |
 | `pi-rpc` | `get_available_thinking_levels`, asked again after each model switch | `get_state` `thinkingLevel` | `set_thinking_level` |
 | `acp` | the `select` config option with category `thought_level` | its `currentValue` | `session/set_config_option` |

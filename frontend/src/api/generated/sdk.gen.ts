@@ -376,7 +376,7 @@ export const deleteProject = <ThrowOnError extends boolean = false>(options: Opt
 /**
  * Provision a fresh Capsule and start its first structured Thread
  *
- * Persists a durable encrypted session intent before asynchronously provisioning a new Capsule. Idempotent replay returns the same intent and resource IDs. A harness pack whose installation catalog entry lacks the `structured` interaction mode is rejected with 422 `unsupported` before anything is provisioned.
+ * Persists a durable encrypted session intent before asynchronously provisioning a new Capsule. Idempotent replay returns the same intent and resource IDs. A harness pack whose installation catalog entry lacks the `structured` interaction mode is rejected with 422 `unsupported` before anything is provisioned. Without a prompt the harness starts idle and reports its models, so the first turn can use a model chosen in the Thread.
  *
  */
 export const createProjectThread = <ThrowOnError extends boolean = false>(options: Options<CreateProjectThreadData, ThrowOnError>): RequestResult<CreateProjectThreadResponses, CreateProjectThreadErrors, ThrowOnError> => (options.client ?? client).post<CreateProjectThreadResponses, CreateProjectThreadErrors, ThrowOnError>({

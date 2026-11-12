@@ -20,6 +20,7 @@ import type { Project } from "../api/generated/types.gen";
 import { queries } from "../api/queries";
 import { DeleteProjectDialog } from "../components/DeleteProjectDialog";
 import { NewProjectDialog } from "../components/NewProjectDialog";
+import { NewSessionDialog } from "../components/NewSessionDialog";
 import { NewWorkspaceDialog } from "../components/NewWorkspaceDialog";
 import { ProjectTree } from "./ProjectTree";
 import { HarnessMark } from "../components/ui/HarnessMark";
@@ -103,8 +104,8 @@ export type ShellOutletContext = {
   openNewProject: () => void;
   openLauncher: (project: Project) => void;
   openDeleteProject: (project: Project) => void;
-  projectId: string;
-  setProjectId: (id: string) => void;
+  // openNewSession opens the New Capsule dialog, on a Project when given.
+  openNewSession: (projectId?: string) => void;
 };
 
 export function ActivityDot({ group }: { group: ActivityGroup }) {
@@ -319,8 +320,9 @@ export function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const [filter, setFilter] = useState("");
-  // The Project the home composer starts with. A Project row's + sets it.
-  const [composerProject, setComposerProject] = useState("");
+  // The Project the New Capsule dialog starts with. A Project row's + sets it.
+  const [sessionProject, setSessionProject] = useState("");
+  const [newSessionOpen, setNewSessionOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [contextOpen, setContextOpen] = useState(toolsOpenByDefault);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
@@ -549,11 +551,12 @@ export function AppShell() {
     .filter((item) => item.activity.group === "attention")
     .sort((left, right) => byTime(left) - byTime(right));
   const activeProjectId = items.find((item) => item.capsule.id === capsuleId)?.capsule.projectId;
-  const startCapsuleIn = (project: Project) => {
-    setComposerProject(project.id);
+  const openNewSession = (projectId?: string) => {
+    if (projectId) setSessionProject(projectId);
     setSidebarOpen(false);
-    navigate("/ui/", { state: { focusComposer: true } });
+    setNewSessionOpen(true);
   };
+  const startCapsuleIn = (project: Project) => openNewSession(project.id);
   const renderItem = (
     { capsule, activity, sessions, rollup }: WorkingSetItem,
     { showProject = true, subagents = [] }: { showProject?: boolean; subagents?: WorkingSetItem[] } = {},
@@ -674,10 +677,7 @@ export function AppShell() {
         <button
           type="button"
           className="primary-button new-capsule"
-          onClick={() => {
-            setSidebarOpen(false);
-            navigate("/ui/", { state: { focusComposer: true } });
-          }}
+          onClick={() => openNewSession()}
         >
           <PlusIcon />
           New Capsule
@@ -774,8 +774,7 @@ export function AppShell() {
               openNewProject: () => setNewProjectOpen(true),
               openLauncher: setLaunchProject,
               openDeleteProject: setDeleteProject,
-              projectId: composerProject,
-              setProjectId: setComposerProject,
+              openNewSession,
             } satisfies ShellOutletContext
           }
         />
@@ -850,6 +849,13 @@ export function AppShell() {
         harnessImages={capabilities.data?.harnessImages ?? []}
         onClose={() => setNewProjectOpen(false)}
       />
+      {newSessionOpen && (
+        <NewSessionDialog
+          projectId={sessionProject}
+          onProjectChange={setSessionProject}
+          onClose={() => setNewSessionOpen(false)}
+        />
+      )}
       <NewWorkspaceDialog
         open={Boolean(launchProject)}
         project={launchProject}

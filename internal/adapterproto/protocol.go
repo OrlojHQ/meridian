@@ -110,17 +110,21 @@ type ModelOption struct {
 
 // ModelSet is the harness's current model and every model it offers. Current
 // may be empty when the harness does not say, and need not be an option.
+// Resolved, when both peers negotiated it, names the model the current option
+// runs, for an option that is an alias such as a harness's "default".
 // Effort, when both peers negotiated it, is the reasoning effort the current
 // model offers.
 type ModelSet struct {
-	Current string        `json:"current,omitempty"`
-	Options []ModelOption `json:"options"`
-	Effort  *EffortSet    `json:"effort,omitempty"`
+	Current  string        `json:"current,omitempty"`
+	Resolved string        `json:"resolved,omitempty"`
+	Options  []ModelOption `json:"options"`
+	Effort   *EffortSet    `json:"effort,omitempty"`
 }
 
 // EffortSet is the current model's reasoning effort and the levels it
-// offers. Current is empty while the harness uses its own default. IDs are
-// what set_effort names.
+// offers. Current is the level in effect, including the harness's own
+// default when it reports one, and empty when it does not say. IDs are what
+// set_effort names.
 type EffortSet struct {
 	Current string        `json:"current,omitempty"`
 	Options []ModelOption `json:"options"`
@@ -163,6 +167,9 @@ type Capabilities struct {
 	// Effort says the peer understands a models frame's effort and
 	// set_effort frames. It requires Models.
 	Effort bool `json:"effort,omitempty"`
+	// ResolvedModel says the peer understands a models frame's resolved
+	// model name. It requires Models.
+	ResolvedModel bool `json:"resolvedModel,omitempty"`
 }
 
 type Permission struct {
@@ -392,6 +399,9 @@ func validateShape(f Frame) error {
 }
 
 func validModels(models ModelSet) bool {
+	if !validLine(models.Resolved, MaxModelLabelBytes) {
+		return false
+	}
 	if models.Effort != nil && !validOptions(models.Effort.Current, models.Effort.Options, MaxEfforts) {
 		return false
 	}

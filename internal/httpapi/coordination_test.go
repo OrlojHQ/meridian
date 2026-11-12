@@ -97,7 +97,7 @@ func TestCoordinationRoutes(t *testing.T) {
 	projectID := project.(*client.ProjectHeaders).Response.ID
 
 	tooWide, err := api.CreateProjectThread(ctx, &client.CreateProjectThreadRequest{
-		Harness: "mock", Prompt: "lead",
+		Harness: "mock", Prompt: client.NewOptString("lead"),
 		Coordination: client.NewOptCoordinationPolicy(client.CoordinationPolicy{MaxChildren: client.NewOptInt(17)}),
 	}, client.CreateProjectThreadParams{ProjectId: projectID, IdempotencyKey: "too-wide"})
 	if err != nil {
@@ -109,7 +109,7 @@ func TestCoordinationRoutes(t *testing.T) {
 
 	for name, seconds := range map[string]int{"short-archive": 30, "long-archive": 2592001, "negative-archive": -1} {
 		rejected, err := api.CreateProjectThread(ctx, &client.CreateProjectThreadRequest{
-			Harness: "mock", Prompt: "lead",
+			Harness: "mock", Prompt: client.NewOptString("lead"),
 			Coordination: client.NewOptCoordinationPolicy(client.CoordinationPolicy{
 				ArchiveAfterSeconds: client.NewOptInt(seconds),
 			}),
@@ -122,7 +122,7 @@ func TestCoordinationRoutes(t *testing.T) {
 	}
 
 	created, err := api.CreateProjectThread(ctx, &client.CreateProjectThreadRequest{
-		Harness: "mock", Prompt: "lead",
+		Harness: "mock", Prompt: client.NewOptString("lead"),
 		Coordination: client.NewOptCoordinationPolicy(client.CoordinationPolicy{
 			MaxChildren: client.NewOptInt(3), DeadlineSeconds: client.NewOptInt(3600),
 			ArchiveAfterSeconds: client.NewOptInt(120),
