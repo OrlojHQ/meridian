@@ -1,6 +1,6 @@
 # ADR 0043: Desktop shell around the existing web UI
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-12
 
 ## Context
@@ -25,14 +25,18 @@ It does not invent a user identity.
 - Default connection is bundled local. If `http://127.0.0.1:8080` is already a
   ready Meridian gateway, use it and do not start another daemon. Otherwise
   start the sidecar with the daemon's normal defaults, wait until readiness,
-  and load `/ui/` from it. Quit sends SIGTERM only to a sidecar this process
-  started, then SIGKILL if it does not exit. A daemon that was already running
-  is left running.
+  and load `/ui/` from it.
 - The other connection is an operator-chosen gateway origin. Remember the mode
   and, for that mode, the origin. Do not start the sidecar. If this process
   had started one, stop it first. Plain HTTP is accepted only for a loopback
-  host. Any other gateway must be HTTPS. The shell never writes the
-  installation token, a query, or URL userinfo into its config.
+  host. Any other gateway must be HTTPS. Until per-user accounts exist, a
+  remote gateway uses the existing browser session: the page exchanges the
+  installation bearer once at `POST /auth/browser-session` and does not keep
+  it. The shell never writes the installation token, a query, or URL userinfo
+  into its config.
+- Closing the window hides it and leaves the tray. Quit is separate. Quit
+  sends SIGTERM only to a sidecar this process started, then SIGKILL if it
+  does not exit. A daemon that was already running is left running.
 - Desktop-only behavior is a bridge the page detects
   (`window.__MERIDIAN_DESKTOP__`). In a browser the bridge is absent. The
   bridge can show a notification, set the tray attention count, and open the
@@ -40,14 +44,21 @@ It does not invent a user identity.
   "Meridian needs you" and the body is the same count string the web UI
   already uses. The tray tooltip uses that same count. No Capsule name, prompt,
   or permission text is accepted.
-- Code signing, auto-update, and a Windows build are not part of this decision.
+- v1 builds are macOS and Linux. Windows is a later follow-up. Code signing
+  and auto-update are not part of this decision.
+- The bundle identifier is not chosen. Builds use `io.orloj.meridian`, the
+  same prefix the daemon already uses for Docker labels, until a final
+  identifier is picked. Do not treat that string as the decided id.
 
 ## Consequences
 
-Browser and desktop share one UI. WebKit, WebKitGTK, and WebView2 can still
-differ, especially the Capsule terminal on Linux. The shell is the trusted
+Browser and desktop share one UI. v1 ships on macOS WebKit and Linux
+WebKitGTK. Those engines can still differ, especially the Capsule terminal on
+Linux. Windows and WebView2 are a later follow-up. The shell is the trusted
 operator's client, in the same sense as the browser: it does not receive
 transcript keys, credential keys, or supervisor tokens. A gateway the operator
 chose can call the three bridge commands, and those commands reject any other
-payload. Follow-ups are code signing, auto-update, Windows if it is in v1, and
-the per-user session work already tracked in #87.
+payload. Hiding the window does not stop a sidecar; only Quit does, and only
+for a process this app started. Follow-ups are code signing, auto-update,
+Windows, a final bundle identifier, and the per-user session work already
+tracked in #87.

@@ -613,15 +613,17 @@ are derived only from that content-free `awaiting` flag and Capsule failure:
 a count plus "Meridian needs you", never Thread titles, prompts, permission
 details, or transcript text, because OS notifications surface on lock screens
 and in logs. They are local to the open tab; there is no phone push. The desktop shell
-(ADR 0043, proposed) may deliver that same payload through the operating
-system's notification service and tray when the page sees the shell's bridge.
-The shell rejects any other notification text. It does not store the
-installation token, transcript key, or credential key. It starts `meridiand`
-only for the bundled-local choice and signals that process on quit; a daemon
-it did not start is left running. A remote gateway is an origin the operator
-chose and must be HTTPS unless it is loopback. The system webview is not an
-additional isolation boundary and says nothing about Capsule isolation. Prompt
-drafts stay in page memory, and browser storage may hold only harness names.
+(ADR 0043) may deliver that same payload through the operating system's
+notification service and tray when the page sees the shell's bridge. v1 is
+macOS and Linux. The shell rejects any other notification text. It does not
+store the installation token, transcript key, or credential key. Closing the
+window hides it and leaves the tray; that does not stop a daemon. Quit signals
+only a `meridiand` this process started for the bundled-local choice; a daemon
+it did not start is left running. Until per-user accounts exist, a remote
+gateway uses the existing browser session and must be HTTPS unless it is
+loopback. The system webview is not an additional isolation boundary and says
+nothing about Capsule isolation. Prompt drafts stay in page memory, and
+browser storage may hold only harness names.
 
 Crypto-shred removes the wrapped DEK and opaque live linkage while retaining
 content-free metadata and unreadable ciphertext. It is logical erasure and does

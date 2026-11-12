@@ -9,10 +9,13 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- A desktop shell (ADR 0043, proposed) loads the same `/ui/` bundle the daemon
-  serves. Bundled local starts or reuses `meridiand`; another gateway is
-  remembered and does not start the sidecar. Notifications and the tray go
-  through a runtime bridge the browser ignores.
+- A desktop shell for macOS and Linux (ADR 0043) loads the same `/ui/` bundle
+  the daemon serves. Bundled local starts or reuses `meridiand`; another
+  gateway uses the existing browser session and does not start the sidecar.
+  Closing the window hides it to the tray. Quit stops only a sidecar this
+  app started. Notifications and the tray go through a runtime bridge the
+  browser ignores. Windows is a later follow-up. The bundle identifier is
+  not chosen; builds use `io.orloj.meridian` until it is.
 
 ## [0.6.0] - 2026-11-11
 

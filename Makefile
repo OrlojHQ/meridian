@@ -243,8 +243,8 @@ clean:
 	rm -rf bin dist frontend/dist .tools desktop/src-tauri/target desktop/node_modules
 
 # Desktop shell. The window loads the UI meridiand serves; it does not bundle a
-# second copy. macOS produces an app bundle and Linux produces a deb.
-# Windows is not part of this spike.
+# second copy. v1 is macOS (app bundle) and Linux (deb). Windows is a later
+# follow-up.
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Darwin)
 DESKTOP_BUNDLES := app
