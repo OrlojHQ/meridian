@@ -3010,6 +3010,11 @@ button.tool-line:hover {
   gap: 0.6rem;
 }
 
+/* A checkbox under the two number fields takes the whole row. */
+.lead-limits .checkbox-label {
+  grid-column: 1 / -1;
+}
+
 .chat-user.chat-coordination {
   flex-direction: column;
   align-items: flex-end;

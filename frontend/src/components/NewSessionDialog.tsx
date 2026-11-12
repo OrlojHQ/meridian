@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { api, normalizeAPIError } from "../api/client";
+import type { CoordinationPolicy } from "../api/generated/types.gen";
 import { packMayRunNative, packMayRunStructured } from "../api/harnessPacks";
 import { queries } from "../api/queries";
 import { harnessName, sessionPath, TERMINAL_SESSION } from "../shell/capsuleActivity";
@@ -16,6 +17,12 @@ import { Button } from "./ui/Button";
 import { Dialog } from "./ui/Dialog";
 import { Select } from "./ui/Field";
 import { TerminalIcon, ThreadIcon } from "./ui/Icons";
+
+// A lead started here gets the largest lifetime subagent total the daemon
+// allows. The limits that matter in use are the daemon's own: how many
+// subagent Capsules run at once and the grant deadline, both left at their
+// defaults, so the operator never has to guess a number up front.
+const LEAD_POLICY = { maxChildren: 16, maxDescendants: 16 } as const;
 
 // NewSessionDialog starts a fresh Capsule. It asks only what to start: a
 // Thread or the harness CLI, in which Project, with which harness. A Thread
@@ -38,6 +45,8 @@ export function NewSessionDialog({
   const [harness, setHarness] = useState("");
   const [mode, setMode] = useState<"thread" | "cli">("thread");
   const [connection, setConnection] = useState<string>();
+  const [lead, setLead] = useState(false);
+  const [approveSpawns, setApproveSpawns] = useState(false);
   const [error, setError] = useState("");
 
   const chosenProject = projectItems.find((project) => project.id === projectId) ?? projectItems[0];
@@ -51,6 +60,8 @@ export function NewSessionDialog({
     packMayRunStructured(pack, catalog);
   const native = pack === undefined || packMayRunNative(pack, catalog);
   const activeMode = structured && (!native || mode === "thread") ? "thread" : "cli";
+  const coordinationSupported = capabilities.data?.coordination?.supported === true;
+  const asLead = activeMode === "thread" && coordinationSupported && lead;
 
   const connections = useQuery({
     queryKey: ["provider-connections"],
@@ -88,7 +99,19 @@ export function NewSessionDialog({
         await api.grantConnection(chosenProject.id, harnessId, selectedConnection);
       }
       if (activeMode === "thread") {
-        const intent = await api.createProjectThread(chosenProject.id, harnessId);
+        const coordination: CoordinationPolicy | undefined = asLead
+          ? {
+              ...LEAD_POLICY,
+              ...(approveSpawns ? { spawnApproval: "operator" as const } : {}),
+            }
+          : undefined;
+        const intent = await api.createProjectThread(
+          chosenProject.id,
+          harnessId,
+          "",
+          undefined,
+          coordination,
+        );
         return sessionPath(intent.capsuleId, intent.threadId);
       }
       const capsule = await api.createCapsule(
@@ -220,6 +243,39 @@ export function NewSessionDialog({
               ))}
             </Select>
           </label>
+        )}
+        {activeMode === "thread" && coordinationSupported && harnessId && (
+          <fieldset className="lead-options">
+            <label className="checkbox-label" htmlFor="new-session-lead">
+              <input
+                id="new-session-lead"
+                type="checkbox"
+                checked={lead}
+                disabled={start.isPending}
+                onChange={(event) => setLead(event.currentTarget.checked)}
+              />
+              Lead agent with subagents
+            </label>
+            {lead && (
+              <>
+                <p className="muted-copy">
+                  Ask it to split the work and it starts subagent Threads, each in its own
+                  Capsule, and collects their results. Subagents ask you, not the lead, for
+                  permissions.
+                </p>
+                <label className="checkbox-label" htmlFor="new-session-approval">
+                  <input
+                    id="new-session-approval"
+                    type="checkbox"
+                    checked={approveSpawns}
+                    disabled={start.isPending}
+                    onChange={(event) => setApproveSpawns(event.currentTarget.checked)}
+                  />
+                  Approve each subagent spawn
+                </label>
+              </>
+            )}
+          </fieldset>
         )}
         {harnessId && !blocked && (
           <p className="field-hint">

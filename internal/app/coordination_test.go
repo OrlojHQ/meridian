@@ -473,6 +473,31 @@ func TestLeadSpawnsWaitsAndReceivesChildReport(t *testing.T) {
 	}
 }
 
+func TestLeadStartedWithoutPromptCanSpawnSubagents(t *testing.T) {
+	f := newCoordFixture(t)
+	created, err := f.service.CreateProjectThread(f.ctx, app.CreateProjectThreadInput{
+		ProjectID: "project-coord", Harness: "mock", IdempotencyKey: "idle-lead",
+		Coordination: &domain.CoordinationPolicy{MaxChildren: 2},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	capsule := f.ready(t, created.Intent.CapsuleID)
+	f.service.CoordinationTick(f.ctx)
+	lead, err := f.service.GetThread(f.ctx, created.Intent.ThreadID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lead.MessageCount != 0 {
+		t.Fatalf("idle lead messages = %d", lead.MessageCount)
+	}
+	// The spawn succeeds only through the lead's configured mailbox.
+	spawned := tool(t, f.runtime.mailbox(capsule.ProviderResourceID), coordproto.Request{Type: coordproto.KindSpawn, Key: "s", Name: "one", Harness: "mock", Prompt: "task"})
+	if !spawned.OK {
+		t.Fatalf("spawn from an idle lead = %+v", spawned)
+	}
+}
+
 func TestWakeSkipsReportsTheLeadReadBeforeThePollerSawThem(t *testing.T) {
 	f := newCoordFixture(t)
 	lead, mailbox := f.spawnLead(t, domain.CoordinationPolicy{})

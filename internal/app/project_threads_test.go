@@ -161,13 +161,6 @@ func TestProjectThreadWithoutPromptStartsIdle(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.CreateProjectThread(ctx, app.CreateProjectThreadInput{
-		ProjectID: "project-idle", Harness: "mock", IdempotencyKey: "idle-lead",
-		Coordination: &domain.CoordinationPolicy{},
-	}); !errors.Is(err, domain.ErrInvalid) {
-		t.Fatalf("lead without a prompt error = %v, want invalid", err)
-	}
-
 	input := app.CreateProjectThreadInput{
 		ProjectID: "project-idle", Harness: "mock", IdempotencyKey: "idle",
 	}

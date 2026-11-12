@@ -125,8 +125,44 @@ describe("New Capsule dialog", () => {
     await userEvent.click(screen.getByRole("button", { name: "Start" }));
     expect(await screen.findByText("Capsule opened")).toBeInTheDocument();
     // The Thread starts without a first message.
-    expect(spawn).toHaveBeenCalledWith(project.id, "opencode");
+    expect(spawn).toHaveBeenCalledWith(project.id, "opencode", "", undefined, undefined);
     expect(onClose).toHaveBeenCalled();
+    // Without coordination support there is no lead option.
+    expect(screen.queryByRole("checkbox", { name: "Lead agent with subagents" })).not.toBeInTheDocument();
+  });
+
+  it("starts a lead Thread with fixed limits and optional spawn approval", async () => {
+    vi.mocked(api.capabilities).mockResolvedValue({
+      ...capabilities,
+      coordination: { supported: true, maxDepth: 1, maxDescendants: 8 },
+    });
+    vi.mocked(api.providerConnections).mockResolvedValue({
+      enabled: true,
+      items: [{
+        id: "connection-1", name: "OpenAI", provider: "openai", revoked: false,
+        createdAt: project.createdAt, resourceVersion: 1,
+      }],
+    });
+    vi.mocked(api.projectConnection).mockResolvedValue({ connectionId: "connection-1" });
+    const spawn = vi.spyOn(api, "createProjectThread").mockResolvedValue({
+      id: "intent-1", projectId: project.id, capsuleId: capsule.id, capsuleName: "lead", threadId: "thread-1",
+      runId: "run-1", messageId: "message-1", harness: "opencode", state: "provisioning",
+      createdAt: project.createdAt, updatedAt: project.updatedAt, resourceVersion: 1,
+    });
+    renderDialog();
+
+    const lead = await screen.findByRole("checkbox", { name: "Lead agent with subagents" });
+    expect(screen.queryByRole("checkbox", { name: "Approve each subagent spawn" })).not.toBeInTheDocument();
+    await userEvent.click(lead);
+    // No numbers to guess: the daemon keeps its own limits.
+    expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("checkbox", { name: "Approve each subagent spawn" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Start" })).toBeEnabled());
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    expect(await screen.findByText("Capsule opened")).toBeInTheDocument();
+    expect(spawn).toHaveBeenCalledWith(project.id, "opencode", "", undefined, {
+      maxChildren: 16, maxDescendants: 16, spawnApproval: "operator",
+    });
   });
 
   it("allows a terminal-only harness without a provider even when Thread is the initial preference", async () => {

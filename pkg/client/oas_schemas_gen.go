@@ -3393,8 +3393,8 @@ type CreateProjectThreadRequest struct {
 	Name    OptString `json:"name"`
 	Harness string    `json:"harness"`
 	// First message, delivered once the session starts. Encrypted as a transcript envelope before SQLite
-	// persistence. Prefer stdin in shells. Omit it to start the harness idle; a lead (`coordination`)
-	// requires it.
+	// persistence. Prefer stdin in shells. Omit it to start the harness idle, a lead (`coordination`)
+	// included.
 	Prompt       OptString             `json:"prompt"`
 	Coordination OptCoordinationPolicy `json:"coordination"`
 }

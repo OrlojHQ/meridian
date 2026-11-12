@@ -63,10 +63,8 @@ func (s *Service) CreateProjectThread(
 		return ProjectThreadResult{}, fmt.Errorf("%w: structured harness is invalid", domain.ErrInvalid)
 	}
 	// Without a prompt the harness starts idle, so the operator can choose
-	// its model before the first turn. A lead needs a task to coordinate.
-	if input.Prompt == "" && input.Coordination != nil {
-		return ProjectThreadResult{}, fmt.Errorf("%w: a lead Thread requires a first prompt", domain.ErrInvalid)
-	}
+	// its model before the first turn. A lead starts idle the same way; its
+	// grant and mailbox do not depend on the first message.
 	if len(input.Prompt) > adapterproto.MaxContentBytes {
 		return ProjectThreadResult{}, fmt.Errorf("%w: message exceeds size limit", domain.ErrResourceExhausted)
 	}

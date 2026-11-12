@@ -639,7 +639,7 @@ export type CreateProjectThreadRequest = {
     name?: string;
     harness: string;
     /**
-     * First message, delivered once the session starts. Encrypted as a transcript envelope before SQLite persistence. Prefer stdin in shells. Omit it to start the harness idle; a lead (`coordination`) requires it.
+     * First message, delivered once the session starts. Encrypted as a transcript envelope before SQLite persistence. Prefer stdin in shells. Omit it to start the harness idle, a lead (`coordination`) included.
      *
      */
     prompt?: string;
