@@ -3392,8 +3392,10 @@ type CreateProjectThreadRequest struct {
 	// Optional name for the fresh Capsule.
 	Name    OptString `json:"name"`
 	Harness string    `json:"harness"`
-	// Encrypted as a transcript envelope before SQLite persistence. Prefer stdin in shells.
-	Prompt       string                `json:"prompt"`
+	// First message, delivered once the session starts. Encrypted as a transcript envelope before SQLite
+	// persistence. Prefer stdin in shells. Omit it to start the harness idle; a lead (`coordination`)
+	// requires it.
+	Prompt       OptString             `json:"prompt"`
 	Coordination OptCoordinationPolicy `json:"coordination"`
 }
 
@@ -3408,7 +3410,7 @@ func (s *CreateProjectThreadRequest) GetHarness() string {
 }
 
 // GetPrompt returns the value of Prompt.
-func (s *CreateProjectThreadRequest) GetPrompt() string {
+func (s *CreateProjectThreadRequest) GetPrompt() OptString {
 	return s.Prompt
 }
 
@@ -3428,7 +3430,7 @@ func (s *CreateProjectThreadRequest) SetHarness(val string) {
 }
 
 // SetPrompt sets the value of Prompt.
-func (s *CreateProjectThreadRequest) SetPrompt(val string) {
+func (s *CreateProjectThreadRequest) SetPrompt(val OptString) {
 	s.Prompt = val
 }
 
@@ -8999,12 +9001,13 @@ func (s *ProjectState) UnmarshalText(data []byte) error {
 
 // Ref: #/components/schemas/ProjectThreadIntent
 type ProjectThreadIntent struct {
-	ID          string                   `json:"id"`
-	ProjectId   string                   `json:"projectId"`
-	CapsuleId   string                   `json:"capsuleId"`
-	CapsuleName string                   `json:"capsuleName"`
-	ThreadId    string                   `json:"threadId"`
-	RunId       string                   `json:"runId"`
+	ID          string `json:"id"`
+	ProjectId   string `json:"projectId"`
+	CapsuleId   string `json:"capsuleId"`
+	CapsuleName string `json:"capsuleName"`
+	ThreadId    string `json:"threadId"`
+	RunId       string `json:"runId"`
+	// The first message's ID. No message has it when the request had no prompt.
 	MessageId   string                   `json:"messageId"`
 	Harness     string                   `json:"harness"`
 	State       ProjectThreadIntentState `json:"state"`

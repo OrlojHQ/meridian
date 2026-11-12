@@ -314,7 +314,8 @@ export const api = {
   createProjectThread: (
     projectId: string,
     harness: string,
-    prompt: string,
+    // An empty prompt starts the harness idle, before its first turn.
+    prompt = "",
     name?: string,
     coordination?: CoordinationPolicy,
     signal?: AbortSignal,
@@ -326,7 +327,7 @@ export const api = {
         headers: idempotencyHeaders(),
         body: {
           harness,
-          prompt,
+          ...(prompt ? { prompt } : {}),
           ...(name ? { name } : {}),
           ...(coordination ? { coordination } : {}),
         },

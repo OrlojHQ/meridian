@@ -7,6 +7,17 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- New Capsules start from a New Capsule dialog that asks only for Thread or
+  CLI, the Project, and the harness. The home page lists recent work and
+  opens the dialog.
+- A Thread started this way opens idle, without a first message, so you can
+  pick the harness's model and effort before the first turn.
+  `POST /projects/{projectId}/threads` now accepts a request without `prompt`;
+  a lead (`coordination`) still requires one. `meridian thread spawn` still
+  requires a prompt.
+
 ## [0.5.0] - 2026-11-11
 
 ### Upgrade notes

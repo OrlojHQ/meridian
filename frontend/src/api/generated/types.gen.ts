@@ -639,9 +639,10 @@ export type CreateProjectThreadRequest = {
     name?: string;
     harness: string;
     /**
-     * Encrypted as a transcript envelope before SQLite persistence. Prefer stdin in shells.
+     * First message, delivered once the session starts. Encrypted as a transcript envelope before SQLite persistence. Prefer stdin in shells. Omit it to start the harness idle; a lead (`coordination`) requires it.
+     *
      */
-    prompt: string;
+    prompt?: string;
     coordination?: CoordinationPolicy;
 };
 
@@ -842,6 +843,9 @@ export type ProjectThreadIntent = {
     capsuleName: string;
     threadId: string;
     runId: string;
+    /**
+     * The first message's ID. No message has it when the request had no prompt.
+     */
     messageId: string;
     harness: string;
     state: ProjectThreadIntentState;

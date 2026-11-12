@@ -7282,8 +7282,10 @@ func (s *CreateProjectThreadRequest) encodeFields(e *jx.Encoder) {
 		e.Str(s.Harness)
 	}
 	{
-		e.FieldStart("prompt")
-		e.Str(s.Prompt)
+		if s.Prompt.Set {
+			e.FieldStart("prompt")
+			s.Prompt.Encode(e)
+		}
 	}
 	{
 		if s.Coordination.Set {
@@ -7332,11 +7334,9 @@ func (s *CreateProjectThreadRequest) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"harness\"")
 			}
 		case "prompt":
-			requiredBitSet[0] |= 1 << 2
 			if err := func() error {
-				v, err := d.Str()
-				s.Prompt = string(v)
-				if err != nil {
+				s.Prompt.Reset()
+				if err := s.Prompt.Decode(d); err != nil {
 					return err
 				}
 				return nil
@@ -7363,7 +7363,7 @@ func (s *CreateProjectThreadRequest) Decode(d *jx.Decoder) error {
 	// Validate required fields.
 	var failures []validate.FieldError
 	for i, mask := range [1]uint8{
-		0b00000110,
+		0b00000010,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.

@@ -137,6 +137,86 @@ func TestProjectThreadProvisioningPromotionReplayAndFailure(t *testing.T) {
 	}
 }
 
+func TestProjectThreadWithoutPromptStartsIdle(t *testing.T) {
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	now := time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)
+	runtime := &structuredRuntime{}
+	key, err := transcripts.NewInstallationKey("project-thread-idle", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer key.Zero()
+	service := app.NewService(store, &testClock{now: now}, &testIDs{}, &recordingQueue{})
+	service.ConfigureThreads(runtime, key)
+	if err := store.Transact(ctx, func(tx ports.Transaction) error {
+		return tx.InsertProject(ctx, domain.Project{
+			ID: "project-idle", Name: "project", CreatedAt: now,
+			UpdatedAt: now, ResourceVersion: 1,
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.CreateProjectThread(ctx, app.CreateProjectThreadInput{
+		ProjectID: "project-idle", Harness: "mock", IdempotencyKey: "idle-lead",
+		Coordination: &domain.CoordinationPolicy{},
+	}); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("lead without a prompt error = %v, want invalid", err)
+	}
+
+	input := app.CreateProjectThreadInput{
+		ProjectID: "project-idle", Harness: "mock", IdempotencyKey: "idle",
+	}
+	created, err := service.CreateProjectThread(ctx, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	withPrompt := input
+	withPrompt.Prompt = "now with a prompt"
+	if _, err := service.CreateProjectThread(ctx, withPrompt); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("replay with a prompt error = %v, want conflict", err)
+	}
+	capsule := setProjectThreadCapsuleState(
+		t, ctx, store, created.Intent.CapsuleID, domain.CapsuleReady,
+	)
+	if err := service.ReconcileProjectThreadCapsule(ctx, capsule); err != nil {
+		t.Fatal(err)
+	}
+	promoted, err := service.GetProjectThreadIntent(ctx, created.Intent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if promoted.Intent.State != domain.ProjectThreadReady ||
+		promoted.Thread == nil || promoted.Run == nil ||
+		promoted.Thread.MessageCount != 0 {
+		t.Fatalf("promoted result = %#v", promoted)
+	}
+	// A replay after promotion has nothing to deliver.
+	if _, err := service.CreateProjectThread(ctx, input); err != nil {
+		t.Fatal(err)
+	}
+	runtime.mu.Lock()
+	starts, sends := runtime.starts[promoted.Intent.RunID], len(runtime.sends)
+	runtime.mu.Unlock()
+	if starts != 1 || sends != 0 {
+		t.Fatalf("starts/sends = %d/%d, want 1/0", starts, sends)
+	}
+
+	sent, err := service.SendThreadMessage(
+		ctx, promoted.Thread.ID, promoted.Thread.ResourceVersion, "first turn", "first", "",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sent.Thread.MessageCount != 1 {
+		t.Fatalf("message count after the first send = %d", sent.Thread.MessageCount)
+	}
+}
+
 func TestProjectThreadRecoveryPromotesWithoutSending(t *testing.T) {
 	ctx := context.Background()
 	store, err := sqlite.Open(ctx, t.TempDir())

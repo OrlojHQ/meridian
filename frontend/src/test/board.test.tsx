@@ -466,7 +466,7 @@ describe("Board", () => {
       </QueryClientProvider>,
     );
     expect(await screen.findByTestId("location")).toHaveTextContent("/ui/");
-    expect(await screen.findByRole("button", { name: "Start" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Start something new" })).toBeTruthy();
     const views = screen.getByRole("navigation", { name: "Views" });
     expect(within(views).getAllByRole("link").map((link) => link.getAttribute("href"))).toEqual([
       "/ui/settings/harnesses",

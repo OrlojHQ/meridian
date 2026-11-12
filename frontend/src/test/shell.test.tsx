@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes, useLocation, useOutletContext } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { MeridianAPIError, api } from "../api/client";
@@ -11,7 +11,7 @@ import type {
   Project,
   Thread,
 } from "../api/generated/types.gen";
-import { AppShell, type ShellOutletContext } from "../shell/AppShell";
+import { AppShell } from "../shell/AppShell";
 import { WorkspaceContext } from "../shell/WorkspaceContext";
 
 const project: Project = {
@@ -850,12 +850,6 @@ describe("application shell", () => {
   });
 
   it("lists Projects as a tree instead of a dropdown, with start and delete on the rows", async () => {
-    function Home() {
-      const outlet = useOutletContext<ShellOutletContext>();
-      const location = useLocation();
-      const state = location.state as { focusComposer?: boolean } | null;
-      return <p data-testid="home">{`composer:${outlet.projectId} focus:${String(state?.focusComposer ?? false)}`}</p>;
-    }
     function CapsulePage() {
       const location = useLocation();
       return <p data-testid="capsule-page">{JSON.stringify(location.state)}</p>;
@@ -868,10 +862,11 @@ describe("application shell", () => {
     }));
     vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
     vi.spyOn(api, "capabilities").mockResolvedValue(capabilities);
+    vi.spyOn(api, "providerConnections").mockResolvedValue({ items: [], enabled: false });
     wrapper(
       <Routes>
         <Route path="/ui" element={<AppShell />}>
-          <Route index element={<Home />} />
+          <Route index element={<p>Activity home</p>} />
           <Route path="capsules/:capsuleId" element={<CapsulePage />} />
         </Route>
       </Routes>,
@@ -885,8 +880,12 @@ describe("application shell", () => {
     const capsules = await within(sidebar).findByRole("list", { name: "Meridian Capsules" });
     expect(within(capsules).getByRole("link", { name: /Review the launcher/ })).toBeInTheDocument();
 
+    // A Project row's + opens the New Capsule dialog on that Project.
     await userEvent.click(within(sidebar).getByRole("button", { name: "New Capsule in Empty" }));
-    expect(screen.getByTestId("home")).toHaveTextContent("composer:project-2 focus:true");
+    const dialog = await screen.findByRole("dialog", { name: "New Capsule" });
+    expect(within(dialog).getByRole("combobox", { name: "Project" })).toHaveValue("project-2");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog", { name: "New Capsule" })).not.toBeInTheDocument();
 
     // A Capsule's delete opens the Capsule page's own confirmation.
     await userEvent.click(within(capsules).getByRole("button", { name: "Delete Review the launcher" }));

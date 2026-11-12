@@ -133,7 +133,8 @@ type Invoker interface {
 	// Persists a durable encrypted session intent before asynchronously provisioning a new Capsule.
 	// Idempotent replay returns the same intent and resource IDs. A harness pack whose installation
 	// catalog entry lacks the `structured` interaction mode is rejected with 422 `unsupported` before
-	// anything is provisioned.
+	// anything is provisioned. Without a prompt the harness starts idle and reports its models, so the
+	// first turn can use a model chosen in the Thread.
 	//
 	// POST /projects/{projectId}/threads
 	CreateProjectThread(ctx context.Context, request *CreateProjectThreadRequest, params CreateProjectThreadParams) (CreateProjectThreadRes, error)
@@ -2806,7 +2807,8 @@ func (c *Client) sendCreateProject(ctx context.Context, request *CreateProjectRe
 // Persists a durable encrypted session intent before asynchronously provisioning a new Capsule.
 // Idempotent replay returns the same intent and resource IDs. A harness pack whose installation
 // catalog entry lacks the `structured` interaction mode is rejected with 422 `unsupported` before
-// anything is provisioned.
+// anything is provisioned. Without a prompt the harness starts idle and reports its models, so the
+// first turn can use a model chosen in the Thread.
 //
 // POST /projects/{projectId}/threads
 func (c *Client) CreateProjectThread(ctx context.Context, request *CreateProjectThreadRequest, params CreateProjectThreadParams) (CreateProjectThreadRes, error) {

@@ -703,8 +703,9 @@ func (a *generatedAPI) Execute(ctx context.Context, request ActionRequest) (Acti
 			Message: "Thread created", ThreadID: success.Response.Thread.ID,
 		}, nil
 	case ActionProjectThreadSpawn:
-		input := &client.CreateProjectThreadRequest{
-			Harness: request.Harness, Prompt: request.Content,
+		input := &client.CreateProjectThreadRequest{Harness: request.Harness}
+		if request.Content != "" {
+			input.Prompt = client.NewOptString(request.Content)
 		}
 		if request.Name != "" {
 			input.Name = client.NewOptString(request.Name)

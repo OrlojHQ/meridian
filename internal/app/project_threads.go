@@ -62,8 +62,10 @@ func (s *Service) CreateProjectThread(
 	if input.ProjectID == "" || !domain.ValidHarnessName(input.Harness) {
 		return ProjectThreadResult{}, fmt.Errorf("%w: structured harness is invalid", domain.ErrInvalid)
 	}
-	if input.Prompt == "" {
-		return ProjectThreadResult{}, fmt.Errorf("%w: first prompt is required", domain.ErrInvalid)
+	// Without a prompt the harness starts idle, so the operator can choose
+	// its model before the first turn. A lead needs a task to coordinate.
+	if input.Prompt == "" && input.Coordination != nil {
+		return ProjectThreadResult{}, fmt.Errorf("%w: a lead Thread requires a first prompt", domain.ErrInvalid)
 	}
 	if len(input.Prompt) > adapterproto.MaxContentBytes {
 		return ProjectThreadResult{}, fmt.Errorf("%w: message exceeds size limit", domain.ErrResourceExhausted)
@@ -283,11 +285,30 @@ func (s *Service) matchProjectThreadReplay(
 	if err := s.matchCoordinationReplay(ctx, reader, intent, input.Coordination); err != nil {
 		return err
 	}
+	prompt, err := s.pendingPrompt(ctx, reader, intent)
+	if err != nil {
+		return err
+	}
+	if len(prompt) != len(input.Prompt) ||
+		subtle.ConstantTimeCompare([]byte(prompt), []byte(input.Prompt)) != 1 {
+		return fmt.Errorf("%w: Idempotency-Key was used with a different request", domain.ErrConflict)
+	}
+	return nil
+}
+
+// pendingPrompt decrypts a Project Thread intent's first prompt. An intent
+// created without one holds an encrypted empty prompt, which is never
+// appended to the transcript or delivered.
+func (s *Service) pendingPrompt(
+	ctx context.Context,
+	reader ports.Reader,
+	intent domain.ProjectThreadIntent,
+) (string, error) {
 	var dek []byte
 	var err error
 	if len(intent.WrappedDEK) != 0 {
 		if !s.transcriptKey.Matches(intent.KEKID, intent.KEKVersion) {
-			return domain.ErrKeyMismatch
+			return "", domain.ErrKeyMismatch
 		}
 		dek, err = s.transcriptKey.UnwrapDEK(
 			intent.ThreadID, intent.KEKID, intent.KEKVersion, intent.WrappedDEK,
@@ -295,31 +316,27 @@ func (s *Service) matchProjectThreadReplay(
 	} else {
 		thread, getErr := reader.GetThread(ctx, intent.ThreadID)
 		if getErr != nil {
-			return getErr
+			return "", getErr
 		}
 		dek, err = s.unwrapThread(thread)
 	}
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer wipe(dek)
 	plaintext, err := transcripts.DecryptMessage(dek, intent.PendingMessage)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer transcripts.ZeroPlaintextBlocks(plaintext)
 	if len(plaintext) != 1 {
-		return domain.ErrTranscriptCorrupt
+		return "", domain.ErrTranscriptCorrupt
 	}
 	var payload persistedThreadBlock
 	if err := json.Unmarshal(plaintext[0], &payload); err != nil {
-		return domain.ErrTranscriptCorrupt
+		return "", domain.ErrTranscriptCorrupt
 	}
-	if len(payload.Content) != len(input.Prompt) ||
-		subtle.ConstantTimeCompare([]byte(payload.Content), []byte(input.Prompt)) != 1 {
-		return fmt.Errorf("%w: Idempotency-Key was used with a different request", domain.ErrConflict)
-	}
-	return nil
+	return payload.Content, nil
 }
 
 func (s *Service) loadProjectThreadResult(
@@ -399,6 +416,7 @@ func (s *Service) promoteProjectThread(
 	deliver bool,
 ) (ProjectThreadResult, error) {
 	var result ProjectThreadResult
+	var withPrompt bool
 	err := s.store.Transact(ctx, func(tx ports.Transaction) error {
 		intents, err := tx.ListProvisioningProjectThreadIntents(ctx)
 		if err != nil {
@@ -439,6 +457,11 @@ func (s *Service) promoteProjectThread(
 		if active {
 			return fmt.Errorf("%w: Capsule already has an active Run", domain.ErrConflict)
 		}
+		prompt, err := s.pendingPrompt(ctx, tx, intent)
+		if err != nil {
+			return err
+		}
+		withPrompt = prompt != ""
 		now := s.clock.Now().UTC()
 		thread := domain.Thread{
 			ID: intent.ThreadID, CapsuleID: capsuleID, State: domain.ThreadActive,
@@ -450,8 +473,10 @@ func (s *Service) promoteProjectThread(
 		if err := tx.InsertThread(ctx, thread); err != nil {
 			return err
 		}
-		if err := tx.AppendThreadMessage(ctx, intent.PendingMessage); err != nil {
-			return err
+		if withPrompt {
+			if err := tx.AppendThreadMessage(ctx, intent.PendingMessage); err != nil {
+				return err
+			}
 		}
 		thread, err = tx.GetThread(ctx, intent.ThreadID)
 		if err != nil {
@@ -471,11 +496,13 @@ func (s *Service) promoteProjectThread(
 		if err := tx.UpdateThread(ctx, thread, previous); err != nil {
 			return err
 		}
-		if err := tx.InsertThreadDelivery(ctx, domain.ThreadDelivery{
-			ThreadID: thread.ID, MessageID: intent.MessageID, RunID: run.ID,
-			ControllerID: string(intent.MessageID), CreatedAt: now,
-		}); err != nil {
-			return err
+		if withPrompt {
+			if err := tx.InsertThreadDelivery(ctx, domain.ThreadDelivery{
+				ThreadID: thread.ID, MessageID: intent.MessageID, RunID: run.ID,
+				ControllerID: string(intent.MessageID), CreatedAt: now,
+			}); err != nil {
+				return err
+			}
 		}
 		previousIntent := intent.ResourceVersion
 		intent.State = domain.ProjectThreadReady
@@ -500,7 +527,7 @@ func (s *Service) promoteProjectThread(
 	s.configureLeadMailbox(ctx, capsuleID, result.Thread.ID)
 	run, startErr := s.startStructuredRuntime(ctx, *result.Thread, *result.Run, false)
 	result.Run = &run
-	if startErr != nil || !deliver {
+	if startErr != nil || !deliver || !withPrompt {
 		// Runtime failures are represented by the durable Run. A failed
 		// provider-side start must not turn a healthy Capsule into Failed.
 		return result, nil
@@ -526,18 +553,32 @@ func (s *Service) retryProjectThreadDelivery(
 	if result.Thread == nil || result.Run == nil {
 		return domain.ErrCorrupt
 	}
-	acknowledged, err := s.threadDeliveryAcknowledged(
-		ctx, result.Thread.ID, result.Run.ID, result.Intent.MessageID,
-	)
-	if err != nil || acknowledged {
+	var prompt string
+	if err := s.store.View(ctx, func(reader ports.Reader) error {
+		var err error
+		prompt, err = s.pendingPrompt(ctx, reader, result.Intent)
+		return err
+	}); err != nil {
 		return err
 	}
+	// A Thread started without a prompt has no delivery to retry; a replay
+	// only starts its runtime if that has not happened yet.
+	withPrompt := prompt != ""
+	if withPrompt {
+		acknowledged, err := s.threadDeliveryAcknowledged(
+			ctx, result.Thread.ID, result.Run.ID, result.Intent.MessageID,
+		)
+		if err != nil || acknowledged {
+			return err
+		}
+	}
 	run := *result.Run
+	var err error
 	if run.State == domain.RunQueued || run.State == domain.RunStarting {
 		run, err = s.startStructuredRuntime(ctx, *result.Thread, run, false)
 		result.Run = &run
 	}
-	if err != nil || run.State.Terminal() {
+	if err != nil || run.State.Terminal() || !withPrompt {
 		return err
 	}
 	message := result.Intent.PendingMessage

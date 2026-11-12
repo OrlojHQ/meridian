@@ -257,7 +257,7 @@ func TestGeneratedClientLifecycle(t *testing.T) {
 	}
 	spawnResponse, err := api.CreateProjectThread(
 		ctx,
-		&client.CreateProjectThreadRequest{Harness: "mock", Prompt: "project prompt"},
+		&client.CreateProjectThreadRequest{Harness: "mock", Prompt: client.NewOptString("project prompt")},
 		client.CreateProjectThreadParams{
 			ProjectId: projectResponse.Response.ID, IdempotencyKey: "project-thread-key",
 		},
