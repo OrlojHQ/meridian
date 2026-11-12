@@ -54,7 +54,8 @@ It does not invent a user identity.
   install, detected by the Caskroom path or a marker the cask writes, tells
   the operator to run `brew upgrade --cask meridian-desktop`. A Linux package
   tells them to run the curl installer, because the updater cannot replace a
-  `.deb`. A macOS app that was not installed with Homebrew can download a
+  `.deb`. That package is `meridian-desktop` and does not install the CLI
+  names `meridian` or `meridiand`. A macOS app that was not installed with Homebrew can download a
   signed update and restart. That signature uses a Tauri updater key, not an
   Apple certificate. The private key is a repository secret. When it is
   absent the release still ships and the app shows the curl command instead

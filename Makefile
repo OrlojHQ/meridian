@@ -259,8 +259,8 @@ desktop-sidecar:
 	@test -x bin/meridiand || { echo "run make build first" >&2; exit 1; }
 	@triple="$$(rustc -vV | awk '/^host:/{print $$2}')"; \
 	mkdir -p desktop/src-tauri/binaries; \
-	cp bin/meridiand "desktop/src-tauri/binaries/meridiand-$$triple"; \
-	chmod 0755 "desktop/src-tauri/binaries/meridiand-$$triple"
+	cp bin/meridiand "desktop/src-tauri/binaries/meridian-desktop-gateway-$$triple"; \
+	chmod 0755 "desktop/src-tauri/binaries/meridian-desktop-gateway-$$triple"
 
 desktop-test:
 	$(MAKE) build

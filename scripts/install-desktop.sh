@@ -187,10 +187,10 @@ install_linux_deb() {
   fi
   if [ "${MERIDIAN_DRY_RUN:-}" = 1 ]; then
     say "Would install ${deb} with apt."
-    say "To uninstall: sudo apt remove meridian"
+    say "To uninstall: sudo apt remove meridian-desktop"
     return
   fi
-  pkg=meridian
+  pkg=meridian-desktop
   if command -v dpkg-deb >/dev/null 2>&1; then
     detected=$(dpkg-deb -f "$deb" Package 2>/dev/null || true)
     if [ -n "$detected" ]; then

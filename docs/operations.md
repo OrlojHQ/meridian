@@ -46,7 +46,11 @@ grep "  ${ARCHIVE}$" checksums.txt | shasum -a 256 -c -
 The desktop app is attached to the same release and listed in `checksums.txt`.
 The macOS file is `meridian-desktop_${VERSION}_macOS_universal.dmg` (a
 universal disk image) plus a zip of `Meridian.app`. The Linux file is
-`meridian-desktop_${VERSION}_linux_amd64.deb`. Each has a `.spdx.json` SBOM
+`meridian-desktop_${VERSION}_linux_amd64.deb`. Its package name is
+`meridian-desktop` (`sudo apt remove meridian-desktop`). The package installs
+`/usr/bin/meridian-desktop` and a private gateway binary named
+`meridian-desktop-gateway`. It does not install `/usr/bin/meridian` or
+`/usr/bin/meridiand`, so it can sit beside a separate CLI install. The desktop archives have a `.spdx.json` SBOM
 and a `.sigstore.json` bundle signed by this same workflow. Verify them with
 the commands above. The build is unsigned until Apple signing secrets are
 configured; verification here is the release signature, not an Apple

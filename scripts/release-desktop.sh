@@ -86,12 +86,12 @@ case "${target}" in
     rustup target add aarch64-apple-darwin x86_64-apple-darwin
     mkdir -p "${root}/desktop/src-tauri/binaries"
     CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -buildvcs=false \
-      -ldflags "${ldflags}" -o "${root}/desktop/src-tauri/binaries/meridiand-aarch64-apple-darwin" \
+      -ldflags "${ldflags}"       -o "${root}/desktop/src-tauri/binaries/meridian-desktop-gateway-aarch64-apple-darwin" \
       "${root}/cmd/meridiand"
     CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -buildvcs=false \
-      -ldflags "${ldflags}" -o "${root}/desktop/src-tauri/binaries/meridiand-x86_64-apple-darwin" \
+      -ldflags "${ldflags}" -o "${root}/desktop/src-tauri/binaries/meridian-desktop-gateway-x86_64-apple-darwin" \
       "${root}/cmd/meridiand"
-    chmod 0755 "${root}/desktop/src-tauri/binaries"/meridiand-*-apple-darwin
+    chmod 0755 "${root}/desktop/src-tauri/binaries"/meridian-desktop-gateway-*-apple-darwin
     # --no-sign keeps a runner without a Developer ID from failing the bundle.
     # scripts/desktop-apple-signing.sh exports APPLE_SIGNING_IDENTITY only
     # when the Apple secrets are configured.
@@ -127,8 +127,8 @@ case "${target}" in
     CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -buildvcs=false \
       -ldflags "${ldflags}" -o "${root}/bin/meridiand" "${root}/cmd/meridiand"
     triple="$(rustc -vV | awk '/^host:/{ print $2 }')"
-    cp "${root}/bin/meridiand" "${root}/desktop/src-tauri/binaries/meridiand-${triple}"
-    chmod 0755 "${root}/desktop/src-tauri/binaries/meridiand-${triple}"
+    cp "${root}/bin/meridiand" "${root}/desktop/src-tauri/binaries/meridian-desktop-gateway-${triple}"
+    chmod 0755 "${root}/desktop/src-tauri/binaries/meridian-desktop-gateway-${triple}"
     bun run tauri -- build --config "${config}" --bundles deb
     deb="$(find "${root}/desktop/src-tauri/target/release/bundle/deb" -name '*.deb' | head -n 1)"
     [[ -n "${deb}" ]]

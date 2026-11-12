@@ -167,9 +167,12 @@ command too. The key setup is in
 
 `MERIDIAN_VERSION` does the same job as `--version`. To remove the app:
 `rm -rf /Applications/Meridian.app` (or `~/Applications/Meridian.app` when it
-was installed there), or `sudo apt remove meridian` on Linux. To remove the
-CLI binaries, delete `meridian` and `meridiand` from the directory the script
-printed. Removing the app does not delete Meridian projects.
+was installed there), or `sudo apt remove meridian-desktop` on Linux. That
+package installs `meridian-desktop` only. It does not replace `meridian` or
+`meridiand`, so removing the app leaves a separate CLI install in place, and
+removing the CLI leaves the app. To remove the CLI binaries, delete
+`meridian` and `meridiand` from the directory the script printed. Removing
+the app does not delete Meridian projects.
 
 If you download the disk image from
 [Releases](https://github.com/OrlojHQ/meridian/releases) yourself, open it,

@@ -78,6 +78,24 @@ jobs:
       - name: Build the desktop app
         run: make desktop-build
 
+      - name: Check the Linux package name and files
+        run: |
+          set -euo pipefail
+          deb="$(find desktop/src-tauri/target/release/bundle/deb -name '*.deb' -print | head -n 1)"
+          test -n "${deb}"
+          test "$(dpkg-deb -f "${deb}" Package)" = "meridian-desktop"
+          dpkg-deb -c "${deb}" > "${RUNNER_TEMP}/deb-files.txt"
+          if grep -E '(^|[[:space:]])(\./)?usr/bin/meridian$' "${RUNNER_TEMP}/deb-files.txt"; then
+            echo "desktop package must not install /usr/bin/meridian" >&2
+            exit 1
+          fi
+          if grep -E '(^|[[:space:]])(\./)?usr/bin/meridiand$' "${RUNNER_TEMP}/deb-files.txt"; then
+            echo "desktop package must not install /usr/bin/meridiand" >&2
+            exit 1
+          fi
+          grep -q 'usr/bin/meridian-desktop' "${RUNNER_TEMP}/deb-files.txt"
+          grep -q 'meridian-desktop-gateway' "${RUNNER_TEMP}/deb-files.txt"
+
   macos:
     name: Build desktop (macOS)
     runs-on: macos-latest

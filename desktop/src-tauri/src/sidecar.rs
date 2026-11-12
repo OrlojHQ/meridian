@@ -22,7 +22,7 @@ impl Sidecar {
     pub fn spawn(app: &AppHandle) -> Result<Self, String> {
         let command = app
             .shell()
-            .sidecar("meridiand")
+            .sidecar("meridian-desktop-gateway")
             .map_err(|error| format!("The bundled gateway is not installed ({error})."))?;
         let (mut events, child) = command
             .args(["--listen", LOCAL_LISTEN])

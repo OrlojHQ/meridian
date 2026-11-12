@@ -143,7 +143,7 @@ kill "$bad_server" 2>/dev/null || true
 env MERIDIAN_DRY_RUN=1 "$installer" >"$work/out"
 grep -q "Verified meridian-desktop_${version}_linux_amd64.deb." "$work/out" || fail "linux verify output"
 grep -q "Would install" "$work/out" || fail "linux dry-run output"
-grep -q "sudo apt remove meridian" "$work/out" || fail "linux uninstall note"
+grep -q "sudo apt remove meridian-desktop" "$work/out" || fail "linux uninstall note"
 
 mkdir -p "$work/fakebin"
 cat >"$work/fakebin/xattr" <<'EOF'
