@@ -74,6 +74,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   document.title = "";
+  delete window.__MERIDIAN_DESKTOP__;
 });
 
 async function openMeridianLauncher() {
@@ -434,6 +435,7 @@ describe("application shell", () => {
     expect(links.map((link) => link.getAttribute("href"))).toEqual([
       "/ui/settings/harnesses",
     ]);
+    expect(within(views).queryByRole("button", { name: "Gateway" })).not.toBeInTheDocument();
     links.forEach((link) => expect(link.querySelector("svg")).not.toBeNull());
     expect(await screen.findByLabelText("1 need attention")).toHaveTextContent("1");
 
@@ -913,5 +915,29 @@ describe("application shell", () => {
     expect(sidebar).toHaveClass("open");
     await userEvent.click(row);
     await waitFor(() => expect(sidebar).not.toHaveClass("open"));
+  });
+
+  it("opens gateway settings only when the desktop shell is present", async () => {
+    const openGatewaySettings = vi.fn();
+    window.__MERIDIAN_DESKTOP__ = {
+      notify: vi.fn(),
+      setAttention: vi.fn(),
+      openGatewaySettings,
+    };
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
+    vi.spyOn(api, "capsules").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "capabilities").mockResolvedValue(capabilities);
+    wrapper(
+      <Routes>
+        <Route path="/ui" element={<AppShell />}>
+          <Route index element={<p>Activity home</p>} />
+        </Route>
+      </Routes>,
+    );
+    expect(await screen.findByText("Desktop alerts on")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Gateway" }));
+    expect(openGatewaySettings).toHaveBeenCalledOnce();
+    delete window.__MERIDIAN_DESKTOP__;
   });
 });

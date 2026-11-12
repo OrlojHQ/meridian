@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-desktop-open-gateway"
+description = "Enables the desktop_open_gateway command without any pre-configured scope."
+commands.allow = ["desktop_open_gateway"]
+
+[[permission]]
+identifier = "deny-desktop-open-gateway"
+description = "Denies the desktop_open_gateway command without any pre-configured scope."
+commands.deny = ["desktop_open_gateway"]

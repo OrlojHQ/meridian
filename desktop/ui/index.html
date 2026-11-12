@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Meridian</title>
+    <link rel="stylesheet" href="picker.css?v=2" />
+  </head>
+  <body>
+    <main>
+      <img src="mark.svg" alt="" width="72" height="72" />
+      <h1>Meridian</h1>
+      <p class="lead">
+        Choose the gateway this window uses. The app loads that gateway's web UI.
+      </p>
+      <form id="gateway-form">
+        <fieldset>
+          <legend>Gateway</legend>
+          <label class="choice">
+            <input type="radio" name="mode" value="local" checked />
+            <span>
+              <strong>This computer</strong>
+              <small>Start the bundled local gateway, or use one already running here.</small>
+            </span>
+          </label>
+          <label class="choice">
+            <input type="radio" name="mode" value="remote" />
+            <span>
+              <strong>Another gateway</strong>
+              <small>A remote or other local meridiand address. The bundled gateway is not started.</small>
+            </span>
+          </label>
+          <label class="url-field" id="url-field" hidden>
+            Gateway address
+            <input
+              name="url"
+              type="url"
+              inputmode="url"
+              spellcheck="false"
+              autocomplete="off"
+              placeholder="https://meridian.example.com"
+            />
+            <small>Sign-in stays on the gateway's own page. This app does not save the installation token.</small>
+          </label>
+        </fieldset>
+        <button type="submit">Continue</button>
+        <p id="status" role="status"></p>
+      </form>
+    </main>
+    <script src="picker.js"></script>
+  </body>
+</html>

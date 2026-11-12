@@ -72,6 +72,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   document.title = "";
+  delete window.__MERIDIAN_DESKTOP__;
   Object.defineProperty(document, "hidden", { configurable: true, value: false });
 });
 
@@ -152,5 +153,42 @@ describe("needs-you alerts", () => {
     );
     await waitFor(() => expect(document.title).toBe("(2) Meridian"));
     expect(posted).toHaveLength(0);
+  });
+
+  it("uses the desktop bridge for a content-free alert and skips the browser notification", async () => {
+    const notify = vi.fn();
+    const setAttention = vi.fn();
+    window.__MERIDIAN_DESKTOP__ = { notify, setAttention };
+    const { posted } = mockNotifications("denied");
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+    Object.defineProperty(document, "hasFocus", { configurable: true, value: () => false });
+    const first = attention("capsule-1", "fix-flaky-tests", "2026-08-26T00:01:00Z");
+    const second = attention("capsule-2", "approve bash rm -rf /", "2026-08-26T00:02:00Z");
+    const view = render(<Probe items={[first]} />);
+    await waitFor(() => expect(setAttention).toHaveBeenCalledWith(1));
+    expect(notify).not.toHaveBeenCalled();
+
+    view.rerender(<Probe items={[first, second]} />);
+    await waitFor(() => expect(notify).toHaveBeenCalledWith(NEEDS_YOU_PHRASE, "2 need you"));
+    expect(posted).toHaveLength(0);
+    const text = notify.mock.calls.map((call) => call.join("\n")).join("\n");
+    expect(text).not.toContain("fix-flaky-tests");
+    expect(text).not.toContain("approve bash");
+    expect(text).not.toContain("rm -rf");
+  });
+
+  it("does not raise a desktop alert while the window is focused", async () => {
+    const notify = vi.fn();
+    window.__MERIDIAN_DESKTOP__ = { notify, setAttention: vi.fn() };
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
+    Object.defineProperty(document, "hasFocus", { configurable: true, value: () => true });
+    const first = attention("capsule-1", "fix-flaky-tests", "2026-08-26T00:01:00Z");
+    const view = render(<Probe items={[first]} />);
+    await waitFor(() => expect(document.title).toBe("(1) Meridian"));
+    view.rerender(
+      <Probe items={[first, attention("capsule-2", "secret prompt", "2026-08-26T00:02:00Z")]} />,
+    );
+    await waitFor(() => expect(document.title).toBe("(2) Meridian"));
+    expect(notify).not.toHaveBeenCalled();
   });
 });

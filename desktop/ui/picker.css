@@ -1,0 +1,144 @@
+:root {
+  color-scheme: light;
+  --bg: #e7eee9;
+  --card: #f7f9f8;
+  --text: #17211c;
+  --muted: #4e5c55;
+  --line: #dce5df;
+  --accent: #315c4e;
+  --accent-text: #ffffff;
+  --danger: #9b332d;
+  --danger-bg: #f8e6e4;
+  font-family: Inter, "Noto Sans", ui-sans-serif, system-ui, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #121614;
+    --card: #1b221e;
+    --text: #e7eee9;
+    --muted: #a8b6ae;
+    --line: #2c3832;
+    --accent: #7fb7a2;
+    --accent-text: #14281f;
+    --danger: #f0b2ac;
+    --danger-bg: #3a2422;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  color: var(--text);
+}
+
+main {
+  width: min(32rem, calc(100vw - 2rem));
+  padding: 2rem 1.5rem 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: 1.25rem;
+  background: var(--card);
+}
+
+img { display: block; border-radius: 1rem; }
+
+h1 {
+  margin: 1rem 0 0.35rem;
+  font-size: 1.6rem;
+  letter-spacing: -0.03em;
+}
+
+.lead, small, legend { color: var(--muted); }
+
+.lead { margin: 0 0 1.25rem; line-height: 1.45; }
+
+fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: grid;
+  gap: 0.55rem;
+}
+
+legend {
+  margin-bottom: 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.choice {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.75rem;
+  align-items: start;
+  padding: 0.75rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 0.8rem;
+}
+
+.choice:has(input:checked) { border-color: var(--accent); }
+
+.choice strong, .choice small { display: block; }
+
+.choice small, .url-field small {
+  margin-top: 0.2rem;
+  line-height: 1.4;
+}
+
+.url-field {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+
+.url-field[hidden] { display: none; }
+
+input[type="url"] {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  padding: 0.65rem 0.75rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 450;
+}
+
+button {
+  margin-top: 1rem;
+  width: 100%;
+  border: 0;
+  border-radius: 0.7rem;
+  padding: 0.75rem 1rem;
+  background: var(--accent);
+  color: var(--accent-text);
+  font: inherit;
+  font-weight: 680;
+  cursor: pointer;
+}
+
+button:disabled, input:disabled { cursor: default; opacity: 0.7; }
+
+#status {
+  min-height: 1.4rem;
+  margin: 0.75rem 0 0;
+  white-space: pre-wrap;
+  line-height: 1.4;
+}
+
+#status.error {
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.6rem;
+  background: var(--danger-bg);
+  color: var(--danger);
+}

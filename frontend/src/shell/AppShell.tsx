@@ -53,6 +53,7 @@ import {
   type CapsuleSession,
 } from "./capsuleActivity";
 import { CommandPalette, KeyboardShortcutsDialog } from "./CommandPalette";
+import { desktopBridge } from "./desktop";
 import {
   GO_PREFIX_MS,
   nextNeedingMePath,
@@ -189,9 +190,21 @@ function notificationPermission(): NotificationPermission | "unsupported" {
   return typeof Notification === "undefined" ? "unsupported" : Notification.permission;
 }
 
+function GatewaySettingsButton() {
+  const open = desktopBridge()?.openGatewaySettings;
+  if (!open) return null;
+  return (
+    <button type="button" onClick={() => open()}>
+      Gateway
+    </button>
+  );
+}
+
 // Opt-in uses the browser Notification permission only. Nothing is written to
 // browser storage: drafts stay in memory, and there is no phone push.
+// The desktop shell posts the same content-free alert itself.
 function NotificationOptIn() {
+  const bridge = desktopBridge();
   const [permission, setPermission] = useState(notificationPermission);
   useEffect(() => {
     if (typeof Notification === "undefined") return;
@@ -214,6 +227,16 @@ function NotificationOptIn() {
       status?.removeEventListener("change", sync);
     };
   }, []);
+  if (bridge) {
+    return (
+      <span
+        className="status-notify-state"
+        title='Desktop alerts stay content-free: a count and "Meridian needs you". Nothing is sent to a phone.'
+      >
+        Desktop alerts on
+      </span>
+    );
+  }
   if (permission === "unsupported") return null;
   if (permission === "granted") {
     return (
@@ -698,6 +721,7 @@ export function AppShell() {
             <SettingsIcon />
             Harness settings
           </NavLink>
+          <GatewaySettingsButton />
         </nav>
         <nav className="activity-nav" aria-label="Capsule activity">
           {projects.isPending ? (

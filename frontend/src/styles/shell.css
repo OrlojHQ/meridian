@@ -455,20 +455,28 @@
   padding-bottom: 0.6rem;
 }
 
-.sidebar-links > a {
+.sidebar-links > a,
+.sidebar-links > button {
   display: flex;
   align-items: center;
   gap: 0.55rem;
+  width: 100%;
+  border: 0;
   border-radius: var(--radius-sm);
   padding: 0.4rem 0.5rem;
   color: var(--muted);
+  background: transparent;
+  font: inherit;
   font-size: 0.72rem;
   font-weight: 620;
+  text-align: left;
   text-decoration: none;
+  cursor: pointer;
 }
 
 .sidebar-links > a:hover,
-.sidebar-links > a.active {
+.sidebar-links > a.active,
+.sidebar-links > button:hover {
   color: var(--text);
   background: var(--surface-hover);
 }

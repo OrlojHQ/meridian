@@ -7,6 +7,13 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- A desktop shell (ADR 0043, proposed) loads the same `/ui/` bundle the daemon
+  serves. Bundled local starts or reuses `meridiand`; another gateway is
+  remembered and does not start the sidecar. Notifications and the tray go
+  through a runtime bridge the browser ignores.
+
 ## [0.6.0] - 2026-11-11
 
 ### Upgrade notes

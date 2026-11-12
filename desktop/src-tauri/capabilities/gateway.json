@@ -1,0 +1,39 @@
+{
+  "identifier": "gateway-bridge",
+  "description": "Content-free notification and tray commands for a gateway page the operator opened.",
+  "windows": ["main"],
+  "remote": {
+    "urls": [
+      "http://127.0.0.1:*/*",
+      "http://127.0.0.1:*/*/*",
+      "http://127.0.0.1:*/*/*/*",
+      "http://127.0.0.1:*/*/*/*/*",
+      "http://127.0.0.1:*/*/*/*/*/*",
+      "http://localhost:*/*",
+      "http://localhost:*/*/*",
+      "http://localhost:*/*/*/*",
+      "http://localhost:*/*/*/*/*",
+      "http://localhost:*/*/*/*/*/*",
+      "https://*/*",
+      "https://*/*/*",
+      "https://*/*/*/*",
+      "https://*/*/*/*/*",
+      "https://*/*/*/*/*/*",
+      "https://*.*/*",
+      "https://*.*/*/*",
+      "https://*.*/*/*/*",
+      "https://*.*/*/*/*/*",
+      "https://*.*/*/*/*/*/*",
+      "https://*.*.*/*",
+      "https://*.*.*/*/*",
+      "https://*.*.*/*/*/*",
+      "https://*.*.*/*/*/*/*",
+      "https://*.*.*/*/*/*/*/*"
+    ]
+  },
+  "permissions": [
+    "allow-desktop-notify",
+    "allow-desktop-set-attention",
+    "allow-desktop-open-gateway"
+  ]
+}
