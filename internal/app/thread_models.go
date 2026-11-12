@@ -20,9 +20,14 @@ type ThreadModelSummary struct {
 }
 
 // summarizeThreadModels picks the labels of the current model and effort.
-// A current model the harness does not list is named by its ID.
+// The model the harness resolved the current option to wins over the
+// option's own label; a current model the harness does not list is named by
+// its ID.
 func summarizeThreadModels(set *adapterproto.ModelSet) ThreadModelSummary {
 	summary := ThreadModelSummary{Model: optionLabel(set.Current, set.Options)}
+	if resolved := boundedLabel(set.Resolved); resolved != "" && summary.Model != "" {
+		summary.Model = resolved
+	}
 	if set.Effort != nil {
 		summary.Effort = optionLabel(set.Effort.Current, set.Effort.Options)
 	}

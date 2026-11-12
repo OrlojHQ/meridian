@@ -19,6 +19,9 @@ type modelSet struct {
 	// effort is the current model's reasoning effort levels, reported only
 	// when the controller negotiated effort.
 	effort *modelSet
+	// resolved names the model the current option runs when that option is
+	// an alias, reported only when the controller negotiated it.
+	resolved string
 }
 
 func newModelSet() *modelSet {
@@ -79,7 +82,10 @@ func (m *modelSet) set() *adapterproto.ModelSet {
 		}
 		options = kept
 	}
-	set := &adapterproto.ModelSet{Current: m.current, Options: options}
+	set := &adapterproto.ModelSet{
+		Current: m.current, Options: options,
+		Resolved: commandLine(m.resolved, adapterproto.MaxModelLabelBytes),
+	}
 	if m.effort != nil && len(m.effort.options) != 0 {
 		efforts := m.effort.options[:min(len(m.effort.options), adapterproto.MaxEfforts)]
 		current := m.effort.current
@@ -122,6 +128,9 @@ func (s *Stream) ReportModels(models *modelSet) error {
 	set := models.set()
 	if !s.effort {
 		set.Effort = nil
+	}
+	if !s.resolved {
+		set.Resolved = ""
 	}
 	return s.Write(adapterproto.Frame{
 		Protocol: adapterproto.Version, Type: adapterproto.KindModels,

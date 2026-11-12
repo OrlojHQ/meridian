@@ -1032,12 +1032,16 @@ export type ThreadAdapterEvent = {
  */
 export type ThreadModels = {
     current?: string;
+    /**
+     * Display name of the model the current option runs, when the harness reports it, such as "Opus 5.5" behind a "default" alias.
+     */
+    resolved?: string;
     options: Array<ThreadModelOption>;
     effort?: ThreadEffort;
 };
 
 /**
- * The reasoning effort levels the current model offers. current is empty while the harness uses its own default.
+ * The reasoning effort levels the current model offers. current is the level in effect, including the harness's own default when it reports one, and empty when it does not say.
  */
 export type ThreadEffort = {
     current?: string;

@@ -442,11 +442,25 @@ describe("Model picker", () => {
     expect(latestThreadModels(t.blocks)).toEqual({
       current: "claude-opus-5-5",
       currentLabel: "claude-opus-5-5",
+      resolved: "",
       options: [
         { id: "sonnet", label: "Sonnet", description: "" },
         { id: "haiku", label: "haiku", description: "" },
       ],
     });
+  });
+
+  it("names the model and effort that run rather than the alias", async () => {
+    const t = transcript();
+    t.models({
+      ...reported,
+      resolved: "Opus\u0007 5.5",
+      effort: { current: "high", options: [{ id: "low", label: "Low" }, { id: "high", label: "High" }] },
+    });
+    expect(latestThreadModels(t.blocks)?.resolved).toBe("Opus 5.5");
+    renderThread(t.blocks);
+    expect(await screen.findByRole("button", { name: "Model: Opus 5.5" })).toHaveTextContent("Opus 5.5");
+    expect(screen.getByRole("button", { name: "Reasoning effort: High" })).toHaveTextContent("High");
   });
 
   it("names switches and refusals in the transcript", () => {

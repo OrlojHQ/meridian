@@ -738,7 +738,8 @@ func TestThreadModelsSummaryIsDerivedInMemory(t *testing.T) {
 		Items: []ports.RuntimeStructuredEvent{{Sequence: 1, Frame: adapterproto.Frame{
 			Protocol: adapterproto.Version, Type: adapterproto.KindModels,
 			Models: &adapterproto.ModelSet{
-				Current: "sonnet", Options: []adapterproto.ModelOption{{ID: "sonnet", Label: "Sonnet"}},
+				Current: "sonnet", Resolved: "Sonnet 5.5",
+				Options: []adapterproto.ModelOption{{ID: "sonnet", Label: "Sonnet"}},
 				Effort: &adapterproto.EffortSet{Current: "high", Options: []adapterproto.ModelOption{
 					{ID: "low", Label: "Low"}, {ID: "high", Label: "High"},
 				}},
@@ -753,7 +754,8 @@ func TestThreadModelsSummaryIsDerivedInMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := app.ThreadModelSummary{Model: "Sonnet", Effort: "High"}
+	// The model the option resolves to names it, rather than the alias.
+	want := app.ThreadModelSummary{Model: "Sonnet 5.5", Effort: "High"}
 	if summary, ok := service.ThreadModels(ctx, thread); !ok || summary != want {
 		t.Fatalf("summary = %#v, %v", summary, ok)
 	}

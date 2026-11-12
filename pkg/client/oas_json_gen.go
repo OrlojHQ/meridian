@@ -27876,6 +27876,12 @@ func (s *ThreadModels) encodeFields(e *jx.Encoder) {
 		}
 	}
 	{
+		if s.Resolved.Set {
+			e.FieldStart("resolved")
+			s.Resolved.Encode(e)
+		}
+	}
+	{
 		e.FieldStart("options")
 		e.ArrStart()
 		for _, elem := range s.Options {
@@ -27891,10 +27897,11 @@ func (s *ThreadModels) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfThreadModels = [3]string{
+var jsonFieldsNameOfThreadModels = [4]string{
 	0: "current",
-	1: "options",
-	2: "effort",
+	1: "resolved",
+	2: "options",
+	3: "effort",
 }
 
 // Decode decodes ThreadModels from json.
@@ -27916,8 +27923,18 @@ func (s *ThreadModels) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"current\"")
 			}
+		case "resolved":
+			if err := func() error {
+				s.Resolved.Reset()
+				if err := s.Resolved.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"resolved\"")
+			}
 		case "options":
-			requiredBitSet[0] |= 1 << 1
+			requiredBitSet[0] |= 1 << 2
 			if err := func() error {
 				s.Options = make([]ThreadModelOption, 0)
 				if err := d.Arr(func(d *jx.Decoder) error {
@@ -27954,7 +27971,7 @@ func (s *ThreadModels) Decode(d *jx.Decoder) error {
 	// Validate required fields.
 	var failures []validate.FieldError
 	for i, mask := range [1]uint8{
-		0b00000010,
+		0b00000100,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.

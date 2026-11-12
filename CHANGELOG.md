@@ -17,6 +17,14 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   `POST /projects/{projectId}/threads` now accepts a request without `prompt`;
   a lead (`coordination`) still requires one. `meridian thread spawn` still
   requires a prompt.
+- The Thread composer's model button names the model that runs, such as
+  "Opus 5.5" rather than "Default (recommended)", and the effort button shows
+  the level in effect from the start. Claude Code sessions ask Claude Code
+  for both before the first turn (ADR 0042). Adapters and `capsuled`
+  negotiate a new `resolvedModel` capability for the `models` frame's
+  `resolved` name, exposed as `ThreadModels.resolved`.
+- The Thread composer wraps its controls below the message box when its own
+  column is narrow, not only on narrow windows.
 
 ## [0.5.0] - 2026-11-11
 

@@ -456,7 +456,7 @@ func (s *structuredSession) execute() {
 		ID: "capsuled-hello", Capabilities: &adapterproto.Capabilities{
 			Resume: true, ToolEvents: true, Permissions: true,
 			InputRequests: true, Heartbeat: true, OpaqueMetadata: true,
-			Commands: true, Models: true, Effort: true,
+			Commands: true, Models: true, Effort: true, ResolvedModel: true,
 		},
 	}
 	handshakeContext, handshakeCancel := context.WithTimeout(ctx, structuredHandshakeTimeout)
@@ -655,7 +655,8 @@ func (s *structuredSession) readerLoop(
 		if !adapterFrame(frame.Type) || frame.Cursor != 0 || frame.Gap != nil ||
 			(frame.Type == adapterproto.KindCommands && !capabilities.Commands) ||
 			(frame.Type == adapterproto.KindModels && !capabilities.Models) ||
-			(frame.Type == adapterproto.KindModels && frame.Models.Effort != nil && !capabilities.Effort) {
+			(frame.Type == adapterproto.KindModels && frame.Models.Effort != nil && !capabilities.Effort) ||
+			(frame.Type == adapterproto.KindModels && frame.Models.Resolved != "" && !capabilities.ResolvedModel) {
 			return adapterproto.ErrInvalidFrame
 		}
 		s.addEvent(frame)

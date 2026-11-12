@@ -244,6 +244,12 @@ func TestStructuredModelsRequireNegotiation(t *testing.T) {
 		t.Fatalf("unnegotiated effort status = %#v", status)
 	}
 
+	resolved := structuredTestClient(t, "unnegotiated-resolved", 16)
+	startStructuredTestRun(t, resolved, "unnegotiated-resolved-run")
+	if status := waitStructuredTerminal(t, resolved, "unnegotiated-resolved-run"); status.State != RunFailed {
+		t.Fatalf("unnegotiated resolved model status = %#v", status)
+	}
+
 	unnegotiated := structuredTestClient(t, "unnegotiated-models", 16)
 	startStructuredTestRun(t, unnegotiated, "unnegotiated-models-run")
 	if status := waitStructuredTerminal(t, unnegotiated, "unnegotiated-models-run"); status.State != RunFailed {
@@ -383,7 +389,8 @@ func TestStructuredAdapterHelper(t *testing.T) {
 		Capabilities: &adapterproto.Capabilities{
 			Resume: true, ToolEvents: true, Permissions: true,
 			InputRequests: true, Heartbeat: true, OpaqueMetadata: true,
-			Commands: mode == "commands", Models: mode == "models" || mode == "unnegotiated-effort",
+			Commands: mode == "commands",
+			Models:   mode == "models" || mode == "unnegotiated-effort" || mode == "unnegotiated-resolved",
 		},
 	}); err != nil {
 		os.Exit(21)
@@ -401,6 +408,13 @@ func TestStructuredAdapterHelper(t *testing.T) {
 			Commands: []adapterproto.Command{{
 				Name: "compact", Description: "Summarize the conversation", Kind: adapterproto.CommandAction,
 			}},
+		})
+	}
+	if mode == "unnegotiated-resolved" {
+		_ = encoder.Encode(adapterproto.Frame{
+			Protocol: adapterproto.Version, Type: adapterproto.KindModels,
+			Models: &adapterproto.ModelSet{Current: "fast", Resolved: "Fast 1",
+				Options: []adapterproto.ModelOption{{ID: "fast", Label: "Fast"}}},
 		})
 	}
 	if mode == "unnegotiated-effort" {

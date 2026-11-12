@@ -56,18 +56,38 @@ func TestClaudeStreamReportsAndSwitchesModels(t *testing.T) {
 		models.Options[2].Description != "Locked for this account" {
 		t.Fatalf("models = %#v", models)
 	}
+	// The "default" row names the model behind it before any turn.
+	if models.Resolved != "Opus 5.5" || models.Effort == nil || models.Effort.Current != "" {
+		t.Fatalf("initial resolved model and effort = %#v", models)
+	}
+	// get_settings then reports the effort Claude Code starts on.
+	settled := readKind(t, decoder, adapterproto.KindModels).Models
+	if settled.Resolved != "Opus 5.5" || settled.Effort.Current != "high" {
+		t.Fatalf("settled = %#v / %#v", settled, settled.Effort)
+	}
 	sendSetModel(t, encoder, "switch-1", "gpt-6")
 	if failure := readKind(t, decoder, adapterproto.KindError); failure.Code != "model_unavailable" {
 		t.Fatalf("unknown model = %#v", failure)
 	}
 	sendSetModel(t, encoder, "switch-2", "sonnet")
-	if switched := readKind(t, decoder, adapterproto.KindModels).Models; switched.Current != "sonnet" {
-		t.Fatalf("switched = %#v", switched)
+	switched := readKind(t, decoder, adapterproto.KindModels).Models
+	if switched.Current != "sonnet" || switched.Resolved != "Sonnet 5.5" || switched.Effort.Current != "" {
+		t.Fatalf("switched = %#v / %#v", switched, switched.Effort)
+	}
+	if settled := readKind(t, decoder, adapterproto.KindModels).Models; settled.Effort.Current != "low" {
+		t.Fatalf("switched effort = %#v", settled.Effort)
 	}
 	sendSetModel(t, encoder, "switch-3", "opus-locked")
 	failure := readKind(t, decoder, adapterproto.KindError)
 	if failure.Code != "model_unavailable" || !strings.Contains(failure.Summary, "not available") {
 		t.Fatalf("refused switch = %#v", failure)
+	}
+	// A turn's system/init names the model and effort Claude Code actually
+	// ran, including a change made inside Claude Code.
+	sendTestMessage(t, encoder, "message-1", "typed-model")
+	if typed := readKind(t, decoder, adapterproto.KindModels).Models; typed.Resolved != "Haiku 5.5" ||
+		typed.Effort.Current != "low" {
+		t.Fatalf("typed model = %#v / %#v", typed, typed.Effort)
 	}
 }
 
@@ -78,6 +98,9 @@ func TestClaudeStreamReportsAndChangesEffort(t *testing.T) {
 	if effort == nil || effort.Current != "" || len(effort.Options) != 3 || effort.Options[2].Label != "Max" {
 		t.Fatalf("effort = %#v", effort)
 	}
+	if settled := readKind(t, decoder, adapterproto.KindModels).Models.Effort; settled.Current != "high" {
+		t.Fatalf("starting effort = %#v", settled)
+	}
 	sendSetEffort(t, encoder, "effort-1", "medium")
 	if failure := readKind(t, decoder, adapterproto.KindError); failure.Code != "effort_unavailable" {
 		t.Fatalf("unlisted effort = %#v", failure)
@@ -87,17 +110,41 @@ func TestClaudeStreamReportsAndChangesEffort(t *testing.T) {
 		!strings.Contains(failure.Summary, "CLAUDE_CODE_EFFORT_LEVEL") {
 		t.Fatalf("refused effort = %#v", failure)
 	}
-	sendSetEffort(t, encoder, "effort-3", "high")
-	if changed := readKind(t, decoder, adapterproto.KindModels).Models.Effort; changed.Current != "high" {
+	sendSetEffort(t, encoder, "effort-3", "low")
+	if changed := readKind(t, decoder, adapterproto.KindModels).Models.Effort; changed.Current != "low" {
 		t.Fatalf("changed = %#v", changed)
 	}
+	// A level Meridian applied carries over a model switch.
 	sendSetModel(t, encoder, "switch-1", "sonnet")
 	if switched := readKind(t, decoder, adapterproto.KindModels).Models; switched.Effort == nil ||
-		switched.Effort.Current != "high" || len(switched.Effort.Options) != 2 {
+		switched.Effort.Current != "low" || len(switched.Effort.Options) != 2 {
 		t.Fatalf("switched = %#v", switched)
 	}
 	sendSetModel(t, encoder, "switch-2", "opus-locked")
 	_ = readKind(t, decoder, adapterproto.KindError)
+}
+
+func TestClaudeModelName(t *testing.T) {
+	for id, want := range map[string]string{
+		"claude-opus-5-5":              "Opus 5.5",
+		"claude-fable-5-1":             "Fable 5.1",
+		"claude-sonnet-5":              "Sonnet 5",
+		"claude-sonnet-4-5-20250929":   "Sonnet 4.5",
+		"claude-3-5-sonnet-20241022":   "Sonnet 3.5",
+		"claude-opus-5-5[1m]":          "Opus 5.5 (1M)",
+		"default":                      "",
+		"claude-":                      "",
+		"claude-opus":                  "",
+		"claude-opus--5":               "",
+		"claude-Opus-5":                "",
+		"us.anthropic.claude-opus-5-5": "",
+		"claude-opus-5-5\u202e":        "",
+		"claude-opus-123456":           "",
+	} {
+		if got := claudeModelName(id); got != want {
+			t.Errorf("claudeModelName(%q) = %q, want %q", id, got, want)
+		}
+	}
 }
 
 func sendTestMessage(t *testing.T, encoder *adapterproto.Encoder, id, content string) {
@@ -438,6 +485,9 @@ func TestClaudeStreamHelper(t *testing.T) {
 	}
 	text := func(value string) map[string]any { return map[string]any{"type": "text", "text": value} }
 	var pendingTool, pendingAsk string
+	// The fixture's model and effort in effect, as get_settings reports them.
+	appliedModel, appliedEffort := "claude-opus-5-5", ""
+	modelEffort := map[string]string{"claude-opus-5-5": "high", "claude-sonnet-5-5": "low"}
 	var askInput map[string]any
 	for scanner.Scan() {
 		var record map[string]any
@@ -454,9 +504,10 @@ func TestClaudeStreamHelper(t *testing.T) {
 			body := map[string]any{}
 			if request["subtype"] == "initialize" {
 				body = map[string]any{"commands": claudeFixtureCommands, "models": []any{
-					map[string]any{"value": "default", "displayName": "Default (recommended)", "description": "Opus",
+					map[string]any{"value": "default", "resolvedModel": "claude-opus-5-5",
+						"displayName": "Default (recommended)", "description": "Opus",
 						"supportsEffort": true, "supportedEffortLevels": []any{"low", "high", "max"}},
-					map[string]any{"value": "sonnet", "displayName": "Sonnet",
+					map[string]any{"value": "sonnet", "resolvedModel": "claude-sonnet-5-5", "displayName": "Sonnet",
 						"supportsEffort": true, "supportedEffortLevels": []any{"low", "high"}},
 					map[string]any{"value": "opus-locked", "displayName": "Opus", "description": "Locked for\nthis account"},
 				}}
@@ -474,6 +525,23 @@ func TestClaudeStreamHelper(t *testing.T) {
 					"subtype": "error", "request_id": record["request_id"], "error": "Model not available",
 				}})
 				continue
+			}
+			switch request["subtype"] {
+			case "set_model":
+				if request["model"] == "sonnet" {
+					appliedModel = "claude-sonnet-5-5"
+				} else {
+					appliedModel = "claude-opus-5-5"
+				}
+			case "apply_flag_settings":
+				settings, _ := request["settings"].(map[string]any)
+				appliedEffort, _ = settings["effortLevel"].(string)
+			case "get_settings":
+				effort := appliedEffort
+				if effort == "" {
+					effort = modelEffort[appliedModel]
+				}
+				body = map[string]any{"applied": map[string]any{"model": appliedModel, "effort": effort}}
 			}
 			emit(map[string]any{
 				"type": "control_response",
@@ -540,6 +608,12 @@ func TestClaudeStreamHelper(t *testing.T) {
 				assistant("msg_fixture_1", text("hello"))
 				emit(map[string]any{"type": "stream_event", "event": map[string]any{"type": "message_stop"}})
 				result("hello", false)
+			case "typed-model":
+				// Claude Code switched models itself, as a typed /model does.
+				emit(map[string]any{
+					"type": "system", "subtype": "init", "model": "claude-haiku-5-5", "effort": "low",
+				})
+				result("switched", false)
 			case "tool":
 				input := map[string]any{"command": "echo meridian", "description": "print"}
 				assistant("msg_fixture_2", map[string]any{
