@@ -1,10 +1,11 @@
 //! Desktop shell. The product UI is the bundle meridiand serves at `/ui/`.
 //! This process chooses a gateway, starts the bundled daemon when asked, and
-//! exposes a three-command bridge for content-free alerts.
+//! exposes a small bridge for content-free alerts and update checks.
 
 mod gateway;
 mod notify_text;
 mod sidecar;
+mod update;
 
 use std::fs;
 use std::path::PathBuf;
@@ -23,6 +24,10 @@ use gateway::{
 };
 use notify_text::{attention_tooltip, validate_attention, validate_needs_you};
 use sidecar::Sidecar;
+use tauri_plugin_updater::UpdaterExt;
+use update::{
+    install_source_from_exe, update_action, updater_signing_configured, InstallSource, UpdateAction,
+};
 
 const ATTENTION_ICON: &[u8] = include_bytes!("../icons/32x32-attention.png");
 const IDLE_ICON: &[u8] = include_bytes!("../icons/32x32.png");
@@ -90,6 +95,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let saved = read_saved(app.handle());
             let starting = saved.is_some();
@@ -162,7 +168,9 @@ pub fn run() {
             gateway_connect,
             desktop_notify,
             desktop_set_attention,
-            desktop_open_gateway
+            desktop_open_gateway,
+            desktop_update_check,
+            desktop_update_install
         ])
         .build(tauri::generate_context!())
         .expect("failed to start Meridian")
@@ -236,6 +244,102 @@ fn desktop_set_attention(app: AppHandle, count: u32) -> Result<(), String> {
 #[tauri::command]
 fn desktop_open_gateway(app: AppHandle) -> Result<(), String> {
     open_gateway(&app)
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateStatus {
+    available: bool,
+    version: Option<String>,
+    action: Option<&'static str>,
+    command: Option<&'static str>,
+    detail: Option<&'static str>,
+}
+
+#[tauri::command]
+async fn desktop_update_check(app: AppHandle) -> UpdateStatus {
+    let updater = match app.updater() {
+        Ok(updater) => updater,
+        Err(_) => {
+            return UpdateStatus {
+                available: false,
+                version: None,
+                action: None,
+                command: None,
+                detail: Some("Couldn't check for updates."),
+            };
+        }
+    };
+    let checked = match updater.check().await {
+        Ok(update) => update,
+        Err(_) => {
+            return UpdateStatus {
+                available: false,
+                version: None,
+                action: None,
+                command: None,
+                detail: Some("Couldn't check for updates."),
+            };
+        }
+    };
+    let Some(update) = checked else {
+        return UpdateStatus {
+            available: false,
+            version: None,
+            action: None,
+            command: None,
+            detail: None,
+        };
+    };
+    let source = current_exe_source();
+    let (action, command) = match update_action(source, updater_signing_configured()) {
+        UpdateAction::Install => ("install", None),
+        UpdateAction::Command(command) => ("command", Some(command)),
+    };
+    UpdateStatus {
+        available: true,
+        version: Some(update.version),
+        action: Some(action),
+        command,
+        detail: None,
+    }
+}
+
+#[tauri::command]
+async fn desktop_update_install(app: AppHandle) -> Result<(), String> {
+    if !updater_signing_configured() || current_exe_source() != InstallSource::MacApp {
+        return Err("This install does not update itself.".into());
+    }
+    let updater = app
+        .updater()
+        .map_err(|_| "Couldn't check for updates.".to_string())?;
+    let update = updater
+        .check()
+        .await
+        .map_err(|_| "Couldn't check for updates.".to_string())?
+        .ok_or_else(|| "Meridian is up to date.".to_string())?;
+    let bytes = update
+        .download(|_, _| {}, || {})
+        .await
+        .map_err(|_| "The update could not be downloaded.".to_string())?;
+    update
+        .install(&bytes)
+        .map_err(|_| "The update could not be installed.".to_string())?;
+    let sidecar = {
+        let state = app.state::<AppState>();
+        let taken = lock(&state).sidecar.take();
+        taken
+    };
+    if let Some(sidecar) = sidecar {
+        sidecar.stop();
+    }
+    app.restart();
+}
+
+fn current_exe_source() -> InstallSource {
+    let exe =
+        std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("meridian-desktop"));
+    install_source_from_exe(&exe)
 }
 
 fn connect(app: &AppHandle, choice: SavedGateway) -> Result<(), String> {
@@ -438,6 +542,14 @@ fn open_external(url: &Url) {
     });
 }
 
+fn request_update_check(app: &AppHandle) {
+    show_main(app);
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    let _ = window.eval("window.dispatchEvent(new CustomEvent('meridian-check-updates'))");
+}
+
 fn show_main(app: &AppHandle) {
     let Some(window) = app.get_webview_window("main") else {
         return;
@@ -452,9 +564,11 @@ fn build_tray(app: &AppHandle) -> Result<(), String> {
         .map_err(|error| error.to_string())?;
     let gateway_item = MenuItem::with_id(app, "gateway", "Gateway…", true, None::<&str>)
         .map_err(|error| error.to_string())?;
+    let updates_item = MenuItem::with_id(app, "updates", "Check for updates…", true, None::<&str>)
+        .map_err(|error| error.to_string())?;
     let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)
         .map_err(|error| error.to_string())?;
-    let menu = Menu::with_items(app, &[&open_item, &gateway_item, &quit_item])
+    let menu = Menu::with_items(app, &[&open_item, &gateway_item, &updates_item, &quit_item])
         .map_err(|error| error.to_string())?;
     let icon = app
         .default_window_icon()
@@ -470,6 +584,7 @@ fn build_tray(app: &AppHandle) -> Result<(), String> {
             "gateway" => {
                 let _ = open_gateway(app);
             }
+            "updates" => request_update_check(app),
             "quit" => {
                 lock(&app.state::<AppState>()).quitting = true;
                 app.exit(0);

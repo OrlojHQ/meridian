@@ -24,6 +24,13 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   downloads that release, checks `checksums.txt`, and installs the desktop
   app (or the CLI binaries with `--cli`). Apple signing stays off until its
   secrets are set. The `meridian` formula is unchanged.
+- The desktop window checks for a newer release on launch and every four
+  hours. It shows "Meridian X.Y.Z is available" with Update & restart or
+  Later, and Later hides that version for a day. Homebrew installs are told
+  to run `brew upgrade --cask meridian-desktop`. Linux packages are told to
+  run the curl installer. A signed macOS self-update stops a sidecar this
+  window started before it restarts. The updater signing key is optional;
+  without it the release still ships and self-update stays off.
 
 ## [0.6.0] - 2026-11-11
 

@@ -34,6 +34,8 @@
   "permissions": [
     "allow-desktop-notify",
     "allow-desktop-set-attention",
-    "allow-desktop-open-gateway"
+    "allow-desktop-open-gateway",
+    "allow-desktop-update-check",
+    "allow-desktop-update-install"
   ]
 }

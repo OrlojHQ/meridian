@@ -54,6 +54,7 @@ import {
 } from "./capsuleActivity";
 import { CommandPalette, KeyboardShortcutsDialog } from "./CommandPalette";
 import { desktopBridge } from "./desktop";
+import { DesktopUpdateNotice } from "./DesktopUpdateNotice";
 import {
   GO_PREFIX_MS,
   nextNeedingMePath,
@@ -664,6 +665,7 @@ export function AppShell() {
       <a className="skip-link" href="#content">
         Skip to workspace
       </a>
+      <DesktopUpdateNotice />
       <button
         type="button"
         className="mobile-menu-button icon-button"

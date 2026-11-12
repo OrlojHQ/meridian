@@ -6,6 +6,8 @@ fn main() {
             "desktop_notify",
             "desktop_set_attention",
             "desktop_open_gateway",
+            "desktop_update_check",
+            "desktop_update_install",
         ]),
     ))
     .expect("failed to run tauri-build");

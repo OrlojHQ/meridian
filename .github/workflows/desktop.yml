@@ -34,6 +34,8 @@ jobs:
           scripts/render-homebrew-cask.sh 0.0.0 "${RUNNER_TEMP}/checksums.txt" > "${RUNNER_TEMP}/meridian-desktop.rb"
           ruby -c "${RUNNER_TEMP}/meridian-desktop.rb"
           grep -q 'cask "meridian-desktop"' "${RUNNER_TEMP}/meridian-desktop.rb"
+          grep -q 'meridian-install-source' "${RUNNER_TEMP}/meridian-desktop.rb"
+          python3 scripts/write-desktop-updater-manifest-test.py
           if ! command -v shellcheck >/dev/null 2>&1; then
             sudo apt-get update
             sudo apt-get install -y shellcheck

@@ -15,6 +15,12 @@
       openGatewaySettings: function () {
         return internals.invoke("desktop_open_gateway");
       },
+      checkForUpdates: function () {
+        return internals.invoke("desktop_update_check");
+      },
+      installUpdate: function () {
+        return internals.invoke("desktop_update_install");
+      },
     };
     return true;
   }

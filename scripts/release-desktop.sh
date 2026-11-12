@@ -41,6 +41,29 @@ record() {
   printf '%s  %s\n' "${hash}" "${name}" >> "${out}/checksums-fragment.txt"
 }
 
+# The updater archive is separate from Apple signing. --no-sign skips both,
+# so the macOS bundle stays unsigned and this step signs the update with the
+# Tauri key when that secret is present. A missing key skips the artifacts
+# and leaves the disk image and package release intact.
+publish_updater_archive() {
+  local app_bundle="$1"
+  local archive url signature
+  if [[ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]; then
+    echo "TAURI_SIGNING_PRIVATE_KEY is absent. Skipping updater artifacts. The release still ships."
+    return 0
+  fi
+  archive="${out}/meridian-desktop_${version}_macOS_universal.app.tar.gz"
+  COPYFILE_DISABLE=1 tar -czf "${archive}" -C "$(dirname "${app_bundle}")" "$(basename "${app_bundle}")"
+  bun run tauri -- signer sign --app-version "${version}" "${archive}"
+  signature="${archive}.sig"
+  url="https://github.com/OrlojHQ/meridian/releases/download/v${version}/$(basename "${archive}")"
+  python3 "${root}/scripts/write-desktop-updater-manifest.py" \
+    "${version}" "${signature}" "${url}" "${out}/latest.json"
+  record "${archive}"
+  record "${signature}"
+  record "${out}/latest.json"
+}
+
 ldflags="-s -w -buildid= -X github.com/OrlojHQ/meridian/internal/buildinfo.Version=${version} -X github.com/OrlojHQ/meridian/internal/buildinfo.Commit=${commit} -X github.com/OrlojHQ/meridian/internal/buildinfo.Date=${build_date}"
 
 cd "${root}/frontend"
@@ -93,6 +116,7 @@ case "${target}" in
     record "${out}/${dmg_name}"
     record "${out}/${zip_name}"
     [[ -f "${out}/${dmg_name}.spdx.json" ]] && record "${out}/${dmg_name}.spdx.json"
+    publish_updater_archive "${app}"
     ;;
   linux-amd64)
     if [[ "$(uname -s)" != "Linux" ]]; then

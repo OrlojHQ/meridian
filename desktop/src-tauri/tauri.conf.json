@@ -26,5 +26,13 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "",
+      "endpoints": [
+        "https://github.com/OrlojHQ/meridian/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

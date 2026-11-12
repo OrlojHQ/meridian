@@ -31,6 +31,45 @@
   transform: none;
 }
 
+.desktop-update {
+  position: fixed;
+  z-index: 40;
+  top: 0.75rem;
+  left: 50%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  width: min(42rem, calc(100vw - 1.5rem));
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  box-shadow: 0 10px 30px rgb(20 24 21 / 14%);
+  transform: translateX(-50%);
+}
+
+.desktop-update p {
+  flex: 1 1 12rem;
+  min-width: 0;
+  margin: 0;
+  color: var(--text);
+  font-size: 0.92rem;
+  line-height: 1.4;
+}
+
+.desktop-update code {
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.desktop-update-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 0.4rem;
+}
+
 .activity-sidebar {
   position: relative;
   z-index: 5;

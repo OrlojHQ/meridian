@@ -47,9 +47,19 @@ It does not invent a user identity.
 - v1 builds are macOS and Linux and are distributed unsigned. A tag release
   attaches a universal macOS disk image and an amd64 Linux package, and the
   Homebrew tap publishes a cask. Apple code signing and notarization run only
-  when their secrets are configured. Windows is a later follow-up. Code
-  signing without those secrets, and auto-update, are not part of this
-  decision.
+  when their secrets are configured. Windows is a later follow-up. Apple
+  signing without those secrets is not part of this decision.
+- The shell checks `releases/latest/download/latest.json` on launch and every
+  four hours. It never installs an update without a click. A Homebrew cask
+  install, detected by the Caskroom path or a marker the cask writes, tells
+  the operator to run `brew upgrade --cask meridian-desktop`. A Linux package
+  tells them to run the curl installer, because the updater cannot replace a
+  `.deb`. A macOS app that was not installed with Homebrew can download a
+  signed update and restart. That signature uses a Tauri updater key, not an
+  Apple certificate. The private key is a repository secret. When it is
+  absent the release still ships and the app shows the curl command instead
+  of installing. If this process started the sidecar, it stops that sidecar
+  before restarting into an update.
 - The bundle identifier is not chosen. Builds use `io.orloj.meridian`, the
   same prefix the daemon already uses for Docker labels, until a final
   identifier is picked. Do not treat that string as the decided id.
@@ -58,11 +68,13 @@ It does not invent a user identity.
 
 Browser and desktop share one UI. v1 ships on macOS WebKit and Linux
 WebKitGTK. Those engines can still differ, especially the Capsule terminal on
-Linux. Windows and WebView2 are a later follow-up. The shell is the trusted
-operator's client, in the same sense as the browser: it does not receive
-transcript keys, credential keys, or supervisor tokens. A gateway the operator
-chose can call the three bridge commands, and those commands reject any other
-payload. Hiding the window does not stop a sidecar; only Quit does, and only
-for a process this app started. Follow-ups are code signing, auto-update,
-Windows, a final bundle identifier, and the per-user session work already
-tracked in #87.
+Linux. Windows and WebView2 are a later follow-up. Update checks are quiet
+until a newer release exists, and a dismissed version stays dismissed for a
+day. The shell is the trusted operator's client, in the same sense as the
+browser: it does not receive transcript keys, credential keys, or supervisor
+tokens. A gateway the operator chose can call the bridge commands, and those
+commands reject any other payload. Hiding the window does not stop a sidecar;
+only Quit does, and only for a process this app started. An accepted update
+stops that same sidecar before the new build launches. Follow-ups are Apple
+code signing, Windows, a final bundle identifier, and the per-user session
+work already tracked in #87.

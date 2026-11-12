@@ -60,7 +60,10 @@ curl -fsSL https://raw.githubusercontent.com/OrlojHQ/meridian/main/scripts/insta
 ```
 
 `scripts/install-desktop.sh` is also uploaded to the release as
-`install-desktop.sh`. It downloads the desktop archive for this machine,
+`install-desktop.sh`. A published release can also include `latest.json`
+for the desktop updater. The app reads
+`https://github.com/OrlojHQ/meridian/releases/latest/download/latest.json`.
+It downloads the desktop archive for this machine,
 refuses a checksum mismatch, and installs it. On macOS the target is
 `/Applications` when that directory is writable, otherwise `~/Applications`,
 and the script runs `xattr -dr com.apple.quarantine` on `Meridian.app`. On
@@ -71,6 +74,36 @@ same quarantine clearance, or a right-click Open:
 ```console
 xattr -dr com.apple.quarantine /Applications/Meridian.app
 ```
+
+## Desktop updater signing
+
+The desktop app verifies a self-update with a Tauri updater key. That key is
+not an Apple certificate and is not created by this repository. Generate it
+on a machine you trust, from `desktop/` after `bun install`:
+
+```console
+bun run tauri signer generate -w "$HOME/meridian-updater.key"
+```
+
+The command asks for a password and writes the private key to
+`$HOME/meridian-updater.key` and the public key to
+`$HOME/meridian-updater.key.pub`. It also prints both. Do not commit the
+private key, do not paste it into a pull request, and do not pass it on a
+command line. Put the secrets on `OrlojHQ/meridian`:
+
+- `TAURI_SIGNING_PRIVATE_KEY`: the contents of `meridian-updater.key` (the
+  base64-encoded private key, including its comment line)
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: the password you chose
+
+Copy the public key string from `meridian-updater.key.pub` into
+`plugins.updater.pubkey` in `desktop/src-tauri/tauri.conf.json` and commit
+that change. The next tag build signs
+`meridian-desktop_<version>_macOS_universal.app.tar.gz`, uploads the
+signature, and writes `latest.json` for both macOS architectures. Until the
+private-key secret exists, the release workflow skips those updater files and
+still publishes the disk image, the app zip, and the Linux package. Until the
+public key is in the app, macOS installs show the curl command instead of
+Update & restart.
 
 Verify release images by digest, never by an unverified mutable tag:
 

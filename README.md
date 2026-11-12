@@ -154,6 +154,17 @@ curl -fsSL https://raw.githubusercontent.com/OrlojHQ/meridian/main/scripts/insta
 curl -fsSL https://raw.githubusercontent.com/OrlojHQ/meridian/main/scripts/install-desktop.sh | sh -s -- --cli --version 0.6.0
 ```
 
+The window checks for a newer release when it opens and every four hours.
+Nothing is installed until you click **Update & restart**. Later hides that
+version for a day. Check for updates… in the tray menu checks again
+immediately. A Homebrew install shows `brew upgrade --cask meridian-desktop`
+instead of replacing itself. A Linux package shows the curl command above,
+because that package cannot be replaced in place. macOS copies installed
+from the disk image, the app zip, or the curl command update themselves
+once the updater signing key is configured. Until then they show the curl
+command too. The key setup is in
+[Operations](docs/operations.md#desktop-updater-signing).
+
 `MERIDIAN_VERSION` does the same job as `--version`. To remove the app:
 `rm -rf /Applications/Meridian.app` (or `~/Applications/Meridian.app` when it
 was installed there), or `sudo apt remove meridian` on Linux. To remove the

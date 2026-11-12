@@ -22,6 +22,12 @@ cask "meridian-desktop" do
     system_command "/usr/bin/xattr",
                    args: ["-dr", "com.apple.quarantine", "#{appdir}/Meridian.app"],
                    must_succeed: false
+    # The desktop app sees this and offers `brew upgrade` instead of
+    # replacing the bundle itself.
+    File.write(
+      "#{appdir}/Meridian.app/Contents/Resources/meridian-install-source",
+      "homebrew\n",
+    )
   end
 
   caveats do

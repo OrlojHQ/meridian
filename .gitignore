@@ -33,6 +33,8 @@ coverage.out
 /desktop/src-tauri/target/
 /desktop/src-tauri/binaries/
 /desktop/src-tauri/gen/
+# Tauri updater private keys. The public key belongs in tauri.conf.json.
+*.key
 
 # Editors and operating systems
 .DS_Store

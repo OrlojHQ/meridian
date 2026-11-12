@@ -204,10 +204,15 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: scripts/desktop-apple-signing.sh
+      # Updater signing is separate from Apple signing. When
+      # TAURI_SIGNING_PRIVATE_KEY is empty the macOS job still publishes the
+      # disk image and app zip, and it does not upload latest.json.
       - name: Build universal disk image and app zip
         env:
           VERSION: ${{ github.ref_name }}
           COMMIT: ${{ github.sha }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           VERSION="${VERSION#v}" scripts/release-desktop.sh macos-universal
@@ -229,6 +234,14 @@ jobs:
             dist/desktop/*.dmg
             dist/desktop/*.zip
             dist/desktop/*.spdx.json
+      - name: Attest updater artifacts
+        if: ${{ hashFiles('dist/desktop/latest.json') != '' }}
+        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
+        with:
+          subject-path: |
+            dist/desktop/*.app.tar.gz
+            dist/desktop/*.sig
+            dist/desktop/latest.json
       - name: Install pinned Cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
