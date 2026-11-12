@@ -272,6 +272,7 @@ desktop-build:
 		echo "Desktop bundles are defined for macOS and Linux." >&2; \
 		exit 1; \
 	fi
+	cd frontend && bun install --frozen-lockfile
 	$(MAKE) ui-build
 	$(MAKE) build
 	$(MAKE) desktop-sidecar
@@ -279,6 +280,7 @@ desktop-build:
 	cd desktop && bun run tauri -- build --bundles $(DESKTOP_BUNDLES)
 
 desktop-dev:
+	cd frontend && bun install --frozen-lockfile
 	$(MAKE) ui-build
 	$(MAKE) build
 	$(MAKE) desktop-sidecar
