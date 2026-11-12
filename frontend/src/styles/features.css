@@ -1196,6 +1196,9 @@ button.tool-line:hover {
 }
 
 .composer-frame {
+  /* The composer's own width decides when its controls wrap, since side
+     panels can narrow the conversation column on any window size. */
+  container: composer / inline-size;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -3608,7 +3611,9 @@ button.tool-line:hover {
   font-size: 0.72rem;
 }
 
-@media (max-width: 520px) {
+/* Below this width the text box and the model, effort, and send controls
+   cannot share a row without squeezing the text into a narrow column. */
+@container composer (max-width: 32rem) {
   .composer-box {
     flex-wrap: wrap;
   }

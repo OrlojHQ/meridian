@@ -690,7 +690,9 @@ describe("Model picker", () => {
     expect(rule(".composer-model")).toMatch(/min-width:\s*0/);
     expect(rule(".composer-model-button")).toMatch(/min-width:\s*0/);
     expect(rule(".composer-actions")).toMatch(/min-width:\s*0/);
-    expect(css).toMatch(/@media \(max-width: 520px\) \{\s*\.composer-box \{\s*flex-wrap:\s*wrap;/);
+    // The composer's own width, not the window's, decides when it wraps.
+    expect(rule(".composer-frame")).toMatch(/container:\s*composer \/ inline-size/);
+    expect(css).toMatch(/@container composer \(max-width: 32rem\) \{\s*\.composer-box \{\s*flex-wrap:\s*wrap;/);
   });
 });
 
