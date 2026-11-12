@@ -77,6 +77,16 @@
   background: var(--app-bg);
 }
 
+/* The pinned-setup note takes a full second row (flex-basis: 100%). On a
+   fixed-height, non-wrapping bar it would instead squeeze into the title row
+   and paint over it, so let the bar grow to two rows when the note is shown.
+   The title (flex: 1 1 0%) and actions still share the first row. */
+.workbench .capsule-bar:has(> .capsule-setup-pin) {
+  flex-wrap: wrap;
+  height: auto;
+  padding-block: 0.55rem;
+}
+
 .workbench .capsule-bar-title {
   flex: 1;
   gap: 0.6rem;
