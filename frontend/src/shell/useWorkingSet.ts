@@ -20,7 +20,10 @@ export type WorkingSetItem = {
 };
 
 export function useWorkingSet() {
-  const projects = useQuery(queries.projects());
+  // Projects can be created elsewhere (the CLI, another tab), so the list
+  // refreshes on the working set's cadence. Without it, a new Project's
+  // Capsules never reach Needs you until the page reloads.
+  const projects = useQuery({ ...queries.projects(), refetchInterval: 5_000 });
   const projectItems = useMemo(() => projects.data?.items ?? [], [projects.data]);
   const capsuleResults = useQueries({
     queries: projectItems.map((project) => queries.mainCapsules(project.id)),
