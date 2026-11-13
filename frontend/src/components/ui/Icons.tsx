@@ -201,6 +201,14 @@ export function FileIcon(props: IconProps) {
   );
 }
 
+export function UpdateIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M10 4.5v7.5M6.75 8.75 10 12l3.25-3.25M5 15.5h10" />
+    </Icon>
+  );
+}
+
 export function CheckIcon(props: IconProps) {
   return (
     <Icon {...props}>

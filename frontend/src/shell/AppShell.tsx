@@ -667,7 +667,6 @@ export function AppShell() {
       <a className="skip-link" href="#content">
         Skip to workspace
       </a>
-      <DesktopUpdateNotice />
       <button
         type="button"
         className="mobile-menu-button icon-button"
@@ -774,6 +773,7 @@ export function AppShell() {
           )}
         </nav>
         <footer className="sidebar-footer">
+          <DesktopUpdateNotice />
           <ThemeControl />
           <button
             type="button"

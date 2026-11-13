@@ -7,6 +7,21 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- The desktop app's update notice is now a compact card at the bottom of
+  the sidebar instead of a wide banner over the top of the window. Close
+  it to be reminded later.
+- Provider connections are listed as rows with the provider's mark, what
+  each connection is, and a status pill, with their actions as quiet links.
+  The add form sits under them with spaced fields.
+- Dropdowns use Meridian's own chevron instead of the platform stepper, and
+  the provider and harness pickers show the chosen mark inside the field.
+- A lead's Agents panel has a header with a status pill, its usage and a
+  meter, and a quiet Stop action. Each subagent is a row with its harness
+  mark and a phase pill. Spawn approval is a switch at the bottom, and an
+  empty panel says how to get the lead to start subagents.
+
 ### Fixed
 
 - A Claude Code or Codex lead no longer stops for an operator approval on

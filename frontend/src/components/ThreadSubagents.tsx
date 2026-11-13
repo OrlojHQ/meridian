@@ -10,7 +10,7 @@ import { PromoteSubagent } from "./PromoteSubagent";
 import { SpawnDecision } from "./SpawnApprovals";
 import { subagentDiffstat, subagentHref, subagentPhaseLabels, subagentReportStatusLabel } from "./subagentReportModel";
 import { safeInline } from "./threadText";
-import { StateBadge } from "./ui/StateBadge";
+import { HarnessMark } from "./ui/HarnessMark";
 
 // subagentModel names the model (and effort) the subagent's live session last
 // reported. The daemon derives it in memory; it is harness text, so it is
@@ -23,29 +23,36 @@ export function subagentModel(link: Pick<ThreadLink, "model" | "effort">) {
 }
 
 function subagentRow(link: ThreadLink, request?: CoordinationRequest) {
+  const needsYou = link.state === "pending_approval" || link.phase === "awaiting_operator";
+  const details = [
+    harnessName(link.harness),
+    subagentModel(link),
+    link.reportSeq === 1 ? "1 report" : `${link.reportSeq} reports`,
+    link.lastReportStatus ? subagentReportStatusLabel(link.lastReportStatus) : "",
+    subagentDiffstat(link),
+  ].filter(Boolean);
   return (
-    <li key={link.id}>
-      <Link to={subagentHref(link)} className="subagent-name">{link.name}</Link>
-      <span className="muted-copy">{harnessName(link.harness)}</span>
-      {subagentModel(link) && (
-        <span className="muted-copy subagent-model" title="Model the subagent last reported">
-          {subagentModel(link)}
-        </span>
-      )}
-      <span className={`badge subagent-phase phase-${link.phase}`}>
-        {link.state === "pending_approval" ? "Waiting for approval" : subagentPhaseLabels[link.phase]}
-      </span>
-      {link.promotedAt && (
-        <span className="badge">{link.closeReason === "detached" ? "Promoted, detached" : "Promoted"}</span>
-      )}
-      <span className="muted-copy">
-        {link.reportSeq === 1 ? "1 report" : `${link.reportSeq} reports`}
-      </span>
-      {link.lastReportStatus && (
-        <span className="muted-copy">{subagentReportStatusLabel(link.lastReportStatus)}</span>
-      )}
-      {subagentDiffstat(link) && <span className="muted-copy">{subagentDiffstat(link)}</span>}
-      {request && <SpawnDecision request={request} />}
+    <li key={link.id} className="subagent-row">
+      <HarnessMark harness={link.harness} size="md" />
+      <div className="subagent-main">
+        <div className="subagent-title">
+          <Link to={subagentHref(link)} className="subagent-name">{link.name}</Link>
+          {link.promotedAt && (
+            <span className="subagent-tag">{link.closeReason === "detached" ? "Promoted, detached" : "Promoted"}</span>
+          )}
+          <span className={`subagent-phase phase-${link.phase}${needsYou ? " needs-you" : ""}`}>
+            {link.state === "pending_approval" ? "Waiting for approval" : subagentPhaseLabels[link.phase]}
+          </span>
+        </div>
+        <p className="subagent-details">
+          {details.map((detail, index) => (
+            <span key={index} title={detail === subagentModel(link) ? "Model the subagent last reported" : undefined}>
+              {detail}
+            </span>
+          ))}
+        </p>
+        {request && <SpawnDecision request={request} />}
+      </div>
     </li>
   );
 }
@@ -74,6 +81,7 @@ export function grantLimits(
   >,
   active: boolean,
   now = Date.now(),
+  { approval = true }: { approval?: boolean } = {},
 ) {
   const total = Math.min(grant.maxChildren, grant.maxDescendants);
   const parts = [
@@ -81,7 +89,7 @@ export function grantLimits(
     `up to ${grant.maxLiveCapsules} at a time`,
   ];
   if (active) parts.push(untilDeadline(grant.deadlineAt, now));
-  if (grant.spawnApproval === "operator") parts.push("approve each spawn");
+  if (approval && grant.spawnApproval === "operator") parts.push("approve each spawn");
   return parts.join(" · ");
 }
 
@@ -200,6 +208,12 @@ function SubagentOf({ thread }: { thread: Thread }) {
   );
 }
 
+const grantStateLabels: Record<CoordinationGrant["state"], string> = {
+  active: "Active",
+  revoked: "Stopped",
+  expired: "Ended",
+};
+
 export function SubagentsPanel({ thread, grantId }: { thread: Thread; grantId: string }) {
   const queryClient = useQueryClient();
   const [confirm, setConfirm] = useState(false);
@@ -235,44 +249,53 @@ export function SubagentsPanel({ thread, grantId }: { thread: Thread; grantId: s
   const current = items.filter((link) => !link.archivedAt);
   const archived = items.filter((link) => link.archivedAt);
   const active = grant.data?.state === "active";
+  const total = grant.data ? Math.min(grant.data.maxChildren, grant.data.maxDescendants) : 0;
+  const started = grant.data?.descendantsCreated ?? 0;
+  const approvalId = `grant-spawn-approval-${grantId}`;
   return (
     <section className="thread-subagents" aria-labelledby="thread-subagents-title">
-      <header>
-        <h2 id="thread-subagents-title">Subagents</h2>
+      <header className="subagents-header">
+        <div className="subagents-heading">
+          <h2 id="thread-subagents-title">Subagents</h2>
+          {grant.data && (
+            <span className={`subagents-state state-${grant.data.state}`}>{grantStateLabels[grant.data.state]}</span>
+          )}
+          {active && !confirm && (
+            <button type="button" className="subagents-stop" onClick={() => setConfirm(true)}>
+              Stop subagents
+            </button>
+          )}
+        </div>
         {grant.data && (
-          <span
-            className="muted-copy"
+          <p
+            className="subagents-limits"
             title={active ? `Ends ${new Date(grant.data.deadlineAt).toLocaleString()}` : undefined}
           >
-            {grantLimits(grant.data, active)}
-          </span>
+            {grantLimits(grant.data, active, Date.now(), { approval: false })}
+          </p>
         )}
-        {grant.data && <StateBadge state={grant.data.state} />}
-        {active && grant.data && (
-          <label className="checkbox-label" htmlFor={`grant-spawn-approval-${grantId}`}>
-            <input
-              id={`grant-spawn-approval-${grantId}`}
-              type="checkbox"
-              checked={grant.data.spawnApproval === "operator"}
-              disabled={approval.isPending}
-              onChange={(event) => approval.mutate(event.currentTarget.checked ? "operator" : "auto")}
-            />
-            Approve each spawn
-          </label>
-        )}
-        {active && !confirm && (
-          <button type="button" className="danger" onClick={() => setConfirm(true)}>
-            Stop subagents
-          </button>
+        {grant.data && total > 0 && (
+          <div
+            className="subagents-meter"
+            role="meter"
+            aria-label="Subagents started"
+            aria-valuemin={0}
+            aria-valuemax={total}
+            aria-valuenow={started}
+          >
+            <span style={{ width: `${Math.min(100, (started / total) * 100)}%` }} />
+          </div>
         )}
       </header>
       {confirm && (
-        <div className="actions" role="alertdialog" aria-label="Stop subagents">
-          <span>The lead can no longer start subagents, and running subagents are cancelled and paused.</span>
-          <button type="button" className="danger" disabled={revoke.isPending} onClick={() => revoke.mutate()}>
-            Confirm stop
-          </button>
-          <button type="button" onClick={() => setConfirm(false)}>Keep running</button>
+        <div className="subagents-confirm" role="alertdialog" aria-label="Stop subagents">
+          <p>The lead can no longer start subagents, and running subagents are cancelled and paused.</p>
+          <div className="subagents-confirm-actions">
+            <button type="button" className="danger" disabled={revoke.isPending} onClick={() => revoke.mutate()}>
+              Confirm stop
+            </button>
+            <button type="button" className="secondary" onClick={() => setConfirm(false)}>Keep running</button>
+          </div>
         </div>
       )}
       {revoke.isError && (
@@ -282,7 +305,20 @@ export function SubagentsPanel({ thread, grantId }: { thread: Thread; grantId: s
         <p role="alert" className="inline-error">{normalizeAPIError(approval.error).message}</p>
       )}
       {items.length === 0 ? (
-        <p className="muted-copy">{links.isPending ? "Loading subagents…" : "No subagents yet."}</p>
+        <div className="subagents-empty">
+          {links.isPending ? (
+            <p>Loading subagents…</p>
+          ) : (
+            <>
+              <p className="subagents-empty-title">No subagents yet</p>
+              <p>
+                {active
+                  ? "Ask the lead to split the work. Each subagent it starts runs in its own Capsule and shows up here."
+                  : "This lead did not start any subagents."}
+              </p>
+            </>
+          )}
+        </div>
       ) : (
         <ul className="subagent-list">
           {current.map((link) => subagentRow(link, pendingByLink.get(link.id)))}
@@ -295,6 +331,24 @@ export function SubagentsPanel({ thread, grantId }: { thread: Thread; grantId: s
             </li>
           )}
         </ul>
+      )}
+      {active && grant.data && (
+        <footer className="subagents-footer">
+          <label className="subagents-switch" htmlFor={approvalId}>
+            <input
+              id={approvalId}
+              type="checkbox"
+              role="switch"
+              checked={grant.data.spawnApproval === "operator"}
+              disabled={approval.isPending}
+              onChange={(event) => approval.mutate(event.currentTarget.checked ? "operator" : "auto")}
+            />
+            <span className="subagents-switch-text">
+              <span>Approve each spawn</span>
+              <small>Each new subagent waits for you before it starts.</small>
+            </span>
+          </label>
+        </footer>
       )}
     </section>
   );

@@ -5,8 +5,9 @@ import type { ChatGptSignIn, ProviderConnection, ProviderConnectionRequestWritab
 // Official Claude mark, unchanged, from https://claude.com/icon.svg.
 // It only identifies the sign-in. Anthropic's mark stays its own.
 import claudeMark from "../assets/claude-mark.svg";
+import { ProviderMark } from "./ui/ProviderMark";
 
-const providerLabels:Record<ProviderConnectionType,string>={openai:"OpenAI",anthropic:"Anthropic","openai-compatible":"OpenAI-compatible endpoint","anthropic-compatible":"Anthropic-compatible endpoint",chatgpt:"ChatGPT plan"};
+const providerLabels:Record<ProviderConnectionType,string>={openai:"OpenAI",anthropic:"Claude","openai-compatible":"OpenAI-compatible endpoint","anthropic-compatible":"Anthropic-compatible endpoint",chatgpt:"ChatGPT plan"};
 const isCustom=(provider:ProviderConnectionType)=>provider==="openai-compatible"||provider==="anthropic-compatible";
 
 // Mirrors harnesssetup.ConnectionHarness: capsuled writes provider configuration only for these harnesses.
@@ -41,6 +42,25 @@ export function connectionModelNote(item: ProviderConnection | undefined) {
 
 const effortLevels:ReasoningEffortLevel[]=["minimal","low","medium","high","xhigh","max"];
 const effortLabels:Record<ReasoningEffortLevel,string>={minimal:"Minimal",low:"Low",medium:"Medium",high:"High",xhigh:"Extra high",max:"Max"};
+
+type ConnectionStatus={label:string;tone:"ok"|"warn"|"muted"};
+
+// What the connection is, in words, for the line under its name.
+export function connectionKind(item:ProviderConnection){
+ switch(item.provider){
+ case "anthropic": return item.credentialKind==="oauth"?"Claude account":"Anthropic API key";
+ case "chatgpt": return item.account?`ChatGPT plan · ${item.account}`:"ChatGPT plan";
+ case "openai": return "OpenAI API key";
+ default: return item.baseUrl?`${providerLabels[item.provider]} · ${item.baseUrl}`:providerLabels[item.provider];
+ }
+}
+
+export function connectionStatus(item:ProviderConnection):ConnectionStatus{
+ if(item.revoked) return {label:"Revoked",tone:"muted"};
+ if(item.needsSignIn) return {label:"Sign-in expired",tone:"warn"};
+ if(item.provider==="chatgpt"||(item.provider==="anthropic"&&item.credentialKind==="oauth")) return {label:"Signed in",tone:"ok"};
+ return {label:"Saved",tone:"ok"};
+}
 
 // ChatGPTSignInPanel runs one Sign in with ChatGPT attempt. The daemon holds
 // the PKCE verifier and receives the token; this page only shows OpenAI's
@@ -132,12 +152,39 @@ export function ProviderConnections(){
   finally{setBusy(false);}
  }
  const savedKind=loginKind==="oauth"?"setup token":"API key";
- return <section className="panel" id="provider-connections"><h2>Provider connections</h2><p>Sign in with ChatGPT or Claude, or connect an API key or a self-hosted model server such as vLLM, Ollama, or a LiteLLM proxy, once. Then authorize it for each Project.</p>
+ const items=connections.data?.items??[];
+ const startEditing=(item:ProviderConnection)=>{setEditing(item);setProvider(item.provider);setName(item.name);setKey("");setBaseUrl(item.baseUrl??"");setModel(item.defaultModel??"");setPrivateHttp(!!item.allowPrivateHttp);setEfforts(item.reasoningEfforts??[]);setLoginKind(item.credentialKind==="oauth"?"oauth":"api_key");setFallback(item.provider==="anthropic");};
+ const revoke=(item:ProviderConnection)=>save.mutate({id:item.id,body:{provider:item.provider,name:item.name,apiKey:"",expectedResourceVersion:item.resourceVersion,revoked:true}});
+ return <section className="panel provider-connections" id="provider-connections"><h2>Provider connections</h2><p className="provider-connections-lede">Sign in with ChatGPT or Claude, or connect an API key or a self-hosted model server such as vLLM, Ollama, or a LiteLLM proxy, once. Then authorize it for each Project.</p>
  {connections.isPending && <p role="status">Loading connections…</p>}
  {connections.isError && <p role="alert">{normalizeAPIError(connections.error).message}</p>}
  {connections.data && !connections.data.enabled && <p>Reusable connections need the provider gateway, which is off on this installation. On Docker, meridiand starts it on its own unless the engine is remote or rootless; the daemon log says why it did not. Otherwise ask the installation administrator to set --provider-gateway-listen or --provider-gateway-url.</p>}
- {connections.data?.enabled && <form onSubmit={event=>{event.preventDefault();if(chatgpt||(claude&&!fallback))return;if(!custom&&!key)return;save.mutate({id:editing?.id,body:body()});}}>
- <label>Provider<select value={provider} disabled={!!editing} onChange={event=>{setProvider(event.target.value as ProviderConnectionType);setPrivateHttp(false);setLoginKind("api_key");setFallback(false);}}>{(Object.keys(providerLabels) as ProviderConnectionType[]).map(value=><option key={value} value={value}>{providerLabels[value]}</option>)}</select></label>
+ {items.length>0 && <ul className="connection-list" aria-label="Saved connections">{items.map(item=>{
+  const status=connectionStatus(item);
+  const details=[item.defaultModel,item.reasoningEfforts?.length?`effort ${item.reasoningEfforts.join("/")}`:""].filter(Boolean).join(" · ");
+  return <li key={item.id} className={`connection-row${item.revoked?" revoked":""}`}>
+   <ProviderMark provider={item.provider}/>
+   <div className="connection-main">
+    <div className="connection-title"><strong>{item.name}</strong><span className={`connection-status ${status.tone}`}>{status.label}</span></div>
+    <p className="connection-meta">{connectionKind(item)}</p>
+    {details && <p className="connection-meta">{details}</p>}
+    {item.provider==="chatgpt" && item.revoked && item.revocationUnconfirmed && <p role="note" className="connection-note">OpenAI did not confirm the sign-out. Disconnect Meridian in ChatGPT's settings to be sure.</p>}
+    {item.provider==="chatgpt" && !item.revoked && reauthorizing===item.id ? <ChatGPTSignInPanel connection={item} autoStart onDone={()=>setReauthorizing(undefined)}/> : !item.revoked && <div className="connection-actions">
+     {item.provider==="chatgpt" ? <>
+      <button type="button" className="connection-action" onClick={()=>setReauthorizing(item.id)}>{item.needsSignIn?"Sign in again":"Reconnect"}</button>
+      <button type="button" className="connection-action danger" disabled={save.isPending} onClick={()=>revoke(item)}>Sign out</button>
+     </> : <>
+      {item.provider==="anthropic" && <button type="button" className="connection-action" disabled={busy} onClick={()=>void signIn(item.id)}>Sign in again</button>}
+      <button type="button" className="connection-action" onClick={()=>startEditing(item)}>{item.provider==="anthropic"?"Replace login":"Reconnect"}</button>
+      <button type="button" className="connection-action danger" disabled={save.isPending} onClick={()=>revoke(item)}>{item.provider==="anthropic"?"Clear login":"Revoke"}</button>
+     </>}
+    </div>}
+   </div>
+  </li>;
+ })}</ul>}
+ {connections.data?.enabled && <form className="connection-form" onSubmit={event=>{event.preventDefault();if(chatgpt||(claude&&!fallback))return;if(!custom&&!key)return;save.mutate({id:editing?.id,body:body()});}}>
+ <h3>{editing?`Update ${editing.name}`:items.length>0?"Add another connection":"Add a connection"}</h3>
+ <label>Provider<span className="select-field with-mark"><ProviderMark provider={provider} size="sm"/><select value={provider} disabled={!!editing} onChange={event=>{setProvider(event.target.value as ProviderConnectionType);setPrivateHttp(false);setLoginKind("api_key");setFallback(false);}}>{(Object.keys(providerLabels) as ProviderConnectionType[]).map(value=><option key={value} value={value}>{providerLabels[value]}</option>)}</select></span></label>
  {!chatgpt && <label>Connection name<input value={name} maxLength={128} onChange={event=>setName(event.target.value)}/></label>}
  {custom && <>
  <p>{provider==="openai-compatible"?"Codex, OpenCode, and Pi use this endpoint. Codex needs the Responses API (/v1/responses); OpenCode and Pi use Chat Completions and need a default model.":"Claude Code uses this endpoint through the Anthropic Messages API."} Meridian sends requests from the server; Capsules never see this address or key.</p>
@@ -170,14 +217,11 @@ export function ProviderConnections(){
 </div>}
  {editing && custom && <p>Saving replaces the stored key. Enter it again, or leave it empty if the server needs none.</p>}
  {!claude && !chatgpt && <label>{custom?"API key (optional)":"API key"}<input type="password" autoComplete="off" value={key} required={!custom} maxLength={4096} onChange={event=>setKey(event.target.value)}/></label>}
- {!claude && !chatgpt && <button disabled={save.isPending || (!custom && !key) || (custom && !baseUrl)}>{editing?(custom?"Save endpoint":"Replace API key"):"Save connection"}</button>}
- {editing && <button type="button" onClick={reset}>Cancel</button>}
+ {((!claude && !chatgpt) || editing) && <div className="connection-form-actions">
+  {!claude && !chatgpt && <button disabled={save.isPending || (!custom && !key) || (custom && !baseUrl)}>{editing?(custom?"Save endpoint":"Replace API key"):"Save connection"}</button>}
+  {editing && <button type="button" className="secondary" onClick={reset}>Cancel</button>}
+ </div>}
  </form>}
  {save.isError && <p role="alert">{normalizeAPIError(save.error).message}</p>}
- <ul>{connections.data?.items.map(item=>item.provider==="chatgpt"?<li key={item.id}>{item.name} · {providerLabels[item.provider]}{item.account?` · ${item.account}`:""} · {item.revoked?"Revoked":item.needsSignIn?"Sign-in expired":"Signed in"}
-  {item.revoked && item.revocationUnconfirmed && <p role="note">OpenAI did not confirm the sign-out. Disconnect Meridian in ChatGPT's settings to be sure.</p>}
-  {!item.revoked && (reauthorizing===item.id ? <ChatGPTSignInPanel connection={item} autoStart onDone={()=>setReauthorizing(undefined)}/> : <button type="button" onClick={()=>setReauthorizing(item.id)}>{item.needsSignIn?"Sign in again":"Reconnect"}</button>)}
-  {" "}{!item.revoked && <button type="button" disabled={save.isPending} onClick={()=>save.mutate({id:item.id,body:{provider:item.provider,name:item.name,apiKey:"",expectedResourceVersion:item.resourceVersion,revoked:true}})}>Sign out</button>}
- </li>:<li key={item.id}>{item.name} · {providerLabels[item.provider]}{item.provider==="anthropic"?` · ${item.credentialKind==="oauth"?"Signed in":"API key"}`:""}{item.baseUrl?` · ${item.baseUrl}`:""}{item.defaultModel?` · ${item.defaultModel}`:""}{item.reasoningEfforts?.length?` · effort ${item.reasoningEfforts.join("/")}`:""} · {item.revoked?"Revoked":"Saved"} {item.provider==="anthropic" && <button type="button" disabled={busy} onClick={()=>void signIn(item.id)}>Sign in again</button>} <button type="button" onClick={()=>{setEditing(item);setProvider(item.provider);setName(item.name);setKey("");setBaseUrl(item.baseUrl??"");setModel(item.defaultModel??"");setPrivateHttp(!!item.allowPrivateHttp);setEfforts(item.reasoningEfforts??[]);setLoginKind(item.credentialKind==="oauth"?"oauth":"api_key");setFallback(item.provider==="anthropic");}}>{item.provider==="anthropic"?"Replace login":"Reconnect"}</button> {!item.revoked && <button type="button" disabled={save.isPending} onClick={()=>save.mutate({id:item.id,body:{provider:item.provider,name:item.name,apiKey:"",expectedResourceVersion:item.resourceVersion,revoked:true}})}>{item.provider==="anthropic"?"Clear login":"Revoke"}</button>}</li>)}</ul>
  </section>;
 }
