@@ -36,6 +36,25 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   signing key. That key is optional; without it the release still ships and
   self-update stays off. Release candidates do not build desktop artifacts.
 
+### Fixed
+
+- A Capsule whose container stopped because Docker Desktop or OrbStack quit,
+  restarted, or updated is started again instead of being marked Failed. The
+  container, workspace, and image are reused, and the Capsule stays Ready.
+  Meridian notices at startup, on the live refresh, or when you next start
+  work, and sets no Docker restart policy. A container that keeps stopping
+  (more than 3 restarts in 10 minutes) or cannot start still fails the
+  Capsule, with the exit code (#118, ADR 0044).
+- A Run whose Capsule runtime stopped no longer shows as Working forever. The
+  live refresh fails it with "Capsule runtime stopped while this Run was
+  active" and pauses its Thread with the transcript kept; resume the Thread
+  to start a new session in the restarted Capsule.
+- A Paused Capsule whose container an engine restart stopped stays Paused
+  instead of failing, and resumes normally.
+- On Agent Sandbox, Kubernetes still restarts the Pod itself. A Ready
+  Capsule whose Pod is coming back stays Ready, and its active Runs fail the
+  same way.
+
 ## [0.6.0] - 2026-11-11
 
 ### Upgrade notes

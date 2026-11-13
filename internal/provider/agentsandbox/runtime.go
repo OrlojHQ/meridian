@@ -47,6 +47,13 @@ func (p *Provider) runtimeClient(
 	if err != nil {
 		return nil, nil, err
 	}
+	if resource.State == ports.ProviderPreparing &&
+		sandbox.Spec.OperatingMode != sandboxv1beta1.SandboxOperatingModeSuspended {
+		// The Sandbox should be running but its Pod is not ready, so the
+		// supervisor and its sessions are gone (for example a Pod restart).
+		// Kubernetes brings the Pod back; Meridian does not start it.
+		return nil, nil, domain.ErrRuntimeStopped
+	}
 	if resource.State != ports.ProviderReady {
 		return nil, nil, fmt.Errorf("%w: Capsule runtime is not active", domain.ErrIllegalTransition)
 	}

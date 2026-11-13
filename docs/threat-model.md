@@ -746,7 +746,13 @@ passive reads do not. Runtime use wakes a paused Capsule through an idempotent
 resume. Background runtime refresh is a reconciliation poll: it counts as
 activity only when ingestion persists agent output, never for heartbeats,
 cursors, or gaps, and it skips paused, non-Ready, and maintenance Capsules
-rather than waking them. Idle pause, absolute provider/Capsule deletion TTL, reusable setup
+rather than waking them. A container engine restart stops Capsule
+containers; Meridian sets no restart policy, so none runs again until the
+daemon notices and the reconciler starts it for a Capsule desired Ready
+(ADR 0044). The restart budget is 3 starts in 10 minutes, after which a
+crash-looping Capsule fails instead of consuming engine capacity forever. A
+paused Capsule that an engine restart stopped stays stopped. Agent Sandbox
+leaves Pod restarts and crash-loop back-off to Kubernetes. Idle pause, absolute provider/Capsule deletion TTL, reusable setup
 Moment retention, user Moment retention, and ticket/credential expiry remain
 separate clocks: pause cannot renew an absolute TTL or turn destruction into
 retention.
@@ -828,6 +834,13 @@ they are not a statement that every planned path is already implemented.
   Threads persist prompt/tool content, always as authenticated ciphertext.
 - Thread attention (`awaiting`, `turn`) is derived in memory, content-free, and never
   persisted; background runtime refresh never sends, resumes, or wakes work.
+  When it finds a stopped runtime it fails the lost Run and queues the
+  Capsule for the reconciler; it does not start the runtime itself.
+- Capsule containers have no engine restart policy. Only the reconciler
+  starts a stopped Capsule runtime, only for an owned Capsule whose desired
+  state is Ready, with the same container, image, and token, and at most 3
+  times in 10 minutes before the Capsule fails (ADR 0044). A stopped runtime
+  satisfies Paused and is never started to pause it.
 - Public PTY access uses expiring Run-scoped tickets rather than Capsule supervisor credentials.
 - Review UI assets cannot shadow API routes and untrusted diffs are never injected as HTML.
 - Preview ingress is loopback-only and exists only with end-to-end bounded Capsule discovery and routing; providers that do not implement that transport fail closed.

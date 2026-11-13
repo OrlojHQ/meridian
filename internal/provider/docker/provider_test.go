@@ -41,6 +41,10 @@ type fakeEngine struct {
 	pulled      []string
 	pullBody    client.ImagePullResponse
 	pullErr     error
+	// startExits makes ContainerStart leave the container exited, like a
+	// Capsule that crashes on startup.
+	startExits bool
+	starts     int
 }
 
 func newFakeEngine() *fakeEngine {
@@ -144,8 +148,13 @@ func (e *fakeEngine) ContainerCreate(_ context.Context, options client.Container
 	return client.ContainerCreateResult{ID: options.Name}, nil
 }
 func (e *fakeEngine) ContainerStart(_ context.Context, id string, _ client.ContainerStartOptions) (client.ContainerStartResult, error) {
+	e.starts++
 	value := e.containers[id]
-	value.State.Running = true
+	if e.startExits {
+		value.State.Running, value.State.Status, value.State.ExitCode = false, container.StateExited, 1
+	} else {
+		value.State.Running, value.State.Status, value.State.ExitCode = true, container.StateRunning, 0
+	}
 	e.containers[id] = value
 	return client.ContainerStartResult{}, nil
 }

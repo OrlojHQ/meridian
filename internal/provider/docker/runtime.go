@@ -421,6 +421,9 @@ func (p *Provider) runtimeClient(ctx context.Context, resourceID string) (*capsu
 	if err != nil {
 		return nil, err
 	}
+	if stoppedContainer(inspection.Container.State) {
+		return nil, domain.ErrRuntimeStopped
+	}
 	if inspection.Container.State == nil || !inspection.Container.State.Running ||
 		inspection.Container.State.Paused {
 		return nil, fmt.Errorf("%w: Capsule runtime is not active", domain.ErrIllegalTransition)

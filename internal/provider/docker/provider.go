@@ -292,9 +292,17 @@ func (p *Provider) Get(ctx context.Context, id string) (ports.ProviderResource, 
 	if inspection.Container.State.Paused {
 		return ports.ProviderResource{ID: id, State: ports.ProviderPaused, ImageDigest: imageID}, nil
 	}
+	if stoppedContainer(inspection.Container.State) {
+		// The container and its workspace volume remain, so this is a
+		// recoverable state for the reconciler rather than a failure.
+		return ports.ProviderResource{
+			ID: id, State: ports.ProviderStopped, ImageDigest: imageID,
+			Reason: stopReason(inspection.Container.State),
+		}, nil
+	}
 	if !inspection.Container.State.Running {
 		return ports.ProviderResource{}, fmt.Errorf(
-			"Capsule container stopped with exit code %d", inspection.Container.State.ExitCode,
+			"Capsule container is not running (%s)", inspection.Container.State.Status,
 		)
 	}
 	token, err := p.tokens.load(domain.CapsuleID(capsuleID))
@@ -343,8 +351,15 @@ func (p *Provider) changePause(
 	if err != nil {
 		return ports.ProviderResource{}, err
 	}
-	if _, err := p.verifyLabels(inspection.Container.Config.Labels, "", "capsule"); err != nil {
+	capsuleID, err := p.verifyLabels(inspection.Container.Config.Labels, "", "capsule")
+	if err != nil {
 		return ports.ProviderResource{}, err
+	}
+	if inspection.Container.State == nil {
+		return ports.ProviderResource{}, errors.New("Docker returned no container state")
+	}
+	if !pause && stoppedContainer(inspection.Container.State) {
+		return p.restart(ctx, id, domain.CapsuleID(capsuleID))
 	}
 	if pause && !inspection.Container.State.Paused {
 		if _, err := p.engine.ContainerPause(
@@ -364,6 +379,49 @@ func (p *Provider) changePause(
 		return ports.ProviderResource{ID: id, State: ports.ProviderPaused}, nil
 	}
 	return p.Get(ctx, id)
+}
+
+// restart starts a stopped Capsule container again with its existing
+// configuration, image, workspace volume, and supervisor token, then waits for
+// the supervisor. It never recreates the container or reruns setup.
+func (p *Provider) restart(
+	ctx context.Context,
+	id string,
+	capsuleID domain.CapsuleID,
+) (ports.ProviderResource, error) {
+	token, err := p.tokens.load(capsuleID)
+	if err != nil {
+		return ports.ProviderResource{}, err
+	}
+	operationContext, cancel := context.WithTimeout(ctx, p.config.OperationTimeout)
+	_, err = p.engine.ContainerStart(operationContext, id, client.ContainerStartOptions{})
+	cancel()
+	if err != nil {
+		return ports.ProviderResource{}, fmt.Errorf("restart Capsule container: %w", err)
+	}
+	readinessContext, readinessCancel := context.WithTimeout(ctx, p.config.OperationTimeout)
+	_, err = p.waitForSupervisor(readinessContext, id, capsuleID, token)
+	readinessCancel()
+	if err != nil {
+		return ports.ProviderResource{}, err
+	}
+	return p.Get(ctx, id)
+}
+
+// stoppedContainer reports a Capsule container that exists but is not running
+// and can be started again: exited, or created and never started.
+func stoppedContainer(state *container.State) bool {
+	if state == nil || state.Running || state.Paused || state.Restarting || state.Dead {
+		return false
+	}
+	return state.Status != container.StateRemoving && state.Status != container.StateDead
+}
+
+func stopReason(state *container.State) string {
+	if state.OOMKilled {
+		return fmt.Sprintf("out of memory, exit code %d", state.ExitCode)
+	}
+	return fmt.Sprintf("exit code %d", state.ExitCode)
 }
 
 func (p *Provider) Delete(ctx context.Context, id string) error {
@@ -802,6 +860,14 @@ func (p *Provider) waitForSupervisor(
 				inspection.Container.Config.Labels, capsuleID, "capsule",
 			); verifyErr != nil {
 				return nil, verifyErr
+			}
+			// Callers start the container first, so a stopped one exited
+			// again before its supervisor answered.
+			if stoppedContainer(inspection.Container.State) {
+				return nil, fmt.Errorf(
+					"Capsule container stopped before its supervisor was ready (%s)",
+					stopReason(inspection.Container.State),
+				)
 			}
 			supervisor, clientErr := p.supervisorClient(inspection.Container, token)
 			if clientErr == nil {

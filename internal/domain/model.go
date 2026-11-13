@@ -926,6 +926,12 @@ var (
 	// It is not a lifecycle transition: Changes must not show
 	// ErrIllegalTransition for capsuled git_failed.
 	ErrWorkspaceGit = errors.New("workspace git command failed")
+	// ErrRuntimeStopped is a Capsule runtime that stopped outside Meridian
+	// (for example a container engine restart) while its Capsule was Ready.
+	// Its supervisor and process registry are gone. It is an
+	// ErrIllegalTransition, so callers that only check for that still see an
+	// inactive runtime; a paused runtime is not stopped.
+	ErrRuntimeStopped = fmt.Errorf("%w: Capsule runtime stopped", ErrIllegalTransition)
 )
 
 // MapCapsuleProtocolError translates a capsuled HTTP status and protocol code

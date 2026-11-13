@@ -183,6 +183,35 @@ func (p *Provider) Resume(ctx context.Context, id string) (ports.ProviderResourc
 	return p.change(ctx, "resume", id, ports.ProviderReady)
 }
 
+// Stop simulates a runtime stopped outside Meridian, such as by a container
+// engine restart. Resume starts it again.
+func (p *Provider) Stop(id, reason string) {
+	p.Set(id, ports.ProviderStopped, reason)
+}
+
+// Set changes a resource's state as the provider's own control plane would.
+func (p *Provider) Set(id string, state ports.ProviderState, reason string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	resource := p.resources[id]
+	resource.ID, resource.State, resource.Reason = id, state, reason
+	p.resources[id] = resource
+}
+
+// Fail makes the next count calls of operation fail.
+func (p *Provider) Fail(operation string, count int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.failures[operation] += count
+}
+
+// State reports a resource's current state without injected delays.
+func (p *Provider) State(id string) ports.ProviderState {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.resources[id].State
+}
+
 func (p *Provider) Delete(ctx context.Context, id string) error {
 	if err := p.before(ctx, "delete"); err != nil {
 		return err
@@ -210,7 +239,7 @@ func (p *Provider) change(
 	if !ok || resource.State == ports.ProviderDeleted {
 		return ports.ProviderResource{}, domain.ErrNotFound
 	}
-	resource.State = state
+	resource.State, resource.Reason = state, ""
 	p.resources[id] = resource
 	return resource, nil
 }
