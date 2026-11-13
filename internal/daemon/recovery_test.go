@@ -2,6 +2,7 @@ package daemon_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -139,6 +140,8 @@ func TestRestartRecoversPersistedNonterminalCapsule(t *testing.T) {
 
 // A fresh install, such as the Homebrew service, starts with no data
 // directory. The daemon creates it private instead of failing the lease.
+// The test stops the daemon inside its first migration transaction, which
+// must read as a clean stop rather than a transaction error.
 func TestDaemonCreatesMissingDataDirectory(t *testing.T) {
 	directory := filepath.Join(t.TempDir(), "Application Support", "meridian")
 	daemon.UseTestProvider(fake.New(fake.Options{}))
@@ -148,22 +151,24 @@ func TestDaemonCreatesMissingDataDirectory(t *testing.T) {
 		DataLease: datadir.Options{Interval: 50 * time.Millisecond, Settle: time.Millisecond},
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan error, 1)
-	go func() { done <- daemon.Run(ctx, config) }()
-	deadline := time.Now().Add(10 * time.Second)
-	for {
-		if _, err := os.Stat(filepath.Join(directory, datadir.LeaseFile)); err == nil {
-			break
+	defer cancel()
+	stopped := false
+	t.Cleanup(sqlite.SetCommitHookForTesting(func(tx *sql.Tx) {
+		if stopped {
+			return
 		}
-		select {
-		case err := <-done:
-			t.Fatalf("daemon stopped: %v", err)
-		default:
+		stopped = true
+		if _, err := os.Stat(filepath.Join(directory, datadir.LeaseFile)); err != nil {
+			t.Errorf("startup wrote to the data directory before taking it: %v", err)
 		}
-		if time.Now().After(deadline) {
-			t.Fatal("daemon never took the new data directory")
-		}
-		time.Sleep(10 * time.Millisecond)
+		cancel()
+		waitForRollback(t, tx)
+	}))
+	if err := daemon.Run(ctx, config); err != nil {
+		t.Fatalf("daemon stopped during startup = %v, want a clean stop", err)
+	}
+	if !stopped {
+		t.Fatal("daemon never opened a startup transaction")
 	}
 	info, err := os.Lstat(directory)
 	if err != nil {
@@ -171,10 +176,6 @@ func TestDaemonCreatesMissingDataDirectory(t *testing.T) {
 	}
 	if !info.IsDir() || info.Mode().Perm()&0o077 != 0 {
 		t.Fatalf("data directory mode = %v, want private directory", info.Mode())
-	}
-	cancel()
-	if err := <-done; err != nil && !errors.Is(err, context.Canceled) {
-		t.Fatalf("daemon: %v", err)
 	}
 }
 
@@ -187,34 +188,60 @@ func TestSecondDaemonOnOneDataDirectoryIsRefused(t *testing.T) {
 		DataLease: datadir.Options{Interval: 50 * time.Millisecond, Settle: time.Millisecond},
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	// Hold the first daemon inside its first startup transaction, with the
+	// data directory leased, until the second daemon has been refused.
+	inTransaction := make(chan struct{})
+	refused := make(chan struct{})
+	held := false
+	t.Cleanup(sqlite.SetCommitHookForTesting(func(tx *sql.Tx) {
+		if held {
+			return
+		}
+		held = true
+		close(inTransaction)
+		<-refused
+		cancel()
+		waitForRollback(t, tx)
+	}))
 	first := make(chan error, 1)
 	go func() { first <- daemon.Run(ctx, config) }()
-	deadline := time.Now().Add(10 * time.Second)
-	for {
-		if _, err := os.Stat(filepath.Join(directory, datadir.LeaseFile)); err == nil {
-			break
-		}
-		select {
-		case err := <-first:
-			t.Fatalf("first daemon stopped: %v", err)
-		default:
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("first daemon never took the data directory")
-		}
-		time.Sleep(10 * time.Millisecond)
+	select {
+	case <-inTransaction:
+	case err := <-first:
+		t.Fatalf("first daemon stopped: %v", err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("first daemon never started")
 	}
 	err := daemon.Run(context.Background(), config)
+	close(refused)
 	if !errors.Is(err, datadir.ErrInUse) {
 		t.Fatalf("second daemon = %v", err)
 	}
-	cancel()
-	// The lease is taken before the rest of startup, so the first daemon
-	// may still be starting; cancelling it then is not a failure.
-	if err := <-first; err != nil && !errors.Is(err, context.Canceled) {
-		t.Fatalf("first daemon: %v", err)
+	if err := <-first; err != nil {
+		t.Fatalf("first daemon stopped during startup = %v, want a clean stop", err)
 	}
 	if _, err := os.Stat(filepath.Join(directory, datadir.LeaseFile)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("lease left after shutdown: %v", err)
+	}
+}
+
+// waitForRollback waits for database/sql's context watcher to roll tx back,
+// so the daemon's Commit always finds the transaction already finished. A
+// statement under a live context reports sql.ErrTxDone once it has.
+func waitForRollback(t *testing.T, tx *sql.Tx) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		var one int
+		err := tx.QueryRowContext(context.Background(), "SELECT 1").Scan(&one)
+		if errors.Is(err, sql.ErrTxDone) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Errorf("transaction still open after its context was cancelled: %v", err)
+			return
+		}
+		time.Sleep(time.Millisecond)
 	}
 }

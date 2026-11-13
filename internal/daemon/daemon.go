@@ -69,7 +69,19 @@ type Config struct {
 // Production leaves it nil and builds Docker or Agent Sandbox from Config.
 var testProvider func(context.Context, Config) (ports.CapsuleProvider, func() error, error)
 
+// Run serves the local control plane until ctx ends. Stopping it, during
+// startup or after, is a clean shutdown and returns nil.
 func Run(ctx context.Context, config Config) error {
+	err := run(ctx, config)
+	// A stop during startup ends whichever step was running with the
+	// context's error; that is the requested shutdown, not a failure.
+	if err != nil && ctx.Err() != nil && errors.Is(err, ctx.Err()) {
+		return nil
+	}
+	return err
+}
+
+func run(ctx context.Context, config Config) error {
 	if config.Provider != "docker" && config.Provider != "agentsandbox" {
 		return fmt.Errorf("unsupported provider %q (supported: docker, agentsandbox)", config.Provider)
 	}
