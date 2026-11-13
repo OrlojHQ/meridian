@@ -137,13 +137,32 @@ textarea,
   border-radius: var(--radius-sm);
   padding: 0.6rem 0.7rem;
   color: var(--text);
-  background: var(--surface-raised);
+  background-color: var(--surface-raised);
   font: inherit;
   font-size: var(--text-sm);
+  font-weight: 450;
   line-height: 1.4;
   transition:
     border-color var(--duration-fast) var(--ease-standard),
     box-shadow var(--duration-fast) var(--ease-standard);
+}
+
+/* Single-line selects draw their own chevron so they match text inputs
+   instead of the platform's stepper control. Rules that restyle a select
+   set background-color, not the background shorthand, to keep it. */
+select:not([multiple], [size]) {
+  appearance: none;
+  padding-right: 2.1rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23879690' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4.5 6.25 3.5 3.5 3.5-3.5'/%3E%3C/svg%3E");
+  background-position: right 0.65rem center;
+  background-repeat: no-repeat;
+  background-size: 0.95rem;
+  cursor: pointer;
+}
+
+select:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 
 input[type="checkbox"],
@@ -666,7 +685,7 @@ textarea:hover {
 .thread-create input,
 .thread-create textarea,
 .thread-create select {
-  background: var(--surface-raised);
+  background-color: var(--surface-raised);
 }
 
 .agent-option,

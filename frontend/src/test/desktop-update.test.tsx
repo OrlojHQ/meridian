@@ -71,7 +71,12 @@ describe("desktop update notice", () => {
       ),
     };
     render(<DesktopUpdateNotice />);
-    expect(await screen.findByText("brew upgrade --cask meridian-desktop")).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        (_, element) =>
+          element?.tagName === "CODE" && element.textContent === "brew upgrade --cask meridian-desktop",
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Update & restart" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Remind me later" })).toBeInTheDocument();
   });

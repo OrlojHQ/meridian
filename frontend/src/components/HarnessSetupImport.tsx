@@ -4,6 +4,7 @@ import { api, normalizeAPIError } from "../api/client";
 import type { HarnessSetup, HarnessSetupPreview } from "../api/generated/types.gen";
 import { CopyButton } from "./ui/CopyButton";
 import { LocalSetupError, directoryPicker, scanSetupDirectory, harnessFolders, readLocalFiles, selectLocalFiles, type Harness, type Exclusion, type Selection } from "../import/localSetup";
+import { HarnessMark } from "./ui/HarnessMark";
 
 function importError(cause: unknown) {return cause instanceof LocalSetupError ? cause.message : normalizeAPIError(cause).message;}
 
@@ -92,7 +93,7 @@ export function HarnessSetupImport({ title = "Import your setup", initialHarness
   }
   return <section className="panel setup-import" id="import-setup">
     <h2>{title}</h2>
-    {!onCancel && <label>Harness<select value={harness} disabled={busy} onChange={event => {setHarness(event.target.value as Harness);setSelection([]);setExcluded([]);setPreview(undefined);setSaved(undefined);setError("");}}>{Object.entries(displayNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>}
+    {!onCancel && <label>Harness<span className="select-field with-mark"><HarnessMark harness={harness}/><select value={harness} disabled={busy} onChange={event => {setHarness(event.target.value as Harness);setSelection([]);setExcluded([]);setPreview(undefined);setSaved(undefined);setError("");}}>{Object.entries(displayNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></span></label>}
     {saved && !preview && <p role="status" className="setup-import-saved">Saved {saved.name}. New {displayNames[harness]} Capsules start with it. Import again here to add more files or skills.</p>}
     {!preview && <>
       <p>{existing ? <>Import again to update <strong>{existing.name}</strong>. You review every file, and saving creates a new revision; existing Capsules keep theirs.</> : <>Import your {displayNames[harness]} settings, skills, and commands so new Capsules start with them. You review every file before anything is saved.</>}</p>

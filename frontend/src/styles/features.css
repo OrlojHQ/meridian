@@ -1522,11 +1522,17 @@ button.tool-line:hover {
   width: 100%;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
-  padding: 0.58rem 0.65rem;
+  padding-block: 0.58rem;
+  padding-left: 0.65rem;
   color: var(--text);
-  background: var(--surface);
+  background-color: var(--surface);
   font: inherit;
   font-size: 0.8rem;
+}
+
+.launcher-form input,
+.launcher-form textarea {
+  padding-right: 0.65rem;
 }
 
 .launcher-form textarea {
