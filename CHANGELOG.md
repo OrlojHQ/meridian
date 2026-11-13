@@ -7,6 +7,12 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- The desktop app's update notice is now a compact card at the bottom of
+  the sidebar instead of a wide banner over the top of the window. Close
+  it to be reminded later.
+
 ## [0.7.2] - 2026-11-13
 
 ### Upgrade notes
