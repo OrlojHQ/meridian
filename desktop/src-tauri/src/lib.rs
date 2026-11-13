@@ -173,7 +173,10 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("failed to start Meridian")
         .run(|app, event| {
-            if let RunEvent::ExitRequested { .. } = event {
+            // The macOS menu's Quit (Cmd+Q) terminates the app without
+            // ExitRequested; only Exit arrives. Stop the sidecar on either,
+            // or it outlives the app holding 127.0.0.1:8080.
+            if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
                 let sidecar = {
                     let state = app.state::<AppState>();
                     let mut inner = lock(&state);
