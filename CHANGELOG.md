@@ -54,6 +54,12 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - On Agent Sandbox, Kubernetes still restarts the Pod itself. A Ready
   Capsule whose Pod is coming back stays Ready, and its active Runs fail the
   same way.
+- Deleting a Capsule whose setup failed, such as a checkout that could not
+  clone the repository, now removes its Docker container, `-workspace`
+  volume, and `-network` network, or its Agent Sandbox. They used to keep
+  running after the Capsule showed Deleted. Containers left by earlier
+  versions still need `docker rm -f`, `docker volume rm`, and
+  `docker network rm`.
 
 ## [0.6.0] - 2026-11-11
 

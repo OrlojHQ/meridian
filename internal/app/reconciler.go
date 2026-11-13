@@ -613,19 +613,23 @@ func (r *Reconciler) reconcileDelete(ctx context.Context, capsule domain.Capsule
 		}
 		return r.Enqueue(ctx, capsule.ID)
 	}
-	if capsule.ProviderResourceID != "" {
-		started := time.Now()
-		if err := r.provider.Delete(ctx, capsule.ProviderResourceID); err != nil {
-			r.observeProvider("delete", started, err)
-			if r.observer != nil {
-				r.observer.Cleanup(r.providerName, operationResult(err))
-			}
-			return err
-		}
-		r.observeProvider("delete", started, nil)
+	// A Create that failed during setup leaves its resources running without
+	// a recorded ID, so fall back to the name Create derives from the Capsule.
+	resourceID := capsule.ProviderResourceID
+	if resourceID == "" {
+		resourceID = r.provider.ResourceID(capsule.ID)
+	}
+	started := time.Now()
+	if err := r.provider.Delete(ctx, resourceID); err != nil {
+		r.observeProvider("delete", started, err)
 		if r.observer != nil {
-			r.observer.Cleanup(r.providerName, "ok")
+			r.observer.Cleanup(r.providerName, operationResult(err))
 		}
+		return err
+	}
+	r.observeProvider("delete", started, nil)
+	if r.observer != nil {
+		r.observer.Cleanup(r.providerName, "ok")
 	}
 	previous := capsule.ResourceVersion
 	if err := capsule.Transition(domain.CapsuleDeleted, r.clock.Now()); err != nil {

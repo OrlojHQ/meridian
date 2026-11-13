@@ -36,6 +36,9 @@ func Test(t *testing.T, factory Factory) {
 	if first.ID == "" || first.ID != second.ID {
 		t.Fatalf("create is not stable: %#v then %#v", first, second)
 	}
+	if derived := provider.ResourceID(request.CapsuleID); derived != first.ID {
+		t.Fatalf("ResourceID = %q, want the created resource %q", derived, first.ID)
+	}
 
 	got, err := provider.Get(ctx, first.ID)
 	if err != nil || got.ID != first.ID {

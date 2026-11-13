@@ -476,6 +476,11 @@ func (p *Provider) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
+// ResourceID returns the container name Create uses for a Capsule.
+func (p *Provider) ResourceID(capsuleID domain.CapsuleID) string {
+	return p.resourceNames(capsuleID).container
+}
+
 func (p *Provider) discoverCapsuleID(
 	ctx context.Context,
 	names resourceNames,

@@ -556,6 +556,10 @@ type CapsuleProvider interface {
 	Pause(context.Context, string) (ProviderResource, error)
 	Resume(context.Context, string) (ProviderResource, error)
 	Delete(context.Context, string) error
+	// ResourceID names the resource Create makes for a Capsule. Deletion uses
+	// it when Create failed after allocating resources but before Meridian
+	// recorded their ID, so a failed setup cannot leak them.
+	ResourceID(domain.CapsuleID) string
 }
 
 // WorkspacePreparer separates source checkout from dependency setup. Calls execute

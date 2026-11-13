@@ -790,6 +790,11 @@ func (p *Provider) imageIdentity(ctx context.Context, sandbox *sandboxv1beta1.Sa
 	return sandbox.Annotations[annotationImage]
 }
 
+// ResourceID returns the Sandbox name Create uses for a Capsule.
+func (p *Provider) ResourceID(capsuleID domain.CapsuleID) string {
+	return p.resourceName(capsuleID)
+}
+
 func (p *Provider) resourceName(capsuleID domain.CapsuleID) string {
 	hash := sha256.Sum256([]byte(capsuleID))
 	suffix := strings.ToLower(base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(hash[:10]))

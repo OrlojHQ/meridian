@@ -490,3 +490,34 @@ func TestStructuredRuntimeUsesProtectedLoopbackTransport(t *testing.T) {
 		t.Fatalf("structured events = %#v, %v", events, err)
 	}
 }
+
+func TestDeleteByResourceIDRemovesResourcesOfAFailedCreate(t *testing.T) {
+	engine := newFakeEngine()
+	engine.startExits = true
+	provider := testProvider(t, engine)
+	capsuleID := domain.CapsuleID("capsule-failed-setup")
+	if _, err := provider.Create(
+		context.Background(), ports.CreateCapsuleRequest{CapsuleID: capsuleID},
+	); err == nil {
+		t.Fatal("expected Create to fail when the Capsule exits on start")
+	}
+	names := provider.resourceNames(capsuleID)
+	if _, ok := engine.containers[names.container]; !ok {
+		t.Fatal("failed Create left no container to clean up")
+	}
+	if err := provider.Delete(context.Background(), provider.ResourceID(capsuleID)); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := engine.containers[names.container]; ok {
+		t.Fatal("container survived delete")
+	}
+	if _, ok := engine.networks[names.network]; ok {
+		t.Fatal("network survived delete")
+	}
+	if _, ok := engine.volumes[names.volume]; ok {
+		t.Fatal("volume survived delete")
+	}
+	if _, err := provider.tokens.load(capsuleID); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("token survived delete: %v", err)
+	}
+}

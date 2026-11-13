@@ -145,7 +145,7 @@ func (p *Provider) Create(
 			return ports.ProviderResource{}, err
 		}
 	}
-	id := "test-" + string(request.CapsuleID)
+	id := p.ResourceID(request.CapsuleID)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if existing, ok := p.resources[id]; ok {
@@ -154,6 +154,11 @@ func (p *Provider) Create(
 	resource := ports.ProviderResource{ID: id, State: ports.ProviderReady}
 	p.resources[id] = resource
 	return resource, nil
+}
+
+// ResourceID returns the deterministic ID Create uses for a Capsule.
+func (*Provider) ResourceID(capsuleID domain.CapsuleID) string {
+	return "test-" + string(capsuleID)
 }
 
 func (p *Provider) Get(ctx context.Context, id string) (ports.ProviderResource, error) {
