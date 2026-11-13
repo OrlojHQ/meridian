@@ -114,7 +114,6 @@ pub fn run() {
             });
 
             let navigation = app.handle().clone();
-            let external = app.handle().clone();
             let window =
                 WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                     .title("Meridian")
@@ -124,7 +123,6 @@ pub fn run() {
                     .on_navigation(move |url| allow_navigation(&navigation, url))
                     .on_new_window(move |url, _features| {
                         open_external(&url);
-                        let _ = &external;
                         tauri::webview::NewWindowResponse::Deny
                     })
                     .build()?;
@@ -186,8 +184,10 @@ fn gateway_state(state: tauri::State<'_, AppState>) -> GatewayView {
     lock(&state).view()
 }
 
+// Async so the picker's click does not run on the main thread: connecting
+// to the bundled gateway can wait up to a minute for readiness.
 #[tauri::command]
-fn gateway_connect(app: AppHandle, mode: String, url: Option<String>) -> Result<(), String> {
+async fn gateway_connect(app: AppHandle, mode: String, url: Option<String>) -> Result<(), String> {
     let choice = match mode.as_str() {
         "local" => SavedGateway::Local,
         "remote" => {
@@ -196,7 +196,9 @@ fn gateway_connect(app: AppHandle, mode: String, url: Option<String>) -> Result<
         }
         _ => return Err("Choose this computer or another gateway.".into()),
     };
-    connect(&app, choice)
+    tauri::async_runtime::spawn_blocking(move || connect(&app, choice))
+        .await
+        .map_err(|_| "Could not open the gateway.".to_string())?
 }
 
 #[tauri::command]
