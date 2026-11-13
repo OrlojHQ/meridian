@@ -974,7 +974,10 @@ describe("application shell", () => {
       </Routes>,
     );
     expect(await screen.findByText("Desktop alerts on")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Gateway" }));
+    const views = screen.getByRole("navigation", { name: "Views" });
+    const gateway = within(views).getByRole("button", { name: "Gateway" });
+    expect(gateway.querySelector("svg")).not.toBeNull();
+    await userEvent.click(gateway);
     expect(openGatewaySettings).toHaveBeenCalledOnce();
     delete window.__MERIDIAN_DESKTOP__;
   });
