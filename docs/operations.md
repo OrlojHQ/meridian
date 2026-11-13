@@ -43,6 +43,82 @@ On macOS, replace `sha256sum` with:
 grep "  ${ARCHIVE}$" checksums.txt | shasum -a 256 -c -
 ```
 
+The desktop app is attached to the same release and listed in `checksums.txt`.
+The macOS file is `meridian-desktop_${VERSION}_macOS_universal.dmg` (a
+universal disk image) plus a zip of `Meridian.app`. The Linux file is
+`meridian-desktop_${VERSION}_linux_amd64.deb`. Its package name is
+`meridian-desktop` (`sudo apt remove meridian-desktop`). The package installs
+`/usr/bin/meridian-desktop` and a private gateway binary named
+`meridian-desktop-gateway`. It does not install `/usr/bin/meridian` or
+`/usr/bin/meridiand`, so it can sit beside a separate CLI install. The desktop archives have a `.spdx.json` SBOM
+and a `.sigstore.json` bundle signed by this same workflow. Verify them with
+the commands above. The build is unsigned until Apple signing secrets are
+configured; verification here is the release signature, not an Apple
+Developer ID signature.
+
+With Homebrew on macOS, `brew install --cask orlojhq/tap/meridian-desktop`
+installs that disk image and clears `com.apple.quarantine`. Without Homebrew:
+
+```console
+curl -fsSL https://raw.githubusercontent.com/OrlojHQ/meridian/main/scripts/install-desktop.sh | sh
+```
+
+`scripts/install-desktop.sh` is also uploaded to the release as
+`install-desktop.sh`. It downloads the desktop archive for this machine,
+refuses a checksum mismatch, and installs it. The checksum comes from the
+same release, so it catches a damaged download; verify `checksums.txt` with
+Cosign as above to check where it came from. On macOS the target is
+`/Applications` when that directory is writable, otherwise `~/Applications`,
+and the script runs `xattr -dr com.apple.quarantine` on `Meridian.app`. On
+Linux amd64 it installs the `.deb` with `sudo apt install`. `--cli` installs
+the `meridian` and `meridiand` binaries instead. A direct download needs the
+same quarantine clearance, or a right-click Open:
+
+```console
+xattr -dr com.apple.quarantine /Applications/Meridian.app
+```
+
+## Desktop updater signing
+
+The desktop app verifies a self-update with a Tauri updater key. That key is
+not an Apple certificate and is not created by this repository. Generate it
+on a machine you trust, from `desktop/` after `bun install`:
+
+```console
+bun run tauri signer generate -w "$HOME/meridian-updater.key"
+```
+
+The command asks for a password and writes the private key to
+`$HOME/meridian-updater.key` and the public key to
+`$HOME/meridian-updater.key.pub`. It also prints both. Do not commit the
+private key, do not paste it into a pull request, and do not pass it on a
+command line. Put the secrets on `OrlojHQ/meridian`:
+
+- `TAURI_SIGNING_PRIVATE_KEY`: the contents of `meridian-updater.key` (the
+  base64-encoded private key, including its comment line)
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: the password you chose
+
+Copy the public key string from `meridian-updater.key.pub` into
+`plugins.updater.pubkey` in `desktop/src-tauri/tauri.conf.json` and commit
+that change. Keep an offline backup of the private key and its password: an
+app that has the public key accepts only updates signed by that key, so
+losing it means those installs have to be updated by hand.
+
+Every stable tag publishes `latest.json`, which the app reads from
+`https://github.com/OrlojHQ/meridian/releases/latest/download/latest.json`
+on launch and every four hours. It lists
+`meridian-desktop_<version>_macOS_universal.app.tar.gz` for both macOS
+architectures and the `.deb` for `linux-x86_64`, and it is written only after
+both desktop jobs finish. With the private-key secret, each listed file is
+signed with `--app-version`, its `.sig` is uploaded, and the app is built
+with `requireSignedVersion`, so a manifest cannot pair a new version number
+with an older archive. Without the secret the signatures are empty: Homebrew
+and Linux installs still see the new version and its upgrade command, and a
+macOS app with the public key refuses to install the unsigned archive. Until
+the public key is in the app, macOS installs show the curl command instead of
+Update & restart. Release candidates (`v*-*` tags) do not build desktop
+artifacts or a manifest.
+
 Verify release images by digest, never by an unverified mutable tag:
 
 ```console
@@ -424,9 +500,14 @@ With Homebrew, run `brew services stop meridian` and take the backup before
 receives published, non-prerelease versions. When a release is published,
 `.github/workflows/homebrew.yml` verifies the release's signed `checksums.txt`,
 renders `deploy/homebrew/meridian.rb.tmpl` with
-`scripts/render-homebrew-formula.sh`, and commits it to `OrlojHQ/homebrew-tap`
-using the `HOMEBREW_TAP_TOKEN` repository secret. Run the workflow manually
-with a tag to retry or backfill a release.
+`scripts/render-homebrew-formula.sh` and
+`deploy/homebrew/meridian-desktop.rb.tmpl` with
+`scripts/render-homebrew-cask.sh`, and commits `Formula/meridian.rb` and
+`Casks/meridian-desktop.rb` to `OrlojHQ/homebrew-tap` using the
+`HOMEBREW_TAP_TOKEN` repository secret. That token must be able to create
+`Casks/` as well as update `Formula/`. Run the workflow manually with a tag
+to retry or backfill a release. Do not publish the draft until the desktop
+jobs have uploaded the disk image and rewritten `checksums.txt`.
 
 Startup applies forward-only SQLite migrations transactionally. A database with
 a newer schema is rejected. Rollback is possible only by stopping the new

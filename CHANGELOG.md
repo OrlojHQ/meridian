@@ -7,6 +7,35 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- A desktop shell for macOS and Linux (ADR 0043) loads the same `/ui/` bundle
+  the daemon serves. Bundled local starts or reuses `meridiand`; another
+  gateway uses the existing browser session and does not start the sidecar.
+  Closing the window hides it to the tray. Quit stops only a sidecar this
+  app started. Notifications and the tray go through a runtime bridge the
+  browser ignores. Windows is a later follow-up. The bundle identifier is
+  not chosen; builds use `io.orloj.meridian` until it is.
+- Tag releases attach an unsigned universal macOS disk image and app zip,
+  plus an amd64 Linux `.deb`, with checksums, SPDX SBOMs, and Sigstore
+  bundles. `brew install --cask orlojhq/tap/meridian-desktop` installs the
+  disk image and clears the quarantine flag. Without Homebrew,
+  `curl -fsSL https://raw.githubusercontent.com/OrlojHQ/meridian/main/scripts/install-desktop.sh | sh`
+  downloads that release, checks `checksums.txt`, and installs the desktop
+  app (or the CLI binaries with `--cli`). Apple signing stays off until its
+  secrets are set. The `meridian` formula is unchanged. The Linux package
+  is `meridian-desktop` (`sudo apt remove meridian-desktop`) and does not
+  install `meridian` or `meridiand`.
+- The desktop window checks for a newer release on launch and every four
+  hours. It shows "Meridian X.Y.Z is available" with Update & restart or
+  Later, and Later hides that version for a day. Homebrew installs are told
+  to run `brew upgrade --cask meridian-desktop`. Linux packages are told to
+  run the curl installer. A signed macOS self-update stops a sidecar this
+  window started before it restarts. Every stable release publishes
+  `latest.json` for macOS and Linux, so the check works without the updater
+  signing key. That key is optional; without it the release still ships and
+  self-update stays off. Release candidates do not build desktop artifacts.
+
 ## [0.6.0] - 2026-11-11
 
 ### Upgrade notes

@@ -38,8 +38,8 @@ Assets requiring protection include:
 
 The principal boundaries are between:
 
-1. the single trusted operator's browser or CLI and the installation-bearer
-   authenticated control-plane APIs;
+1. the single trusted operator's browser, desktop shell, or CLI and the
+   installation-bearer authenticated control-plane APIs;
 2. the control plane and its SQLite database/local artifact storage;
 3. the control plane and the credential broker;
 4. the control plane and a Capsule provider;
@@ -612,8 +612,41 @@ bidirectional characters. Browser notifications, when the operator opts in,
 are derived only from that content-free `awaiting` flag and Capsule failure:
 a count plus "Meridian needs you", never Thread titles, prompts, permission
 details, or transcript text, because OS notifications surface on lock screens
-and in logs. They are local to the open tab; there is no phone push. Prompt
-drafts stay in page memory, and browser storage may hold only harness names.
+and in logs. They are local to the open tab; there is no phone push. The desktop shell
+(ADR 0043) may deliver that same payload through the operating system's
+notification service and tray when the page sees the shell's bridge. v1 is
+macOS and Linux. The shell rejects any other notification text. It does not
+store the installation token, transcript key, or credential key. Closing the
+window hides it and leaves the tray; that does not stop a daemon. Quit signals
+only a `meridiand` this process started for the bundled-local choice; a daemon
+it did not start is left running. Until per-user accounts exist, a remote
+gateway uses the existing browser session and must be HTTPS unless it is
+loopback. The system webview is not an additional isolation boundary and says
+nothing about Capsule isolation.
+
+The desktop app is distributed unsigned until Apple signing secrets exist.
+The Homebrew cask and `install-desktop.sh` clear `com.apple.quarantine`, so
+Gatekeeper does not assess the bundle; trust rests on the release workflow's
+Sigstore signatures and build provenance, and on `checksums.txt`. The
+installer compares the download with `checksums.txt` from the same release,
+which detects corruption but not a replaced release; an operator who needs
+provenance verifies `checksums.txt` with Cosign first. The cask writes
+nothing inside `Meridian.app`, so a later Developer ID signature stays
+valid. The update manifest `latest.json` is public and unauthenticated by
+itself: it only announces a version. A macOS self-update installs only an
+archive whose Tauri updater signature verifies against the public key built
+into the app, and that signature binds the version (`requireSignedVersion`),
+so a forged or replayed manifest cannot install other bytes or pair a new
+version number with an older archive. The private updater key is a
+repository secret and is never committed. Its theft would let an attacker
+who can also serve the manifest push code to self-updating macOS installs,
+so it is kept offline apart from that secret and rotated by shipping a new
+public key in a hand-installed release. Homebrew and Linux installs never
+self-update; they are shown a command to run. Any gateway origin the
+operator chose can call the bridge's update check and install commands; the
+install command still requires a verified signature and an operator click,
+and only restarts the app. Prompt drafts stay in page memory, and
+browser storage may hold only harness names.
 
 Crypto-shred removes the wrapped DEK and opaque live linkage while retaining
 content-free metadata and unreadable ciphertext. It is logical erasure and does

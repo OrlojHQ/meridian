@@ -27,6 +27,15 @@ coverage.out
 /meridian-data/
 /deploy/docker/meridian-data/
 
+# Desktop shell build output. The bundled meridiand sidecar is produced by
+# make desktop-sidecar and is named for the Rust host triple.
+/desktop/node_modules/
+/desktop/src-tauri/target/
+/desktop/src-tauri/binaries/
+/desktop/src-tauri/gen/
+# Tauri updater private keys. The public key belongs in tauri.conf.json.
+*.key
+
 # Editors and operating systems
 .DS_Store
 .idea/

@@ -1,0 +1,10 @@
+{
+  "identifier": "local-shell",
+  "description": "Connection picker for the Meridian window. Not granted to a gateway page.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "allow-gateway-state",
+    "allow-gateway-connect"
+  ]
+}

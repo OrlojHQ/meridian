@@ -18,6 +18,7 @@ PACKS := $(sort $(patsubst images/capsule-%/pack.env,%,$(wildcard images/capsule
 PACK_IMAGES := $(PACKS:%=capsule-%-image)
 
 .PHONY: bootstrap build test tui-test ui-test lint ui-build generate check-generated api-lint \
+	desktop-sidecar desktop-test desktop-build desktop-dev \
 	format-check vet vulncheck frontend-typecheck capsule-image $(PACK_IMAGES) \
 	capsule-integration-image docker-integration helm-tool helm-test \
 	agentsandbox-integration clean release-check release-snapshot release-smoke \
@@ -239,4 +240,49 @@ release-smoke:
 	$(MAKE) docker-integration
 
 clean:
-	rm -rf bin dist frontend/dist .tools
+	rm -rf bin dist frontend/dist .tools desktop/src-tauri/target desktop/node_modules
+
+# Desktop shell. The window loads the UI meridiand serves; it does not bundle a
+# second copy. v1 is macOS (app bundle) and Linux (deb). Windows is a later
+# follow-up.
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
+DESKTOP_BUNDLES := app
+else ifeq ($(UNAME_S),Linux)
+DESKTOP_BUNDLES := deb
+else
+DESKTOP_BUNDLES :=
+endif
+
+desktop-sidecar:
+	@command -v rustc >/dev/null || { echo "rustc is required" >&2; exit 1; }
+	@test -x bin/meridiand || { echo "run make build first" >&2; exit 1; }
+	@triple="$$(rustc -vV | awk '/^host:/{print $$2}')"; \
+	mkdir -p desktop/src-tauri/binaries; \
+	cp bin/meridiand "desktop/src-tauri/binaries/meridian-desktop-gateway-$$triple"; \
+	chmod 0755 "desktop/src-tauri/binaries/meridian-desktop-gateway-$$triple"
+
+desktop-test:
+	$(MAKE) build
+	$(MAKE) desktop-sidecar
+	cd desktop/src-tauri && cargo test
+
+desktop-build:
+	@if [[ -z "$(DESKTOP_BUNDLES)" ]]; then \
+		echo "Desktop bundles are defined for macOS and Linux." >&2; \
+		exit 1; \
+	fi
+	cd frontend && bun install --frozen-lockfile
+	$(MAKE) ui-build
+	$(MAKE) build
+	$(MAKE) desktop-sidecar
+	cd desktop && bun install --frozen-lockfile
+	cd desktop && bun run tauri -- build --bundles $(DESKTOP_BUNDLES)
+
+desktop-dev:
+	cd frontend && bun install --frozen-lockfile
+	$(MAKE) ui-build
+	$(MAKE) build
+	$(MAKE) desktop-sidecar
+	cd desktop && bun install --frozen-lockfile
+	cd desktop && bun run tauri -- dev

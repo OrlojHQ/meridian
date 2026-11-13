@@ -1,0 +1,12 @@
+{
+  "name": "@orlojhq/meridian-desktop",
+  "private": true,
+  "version": "0.0.0",
+  "packageManager": "bun@1.3.0",
+  "scripts": {
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.4"
+  }
+}
