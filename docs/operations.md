@@ -78,6 +78,39 @@ same quarantine clearance, or a right-click Open:
 xattr -dr com.apple.quarantine /Applications/Meridian.app
 ```
 
+### Desktop app beside an existing meridiand
+
+"This computer" in the desktop app first checks `127.0.0.1:8080`. A ready
+Meridian there is used as it is, and the app does not start a second daemon;
+Quit leaves it running. Only when nothing answers does the app start its
+bundled `meridian-desktop-gateway`, which uses the same default data directory
+as the `meridian` formula and a binary install. The data-directory lease (see
+"One owner per data directory") keeps the two from opening it at once, so a
+mismatch fails closed instead of corrupting data. The cases worth knowing:
+
+- **The running meridiand is older than the app.** The window shows that
+  daemon's UI, which has no desktop alerts, Gateway control, or update
+  notice. The shell detects this and shows a banner asking for an upgrade
+  (`brew upgrade meridian`, or the curl installer with `--cli`). The tray's
+  Gateway… item still opens the picker.
+- **The bundled gateway upgraded the database.** If the app's bundled daemon
+  ran while the formula's was stopped and the app is newer, it migrates the
+  database. An older `meridiand` then refuses to start with "database schema
+  version N is newer than supported", and `brew services` restarts it in a
+  loop until you run `brew upgrade meridian`. The reverse, an app older than
+  the data, makes the picker say to update the app.
+- **A meridiand listening somewhere other than 8080.** The app finds nothing
+  on 8080 and its bundled gateway cannot take the data-directory lease. The
+  picker says another Meridian is using this computer's data; choose Another
+  gateway and enter its address, such as `http://127.0.0.1:9090`.
+- **The app started first.** While the bundled gateway holds 8080 and the
+  lease, `brew services start meridian` cannot start and launchd retries it,
+  logging to `/opt/homebrew/var/log/meridiand.log`. Quit the app and the
+  formula's daemon takes over; the app reuses it on the next launch.
+
+Keep `meridian` and `meridian-desktop` on the same release to avoid all of
+these.
+
 ## Desktop updater signing
 
 The desktop app verifies a self-update with a Tauri updater key. That key is

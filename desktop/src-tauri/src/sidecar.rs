@@ -94,6 +94,28 @@ fn signal_term(pid: u32) {
     }
 }
 
+/// Plain-language reason for the bundled gateway exiting before it was ready,
+/// for the failures an operator can act on. The strings matched are meridiand's
+/// own errors: `datadir.ErrInUse` and the SQLite store's schema check.
+pub fn explain_exit(log: &str) -> Option<&'static str> {
+    if log.contains("data directory is in use") {
+        return Some(
+            "Another Meridian is already using this computer's data, but it is not \
+             answering at 127.0.0.1:8080. If it listens at another address, choose \
+             Another gateway and enter that address, such as http://127.0.0.1:9090. \
+             Otherwise stop it (for Homebrew: brew services stop meridian) and try again.",
+        );
+    }
+    if log.contains("is newer than supported version") {
+        return Some(
+            "This computer's Meridian data was last opened by a newer meridiand than \
+             the one inside this app. Update the desktop app (brew upgrade --cask \
+             meridian-desktop, or run the curl installer again), then try again.",
+        );
+    }
+    None
+}
+
 fn append_log(slot: &Mutex<String>, bytes: &[u8]) {
     let mut text = String::from_utf8_lossy(bytes).to_string();
     if text.to_ascii_lowercase().contains("bearer ") {
@@ -113,6 +135,20 @@ fn append_log(slot: &Mutex<String>, bytes: &[u8]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn explains_a_held_data_directory_and_a_newer_database() {
+        let held = "Error: data directory is in use: another Meridian process on this host holds /Users/a/Library/Application Support/meridian\n";
+        assert!(explain_exit(held).unwrap().contains("Another gateway"));
+        let newer = "Error: open store: schema mismatch: database schema version 31 is newer than supported version 29\n";
+        assert!(explain_exit(newer)
+            .unwrap()
+            .contains("Update the desktop app"));
+        assert_eq!(
+            explain_exit("cannot reach Docker at unix:///var/run/docker.sock\n"),
+            None
+        );
+    }
 
     #[test]
     fn log_keeps_a_docker_error_and_drops_a_bearer() {

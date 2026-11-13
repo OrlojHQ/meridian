@@ -36,8 +36,11 @@ cask "meridian-desktop" do
       Applications, then right-click Meridian and choose Open. Or run:
         xattr -dr com.apple.quarantine /Applications/Meridian.app
 
-      The app is a window onto meridiand. Install and start the daemon with
-      the meridian formula if it is not already running.
+      The app uses a meridiand already answering at 127.0.0.1:8080 and starts
+      its own bundled one only when nothing is there. Both use the same data
+      directory. If you also run the meridian formula, keep the two on the
+      same version:
+        brew upgrade meridian && brew upgrade --cask meridian-desktop
     EOS
   end
 

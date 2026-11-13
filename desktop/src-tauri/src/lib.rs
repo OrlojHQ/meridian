@@ -438,10 +438,12 @@ fn wait_until_ready(app: &AppHandle, own_process: bool) -> Result<(), String> {
             if let Some(sidecar) = &inner.sidecar {
                 if sidecar.exited() {
                     let tail = sidecar.log_tail();
+                    let lead = sidecar::explain_exit(&tail)
+                        .unwrap_or("The local gateway exited before it was ready.");
                     let detail = if tail.trim().is_empty() {
-                        "The local gateway exited before it was ready.".to_string()
+                        lead.to_string()
                     } else {
-                        format!("The local gateway exited before it was ready.\n{tail}")
+                        format!("{lead}\n{tail}")
                     };
                     return Err(detail);
                 }
@@ -647,4 +649,15 @@ fn write_saved(app: &AppHandle, choice: &SavedGateway) -> Result<(), String> {
     serde_json::to_writer_pretty(file, choice).map_err(|error| error.to_string())?;
     fs::rename(&temporary, &path).map_err(|error| error.to_string())?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn older_gateway_check_matches_the_ui_marker() {
+        let init = include_str!("init.js");
+        let index = include_str!("../../../frontend/index.html");
+        assert!(init.contains(r#"meta[name="meridian-desktop-bridge"]"#));
+        assert!(index.contains(r#"<meta name="meridian-desktop-bridge" content="1" />"#));
+    }
 }
