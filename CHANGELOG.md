@@ -7,10 +7,13 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.7.0] - 2026-11-12
+## [0.7.1] - 2026-11-13
 
 ### Upgrade notes
 
+- v0.7.0 was tagged but never published: its universal macOS desktop build
+  could not find a universal gateway sidecar. 0.7.1 is the first release
+  with the changes below; upgrade from 0.6.0 directly to it.
 - No database migration and no API change. The `meridian` formula, the CLI
   tarballs, and the container images upgrade as before.
 - The desktop app is new and optional. Install it with
@@ -21,7 +24,7 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   `127.0.0.1:8080` and starts its bundled one only when nothing is there,
   on the same data directory. Keep `meridian` and `meridian-desktop` on the
   same release (`brew upgrade meridian && brew upgrade --cask
-  meridian-desktop`). A meridiand older than 0.7.0 serves a UI without
+  meridian-desktop`). A meridiand older than 0.7.1 serves a UI without
   desktop alerts, the Gateway control, or update notices, and the app shows
   a banner saying so. See "Desktop app beside an existing meridiand" in
   `docs/operations.md`.
@@ -932,8 +935,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - Docker and Agent Sandbox are not claimed as hostile multi-tenant isolation
   boundaries; hardened runtime deployment and external review remain required.
 
-[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.7.0...HEAD
-[0.7.0]: https://github.com/OrlojHQ/meridian/compare/v0.6.0...v0.7.0
+[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/OrlojHQ/meridian/compare/v0.6.0...v0.7.1
 [0.6.0]: https://github.com/OrlojHQ/meridian/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/OrlojHQ/meridian/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/OrlojHQ/meridian/compare/v0.4.0...v0.4.1

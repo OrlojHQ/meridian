@@ -97,6 +97,12 @@ case "${target}" in
     CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -buildvcs=false \
       -ldflags "${ldflags}" -o "${root}/desktop/src-tauri/binaries/meridian-desktop-gateway-x86_64-apple-darwin" \
       "${root}/cmd/meridiand"
+    # A universal-apple-darwin build looks up each externalBin under the
+    # universal triple, so the sidecar needs a fat binary of its own.
+    lipo -create \
+      "${root}/desktop/src-tauri/binaries/meridian-desktop-gateway-aarch64-apple-darwin" \
+      "${root}/desktop/src-tauri/binaries/meridian-desktop-gateway-x86_64-apple-darwin" \
+      -output "${root}/desktop/src-tauri/binaries/meridian-desktop-gateway-universal-apple-darwin"
     chmod 0755 "${root}/desktop/src-tauri/binaries"/meridian-desktop-gateway-*-apple-darwin
     # --no-sign keeps a runner without a Developer ID from failing the bundle.
     # scripts/desktop-apple-signing.sh exports APPLE_SIGNING_IDENTITY only
@@ -112,6 +118,14 @@ case "${target}" in
     dmg="$(find "${bundle}/dmg" -name '*.dmg' | head -n 1)"
     app="${bundle}/macos/Meridian.app"
     [[ -n "${dmg}" && -d "${app}" ]]
+    # Both the shell and its bundled gateway must run on Apple silicon and Intel.
+    for binary in meridian-desktop meridian-desktop-gateway; do
+      archs="$(lipo -archs "${app}/Contents/MacOS/${binary}")"
+      if [[ " ${archs} " != *" arm64 "* || " ${archs} " != *" x86_64 "* ]]; then
+        echo "${binary} is not universal: ${archs}" >&2
+        exit 1
+      fi
+    done
     dmg_name="meridian-desktop_${version}_macOS_universal.dmg"
     zip_name="meridian-desktop_${version}_macOS_universal.app.zip"
     cp "${dmg}" "${out}/${dmg_name}"
