@@ -37,7 +37,7 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   Closing the window hides it to the tray. Quit stops only a sidecar this
   app started. Notifications and the tray go through a runtime bridge the
   browser ignores. Windows is a later follow-up. The bundle identifier is
-  not chosen; builds use `io.orloj.meridian` until it is.
+  `io.orloj.meridian`.
 - Tag releases attach an unsigned universal macOS disk image and app zip,
   plus an amd64 Linux `.deb`, with checksums, SPDX SBOMs, and Sigstore
   bundles. `brew install --cask orlojhq/tap/meridian-desktop` installs the

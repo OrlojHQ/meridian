@@ -72,9 +72,10 @@ It does not invent a user identity.
   absent the release still ships and the app shows the curl command instead
   of installing. If this process started the sidecar, it stops that sidecar
   before restarting into an update.
-- The bundle identifier is not chosen. Builds use `io.orloj.meridian`, the
-  same prefix the daemon already uses for Docker labels, until a final
-  identifier is picked. Do not treat that string as the decided id.
+- The bundle identifier is `io.orloj.meridian`, the same prefix the daemon
+  already uses for Docker labels. It names the app's configuration and
+  WebKit storage directories, the cask's `zap` paths, and later the Apple
+  signing identity, so it does not change after the first release.
 
 ## Consequences
 
@@ -88,5 +89,5 @@ tokens. A gateway the operator chose can call the bridge commands, and those
 commands reject any other payload. Hiding the window does not stop a sidecar;
 only Quit does, and only for a process this app started. An accepted update
 stops that same sidecar before the new build launches. Follow-ups are Apple
-code signing, Windows, a final bundle identifier, and the per-user session
+code signing, Windows, and the per-user session
 work already tracked in #87.
