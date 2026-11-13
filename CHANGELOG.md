@@ -15,6 +15,12 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   and lists it in `checksums.txt`, like every other release file. It is
   attached by the desktop checksums job, so prerelease tags, which skip the
   desktop jobs, no longer carry it.
+### Security
+
+- The desktop app's bridge (alerts, tray attention, Gateway control, update
+  check and install) is granted only to the gateway origin you chose, and
+  only while it is the active gateway. It replaces a static grant to every
+  HTTPS origin and every loopback port (#137).
 
 ## [0.7.1] - 2026-11-13
 

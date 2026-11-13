@@ -44,6 +44,17 @@ It does not invent a user identity.
   "Meridian needs you" and the body is the same count string the web UI
   already uses. The tray tooltip uses that same count. No Capsule name, prompt,
   or permission text is accepted.
+- Only the gateway origin the operator chose can call the bridge. No static
+  capability names a remote URL. When the shell connects, it adds a runtime
+  capability for the main window whose single remote URL pattern is that
+  origin (scheme, host, and port, any path), with only the bridge commands
+  and no access from the shell's own pages. The picker's commands stay in a
+  local-only capability that no gateway origin receives. Tauri cannot remove
+  a capability at runtime, so a grant for an origin chosen earlier in the
+  same process remains. Each bridge call must therefore also have been
+  matched by the pattern of the gateway that is active now; Tauri matches
+  that pattern against the IPC request's own origin. While the picker is
+  shown no gateway is active, and every bridge call is refused.
 - A gateway UI that supports the bridge carries
   `<meta name="meridian-desktop-bridge" content="1">` in its `index.html`.
   On a `/ui/` page without it, the shell's own injected script shows a fixed
@@ -85,8 +96,10 @@ Linux. Windows and WebView2 are a later follow-up. Update checks are quiet
 until a newer release exists, and a dismissed version stays dismissed for a
 day. The shell is the trusted operator's client, in the same sense as the
 browser: it does not receive transcript keys, credential keys, or supervisor
-tokens. A gateway the operator chose can call the bridge commands, and those
-commands reject any other payload. Hiding the window does not stop a sidecar;
+tokens. Only the gateway the operator chose, while it is the active one, can
+call the bridge commands, and those commands reject any other payload. A
+capability granted to an earlier gateway stays registered until the app
+quits, but cannot be used. Hiding the window does not stop a sidecar;
 only Quit does, and only for a process this app started. An accepted update
 stops that same sidecar before the new build launches. Follow-ups are Apple
 code signing, Windows, and the per-user session
