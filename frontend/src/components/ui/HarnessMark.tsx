@@ -9,7 +9,7 @@ import { harnessName } from "../../shell/capsuleActivity";
 // https://openai.com/brand/ (openai-logos.zip, OAI_OpenAI-Blossom_Black.svg),
 // including its prescribed clear space, in black or white only, under
 // OpenAI's Marks usage terms. Other harnesses use a monogram.
-const logos: Record<string, { path: string; viewBox?: string }> = {
+export const harnessLogos: Record<string, { path: string; viewBox?: string }> = {
   claude: {
     path: "M21 10.5h3v3h-3v3h-1.5v3H18v-3h-1.5v3H15v-3H9v3H7.5v-3H6v3H4.5v-3H3v-3H0v-3h3v-6h18Zm-15 0h1.5v-3H6Zm10.5 0H18v-3h-1.5z",
   },
@@ -32,7 +32,7 @@ export function HarnessMark({
   size?: "sm" | "md" | "lg";
 }) {
   const key = harness ?? "";
-  const logo = logos[key];
+  const logo = harnessLogos[key];
   const monogram = key ? key.slice(0, 2).replace(/^./, (value) => value.toUpperCase()) : "·";
   const known = logo !== undefined;
   return (
