@@ -118,11 +118,6 @@ jobs:
             cosign sign-blob --yes --bundle "${artifact}.sigstore.json" "${artifact}"
           done
           gh release upload "${TAG}" dist/*.sigstore.json --clobber
-      - name: Attach desktop install script
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
-        run: gh release upload "${TAG}" scripts/install-desktop.sh --clobber
 
   harness-images:
     name: Publish official harness pack images
@@ -411,6 +406,25 @@ jobs:
         uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
         with:
           subject-path: manifest/latest.json
+      # The install script ships only with the desktop files it installs, so it
+      # is attached here, behind the same stable-tag gate as the desktop jobs.
+      - name: Sign and attach desktop install script
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p installer
+          cp scripts/install-desktop.sh installer/install-desktop.sh
+          cosign sign-blob --yes --bundle installer/install-desktop.sh.sigstore.json \
+            installer/install-desktop.sh
+          gh release upload "${TAG}" installer/install-desktop.sh \
+            installer/install-desktop.sh.sigstore.json --clobber
+          (cd installer && sha256sum install-desktop.sh) > fragments/checksums-installer.txt
+      - name: Attest desktop install script
+        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
+        with:
+          subject-path: installer/install-desktop.sh
       # A re-run rebuilds the desktop files, so their fresh hashes replace any
       # line for the same name already in checksums.txt.
       - name: Merge desktop checksums and re-sign
