@@ -520,11 +520,21 @@ textarea:hover {
   gap: 0.15rem;
 }
 
-.sidebar-links > a {
+.sidebar-links > a,
+.sidebar-links > button {
   min-height: 2.15rem;
   border-radius: var(--radius-md);
   padding: 0.4rem 0.6rem;
   font-size: var(--text-sm);
+}
+
+/* The desktop-only Gateway control is a button; the base button rule would
+   centre it and give it a raised surface. */
+.sidebar-links > button {
+  justify-content: flex-start;
+  box-shadow: none;
+  letter-spacing: normal;
+  line-height: inherit;
 }
 
 .sidebar-links > a.active {

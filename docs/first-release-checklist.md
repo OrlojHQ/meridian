@@ -37,10 +37,14 @@ No step in this checklist authorizes a release from an unreviewed working tree.
 - [ ] Publish the already verified draft manually; do not sign, tag, or publish
       from a developer workstation.
 - [ ] Confirm the release draft includes the universal macOS desktop disk
-      image, the app zip, the amd64 Linux `.deb`, `install-desktop.sh`,
-      their SPDX SBOMs, and Sigstore bundles, `latest.json` with
+      image, the app zip, the amd64 Linux `.deb`, their SPDX SBOMs, and
+      Sigstore bundles, `install-desktop.sh` and
+      `install-desktop.sh.sigstore.json`, `latest.json` with
       `darwin-aarch64`, `darwin-x86_64`, and `linux-x86_64` entries, and that
-      `checksums.txt` lists the archives and the manifest.
+      `checksums.txt` lists the archives, the manifest, and
+      `install-desktop.sh`.
+- [ ] Verify the attached `install-desktop.sh` with `cosign verify-blob` and
+      `gh attestation verify` as for an archive in `docs/operations.md`.
 - [ ] Confirm the `homebrew` workflow committed `Formula/meridian.rb` and
       `Casks/meridian-desktop.rb` for the tag to `OrlojHQ/homebrew-tap`, then
       `brew upgrade meridian`, `brew test meridian`, and

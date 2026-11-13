@@ -96,7 +96,8 @@ fn signal_term(pid: u32) {
 
 /// Plain-language reason for the bundled gateway exiting before it was ready,
 /// for the failures an operator can act on. The strings matched are meridiand's
-/// own errors: `datadir.ErrInUse` and the SQLite store's schema check.
+/// own errors: `datadir.ErrInUse`, the SQLite store's schema check, and the
+/// Docker provider's startup ping in `internal/provider/docker/provider.go`.
 pub fn explain_exit(log: &str) -> Option<&'static str> {
     if log.contains("data directory is in use") {
         return Some(
@@ -111,6 +112,11 @@ pub fn explain_exit(log: &str) -> Option<&'static str> {
             "This computer's Meridian data was last opened by a newer meridiand than \
              the one inside this app. Update the desktop app (brew upgrade --cask \
              meridian-desktop, or run the curl installer again), then try again.",
+        );
+    }
+    if log.contains("cannot reach Docker at") && log.contains("(is Docker running?") {
+        return Some(
+            "Docker isn't running. Start Docker Desktop or OrbStack, then click Continue.",
         );
     }
     None
@@ -145,8 +151,19 @@ mod tests {
             .unwrap()
             .contains("Update the desktop app"));
         assert_eq!(
-            explain_exit("cannot reach Docker at unix:///var/run/docker.sock\n"),
+            explain_exit("listen tcp 127.0.0.1:8081: bind: address already in use\n"),
             None
+        );
+    }
+
+    #[test]
+    fn explains_docker_not_running() {
+        // Exactly what meridiand prints when the Docker provider's startup
+        // ping fails; a wording change in provider.go must break this test.
+        let down = "initialize Docker provider: cannot reach Docker at unix:///var/run/docker.sock (is Docker running? set --docker-host or DOCKER_HOST to override): failed to connect to the docker API at unix:///var/run/docker.sock; check if the path is correct and if the daemon is running: dial unix /var/run/docker.sock: connect: no such file or directory\n";
+        assert_eq!(
+            explain_exit(down),
+            Some("Docker isn't running. Start Docker Desktop or OrbStack, then click Continue.")
         );
     }
 

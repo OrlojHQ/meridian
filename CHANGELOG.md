@@ -7,6 +7,14 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- The desktop gateway picker says "Docker isn't running" when the bundled
+  gateway exits because it cannot reach Docker, with meridiand's log below.
+- The release workflow now keyless-signs and attests `install-desktop.sh`
+  and lists it in `checksums.txt`, like every other release file. It is
+  attached by the desktop checksums job, so prerelease tags, which skip the
+  desktop jobs, no longer carry it.
 ### Security
 
 - The desktop app's bridge (alerts, tray attention, Gateway control, update

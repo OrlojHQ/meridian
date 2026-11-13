@@ -144,8 +144,9 @@ The script downloads the latest published release, checks it against that
 release's `checksums.txt`, and stops if the check fails. On macOS it installs
 `Meridian.app` to `/Applications` when that directory is writable, and to
 `~/Applications` otherwise, then clears the quarantine flag. On Linux it
-installs the `.deb` with `sudo apt install`. Each release also carries this
-script as `install-desktop.sh`.
+installs the `.deb` with `sudo apt install`. Each stable release also
+carries this script as `install-desktop.sh`, signed and listed in
+`checksums.txt`.
 
 Pin a version, or install only the `meridian` and `meridiand` binaries:
 

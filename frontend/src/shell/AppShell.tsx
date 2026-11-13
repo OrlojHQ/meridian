@@ -31,6 +31,7 @@ import {
   ChevronIcon,
   CommandIcon,
   FilesIcon,
+  GatewayIcon,
   MenuIcon,
   PlusIcon,
   PreviewIcon,
@@ -196,6 +197,7 @@ function GatewaySettingsButton() {
   if (!open) return null;
   return (
     <button type="button" onClick={() => open()}>
+      <GatewayIcon />
       Gateway
     </button>
   );

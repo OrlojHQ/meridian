@@ -199,13 +199,19 @@
   position: relative;
 }
 
-.cli-session .section-heading {
-  position: absolute;
-  z-index: 2;
-  top: 0.45rem;
-  right: 0.6rem;
+/* The Run badge and Stop sit in the terminal's toolbar row, above xterm, so
+   the fitted columns never run underneath them. The connection status stays
+   for assistive technology only. */
+.cli-session .primary-session > .section-heading {
+  flex: none;
+  flex-direction: row;
+  align-items: center;
+  min-height: 2.5rem;
   border: 0;
-  background: transparent;
+  border-bottom: 1px solid rgb(255 255 255 / 8%);
+  padding: 0.3rem 0.6rem;
+  color: var(--terminal-text);
+  background: var(--terminal-bar);
 }
 
 .cli-session .terminal-toolbar {
