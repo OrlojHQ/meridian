@@ -205,6 +205,18 @@ func TestClaudeStreamContract(t *testing.T) {
 	}
 	_ = readStatus(t, decoder, adapterproto.StatusIdle)
 
+	sendTestMessage(t, encoder, "message-coord", "coord")
+	frames = readUntil(t, decoder, adapterproto.KindAssistantMessage)
+	for _, frame := range frames {
+		if frame.Type == adapterproto.KindPermissionRequest {
+			t.Fatalf("trusted MCP tool asked the operator: %#v", frame)
+		}
+	}
+	if final := frames[len(frames)-1]; final.Content != "coord allow" {
+		t.Fatalf("coord turn final = %#v", final)
+	}
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+
 	sendTestMessage(t, encoder, "message-3", "ask")
 	first := readKind(t, decoder, adapterproto.KindInputRequest)
 	second := readKind(t, decoder, adapterproto.KindInputRequest)
@@ -484,7 +496,7 @@ func TestClaudeStreamHelper(t *testing.T) {
 		})
 	}
 	text := func(value string) map[string]any { return map[string]any{"type": "text", "text": value} }
-	var pendingTool, pendingAsk string
+	var pendingTool, pendingAsk, pendingCoord string
 	// The fixture's model and effort in effect, as get_settings reports them.
 	appliedModel, appliedEffort := "claude-opus-5-5", ""
 	modelEffort := map[string]string{"claude-opus-5-5": "high", "claude-sonnet-5-5": "low"}
@@ -578,6 +590,9 @@ func TestClaudeStreamHelper(t *testing.T) {
 				})
 				assistant("msg_fixture_3", text("tool finished"))
 				result("tool finished", false)
+			case pendingCoord:
+				pendingCoord = ""
+				result("coord "+body["behavior"].(string), false)
 			case pendingAsk:
 				pendingAsk = ""
 				input, _ := body["updatedInput"].(map[string]any)
@@ -625,6 +640,16 @@ func TestClaudeStreamHelper(t *testing.T) {
 					"request": map[string]any{
 						"subtype": "can_use_tool", "tool_name": "Bash", "display_name": "Bash",
 						"input": input, "description": "print", "tool_use_id": "toolu_fixture",
+					},
+				})
+			case "coord":
+				// The profile's own MCP server is answered by the adapter.
+				pendingCoord = "coord-request"
+				emit(map[string]any{
+					"type": "control_request", "request_id": pendingCoord,
+					"request": map[string]any{
+						"subtype": "can_use_tool", "tool_name": "mcp__meridian-coord__meridian_wait",
+						"input": map[string]any{"links": []any{"link-1"}}, "tool_use_id": "toolu_coord",
 					},
 				})
 			case "ask":

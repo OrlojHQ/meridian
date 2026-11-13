@@ -474,6 +474,36 @@ func ParseMCPServer(value string) (MCPServer, error) {
 	return server, nil
 }
 
+// trustedMCPServer reports whether name is a profile-registered MCP server.
+// Only official image profiles register servers (--mcp-server), so their
+// tools carry no more authority than the profile already granted: the
+// coordination tools are bounded by the operator's grant, not by a harness
+// prompt (ADR 0045).
+func trustedMCPServer(servers []MCPServer, name string) bool {
+	for _, server := range servers {
+		if server.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// trustedClaudeTool reports whether a Claude Code tool name belongs to a
+// profile-registered MCP server. Claude Code names MCP tools
+// mcp__<server>__<tool>.
+func trustedClaudeTool(servers []MCPServer, tool string) bool {
+	rest, ok := strings.CutPrefix(tool, "mcp__")
+	if !ok {
+		return false
+	}
+	for _, server := range servers {
+		if name, ok := strings.CutPrefix(rest, server.Name+"__"); ok && name != "" {
+			return true
+		}
+	}
+	return false
+}
+
 func validMCPName(name string) bool {
 	if name == "" || len(name) > 64 {
 		return false

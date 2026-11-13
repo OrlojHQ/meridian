@@ -1107,6 +1107,10 @@ func (s *codexSession) serverRequest(rawID json.RawMessage, method string, raw j
 		if params.Mode != "form" || params.RequestedSchema == nil || len(params.RequestedSchema.Properties) != 0 {
 			return s.reply(rawID, map[string]any{"action": "decline", "content": nil, "_meta": nil})
 		}
+		if params.Meta != nil && params.Meta.ApprovalKind == "mcp_tool_call" &&
+			trustedMCPServer(s.config.MCPServers, params.ServerName) {
+			return s.reply(rawID, map[string]any{"action": "accept", "content": map[string]any{}, "_meta": nil})
+		}
 		kind = "mcp_elicitation"
 		summary = params.ServerName + ": " + params.Message
 		options = []string{"accept", "decline", "cancel"}
