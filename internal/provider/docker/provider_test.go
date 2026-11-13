@@ -521,3 +521,21 @@ func TestDeleteByResourceIDRemovesResourcesOfAFailedCreate(t *testing.T) {
 		t.Fatalf("token survived delete: %v", err)
 	}
 }
+
+// The desktop app's explain_exit (desktop/src-tauri/src/sidecar.rs) matches
+// this wording to tell the operator Docker isn't running; keep them in step.
+func TestNewExplainsUnreachableDocker(t *testing.T) {
+	t.Setenv("DOCKER_HOST", "")
+	t.Setenv("DOCKER_TLS_VERIFY", "")
+	t.Setenv("DOCKER_CERT_PATH", "")
+	host := "unix:///nonexistent/meridian-docker.sock"
+	provider, err := New(Config{Host: host, StateDir: t.TempDir()})
+	if err == nil {
+		_ = provider.Close()
+		t.Fatal("New succeeded against a missing Docker socket")
+	}
+	want := "cannot reach Docker at " + host + " (is Docker running? set --docker-host or DOCKER_HOST to override): "
+	if !strings.HasPrefix(err.Error(), want) {
+		t.Fatalf("error = %q, want prefix %q", err, want)
+	}
+}

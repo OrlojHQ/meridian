@@ -7,6 +7,11 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- The desktop gateway picker says "Docker isn't running" when the bundled
+  gateway exits because it cannot reach Docker, with meridiand's log below.
+
 ## [0.7.1] - 2026-11-13
 
 ### Upgrade notes
