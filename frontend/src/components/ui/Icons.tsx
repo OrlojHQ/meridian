@@ -172,6 +172,18 @@ export function SettingsIcon(props: IconProps) {
   );
 }
 
+// The daemon the window talks to: bundled on this computer or one the
+// operator chose.
+export function GatewayIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="3.5" y="3.5" width="13" height="5" rx="1.5" />
+      <rect x="3.5" y="11.5" width="13" height="5" rx="1.5" />
+      <path d="M6.5 6h.01M6.5 14h.01" />
+    </Icon>
+  );
+}
+
 export function ToolIcon(props: IconProps) {
   return (
     <Icon {...props}>

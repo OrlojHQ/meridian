@@ -590,6 +590,44 @@ describe("application shell", () => {
     expect(blocks).not.toHaveBeenCalled();
   });
 
+  it("counts a failed Capsule in a Project created elsewhere without a reload", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const created: Project = { ...project, id: "project-2", name: "Created by the CLI" };
+      const listed = vi
+        .spyOn(api, "projects")
+        .mockResolvedValueOnce({ items: [project] })
+        .mockResolvedValue({ items: [project, created] });
+      vi.spyOn(api, "capsules").mockImplementation(async (projectId) => ({
+        items:
+          projectId === created.id
+            ? [{ ...capsule, id: "capsule-2", projectId: created.id, name: "Setup broke", state: "Failed" }]
+            : [],
+      }));
+      vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
+      vi.spyOn(api, "capabilities").mockResolvedValue(capabilities);
+      vi.spyOn(api, "board").mockResolvedValue({ items: [], truncated: false });
+
+      wrapper(
+        <Routes>
+          <Route path="/ui" element={<AppShell />}>
+            <Route index element={<p>Activity home</p>} />
+          </Route>
+        </Routes>,
+      );
+
+      expect(await screen.findByText("Nothing waiting")).toBeInTheDocument();
+      expect(listed).toHaveBeenCalledOnce();
+
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(await screen.findByLabelText("1 need attention")).toHaveTextContent("1");
+      expect(screen.getByRole("link", { name: /Setup broke/ })).toBeInTheDocument();
+      expect(listed.mock.calls.length).toBeGreaterThan(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("offers content-free browser notifications from the status bar", async () => {
     const posted: { title: string; options?: NotificationOptions }[] = [];
     class FakeNotification {
@@ -936,7 +974,10 @@ describe("application shell", () => {
       </Routes>,
     );
     expect(await screen.findByText("Desktop alerts on")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Gateway" }));
+    const views = screen.getByRole("navigation", { name: "Views" });
+    const gateway = within(views).getByRole("button", { name: "Gateway" });
+    expect(gateway.querySelector("svg")).not.toBeNull();
+    await userEvent.click(gateway);
     expect(openGatewaySettings).toHaveBeenCalledOnce();
     delete window.__MERIDIAN_DESKTOP__;
   });
