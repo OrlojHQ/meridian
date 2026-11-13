@@ -15,6 +15,10 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   and lists it in `checksums.txt`, like every other release file. It is
   attached by the desktop checksums job, so prerelease tags, which skip the
   desktop jobs, no longer carry it.
+- Stopping meridiand during startup (Ctrl-C, `brew services stop`, or the
+  desktop app quitting while its bundled gateway starts) now shuts down
+  cleanly instead of reporting "transaction has already been committed or
+  rolled back".
 ### Security
 
 - The desktop app's bridge (alerts, tray attention, Gateway control, update

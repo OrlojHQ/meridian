@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/OrlojHQ/meridian/internal/adapterproto"
@@ -118,10 +119,38 @@ func (s *Store) Transact(ctx context.Context, fn func(ports.Transaction) error) 
 		_ = tx.Rollback()
 		return err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := commitTx(ctx, tx); err != nil {
 		return fmt.Errorf("commit transaction: %w", err)
 	}
 	return nil
+}
+
+// commitHook runs just before each transaction commits; see
+// SetCommitHookForTesting.
+var commitHook atomic.Pointer[func(*sql.Tx)]
+
+// SetCommitHookForTesting makes every transaction call hook just before it
+// commits, while the transaction is still open, until restore is called.
+// Tests use it to stop a context partway through a transaction. Tests that
+// set it must not run in parallel with other tests that write to a Store.
+func SetCommitHookForTesting(hook func(*sql.Tx)) (restore func()) {
+	commitHook.Store(&hook)
+	return func() { commitHook.Store(nil) }
+}
+
+// commitTx commits tx, which was begun under ctx. database/sql rolls a
+// transaction back as soon as its context ends, and Commit then reports
+// sql.ErrTxDone; the cancellation is the real cause, so report that. With a
+// live context, sql.ErrTxDone is a genuine bug and is returned as is.
+func commitTx(ctx context.Context, tx *sql.Tx) error {
+	if hook := commitHook.Load(); hook != nil {
+		(*hook)(tx)
+	}
+	err := tx.Commit()
+	if errors.Is(err, sql.ErrTxDone) && ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return err
 }
 
 func (s *Store) migrate(ctx context.Context) error {
@@ -198,10 +227,10 @@ func (s *Store) migrate(ctx context.Context) error {
 			version, entry.Name(), formatTime(time.Now()),
 		); err != nil {
 			_ = tx.Rollback()
-			return err
+			return fmt.Errorf("record migration %s: %w", entry.Name(), err)
 		}
-		if err := tx.Commit(); err != nil {
-			return err
+		if err := commitTx(ctx, tx); err != nil {
+			return fmt.Errorf("commit migration %s: %w", entry.Name(), err)
 		}
 	}
 	return nil
