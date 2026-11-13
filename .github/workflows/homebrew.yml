@@ -70,17 +70,31 @@ jobs:
             --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/tags/${TAG}" \
             --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
             "${dir}/checksums.txt"
-      - name: Render formula and desktop cask
+      - name: Render formula
         env:
           VERSION: ${{ steps.release.outputs.version }}
         run: |
           set -euo pipefail
           scripts/render-homebrew-formula.sh "${VERSION}" \
             "${RUNNER_TEMP}/release/checksums.txt" > "${RUNNER_TEMP}/meridian.rb"
-          scripts/render-homebrew-cask.sh "${VERSION}" \
-            "${RUNNER_TEMP}/release/checksums.txt" > "${RUNNER_TEMP}/meridian-desktop.rb"
           ruby -c "${RUNNER_TEMP}/meridian.rb"
+      # The desktop jobs finish after the CLI draft. If the release was
+      # published before checksums.txt listed the disk image, the formula is
+      # still updated and the cask waits for a manual run of this workflow.
+      - name: Render desktop cask
+        id: cask
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          if ! scripts/render-homebrew-cask.sh "${VERSION}" \
+            "${RUNNER_TEMP}/release/checksums.txt" > "${RUNNER_TEMP}/meridian-desktop.rb"; then
+            echo "::warning::checksums.txt has no desktop disk image. The cask was not updated. Re-run this workflow for v${VERSION} after the release lists it."
+            echo "render=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
           ruby -c "${RUNNER_TEMP}/meridian-desktop.rb"
+          echo "render=true" >> "${GITHUB_OUTPUT}"
       - name: Checkout tap
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -90,13 +104,18 @@ jobs:
       - name: Commit formula and desktop cask
         env:
           TAG: ${{ steps.release.outputs.tag }}
+          CASK: ${{ steps.cask.outputs.render }}
         working-directory: tap
         run: |
           set -euo pipefail
-          mkdir -p Formula Casks
+          mkdir -p Formula
           cp "${RUNNER_TEMP}/meridian.rb" Formula/meridian.rb
-          cp "${RUNNER_TEMP}/meridian-desktop.rb" Casks/meridian-desktop.rb
-          git add Formula/meridian.rb Casks/meridian-desktop.rb
+          git add Formula/meridian.rb
+          if [[ "${CASK}" == "true" ]]; then
+            mkdir -p Casks
+            cp "${RUNNER_TEMP}/meridian-desktop.rb" Casks/meridian-desktop.rb
+            git add Casks/meridian-desktop.rb
+          fi
           if git diff --cached --quiet; then
             echo "Formula and desktop cask already at ${TAG}"
             exit 0
