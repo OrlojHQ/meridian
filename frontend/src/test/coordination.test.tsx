@@ -211,6 +211,27 @@ describe("Subagents panel", () => {
     await waitFor(() => expect(revoke).toHaveBeenCalledWith(grant));
   });
 
+  it("explains an empty lead and shows its state, usage, and spawn approval", async () => {
+    vi.spyOn(api, "coordinationGrant").mockResolvedValue(grant);
+    vi.spyOn(api, "coordinationRequests").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "threadLinks").mockResolvedValue({ items: [] });
+    const update = vi
+      .spyOn(api, "updateCoordinationGrant")
+      .mockResolvedValue({ ...grant, spawnApproval: "operator" });
+    wrapper(<SubagentsPanel thread={leadThread} grantId={grant.id} />);
+    const panel = await screen.findByRole("region", { name: "Subagents" });
+    expect(await within(panel).findByText("No subagents yet")).toBeInTheDocument();
+    expect(within(panel).getByText(/Ask the lead to split the work/)).toBeInTheDocument();
+    expect(within(panel).getByText("Active")).toHaveClass("subagents-state", "state-active");
+    const meter = within(panel).getByRole("meter", { name: "Subagents started" });
+    expect(meter).toHaveAttribute("aria-valuenow", "2");
+    expect(meter).toHaveAttribute("aria-valuemax", "4");
+    const approval = within(panel).getByRole("switch", { name: /Approve each spawn/ });
+    expect(approval).not.toBeChecked();
+    await userEvent.click(approval);
+    await waitFor(() => expect(update).toHaveBeenCalledWith(grant, { spawnApproval: "operator" }));
+  });
+
   it("keeps a lead's subagents behind the composer's Agents button", async () => {
     vi.spyOn(api, "coordinationGrant").mockResolvedValue(grant);
     vi.spyOn(api, "coordinationRequests").mockResolvedValue({ items: [] });

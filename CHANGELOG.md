@@ -17,6 +17,10 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   The add form sits under them with spaced fields.
 - Dropdowns use Meridian's own chevron instead of the platform stepper, and
   the provider and harness pickers show the chosen mark inside the field.
+- A lead's Agents panel has a header with a status pill, its usage and a
+  meter, and a quiet Stop action. Each subagent is a row with its harness
+  mark and a phase pill. Spawn approval is a switch at the bottom, and an
+  empty panel says how to get the lead to start subagents.
 
 ## [0.7.2] - 2026-11-13
 
