@@ -63,8 +63,11 @@ installs that disk image and clears `com.apple.quarantine`. Without Homebrew:
 curl -fsSL https://raw.githubusercontent.com/OrlojHQ/meridian/main/scripts/install-desktop.sh | sh
 ```
 
-`scripts/install-desktop.sh` is also uploaded to the release as
-`install-desktop.sh`. It downloads the desktop archive for this machine,
+`scripts/install-desktop.sh` is also uploaded to each stable release as
+`install-desktop.sh`, with a `.sigstore.json` bundle, a provenance
+attestation, and a line in `checksums.txt`. Verify that copy with the
+commands above, using `ARCHIVE=install-desktop.sh` and skipping the SBOM
+step, before running it. It downloads the desktop archive for this machine,
 refuses a checksum mismatch, and installs it. The checksum comes from the
 same release, so it catches a damaged download; verify `checksums.txt` with
 Cosign as above to check where it came from. On macOS the target is

@@ -7,6 +7,13 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- The release workflow now keyless-signs and attests `install-desktop.sh`
+  and lists it in `checksums.txt`, like every other release file. It is
+  attached by the desktop checksums job, so prerelease tags, which skip the
+  desktop jobs, no longer carry it.
+
 ## [0.7.1] - 2026-11-13
 
 ### Upgrade notes

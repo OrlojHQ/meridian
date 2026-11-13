@@ -3,7 +3,7 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/OrlojHQ/meridian/main/scripts/install-desktop.sh | sh
 #
-# The same file is attached to each release as install-desktop.sh.
+# The same file is attached to each stable release as install-desktop.sh.
 # Pin a version with --version or MERIDIAN_VERSION. --cli installs the
 # meridian and meridiand binaries instead of the desktop app.
 #
