@@ -7,6 +7,13 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+
+- The desktop app's bridge (alerts, tray attention, Gateway control, update
+  check and install) is granted only to the gateway origin you chose, and
+  only while it is the active gateway. It replaces a static grant to every
+  HTTPS origin and every loopback port (#137).
+
 ## [0.7.1] - 2026-11-13
 
 ### Upgrade notes

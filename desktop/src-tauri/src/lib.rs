@@ -2,11 +2,13 @@
 //! This process chooses a gateway, starts the bundled daemon when asked, and
 //! exposes a small bridge for content-free alerts and update checks.
 
+mod bridge;
 mod gateway;
 mod notify_text;
 mod sidecar;
 mod update;
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard};
@@ -14,6 +16,7 @@ use std::time::{Duration, Instant};
 
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::utils::acl::RemoteUrlPattern;
 use tauri::{AppHandle, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_notification::NotificationExt;
 use url::Url;
@@ -40,10 +43,19 @@ struct Inner {
     saved: Option<SavedGateway>,
     phase: Phase,
     message: String,
-    active_origin: Option<String>,
+    active: Option<ActiveGateway>,
+    /// Origins granted a bridge capability in this process. Tauri cannot
+    /// revoke one, so `bridge::call_allowed` refuses all but `active`.
+    bridge_grants: BTreeSet<String>,
     sidecar: Option<Sidecar>,
     quitting: bool,
     tray: bool,
+}
+
+/// The gateway the window may show, and the bridge pattern that matches it.
+struct ActiveGateway {
+    origin: String,
+    bridge: RemoteUrlPattern,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -112,7 +124,8 @@ pub fn run() {
                         Some(SavedGateway::Remote { .. }) => "Opening the gateway…".into(),
                         None => String::new(),
                     },
-                    active_origin: None,
+                    active: None,
+                    bridge_grants: BTreeSet::new(),
                     sidecar: None,
                     quitting: false,
                     tray: false,
@@ -161,15 +174,34 @@ pub fn run() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
-            gateway_state,
-            gateway_connect,
-            desktop_notify,
-            desktop_set_attention,
-            desktop_open_gateway,
-            desktop_update_check,
-            desktop_update_install
-        ])
+        .invoke_handler({
+            let commands: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> =
+                Box::new(tauri::generate_handler![
+                    gateway_state,
+                    gateway_connect,
+                    desktop_notify,
+                    desktop_set_attention,
+                    desktop_open_gateway,
+                    desktop_update_check,
+                    desktop_update_install
+                ]);
+            move |invoke| {
+                if bridge::is_bridge_command(invoke.message.command()) {
+                    let state = invoke.message.webview_ref().state::<AppState>();
+                    let allowed = bridge::call_allowed(
+                        lock(&state).active.as_ref().map(|active| &active.bridge),
+                        invoke.acl.as_deref(),
+                    );
+                    if !allowed {
+                        invoke
+                            .resolver
+                            .reject("The desktop bridge is only for the chosen gateway.");
+                        return true;
+                    }
+                }
+                commands(invoke)
+            }
+        })
         .build(tauri::generate_context!())
         .expect("failed to start Meridian")
         .run(|app, event| {
@@ -458,9 +490,22 @@ fn wait_until_ready(app: &AppHandle, own_process: bool) -> Result<(), String> {
 
 fn finish_navigation(app: &AppHandle, choice: &SavedGateway) -> Result<(), String> {
     let url = choice.ui_url();
+    let origin = choice.origin().to_string();
+    let pattern = bridge::origin_pattern(&origin)?;
+    let matcher = bridge::parse_pattern(&pattern)?;
     {
         let state = app.state::<AppState>();
-        lock(&state).active_origin = Some(choice.origin().to_string());
+        let mut inner = lock(&state);
+        if !inner.bridge_grants.contains(&origin) {
+            let id = bridge::capability_id(inner.bridge_grants.len());
+            app.add_capability(bridge::capability(&id, &pattern))
+                .map_err(|_| "The desktop bridge could not be granted.".to_string())?;
+            inner.bridge_grants.insert(origin.clone());
+        }
+        inner.active = Some(ActiveGateway {
+            origin,
+            bridge: matcher,
+        });
     }
     navigate(app, &url)
 }
@@ -471,7 +516,7 @@ fn open_gateway(app: &AppHandle) -> Result<(), String> {
         let mut inner = lock(&state);
         inner.phase = Phase::Choose;
         inner.message.clear();
-        inner.active_origin = None;
+        inner.active = None;
     }
     navigate(app, shell_index_url())
 }
@@ -508,7 +553,7 @@ fn fail(app: &AppHandle, message: String) -> Result<(), String> {
     let mut inner = lock(&state);
     inner.phase = Phase::Error;
     inner.message = message.clone();
-    inner.active_origin = None;
+    inner.active = None;
     Err(message)
 }
 
@@ -530,9 +575,9 @@ fn allow_navigation(app: &AppHandle, url: &Url) -> bool {
     }
     let origin = url.origin().ascii_serialization();
     let allowed = lock(&app.state::<AppState>())
-        .active_origin
+        .active
         .as_ref()
-        .is_some_and(|active| active == &origin);
+        .is_some_and(|active| active.origin == origin);
     if !allowed {
         open_external(url);
     }

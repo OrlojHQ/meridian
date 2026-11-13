@@ -642,10 +642,16 @@ repository secret and is never committed. Its theft would let an attacker
 who can also serve the manifest push code to self-updating macOS installs,
 so it is kept offline apart from that secret and rotated by shipping a new
 public key in a hand-installed release. Homebrew and Linux installs never
-self-update; they are shown a command to run. Any gateway origin the
-operator chose can call the bridge's update check and install commands; the
-install command still requires a verified signature and an operator click,
-and only restarts the app. The shell's injected script reads one marker
+self-update; they are shown a command to run. Only the gateway origin the
+operator chose, while it is the active gateway, can call the bridge's
+commands, including the update check and install; the install command still
+requires a verified signature and an operator click, and only restarts the
+app. The shell grants each chosen origin a runtime capability whose one
+remote URL pattern matches that scheme, host, and port, never the shell's own
+pages and never the picker's commands. Tauri cannot revoke a capability, so
+a grant for an earlier gateway remains until the app quits; the shell refuses
+any bridge call that the active gateway's pattern did not match, so a page
+or frame on that earlier origin gets nothing after a switch. The shell's injected script reads one marker
 element from a gateway page to decide whether to show a fixed "older
 meridiand" banner; it shows no page text and calls no command. Prompt drafts stay in page memory, and
 browser storage may hold only harness names.
