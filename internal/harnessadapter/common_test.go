@@ -69,3 +69,26 @@ type shortUpstreamWriter struct{}
 func (shortUpstreamWriter) Write(value []byte) (int, error) {
 	return len(value) - 1, nil
 }
+
+func TestTrustedMCPTools(t *testing.T) {
+	servers := []MCPServer{{Name: "meridian-coord"}}
+	for tool, want := range map[string]bool{
+		"mcp__meridian-coord__meridian_spawn": true,
+		"mcp__meridian-coord__meridian_wait":  true,
+		"mcp__meridian-coord__":               false,
+		"mcp__meridian-coordx__meridian_wait": false,
+		"mcp__docs__search":                   false,
+		"meridian-coord__meridian_wait":       false,
+		"Bash":                                false,
+	} {
+		if got := trustedClaudeTool(servers, tool); got != want {
+			t.Errorf("trustedClaudeTool(%q) = %v, want %v", tool, got, want)
+		}
+	}
+	if trustedClaudeTool(nil, "mcp__meridian-coord__meridian_wait") {
+		t.Error("a tool is trusted with no registered servers")
+	}
+	if !trustedMCPServer(servers, "meridian-coord") || trustedMCPServer(servers, "docs") {
+		t.Error("trustedMCPServer matched the wrong servers")
+	}
+}

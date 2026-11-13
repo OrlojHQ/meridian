@@ -319,8 +319,15 @@ Hostile code in the Capsule can rewrite the patch or re-enable those plugins,
 but it can only send what it could already send with the lease it holds or
 through the Capsule's egress; no upstream key enters the Capsule (ADR 0030).
 Profile-registered MCP servers (`--mcp-server`) are trusted profile metadata.
-They take absolute executables and quote-free arguments, run with the harness's
-authority, and their tool calls still pass through harness permission prompts.
+They take absolute executables and quote-free arguments and run with the
+harness's authority. The Claude Code and Codex adapters allow their tool calls
+without relaying a permission prompt to the operator (ADR 0045): the only such
+server, `meridian-coord`, acts solely through the operator's Coordination
+Grant, whose limits and spawn approval the daemon enforces. Tool calls for any
+other MCP server, and every ACP permission request, still reach the operator.
+A repository that loads its own server under a profile server's name gains
+nothing it lacks already, since its `.claude/settings.json` can allow its own
+tools and any Capsule process can run `meridian-coord`.
 Pack skills (`/usr/local/share/meridian/<pack>/skills/`) are trusted image
 content too: the pack installer accepts only bounded `SKILL.md` regular files,
 and a profile loads them by absolute path. The Pi pack's `meridian-coord`

@@ -65,6 +65,10 @@ type claudeSession struct {
 	retired  retiredPrompts
 	controls map[string]string
 
+	// trusted are the profile's own MCP servers; their tool calls are
+	// allowed without an operator prompt.
+	trusted []MCPServer
+
 	// commands is what initialize reported; terminalOnly is filled from the
 	// later system/init record.
 	commands     []claudeReportedCommand
@@ -152,6 +156,7 @@ func RunClaudeStream(
 		sessionID: resumeID, resuming: resumeID != "", streamBlocks: map[int]string{}, messageTexts: map[string]int{},
 		prompts: map[string]*claudePrompt{}, byFrame: map[string]string{}, retired: retiredPrompts{},
 		controls: map[string]string{}, modelRequests: map[string]string{},
+		trusted: config.MCPServers,
 	}
 	records, recordErrors := readUpstream(ctx, session.rpc)
 	frames, frameErrors := readController(ctx, stream)
@@ -719,6 +724,9 @@ func (s *claudeSession) controlRequest(record map[string]json.RawMessage) error 
 	}
 	if request.ToolName == "AskUserQuestion" {
 		return s.question(requestID, request.Input)
+	}
+	if trustedClaudeTool(s.trusted, request.ToolName) {
+		return s.respond(requestID, map[string]any{"behavior": "allow", "updatedInput": request.Input})
 	}
 	s.sequence++
 	id := "claude-permission-" + strconv.Itoa(s.sequence)

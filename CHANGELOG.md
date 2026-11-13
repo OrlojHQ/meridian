@@ -22,6 +22,15 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   mark and a phase pill. Spawn approval is a switch at the bottom, and an
   empty panel says how to get the lead to start subagents.
 
+### Fixed
+
+- A Claude Code or Codex lead no longer stops for an operator approval on
+  every Meridian coordination tool call (`meridian_whoami`, `meridian_spawn`,
+  `meridian_wait`, and the rest). The adapters allow tool calls for the
+  profile's own MCP servers, whose authority is the Coordination Grant.
+  "Approve each spawn" still holds each new subagent for you. Calls to other
+  MCP servers still ask (ADR 0045).
+
 ## [0.7.2] - 2026-11-13
 
 ### Upgrade notes

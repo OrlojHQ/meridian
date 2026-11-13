@@ -267,6 +267,18 @@ func TestCodexAppServerContract(t *testing.T) {
 	}
 	_ = readStatus(t, decoder, adapterproto.StatusIdle)
 
+	sendTestMessage(t, encoder, "message-coord", "coord")
+	frames = readUntil(t, decoder, adapterproto.KindAssistantMessage)
+	for _, frame := range frames {
+		if frame.Type == adapterproto.KindPermissionRequest {
+			t.Fatalf("trusted MCP tool asked the operator: %#v", frame)
+		}
+	}
+	if final := frames[len(frames)-1]; final.Content != "elicitation accept" {
+		t.Fatalf("trusted mcp final = %#v", final)
+	}
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+
 	sendTestMessage(t, encoder, "message-4", "input")
 	first := readKind(t, decoder, adapterproto.KindInputRequest)
 	second := readKind(t, decoder, adapterproto.KindInputRequest)
@@ -623,11 +635,17 @@ func TestCodexAppServerHelper(t *testing.T) {
 					"threadId": codexFixtureThread, "turnId": turnID, "itemId": "call_fixture",
 					"command": "echo meridian", "cwd": "/workspace", "reason": nil,
 				}})
-			case "mcp":
+			case "mcp", "coord":
+				// A repository's own server prompts; the profile's
+				// meridian-coord server is trusted and answered by the adapter.
+				server := "docs"
+				if input["text"] == "coord" {
+					server = "meridian-coord"
+				}
 				pending["8"] = "mcp"
 				_ = writer.Encode(map[string]any{"id": 8, "method": "mcpServer/elicitation/request", "params": map[string]any{
-					"threadId": codexFixtureThread, "turnId": turnID, "serverName": "meridian-coord",
-					"mode": "form", "message": "Allow the meridian-coord MCP server to run tool \"ping\"?",
+					"threadId": codexFixtureThread, "turnId": turnID, "serverName": server,
+					"mode": "form", "message": "Allow the " + server + " MCP server to run tool \"ping\"?",
 					"requestedSchema": map[string]any{"type": "object", "properties": map[string]any{}},
 					"_meta": map[string]any{
 						"codex_approval_kind": "mcp_tool_call", "persist": []any{"session", "always"},
