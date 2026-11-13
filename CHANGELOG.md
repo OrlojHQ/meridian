@@ -35,6 +35,12 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   `latest.json` for macOS and Linux, so the check works without the updater
   signing key. That key is optional; without it the release still ships and
   self-update stays off. Release candidates do not build desktop artifacts.
+- The desktop app explains running beside another meridiand. It shows a
+  banner when the daemon it reuses is older than the app, and the gateway
+  picker says when the bundled gateway stopped because another Meridian holds
+  the data directory or the database is newer than it supports. The cask's
+  caveats and `docs/operations.md` say to keep `meridian` and
+  `meridian-desktop` on the same release.
 
 ### Fixed
 

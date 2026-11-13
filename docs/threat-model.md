@@ -645,7 +645,9 @@ public key in a hand-installed release. Homebrew and Linux installs never
 self-update; they are shown a command to run. Any gateway origin the
 operator chose can call the bridge's update check and install commands; the
 install command still requires a verified signature and an operator click,
-and only restarts the app. Prompt drafts stay in page memory, and
+and only restarts the app. The shell's injected script reads one marker
+element from a gateway page to decide whether to show a fixed "older
+meridiand" banner; it shows no page text and calls no command. Prompt drafts stay in page memory, and
 browser storage may hold only harness names.
 
 Crypto-shred removes the wrapped DEK and opaque live linkage while retaining

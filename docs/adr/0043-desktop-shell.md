@@ -44,6 +44,14 @@ It does not invent a user identity.
   "Meridian needs you" and the body is the same count string the web UI
   already uses. The tray tooltip uses that same count. No Capsule name, prompt,
   or permission text is accepted.
+- A gateway UI that supports the bridge carries
+  `<meta name="meridian-desktop-bridge" content="1">` in its `index.html`.
+  On a `/ui/` page without it, the shell's own injected script shows a fixed
+  banner saying the meridiand is older than the app. Daemons released before
+  the desktop app expose no version without authentication, so the marker is
+  the signal. When the bundled gateway exits because the data directory is
+  held or the database is newer than it supports, the picker says which and
+  what to do.
 - v1 builds are macOS and Linux and are distributed unsigned. A tag release
   attaches a universal macOS disk image and an amd64 Linux package, and the
   Homebrew tap publishes a cask. Apple code signing and notarization run only
