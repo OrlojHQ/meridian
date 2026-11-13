@@ -24,6 +24,11 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The web UI and desktop app keep talking to the gateway when the browser
+  or webview reports that it has gone offline. Before, an `offline` event
+  paused every request: a Thread's Send button stayed disabled with nothing
+  reaching the daemon, and newly opened panels such as a lead's Agents panel
+  never loaded, while the page still showed its last data.
 - A Claude Code or Codex lead no longer stops for an operator approval on
   every Meridian coordination tool call (`meridian_whoami`, `meridian_spawn`,
   `meridian_wait`, and the rest). The adapters allow tool calls for the
