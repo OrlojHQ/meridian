@@ -30,6 +30,11 @@ type Reconciler struct {
 	sessionReady  func(context.Context, domain.Capsule) error
 	launcherReady func(context.Context, domain.Capsule) error
 	onSettled     func(context.Context, domain.Capsule)
+	// runtimeStopped fails the Runs a stopped runtime lost, before the
+	// reconciler starts that runtime again.
+	runtimeStopped func(context.Context, domain.Capsule) error
+	restartLimit   int
+	restartWindow  time.Duration
 
 	mu          sync.Mutex
 	pending     map[domain.CapsuleID]struct{}
@@ -38,6 +43,17 @@ type Reconciler struct {
 
 	startupMu   sync.Mutex
 	startupSeen map[domain.CapsuleID]startupMark
+
+	restartMu sync.Mutex
+	restarts  map[domain.CapsuleID][]time.Time
+}
+
+// ConfigureRuntimeRecovery sets the hook that fails a stopped runtime's lost
+// Runs before the reconciler restarts it. Set it before Start.
+func (r *Reconciler) ConfigureRuntimeRecovery(
+	failRuns func(context.Context, domain.Capsule) error,
+) {
+	r.runtimeStopped = failRuns
 }
 
 func (r *Reconciler) ConfigureSecrets(key *secrets.InstallationKey) {
@@ -91,6 +107,11 @@ func NewReconciler(
 		retryDelay: 25 * time.Millisecond,
 		maxRetries: 5,
 		pending:    make(map[domain.CapsuleID]struct{}),
+		// A runtime that needs a fourth restart within ten minutes is
+		// crash looping, not recovering from an engine restart.
+		restartLimit:  3,
+		restartWindow: 10 * time.Minute,
+		restarts:      make(map[domain.CapsuleID][]time.Time),
 	}
 }
 
@@ -187,6 +208,10 @@ func (r *Reconciler) process(ctx context.Context, id domain.CapsuleID) {
 		}
 		var startup *domain.StartupFailure
 		if errors.As(err, &startup) {
+			break
+		}
+		var restart *restartFailure
+		if errors.As(err, &restart) {
 			break
 		}
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
@@ -369,6 +394,9 @@ func (r *Reconciler) reconcile(ctx context.Context, id domain.CapsuleID) error {
 	}
 	switch capsule.DesiredState {
 	case domain.IntentReady:
+		if resource.State == ports.ProviderStopped {
+			return r.restartStopped(ctx, capsule, resource)
+		}
 		if resource.State == ports.ProviderPaused {
 			started = time.Now()
 			resource, err = r.provider.Resume(ctx, resource.ID)
@@ -376,6 +404,13 @@ func (r *Reconciler) reconcile(ctx context.Context, id domain.CapsuleID) error {
 			if err != nil {
 				return err
 			}
+		}
+		if resource.State == ports.ProviderPreparing && capsule.State == domain.CapsuleReady {
+			// A provider whose control plane restarts runtimes itself
+			// (agent-sandbox) reports a Ready Capsule's runtime as not ready
+			// while it comes back. The workspace is intact, so the Capsule
+			// stays Ready; Runs the restart lost fail when they are checked.
+			return nil
 		}
 		if resource.State != ports.ProviderReady {
 			return fmt.Errorf("provider resource %s is %s", resource.ID, resource.State)
@@ -403,7 +438,9 @@ func (r *Reconciler) reconcile(ctx context.Context, id domain.CapsuleID) error {
 		if !capabilities.Pause {
 			return domain.ErrUnsupported
 		}
-		if resource.State != ports.ProviderPaused {
+		// A stopped runtime runs nothing and keeps its workspace, which is
+		// all Paused promises; resuming starts it again.
+		if resource.State != ports.ProviderPaused && resource.State != ports.ProviderStopped {
 			started = time.Now()
 			resource, err = r.provider.Pause(ctx, resource.ID)
 			r.observeProvider("pause", started, err)
@@ -411,7 +448,7 @@ func (r *Reconciler) reconcile(ctx context.Context, id domain.CapsuleID) error {
 				return err
 			}
 		}
-		if resource.State != ports.ProviderPaused {
+		if resource.State != ports.ProviderPaused && resource.State != ports.ProviderStopped {
 			return fmt.Errorf("provider resource %s did not pause", resource.ID)
 		}
 		if capsule.State != domain.CapsulePaused {
@@ -423,6 +460,90 @@ func (r *Reconciler) reconcile(ctx context.Context, id domain.CapsuleID) error {
 		}
 	}
 	return nil
+}
+
+// restartFailure ends reconcile retries for a stopped runtime that could not be
+// started again or keeps stopping. Its message becomes the Capsule failure.
+type restartFailure struct {
+	message string
+	cause   error
+}
+
+func (e *restartFailure) Error() string { return e.message }
+func (e *restartFailure) Unwrap() error { return e.cause }
+
+// restartStopped starts a stopped runtime of a Capsule that should be Ready,
+// such as a container stopped by an engine restart (ADR 0044). Runs the stop
+// lost fail first. Restarts are bounded: a runtime that keeps stopping, or
+// that cannot start, fails the Capsule instead of being restarted forever.
+func (r *Reconciler) restartStopped(
+	ctx context.Context,
+	capsule domain.Capsule,
+	resource ports.ProviderResource,
+) error {
+	reason := resource.Reason
+	if reason == "" {
+		reason = "no exit status"
+	}
+	if !r.reserveRestart(capsule.ID) {
+		return &restartFailure{message: fmt.Sprintf(
+			"Capsule runtime keeps stopping (%s); it was restarted %d times within %d minutes",
+			reason, r.restartLimit, int(r.restartWindow.Minutes()),
+		)}
+	}
+	if r.runtimeStopped != nil {
+		if err := r.runtimeStopped(ctx, capsule); err != nil {
+			return err
+		}
+	}
+	started := time.Now()
+	restarted, err := r.provider.Resume(ctx, resource.ID)
+	r.observeProvider("restart", started, err)
+	if err != nil && ctx.Err() != nil {
+		return err
+	}
+	if err != nil {
+		return &restartFailure{message: "Capsule runtime could not be started again: " + err.Error(), cause: err}
+	}
+	if restarted.State != ports.ProviderReady {
+		return &restartFailure{message: fmt.Sprintf(
+			"Capsule runtime is %s after being started again", restarted.State,
+		)}
+	}
+	previous := capsule.ResourceVersion
+	capsule.UpdatedAt = r.clock.Now().UTC()
+	capsule.ResourceVersion++
+	if err := r.saveCapsule(ctx, capsule, previous, "capsule.runtime_restarted"); err != nil {
+		return err
+	}
+	return r.Enqueue(ctx, capsule.ID)
+}
+
+// reserveRestart records one restart of a Capsule's runtime unless the
+// runtime already used its restarts within the window. Counts live in memory:
+// a daemon restart grants a fresh budget, which stays bounded per run.
+func (r *Reconciler) reserveRestart(id domain.CapsuleID) bool {
+	r.restartMu.Lock()
+	defer r.restartMu.Unlock()
+	now := r.clock.Now()
+	recent := r.restarts[id][:0]
+	for _, at := range r.restarts[id] {
+		if now.Sub(at) < r.restartWindow {
+			recent = append(recent, at)
+		}
+	}
+	if len(recent) >= r.restartLimit {
+		r.restarts[id] = recent
+		return false
+	}
+	r.restarts[id] = append(recent, now)
+	return true
+}
+
+func (r *Reconciler) forgetRestarts(id domain.CapsuleID) {
+	r.restartMu.Lock()
+	delete(r.restarts, id)
+	r.restartMu.Unlock()
 }
 
 func (r *Reconciler) reconcileRestore(ctx context.Context, capsule domain.Capsule) error {
@@ -513,6 +634,7 @@ func (r *Reconciler) reconcileDelete(ctx context.Context, capsule domain.Capsule
 	if err := r.saveCapsule(ctx, capsule, previous, "capsule.deleted"); err != nil {
 		return err
 	}
+	r.forgetRestarts(capsule.ID)
 	r.settle(ctx, capsule)
 	return nil
 }

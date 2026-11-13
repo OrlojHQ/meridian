@@ -15,7 +15,8 @@ const liveRefreshBatchSize = 100
 // current while no client is watching. It never starts, resends, or resumes
 // work: queued Runs remain owned by startup recovery and explicit retries.
 // Only persisted agent output records Capsule activity, so refreshing does not
-// defeat idle pausing.
+// defeat idle pausing. A Run whose Capsule runtime stopped fails, and the
+// Capsule is queued for the reconciler to start its runtime again.
 func (s *Service) RefreshLiveRuntime(ctx context.Context) error {
 	if s.runtime == nil && s.structured == nil {
 		return nil
@@ -66,6 +67,10 @@ func (s *Service) RefreshLiveRuntime(ctx context.Context) error {
 			err = s.reconcileStructuredRun(ctx, capsule, thread, run)
 		} else if s.runtime != nil {
 			_, err = s.GetRun(ctx, run.ID)
+			if errors.Is(err, domain.ErrRuntimeStopped) {
+				err = s.failStoppedRuntimeRun(ctx, run.ID, "")
+				s.recheckStoppedRuntime(ctx, capsule.ID, domain.ErrRuntimeStopped)
+			}
 		}
 		if err != nil && !errors.Is(err, domain.ErrConflict) &&
 			!errors.Is(err, domain.ErrNotFound) &&

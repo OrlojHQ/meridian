@@ -355,6 +355,7 @@ func Run(ctx context.Context, config Config) error {
 	}
 	service := app.NewService(store, clock, ids, reconciler, runtime)
 	service.ConfigureSecrets(secretKey)
+	reconciler.ConfigureRuntimeRecovery(service.FailStoppedRuntimeRuns)
 	reconciler.OnCapsuleSettled(func(ctx context.Context, capsule domain.Capsule) {
 		_ = service.AdvanceProjectDeletion(ctx, capsule.ProjectID)
 	})

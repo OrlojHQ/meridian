@@ -31,6 +31,7 @@ type structuredRuntime struct {
 	cancels      int
 	cancelErr    error
 	startErr     error
+	getErr       error
 }
 
 func (r *structuredRuntime) StartStructured(
@@ -58,6 +59,9 @@ func (r *structuredRuntime) GetStructured(
 ) (ports.RuntimeRun, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.getErr != nil {
+		return ports.RuntimeRun{}, r.getErr
+	}
 	run, ok := r.runs[id]
 	if !ok {
 		return ports.RuntimeRun{}, domain.ErrNotFound

@@ -370,7 +370,7 @@ func (r *stoppedRuntime) inactive() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.stopped {
-		return fmt.Errorf("%w: Capsule runtime is not active", domain.ErrIllegalTransition)
+		return domain.ErrRuntimeStopped
 	}
 	return nil
 }

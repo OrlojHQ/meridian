@@ -471,12 +471,20 @@ const (
 	ProviderReady     ProviderState = "ready"
 	ProviderPaused    ProviderState = "paused"
 	ProviderDeleted   ProviderState = "deleted"
+	// ProviderStopped is a runtime that still exists with its workspace but
+	// is not running, such as a container stopped by an engine restart.
+	// Resume starts it again and waits for its supervisor. Providers whose
+	// control plane restarts runtimes on its own never report it.
+	ProviderStopped ProviderState = "stopped"
 )
 
 type ProviderResource struct {
 	ID          string
 	State       ProviderState
 	ImageDigest string
+	// Reason is a short provider-generated description of a Stopped
+	// resource, such as "exit code 137". It never carries runtime output.
+	Reason string
 }
 
 type CreateCapsuleRequest struct {

@@ -814,3 +814,34 @@ func TestConfigValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestNotReadyRunningSandboxReportsStoppedRuntime(t *testing.T) {
+	ctx := context.Background()
+	provider, agents, _ := testProvider(t)
+	resource, err := provider.Create(ctx, ports.CreateCapsuleRequest{CapsuleID: "capsule-pod-restart"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sandbox, err := agents.AgentsV1beta1().Sandboxes(provider.config.Namespace).Get(ctx, resource.ID, metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The Pod restarted: the Sandbox still runs but is not ready.
+	sandbox.Status.Conditions = []metav1.Condition{{
+		Type:               string(sandboxv1beta1.SandboxConditionReady),
+		Status:             metav1.ConditionFalse,
+		Reason:             sandboxv1beta1.SandboxReasonDependenciesNotReady,
+		ObservedGeneration: sandbox.Generation,
+	}}
+	if err := agents.Tracker().Update(
+		sandboxv1beta1.SchemeGroupVersion.WithResource("sandboxes"), sandbox, provider.config.Namespace,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := provider.Get(ctx, resource.ID); err != nil || got.State != ports.ProviderPreparing {
+		t.Fatalf("restarting Sandbox = %#v, %v", got, err)
+	}
+	if _, err := provider.GitStatus(ctx, resource.ID); !errors.Is(err, domain.ErrRuntimeStopped) {
+		t.Fatalf("runtime call on a restarting Sandbox = %v", err)
+	}
+}

@@ -133,7 +133,10 @@ func (s *Service) StartRun(
 	}
 	if err != nil {
 		failure := "Capsule runtime rejected Run start"
-		if errors.Is(err, domain.ErrHarnessDependencies) {
+		if errors.Is(err, domain.ErrRuntimeStopped) {
+			failure = runtimeStoppedStartFailure
+			s.recheckStoppedRuntime(ctx, capsule.ID, err)
+		} else if errors.Is(err, domain.ErrHarnessDependencies) {
 			failure = "Tool installation failed; check Capsule access to registry.npmjs.org, package versions, and available storage, then retry"
 		}
 		return s.transitionRun(ctx, result.ID, domain.RunFailed, &runCompletion{Failure: failure})

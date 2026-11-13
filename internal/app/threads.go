@@ -1263,7 +1263,8 @@ func (s *Service) RecoverThreads(ctx context.Context) error {
 
 // reconcileStructuredRun applies the runtime's view of a started structured
 // session and ingests its pending frames. A session the Capsule runtime no
-// longer knows becomes a failed terminal Run; durable messages are not resent.
+// longer knows, or whose runtime stopped, becomes a failed terminal Run;
+// durable messages are not resent.
 func (s *Service) reconcileStructuredRun(
 	ctx context.Context, capsule domain.Capsule, thread domain.Thread, run domain.Run,
 ) error {
@@ -1277,6 +1278,11 @@ func (s *Service) reconcileStructuredRun(
 			!errors.Is(err, domain.ErrConflict) && !errors.Is(err, domain.ErrNotFound) {
 			return err
 		}
+	} else if errors.Is(getErr, domain.ErrRuntimeStopped) {
+		if err := s.failStoppedRuntimeRun(ctx, run.ID, thread.ID); err != nil {
+			return err
+		}
+		s.recheckStoppedRuntime(ctx, capsule.ID, getErr)
 	} else if errors.Is(getErr, domain.ErrNotFound) {
 		if _, err := s.transitionRun(ctx, run.ID, domain.RunFailed, &runCompletion{
 			Failure: "Capsule runtime no longer knows this structured session",
@@ -1374,6 +1380,7 @@ func (s *Service) startStructuredRuntime(
 	}
 	clearStringMap(secretValues)
 	if err != nil {
+		s.recheckStoppedRuntime(ctx, capsule.ID, err)
 		failed, transitionErr := s.transitionRun(ctx, run.ID, domain.RunFailed, &runCompletion{
 			Failure: structuredSessionStartFailure(err),
 		})
@@ -1399,6 +1406,9 @@ func (s *Service) startStructuredRuntime(
 }
 
 func structuredSessionStartFailure(err error) string {
+	if errors.Is(err, domain.ErrRuntimeStopped) {
+		return runtimeStoppedStartFailure
+	}
 	if errors.Is(err, domain.ErrHarnessDependencies) {
 		return "Tool installation failed; check Capsule access to registry.npmjs.org, package versions, and available storage, then retry"
 	}
