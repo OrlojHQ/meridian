@@ -7,24 +7,47 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Fixed
+## [0.7.2] - 2026-11-13
 
-- The desktop gateway picker says "Docker isn't running" when the bundled
-  gateway exits because it cannot reach Docker, with meridiand's log below.
-- The release workflow now keyless-signs and attests `install-desktop.sh`
-  and lists it in `checksums.txt`, like every other release file. It is
-  attached by the desktop checksums job, so prerelease tags, which skip the
-  desktop jobs, no longer carry it.
-- Stopping meridiand during startup (Ctrl-C, `brew services stop`, or the
-  desktop app quitting while its bundled gateway starts) now shuts down
-  cleanly instead of reporting "transaction has already been committed or
-  rolled back".
+### Upgrade notes
+
+- No database migration and no API change.
+- This is the first release a desktop app can update to from inside the
+  app. A copy installed with the curl installer or the app zip shows
+  "Meridian 0.7.2 is available" with Update & restart; the update is
+  verified against the signing key built into 0.7.1. A Homebrew cask
+  install shows `brew upgrade --cask meridian-desktop` instead, and a
+  Linux package shows the curl installer command.
+- Keep `meridian` and `meridian-desktop` on the same release, as before.
+
 ### Security
 
 - The desktop app's bridge (alerts, tray attention, Gateway control, update
   check and install) is granted only to the gateway origin you chose, and
   only while it is the active gateway. It replaces a static grant to every
   HTTPS origin and every loopback port (#137).
+
+### Fixed
+
+- The web UI refreshes the project list every 5 seconds, so a Project
+  created with the CLI or in another tab appears without a reload, and its
+  Capsules count under Needs you and raise desktop alerts (#132).
+- In a CLI Capsule, the Run badge, Stop, and the stop confirmation sit in a
+  toolbar above the terminal instead of covering its top-right output
+  (#133).
+- The desktop app's Gateway control in the sidebar matches the items around
+  it, with an icon, instead of small centred text (#134).
+- The desktop gateway picker says "Docker isn't running" when the bundled
+  gateway exits because it cannot reach Docker, with meridiand's log below
+  (#135).
+- Stopping meridiand during startup (Ctrl-C, `brew services stop`, or the
+  desktop app quitting while its bundled gateway starts) now shuts down
+  cleanly instead of reporting "transaction has already been committed or
+  rolled back" (#144).
+- The release workflow keyless-signs and attests `install-desktop.sh` and
+  lists it in `checksums.txt`, like every other release file. It is
+  attached by the desktop checksums job, so prerelease tags, which skip the
+  desktop jobs, no longer carry it (#138).
 
 ## [0.7.1] - 2026-11-13
 
@@ -954,7 +977,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - Docker and Agent Sandbox are not claimed as hostile multi-tenant isolation
   boundaries; hardened runtime deployment and external review remain required.
 
-[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.7.2...HEAD
+[0.7.2]: https://github.com/OrlojHQ/meridian/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/OrlojHQ/meridian/compare/v0.6.0...v0.7.1
 [0.6.0]: https://github.com/OrlojHQ/meridian/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/OrlojHQ/meridian/compare/v0.4.1...v0.5.0
