@@ -7,6 +7,28 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-12
+
+### Upgrade notes
+
+- No database migration and no API change. The `meridian` formula, the CLI
+  tarballs, and the container images upgrade as before.
+- The desktop app is new and optional. Install it with
+  `brew install --cask orlojhq/tap/meridian-desktop` or the curl installer
+  below. It is not code-signed or notarized; both install paths clear the
+  quarantine flag, and a hand-copied app needs right-click Open once.
+- The desktop app reuses a meridiand already answering at
+  `127.0.0.1:8080` and starts its bundled one only when nothing is there,
+  on the same data directory. Keep `meridian` and `meridian-desktop` on the
+  same release (`brew upgrade meridian && brew upgrade --cask
+  meridian-desktop`). A meridiand older than 0.7.0 serves a UI without
+  desktop alerts, the Gateway control, or update notices, and the app shows
+  a banner saying so. See "Desktop app beside an existing meridiand" in
+  `docs/operations.md`.
+- Containers, volumes, and networks left behind by deleting a Capsule whose
+  setup failed in an earlier version are not cleaned up by this release;
+  remove them by hand (see Fixed).
+
 ### Added
 
 - A desktop shell for macOS and Linux (ADR 0043) loads the same `/ui/` bundle
@@ -15,7 +37,7 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   Closing the window hides it to the tray. Quit stops only a sidecar this
   app started. Notifications and the tray go through a runtime bridge the
   browser ignores. Windows is a later follow-up. The bundle identifier is
-  not chosen; builds use `io.orloj.meridian` until it is.
+  `io.orloj.meridian`.
 - Tag releases attach an unsigned universal macOS disk image and app zip,
   plus an amd64 Linux `.deb`, with checksums, SPDX SBOMs, and Sigstore
   bundles. `brew install --cask orlojhq/tap/meridian-desktop` installs the
@@ -910,7 +932,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - Docker and Agent Sandbox are not claimed as hostile multi-tenant isolation
   boundaries; hardened runtime deployment and external review remain required.
 
-[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/OrlojHQ/meridian/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/OrlojHQ/meridian/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/OrlojHQ/meridian/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/OrlojHQ/meridian/compare/v0.4.0...v0.4.1
