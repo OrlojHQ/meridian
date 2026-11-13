@@ -132,5 +132,9 @@ jobs:
       - name: Test the shell
         run: make desktop-test
 
-      - name: Build the desktop app
-        run: make desktop-build
+      # The same universal build a tag runs, so a release-only failure such
+      # as a missing universal sidecar shows up on the pull request.
+      - name: Build the universal release bundle
+        env:
+          VERSION: 0.0.0
+        run: scripts/release-desktop.sh macos-universal
