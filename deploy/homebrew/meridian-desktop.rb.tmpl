@@ -17,17 +17,14 @@ cask "meridian-desktop" do
 
   # The disk image is unsigned. Clearing the quarantine flag is what lets
   # Gatekeeper open it without the "damaged" refusal. must_succeed is false
-  # because the attribute is already absent on a second install.
+  # because the attribute is already absent on a second install. Nothing is
+  # written inside the bundle, so a future Developer ID signature stays
+  # intact. The app finds this cask's Caskroom directory and offers
+  # `brew upgrade` instead of replacing itself.
   postflight do
     system_command "/usr/bin/xattr",
                    args: ["-dr", "com.apple.quarantine", "#{appdir}/Meridian.app"],
                    must_succeed: false
-    # The desktop app sees this and offers `brew upgrade` instead of
-    # replacing the bundle itself.
-    File.write(
-      "#{appdir}/Meridian.app/Contents/Resources/meridian-install-source",
-      "homebrew\n",
-    )
   end
 
   caveats do

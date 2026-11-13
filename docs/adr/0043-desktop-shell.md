@@ -50,8 +50,11 @@ It does not invent a user identity.
   when their secrets are configured. Windows is a later follow-up. Apple
   signing without those secrets is not part of this decision.
 - The shell checks `releases/latest/download/latest.json` on launch and every
-  four hours. It never installs an update without a click. A Homebrew cask
-  install, detected by the Caskroom path or a marker the cask writes, tells
+  four hours. Every stable tag publishes that manifest, with entries for
+  both macOS architectures and `linux-x86_64`, after both desktop jobs
+  finish, so version discovery does not depend on the signing key. It never
+  installs an update without a click. A Homebrew cask install, detected by
+  the cask's `Caskroom/meridian-desktop` directory, tells
   the operator to run `brew upgrade --cask meridian-desktop`. A Linux package
   tells them to run the curl installer, because the updater cannot replace a
   `.deb`. That package is `meridian-desktop` and does not install the CLI
