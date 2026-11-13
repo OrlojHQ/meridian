@@ -14,7 +14,10 @@
       <p class="lead">
         Choose the gateway this window uses. The app loads that gateway's web UI.
       </p>
-      <form id="gateway-form">
+      <!-- The shell validates the address and reports errors in #status.
+           Browser validation of the hidden field would silently block
+           "This computer" after a bad address was typed. -->
+      <form id="gateway-form" novalidate>
         <fieldset>
           <legend>Gateway</legend>
           <label class="choice">
