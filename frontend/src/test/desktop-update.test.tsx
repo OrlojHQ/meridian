@@ -43,19 +43,20 @@ describe("desktop update notice", () => {
     };
     const user = userEvent.setup();
     const { unmount } = render(<DesktopUpdateNotice />);
-    expect(await screen.findByText("Meridian 1.2.3 is available")).toBeInTheDocument();
+    expect(await screen.findByText("Meridian 1.2.3")).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "Update available" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Update & restart" })).toBeEnabled();
-    await user.click(screen.getByRole("button", { name: "Later" }));
-    expect(screen.queryByText("Meridian 1.2.3 is available")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Remind me later" }));
+    expect(screen.queryByText("Meridian 1.2.3")).not.toBeInTheDocument();
 
     const seen = checkForUpdates.mock.calls.length;
     unmount();
     render(<DesktopUpdateNotice />);
     await waitFor(() => expect(checkForUpdates.mock.calls.length).toBeGreaterThan(seen));
-    expect(screen.queryByText("Meridian 1.2.3 is available")).not.toBeInTheDocument();
+    expect(screen.queryByText("Meridian 1.2.3")).not.toBeInTheDocument();
 
     window.dispatchEvent(new CustomEvent("meridian-check-updates"));
-    expect(await screen.findByText("Meridian 1.2.3 is available")).toBeInTheDocument();
+    expect(await screen.findByText("Meridian 1.2.3")).toBeInTheDocument();
   });
 
   it("shows the install command instead of a self-update button", async () => {
@@ -72,7 +73,39 @@ describe("desktop update notice", () => {
     render(<DesktopUpdateNotice />);
     expect(await screen.findByText("brew upgrade --cask meridian-desktop")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Update & restart" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Later" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remind me later" })).toBeInTheDocument();
+  });
+
+  it("shows the result of a manual check and dismisses it", async () => {
+    window.__MERIDIAN_DESKTOP__ = {
+      notify: () => undefined,
+      setAttention: () => undefined,
+      checkForUpdates: vi
+        .fn()
+        .mockResolvedValue({ available: false, detail: "Meridian is up to date." }),
+    };
+    const user = userEvent.setup();
+    render(<DesktopUpdateNotice />);
+    window.dispatchEvent(new CustomEvent("meridian-check-updates"));
+    expect(await screen.findByText("Meridian is up to date.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByText("Meridian is up to date.")).not.toBeInTheDocument();
+  });
+
+  it("keeps the card when the install fails", async () => {
+    const installUpdate = vi.fn().mockRejectedValue(new Error("boom"));
+    window.__MERIDIAN_DESKTOP__ = {
+      notify: () => undefined,
+      setAttention: () => undefined,
+      checkForUpdates: vi.fn().mockResolvedValue(status({})),
+      installUpdate,
+    };
+    const user = userEvent.setup();
+    render(<DesktopUpdateNotice />);
+    await user.click(await screen.findByRole("button", { name: "Update & restart" }));
+    expect(installUpdate).toHaveBeenCalledOnce();
+    expect(await screen.findByText("The update could not be installed.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Update & restart" })).toBeEnabled();
   });
 
   it("does not render in the browser", () => {

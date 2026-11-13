@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 
+import { CheckIcon, CloseIcon, UpdateIcon } from "../components/ui/Icons";
 import { desktopBridge, type DesktopUpdateStatus } from "./desktop";
 import { UPDATE_LATER_KEY, laterRecord, updateIsSnoozed } from "./desktopUpdate";
 
@@ -66,12 +67,22 @@ export function DesktopUpdateNotice() {
 
   if (offer.kind === "note") {
     return (
-      <div className="desktop-update" role="status">
-        <p>{offer.text}</p>
-        <button type="button" className="secondary" onClick={dismiss}>
-          OK
-        </button>
-      </div>
+      <section className="update-card" role="status" aria-label="Updates">
+        <div className="update-card-head">
+          <span className="update-card-icon" aria-hidden="true">
+            <CheckIcon />
+          </span>
+          <p className="update-card-title">{offer.text}</p>
+          <button
+            type="button"
+            className="icon-button update-card-close"
+            aria-label="Dismiss"
+            onClick={dismiss}
+          >
+            <CloseIcon />
+          </button>
+        </div>
+      </section>
     );
   }
 
@@ -94,26 +105,48 @@ export function DesktopUpdateNotice() {
   };
 
   return (
-    <div className="desktop-update" role="status">
-      <p>
-        Meridian {offer.version} is available
-        {offer.kind === "command" ? (
-          <>
-            . Run <code>{offer.command}</code>
-          </>
-        ) : null}
-        {offer.kind === "install" && offer.error ? `. ${offer.error}` : null}
-      </p>
-      <div className="desktop-update-actions">
-        {offer.kind === "install" ? (
-          <button type="button" className="primary-button" disabled={offer.busy} onClick={install}>
-            {offer.busy ? "Downloading…" : "Update & restart"}
-          </button>
-        ) : null}
-        <button type="button" className="secondary" onClick={() => later(offer.version)}>
-          Later
+    <section className="update-card" role="status" aria-label="Update available">
+      <div className="update-card-head">
+        <span className="update-card-icon" aria-hidden="true">
+          <UpdateIcon />
+        </span>
+        <div className="update-card-text">
+          <p className="update-card-title">Update available</p>
+          <p className="update-card-detail">Meridian {offer.version}</p>
+        </div>
+        <button
+          type="button"
+          className="icon-button update-card-close"
+          aria-label="Remind me later"
+          title="Remind me later"
+          onClick={() => later(offer.version)}
+        >
+          <CloseIcon />
         </button>
       </div>
-    </div>
+      {offer.kind === "command" ? (
+        <code className="update-card-command">
+          {offer.command.split(" ").map((word, index) => (
+            <Fragment key={index}>
+              {index > 0 ? " " : null}
+              <span>{word}</span>
+            </Fragment>
+          ))}
+        </code>
+      ) : null}
+      {offer.kind === "install" && offer.error ? (
+        <p className="update-card-error">{offer.error}</p>
+      ) : null}
+      {offer.kind === "install" ? (
+        <button
+          type="button"
+          className="update-card-action"
+          disabled={offer.busy}
+          onClick={install}
+        >
+          {offer.busy ? "Downloading…" : "Update & restart"}
+        </button>
+      ) : null}
+    </section>
   );
 }
