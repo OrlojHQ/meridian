@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Build the unsigned desktop release artifacts into dist/desktop/.
+# Build the unsigned desktop release artifacts into dist/desktop/, plus this
+# platform's updater manifest fragment (updater-<target>.json).
 # macOS produces one universal disk image and a zip of Meridian.app.
 # Linux produces an amd64 .deb. WebKit does not cross-compile, so there is
 # no arm64 Linux package and no AppImage.
@@ -41,27 +42,32 @@ record() {
   printf '%s  %s\n' "${hash}" "${name}" >> "${out}/checksums-fragment.txt"
 }
 
-# The updater archive is separate from Apple signing. --no-sign skips both,
-# so the macOS bundle stays unsigned and this step signs the update with the
-# Tauri key when that secret is present. A missing key skips the artifacts
-# and leaves the disk image and package release intact.
-publish_updater_archive() {
-  local app_bundle="$1"
-  local archive url signature
-  if [[ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]; then
-    echo "TAURI_SIGNING_PRIVATE_KEY is absent. Skipping updater artifacts. The release still ships."
-    return 0
+release_url() {
+  printf 'https://github.com/OrlojHQ/meridian/releases/download/v%s/%s' "${version}" "$(basename "$1")"
+}
+
+# Write this platform's part of latest.json. The release workflow merges the
+# macOS and Linux parts after both jobs finish. The file is signed with the
+# Tauri updater key when that secret is present. Without it the signature is
+# empty: the manifest still announces the version, and an app that has the
+# public key refuses to install an unsigned archive.
+# Usage: updater_fragment FILE PLATFORM...
+updater_fragment() {
+  local file="$1" signature=""
+  shift
+  if [[ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]; then
+    bun run tauri -- signer sign --app-version "${version}" "${file}"
+    record "${file}.sig"
+    signature="$(cat "${file}.sig")"
+  else
+    echo "TAURI_SIGNING_PRIVATE_KEY is absent. $(basename "${file}") is not signed for the updater."
   fi
-  archive="${out}/meridian-desktop_${version}_macOS_universal.app.tar.gz"
-  COPYFILE_DISABLE=1 tar -czf "${archive}" -C "$(dirname "${app_bundle}")" "$(basename "${app_bundle}")"
-  bun run tauri -- signer sign --app-version "${version}" "${archive}"
-  signature="${archive}.sig"
-  url="https://github.com/OrlojHQ/meridian/releases/download/v${version}/$(basename "${archive}")"
-  python3 "${root}/scripts/write-desktop-updater-manifest.py" \
-    "${version}" "${signature}" "${url}" "${out}/latest.json"
-  record "${archive}"
-  record "${signature}"
-  record "${out}/latest.json"
+  python3 - "${out}/updater-${target}.json" "$(release_url "${file}")" "${signature}" "$@" <<'PY'
+import json, sys
+dest, url, signature, *platforms = sys.argv[1:]
+with open(dest, "w", encoding="utf-8") as handle:
+    json.dump({"url": url, "signature": signature.strip(), "platforms": platforms}, handle)
+PY
 }
 
 ldflags="-s -w -buildid= -X github.com/OrlojHQ/meridian/internal/buildinfo.Version=${version} -X github.com/OrlojHQ/meridian/internal/buildinfo.Commit=${commit} -X github.com/OrlojHQ/meridian/internal/buildinfo.Date=${build_date}"
@@ -116,7 +122,13 @@ case "${target}" in
     record "${out}/${dmg_name}"
     record "${out}/${zip_name}"
     [[ -f "${out}/${dmg_name}.spdx.json" ]] && record "${out}/${dmg_name}.spdx.json"
-    publish_updater_archive "${app}"
+    # The updater archive is published even without the Tauri key so the
+    # manifest can announce the version. --no-sign above is Apple signing
+    # only; the updater signature is separate.
+    archive="${out}/meridian-desktop_${version}_macOS_universal.app.tar.gz"
+    COPYFILE_DISABLE=1 tar -czf "${archive}" -C "$(dirname "${app}")" "$(basename "${app}")"
+    record "${archive}"
+    updater_fragment "${archive}" darwin-aarch64 darwin-x86_64
     ;;
   linux-amd64)
     if [[ "$(uname -s)" != "Linux" ]]; then
@@ -139,6 +151,9 @@ case "${target}" in
     fi
     record "${out}/${deb_name}"
     [[ -f "${out}/${deb_name}.spdx.json" ]] && record "${out}/${deb_name}.spdx.json"
+    # Linux packages never update in place. The entry lets the app see a
+    # newer release and show the install command.
+    updater_fragment "${out}/${deb_name}" linux-x86_64
     ;;
   *)
     echo "unknown target: ${target}" >&2

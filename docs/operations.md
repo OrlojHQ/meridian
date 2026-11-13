@@ -64,11 +64,10 @@ curl -fsSL https://raw.githubusercontent.com/OrlojHQ/meridian/main/scripts/insta
 ```
 
 `scripts/install-desktop.sh` is also uploaded to the release as
-`install-desktop.sh`. A published release can also include `latest.json`
-for the desktop updater. The app reads
-`https://github.com/OrlojHQ/meridian/releases/latest/download/latest.json`.
-It downloads the desktop archive for this machine,
-refuses a checksum mismatch, and installs it. On macOS the target is
+`install-desktop.sh`. It downloads the desktop archive for this machine,
+refuses a checksum mismatch, and installs it. The checksum comes from the
+same release, so it catches a damaged download; verify `checksums.txt` with
+Cosign as above to check where it came from. On macOS the target is
 `/Applications` when that directory is writable, otherwise `~/Applications`,
 and the script runs `xattr -dr com.apple.quarantine` on `Meridian.app`. On
 Linux amd64 it installs the `.deb` with `sudo apt install`. `--cli` installs
@@ -101,13 +100,24 @@ command line. Put the secrets on `OrlojHQ/meridian`:
 
 Copy the public key string from `meridian-updater.key.pub` into
 `plugins.updater.pubkey` in `desktop/src-tauri/tauri.conf.json` and commit
-that change. The next tag build signs
-`meridian-desktop_<version>_macOS_universal.app.tar.gz`, uploads the
-signature, and writes `latest.json` for both macOS architectures. Until the
-private-key secret exists, the release workflow skips those updater files and
-still publishes the disk image, the app zip, and the Linux package. Until the
-public key is in the app, macOS installs show the curl command instead of
-Update & restart.
+that change. Keep an offline backup of the private key and its password: an
+app that has the public key accepts only updates signed by that key, so
+losing it means those installs have to be updated by hand.
+
+Every stable tag publishes `latest.json`, which the app reads from
+`https://github.com/OrlojHQ/meridian/releases/latest/download/latest.json`
+on launch and every four hours. It lists
+`meridian-desktop_<version>_macOS_universal.app.tar.gz` for both macOS
+architectures and the `.deb` for `linux-x86_64`, and it is written only after
+both desktop jobs finish. With the private-key secret, each listed file is
+signed with `--app-version`, its `.sig` is uploaded, and the app is built
+with `requireSignedVersion`, so a manifest cannot pair a new version number
+with an older archive. Without the secret the signatures are empty: Homebrew
+and Linux installs still see the new version and its upgrade command, and a
+macOS app with the public key refuses to install the unsigned archive. Until
+the public key is in the app, macOS installs show the curl command instead of
+Update & restart. Release candidates (`v*-*` tags) do not build desktop
+artifacts or a manifest.
 
 Verify release images by digest, never by an unverified mutable tag:
 

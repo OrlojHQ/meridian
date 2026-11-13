@@ -31,8 +31,10 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   Later, and Later hides that version for a day. Homebrew installs are told
   to run `brew upgrade --cask meridian-desktop`. Linux packages are told to
   run the curl installer. A signed macOS self-update stops a sidecar this
-  window started before it restarts. The updater signing key is optional;
-  without it the release still ships and self-update stays off.
+  window started before it restarts. Every stable release publishes
+  `latest.json` for macOS and Linux, so the check works without the updater
+  signing key. That key is optional; without it the release still ships and
+  self-update stays off. Release candidates do not build desktop artifacts.
 
 ## [0.6.0] - 2026-11-11
 

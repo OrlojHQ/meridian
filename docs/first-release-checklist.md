@@ -30,12 +30,17 @@ No step in this checklist authorizes a release from an unreviewed working tree.
       cleanup, and uninstall on disposable infrastructure.
 - [ ] Confirm hosted hostile multi-tenancy remains explicitly unsupported
       pending external security review and a validated hardened runtime.
+- [ ] Wait for the `release` workflow's desktop jobs and "Publish desktop
+      update manifest and checksums" to finish before publishing. The
+      `homebrew` workflow runs on publish and skips the cask, with a warning,
+      if `checksums.txt` does not list the disk image yet.
 - [ ] Publish the already verified draft manually; do not sign, tag, or publish
       from a developer workstation.
 - [ ] Confirm the release draft includes the universal macOS desktop disk
       image, the app zip, the amd64 Linux `.deb`, `install-desktop.sh`,
-      their SPDX SBOMs, and Sigstore bundles, and that `checksums.txt`
-      lists the archives.
+      their SPDX SBOMs, and Sigstore bundles, `latest.json` with
+      `darwin-aarch64`, `darwin-x86_64`, and `linux-x86_64` entries, and that
+      `checksums.txt` lists the archives and the manifest.
 - [ ] Confirm the `homebrew` workflow committed `Formula/meridian.rb` and
       `Casks/meridian-desktop.rb` for the tag to `OrlojHQ/homebrew-tap`, then
       `brew upgrade meridian`, `brew test meridian`, and

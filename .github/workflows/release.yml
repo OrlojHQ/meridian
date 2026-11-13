@@ -162,6 +162,9 @@ jobs:
   desktop-macos:
     name: Publish macOS desktop app
     needs: release
+    # Desktop bundles need a MAJOR.MINOR.PATCH version, and prereleases
+    # never reach the tap or the updater, so release candidates skip them.
+    if: ${{ !contains(github.ref_name, '-') }}
     runs-on: macos-latest
     timeout-minutes: 50
     permissions:
@@ -205,8 +208,8 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: scripts/desktop-apple-signing.sh
       # Updater signing is separate from Apple signing. When
-      # TAURI_SIGNING_PRIVATE_KEY is empty the macOS job still publishes the
-      # disk image and app zip, and it does not upload latest.json.
+      # TAURI_SIGNING_PRIVATE_KEY is empty the archive is published unsigned,
+      # latest.json still announces the version, and no app self-installs it.
       - name: Build universal disk image and app zip
         env:
           VERSION: ${{ github.ref_name }}
@@ -225,7 +228,7 @@ jobs:
           files=()
           while IFS= read -r -d '' file; do
             files+=("${file}")
-          done < <(find dist/desktop -type f ! -name 'checksums-fragment.txt' -print0)
+          done < <(find dist/desktop -type f ! -name 'checksums-fragment.txt' ! -name 'updater-*.json' -print0)
           gh release upload "${TAG}" "${files[@]}" --clobber
       - name: Attest desktop artifacts
         uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
@@ -233,15 +236,13 @@ jobs:
           subject-path: |
             dist/desktop/*.dmg
             dist/desktop/*.zip
+            dist/desktop/*.app.tar.gz
             dist/desktop/*.spdx.json
-      - name: Attest updater artifacts
-        if: ${{ hashFiles('dist/desktop/latest.json') != '' }}
+      - name: Attest updater signature
+        if: ${{ hashFiles('dist/desktop/*.sig') != '' }}
         uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
         with:
-          subject-path: |
-            dist/desktop/*.app.tar.gz
-            dist/desktop/*.sig
-            dist/desktop/latest.json
+          subject-path: dist/desktop/*.sig
       - name: Install pinned Cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
@@ -253,22 +254,29 @@ jobs:
         run: |
           set -euo pipefail
           for artifact in dist/desktop/*; do
-            [[ "${artifact}" == *.txt ]] && continue
+            [[ "${artifact}" == *.txt || "${artifact}" == */updater-*.json ]] && continue
             cosign sign-blob --yes --bundle "${artifact}.sigstore.json" "${artifact}"
           done
           gh release upload "${TAG}" dist/desktop/*.sigstore.json --clobber
-      - name: Save checksum fragment
-        run: cp dist/desktop/checksums-fragment.txt checksums-macos.txt
-      - name: Upload checksum fragment
+      - name: Save checksum and updater fragments
+        run: |
+          set -euo pipefail
+          mkdir -p fragments
+          cp dist/desktop/checksums-fragment.txt fragments/checksums-macos.txt
+          cp dist/desktop/updater-*.json fragments/updater-macos.json
+      - name: Upload checksum and updater fragments
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: desktop-checksums-macos
-          path: checksums-macos.txt
+          name: desktop-fragments-macos
+          path: fragments/
           if-no-files-found: error
 
   desktop-linux:
     name: Publish Linux desktop package
     needs: release
+    # Desktop bundles need a MAJOR.MINOR.PATCH version, and prereleases
+    # never reach the tap or the updater, so release candidates skip them.
+    if: ${{ !contains(github.ref_name, '-') }}
     runs-on: ubuntu-latest
     timeout-minutes: 50
     permissions:
@@ -306,6 +314,8 @@ jobs:
         env:
           VERSION: ${{ github.ref_name }}
           COMMIT: ${{ github.sha }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           VERSION="${VERSION#v}" scripts/release-desktop.sh linux-amd64
@@ -318,7 +328,7 @@ jobs:
           files=()
           while IFS= read -r -d '' file; do
             files+=("${file}")
-          done < <(find dist/desktop -type f ! -name 'checksums-fragment.txt' -print0)
+          done < <(find dist/desktop -type f ! -name 'checksums-fragment.txt' ! -name 'updater-*.json' -print0)
           gh release upload "${TAG}" "${files[@]}" --clobber
       - name: Attest desktop package
         uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
@@ -326,6 +336,11 @@ jobs:
           subject-path: |
             dist/desktop/*.deb
             dist/desktop/*.spdx.json
+      - name: Attest updater signature
+        if: ${{ hashFiles('dist/desktop/*.sig') != '' }}
+        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
+        with:
+          subject-path: dist/desktop/*.sig
       - name: Install pinned Cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
@@ -337,21 +352,25 @@ jobs:
         run: |
           set -euo pipefail
           for artifact in dist/desktop/*; do
-            [[ "${artifact}" == *.txt ]] && continue
+            [[ "${artifact}" == *.txt || "${artifact}" == */updater-*.json ]] && continue
             cosign sign-blob --yes --bundle "${artifact}.sigstore.json" "${artifact}"
           done
           gh release upload "${TAG}" dist/desktop/*.sigstore.json --clobber
-      - name: Save checksum fragment
-        run: cp dist/desktop/checksums-fragment.txt checksums-linux.txt
-      - name: Upload checksum fragment
+      - name: Save checksum and updater fragments
+        run: |
+          set -euo pipefail
+          mkdir -p fragments
+          cp dist/desktop/checksums-fragment.txt fragments/checksums-linux.txt
+          cp dist/desktop/updater-*.json fragments/updater-linux.json
+      - name: Upload checksum and updater fragments
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: desktop-checksums-linux
-          path: checksums-linux.txt
+          name: desktop-fragments-linux
+          path: fragments/
           if-no-files-found: error
 
   desktop-checksums:
-    name: Sign desktop checksums
+    name: Publish desktop update manifest and checksums
     needs: [desktop-macos, desktop-linux]
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -360,17 +379,41 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - name: Download checksum fragments
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Download checksum and updater fragments
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          pattern: desktop-checksums-*
+          pattern: desktop-fragments-*
           merge-multiple: true
           path: fragments
       - name: Install pinned Cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
           cosign-release: v3.1.1
-      - name: Append desktop checksums and re-sign
+      # latest.json is what every installed app reads, so it is written only
+      # after both platforms uploaded their files.
+      - name: Write and sign the update manifest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p manifest
+          python3 scripts/write-desktop-updater-manifest.py "${TAG#v}" manifest/latest.json \
+            fragments/updater-macos.json fragments/updater-linux.json
+          cosign sign-blob --yes --bundle manifest/latest.json.sigstore.json manifest/latest.json
+          gh release upload "${TAG}" manifest/latest.json manifest/latest.json.sigstore.json --clobber
+          (cd manifest && sha256sum latest.json) > fragments/checksums-manifest.txt
+      - name: Attest update manifest
+        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
+        with:
+          subject-path: manifest/latest.json
+      # A re-run rebuilds the desktop files, so their fresh hashes replace any
+      # line for the same name already in checksums.txt.
+      - name: Merge desktop checksums and re-sign
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
@@ -379,8 +422,10 @@ jobs:
           dir="${RUNNER_TEMP}/release"
           gh release download "${TAG}" --repo "${GITHUB_REPOSITORY}" --dir "${dir}" \
             --pattern checksums.txt
-          cat fragments/*.txt >> "${dir}/checksums.txt"
-          sort -u -k2,2 -o "${dir}/checksums.txt" "${dir}/checksums.txt"
+          cat fragments/checksums-*.txt > "${dir}/fresh.txt"
+          awk 'NR == FNR { fresh[$2] = 1; print; next } !($2 in fresh)' \
+            "${dir}/fresh.txt" "${dir}/checksums.txt" | sort -k2,2 > "${dir}/merged.txt"
+          mv "${dir}/merged.txt" "${dir}/checksums.txt"
           cosign sign-blob --yes --bundle "${dir}/checksums.txt.sigstore.json" "${dir}/checksums.txt"
           gh release upload "${TAG}" "${dir}/checksums.txt" "${dir}/checksums.txt.sigstore.json" --clobber
           mv "${dir}/checksums.txt" checksums.txt
