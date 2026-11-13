@@ -143,9 +143,15 @@ run_root() {
 
 install_macos_app() {
   zip=$1
-  need unzip
   mkdir -p "$tmp/unpack"
-  unzip -q "$zip" -d "$tmp/unpack"
+  # The zip is written by ditto. ditto restores the bundle's symlinks and
+  # metadata exactly; unzip is only the fallback where ditto is absent.
+  if command -v ditto >/dev/null 2>&1; then
+    ditto -x -k "$zip" "$tmp/unpack"
+  else
+    need unzip
+    unzip -q "$zip" -d "$tmp/unpack"
+  fi
   app="$tmp/unpack/Meridian.app"
   [ -d "$app" ] || die "The archive does not contain Meridian.app."
   if [ -n "${MERIDIAN_APP_DIR:-}" ]; then
