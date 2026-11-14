@@ -58,6 +58,7 @@ describe("Account", () => {
         { id: "ses_2", createdAt: "2026-11-13T00:00:00Z", lastUsedAt: "2026-11-13T00:00:00Z", expiresAt: "2026-11-20T00:00:00Z", revoked: false, current: false },
       ],
     });
+    vi.spyOn(api, "personalAccessTokens").mockResolvedValue({ items: [] });
     const revoke = vi.spyOn(api, "revokeSession").mockResolvedValue(undefined);
     renderAccount("/ui/settings/account");
     expect(await screen.findByText("Alice")).toBeInTheDocument();
@@ -65,5 +66,29 @@ describe("Account", () => {
     expect(buttons).toHaveLength(1);
     await userEvent.click(buttons[0]);
     await waitFor(() => expect(revoke).toHaveBeenCalledWith("ses_2"));
+  });
+
+  it("mints a token, shows it once, and keeps it out of storage", async () => {
+    vi.spyOn(api, "authenticationMode").mockResolvedValue({ mode: "team", signIn: true, claimable: false });
+    vi.spyOn(api, "currentMember").mockResolvedValue({ mode: "team", id: "usr_1", role: "member" });
+    vi.spyOn(api, "sessions").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "personalAccessTokens").mockResolvedValue({ items: [] });
+    const storage = vi.spyOn(Storage.prototype, "setItem");
+    const mint = vi.spyOn(api, "mintPersonalAccessToken").mockResolvedValue({
+      id: "pat_1", name: "laptop", readOnly: true, createdAt: "2026-11-14T00:00:00Z",
+      lastUsedAt: "2026-11-14T00:00:00Z", expiresAt: "2027-02-12T00:00:00Z", revoked: false,
+      token: "mrd_pat_secret",
+    });
+    renderAccount("/ui/settings/account");
+    await userEvent.type(await screen.findByLabelText("Name"), "laptop");
+    await userEvent.click(screen.getByLabelText("Read-only"));
+    await userEvent.click(screen.getByRole("button", { name: "Create token" }));
+    await waitFor(() =>
+      expect(mint).toHaveBeenCalledWith({ name: "laptop", readOnly: true, expiresInDays: 90 }),
+    );
+    expect(await screen.findByLabelText("New token")).toHaveTextContent("mrd_pat_secret");
+    await userEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(screen.queryByText("mrd_pat_secret")).toBeNull();
+    expect(storage).not.toHaveBeenCalled();
   });
 });

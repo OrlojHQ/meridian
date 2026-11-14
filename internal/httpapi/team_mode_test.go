@@ -186,6 +186,77 @@ func TestClaimMovesTheInstallationToTeamMode(t *testing.T) {
 		t.Fatalf("break-glass uses = %d", uses)
 	}
 
+	// A member mints personal access tokens from the browser; the CLI then
+	// uses one as a bearer.
+	mint := func(body string, cookies []*http.Cookie, bearer string) *http.Response {
+		t.Helper()
+		request := httptest.NewRequest(http.MethodPost, "http://localhost/auth/tokens", strings.NewReader(body))
+		request.RemoteAddr = "127.0.0.1:4000"
+		request.Header.Set("Origin", "http://localhost")
+		request.Header.Set("Content-Type", "application/json")
+		if bearer != "" {
+			request.Header.Set("Authorization", "Bearer "+bearer)
+		}
+		for _, cookie := range cookies {
+			request.AddCookie(cookie)
+		}
+		recorder := httptest.NewRecorder()
+		server.ServeHTTP(recorder, request)
+		return recorder.Result()
+	}
+	withToken := func(method, path, value string) int {
+		t.Helper()
+		request := httptest.NewRequest(method, "http://localhost"+path, strings.NewReader("{}"))
+		request.RemoteAddr = "127.0.0.1:4000"
+		request.Header.Set("Authorization", "Bearer "+value)
+		request.Header.Set("Content-Type", "application/json")
+		recorder := httptest.NewRecorder()
+		server.ServeHTTP(recorder, request)
+		return recorder.Code
+	}
+	type mintedJSON struct {
+		ID    string `json:"id"`
+		Token string `json:"token"`
+	}
+	decodeMinted := func(response *http.Response) mintedJSON {
+		t.Helper()
+		if response.StatusCode != http.StatusCreated {
+			t.Fatalf("mint = %d", response.StatusCode)
+		}
+		var minted mintedJSON
+		if err := json.NewDecoder(response.Body).Decode(&minted); err != nil || !strings.HasPrefix(minted.Token, app.TokenPrefix) {
+			t.Fatalf("minted = %+v, %v", minted, err)
+		}
+		return minted
+	}
+	full := decodeMinted(mint(`{"name":"laptop"}`, []*http.Cookie{user}, ""))
+	readOnly := decodeMinted(mint(`{"name":"viewer","readOnly":true,"expiresInDays":30}`, []*http.Cookie{user}, ""))
+	if code := withToken(http.MethodGet, "/projects", full.Token); code != http.StatusOK {
+		t.Fatalf("token read = %d", code)
+	}
+	if code := withToken(http.MethodGet, "/projects", readOnly.Token); code != http.StatusOK {
+		t.Fatalf("read-only token read = %d", code)
+	}
+	if code := withToken(http.MethodPost, "/projects", readOnly.Token); code != http.StatusForbidden {
+		t.Fatalf("read-only token write = %d", code)
+	}
+	// A token cannot mint another token.
+	if response := mint(`{"name":"chained"}`, nil, full.Token); response.StatusCode != http.StatusForbidden {
+		t.Fatalf("token minted a token: %d", response.StatusCode)
+	}
+	revokeRequest := httptest.NewRequest(http.MethodPost, "http://localhost/auth/tokens/"+full.ID+"/revoke", nil)
+	revokeRequest.RemoteAddr = "127.0.0.1:4000"
+	revokeRequest.Header.Set("Origin", "http://localhost")
+	revokeRequest.AddCookie(user)
+	revoked := httptest.NewRecorder()
+	server.ServeHTTP(revoked, revokeRequest)
+	if revoked.Code != http.StatusNoContent {
+		t.Fatalf("revoke = %d", revoked.Code)
+	}
+	if code := withToken(http.MethodGet, "/projects", full.Token); code != http.StatusUnauthorized {
+		t.Fatalf("revoked token = %d", code)
+	}
+
 	// Signing out ends the session.
 	if response := do(http.MethodPost, "/auth/sign-out", []*http.Cookie{user}, false); response.StatusCode != http.StatusNoContent {
 		t.Fatalf("sign-out = %d", response.StatusCode)

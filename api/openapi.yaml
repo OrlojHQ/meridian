@@ -2514,6 +2514,72 @@ paths:
           $ref: "#/components/responses/NotFound"
         default:
           $ref: "#/components/responses/DefaultError"
+  /auth/tokens:
+    get:
+      operationId: listPersonalAccessTokens
+      summary: List the signed-in member's personal access tokens
+      description: Token values are never returned after minting.
+      tags: [authentication]
+      responses:
+        "200":
+          description: Tokens, newest first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonalAccessTokenPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/DefaultError"
+    post:
+      operationId: mintPersonalAccessToken
+      summary: Mint a personal access token for the CLI or TUI
+      description: >-
+        Team mode only, and only from a signed-in browser session; a token
+        cannot mint another. The value carries the mrd_pat_ prefix, is shown
+        once in this response, and is stored only as a digest. Tokens expire
+        (90 days by default, at most 365) and can be read-only.
+      tags: [authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MintPersonalAccessTokenRequest"
+      responses:
+        "201":
+          description: Minted token; the value is shown only here
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MintedPersonalAccessToken"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /auth/tokens/{tokenId}/revoke:
+    post:
+      operationId: revokePersonalAccessToken
+      summary: Revoke one of the signed-in member's personal access tokens
+      tags: [authentication]
+      parameters:
+        - name: tokenId
+          in: path
+          required: true
+          schema:
+            type: string
+            maxLength: 128
+      responses:
+        "204":
+          description: Token revoked
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/DefaultError"
   /auth/browser-session:
     post:
       operationId: createBrowserSession
@@ -3459,6 +3525,62 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Session"
+    PersonalAccessToken:
+      type: object
+      required: [id, name, readOnly, createdAt, lastUsedAt, expiresAt, revoked]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+          maxLength: 64
+        readOnly:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        lastUsedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        revoked:
+          type: boolean
+    PersonalAccessTokenPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PersonalAccessToken"
+    MintPersonalAccessTokenRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+        readOnly:
+          type: boolean
+          default: false
+        expiresInDays:
+          type: integer
+          minimum: 1
+          maximum: 365
+          default: 90
+    MintedPersonalAccessToken:
+      allOf:
+        - $ref: "#/components/schemas/PersonalAccessToken"
+        - type: object
+          required: [token]
+          properties:
+            token:
+              type: string
+              description: The token value, shown once. Pass it to the CLI with --token-file.
     AuditRecord:
       type: object
       required: [sequence, recordedAt, principal, action, objectType, objectId, result]

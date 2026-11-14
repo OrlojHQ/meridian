@@ -131,6 +131,7 @@ function TeamAccount() {
       <button type="button" onClick={() => signOut.mutate()} disabled={signOut.isPending}>
         Sign out
       </button>
+      <PersonalAccessTokens />
       <section aria-labelledby="sessions-title">
         <h2 id="sessions-title">Sessions</h2>
         <p className="muted">Sessions end after 12 hours idle or 7 days.</p>
@@ -156,5 +157,97 @@ function TeamAccount() {
         </ul>
       </section>
     </>
+  );
+}
+
+// PersonalAccessTokens mints tokens for the CLI and TUI. A new token's value
+// is shown once, held only in component state, and never written to
+// browser storage.
+function PersonalAccessTokens() {
+  const tokens = useQuery(queries.personalAccessTokens());
+  const client = useQueryClient();
+  const [minted, setMinted] = useState("");
+  const [error, setError] = useState("");
+  const refresh = () => client.invalidateQueries({ queryKey: queries.personalAccessTokens().queryKey });
+  const mint = useMutation({
+    mutationFn: (body: { name: string; readOnly: boolean; expiresInDays: number }) =>
+      api.mintPersonalAccessToken(body),
+    onSuccess: (token) => {
+      setMinted(token.token);
+      setError("");
+      void refresh();
+    },
+    onError: (value) => setError(normalizeAPIError(value).message),
+  });
+  const revoke = useMutation({
+    mutationFn: (tokenId: string) => api.revokePersonalAccessToken(tokenId),
+    onSuccess: () => void refresh(),
+  });
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    mint.mutate({
+      name: String(form.get("name") ?? ""),
+      readOnly: form.get("readOnly") === "on",
+      expiresInDays: Number(form.get("expiresInDays") ?? 90),
+    });
+    event.currentTarget.reset();
+  }
+  return (
+    <section aria-labelledby="tokens-title">
+      <h2 id="tokens-title">Personal access tokens</h2>
+      <p className="muted">
+        Tokens let the CLI and TUI act as you. Save one to a file and pass it
+        with <code>--token-file</code> or <code>MERIDIAN_TOKEN_FILE</code>.
+      </p>
+      <form onSubmit={submit}>
+        <label htmlFor="token-name">Name</label>
+        <input id="token-name" name="name" required maxLength={64} />
+        <label htmlFor="token-expiry">Expires after</label>
+        <select id="token-expiry" name="expiresInDays" defaultValue="90">
+          <option value="30">30 days</option>
+          <option value="90">90 days</option>
+          <option value="365">1 year</option>
+        </select>
+        <label>
+          <input type="checkbox" name="readOnly" /> Read-only
+        </label>
+        <button type="submit" disabled={mint.isPending}>
+          Create token
+        </button>
+      </form>
+      {error ? <p role="alert">{error}</p> : null}
+      {minted ? (
+        <div role="status">
+          <p>Copy this token now. It will not be shown again.</p>
+          <code aria-label="New token">{minted}</code>
+          <button type="button" onClick={() => setMinted("")}>
+            Done
+          </button>
+        </div>
+      ) : null}
+      <ul>
+        {(tokens.data?.items ?? []).map((token) => (
+          <li key={token.id}>
+            <span>
+              {token.name}
+              {token.readOnly ? " · read-only" : ""} · expires{" "}
+              {new Date(token.expiresAt).toLocaleDateString()}
+              {token.revoked ? " · revoked" : ""}
+            </span>
+            {!token.revoked ? (
+              <button
+                type="button"
+                aria-label={`Revoke ${token.name}`}
+                onClick={() => revoke.mutate(token.id)}
+                disabled={revoke.isPending}
+              >
+                Revoke
+              </button>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

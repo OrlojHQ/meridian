@@ -95,6 +95,9 @@ type Reader interface {
 	GetUserSession(context.Context, string) (domain.UserSession, error)
 	GetUserSessionByDigest(context.Context, [32]byte) (domain.UserSession, error)
 	ListUserSessions(context.Context, domain.UserID) ([]domain.UserSession, error)
+	GetPersonalAccessToken(context.Context, string) (domain.PersonalAccessToken, error)
+	GetPersonalAccessTokenByDigest(context.Context, [32]byte) (domain.PersonalAccessToken, error)
+	ListPersonalAccessTokens(context.Context, domain.UserID) ([]domain.PersonalAccessToken, error)
 	// ListAuditRecords lists records after a sequence, oldest first. A
 	// non-empty user lists only that user's records; the empty user lists
 	// every record.
@@ -170,6 +173,9 @@ type Transaction interface {
 	InsertUserSession(context.Context, domain.UserSession) error
 	TouchUserSession(ctx context.Context, id string, at time.Time) error
 	RevokeUserSession(ctx context.Context, id string, at time.Time) error
+	InsertPersonalAccessToken(context.Context, domain.PersonalAccessToken) error
+	TouchPersonalAccessToken(ctx context.Context, id string, at time.Time) error
+	RevokePersonalAccessToken(ctx context.Context, id string, at time.Time) error
 	// PruneAuditRecords deletes records older than before, for retention.
 	PruneAuditRecords(ctx context.Context, before time.Time) (int, error)
 }
