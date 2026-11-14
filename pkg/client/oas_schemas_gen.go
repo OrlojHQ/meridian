@@ -523,6 +523,86 @@ func (s *AuditRecordResult) UnmarshalText(data []byte) error {
 	}
 }
 
+// Ref: #/components/schemas/AuthenticationMode
+type AuthenticationMode struct {
+	Mode AuthenticationModeMode `json:"mode"`
+	// An OIDC issuer is configured.
+	SignIn bool `json:"signIn"`
+	// The installation can still be claimed for team mode.
+	Claimable bool `json:"claimable"`
+}
+
+// GetMode returns the value of Mode.
+func (s *AuthenticationMode) GetMode() AuthenticationModeMode {
+	return s.Mode
+}
+
+// GetSignIn returns the value of SignIn.
+func (s *AuthenticationMode) GetSignIn() bool {
+	return s.SignIn
+}
+
+// GetClaimable returns the value of Claimable.
+func (s *AuthenticationMode) GetClaimable() bool {
+	return s.Claimable
+}
+
+// SetMode sets the value of Mode.
+func (s *AuthenticationMode) SetMode(val AuthenticationModeMode) {
+	s.Mode = val
+}
+
+// SetSignIn sets the value of SignIn.
+func (s *AuthenticationMode) SetSignIn(val bool) {
+	s.SignIn = val
+}
+
+// SetClaimable sets the value of Claimable.
+func (s *AuthenticationMode) SetClaimable(val bool) {
+	s.Claimable = val
+}
+
+type AuthenticationModeMode string
+
+const (
+	AuthenticationModeModeSingleUser AuthenticationModeMode = "single_user"
+	AuthenticationModeModeTeam       AuthenticationModeMode = "team"
+)
+
+// AllValues returns all AuthenticationModeMode values.
+func (AuthenticationModeMode) AllValues() []AuthenticationModeMode {
+	return []AuthenticationModeMode{
+		AuthenticationModeModeSingleUser,
+		AuthenticationModeModeTeam,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s AuthenticationModeMode) MarshalText() ([]byte, error) {
+	switch s {
+	case AuthenticationModeModeSingleUser:
+		return []byte(s), nil
+	case AuthenticationModeModeTeam:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *AuthenticationModeMode) UnmarshalText(data []byte) error {
+	switch AuthenticationModeMode(data) {
+	case AuthenticationModeModeSingleUser:
+		*s = AuthenticationModeModeSingleUser
+		return nil
+	case AuthenticationModeModeTeam:
+		*s = AuthenticationModeModeTeam
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
 type BearerAuth struct {
 	Token string
 	Roles []string
@@ -2093,6 +2173,11 @@ func (s *ChildRollup) SetArchived(val int) {
 	s.Archived = val
 }
 
+// ClaimInstallationNoContent is response for ClaimInstallation operation.
+type ClaimInstallationNoContent struct{}
+
+func (*ClaimInstallationNoContent) claimInstallationRes() {}
+
 // Ref: #/components/schemas/ClaudeLogin
 type ClaudeLogin struct {
 	LoginId string `json:"loginId"`
@@ -2250,6 +2335,27 @@ func (s *ClaudeLoginStatusStatus) UnmarshalText(data []byte) error {
 		return errors.Errorf("invalid value: %q", data)
 	}
 }
+
+type CompleteOidcSignInBadRequest struct {
+	Data io.Reader
+}
+
+// Read reads data from the Data reader.
+//
+// Kept to satisfy the io.Reader interface.
+func (s CompleteOidcSignInBadRequest) Read(p []byte) (n int, err error) {
+	if s.Data == nil {
+		return 0, io.EOF
+	}
+	return s.Data.Read(p)
+}
+
+func (*CompleteOidcSignInBadRequest) completeOidcSignInRes() {}
+
+// CompleteOidcSignInSeeOther is response for CompleteOidcSignIn operation.
+type CompleteOidcSignInSeeOther struct{}
+
+func (*CompleteOidcSignInSeeOther) completeOidcSignInRes() {}
 
 // Ref: #/components/schemas/CoordinationCapability
 type CoordinationCapability struct {
@@ -4785,6 +4891,7 @@ func (s *ErrorEnvelope) SetError(val APIError) {
 }
 
 func (*ErrorEnvelope) attachRunWebSocketRes()       {}
+func (*ErrorEnvelope) claimInstallationRes()        {}
 func (*ErrorEnvelope) createRunAttachTicketRes()    {}
 func (*ErrorEnvelope) getCapsuleRes()               {}
 func (*ErrorEnvelope) getCoordinationGrantRes()     {}
@@ -4804,6 +4911,7 @@ func (*ErrorEnvelope) listProjectsRes()             {}
 func (*ErrorEnvelope) listSecretsRes()              {}
 func (*ErrorEnvelope) listThreadLinksRes()          {}
 func (*ErrorEnvelope) listThreadsRes()              {}
+func (*ErrorEnvelope) revokeSessionRes()            {}
 
 type ExportCapsuleWorkspaceConflict ErrorEnvelope
 
@@ -5986,6 +6094,151 @@ func (*ListThreadBlocksLocked) listThreadBlocksRes() {}
 type ListThreadBlocksNotFound ErrorEnvelope
 
 func (*ListThreadBlocksNotFound) listThreadBlocksRes() {}
+
+// Ref: #/components/schemas/Member
+type Member struct {
+	Mode MemberMode `json:"mode"`
+	ID   string     `json:"id"`
+	Role MemberRole `json:"role"`
+	// Display only; refreshed at sign-in.
+	DisplayName OptString `json:"displayName"`
+	// Display only; refreshed at sign-in.
+	Email OptString `json:"email"`
+}
+
+// GetMode returns the value of Mode.
+func (s *Member) GetMode() MemberMode {
+	return s.Mode
+}
+
+// GetID returns the value of ID.
+func (s *Member) GetID() string {
+	return s.ID
+}
+
+// GetRole returns the value of Role.
+func (s *Member) GetRole() MemberRole {
+	return s.Role
+}
+
+// GetDisplayName returns the value of DisplayName.
+func (s *Member) GetDisplayName() OptString {
+	return s.DisplayName
+}
+
+// GetEmail returns the value of Email.
+func (s *Member) GetEmail() OptString {
+	return s.Email
+}
+
+// SetMode sets the value of Mode.
+func (s *Member) SetMode(val MemberMode) {
+	s.Mode = val
+}
+
+// SetID sets the value of ID.
+func (s *Member) SetID(val string) {
+	s.ID = val
+}
+
+// SetRole sets the value of Role.
+func (s *Member) SetRole(val MemberRole) {
+	s.Role = val
+}
+
+// SetDisplayName sets the value of DisplayName.
+func (s *Member) SetDisplayName(val OptString) {
+	s.DisplayName = val
+}
+
+// SetEmail sets the value of Email.
+func (s *Member) SetEmail(val OptString) {
+	s.Email = val
+}
+
+func (*Member) getCurrentMemberRes() {}
+
+type MemberMode string
+
+const (
+	MemberModeSingleUser MemberMode = "single_user"
+	MemberModeTeam       MemberMode = "team"
+)
+
+// AllValues returns all MemberMode values.
+func (MemberMode) AllValues() []MemberMode {
+	return []MemberMode{
+		MemberModeSingleUser,
+		MemberModeTeam,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s MemberMode) MarshalText() ([]byte, error) {
+	switch s {
+	case MemberModeSingleUser:
+		return []byte(s), nil
+	case MemberModeTeam:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *MemberMode) UnmarshalText(data []byte) error {
+	switch MemberMode(data) {
+	case MemberModeSingleUser:
+		*s = MemberModeSingleUser
+		return nil
+	case MemberModeTeam:
+		*s = MemberModeTeam
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+type MemberRole string
+
+const (
+	MemberRoleMember MemberRole = "member"
+	MemberRoleAdmin  MemberRole = "admin"
+)
+
+// AllValues returns all MemberRole values.
+func (MemberRole) AllValues() []MemberRole {
+	return []MemberRole{
+		MemberRoleMember,
+		MemberRoleAdmin,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s MemberRole) MarshalText() ([]byte, error) {
+	switch s {
+	case MemberRoleMember:
+		return []byte(s), nil
+	case MemberRoleAdmin:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *MemberRole) UnmarshalText(data []byte) error {
+	switch MemberRole(data) {
+	case MemberRoleMember:
+		*s = MemberRoleMember
+		return nil
+	case MemberRoleAdmin:
+		*s = MemberRoleAdmin
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
 
 // Ref: #/components/schemas/Moment
 type Moment struct {
@@ -10416,6 +10669,11 @@ type RevokeCoordinationGrantUnprocessableEntity ErrorEnvelope
 
 func (*RevokeCoordinationGrantUnprocessableEntity) revokeCoordinationGrantRes() {}
 
+// RevokeSessionNoContent is response for RevokeSession operation.
+type RevokeSessionNoContent struct{}
+
+func (*RevokeSessionNoContent) revokeSessionRes() {}
+
 type RewindCapsuleBadRequest ErrorEnvelope
 
 func (*RewindCapsuleBadRequest) rewindCapsuleRes() {}
@@ -11140,6 +11398,93 @@ type SendThreadMessageUnprocessableEntity ErrorEnvelope
 
 func (*SendThreadMessageUnprocessableEntity) sendThreadMessageRes() {}
 
+// Ref: #/components/schemas/Session
+type Session struct {
+	ID         string    `json:"id"`
+	CreatedAt  time.Time `json:"createdAt"`
+	LastUsedAt time.Time `json:"lastUsedAt"`
+	ExpiresAt  time.Time `json:"expiresAt"`
+	Revoked    bool      `json:"revoked"`
+	Current    bool      `json:"current"`
+}
+
+// GetID returns the value of ID.
+func (s *Session) GetID() string {
+	return s.ID
+}
+
+// GetCreatedAt returns the value of CreatedAt.
+func (s *Session) GetCreatedAt() time.Time {
+	return s.CreatedAt
+}
+
+// GetLastUsedAt returns the value of LastUsedAt.
+func (s *Session) GetLastUsedAt() time.Time {
+	return s.LastUsedAt
+}
+
+// GetExpiresAt returns the value of ExpiresAt.
+func (s *Session) GetExpiresAt() time.Time {
+	return s.ExpiresAt
+}
+
+// GetRevoked returns the value of Revoked.
+func (s *Session) GetRevoked() bool {
+	return s.Revoked
+}
+
+// GetCurrent returns the value of Current.
+func (s *Session) GetCurrent() bool {
+	return s.Current
+}
+
+// SetID sets the value of ID.
+func (s *Session) SetID(val string) {
+	s.ID = val
+}
+
+// SetCreatedAt sets the value of CreatedAt.
+func (s *Session) SetCreatedAt(val time.Time) {
+	s.CreatedAt = val
+}
+
+// SetLastUsedAt sets the value of LastUsedAt.
+func (s *Session) SetLastUsedAt(val time.Time) {
+	s.LastUsedAt = val
+}
+
+// SetExpiresAt sets the value of ExpiresAt.
+func (s *Session) SetExpiresAt(val time.Time) {
+	s.ExpiresAt = val
+}
+
+// SetRevoked sets the value of Revoked.
+func (s *Session) SetRevoked(val bool) {
+	s.Revoked = val
+}
+
+// SetCurrent sets the value of Current.
+func (s *Session) SetCurrent(val bool) {
+	s.Current = val
+}
+
+// Ref: #/components/schemas/SessionPage
+type SessionPage struct {
+	Items []Session `json:"items"`
+}
+
+// GetItems returns the value of Items.
+func (s *SessionPage) GetItems() []Session {
+	return s.Items
+}
+
+// SetItems sets the value of Items.
+func (s *SessionPage) SetItems(val []Session) {
+	s.Items = val
+}
+
+func (*SessionPage) listSessionsRes() {}
+
 type SetThreadEffortBadRequest ErrorEnvelope
 
 func (*SetThreadEffortBadRequest) setThreadEffortRes() {}
@@ -11163,6 +11508,26 @@ func (*SetThreadModelConflict) setThreadModelRes() {}
 type SetThreadModelUnprocessableEntity ErrorEnvelope
 
 func (*SetThreadModelUnprocessableEntity) setThreadModelRes() {}
+
+// SignOutNoContent is response for SignOut operation.
+type SignOutNoContent struct{}
+
+func (*SignOutNoContent) signOutRes() {}
+
+// StartOidcSignInFound is response for StartOidcSignIn operation.
+type StartOidcSignInFound struct {
+	Location OptString
+}
+
+// GetLocation returns the value of Location.
+func (s *StartOidcSignInFound) GetLocation() OptString {
+	return s.Location
+}
+
+// SetLocation sets the value of Location.
+func (s *StartOidcSignInFound) SetLocation(val OptString) {
+	s.Location = val
+}
 
 type StartRunBadRequest ErrorEnvelope
 
@@ -14234,7 +14599,12 @@ func (s *UnauthorizedHeaders) SetResponse(val ErrorEnvelope) {
 	s.Response = val
 }
 
+func (*UnauthorizedHeaders) claimInstallationRes()    {}
 func (*UnauthorizedHeaders) createBrowserSessionRes() {}
+func (*UnauthorizedHeaders) getCurrentMemberRes()     {}
+func (*UnauthorizedHeaders) listSessionsRes()         {}
+func (*UnauthorizedHeaders) revokeSessionRes()        {}
+func (*UnauthorizedHeaders) signOutRes()              {}
 
 type UpdateCoordinationGrantBadRequest ErrorEnvelope
 

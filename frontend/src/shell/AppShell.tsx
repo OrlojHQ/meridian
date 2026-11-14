@@ -733,6 +733,10 @@ export function AppShell() {
             <SettingsIcon />
             Harness settings
           </NavLink>
+          <NavLink to="/ui/settings/account">
+            <SettingsIcon />
+            Account
+          </NavLink>
           <GatewaySettingsButton />
         </nav>
         <nav className="activity-nav" aria-label="Capsule activity">

@@ -18,10 +18,16 @@ Moments and previews remain unimplemented (ADR 0018). Where current behavior
 differs, it is called out explicitly and must fail closed.
 
 ADR 0046 adds a team mode: one installation per team, with per-user identity
-and ownership. It is accepted and not yet implemented. Until it ships, every
-statement here about a single installation principal describes current
-behavior. "Team mode and per-user identity" below states what team mode must
-meet before release. Single-user mode keeps the current model.
+and ownership. Ownership, authorization in `internal/app`, owner-bound
+credential envelopes, the audit log, OIDC sign-in, user sessions, the
+installation claim, and the break-glass restriction on the installation bearer
+are implemented. Personal access tokens, membership administration (disable,
+roles), and departed-user transfer are not yet; until they are, a team-mode
+installation is used through the web UI, and the CLI and TUI reach only what
+the break-glass bearer allows. An installation that is not claimed stays in
+single-user mode, and every statement here about a single installation
+principal describes it. "Team mode and per-user identity" below states what
+team mode must meet.
 
 ## Assets
 
@@ -547,12 +553,16 @@ multi-tenancy. Until this is implemented, the current unauthenticated public
 API must remain inside a trusted local or independently authenticated
 boundary.
 
-In team mode (ADR 0046) the caller is a user, and the installation bearer is
-break-glass admin only, refused on object endpoints. Every list, get,
-mutation, stream, and ticket mint is filtered by the caller's ownership in
-`internal/app`. Another user's identifier returns the same content-free
-not-found as a missing object. Event streams carry an owner and are filtered
-by it. Idempotency keys include the caller.
+In team mode (ADR 0046) the caller is a member signed in through the
+operator's OIDC issuer, holding a session cookie. The installation bearer is
+the break-glass admin: it is refused with `403` on object endpoints and every
+use is audited; the installation browser cookie no longer authenticates, and
+loopback page loads mint none. In both modes every list, get, mutation,
+stream, and ticket mint is authorized by the caller's ownership in
+`internal/app`: another owner's identifier returns the same content-free
+not-found as a missing object. Event reads go through an owned object (a
+Run's events through its Run). Idempotency keys and secret names are scoped
+to the caller's owner.
 
 ### Provider compromise and capability confusion
 
@@ -1222,9 +1232,10 @@ explains this difference. Both paths use the same authoritative server validatio
 
 ## Team mode and per-user identity
 
-ADR 0046 is accepted and not yet implemented. This section is the set of
-requirements team mode must meet before it ships. Single-user mode keeps the
-model described in the rest of this document.
+ADR 0046 is implemented in part (see "Status and scope"). This section is
+the set of requirements team mode must meet. Items not yet implemented are
+marked; until they are, team mode must not be described as complete.
+Single-user mode keeps the model described in the rest of this document.
 
 Team mode serves one team from one installation. Teammates are
 authenticated members who must not see each other's work. They are not
@@ -1267,7 +1278,7 @@ Threats and required controls:
   Until the claim, other OIDC sign-ins are refused.
 - **Break-glass misuse.** The installation bearer in team mode is accepted
   only on membership, revocation, audit, and departed-user transfer and
-  delete endpoints. It is refused on object endpoints, and every use is
+  delete endpoints (today: the audit log). It is refused on object endpoints, and every use is
   audited. Its custody stays outside SQLite, as in ADR 0015.
 - **Admin overreach.** The admin role manages membership and reads audit. It
   cannot read or change other users' objects. No "see everything" role
@@ -1278,7 +1289,7 @@ Threats and required controls:
   revoked. In team mode, loopback page loads get no cookie, and
   `POST /auth/browser-session` refuses the installation bearer, so a local
   process on a shared host cannot become a user.
-- **Personal access token leakage.** Tokens have a fixed scannable prefix.
+- **Personal access token leakage** (not yet implemented). Tokens have a fixed scannable prefix.
   They are shown once, stored as digests, expire, can be read-only, and are
   revoked when the user is disabled. They never appear in URLs, logs, or
   events.
@@ -1292,7 +1303,8 @@ Threats and required controls:
   members. Operators whose issuer serves anyone else must set the required
   group claim. This is a documented deployment requirement, not something
   Meridian can verify.
-- **Disabled users.** Disabling revokes sessions and tokens at once, refuses
+- **Disabled users** (sign-in refusal implemented; administration not yet).
+  Disabling revokes sessions and tokens at once, refuses
   outstanding PTY and preview tickets, and stops gateway leases for that
   user's Capsules.
 - **System-job leakage.** Background jobs act on one object at a time and

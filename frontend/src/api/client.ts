@@ -12,6 +12,12 @@ import {
   cancelRun,
   cancelThread,
   createBrowserSession,
+  getAuthenticationMode,
+  claimInstallation,
+  getCurrentMember,
+  signOut,
+  listSessions,
+  revokeSession,
   createCapsule,
   createCapsuleDelivery,
   createCapsulePreviewTicket,
@@ -72,6 +78,7 @@ import {
   promoteCapsule,
 } from "./generated/sdk.gen";
 import { projectHarnessImage } from "./harnessPacks";
+import type { AuthenticationMode, Member, SessionPage } from "./generated/types.gen";
 import type { HarnessSetupUpload, HarnessSetupPreview, ImportHarnessSetupRequest, EnvironmentMutation, ProjectEnvironment,
   ProjectHarnessSetup,
   ClaudeLogin, ClaudeLoginRequest, ClaudeLoginStatus,
@@ -215,6 +222,19 @@ export const api = {
         auth: token,
       }),
     ),
+  authenticationMode: (signal?: AbortSignal) =>
+    call<AuthenticationMode>(getAuthenticationMode(generatedOptions(signal))),
+  // The claim needs the installation token itself, never the browser
+  // cookie, plus the claim cookie the OIDC callback set (ADR 0046).
+  claimInstallation: (token: string) =>
+    call<void>(claimInstallation({ ...generatedOptions(), auth: token })),
+  currentMember: (signal?: AbortSignal) =>
+    call<Member>(getCurrentMember(generatedOptions(signal))),
+  sessions: (signal?: AbortSignal) =>
+    call<SessionPage>(listSessions(generatedOptions(signal))),
+  revokeSession: (sessionId: string) =>
+    call<void>(revokeSession({ ...generatedOptions(), path: { sessionId } })),
+  signOut: () => call<void>(signOut(generatedOptions())),
   capabilities: (signal?: AbortSignal) =>
     call<Capabilities>(getCapabilities(generatedOptions(signal))),
   projects: (signal?: AbortSignal) =>

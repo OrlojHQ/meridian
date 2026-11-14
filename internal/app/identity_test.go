@@ -1,0 +1,222 @@
+package app_test
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/OrlojHQ/meridian/internal/app"
+	"github.com/OrlojHQ/meridian/internal/domain"
+	"github.com/OrlojHQ/meridian/internal/oidcauth"
+	"github.com/OrlojHQ/meridian/internal/principal"
+	"github.com/OrlojHQ/meridian/internal/store/sqlite"
+)
+
+const fakeIssuer = "https://issuer.example"
+
+// fakeIssuerParty signs in whoever the test names next. Begin hands out a
+// fresh state; Complete accepts only the code "code".
+type fakeIssuerParty struct {
+	mu     sync.Mutex
+	issuer string
+	next   oidcauth.Identity
+	deny   bool
+	count  int
+}
+
+func (f *fakeIssuerParty) Issuer() string { return f.issuer }
+
+func (f *fakeIssuerParty) Begin(context.Context) (oidcauth.Attempt, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.count++
+	state := "state-" + string(rune('a'+f.count))
+	return oidcauth.Attempt{State: state, Nonce: "nonce", Verifier: "verifier", URL: f.issuer + "/authorize?state=" + state}, nil
+}
+
+func (f *fakeIssuerParty) Complete(_ context.Context, _ oidcauth.Attempt, code string) (oidcauth.Identity, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.deny {
+		return oidcauth.Identity{}, oidcauth.ErrDenied
+	}
+	if code != "code" {
+		return oidcauth.Identity{}, errors.New("bad code")
+	}
+	identity := f.next
+	identity.Issuer = f.issuer
+	return identity, nil
+}
+
+func (f *fakeIssuerParty) as(subject string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.next = oidcauth.Identity{Subject: subject, Email: subject + "@example.com", Name: strings.ToUpper(subject)}
+}
+
+func signIn(t *testing.T, identity *app.Identity) app.SignInResult {
+	t.Helper()
+	target, err := identity.BeginSignIn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := target[strings.Index(target, "state=")+len("state="):]
+	result, err := identity.CompleteSignIn(context.Background(), state, "code")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return result
+}
+
+func TestClaimTurnsOnTeamModeOnceAndSignsMembersIn(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	store, err := sqlite.Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	clock := &testClock{now: time.Date(2026, 11, 14, 0, 0, 0, 0, time.UTC)}
+	party := &fakeIssuerParty{issuer: fakeIssuer}
+	identity, err := app.NewIdentity(ctx, store, clock, &testIDs{}, party)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if identity.Mode() != domain.SingleUserMode || !identity.Claimable() {
+		t.Fatalf("fresh installation mode %s claimable %v", identity.Mode(), identity.Claimable())
+	}
+
+	// Before the claim a sign-in yields only a claim token, never a session.
+	party.as("alice")
+	pending := signIn(t, identity)
+	if pending.ClaimToken == "" || pending.SessionToken != "" {
+		t.Fatalf("pre-claim sign-in = %+v", pending)
+	}
+	if _, _, err := identity.Session(ctx, pending.ClaimToken); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("claim token used as a session: %v", err)
+	}
+	// The claim needs the bootstrap owner, as the installation bearer
+	// authenticates in single-user mode; the system cannot claim.
+	if _, err := identity.Claim(principal.WithSystem(ctx), pending.ClaimToken); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("system claimed: %v", err)
+	}
+	owner := principal.With(ctx, principal.Owner())
+	if _, err := identity.Claim(owner, "not-a-claim"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("claim with an unknown token = %v", err)
+	}
+	party.as("alice")
+	pending = signIn(t, identity)
+	session, err := identity.Claim(owner, pending.ClaimToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if identity.Mode() != domain.TeamMode || identity.Claimable() {
+		t.Fatal("claim did not turn on team mode")
+	}
+	caller, _, err := identity.Session(ctx, session)
+	if err != nil || caller.UserID() != principal.BootstrapOwner {
+		t.Fatalf("owner session = %+v, %v", caller, err)
+	}
+	member, err := identity.Member(principal.With(ctx, caller))
+	if err != nil || member.Subject != "alice" || member.Role != domain.UserAdmin || member.Email != "alice@example.com" {
+		t.Fatalf("claimed owner = %+v, %v", member, err)
+	}
+	party.as("mallory")
+	if result, err := identity.CompleteSignIn(ctx, "state-x", "code"); !errors.Is(err, domain.ErrNotFound) || result.SessionToken != "" {
+		t.Fatalf("unknown state = %+v, %v", result, err)
+	}
+
+	// After the claim, Alice signs in again as the owner; Bob becomes a
+	// member on first sign-in.
+	party.as("alice")
+	again := signIn(t, identity)
+	if caller, _, err := identity.Session(ctx, again.SessionToken); err != nil || caller.UserID() != principal.BootstrapOwner {
+		t.Fatalf("owner second sign-in = %+v, %v", caller, err)
+	}
+	party.as("bob")
+	bobResult := signIn(t, identity)
+	bob, bobSession, err := identity.Session(ctx, bobResult.SessionToken)
+	if err != nil || bob.UserID() == principal.BootstrapOwner {
+		t.Fatalf("Bob session = %+v, %v", bob, err)
+	}
+	bobCtx := principal.With(ctx, bob)
+	if member, err := identity.Member(bobCtx); err != nil || member.Role != domain.UserMember || member.Subject != "bob" {
+		t.Fatalf("Bob = %+v, %v", member, err)
+	}
+
+	// Each member sees and revokes only their own sessions.
+	ownerSessions, err := identity.Sessions(principal.With(ctx, caller))
+	if err != nil || len(ownerSessions) != 2 {
+		t.Fatalf("owner sessions = %+v, %v", ownerSessions, err)
+	}
+	if err := identity.RevokeSession(bobCtx, ownerSessions[0].ID); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("Bob revoked the owner's session: %v", err)
+	}
+	if err := identity.SignOut(bobCtx, bobSession); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := identity.Session(ctx, bobResult.SessionToken); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("signed-out session = %v", err)
+	}
+
+	// Sessions end after 12 hours idle.
+	clock.mu.Lock()
+	clock.now = clock.now.Add(13 * time.Hour)
+	clock.mu.Unlock()
+	if _, _, err := identity.Session(ctx, again.SessionToken); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("idle session = %v", err)
+	}
+
+	// A disabled member cannot sign in.
+	raw, err := sql.Open("sqlite", store.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	if _, err := raw.Exec("UPDATE users SET disabled_at = '2026-11-14T00:00:00Z' WHERE subject = 'bob'"); err != nil {
+		t.Fatal(err)
+	}
+	party.as("bob")
+	target, err := identity.BeginSignIn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := identity.CompleteSignIn(ctx, target[strings.Index(target, "state=")+6:], "code"); !errors.Is(err, app.ErrSignInDenied) {
+		t.Fatalf("disabled sign-in = %v", err)
+	}
+	party.deny = true
+	target, err = identity.BeginSignIn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := identity.CompleteSignIn(ctx, target[strings.Index(target, "state=")+6:], "code"); !errors.Is(err, app.ErrSignInDenied) {
+		t.Fatalf("denied identity = %v", err)
+	}
+
+	// The claim and sign-ins are in the audit log.
+	service := app.NewService(store, clock, &testIDs{}, &recordingQueue{})
+	page, err := service.ListAuditRecords(principal.WithSystem(ctx), 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actions := map[domain.AuditAction]int{}
+	for _, record := range page.Items {
+		actions[record.Action]++
+	}
+	if actions[domain.AuditInstallationClaim] != 1 || actions[domain.AuditSignIn] != 3 || actions[domain.AuditSignOut] != 1 {
+		t.Fatalf("audit actions = %v", actions)
+	}
+
+	// The claim is permanent and pins its issuer.
+	if _, err := app.NewIdentity(ctx, store, clock, &testIDs{}, &fakeIssuerParty{issuer: "https://other.example"}); err == nil {
+		t.Fatal("a claimed installation accepted another issuer")
+	}
+	reopened, err := app.NewIdentity(ctx, store, clock, &testIDs{}, party)
+	if err != nil || reopened.Mode() != domain.TeamMode {
+		t.Fatalf("reopened mode = %v, %v", reopened.Mode(), err)
+	}
+}
