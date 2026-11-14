@@ -93,7 +93,10 @@
 }
 
 .workbench .capsule-bar-title h1 {
-  flex: none;
+  /* Shrink and ellipsize before the activity pill runs under the actions
+     when the Thread column is narrow (a wide Capsule tools panel). */
+  flex: 0 1 auto;
+  min-width: 0;
   max-width: 18rem;
   font-size: 1rem;
   font-weight: 640;

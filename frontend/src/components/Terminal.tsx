@@ -112,9 +112,16 @@ export function TerminalView({
         );
       }
     };
+    // Refit on every size change, but send the PTY one resize after the size
+    // settles, so dragging the panel edge does not resize it on every frame.
+    let resizeTimer: number | undefined;
     const resizeObserver = new ResizeObserver(() => {
       fit.fit();
-      sendResize();
+      if (resizeTimer !== undefined) window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(() => {
+        resizeTimer = undefined;
+        sendResize();
+      }, 100);
     });
     resizeObserver.observe(hostRef.current);
     const input = terminal.onData((value) => {
@@ -209,6 +216,7 @@ export function TerminalView({
     return () => {
       activeRef.current = false;
       if (timer !== undefined) window.clearTimeout(timer);
+      if (resizeTimer !== undefined) window.clearTimeout(resizeTimer);
       currentController?.abort();
       resizeObserver.disconnect();
       input.dispose();

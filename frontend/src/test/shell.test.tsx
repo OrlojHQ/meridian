@@ -841,6 +841,75 @@ describe("application shell", () => {
     expect(files).not.toHaveBeenCalled();
   });
 
+  it("explains a workspace without a Git repository instead of showing an error", async () => {
+    vi.spyOn(api, "capsule").mockResolvedValue(capsule);
+    vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "gitDiff").mockRejectedValue(
+      new MeridianAPIError("this Capsule's workspace has no Git repository", "no_repository", 422),
+    );
+
+    wrapper(
+      <WorkspaceContext
+        capsuleId={capsule.id}
+        pathname={`/ui/capsules/${capsule.id}`}
+        capabilities={{ ...capabilities, git: true }}
+      />,
+    );
+
+    expect(await screen.findByText(/has no Git repository/)).toBeInTheDocument();
+    expect(screen.getByText("git init")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("opens the tool chosen from the collapsed rail", async () => {
+    vi.spyOn(window, "matchMedia").mockImplementation(
+      (query) =>
+        ({
+          matches: query === "(max-width: 720px)",
+          addEventListener: () => undefined,
+          removeEventListener: () => undefined,
+        }) as unknown as MediaQueryList,
+    );
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
+    vi.spyOn(api, "capsules").mockResolvedValue({ items: [capsule] });
+    vi.spyOn(api, "capsule").mockResolvedValue(capsule);
+    vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "threads").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "capabilities").mockResolvedValue(capabilities);
+    vi.spyOn(api, "thread").mockResolvedValue({
+      id: "thread-1",
+      capsuleId: capsule.id,
+      state: "active",
+      harness: "opencode",
+      encryptedAtRest: true,
+      messageCount: 1,
+      encryptedBytes: 64,
+      createdAt: "2026-08-26T00:02:00Z",
+      updatedAt: "2026-08-26T00:03:00Z",
+      resourceVersion: 1,
+    });
+    const user = userEvent.setup();
+
+    wrapper(
+      <Routes>
+        <Route path="/ui" element={<AppShell />}>
+          <Route path="threads/:threadId" element={<p>Conversation</p>} />
+        </Route>
+      </Routes>,
+      "/ui/threads/thread-1",
+    );
+
+    const rail = await screen.findByRole("navigation", { name: "Capsule tools" });
+    await user.click(within(rail).getByRole("button", { name: "Files" }));
+    expect(await screen.findByRole("tab", { name: "Files" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Changes" })).toHaveAttribute("aria-selected", "false");
+
+    await user.click(screen.getByRole("button", { name: "Hide Capsule tools" }));
+    const reopened = await screen.findByRole("navigation", { name: "Capsule tools" });
+    await user.click(within(reopened).getByRole("button", { name: "Preview" }));
+    expect(await screen.findByRole("tab", { name: "Preview" })).toHaveAttribute("aria-selected", "true");
+  });
+
   it("offers import, a provider, and a new Project when nothing exists yet", async () => {
     vi.spyOn(api, "projects").mockResolvedValue({ items: [] });
     vi.spyOn(api, "capabilities").mockResolvedValue(capabilities);

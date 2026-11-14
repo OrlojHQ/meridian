@@ -7,6 +7,29 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Resize the Capsule tools panel by dragging its left edge, or by focusing
+  the edge and using the arrow keys (Shift for bigger steps, Home and End for
+  the narrowest and widest). Double-click the edge to return to the default
+  width. The width is remembered in this browser and kept when you hide and
+  show the panel. The Thread column keeps its minimum width, and windows
+  narrow enough to show the panel as a drawer do not offer resizing (#153).
+
+### Fixed
+
+- The Changes tab of a Capsule whose Project has no repository says the
+  workspace has no Git repository, and how to start tracking changes,
+  instead of "workspace git command failed: capsuled git_failed". The API
+  reports this as `no_repository`; other git failures stay `git_failed`.
+- The Changes, Files, and Preview buttons on the collapsed Capsule tools rail
+  open that tool. Before, all three opened Changes.
+- A long Capsule name in the Thread header is shortened with an ellipsis
+  when the Thread column is narrow, instead of pushing the activity pill
+  under the Ship and actions buttons.
+- A CLI Capsule's terminal sends the PTY one resize after its size settles,
+  rather than one per layout change.
+
 ## [0.8.0] - 2026-11-13
 
 ### Upgrade notes

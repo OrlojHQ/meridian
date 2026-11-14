@@ -69,7 +69,8 @@ import {
 } from "./paletteCommands";
 import { useNeedsYouAlerts } from "./useNeedsYouAlerts";
 import { useWorkingSet, type WorkingSetItem } from "./useWorkingSet";
-import { WorkspaceContext } from "./WorkspaceContext";
+import { WorkspaceContext, type ContextTab } from "./WorkspaceContext";
+import { ContextResizer, contextWidthStyle, readContextWidth } from "./ContextResizer";
 
 const pathID = (pathname: string, resource: string) => {
   const match = pathname.match(new RegExp(`/ui/${resource}/([^/]+)`));
@@ -351,6 +352,14 @@ export function AppShell() {
   const [newSessionOpen, setNewSessionOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [contextOpen, setContextOpen] = useState(toolsOpenByDefault);
+  // The tab a collapsed-rail button asked for. Undefined lets the route pick.
+  const [contextTab, setContextTab] = useState<ContextTab>();
+  // The operator's chosen panel width in pixels. Undefined uses the default.
+  const [contextWidth, setContextWidth] = useState(readContextWidth);
+  const openContext = (tab?: ContextTab) => {
+    setContextTab(tab);
+    setContextOpen(true);
+  };
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [deleteProject, setDeleteProject] = useState<Project>();
   const queryClient = useQueryClient();
@@ -433,6 +442,7 @@ export function AppShell() {
     if (toolsDecision.current === key) return;
     if (capsuleId && !items.some((item) => item.capsule.id === capsuleId)) return;
     toolsDecision.current = key;
+    setContextTab(undefined);
     setContextOpen(cliSession ? false : toolsOpenByDefault());
   }, [location.pathname, sessionId, capsuleId, items, cliSession]);
 
@@ -661,6 +671,7 @@ export function AppShell() {
       className={`app-shell workbench ${hasContext && contextOpen ? "has-context" : "no-context"}${
         showRail ? " with-rail" : ""
       }${hasContext && contextOpen ? " with-context-toggle" : ""}${cliSession ? " cli-session" : ""}`}
+      style={contextWidthStyle(contextWidth)}
     >
       <a className="skip-link" href="#content">
         Skip to workspace
@@ -828,18 +839,18 @@ export function AppShell() {
 
       {showRail && (
         <nav className="tool-rail" aria-label="Capsule tools">
-          <button type="button" className="tool-rail-expand" aria-label="Show Capsule tools" title="Show Capsule tools" onClick={() => setContextOpen(true)}>
+          <button type="button" className="tool-rail-expand" aria-label="Show Capsule tools" title="Show Capsule tools" onClick={() => openContext()}>
             <ChevronIcon />
           </button>
-          <button type="button" onClick={() => setContextOpen(true)}>
+          <button type="button" onClick={() => openContext("changes")}>
             <ChangesIcon />
             Changes
           </button>
-          <button type="button" onClick={() => setContextOpen(true)}>
+          <button type="button" onClick={() => openContext("files")}>
             <FilesIcon />
             Files
           </button>
-          <button type="button" onClick={() => setContextOpen(true)}>
+          <button type="button" onClick={() => openContext("preview")}>
             <PreviewIcon />
             Preview
           </button>
@@ -858,11 +869,15 @@ export function AppShell() {
           </button>
           )}
           {contextOpen && (
+            <ContextResizer width={contextWidth} onChange={setContextWidth} />
+          )}
+          {contextOpen && (
             <WorkspaceContext
               capsuleId={capsuleId}
               pathname={`${location.pathname}${location.hash}`}
               session={sessionId}
               capabilities={capabilities.data}
+              initialTab={contextTab}
             />
           )}
         </>
