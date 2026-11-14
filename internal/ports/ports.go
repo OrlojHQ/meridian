@@ -181,6 +181,10 @@ type Transaction interface {
 	// RevokeUserCredentials revokes every live session and token of a
 	// member and reports how many.
 	RevokeUserCredentials(ctx context.Context, id domain.UserID, at time.Time) (int, error)
+	// TransferOwnership moves every owned row except provider connections
+	// from one member to another, and drops Project grants of the source's
+	// connections, which cannot follow (ADR 0046, ADR 0038).
+	TransferOwnership(ctx context.Context, from, to domain.UserID) error
 	InsertPersonalAccessToken(context.Context, domain.PersonalAccessToken) error
 	TouchPersonalAccessToken(ctx context.Context, id string, at time.Time) error
 	RevokePersonalAccessToken(ctx context.Context, id string, at time.Time) error

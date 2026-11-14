@@ -18,15 +18,14 @@ Moments and previews remain unimplemented (ADR 0018). Where current behavior
 differs, it is called out explicitly and must fail closed.
 
 ADR 0046 adds a team mode: one installation per team, with per-user identity
-and ownership. Ownership, authorization in `internal/app`, owner-bound
-credential envelopes, the audit log, OIDC sign-in, user sessions, the
-installation claim, the break-glass restriction on the installation bearer,
-personal access tokens, and membership administration (disable, roles,
-credential revocation) are implemented. Departed-user transfer and delete are
-not yet. An installation that is not claimed stays in
-single-user mode, and every statement here about a single installation
-principal describes it. "Team mode and per-user identity" below states what
-team mode must meet.
+and ownership. It is implemented: ownership on every row, authorization in
+`internal/app`, owner-bound credential envelopes, the audit log, OIDC sign-in,
+user sessions, the installation claim, personal access tokens, membership
+administration, and the break-glass installation bearer with departed-member
+transfer and delete. An installation that is not claimed stays in single-user
+mode, where the installation bearer and its browser cookie act as the one
+user, the bootstrap owner. "Team mode and per-user identity" below states the
+team-mode threats and controls.
 
 ## Assets
 
@@ -49,8 +48,9 @@ Assets requiring protection include:
 
 The principal boundaries are between:
 
-1. the single trusted operator's browser, desktop shell, or CLI and the
-   installation-bearer authenticated control-plane APIs;
+1. a client (browser, desktop shell, CLI, or TUI) and the authenticated
+   control-plane APIs: in single-user mode the one operator with the
+   installation bearer, in team mode each signed-in member;
 2. the control plane and its SQLite database/local artifact storage;
 3. the control plane and the credential broker;
 4. the control plane and a Capsule provider;
@@ -65,10 +65,10 @@ The principal boundaries are between:
     and the control plane and the operator's OIDC identity provider.
 
 Crossing a boundary requires authenticated identity, explicit authorization,
-bounded input, and auditable outcomes. Meridian's initial API has one
-installation principal, not per-user RBAC or a tenant boundary. Team mode
-adds per-user ownership on one installation; it is not a tenant boundary
-between mutually untrusted organizations. A provider's
+bounded input, and auditable outcomes. In single-user mode the API has one
+principal, the bootstrap owner. Team mode adds members with private ownership
+on one installation; it is not a tenant boundary between mutually untrusted
+organizations. A provider's
 advertised isolation class is a security property and must not be silently
 downgraded.
 
@@ -430,7 +430,9 @@ configures it for a lead or a subagent, and again once the grant ends.
 A subagent mailbox relays `report`, `propose-delivery`, and `whoami`.
 
 Authority is the intersection of the grant, the Project policy, the
-requester's links, and the grant's remaining counters. A grant is created only
+requester's links, and the grant's remaining counters. Each mailbox request
+acts as its Capsule under the lead owner's authority (ADR 0046): a grant, its
+subagents, and everything they use belong to that one owner. A grant is created only
 by an operator API call together with its lead Thread. The operator may later
 loosen or tighten its limits, including `spawnApproval`. Capsules cannot
 change a grant. It bounds harnesses (a subset of the Project's structured
@@ -541,16 +543,14 @@ Package managers, install scripts, binaries, actions, generated code, and update
 
 Attackers may forge identifiers, replay requests, exploit parser differences, enumerate Capsules, inject events, or exhaust long-lived connections. Validate all input against bounded schemas, use opaque identifiers, authorize every object access, apply idempotency and replay protection to mutations, cap request and stream sizes, and rate-limit by identity. Events require stable ordering/cursors and tenant binding; clients must not infer authorization from event possession.
 
-The target public API authenticates REST, SSE, and PTY/preview ticket minting
-with one high-entropy installation bearer token in the `Authorization` header.
-Only content-free liveness and readiness probes remain open. Tokens in URLs,
-cookies, or bodies are rejected and bearer values never enter logs. PTY and
-preview redemption continue to require their short-lived scoped tickets; the
-installation token is never forwarded to a Capsule or preview. This is a
-single-principal boundary with installation-wide authority, not RBAC or
-multi-tenancy. Until this is implemented, the current unauthenticated public
-API must remain inside a trusted local or independently authenticated
-boundary.
+The public API authenticates REST, SSE, and PTY/preview ticket minting. In
+single-user mode the credential is the high-entropy installation bearer in the
+`Authorization` header, or the same-origin browser cookie minted from it; both
+act as the bootstrap owner. Only content-free probes, the authentication mode,
+and the single-use OIDC start and callback are open. Bearer values are never
+accepted in URLs or bodies and never enter logs. PTY and preview redemption
+require their short-lived scoped tickets, which act as the principal that
+minted them; no credential is forwarded to a Capsule or preview.
 
 In team mode (ADR 0046) the caller is a member signed in through the
 operator's OIDC issuer, holding a session cookie. The installation bearer is
@@ -864,18 +864,22 @@ wakes a paused Capsule or counts as activity.
 
 A Capsule must not be able to modify control-plane audit records. Record authenticated lifecycle, credential, policy, ingress, and delivery actions with timestamps and stable object identities in append-oriented storage. Minimize secret and source content in audit records. Clock, retention, export, and integrity controls must match deployment assurance requirements.
 
+The audit log (ADR 0046) is an append-only record of actor, action, object,
+and result. It covers sign-in, sign-out, session and token changes, the
+claim, membership changes, break-glass use, secret and connection changes,
+Project credential grants, Delivery and spawn decisions, grant changes,
+departed-member transfer and delete, and every denied cross-owner access. A
+trigger refuses updates and no API edits or deletes a record; only the
+retention sweep deletes, oldest first. It holds no content.
+
 Coordination records content-free events for grant creation, revocation, and
 expiry; link creation, reports, report delivery, and closing; forwarded
 messages (with their size); and refused requests (with their kind and code).
 They carry identifiers, codes, and sizes, never prompts, reports, or subagent
 names.
 
-Team mode (ADR 0046) adds an append-only audit record of actor, action,
-object, and result for sign-in, session and token changes, the claim, role
-and membership changes, break-glass use, secret and connection changes,
-Project credential grants, Delivery and spawn approvals, grant changes, and
-denied cross-owner access. It holds no content. Anyone who can write the
-database can still alter it; deployments that need integrity export it.
+Anyone who can write the database can still alter the audit log;
+deployments that need integrity export it.
 
 ### Residual data and incomplete teardown
 
@@ -887,9 +891,12 @@ These are architecture requirements, including accepted target requirements;
 they are not a statement that every planned path is already implemented.
 
 - Untrusted Capsule code never receives the host container-runtime socket or control-plane/provider administrator credentials.
-- The target public REST/SSE and ticket-mint surface requires the
-  single-principal installation bearer; only content-free probes are open, and
-  PTY/preview redemption remains ticket-scoped.
+- The public REST/SSE and ticket-mint surface requires a credential: the
+  installation bearer or its browser cookie in single-user mode; a member's
+  session cookie or personal access token in team mode, where the
+  installation bearer is break-glass only. Only content-free probes, the mode,
+  and the OIDC start and callback are open, and PTY/preview redemption stays
+  ticket-scoped.
 - Authorization and policy are checked at the control plane for every object and privileged action; Meridian does not claim RBAC or multi-tenant isolation.
 - Team mode (ADR 0046): every object has exactly one owner, stamped at
   create. Authorization runs in `internal/app` and fails closed without a
@@ -1165,8 +1172,8 @@ until revoked in ChatGPT. Controls:
   URL and their 24-hour lease, exactly as for API-key connections.
 - The daemon alone holds the PKCE verifier, `state`, and `nonce`, so a
   callback code relayed by the CLI or pasted from the browser cannot be
-  redeemed by anyone else. Only the installation principal can start or
-  complete sign-in. The ID token is verified against OpenAI's JWKS before
+  redeemed by anyone else. A sign-in completes only for the user who started
+  it, and writes only that user's connection. The ID token is verified against OpenAI's JWKS before
   anything is stored.
 - Tokens are sealed in the credential-KEK connection envelope, bound to the
   connection, its type, the issued client ID, and a credential generation
@@ -1183,9 +1190,9 @@ until revoked in ChatGPT. Controls:
   Another local process could race for the port and receive the callback,
   but without the daemon's verifier it cannot redeem the code.
 - OpenAI's terms require that tokens stay under the account holder's
-  control and are not shared. Meridian is single-principal but cannot prove
-  who controls an installation, so a shared or hosted installation using
-  one person's ChatGPT login is a documented operator violation, not a
+  control and are not shared. In single-user mode Meridian cannot prove who
+  controls an installation, so a shared or hosted single-user installation
+  using one person's ChatGPT login is a documented operator violation, not a
   prevented one. In team mode (ADR 0046) a connection belongs to the user
   who signed in and can be granted only to that user's Projects, so a shared
   login is refused rather than documented.
@@ -1231,10 +1238,8 @@ explains this difference. Both paths use the same authoritative server validatio
 
 ## Team mode and per-user identity
 
-ADR 0046 is implemented in part (see "Status and scope"). This section is
-the set of requirements team mode must meet. Items not yet implemented are
-marked; until they are, team mode must not be described as complete.
-Single-user mode keeps the model described in the rest of this document.
+ADR 0046 is implemented. This section is the set of threats and controls
+specific to team mode. Single-user mode keeps the one-principal model.
 
 Team mode serves one team from one installation. Teammates are
 authenticated members who must not see each other's work. They are not
@@ -1282,6 +1287,13 @@ Threats and required controls:
 - **Admin overreach.** The admin role manages membership and reads audit. It
   cannot read or change other users' objects. No "see everything" role
   exists.
+- **Departed-member transfer.** Only the break-glass bearer moves or deletes a
+  disabled member's work. Owners are immutable in the schema except for that
+  transfer, which a per-transaction marker row authorizes for exactly one
+  source and target. Secret envelopes are re-wrapped for the new owner.
+  Provider connections never move, since a personal login stays with its
+  holder; Project grants of them are dropped. Deletion crypto-shreds secrets
+  and revokes connections, but older backups still hold the ciphertext.
 - **Session theft and CSRF.** Session cookies are 256-bit random, stored as
   digests, `HttpOnly`, `SameSite=Strict`, `Secure` off loopback, and
   `__Host-` prefixed over TLS. They have idle and absolute expiry and can be

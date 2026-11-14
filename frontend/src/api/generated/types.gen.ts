@@ -5853,6 +5853,95 @@ export type RevokeMemberCredentialsResponses = {
 
 export type RevokeMemberCredentialsResponse = RevokeMemberCredentialsResponses[keyof RevokeMemberCredentialsResponses];
 
+export type TransferMemberObjectsData = {
+    body: {
+        toUserId: string;
+    };
+    path: {
+        userId: string;
+    };
+    query?: never;
+    url: '/users/{userId}/transfer';
+};
+
+export type TransferMemberObjectsErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Missing or invalid installation authentication
+     */
+    401: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type TransferMemberObjectsError = TransferMemberObjectsErrors[keyof TransferMemberObjectsErrors];
+
+export type TransferMemberObjectsResponses = {
+    /**
+     * Moved
+     */
+    204: void;
+};
+
+export type TransferMemberObjectsResponse = TransferMemberObjectsResponses[keyof TransferMemberObjectsResponses];
+
+export type DeleteMemberObjectsData = {
+    body?: never;
+    path: {
+        userId: string;
+    };
+    query?: never;
+    url: '/users/{userId}/delete-objects';
+};
+
+export type DeleteMemberObjectsErrors = {
+    /**
+     * Missing or invalid installation authentication
+     */
+    401: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type DeleteMemberObjectsError = DeleteMemberObjectsErrors[keyof DeleteMemberObjectsErrors];
+
+export type DeleteMemberObjectsResponses = {
+    /**
+     * What was deleted or started
+     */
+    200: {
+        projects: number;
+        secrets: number;
+        connections: number;
+        setups: number;
+    };
+};
+
+export type DeleteMemberObjectsResponse = DeleteMemberObjectsResponses[keyof DeleteMemberObjectsResponses];
+
 export type SetMemberRoleData = {
     body: {
         role: 'member' | 'admin';

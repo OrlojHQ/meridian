@@ -20,6 +20,8 @@ import (
 // row is written directly, as the membership step will.
 type twoOwners struct {
 	service *app.Service
+	store   *sqlite.Store
+	key     *secrets.InstallationKey
 	alice   context.Context
 	bob     context.Context
 }
@@ -53,7 +55,7 @@ func newTwoOwners(t *testing.T) twoOwners {
 	if !ok {
 		t.Fatal("Bob principal")
 	}
-	return twoOwners{service: service, alice: ctx, bob: principal.With(context.Background(), bob)}
+	return twoOwners{service: service, store: store, key: key, alice: ctx, bob: principal.With(context.Background(), bob)}
 }
 
 func TestAnotherOwnersObjectsDoNotExist(t *testing.T) {
