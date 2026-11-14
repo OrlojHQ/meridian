@@ -14,6 +14,7 @@ import (
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/httpapi"
 	"github.com/OrlojHQ/meridian/internal/ports"
+	"github.com/OrlojHQ/meridian/internal/principal"
 	"github.com/OrlojHQ/meridian/internal/store/sqlite"
 	"github.com/OrlojHQ/meridian/internal/transcripts"
 	"github.com/OrlojHQ/meridian/pkg/client"
@@ -46,7 +47,7 @@ func (idleCoordination) NotifyCoordination(context.Context, string, coordproto.N
 }
 
 func TestCoordinationRoutes(t *testing.T) {
-	ctx := context.Background()
+	ctx := principal.With(context.Background(), principal.Owner())
 	store, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {
 		t.Fatal(err)

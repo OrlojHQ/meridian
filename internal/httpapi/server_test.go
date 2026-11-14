@@ -22,6 +22,7 @@ import (
 	"github.com/OrlojHQ/meridian/internal/httpapi"
 	"github.com/OrlojHQ/meridian/internal/observability"
 	"github.com/OrlojHQ/meridian/internal/ports"
+	"github.com/OrlojHQ/meridian/internal/principal"
 	"github.com/OrlojHQ/meridian/internal/store/sqlite"
 	fake "github.com/OrlojHQ/meridian/internal/testutil/fakeprovider"
 	"github.com/OrlojHQ/meridian/internal/transcripts"
@@ -671,7 +672,7 @@ func waitState(
 }
 
 func TestHarnessCatalogInteractionModes(t *testing.T) {
-	ctx := context.Background()
+	ctx := principal.With(context.Background(), principal.Owner())
 	store, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {
 		t.Fatal(err)

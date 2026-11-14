@@ -16,6 +16,7 @@ import (
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/harnesssetup"
 	"github.com/OrlojHQ/meridian/internal/httpapi"
+	"github.com/OrlojHQ/meridian/internal/principal"
 	"github.com/OrlojHQ/meridian/internal/secrets"
 	"github.com/OrlojHQ/meridian/internal/store/sqlite"
 )
@@ -36,7 +37,7 @@ type discardQueue struct{}
 func (discardQueue) Enqueue(context.Context, domain.CapsuleID) error { return nil }
 
 func TestCapsuleReportsPinnedHarnessSetup(t *testing.T) {
-	ctx := context.Background()
+	ctx := principal.With(context.Background(), principal.Owner())
 	db, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {
 		t.Fatal(err)

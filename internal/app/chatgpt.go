@@ -19,6 +19,7 @@ import (
 	"github.com/OrlojHQ/meridian/internal/chatgptauth"
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/ports"
+	"github.com/OrlojHQ/meridian/internal/principal"
 	"github.com/OrlojHQ/meridian/internal/providergateway"
 )
 
@@ -63,6 +64,9 @@ type chatGPTAttempt struct {
 	attempt    chatgptauth.Attempt
 	connection string
 	completing bool
+	// starter is who began the attempt. The connection it writes is written
+	// as starter, including from the loopback callback relay.
+	starter principal.Principal
 }
 
 type chatGPTState struct {
@@ -161,6 +165,10 @@ func (s *Service) chatGPTHostID() (string, error) {
 // also accepts the browser's loopback callback itself; the attempt can always
 // be completed by CompleteChatGPTSignIn instead.
 func (s *Service) StartChatGPTSignIn(ctx context.Context, connectionID string, listen bool) (ChatGPTSignIn, error) {
+	starter, err := principal.Require(ctx)
+	if err != nil {
+		return ChatGPTSignIn{}, err
+	}
 	if !s.ChatGPTAvailable() {
 		return ChatGPTSignIn{}, domain.ErrUnsupported
 	}
@@ -196,7 +204,7 @@ func (s *Service) StartChatGPTSignIn(ctx context.Context, connectionID string, l
 		return ChatGPTSignIn{}, fmt.Errorf("%w: too many ChatGPT sign-ins in progress", domain.ErrConflict)
 	}
 	item := &chatGPTAttempt{
-		attempt: attempt, connection: connectionID,
+		attempt: attempt, connection: connectionID, starter: starter,
 		view: ChatGPTSignIn{
 			ID: s.ids.NewID(), AuthorizationURL: state.client.AuthorizationURL(attempt, hostID, loginHint),
 			RedirectURI: chatgptauth.RedirectURI, ExpiresAt: now.Add(chatGPTAttemptTTL), State: ChatGPTSignInPending,
@@ -213,7 +221,10 @@ func (s *Service) StartChatGPTSignIn(ctx context.Context, connectionID string, l
 }
 
 // ChatGPTSignInStatus returns an attempt's current view.
-func (s *Service) ChatGPTSignInStatus(id string) (ChatGPTSignIn, error) {
+func (s *Service) ChatGPTSignInStatus(ctx context.Context, id string) (ChatGPTSignIn, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return ChatGPTSignIn{}, err
+	}
 	if s.chatgpt == nil {
 		return ChatGPTSignIn{}, domain.ErrUnsupported
 	}
@@ -230,6 +241,9 @@ func (s *Service) ChatGPTSignInStatus(id string) (ChatGPTSignIn, error) {
 // CompleteChatGPTSignIn finishes an attempt from the redirected callback URL,
 // pasted by the user or relayed by the CLI.
 func (s *Service) CompleteChatGPTSignIn(ctx context.Context, id, callbackURL string) (ChatGPTSignIn, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return ChatGPTSignIn{}, err
+	}
 	if s.chatgpt == nil {
 		return ChatGPTSignIn{}, domain.ErrUnsupported
 	}
@@ -268,6 +282,7 @@ func (s *Service) completeChatGPT(ctx context.Context, match func(*chatGPTAttemp
 	}
 	item.completing = true
 	attempt, connectionID := item.attempt, item.connection
+	ctx = principal.With(ctx, item.starter)
 	state.mu.Unlock()
 
 	set, err := state.client.Complete(ctx, attempt, callback)

@@ -28,6 +28,9 @@ type promoteOutcome struct {
 func (s *Service) PromoteCapsule(
 	ctx context.Context, id domain.CapsuleID, expected domain.ResourceVersion, detach bool, key string,
 ) (domain.Capsule, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.Capsule{}, err
+	}
 	if expected <= 0 {
 		return domain.Capsule{}, fmt.Errorf("%w: expected resource version is required", domain.ErrInvalid)
 	}
@@ -125,6 +128,9 @@ func (s *Service) PromoteCapsule(
 // the link. It never sends a message and never deletes a transcript; a
 // workspace with unsaved changes is left to idle pause (ADR 0019).
 func (s *Service) SweepArchivableSubagents(ctx context.Context) {
+	if requirePrincipal(ctx) != nil {
+		return
+	}
 	if !s.CoordinationSupported() {
 		return
 	}

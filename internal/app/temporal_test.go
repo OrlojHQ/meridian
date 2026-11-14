@@ -121,7 +121,7 @@ func (p *setupCacheProvider) Get(ctx context.Context, id string) (ports.Provider
 }
 
 func TestTemporalCaptureDescendantsRewindAndSeal(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(operatorContext())
 	defer cancel()
 	store, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {
@@ -256,7 +256,7 @@ func TestTemporalCaptureDescendantsRewindAndSeal(t *testing.T) {
 }
 
 func TestSetupMomentCacheReuseIsolationAndFailureSemantics(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(operatorContext())
 	defer cancel()
 	store, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {
@@ -491,7 +491,7 @@ func waitFailed(t *testing.T, service *app.Service, id domain.CapsuleID) domain.
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		capsule, err := service.GetCapsule(context.Background(), id)
+		capsule, err := service.GetCapsule(operatorContext(), id)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -526,7 +526,7 @@ func readManifest(
 	moment domain.Moment,
 ) (decodedMomentManifest, []byte) {
 	t.Helper()
-	reader, size, err := store.Open(context.Background(), moment.ManifestSHA256)
+	reader, size, err := store.Open(operatorContext(), moment.ManifestSHA256)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -572,7 +572,7 @@ func waitReady(t *testing.T, service *app.Service, id domain.CapsuleID) domain.C
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		capsule, err := service.GetCapsule(context.Background(), id)
+		capsule, err := service.GetCapsule(operatorContext(), id)
 		if err != nil {
 			t.Fatal(err)
 		}

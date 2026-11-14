@@ -15,6 +15,7 @@ import (
 	"github.com/OrlojHQ/meridian/internal/daemon"
 	"github.com/OrlojHQ/meridian/internal/datadir"
 	"github.com/OrlojHQ/meridian/internal/domain"
+	"github.com/OrlojHQ/meridian/internal/principal"
 	"github.com/OrlojHQ/meridian/internal/store/sqlite"
 	fake "github.com/OrlojHQ/meridian/internal/testutil/fakeprovider"
 )
@@ -76,7 +77,7 @@ type holdQueue struct{}
 func (holdQueue) Enqueue(context.Context, domain.CapsuleID) error { return nil }
 
 func TestRestartRecoversPersistedNonterminalCapsule(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(principal.With(context.Background(), principal.Owner()))
 	defer cancel()
 	directory := t.TempDir()
 	ids := &recoveryIDs{}

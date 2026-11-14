@@ -18,6 +18,9 @@ func (s *Service) ListWorkspaceFiles(
 	filePath, after string,
 	limit int,
 ) (ports.WorkspaceFilePage, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return ports.WorkspaceFilePage{}, err
+	}
 	if s.browser == nil {
 		return ports.WorkspaceFilePage{}, domain.ErrUnsupported
 	}
@@ -42,6 +45,9 @@ func (s *Service) ReadWorkspaceFile(
 	capsuleID domain.CapsuleID,
 	filePath string,
 ) (ports.WorkspaceFile, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return ports.WorkspaceFile{}, err
+	}
 	if s.browser == nil {
 		return ports.WorkspaceFile{}, domain.ErrUnsupported
 	}
@@ -92,6 +98,9 @@ func (s *Service) ExportWorkspace(
 	ctx context.Context,
 	capsuleID domain.CapsuleID,
 ) (WorkspaceExport, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return WorkspaceExport{}, err
+	}
 	if s.snapshotter == nil {
 		return WorkspaceExport{}, domain.ErrUnsupported
 	}

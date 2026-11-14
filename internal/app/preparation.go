@@ -241,6 +241,9 @@ func (r *Reconciler) publishPreparation(ctx context.Context, c domain.Capsule, p
 	})
 }
 func (s *Service) GetPreparation(ctx context.Context, id domain.CapsuleID) (domain.Preparation, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.Preparation{}, err
+	}
 	var p domain.Preparation
 	err := s.store.View(ctx, func(reader ports.Reader) error { var err error; p, err = reader.GetPreparation(ctx, id); return err })
 	return p, err

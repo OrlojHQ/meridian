@@ -30,7 +30,7 @@ func (p setupFailingProvider) Create(
 }
 
 func TestDeletingACapsuleWhoseSetupFailedRemovesItsResources(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(operatorContext())
 	defer cancel()
 	store, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {
@@ -79,7 +79,7 @@ func waitForCapsuleState(
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		capsule, err := service.GetCapsule(context.Background(), id)
+		capsule, err := service.GetCapsule(operatorContext(), id)
 		if err != nil {
 			t.Fatal(err)
 		}

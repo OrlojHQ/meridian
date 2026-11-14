@@ -17,7 +17,7 @@ import (
 )
 
 func TestProjectThreadProvisioningPromotionReplayAndFailure(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	store, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -138,7 +138,7 @@ func TestProjectThreadProvisioningPromotionReplayAndFailure(t *testing.T) {
 }
 
 func TestProjectThreadWithoutPromptStartsIdle(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	store, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -211,7 +211,7 @@ func TestProjectThreadWithoutPromptStartsIdle(t *testing.T) {
 }
 
 func TestProjectThreadRecoveryPromotesWithoutSending(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	store, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -260,7 +260,7 @@ func TestProjectThreadRecoveryPromotesWithoutSending(t *testing.T) {
 }
 
 func TestCreateProjectThreadAllowlistsHarnessImage(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	store, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -307,7 +307,7 @@ func TestCreateProjectThreadAllowlistsHarnessImage(t *testing.T) {
 }
 
 func TestCreateProjectThreadRejectsNativeOnlyPackBeforeProvisioning(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	store, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -412,7 +412,7 @@ func TestCreateProjectThreadRejectsNativeOnlyPackBeforeProvisioning(t *testing.T
 }
 
 func TestCreateCapsuleForHarnessRejectsStructuredOnlyPackBeforeProvisioning(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	store, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {
 		t.Fatal(err)

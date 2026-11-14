@@ -1,7 +1,6 @@
 package app_test
 
 import (
-	"context"
 	"errors"
 	"github.com/OrlojHQ/meridian/internal/app"
 	"github.com/OrlojHQ/meridian/internal/domain"
@@ -15,7 +14,7 @@ import (
 )
 
 func TestSetupsPinDefaultsAndRollback(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	db, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {
 		t.Fatal(err)

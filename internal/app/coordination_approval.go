@@ -75,6 +75,9 @@ func (s *Service) UpdateCoordinationGrant(
 	patch domain.CoordinationGrantPatch,
 	key string,
 ) (domain.CoordinationGrant, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.CoordinationGrant{}, err
+	}
 	if expected <= 0 {
 		return domain.CoordinationGrant{}, fmt.Errorf("%w: expected resource version is required", domain.ErrInvalid)
 	}
@@ -150,6 +153,9 @@ func (s *Service) validateGrantHarnesses(ctx context.Context, reader ports.Reade
 func (s *Service) ListCoordinationRequests(
 	ctx context.Context, state domain.CoordinationRequestState,
 ) ([]domain.CoordinationRequest, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return nil, err
+	}
 	if state == "" {
 		state = domain.RequestPendingApproval
 	}
@@ -171,6 +177,9 @@ func (s *Service) ListCoordinationRequests(
 func (s *Service) GetCoordinationRequest(
 	ctx context.Context, id domain.CoordinationRequestID,
 ) (domain.CoordinationRequest, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.CoordinationRequest{}, err
+	}
 	var request domain.CoordinationRequest
 	err := s.store.View(ctx, func(reader ports.Reader) error {
 		var err error
@@ -185,6 +194,9 @@ func (s *Service) GetCoordinationRequest(
 func (s *Service) ApproveCoordinationRequest(
 	ctx context.Context, id domain.CoordinationRequestID, expected domain.ResourceVersion, key string,
 ) (domain.CoordinationRequest, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.CoordinationRequest{}, err
+	}
 	request, _, err := s.decideCoordinationRequest(ctx, id, expected, key, true)
 	return request, err
 }
@@ -194,6 +206,9 @@ func (s *Service) ApproveCoordinationRequest(
 func (s *Service) DenyCoordinationRequest(
 	ctx context.Context, id domain.CoordinationRequestID, expected domain.ResourceVersion, key string,
 ) (domain.CoordinationRequest, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.CoordinationRequest{}, err
+	}
 	request, _, err := s.decideCoordinationRequest(ctx, id, expected, key, false)
 	return request, err
 }

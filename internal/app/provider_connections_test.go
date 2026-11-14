@@ -29,7 +29,7 @@ type connectionQueue struct{}
 
 func (connectionQueue) Enqueue(context.Context, domain.CapsuleID) error { return nil }
 func TestProviderGrantsAndEncryptedRevocation(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	db, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -119,7 +119,7 @@ func TestProviderGrantsAndEncryptedRevocation(t *testing.T) {
 
 func newConnectionService(t *testing.T, allowPrivateHTTP bool) (*Service, *sqlite.Store, domain.Project, domain.Capsule) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := operatorContext()
 	db, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -156,7 +156,7 @@ func newConnectionService(t *testing.T, allowPrivateHTTP bool) (*Service, *sqlit
 }
 
 func TestCustomEndpointConnectionValidation(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	if err := NewService(nil, connectionClock{}, &connectionIDs{}, connectionQueue{}).ConfigureProviderGateway("", true); err == nil {
 		t.Fatal("private HTTP accepted without a gateway")
 	}
@@ -207,7 +207,7 @@ func TestCustomEndpointConnectionValidation(t *testing.T) {
 }
 
 func TestCustomEndpointGrantsAndRuntimeLease(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	s, db, project, capsule := newConnectionService(t, true)
 	openai, err := s.PutProviderConnection(ctx, "", ConnectionInput{Name: "vLLM", Provider: "openai-compatible", BaseURL: "https://vllm.example", APIKey: "local-secret-key"})
 	if err != nil {
@@ -296,7 +296,7 @@ func TestCustomEndpointGrantsAndRuntimeLease(t *testing.T) {
 }
 
 func TestLocalProviderGatewayCarriesTrust(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	db, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -373,7 +373,7 @@ func TestLocalProviderGatewayCarriesTrust(t *testing.T) {
 }
 
 func TestClaudeLoginIsCiphertextAndStaysOutOfTheCapsule(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	const login = "sk-ant-oat-claude-login-canary"
 	const codexKey = "codex-upstream-key-canary"
 	dataDir := t.TempDir()

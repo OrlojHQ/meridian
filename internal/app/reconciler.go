@@ -9,6 +9,7 @@ import (
 
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/ports"
+	"github.com/OrlojHQ/meridian/internal/principal"
 	"github.com/OrlojHQ/meridian/internal/secrets"
 	"go.opentelemetry.io/otel"
 )
@@ -139,7 +140,10 @@ func (r *Reconciler) Enqueue(ctx context.Context, id domain.CapsuleID) error {
 	}
 }
 
+// Start runs the reconcile worker as the system principal: it acts on one
+// Capsule at a time for whoever owns it, and no request reaches it directly.
 func (r *Reconciler) Start(ctx context.Context) {
+	ctx = principal.WithSystem(ctx)
 	r.wg.Add(1)
 	go func() {
 		defer r.wg.Done()
@@ -158,6 +162,7 @@ func (r *Reconciler) Start(ctx context.Context) {
 }
 
 func (r *Reconciler) Recover(ctx context.Context) error {
+	ctx = principal.WithSystem(ctx)
 	var capsules []domain.Capsule
 	if err := r.store.View(ctx, func(reader ports.Reader) error {
 		var err error

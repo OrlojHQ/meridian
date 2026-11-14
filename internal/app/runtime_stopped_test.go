@@ -29,7 +29,7 @@ type restartHarness struct {
 // daemon's runtime-recovery hook, and returns a Ready Capsule.
 func newRestartHarness(t *testing.T) *restartHarness {
 	t.Helper()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(operatorContext())
 	t.Cleanup(cancel)
 	store, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {
@@ -68,7 +68,7 @@ func (h *restartHarness) await(
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	for {
-		capsule, err := h.service.GetCapsule(context.Background(), id)
+		capsule, err := h.service.GetCapsule(operatorContext(), id)
 		if err == nil && done(capsule) {
 			return capsule
 		}
@@ -84,7 +84,7 @@ func (h *restartHarness) await(
 func (h *restartHarness) stopAndRecheck(t *testing.T, reason string) {
 	t.Helper()
 	h.provider.Stop(h.resourceID(), reason)
-	if err := h.recon.Enqueue(context.Background(), h.capsule.ID); err != nil {
+	if err := h.recon.Enqueue(operatorContext(), h.capsule.ID); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -104,7 +104,7 @@ func (h *restartHarness) awaitRestarted(t *testing.T) domain.Capsule {
 }
 
 func TestReconcilerRestartsStoppedRuntimeAndFailsItsLostRun(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	h := newRestartHarness(t)
 	run, err := h.service.StartRun(ctx, h.capsule.ID, "mock", "prompt", "start-restart", 0, 0)
 	if err != nil || run.State != domain.RunRunning {
@@ -169,7 +169,7 @@ func TestReconcilerFailsCapsuleWhoseStoppedRuntimeCannotStart(t *testing.T) {
 }
 
 func TestPausedCapsuleWithStoppedRuntimeStaysPausedAndResumes(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	h := newRestartHarness(t)
 	paused, err := h.service.PauseCapsule(ctx, h.capsule.ID, h.capsule.ResourceVersion, "pause")
 	if err != nil {
@@ -199,7 +199,7 @@ func TestPausedCapsuleWithStoppedRuntimeStaysPausedAndResumes(t *testing.T) {
 }
 
 func TestRuntimeRefreshFailsRunWhoseRuntimeStoppedAndRechecksCapsule(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	store, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -230,7 +230,7 @@ func TestRuntimeRefreshFailsRunWhoseRuntimeStoppedAndRechecksCapsule(t *testing.
 }
 
 func TestRuntimeRefreshFailsStructuredRunWhoseRuntimeStopped(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	store, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -311,7 +311,7 @@ func assertQueued(t *testing.T, queue *recordingQueue, id domain.CapsuleID) {
 // Agent Sandbox restarts Pods itself and reports the runtime as preparing
 // while it comes back; a re-check must not fail the Capsule.
 func TestReadyCapsuleStaysReadyWhileProviderRestartsItsRuntime(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	h := newRestartHarness(t)
 	h.provider.Set(h.resourceID(), ports.ProviderPreparing, "")
 	if err := h.recon.Enqueue(ctx, h.capsule.ID); err != nil {
