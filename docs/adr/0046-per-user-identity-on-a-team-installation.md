@@ -125,8 +125,13 @@ needs both the token and the identity. After the claim, every existing row
 belongs to that person. The claim can be made only once. Moving the
 bootstrap identity later is a break-glass admin action.
 
-Break-glass recovery starts an OIDC ceremony for an existing member (including
-that bootstrap owner) and returns an opaque completion token to the operator.
+The break-glass recovery applies to the bootstrap owner only. Rebinding
+any other member would let the installation bearer's holder sign in as that
+member, which the bearer must never be able to do. Before the identity
+changes, the owner's personal Claude and ChatGPT logins are revoked, since a
+personal login stays with its account holder (ADR 0038); API-key connections
+stay. Recovery starts an OIDC ceremony and returns an opaque completion token
+to the operator.
 The daemon keeps only its digest, the target's original identity, and a
 ten-minute expiry in memory. The OIDC callback validates the replacement
 identity through the configured issuer and group policy; it creates neither a

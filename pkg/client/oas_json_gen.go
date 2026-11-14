@@ -1532,6 +1532,82 @@ func (s *AuthenticationModeMode) UnmarshalJSON(data []byte) error {
 	return s.Decode(d)
 }
 
+// Encode encodes BeginMemberIdentityRebindBadRequest as json.
+func (s *BeginMemberIdentityRebindBadRequest) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes BeginMemberIdentityRebindBadRequest from json.
+func (s *BeginMemberIdentityRebindBadRequest) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode BeginMemberIdentityRebindBadRequest to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = BeginMemberIdentityRebindBadRequest(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *BeginMemberIdentityRebindBadRequest) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *BeginMemberIdentityRebindBadRequest) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes BeginMemberIdentityRebindNotFound as json.
+func (s *BeginMemberIdentityRebindNotFound) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes BeginMemberIdentityRebindNotFound from json.
+func (s *BeginMemberIdentityRebindNotFound) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode BeginMemberIdentityRebindNotFound to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = BeginMemberIdentityRebindNotFound(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *BeginMemberIdentityRebindNotFound) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *BeginMemberIdentityRebindNotFound) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
 // Encode implements json.Marshaler.
 func (s *BoardItem) Encode(e *jx.Encoder) {
 	e.ObjStart()

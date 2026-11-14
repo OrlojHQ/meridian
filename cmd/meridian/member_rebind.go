@@ -13,11 +13,14 @@ import (
 func newMemberRebindCommand(config *cliConfig) *cobra.Command {
 	return &cobra.Command{
 		Use:   "rebind-identity USER_ID",
-		Short: "Recover a member with a new OIDC identity (break-glass only)",
-		Long: "Use the installation token to start recovery, then open the displayed URL\n" +
-			"and sign in as the replacement identity. Recovery preserves the member's\n" +
-			"objects and role, revokes their old sessions and tokens, and is audited.\n" +
-			"The replacement identity must not already belong to another member.",
+		Short: "Move the bootstrap owner to a new OIDC identity (break-glass only)",
+		Long: "Use the installation token to start recovery of the bootstrap owner\n" +
+			"(usr_bootstrap_owner), then open the displayed URL and sign in as the\n" +
+			"replacement identity. Only the bootstrap owner can be recovered; disable\n" +
+			"and transfer anyone else. Recovery revokes the owner's personal Claude and\n" +
+			"ChatGPT logins, preserves their objects and role, revokes their old sessions\n" +
+			"and tokens, and is audited. The replacement identity must not already\n" +
+			"belong to another member.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(command *cobra.Command, args []string) error {
 			api, err := newAPI(config)

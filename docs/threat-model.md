@@ -1284,7 +1284,12 @@ Threats and required controls:
   installation bearer in the same session, happens once, and is audited.
   Until the claim, other OIDC sign-ins are refused.
 - **Identity recovery hijack.** A member tries to replace the bootstrap
-  owner's identity or transplant another member's identity. Recovery requires
+  owner's identity or transplant another member's identity, or the
+  installation bearer's holder tries to sign in as a teammate. Only the
+  bootstrap owner can be recovered: rebinding any other member would hand
+  their objects to the bearer's holder, so it is refused. The owner's personal
+  Claude and ChatGPT logins are revoked before the identity changes, and a
+  failed revocation stops the recovery. Recovery requires
   break-glass authority at both start and completion plus an OIDC-verified
   identity from the pinned issuer and group policy. The callback cannot
   create a user or session. A ten-minute, single-use completion token is

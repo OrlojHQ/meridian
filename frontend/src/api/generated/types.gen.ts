@@ -5885,6 +5885,10 @@ export type BeginMemberIdentityRebindData = {
 
 export type BeginMemberIdentityRebindErrors = {
     /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
      * Missing or invalid installation authentication
      */
     401: ErrorEnvelope;

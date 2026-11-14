@@ -628,6 +628,14 @@ func (s *BearerAuth) SetRoles(val []string) {
 	s.Roles = val
 }
 
+type BeginMemberIdentityRebindBadRequest ErrorEnvelope
+
+func (*BeginMemberIdentityRebindBadRequest) beginMemberIdentityRebindRes() {}
+
+type BeginMemberIdentityRebindNotFound ErrorEnvelope
+
+func (*BeginMemberIdentityRebindNotFound) beginMemberIdentityRebindRes() {}
+
 // Content-free status of one Capsule and its primary Thread.
 // Ref: #/components/schemas/BoardItem
 type BoardItem struct {
@@ -5084,7 +5092,6 @@ func (s *ErrorEnvelope) SetError(val APIError) {
 
 func (*ErrorEnvelope) attachRunWebSocketRes()        {}
 func (*ErrorEnvelope) beginDeviceLoginRes()          {}
-func (*ErrorEnvelope) beginMemberIdentityRebindRes() {}
 func (*ErrorEnvelope) claimInstallationRes()         {}
 func (*ErrorEnvelope) createRunAttachTicketRes()     {}
 func (*ErrorEnvelope) getCapsuleRes()                {}

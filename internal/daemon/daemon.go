@@ -517,6 +517,12 @@ func run(ctx context.Context, config Config) error {
 	api.SetIdentity(identity)
 	// A disabled member's Capsules lose model traffic at once: every gateway
 	// lease from their connections ends (ADR 0046).
+	// Recovering the bootstrap owner's identity first revokes their personal
+	// Claude and ChatGPT logins, which stay with their holder (ADR 0038).
+	identity.OnIdentityRebinding(func(ctx context.Context, user domain.UserID) error {
+		_, err := service.RevokePersonalLogins(principal.WithSystem(ctx), user)
+		return err
+	})
 	identity.OnMemberDisabled(func(ctx context.Context, user domain.UserID) {
 		if err := service.RevokeOwnerLeases(principal.WithSystem(ctx), user); err != nil {
 			config.Logger.Printf("revoke a disabled member's gateway leases: %v", err)
