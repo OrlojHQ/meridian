@@ -29,6 +29,7 @@ type testIssuer struct {
 	nonce     string
 	audience  string
 	groups    []string
+	polls     int
 }
 
 func newTestIssuer(t *testing.T) *testIssuer {
@@ -45,6 +46,7 @@ func newTestIssuer(t *testing.T) *testIssuer {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"issuer": issuer.server.URL, "authorization_endpoint": issuer.server.URL + "/authorize",
 			"token_endpoint": issuer.server.URL + "/token", "jwks_uri": issuer.server.URL + "/jwks",
+			"device_authorization_endpoint":         issuer.server.URL + "/device",
 			"id_token_signing_alg_values_supported": []string{"RS256"},
 		})
 	})
@@ -53,18 +55,50 @@ func newTestIssuer(t *testing.T) *testIssuer {
 			Key: &key.PublicKey, KeyID: "key", Algorithm: "RS256", Use: "sig",
 		}}})
 	})
+	mux.HandleFunc("POST /device", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"device_code": "device-code", "user_code": "ABCD-EFGH",
+			"verification_uri": issuer.server.URL + "/activate", "interval": 5, "expires_in": 600,
+		})
+	})
 	mux.HandleFunc("POST /token", func(w http.ResponseWriter, r *http.Request) {
-		if err := r.ParseForm(); err != nil || r.Form.Get("code") != "code" {
-			http.Error(w, `{"error":"invalid_grant"}`, http.StatusBadRequest)
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, `{"error":"invalid_request"}`, http.StatusBadRequest)
 			return
 		}
-		digest := sha256.Sum256([]byte(r.Form.Get("code_verifier")))
 		issuer.mu.Lock()
 		challenge, nonce, audience, groups := issuer.challenge, issuer.nonce, issuer.audience, issuer.groups
+		device := r.Form.Get("grant_type") == "urn:ietf:params:oauth:grant-type:device_code"
+		if device {
+			issuer.polls++
+		}
+		polls := issuer.polls
 		issuer.mu.Unlock()
-		if base64.RawURLEncoding.EncodeToString(digest[:]) != challenge {
-			http.Error(w, `{"error":"invalid_grant"}`, http.StatusBadRequest)
-			return
+		if device {
+			w.Header().Set("Content-Type", "application/json")
+			if r.Form.Get("device_code") != "device-code" {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"error":"expired_token"}`))
+				return
+			}
+			switch polls {
+			case 1:
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"error":"authorization_pending"}`))
+				return
+			case 2:
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"error":"slow_down"}`))
+				return
+			}
+			nonce = ""
+		} else {
+			digest := sha256.Sum256([]byte(r.Form.Get("code_verifier")))
+			if r.Form.Get("code") != "code" || base64.RawURLEncoding.EncodeToString(digest[:]) != challenge {
+				http.Error(w, `{"error":"invalid_grant"}`, http.StatusBadRequest)
+				return
+			}
 		}
 		signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.RS256, Key: key},
 			(&jose.SignerOptions{}).WithHeader("kid", "key"))
@@ -72,11 +106,15 @@ func newTestIssuer(t *testing.T) *testIssuer {
 			t.Error(err)
 			return
 		}
-		claims, _ := json.Marshal(map[string]any{
-			"iss": issuer.server.URL, "sub": "subject-1", "aud": audience, "nonce": nonce,
+		fields := map[string]any{
+			"iss": issuer.server.URL, "sub": "subject-1", "aud": audience,
 			"exp": time.Now().Add(time.Hour).Unix(), "iat": time.Now().Unix(),
 			"email": "alice@example.com", "name": "Alice", "groups": groups,
-		})
+		}
+		if nonce != "" {
+			fields["nonce"] = nonce
+		}
+		claims, _ := json.Marshal(fields)
 		signed, err := signer.Sign(claims)
 		if err != nil {
 			t.Error(err)
@@ -191,5 +229,39 @@ func TestConfigRefusesInsecureURLs(t *testing.T) {
 	}
 	if _, err := New(Config{Issuer: "http://127.0.0.1:5556", ClientID: "c", RedirectURL: "http://localhost:8080/auth/oidc/callback"}); err != nil {
 		t.Fatalf("loopback development issuer refused: %v", err)
+	}
+}
+
+func TestDeviceSignInPollsUntilApproved(t *testing.T) {
+	issuer := newTestIssuer(t)
+	party, err := New(Config{
+		Issuer: issuer.server.URL, ClientID: "meridian", ClientSecret: "secret",
+		RedirectURL: "https://meridian.example/auth/oidc/callback",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	attempt, err := party.BeginDevice(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attempt.UserCode != "ABCD-EFGH" || attempt.DeviceCode != "device-code" || attempt.Interval != 5*time.Second {
+		t.Fatalf("attempt = %+v", attempt)
+	}
+	if _, err := party.PollDevice(ctx, attempt); !errors.Is(err, ErrDevicePending) {
+		t.Fatalf("first poll = %v", err)
+	}
+	if _, err := party.PollDevice(ctx, attempt); !errors.Is(err, ErrDeviceSlowDown) {
+		t.Fatalf("second poll = %v", err)
+	}
+	identity, err := party.PollDevice(ctx, attempt)
+	if err != nil || identity.Subject != "subject-1" || identity.Issuer != issuer.server.URL {
+		t.Fatalf("approved poll = %+v, %v", identity, err)
+	}
+	expired := attempt
+	expired.DeviceCode = "stale"
+	if _, err := party.PollDevice(ctx, expired); !errors.Is(err, ErrDenied) {
+		t.Fatalf("expired code = %v", err)
 	}
 }

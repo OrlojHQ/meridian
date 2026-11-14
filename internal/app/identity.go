@@ -56,6 +56,7 @@ type Identity struct {
 	mu       sync.Mutex
 	attempts map[string]signInAttempt
 	claims   map[[32]byte]pendingClaim
+	devices  map[[32]byte]*deviceLogin
 	disabled []MemberDisabled
 }
 
@@ -84,6 +85,7 @@ func NewIdentity(ctx context.Context, store ports.Store, clock ports.Clock, ids 
 	identity := &Identity{
 		store: newScopedStore(store, clock), clock: clock, ids: ids, provider: provider,
 		attempts: map[string]signInAttempt{}, claims: map[[32]byte]pendingClaim{},
+		devices: map[[32]byte]*deviceLogin{},
 	}
 	var installation domain.Installation
 	if err := identity.store.View(principal.WithSystem(ctx), func(reader ports.Reader) error {
@@ -194,37 +196,40 @@ func (i *Identity) signIn(ctx context.Context, verified oidcauth.Identity, now t
 	system := principal.WithSystem(ctx)
 	var token string
 	err := i.store.Transact(system, func(tx ports.Transaction) error {
-		installation, err := tx.GetInstallation(system)
+		user, err := i.memberTx(system, tx, verified, now)
 		if err != nil {
 			return err
-		}
-		if installation.Mode != domain.TeamMode || verified.Issuer != installation.OIDCIssuer {
-			return ErrSignInDenied
-		}
-		user, err := tx.GetUserByIdentity(system, verified.Issuer, verified.Subject)
-		switch {
-		case errors.Is(err, domain.ErrNotFound):
-			user = domain.User{
-				ID: domain.UserID("usr_" + i.ids.NewID()), Issuer: verified.Issuer, Subject: verified.Subject,
-				DisplayName: verified.Name, Email: verified.Email, Role: domain.UserMember, CreatedAt: now,
-			}
-			if err := tx.InsertUser(system, user); err != nil {
-				return err
-			}
-		case err != nil:
-			return err
-		default:
-			if !user.DisabledAt.IsZero() {
-				return ErrSignInDenied
-			}
-			if err := tx.UpdateUserProfile(system, user.ID, verified.Name, verified.Email); err != nil {
-				return err
-			}
 		}
 		token, err = i.openSessionTx(system, tx, user.ID, now, domain.AuditSignIn)
 		return err
 	})
 	return token, err
+}
+
+// memberTx finds or creates the member a verified identity names, in team
+// mode, refreshing display fields; a disabled member is refused.
+func (i *Identity) memberTx(system context.Context, tx ports.Transaction, verified oidcauth.Identity, now time.Time) (domain.User, error) {
+	installation, err := tx.GetInstallation(system)
+	if err != nil {
+		return domain.User{}, err
+	}
+	if installation.Mode != domain.TeamMode || verified.Issuer != installation.OIDCIssuer {
+		return domain.User{}, ErrSignInDenied
+	}
+	user, err := tx.GetUserByIdentity(system, verified.Issuer, verified.Subject)
+	switch {
+	case errors.Is(err, domain.ErrNotFound):
+		user = domain.User{
+			ID: domain.UserID("usr_" + i.ids.NewID()), Issuer: verified.Issuer, Subject: verified.Subject,
+			DisplayName: verified.Name, Email: verified.Email, Role: domain.UserMember, CreatedAt: now,
+		}
+		return user, tx.InsertUser(system, user)
+	case err != nil:
+		return domain.User{}, err
+	case !user.DisabledAt.IsZero():
+		return domain.User{}, ErrSignInDenied
+	}
+	return user, tx.UpdateUserProfile(system, user.ID, verified.Name, verified.Email)
 }
 
 // openSessionTx stores a new session for user and audits action as that

@@ -2794,6 +2794,84 @@ paths:
           $ref: "#/components/responses/Conflict"
         default:
           $ref: "#/components/responses/DefaultError"
+  /auth/device:
+    post:
+      operationId: beginDeviceLogin
+      summary: Start meridian login with the OAuth device authorization grant
+      description: >-
+        Team mode, when the OIDC issuer offers device sign-in. Returns a code
+        for the member to enter at the issuer and a handle only this client
+        knows. Without device sign-in, mint a personal access token in the
+        web UI instead.
+      security: []
+      tags: [authentication]
+      responses:
+        "201":
+          description: Device login started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceLogin"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /auth/device/token:
+    post:
+      operationId: pollDeviceLogin
+      summary: Collect the personal access token once the member approves
+      description: >-
+        Authorized by the handle from beginDeviceLogin, in the body so it
+        never appears in a URL. Answers 202 until the member approves at the
+        issuer, then returns a new personal access token, once.
+      security: []
+      tags: [authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [handle]
+              properties:
+                handle:
+                  type: string
+                  maxLength: 128
+      responses:
+        "200":
+          description: Approved; the token is shown only here
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token]
+                properties:
+                  token:
+                    type: string
+        "202":
+          description: Waiting for approval
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, intervalSeconds]
+                properties:
+                  status:
+                    type: string
+                    enum: [pending]
+                  intervalSeconds:
+                    type: integer
+        "403":
+          description: The member refused, or the code expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/DefaultError"
   /auth/browser-session:
     post:
       operationId: createBrowserSession
@@ -3821,6 +3899,24 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MemberAdmin"
+    DeviceLogin:
+      type: object
+      required: [handle, userCode, verificationUri, intervalSeconds, expiresAt]
+      properties:
+        handle:
+          type: string
+          description: Secret to this client; pass it to pollDeviceLogin.
+        userCode:
+          type: string
+        verificationUri:
+          type: string
+        verificationUriComplete:
+          type: string
+        intervalSeconds:
+          type: integer
+        expiresAt:
+          type: string
+          format: date-time
     AuditRecord:
       type: object
       required: [sequence, recordedAt, principal, action, objectType, objectId, result]
