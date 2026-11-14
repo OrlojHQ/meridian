@@ -436,8 +436,13 @@ func (s *Service) saveChatGPT(ctx context.Context, connectionID string, set chat
 			if len(items) >= 128 {
 				return domain.ErrConflict
 			}
+			owner, err := ownerOf(ctx)
+			if err != nil {
+				return err
+			}
 			result = domain.ProviderConnection{
-				ID: s.ids.NewID(), Provider: providergateway.ChatGPT, Name: chatGPTDefaultName,
+				OwnerUserID: owner,
+				ID:          s.ids.NewID(), Provider: providergateway.ChatGPT, Name: chatGPTDefaultName,
 				CreatedAt: s.clock.Now().UTC(),
 			}
 		} else {

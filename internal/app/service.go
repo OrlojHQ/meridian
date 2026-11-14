@@ -31,11 +31,25 @@ func requirePrincipal(ctx context.Context) error {
 	return err
 }
 
-// capsulePrincipal is Capsule id acting under its owner's authority. Rows do
-// not carry an owner yet, so in single-user mode the owner is always the
-// bootstrap owner; this is the one place that changes when they do.
-func capsulePrincipal(id domain.CapsuleID) (principal.Principal, bool) {
-	return principal.Capsule(principal.BootstrapOwner, id)
+// capsulePrincipal is capsule acting under its owner's authority.
+func capsulePrincipal(capsule domain.Capsule) (principal.Principal, bool) {
+	return principal.Capsule(capsule.OwnerUserID, capsule.ID)
+}
+
+// ownerOf is the user a root object (Project, secret, provider connection,
+// harness setup) created by this call belongs to. Only a user creates one.
+// The system and break-glass principals own nothing, and no gateway lease or
+// Coordination Grant lets a Capsule create a root object (ADR 0046). Child
+// rows take their parent's owner in the store instead.
+func ownerOf(ctx context.Context) (domain.UserID, error) {
+	caller, err := principal.Require(ctx)
+	if err != nil {
+		return "", err
+	}
+	if caller.Kind() != principal.KindUser || caller.UserID() == "" {
+		return "", principal.ErrMissing
+	}
+	return caller.UserID(), nil
 }
 
 type Service struct {
@@ -249,8 +263,13 @@ func (s *Service) CreateProjectConfigured(
 			result = replay
 			return nil
 		}
+		owner, err := ownerOf(ctx)
+		if err != nil {
+			return err
+		}
 		now := s.clock.Now().UTC()
 		result = domain.Project{
+			OwnerUserID:         owner,
 			ID:                  domain.ProjectID(s.ids.NewID()),
 			Name:                name,
 			RepositoryURL:       config.RepositoryURL,

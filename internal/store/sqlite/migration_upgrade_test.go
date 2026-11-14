@@ -360,7 +360,8 @@ func TestMigrationTwentyTwoDropsSavedMockHarness(t *testing.T) {
 	now := time.Date(2026, 11, 11, 0, 0, 0, 0, time.UTC)
 	if err := store.Transact(ctx, func(tx ports.Transaction) error {
 		return tx.InsertProject(ctx, domain.Project{
-			ID: "explicit", Name: "explicit", CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
+			OwnerUserID: domain.BootstrapOwnerID,
+			ID:          "explicit", Name: "explicit", CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
 			HarnessImages: []domain.HarnessImage{
 				{Name: "mock", ImageReference: "meridian-capsule:dev"},
 			},

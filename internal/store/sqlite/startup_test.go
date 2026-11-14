@@ -20,7 +20,8 @@ func TestStartupProgressIsBoundedAndRoundTrips(t *testing.T) {
 	defer store.Close()
 	now := time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC)
 	project := domain.Project{
-		ID: "project-1", Name: "project", CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
+		OwnerUserID: domain.BootstrapOwnerID,
+		ID:          "project-1", Name: "project", CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
 	}
 	capsule := domain.Capsule{
 		ID: "capsule-1", ProjectID: project.ID, Name: "capsule",

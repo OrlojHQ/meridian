@@ -646,7 +646,8 @@ func TestCapsuleLauncherStartsOnceAndDoesNotRestartFailedRun(t *testing.T) {
 	}
 	if err := store.Transact(ctx, func(tx ports.Transaction) error {
 		if err := tx.InsertProject(ctx, domain.Project{
-			ID: "launcher-project", Name: "project", CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
+			OwnerUserID: domain.BootstrapOwnerID,
+			ID:          "launcher-project", Name: "project", CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
 		}); err != nil {
 			return err
 		}

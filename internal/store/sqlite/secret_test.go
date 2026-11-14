@@ -26,7 +26,8 @@ func TestSecretPersistenceContainsNoPlaintext(t *testing.T) {
 	}
 	now := time.Now().UTC()
 	item := domain.Secret{
-		ID: "secret-1", Name: "TOKEN", Purpose: domain.SecretHarnessEnv,
+		OwnerUserID: domain.BootstrapOwnerID,
+		ID:          "secret-1", Name: "TOKEN", Purpose: domain.SecretHarnessEnv,
 		EnvelopeVersion: secrets.EnvelopeVersion, KEKID: key.ID, KEKVersion: key.Version,
 		CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
 	}

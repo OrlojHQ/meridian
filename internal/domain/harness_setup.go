@@ -6,6 +6,9 @@ import (
 )
 
 type HarnessSetup struct {
+	// OwnerUserID is the user who owns this row (ADR 0046). It is never
+	// serialized: the API contract does not expose owners yet.
+	OwnerUserID     UserID          `json:"-"`
 	ID              string          `json:"id"`
 	Name            string          `json:"name"`
 	Harness         string          `json:"harness"`
