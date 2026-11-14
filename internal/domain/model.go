@@ -926,6 +926,10 @@ var (
 	// It is not a lifecycle transition: Changes must not show
 	// ErrIllegalTransition for capsuled git_failed.
 	ErrWorkspaceGit = errors.New("workspace git command failed")
+	// ErrWorkspaceNoRepository is a workspace with no Git repository, such as
+	// a Project created without one. It is an ErrWorkspaceGit, so callers
+	// that only check for that keep working.
+	ErrWorkspaceNoRepository = fmt.Errorf("%w: workspace has no Git repository", ErrWorkspaceGit)
 	// ErrRuntimeStopped is a Capsule runtime that stopped outside Meridian
 	// (for example a container engine restart) while its Capsule was Ready.
 	// Its supervisor and process registry are gone. It is an
@@ -943,6 +947,8 @@ func MapCapsuleProtocolError(status int, code string) error {
 		return ErrHarnessDependencies
 	case "git_failed":
 		return ErrWorkspaceGit
+	case "git_no_repository":
+		return ErrWorkspaceNoRepository
 	case "models_unsupported", "effort_unsupported":
 		return ErrUnsupported
 	}

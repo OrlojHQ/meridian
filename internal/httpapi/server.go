@@ -1877,6 +1877,8 @@ func writeError(writer http.ResponseWriter, err error) {
 		status, code, message = http.StatusLocked, "transcript_locked", "transcript key is missing or does not match"
 	case errors.Is(err, domain.ErrIllegalTransition):
 		status, code, message = http.StatusUnprocessableEntity, "illegal_transition", err.Error()
+	case errors.Is(err, domain.ErrWorkspaceNoRepository):
+		status, code, message = http.StatusUnprocessableEntity, "no_repository", "this Capsule's workspace has no Git repository"
 	case errors.Is(err, domain.ErrWorkspaceGit):
 		status, code, message = http.StatusUnprocessableEntity, "git_failed", err.Error()
 	case errors.Is(err, domain.ErrUnsupported):

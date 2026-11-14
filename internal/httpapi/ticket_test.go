@@ -106,6 +106,19 @@ func TestWriteErrorMapsWorkspaceGitToGitFailed(t *testing.T) {
 	}
 }
 
+func TestWriteErrorMapsMissingRepositoryToNoRepository(t *testing.T) {
+	response := httptest.NewRecorder()
+	writeError(response, fmt.Errorf("%w: capsuled git_no_repository", domain.ErrWorkspaceNoRepository))
+	if response.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("no_repository HTTP status = %d", response.Code)
+	}
+	body := response.Body.String()
+	if !strings.Contains(body, `"no_repository"`) || strings.Contains(body, `"git_failed"`) ||
+		strings.Contains(body, "capsuled") {
+		t.Fatalf("no_repository envelope = %s", body)
+	}
+}
+
 func TestAttachTicketTakeIsAtomicUnderConcurrency(t *testing.T) {
 	now := time.Now().UTC()
 	registry := newAttachTicketRegistry(4)
