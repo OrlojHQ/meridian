@@ -1268,9 +1268,10 @@ Threats and required controls:
   revision envelopes bind the owner in their AAD, so moved ciphertext fails
   to open. Startup re-wraps legacy envelopes in one transaction under the
   data-directory lease; unreadable envelopes are counted and left unchanged.
-  Break-glass transfer re-seals secrets and all setup revisions for the new
-  owner in the ownership transaction, and fails without moving anything if
-  any of those envelopes cannot be opened.
+  Break-glass transfer re-seals secrets and readable setup revisions for the
+  new owner in the ownership transaction. It fails without moving anything
+  if a secret cannot be opened; an unreadable setup revision moves unchanged
+  and stays unreadable, so it cannot block a departed member's transfer.
 - **Sign-in ceremony hijack.** A teammate completes another user's Claude
   or ChatGPT ceremony and captures the resulting connection, or plants their
   own login in someone else's account. The in-memory ceremony records the

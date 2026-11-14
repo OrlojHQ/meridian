@@ -5,11 +5,11 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/OrlojHQ/meridian/internal/harnesssetup"
 	"testing"
 
 	"github.com/OrlojHQ/meridian/internal/app"
 	"github.com/OrlojHQ/meridian/internal/domain"
+	"github.com/OrlojHQ/meridian/internal/harnesssetup"
 	"github.com/OrlojHQ/meridian/internal/ports"
 	"github.com/OrlojHQ/meridian/internal/principal"
 )
@@ -166,7 +166,7 @@ func TestBreakGlassDeletesADepartedMembersWork(t *testing.T) {
 	}
 }
 
-func TestTransferRewrapsAllSetupRevisionsOrRollsBack(t *testing.T) {
+func TestTransferRewrapsSetupRevisionsAndCarriesUnreadableOnes(t *testing.T) {
 	for _, corrupt := range []bool{false, true} {
 		t.Run(fmt.Sprint(corrupt), func(t *testing.T) {
 			f := newTwoOwners(t)
@@ -182,6 +182,8 @@ func TestTransferRewrapsAllSetupRevisionsOrRollsBack(t *testing.T) {
 				t.Fatal(err)
 			}
 			if corrupt {
+				// An older revision no longer opens under the installation
+				// key. It must not block the departed member's transfer.
 				raw, err := sql.Open("sqlite", f.store.Path())
 				if err != nil {
 					t.Fatal(err)
@@ -192,20 +194,7 @@ func TestTransferRewrapsAllSetupRevisionsOrRollsBack(t *testing.T) {
 				}
 			}
 			disableMember(t, f, "usr_bob")
-			err = f.service.TransferDepartedMember(principal.With(context.Background(), principal.BreakGlass()), "usr_bob", principal.BootstrapOwner)
-			if corrupt {
-				if err == nil {
-					t.Fatal("transferred an unreadable revision")
-				}
-				if _, err := f.service.HarnessSetupContents(f.alice, first.ID); !errors.Is(err, domain.ErrNotFound) {
-					t.Fatalf("partial transfer: %v", err)
-				}
-				if _, err := f.service.HarnessSetupContents(f.bob, first.ID); err != nil {
-					t.Fatalf("original ownership changed: %v", err)
-				}
-				return
-			}
-			if err != nil {
+			if err := f.service.TransferDepartedMember(principal.With(context.Background(), principal.BreakGlass()), "usr_bob", principal.BootstrapOwner); err != nil {
 				t.Fatal(err)
 			}
 			contents, err := f.service.HarnessSetupContents(f.alice, first.ID)
@@ -225,6 +214,13 @@ func TestTransferRewrapsAllSetupRevisionsOrRollsBack(t *testing.T) {
 					}
 					if revision.OwnerUserID != principal.BootstrapOwner {
 						t.Fatalf("revision owner = %s", revision.OwnerUserID)
+					}
+					if corrupt && id == first.Revision {
+						// Carried unchanged: still the unreadable bytes.
+						if string(revision.Ciphertext) != "\x00" {
+							t.Fatalf("unreadable revision was rewritten: %x", revision.Ciphertext)
+						}
+						continue
 					}
 					if _, err := f.key.OpenSetup("owner:"+string(principal.BootstrapOwner)+":"+id, revision.KeyID, revision.Nonce, revision.Ciphertext); err != nil {
 						return err
