@@ -101,8 +101,14 @@ background job runs as exactly one of them.
   claim. Multiple issuers, SAML, and SCIM are out of scope.
 - Web sign-in is the authorization code flow with PKCE. The daemon chooses
   the redirect URI. `state`, `nonce`, and the PKCE verifier live in daemon
-  memory and are single-use, like the Claude ceremony (ADR 0036). The ID
-  token's issuer, audience, signature, expiry, and nonce are checked.
+  memory and are single-use, like the Claude ceremony (ADR 0036). The start
+  also binds the attempt to the starting browser: a random value goes into
+  a short-lived `HttpOnly`, `SameSite=Lax` cookie scoped to `/auth/oidc`,
+  and the daemon keeps only its digest. The callback must present it, so a
+  callback URL from someone else's sign-in cannot sign this browser in as
+  them (login CSRF). The cookie is Lax because the issuer's redirect back is
+  a cross-site navigation. The ID token's issuer, audience, signature,
+  expiry, and nonce are checked.
 - A user is identified by `(issuer, subject)`. Email and display name are
   display-only and refreshed on each sign-in. They never authorize anything,
   so a reused or changed email cannot inherit another user's objects.
