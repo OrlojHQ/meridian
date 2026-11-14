@@ -1,6 +1,16 @@
 {{- if and .Values.agentSandbox.namespace (ne .Values.agentSandbox.namespace (include "meridian.namespace" .)) -}}
 {{- fail "agentSandbox.namespace must equal the chart namespace; cross-namespace operation is not supported" -}}
 {{- end }}
+{{- if .Values.oidc.issuer }}
+{{- if not .Values.oidc.clientId }}
+{{- fail "oidc.clientId is required when oidc.issuer is set" }}
+{{- end }}
+{{- if not .Values.publicUrl }}
+{{- fail "publicUrl is required when oidc.issuer is set" }}
+{{- end }}
+{{- else if or .Values.oidc.clientId .Values.oidc.clientSecret.existingSecret .Values.oidc.requiredGroup .Values.oidc.groupsClaim }}
+{{- fail "oidc.issuer is required when OIDC settings are set" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -54,6 +64,27 @@ spec:
             - --provider-gateway-allow-private-http
             {{- end }}
             {{- end }}
+            {{- with .Values.publicUrl }}
+            - {{ printf "--public-url=%s" . | quote }}
+            {{- end }}
+            {{- with .Values.auditRetention }}
+            - {{ printf "--audit-retention=%s" . | quote }}
+            {{- end }}
+            {{- with .Values.oidc.issuer }}
+            - {{ printf "--oidc-issuer=%s" . | quote }}
+            {{- end }}
+            {{- with .Values.oidc.clientId }}
+            - {{ printf "--oidc-client-id=%s" . | quote }}
+            {{- end }}
+            {{- if .Values.oidc.clientSecret.existingSecret }}
+            - --oidc-client-secret-file=/etc/meridian/oidc/client-secret
+            {{- end }}
+            {{- with .Values.oidc.requiredGroup }}
+            - {{ printf "--oidc-required-group=%s" . | quote }}
+            {{- end }}
+            {{- with .Values.oidc.groupsClaim }}
+            - {{ printf "--oidc-groups-claim=%s" . | quote }}
+            {{- end }}
             - --listen=0.0.0.0:8080
             - --allow-non-loopback-listen
             - --preview-listen=127.0.0.1:8081
@@ -93,7 +124,21 @@ spec:
           volumeMounts:
             - {name: data, mountPath: /var/lib/meridian-volume}
             - {name: tmp, mountPath: /tmp}
+            {{- if .Values.oidc.clientSecret.existingSecret }}
+            - name: oidc-client-secret
+              mountPath: /etc/meridian/oidc
+              readOnly: true
+            {{- end }}
       volumes:
+        {{- if .Values.oidc.clientSecret.existingSecret }}
+        - name: oidc-client-secret
+          secret:
+            secretName: {{ .Values.oidc.clientSecret.existingSecret | quote }}
+            defaultMode: 0440
+            items:
+              - key: {{ .Values.oidc.clientSecret.key | quote }}
+                path: client-secret
+        {{- end }}
         - name: data
           persistentVolumeClaim:
             claimName: {{ include "meridian.fullname" . }}-data

@@ -1284,6 +1284,14 @@ Threats and required controls:
   the owner. The claim instead requires both an OIDC sign-in and the
   installation bearer in the same session, happens once, and is audited.
   Until the claim, other OIDC sign-ins are refused.
+- **Deployment credential exposure.** The Helm chart projects only the
+  selected key of an existing OIDC client Secret onto the control-plane
+  daemon as a read-only file outside SQLite. It adds no Secret RBAC or
+  Capsule mount and accepts no inline client secret value. Sign-in flags
+  are absent by default. Operators supply HTTPS access and explicitly allow
+  issuer endpoints on the control plane's existing HTTPS egress policy;
+  issuer configuration does not grant Capsules those destinations or claim
+  the installation.
 - **Identity recovery hijack.** A member tries to replace the bootstrap
   owner's identity or transplant another member's identity, or the
   installation bearer's holder tries to sign in as a teammate. Only the

@@ -606,6 +606,17 @@ a boundary between mutually untrusted people.
    existing object stays yours, and team mode is on. The claim cannot be
    undone, and the installation keeps the issuer it was claimed with.
 
+The [Helm chart](../deploy/helm/meridian/README.md#team-sign-in) exposes the
+same settings as `publicUrl`, `oidc.issuer`, `oidc.clientId`,
+`oidc.clientSecret.existingSecret` and `key`, `oidc.requiredGroup`,
+`oidc.groupsClaim`, and `auditRetention`. The client secret is a read-only
+file projected from an existing Secret onto the daemon only; never put its
+plaintext in values. Include the issuer's HTTPS discovery/token/JWKS
+addresses in the control plane's `networkPolicy.providerEgressCIDRs`, and
+provide HTTPS access with the configured external origin. The chart keeps
+default-deny egress and creates no public Ingress. Configuring it still
+requires the one-time browser claim above.
+
 After the claim:
 
 - Members sign in with **Sign in** in the web UI. Sessions end after 12 hours

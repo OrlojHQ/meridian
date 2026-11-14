@@ -3,6 +3,21 @@ providerGatewayURL: ""
 # loopback or private-network addresses (ADR 0027). Requires providerGatewayURL.
 providerGatewayAllowPrivateHTTP: false
 
+# Team-mode browser origin and sign-in. Empty values preserve single-user mode.
+publicUrl: ""
+# Go duration, e.g. 2160h for 90 days; empty or 0 retains all audit records.
+auditRetention: ""
+oidc:
+  issuer: ""
+  clientId: ""
+  clientSecret:
+    # Existing Secret in this namespace. No plaintext secret belongs in values.
+    existingSecret: ""
+    key: client-secret
+  requiredGroup: ""
+  # Empty uses the daemon's default groups claim (groups).
+  groupsClaim: ""
+
 nameOverride: ""
 fullnameOverride: ""
 
@@ -82,10 +97,11 @@ networkPolicy:
     kubernetes.io/metadata.name: kube-system
   dnsPodSelector:
     k8s-app: kube-dns
-  # Control-plane HTTPS to model providers. NetworkPolicy cannot select
-  # api.openai.com or api.anthropic.com by name; set their routable CIDRs,
-  # plus any HTTPS custom endpoint. Empty denies provider traffic. These
-  # CIDRs are not granted to Capsules; inference leaves through the gateway.
+  # Control-plane HTTPS to model providers and the OIDC issuer. NetworkPolicy
+  # cannot select hostnames; set routable CIDRs for model providers, HTTPS
+  # custom endpoints, and OIDC discovery/token/device/JWKS destinations. Empty
+  # denies that traffic. These CIDRs are not granted to Capsules; inference
+  # leaves through the gateway.
   providerEgressCIDRs: []
   # Capsule package/repository egress and the HTTPS gateway origin are
   # denied unless explicitly scoped. Capsules already receive in-namespace
