@@ -278,9 +278,9 @@ func run(ctx context.Context, config Config) error {
 		_ = previewHTTPServer.Close()
 		return fmt.Errorf("bind credential envelopes to owners: %w", err)
 	}
-	if rewrapped.Secrets+rewrapped.Connections > 0 {
-		config.Logger.Printf("bound %d secret and %d connection envelopes to their owners",
-			rewrapped.Secrets, rewrapped.Connections)
+	if rewrapped.Secrets+rewrapped.Connections+rewrapped.SetupRevisions > 0 {
+		config.Logger.Printf("bound %d secret, %d connection, and %d setup revision envelopes to their owners",
+			rewrapped.Secrets, rewrapped.Connections, rewrapped.SetupRevisions)
 	}
 	if rewrapped.Unreadable > 0 {
 		config.Logger.Printf("%d credential envelopes do not open with the installation key and were left unchanged",

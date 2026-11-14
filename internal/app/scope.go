@@ -1033,6 +1033,17 @@ func (t *scopedTx) InsertHarnessSetupRevision(ctx context.Context, item domain.H
 	return t.tx.InsertHarnessSetupRevision(ctx, item)
 }
 
+func (t *scopedTx) ReplaceHarnessSetupRevisionEnvelope(ctx context.Context, item domain.HarnessSetupRevision) error {
+	saved, err := t.GetHarnessSetupRevision(ctx, item.ID)
+	if err != nil {
+		return err
+	}
+	if saved.OwnerUserID != item.OwnerUserID {
+		return domain.ErrNotFound
+	}
+	return t.tx.ReplaceHarnessSetupRevisionEnvelope(ctx, item)
+}
+
 func (t *scopedTx) PinHarnessSetup(ctx context.Context, id domain.CapsuleID, harness, revision string) error {
 	if err := t.capsule(ctx, id); err != nil {
 		return err

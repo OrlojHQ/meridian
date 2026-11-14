@@ -1264,10 +1264,13 @@ Threats and required controls:
   owner. Coordination authority is the lead owner's authority, narrowed by
   the grant.
 - **Ciphertext reattachment.** Someone with database write access moves an
-  envelope onto another user's row. Secret and connection envelopes bind the
-  owner in their AAD, so the moved ciphertext fails to open. Migration
-  re-wraps existing envelopes under the bootstrap owner once, under the
-  data-directory lease.
+  envelope onto another user's row. Secret, connection, and harness setup
+  revision envelopes bind the owner in their AAD, so moved ciphertext fails
+  to open. Startup re-wraps legacy envelopes in one transaction under the
+  data-directory lease; unreadable envelopes are counted and left unchanged.
+  Break-glass transfer re-seals secrets and all setup revisions for the new
+  owner in the ownership transaction, and fails without moving anything if
+  any of those envelopes cannot be opened.
 - **Sign-in ceremony hijack.** A teammate completes another user's Claude
   or ChatGPT ceremony and captures the resulting connection, or plants their
   own login in someone else's account. The in-memory ceremony records the

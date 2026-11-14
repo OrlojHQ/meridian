@@ -13,8 +13,9 @@ import (
 
 // EnvelopeRewrap counts what BindEnvelopeOwners changed.
 type EnvelopeRewrap struct {
-	Secrets     int
-	Connections int
+	Secrets        int
+	Connections    int
+	SetupRevisions int
 	// Unreadable envelopes did not open under the installation key before
 	// the re-wrap either. They are left exactly as they were.
 	Unreadable int
@@ -97,6 +98,43 @@ func BindEnvelopeOwners(ctx context.Context, store ports.Store, key *secrets.Ins
 			}
 			result.Connections++
 		}
+		setups, err := tx.ListHarnessSetups(ctx)
+		if err != nil {
+			return err
+		}
+		for _, setup := range setups {
+			revisions, err := tx.ListHarnessSetupRevisions(ctx, setup.ID)
+			if err != nil {
+				return err
+			}
+			for _, listed := range revisions {
+				revision, err := tx.GetHarnessSetupRevision(ctx, listed.ID)
+				if err != nil {
+					return err
+				}
+				if opened, err := key.OpenSetup(setupEnvelopeID(revision), revision.KeyID, revision.Nonce, revision.Ciphertext); err == nil {
+					wipe(opened)
+					continue
+				}
+				// Only startup migration accepts the legacy, owner-free id.
+				plain, err := key.OpenSetup(revision.ID, revision.KeyID, revision.Nonce, revision.Ciphertext)
+				if err != nil {
+					result.Unreadable++
+					continue
+				}
+				nonce, ciphertext, err := key.SealSetup(setupEnvelopeID(revision), plain)
+				wipe(plain)
+				if err != nil {
+					return fmt.Errorf("re-wrap setup revision envelope: %w", err)
+				}
+				revision.KeyID, revision.Nonce, revision.Ciphertext = key.ID, nonce, ciphertext
+				if err := tx.ReplaceHarnessSetupRevisionEnvelope(ctx, revision); err != nil {
+					return fmt.Errorf("store re-wrapped setup revision: %w", err)
+				}
+				result.SetupRevisions++
+			}
+		}
+
 		return nil
 	})
 	if err != nil {

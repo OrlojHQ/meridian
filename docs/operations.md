@@ -641,11 +641,14 @@ After the claim:
   meridian --token-file <installation token> member delete-objects usr_departed --confirm
   ```
 
-  A transfer moves Projects with everything under them, secrets (re-wrapped
-  for the new owner), and harness setups, and is refused when the successor
+  A transfer moves Projects with everything under them, secrets and every harness setup revision (re-wrapped
+  for the new owner), and is refused when the successor
   already has a secret with the same name. Provider connections never move: a
   personal Claude or ChatGPT login stays with its holder, so the successor
-  grants their own. Deletion starts each Project's deletion, crypto-shreds
+  grants their own. An unreadable secret or setup revision refuses the whole
+  transfer; restore the matching key before retrying. Startup re-wraps legacy
+  setup envelopes before serving requests and logs unreadable envelopes
+  without changing them. Deletion starts each Project's deletion, crypto-shreds
   secrets, revokes connections, and deletes setups. Older backups still hold
   the departed member's ciphertext under the installation key.
 

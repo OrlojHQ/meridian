@@ -19,14 +19,15 @@ type HarnessSetup struct {
 	ResourceVersion ResourceVersion `json:"resourceVersion"`
 }
 type HarnessSetupRevision struct {
-	ID         string    `json:"id"`
-	SetupID    string    `json:"setupId"`
-	Digest     string    `json:"digest"`
-	Files      []string  `json:"files"`
-	CreatedAt  time.Time `json:"createdAt"`
-	KeyID      string    `json:"-"`
-	Nonce      []byte    `json:"-"`
-	Ciphertext []byte    `json:"-"`
+	OwnerUserID UserID    `json:"-"`
+	ID          string    `json:"id"`
+	SetupID     string    `json:"setupId"`
+	Digest      string    `json:"digest"`
+	Files       []string  `json:"files"`
+	CreatedAt   time.Time `json:"createdAt"`
+	KeyID       string    `json:"-"`
+	Nonce       []byte    `json:"-"`
+	Ciphertext  []byte    `json:"-"`
 }
 
 // PinnedHarnessSetup is the revision a Capsule was created with.

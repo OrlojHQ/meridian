@@ -46,7 +46,7 @@ func (r *repository) PutHarnessSetup(ctx context.Context, item domain.HarnessSet
 func (r *repository) GetHarnessSetupRevision(ctx context.Context, id string) (domain.HarnessSetupRevision, error) {
 	var item domain.HarnessSetupRevision
 	var raw string
-	err := r.q.QueryRowContext(ctx, "SELECT metadata,key_id,nonce,ciphertext FROM harness_setup_revisions WHERE id=?", id).Scan(&raw, &item.KeyID, &item.Nonce, &item.Ciphertext)
+	err := r.q.QueryRowContext(ctx, "SELECT metadata,key_id,nonce,ciphertext,owner_user_id FROM harness_setup_revisions WHERE id=?", id).Scan(&raw, &item.KeyID, &item.Nonce, &item.Ciphertext, &item.OwnerUserID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return item, domain.ErrNotFound
 	}
@@ -57,7 +57,7 @@ func (r *repository) GetHarnessSetupRevision(ctx context.Context, id string) (do
 	return item, err
 }
 func (r *repository) ListHarnessSetupRevisions(ctx context.Context, id string) ([]domain.HarnessSetupRevision, error) {
-	rows, err := r.q.QueryContext(ctx, "SELECT metadata FROM harness_setup_revisions WHERE setup_id=? ORDER BY id", id)
+	rows, err := r.q.QueryContext(ctx, "SELECT metadata,owner_user_id FROM harness_setup_revisions WHERE setup_id=? ORDER BY id", id)
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +66,7 @@ func (r *repository) ListHarnessSetupRevisions(ctx context.Context, id string) (
 	for rows.Next() {
 		var raw string
 		var item domain.HarnessSetupRevision
-		if err := rows.Scan(&raw); err != nil {
+		if err := rows.Scan(&raw, &item.OwnerUserID); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal([]byte(raw), &item); err != nil {
@@ -84,6 +84,14 @@ func (r *repository) InsertHarnessSetupRevision(ctx context.Context, item domain
 	_, err = r.q.ExecContext(ctx, "INSERT INTO harness_setup_revisions(owner_user_id, id,setup_id,metadata,key_id,nonce,ciphertext) VALUES(COALESCE((SELECT owner_user_id FROM harness_setups WHERE id = ?), ''), ?,?,?,?,?,?)", item.SetupID, item.ID, item.SetupID, string(raw), item.KeyID, item.Nonce, item.Ciphertext)
 	return err
 }
+
+// ReplaceHarnessSetupRevisionEnvelope changes only the sealed payload. Revision
+// metadata and resource versions stay immutable during re-wrap and transfer.
+func (r *repository) ReplaceHarnessSetupRevisionEnvelope(ctx context.Context, item domain.HarnessSetupRevision) error {
+	result, err := r.q.ExecContext(ctx, "UPDATE harness_setup_revisions SET key_id=?,nonce=?,ciphertext=? WHERE id=? AND owner_user_id=?", item.KeyID, item.Nonce, item.Ciphertext, item.ID, item.OwnerUserID)
+	return ownedUpsertResult(result, err)
+}
+
 func (r *repository) PinHarnessSetup(ctx context.Context, id domain.CapsuleID, harness, revision string) error {
 	_, err := r.q.ExecContext(ctx, "INSERT INTO capsule_harness_setups(capsule_id,harness,revision_id) VALUES(?,?,?)", id, harness, revision)
 	return mapOwnerViolation(err)

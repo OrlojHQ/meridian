@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"github.com/OrlojHQ/meridian/internal/harnesssetup"
 	"testing"
 
 	"github.com/OrlojHQ/meridian/internal/app"
@@ -161,5 +163,80 @@ func TestBreakGlassDeletesADepartedMembersWork(t *testing.T) {
 	again, err := s.DeleteDepartedMember(breakGlass, "usr_bob")
 	if err != nil || again.Secrets != 0 {
 		t.Fatalf("second delete = %+v, %v", again, err)
+	}
+}
+
+func TestTransferRewrapsAllSetupRevisionsOrRollsBack(t *testing.T) {
+	for _, corrupt := range []bool{false, true} {
+		t.Run(fmt.Sprint(corrupt), func(t *testing.T) {
+			f := newTwoOwners(t)
+			input := app.SetupImport{Name: "Bob setup", Bundle: harnesssetup.Bundle{Harness: "codex", Files: []harnesssetup.File{{Path: ".codex/AGENTS.md", Content: "first"}}}}
+			first, err := f.service.ImportHarnessSetup(f.bob, input, "first")
+			if err != nil {
+				t.Fatal(err)
+			}
+			input.ID, input.ExpectedResourceVersion = first.ID, first.ResourceVersion
+			input.Bundle.Files[0].Content = "second"
+			second, err := f.service.ImportHarnessSetup(f.bob, input, "second")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if corrupt {
+				raw, err := sql.Open("sqlite", f.store.Path())
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer raw.Close()
+				if _, err := raw.Exec("UPDATE harness_setup_revisions SET ciphertext = X'00' WHERE id = ?", first.Revision); err != nil {
+					t.Fatal(err)
+				}
+			}
+			disableMember(t, f, "usr_bob")
+			err = f.service.TransferDepartedMember(principal.With(context.Background(), principal.BreakGlass()), "usr_bob", principal.BootstrapOwner)
+			if corrupt {
+				if err == nil {
+					t.Fatal("transferred an unreadable revision")
+				}
+				if _, err := f.service.HarnessSetupContents(f.alice, first.ID); !errors.Is(err, domain.ErrNotFound) {
+					t.Fatalf("partial transfer: %v", err)
+				}
+				if _, err := f.service.HarnessSetupContents(f.bob, first.ID); err != nil {
+					t.Fatalf("original ownership changed: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			contents, err := f.service.HarnessSetupContents(f.alice, first.ID)
+			if err != nil || contents.Bundle.Files[0].Content != "second" {
+				t.Fatalf("latest transferred revision: %+v, %v", contents, err)
+			}
+			revisions, err := f.service.HarnessSetupRevisions(f.alice, first.ID)
+			if err != nil || len(revisions) != 2 {
+				t.Fatalf("transferred history: %+v, %v", revisions, err)
+			}
+			system := principal.WithSystem(context.Background())
+			if err := f.store.View(system, func(r ports.Reader) error {
+				for _, id := range []string{first.Revision, second.Revision} {
+					revision, err := r.GetHarnessSetupRevision(system, id)
+					if err != nil {
+						return err
+					}
+					if revision.OwnerUserID != principal.BootstrapOwner {
+						t.Fatalf("revision owner = %s", revision.OwnerUserID)
+					}
+					if _, err := f.key.OpenSetup("owner:"+string(principal.BootstrapOwner)+":"+id, revision.KeyID, revision.Nonce, revision.Ciphertext); err != nil {
+						return err
+					}
+					if _, err := f.key.OpenSetup("owner:usr_bob:"+id, revision.KeyID, revision.Nonce, revision.Ciphertext); err == nil {
+						t.Fatal("transferred revision still opens as Bob")
+					}
+				}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
