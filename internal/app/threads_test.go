@@ -695,7 +695,8 @@ func threadServiceWithClock(
 	capsuleID := domain.CapsuleID("capsule-thread")
 	if err := store.Transact(ctx, func(tx ports.Transaction) error {
 		project := domain.Project{
-			ID: "project-thread", Name: "project", CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
+			OwnerUserID: domain.BootstrapOwnerID,
+			ID:          "project-thread", Name: "project", CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
 		}
 		if err := tx.InsertProject(ctx, project); err != nil {
 			return err

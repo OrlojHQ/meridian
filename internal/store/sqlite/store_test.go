@@ -26,7 +26,8 @@ func TestMigrationsPersistenceEventsAndConflicts(t *testing.T) {
 	}
 	now := time.Date(2026, 8, 23, 1, 2, 3, 456, time.UTC)
 	project := domain.Project{
-		ID: "project-1", Name: "project", CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
+		OwnerUserID: domain.BootstrapOwnerID,
+		ID:          "project-1", Name: "project", CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
 	}
 	capsule := domain.Capsule{
 		ID: "capsule-1", ProjectID: project.ID, Name: "capsule", LauncherHarness: "opencode",
@@ -151,7 +152,8 @@ func TestCapsuleActivityAndSetupMomentCachePersistence(t *testing.T) {
 	var moment domain.Moment
 	if err := store.Transact(ctx, func(tx ports.Transaction) error {
 		project := domain.Project{
-			ID: "project-cache", Name: "cache",
+			OwnerUserID: domain.BootstrapOwnerID,
+			ID:          "project-cache", Name: "cache",
 			CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
 		}
 		if err := tx.InsertProject(ctx, project); err != nil {
@@ -256,7 +258,8 @@ func TestThreadCRUDOrderingImmutabilityAndCryptoShred(t *testing.T) {
 	}
 	if err := store.Transact(ctx, func(tx ports.Transaction) error {
 		if err := tx.InsertProject(ctx, domain.Project{
-			ID: "project-1", Name: "project", CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
+			OwnerUserID: domain.BootstrapOwnerID,
+			ID:          "project-1", Name: "project", CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
 		}); err != nil {
 			return err
 		}
@@ -440,7 +443,8 @@ func TestOneActiveThreadPerCapsuleConcurrent(t *testing.T) {
 	now := time.Now().UTC()
 	if err := store.Transact(ctx, func(tx ports.Transaction) error {
 		if err := tx.InsertProject(ctx, domain.Project{
-			ID: "project", Name: "project", CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
+			OwnerUserID: domain.BootstrapOwnerID,
+			ID:          "project", Name: "project", CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
 		}); err != nil {
 			return err
 		}
@@ -534,7 +538,8 @@ func TestProjectHarnessImagesAndCapsuleImage(t *testing.T) {
 	defer store.Close()
 	now := time.Date(2026, 8, 25, 9, 0, 0, 0, time.UTC)
 	project := domain.Project{
-		ID: "project-images", Name: "project", ImageReference: "meridian-capsule:dev",
+		OwnerUserID: domain.BootstrapOwnerID,
+		ID:          "project-images", Name: "project", ImageReference: "meridian-capsule:dev",
 		HarnessImages: []domain.HarnessImage{
 			{Name: "opencode", ImageReference: "meridian-capsule-opencode:dev"},
 		},

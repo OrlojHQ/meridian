@@ -25,13 +25,14 @@ func (r *repository) InsertCoordinationGrant(ctx context.Context, grant domain.C
 	}
 	_, err = r.q.ExecContext(ctx, `
 		INSERT INTO coordination_grants(
+			owner_user_id,
 			id, project_id, root_thread_id, root_capsule_id, state, spawn_approval,
 			max_depth, max_children, max_descendants, max_live_capsules,
 			max_messages_per_link, allowed_harnesses, deadline_at, on_deadline,
 			descendants_created, revoked_at, revoke_reason, archive_after_seconds,
 			created_at, updated_at, resource_version
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		grant.ID, grant.ProjectID, grant.RootThreadID, grant.RootCapsuleID, grant.State,
+		) VALUES (COALESCE((SELECT owner_user_id FROM projects WHERE id = ?), ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		grant.ProjectID, grant.ID, grant.ProjectID, grant.RootThreadID, grant.RootCapsuleID, grant.State,
 		grant.SpawnApproval, grant.MaxDepth, grant.MaxChildren, grant.MaxDescendants,
 		grant.MaxLiveCapsules, grant.MaxMessagesPerLink, string(harnesses),
 		formatTime(grant.DeadlineAt), grant.OnDeadline, grant.DescendantsCreated,
@@ -169,14 +170,15 @@ const linkSelect = `
 func (r *repository) InsertThreadLink(ctx context.Context, link domain.ThreadLink) error {
 	_, err := r.q.ExecContext(ctx, `
 		INSERT INTO thread_links(
+			owner_user_id,
 			id, grant_id, parent_thread_id, parent_capsule_id, child_intent_id,
 			child_thread_id, child_capsule_id, depth, name, harness, state, close_reason,
 			report_seq, report_delivered_seq, report_message_seq, last_report_status,
 			last_report_reason, last_report_at, messages_forwarded, operator_messages,
 			operator_noticed, archived_at, promoted_at, base_commit, head, files_changed,
 			insertions, deletions, created_at, updated_at, resource_version
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		link.ID, link.GrantID, link.ParentThreadID, link.ParentCapsuleID, link.ChildIntentID,
+		) VALUES (COALESCE((SELECT owner_user_id FROM coordination_grants WHERE id = ?), ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		link.GrantID, link.ID, link.GrantID, link.ParentThreadID, link.ParentCapsuleID, link.ChildIntentID,
 		link.ChildThreadID, link.ChildCapsuleID, link.Depth, link.Name, link.Harness,
 		link.State, link.CloseReason, link.ReportSeq, link.ReportDeliveredSeq,
 		link.ReportMessageSeq, link.LastReportStatus, link.LastReportReason,
@@ -383,10 +385,11 @@ func (r *repository) InsertCoordinationRequest(ctx context.Context, request doma
 	}
 	_, err := r.q.ExecContext(ctx, `
 		INSERT INTO coordination_requests(
+			owner_user_id,
 			id, grant_id, capsule_id, request_key, canonical_digest, kind, link_id,
 			state, result_message_id, created_at, updated_at, resource_version
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		request.ID, request.GrantID, request.CapsuleID, request.Key, request.CanonicalDigest,
+		) VALUES (COALESCE((SELECT owner_user_id FROM coordination_grants WHERE id = ?), ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		request.GrantID, request.ID, request.GrantID, request.CapsuleID, request.Key, request.CanonicalDigest,
 		request.Kind, request.LinkID, request.State, request.ResultMessageID,
 		formatTime(request.CreatedAt), formatTime(request.UpdatedAt), request.ResourceVersion,
 	)

@@ -93,8 +93,13 @@ func (s *Service) PutSecret(
 			if expected != 0 {
 				return domain.ErrConflict
 			}
+			owner, err := ownerOf(ctx)
+			if err != nil {
+				return err
+			}
 			result = domain.Secret{
-				ID: domain.SecretID(s.ids.NewID()), Name: name, Purpose: input.Purpose,
+				OwnerUserID: owner,
+				ID:          domain.SecretID(s.ids.NewID()), Name: name, Purpose: input.Purpose,
 				EnvelopeVersion: secrets.EnvelopeVersion, KEKID: s.secretKey.ID,
 				KEKVersion: s.secretKey.Version, CreatedAt: now, UpdatedAt: now,
 				ResourceVersion: 1,

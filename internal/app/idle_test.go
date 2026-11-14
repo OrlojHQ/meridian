@@ -28,7 +28,8 @@ func TestIdleScannerRequestsOnlyEligibleCapsules(t *testing.T) {
 	service := app.NewService(store, clock, ids, reconciler)
 
 	project := domain.Project{
-		ID: "project", Name: "project", CreatedAt: base, UpdatedAt: base, ResourceVersion: 1,
+		OwnerUserID: domain.BootstrapOwnerID,
+		ID:          "project", Name: "project", CreatedAt: base, UpdatedAt: base, ResourceVersion: 1,
 	}
 	names := []domain.CapsuleID{"idle", "recent", "run", "thread", "maintenance"}
 	if err := store.Transact(ctx, func(tx ports.Transaction) error {
@@ -120,7 +121,8 @@ func TestIdleScannerIsDisabledAndBounded(t *testing.T) {
 	}
 	if err := store.Transact(ctx, func(tx ports.Transaction) error {
 		project := domain.Project{
-			ID: "project", Name: "project", CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
+			OwnerUserID: domain.BootstrapOwnerID,
+			ID:          "project", Name: "project", CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
 		}
 		if err := tx.InsertProject(ctx, project); err != nil {
 			return err

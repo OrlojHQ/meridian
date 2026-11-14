@@ -96,7 +96,11 @@ func (s *Service) ImportHarnessSetup(ctx context.Context, input SetupImport, key
 			if len(items) >= 128 {
 				return fmt.Errorf("%w: setup limit reached", domain.ErrInvalid)
 			}
-			result = domain.HarnessSetup{ID: s.ids.NewID(), Harness: input.Bundle.Harness, CreatedAt: now, ResourceVersion: 1}
+			owner, err := ownerOf(ctx)
+			if err != nil {
+				return err
+			}
+			result = domain.HarnessSetup{OwnerUserID: owner, ID: s.ids.NewID(), Harness: input.Bundle.Harness, CreatedAt: now, ResourceVersion: 1}
 		} else {
 			result, err = findSetup(items, input.ID)
 			if err != nil {

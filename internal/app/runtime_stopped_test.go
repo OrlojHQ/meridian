@@ -280,7 +280,8 @@ func insertReadyCapsule(
 	capsuleID := domain.CapsuleID("capsule-stopped")
 	if err := store.Transact(ctx, func(tx ports.Transaction) error {
 		project := domain.Project{
-			ID: "project-stopped", Name: "project", CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
+			OwnerUserID: domain.BootstrapOwnerID,
+			ID:          "project-stopped", Name: "project", CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
 		}
 		if err := tx.InsertProject(ctx, project); err != nil {
 			return err

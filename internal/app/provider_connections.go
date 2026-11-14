@@ -136,7 +136,11 @@ func (s *Service) PutProviderConnection(ctx context.Context, id string, input Co
 			if len(items) >= 128 {
 				return domain.ErrConflict
 			}
-			result = domain.ProviderConnection{ID: s.ids.NewID(), Provider: input.Provider, CreatedAt: s.clock.Now().UTC()}
+			owner, err := ownerOf(ctx)
+			if err != nil {
+				return err
+			}
+			result = domain.ProviderConnection{OwnerUserID: owner, ID: s.ids.NewID(), Provider: input.Provider, CreatedAt: s.clock.Now().UTC()}
 		} else {
 			var err error
 			result, err = tx.GetProviderConnection(ctx, id)
@@ -283,11 +287,7 @@ func (s *Service) ProjectProviderConnection(ctx context.Context, project domain.
 // authorizeProviderLease runs for each gateway request. A lease is a Capsule
 // credential, so the request acts as that Capsule, never as a user.
 func (s *Service) authorizeProviderLease(ctx context.Context, lease providergateway.Lease) (providergateway.Upstream, error) {
-	caller, ok := capsulePrincipal(domain.CapsuleID(lease.Capsule))
-	if !ok {
-		return providergateway.Upstream{}, domain.ErrNotFound
-	}
-	ctx = principal.With(ctx, caller)
+	var caller principal.Principal
 	var upstream providergateway.Upstream
 	var connection domain.ProviderConnection
 	var raw []byte
@@ -298,6 +298,10 @@ func (s *Service) authorizeProviderLease(ctx context.Context, lease providergate
 		}
 		if string(capsule.ProjectID) != lease.Project || capsule.State != domain.CapsuleReady {
 			return domain.ErrConflict
+		}
+		var ok bool
+		if caller, ok = capsulePrincipal(capsule); !ok {
+			return domain.ErrNotFound
 		}
 		grant, err := r.GetProjectProviderConnection(ctx, capsule.ProjectID, lease.Harness)
 		if err != nil {
@@ -312,6 +316,10 @@ func (s *Service) authorizeProviderLease(ctx context.Context, lease providergate
 		}
 		if connection.Revoked || connection.Provider != lease.Provider {
 			return domain.ErrConflict
+		}
+		// The Capsule's owner must still own the connection it was leased.
+		if connection.OwnerUserID != caller.UserID() {
+			return domain.ErrNotFound
 		}
 		if connection.Provider == providergateway.ChatGPT {
 			// Resolved below: a refresh may need the network and a write.
@@ -333,6 +341,7 @@ func (s *Service) authorizeProviderLease(ctx context.Context, lease providergate
 		wipe(raw)
 		return providergateway.Upstream{}, err
 	}
+	ctx = principal.With(ctx, caller)
 	if lease.Provider == providergateway.ChatGPT {
 		wipe(raw)
 		return s.chatGPTUpstream(ctx, lease.Connection)

@@ -12,7 +12,7 @@ import (
 )
 
 func (r *repository) ListHarnessSetups(ctx context.Context) ([]domain.HarnessSetup, error) {
-	rows, err := r.q.QueryContext(ctx, "SELECT metadata FROM harness_setups ORDER BY id")
+	rows, err := r.q.QueryContext(ctx, "SELECT metadata,owner_user_id FROM harness_setups ORDER BY id")
 	if err != nil {
 		return nil, err
 	}
@@ -20,13 +20,15 @@ func (r *repository) ListHarnessSetups(ctx context.Context) ([]domain.HarnessSet
 	items := []domain.HarnessSetup{}
 	for rows.Next() {
 		var raw string
-		if err := rows.Scan(&raw); err != nil {
+		var owner domain.UserID
+		if err := rows.Scan(&raw, &owner); err != nil {
 			return nil, err
 		}
 		var item domain.HarnessSetup
 		if err := json.Unmarshal([]byte(raw), &item); err != nil {
 			return nil, err
 		}
+		item.OwnerUserID = owner
 		items = append(items, item)
 	}
 	return items, rows.Err()
@@ -36,8 +38,10 @@ func (r *repository) PutHarnessSetup(ctx context.Context, item domain.HarnessSet
 	if err != nil {
 		return err
 	}
-	_, err = r.q.ExecContext(ctx, "INSERT INTO harness_setups(id,harness,metadata) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET metadata=excluded.metadata", item.ID, item.Harness, string(raw))
-	return err
+	// An existing row is replaced only by its owner; for anyone else the
+	// setup does not exist.
+	result, err := r.q.ExecContext(ctx, "INSERT INTO harness_setups(id,harness,metadata,owner_user_id) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET metadata=excluded.metadata WHERE owner_user_id=excluded.owner_user_id", item.ID, item.Harness, string(raw), item.OwnerUserID)
+	return ownedUpsertResult(result, err)
 }
 func (r *repository) GetHarnessSetupRevision(ctx context.Context, id string) (domain.HarnessSetupRevision, error) {
 	var item domain.HarnessSetupRevision
@@ -77,12 +81,12 @@ func (r *repository) InsertHarnessSetupRevision(ctx context.Context, item domain
 	if err != nil {
 		return err
 	}
-	_, err = r.q.ExecContext(ctx, "INSERT INTO harness_setup_revisions(id,setup_id,metadata,key_id,nonce,ciphertext) VALUES(?,?,?,?,?,?)", item.ID, item.SetupID, string(raw), item.KeyID, item.Nonce, item.Ciphertext)
+	_, err = r.q.ExecContext(ctx, "INSERT INTO harness_setup_revisions(owner_user_id, id,setup_id,metadata,key_id,nonce,ciphertext) VALUES(COALESCE((SELECT owner_user_id FROM harness_setups WHERE id = ?), ''), ?,?,?,?,?,?)", item.SetupID, item.ID, item.SetupID, string(raw), item.KeyID, item.Nonce, item.Ciphertext)
 	return err
 }
 func (r *repository) PinHarnessSetup(ctx context.Context, id domain.CapsuleID, harness, revision string) error {
 	_, err := r.q.ExecContext(ctx, "INSERT INTO capsule_harness_setups(capsule_id,harness,revision_id) VALUES(?,?,?)", id, harness, revision)
-	return err
+	return mapOwnerViolation(err)
 }
 func (r *repository) ListPinnedHarnessSetups(ctx context.Context, ids []domain.CapsuleID) (map[domain.CapsuleID][]domain.PinnedHarnessSetup, error) {
 	result := map[domain.CapsuleID][]domain.PinnedHarnessSetup{}
@@ -179,7 +183,7 @@ func (r *repository) SetProjectHarnessSetup(ctx context.Context, id domain.Proje
 		return err
 	}
 	_, err := r.q.ExecContext(ctx, "INSERT INTO project_harness_setups(project_id,harness,setup_id) VALUES(?,?,?) ON CONFLICT(project_id,harness) DO UPDATE SET setup_id=excluded.setup_id", id, harness, setup)
-	return err
+	return mapOwnerViolation(err)
 }
 
 func (r *repository) CollectDeletedHarnessSetups(ctx context.Context) error {

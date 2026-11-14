@@ -33,7 +33,7 @@ type Store struct {
 }
 
 // CurrentSchemaVersion is the newest migration this binary understands.
-const CurrentSchemaVersion = 22
+const CurrentSchemaVersion = 23
 
 func Open(ctx context.Context, dataDir string) (*Store, error) {
 	if strings.TrimSpace(dataDir) == "" {
@@ -250,7 +250,7 @@ const projectColumns = `id, name, repository_url, setup_argv, image_reference, h
 			git_secret_name, harness_secret_names,
 			git_push_secret_name, github_api_secret_name, commit_author_name,
 			commit_author_email, default_base_branch,
-			created_at, updated_at, resource_version, state, failure`
+			created_at, updated_at, resource_version, state, failure, owner_user_id`
 
 func (r *repository) InsertProject(ctx context.Context, project domain.Project) error {
 	setup, err := json.Marshal(project.Setup)
@@ -279,15 +279,15 @@ func (r *repository) InsertProject(ctx context.Context, project domain.Project) 
 			git_secret_name, harness_secret_names,
 			git_push_secret_name, github_api_secret_name, commit_author_name,
 			commit_author_email, default_base_branch,
-			created_at, updated_at, resource_version, state, failure
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			created_at, updated_at, resource_version, state, failure, owner_user_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		project.ID, project.Name, project.RepositoryURL, string(setup), project.ImageReference,
 		string(harnessImages),
 		project.GitSecretName, string(harnessSecrets), project.GitPushSecretName,
 		project.GitHubAPISecretName, project.CommitAuthorName, project.CommitAuthorEmail,
 		project.DefaultBaseBranch,
 		formatTime(project.CreatedAt), formatTime(project.UpdatedAt), project.ResourceVersion,
-		state, project.Failure,
+		state, project.Failure, project.OwnerUserID,
 	)
 	return mapError(err)
 }
@@ -386,6 +386,7 @@ func scanProject(row scanner) (domain.Project, error) {
 		&project.GitPushSecretName, &project.GitHubAPISecretName,
 		&project.CommitAuthorName, &project.CommitAuthorEmail, &project.DefaultBaseBranch,
 		&created, &updated, &project.ResourceVersion, &state, &project.Failure,
+		&project.OwnerUserID,
 	)
 	if err != nil {
 		return domain.Project{}, mapError(err)
@@ -418,11 +419,11 @@ func (r *repository) InsertSecret(ctx context.Context, secret domain.Secret) err
 	_, err := r.q.ExecContext(ctx, `
 		INSERT INTO secrets(
 			id, name, purpose, envelope_version, kek_id, kek_version, nonce,
-			ciphertext, created_at, updated_at, resource_version
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			ciphertext, created_at, updated_at, resource_version, owner_user_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		secret.ID, secret.Name, secret.Purpose, secret.EnvelopeVersion, secret.KEKID,
 		secret.KEKVersion, secret.Nonce, secret.Ciphertext, formatTime(secret.CreatedAt),
-		formatTime(secret.UpdatedAt), secret.ResourceVersion,
+		formatTime(secret.UpdatedAt), secret.ResourceVersion, secret.OwnerUserID,
 	)
 	return mapError(err)
 }
@@ -469,7 +470,7 @@ func (r *repository) DeleteSecret(
 func (r *repository) GetSecret(ctx context.Context, name string) (domain.Secret, error) {
 	return scanSecret(r.q.QueryRowContext(ctx, `
 		SELECT id, name, purpose, envelope_version, kek_id, kek_version, nonce,
-			ciphertext, created_at, updated_at, resource_version
+			ciphertext, created_at, updated_at, resource_version, owner_user_id
 		FROM secrets WHERE name = ?`, name))
 }
 
@@ -478,7 +479,7 @@ func (r *repository) ListSecrets(
 ) ([]domain.Secret, bool, error) {
 	rows, err := r.q.QueryContext(ctx, `
 		SELECT id, name, purpose, envelope_version, kek_id, kek_version, nonce,
-			ciphertext, created_at, updated_at, resource_version
+			ciphertext, created_at, updated_at, resource_version, owner_user_id
 		FROM secrets ORDER BY name LIMIT ? OFFSET ?`, page.Limit+1, page.Offset)
 	if err != nil {
 		return nil, false, err
@@ -508,7 +509,7 @@ func scanSecret(row scanner) (domain.Secret, error) {
 	err := row.Scan(
 		&secret.ID, &secret.Name, &secret.Purpose, &secret.EnvelopeVersion,
 		&secret.KEKID, &secret.KEKVersion, &secret.Nonce, &secret.Ciphertext,
-		&created, &updated, &secret.ResourceVersion,
+		&created, &updated, &secret.ResourceVersion, &secret.OwnerUserID,
 	)
 	if err != nil {
 		return domain.Secret{}, mapError(err)
@@ -534,12 +535,13 @@ func (r *repository) InsertCapsule(ctx context.Context, capsule domain.Capsule) 
 	}
 	_, err := r.q.ExecContext(ctx, `
 		INSERT INTO capsules(
+			owner_user_id,
 			id, project_id, timeline_id, name, launcher_harness, state, desired_state, provider_resource_id,
 			origin_moment_id, restore_complete, maintenance, failure, failure_code, image_reference,
 			role, lead_thread_id, link_id,
 			last_activity_at, created_at, updated_at, resource_version
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		capsule.ID, capsule.ProjectID, capsule.TimelineID, capsule.Name, capsule.LauncherHarness,
+		) VALUES (COALESCE((SELECT owner_user_id FROM projects WHERE id = ?), ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		capsule.ProjectID, capsule.ID, capsule.ProjectID, capsule.TimelineID, capsule.Name, capsule.LauncherHarness,
 		capsule.State, capsule.DesiredState,
 		capsule.ProviderResourceID, nullableString(string(capsule.OriginMomentID)), capsule.RestoreComplete,
 		capsule.Maintenance, capsule.Failure, capsule.FailureCode, capsule.ImageReference,
@@ -637,7 +639,7 @@ func (r *repository) GetCapsule(ctx context.Context, id domain.CapsuleID) (domai
 		SELECT id, project_id, timeline_id, name, launcher_harness, state, desired_state, provider_resource_id,
 			origin_moment_id, restore_complete, maintenance, failure, failure_code, image_reference,
 			role, lead_thread_id, link_id, promoted_at,
-			last_activity_at, created_at, updated_at, resource_version
+			last_activity_at, created_at, updated_at, resource_version, owner_user_id
 		FROM capsules WHERE id = ?`, id,
 	))
 }
@@ -652,7 +654,7 @@ func (r *repository) ListCapsules(
 		SELECT id, project_id, timeline_id, name, launcher_harness, state, desired_state, provider_resource_id,
 			origin_moment_id, restore_complete, maintenance, failure, failure_code, image_reference,
 			role, lead_thread_id, link_id, promoted_at,
-			last_activity_at, created_at, updated_at, resource_version
+			last_activity_at, created_at, updated_at, resource_version, owner_user_id
 		FROM capsules WHERE project_id = ? AND (? = '' OR role = ?)
 		ORDER BY created_at, id LIMIT ? OFFSET ?`,
 		projectID, role, role, page.Limit+1, page.Offset,
@@ -691,7 +693,7 @@ func (r *repository) ListIdleCapsules(
 		SELECT id, project_id, timeline_id, name, launcher_harness, state, desired_state, provider_resource_id,
 			origin_moment_id, restore_complete, maintenance, failure, failure_code, image_reference,
 			role, lead_thread_id, link_id, promoted_at,
-			last_activity_at, created_at, updated_at, resource_version
+			last_activity_at, created_at, updated_at, resource_version, owner_user_id
 		FROM capsules
 		WHERE state = ? AND desired_state = ? AND maintenance = ''
 			AND last_activity_at <= ?
@@ -717,7 +719,7 @@ func (r *repository) ListRecoverableCapsules(ctx context.Context) ([]domain.Caps
 		SELECT id, project_id, timeline_id, name, launcher_harness, state, desired_state, provider_resource_id,
 			origin_moment_id, restore_complete, maintenance, failure, failure_code, image_reference,
 			role, lead_thread_id, link_id, promoted_at,
-			last_activity_at, created_at, updated_at, resource_version
+			last_activity_at, created_at, updated_at, resource_version, owner_user_id
 		FROM capsules WHERE state NOT IN (?, ?)
 		ORDER BY created_at, id`, domain.CapsuleSealed, domain.CapsuleDeleted,
 	)
@@ -750,7 +752,7 @@ func scanCapsule(row scanner) (domain.Capsule, error) {
 		&capsule.DesiredState, &capsule.ProviderResourceID, &origin, &capsule.RestoreComplete,
 		&capsule.Maintenance, &capsule.Failure, &capsule.FailureCode, &capsule.ImageReference,
 		&capsule.Role, &leadThread, &link, &promoted,
-		&activity, &created, &updated, &capsule.ResourceVersion,
+		&activity, &created, &updated, &capsule.ResourceVersion, &capsule.OwnerUserID,
 	)
 	if err != nil {
 		return domain.Capsule{}, mapError(err)
@@ -780,9 +782,9 @@ func (r *repository) InsertTimeline(ctx context.Context, timeline domain.Timelin
 		return err
 	}
 	_, err := r.q.ExecContext(ctx, `
-		INSERT INTO timelines(id, project_id, capsule_id, forked_from_moment_id, reason, created_at)
-		VALUES (?, ?, ?, ?, ?, ?)`,
-		timeline.ID, timeline.ProjectID, timeline.CapsuleID,
+		INSERT INTO timelines(owner_user_id, id, project_id, capsule_id, forked_from_moment_id, reason, created_at)
+		VALUES (COALESCE((SELECT owner_user_id FROM projects WHERE id = ?), ''), ?, ?, ?, ?, ?, ?)`,
+		timeline.ProjectID, timeline.ID, timeline.ProjectID, timeline.CapsuleID,
 		nullableString(string(timeline.ForkedFromMomentID)), timeline.Reason,
 		formatTime(timeline.CreatedAt),
 	)
@@ -859,11 +861,12 @@ func (r *repository) InsertMoment(ctx context.Context, moment domain.Moment) err
 	}
 	_, err := r.q.ExecContext(ctx, `
 		INSERT INTO moments(
+			owner_user_id,
 			id, project_id, capsule_id, timeline_id, parent_moment_id, name,
 			archive_sha256, archive_size, manifest_sha256, image_digest,
 			project_setup_hash, git_branch, git_head, git_dirty_summary, created_at, final, kind
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		moment.ID, moment.ProjectID, moment.CapsuleID, moment.TimelineID,
+		) VALUES (COALESCE((SELECT owner_user_id FROM projects WHERE id = ?), ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		moment.ProjectID, moment.ID, moment.ProjectID, moment.CapsuleID, moment.TimelineID,
 		nullableString(string(moment.ParentMomentID)), moment.Name, moment.ArchiveSHA256,
 		moment.ArchiveSize, moment.ManifestSHA256, moment.ImageDigest, moment.ProjectSetupHash,
 		moment.GitBranch, moment.GitHEAD, moment.GitDirtySummary,
@@ -968,13 +971,13 @@ func (r *repository) PutSetupMomentCache(
 		return err
 	}
 	_, err := r.q.ExecContext(ctx, `
-		INSERT INTO setup_moment_cache(project_id, config_hash, moment_id, created_at)
-		VALUES (?, ?, ?, ?)
+		INSERT INTO setup_moment_cache(owner_user_id, project_id, config_hash, moment_id, created_at)
+		VALUES (COALESCE((SELECT owner_user_id FROM projects WHERE id = ?), ''), ?, ?, ?, ?)
 		ON CONFLICT(project_id, config_hash) DO UPDATE SET
 			config_hash = excluded.config_hash,
 			moment_id = excluded.moment_id,
 			created_at = excluded.created_at`,
-		cache.ProjectID, cache.ConfigHash, cache.MomentID, formatTime(cache.CreatedAt))
+		cache.ProjectID, cache.ProjectID, cache.ConfigHash, cache.MomentID, formatTime(cache.CreatedAt))
 	if err != nil {
 		return mapError(err)
 	}
@@ -998,10 +1001,11 @@ func (r *repository) InsertRun(ctx context.Context, run domain.Run) error {
 	}
 	_, err := r.q.ExecContext(ctx, `
 		INSERT INTO runs(
+			owner_user_id,
 			id, capsule_id, harness, state, exit_status, failure, event_cursor, created_at,
 			started_at, finished_at, updated_at, resource_version
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		run.ID, run.CapsuleID, run.Harness, run.State, exitStatus, run.Failure,
+		) VALUES (COALESCE((SELECT owner_user_id FROM capsules WHERE id = ?), ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		run.CapsuleID, run.ID, run.CapsuleID, run.Harness, run.State, exitStatus, run.Failure,
 		run.EventCursor, formatTime(run.CreatedAt), nullableTime(run.StartedAt), nullableTime(run.FinishedAt),
 		formatTime(run.UpdatedAt), run.ResourceVersion,
 	)
@@ -1281,11 +1285,12 @@ func (r *repository) InsertThread(ctx context.Context, thread domain.Thread) err
 	}
 	_, err := r.q.ExecContext(ctx, `
 		INSERT INTO threads(
+			owner_user_id,
 			id, capsule_id, state, current_run_id, adapter_id,
 			wrapped_dek, kek_id, kek_version, envelope_version, message_count,
 			encrypted_bytes, created_at, updated_at, deleted_at, resource_version
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		thread.ID, thread.CapsuleID, thread.State, nullableString(string(thread.CurrentRunID)),
+		) VALUES (COALESCE((SELECT owner_user_id FROM capsules WHERE id = ?), ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		thread.CapsuleID, thread.ID, thread.CapsuleID, thread.State, nullableString(string(thread.CurrentRunID)),
 		thread.AdapterID, nullableBytes(thread.WrappedDEK),
 		thread.KEKID, thread.KEKVersion, thread.EnvelopeVersion, thread.MessageCount,
 		thread.EncryptedBytes, formatTime(thread.CreatedAt), formatTime(thread.UpdatedAt),
@@ -1444,9 +1449,9 @@ func (r *repository) AppendThreadMessage(ctx context.Context, message domain.Thr
 		total += len(block.Ciphertext)
 	}
 	_, err := r.q.ExecContext(ctx, `
-		INSERT INTO thread_messages(id, thread_id, sequence, role, kind, created_at)
-		VALUES (?, ?, ?, ?, ?, ?)`,
-		message.ID, message.ThreadID, message.Sequence, message.Role, message.Kind,
+		INSERT INTO thread_messages(owner_user_id, id, thread_id, sequence, role, kind, created_at)
+		VALUES (COALESCE((SELECT owner_user_id FROM threads WHERE id = ?), ''), ?, ?, ?, ?, ?, ?)`,
+		message.ThreadID, message.ID, message.ThreadID, message.Sequence, message.Role, message.Kind,
 		formatTime(message.CreatedAt))
 	if err != nil {
 		return mapError(err)
@@ -1454,10 +1459,11 @@ func (r *repository) AppendThreadMessage(ctx context.Context, message domain.Thr
 	for _, block := range message.Blocks {
 		_, err = r.q.ExecContext(ctx, `
 			INSERT INTO thread_blocks(
+				owner_user_id,
 				id, thread_id, message_id, message_sequence, sequence, kind,
 				envelope_version, ciphertext, created_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			block.ID, block.ThreadID, block.MessageID, block.MessageSequence,
+			) VALUES (COALESCE((SELECT owner_user_id FROM threads WHERE id = ?), ''), ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			block.ThreadID, block.ID, block.ThreadID, block.MessageID, block.MessageSequence,
 			block.Sequence, block.Kind, block.EnvelopeVersion, block.Ciphertext,
 			formatTime(block.CreatedAt))
 		if err != nil {
@@ -1588,9 +1594,10 @@ func (r *repository) InsertThreadDelivery(
 	}
 	_, err := r.q.ExecContext(ctx, `
 		INSERT INTO thread_deliveries(
+			owner_user_id,
 			message_id, thread_id, run_id, controller_id, created_at, delivered_at
-		) VALUES (?, ?, ?, ?, ?, NULL)`,
-		delivery.MessageID, delivery.ThreadID, delivery.RunID, delivery.ControllerID,
+		) VALUES (COALESCE((SELECT owner_user_id FROM threads WHERE id = ?), ''), ?, ?, ?, ?, ?, NULL)`,
+		delivery.ThreadID, delivery.MessageID, delivery.ThreadID, delivery.RunID, delivery.ControllerID,
 		formatTime(delivery.CreatedAt),
 	)
 	return mapError(err)
@@ -1651,12 +1658,13 @@ func (r *repository) InsertProjectThreadIntent(
 	}
 	_, err := r.q.ExecContext(ctx, `
 		INSERT INTO project_thread_intents(
+			owner_user_id,
 			id, project_id, capsule_id, thread_id, run_id, message_id, block_id,
 			capsule_name, requested_name, harness, idempotency_key, state,
 			failure_code, failure_message, wrapped_dek, kek_id, kek_version,
 			envelope_version, ciphertext, created_at, updated_at, resource_version
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		intent.ID, intent.ProjectID, intent.CapsuleID, intent.ThreadID, intent.RunID,
+		) VALUES (COALESCE((SELECT owner_user_id FROM projects WHERE id = ?), ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		intent.ProjectID, intent.ID, intent.ProjectID, intent.CapsuleID, intent.ThreadID, intent.RunID,
 		intent.MessageID, block.ID, intent.CapsuleName, intent.RequestedName,
 		intent.Harness, intent.IdempotencyKey, intent.State, intent.FailureCode,
 		intent.FailureMessage, intent.WrappedDEK, intent.KEKID, intent.KEKVersion,
@@ -1924,13 +1932,14 @@ func (r *repository) InsertDelivery(ctx context.Context, delivery domain.Deliver
 	}
 	_, err := r.q.ExecContext(ctx, `
 		INSERT INTO deliveries(
+			owner_user_id,
 			id, capsule_id, project_id, state, action, proposed_by, approved, approved_at,
 			expected_capsule_version, expected_head, expected_tree, remote_branch,
 			destination_ref, base_branch, commit_message, pr_title, pr_body,
 			result_commit_sha, result_pr_url, result_pr_number, failure,
 			idempotency_key, created_at, updated_at, resource_version
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		delivery.ID, delivery.CapsuleID, delivery.ProjectID, delivery.State, delivery.Action,
+		) VALUES (COALESCE((SELECT owner_user_id FROM capsules WHERE id = ?), ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		delivery.CapsuleID, delivery.ID, delivery.CapsuleID, delivery.ProjectID, delivery.State, delivery.Action,
 		delivery.ProposedBy, delivery.Approved, deliveryApprovedAt(delivery.ApprovedAt),
 		delivery.ExpectedCapsuleVersion, delivery.ExpectedHEAD, delivery.ExpectedTree,
 		delivery.RemoteBranch, delivery.DestinationRef, delivery.BaseBranch,
@@ -2157,6 +2166,31 @@ func parseTime(value string) (time.Time, error) {
 	return time.Parse(time.RFC3339Nano, value)
 }
 
+// ownedUpsertResult reports an upsert of an owned root row. No row changed
+// means the id exists under another owner, which reads as not found.
+func ownedUpsertResult(result sql.Result, err error) error {
+	if err != nil {
+		return mapError(err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
+// mapOwnerViolation maps only a cross-owner reference, for writes whose
+// other errors callers already expect unmapped.
+func mapOwnerViolation(err error) error {
+	if err != nil && strings.Contains(strings.ToLower(err.Error()), "owner violation") {
+		return domain.ErrNotFound
+	}
+	return err
+}
+
 func mapError(err error) error {
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.ErrNotFound
@@ -2170,6 +2204,11 @@ func mapError(err error) error {
 	}
 	if strings.Contains(message, "append order") || strings.Contains(message, "lifecycle violation") {
 		return domain.ErrConflict
+	}
+	if strings.Contains(message, "owner violation") {
+		// A row that names another owner's parent: the parent is not
+		// there for this caller (ADR 0046).
+		return domain.ErrNotFound
 	}
 	if strings.Contains(message, "quota violation") {
 		return domain.ErrResourceExhausted

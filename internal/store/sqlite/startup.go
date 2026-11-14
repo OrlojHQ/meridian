@@ -48,15 +48,16 @@ func (r *repository) PutStartup(ctx context.Context, progress domain.StartupProg
 	}
 	_, err := r.q.ExecContext(ctx, `
 		INSERT INTO capsule_startup(
+			owner_user_id,
 			capsule_id, phase, phases, current_bytes, total_bytes, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?)
+		) VALUES (COALESCE((SELECT owner_user_id FROM capsules WHERE id = ?), ''), ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(capsule_id) DO UPDATE SET
 			phase = excluded.phase,
 			phases = excluded.phases,
 			current_bytes = excluded.current_bytes,
 			total_bytes = excluded.total_bytes,
 			updated_at = excluded.updated_at`,
-		progress.CapsuleID, progress.Phase, strings.Join(names, ","),
+		progress.CapsuleID, progress.CapsuleID, progress.Phase, strings.Join(names, ","),
 		current, total, formatTime(progress.UpdatedAt),
 	)
 	return mapError(err)

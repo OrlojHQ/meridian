@@ -22,7 +22,7 @@ func (r *repository) PutPreparation(ctx context.Context, item domain.Preparation
 	if err != nil {
 		return err
 	}
-	_, err = r.q.ExecContext(ctx, "INSERT INTO capsule_preparations(capsule_id,metadata) VALUES(?,?) ON CONFLICT(capsule_id) DO UPDATE SET metadata=excluded.metadata", item.CapsuleID, string(raw))
+	_, err = r.q.ExecContext(ctx, "INSERT INTO capsule_preparations(owner_user_id, capsule_id,metadata) VALUES(COALESCE((SELECT owner_user_id FROM capsules WHERE id = ?), ''), ?,?) ON CONFLICT(capsule_id) DO UPDATE SET metadata=excluded.metadata", item.CapsuleID, item.CapsuleID, string(raw))
 	return mapError(err)
 }
 
@@ -39,6 +39,6 @@ func (r *repository) GetPreparationPolicy(ctx context.Context, id domain.Project
 	return policy, mapError(err)
 }
 func (r *repository) PutPreparationPolicy(ctx context.Context, id domain.ProjectID, p domain.PreparationPolicy) error {
-	_, err := r.q.ExecContext(ctx, "INSERT INTO project_preparation_policy(project_id,disabled,generation) VALUES(?,?,?) ON CONFLICT(project_id) DO UPDATE SET disabled=excluded.disabled,generation=excluded.generation", id, p.Disabled, p.Generation)
+	_, err := r.q.ExecContext(ctx, "INSERT INTO project_preparation_policy(owner_user_id, project_id,disabled,generation) VALUES(COALESCE((SELECT owner_user_id FROM projects WHERE id = ?), ''), ?,?,?) ON CONFLICT(project_id) DO UPDATE SET disabled=excluded.disabled,generation=excluded.generation", id, id, p.Disabled, p.Generation)
 	return mapError(err)
 }

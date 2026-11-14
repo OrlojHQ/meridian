@@ -10,6 +10,15 @@ import (
 	"time"
 )
 
+// UserID identifies a member (ADR 0046). It is opaque outside the users
+// table.
+type UserID string
+
+// BootstrapOwnerID is the bootstrap owner, the only user in single-user
+// mode. Migration 0023 creates this users row and stamps it on every row
+// that existed before ownership.
+const BootstrapOwnerID UserID = "usr_bootstrap_owner"
+
 type ProjectID string
 type CapsuleID string
 type TimelineID string
@@ -82,6 +91,10 @@ type HarnessImage struct {
 }
 
 type Project struct {
+	// OwnerUserID is the user who owns this row (ADR 0046). Its JSON is only
+	// the idempotency outcome: internal/httpapi maps this type to its own
+	// response, which does not expose owners.
+	OwnerUserID         UserID `json:",omitempty"`
 	ID                  ProjectID
 	Name                string
 	RepositoryURL       string
@@ -515,6 +528,10 @@ func (d Delivery) Validate() error {
 // Secret contains only an authenticated ciphertext envelope and metadata.
 // Plaintext values must never cross the persistence port.
 type Secret struct {
+	// OwnerUserID is the user who owns this row (ADR 0046). Its JSON is only
+	// the idempotency outcome: internal/httpapi maps this type to its own
+	// response, which does not expose owners.
+	OwnerUserID     UserID `json:",omitempty"`
 	ID              SecretID
 	Name            string
 	Purpose         SecretPurpose
@@ -570,6 +587,10 @@ const (
 )
 
 type Capsule struct {
+	// OwnerUserID is the user who owns this row (ADR 0046). Its JSON is only
+	// the idempotency outcome: internal/httpapi maps this type to its own
+	// response, which does not expose owners.
+	OwnerUserID        UserID `json:",omitempty"`
 	Preparation        *PreparationProgress
 	ID                 CapsuleID
 	ProjectID          ProjectID
