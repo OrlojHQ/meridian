@@ -10,6 +10,7 @@ import (
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/ports"
 	"github.com/OrlojHQ/meridian/internal/principal"
+	"github.com/OrlojHQ/meridian/internal/providergateway"
 	"github.com/OrlojHQ/meridian/internal/secrets"
 )
 
@@ -192,6 +193,43 @@ func (s *Service) TransferDepartedMember(ctx context.Context, from, to domain.Us
 		}
 		return tx.AppendAuditRecord(system, record)
 	})
+}
+
+// personalLogin reports a connection that is one person's own account
+// sign-in (ADR 0036, ADR 0038), which never passes to someone else.
+func personalLogin(connection domain.ProviderConnection) bool {
+	return connection.Provider == providergateway.ChatGPT || connection.CredentialKind == providergateway.CredentialOAuth
+}
+
+// RevokePersonalLogins revokes owner's personal Claude and ChatGPT logins,
+// including the ChatGPT upstream refresh token. It runs before the
+// bootstrap owner's identity is recovered, so the replacement identity
+// never inherits another person's account. API-key connections stay.
+func (s *Service) RevokePersonalLogins(ctx context.Context, owner domain.UserID) (int, error) {
+	if err := requireSystem(ctx); err != nil {
+		return 0, err
+	}
+	var connections []domain.ProviderConnection
+	if err := s.store.View(ctx, func(reader ports.Reader) error {
+		all, err := reader.ListProviderConnections(ctx)
+		for _, connection := range all {
+			if connection.OwnerUserID == owner && !connection.Revoked && personalLogin(connection) {
+				connections = append(connections, connection)
+			}
+		}
+		return err
+	}); err != nil {
+		return 0, err
+	}
+	for index, connection := range connections {
+		if _, err := s.PutProviderConnection(ctx, connection.ID, ConnectionInput{
+			Name: connection.Name, Provider: connection.Provider, Revoked: true,
+			CredentialKind: connection.CredentialKind, ExpectedResourceVersion: connection.ResourceVersion,
+		}); err != nil {
+			return index, fmt.Errorf("revoke a personal provider login: %w", err)
+		}
+	}
+	return len(connections), nil
 }
 
 // DeleteDepartedMember deletes a departed member's work: it starts deletion

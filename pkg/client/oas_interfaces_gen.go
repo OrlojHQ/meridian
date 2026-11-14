@@ -21,6 +21,10 @@ type BeginDeviceLoginRes interface {
 	beginDeviceLoginRes()
 }
 
+type BeginMemberIdentityRebindRes interface {
+	beginMemberIdentityRebindRes()
+}
+
 type CancelRunRes interface {
 	cancelRunRes()
 }
@@ -35,6 +39,10 @@ type CaptureMomentRes interface {
 
 type ClaimInstallationRes interface {
 	claimInstallationRes()
+}
+
+type CompleteMemberIdentityRebindRes interface {
+	completeMemberIdentityRebindRes()
 }
 
 type CompleteOidcSignInRes interface {

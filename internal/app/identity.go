@@ -54,15 +54,18 @@ type Identity struct {
 
 	team atomic.Bool
 
-	mu       sync.Mutex
-	attempts map[string]signInAttempt
-	claims   map[[32]byte]pendingClaim
-	devices  map[[32]byte]*deviceLogin
-	disabled []MemberDisabled
+	mu        sync.Mutex
+	attempts  map[string]signInAttempt
+	claims    map[[32]byte]pendingClaim
+	devices   map[[32]byte]*deviceLogin
+	rebinds   map[[32]byte]pendingRebind
+	rebinding []IdentityRebinding
+	disabled  []MemberDisabled
 }
 
 type signInAttempt struct {
-	attempt oidcauth.Attempt
+	rebindDigest [32]byte
+	attempt      oidcauth.Attempt
 	// binding is the digest of the value the starting browser holds. The
 	// callback must present it, so a callback URL from someone else's
 	// sign-in cannot sign this browser in as them (login CSRF).
@@ -75,11 +78,13 @@ type pendingClaim struct {
 	expires  time.Time
 }
 
-// SignInResult is a completed sign-in. Exactly one field is set: a session
-// token in team mode, or a claim token before the claim.
+// SignInResult is a completed sign-in: a session token in team mode, a
+// claim token before the claim, or verification of a break-glass recovery.
+// Exactly one field is set.
 type SignInResult struct {
 	SessionToken string
 	ClaimToken   string
+	RebindReady  bool
 }
 
 // NewIdentity reads the installation's mode. provider is nil when no
@@ -90,7 +95,7 @@ func NewIdentity(ctx context.Context, store ports.Store, clock ports.Clock, ids 
 	identity := &Identity{
 		store: newScopedStore(store, clock), clock: clock, ids: ids, provider: provider,
 		attempts: map[string]signInAttempt{}, claims: map[[32]byte]pendingClaim{},
-		devices: map[[32]byte]*deviceLogin{},
+		devices: map[[32]byte]*deviceLogin{}, rebinds: map[[32]byte]pendingRebind{},
 	}
 	var installation domain.Installation
 	if err := identity.store.View(principal.WithSystem(ctx), func(reader ports.Reader) error {
@@ -166,12 +171,18 @@ func (i *Identity) CompleteSignIn(ctx context.Context, state, code, binding stri
 	pending, ok := i.attempts[state]
 	delete(i.attempts, state)
 	i.mu.Unlock()
-	if !ok || state == "" || binding == "" {
+	if !ok || state == "" {
 		return SignInResult{}, domain.ErrNotFound
 	}
-	presented := sha256.Sum256([]byte(binding))
-	if subtle.ConstantTimeCompare(presented[:], pending.binding[:]) != 1 {
-		return SignInResult{}, domain.ErrNotFound
+	// A recovery attempt starts from the break-glass CLI, not this
+	// browser, and its callback grants the browser nothing: the caller
+	// holding the recovery token completes it. Every other attempt must
+	// come back to the browser that started it.
+	if pending.rebindDigest == ([32]byte{}) {
+		presented := sha256.Sum256([]byte(binding))
+		if binding == "" || subtle.ConstantTimeCompare(presented[:], pending.binding[:]) != 1 {
+			return SignInResult{}, domain.ErrNotFound
+		}
 	}
 	verified, err := i.provider.Complete(ctx, pending.attempt, code)
 	if errors.Is(err, oidcauth.ErrDenied) {
@@ -180,6 +191,10 @@ func (i *Identity) CompleteSignIn(ctx context.Context, state, code, binding stri
 	if err != nil {
 		return SignInResult{}, fmt.Errorf("%w: sign-in failed", domain.ErrInvalid)
 	}
+	if pending.rebindDigest != ([32]byte{}) {
+		return i.verifyRebind(pending.rebindDigest, verified, i.clock.Now())
+	}
+
 	if !i.team.Load() {
 		token, digest, err := newToken()
 		if err != nil {
@@ -444,6 +459,12 @@ func (i *Identity) RecordBreakGlass(ctx context.Context, route string) {
 }
 
 func (i *Identity) pruneLocked(now time.Time) {
+	for digest, pending := range i.rebinds {
+		if !now.Before(pending.expires) {
+			delete(i.rebinds, digest)
+		}
+	}
+
 	for state, attempt := range i.attempts {
 		if !now.Before(attempt.expires) {
 			delete(i.attempts, state)

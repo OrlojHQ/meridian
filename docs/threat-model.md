@@ -1284,9 +1284,25 @@ Threats and required controls:
   the owner. The claim instead requires both an OIDC sign-in and the
   installation bearer in the same session, happens once, and is audited.
   Until the claim, other OIDC sign-ins are refused.
+- **Identity recovery hijack.** A member tries to replace the bootstrap
+  owner's identity or transplant another member's identity, or the
+  installation bearer's holder tries to sign in as a teammate. Only the
+  bootstrap owner can be recovered: rebinding any other member would hand
+  their objects to the bearer's holder, so it is refused. The owner's personal
+  Claude and ChatGPT logins are revoked before the identity changes, and a
+  failed revocation stops the recovery. Recovery requires
+  break-glass authority at both start and completion plus an OIDC-verified
+  identity from the pinned issuer and group policy. The callback cannot
+  create a user or session. A ten-minute, single-use completion token is
+  stored only as a digest and bound to the target's original identity;
+  replay, concurrent target changes, and another member's identity fail
+  closed. Replacement, session/token revocation, and audit commit together;
+  ownership, roles, and disabled state are preserved. Live tickets and gateway
+  leases are dropped. The old identity must also be disabled at the issuer
+  when compromised: it could otherwise rejoin with a new, empty membership.
 - **Break-glass misuse.** The installation bearer in team mode is accepted
-  only on membership, revocation, audit, and departed-user transfer and
-  delete endpoints (today: the audit log and membership administration). It is refused on object endpoints, and every use is
+  only on membership (including bootstrap-owner identity recovery), revocation, audit, and
+  departed-user transfer and delete endpoints. It is refused on object endpoints, and every use is
   audited. Its custody stays outside SQLite, as in ADR 0015.
 - **Admin overreach.** The admin role manages membership and reads audit. It
   cannot read or change other users' objects. No "see everything" role
@@ -1330,7 +1346,9 @@ Threats and required controls:
   binding in an `HttpOnly`, `SameSite=Lax` cookie scoped to `/auth/oidc`,
   and the daemon keeps only its digest with the attempt. A callback without
   the matching cookie is refused and spends the state, so the code is never
-  exchanged.
+  exchanged. A bootstrap-owner recovery callback is the one exception: it
+  starts from the break-glass CLI rather than a browser, and it grants the
+  browser nothing, since the caller holding the recovery token completes it.
 - **Identity provider compromise or loose membership.** A compromised
   issuer, or one that authenticates people outside the team, can mint
   members. Operators whose issuer serves anyone else must set the required

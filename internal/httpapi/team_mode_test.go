@@ -338,3 +338,87 @@ func TestDisabledMembersTicketsAreDropped(t *testing.T) {
 		t.Fatalf("another member's preview ticket = %q", status)
 	}
 }
+
+func TestBreakGlassIdentityRebindUsesVerifiedCallbackWithoutSession(t *testing.T) {
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	clock := &teamClock{now: time.Now().UTC()}
+	identity, err := app.NewIdentity(ctx, store, clock, &teamIDs{}, teamIssuer{subject: "alice"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, binding, err := identity.BeginSignIn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claim, err := identity.CompleteSignIn(ctx, "the-state", "code", binding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := identity.Claim(principal.With(ctx, principal.Owner()), claim.ClaimToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tokenValue := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{8}, 32))
+	token, err := apiauth.ParseToken(tokenValue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := New(app.NewService(store, clock, &teamIDs{}, nil), token)
+	server.SetIdentity(identity)
+	do := func(method, path, body, credential string) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest(method, "http://localhost"+path, strings.NewReader(body))
+		req.RemoteAddr = "127.0.0.1:4000"
+		req.Header.Set("Content-Type", "application/json")
+		if credential == "bearer" {
+			req.Header.Set("Authorization", "Bearer "+tokenValue)
+		}
+		if credential == "cookie" {
+			req.Header.Set("Origin", "http://localhost")
+			req.AddCookie(&http.Cookie{Name: userSessionCookie, Value: session})
+		}
+		rec := httptest.NewRecorder()
+		server.ServeHTTP(rec, req)
+		return rec
+	}
+	startPath := "/users/usr_bootstrap_owner/identity-rebind"
+	for _, credential := range []string{"", "cookie"} {
+		if rec := do(http.MethodPost, startPath, "", credential); rec.Code == http.StatusCreated {
+			t.Fatalf("%s started break-glass recovery", credential)
+		}
+	}
+	started := do(http.MethodPost, startPath, "", "bearer")
+	var recovery app.IdentityRebind
+	if err := json.Unmarshal(started.Body.Bytes(), &recovery); err != nil || started.Code != http.StatusCreated || recovery.Token == "" || started.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("start = %d %s, %v", started.Code, started.Body, err)
+	}
+	body, _ := json.Marshal(map[string]string{"token": recovery.Token})
+	complete := startPath + "/complete"
+	if rec := do(http.MethodPost, complete, string(body), "cookie"); rec.Code == http.StatusNoContent {
+		t.Fatal("member admin completed recovery")
+	}
+	if rec := do(http.MethodPost, complete, string(body), "bearer"); rec.Code != http.StatusAccepted {
+		t.Fatalf("pending = %d %s", rec.Code, rec.Body)
+	}
+	callback := do(http.MethodGet, "/auth/oidc/callback?state=the-state&code=code", "", "")
+	if callback.Code != http.StatusOK || len(callback.Result().Cookies()) != 0 || callback.Header().Get("Location") != "" || strings.Contains(callback.Body.String(), recovery.Token) {
+		t.Fatalf("recovery callback = %d %v %s", callback.Code, callback.Header(), callback.Body)
+	}
+	if rec := do(http.MethodPost, complete, string(body)+"{}", "bearer"); rec.Code != http.StatusBadRequest {
+		t.Fatalf("trailing JSON accepted: %d", rec.Code)
+	}
+	if rec := do(http.MethodPost, complete, string(body), "bearer"); rec.Code != http.StatusNoContent {
+		t.Fatalf("complete = %d %s", rec.Code, rec.Body)
+	}
+	if rec := do(http.MethodPost, complete, string(body), "bearer"); rec.Code != http.StatusNotFound {
+		t.Fatalf("replay = %d", rec.Code)
+	}
+	if rec := do(http.MethodGet, "/projects", "", "cookie"); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("old cookie survived = %d", rec.Code)
+	}
+}

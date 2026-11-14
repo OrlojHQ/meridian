@@ -107,6 +107,28 @@ func (r *repository) UpdateUserProfile(ctx context.Context, id domain.UserID, di
 	return mapError(err)
 }
 
+// RebindUserIdentity preserves the member id, role, disabled state, and objects.
+// The previous identity makes concurrent recovery attempts fail closed.
+func (r *repository) RebindUserIdentity(ctx context.Context, previous, next domain.User, at time.Time) error {
+	if previous.ID == "" || previous.ID != next.ID || next.Issuer == "" || next.Subject == "" {
+		return domain.ErrInvalid
+	}
+	result, err := r.q.ExecContext(ctx, `UPDATE users SET issuer=?,subject=?,display_name=?,email=?,updated_at=?
+        WHERE id=? AND issuer=? AND subject=?`, next.Issuer, next.Subject, next.DisplayName, next.Email,
+		formatTime(at), previous.ID, previous.Issuer, previous.Subject)
+	if err != nil {
+		return mapError(err)
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count != 1 {
+		return domain.ErrConflict
+	}
+	return nil
+}
+
 const sessionColumns = `id, token_digest, user_id, created_at, last_used_at, expires_at, revoked_at`
 
 func scanSession(row scanner) (domain.UserSession, error) {

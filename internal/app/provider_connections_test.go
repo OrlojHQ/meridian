@@ -560,3 +560,55 @@ func TestClaudeLoginIsCiphertextAndStaysOutOfTheCapsule(t *testing.T) {
 		t.Fatal("clearing claude broke codex", err)
 	}
 }
+
+// Recovering the bootstrap owner's identity revokes their personal logins
+// first; API-key connections are not someone's account and stay.
+func TestRevokePersonalLoginsKeepsAPIKeyConnections(t *testing.T) {
+	ctx := operatorContext()
+	db, err := sqlite.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	key, err := secrets.OpenOrCreateKey(filepath.Join(t.TempDir(), "keys", "key"), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer key.Zero()
+	s := NewService(db, connectionClock{}, &connectionIDs{}, connectionQueue{})
+	s.ConfigureSecrets(key)
+	if err := s.ConfigureProviderGateway("https://meridian.example", false); err != nil {
+		t.Fatal(err)
+	}
+	defer s.CloseProviderGateway()
+	claude, err := s.PutProviderConnection(ctx, "", ConnectionInput{Name: "Claude", Provider: "anthropic",
+		APIKey: "sk-ant-oat-personal-login", CredentialKind: providergateway.CredentialOAuth})
+	if err != nil {
+		t.Fatal(err)
+	}
+	openai, err := s.PutProviderConnection(ctx, "", ConnectionInput{Name: "OpenAI", Provider: "openai", APIKey: "team-api-key-1234"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RevokePersonalLogins(ctx, domain.BootstrapOwnerID); !errors.Is(err, principal.ErrMissing) {
+		t.Fatalf("a user revoked personal logins: %v", err)
+	}
+	revoked, err := s.RevokePersonalLogins(asSystem(ctx), domain.BootstrapOwnerID)
+	if err != nil || revoked != 1 {
+		t.Fatalf("revoked = %d, %v", revoked, err)
+	}
+	connections, err := s.ListProviderConnections(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := map[string]bool{}
+	for _, connection := range connections {
+		state[connection.ID] = connection.Revoked
+	}
+	if !state[claude.ID] || state[openai.ID] {
+		t.Fatalf("revoked state = %v", state)
+	}
+	if again, err := s.RevokePersonalLogins(asSystem(ctx), domain.BootstrapOwnerID); err != nil || again != 0 {
+		t.Fatalf("second revocation = %d, %v", again, err)
+	}
+}

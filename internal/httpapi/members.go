@@ -119,3 +119,40 @@ func (s *Server) deleteMemberObjects(writer http.ResponseWriter, request *http.R
 		Projects: result.Projects, Secrets: result.Secrets, Connections: result.Connections, Setups: result.Setups,
 	})
 }
+
+func (s *Server) beginMemberIdentityRebind(writer http.ResponseWriter, request *http.Request) {
+	result, err := s.identity.BeginIdentityRebind(request.Context(), memberID(request))
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	writer.Header().Set("Cache-Control", "no-store")
+	writeJSON(writer, http.StatusCreated, result)
+}
+
+func (s *Server) completeMemberIdentityRebind(writer http.ResponseWriter, request *http.Request) {
+	var input struct {
+		Token string `json:"token"`
+	}
+	decoder := json.NewDecoder(io.LimitReader(request.Body, 1024))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&input); err != nil || input.Token == "" || len(input.Token) > 128 {
+		writeError(writer, fmt.Errorf("%w: a recovery token is required", domain.ErrInvalid))
+		return
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		writeError(writer, fmt.Errorf("%w: invalid recovery request", domain.ErrInvalid))
+		return
+	}
+	done, err := s.identity.CompleteIdentityRebind(request.Context(), memberID(request), input.Token)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	writer.Header().Set("Cache-Control", "no-store")
+	if !done {
+		writer.WriteHeader(http.StatusAccepted)
+		return
+	}
+	writer.WriteHeader(http.StatusNoContent)
+}

@@ -72,6 +72,17 @@ type Invoker interface {
 	//
 	// POST /auth/device
 	BeginDeviceLogin(ctx context.Context) (BeginDeviceLoginRes, error)
+	// BeginMemberIdentityRebind invokes beginMemberIdentityRebind operation.
+	//
+	// Requires the installation bearer in team mode, and userId must be the bootstrap owner
+	// (usr_bootstrap_owner); any other member is refused with 400, since rebinding them would let the
+	// bearer's holder sign in as them. Returns a sign-in URL and a single-use completion token bound to
+	// this member for ten minutes. Open the URL as the replacement identity. The OIDC callback only
+	// verifies that identity; it creates neither a member nor a session. Keep the completion token private
+	// and use it with the installation bearer to complete the rebind. Normal member admins cannot do this.
+	//
+	// POST /users/{userId}/identity-rebind
+	BeginMemberIdentityRebind(ctx context.Context, params BeginMemberIdentityRebindParams) (BeginMemberIdentityRebindRes, error)
 	// CancelRun invokes cancelRun operation.
 	//
 	// Request Run cancellation.
@@ -111,6 +122,19 @@ type Invoker interface {
 	//
 	// POST /claude-login/{loginId}
 	CompleteClaudeLogin(ctx context.Context, request *ClaudeLoginCode, params CompleteClaudeLoginParams) (*ClaudeLoginStatus, error)
+	// CompleteMemberIdentityRebind invokes completeMemberIdentityRebind operation.
+	//
+	// Requires the installation bearer and the completion token. Returns 202 until the browser finishes
+	// sign-in. Consumes the token once verified, even if the rebind fails. Before the identity changes it
+	// revokes the owner's personal Claude and ChatGPT logins (ADR 0038); if that fails, nothing changes.
+	// Replaces only the identity and display fields on the existing member, preserving role, disabled
+	// state, and owned objects. An identity held by another member or a concurrent identity change is
+	// refused. Revokes sessions and personal access tokens and appends the audit record atomically. Drops
+	// live tickets and gateway leases. The replacement identity signs in again; this operation issues no
+	// credentials.
+	//
+	// POST /users/{userId}/identity-rebind/complete
+	CompleteMemberIdentityRebind(ctx context.Context, request *CompleteMemberIdentityRebindReq, params CompleteMemberIdentityRebindParams) (CompleteMemberIdentityRebindRes, error)
 	// CompleteOidcSignIn invokes completeOidcSignIn operation.
 	//
 	// Authorized by the single-use state. In team mode it sets an HttpOnly SameSite=Strict session cookie.
@@ -1628,6 +1652,143 @@ func (c *Client) sendBeginDeviceLogin(ctx context.Context) (res BeginDeviceLogin
 	return result, nil
 }
 
+// BeginMemberIdentityRebind invokes beginMemberIdentityRebind operation.
+//
+// Requires the installation bearer in team mode, and userId must be the bootstrap owner
+// (usr_bootstrap_owner); any other member is refused with 400, since rebinding them would let the
+// bearer's holder sign in as them. Returns a sign-in URL and a single-use completion token bound to
+// this member for ten minutes. Open the URL as the replacement identity. The OIDC callback only
+// verifies that identity; it creates neither a member nor a session. Keep the completion token private
+// and use it with the installation bearer to complete the rebind. Normal member admins cannot do this.
+//
+// POST /users/{userId}/identity-rebind
+func (c *Client) BeginMemberIdentityRebind(ctx context.Context, params BeginMemberIdentityRebindParams) (BeginMemberIdentityRebindRes, error) {
+	res, err := c.sendBeginMemberIdentityRebind(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendBeginMemberIdentityRebind(ctx context.Context, params BeginMemberIdentityRebindParams) (res BeginMemberIdentityRebindRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("beginMemberIdentityRebind"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/users/{userId}/identity-rebind"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, BeginMemberIdentityRebindOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/users/"
+	{
+		// Encode "userId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "userId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.UserId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/identity-rebind"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, BeginMemberIdentityRebindOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeBeginMemberIdentityRebindResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // CancelRun invokes cancelRun operation.
 //
 // Request Run cancellation.
@@ -2453,6 +2614,148 @@ func (c *Client) sendCompleteClaudeLogin(ctx context.Context, request *ClaudeLog
 
 	stage = "DecodeResponse"
 	result, err := decodeCompleteClaudeLoginResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// CompleteMemberIdentityRebind invokes completeMemberIdentityRebind operation.
+//
+// Requires the installation bearer and the completion token. Returns 202 until the browser finishes
+// sign-in. Consumes the token once verified, even if the rebind fails. Before the identity changes it
+// revokes the owner's personal Claude and ChatGPT logins (ADR 0038); if that fails, nothing changes.
+// Replaces only the identity and display fields on the existing member, preserving role, disabled
+// state, and owned objects. An identity held by another member or a concurrent identity change is
+// refused. Revokes sessions and personal access tokens and appends the audit record atomically. Drops
+// live tickets and gateway leases. The replacement identity signs in again; this operation issues no
+// credentials.
+//
+// POST /users/{userId}/identity-rebind/complete
+func (c *Client) CompleteMemberIdentityRebind(ctx context.Context, request *CompleteMemberIdentityRebindReq, params CompleteMemberIdentityRebindParams) (CompleteMemberIdentityRebindRes, error) {
+	res, err := c.sendCompleteMemberIdentityRebind(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendCompleteMemberIdentityRebind(ctx context.Context, request *CompleteMemberIdentityRebindReq, params CompleteMemberIdentityRebindParams) (res CompleteMemberIdentityRebindRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("completeMemberIdentityRebind"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/users/{userId}/identity-rebind/complete"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, CompleteMemberIdentityRebindOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/users/"
+	{
+		// Encode "userId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "userId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.UserId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/identity-rebind/complete"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeCompleteMemberIdentityRebindRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, CompleteMemberIdentityRebindOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeCompleteMemberIdentityRebindResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}

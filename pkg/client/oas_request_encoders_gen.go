@@ -136,6 +136,20 @@ func encodeCompleteClaudeLoginRequest(
 	return nil
 }
 
+func encodeCompleteMemberIdentityRebindRequest(
+	req *CompleteMemberIdentityRebindReq,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodeCreateCapsuleRequest(
 	req *CreateCapsuleRequest,
 	r *http.Request,
