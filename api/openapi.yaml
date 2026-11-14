@@ -917,6 +917,38 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
         default: { $ref: "#/components/responses/DefaultError" }
+  /thread-links/{linkId}/remove:
+    post:
+      operationId: removeSubagent
+      summary: Stop one subagent and delete its Capsule
+      description: >
+        Operator-only. Closes this one link as cancelled so the lead hears the
+        subagent was cancelled, ends the subagent's session, and deletes its
+        Capsule once no Run is active there. The lead's Coordination Grant is
+        unchanged, so the lead can keep spawning, and the deleted Capsule no
+        longer counts toward its live Capsules. Encrypted Thread history is
+        kept, as with any Capsule delete. Promoted subagents are refused; a
+        stopped Capsule with a live session must be resumed first.
+      tags: [threads]
+      parameters:
+        - $ref: "#/components/parameters/LinkId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        $ref: "#/components/requestBodies/LifecycleMutation"
+      responses:
+        "202":
+          description: Link closed; the Capsule is deleted or will be once its session ends
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ThreadLink" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        default: { $ref: "#/components/responses/DefaultError" }
   /coordination-grants/{grantId}:
     get:
       operationId: getCoordinationGrant
@@ -3680,6 +3712,9 @@ components:
           type: string
           format: date-time
           description: When the subagent was promoted to a main Capsule. Promoted subagents are never archived.
+        capsuleRemoved:
+          type: boolean
+          description: True once the subagent's Capsule is deleted or being deleted. Its Thread history is kept.
         baseCommit:
           type: string
           description: Child workspace HEAD when the Capsule became Ready. Patch bytes are never stored.

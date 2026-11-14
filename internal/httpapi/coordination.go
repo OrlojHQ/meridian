@@ -100,6 +100,7 @@ type threadLinkJSON struct {
 	OperatorMessages   int    `json:"operatorMessages"`
 	ArchivedAt         string `json:"archivedAt,omitempty"`
 	PromotedAt         string `json:"promotedAt,omitempty"`
+	CapsuleRemoved     bool   `json:"capsuleRemoved,omitempty"`
 	BaseCommit         string `json:"baseCommit,omitempty"`
 	Head               string `json:"head,omitempty"`
 	FilesChanged       int    `json:"filesChanged,omitempty"`
@@ -243,6 +244,7 @@ func (s *Server) linkResponse(request *http.Request, link domain.ThreadLink) thr
 		OperatorMessages: link.OperatorMessages,
 		ArchivedAt:       formatOptionalTime(link.ArchivedAt),
 		PromotedAt:       formatOptionalTime(link.PromotedAt),
+		CapsuleRemoved:   s.service.ThreadLinkCapsuleRemoved(request.Context(), link),
 		BaseCommit:       link.BaseCommit, Head: link.Head, FilesChanged: link.FilesChanged,
 		Insertions: link.Insertions, Deletions: link.Deletions,
 		CreatedAt:       link.CreatedAt.UTC().Format(time.RFC3339Nano),
@@ -352,6 +354,26 @@ func (s *Server) revokeCoordinationGrant(writer http.ResponseWriter, request *ht
 	}
 	writer.Header().Set("ETag", etag(grant.ResourceVersion))
 	writeJSON(writer, http.StatusOK, grantResponse(grant))
+}
+
+// removeSubagent stops one subagent and deletes its Capsule without touching
+// its lead's Coordination Grant.
+func (s *Server) removeSubagent(writer http.ResponseWriter, request *http.Request) {
+	var input lifecycleRequest
+	if !decode(writer, request, &input) {
+		return
+	}
+	link, err := s.service.RemoveSubagent(
+		request.Context(), domain.ThreadLinkID(request.PathValue("linkId")),
+		domain.ResourceVersion(input.ExpectedResourceVersion), request.Header.Get("Idempotency-Key"),
+	)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	s.previews.revokeCapsule(link.ChildCapsuleID)
+	writer.Header().Set("ETag", etag(link.ResourceVersion))
+	writeJSON(writer, http.StatusAccepted, s.linkResponse(request, link))
 }
 
 func (s *Server) promoteCapsule(writer http.ResponseWriter, request *http.Request) {

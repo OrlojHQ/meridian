@@ -175,6 +175,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /board", s.getBoard)
 	s.mux.HandleFunc("GET /threads/{threadId}/links", s.listThreadLinks)
 	s.mux.HandleFunc("GET /thread-links/{linkId}", s.getThreadLink)
+	s.mux.HandleFunc("POST /thread-links/{linkId}/remove", s.removeSubagent)
 	s.mux.HandleFunc("GET /coordination-grants/{grantId}", s.getCoordinationGrant)
 	s.mux.HandleFunc("PATCH /coordination-grants/{grantId}", s.updateCoordinationGrant)
 	s.mux.HandleFunc("POST /coordination-grants/{grantId}/revoke", s.revokeCoordinationGrant)

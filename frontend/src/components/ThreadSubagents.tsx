@@ -11,6 +11,7 @@ import { SpawnDecision } from "./SpawnApprovals";
 import { subagentDiffstat, subagentHref, subagentPhaseLabels, subagentReportStatusLabel } from "./subagentReportModel";
 import { safeInline } from "./threadText";
 import { HarnessMark } from "./ui/HarnessMark";
+import { StopIcon } from "./ui/Icons";
 
 // subagentModel names the model (and effort) the subagent's live session last
 // reported. The daemon derives it in memory; it is harness text, so it is
@@ -22,8 +23,32 @@ export function subagentModel(link: Pick<ThreadLink, "model" | "effort">) {
   return effort ? `${model} · ${effort}` : model;
 }
 
-function subagentRow(link: ThreadLink, request?: CoordinationRequest) {
+// removeNotice says what removing a subagent deletes. Its workspace goes with
+// the Capsule, so changed files are named; the Thread history is kept.
+export function removeNotice(link: Pick<ThreadLink, "name" | "filesChanged">) {
+  const files = link.filesChanged ?? 0;
+  const work = files > 0
+    ? ` Its workspace goes with it, including ${files === 1 ? "1 changed file" : `${files} changed files`}.`
+    : "";
+  return `Stop ${link.name} and delete its Capsule?${work} The lead can still start new subagents.`;
+}
+
+function SubagentRow({ link, request }: { link: ThreadLink; request?: CoordinationRequest }) {
+  const queryClient = useQueryClient();
+  const [confirm, setConfirm] = useState(false);
+  const remove = useMutation({
+    mutationFn: () => api.removeSubagent(link),
+    onSuccess: () => setConfirm(false),
+    onSettled: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["thread-links", link.parentThreadId] }),
+        queryClient.invalidateQueries({ queryKey: ["board"] }),
+      ]);
+    },
+  });
   const needsYou = link.state === "pending_approval" || link.phase === "awaiting_operator";
+  const removed = Boolean(link.capsuleRemoved);
+  const removable = !removed && !link.promotedAt;
   const details = [
     harnessName(link.harness),
     subagentModel(link),
@@ -32,7 +57,7 @@ function subagentRow(link: ThreadLink, request?: CoordinationRequest) {
     subagentDiffstat(link),
   ].filter(Boolean);
   return (
-    <li key={link.id} className="subagent-row">
+    <li className={`subagent-row${removed ? " removed" : ""}`}>
       <HarnessMark harness={link.harness} size="md" />
       <div className="subagent-main">
         <div className="subagent-title">
@@ -40,9 +65,26 @@ function subagentRow(link: ThreadLink, request?: CoordinationRequest) {
           {link.promotedAt && (
             <span className="subagent-tag">{link.closeReason === "detached" ? "Promoted, detached" : "Promoted"}</span>
           )}
-          <span className={`subagent-phase phase-${link.phase}${needsYou ? " needs-you" : ""}`}>
-            {link.state === "pending_approval" ? "Waiting for approval" : subagentPhaseLabels[link.phase]}
+          <span className={`subagent-phase phase-${removed ? "removed" : link.phase}${needsYou && !removed ? " needs-you" : ""}`}>
+            {removed
+              ? "Removed"
+              : link.state === "pending_approval"
+                ? "Waiting for approval"
+                : subagentPhaseLabels[link.phase]}
           </span>
+          {removable && (
+            <button
+              type="button"
+              className="subagent-remove"
+              aria-label={`Stop and remove ${link.name}`}
+              title="Stop and remove"
+              aria-expanded={confirm}
+              disabled={remove.isPending}
+              onClick={() => setConfirm((value) => !value)}
+            >
+              <StopIcon />
+            </button>
+          )}
         </div>
         <p className="subagent-details">
           {details.map((detail, index) => (
@@ -51,6 +93,27 @@ function subagentRow(link: ThreadLink, request?: CoordinationRequest) {
             </span>
           ))}
         </p>
+        {confirm && removable && (
+          <div className="subagent-remove-confirm" role="alertdialog" aria-label={`Remove ${link.name}`}>
+            <p>{removeNotice(link)}</p>
+            <div className="subagent-remove-actions">
+              <button
+                type="button"
+                className="subagent-remove-yes"
+                disabled={remove.isPending}
+                onClick={() => remove.mutate()}
+              >
+                {remove.isPending ? "Removing…" : "Remove"}
+              </button>
+              <button type="button" className="subagent-remove-no" onClick={() => setConfirm(false)}>
+                Keep
+              </button>
+            </div>
+          </div>
+        )}
+        {remove.isError && (
+          <p role="alert" className="inline-error">{normalizeAPIError(remove.error).message}</p>
+        )}
         {request && <SpawnDecision request={request} />}
       </div>
     </li>
@@ -139,7 +202,7 @@ export function SubagentsButton({ thread }: { thread: Thread }) {
     };
   }, [open]);
   if (!lead) return null;
-  const current = (links.data?.items ?? []).filter((link) => !link.archivedAt);
+  const current = (links.data?.items ?? []).filter((link) => !link.archivedAt && !link.capsuleRemoved);
   const waiting =
     current.filter((link) => link.phase === "awaiting_operator").length +
     (pending.data?.items ?? []).filter((item) => item.grantId === grantId).length;
@@ -246,8 +309,9 @@ export function SubagentsPanel({ thread, grantId }: { thread: Thread; grantId: s
     },
   });
   const items = links.data?.items ?? [];
-  const current = items.filter((link) => !link.archivedAt);
-  const archived = items.filter((link) => link.archivedAt);
+  const current = items.filter((link) => !link.archivedAt && !link.capsuleRemoved);
+  const archived = items.filter((link) => link.archivedAt && !link.capsuleRemoved);
+  const removed = items.filter((link) => link.capsuleRemoved);
   const active = grant.data?.state === "active";
   const total = grant.data ? Math.min(grant.data.maxChildren, grant.data.maxDescendants) : 0;
   const started = grant.data?.descendantsCreated ?? 0;
@@ -321,12 +385,26 @@ export function SubagentsPanel({ thread, grantId }: { thread: Thread; grantId: s
         </div>
       ) : (
         <ul className="subagent-list">
-          {current.map((link) => subagentRow(link, pendingByLink.get(link.id)))}
+          {current.map((link) => (
+            <SubagentRow key={link.id} link={link} request={pendingByLink.get(link.id)} />
+          ))}
           {archived.length > 0 && (
             <li className="subagent-archived">
               <details>
                 <summary>Archived ({archived.length})</summary>
-                <ul className="subagent-list">{archived.map((link) => subagentRow(link))}</ul>
+                <ul className="subagent-list">
+                  {archived.map((link) => <SubagentRow key={link.id} link={link} />)}
+                </ul>
+              </details>
+            </li>
+          )}
+          {removed.length > 0 && (
+            <li className="subagent-archived">
+              <details>
+                <summary>Removed ({removed.length})</summary>
+                <ul className="subagent-list">
+                  {removed.map((link) => <SubagentRow key={link.id} link={link} />)}
+                </ul>
               </details>
             </li>
           )}

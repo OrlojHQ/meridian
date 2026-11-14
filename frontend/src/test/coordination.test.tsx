@@ -17,6 +17,7 @@ import { StructuredLauncher } from "../components/StructuredLauncher";
 import { ThreadConversation } from "../components/ThreadConversation";
 import {
   grantLimits,
+  removeNotice,
   SubagentsButton,
   SubagentsPanel,
   ThreadSubagents,
@@ -300,6 +301,70 @@ describe("Subagents panel", () => {
     expect(within(panel).getByText("Archived (1)")).toBeInTheDocument();
     expect(within(panel).getByRole("link", { name: "parked" }).closest("details")).not.toBeNull();
     expect(within(panel).getByRole("link", { name: "kept" }).closest("details")).toBeNull();
+  });
+
+  it("stops and removes one subagent without stopping the lead's spawning", async () => {
+    vi.spyOn(api, "coordinationGrant").mockResolvedValue(grant);
+    vi.spyOn(api, "coordinationRequests").mockResolvedValue({ items: [] });
+    const first = link("subagent-1", "idle", 1);
+    const second = link("subagent-2", "working", 0);
+    const links = vi.spyOn(api, "threadLinks").mockResolvedValue({ items: [first, second] });
+    const revoke = vi.spyOn(api, "revokeCoordinationGrant");
+    const removed: ThreadLink = {
+      ...first,
+      state: "closed",
+      closeReason: "cancelled",
+      phase: "ended",
+      capsuleRemoved: true,
+      resourceVersion: 2,
+    };
+    const remove = vi.spyOn(api, "removeSubagent").mockImplementation(async () => {
+      links.mockResolvedValue({ items: [removed, second] });
+      return removed;
+    });
+    wrapper(<SubagentsPanel thread={leadThread} grantId={grant.id} />);
+    const panel = await screen.findByRole("region", { name: "Subagents" });
+    await within(panel).findByRole("link", { name: "subagent-1" });
+
+    await userEvent.click(within(panel).getByRole("button", { name: "Stop and remove subagent-1" }));
+    const confirm = within(panel).getByRole("alertdialog", { name: "Remove subagent-1" });
+    expect(confirm).toHaveTextContent(
+      "Stop subagent-1 and delete its Capsule? Its workspace goes with it, including 2 changed files. " +
+        "The lead can still start new subagents.",
+    );
+    await userEvent.click(within(confirm).getByRole("button", { name: "Keep" }));
+    expect(within(panel).queryByRole("alertdialog")).not.toBeInTheDocument();
+
+    await userEvent.click(within(panel).getByRole("button", { name: "Stop and remove subagent-1" }));
+    await userEvent.click(within(panel).getByRole("button", { name: "Remove" }));
+    await waitFor(() => expect(remove).toHaveBeenCalledWith(first));
+    expect(revoke).not.toHaveBeenCalled();
+    expect(await within(panel).findByText("Removed (1)")).toBeInTheDocument();
+    const gone = within(panel).getByRole("link", { name: "subagent-1" });
+    expect(gone.closest("details")).not.toBeNull();
+    expect(within(panel).getByText("Removed")).toHaveClass("subagent-phase", "phase-removed");
+    expect(within(panel).queryByRole("button", { name: "Stop and remove subagent-1" })).not.toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "Stop and remove subagent-2" })).toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "Stop subagents" })).toBeInTheDocument();
+  });
+
+  it("offers no per-subagent stop for promoted subagents", async () => {
+    vi.spyOn(api, "coordinationGrant").mockResolvedValue(grant);
+    vi.spyOn(api, "coordinationRequests").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "threadLinks").mockResolvedValue({
+      items: [{ ...link("kept", "idle", 1), promotedAt: "2026-11-01T01:00:00Z" }],
+    });
+    wrapper(<SubagentsPanel thread={leadThread} grantId={grant.id} />);
+    const panel = await screen.findByRole("region", { name: "Subagents" });
+    await within(panel).findByRole("link", { name: "kept" });
+    expect(within(panel).queryByRole("button", { name: "Stop and remove kept" })).not.toBeInTheDocument();
+  });
+
+  it("words the remove notice by what the workspace holds", () => {
+    expect(removeNotice({ name: "quiet", filesChanged: 0 })).toBe(
+      "Stop quiet and delete its Capsule? The lead can still start new subagents.",
+    );
+    expect(removeNotice({ name: "one", filesChanged: 1 })).toContain("including 1 changed file.");
   });
 
   it("promotes a subagent, and detaches a promoted one that kept its link", async () => {

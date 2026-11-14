@@ -3419,6 +3419,108 @@ button.tool-line:hover {
   background: var(--danger-soft);
 }
 
+.subagent-phase.phase-removed {
+  color: var(--faint);
+}
+
+/* Per-subagent stop: a small icon that stays out of the way until the row is
+   hovered or focused, and an inline text confirm rather than a red panel. */
+.thread-subagents .subagent-remove {
+  display: grid;
+  flex: none;
+  width: 1.4rem;
+  min-height: 1.4rem;
+  place-items: center;
+  margin-left: -0.15rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: 0;
+  color: var(--faint);
+  background: transparent;
+  box-shadow: none;
+  transition:
+    opacity var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard);
+}
+
+.thread-subagents .subagent-remove svg {
+  width: 0.8rem;
+  height: 0.8rem;
+}
+
+.thread-subagents .subagent-remove:hover,
+.thread-subagents .subagent-remove[aria-expanded="true"] {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+@media (hover: hover) {
+  .thread-subagents .subagent-remove {
+    opacity: 0;
+  }
+
+  .subagent-row:hover .subagent-remove,
+  .subagent-row:focus-within .subagent-remove,
+  .thread-subagents .subagent-remove[aria-expanded="true"] {
+    opacity: 1;
+  }
+}
+
+.subagent-remove-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.6rem;
+  margin-top: 0.3rem;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+}
+
+.subagent-remove-confirm p {
+  flex: 1 1 16rem;
+  margin: 0;
+}
+
+.subagent-remove-actions {
+  display: flex;
+  flex: none;
+  gap: 0.15rem;
+  /* Align the first label with the text when the actions wrap below it. */
+  margin-left: -0.4rem;
+}
+
+.thread-subagents .subagent-remove-actions button {
+  min-height: 0;
+  border: 0;
+  padding: 0.1rem 0.4rem;
+  background: transparent;
+  box-shadow: none;
+  font-size: var(--text-xs);
+  font-weight: 590;
+}
+
+.thread-subagents .subagent-remove-yes {
+  color: var(--danger);
+}
+
+.thread-subagents .subagent-remove-yes:hover {
+  background: var(--danger-soft);
+}
+
+.thread-subagents .subagent-remove-no {
+  color: var(--muted);
+}
+
+.thread-subagents .subagent-remove-no:hover {
+  color: var(--text);
+  background: var(--surface-subtle);
+}
+
+.subagent-row .inline-error {
+  margin: 0.3rem 0 0;
+}
+
 .subagent-list li.subagent-archived {
   padding: 0.5rem 0.9rem;
 }

@@ -83,6 +83,7 @@ const (
 	PutSecretOperation                      OperationName = "PutSecret"
 	ReadCapsuleFileOperation                OperationName = "ReadCapsuleFile"
 	RejectDeliveryOperation                 OperationName = "RejectDelivery"
+	RemoveSubagentOperation                 OperationName = "RemoveSubagent"
 	RespondThreadOperation                  OperationName = "RespondThread"
 	ResumeCapsuleOperation                  OperationName = "ResumeCapsule"
 	ResumeThreadOperation                   OperationName = "ResumeThread"

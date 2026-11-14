@@ -35,6 +35,9 @@ type coordRuntime struct {
 	patches   map[string]ports.GitPatchResult
 
 	stallLongPolls bool
+	// holdCancel leaves cancelled runs Cancelling, like an adapter that has
+	// not stopped yet.
+	holdCancel bool
 }
 
 func newCoordRuntime() *coordRuntime {
@@ -130,6 +133,9 @@ func (r *coordRuntime) CancelStructured(_ context.Context, _ string, id domain.R
 	defer r.mu.Unlock()
 	r.cancels[id]++
 	run := ports.RuntimeRun{State: domain.RunCancelled, Structured: true}
+	if r.holdCancel {
+		run.State = domain.RunCancelling
+	}
 	r.runs[id] = run
 	return run, nil
 }

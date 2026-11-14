@@ -63,6 +63,7 @@ import {
   getCoordinationGrant,
   listThreadLinks,
   revokeCoordinationGrant,
+  removeSubagent,
   updateCoordinationGrant,
   listCoordinationRequests,
   approveCoordinationRequest,
@@ -110,6 +111,7 @@ import type { HarnessSetupUpload, HarnessSetupPreview, ImportHarnessSetupRequest
   ThreadBlockPage,
   CoordinationRequest,
   CoordinationRequestPage,
+  ThreadLink,
   ThreadLinkPage,
   ThreadMutationResult,
   ThreadPage,
@@ -353,6 +355,16 @@ export const api = {
           expectedResourceVersion: grant.resourceVersion,
           cancelDescendants: true,
         },
+      }),
+    ),
+  // Stops one subagent and deletes its Capsule; the lead's grant is untouched.
+  removeSubagent: (link: ThreadLink) =>
+    call<ThreadLink>(
+      removeSubagent({
+        ...generatedOptions(),
+        path: { linkId: link.id },
+        headers: idempotencyHeaders(),
+        body: { expectedResourceVersion: link.resourceVersion },
       }),
     ),
   updateCoordinationGrant: (

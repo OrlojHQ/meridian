@@ -447,7 +447,16 @@ diffstat and SHAs. The board still never polls Git.
 Revocation, the deadline, and cancellation are daemon-side state changes that
 take effect on the next request. Revoking or cancelling cancels the subagent's
 run and then pauses its Capsule through the provider without Capsule
-cooperation. Closing a link never deletes a subagent Capsule or transcript.
+cooperation. Closing a link never deletes a subagent Capsule or transcript. The
+one exception is the operator's per-subagent remove
+(`POST /thread-links/{id}/remove`, ADR 0029): an installation-bearer operator
+API with no coordination request kind, so neither a lead nor a subagent can
+reach it. It closes that one link as cancelled, cancels the subagent's run,
+and then deletes the subagent's Capsule and workspace like any operator
+Capsule delete; the encrypted transcript is kept and the lead's grant is not
+changed. It refuses promoted subagents. A pending deletion lives only in
+memory, so a restart or a session that will not stop degrades to the normal
+cancel-and-pause, never to a running orphan.
 Coordination is advertised only by providers that implement the structured
 transport and mailbox end to end.
 
@@ -883,8 +892,8 @@ they are not a statement that every planned path is already implemented.
   the operator's authority. Subagents never answer to their lead for
   permissions or input, and Delivery stays operator-approved.
 - Capsule `role` is presentation only: it never suppresses attention, never
-  grants authority, and closing a link never deletes a subagent's transcript or
-  workspace. Coordination is advertised only with end-to-end structured
+  grants authority, and closing a link never deletes a subagent's transcript.
+  Only the operator's per-subagent remove also deletes the workspace. Coordination is advertised only with end-to-end structured
   transport and mailbox support.
 - Harness packs are installed at image build time from pinned checksummed
   archives or sha512-locked npm registry tarballs with install scripts

@@ -310,3 +310,39 @@ operator to approve. The agent never ships.
   `rejected`, `proposed_by` agent|operator, `approved` 0|1, nullable approval
   facts until approve, and identity that keeps `proposed_by` immutable.
   Approval fields may change only from `proposed`.
+
+## Amendment: operator removes one subagent
+
+The operator can stop and remove a single subagent without revoking its
+lead's grant. Grant-wide revocation stays the only way to stop the lead from
+spawning.
+
+- **`POST /thread-links/{id}/remove`.** An installation-bearer operator API
+  with `expectedResourceVersion` and an idempotency key; there is no
+  coordination request kind for it, so no Capsule can call it. It closes that
+  one link as `cancelled` with a failed/cancelled report, the same record the
+  lead's own `cancel` writes, so the lead hears that the subagent was
+  cancelled. It then cancels the subagent's session and deletes its Capsule
+  once no Run is active there. The grant, its limits, and sibling links are
+  unchanged; the deleted Capsule leaves the live Capsule count, so the lead
+  can spawn into the freed slot.
+- **This is the one path where closing a link deletes a Capsule.** It is the
+  operator's explicit Capsule delete, scoped to a subagent: the workspace goes
+  with the Capsule and encrypted Thread history is kept, exactly as
+  `POST /capsules/{id}/delete`. Lead cancel, revocation, the deadline, and
+  auto-archive still only cancel and pause.
+- **Refusals.** A promoted subagent is a main Capsule and is refused; the
+  operator deletes it from its Capsule. A Capsule that is not running while a
+  session is still live is refused before anything changes, because ending a
+  session needs the Capsule running and deletion waits for the session.
+- **Ordering and crashes.** The link closes first, in one transaction with
+  the replay record. Deletion is attempted in the request and retried by the
+  coordination tick while the session finishes cancelling. The pending
+  deletion is held in memory only: if the daemon restarts, or the session does
+  not end within the cancel grace, the closed link falls back to the existing
+  cancel-and-pause sweep, and the operator can remove it again. Nothing is
+  left running in either case.
+- **Visibility.** Link views carry a derived, content-free `capsuleRemoved`
+  flag. The lead's Agents panel moves removed subagents to a Removed fold and
+  offers the per-row stop only on subagents that are neither promoted nor
+  removed.

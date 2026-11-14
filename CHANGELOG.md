@@ -7,6 +7,16 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Stop and remove one subagent from a lead's Agents panel. A small stop icon
+  on each row (shown on hover) asks for a one-line confirmation, then closes
+  that subagent's link as cancelled, ends its session and deletes its
+  Capsule. The lead keeps its grant and can start new subagents in the freed
+  slot; the subagent's Thread history is kept, and removed subagents move to a
+  Removed fold. Promoted subagents are not offered it. The API is
+  `POST /thread-links/{id}/remove`.
+
 ### Changed
 
 - The desktop app's update notice is now a compact card at the bottom of

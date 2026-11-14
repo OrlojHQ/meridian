@@ -10050,6 +10050,22 @@ type RejectDeliveryUnprocessableEntity ErrorEnvelope
 
 func (*RejectDeliveryUnprocessableEntity) rejectDeliveryRes() {}
 
+type RemoveSubagentBadRequest ErrorEnvelope
+
+func (*RemoveSubagentBadRequest) removeSubagentRes() {}
+
+type RemoveSubagentConflict ErrorEnvelope
+
+func (*RemoveSubagentConflict) removeSubagentRes() {}
+
+type RemoveSubagentNotFound ErrorEnvelope
+
+func (*RemoveSubagentNotFound) removeSubagentRes() {}
+
+type RemoveSubagentUnprocessableEntity ErrorEnvelope
+
+func (*RemoveSubagentUnprocessableEntity) removeSubagentRes() {}
+
 type RespondThreadBadRequest ErrorEnvelope
 
 func (*RespondThreadBadRequest) respondThreadRes() {}
@@ -12294,6 +12310,8 @@ type ThreadLink struct {
 	ArchivedAt OptDateTime `json:"archivedAt"`
 	// When the subagent was promoted to a main Capsule. Promoted subagents are never archived.
 	PromotedAt OptDateTime `json:"promotedAt"`
+	// True once the subagent's Capsule is deleted or being deleted. Its Thread history is kept.
+	CapsuleRemoved OptBool `json:"capsuleRemoved"`
 	// Child workspace HEAD when the Capsule became Ready. Patch bytes are never stored.
 	BaseCommit OptString `json:"baseCommit"`
 	// Latest observed child HEAD. Content-free.
@@ -12424,6 +12442,11 @@ func (s *ThreadLink) GetArchivedAt() OptDateTime {
 // GetPromotedAt returns the value of PromotedAt.
 func (s *ThreadLink) GetPromotedAt() OptDateTime {
 	return s.PromotedAt
+}
+
+// GetCapsuleRemoved returns the value of CapsuleRemoved.
+func (s *ThreadLink) GetCapsuleRemoved() OptBool {
+	return s.CapsuleRemoved
 }
 
 // GetBaseCommit returns the value of BaseCommit.
@@ -12586,6 +12609,11 @@ func (s *ThreadLink) SetPromotedAt(val OptDateTime) {
 	s.PromotedAt = val
 }
 
+// SetCapsuleRemoved sets the value of CapsuleRemoved.
+func (s *ThreadLink) SetCapsuleRemoved(val OptBool) {
+	s.CapsuleRemoved = val
+}
+
 // SetBaseCommit sets the value of BaseCommit.
 func (s *ThreadLink) SetBaseCommit(val OptString) {
 	s.BaseCommit = val
@@ -12721,7 +12749,8 @@ func (s *ThreadLinkHeaders) SetResponse(val ThreadLink) {
 	s.Response = val
 }
 
-func (*ThreadLinkHeaders) getThreadLinkRes() {}
+func (*ThreadLinkHeaders) getThreadLinkRes()  {}
+func (*ThreadLinkHeaders) removeSubagentRes() {}
 
 type ThreadLinkLastReportReason string
 
@@ -13920,6 +13949,7 @@ func (*TooManyRequestsHeaders) listThreadLinksRes()            {}
 func (*TooManyRequestsHeaders) patchProjectRes()               {}
 func (*TooManyRequestsHeaders) pauseCapsuleRes()               {}
 func (*TooManyRequestsHeaders) putSecretRes()                  {}
+func (*TooManyRequestsHeaders) removeSubagentRes()             {}
 func (*TooManyRequestsHeaders) resumeCapsuleRes()              {}
 func (*TooManyRequestsHeaders) retryCapsuleRes()               {}
 func (*TooManyRequestsHeaders) revokeCoordinationGrantRes()    {}

@@ -796,6 +796,10 @@ export type ThreadLink = {
      */
     promotedAt?: string;
     /**
+     * True once the subagent's Capsule is deleted or being deleted. Its Thread history is kept.
+     */
+    capsuleRemoved?: boolean;
+    /**
      * Child workspace HEAD when the Capsule became Ready. Patch bytes are never stored.
      */
     baseCommit?: string;
@@ -2748,6 +2752,56 @@ export type GetThreadLinkResponses = {
 };
 
 export type GetThreadLinkResponse = GetThreadLinkResponses[keyof GetThreadLinkResponses];
+
+export type RemoveSubagentData = {
+    body: LifecycleMutation;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        linkId: string;
+    };
+    query?: never;
+    url: '/thread-links/{linkId}/remove';
+};
+
+export type RemoveSubagentErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Request rate limit exceeded
+     */
+    429: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type RemoveSubagentError = RemoveSubagentErrors[keyof RemoveSubagentErrors];
+
+export type RemoveSubagentResponses = {
+    /**
+     * Link closed; the Capsule is deleted or will be once its session ends
+     */
+    202: ThreadLink;
+};
+
+export type RemoveSubagentResponse = RemoveSubagentResponses[keyof RemoveSubagentResponses];
 
 export type GetCoordinationGrantData = {
     body?: never;
