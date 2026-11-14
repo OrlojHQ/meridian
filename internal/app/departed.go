@@ -65,7 +65,8 @@ func listOwnedSecrets(ctx context.Context, reader ports.Reader, owner domain.Use
 // TransferDepartedMember moves a departed member's Projects and everything
 // under them, their secrets, and their harness setups to another member, in
 // one transaction. Secret and setup revision envelopes bind their owner, so each is re-wrapped
-// for the new owner at the same resource version. Provider connections do
+// for the new owner at the same resource version. A setup revision that does
+// not open under the installation key moves unchanged and stays unreadable. Provider connections do
 // not move: a personal login stays with its account holder (ADR 0038), so
 // Project grants of those connections are dropped and the new owner grants
 // their own. The target must not already hold a secret of the same name.
@@ -140,7 +141,11 @@ func (s *Service) TransferDepartedMember(ctx context.Context, from, to domain.Us
 				}
 				plain, err := s.secretKey.OpenSetup(setupEnvelopeID(revision), revision.KeyID, revision.Nonce, revision.Ciphertext)
 				if err != nil {
-					return fmt.Errorf("open a departed member's setup revision: %w", err)
+					// An envelope that does not open under the installation key
+					// was already unusable, as at startup re-wrap. It moves
+					// with its setup unchanged and stays unreadable, rather
+					// than blocking the departed member's work for good.
+					continue
 				}
 				revisions = append(revisions, revision)
 				bundles = append(bundles, plain)
