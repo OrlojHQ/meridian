@@ -66,7 +66,7 @@ func TestRuntimeRefreshSurfacesUnansweredRequestsWithoutAViewer(t *testing.T) {
 		t.Fatalf("awaiting before the request was ingested = %q", kind)
 	}
 
-	if err := service.RefreshLiveRuntime(ctx); err != nil {
+	if err := service.RefreshLiveRuntime(asSystem(ctx)); err != nil {
 		t.Fatal(err)
 	}
 	if kind := awaitingKind(t, ctx, service, created.Thread.ID); kind != "permission" {
@@ -88,7 +88,7 @@ func TestRuntimeRefreshSurfacesUnansweredRequestsWithoutAViewer(t *testing.T) {
 		Type: adapterproto.KindInputRequest, ID: "input-1",
 		Input: &adapterproto.Input{Prompt: "branch name?"},
 	}))
-	if err := service.RefreshLiveRuntime(ctx); err != nil {
+	if err := service.RefreshLiveRuntime(asSystem(ctx)); err != nil {
 		t.Fatal(err)
 	}
 	if kind := awaitingKind(t, ctx, service, created.Thread.ID); kind != "input" {
@@ -98,7 +98,7 @@ func TestRuntimeRefreshSurfacesUnansweredRequestsWithoutAViewer(t *testing.T) {
 	runtime.mu.Lock()
 	runtime.runs[created.Run.ID] = ports.RuntimeRun{State: domain.RunSucceeded, Structured: true}
 	runtime.mu.Unlock()
-	if err := service.RefreshLiveRuntime(ctx); err != nil {
+	if err := service.RefreshLiveRuntime(asSystem(ctx)); err != nil {
 		t.Fatal(err)
 	}
 	run, err := service.GetRunStored(ctx, created.Run.ID)
@@ -129,7 +129,7 @@ func TestThreadAwaitingMatchesResponsesToTheirRequests(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := service.RefreshLiveRuntime(ctx); err != nil {
+	if err := service.RefreshLiveRuntime(asSystem(ctx)); err != nil {
 		t.Fatal(err)
 	}
 	for index, id := range []string{"permission-1", "permission-2"} {
@@ -155,7 +155,7 @@ func TestThreadAttentionTracksTheLiveTurn(t *testing.T) {
 	var threadID domain.ThreadID
 	turn := func() app.ThreadTurn {
 		t.Helper()
-		if err := service.RefreshLiveRuntime(ctx); err != nil {
+		if err := service.RefreshLiveRuntime(asSystem(ctx)); err != nil {
 			t.Fatal(err)
 		}
 		thread, err := service.GetThread(ctx, threadID)
@@ -240,7 +240,7 @@ func TestRuntimeRefreshIgnoresHeartbeatsForIdleActivity(t *testing.T) {
 	clock.now = clock.now.Add(time.Hour + 500*time.Millisecond)
 	clock.mu.Unlock()
 	before := lastActivity()
-	if err := service.RefreshLiveRuntime(ctx); err != nil {
+	if err := service.RefreshLiveRuntime(asSystem(ctx)); err != nil {
 		t.Fatal(err)
 	}
 	if after := lastActivity(); !after.Equal(before) {
@@ -251,7 +251,7 @@ func TestRuntimeRefreshIgnoresHeartbeatsForIdleActivity(t *testing.T) {
 		Type: adapterproto.KindAssistantMessage, Role: adapterproto.RoleAssistant,
 		MessageID: "assistant-1", Content: "done",
 	}))
-	if err := service.RefreshLiveRuntime(ctx); err != nil {
+	if err := service.RefreshLiveRuntime(asSystem(ctx)); err != nil {
 		t.Fatal(err)
 	}
 	if after := lastActivity(); !after.After(before) {
@@ -302,7 +302,7 @@ func TestRuntimeRefreshReconcilesUnwatchedNativeRuns(t *testing.T) {
 	if err != nil || len(listed.Items) != 1 || listed.Items[0].State == domain.RunSucceeded {
 		t.Fatalf("Runs before refresh = %#v, %v", listed, err)
 	}
-	if err := service.RefreshLiveRuntime(ctx); err != nil {
+	if err := service.RefreshLiveRuntime(asSystem(ctx)); err != nil {
 		t.Fatal(err)
 	}
 	listed, err = service.ListRuns(ctx, capsule.ID, 0, 10)

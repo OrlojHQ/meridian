@@ -192,17 +192,17 @@ func TestClaudeSignInSealsTokensAndRefreshesWithoutLeavingTheCapsule(t *testing.
 		t.Fatal("claude login crossed into the capsule connection")
 	}
 	lease := providergateway.Lease{Connection: status.ConnectionID, Project: string(project.ID), Capsule: string(capsule.ID), Harness: "claude", Provider: "anthropic"}
-	upstream, err := s.authorizeProviderLease(ctx, lease)
+	upstream, err := s.authorizeProviderLease(gatewayRequest(), lease)
 	if err != nil || upstream.Key != access || strings.Contains(upstream.Key, refresh) || upstream.CredentialKind != providergateway.CredentialOAuth || refreshes != 0 {
 		t.Fatalf("gateway key = %q err=%v refreshes=%d", upstream.Key, err, refreshes)
 	}
 	clock.now = clock.now.Add(3 * time.Minute)
-	upstream, err = s.authorizeProviderLease(ctx, lease)
+	upstream, err = s.authorizeProviderLease(gatewayRequest(), lease)
 	if err != nil || upstream.Key != renewed || refreshes != 1 {
 		t.Fatalf("refreshed key err=%v refreshes=%d", err, refreshes)
 	}
 	absent(access, refresh, renewed, verifier)
-	codexUpstream, err := s.authorizeProviderLease(ctx, providergateway.Lease{Connection: codex.ID, Project: string(project.ID), Capsule: string(capsule.ID), Harness: "codex", Provider: "openai"})
+	codexUpstream, err := s.authorizeProviderLease(gatewayRequest(), providergateway.Lease{Connection: codex.ID, Project: string(project.ID), Capsule: string(capsule.ID), Harness: "codex", Provider: "openai"})
 	if err != nil || codexUpstream.Key != codexKey || codexUpstream.CredentialKind != "" {
 		t.Fatalf("codex upstream changed: kind=%q err=%v", codexUpstream.CredentialKind, err)
 	}

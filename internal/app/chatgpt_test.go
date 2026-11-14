@@ -260,7 +260,7 @@ func TestChatGPTLeaseRefreshReauthAndRevoke(t *testing.T) {
 		t.Fatalf("runtime connection = %+v, %v", runtime, err)
 	}
 	lease := providergateway.Lease{Connection: id, Project: string(project.ID), Capsule: string(capsule.ID), Harness: "codex", Provider: providergateway.ChatGPT}
-	upstream, err := s.authorizeProviderLease(ctx, lease)
+	upstream, err := s.authorizeProviderLease(gatewayRequest(), lease)
 	if err != nil || upstream.Key != "access-signin" || upstream.Refresh == nil {
 		t.Fatalf("upstream = %+v, %v", upstream, err)
 	}
@@ -273,7 +273,7 @@ func TestChatGPTLeaseRefreshReauthAndRevoke(t *testing.T) {
 	if after.CredentialGeneration != before.CredentialGeneration+1 || after.ResourceVersion != before.ResourceVersion {
 		t.Fatalf("rotation changed generation %d->%d version %d->%d", before.CredentialGeneration, after.CredentialGeneration, before.ResourceVersion, after.ResourceVersion)
 	}
-	if upstream, err = s.authorizeProviderLease(ctx, lease); err != nil || upstream.Key != "access-r1" {
+	if upstream, err = s.authorizeProviderLease(gatewayRequest(), lease); err != nil || upstream.Key != "access-r1" {
 		t.Fatalf("rotated token not stored: %+v, %v", upstream, err)
 	}
 
@@ -282,7 +282,7 @@ func TestChatGPTLeaseRefreshReauthAndRevoke(t *testing.T) {
 	if err != nil || renamed.Name != "Work ChatGPT" {
 		t.Fatalf("rename = %+v, %v", renamed, err)
 	}
-	if upstream, err = s.authorizeProviderLease(ctx, lease); err != nil || upstream.Key != "access-r1" {
+	if upstream, err = s.authorizeProviderLease(gatewayRequest(), lease); err != nil || upstream.Key != "access-r1" {
 		t.Fatalf("rename lost tokens: %v", err)
 	}
 	if _, err := s.PutProviderConnection(ctx, "", ConnectionInput{Name: "x", Provider: providergateway.ChatGPT}); !errors.Is(err, domain.ErrInvalid) {
@@ -302,7 +302,7 @@ func TestChatGPTLeaseRefreshReauthAndRevoke(t *testing.T) {
 	if !connectionByID(t, db, id).NeedsSignIn {
 		t.Fatal("connection not marked for sign-in")
 	}
-	if _, err := s.authorizeProviderLease(ctx, lease); !errors.Is(err, providergateway.ErrSignInRequired) {
+	if _, err := s.authorizeProviderLease(gatewayRequest(), lease); !errors.Is(err, providergateway.ErrSignInRequired) {
 		t.Fatalf("lease after invalid grant: %v", err)
 	}
 	f.mu.Lock()
@@ -320,7 +320,7 @@ func TestChatGPTLeaseRefreshReauthAndRevoke(t *testing.T) {
 	if current.NeedsSignIn {
 		t.Fatal("reauthorization left the connection needing sign-in")
 	}
-	if upstream, err = s.authorizeProviderLease(ctx, lease); err != nil || upstream.Key != "access-signin" {
+	if upstream, err = s.authorizeProviderLease(gatewayRequest(), lease); err != nil || upstream.Key != "access-signin" {
 		t.Fatalf("lease after reauthorization: %+v, %v", upstream, err)
 	}
 
@@ -332,7 +332,7 @@ func TestChatGPTLeaseRefreshReauthAndRevoke(t *testing.T) {
 	if len(f.revoked) != 1 || f.revoked[0] != "refresh-signin" {
 		t.Fatalf("upstream revocations = %v", f.revoked)
 	}
-	if _, err := s.authorizeProviderLease(ctx, lease); err == nil {
+	if _, err := s.authorizeProviderLease(gatewayRequest(), lease); err == nil {
 		t.Fatal("revoked connection authorized")
 	}
 	if _, err := s.StartChatGPTSignIn(ctx, id, false); !errors.Is(err, domain.ErrConflict) {

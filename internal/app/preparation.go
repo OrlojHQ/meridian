@@ -67,7 +67,7 @@ func (r *Reconciler) completePreparation(ctx context.Context, c domain.Capsule, 
 		return false, nil
 	}
 	if p.Stage == "reclone" {
-		credential, err := r.preparationGitCredential(ctx, p.GitSecretName)
+		credential, err := r.preparationGitCredential(ctx, c.OwnerUserID, p.GitSecretName)
 		if err != nil {
 			return false, err
 		}
@@ -94,7 +94,7 @@ func (r *Reconciler) completePreparation(ctx context.Context, c domain.Capsule, 
 			if err := r.savePreparation(ctx, p); err != nil {
 				return false, err
 			}
-			credential, err := r.preparationGitCredential(ctx, p.GitSecretName)
+			credential, err := r.preparationGitCredential(ctx, c.OwnerUserID, p.GitSecretName)
 			if err != nil {
 				return false, err
 			}
@@ -249,12 +249,17 @@ func (s *Service) GetPreparation(ctx context.Context, id domain.CapsuleID) (doma
 	return p, err
 }
 
-func (r *Reconciler) preparationGitCredential(ctx context.Context, name string) (*ports.GitHTTPSCredential, error) {
+// preparationGitCredential resolves the Capsule owner's Git secret name.
+func (r *Reconciler) preparationGitCredential(ctx context.Context, owner domain.UserID, name string) (*ports.GitHTTPSCredential, error) {
 	if name == "" {
 		return nil, nil
 	}
 	var secret domain.Secret
-	if err := r.store.View(ctx, func(reader ports.Reader) error { var err error; secret, err = reader.GetSecret(ctx, name); return err }); err != nil {
+	if err := r.store.View(ctx, func(reader ports.Reader) error {
+		var err error
+		secret, err = reader.GetSecret(ctx, owner, name)
+		return err
+	}); err != nil {
 		return nil, err
 	}
 	if secret.Purpose != domain.SecretGitHTTPS || r.secretKey == nil {

@@ -247,7 +247,8 @@ func run(ctx context.Context, config Config) error {
 		if len(setups) > 0 {
 			allowSecretKeyCreate = false
 		}
-		items, _, err := reader.ListSecrets(ctx, ports.Page{Limit: 1})
+		// Any owner's secret means the installation key already exists.
+		items, _, err := reader.ListSecrets(ctx, "", ports.Page{Limit: 1})
 		if err == nil && len(items) > 0 {
 			allowSecretKeyCreate = false
 		}

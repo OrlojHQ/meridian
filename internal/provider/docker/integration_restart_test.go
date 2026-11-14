@@ -87,7 +87,7 @@ func TestDockerProviderIntegrationStoppedContainerIsRestarted(t *testing.T) {
 		t.Fatalf("stopped container = %#v, %v", resource, err)
 	}
 
-	if err := service.RefreshLiveRuntime(ctx); err != nil {
+	if err := service.RefreshLiveRuntime(principal.WithSystem(ctx)); err != nil {
 		t.Fatal(err)
 	}
 	failed, err := service.GetRunStored(ctx, run.ID)

@@ -33,7 +33,7 @@ type Store struct {
 }
 
 // CurrentSchemaVersion is the newest migration this binary understands.
-const CurrentSchemaVersion = 23
+const CurrentSchemaVersion = 24
 
 func Open(ctx context.Context, dataDir string) (*Store, error) {
 	if strings.TrimSpace(dataDir) == "" {
@@ -346,13 +346,14 @@ func (r *repository) GetProject(ctx context.Context, id domain.ProjectID) (domai
 
 func (r *repository) ListProjects(
 	ctx context.Context,
+	owner domain.UserID,
 	page ports.Page,
 ) ([]domain.Project, bool, error) {
 	rows, err := r.q.QueryContext(ctx, `
 		SELECT `+projectColumns+`
-		FROM projects WHERE state <> 'deleted'
+		FROM projects WHERE state <> 'deleted' AND (? = '' OR owner_user_id = ?)
 		ORDER BY created_at, id LIMIT ? OFFSET ?`,
-		page.Limit+1, page.Offset,
+		owner, owner, page.Limit+1, page.Offset,
 	)
 	if err != nil {
 		return nil, false, err
@@ -437,10 +438,10 @@ func (r *repository) UpdateSecret(
 	result, err := r.q.ExecContext(ctx, `
 		UPDATE secrets SET purpose = ?, envelope_version = ?, kek_id = ?, kek_version = ?,
 			nonce = ?, ciphertext = ?, updated_at = ?, resource_version = ?
-		WHERE name = ? AND resource_version = ?`,
+		WHERE owner_user_id = ? AND name = ? AND resource_version = ?`,
 		secret.Purpose, secret.EnvelopeVersion, secret.KEKID, secret.KEKVersion,
 		secret.Nonce, secret.Ciphertext, formatTime(secret.UpdatedAt), secret.ResourceVersion,
-		secret.Name, expected,
+		secret.OwnerUserID, secret.Name, expected,
 	)
 	if err != nil {
 		return mapError(err)
@@ -453,10 +454,11 @@ func (r *repository) UpdateSecret(
 }
 
 func (r *repository) DeleteSecret(
-	ctx context.Context, name string, expected domain.ResourceVersion,
+	ctx context.Context, owner domain.UserID, name string, expected domain.ResourceVersion,
 ) error {
 	result, err := r.q.ExecContext(ctx,
-		"DELETE FROM secrets WHERE name = ? AND resource_version = ?", name, expected)
+		"DELETE FROM secrets WHERE owner_user_id = ? AND name = ? AND resource_version = ?",
+		owner, name, expected)
 	if err != nil {
 		return mapError(err)
 	}
@@ -467,20 +469,21 @@ func (r *repository) DeleteSecret(
 	return nil
 }
 
-func (r *repository) GetSecret(ctx context.Context, name string) (domain.Secret, error) {
+func (r *repository) GetSecret(ctx context.Context, owner domain.UserID, name string) (domain.Secret, error) {
 	return scanSecret(r.q.QueryRowContext(ctx, `
 		SELECT id, name, purpose, envelope_version, kek_id, kek_version, nonce,
 			ciphertext, created_at, updated_at, resource_version, owner_user_id
-		FROM secrets WHERE name = ?`, name))
+		FROM secrets WHERE owner_user_id = ? AND name = ?`, owner, name))
 }
 
 func (r *repository) ListSecrets(
-	ctx context.Context, page ports.Page,
+	ctx context.Context, owner domain.UserID, page ports.Page,
 ) ([]domain.Secret, bool, error) {
 	rows, err := r.q.QueryContext(ctx, `
 		SELECT id, name, purpose, envelope_version, kek_id, kek_version, nonce,
 			ciphertext, created_at, updated_at, resource_version, owner_user_id
-		FROM secrets ORDER BY name LIMIT ? OFFSET ?`, page.Limit+1, page.Offset)
+		FROM secrets WHERE (? = '' OR owner_user_id = ?)
+		ORDER BY name, owner_user_id LIMIT ? OFFSET ?`, owner, owner, page.Limit+1, page.Offset)
 	if err != nil {
 		return nil, false, err
 	}
@@ -1245,24 +1248,25 @@ func (r *repository) ListEvents(
 
 func (r *repository) PutIdempotency(ctx context.Context, record ports.IdempotencyRecord) error {
 	_, err := r.q.ExecContext(ctx, `
-		INSERT INTO idempotency_outcomes(scope, key, outcome, created_at)
-		VALUES (?, ?, ?, ?)`,
-		record.Scope, record.Key, record.Outcome, formatTime(record.CreatedAt),
+		INSERT INTO idempotency_outcomes(owner_user_id, scope, key, outcome, created_at)
+		VALUES (?, ?, ?, ?, ?)`,
+		record.Owner, record.Scope, record.Key, record.Outcome, formatTime(record.CreatedAt),
 	)
 	return mapError(err)
 }
 
 func (r *repository) GetIdempotency(
 	ctx context.Context,
+	owner domain.UserID,
 	scope, key string,
 ) (ports.IdempotencyRecord, error) {
 	var record ports.IdempotencyRecord
 	var created string
 	err := r.q.QueryRowContext(ctx, `
-		SELECT scope, key, outcome, created_at
-		FROM idempotency_outcomes WHERE scope = ? AND key = ?`,
-		scope, key,
-	).Scan(&record.Scope, &record.Key, &record.Outcome, &created)
+		SELECT owner_user_id, scope, key, outcome, created_at
+		FROM idempotency_outcomes WHERE owner_user_id = ? AND scope = ? AND key = ?`,
+		owner, scope, key,
+	).Scan(&record.Owner, &record.Scope, &record.Key, &record.Outcome, &created)
 	if err != nil {
 		return ports.IdempotencyRecord{}, mapError(err)
 	}

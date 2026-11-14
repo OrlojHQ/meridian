@@ -187,9 +187,17 @@ func (r *repository) destroyExclusiveSecrets(ctx context.Context, project domain
 	if len(names) == 0 {
 		return nil
 	}
+	// Secret names are per owner, so only the owner's other Projects can
+	// still name one of these secrets. The owner is read from the row, not
+	// trusted from the caller's copy.
+	var owner domain.UserID
+	if err := r.q.QueryRowContext(ctx, "SELECT owner_user_id FROM projects WHERE id = ?", project.ID).Scan(&owner); err != nil {
+		return mapError(err)
+	}
 	rows, err := r.q.QueryContext(ctx, `
 		SELECT `+projectColumns+`
-		FROM projects WHERE id <> ? AND state <> 'deleted'`, project.ID)
+		FROM projects WHERE id <> ? AND state <> 'deleted' AND owner_user_id = ?`,
+		project.ID, owner)
 	if err != nil {
 		return err
 	}
@@ -211,7 +219,8 @@ func (r *repository) destroyExclusiveSecrets(ctx context.Context, project domain
 		if _, ok := shared[name]; ok {
 			continue
 		}
-		if _, err := r.q.ExecContext(ctx, `DELETE FROM secrets WHERE name = ?`, name); err != nil {
+		if _, err := r.q.ExecContext(ctx, `DELETE FROM secrets WHERE owner_user_id = ? AND name = ?`,
+			owner, name); err != nil {
 			return mapError(err)
 		}
 	}

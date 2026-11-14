@@ -31,6 +31,29 @@ func requirePrincipal(ctx context.Context) error {
 	return err
 }
 
+// startedBy reports whether ctx's caller is the user that began a sign-in
+// ceremony. Another user's ceremony reads as not found (ADR 0046).
+func startedBy(ctx context.Context, starter principal.Principal) bool {
+	caller, ok := principal.From(ctx)
+	return ok && caller.Kind() == principal.KindUser && starter.Kind() == principal.KindUser &&
+		caller.UserID() == starter.UserID()
+}
+
+// requireSystem fails closed unless ctx carries the system principal. It
+// guards the Service methods only daemon-internal work calls: startup
+// recovery, refresh, coordination, cleanup sweeps, and reconciler callbacks
+// (ADR 0046). A user or Capsule reaching one is a server bug.
+func requireSystem(ctx context.Context) error {
+	caller, err := principal.Require(ctx)
+	if err != nil {
+		return err
+	}
+	if caller.Kind() != principal.KindSystem {
+		return principal.ErrMissing
+	}
+	return nil
+}
+
 // capsulePrincipal is capsule acting under its owner's authority.
 func capsulePrincipal(capsule domain.Capsule) (principal.Principal, bool) {
 	return principal.Capsule(capsule.OwnerUserID, capsule.ID)
@@ -163,7 +186,7 @@ func NewService(
 	runtime ...ports.CapsuleRuntime,
 ) *Service {
 	service := &Service{
-		store: store, clock: clock, ids: ids, queue: queue,
+		store: newScopedStore(store), clock: clock, ids: ids, queue: queue,
 		attention: make(map[domain.ThreadID]cachedThreadAttention),
 		models:    make(map[domain.ThreadID]ThreadModelSummary),
 	}
@@ -460,8 +483,11 @@ func (s *Service) ListProjects(ctx context.Context, offset, limit int) (ProjectP
 	var result ProjectPage
 	err := s.store.View(ctx, func(reader ports.Reader) error {
 		var more bool
-		var err error
-		result.Items, more, err = reader.ListProjects(ctx, page)
+		scope, err := scopeOf(ctx)
+		if err != nil {
+			return err
+		}
+		result.Items, more, err = reader.ListProjects(ctx, scope.keyOwner(), page)
 		if more {
 			result.NextOffset = page.Offset + len(result.Items)
 		}
@@ -555,6 +581,7 @@ func (s *Service) CreateCapsuleForHarness(
 		now := s.clock.Now().UTC()
 		timelineID := domain.TimelineID(s.ids.NewID())
 		result = domain.Capsule{
+			OwnerUserID:     project.OwnerUserID,
 			ID:              domain.CapsuleID(s.ids.NewID()),
 			ProjectID:       projectID,
 			TimelineID:      timelineID,
@@ -855,7 +882,11 @@ func getReplay[T any](
 	scope, key string,
 ) (T, bool, error) {
 	var zero T
-	record, err := reader.GetIdempotency(ctx, scope, key)
+	owner, err := idempotencyOwner(ctx)
+	if err != nil {
+		return zero, false, err
+	}
+	record, err := reader.GetIdempotency(ctx, owner, scope, key)
 	if errors.Is(err, domain.ErrNotFound) {
 		return zero, false, nil
 	}
@@ -876,11 +907,16 @@ func putReplay[T any](
 	outcome T,
 	now time.Time,
 ) error {
+	owner, err := idempotencyOwner(ctx)
+	if err != nil {
+		return err
+	}
 	encoded, err := json.Marshal(outcome)
 	if err != nil {
 		return fmt.Errorf("encode idempotency outcome: %w", err)
 	}
 	return tx.PutIdempotency(ctx, ports.IdempotencyRecord{
+		Owner:     owner,
 		Scope:     scope,
 		Key:       key,
 		Outcome:   encoded,
