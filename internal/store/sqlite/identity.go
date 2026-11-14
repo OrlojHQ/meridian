@@ -273,3 +273,36 @@ func oneRow(result sql.Result) error {
 	}
 	return nil
 }
+
+// transferredTables are the owned tables a departed-member transfer moves.
+// provider_connections is absent: a personal login stays with its holder.
+var transferredTables = []string{
+	"projects", "secrets", "harness_setups",
+	"capsules", "timelines", "moments", "project_thread_intents", "setup_moment_cache",
+	"project_preparation_policy", "coordination_grants", "runs", "threads", "deliveries",
+	"capsule_preparations", "capsule_startup", "thread_messages", "thread_blocks",
+	"thread_deliveries", "thread_links", "coordination_requests", "harness_setup_revisions",
+}
+
+func (r *repository) TransferOwnership(ctx context.Context, from, to domain.UserID) error {
+	if from == "" || to == "" || from == to {
+		return domain.ErrInvalid
+	}
+	if _, err := r.q.ExecContext(ctx,
+		"INSERT INTO owner_transfers(id, from_user, to_user) VALUES (1, ?, ?)", from, to); err != nil {
+		return mapError(err)
+	}
+	if _, err := r.q.ExecContext(ctx, `
+		DELETE FROM project_provider_connections
+		WHERE project_id IN (SELECT id FROM projects WHERE owner_user_id = ?)`, from); err != nil {
+		return mapError(err)
+	}
+	for _, table := range transferredTables {
+		if _, err := r.q.ExecContext(ctx,
+			"UPDATE "+table+" SET owner_user_id = ? WHERE owner_user_id = ?", to, from); err != nil {
+			return mapError(err)
+		}
+	}
+	_, err := r.q.ExecContext(ctx, "DELETE FROM owner_transfers WHERE id = 1")
+	return mapError(err)
+}

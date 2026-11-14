@@ -2,8 +2,11 @@
 
 ## Supported deployment scope
 
-Meridian's initial release profile is **single-user, self-hosted operation**.
-Hosted hostile multi-tenancy is unsupported pending an external security review
+Meridian's release profile is **self-hosted operation**: one person in
+single-user mode, or one team in team mode (see "Team mode" below), with each
+member's work private to them. Team mode is not hostile multi-tenancy: with a
+container provider, teammates' Capsules share a kernel. Hosted hostile
+multi-tenancy is unsupported pending an external security review
 and a separately validated hardened runtime deployment. Docker is a
 trusted-local boundary: a Capsule or container-runtime escape can compromise the
 host. Agent Sandbox schedules pods but is not itself an isolation boundary;
@@ -11,9 +14,11 @@ hostile workloads require an independently validated gVisor or Kata
 `RuntimeClass`, dedicated infrastructure where appropriate, storage and network
 policy, admission controls, and external review.
 
-The REST and SSE API requires one installation bearer token. Health/readiness,
-static UI assets, scoped PTY ticket redemption, and scoped preview URL
-redemption do not require that bearer. Prometheus remains unauthenticated. The
+The REST and SSE API requires a credential: the installation bearer token in
+single-user mode, or a member's session or personal access token in team mode.
+Health/readiness, static UI assets, the authentication mode, the OIDC sign-in
+redirect and callback, scoped PTY ticket redemption, and scoped preview URL
+redemption do not require one. Prometheus remains unauthenticated. The
 API defaults to literal loopback; a non-loopback bind additionally requires
 `--allow-non-loopback-listen`. Metrics is disabled by default and rejects a
 non-loopback bind unless `--allow-unsafe-metrics-listen` is explicitly set.
@@ -624,6 +629,22 @@ After the claim:
 - If no admin can sign in, the installation token still administers
   membership (`meridian --token-file <installation token> member ...`); every
   use is audited.
+- When a member leaves, disable them, then use the installation token to move
+  their work to another member or delete it:
+
+  ```console
+  meridian --token-file <installation token> member disable usr_departed
+  meridian --token-file <installation token> member transfer usr_departed --to usr_successor
+  meridian --token-file <installation token> member delete-objects usr_departed --confirm
+  ```
+
+  A transfer moves Projects with everything under them, secrets (re-wrapped
+  for the new owner), and harness setups, and is refused when the successor
+  already has a secret with the same name. Provider connections never move: a
+  personal Claude or ChatGPT login stays with its holder, so the successor
+  grants their own. Deletion starts each Project's deletion, crypto-shreds
+  secrets, revokes connections, and deletes setups. Older backups still hold
+  the departed member's ciphertext under the installation key.
 
 ## Audit records
 

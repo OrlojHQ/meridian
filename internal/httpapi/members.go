@@ -82,3 +82,40 @@ func (s *Server) revokeMemberCredentials(writer http.ResponseWriter, request *ht
 	}
 	writer.WriteHeader(http.StatusNoContent)
 }
+
+// transferMemberObjects and deleteMemberObjects are the break-glass
+// departed-member actions; internal/app refuses every other caller.
+func (s *Server) transferMemberObjects(writer http.ResponseWriter, request *http.Request) {
+	var input struct {
+		ToUserID domain.UserID `json:"toUserId"`
+	}
+	decoder := json.NewDecoder(io.LimitReader(request.Body, 1024))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&input); err != nil || input.ToUserID == "" {
+		writeError(writer, fmt.Errorf("%w: toUserId is required", domain.ErrInvalid))
+		return
+	}
+	if err := s.service.TransferDepartedMember(request.Context(), memberID(request), input.ToUserID); err != nil {
+		writeError(writer, err)
+		return
+	}
+	writer.WriteHeader(http.StatusNoContent)
+}
+
+type departedDeletionJSON struct {
+	Projects    int `json:"projects"`
+	Secrets     int `json:"secrets"`
+	Connections int `json:"connections"`
+	Setups      int `json:"setups"`
+}
+
+func (s *Server) deleteMemberObjects(writer http.ResponseWriter, request *http.Request) {
+	result, err := s.service.DeleteDepartedMember(request.Context(), memberID(request))
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	writeJSON(writer, http.StatusOK, departedDeletionJSON{
+		Projects: result.Projects, Secrets: result.Secrets, Connections: result.Connections, Setups: result.Setups,
+	})
+}
