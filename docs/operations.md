@@ -668,8 +668,10 @@ After the claim:
   for the new owner), and is refused when the successor
   already has a secret with the same name. Provider connections never move: a
   personal Claude or ChatGPT login stays with its holder, so the successor
-  grants their own. An unreadable secret or setup revision refuses the whole
-  transfer; restore the matching key before retrying. Startup re-wraps legacy
+  grants their own. An unreadable secret refuses the whole transfer; restore
+  the matching key before retrying. A setup revision that does not open under
+  the installation key moves with its setup unchanged and stays unreadable,
+  as it already was; it never blocks the transfer. Startup re-wraps legacy
   setup envelopes before serving requests and logs unreadable envelopes
   without changing them. Deletion starts each Project's deletion, crypto-shreds
   secrets, revokes connections, and deletes setups. Older backups still hold
