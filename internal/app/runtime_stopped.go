@@ -46,7 +46,7 @@ func (s *Service) recheckStoppedRuntime(ctx context.Context, capsuleID domain.Ca
 // restarted supervisor would not know those Runs. Queued Runs are left for
 // startup recovery and explicit retries.
 func (s *Service) FailStoppedRuntimeRuns(ctx context.Context, capsule domain.Capsule) error {
-	if err := requirePrincipal(ctx); err != nil {
+	if err := requireSystem(ctx); err != nil {
 		return err
 	}
 	var runs []domain.Run

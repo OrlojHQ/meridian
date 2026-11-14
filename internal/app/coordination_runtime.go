@@ -35,7 +35,7 @@ const (
 // RunCoordination drives grant lifecycle, child reports, and lead wakes until
 // ctx ends. It never resumes a paused Capsule.
 func (s *Service) RunCoordination(ctx context.Context) {
-	if requirePrincipal(ctx) != nil {
+	if requireSystem(ctx) != nil {
 		return
 	}
 	if !s.CoordinationSupported() {
@@ -62,7 +62,7 @@ func (s *Service) RunCoordination(ctx context.Context) {
 // CoordinationTick runs one pass over grants that are active or still have
 // open links or undelivered reports.
 func (s *Service) CoordinationTick(ctx context.Context) {
-	if requirePrincipal(ctx) != nil {
+	if requireSystem(ctx) != nil {
 		return
 	}
 	var grants []domain.CoordinationGrant

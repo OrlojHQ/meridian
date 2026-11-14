@@ -437,7 +437,7 @@ func TestRunRecoveryFailsRunsWhoseReadyCapsuleRuntimeStopped(t *testing.T) {
 		t.Fatalf("cancel with stopped runtime = %#v, %v", stored, err)
 	}
 
-	if err := service.RecoverRuns(ctx); err != nil {
+	if err := service.RecoverRuns(asSystem(ctx)); err != nil {
 		t.Fatalf("Run startup recovery = %v", err)
 	}
 	for _, id := range []domain.RunID{running.ID, cancelling.ID} {
@@ -450,7 +450,7 @@ func TestRunRecoveryFailsRunsWhoseReadyCapsuleRuntimeStopped(t *testing.T) {
 			t.Fatalf("recovered Run = %#v", recovered)
 		}
 	}
-	if err := service.RecoverRuns(ctx); err != nil {
+	if err := service.RecoverRuns(asSystem(ctx)); err != nil {
 		t.Fatalf("repeated Run startup recovery = %v", err)
 	}
 	runtime.runRuntime.mu.Lock()
@@ -660,10 +660,10 @@ func TestCapsuleLauncherStartsOnceAndDoesNotRestartFailedRun(t *testing.T) {
 		store, &testClock{now: now}, &testIDs{}, &recordingQueue{}, runtime,
 	)
 	service.ConfigureHarnessProfiles(nativeProfiles{})
-	if err := service.ReconcileCapsuleLauncher(ctx, capsule); err != nil {
+	if err := service.ReconcileCapsuleLauncher(asSystem(ctx), capsule); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.ReconcileCapsuleLauncher(ctx, capsule); err != nil {
+	if err := service.ReconcileCapsuleLauncher(asSystem(ctx), capsule); err != nil {
 		t.Fatal(err)
 	}
 	if runtime.starts != 1 {

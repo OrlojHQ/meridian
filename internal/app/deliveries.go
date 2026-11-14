@@ -106,7 +106,7 @@ func (s *Service) CreateDelivery(
 	keepMaintenance := false
 	defer func() {
 		if !keepMaintenance {
-			_ = s.clearMaintenance(context.Background(), input.CapsuleID, "capture")
+			_ = s.clearMaintenance(context.WithoutCancel(ctx), input.CapsuleID, "capture")
 		}
 	}()
 	if err := validateDeliveryProject(project, input.Action); err != nil {
@@ -241,7 +241,7 @@ func (s *Service) ListDeliveries(
 }
 
 func (s *Service) RecoverDeliveries(ctx context.Context) error {
-	if err := requirePrincipal(ctx); err != nil {
+	if err := requireSystem(ctx); err != nil {
 		return err
 	}
 	if s.delivery == nil {
@@ -365,7 +365,7 @@ func (s *Service) executeDelivery(
 	}
 
 	if result.State == domain.DeliveryPushing {
-		payload, err := s.resolveSecret(ctx, project.GitPushSecretName, domain.SecretGitPush)
+		payload, err := s.resolveSecret(ctx, project.OwnerUserID, project.GitPushSecretName, domain.SecretGitPush)
 		if err != nil {
 			return fail(err)
 		}
@@ -404,7 +404,7 @@ func (s *Service) executeDelivery(
 			return fail(err)
 		}
 		payload, err := s.resolveSecret(
-			ctx, project.GitHubAPISecretName, domain.SecretGitHubAPI,
+			ctx, project.OwnerUserID, project.GitHubAPISecretName, domain.SecretGitHubAPI,
 		)
 		if err != nil {
 			return fail(err)
@@ -531,7 +531,7 @@ func (s *Service) validateDeliverySecrets(
 	ctx context.Context, project domain.Project, action domain.DeliveryAction,
 ) error {
 	return s.store.View(ctx, func(reader ports.Reader) error {
-		push, err := reader.GetSecret(ctx, project.GitPushSecretName)
+		push, err := reader.GetSecret(ctx, project.OwnerUserID, project.GitPushSecretName)
 		if err != nil {
 			return err
 		}
@@ -541,7 +541,7 @@ func (s *Service) validateDeliverySecrets(
 		if action != domain.DeliveryOpenPullRequest {
 			return nil
 		}
-		github, err := reader.GetSecret(ctx, project.GitHubAPISecretName)
+		github, err := reader.GetSecret(ctx, project.OwnerUserID, project.GitHubAPISecretName)
 		if err != nil {
 			return err
 		}

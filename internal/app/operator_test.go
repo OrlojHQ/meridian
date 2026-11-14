@@ -12,3 +12,9 @@ import (
 func operatorContext() context.Context {
 	return principal.With(context.Background(), principal.Owner())
 }
+
+// asSystem is ctx as daemon-internal work, which the reconciler and the
+// daemon's background loops attach for themselves.
+func asSystem(ctx context.Context) context.Context {
+	return principal.WithSystem(ctx)
+}

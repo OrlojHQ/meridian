@@ -232,7 +232,7 @@ func (s *Service) ChatGPTSignInStatus(ctx context.Context, id string) (ChatGPTSi
 	defer s.chatgpt.mu.Unlock()
 	s.chatgpt.pruneLocked(s.clock.Now().UTC())
 	item := s.chatgpt.attempts[id]
-	if item == nil {
+	if item == nil || !startedBy(ctx, item.starter) {
 		return ChatGPTSignIn{}, domain.ErrNotFound
 	}
 	return item.view, nil
@@ -251,7 +251,9 @@ func (s *Service) CompleteChatGPTSignIn(ctx context.Context, id, callbackURL str
 	if err != nil {
 		return ChatGPTSignIn{}, fmt.Errorf("%w: %v", domain.ErrInvalid, err)
 	}
-	return s.completeChatGPT(ctx, func(item *chatGPTAttempt) bool { return item.view.ID == id }, callback)
+	return s.completeChatGPT(ctx, func(item *chatGPTAttempt) bool {
+		return item.view.ID == id && startedBy(ctx, item.starter)
+	}, callback)
 }
 
 // completeChatGPT redeems a callback for the attempt that match selects. A

@@ -1265,7 +1265,7 @@ func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
 }
 
 func (s *Service) RecoverThreads(ctx context.Context) error {
-	if err := requirePrincipal(ctx); err != nil {
+	if err := requireSystem(ctx); err != nil {
 		return err
 	}
 	if s.structured == nil {

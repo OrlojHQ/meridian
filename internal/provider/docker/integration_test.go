@@ -409,7 +409,7 @@ func TestDockerProviderIntegrationControlPlaneRestartRecoversRunningRun(t *testi
 	if err := reconciler.Recover(restartCtx); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.RecoverRuns(restartCtx); err != nil {
+	if err := service.RecoverRuns(principal.WithSystem(restartCtx)); err != nil {
 		t.Fatal(err)
 	}
 	recovered, err := service.GetRun(restartCtx, run.ID)

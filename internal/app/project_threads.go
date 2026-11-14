@@ -183,7 +183,8 @@ func (s *Service) insertProjectThreadTx(
 		return domain.ProjectThreadIntent{}, err
 	}
 	capsule := domain.Capsule{
-		ID: capsuleID, ProjectID: spec.ProjectID, TimelineID: timelineID,
+		OwnerUserID: project.OwnerUserID,
+		ID:          capsuleID, ProjectID: spec.ProjectID, TimelineID: timelineID,
 		Name: capsuleName, State: domain.CapsuleCreating,
 		DesiredState: domain.IntentReady, RestoreComplete: true,
 		ImageReference: image, Role: spec.Role, LeadThreadID: spec.LeadThreadID,
@@ -369,7 +370,7 @@ func (s *Service) ReconcileProjectThreadCapsule(
 	ctx context.Context,
 	capsule domain.Capsule,
 ) error {
-	if err := requirePrincipal(ctx); err != nil {
+	if err := requireSystem(ctx); err != nil {
 		return err
 	}
 	switch capsule.State {
@@ -388,7 +389,7 @@ func (s *Service) ReconcileProjectThreadCapsule(
 }
 
 func (s *Service) RecoverProjectThreads(ctx context.Context) error {
-	if err := requirePrincipal(ctx); err != nil {
+	if err := requireSystem(ctx); err != nil {
 		return err
 	}
 	var intents []domain.ProjectThreadIntent

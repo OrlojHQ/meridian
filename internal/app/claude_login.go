@@ -146,7 +146,7 @@ func (s *Service) ClaudeLoginStatus(ctx context.Context, loginID string) (Claude
 	defer s.claudeMu.Unlock()
 	s.sweepClaude(s.clock.Now())
 	item := s.claudePending[loginID]
-	if item == nil {
+	if item == nil || !startedBy(ctx, item.starter) {
 		return ClaudeLoginStatus{}, domain.ErrNotFound
 	}
 	return item.publicStatus(), nil
@@ -163,7 +163,7 @@ func (s *Service) SetClaudeTokenURL(raw string) error {
 }
 
 func (s *Service) finishClaudeLogin(ctx context.Context, loginID, state, code string, callback bool) (ClaudeLoginStatus, error) {
-	claimed, done, err := s.claimClaude(loginID, state, callback)
+	claimed, done, err := s.claimClaude(ctx, loginID, state, callback)
 	if done || err != nil {
 		if done {
 			return claimed.publicStatus(), nil
@@ -186,7 +186,10 @@ func (s *Service) finishClaudeLogin(ctx context.Context, loginID, state, code st
 	return ClaudeLoginStatus{Status: claudeComplete, ConnectionID: saved.ID}, nil
 }
 
-func (s *Service) claimClaude(loginID, state string, callback bool) (claudeCeremony, bool, error) {
+// claimClaude finds the ceremony a completion names. The callback is
+// authorized by its single-use state alone; a code submission must also
+// come from the user who began the sign-in.
+func (s *Service) claimClaude(ctx context.Context, loginID, state string, callback bool) (claudeCeremony, bool, error) {
 	s.claudeMu.Lock()
 	defer s.claudeMu.Unlock()
 	now := s.clock.Now()
@@ -199,7 +202,7 @@ func (s *Service) claimClaude(loginID, state string, callback bool) (claudeCerem
 		}
 	} else {
 		item = s.claudePending[loginID]
-		if item == nil {
+		if item == nil || !startedBy(ctx, item.starter) {
 			return claudeCeremony{}, false, domain.ErrNotFound
 		}
 		if state != "" && subtle.ConstantTimeCompare([]byte(item.state), []byte(state)) != 1 {

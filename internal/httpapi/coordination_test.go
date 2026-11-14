@@ -147,7 +147,7 @@ func TestCoordinationRoutes(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.ReconcileProjectThreadCapsule(ctx, capsule); err != nil {
+	if err := service.ReconcileProjectThreadCapsule(principal.WithSystem(ctx), capsule); err != nil {
 		t.Fatal(err)
 	}
 

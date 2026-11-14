@@ -113,6 +113,11 @@ func TestOwnershipMigrationStampsEveryExistingRow(t *testing.T) {
 		if err := rows.Scan(&name); err != nil {
 			t.Fatal(err)
 		}
+		// Idempotency outcomes key by owner (migration 0024); the system's
+		// key owner is empty, so they are not owned rows.
+		if name == "idempotency_outcomes" {
+			continue
+		}
 		withOwner = append(withOwner, name)
 	}
 	if err := rows.Close(); err != nil {

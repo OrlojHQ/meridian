@@ -128,7 +128,7 @@ func (s *Service) PromoteCapsule(
 // the link. It never sends a message and never deletes a transcript; a
 // workspace with unsaved changes is left to idle pause (ADR 0019).
 func (s *Service) SweepArchivableSubagents(ctx context.Context) {
-	if requirePrincipal(ctx) != nil {
+	if requireSystem(ctx) != nil {
 		return
 	}
 	if !s.CoordinationSupported() {

@@ -33,11 +33,16 @@ type Reader interface {
 	GetPinnedHarnessSetup(context.Context, domain.CapsuleID, string) (string, error)
 	ListPinnedHarnessSetups(context.Context, []domain.CapsuleID) (map[domain.CapsuleID][]domain.PinnedHarnessSetup, error)
 	GetProject(context.Context, domain.ProjectID) (domain.Project, error)
-	ListProjects(context.Context, Page) ([]domain.Project, bool, error)
+	// ListProjects lists owner's Projects; the empty owner lists every
+	// owner's, for daemon-internal work.
+	ListProjects(context.Context, domain.UserID, Page) ([]domain.Project, bool, error)
 	ListProjectsInDeletion(context.Context) ([]domain.Project, error)
 	ArtifactReferenced(context.Context, string) (bool, error)
-	GetSecret(context.Context, string) (domain.Secret, error)
-	ListSecrets(context.Context, Page) ([]domain.Secret, bool, error)
+	// Secret names are unique per owner (ADR 0046). The empty owner lists
+	// every owner's secrets, for daemon-internal work; GetSecret always
+	// needs the owner.
+	GetSecret(context.Context, domain.UserID, string) (domain.Secret, error)
+	ListSecrets(context.Context, domain.UserID, Page) ([]domain.Secret, bool, error)
 	GetCapsule(context.Context, domain.CapsuleID) (domain.Capsule, error)
 	ListCapsules(context.Context, domain.ProjectID, domain.CapsuleRole, Page) ([]domain.Capsule, bool, error)
 	CountLiveCapsules(context.Context) (int, error)
@@ -49,7 +54,7 @@ type Reader interface {
 	ListRecoverableRuns(context.Context) ([]domain.Run, error)
 	ListRunEvents(context.Context, domain.RunID, int64, int) ([]domain.Event, bool, error)
 	ListEvents(context.Context, string, string) ([]domain.Event, error)
-	GetIdempotency(context.Context, string, string) (IdempotencyRecord, error)
+	GetIdempotency(context.Context, domain.UserID, string, string) (IdempotencyRecord, error)
 	GetTimeline(context.Context, domain.TimelineID) (domain.Timeline, error)
 	ListTimelineAncestry(context.Context, domain.TimelineID) ([]domain.Timeline, error)
 	GetMoment(context.Context, domain.MomentID) (domain.Moment, error)
@@ -105,7 +110,7 @@ type Transaction interface {
 	PurgeProjectContents(context.Context, domain.Project, time.Time) (domain.Project, []string, error)
 	InsertSecret(context.Context, domain.Secret) error
 	UpdateSecret(context.Context, domain.Secret, domain.ResourceVersion) error
-	DeleteSecret(context.Context, string, domain.ResourceVersion) error
+	DeleteSecret(context.Context, domain.UserID, string, domain.ResourceVersion) error
 	InsertCapsule(context.Context, domain.Capsule) error
 	UpdateCapsule(context.Context, domain.Capsule, domain.ResourceVersion) error
 	TouchCapsuleActivity(context.Context, domain.CapsuleID, time.Time) error
@@ -155,7 +160,10 @@ type Store interface {
 	Close() error
 }
 
+// IdempotencyRecord is one caller's outcome. Owner is the caller's user, or
+// empty for daemon-internal work (ADR 0046).
 type IdempotencyRecord struct {
+	Owner     domain.UserID
 	Scope     string
 	Key       string
 	Outcome   []byte
