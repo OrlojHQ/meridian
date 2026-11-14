@@ -98,6 +98,7 @@ const (
 	ProxyProviderInferenceOperation         OperationName = "ProxyProviderInference"
 	PutSecretOperation                      OperationName = "PutSecret"
 	ReadCapsuleFileOperation                OperationName = "ReadCapsuleFile"
+	RedeemDesktopSignInOperation            OperationName = "RedeemDesktopSignIn"
 	RejectDeliveryOperation                 OperationName = "RejectDelivery"
 	RemoveSubagentOperation                 OperationName = "RemoveSubagent"
 	RespondThreadOperation                  OperationName = "RespondThread"

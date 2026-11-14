@@ -5418,7 +5418,20 @@ export type GetAuthenticationModeResponse = GetAuthenticationModeResponses[keyof
 export type StartOidcSignInData = {
     body?: never;
     path?: never;
-    query?: never;
+    query?: {
+        /**
+         * The desktop shell's loopback listener port on 127.0.0.1.
+         */
+        desktopPort?: number;
+        /**
+         * 32 random bytes, base64url; echoed to the listener.
+         */
+        desktopState?: string;
+        /**
+         * Base64url SHA-256 of the verifier the shell keeps for redeemDesktopSignIn.
+         */
+        desktopChallenge?: string;
+    };
     url: '/auth/oidc/start';
 };
 
@@ -6099,6 +6112,51 @@ export type SetMemberRoleResponses = {
 };
 
 export type SetMemberRoleResponse = SetMemberRoleResponses[keyof SetMemberRoleResponses];
+
+export type RedeemDesktopSignInData = {
+    body: {
+        ticket: string;
+        verifier: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/auth/desktop/redeem';
+};
+
+export type RedeemDesktopSignInErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Not same-origin, or this account may not sign in
+     */
+    403: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type RedeemDesktopSignInError = RedeemDesktopSignInErrors[keyof RedeemDesktopSignInErrors];
+
+export type RedeemDesktopSignInResponses = {
+    /**
+     * Signed in, or ready to claim
+     */
+    200: {
+        /**
+         * A /ui/ path to open next.
+         */
+        next: string;
+    };
+};
+
+export type RedeemDesktopSignInResponse = RedeemDesktopSignInResponses[keyof RedeemDesktopSignInResponses];
 
 export type BeginDeviceLoginData = {
     body?: never;

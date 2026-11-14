@@ -297,6 +297,10 @@ type ReadCapsuleFileRes interface {
 	readCapsuleFileRes()
 }
 
+type RedeemDesktopSignInRes interface {
+	redeemDesktopSignInRes()
+}
+
 type RejectDeliveryRes interface {
 	rejectDeliveryRes()
 }

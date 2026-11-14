@@ -203,6 +203,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /auth/mode", s.authenticationMode)
 	s.mux.HandleFunc("GET /auth/oidc/start", s.withIdentity(s.startOIDCSignIn))
 	s.mux.HandleFunc("GET /auth/oidc/callback", s.withIdentity(s.completeOIDCSignIn))
+	s.mux.HandleFunc("POST /auth/desktop/redeem", s.withIdentity(s.redeemDesktopSignIn))
 	s.mux.HandleFunc("POST /auth/claim", s.withIdentity(s.claimInstallation))
 	s.mux.HandleFunc("GET /auth/me", s.withIdentity(s.currentMember))
 	s.mux.HandleFunc("POST /auth/sign-out", s.withIdentity(s.signOut))
@@ -431,9 +432,11 @@ func authExempt(request *http.Request) bool {
 		return true
 	}
 	// meridian login starts and polls without a credential; its own
-	// single-use handle authorizes the poll.
+	// single-use handle authorizes the poll. The desktop shell's handoff
+	// ticket and verifier authorize its redemption (ADR 0047).
 	if request.Method == http.MethodPost &&
-		(request.URL.Path == "/auth/device" || request.URL.Path == "/auth/device/token") {
+		(request.URL.Path == "/auth/device" || request.URL.Path == "/auth/device/token" ||
+			request.URL.Path == "/auth/desktop/redeem") {
 		return true
 	}
 	if request.Method != http.MethodGet {
