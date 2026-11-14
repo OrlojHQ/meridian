@@ -172,6 +172,16 @@ export function SettingsIcon(props: IconProps) {
   );
 }
 
+// The signed-in person: Account settings.
+export function AccountIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="10" cy="7" r="3" />
+      <path d="M4.5 16.5c.8-2.9 2.9-4.5 5.5-4.5s4.7 1.6 5.5 4.5" />
+    </Icon>
+  );
+}
+
 // The daemon the window talks to: bundled on this computer or one the
 // operator chose.
 export function GatewayIcon(props: IconProps) {

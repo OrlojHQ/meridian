@@ -18,6 +18,11 @@ import {
 import { normalizeAPIError } from "../api/client";
 import type { Project } from "../api/generated/types.gen";
 import { queries } from "../api/queries";
+import {
+  AuthenticationState,
+  isUnauthenticated,
+  TEAM_SIGN_IN_PATH,
+} from "../components/Authentication";
 import { DeleteProjectDialog } from "../components/DeleteProjectDialog";
 import { NewProjectDialog } from "../components/NewProjectDialog";
 import { NewSessionDialog } from "../components/NewSessionDialog";
@@ -27,6 +32,7 @@ import { HarnessMark } from "../components/ui/HarnessMark";
 import { ListSkeleton } from "../components/ui/loading";
 import { MeridianMark } from "../components/ui/MeridianMark";
 import {
+  AccountIcon,
   ChangesIcon,
   ChevronIcon,
   CommandIcon,
@@ -290,7 +296,9 @@ function StatusBar({ items }: { items: WorkingSetItem[] }) {
   const online = useOnline();
   const capabilities = useQuery({ ...queries.capabilities(), refetchInterval: 15_000 });
   const provider = capabilities.data?.providerVersion ?? "";
+  const mode = useQuery(queries.authenticationMode());
   const failure = capabilities.isError ? normalizeAPIError(capabilities.error) : undefined;
+  const teamSignIn = online && failure?.status === 401 && mode.data?.mode === "team";
   const connection = !online
     ? { state: "offline", label: "Offline", title: "This browser is offline" }
     : failure
@@ -308,7 +316,13 @@ function StatusBar({ items }: { items: WorkingSetItem[] }) {
         title={connection.title}
       >
         <i aria-hidden="true" />
-        <span className="status-connection-label">{connection.label}</span>
+        {teamSignIn ? (
+          <a className="status-connection-label" href={TEAM_SIGN_IN_PATH}>
+            Sign in
+          </a>
+        ) : (
+          <span className="status-connection-label">{connection.label}</span>
+        )}
       </span>
       {provider && (
         <span className="status-provider" title="Capsule provider">
@@ -392,6 +406,12 @@ export function AppShell() {
   const moment = useQuery(queries.moment(momentId));
   const timeline = useQuery(queries.timeline(timelineId));
   const capabilities = useQuery(queries.capabilities());
+  // Team mode has no shared installation session to fall back on, so a
+  // signed-out browser sees the sign-in screen rather than an empty
+  // workspace. Account handles its own signed-out state (ADR 0046).
+  const mode = useQuery(queries.authenticationMode());
+  const signInRequired =
+    mode.data?.mode === "team" && capabilities.isError && isUnauthenticated(capabilities.error);
   const capsuleId =
     directCapsuleId ||
     thread.data?.capsuleId ||
@@ -734,13 +754,15 @@ export function AppShell() {
             Harness settings
           </NavLink>
           <NavLink to="/ui/settings/account">
-            <SettingsIcon />
+            <AccountIcon />
             Account
           </NavLink>
           <GatewaySettingsButton />
         </nav>
         <nav className="activity-nav" aria-label="Capsule activity">
-          {projects.isPending ? (
+          {signInRequired ? (
+            <p className="sidebar-status">Sign in to see your Projects</p>
+          ) : projects.isPending ? (
             <ListSkeleton label="Loading activity…" />
           ) : projects.isError ? (
             <p className="sidebar-status" role="alert">
@@ -809,16 +831,20 @@ export function AppShell() {
       </aside>
 
       <main id="content" className="workspace-main" tabIndex={-1}>
-        <Outlet
-          context={
-            {
-              openNewProject: () => setNewProjectOpen(true),
-              openLauncher: setLaunchProject,
-              openDeleteProject: setDeleteProject,
-              openNewSession,
-            } satisfies ShellOutletContext
-          }
-        />
+        {signInRequired && !location.pathname.startsWith("/ui/settings/account") ? (
+          <AuthenticationState />
+        ) : (
+          <Outlet
+            context={
+              {
+                openNewProject: () => setNewProjectOpen(true),
+                openLauncher: setLaunchProject,
+                openDeleteProject: setDeleteProject,
+                openNewSession,
+              } satisfies ShellOutletContext
+            }
+          />
+        )}
       </main>
 
       {deleteProject && (

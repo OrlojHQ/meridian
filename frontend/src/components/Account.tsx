@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 
 import { api, normalizeAPIError } from "../api/client";
 import { queries } from "../api/queries";
+import { isUnauthenticated, TEAM_SIGN_IN_PATH } from "./Authentication";
 
 // Account shows who is signed in, their sessions, and, before the
 // installation is claimed, how to turn on team mode (ADR 0046).
@@ -58,7 +59,7 @@ function SingleUserAccount({ claimable }: { claimable: boolean }) {
             as the owner, then confirm with the installation token. This
             happens once and cannot be undone.
           </p>
-          <a className="button-link primary-button" href="/auth/oidc/start">
+          <a className="button-link primary-button" href={TEAM_SIGN_IN_PATH}>
             Sign in to claim this installation
           </a>
         </section>
@@ -121,12 +122,31 @@ function TeamAccount() {
     mutationFn: () => api.signOut(),
     onSuccess: () => window.location.assign("/ui/"),
   });
+  // A signed-out browser, or one whose session expired or was revoked, gets
+  // the sign-in action instead of controls that would only fail.
+  if (isUnauthenticated(member.error) || isUnauthenticated(sessions.error)) {
+    return <TeamSignIn />;
+  }
+  if (member.isPending) {
+    return (
+      <p className="muted account-status" role="status">
+        Loading account…
+      </p>
+    );
+  }
+  if (member.isError) {
+    return (
+      <section className="error-state" role="alert">
+        <h2>Account unavailable</h2>
+        <p>{normalizeAPIError(member.error).message}</p>
+      </section>
+    );
+  }
   return (
     <>
       <section aria-labelledby="profile-title">
         <h2 id="profile-title">Signed in</h2>
-        {member.data ? (
-          <dl>
+        <dl>
             <dt>Signed in as</dt>
             <dd>{member.data.displayName || member.data.email || member.data.id}</dd>
             {member.data.email ? (
@@ -138,7 +158,6 @@ function TeamAccount() {
             <dt>Role</dt>
             <dd>{member.data.role}</dd>
           </dl>
-        ) : null}
         <button
           type="button"
           className="secondary"
@@ -149,7 +168,7 @@ function TeamAccount() {
         </button>
       </section>
       <PersonalAccessTokens />
-      {member.data?.role === "admin" ? <Members selfId={member.data.id} /> : null}
+      {member.data.role === "admin" ? <Members selfId={member.data.id} /> : null}
       <section aria-labelledby="sessions-title">
         <h2 id="sessions-title">Sessions</h2>
         <p className="muted">Sessions end after 12 hours idle or 7 days.</p>
@@ -175,6 +194,21 @@ function TeamAccount() {
         </ul>
       </section>
     </>
+  );
+}
+
+function TeamSignIn() {
+  return (
+    <section aria-labelledby="sign-in-title">
+      <h2 id="sign-in-title">Sign in</h2>
+      <p className="muted">
+        You are signed out. Sign in with your organization's identity provider
+        to see your profile, personal access tokens, and sessions.
+      </p>
+      <a className="button-link primary-button" href={TEAM_SIGN_IN_PATH}>
+        Sign in
+      </a>
+    </section>
   );
 }
 
@@ -227,7 +261,7 @@ function PersonalAccessTokens() {
           <option value="90">90 days</option>
           <option value="365">1 year</option>
         </select>
-        <label>
+        <label className="check-label">
           <input type="checkbox" name="readOnly" /> Read-only
         </label>
         <button type="submit" disabled={mint.isPending}>
@@ -274,6 +308,9 @@ function PersonalAccessTokens() {
 // change roles, and revoke credentials; they never see a member's work.
 function Members({ selfId }: { selfId: string }) {
   const members = useQuery(queries.members());
+  const enabledAdmins = (members.data?.items ?? []).filter(
+    (item) => item.role === "admin" && !item.disabled,
+  ).length;
   const client = useQueryClient();
   const [error, setError] = useState("");
   const change = useMutation({
@@ -295,37 +332,45 @@ function Members({ selfId }: { selfId: string }) {
       <ul>
         {(members.data?.items ?? []).map((item) => {
           const name = item.displayName || item.email || item.id;
+          // The daemon refuses to demote or disable the last enabled admin,
+          // so their row offers neither.
+          const lastAdmin = item.role === "admin" && !item.disabled && enabledAdmins === 1;
           return (
             <li key={item.id}>
               <span>
                 {name}
                 {item.id === selfId ? " (you)" : ""} · {item.role}
                 {item.disabled ? " · disabled" : ""}
+                {lastAdmin ? " · last admin" : ""}
               </span>
-              <button
-                type="button"
-                aria-label={`${item.role === "admin" ? "Remove admin" : "Make admin"}: ${name}`}
-                disabled={change.isPending}
-                onClick={() =>
-                  change.mutate(() =>
-                    api.setMemberRole(item.id, item.role === "admin" ? "member" : "admin"),
-                  )
-                }
-              >
-                {item.role === "admin" ? "Remove admin" : "Make admin"}
-              </button>
-              <button
-                type="button"
-                aria-label={`${item.disabled ? "Enable" : "Disable"}: ${name}`}
-                disabled={change.isPending}
-                onClick={() =>
-                  change.mutate(() =>
-                    item.disabled ? api.enableMember(item.id) : api.disableMember(item.id),
-                  )
-                }
-              >
-                {item.disabled ? "Enable" : "Disable"}
-              </button>
+              {lastAdmin ? null : (
+                <>
+                  <button
+                    type="button"
+                    aria-label={`${item.role === "admin" ? "Remove admin" : "Make admin"}: ${name}`}
+                    disabled={change.isPending}
+                    onClick={() =>
+                      change.mutate(() =>
+                        api.setMemberRole(item.id, item.role === "admin" ? "member" : "admin"),
+                      )
+                    }
+                  >
+                    {item.role === "admin" ? "Remove admin" : "Make admin"}
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`${item.disabled ? "Enable" : "Disable"}: ${name}`}
+                    disabled={change.isPending}
+                    onClick={() =>
+                      change.mutate(() =>
+                        item.disabled ? api.enableMember(item.id) : api.disableMember(item.id),
+                      )
+                    }
+                  >
+                    {item.disabled ? "Enable" : "Disable"}
+                  </button>
+                </>
+              )}
               <button
                 type="button"
                 aria-label={`Sign out everywhere: ${name}`}
