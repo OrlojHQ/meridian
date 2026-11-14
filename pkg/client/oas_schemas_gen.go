@@ -4890,28 +4890,30 @@ func (s *ErrorEnvelope) SetError(val APIError) {
 	s.Error = val
 }
 
-func (*ErrorEnvelope) attachRunWebSocketRes()       {}
-func (*ErrorEnvelope) claimInstallationRes()        {}
-func (*ErrorEnvelope) createRunAttachTicketRes()    {}
-func (*ErrorEnvelope) getCapsuleRes()               {}
-func (*ErrorEnvelope) getCoordinationGrantRes()     {}
-func (*ErrorEnvelope) getDeliveryRes()              {}
-func (*ErrorEnvelope) getMomentRes()                {}
-func (*ErrorEnvelope) getProjectRes()               {}
-func (*ErrorEnvelope) getProjectThreadIntentRes()   {}
-func (*ErrorEnvelope) getRunRes()                   {}
-func (*ErrorEnvelope) getThreadLinkRes()            {}
-func (*ErrorEnvelope) getThreadRes()                {}
-func (*ErrorEnvelope) getTimelineRes()              {}
-func (*ErrorEnvelope) listAuditRecordsRes()         {}
-func (*ErrorEnvelope) listCapsuleDeliveriesRes()    {}
-func (*ErrorEnvelope) listCoordinationRequestsRes() {}
-func (*ErrorEnvelope) listMomentsRes()              {}
-func (*ErrorEnvelope) listProjectsRes()             {}
-func (*ErrorEnvelope) listSecretsRes()              {}
-func (*ErrorEnvelope) listThreadLinksRes()          {}
-func (*ErrorEnvelope) listThreadsRes()              {}
-func (*ErrorEnvelope) revokeSessionRes()            {}
+func (*ErrorEnvelope) attachRunWebSocketRes()        {}
+func (*ErrorEnvelope) claimInstallationRes()         {}
+func (*ErrorEnvelope) createRunAttachTicketRes()     {}
+func (*ErrorEnvelope) getCapsuleRes()                {}
+func (*ErrorEnvelope) getCoordinationGrantRes()      {}
+func (*ErrorEnvelope) getDeliveryRes()               {}
+func (*ErrorEnvelope) getMomentRes()                 {}
+func (*ErrorEnvelope) getProjectRes()                {}
+func (*ErrorEnvelope) getProjectThreadIntentRes()    {}
+func (*ErrorEnvelope) getRunRes()                    {}
+func (*ErrorEnvelope) getThreadLinkRes()             {}
+func (*ErrorEnvelope) getThreadRes()                 {}
+func (*ErrorEnvelope) getTimelineRes()               {}
+func (*ErrorEnvelope) listAuditRecordsRes()          {}
+func (*ErrorEnvelope) listCapsuleDeliveriesRes()     {}
+func (*ErrorEnvelope) listCoordinationRequestsRes()  {}
+func (*ErrorEnvelope) listMomentsRes()               {}
+func (*ErrorEnvelope) listProjectsRes()              {}
+func (*ErrorEnvelope) listSecretsRes()               {}
+func (*ErrorEnvelope) listThreadLinksRes()           {}
+func (*ErrorEnvelope) listThreadsRes()               {}
+func (*ErrorEnvelope) mintPersonalAccessTokenRes()   {}
+func (*ErrorEnvelope) revokePersonalAccessTokenRes() {}
+func (*ErrorEnvelope) revokeSessionRes()             {}
 
 type ExportCapsuleWorkspaceConflict ErrorEnvelope
 
@@ -6239,6 +6241,139 @@ func (s *MemberRole) UnmarshalText(data []byte) error {
 		return errors.Errorf("invalid value: %q", data)
 	}
 }
+
+// Ref: #/components/schemas/MintPersonalAccessTokenRequest
+type MintPersonalAccessTokenRequest struct {
+	Name          string  `json:"name"`
+	ReadOnly      OptBool `json:"readOnly"`
+	ExpiresInDays OptInt  `json:"expiresInDays"`
+}
+
+// GetName returns the value of Name.
+func (s *MintPersonalAccessTokenRequest) GetName() string {
+	return s.Name
+}
+
+// GetReadOnly returns the value of ReadOnly.
+func (s *MintPersonalAccessTokenRequest) GetReadOnly() OptBool {
+	return s.ReadOnly
+}
+
+// GetExpiresInDays returns the value of ExpiresInDays.
+func (s *MintPersonalAccessTokenRequest) GetExpiresInDays() OptInt {
+	return s.ExpiresInDays
+}
+
+// SetName sets the value of Name.
+func (s *MintPersonalAccessTokenRequest) SetName(val string) {
+	s.Name = val
+}
+
+// SetReadOnly sets the value of ReadOnly.
+func (s *MintPersonalAccessTokenRequest) SetReadOnly(val OptBool) {
+	s.ReadOnly = val
+}
+
+// SetExpiresInDays sets the value of ExpiresInDays.
+func (s *MintPersonalAccessTokenRequest) SetExpiresInDays(val OptInt) {
+	s.ExpiresInDays = val
+}
+
+// Merged schema.
+// Ref: #/components/schemas/MintedPersonalAccessToken
+type MintedPersonalAccessToken struct {
+	ID         string    `json:"id"`
+	Name       string    `json:"name"`
+	ReadOnly   bool      `json:"readOnly"`
+	CreatedAt  time.Time `json:"createdAt"`
+	LastUsedAt time.Time `json:"lastUsedAt"`
+	ExpiresAt  time.Time `json:"expiresAt"`
+	Revoked    bool      `json:"revoked"`
+	// The token value, shown once. Pass it to the CLI with --token-file.
+	Token string `json:"token"`
+}
+
+// GetID returns the value of ID.
+func (s *MintedPersonalAccessToken) GetID() string {
+	return s.ID
+}
+
+// GetName returns the value of Name.
+func (s *MintedPersonalAccessToken) GetName() string {
+	return s.Name
+}
+
+// GetReadOnly returns the value of ReadOnly.
+func (s *MintedPersonalAccessToken) GetReadOnly() bool {
+	return s.ReadOnly
+}
+
+// GetCreatedAt returns the value of CreatedAt.
+func (s *MintedPersonalAccessToken) GetCreatedAt() time.Time {
+	return s.CreatedAt
+}
+
+// GetLastUsedAt returns the value of LastUsedAt.
+func (s *MintedPersonalAccessToken) GetLastUsedAt() time.Time {
+	return s.LastUsedAt
+}
+
+// GetExpiresAt returns the value of ExpiresAt.
+func (s *MintedPersonalAccessToken) GetExpiresAt() time.Time {
+	return s.ExpiresAt
+}
+
+// GetRevoked returns the value of Revoked.
+func (s *MintedPersonalAccessToken) GetRevoked() bool {
+	return s.Revoked
+}
+
+// GetToken returns the value of Token.
+func (s *MintedPersonalAccessToken) GetToken() string {
+	return s.Token
+}
+
+// SetID sets the value of ID.
+func (s *MintedPersonalAccessToken) SetID(val string) {
+	s.ID = val
+}
+
+// SetName sets the value of Name.
+func (s *MintedPersonalAccessToken) SetName(val string) {
+	s.Name = val
+}
+
+// SetReadOnly sets the value of ReadOnly.
+func (s *MintedPersonalAccessToken) SetReadOnly(val bool) {
+	s.ReadOnly = val
+}
+
+// SetCreatedAt sets the value of CreatedAt.
+func (s *MintedPersonalAccessToken) SetCreatedAt(val time.Time) {
+	s.CreatedAt = val
+}
+
+// SetLastUsedAt sets the value of LastUsedAt.
+func (s *MintedPersonalAccessToken) SetLastUsedAt(val time.Time) {
+	s.LastUsedAt = val
+}
+
+// SetExpiresAt sets the value of ExpiresAt.
+func (s *MintedPersonalAccessToken) SetExpiresAt(val time.Time) {
+	s.ExpiresAt = val
+}
+
+// SetRevoked sets the value of Revoked.
+func (s *MintedPersonalAccessToken) SetRevoked(val bool) {
+	s.Revoked = val
+}
+
+// SetToken sets the value of Token.
+func (s *MintedPersonalAccessToken) SetToken(val string) {
+	s.Token = val
+}
+
+func (*MintedPersonalAccessToken) mintPersonalAccessTokenRes() {}
 
 // Ref: #/components/schemas/Moment
 type Moment struct {
@@ -8727,6 +8862,104 @@ type PauseCapsuleUnprocessableEntity ErrorEnvelope
 
 func (*PauseCapsuleUnprocessableEntity) pauseCapsuleRes() {}
 
+// Ref: #/components/schemas/PersonalAccessToken
+type PersonalAccessToken struct {
+	ID         string    `json:"id"`
+	Name       string    `json:"name"`
+	ReadOnly   bool      `json:"readOnly"`
+	CreatedAt  time.Time `json:"createdAt"`
+	LastUsedAt time.Time `json:"lastUsedAt"`
+	ExpiresAt  time.Time `json:"expiresAt"`
+	Revoked    bool      `json:"revoked"`
+}
+
+// GetID returns the value of ID.
+func (s *PersonalAccessToken) GetID() string {
+	return s.ID
+}
+
+// GetName returns the value of Name.
+func (s *PersonalAccessToken) GetName() string {
+	return s.Name
+}
+
+// GetReadOnly returns the value of ReadOnly.
+func (s *PersonalAccessToken) GetReadOnly() bool {
+	return s.ReadOnly
+}
+
+// GetCreatedAt returns the value of CreatedAt.
+func (s *PersonalAccessToken) GetCreatedAt() time.Time {
+	return s.CreatedAt
+}
+
+// GetLastUsedAt returns the value of LastUsedAt.
+func (s *PersonalAccessToken) GetLastUsedAt() time.Time {
+	return s.LastUsedAt
+}
+
+// GetExpiresAt returns the value of ExpiresAt.
+func (s *PersonalAccessToken) GetExpiresAt() time.Time {
+	return s.ExpiresAt
+}
+
+// GetRevoked returns the value of Revoked.
+func (s *PersonalAccessToken) GetRevoked() bool {
+	return s.Revoked
+}
+
+// SetID sets the value of ID.
+func (s *PersonalAccessToken) SetID(val string) {
+	s.ID = val
+}
+
+// SetName sets the value of Name.
+func (s *PersonalAccessToken) SetName(val string) {
+	s.Name = val
+}
+
+// SetReadOnly sets the value of ReadOnly.
+func (s *PersonalAccessToken) SetReadOnly(val bool) {
+	s.ReadOnly = val
+}
+
+// SetCreatedAt sets the value of CreatedAt.
+func (s *PersonalAccessToken) SetCreatedAt(val time.Time) {
+	s.CreatedAt = val
+}
+
+// SetLastUsedAt sets the value of LastUsedAt.
+func (s *PersonalAccessToken) SetLastUsedAt(val time.Time) {
+	s.LastUsedAt = val
+}
+
+// SetExpiresAt sets the value of ExpiresAt.
+func (s *PersonalAccessToken) SetExpiresAt(val time.Time) {
+	s.ExpiresAt = val
+}
+
+// SetRevoked sets the value of Revoked.
+func (s *PersonalAccessToken) SetRevoked(val bool) {
+	s.Revoked = val
+}
+
+// Ref: #/components/schemas/PersonalAccessTokenPage
+type PersonalAccessTokenPage struct {
+	Items []PersonalAccessToken `json:"items"`
+}
+
+// GetItems returns the value of Items.
+func (s *PersonalAccessTokenPage) GetItems() []PersonalAccessToken {
+	return s.Items
+}
+
+// SetItems sets the value of Items.
+func (s *PersonalAccessTokenPage) SetItems(val []PersonalAccessToken) {
+	s.Items = val
+}
+
+func (*PersonalAccessTokenPage) listPersonalAccessTokensRes() {}
+
 // One harness setup revision pinned to a Capsule at creation.
 // Ref: #/components/schemas/PinnedHarnessSetup
 type PinnedHarnessSetup struct {
@@ -10668,6 +10901,11 @@ func (s *RevokeCoordinationGrantRequest) SetCancelDescendants(val OptBool) {
 type RevokeCoordinationGrantUnprocessableEntity ErrorEnvelope
 
 func (*RevokeCoordinationGrantUnprocessableEntity) revokeCoordinationGrantRes() {}
+
+// RevokePersonalAccessTokenNoContent is response for RevokePersonalAccessToken operation.
+type RevokePersonalAccessTokenNoContent struct{}
+
+func (*RevokePersonalAccessTokenNoContent) revokePersonalAccessTokenRes() {}
 
 // RevokeSessionNoContent is response for RevokeSession operation.
 type RevokeSessionNoContent struct{}
@@ -14599,12 +14837,15 @@ func (s *UnauthorizedHeaders) SetResponse(val ErrorEnvelope) {
 	s.Response = val
 }
 
-func (*UnauthorizedHeaders) claimInstallationRes()    {}
-func (*UnauthorizedHeaders) createBrowserSessionRes() {}
-func (*UnauthorizedHeaders) getCurrentMemberRes()     {}
-func (*UnauthorizedHeaders) listSessionsRes()         {}
-func (*UnauthorizedHeaders) revokeSessionRes()        {}
-func (*UnauthorizedHeaders) signOutRes()              {}
+func (*UnauthorizedHeaders) claimInstallationRes()         {}
+func (*UnauthorizedHeaders) createBrowserSessionRes()      {}
+func (*UnauthorizedHeaders) getCurrentMemberRes()          {}
+func (*UnauthorizedHeaders) listPersonalAccessTokensRes()  {}
+func (*UnauthorizedHeaders) listSessionsRes()              {}
+func (*UnauthorizedHeaders) mintPersonalAccessTokenRes()   {}
+func (*UnauthorizedHeaders) revokePersonalAccessTokenRes() {}
+func (*UnauthorizedHeaders) revokeSessionRes()             {}
+func (*UnauthorizedHeaders) signOutRes()                   {}
 
 type UpdateCoordinationGrantBadRequest ErrorEnvelope
 

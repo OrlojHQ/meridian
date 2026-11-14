@@ -201,6 +201,10 @@ type ListMomentsRes interface {
 	listMomentsRes()
 }
 
+type ListPersonalAccessTokensRes interface {
+	listPersonalAccessTokensRes()
+}
+
 type ListProjectsRes interface {
 	listProjectsRes()
 }
@@ -231,6 +235,10 @@ type ListThreadLinksRes interface {
 
 type ListThreadsRes interface {
 	listThreadsRes()
+}
+
+type MintPersonalAccessTokenRes interface {
+	mintPersonalAccessTokenRes()
 }
 
 type PatchProjectRes interface {
@@ -283,6 +291,10 @@ type RetryCapsuleRes interface {
 
 type RevokeCoordinationGrantRes interface {
 	revokeCoordinationGrantRes()
+}
+
+type RevokePersonalAccessTokenRes interface {
+	revokePersonalAccessTokenRes()
 }
 
 type RevokeSessionRes interface {

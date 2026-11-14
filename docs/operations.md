@@ -608,8 +608,12 @@ After the claim:
 - The installation token is break-glass only. It reads the audit log and is
   refused on everything else, and every use is audited. Loopback page loads no
   longer receive a session, and `POST /auth/browser-session` is refused.
-- The CLI and TUI cannot yet act as a member; they reach only what the
-  break-glass token allows.
+- The CLI and TUI act as a member through a personal access token. Mint one
+  under **Account** (it is shown once), save it to a file readable only by
+  you, and pass it with `--token-file` or `MERIDIAN_TOKEN_FILE`. Tokens start
+  with `mrd_pat_`, expire after 90 days by default (at most a year), can be
+  read-only, and can be revoked under **Account**. A token cannot mint
+  another; minting needs a signed-in browser.
 
 ## Audit records
 

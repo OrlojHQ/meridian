@@ -449,6 +449,11 @@ type RevokeCoordinationGrantParams struct {
 	IdempotencyKey string
 }
 
+// RevokePersonalAccessTokenParams is parameters of revokePersonalAccessToken operation.
+type RevokePersonalAccessTokenParams struct {
+	TokenId string
+}
+
 // RevokeSessionParams is parameters of revokeSession operation.
 type RevokeSessionParams struct {
 	SessionId string

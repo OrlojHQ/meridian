@@ -97,7 +97,23 @@ type UserSession struct {
 	RevokedAt   time.Time
 }
 
+// PersonalAccessToken lets a member's CLI and TUI act as that member. Only
+// the digest of its value is kept.
+type PersonalAccessToken struct {
+	ID          string
+	TokenDigest [32]byte
+	UserID      UserID
+	Name        string
+	ReadOnly    bool
+	CreatedAt   time.Time
+	LastUsedAt  time.Time
+	ExpiresAt   time.Time
+	RevokedAt   time.Time
+}
+
 const (
+	AuditTokenCreate       AuditAction = "token.create"
+	AuditTokenRevoke       AuditAction = "token.revoke"
 	AuditSignIn            AuditAction = "auth.sign_in"
 	AuditSignOut           AuditAction = "auth.sign_out"
 	AuditSessionRevoke     AuditAction = "session.revoke"

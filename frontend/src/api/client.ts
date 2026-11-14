@@ -18,6 +18,9 @@ import {
   signOut,
   listSessions,
   revokeSession,
+  listPersonalAccessTokens,
+  mintPersonalAccessToken,
+  revokePersonalAccessToken,
   createCapsule,
   createCapsuleDelivery,
   createCapsulePreviewTicket,
@@ -78,7 +81,10 @@ import {
   promoteCapsule,
 } from "./generated/sdk.gen";
 import { projectHarnessImage } from "./harnessPacks";
-import type { AuthenticationMode, Member, SessionPage } from "./generated/types.gen";
+import type {
+  AuthenticationMode, Member, SessionPage,
+  MintPersonalAccessTokenRequest, MintedPersonalAccessToken, PersonalAccessTokenPage,
+} from "./generated/types.gen";
 import type { HarnessSetupUpload, HarnessSetupPreview, ImportHarnessSetupRequest, EnvironmentMutation, ProjectEnvironment,
   ProjectHarnessSetup,
   ClaudeLogin, ClaudeLoginRequest, ClaudeLoginStatus,
@@ -235,6 +241,12 @@ export const api = {
   revokeSession: (sessionId: string) =>
     call<void>(revokeSession({ ...generatedOptions(), path: { sessionId } })),
   signOut: () => call<void>(signOut(generatedOptions())),
+  personalAccessTokens: (signal?: AbortSignal) =>
+    call<PersonalAccessTokenPage>(listPersonalAccessTokens(generatedOptions(signal))),
+  mintPersonalAccessToken: (body: MintPersonalAccessTokenRequest) =>
+    call<MintedPersonalAccessToken>(mintPersonalAccessToken({ ...generatedOptions(), body })),
+  revokePersonalAccessToken: (tokenId: string) =>
+    call<void>(revokePersonalAccessToken({ ...generatedOptions(), path: { tokenId } })),
   capabilities: (signal?: AbortSignal) =>
     call<Capabilities>(getCapabilities(generatedOptions(signal))),
   projects: (signal?: AbortSignal) =>

@@ -51,6 +51,18 @@ func (s *CreateThreadRequest) setDefaults() {
 }
 
 // setDefaults set default value of fields.
+func (s *MintPersonalAccessTokenRequest) setDefaults() {
+	{
+		val := bool(false)
+		s.ReadOnly.SetTo(val)
+	}
+	{
+		val := int(90)
+		s.ExpiresInDays.SetTo(val)
+	}
+}
+
+// setDefaults set default value of fields.
 func (s *PromoteCapsuleRequest) setDefaults() {
 	{
 		val := bool(false)

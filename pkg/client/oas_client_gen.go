@@ -457,6 +457,12 @@ type Invoker interface {
 	//
 	// GET /capsules/{capsuleId}/moments
 	ListMoments(ctx context.Context, params ListMomentsParams) (ListMomentsRes, error)
+	// ListPersonalAccessTokens invokes listPersonalAccessTokens operation.
+	//
+	// Token values are never returned after minting.
+	//
+	// GET /auth/tokens
+	ListPersonalAccessTokens(ctx context.Context) (ListPersonalAccessTokensRes, error)
 	// ListProjects invokes listProjects operation.
 	//
 	// List projects.
@@ -513,6 +519,14 @@ type Invoker interface {
 	//
 	// GET /capsules/{capsuleId}/threads
 	ListThreads(ctx context.Context, params ListThreadsParams) (ListThreadsRes, error)
+	// MintPersonalAccessToken invokes mintPersonalAccessToken operation.
+	//
+	// Team mode only, and only from a signed-in browser session; a token cannot mint another. The value
+	// carries the mrd_pat_ prefix, is shown once in this response, and is stored only as a digest. Tokens
+	// expire (90 days by default, at most 365) and can be read-only.
+	//
+	// POST /auth/tokens
+	MintPersonalAccessToken(ctx context.Context, request *MintPersonalAccessTokenRequest) (MintPersonalAccessTokenRes, error)
 	// MutateHarnessSetup invokes mutateHarnessSetup operation.
 	//
 	// MutateHarnessSetup.
@@ -622,6 +636,12 @@ type Invoker interface {
 	//
 	// POST /coordination-grants/{grantId}/revoke
 	RevokeCoordinationGrant(ctx context.Context, request *RevokeCoordinationGrantRequest, params RevokeCoordinationGrantParams) (RevokeCoordinationGrantRes, error)
+	// RevokePersonalAccessToken invokes revokePersonalAccessToken operation.
+	//
+	// Revoke one of the signed-in member's personal access tokens.
+	//
+	// POST /auth/tokens/{tokenId}/revoke
+	RevokePersonalAccessToken(ctx context.Context, params RevokePersonalAccessTokenParams) (RevokePersonalAccessTokenRes, error)
 	// RevokeSession invokes revokeSession operation.
 	//
 	// Revoke one of the signed-in member's sessions.
@@ -9670,6 +9690,119 @@ func (c *Client) sendListMoments(ctx context.Context, params ListMomentsParams) 
 	return result, nil
 }
 
+// ListPersonalAccessTokens invokes listPersonalAccessTokens operation.
+//
+// Token values are never returned after minting.
+//
+// GET /auth/tokens
+func (c *Client) ListPersonalAccessTokens(ctx context.Context) (ListPersonalAccessTokensRes, error) {
+	res, err := c.sendListPersonalAccessTokens(ctx)
+	return res, err
+}
+
+func (c *Client) sendListPersonalAccessTokens(ctx context.Context) (res ListPersonalAccessTokensRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("listPersonalAccessTokens"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/auth/tokens"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, ListPersonalAccessTokensOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/auth/tokens"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, ListPersonalAccessTokensOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeListPersonalAccessTokensResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // ListProjects invokes listProjects operation.
 //
 // List projects.
@@ -11005,6 +11138,124 @@ func (c *Client) sendListThreads(ctx context.Context, params ListThreadsParams) 
 
 	stage = "DecodeResponse"
 	result, err := decodeListThreadsResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// MintPersonalAccessToken invokes mintPersonalAccessToken operation.
+//
+// Team mode only, and only from a signed-in browser session; a token cannot mint another. The value
+// carries the mrd_pat_ prefix, is shown once in this response, and is stored only as a digest. Tokens
+// expire (90 days by default, at most 365) and can be read-only.
+//
+// POST /auth/tokens
+func (c *Client) MintPersonalAccessToken(ctx context.Context, request *MintPersonalAccessTokenRequest) (MintPersonalAccessTokenRes, error) {
+	res, err := c.sendMintPersonalAccessToken(ctx, request)
+	return res, err
+}
+
+func (c *Client) sendMintPersonalAccessToken(ctx context.Context, request *MintPersonalAccessTokenRequest) (res MintPersonalAccessTokenRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("mintPersonalAccessToken"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/auth/tokens"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, MintPersonalAccessTokenOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/auth/tokens"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeMintPersonalAccessTokenRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, MintPersonalAccessTokenOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeMintPersonalAccessTokenResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -13212,6 +13463,138 @@ func (c *Client) sendRevokeCoordinationGrant(ctx context.Context, request *Revok
 
 	stage = "DecodeResponse"
 	result, err := decodeRevokeCoordinationGrantResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// RevokePersonalAccessToken invokes revokePersonalAccessToken operation.
+//
+// Revoke one of the signed-in member's personal access tokens.
+//
+// POST /auth/tokens/{tokenId}/revoke
+func (c *Client) RevokePersonalAccessToken(ctx context.Context, params RevokePersonalAccessTokenParams) (RevokePersonalAccessTokenRes, error) {
+	res, err := c.sendRevokePersonalAccessToken(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendRevokePersonalAccessToken(ctx context.Context, params RevokePersonalAccessTokenParams) (res RevokePersonalAccessTokenRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("revokePersonalAccessToken"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/auth/tokens/{tokenId}/revoke"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, RevokePersonalAccessTokenOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/auth/tokens/"
+	{
+		// Encode "tokenId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "tokenId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.TokenId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/revoke"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, RevokePersonalAccessTokenOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeRevokePersonalAccessTokenResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}

@@ -465,6 +465,33 @@ export type SessionPage = {
     items: Array<Session>;
 };
 
+export type PersonalAccessToken = {
+    id: string;
+    name: string;
+    readOnly: boolean;
+    createdAt: string;
+    lastUsedAt: string;
+    expiresAt: string;
+    revoked: boolean;
+};
+
+export type PersonalAccessTokenPage = {
+    items: Array<PersonalAccessToken>;
+};
+
+export type MintPersonalAccessTokenRequest = {
+    name: string;
+    readOnly?: boolean;
+    expiresInDays?: number;
+};
+
+export type MintedPersonalAccessToken = PersonalAccessToken & {
+    /**
+     * The token value, shown once. Pass it to the CLI with --token-file.
+     */
+    token: string;
+};
+
 export type AuditRecord = {
     sequence: number;
     recordedAt: string;
@@ -5565,6 +5592,103 @@ export type RevokeSessionResponses = {
 };
 
 export type RevokeSessionResponse = RevokeSessionResponses[keyof RevokeSessionResponses];
+
+export type ListPersonalAccessTokensData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/auth/tokens';
+};
+
+export type ListPersonalAccessTokensErrors = {
+    /**
+     * Missing or invalid installation authentication
+     */
+    401: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ListPersonalAccessTokensError = ListPersonalAccessTokensErrors[keyof ListPersonalAccessTokensErrors];
+
+export type ListPersonalAccessTokensResponses = {
+    /**
+     * Tokens, newest first
+     */
+    200: PersonalAccessTokenPage;
+};
+
+export type ListPersonalAccessTokensResponse = ListPersonalAccessTokensResponses[keyof ListPersonalAccessTokensResponses];
+
+export type MintPersonalAccessTokenData = {
+    body: MintPersonalAccessTokenRequest;
+    path?: never;
+    query?: never;
+    url: '/auth/tokens';
+};
+
+export type MintPersonalAccessTokenErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Missing or invalid installation authentication
+     */
+    401: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type MintPersonalAccessTokenError = MintPersonalAccessTokenErrors[keyof MintPersonalAccessTokenErrors];
+
+export type MintPersonalAccessTokenResponses = {
+    /**
+     * Minted token; the value is shown only here
+     */
+    201: MintedPersonalAccessToken;
+};
+
+export type MintPersonalAccessTokenResponse = MintPersonalAccessTokenResponses[keyof MintPersonalAccessTokenResponses];
+
+export type RevokePersonalAccessTokenData = {
+    body?: never;
+    path: {
+        tokenId: string;
+    };
+    query?: never;
+    url: '/auth/tokens/{tokenId}/revoke';
+};
+
+export type RevokePersonalAccessTokenErrors = {
+    /**
+     * Missing or invalid installation authentication
+     */
+    401: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type RevokePersonalAccessTokenError = RevokePersonalAccessTokenErrors[keyof RevokePersonalAccessTokenErrors];
+
+export type RevokePersonalAccessTokenResponses = {
+    /**
+     * Token revoked
+     */
+    204: void;
+};
+
+export type RevokePersonalAccessTokenResponse = RevokePersonalAccessTokenResponses[keyof RevokePersonalAccessTokenResponses];
 
 export type CreateBrowserSessionData = {
     body?: never;

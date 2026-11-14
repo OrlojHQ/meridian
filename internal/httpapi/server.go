@@ -134,6 +134,12 @@ func (s *Server) serveHTTP(writer http.ResponseWriter, request *http.Request) {
 			})
 			return
 		}
+		if result.readOnly && !safeMethod(request.Method) {
+			writeJSON(writer, http.StatusForbidden, errorEnvelope{
+				Error: apiError{Code: "forbidden", Message: "this personal access token is read-only"},
+			})
+			return
+		}
 		// In team mode the installation bearer is break-glass: it reaches
 		// administration only, and every use is audited (ADR 0046).
 		if breakGlass(result.caller) {
@@ -202,6 +208,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /auth/sign-out", s.withIdentity(s.signOut))
 	s.mux.HandleFunc("GET /auth/sessions", s.withIdentity(s.listSessions))
 	s.mux.HandleFunc("POST /auth/sessions/{sessionId}/revoke", s.withIdentity(s.revokeSession))
+	s.mux.HandleFunc("GET /auth/tokens", s.withIdentity(s.listTokens))
+	s.mux.HandleFunc("POST /auth/tokens", s.withIdentity(s.mintToken))
+	s.mux.HandleFunc("POST /auth/tokens/{tokenId}/revoke", s.withIdentity(s.revokeToken))
 	s.mux.HandleFunc("GET /capabilities", s.getCapabilities)
 	s.mux.HandleFunc("POST /projects", s.createProject)
 	s.mux.HandleFunc("GET /projects", s.listProjects)
@@ -297,9 +306,10 @@ func (s *Server) initializeBrowserSession() {
 }
 
 type authentication struct {
-	caller  principal.Principal
-	browser bool
-	session string
+	caller   principal.Principal
+	browser  bool
+	session  string
+	readOnly bool
 }
 
 // authenticate resolves a request's credential (ADR 0046).
@@ -317,8 +327,18 @@ func (s *Server) authenticate(request *http.Request) (authentication, bool) {
 		}
 		scheme, value, ok := strings.Cut(values[0], " ")
 		if !ok || !strings.EqualFold(scheme, "Bearer") ||
-			value == "" || strings.ContainsAny(value, " \t\r\n") ||
-			!s.apiToken.Matches(value) {
+			value == "" || strings.ContainsAny(value, " \t\r\n") {
+			return authentication{}, false
+		}
+		// A member's personal access token, in team mode only.
+		if team && strings.HasPrefix(value, app.TokenPrefix) {
+			caller, readOnly, err := s.identity.Token(request.Context(), value)
+			if err != nil {
+				return authentication{}, false
+			}
+			return authentication{caller: caller, readOnly: readOnly}, true
+		}
+		if !s.apiToken.Matches(value) {
 			return authentication{}, false
 		}
 		if team {

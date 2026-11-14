@@ -890,6 +890,31 @@ func (r *scopedReader) ListUserSessions(ctx context.Context, user domain.UserID)
 	return r.inner.ListUserSessions(ctx, user)
 }
 
+// GetPersonalAccessTokenByDigest is authentication, system work only.
+func (r *scopedReader) GetPersonalAccessTokenByDigest(context.Context, [32]byte) (domain.PersonalAccessToken, error) {
+	return domain.PersonalAccessToken{}, domain.ErrNotFound
+}
+
+// GetPersonalAccessToken and ListPersonalAccessTokens read only the
+// caller's own tokens.
+func (r *scopedReader) GetPersonalAccessToken(ctx context.Context, id string) (domain.PersonalAccessToken, error) {
+	token, err := r.inner.GetPersonalAccessToken(ctx, id)
+	if err != nil {
+		return domain.PersonalAccessToken{}, err
+	}
+	if err := r.keyOwner(token.UserID); err != nil {
+		return domain.PersonalAccessToken{}, err
+	}
+	return token, nil
+}
+
+func (r *scopedReader) ListPersonalAccessTokens(ctx context.Context, user domain.UserID) ([]domain.PersonalAccessToken, error) {
+	if err := r.keyOwner(user); err != nil {
+		return nil, err
+	}
+	return r.inner.ListPersonalAccessTokens(ctx, user)
+}
+
 // ListAuditRecords lists the caller's own records. Listing every user's
 // records needs the admin role (ADR 0046).
 func (r *scopedReader) ListAuditRecords(ctx context.Context, user domain.UserID, after int64, limit int) ([]domain.AuditRecord, bool, error) {
@@ -1301,4 +1326,25 @@ func (t *scopedTx) RevokeUserSession(ctx context.Context, id string, at time.Tim
 		return err
 	}
 	return t.tx.RevokeUserSession(ctx, id, at)
+}
+
+// InsertPersonalAccessToken mints a token only for the caller.
+func (t *scopedTx) InsertPersonalAccessToken(ctx context.Context, token domain.PersonalAccessToken) error {
+	if err := t.keyOwner(token.UserID); err != nil {
+		return err
+	}
+	return t.tx.InsertPersonalAccessToken(ctx, token)
+}
+
+// TouchPersonalAccessToken is authentication, system work only.
+func (t *scopedTx) TouchPersonalAccessToken(context.Context, string, time.Time) error {
+	return domain.ErrNotFound
+}
+
+// RevokePersonalAccessToken revokes only the caller's own token.
+func (t *scopedTx) RevokePersonalAccessToken(ctx context.Context, id string, at time.Time) error {
+	if _, err := t.GetPersonalAccessToken(ctx, id); err != nil {
+		return err
+	}
+	return t.tx.RevokePersonalAccessToken(ctx, id, at)
 }
