@@ -17,6 +17,12 @@ browsing, idle pause, setup cache, and delivery are implemented. Agent Sandbox
 Moments and previews remain unimplemented (ADR 0018). Where current behavior
 differs, it is called out explicitly and must fail closed.
 
+ADR 0046 adds a team mode: one installation per team, with per-user identity
+and ownership. It is accepted and not yet implemented. Until it ships, every
+statement here about a single installation principal describes current
+behavior. "Team mode and per-user identity" below states what team mode must
+meet before release. Single-user mode keeps the current model.
+
 ## Assets
 
 Assets requiring protection include:
@@ -50,10 +56,14 @@ The principal boundaries are between:
 9. Capsule-originated coordination requests, pulled by the control plane from
    `capsuled`, and the control plane's delegated actions on other Capsules
    (ADR 0029).
+10. in team mode (ADR 0046), one user's clients and another user's objects,
+    and the control plane and the operator's OIDC identity provider.
 
 Crossing a boundary requires authenticated identity, explicit authorization,
 bounded input, and auditable outcomes. Meridian's initial API has one
-installation principal, not per-user RBAC or a tenant boundary. A provider's
+installation principal, not per-user RBAC or a tenant boundary. Team mode
+adds per-user ownership on one installation; it is not a tenant boundary
+between mutually untrusted organizations. A provider's
 advertised isolation class is a security property and must not be silently
 downgraded.
 
@@ -72,7 +82,9 @@ Meridian assumes the following may be malicious or compromised:
 - coordination requests from any process in a lead or subagent Capsule,
   agent-authored subagent names and prompts, subagent reports returned to a
   lead, and bounded git patch series a lead fetches from a subagent Capsule;
-- external services reached over the network and credentials returned by integrations; and
+- external services reached over the network and credentials returned by integrations;
+- in team mode, another authenticated teammate who must not reach your
+  objects, and OIDC callback parameters, ID tokens, and claims; and
 - another tenant or operator in deployment modes that exceed the initial single-user assumption.
 
 Compromise of the host, control plane, provider control plane, browser, or the trusted operator is outside the protection offered by Capsule isolation, but deployments must still minimize blast radius and support recovery.
@@ -535,6 +547,13 @@ multi-tenancy. Until this is implemented, the current unauthenticated public
 API must remain inside a trusted local or independently authenticated
 boundary.
 
+In team mode (ADR 0046) the caller is a user, and the installation bearer is
+break-glass admin only, refused on object endpoints. Every list, get,
+mutation, stream, and ticket mint is filtered by the caller's ownership in
+`internal/app`. Another user's identifier returns the same content-free
+not-found as a missing object. Event streams carry an owner and are filtered
+by it. Idempotency keys include the caller.
+
 ### Provider compromise and capability confusion
 
 A provider or adapter can lie about lifecycle completion, isolation, snapshot durability, or cleanup. Pin and authenticate adapters, validate callback identity, reconcile observed state, and audit privileged calls. Scheduling must match declared requirements to versioned provider capabilities and fail closed when a required capability is absent. High-assurance deployments must evaluate provider personnel, control planes, images, firmware, and jurisdiction in addition to Meridian software.
@@ -842,6 +861,13 @@ messages (with their size); and refused requests (with their kind and code).
 They carry identifiers, codes, and sizes, never prompts, reports, or subagent
 names.
 
+Team mode (ADR 0046) adds an append-only audit record of actor, action,
+object, and result for sign-in, session and token changes, the claim, role
+and membership changes, break-glass use, secret and connection changes,
+Project credential grants, Delivery and spawn approvals, grant changes, and
+denied cross-owner access. It holds no content. Anyone who can write the
+database can still alter it; deployments that need integrity export it.
+
 ### Residual data and incomplete teardown
 
 Stopped processes, volumes, snapshots, caches, logs, IP addresses, credentials, and provider resources may survive deletion. Destruction must revoke credentials and sessions first, then remove compute, network routes, writable storage, retained artifacts according to policy, and provider-side snapshots. Reconciliation must detect partial cleanup and retry safely. Document storage media sanitization guarantees from each provider.
@@ -856,6 +882,12 @@ they are not a statement that every planned path is already implemented.
   single-principal installation bearer; only content-free probes are open, and
   PTY/preview redemption remains ticket-scoped.
 - Authorization and policy are checked at the control plane for every object and privileged action; Meridian does not claim RBAC or multi-tenant isolation.
+- Team mode (ADR 0046): every object has exactly one owner, stamped at
+  create. Authorization runs in `internal/app` and fails closed without a
+  principal. References, coordination, gateway leases, and provider
+  connections never cross owners. Secret and connection envelopes bind the
+  owner. Admins manage membership and audit and cannot read other users'
+  objects. The installation bearer is break-glass only.
 - Security and durability requirements fail closed when a provider lacks a capability.
 - Reusable credential plaintext is not persisted; encrypted named secrets use
   a dedicated externally custodied credential KEK and cannot cross purpose.
@@ -974,6 +1006,14 @@ Capsule holding its lease spend the account holder's plan usage until the
 lease expires or the connection is revoked. Compromise of both the daemon
 and the credential KEK reveals the refresh token, which stays usable until
 the user revokes it in ChatGPT.
+
+Team mode (ADR 0046) narrows what one teammate's credentials reach. It does
+not narrow what the host, the data directory, the KEKs, or a compromised
+`meridiand` reach: those still expose every user. Backups hold every user's
+ciphertext under one KEK, so deleting a departed user's rows does not remove
+their data from older backups. The identity provider joins the trust base.
+With container providers, teammates' Capsules share a kernel, and a Capsule
+escape exposes every user on that host.
 
 These risks must be stated in deployment documentation and revisited before implementing a provider, credentials, PTY access, Moments, delivery, multi-user access, or internet-facing operation.
 
@@ -1137,7 +1177,9 @@ until revoked in ChatGPT. Controls:
   control and are not shared. Meridian is single-principal but cannot prove
   who controls an installation, so a shared or hosted installation using
   one person's ChatGPT login is a documented operator violation, not a
-  prevented one.
+  prevented one. In team mode (ADR 0046) a connection belongs to the user
+  who signed in and can be granted only to that user's Projects, so a shared
+  login is refused rather than documented.
 
 Portable npx MCP dependency preparation executes npm only inside the Capsule,
 using exact top-level package versions, a fixed HTTPS registry, disabled lifecycle
@@ -1177,3 +1219,92 @@ by deployment intermediaries. Directory handles remain ephemeral and read-only;
 allowlisted traversal skips dependency subtrees before enumeration. Browser file
 input fallback still enumerates the selected folder before filtering, and the UI
 explains this difference. Both paths use the same authoritative server validation.
+
+## Team mode and per-user identity
+
+ADR 0046 is accepted and not yet implemented. This section is the set of
+requirements team mode must meet before it ships. Single-user mode keeps the
+model described in the rest of this document.
+
+Team mode serves one team from one installation. Teammates are
+authenticated members who must not see each other's work. They are not
+mutually untrusted organizations, and team mode is not hostile
+multi-tenancy. The principals are users, the break-glass admin
+(installation bearer), daemon-internal system jobs, and Capsules acting
+under their owner's narrowed authority.
+
+Threats and required controls:
+
+- **Cross-owner access and enumeration.** A teammate names another user's
+  Project, Capsule, Thread, Moment, secret, connection, or setup id, or reads
+  their events. Authorization runs in `internal/app`, not only in
+  `internal/httpapi`, and every service method fails closed without a
+  principal. Lists and streams filter by owner in SQL. Get, mutate, stream,
+  and ticket mint for another owner return the missing-object response.
+  Child rows carry the parent's owner and the store refuses a mismatch.
+- **Cross-owner references.** A Project names another user's secret, setup,
+  or provider connection. A Moment is restored into another user's Project.
+  A Coordination Grant spawns with another user's allowlist, secret, or
+  connection. Every reference resolves only within the referencing object's
+  owner. Coordination authority is the lead owner's authority, narrowed by
+  the grant.
+- **Ciphertext reattachment.** Someone with database write access moves an
+  envelope onto another user's row. Secret and connection envelopes bind the
+  owner in their AAD, so the moved ciphertext fails to open. Migration
+  re-wraps existing envelopes under the bootstrap owner once, under the
+  data-directory lease.
+- **Sign-in ceremony hijack.** A teammate completes another user's Claude
+  or ChatGPT ceremony and captures the resulting connection, or plants their
+  own login in someone else's account. The in-memory ceremony records the
+  user who started it. Each completion path (`GET /callback`, code paste,
+  loopback relay, CLI relay) writes only that user's connection.
+- **Shared provider logins.** A connection can be granted only to its
+  owner's Projects. The gateway checks on every request that the lease's
+  Capsule owner still owns the connection and is not disabled.
+- **Claim race.** On an exposed server, the first OIDC sign-in would become
+  the owner. The claim instead requires both an OIDC sign-in and the
+  installation bearer in the same session, happens once, and is audited.
+  Until the claim, other OIDC sign-ins are refused.
+- **Break-glass misuse.** The installation bearer in team mode is accepted
+  only on membership, revocation, audit, and departed-user transfer and
+  delete endpoints. It is refused on object endpoints, and every use is
+  audited. Its custody stays outside SQLite, as in ADR 0015.
+- **Admin overreach.** The admin role manages membership and reads audit. It
+  cannot read or change other users' objects. No "see everything" role
+  exists.
+- **Session theft and CSRF.** Session cookies are 256-bit random, stored as
+  digests, `HttpOnly`, `SameSite=Strict`, `Secure` off loopback, and
+  `__Host-` prefixed over TLS. They have idle and absolute expiry and can be
+  revoked. In team mode, loopback page loads get no cookie, and
+  `POST /auth/browser-session` refuses the installation bearer, so a local
+  process on a shared host cannot become a user.
+- **Personal access token leakage.** Tokens have a fixed scannable prefix.
+  They are shown once, stored as digests, expire, can be read-only, and are
+  revoked when the user is disabled. They never appear in URLs, logs, or
+  events.
+- **OIDC response forgery and identity confusion.** The daemon chooses the
+  redirect URI. `state`, `nonce`, and the PKCE verifier are single-use and
+  held in memory. Issuer, audience, signature, expiry, and nonce are
+  verified. Users are keyed by `(issuer, subject)`. Email and display names
+  never authorize, so a recycled email inherits nothing.
+- **Identity provider compromise or loose membership.** A compromised
+  issuer, or one that authenticates people outside the team, can mint
+  members. Operators whose issuer serves anyone else must set the required
+  group claim. This is a documented deployment requirement, not something
+  Meridian can verify.
+- **Disabled users.** Disabling revokes sessions and tokens at once, refuses
+  outstanding PTY and preview tickets, and stops gateway leases for that
+  user's Capsules.
+- **System-job leakage.** Background jobs act on one object at a time and
+  record its owner. They never combine rows from different owners into one
+  event, attention count, or response.
+- **Idempotency collision.** Keys include the caller, so one user's key
+  cannot suppress or replay another user's mutation.
+- **Notifications.** Attention counts are per user. Desktop and browser
+  alerts stay content-free ("Meridian needs you" and a count) and count only
+  the viewer's own work.
+
+Residual risks specific to team mode are listed under Residual risks: host,
+data-directory, KEK, and daemon compromise; shared-KEK backups; the identity
+provider in the trust base; and container providers sharing a kernel between
+teammates until the microVM provider (#86) reports `microvm`.
