@@ -49,6 +49,9 @@ func (s *Service) CreateProjectThread(
 	ctx context.Context,
 	input CreateProjectThreadInput,
 ) (ProjectThreadResult, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return ProjectThreadResult{}, err
+	}
 	if s.structured == nil || s.transcriptKey == nil {
 		return ProjectThreadResult{}, domain.ErrUnsupported
 	}
@@ -249,6 +252,9 @@ func (s *Service) GetProjectThreadIntent(
 	ctx context.Context,
 	id domain.ProjectThreadIntentID,
 ) (ProjectThreadResult, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return ProjectThreadResult{}, err
+	}
 	var result ProjectThreadResult
 	err := s.store.View(ctx, func(reader ports.Reader) error {
 		var err error
@@ -363,6 +369,9 @@ func (s *Service) ReconcileProjectThreadCapsule(
 	ctx context.Context,
 	capsule domain.Capsule,
 ) error {
+	if err := requirePrincipal(ctx); err != nil {
+		return err
+	}
 	switch capsule.State {
 	case domain.CapsuleReady:
 		_, err := s.promoteProjectThread(ctx, capsule.ID, true)
@@ -379,6 +388,9 @@ func (s *Service) ReconcileProjectThreadCapsule(
 }
 
 func (s *Service) RecoverProjectThreads(ctx context.Context) error {
+	if err := requirePrincipal(ctx); err != nil {
+		return err
+	}
 	var intents []domain.ProjectThreadIntent
 	if err := s.store.View(ctx, func(reader ports.Reader) error {
 		var err error

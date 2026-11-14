@@ -15,6 +15,7 @@ import (
 	"github.com/OrlojHQ/meridian/internal/claudelogin"
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/ports"
+	"github.com/OrlojHQ/meridian/internal/principal"
 	"github.com/OrlojHQ/meridian/internal/providergateway"
 )
 
@@ -52,6 +53,9 @@ type claudeCeremony struct {
 	expires      time.Time
 	status       string
 	resultID     string
+	// starter is who began the ceremony. The connection it writes is
+	// written as starter, including from the unauthenticated callback.
+	starter principal.Principal
 }
 
 // BeginClaudeLogin starts a Claude account sign-in. host is the daemon host
@@ -60,6 +64,10 @@ type claudeCeremony struct {
 // host uses Claude's code-display page, and the operator submits that code
 // back to Meridian. The verifier stays in daemon memory until it expires.
 func (s *Service) BeginClaudeLogin(ctx context.Context, host, connectionID string) (ClaudeLoginStart, error) {
+	starter, err := principal.Require(ctx)
+	if err != nil {
+		return ClaudeLoginStart{}, err
+	}
 	if s.secretKey == nil || s.gateway == nil {
 		return ClaudeLoginStart{}, domain.ErrUnsupported
 	}
@@ -82,6 +90,7 @@ func (s *Service) BeginClaudeLogin(ctx context.Context, host, connectionID strin
 		id: loginID, state: challenge.State, verifier: challenge.Verifier,
 		redirect: redirect, connectionID: connectionID,
 		expires: now.Add(claudeLoginTTL), status: claudePending,
+		starter: starter,
 	}
 	if manual {
 		item.redirect = claudelogin.ManualRedirectURI
@@ -105,6 +114,9 @@ func (s *Service) BeginClaudeLogin(ctx context.Context, host, connectionID strin
 // be `code#state`, which is what Claude's code page shows. The code is not
 // stored.
 func (s *Service) CompleteClaudeLogin(ctx context.Context, loginID, pasted string) (ClaudeLoginStatus, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return ClaudeLoginStatus{}, err
+	}
 	code, state, err := splitClaudeCode(pasted)
 	if err != nil {
 		return ClaudeLoginStatus{}, err
@@ -113,8 +125,9 @@ func (s *Service) CompleteClaudeLogin(ctx context.Context, loginID, pasted strin
 }
 
 // CompleteClaudeCallback exchanges the code Claude redirected to loopback.
-// It is safe to call without an installation session: the single-use state
-// and the in-memory verifier are what authorize it.
+// It is safe to call without an installation session or a principal: the
+// single-use state and the in-memory verifier are what authorize it, and the
+// connection is written as the principal that began the sign-in.
 func (s *Service) CompleteClaudeCallback(ctx context.Context, state, code string) error {
 	if _, _, err := splitClaudeCode(code); err != nil {
 		return err
@@ -125,7 +138,10 @@ func (s *Service) CompleteClaudeCallback(ctx context.Context, state, code string
 
 // ClaudeLoginStatus reports a sign-in the installation started. Pending,
 // complete, and failed are the only results.
-func (s *Service) ClaudeLoginStatus(_ context.Context, loginID string) (ClaudeLoginStatus, error) {
+func (s *Service) ClaudeLoginStatus(ctx context.Context, loginID string) (ClaudeLoginStatus, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return ClaudeLoginStatus{}, err
+	}
 	s.claudeMu.Lock()
 	defer s.claudeMu.Unlock()
 	s.sweepClaude(s.clock.Now())
@@ -154,6 +170,7 @@ func (s *Service) finishClaudeLogin(ctx context.Context, loginID, state, code st
 		}
 		return ClaudeLoginStatus{}, err
 	}
+	ctx = principal.With(ctx, claimed.starter)
 	cred, err := claudelogin.Exchange(ctx, s.claudeTokenEndpoint(), claimed.redirect, claimed.verifier, code, claimed.state, s.clock.Now())
 	claimed.verifier = ""
 	if err != nil {

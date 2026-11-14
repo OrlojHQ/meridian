@@ -125,6 +125,9 @@ func (o *ThreadOrigin) UnmarshalJSON(data []byte) error {
 }
 
 func (s *Service) CreateThread(ctx context.Context, input CreateThreadInput) (ThreadMutationResult, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return ThreadMutationResult{}, err
+	}
 	if s.structured == nil || s.transcriptKey == nil {
 		return ThreadMutationResult{}, domain.ErrUnsupported
 	}
@@ -321,6 +324,9 @@ func (s *Service) CreateThread(ctx context.Context, input CreateThreadInput) (Th
 }
 
 func (s *Service) GetThread(ctx context.Context, id domain.ThreadID) (domain.Thread, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.Thread{}, err
+	}
 	var thread domain.Thread
 	err := s.store.View(ctx, func(reader ports.Reader) error {
 		var err error
@@ -331,6 +337,9 @@ func (s *Service) GetThread(ctx context.Context, id domain.ThreadID) (domain.Thr
 }
 
 func (s *Service) ListThreads(ctx context.Context, capsuleID domain.CapsuleID, offset, limit int) (ThreadPage, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return ThreadPage{}, err
+	}
 	page := normalizePage(offset, limit)
 	var result ThreadPage
 	err := s.store.View(ctx, func(reader ports.Reader) error {
@@ -351,6 +360,9 @@ func (s *Service) ListThreads(ctx context.Context, capsuleID domain.CapsuleID, o
 func (s *Service) ArchiveThread(
 	ctx context.Context, id domain.ThreadID, expected domain.ResourceVersion, key string,
 ) (domain.Thread, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.Thread{}, err
+	}
 	return s.mutateThreadState(ctx, id, expected, key, "archive", domain.ThreadArchived)
 }
 
@@ -408,6 +420,9 @@ func (s *Service) mutateThreadState(
 func (s *Service) DeleteThread(
 	ctx context.Context, id domain.ThreadID, expected domain.ResourceVersion, key string,
 ) (domain.Thread, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.Thread{}, err
+	}
 	if expected <= 0 {
 		return domain.Thread{}, fmt.Errorf("%w: expected resource version is required", domain.ErrInvalid)
 	}
@@ -457,12 +472,18 @@ func (s *Service) DeleteThread(
 func (s *Service) StartThread(
 	ctx context.Context, id domain.ThreadID, expected domain.ResourceVersion, key string,
 ) (ThreadMutationResult, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return ThreadMutationResult{}, err
+	}
 	return s.beginThreadSession(ctx, id, expected, key, false)
 }
 
 func (s *Service) ResumeThread(
 	ctx context.Context, id domain.ThreadID, expected domain.ResourceVersion, key string,
 ) (ThreadMutationResult, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return ThreadMutationResult{}, err
+	}
 	return s.beginThreadSession(ctx, id, expected, key, true)
 }
 
@@ -610,6 +631,9 @@ func (s *Service) SendThreadMessage(
 	ctx context.Context, id domain.ThreadID, expected domain.ResourceVersion,
 	content, key, delivery string,
 ) (ThreadMutationResult, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return ThreadMutationResult{}, err
+	}
 	if content == "" || len(content) > adapterproto.MaxContentBytes {
 		return ThreadMutationResult{}, fmt.Errorf("%w: message must be non-empty and bounded", domain.ErrInvalid)
 	}
@@ -659,6 +683,9 @@ func (s *Service) RespondThread(
 	ctx context.Context, id domain.ThreadID, expected domain.ResourceVersion,
 	responseTo string, choice, inputValue *string, key string,
 ) (ThreadMutationResult, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return ThreadMutationResult{}, err
+	}
 	if responseTo == "" || (choice == nil) == (inputValue == nil) {
 		return ThreadMutationResult{}, fmt.Errorf("%w: exactly one permission choice or input value is required", domain.ErrInvalid)
 	}
@@ -704,6 +731,9 @@ func (s *Service) RespondThread(
 func (s *Service) SetThreadModel(
 	ctx context.Context, id domain.ThreadID, expected domain.ResourceVersion, model, key string,
 ) (ThreadMutationResult, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return ThreadMutationResult{}, err
+	}
 	if !adapterproto.ValidModelID(model) {
 		return ThreadMutationResult{}, fmt.Errorf("%w: model must be a bounded identifier", domain.ErrInvalid)
 	}
@@ -716,6 +746,9 @@ func (s *Service) SetThreadModel(
 func (s *Service) SetThreadEffort(
 	ctx context.Context, id domain.ThreadID, expected domain.ResourceVersion, effort, key string,
 ) (ThreadMutationResult, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return ThreadMutationResult{}, err
+	}
 	if !adapterproto.ValidModelID(effort) {
 		return ThreadMutationResult{}, fmt.Errorf("%w: effort must be a bounded identifier", domain.ErrInvalid)
 	}
@@ -905,6 +938,9 @@ func (s *Service) appendAndSendHook(
 func (s *Service) CancelThread(
 	ctx context.Context, id domain.ThreadID, expected domain.ResourceVersion, key string,
 ) (ThreadMutationResult, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return ThreadMutationResult{}, err
+	}
 	if s.structured == nil {
 		return ThreadMutationResult{}, domain.ErrUnsupported
 	}
@@ -992,6 +1028,9 @@ func (s *Service) CancelThread(
 func (s *Service) ThreadBlocks(
 	ctx context.Context, id domain.ThreadID, after int64, limit int,
 ) (ThreadBlockPage, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return ThreadBlockPage{}, err
+	}
 	if after < 0 || limit < 1 || limit > 1000 {
 		return ThreadBlockPage{}, fmt.Errorf("%w: invalid Thread block page", domain.ErrInvalid)
 	}
@@ -1055,6 +1094,9 @@ func (s *Service) ThreadBlocks(
 }
 
 func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
+	if err := requirePrincipal(ctx); err != nil {
+		return err
+	}
 	if s.structured == nil || s.transcriptKey == nil {
 		return domain.ErrUnsupported
 	}
@@ -1223,6 +1265,9 @@ func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
 }
 
 func (s *Service) RecoverThreads(ctx context.Context) error {
+	if err := requirePrincipal(ctx); err != nil {
+		return err
+	}
 	if s.structured == nil {
 		return nil
 	}
@@ -1300,6 +1345,9 @@ func (s *Service) reconcileStructuredRun(
 func (s *Service) ListHarnessProfiles(
 	ctx context.Context, capsuleID domain.CapsuleID,
 ) ([]ports.RuntimeHarnessProfile, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return nil, err
+	}
 	if s.profiles == nil {
 		return nil, domain.ErrUnsupported
 	}
@@ -1316,6 +1364,9 @@ func (s *Service) ListHarnessProfiles(
 }
 
 func (s *Service) GetRunStored(ctx context.Context, id domain.RunID) (domain.Run, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.Run{}, err
+	}
 	var run domain.Run
 	err := s.store.View(ctx, func(reader ports.Reader) error {
 		var err error

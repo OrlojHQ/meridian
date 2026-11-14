@@ -19,6 +19,7 @@ import (
 	"github.com/OrlojHQ/meridian/internal/app"
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/ports"
+	"github.com/OrlojHQ/meridian/internal/principal"
 	"github.com/OrlojHQ/meridian/internal/store/sqlite"
 	fake "github.com/OrlojHQ/meridian/internal/testutil/fakeprovider"
 	"github.com/coder/websocket"
@@ -27,7 +28,7 @@ import (
 func TestPreviewTicketDigestScopeExpiryAndRevocation(t *testing.T) {
 	registry := newPreviewTicketRegistry(4)
 	now := time.Now().UTC()
-	token, err := registry.mint("capsule-one", 3000, now.Add(time.Minute), now)
+	token, err := registry.mint("capsule-one", 3000, principal.Owner(), now.Add(time.Minute), now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +48,7 @@ func TestPreviewTicketDigestScopeExpiryAndRevocation(t *testing.T) {
 		t.Fatalf("expired status = %q", status)
 	}
 
-	token, err = registry.mint("capsule-one", 3000, now.Add(time.Minute), now)
+	token, err = registry.mint("capsule-one", 3000, principal.Owner(), now.Add(time.Minute), now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +175,7 @@ func (*previewRuntime) AttachPreview(
 }
 
 func TestPreviewHTTPFlowReuseCrossScopeAndDeletionRevocation(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(principal.With(context.Background(), principal.Owner()))
 	defer cancel()
 	store, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {

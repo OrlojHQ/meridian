@@ -60,6 +60,9 @@ func (s *Service) CaptureMoment(
 	expected domain.ResourceVersion,
 	key string,
 ) (domain.Moment, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.Moment{}, err
+	}
 	name, err := requireName(name)
 	if err != nil {
 		return domain.Moment{}, err
@@ -352,6 +355,9 @@ func bounded(value string, limit int) string {
 }
 
 func (s *Service) GetMoment(ctx context.Context, id domain.MomentID) (domain.Moment, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.Moment{}, err
+	}
 	var result domain.Moment
 	err := s.store.View(ctx, func(reader ports.Reader) error {
 		var err error
@@ -369,6 +375,9 @@ func (s *Service) ListMoments(
 	capsuleID domain.CapsuleID,
 	offset, limit int,
 ) (MomentPage, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return MomentPage{}, err
+	}
 	page := normalizePage(offset, limit)
 	var result MomentPage
 	err := s.store.View(ctx, func(reader ports.Reader) error {
@@ -387,6 +396,9 @@ func (s *Service) ListMoments(
 }
 
 func (s *Service) GetTimeline(ctx context.Context, id domain.TimelineID) (TimelineView, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return TimelineView{}, err
+	}
 	var result TimelineView
 	err := s.store.View(ctx, func(reader ports.Reader) error {
 		var err error
@@ -418,6 +430,9 @@ func (s *Service) CreateShard(
 	momentID domain.MomentID,
 	name, key string,
 ) (DescendantResult, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return DescendantResult{}, err
+	}
 	return s.createDescendant(ctx, "", momentID, name, key, domain.TimelineShard)
 }
 
@@ -427,6 +442,9 @@ func (s *Service) Rewind(
 	momentID domain.MomentID,
 	name, key string,
 ) (DescendantResult, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return DescendantResult{}, err
+	}
 	return s.createDescendant(ctx, source, momentID, name, key, domain.TimelineRewind)
 }
 
@@ -517,6 +535,9 @@ func (s *Service) Seal(
 	expected domain.ResourceVersion,
 	key string,
 ) (SealResult, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return SealResult{}, err
+	}
 	if expected <= 0 {
 		return SealResult{}, fmt.Errorf("%w: expected resource version is required", domain.ErrInvalid)
 	}

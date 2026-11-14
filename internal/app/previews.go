@@ -20,6 +20,9 @@ func (s *Service) DiscoverPreviewPorts(
 	ctx context.Context,
 	capsuleID domain.CapsuleID,
 ) ([]ports.PreviewPort, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return nil, err
+	}
 	capsule, err := s.previewCapsule(ctx, capsuleID)
 	if err != nil {
 		return nil, err
@@ -46,6 +49,9 @@ func (s *Service) ForwardPreviewHTTP(
 	port uint16,
 	request *http.Request,
 ) (ports.PreviewResponse, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return ports.PreviewResponse{}, err
+	}
 	if err := validatePreviewRequest(port, request); err != nil {
 		return ports.PreviewResponse{}, err
 	}
@@ -74,6 +80,9 @@ func (s *Service) AttachPreview(
 	path string,
 	header http.Header,
 ) (ports.RuntimeAttachment, string, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return nil, "", err
+	}
 	if err := validatePreviewPort(port); err != nil {
 		return nil, "", err
 	}

@@ -35,6 +35,9 @@ type ApproveDeliveryInput struct {
 func (s *Service) ProposeDelivery(
 	ctx context.Context, input ProposeDeliveryInput,
 ) (domain.Delivery, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.Delivery{}, err
+	}
 	if s.delivery == nil {
 		return domain.Delivery{}, domain.ErrUnsupported
 	}
@@ -115,6 +118,9 @@ func (s *Service) ProposeDelivery(
 func (s *Service) ApproveDelivery(
 	ctx context.Context, id domain.DeliveryID, expected domain.ResourceVersion, input ApproveDeliveryInput,
 ) (domain.Delivery, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.Delivery{}, err
+	}
 	if s.delivery == nil {
 		return domain.Delivery{}, domain.ErrUnsupported
 	}
@@ -288,6 +294,9 @@ func (s *Service) ApproveDelivery(
 func (s *Service) RejectDelivery(
 	ctx context.Context, id domain.DeliveryID, expected domain.ResourceVersion, idempotencyKey string,
 ) (domain.Delivery, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.Delivery{}, err
+	}
 	if err := requireIdempotency(idempotencyKey); err != nil {
 		return domain.Delivery{}, err
 	}

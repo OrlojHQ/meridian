@@ -12,6 +12,9 @@ import (
 // read-only polling must not call this helper unless it observes meaningful
 // runtime activity.
 func (s *Service) TouchCapsuleActivity(ctx context.Context, id domain.CapsuleID) error {
+	if err := requirePrincipal(ctx); err != nil {
+		return err
+	}
 	now := s.clock.Now().UTC()
 	return s.store.Transact(ctx, func(tx ports.Transaction) error {
 		return s.touchCapsuleActivityTx(ctx, tx, id, now)

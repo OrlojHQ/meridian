@@ -7,6 +7,7 @@ import (
 	"github.com/OrlojHQ/meridian/internal/app"
 	"github.com/OrlojHQ/meridian/internal/harnesssetup"
 	"github.com/OrlojHQ/meridian/internal/httpapi"
+	"github.com/OrlojHQ/meridian/internal/principal"
 	"github.com/OrlojHQ/meridian/internal/secrets"
 	"github.com/OrlojHQ/meridian/internal/store/sqlite"
 	"net/http"
@@ -16,7 +17,7 @@ import (
 )
 
 func TestHarnessContentsAuthenticatedNoStore(t *testing.T) {
-	ctx := context.Background()
+	ctx := principal.With(context.Background(), principal.Owner())
 	db, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {
 		t.Fatal(err)

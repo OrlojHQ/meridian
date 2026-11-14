@@ -15,11 +15,28 @@ import (
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/localrepo"
 	"github.com/OrlojHQ/meridian/internal/ports"
+	"github.com/OrlojHQ/meridian/internal/principal"
 	"github.com/OrlojHQ/meridian/internal/providergateway"
 	"github.com/OrlojHQ/meridian/internal/secrets"
 )
 
 const defaultPageSize = 50
+
+// requirePrincipal fails closed when ctx carries no principal (ADR 0046).
+// Every exported Service method that takes a context calls it first, so a
+// caller that skipped authentication reaches no state. The error is
+// content-free: it names no object, caller, or credential.
+func requirePrincipal(ctx context.Context) error {
+	_, err := principal.Require(ctx)
+	return err
+}
+
+// capsulePrincipal is Capsule id acting under its owner's authority. Rows do
+// not carry an owner yet, so in single-user mode the owner is always the
+// bootstrap owner; this is the one place that changes when they do.
+func capsulePrincipal(id domain.CapsuleID) (principal.Principal, bool) {
+	return principal.Capsule(principal.BootstrapOwner, id)
+}
 
 type Service struct {
 	gateway       *providergateway.Gateway
@@ -192,6 +209,9 @@ type ProjectConfiguration struct {
 }
 
 func (s *Service) CreateProject(ctx context.Context, name, idempotencyKey string) (domain.Project, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.Project{}, err
+	}
 	return s.CreateProjectConfigured(ctx, name, ProjectConfiguration{}, idempotencyKey)
 }
 
@@ -201,6 +221,9 @@ func (s *Service) CreateProjectConfigured(
 	config ProjectConfiguration,
 	idempotencyKey string,
 ) (domain.Project, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.Project{}, err
+	}
 	name, err := requireName(name)
 	if err != nil {
 		return domain.Project{}, err
@@ -357,6 +380,9 @@ func (s *Service) UpdateProjectHarnessImages(
 	images []domain.HarnessImage,
 	expected domain.ResourceVersion,
 ) (domain.Project, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.Project{}, err
+	}
 	if err := validateProjectConfiguration(ProjectConfiguration{HarnessImages: images}); err != nil {
 		return domain.Project{}, err
 	}
@@ -395,6 +421,9 @@ func (s *Service) UpdateProjectHarnessImages(
 }
 
 func (s *Service) GetProject(ctx context.Context, id domain.ProjectID) (domain.Project, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.Project{}, err
+	}
 	var result domain.Project
 	err := s.store.View(ctx, func(reader ports.Reader) error {
 		var err error
@@ -405,6 +434,9 @@ func (s *Service) GetProject(ctx context.Context, id domain.ProjectID) (domain.P
 }
 
 func (s *Service) ListProjects(ctx context.Context, offset, limit int) (ProjectPage, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return ProjectPage{}, err
+	}
 	page := normalizePage(offset, limit)
 	var result ProjectPage
 	err := s.store.View(ctx, func(reader ports.Reader) error {
@@ -424,6 +456,9 @@ func (s *Service) CreateCapsule(
 	projectID domain.ProjectID,
 	name, idempotencyKey string,
 ) (domain.Capsule, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.Capsule{}, err
+	}
 	return s.CreateCapsuleForHarness(ctx, projectID, name, "", idempotencyKey)
 }
 
@@ -433,6 +468,9 @@ func (s *Service) CreateCapsuleForHarness(
 	name, harness, idempotencyKey string,
 	setupSelection ...string,
 ) (domain.Capsule, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.Capsule{}, err
+	}
 	selection := ""
 	if len(setupSelection) > 0 {
 		selection = setupSelection[0]
@@ -540,6 +578,9 @@ func (s *Service) CreateCapsuleForHarness(
 }
 
 func (s *Service) GetCapsule(ctx context.Context, id domain.CapsuleID) (domain.Capsule, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.Capsule{}, err
+	}
 	var result domain.Capsule
 	err := s.store.View(ctx, func(reader ports.Reader) error {
 		var err error
@@ -565,6 +606,9 @@ func (s *Service) ListCapsules(
 	role domain.CapsuleRole,
 	offset, limit int,
 ) (CapsulePage, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return CapsulePage{}, err
+	}
 	if role != "" && !role.Valid() {
 		return CapsulePage{}, fmt.Errorf("%w: role must be main or sub", domain.ErrInvalid)
 	}
@@ -601,6 +645,9 @@ func (s *Service) PauseCapsule(
 	expected domain.ResourceVersion,
 	key string,
 ) (domain.Capsule, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.Capsule{}, err
+	}
 	return s.mutateCapsule(ctx, id, expected, key, "pause", domain.IntentPaused, domain.CapsuleReady)
 }
 
@@ -610,10 +657,16 @@ func (s *Service) ResumeCapsule(
 	expected domain.ResourceVersion,
 	key string,
 ) (domain.Capsule, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.Capsule{}, err
+	}
 	return s.mutateCapsule(ctx, id, expected, key, "resume", domain.IntentReady, domain.CapsulePaused)
 }
 
 func (s *Service) RetryCapsule(ctx context.Context, id domain.CapsuleID, expected domain.ResourceVersion, key string) (domain.Capsule, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.Capsule{}, err
+	}
 	return s.mutateCapsule(ctx, id, expected, key, "retry", domain.IntentReady, domain.CapsuleFailed)
 }
 
@@ -623,6 +676,9 @@ func (s *Service) DeleteCapsule(
 	expected domain.ResourceVersion,
 	key string,
 ) (domain.Capsule, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.Capsule{}, err
+	}
 	return s.mutateCapsule(ctx, id, expected, key, "delete", domain.IntentDeleted)
 }
 

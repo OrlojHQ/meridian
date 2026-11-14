@@ -37,6 +37,9 @@ type DeliveryPage struct {
 func (s *Service) InspectDelivery(
 	ctx context.Context, capsuleID domain.CapsuleID,
 ) (ports.DeliveryInspection, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return ports.DeliveryInspection{}, err
+	}
 	if s.delivery == nil {
 		return ports.DeliveryInspection{}, domain.ErrUnsupported
 	}
@@ -62,6 +65,9 @@ func (s *Service) InspectDelivery(
 func (s *Service) CreateDelivery(
 	ctx context.Context, input CreateDeliveryInput,
 ) (domain.Delivery, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.Delivery{}, err
+	}
 	if s.delivery == nil {
 		return domain.Delivery{}, domain.ErrUnsupported
 	}
@@ -199,6 +205,9 @@ func (s *Service) CreateDelivery(
 func (s *Service) GetDelivery(
 	ctx context.Context, id domain.DeliveryID,
 ) (domain.Delivery, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.Delivery{}, err
+	}
 	var result domain.Delivery
 	err := s.store.View(ctx, func(reader ports.Reader) error {
 		var err error
@@ -211,6 +220,9 @@ func (s *Service) GetDelivery(
 func (s *Service) ListDeliveries(
 	ctx context.Context, capsuleID domain.CapsuleID, offset, limit int,
 ) (DeliveryPage, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return DeliveryPage{}, err
+	}
 	page := normalizePage(offset, limit)
 	var result DeliveryPage
 	err := s.store.View(ctx, func(reader ports.Reader) error {
@@ -229,6 +241,9 @@ func (s *Service) ListDeliveries(
 }
 
 func (s *Service) RecoverDeliveries(ctx context.Context) error {
+	if err := requirePrincipal(ctx); err != nil {
+		return err
+	}
 	if s.delivery == nil {
 		return nil
 	}
@@ -272,8 +287,10 @@ func (s *Service) executeDelivery(
 		return result, err
 	}
 	defer func() {
-		_ = s.clearMaintenance(context.Background(), result.CapsuleID, "capture")
-		_ = s.TouchCapsuleActivity(context.Background(), result.CapsuleID)
+		// Outlive the caller's cancellation but keep acting as the caller.
+		cleanup := context.WithoutCancel(ctx)
+		_ = s.clearMaintenance(cleanup, result.CapsuleID, "capture")
+		_ = s.TouchCapsuleActivity(cleanup, result.CapsuleID)
 	}()
 	fail := func(cause error) (domain.Delivery, error) {
 		message := boundedDeliveryFailure(cause)
