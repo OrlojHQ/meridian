@@ -60,12 +60,12 @@ func (f *fakeIssuerParty) as(subject string) {
 
 func signIn(t *testing.T, identity *app.Identity) app.SignInResult {
 	t.Helper()
-	target, err := identity.BeginSignIn(context.Background())
+	target, binding, err := identity.BeginSignIn(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	state := target[strings.Index(target, "state=")+len("state="):]
-	result, err := identity.CompleteSignIn(context.Background(), state, "code")
+	result, err := identity.CompleteSignIn(context.Background(), state, "code", binding)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func TestClaimTurnsOnTeamModeOnceAndSignsMembersIn(t *testing.T) {
 		t.Fatalf("claimed owner = %+v, %v", member, err)
 	}
 	party.as("mallory")
-	if result, err := identity.CompleteSignIn(ctx, "state-x", "code"); !errors.Is(err, domain.ErrNotFound) || result.SessionToken != "" {
+	if result, err := identity.CompleteSignIn(ctx, "state-x", "code", "binding-x"); !errors.Is(err, domain.ErrNotFound) || result.SessionToken != "" {
 		t.Fatalf("unknown state = %+v, %v", result, err)
 	}
 
@@ -181,19 +181,19 @@ func TestClaimTurnsOnTeamModeOnceAndSignsMembersIn(t *testing.T) {
 		t.Fatal(err)
 	}
 	party.as("bob")
-	target, err := identity.BeginSignIn(ctx)
+	target, binding, err := identity.BeginSignIn(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := identity.CompleteSignIn(ctx, target[strings.Index(target, "state=")+6:], "code"); !errors.Is(err, app.ErrSignInDenied) {
+	if _, err := identity.CompleteSignIn(ctx, target[strings.Index(target, "state=")+6:], "code", binding); !errors.Is(err, app.ErrSignInDenied) {
 		t.Fatalf("disabled sign-in = %v", err)
 	}
 	party.deny = true
-	target, err = identity.BeginSignIn(ctx)
+	target, binding, err = identity.BeginSignIn(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := identity.CompleteSignIn(ctx, target[strings.Index(target, "state=")+6:], "code"); !errors.Is(err, app.ErrSignInDenied) {
+	if _, err := identity.CompleteSignIn(ctx, target[strings.Index(target, "state=")+6:], "code", binding); !errors.Is(err, app.ErrSignInDenied) {
 		t.Fatalf("denied identity = %v", err)
 	}
 
@@ -338,6 +338,48 @@ func TestPersonalAccessTokensActAsTheirMemberUntilExpiryOrRevocation(t *testing.
 	}
 }
 
+// A callback URL from someone else's sign-in must not complete in another
+// browser (login CSRF): without the starting browser's binding the state
+// is refused and spent, and the issuer is never asked to exchange the
+// code.
+func TestSignInCompletesOnlyForTheBrowserThatStartedIt(t *testing.T) {
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	clock := &testClock{now: time.Date(2026, 11, 14, 0, 0, 0, 0, time.UTC)}
+	party := &fakeIssuerParty{issuer: fakeIssuer}
+	identity, err := app.NewIdentity(ctx, store, clock, &testIDs{}, party)
+	if err != nil {
+		t.Fatal(err)
+	}
+	party.as("mallory")
+	target, binding, err := identity.BeginSignIn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if binding == "" || strings.Contains(target, binding) {
+		t.Fatalf("binding %q leaked into the issuer URL %q", binding, target)
+	}
+	state := target[strings.Index(target, "state=")+len("state="):]
+	for _, presented := range []string{"", "another-browser"} {
+		if result, err := identity.CompleteSignIn(ctx, state, "code", presented); !errors.Is(err, domain.ErrNotFound) || result != (app.SignInResult{}) {
+			t.Fatalf("callback with binding %q = %+v, %v", presented, result, err)
+		}
+	}
+	// The refused callback spent the state, so even the right binding now
+	// finds nothing.
+	if _, err := identity.CompleteSignIn(ctx, state, "code", binding); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("spent state = %v", err)
+	}
+	// A fresh sign-in in the starting browser still completes.
+	if result := signIn(t, identity); result.ClaimToken == "" {
+		t.Fatalf("own sign-in = %+v", result)
+	}
+}
+
 func TestAdminsManageMembershipWithoutReachingObjects(t *testing.T) {
 	ctx := context.Background()
 	store, err := sqlite.Open(ctx, t.TempDir())
@@ -420,11 +462,11 @@ func TestAdminsManageMembershipWithoutReachingObjects(t *testing.T) {
 		t.Fatal("MemberActive disagrees with membership")
 	}
 	party.as("bob")
-	target, err := identity.BeginSignIn(ctx)
+	target, binding, err := identity.BeginSignIn(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := identity.CompleteSignIn(ctx, target[strings.Index(target, "state=")+6:], "code"); !errors.Is(err, app.ErrSignInDenied) {
+	if _, err := identity.CompleteSignIn(ctx, target[strings.Index(target, "state=")+6:], "code", binding); !errors.Is(err, app.ErrSignInDenied) {
 		t.Fatalf("disabled sign-in = %v", err)
 	}
 
