@@ -53,12 +53,13 @@ type Identity struct {
 
 	team atomic.Bool
 
-	mu       sync.Mutex
-	attempts map[string]signInAttempt
-	claims   map[[32]byte]pendingClaim
-	devices  map[[32]byte]*deviceLogin
-	rebinds  map[[32]byte]pendingRebind
-	disabled []MemberDisabled
+	mu        sync.Mutex
+	attempts  map[string]signInAttempt
+	claims    map[[32]byte]pendingClaim
+	devices   map[[32]byte]*deviceLogin
+	rebinds   map[[32]byte]pendingRebind
+	rebinding []IdentityRebinding
+	disabled  []MemberDisabled
 }
 
 type signInAttempt struct {

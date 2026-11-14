@@ -1304,9 +1304,9 @@ export const revokeMemberCredentials = <ThrowOnError extends boolean = false>(op
 });
 
 /**
- * Start OIDC identity recovery for an existing member (break-glass only)
+ * Start OIDC identity recovery for the bootstrap owner (break-glass only)
  *
- * Requires the installation bearer in team mode. Returns a sign-in URL and a single-use completion token bound to this member for ten minutes. Open the URL as the replacement identity. The OIDC callback only verifies that identity; it creates neither a member nor a session. Keep the completion token private and use it with the installation bearer to complete the rebind. Normal member admins cannot do this.
+ * Requires the installation bearer in team mode, and userId must be the bootstrap owner (usr_bootstrap_owner); any other member is refused with 400, since rebinding them would let the bearer's holder sign in as them. Returns a sign-in URL and a single-use completion token bound to this member for ten minutes. Open the URL as the replacement identity. The OIDC callback only verifies that identity; it creates neither a member nor a session. Keep the completion token private and use it with the installation bearer to complete the rebind. Normal member admins cannot do this.
  */
 export const beginMemberIdentityRebind = <ThrowOnError extends boolean = false>(options: Options<BeginMemberIdentityRebindData, ThrowOnError>): RequestResult<BeginMemberIdentityRebindResponses, BeginMemberIdentityRebindErrors, ThrowOnError> => (options.client ?? client).post<BeginMemberIdentityRebindResponses, BeginMemberIdentityRebindErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
@@ -1317,7 +1317,7 @@ export const beginMemberIdentityRebind = <ThrowOnError extends boolean = false>(
 /**
  * Rebind a verified OIDC identity and revoke member credentials (break-glass only)
  *
- * Requires the installation bearer and the completion token. Returns 202 until the browser finishes sign-in. Consumes the token once verified, even if the rebind fails. Replaces only the identity and display fields on the existing member, preserving role, disabled state, and owned objects. An identity held by another member or a concurrent identity change is refused. Revokes sessions and personal access tokens and appends the audit record atomically. Drops live tickets and gateway leases. The replacement identity signs in again; this operation issues no credentials.
+ * Requires the installation bearer and the completion token. Returns 202 until the browser finishes sign-in. Consumes the token once verified, even if the rebind fails. Before the identity changes it revokes the owner's personal Claude and ChatGPT logins (ADR 0038); if that fails, nothing changes. Replaces only the identity and display fields on the existing member, preserving role, disabled state, and owned objects. An identity held by another member or a concurrent identity change is refused. Revokes sessions and personal access tokens and appends the audit record atomically. Drops live tickets and gateway leases. The replacement identity signs in again; this operation issues no credentials.
  */
 export const completeMemberIdentityRebind = <ThrowOnError extends boolean = false>(options: Options<CompleteMemberIdentityRebindData, ThrowOnError>): RequestResult<CompleteMemberIdentityRebindResponses, CompleteMemberIdentityRebindErrors, ThrowOnError> => (options.client ?? client).post<CompleteMemberIdentityRebindResponses, CompleteMemberIdentityRebindErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],

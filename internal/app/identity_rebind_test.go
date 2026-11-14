@@ -111,7 +111,7 @@ func TestIdentityRebindRequiresBreakGlassAndPreservesOwnership(t *testing.T) {
 	if _, _, err := f.identity.Session(f.owner, recovery.Token); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("recovery token used as session: %v", err)
 	}
-	if _, err := f.identity.CompleteIdentityRebind(f.admin, f.bob.UserID(), recovery.Token); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := f.identity.CompleteIdentityRebind(f.admin, f.bob.UserID(), recovery.Token); !errors.Is(err, app.ErrRebindTarget) {
 		t.Fatalf("token transplanted to another member: %v", err)
 	}
 	var dropped []domain.UserID
@@ -169,17 +169,10 @@ func TestIdentityRebindRequiresBreakGlassAndPreservesOwnership(t *testing.T) {
 }
 
 func TestIdentityRebindRefusesCollisionExpiryAndConcurrentChange(t *testing.T) {
-	for _, scenario := range []string{"collision", "expiry", "concurrent", "disabled", "audit failure"} {
+	for _, scenario := range []string{"collision", "expiry", "concurrent", "audit failure"} {
 		t.Run(scenario, func(t *testing.T) {
 			f := newRebindFixture(t)
 			id := principal.BootstrapOwner
-			if scenario == "disabled" {
-				// Recovering a disabled member must not re-enable them or grant admin.
-				id = f.bob.UserID()
-				if err := f.identity.DisableMember(f.admin, id); err != nil {
-					t.Fatal(err)
-				}
-			}
 			recovery, err := f.identity.BeginIdentityRebind(f.admin, id)
 			if err != nil {
 				t.Fatal(err)
@@ -216,22 +209,6 @@ func TestIdentityRebindRefusesCollisionExpiryAndConcurrentChange(t *testing.T) {
 				}
 			}
 			done, err := f.identity.CompleteIdentityRebind(f.admin, id, recovery.Token)
-			if scenario == "disabled" {
-				if err != nil || !done {
-					t.Fatalf("disabled member recovery = %v, %v", done, err)
-				}
-				system := principal.WithSystem(context.Background())
-				if err := f.store.View(system, func(r ports.Reader) error {
-					user, err := r.GetUser(system, id)
-					if err == nil && (user.DisabledAt.IsZero() || user.Role != domain.UserMember) {
-						t.Fatalf("disabled member changed: %+v", user)
-					}
-					return err
-				}); err != nil {
-					t.Fatal(err)
-				}
-				return
-			}
 			if err == nil || done {
 				t.Fatalf("unsafe recovery = %v, %v", done, err)
 			}
@@ -286,7 +263,7 @@ func TestIdentityRebindIsSingleUseUnderConcurrentCompletion(t *testing.T) {
 
 func TestIdentityRebindBoundsPendingCeremoniesAndChecksGroupPolicy(t *testing.T) {
 	f := newRebindFixture(t)
-	if _, err := f.identity.BeginIdentityRebind(f.admin, "missing"); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := f.identity.BeginIdentityRebind(f.admin, "missing"); !errors.Is(err, app.ErrRebindTarget) {
 		t.Fatalf("missing target = %v", err)
 	}
 	var first app.IdentityRebind
@@ -315,5 +292,85 @@ func TestIdentityRebindBoundsPendingCeremoniesAndChecksGroupPolicy(t *testing.T)
 	f.clock.mu.Unlock()
 	if _, err := f.identity.BeginIdentityRebind(f.admin, principal.BootstrapOwner); err != nil {
 		t.Fatalf("expired recovery state not pruned: %v", err)
+	}
+}
+
+// Only the bootstrap owner's identity can be recovered: rebinding another
+// member would let the installation token's holder sign in as them.
+func TestIdentityRebindRecoversOnlyTheBootstrapOwner(t *testing.T) {
+	f := newRebindFixture(t)
+	for _, disable := range []bool{false, true} {
+		if disable {
+			if err := f.identity.DisableMember(f.admin, f.bob.UserID()); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := f.identity.BeginIdentityRebind(f.admin, f.bob.UserID()); !errors.Is(err, app.ErrRebindTarget) {
+			t.Fatalf("recovery of another member (disabled %v) = %v", disable, err)
+		}
+		if _, err := f.identity.CompleteIdentityRebind(f.admin, f.bob.UserID(), "token"); !errors.Is(err, app.ErrRebindTarget) {
+			t.Fatalf("completion for another member (disabled %v) = %v", disable, err)
+		}
+	}
+	system := principal.WithSystem(context.Background())
+	if err := f.store.View(system, func(r ports.Reader) error {
+		user, err := r.GetUser(system, f.bob.UserID())
+		if err == nil && user.Subject != "bob" {
+			t.Fatalf("another member's identity changed: %+v", user)
+		}
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The rebinding hooks run after the callback is verified and before the
+// identity changes; a failing hook leaves the identity and credentials as
+// they were.
+func TestIdentityRebindRunsItsHooksFirstAndStopsOnFailure(t *testing.T) {
+	for _, fail := range []bool{true, false} {
+		f := newRebindFixture(t)
+		var calls []domain.UserID
+		var subjectDuringHook string
+		f.identity.OnIdentityRebinding(func(_ context.Context, id domain.UserID) error {
+			calls = append(calls, id)
+			member, err := f.identity.Member(f.owner)
+			if err != nil {
+				return err
+			}
+			subjectDuringHook = member.Subject
+			if fail {
+				return errors.New("revocation failed")
+			}
+			return nil
+		})
+		recovery, err := f.identity.BeginIdentityRebind(f.admin, principal.BootstrapOwner)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if done, err := f.identity.CompleteIdentityRebind(f.admin, principal.BootstrapOwner, recovery.Token); done || err != nil || len(calls) != 0 {
+			t.Fatalf("hooks ran before verification: %v %v %v", done, err, calls)
+		}
+		verifyRecovery(t, f, recovery, "replacement")
+		done, err := f.identity.CompleteIdentityRebind(f.admin, principal.BootstrapOwner, recovery.Token)
+		if len(calls) != 1 || calls[0] != principal.BootstrapOwner || subjectDuringHook != "alice" {
+			t.Fatalf("hook calls = %v, identity during hook = %q", calls, subjectDuringHook)
+		}
+		member, memberErr := f.identity.Member(f.owner)
+		if fail {
+			if err == nil || done {
+				t.Fatalf("recovery past a failed hook = %v, %v", done, err)
+			}
+			if memberErr != nil || member.Subject != "alice" {
+				t.Fatalf("identity changed after a failed hook: %+v, %v", member, memberErr)
+			}
+			if _, _, err := f.identity.Session(f.owner, f.ownerSession); err != nil {
+				t.Fatalf("sessions revoked after a failed hook: %v", err)
+			}
+			continue
+		}
+		if err != nil || !done {
+			t.Fatalf("recovery = %v, %v", done, err)
+		}
 	}
 }

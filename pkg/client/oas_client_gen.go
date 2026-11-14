@@ -74,11 +74,12 @@ type Invoker interface {
 	BeginDeviceLogin(ctx context.Context) (BeginDeviceLoginRes, error)
 	// BeginMemberIdentityRebind invokes beginMemberIdentityRebind operation.
 	//
-	// Requires the installation bearer in team mode. Returns a sign-in URL and a single-use completion
-	// token bound to this member for ten minutes. Open the URL as the replacement identity. The OIDC
-	// callback only verifies that identity; it creates neither a member nor a session. Keep the completion
-	// token private and use it with the installation bearer to complete the rebind. Normal member admins
-	// cannot do this.
+	// Requires the installation bearer in team mode, and userId must be the bootstrap owner
+	// (usr_bootstrap_owner); any other member is refused with 400, since rebinding them would let the
+	// bearer's holder sign in as them. Returns a sign-in URL and a single-use completion token bound to
+	// this member for ten minutes. Open the URL as the replacement identity. The OIDC callback only
+	// verifies that identity; it creates neither a member nor a session. Keep the completion token private
+	// and use it with the installation bearer to complete the rebind. Normal member admins cannot do this.
 	//
 	// POST /users/{userId}/identity-rebind
 	BeginMemberIdentityRebind(ctx context.Context, params BeginMemberIdentityRebindParams) (BeginMemberIdentityRebindRes, error)
@@ -124,11 +125,13 @@ type Invoker interface {
 	// CompleteMemberIdentityRebind invokes completeMemberIdentityRebind operation.
 	//
 	// Requires the installation bearer and the completion token. Returns 202 until the browser finishes
-	// sign-in. Consumes the token once verified, even if the rebind fails. Replaces only the identity and
-	// display fields on the existing member, preserving role, disabled state, and owned objects. An
-	// identity held by another member or a concurrent identity change is refused. Revokes sessions and
-	// personal access tokens and appends the audit record atomically. Drops live tickets and gateway
-	// leases. The replacement identity signs in again; this operation issues no credentials.
+	// sign-in. Consumes the token once verified, even if the rebind fails. Before the identity changes it
+	// revokes the owner's personal Claude and ChatGPT logins (ADR 0038); if that fails, nothing changes.
+	// Replaces only the identity and display fields on the existing member, preserving role, disabled
+	// state, and owned objects. An identity held by another member or a concurrent identity change is
+	// refused. Revokes sessions and personal access tokens and appends the audit record atomically. Drops
+	// live tickets and gateway leases. The replacement identity signs in again; this operation issues no
+	// credentials.
 	//
 	// POST /users/{userId}/identity-rebind/complete
 	CompleteMemberIdentityRebind(ctx context.Context, request *CompleteMemberIdentityRebindReq, params CompleteMemberIdentityRebindParams) (CompleteMemberIdentityRebindRes, error)
@@ -1651,11 +1654,12 @@ func (c *Client) sendBeginDeviceLogin(ctx context.Context) (res BeginDeviceLogin
 
 // BeginMemberIdentityRebind invokes beginMemberIdentityRebind operation.
 //
-// Requires the installation bearer in team mode. Returns a sign-in URL and a single-use completion
-// token bound to this member for ten minutes. Open the URL as the replacement identity. The OIDC
-// callback only verifies that identity; it creates neither a member nor a session. Keep the completion
-// token private and use it with the installation bearer to complete the rebind. Normal member admins
-// cannot do this.
+// Requires the installation bearer in team mode, and userId must be the bootstrap owner
+// (usr_bootstrap_owner); any other member is refused with 400, since rebinding them would let the
+// bearer's holder sign in as them. Returns a sign-in URL and a single-use completion token bound to
+// this member for ten minutes. Open the URL as the replacement identity. The OIDC callback only
+// verifies that identity; it creates neither a member nor a session. Keep the completion token private
+// and use it with the installation bearer to complete the rebind. Normal member admins cannot do this.
 //
 // POST /users/{userId}/identity-rebind
 func (c *Client) BeginMemberIdentityRebind(ctx context.Context, params BeginMemberIdentityRebindParams) (BeginMemberIdentityRebindRes, error) {
@@ -2620,11 +2624,13 @@ func (c *Client) sendCompleteClaudeLogin(ctx context.Context, request *ClaudeLog
 // CompleteMemberIdentityRebind invokes completeMemberIdentityRebind operation.
 //
 // Requires the installation bearer and the completion token. Returns 202 until the browser finishes
-// sign-in. Consumes the token once verified, even if the rebind fails. Replaces only the identity and
-// display fields on the existing member, preserving role, disabled state, and owned objects. An
-// identity held by another member or a concurrent identity change is refused. Revokes sessions and
-// personal access tokens and appends the audit record atomically. Drops live tickets and gateway
-// leases. The replacement identity signs in again; this operation issues no credentials.
+// sign-in. Consumes the token once verified, even if the rebind fails. Before the identity changes it
+// revokes the owner's personal Claude and ChatGPT logins (ADR 0038); if that fails, nothing changes.
+// Replaces only the identity and display fields on the existing member, preserving role, disabled
+// state, and owned objects. An identity held by another member or a concurrent identity change is
+// refused. Revokes sessions and personal access tokens and appends the audit record atomically. Drops
+// live tickets and gateway leases. The replacement identity signs in again; this operation issues no
+// credentials.
 //
 // POST /users/{userId}/identity-rebind/complete
 func (c *Client) CompleteMemberIdentityRebind(ctx context.Context, request *CompleteMemberIdentityRebindReq, params CompleteMemberIdentityRebindParams) (CompleteMemberIdentityRebindRes, error) {

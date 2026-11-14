@@ -27,12 +27,35 @@ type IdentityRebind struct {
 	ExpiresAt time.Time `json:"expiresAt"`
 }
 
-// BeginIdentityRebind starts recovery of an existing member, including the
-// bootstrap owner. Both this call and completion require the installation
-// bearer in team mode. Normal OIDC sign-in never enters this ceremony.
+// ErrRebindTarget refuses recovery of anyone but the bootstrap owner. ADR
+// 0046 makes moving the bootstrap identity a break-glass action, and the
+// installation bearer reaches no other member's objects: rebinding another
+// member would let its holder sign in as them.
+var ErrRebindTarget = fmt.Errorf("%w: only the bootstrap owner's identity can be recovered; transfer a departed member's work instead", domain.ErrInvalid)
+
+// IdentityRebinding runs before the bootstrap owner's identity changes. A
+// hook that fails stops the recovery, so the new identity never holds what
+// the hook guards.
+type IdentityRebinding func(context.Context, domain.UserID) error
+
+// OnIdentityRebinding registers a hook. The daemon uses it to revoke the
+// owner's personal Claude and ChatGPT logins, which stay with their account
+// holder (ADR 0038) and must not pass to the replacement identity.
+func (i *Identity) OnIdentityRebinding(hook IdentityRebinding) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.rebinding = append(i.rebinding, hook)
+}
+
+// BeginIdentityRebind starts recovery of the bootstrap owner's identity.
+// Both this call and completion require the installation bearer in team
+// mode. Normal OIDC sign-in never enters this ceremony.
 func (i *Identity) BeginIdentityRebind(ctx context.Context, id domain.UserID) (IdentityRebind, error) {
 	if err := requireBreakGlass(ctx); err != nil {
 		return IdentityRebind{}, err
+	}
+	if id != principal.BootstrapOwner {
+		return IdentityRebind{}, ErrRebindTarget
 	}
 	if !i.team.Load() || !i.SignInAvailable() {
 		return IdentityRebind{}, domain.ErrNotFound
@@ -93,6 +116,9 @@ func (i *Identity) CompleteIdentityRebind(ctx context.Context, id domain.UserID,
 	if err := requireBreakGlass(ctx); err != nil {
 		return false, err
 	}
+	if id != principal.BootstrapOwner {
+		return false, ErrRebindTarget
+	}
 	if !i.team.Load() || !i.SignInAvailable() || token == "" || len(token) > 128 {
 		return false, domain.ErrNotFound
 	}
@@ -109,8 +135,28 @@ func (i *Identity) CompleteIdentityRebind(ctx context.Context, id domain.UserID,
 		return false, nil
 	}
 	delete(i.rebinds, digest)
+	hooks := append([]IdentityRebinding(nil), i.rebinding...)
 	i.mu.Unlock()
 	system := principal.WithSystem(ctx)
+	// Refuse a colliding identity before the hooks revoke anything; the
+	// transaction checks again.
+	if err := i.store.View(system, func(reader ports.Reader) error {
+		existing, err := reader.GetUserByIdentity(system, pending.identity.Issuer, pending.identity.Subject)
+		if err == nil && existing.ID != id {
+			return fmt.Errorf("%w: identity already belongs to a member", domain.ErrConflict)
+		}
+		if err != nil && !errors.Is(err, domain.ErrNotFound) {
+			return err
+		}
+		return nil
+	}); err != nil {
+		return false, err
+	}
+	for _, hook := range hooks {
+		if err := hook(context.WithoutCancel(ctx), id); err != nil {
+			return false, fmt.Errorf("prepare identity recovery: %w", err)
+		}
+	}
 	err := i.store.Transact(system, func(tx ports.Transaction) error {
 		installation, err := tx.GetInstallation(system)
 		if err != nil {
@@ -143,9 +189,9 @@ func (i *Identity) CompleteIdentityRebind(ctx context.Context, id domain.UserID,
 	// Drop outstanding tickets and gateway leases using the same hooks as a
 	// disable. The member's enabled/disabled state itself is preserved.
 	i.mu.Lock()
-	hooks := append([]MemberDisabled(nil), i.disabled...)
+	dropped := append([]MemberDisabled(nil), i.disabled...)
 	i.mu.Unlock()
-	for _, hook := range hooks {
+	for _, hook := range dropped {
 		hook(context.WithoutCancel(ctx), id)
 	}
 	return true, nil
