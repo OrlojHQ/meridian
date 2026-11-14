@@ -802,6 +802,20 @@ textarea:hover {
   font-size: var(--text-sm);
 }
 
+/* Signing in is the expected next step, not a failure, so the team-mode
+   sign-in screen drops the error tint and centers its action. */
+.error-state.sign-in-state {
+  display: grid;
+  justify-items: center;
+  gap: 0.75rem;
+  border-color: var(--border);
+}
+
+.error-state.sign-in-state h2,
+.error-state.sign-in-state p {
+  margin: 0;
+}
+
 .setup-import-picker {
   border-radius: var(--radius-lg);
   background: var(--surface-subtle);

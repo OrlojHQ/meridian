@@ -1054,3 +1054,58 @@ describe("application shell", () => {
     delete window.__MERIDIAN_DESKTOP__;
   });
 });
+
+describe("team mode sign-in", () => {
+  function signedOutTeam() {
+    const unauthorized = new MeridianAPIError("Sign in required", "unauthorized", 401);
+    vi.spyOn(api, "authenticationMode").mockResolvedValue({ mode: "team", signIn: true, claimable: false });
+    vi.spyOn(api, "capabilities").mockRejectedValue(unauthorized);
+    vi.spyOn(api, "projects").mockRejectedValue(unauthorized);
+    vi.spyOn(api, "board").mockRejectedValue(unauthorized);
+  }
+
+  function renderShell(initial: string) {
+    return wrapper(
+      <Routes>
+        <Route path="/ui" element={<AppShell />}>
+          <Route index element={<h1>No projects yet</h1>} />
+          <Route path="settings/account" element={<h1>Account page</h1>} />
+        </Route>
+      </Routes>,
+      initial,
+    );
+  }
+
+  it("sends a signed-out browser to the identity provider from Home", async () => {
+    signedOutTeam();
+    renderShell("/ui/");
+    const main = document.getElementById("content")!;
+    const signIn = await within(main).findByRole("link", { name: "Sign in" });
+    expect(signIn).toHaveAttribute("href", "/auth/oidc/start");
+    expect(screen.queryByRole("heading", { name: "No projects yet" })).toBeNull();
+    const status = screen.getByRole("contentinfo", { name: "Status bar" });
+    expect(within(status).getByRole("link", { name: "Sign in" })).toHaveAttribute(
+      "href",
+      "/auth/oidc/start",
+    );
+    expect(screen.getByText("Sign in to see your Projects")).toBeInTheDocument();
+  });
+
+  it("leaves Account to show its own signed-out state", async () => {
+    signedOutTeam();
+    renderShell("/ui/settings/account");
+    const status = screen.getByRole("contentinfo", { name: "Status bar" });
+    await within(status).findByRole("link", { name: "Sign in" });
+    expect(screen.getByRole("heading", { name: "Account page" })).toBeInTheDocument();
+  });
+
+  it("offers no identity provider sign-in in single-user mode", async () => {
+    const unauthorized = new MeridianAPIError("Sign in required", "unauthorized", 401);
+    vi.spyOn(api, "authenticationMode").mockResolvedValue({ mode: "single_user", signIn: false, claimable: false });
+    vi.spyOn(api, "capabilities").mockRejectedValue(unauthorized);
+    vi.spyOn(api, "projects").mockRejectedValue(unauthorized);
+    renderShell("/ui/");
+    expect(await screen.findByText("Sign-in required")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Sign in" })).toBeNull();
+  });
+});

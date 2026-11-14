@@ -120,4 +120,64 @@ describe("Account", () => {
     expect(screen.queryByRole("heading", { name: "Members" })).toBeNull();
     expect(members).not.toHaveBeenCalled();
   });
+
+  it("shows the sign-in action instead of team controls when signed out", async () => {
+    vi.spyOn(api, "authenticationMode").mockResolvedValue({ mode: "team", signIn: true, claimable: false });
+    vi.spyOn(api, "currentMember").mockRejectedValue(new MeridianAPIError("Sign in required", "unauthorized", 401));
+    vi.spyOn(api, "sessions").mockRejectedValue(new MeridianAPIError("Sign in required", "unauthorized", 401));
+    const tokens = vi.spyOn(api, "personalAccessTokens").mockResolvedValue({ items: [] });
+    renderAccount("/ui/settings/account");
+    const link = await screen.findByRole("link", { name: "Sign in" });
+    expect(link).toHaveAttribute("href", "/auth/oidc/start");
+    expect(screen.queryByRole("button", { name: "Sign out" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Create token" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Sessions" })).toBeNull();
+    expect(tokens).not.toHaveBeenCalled();
+  });
+
+  it("shows the sign-in action when only the session list is rejected", async () => {
+    vi.spyOn(api, "authenticationMode").mockResolvedValue({ mode: "team", signIn: true, claimable: false });
+    vi.spyOn(api, "currentMember").mockResolvedValue({ mode: "team", id: "usr_1", role: "member" });
+    vi.spyOn(api, "sessions").mockRejectedValue(new MeridianAPIError("Sign in required", "unauthorized", 401));
+    vi.spyOn(api, "personalAccessTokens").mockResolvedValue({ items: [] });
+    renderAccount("/ui/settings/account");
+    expect(await screen.findByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/auth/oidc/start");
+    expect(screen.queryByRole("button", { name: "Sign out" })).toBeNull();
+  });
+
+  it("offers the last enabled admin no way to demote or disable themselves", async () => {
+    vi.spyOn(api, "authenticationMode").mockResolvedValue({ mode: "team", signIn: true, claimable: false });
+    vi.spyOn(api, "currentMember").mockResolvedValue({ mode: "team", id: "usr_admin", role: "admin", displayName: "Ada" });
+    vi.spyOn(api, "sessions").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "personalAccessTokens").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "members").mockResolvedValue({
+      items: [
+        { id: "usr_admin", role: "admin", displayName: "Ada", disabled: false, createdAt: "2026-11-14T00:00:00Z" },
+        { id: "usr_old", role: "admin", displayName: "Old", disabled: true, createdAt: "2026-11-14T00:00:00Z" },
+        { id: "usr_bob", role: "member", displayName: "Bob", disabled: false, createdAt: "2026-11-14T00:00:00Z" },
+      ],
+    });
+    renderAccount("/ui/settings/account");
+    expect(await screen.findByRole("button", { name: "Make admin: Bob" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove admin: Ada" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Disable: Ada" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Enable: Old" })).toBeInTheDocument();
+    expect(screen.getByText(/Ada \(you\) · admin · last admin/)).toBeInTheDocument();
+  });
+
+  it("lets an admin demote themselves while another admin is enabled", async () => {
+    vi.spyOn(api, "authenticationMode").mockResolvedValue({ mode: "team", signIn: true, claimable: false });
+    vi.spyOn(api, "currentMember").mockResolvedValue({ mode: "team", id: "usr_admin", role: "admin", displayName: "Ada" });
+    vi.spyOn(api, "sessions").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "personalAccessTokens").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "members").mockResolvedValue({
+      items: [
+        { id: "usr_admin", role: "admin", displayName: "Ada", disabled: false, createdAt: "2026-11-14T00:00:00Z" },
+        { id: "usr_eve", role: "admin", displayName: "Eve", disabled: false, createdAt: "2026-11-14T00:00:00Z" },
+      ],
+    });
+    renderAccount("/ui/settings/account");
+    expect(await screen.findByRole("button", { name: "Remove admin: Ada" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Disable: Ada" })).toBeInTheDocument();
+  });
 });

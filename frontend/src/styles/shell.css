@@ -839,6 +839,12 @@
   background: var(--danger);
 }
 
+.status-connection a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
 .status-provider {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.64rem;
