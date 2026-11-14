@@ -93,6 +93,14 @@ type DenyCoordinationRequestRes interface {
 	denyCoordinationRequestRes()
 }
 
+type DisableMemberRes interface {
+	disableMemberRes()
+}
+
+type EnableMemberRes interface {
+	enableMemberRes()
+}
+
 type ExportCapsuleWorkspaceRes interface {
 	exportCapsuleWorkspaceRes()
 }
@@ -197,6 +205,10 @@ type ListHarnessProfilesRes interface {
 	listHarnessProfilesRes()
 }
 
+type ListMembersRes interface {
+	listMembersRes()
+}
+
 type ListMomentsRes interface {
 	listMomentsRes()
 }
@@ -293,6 +305,10 @@ type RevokeCoordinationGrantRes interface {
 	revokeCoordinationGrantRes()
 }
 
+type RevokeMemberCredentialsRes interface {
+	revokeMemberCredentialsRes()
+}
+
 type RevokePersonalAccessTokenRes interface {
 	revokePersonalAccessTokenRes()
 }
@@ -311,6 +327,10 @@ type SealCapsuleRes interface {
 
 type SendThreadMessageRes interface {
 	sendThreadMessageRes()
+}
+
+type SetMemberRoleRes interface {
+	setMemberRoleRes()
 }
 
 type SetThreadEffortRes interface {

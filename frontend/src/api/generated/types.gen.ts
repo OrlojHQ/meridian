@@ -492,6 +492,19 @@ export type MintedPersonalAccessToken = PersonalAccessToken & {
     token: string;
 };
 
+export type MemberAdmin = {
+    id: string;
+    role: 'member' | 'admin';
+    displayName?: string;
+    email?: string;
+    disabled: boolean;
+    createdAt: string;
+};
+
+export type MemberPage = {
+    items: Array<MemberAdmin>;
+};
+
 export type AuditRecord = {
     sequence: number;
     recordedAt: string;
@@ -5689,6 +5702,201 @@ export type RevokePersonalAccessTokenResponses = {
 };
 
 export type RevokePersonalAccessTokenResponse = RevokePersonalAccessTokenResponses[keyof RevokePersonalAccessTokenResponses];
+
+export type ListMembersData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/users';
+};
+
+export type ListMembersErrors = {
+    /**
+     * Missing or invalid installation authentication
+     */
+    401: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ListMembersError = ListMembersErrors[keyof ListMembersErrors];
+
+export type ListMembersResponses = {
+    /**
+     * Members
+     */
+    200: MemberPage;
+};
+
+export type ListMembersResponse = ListMembersResponses[keyof ListMembersResponses];
+
+export type DisableMemberData = {
+    body?: never;
+    path: {
+        userId: string;
+    };
+    query?: never;
+    url: '/users/{userId}/disable';
+};
+
+export type DisableMemberErrors = {
+    /**
+     * Missing or invalid installation authentication
+     */
+    401: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type DisableMemberError = DisableMemberErrors[keyof DisableMemberErrors];
+
+export type DisableMemberResponses = {
+    /**
+     * Done
+     */
+    204: void;
+};
+
+export type DisableMemberResponse = DisableMemberResponses[keyof DisableMemberResponses];
+
+export type EnableMemberData = {
+    body?: never;
+    path: {
+        userId: string;
+    };
+    query?: never;
+    url: '/users/{userId}/enable';
+};
+
+export type EnableMemberErrors = {
+    /**
+     * Missing or invalid installation authentication
+     */
+    401: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type EnableMemberError = EnableMemberErrors[keyof EnableMemberErrors];
+
+export type EnableMemberResponses = {
+    /**
+     * Done
+     */
+    204: void;
+};
+
+export type EnableMemberResponse = EnableMemberResponses[keyof EnableMemberResponses];
+
+export type RevokeMemberCredentialsData = {
+    body?: never;
+    path: {
+        userId: string;
+    };
+    query?: never;
+    url: '/users/{userId}/revoke-credentials';
+};
+
+export type RevokeMemberCredentialsErrors = {
+    /**
+     * Missing or invalid installation authentication
+     */
+    401: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type RevokeMemberCredentialsError = RevokeMemberCredentialsErrors[keyof RevokeMemberCredentialsErrors];
+
+export type RevokeMemberCredentialsResponses = {
+    /**
+     * Done
+     */
+    204: void;
+};
+
+export type RevokeMemberCredentialsResponse = RevokeMemberCredentialsResponses[keyof RevokeMemberCredentialsResponses];
+
+export type SetMemberRoleData = {
+    body: {
+        role: 'member' | 'admin';
+    };
+    path: {
+        userId: string;
+    };
+    query?: never;
+    url: '/users/{userId}/role';
+};
+
+export type SetMemberRoleErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Missing or invalid installation authentication
+     */
+    401: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type SetMemberRoleError = SetMemberRoleErrors[keyof SetMemberRoleErrors];
+
+export type SetMemberRoleResponses = {
+    /**
+     * Role set
+     */
+    204: void;
+};
+
+export type SetMemberRoleResponse = SetMemberRoleResponses[keyof SetMemberRoleResponses];
 
 export type CreateBrowserSessionData = {
     body?: never;

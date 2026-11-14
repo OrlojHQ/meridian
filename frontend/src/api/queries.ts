@@ -38,6 +38,11 @@ export const queries = {
       queryKey: ["current-member"],
       queryFn: ({ signal }) => api.currentMember(signal),
     }),
+  members: () =>
+    queryOptions({
+      queryKey: ["members"],
+      queryFn: ({ signal }) => api.members(signal),
+    }),
   personalAccessTokens: () =>
     queryOptions({
       queryKey: ["personal-access-tokens"],

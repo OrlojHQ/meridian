@@ -3,10 +3,12 @@ package app
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/ports"
+	"github.com/OrlojHQ/meridian/internal/principal"
 	"github.com/OrlojHQ/meridian/internal/providergateway"
 	"github.com/OrlojHQ/meridian/internal/secrets"
 	"github.com/OrlojHQ/meridian/internal/store/sqlite"
@@ -90,6 +92,28 @@ func TestProviderGrantsAndEncryptedRevocation(t *testing.T) {
 	}
 	if runtime.Token == value || len(runtime.Token) != 64 {
 		t.Fatal("upstream key crossed Capsule boundary")
+	}
+	// A disabled owner's Capsules lose model traffic: every gateway request
+	// rechecks the owner (ADR 0046).
+	raw, err := sql.Open("sqlite", db.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	if _, err := raw.Exec("UPDATE users SET disabled_at = '2026-11-14T00:00:00Z' WHERE id = ?", domain.BootstrapOwnerID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.authorizeProviderLease(gatewayRequest(), lease); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("disabled owner's lease = %v", err)
+	}
+	if _, err := raw.Exec("UPDATE users SET disabled_at = NULL WHERE id = ?", domain.BootstrapOwnerID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RevokeOwnerLeases(operatorContext(), domain.BootstrapOwnerID); !errors.Is(err, principal.ErrMissing) {
+		t.Fatalf("a user revoked leases: %v", err)
+	}
+	if err := s.RevokeOwnerLeases(asSystem(ctx), domain.BootstrapOwnerID); err != nil {
+		t.Fatal(err)
 	}
 	_, err = s.PutProviderConnection(ctx, connection.ID, ConnectionInput{Name: "OpenAI", Provider: "openai", Revoked: true, ExpectedResourceVersion: connection.ResourceVersion})
 	if err != nil {

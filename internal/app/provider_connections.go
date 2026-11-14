@@ -317,6 +317,32 @@ func (s *Service) ProjectProviderConnection(ctx context.Context, project domain.
 	return id, err
 }
 
+// RevokeOwnerLeases ends every gateway lease issued from owner's provider
+// connections. It runs when the owner is disabled (ADR 0046); leases are
+// only ever issued from the Capsule owner's own connections.
+func (s *Service) RevokeOwnerLeases(ctx context.Context, owner domain.UserID) error {
+	if err := requireSystem(ctx); err != nil {
+		return err
+	}
+	if s.gateway == nil {
+		return nil
+	}
+	var connections []domain.ProviderConnection
+	if err := s.store.View(ctx, func(r ports.Reader) error {
+		var err error
+		connections, err = r.ListProviderConnections(ctx)
+		return err
+	}); err != nil {
+		return err
+	}
+	for _, connection := range connections {
+		if connection.OwnerUserID == owner {
+			s.gateway.Revoke(connection.ID, "", "")
+		}
+	}
+	return nil
+}
+
 // authorizeProviderLease runs for each gateway request. A lease is a Capsule
 // credential, so the request acts as that Capsule, never as a user.
 func (s *Service) authorizeProviderLease(ctx context.Context, lease providergateway.Lease) (providergateway.Upstream, error) {
@@ -338,6 +364,11 @@ func (s *Service) authorizeProviderLease(ctx context.Context, lease providergate
 		}
 		var ok bool
 		if caller, ok = capsulePrincipal(capsule); !ok {
+			return domain.ErrNotFound
+		}
+		// A disabled member's Capsules lose model traffic at once.
+		owner, err := r.GetUser(lookup, capsule.OwnerUserID)
+		if err != nil || !owner.DisabledAt.IsZero() {
 			return domain.ErrNotFound
 		}
 		grant, err := r.GetProjectProviderConnection(ctx, capsule.ProjectID, lease.Harness)

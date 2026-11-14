@@ -208,6 +208,11 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /auth/sign-out", s.withIdentity(s.signOut))
 	s.mux.HandleFunc("GET /auth/sessions", s.withIdentity(s.listSessions))
 	s.mux.HandleFunc("POST /auth/sessions/{sessionId}/revoke", s.withIdentity(s.revokeSession))
+	s.mux.HandleFunc("GET /users", s.withIdentity(s.listMembers))
+	s.mux.HandleFunc("POST /users/{userId}/disable", s.withIdentity(s.disableMember))
+	s.mux.HandleFunc("POST /users/{userId}/enable", s.withIdentity(s.enableMember))
+	s.mux.HandleFunc("PUT /users/{userId}/role", s.withIdentity(s.setMemberRole))
+	s.mux.HandleFunc("POST /users/{userId}/revoke-credentials", s.withIdentity(s.revokeMemberCredentials))
 	s.mux.HandleFunc("GET /auth/tokens", s.withIdentity(s.listTokens))
 	s.mux.HandleFunc("POST /auth/tokens", s.withIdentity(s.mintToken))
 	s.mux.HandleFunc("POST /auth/tokens/{tokenId}/revoke", s.withIdentity(s.revokeToken))
@@ -1770,6 +1775,10 @@ func (s *Server) attachRun(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	if ticket.RunID != domain.RunID(request.PathValue("runId")) {
+		writeError(writer, fmt.Errorf("%w: attach ticket is expired or out of scope", domain.ErrInvalid))
+		return
+	}
+	if !s.identity.MemberActive(request.Context(), ticket.Principal) {
 		writeError(writer, fmt.Errorf("%w: attach ticket is expired or out of scope", domain.ErrInvalid))
 		return
 	}
