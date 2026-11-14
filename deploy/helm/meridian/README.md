@@ -29,9 +29,9 @@ runtime's isolation, and a shared kernel remains a shared kernel.
 In single-user mode, authorized operators can retrieve the installation token
 with `kubectl exec` for a port-forwarded CLI or the UI's bearer-to-cookie
 bootstrap. In team mode that token is for the one-time claim and break-glass
-membership recovery, audit, and departed-member actions. Members use OIDC
-sessions or personal access tokens; copying the installation token is not
-team sign-in.
+membership, bootstrap-owner identity recovery, audit, and departed-member
+actions. Members use OIDC sessions or personal access tokens; copying the
+installation token is not team sign-in.
 
 ## Team sign-in
 
