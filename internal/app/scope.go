@@ -890,6 +890,12 @@ func (r *scopedReader) ListUserSessions(ctx context.Context, user domain.UserID)
 	return r.inner.ListUserSessions(ctx, user)
 }
 
+// ListUsers is membership administration, which app.Identity authorizes
+// and then runs as the system.
+func (r *scopedReader) ListUsers(context.Context) ([]domain.User, error) {
+	return nil, domain.ErrNotFound
+}
+
 // GetPersonalAccessTokenByDigest is authentication, system work only.
 func (r *scopedReader) GetPersonalAccessTokenByDigest(context.Context, [32]byte) (domain.PersonalAccessToken, error) {
 	return domain.PersonalAccessToken{}, domain.ErrNotFound
@@ -1347,4 +1353,19 @@ func (t *scopedTx) RevokePersonalAccessToken(ctx context.Context, id string, at 
 		return err
 	}
 	return t.tx.RevokePersonalAccessToken(ctx, id, at)
+}
+
+// SetUserDisabled, SetUserRole, and RevokeUserCredentials are membership
+// administration, which app.Identity authorizes and then runs as the
+// system.
+func (t *scopedTx) SetUserDisabled(context.Context, domain.UserID, time.Time) error {
+	return domain.ErrNotFound
+}
+
+func (t *scopedTx) SetUserRole(context.Context, domain.UserID, domain.UserRole) error {
+	return domain.ErrNotFound
+}
+
+func (t *scopedTx) RevokeUserCredentials(context.Context, domain.UserID, time.Time) (int, error) {
+	return 0, domain.ErrNotFound
 }

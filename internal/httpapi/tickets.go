@@ -71,3 +71,14 @@ func (r *attachTicketRegistry) size(now time.Time) int {
 	r.pruneLocked(now)
 	return len(r.entries)
 }
+
+// revokeUser drops every attach ticket a member minted.
+func (r *attachTicketRegistry) revokeUser(user domain.UserID) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for digest, ticket := range r.entries {
+		if ticket.Principal.UserID() == user {
+			delete(r.entries, digest)
+		}
+	}
+}

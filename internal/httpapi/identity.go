@@ -5,6 +5,7 @@ import (
 	"errors"
 	"html"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/OrlojHQ/meridian/internal/app"
@@ -28,6 +29,13 @@ type sessionKey struct{}
 // server without one stays in single-user mode.
 func (s *Server) SetIdentity(identity *app.Identity) {
 	s.identity = identity
+	if identity != nil {
+		// A disabled member's tickets stop at once, not at expiry.
+		identity.OnMemberDisabled(func(_ context.Context, user domain.UserID) {
+			s.tickets.revokeUser(user)
+			s.previews.revokeUser(user)
+		})
+	}
 }
 
 // withIdentity answers not found when no Identity is configured.
@@ -87,9 +95,11 @@ func singleCookie(request *http.Request, name string) (string, bool) {
 }
 
 // breakGlassRoute is what the installation bearer may reach in team mode:
-// the audit log. Membership administration joins it in a later step.
+// the audit log and membership administration (ADR 0046).
 func breakGlassRoute(request *http.Request) bool {
-	return request.Method == http.MethodGet && request.URL.Path == "/audit-records"
+	path := request.URL.Path
+	return (request.Method == http.MethodGet && (path == "/audit-records" || path == "/users")) ||
+		strings.HasPrefix(path, "/users/")
 }
 
 func sessionFrom(ctx context.Context) string {

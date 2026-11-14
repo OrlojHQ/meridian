@@ -205,3 +205,71 @@ func (r *repository) RevokeUserSession(ctx context.Context, id string, at time.T
 	}
 	return nil
 }
+
+func (r *repository) ListUsers(ctx context.Context) ([]domain.User, error) {
+	rows, err := r.q.QueryContext(ctx, "SELECT "+userColumns+" FROM users ORDER BY created_at, id LIMIT 1000")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var users []domain.User
+	for rows.Next() {
+		user, err := scanUser(rows)
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, user)
+	}
+	return users, rows.Err()
+}
+
+func (r *repository) SetUserDisabled(ctx context.Context, id domain.UserID, at time.Time) error {
+	var disabled any
+	if !at.IsZero() {
+		disabled = formatTime(at)
+	}
+	result, err := r.q.ExecContext(ctx, "UPDATE users SET disabled_at = ? WHERE id = ?", disabled, id)
+	if err != nil {
+		return mapError(err)
+	}
+	return oneRow(result)
+}
+
+func (r *repository) SetUserRole(ctx context.Context, id domain.UserID, role domain.UserRole) error {
+	if role != domain.UserMember && role != domain.UserAdmin {
+		return domain.ErrInvalid
+	}
+	result, err := r.q.ExecContext(ctx, "UPDATE users SET role = ? WHERE id = ?", role, id)
+	if err != nil {
+		return mapError(err)
+	}
+	return oneRow(result)
+}
+
+func (r *repository) RevokeUserCredentials(ctx context.Context, id domain.UserID, at time.Time) (int, error) {
+	revoked := 0
+	for _, table := range []string{"user_sessions", "personal_access_tokens"} {
+		result, err := r.q.ExecContext(ctx,
+			"UPDATE "+table+" SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL", formatTime(at), id)
+		if err != nil {
+			return 0, mapError(err)
+		}
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return 0, err
+		}
+		revoked += int(affected)
+	}
+	return revoked, nil
+}
+
+func oneRow(result sql.Result) error {
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected != 1 {
+		return domain.ErrNotFound
+	}
+	return nil
+}

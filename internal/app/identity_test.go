@@ -337,3 +337,138 @@ func TestPersonalAccessTokensActAsTheirMemberUntilExpiryOrRevocation(t *testing.
 		t.Fatalf("token audit = %d created, %d revoked", created, revoked)
 	}
 }
+
+func TestAdminsManageMembershipWithoutReachingObjects(t *testing.T) {
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	clock := &testClock{now: time.Date(2026, 11, 14, 0, 0, 0, 0, time.UTC)}
+	party := &fakeIssuerParty{issuer: fakeIssuer}
+	identity, err := app.NewIdentity(ctx, store, clock, &testIDs{}, party)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var disabledHook []domain.UserID
+	identity.OnMemberDisabled(func(_ context.Context, user domain.UserID) { disabledHook = append(disabledHook, user) })
+	owner := principal.With(ctx, principal.Owner())
+	party.as("alice")
+	adminSession, err := identity.Claim(owner, signIn(t, identity).ClaimToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin, _, err := identity.Session(ctx, adminSession)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adminCtx := principal.With(ctx, admin)
+	party.as("bob")
+	bobResult := signIn(t, identity)
+	bob, _, err := identity.Session(ctx, bobResult.SessionToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bobCtx := principal.With(ctx, bob)
+	bobToken, err := identity.MintToken(bobCtx, "laptop", false, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A member cannot administer; an admin and break-glass can.
+	if _, err := identity.Members(bobCtx); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("member listed members: %v", err)
+	}
+	if err := identity.DisableMember(bobCtx, principal.BootstrapOwner); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("member disabled the owner: %v", err)
+	}
+	members, err := identity.Members(adminCtx)
+	if err != nil || len(members) != 2 {
+		t.Fatalf("members = %+v, %v", members, err)
+	}
+	breakGlass := principal.With(ctx, principal.BreakGlass())
+	if members, err := identity.Members(breakGlass); err != nil || len(members) != 2 {
+		t.Fatalf("break-glass members = %+v, %v", members, err)
+	}
+
+	// The last enabled admin cannot be disabled or demoted.
+	if err := identity.DisableMember(adminCtx, admin.UserID()); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("last admin disabled: %v", err)
+	}
+	if err := identity.SetMemberRole(breakGlass, admin.UserID(), domain.UserMember); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("last admin demoted: %v", err)
+	}
+	if err := identity.SetMemberRole(adminCtx, bob.UserID(), "owner"); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("unknown role = %v", err)
+	}
+
+	// Disabling Bob ends his session and token and runs the hooks.
+	if err := identity.DisableMember(adminCtx, bob.UserID()); err != nil {
+		t.Fatal(err)
+	}
+	if len(disabledHook) != 1 || disabledHook[0] != bob.UserID() {
+		t.Fatalf("disable hooks = %v", disabledHook)
+	}
+	if _, _, err := identity.Session(ctx, bobResult.SessionToken); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("disabled session = %v", err)
+	}
+	if _, _, err := identity.Token(ctx, bobToken.Value); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("disabled token = %v", err)
+	}
+	if identity.MemberActive(ctx, bob) || !identity.MemberActive(ctx, admin) {
+		t.Fatal("MemberActive disagrees with membership")
+	}
+	party.as("bob")
+	target, err := identity.BeginSignIn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := identity.CompleteSignIn(ctx, target[strings.Index(target, "state=")+6:], "code"); !errors.Is(err, app.ErrSignInDenied) {
+		t.Fatalf("disabled sign-in = %v", err)
+	}
+
+	// Re-enabled, Bob signs in again; his old credentials stay revoked.
+	if err := identity.EnableMember(breakGlass, bob.UserID()); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := identity.Token(ctx, bobToken.Value); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("re-enabled member's old token = %v", err)
+	}
+	party.as("bob")
+	again := signIn(t, identity)
+	if _, _, err := identity.Session(ctx, again.SessionToken); err != nil {
+		t.Fatalf("re-enabled sign-in = %v", err)
+	}
+
+	// With a second admin, the first can step down.
+	if err := identity.SetMemberRole(adminCtx, bob.UserID(), domain.UserAdmin); err != nil {
+		t.Fatal(err)
+	}
+	if err := identity.SetMemberRole(adminCtx, admin.UserID(), domain.UserMember); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := identity.Members(adminCtx); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("demoted admin still administers: %v", err)
+	}
+	if err := identity.RevokeMemberCredentials(principal.With(ctx, bob), admin.UserID()); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := identity.Session(ctx, adminSession); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("revoked admin session = %v", err)
+	}
+
+	service := app.NewService(store, clock, &testIDs{}, &recordingQueue{})
+	page, err := service.ListAuditRecords(principal.WithSystem(ctx), 0, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actions := map[domain.AuditAction]int{}
+	for _, record := range page.Items {
+		actions[record.Action]++
+	}
+	if actions[domain.AuditMemberDisable] != 1 || actions[domain.AuditMemberEnable] != 1 ||
+		actions[domain.AuditMemberRole] != 2 || actions[domain.AuditMemberRevoke] != 1 {
+		t.Fatalf("membership audit = %v", actions)
+	}
+}

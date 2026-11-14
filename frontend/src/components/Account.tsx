@@ -132,6 +132,7 @@ function TeamAccount() {
         Sign out
       </button>
       <PersonalAccessTokens />
+      {member.data?.role === "admin" ? <Members selfId={member.data.id} /> : null}
       <section aria-labelledby="sessions-title">
         <h2 id="sessions-title">Sessions</h2>
         <p className="muted">Sessions end after 12 hours idle or 7 days.</p>
@@ -247,6 +248,78 @@ function PersonalAccessTokens() {
             ) : null}
           </li>
         ))}
+      </ul>
+    </section>
+  );
+}
+
+// Members is membership administration for admins. Admins disable members,
+// change roles, and revoke credentials; they never see a member's work.
+function Members({ selfId }: { selfId: string }) {
+  const members = useQuery(queries.members());
+  const client = useQueryClient();
+  const [error, setError] = useState("");
+  const change = useMutation({
+    mutationFn: (run: () => Promise<void>) => run(),
+    onSuccess: () => {
+      setError("");
+      void client.invalidateQueries({ queryKey: queries.members().queryKey });
+    },
+    onError: (value) => setError(normalizeAPIError(value).message),
+  });
+  return (
+    <section aria-labelledby="members-title">
+      <h2 id="members-title">Members</h2>
+      <p className="muted">
+        Disabling a member signs them out everywhere, revokes their tokens, and
+        stops their Capsules' model traffic.
+      </p>
+      {error ? <p role="alert">{error}</p> : null}
+      <ul>
+        {(members.data?.items ?? []).map((item) => {
+          const name = item.displayName || item.email || item.id;
+          return (
+            <li key={item.id}>
+              <span>
+                {name}
+                {item.id === selfId ? " (you)" : ""} · {item.role}
+                {item.disabled ? " · disabled" : ""}
+              </span>
+              <button
+                type="button"
+                aria-label={`${item.role === "admin" ? "Remove admin" : "Make admin"}: ${name}`}
+                disabled={change.isPending}
+                onClick={() =>
+                  change.mutate(() =>
+                    api.setMemberRole(item.id, item.role === "admin" ? "member" : "admin"),
+                  )
+                }
+              >
+                {item.role === "admin" ? "Remove admin" : "Make admin"}
+              </button>
+              <button
+                type="button"
+                aria-label={`${item.disabled ? "Enable" : "Disable"}: ${name}`}
+                disabled={change.isPending}
+                onClick={() =>
+                  change.mutate(() =>
+                    item.disabled ? api.enableMember(item.id) : api.disableMember(item.id),
+                  )
+                }
+              >
+                {item.disabled ? "Enable" : "Disable"}
+              </button>
+              <button
+                type="button"
+                aria-label={`Sign out everywhere: ${name}`}
+                disabled={change.isPending}
+                onClick={() => change.mutate(() => api.revokeMemberCredentials(item.id))}
+              >
+                Sign out everywhere
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </section>
   );

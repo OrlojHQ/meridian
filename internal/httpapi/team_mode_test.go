@@ -14,6 +14,7 @@ import (
 	"github.com/OrlojHQ/meridian/internal/apiauth"
 	"github.com/OrlojHQ/meridian/internal/app"
 	"github.com/OrlojHQ/meridian/internal/oidcauth"
+	"github.com/OrlojHQ/meridian/internal/principal"
 	"github.com/OrlojHQ/meridian/internal/store/sqlite"
 )
 
@@ -163,6 +164,20 @@ func TestClaimMovesTheInstallationToTeamMode(t *testing.T) {
 	if !actions["installation.claim"] || !actions["auth.sign_in"] {
 		t.Fatalf("audit actions = %v", actions)
 	}
+	// Break-glass and the admin administer membership; the list is the
+	// only member so far, the owner.
+	for _, response := range []*http.Response{do(http.MethodGet, "/users", nil, true), do(http.MethodGet, "/users", []*http.Cookie{user}, false)} {
+		var members struct {
+			Items []memberAdminJSON `json:"items"`
+		}
+		if err := json.NewDecoder(response.Body).Decode(&members); err != nil || response.StatusCode != http.StatusOK ||
+			len(members.Items) != 1 || members.Items[0].Role != "admin" {
+			t.Fatalf("members = %d %+v %v", response.StatusCode, members, err)
+		}
+	}
+	if response := do(http.MethodPost, "/users/usr_bootstrap_owner/disable", nil, true); response.StatusCode != http.StatusConflict {
+		t.Fatalf("break-glass disabled the last admin: %d", response.StatusCode)
+	}
 	if response := do(http.MethodPost, "/auth/browser-session", nil, true); response.StatusCode != http.StatusForbidden {
 		t.Fatalf("browser session in team mode = %d", response.StatusCode)
 	}
@@ -182,7 +197,8 @@ func TestClaimMovesTheInstallationToTeamMode(t *testing.T) {
 			uses++
 		}
 	}
-	if uses != 2 {
+	// Two audit reads, the member list, and the refused disable.
+	if uses != 4 {
 		t.Fatalf("break-glass uses = %d", uses)
 	}
 
@@ -266,5 +282,43 @@ func TestClaimMovesTheInstallationToTeamMode(t *testing.T) {
 	}
 	if denied := do(http.MethodGet, "/auth/oidc/callback?state=the-state&code=wrong", nil, false); denied.StatusCode == http.StatusSeeOther {
 		t.Fatal("a failed sign-in redirected as signed in")
+	}
+}
+
+func TestDisabledMembersTicketsAreDropped(t *testing.T) {
+	alice, ok := principal.User("usr_alice")
+	if !ok {
+		t.Fatal("principal")
+	}
+	bob, _ := principal.User("usr_bob")
+	now := time.Now().UTC()
+	attach := newAttachTicketRegistry(8)
+	for value, caller := range map[string]principal.Principal{"alice-ticket": alice, "bob-ticket": bob} {
+		if err := attach.mint(value, attachTicket{RunID: "run", ExpiresAt: now.Add(time.Minute), Principal: caller}, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	attach.revokeUser("usr_bob")
+	if _, ok := attach.take("bob-ticket", now); ok {
+		t.Fatal("disabled member's attach ticket survived")
+	}
+	if _, ok := attach.take("alice-ticket", now); !ok {
+		t.Fatal("another member's attach ticket was dropped")
+	}
+	previews := newPreviewTicketRegistry(8)
+	bobPreview, err := previews.mint("capsule", 3000, bob, now.Add(time.Minute), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	alicePreview, err := previews.mint("capsule", 3000, alice, now.Add(time.Minute), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	previews.revokeUser("usr_bob")
+	if _, status := previews.authorize(bobPreview, "capsule", 3000, now); status != "revoked" {
+		t.Fatalf("disabled member's preview ticket = %q", status)
+	}
+	if _, status := previews.authorize(alicePreview, "capsule", 3000, now); status != "" {
+		t.Fatalf("another member's preview ticket = %q", status)
 	}
 }

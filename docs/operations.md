@@ -614,6 +614,16 @@ After the claim:
   with `mrd_pat_`, expire after 90 days by default (at most a year), can be
   read-only, and can be revoked under **Account**. A token cannot mint
   another; minting needs a signed-in browser.
+- Admins manage membership under **Account** → **Members**, or with
+  `meridian member list|disable|enable|set-role|revoke-credentials`.
+  Disabling a member revokes their sessions and tokens, refuses their
+  outstanding terminal and preview tickets, stops their Capsules' model
+  traffic, and refuses their sign-in until re-enabled. The last enabled admin
+  cannot be disabled or demoted. Admins manage membership and read the full
+  audit log; they cannot see or change another member's work.
+- If no admin can sign in, the installation token still administers
+  membership (`meridian --token-file <installation token> member ...`); every
+  use is audited.
 
 ## Audit records
 

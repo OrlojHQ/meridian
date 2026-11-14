@@ -95,6 +95,7 @@ type Reader interface {
 	GetUserSession(context.Context, string) (domain.UserSession, error)
 	GetUserSessionByDigest(context.Context, [32]byte) (domain.UserSession, error)
 	ListUserSessions(context.Context, domain.UserID) ([]domain.UserSession, error)
+	ListUsers(context.Context) ([]domain.User, error)
 	GetPersonalAccessToken(context.Context, string) (domain.PersonalAccessToken, error)
 	GetPersonalAccessTokenByDigest(context.Context, [32]byte) (domain.PersonalAccessToken, error)
 	ListPersonalAccessTokens(context.Context, domain.UserID) ([]domain.PersonalAccessToken, error)
@@ -173,6 +174,13 @@ type Transaction interface {
 	InsertUserSession(context.Context, domain.UserSession) error
 	TouchUserSession(ctx context.Context, id string, at time.Time) error
 	RevokeUserSession(ctx context.Context, id string, at time.Time) error
+	// SetUserDisabled disables a member at at, or re-enables one when at is
+	// zero.
+	SetUserDisabled(ctx context.Context, id domain.UserID, at time.Time) error
+	SetUserRole(ctx context.Context, id domain.UserID, role domain.UserRole) error
+	// RevokeUserCredentials revokes every live session and token of a
+	// member and reports how many.
+	RevokeUserCredentials(ctx context.Context, id domain.UserID, at time.Time) (int, error)
 	InsertPersonalAccessToken(context.Context, domain.PersonalAccessToken) error
 	TouchPersonalAccessToken(ctx context.Context, id string, at time.Time) error
 	RevokePersonalAccessToken(ctx context.Context, id string, at time.Time) error

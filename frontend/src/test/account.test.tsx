@@ -91,4 +91,33 @@ describe("Account", () => {
     expect(screen.queryByText("mrd_pat_secret")).toBeNull();
     expect(storage).not.toHaveBeenCalled();
   });
+
+  it("lets an admin disable a member", async () => {
+    vi.spyOn(api, "authenticationMode").mockResolvedValue({ mode: "team", signIn: true, claimable: false });
+    vi.spyOn(api, "currentMember").mockResolvedValue({ mode: "team", id: "usr_admin", role: "admin" });
+    vi.spyOn(api, "sessions").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "personalAccessTokens").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "members").mockResolvedValue({
+      items: [
+        { id: "usr_admin", role: "admin", disabled: false, createdAt: "2026-11-14T00:00:00Z" },
+        { id: "usr_bob", role: "member", displayName: "Bob", disabled: false, createdAt: "2026-11-14T00:00:00Z" },
+      ],
+    });
+    const disable = vi.spyOn(api, "disableMember").mockResolvedValue(undefined);
+    renderAccount("/ui/settings/account");
+    await userEvent.click(await screen.findByRole("button", { name: "Disable: Bob" }));
+    await waitFor(() => expect(disable).toHaveBeenCalledWith("usr_bob"));
+  });
+
+  it("shows no member administration to a member", async () => {
+    vi.spyOn(api, "authenticationMode").mockResolvedValue({ mode: "team", signIn: true, claimable: false });
+    vi.spyOn(api, "currentMember").mockResolvedValue({ mode: "team", id: "usr_bob", role: "member" });
+    vi.spyOn(api, "sessions").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "personalAccessTokens").mockResolvedValue({ items: [] });
+    const members = vi.spyOn(api, "members");
+    renderAccount("/ui/settings/account");
+    expect(await screen.findByRole("heading", { name: "Personal access tokens" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Members" })).toBeNull();
+    expect(members).not.toHaveBeenCalled();
+  });
 });
