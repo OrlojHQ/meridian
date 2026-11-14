@@ -33,6 +33,17 @@ meridian --json run list --capsule CAPSULE_ID
 `--server` and the installation token apply to both the dashboard and
 scriptable commands.
 
+On a team mode installation (ADR 0046) the installation token is break-glass
+only. Use a personal access token instead: mint one under **Account** in the
+web UI, save it to a file only you can read, and pass it the same way:
+
+```console
+meridian --server https://meridian.example.com --token-file ~/.config/meridian/token project list
+MERIDIAN_TOKEN_FILE=~/.config/meridian/token meridian tui
+```
+
+A read-only token can list and watch but not change anything.
+
 ## Browse, local sync, and Delivery
 
 Ready Capsules expose the supervisor's bounded workspace browser:

@@ -220,3 +220,120 @@ func TestClaimTurnsOnTeamModeOnceAndSignsMembersIn(t *testing.T) {
 		t.Fatalf("reopened mode = %v, %v", reopened.Mode(), err)
 	}
 }
+
+func TestPersonalAccessTokensActAsTheirMemberUntilExpiryOrRevocation(t *testing.T) {
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	clock := &testClock{now: time.Date(2026, 11, 14, 0, 0, 0, 0, time.UTC)}
+	party := &fakeIssuerParty{issuer: fakeIssuer}
+	identity, err := app.NewIdentity(ctx, store, clock, &testIDs{}, party)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := principal.With(ctx, principal.Owner())
+	// Single-user mode has no personal access tokens.
+	if _, err := identity.MintToken(owner, "laptop", false, 0); !errors.Is(err, domain.ErrUnsupported) {
+		t.Fatalf("single-user mint = %v", err)
+	}
+	party.as("alice")
+	if _, err := identity.Claim(owner, signIn(t, identity).ClaimToken); err != nil {
+		t.Fatal(err)
+	}
+	party.as("bob")
+	bob, _, err := identity.Session(ctx, signIn(t, identity).SessionToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bobCtx := principal.With(ctx, bob)
+
+	for _, lifetime := range []time.Duration{time.Hour, 366 * 24 * time.Hour} {
+		if _, err := identity.MintToken(bobCtx, "laptop", false, lifetime); !errors.Is(err, domain.ErrInvalid) {
+			t.Fatalf("lifetime %s = %v", lifetime, err)
+		}
+	}
+	if _, err := identity.MintToken(bobCtx, "", false, 0); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("empty name = %v", err)
+	}
+	minted, err := identity.MintToken(bobCtx, "laptop", true, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(minted.Value, app.TokenPrefix) || minted.Record.ExpiresAt.Sub(minted.Record.CreatedAt) != 90*24*time.Hour {
+		t.Fatalf("minted = %+v", minted.Record)
+	}
+	caller, readOnly, err := identity.Token(ctx, minted.Value)
+	if err != nil || caller.UserID() != bob.UserID() || !readOnly {
+		t.Fatalf("token = %+v %v %v", caller, readOnly, err)
+	}
+	if _, _, err := identity.Token(ctx, app.TokenPrefix+"forged"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("forged token = %v", err)
+	}
+	// The owner cannot see or revoke Bob's token.
+	ownerTokens, err := identity.Tokens(owner)
+	if err != nil || len(ownerTokens) != 0 {
+		t.Fatalf("owner tokens = %+v, %v", ownerTokens, err)
+	}
+	if err := identity.RevokeToken(owner, minted.Record.ID); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("owner revoked Bob's token: %v", err)
+	}
+
+	// Tokens stop at expiry.
+	short, err := identity.MintToken(bobCtx, "short", false, 24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clock.mu.Lock()
+	clock.now = clock.now.Add(25 * time.Hour)
+	clock.mu.Unlock()
+	if _, _, err := identity.Token(ctx, short.Value); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("expired token = %v", err)
+	}
+	if _, _, err := identity.Token(ctx, minted.Value); err != nil {
+		t.Fatalf("unexpired token = %v", err)
+	}
+	if err := identity.RevokeToken(bobCtx, minted.Record.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := identity.Token(ctx, minted.Value); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("revoked token = %v", err)
+	}
+
+	// A disabled member's tokens stop working.
+	live, err := identity.MintToken(bobCtx, "live", false, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := sql.Open("sqlite", store.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	if _, err := raw.Exec("UPDATE users SET disabled_at = '2026-11-15T00:00:00Z' WHERE subject = 'bob'"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := identity.Token(ctx, live.Value); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("disabled member's token = %v", err)
+	}
+
+	service := app.NewService(store, clock, &testIDs{}, &recordingQueue{})
+	page, err := service.ListAuditRecords(principal.WithSystem(ctx), 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, revoked := 0, 0
+	for _, record := range page.Items {
+		switch record.Action {
+		case domain.AuditTokenCreate:
+			created++
+		case domain.AuditTokenRevoke:
+			revoked++
+		}
+	}
+	if created != 3 || revoked != 1 {
+		t.Fatalf("token audit = %d created, %d revoked", created, revoked)
+	}
+}

@@ -20,11 +20,9 @@ differs, it is called out explicitly and must fail closed.
 ADR 0046 adds a team mode: one installation per team, with per-user identity
 and ownership. Ownership, authorization in `internal/app`, owner-bound
 credential envelopes, the audit log, OIDC sign-in, user sessions, the
-installation claim, and the break-glass restriction on the installation bearer
-are implemented. Personal access tokens, membership administration (disable,
-roles), and departed-user transfer are not yet; until they are, a team-mode
-installation is used through the web UI, and the CLI and TUI reach only what
-the break-glass bearer allows. An installation that is not claimed stays in
+installation claim, the break-glass restriction on the installation bearer,
+and personal access tokens are implemented. Membership administration
+(disable, roles) and departed-user transfer are not yet. An installation that is not claimed stays in
 single-user mode, and every statement here about a single installation
 principal describes it. "Team mode and per-user identity" below states what
 team mode must meet.
@@ -1289,7 +1287,9 @@ Threats and required controls:
   revoked. In team mode, loopback page loads get no cookie, and
   `POST /auth/browser-session` refuses the installation bearer, so a local
   process on a shared host cannot become a user.
-- **Personal access token leakage** (not yet implemented). Tokens have a fixed scannable prefix.
+- **Personal access token leakage.** Tokens have a fixed scannable prefix
+  (`mrd_pat_`). A token cannot mint another; minting needs a browser
+  session.
   They are shown once, stored as digests, expire, can be read-only, and are
   revoked when the user is disabled. They never appear in URLs, logs, or
   events.
