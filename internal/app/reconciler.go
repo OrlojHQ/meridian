@@ -99,7 +99,7 @@ func NewReconciler(
 	ids ports.IDSource,
 ) *Reconciler {
 	return &Reconciler{
-		store:      newScopedStore(store),
+		store:      newScopedStore(store, clock),
 		provider:   provider,
 		clock:      clock,
 		ids:        ids,

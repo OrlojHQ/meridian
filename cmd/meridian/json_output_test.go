@@ -70,6 +70,9 @@ func TestJSONOutputMatchesGeneratedEncoder(t *testing.T) {
 		{"project thread intent", func(c *cliConfig) error { return c.writeProjectThreadIntent(client.ProjectThreadIntent{}) }, &client.ProjectThreadIntent{}},
 		{"run page", func(c *cliConfig) error { return writeJSON(c.stdout, &client.RunPage{Items: []client.Run{{}}}) }, &client.RunPage{Items: []client.Run{{}}}},
 		{"delivery", func(c *cliConfig) error { return writeJSON(c.stdout, &client.Delivery{}) }, &client.Delivery{}},
+		{"audit page", func(c *cliConfig) error {
+			return c.writeAuditPage(client.AuditRecordPage{Items: []client.AuditRecord{{}}})
+		}, &client.AuditRecordPage{Items: []client.AuditRecord{{}}}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -15,6 +15,9 @@ import (
 )
 
 type ConnectionInput struct {
+	// signIn marks a write that completes a provider sign-in ceremony, for
+	// the audit record. Only internal/app sets it.
+	signIn                  bool
 	Name                    string                 `json:"name"`
 	Provider                string                 `json:"provider"`
 	APIKey                  string                 `json:"apiKey"`
@@ -25,6 +28,18 @@ type ConnectionInput struct {
 	CredentialKind          string                 `json:"credentialKind,omitempty"`
 	ExpectedResourceVersion domain.ResourceVersion `json:"expectedResourceVersion"`
 	Revoked                 bool                   `json:"revoked,omitempty"`
+}
+
+// auditAction is the audit action a connection write records.
+func (input ConnectionInput) auditAction() domain.AuditAction {
+	switch {
+	case input.signIn:
+		return domain.AuditConnectionSignIn
+	case input.Revoked:
+		return domain.AuditConnectionDisconnect
+	default:
+		return domain.AuditConnectionPut
+	}
 }
 
 // connectionEnvelopeID is a connection's authenticated envelope context. It
@@ -184,8 +199,12 @@ func (s *Service) PutProviderConnection(ctx context.Context, id string, input Co
 		if err := tx.PutProviderConnection(ctx, result); err != nil {
 			return err
 		}
+		if err := s.audit(ctx, tx, input.auditAction(), "provider_connection", result.ID); err != nil {
+			return err
+		}
 		return s.appendEvent(ctx, tx, "provider_connection", result.ID, "provider_connection.updated", result.ResourceVersion, nil)
 	})
+	s.auditFailure(ctx, input.auditAction(), "provider_connection", id, err)
 	if err == nil && result.Revoked {
 		s.gateway.Revoke(result.ID, "", "")
 	}
@@ -271,8 +290,12 @@ func (s *Service) GrantProviderConnection(ctx context.Context, project domain.Pr
 		if err := tx.GrantProviderConnection(ctx, project, harness, connection); err != nil {
 			return err
 		}
+		if err := s.audit(ctx, tx, domain.AuditProjectConnectionGrant, "project", string(project)); err != nil {
+			return err
+		}
 		return s.appendEvent(ctx, tx, "project", string(project), "provider_connection.grant_changed", 1, nil)
 	})
+	s.auditFailure(ctx, domain.AuditProjectConnectionGrant, "project", string(project), err)
 	if err == nil && s.gateway != nil {
 		s.gateway.Revoke("", string(project), harness)
 	}
@@ -416,8 +439,12 @@ func (s *Service) putChatGPTConnection(ctx context.Context, id, name string, inp
 		if err := tx.PutProviderConnection(ctx, result); err != nil {
 			return err
 		}
+		if err := s.audit(ctx, tx, input.auditAction(), "provider_connection", result.ID); err != nil {
+			return err
+		}
 		return s.appendEvent(ctx, tx, "provider_connection", result.ID, "provider_connection.updated", result.ResourceVersion, nil)
 	})
+	s.auditFailure(ctx, input.auditAction(), "provider_connection", id, err)
 	if err != nil || !input.Revoked || unchanged {
 		return result, err
 	}

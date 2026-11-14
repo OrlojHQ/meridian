@@ -282,8 +282,12 @@ func (s *Service) ApproveDelivery(
 			return err
 		}
 		current = fresh
+		if err := s.audit(ctx, tx, domain.AuditDeliveryApprove, "delivery", string(current.ID)); err != nil {
+			return err
+		}
 		return putReplay(ctx, tx, scope, input.IdempotencyKey, current, now)
 	})
+	s.auditFailure(ctx, domain.AuditDeliveryApprove, "delivery", string(id), err)
 	if err != nil {
 		return domain.Delivery{}, err
 	}
@@ -347,8 +351,12 @@ func (s *Service) RejectDelivery(
 			return err
 		}
 		result = current
+		if err := s.audit(ctx, tx, domain.AuditDeliveryReject, "delivery", string(current.ID)); err != nil {
+			return err
+		}
 		return putReplay(ctx, tx, scope, idempotencyKey, current, now)
 	})
+	s.auditFailure(ctx, domain.AuditDeliveryReject, "delivery", string(id), err)
 	return result, err
 }
 
