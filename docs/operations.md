@@ -568,6 +568,29 @@ Project removes that Project's Moments first, so their unreferenced blobs are
 deleted with it; a blob still referenced by another Project's Moment stays.
 Meridian does not currently age out Moments automatically.
 
+## Audit records
+
+`meridiand` keeps an append-only audit log (ADR 0046). Each record names the
+acting principal, the action, the object id, and whether it was allowed,
+denied, or failed. Records never hold secret values, prompts, transcript text,
+diffs, or file contents. Recorded actions are secret writes and deletes,
+provider connection writes, sign-ins, and disconnects, Project grants of
+secrets and connections, Delivery creation, approval, and rejection, spawn
+approvals and denials, Coordination Grant changes, and every refused attempt to
+reach another owner's object.
+
+```console
+meridian audit
+meridian --json audit --after 120 --limit 200
+```
+
+An admin sees every record; a member sees their own. In single-user mode the
+only user is the admin. Nothing in the API edits or deletes a record. By
+default every record is kept; `--audit-retention=2160h` deletes records older
+than 90 days, checked hourly. The log is not tamper-evident: anyone who can
+write the database can change it. Ship records to an external log if you need
+that.
+
 ## Deterministic smoke and uninstall
 
 Run the release smoke on a trusted development host with Docker:

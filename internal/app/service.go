@@ -186,7 +186,7 @@ func NewService(
 	runtime ...ports.CapsuleRuntime,
 ) *Service {
 	service := &Service{
-		store: newScopedStore(store), clock: clock, ids: ids, queue: queue,
+		store: newScopedStore(store, clock), clock: clock, ids: ids, queue: queue,
 		attention: make(map[domain.ThreadID]cachedThreadAttention),
 		models:    make(map[domain.ThreadID]ThreadModelSummary),
 	}
@@ -317,9 +317,29 @@ func (s *Service) CreateProjectConfigured(
 		if err := s.appendEvent(ctx, tx, "project", string(result.ID), "project.created", 1, nil); err != nil {
 			return err
 		}
+		// A Project's secret names are its grant of those secrets, set
+		// only at creation.
+		if len(projectSecretNames(result)) > 0 {
+			if err := s.audit(ctx, tx, domain.AuditProjectSecretsGrant, "project", string(result.ID)); err != nil {
+				return err
+			}
+		}
 		return putReplay(ctx, tx, scope, idempotencyKey, result, now)
 	})
 	return result, err
+}
+
+// projectSecretNames are the secrets a Project names, which it may use.
+func projectSecretNames(project domain.Project) []string {
+	var names []string
+	for _, name := range append([]string{
+		project.GitSecretName, project.GitPushSecretName, project.GitHubAPISecretName,
+	}, project.HarnessSecretNames...) {
+		if name != "" {
+			names = append(names, name)
+		}
+	}
+	return names
 }
 
 func validateProjectConfiguration(config ProjectConfiguration) error {

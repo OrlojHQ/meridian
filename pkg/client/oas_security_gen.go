@@ -65,6 +65,7 @@ var operationRolesBearerAuth = map[string][]string{
 	GrantProjectProviderConnectionOperation: []string{},
 	ImportHarnessSetupOperation:             []string{},
 	InspectCapsuleDeliveryOperation:         []string{},
+	ListAuditRecordsOperation:               []string{},
 	ListCapsuleDeliveriesOperation:          []string{},
 	ListCapsuleFilesOperation:               []string{},
 	ListCapsulePreviewPortsOperation:        []string{},

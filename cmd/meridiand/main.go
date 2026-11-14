@@ -120,6 +120,12 @@ func newRootCommand() *cobra.Command {
 		5*time.Second,
 		"refresh live Run state and structured Thread output while unwatched (0 disables)",
 	)
+	command.Flags().DurationVar(
+		&config.AuditRetention,
+		"audit-retention",
+		0,
+		"delete audit records older than this (0 keeps every record)",
+	)
 	command.Flags().IntVar(
 		&config.MaxLiveCapsules,
 		"max-live-capsules",

@@ -557,6 +557,37 @@ paths:
           $ref: "#/components/responses/TooManyRequests"
         default:
           $ref: "#/components/responses/DefaultError"
+  /audit-records:
+    get:
+      operationId: listAuditRecords
+      summary: List append-only audit records after a stable cursor
+      description: >-
+        Records name the acting principal, the action, the object id, and the
+        result. They never hold secret values, prompts, transcript text,
+        diffs, or file contents. A member reads their own records; an admin
+        reads every record. Records cannot be edited or deleted through the
+        API.
+      tags: [audit]
+      parameters:
+        - $ref: "#/components/parameters/After"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 50
+      responses:
+        "200":
+          description: Audit records, oldest first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditRecordPage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        default:
+          $ref: "#/components/responses/DefaultError"
   /secrets:
     get:
       operationId: listSecrets
@@ -3216,6 +3247,56 @@ components:
           type: object
           additionalProperties: true
           description: Bounded structured metadata; never prompt text, PTY bytes, full diffs, setup output, or secrets.
+    AuditRecord:
+      type: object
+      required: [sequence, recordedAt, principal, action, objectType, objectId, result]
+      properties:
+        sequence:
+          type: integer
+          format: int64
+          minimum: 1
+        recordedAt:
+          type: string
+          format: date-time
+        principal:
+          type: string
+          enum: [user, break_glass, system, capsule]
+        userId:
+          type: string
+          description: The acting user, or the owner a Capsule acted for. Absent for the system and break-glass principals.
+        capsuleId:
+          type: string
+          description: The acting Capsule, for a Capsule principal.
+        action:
+          type: string
+          maxLength: 64
+          description: >-
+            A fixed action name, such as secret.put, provider_connection.sign_in,
+            delivery.approve, coordination_request.approve, coordination_grant.revoke,
+            or access.cross_owner.
+        objectType:
+          type: string
+          maxLength: 64
+        objectId:
+          type: string
+          maxLength: 256
+        result:
+          type: string
+          enum: [allowed, denied, failed]
+    AuditRecordPage:
+      type: object
+      required: [items, nextCursor, more]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditRecord"
+        nextCursor:
+          type: integer
+          format: int64
+          minimum: 0
+        more:
+          type: boolean
     RunEventPage:
       type: object
       required: [items, nextCursor, more]
@@ -4527,6 +4608,8 @@ components:
 tags:
   - name: probes
     description: Process health and readiness.
+  - name: audit
+    description: Append-only, content-free audit records.
   - name: capabilities
     description: Effective provider-backed UI features.
   - name: secrets

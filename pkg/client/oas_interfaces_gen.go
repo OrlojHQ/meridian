@@ -157,6 +157,10 @@ type InspectCapsuleDeliveryRes interface {
 	inspectCapsuleDeliveryRes()
 }
 
+type ListAuditRecordsRes interface {
+	listAuditRecordsRes()
+}
+
 type ListCapsuleDeliveriesRes interface {
 	listCapsuleDeliveriesRes()
 }

@@ -57,6 +57,7 @@ const (
 	GrantProjectProviderConnectionOperation OperationName = "GrantProjectProviderConnection"
 	ImportHarnessSetupOperation             OperationName = "ImportHarnessSetup"
 	InspectCapsuleDeliveryOperation         OperationName = "InspectCapsuleDelivery"
+	ListAuditRecordsOperation               OperationName = "ListAuditRecords"
 	ListCapsuleDeliveriesOperation          OperationName = "ListCapsuleDeliveries"
 	ListCapsuleFilesOperation               OperationName = "ListCapsuleFiles"
 	ListCapsulePreviewPortsOperation        OperationName = "ListCapsulePreviewPorts"

@@ -318,6 +318,7 @@ func (s *Service) saveClaudeCredential(ctx context.Context, connectionID string,
 	return s.PutProviderConnection(ctx, id, ConnectionInput{
 		Name: name, Provider: providergateway.Anthropic, APIKey: string(payload),
 		CredentialKind: providergateway.CredentialOAuth, ExpectedResourceVersion: version,
+		signIn: true,
 	})
 }
 

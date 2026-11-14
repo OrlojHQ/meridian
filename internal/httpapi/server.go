@@ -192,6 +192,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /coordination-requests", s.listCoordinationRequests)
 	s.mux.HandleFunc("POST /coordination-requests/{requestId}/approve", s.approveCoordinationRequest)
 	s.mux.HandleFunc("POST /coordination-requests/{requestId}/deny", s.denyCoordinationRequest)
+	s.mux.HandleFunc("GET /audit-records", s.listAuditRecords)
 	s.mux.HandleFunc("PUT /secrets/{secretName}", s.putSecret)
 	s.mux.HandleFunc("GET /secrets", s.listSecrets)
 	s.mux.HandleFunc("DELETE /secrets/{secretName}", s.deleteSecret)

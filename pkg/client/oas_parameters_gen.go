@@ -253,6 +253,12 @@ type InspectCapsuleDeliveryParams struct {
 	CapsuleId string
 }
 
+// ListAuditRecordsParams is parameters of listAuditRecords operation.
+type ListAuditRecordsParams struct {
+	After OptInt64 `json:",omitempty,omitzero"`
+	Limit OptInt   `json:",omitempty,omitzero"`
+}
+
 // ListCapsuleDeliveriesParams is parameters of listCapsuleDeliveries operation.
 type ListCapsuleDeliveriesParams struct {
 	CapsuleId string

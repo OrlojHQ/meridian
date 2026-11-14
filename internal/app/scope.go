@@ -69,18 +69,24 @@ func (scope ownerScope) keyOwner() domain.UserID {
 // owner equals its parent's. The reader and transaction below implement
 // every port method explicitly, so a new store method does not compile
 // until it is given a check.
+//
+// An id-addressed read or write of a row another owner owns is a denied
+// cross-owner access. It is answered as not found and, once the call
+// returns, written to the audit log (ADR 0046). Rows a list leaves out are
+// not denials: nobody named them.
 type scopedStore struct {
 	inner ports.Store
+	clock ports.Clock
 }
 
-func newScopedStore(inner ports.Store) ports.Store {
+func newScopedStore(inner ports.Store, clock ports.Clock) ports.Store {
 	if inner == nil {
 		return nil
 	}
 	if _, ok := inner.(scopedStore); ok {
 		return inner
 	}
-	return scopedStore{inner: inner}
+	return scopedStore{inner: inner, clock: clock}
 }
 
 // idempotencyOwner keys a call's replays: one user's key never replays or
@@ -98,12 +104,16 @@ func (s scopedStore) View(ctx context.Context, fn func(ports.Reader) error) erro
 	if err != nil {
 		return err
 	}
-	return s.inner.View(ctx, func(reader ports.Reader) error {
+	var scoped *scopedReader
+	err = s.inner.View(ctx, func(reader ports.Reader) error {
 		if scope.all {
 			return fn(reader)
 		}
-		return fn(newScopedReader(scope, reader))
+		scoped = newScopedReader(scope, reader)
+		return fn(scoped)
 	})
+	s.recordDenials(ctx, scoped)
+	return err
 }
 
 func (s scopedStore) Transact(ctx context.Context, fn func(ports.Transaction) error) error {
@@ -111,11 +121,37 @@ func (s scopedStore) Transact(ctx context.Context, fn func(ports.Transaction) er
 	if err != nil {
 		return err
 	}
-	return s.inner.Transact(ctx, func(tx ports.Transaction) error {
+	var scoped *scopedReader
+	err = s.inner.Transact(ctx, func(tx ports.Transaction) error {
 		if scope.all {
 			return fn(tx)
 		}
-		return fn(&scopedTx{scopedReader: newScopedReader(scope, tx), tx: tx})
+		scoped = newScopedReader(scope, tx)
+		return fn(&scopedTx{scopedReader: scoped, tx: tx})
+	})
+	s.recordDenials(ctx, scoped)
+	return err
+}
+
+// recordDenials writes the call's denied cross-owner accesses in their own
+// transaction, so a refused call that rolled back still leaves its record.
+// Recording is best effort: a failure here never changes the call's answer.
+func (s scopedStore) recordDenials(ctx context.Context, scoped *scopedReader) {
+	if scoped == nil || len(scoped.denials) == 0 || s.clock == nil {
+		return
+	}
+	_ = s.inner.Transact(context.WithoutCancel(ctx), func(tx ports.Transaction) error {
+		for _, denied := range scoped.denials {
+			record, ok := auditRecordFor(ctx, s.clock.Now(), domain.AuditCrossOwnerAccess,
+				denied.objectType, denied.id, domain.AuditDenied)
+			if !ok {
+				continue
+			}
+			if err := tx.AppendAuditRecord(ctx, record); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 }
 
@@ -124,41 +160,75 @@ func (s scopedStore) Close() error { return s.inner.Close() }
 type scopedReader struct {
 	scope    ownerScope
 	inner    ports.Reader
-	projects map[domain.ProjectID]error
-	capsules map[domain.CapsuleID]error
+	projects map[domain.ProjectID]ownerLookup
+	capsules map[domain.CapsuleID]ownerLookup
+	// quiet is set while a list filters its rows; denials holds the
+	// id-addressed refusals to audit.
+	quiet   int
+	denials []denial
+}
+
+type ownerLookup struct {
+	owner domain.UserID
+	err   error
+}
+
+type denial struct {
+	objectType string
+	id         string
 }
 
 func newScopedReader(scope ownerScope, inner ports.Reader) *scopedReader {
 	return &scopedReader{
 		scope: scope, inner: inner,
-		projects: map[domain.ProjectID]error{}, capsules: map[domain.CapsuleID]error{},
+		projects: map[domain.ProjectID]ownerLookup{}, capsules: map[domain.CapsuleID]ownerLookup{},
 	}
 }
 
-// project and capsule cache their answer for the call: owners never change,
-// and a row deleted during the call fails at its own write.
-func (r *scopedReader) project(ctx context.Context, id domain.ProjectID) error {
-	if err, ok := r.projects[id]; ok {
+// owned checks that the scope may see a row owner owns. A refusal outside
+// a list is a denied cross-owner access and is recorded once per row.
+func (r *scopedReader) owned(objectType, id string, owner domain.UserID) error {
+	if err := r.scope.check(owner); err != nil {
+		if r.quiet == 0 {
+			seen := false
+			for _, item := range r.denials {
+				seen = seen || (item.objectType == objectType && item.id == id)
+			}
+			if !seen && len(r.denials) < 64 {
+				r.denials = append(r.denials, denial{objectType: objectType, id: id})
+			}
+		}
 		return err
 	}
-	project, err := r.inner.GetProject(ctx, id)
-	if err == nil {
-		err = r.scope.check(project.OwnerUserID)
+	return nil
+}
+
+// project and capsule cache the row's owner for the call: owners never
+// change, and a row deleted during the call fails at its own write.
+func (r *scopedReader) project(ctx context.Context, id domain.ProjectID) error {
+	lookup, ok := r.projects[id]
+	if !ok {
+		project, err := r.inner.GetProject(ctx, id)
+		lookup = ownerLookup{owner: project.OwnerUserID, err: err}
+		r.projects[id] = lookup
 	}
-	r.projects[id] = err
-	return err
+	if lookup.err != nil {
+		return lookup.err
+	}
+	return r.owned("project", string(id), lookup.owner)
 }
 
 func (r *scopedReader) capsule(ctx context.Context, id domain.CapsuleID) error {
-	if err, ok := r.capsules[id]; ok {
-		return err
+	lookup, ok := r.capsules[id]
+	if !ok {
+		capsule, err := r.inner.GetCapsule(ctx, id)
+		lookup = ownerLookup{owner: capsule.OwnerUserID, err: err}
+		r.capsules[id] = lookup
 	}
-	capsule, err := r.inner.GetCapsule(ctx, id)
-	if err == nil {
-		err = r.scope.check(capsule.OwnerUserID)
+	if lookup.err != nil {
+		return lookup.err
 	}
-	r.capsules[id] = err
-	return err
+	return r.owned("capsule", string(id), lookup.owner)
 }
 
 func (r *scopedReader) thread(ctx context.Context, id domain.ThreadID) error {
@@ -200,7 +270,7 @@ func (r *scopedReader) setup(ctx context.Context, id string) error {
 	}
 	for _, setup := range setups {
 		if setup.ID == id {
-			return r.scope.check(setup.OwnerUserID)
+			return r.owned("harness_setup", id, setup.OwnerUserID)
 		}
 	}
 	return domain.ErrNotFound
@@ -211,7 +281,7 @@ func (r *scopedReader) connection(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	return r.scope.check(connection.OwnerUserID)
+	return r.owned("provider_connection", id, connection.OwnerUserID)
 }
 
 // keyOwner refuses an owner-keyed lookup for anyone but the scope's owner.
@@ -223,8 +293,11 @@ func (r *scopedReader) keyOwner(owner domain.UserID) error {
 }
 
 // filter keeps the items whose parent check passes. A missing parent drops
-// the item, as a row of another owner would be.
-func filter[T any](items []T, allowed func(T) error) ([]T, error) {
+// the item, as a row of another owner would be. Dropped rows are not
+// denials.
+func filter[T any](r *scopedReader, items []T, allowed func(T) error) ([]T, error) {
+	r.quiet++
+	defer func() { r.quiet-- }()
 	kept := items[:0]
 	for _, item := range items {
 		switch err := allowed(item); {
@@ -282,7 +355,7 @@ func (r *scopedReader) ListProviderConnections(ctx context.Context) ([]domain.Pr
 	if err != nil {
 		return nil, err
 	}
-	return filter(items, func(item domain.ProviderConnection) error { return r.scope.check(item.OwnerUserID) })
+	return filter(r, items, func(item domain.ProviderConnection) error { return r.scope.check(item.OwnerUserID) })
 }
 
 func (r *scopedReader) GetProviderConnection(ctx context.Context, id string) (domain.ProviderConnection, error) {
@@ -290,7 +363,7 @@ func (r *scopedReader) GetProviderConnection(ctx context.Context, id string) (do
 	if err != nil {
 		return domain.ProviderConnection{}, err
 	}
-	if err := r.scope.check(item.OwnerUserID); err != nil {
+	if err := r.owned("provider_connection", id, item.OwnerUserID); err != nil {
 		return domain.ProviderConnection{}, err
 	}
 	return item, nil
@@ -308,7 +381,7 @@ func (r *scopedReader) ListHarnessSetups(ctx context.Context) ([]domain.HarnessS
 	if err != nil {
 		return nil, err
 	}
-	return filter(items, func(item domain.HarnessSetup) error { return r.scope.check(item.OwnerUserID) })
+	return filter(r, items, func(item domain.HarnessSetup) error { return r.scope.check(item.OwnerUserID) })
 }
 
 func (r *scopedReader) GetHarnessSetupRevision(ctx context.Context, id string) (domain.HarnessSetupRevision, error) {
@@ -337,7 +410,7 @@ func (r *scopedReader) GetPinnedHarnessSetup(ctx context.Context, id domain.Caps
 }
 
 func (r *scopedReader) ListPinnedHarnessSetups(ctx context.Context, ids []domain.CapsuleID) (map[domain.CapsuleID][]domain.PinnedHarnessSetup, error) {
-	allowed, err := filter(append([]domain.CapsuleID(nil), ids...), func(id domain.CapsuleID) error { return r.capsule(ctx, id) })
+	allowed, err := filter(r, append([]domain.CapsuleID(nil), ids...), func(id domain.CapsuleID) error { return r.capsule(ctx, id) })
 	if err != nil {
 		return nil, err
 	}
@@ -363,7 +436,7 @@ func (r *scopedReader) ListProjectsInDeletion(ctx context.Context) ([]domain.Pro
 	if err != nil {
 		return nil, err
 	}
-	return filter(items, func(item domain.Project) error { return r.scope.check(item.OwnerUserID) })
+	return filter(r, items, func(item domain.Project) error { return r.scope.check(item.OwnerUserID) })
 }
 
 // ArtifactReferenced asks whether any Moment still names a content-addressed
@@ -412,7 +485,7 @@ func (r *scopedReader) ListIdleCapsules(ctx context.Context, before time.Time, l
 	if err != nil {
 		return nil, err
 	}
-	return filter(items, func(item domain.Capsule) error { return r.scope.check(item.OwnerUserID) })
+	return filter(r, items, func(item domain.Capsule) error { return r.scope.check(item.OwnerUserID) })
 }
 
 func (r *scopedReader) ListRecoverableCapsules(ctx context.Context) ([]domain.Capsule, error) {
@@ -420,7 +493,7 @@ func (r *scopedReader) ListRecoverableCapsules(ctx context.Context) ([]domain.Ca
 	if err != nil {
 		return nil, err
 	}
-	return filter(items, func(item domain.Capsule) error { return r.scope.check(item.OwnerUserID) })
+	return filter(r, items, func(item domain.Capsule) error { return r.scope.check(item.OwnerUserID) })
 }
 
 func (r *scopedReader) GetRun(ctx context.Context, id domain.RunID) (domain.Run, error) {
@@ -453,7 +526,7 @@ func (r *scopedReader) ListRecoverableRuns(ctx context.Context) ([]domain.Run, e
 	if err != nil {
 		return nil, err
 	}
-	return filter(items, func(item domain.Run) error { return r.capsule(ctx, item.CapsuleID) })
+	return filter(r, items, func(item domain.Run) error { return r.capsule(ctx, item.CapsuleID) })
 }
 
 func (r *scopedReader) ListRunEvents(ctx context.Context, id domain.RunID, after int64, limit int) ([]domain.Event, bool, error) {
@@ -495,7 +568,7 @@ func (r *scopedReader) ListTimelineAncestry(ctx context.Context, id domain.Timel
 	if err != nil {
 		return nil, err
 	}
-	return filter(items, func(item domain.Timeline) error { return r.project(ctx, item.ProjectID) })
+	return filter(r, items, func(item domain.Timeline) error { return r.project(ctx, item.ProjectID) })
 }
 
 func (r *scopedReader) GetMoment(ctx context.Context, id domain.MomentID) (domain.Moment, error) {
@@ -567,7 +640,7 @@ func (r *scopedReader) ListRecoverableThreads(ctx context.Context) ([]domain.Thr
 	if err != nil {
 		return nil, err
 	}
-	return filter(items, func(item domain.Thread) error { return r.capsule(ctx, item.CapsuleID) })
+	return filter(r, items, func(item domain.Thread) error { return r.capsule(ctx, item.CapsuleID) })
 }
 
 func (r *scopedReader) ListThreadMessages(ctx context.Context, id domain.ThreadID, after int64, limit int) ([]domain.ThreadMessage, bool, error) {
@@ -618,7 +691,7 @@ func (r *scopedReader) ListProvisioningProjectThreadIntents(ctx context.Context)
 	if err != nil {
 		return nil, err
 	}
-	return filter(items, func(item domain.ProjectThreadIntent) error { return r.project(ctx, item.ProjectID) })
+	return filter(r, items, func(item domain.ProjectThreadIntent) error { return r.project(ctx, item.ProjectID) })
 }
 
 func (r *scopedReader) GetDelivery(ctx context.Context, id domain.DeliveryID) (domain.Delivery, error) {
@@ -651,7 +724,7 @@ func (r *scopedReader) ListRecoverableDeliveries(ctx context.Context) ([]domain.
 	if err != nil {
 		return nil, err
 	}
-	return filter(items, func(item domain.Delivery) error { return r.capsule(ctx, item.CapsuleID) })
+	return filter(r, items, func(item domain.Delivery) error { return r.capsule(ctx, item.CapsuleID) })
 }
 
 func (r *scopedReader) GetCoordinationGrant(ctx context.Context, id domain.CoordinationGrantID) (domain.CoordinationGrant, error) {
@@ -692,7 +765,7 @@ func (r *scopedReader) ListActiveCoordinationGrants(ctx context.Context, stopped
 	if err != nil {
 		return nil, err
 	}
-	return filter(items, func(item domain.CoordinationGrant) error { return r.project(ctx, item.ProjectID) })
+	return filter(r, items, func(item domain.CoordinationGrant) error { return r.project(ctx, item.ProjectID) })
 }
 
 func (r *scopedReader) GetThreadLink(ctx context.Context, id domain.ThreadLinkID) (domain.ThreadLink, error) {
@@ -736,7 +809,7 @@ func (r *scopedReader) ListArchivableThreadLinks(ctx context.Context, now time.T
 	if err != nil {
 		return nil, err
 	}
-	return filter(items, func(item domain.ThreadLink) error { return r.grant(ctx, item.GrantID) })
+	return filter(r, items, func(item domain.ThreadLink) error { return r.grant(ctx, item.GrantID) })
 }
 
 func (r *scopedReader) ListArchivedLiveThreadLinks(ctx context.Context, limit int) ([]domain.ThreadLink, error) {
@@ -744,7 +817,7 @@ func (r *scopedReader) ListArchivedLiveThreadLinks(ctx context.Context, limit in
 	if err != nil {
 		return nil, err
 	}
-	return filter(items, func(item domain.ThreadLink) error { return r.grant(ctx, item.GrantID) })
+	return filter(r, items, func(item domain.ThreadLink) error { return r.grant(ctx, item.GrantID) })
 }
 
 func (r *scopedReader) GetCoordinationRequest(ctx context.Context, id domain.CapsuleID, key string) (domain.CoordinationRequest, error) {
@@ -770,7 +843,29 @@ func (r *scopedReader) ListCoordinationRequests(ctx context.Context, state domai
 	if err != nil {
 		return nil, err
 	}
-	return filter(items, func(item domain.CoordinationRequest) error { return r.grant(ctx, item.GrantID) })
+	return filter(r, items, func(item domain.CoordinationRequest) error { return r.grant(ctx, item.GrantID) })
+}
+
+// GetUser reads only the caller's own membership row.
+func (r *scopedReader) GetUser(ctx context.Context, id domain.UserID) (domain.User, error) {
+	if err := r.keyOwner(id); err != nil {
+		return domain.User{}, err
+	}
+	return r.inner.GetUser(ctx, id)
+}
+
+// ListAuditRecords lists the caller's own records. Listing every user's
+// records needs the admin role (ADR 0046).
+func (r *scopedReader) ListAuditRecords(ctx context.Context, user domain.UserID, after int64, limit int) ([]domain.AuditRecord, bool, error) {
+	if user == "" {
+		member, err := r.inner.GetUser(ctx, r.scope.owner)
+		if err != nil || member.Role != domain.UserAdmin || !member.DisabledAt.IsZero() {
+			return nil, false, domain.ErrNotFound
+		}
+	} else if err := r.keyOwner(user); err != nil {
+		return nil, false, err
+	}
+	return r.inner.ListAuditRecords(ctx, user, after, limit)
 }
 
 // scopedTx checks each write against the same scope. A root row must be
@@ -1130,4 +1225,15 @@ func (t *scopedTx) UpdateCoordinationRequest(ctx context.Context, item domain.Co
 		return err
 	}
 	return t.tx.UpdateCoordinationRequest(ctx, item, expected)
+}
+
+// AppendAuditRecord appends a record internal/app built from the caller's
+// own principal.
+func (t *scopedTx) AppendAuditRecord(ctx context.Context, record domain.AuditRecord) error {
+	return t.tx.AppendAuditRecord(ctx, record)
+}
+
+// PruneAuditRecords is retention, daemon-internal work only.
+func (t *scopedTx) PruneAuditRecords(context.Context, time.Time) (int, error) {
+	return 0, domain.ErrNotFound
 }

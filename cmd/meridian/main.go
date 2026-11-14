@@ -56,6 +56,7 @@ func newRootCommand() *cobra.Command {
 		newMomentCommand(config), newTimelineCommand(config), newShardCommand(config),
 		newRewindCommand(config), newSealCommand(config), newTUICommand(config),
 		newAdminCommand(config), newGrantCommand(config), newApprovalsCommand(config), newBoardCommand(config),
+		newAuditCommand(config),
 	)
 	return command
 }

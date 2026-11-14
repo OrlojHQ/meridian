@@ -191,8 +191,12 @@ func (s *Service) CreateDelivery(
 			"delivery.queued", result.ResourceVersion, nil); err != nil {
 			return err
 		}
+		if err := s.audit(ctx, tx, domain.AuditDeliveryCreate, "delivery", string(result.ID)); err != nil {
+			return err
+		}
 		return putReplay(ctx, tx, scope, input.IdempotencyKey, result, now)
 	})
+	s.auditFailure(ctx, domain.AuditDeliveryCreate, "capsule", string(input.CapsuleID), err)
 	if err != nil {
 		return domain.Delivery{}, err
 	}

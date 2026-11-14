@@ -469,8 +469,12 @@ func (s *Service) saveChatGPT(ctx context.Context, connectionID string, set chat
 		if err := tx.PutProviderConnection(ctx, result); err != nil {
 			return err
 		}
+		if err := s.audit(ctx, tx, domain.AuditConnectionSignIn, "provider_connection", result.ID); err != nil {
+			return err
+		}
 		return s.appendEvent(ctx, tx, "provider_connection", result.ID, "provider_connection.updated", result.ResourceVersion, nil)
 	})
+	s.auditFailure(ctx, domain.AuditConnectionSignIn, "provider_connection", connectionID, err)
 	return result, err
 }
 

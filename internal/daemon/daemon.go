@@ -57,6 +57,10 @@ type Config struct {
 	AgentSandbox      agentsandboxprovider.Config
 	Observability     observability.Config
 
+	// AuditRetention deletes audit records older than this; zero keeps
+	// every record (ADR 0046).
+	AuditRetention time.Duration
+
 	// ProviderGatewayAllowPrivateHTTP lets custom provider connections opt in
 	// to plaintext HTTP upstreams on private-network addresses.
 	ProviderGatewayAllowPrivateHTTP bool
@@ -579,6 +583,29 @@ func run(ctx context.Context, config Config) error {
 		defer func() {
 			stopRefresh()
 			<-refreshDone
+		}()
+	}
+	if config.AuditRetention > 0 {
+		auditCtx, stopAudit := context.WithCancel(systemCtx)
+		auditDone := make(chan struct{})
+		go func() {
+			defer close(auditDone)
+			ticker := time.NewTicker(time.Hour)
+			defer ticker.Stop()
+			for {
+				if _, err := service.PruneAuditRecords(auditCtx, config.AuditRetention); err != nil && auditCtx.Err() == nil {
+					config.Logger.Printf("audit retention sweep failed: %v", err)
+				}
+				select {
+				case <-auditCtx.Done():
+					return
+				case <-ticker.C:
+				}
+			}
+		}()
+		defer func() {
+			stopAudit()
+			<-auditDone
 		}()
 	}
 	if service.CoordinationSupported() {

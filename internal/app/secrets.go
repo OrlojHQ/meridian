@@ -137,8 +137,12 @@ func (s *Service) PutSecret(
 			result.ResourceVersion, nil); err != nil {
 			return err
 		}
+		if err := s.audit(ctx, tx, domain.AuditSecretPut, "secret", name); err != nil {
+			return err
+		}
 		return putReplay(ctx, tx, scope, idempotencyKey, result, now)
 	})
+	s.auditFailure(ctx, domain.AuditSecretPut, "secret", name, err)
 	return result, err
 }
 
@@ -212,8 +216,12 @@ func (s *Service) DeleteSecret(
 		// The row is deleted: ciphertext, nonce, and envelope metadata are
 		// removed. Audit/event data remains content-free.
 		result.Nonce, result.Ciphertext = nil, nil
+		if err := s.audit(ctx, tx, domain.AuditSecretDelete, "secret", name); err != nil {
+			return err
+		}
 		return putReplay(ctx, tx, scope, idempotencyKey, result, s.clock.Now().UTC())
 	})
+	s.auditFailure(ctx, domain.AuditSecretDelete, "secret", name, err)
 	return result, err
 }
 
