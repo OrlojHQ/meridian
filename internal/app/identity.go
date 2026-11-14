@@ -56,6 +56,7 @@ type Identity struct {
 	mu       sync.Mutex
 	attempts map[string]signInAttempt
 	claims   map[[32]byte]pendingClaim
+	disabled []MemberDisabled
 }
 
 type signInAttempt struct {

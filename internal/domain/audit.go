@@ -112,6 +112,10 @@ type PersonalAccessToken struct {
 }
 
 const (
+	AuditMemberDisable     AuditAction = "user.disable"
+	AuditMemberEnable      AuditAction = "user.enable"
+	AuditMemberRole        AuditAction = "user.role"
+	AuditMemberRevoke      AuditAction = "user.revoke_credentials"
 	AuditTokenCreate       AuditAction = "token.create"
 	AuditTokenRevoke       AuditAction = "token.revoke"
 	AuditSignIn            AuditAction = "auth.sign_in"

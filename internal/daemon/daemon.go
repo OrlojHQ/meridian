@@ -515,6 +515,13 @@ func run(ctx context.Context, config Config) error {
 		config.Logger.Printf("team mode is on but no OIDC issuer is configured; only break-glass administration is possible")
 	}
 	api.SetIdentity(identity)
+	// A disabled member's Capsules lose model traffic at once: every gateway
+	// lease from their connections ends (ADR 0046).
+	identity.OnMemberDisabled(func(ctx context.Context, user domain.UserID) {
+		if err := service.RevokeOwnerLeases(principal.WithSystem(ctx), user); err != nil {
+			config.Logger.Printf("revoke a disabled member's gateway leases: %v", err)
+		}
+	})
 	api.ConfigureObservability(metrics)
 	handler.set(api)
 	previewHandler.set(api.PreviewHandler())

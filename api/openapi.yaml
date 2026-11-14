@@ -2580,6 +2580,134 @@ paths:
           $ref: "#/components/responses/NotFound"
         default:
           $ref: "#/components/responses/DefaultError"
+  /users:
+    get:
+      operationId: listMembers
+      summary: List the installation's members
+      description: >-
+        Team mode, for an admin or the break-glass installation token. Admins
+        manage membership; they cannot read or change another member's
+        objects.
+      tags: [members]
+      responses:
+        "200":
+          description: Members
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /users/{userId}/disable:
+    post:
+      operationId: disableMember
+      summary: Disable a member, revoking their sessions, tokens, tickets, and gateway leases
+      tags: [members]
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            maxLength: 128
+      responses:
+        "204":
+          description: Done
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /users/{userId}/enable:
+    post:
+      operationId: enableMember
+      summary: Re-enable a member; their old sessions and tokens stay revoked
+      tags: [members]
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            maxLength: 128
+      responses:
+        "204":
+          description: Done
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /users/{userId}/revoke-credentials:
+    post:
+      operationId: revokeMemberCredentials
+      summary: Revoke every session and token of a member
+      tags: [members]
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            maxLength: 128
+      responses:
+        "204":
+          description: Done
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /users/{userId}/role:
+    put:
+      operationId: setMemberRole
+      summary: Grant or remove the admin role
+      tags: [members]
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            maxLength: 128
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [role]
+              properties:
+                role:
+                  type: string
+                  enum: [member, admin]
+      responses:
+        "204":
+          description: Role set
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/DefaultError"
   /auth/browser-session:
     post:
       operationId: createBrowserSession
@@ -3581,6 +3709,32 @@ components:
             token:
               type: string
               description: The token value, shown once. Pass it to the CLI with --token-file.
+    MemberAdmin:
+      type: object
+      required: [id, role, disabled, createdAt]
+      properties:
+        id:
+          type: string
+        role:
+          type: string
+          enum: [member, admin]
+        displayName:
+          type: string
+        email:
+          type: string
+        disabled:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+    MemberPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MemberAdmin"
     AuditRecord:
       type: object
       required: [sequence, recordedAt, principal, action, objectType, objectId, result]
@@ -4944,6 +5098,8 @@ tags:
     description: Process health and readiness.
   - name: audit
     description: Append-only, content-free audit records.
+  - name: members
+    description: Team mode membership administration.
   - name: capabilities
     description: Effective provider-backed UI features.
   - name: secrets

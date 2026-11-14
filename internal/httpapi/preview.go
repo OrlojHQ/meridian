@@ -116,6 +116,18 @@ func (r *previewTicketRegistry) authorize(
 	return *entry, ""
 }
 
+// revokeUser revokes every preview ticket a member minted.
+func (r *previewTicketRegistry) revokeUser(user domain.UserID) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, ticket := range r.entries {
+		if ticket.Principal.UserID() == user && !ticket.IsRevoked {
+			ticket.IsRevoked = true
+			close(ticket.Revoked)
+		}
+	}
+}
+
 func (r *previewTicketRegistry) revokeCapsule(capsuleID domain.CapsuleID) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -163,7 +175,12 @@ func (s *Server) servePreview(writer http.ResponseWriter, request *http.Request)
 		return
 	}
 	// The preview listener has no session; a request acts as whoever minted
-	// its ticket, and nothing the request sends can change that.
+	// its ticket, and nothing the request sends can change that. A ticket
+	// does not outlive its member being disabled.
+	if !s.identity.MemberActive(request.Context(), ticket.Principal) {
+		writePreviewAuthorizationError(writer, "revoked")
+		return
+	}
 	request = request.WithContext(principal.With(request.Context(), ticket.Principal))
 	if s.metrics != nil {
 		s.metrics.Preview(1)

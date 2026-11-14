@@ -21,8 +21,9 @@ ADR 0046 adds a team mode: one installation per team, with per-user identity
 and ownership. Ownership, authorization in `internal/app`, owner-bound
 credential envelopes, the audit log, OIDC sign-in, user sessions, the
 installation claim, the break-glass restriction on the installation bearer,
-and personal access tokens are implemented. Membership administration
-(disable, roles) and departed-user transfer are not yet. An installation that is not claimed stays in
+personal access tokens, and membership administration (disable, roles,
+credential revocation) are implemented. Departed-user transfer and delete are
+not yet. An installation that is not claimed stays in
 single-user mode, and every statement here about a single installation
 principal describes it. "Team mode and per-user identity" below states what
 team mode must meet.
@@ -1276,7 +1277,7 @@ Threats and required controls:
   Until the claim, other OIDC sign-ins are refused.
 - **Break-glass misuse.** The installation bearer in team mode is accepted
   only on membership, revocation, audit, and departed-user transfer and
-  delete endpoints (today: the audit log). It is refused on object endpoints, and every use is
+  delete endpoints (today: the audit log and membership administration). It is refused on object endpoints, and every use is
   audited. Its custody stays outside SQLite, as in ADR 0015.
 - **Admin overreach.** The admin role manages membership and reads audit. It
   cannot read or change other users' objects. No "see everything" role
@@ -1303,8 +1304,7 @@ Threats and required controls:
   members. Operators whose issuer serves anyone else must set the required
   group claim. This is a documented deployment requirement, not something
   Meridian can verify.
-- **Disabled users** (sign-in refusal implemented; administration not yet).
-  Disabling revokes sessions and tokens at once, refuses
+- **Disabled users.** Disabling revokes sessions and tokens at once, refuses
   outstanding PTY and preview tickets, and stops gateway leases for that
   user's Capsules.
 - **System-job leakage.** Background jobs act on one object at a time and

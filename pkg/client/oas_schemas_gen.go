@@ -4827,6 +4827,32 @@ func (s *DescendantResultReason) UnmarshalText(data []byte) error {
 	}
 }
 
+type DisableMemberConflict ErrorEnvelope
+
+func (*DisableMemberConflict) disableMemberRes() {}
+
+// DisableMemberNoContent is response for DisableMember operation.
+type DisableMemberNoContent struct{}
+
+func (*DisableMemberNoContent) disableMemberRes() {}
+
+type DisableMemberNotFound ErrorEnvelope
+
+func (*DisableMemberNotFound) disableMemberRes() {}
+
+type EnableMemberConflict ErrorEnvelope
+
+func (*EnableMemberConflict) enableMemberRes() {}
+
+// EnableMemberNoContent is response for EnableMember operation.
+type EnableMemberNoContent struct{}
+
+func (*EnableMemberNoContent) enableMemberRes() {}
+
+type EnableMemberNotFound ErrorEnvelope
+
+func (*EnableMemberNotFound) enableMemberRes() {}
+
 // Ref: #/components/schemas/EnvironmentMutation
 type EnvironmentMutation struct {
 	Enabled                 OptBool  `json:"enabled"`
@@ -4906,6 +4932,7 @@ func (*ErrorEnvelope) getTimelineRes()               {}
 func (*ErrorEnvelope) listAuditRecordsRes()          {}
 func (*ErrorEnvelope) listCapsuleDeliveriesRes()     {}
 func (*ErrorEnvelope) listCoordinationRequestsRes()  {}
+func (*ErrorEnvelope) listMembersRes()               {}
 func (*ErrorEnvelope) listMomentsRes()               {}
 func (*ErrorEnvelope) listProjectsRes()              {}
 func (*ErrorEnvelope) listSecretsRes()               {}
@@ -6160,6 +6187,117 @@ func (s *Member) SetEmail(val OptString) {
 
 func (*Member) getCurrentMemberRes() {}
 
+// Ref: #/components/schemas/MemberAdmin
+type MemberAdmin struct {
+	ID          string          `json:"id"`
+	Role        MemberAdminRole `json:"role"`
+	DisplayName OptString       `json:"displayName"`
+	Email       OptString       `json:"email"`
+	Disabled    bool            `json:"disabled"`
+	CreatedAt   time.Time       `json:"createdAt"`
+}
+
+// GetID returns the value of ID.
+func (s *MemberAdmin) GetID() string {
+	return s.ID
+}
+
+// GetRole returns the value of Role.
+func (s *MemberAdmin) GetRole() MemberAdminRole {
+	return s.Role
+}
+
+// GetDisplayName returns the value of DisplayName.
+func (s *MemberAdmin) GetDisplayName() OptString {
+	return s.DisplayName
+}
+
+// GetEmail returns the value of Email.
+func (s *MemberAdmin) GetEmail() OptString {
+	return s.Email
+}
+
+// GetDisabled returns the value of Disabled.
+func (s *MemberAdmin) GetDisabled() bool {
+	return s.Disabled
+}
+
+// GetCreatedAt returns the value of CreatedAt.
+func (s *MemberAdmin) GetCreatedAt() time.Time {
+	return s.CreatedAt
+}
+
+// SetID sets the value of ID.
+func (s *MemberAdmin) SetID(val string) {
+	s.ID = val
+}
+
+// SetRole sets the value of Role.
+func (s *MemberAdmin) SetRole(val MemberAdminRole) {
+	s.Role = val
+}
+
+// SetDisplayName sets the value of DisplayName.
+func (s *MemberAdmin) SetDisplayName(val OptString) {
+	s.DisplayName = val
+}
+
+// SetEmail sets the value of Email.
+func (s *MemberAdmin) SetEmail(val OptString) {
+	s.Email = val
+}
+
+// SetDisabled sets the value of Disabled.
+func (s *MemberAdmin) SetDisabled(val bool) {
+	s.Disabled = val
+}
+
+// SetCreatedAt sets the value of CreatedAt.
+func (s *MemberAdmin) SetCreatedAt(val time.Time) {
+	s.CreatedAt = val
+}
+
+type MemberAdminRole string
+
+const (
+	MemberAdminRoleMember MemberAdminRole = "member"
+	MemberAdminRoleAdmin  MemberAdminRole = "admin"
+)
+
+// AllValues returns all MemberAdminRole values.
+func (MemberAdminRole) AllValues() []MemberAdminRole {
+	return []MemberAdminRole{
+		MemberAdminRoleMember,
+		MemberAdminRoleAdmin,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s MemberAdminRole) MarshalText() ([]byte, error) {
+	switch s {
+	case MemberAdminRoleMember:
+		return []byte(s), nil
+	case MemberAdminRoleAdmin:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *MemberAdminRole) UnmarshalText(data []byte) error {
+	switch MemberAdminRole(data) {
+	case MemberAdminRoleMember:
+		*s = MemberAdminRoleMember
+		return nil
+	case MemberAdminRoleAdmin:
+		*s = MemberAdminRoleAdmin
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
 type MemberMode string
 
 const (
@@ -6200,6 +6338,23 @@ func (s *MemberMode) UnmarshalText(data []byte) error {
 		return errors.Errorf("invalid value: %q", data)
 	}
 }
+
+// Ref: #/components/schemas/MemberPage
+type MemberPage struct {
+	Items []MemberAdmin `json:"items"`
+}
+
+// GetItems returns the value of Items.
+func (s *MemberPage) GetItems() []MemberAdmin {
+	return s.Items
+}
+
+// SetItems sets the value of Items.
+func (s *MemberPage) SetItems(val []MemberAdmin) {
+	s.Items = val
+}
+
+func (*MemberPage) listMembersRes() {}
 
 type MemberRole string
 
@@ -10902,6 +11057,19 @@ type RevokeCoordinationGrantUnprocessableEntity ErrorEnvelope
 
 func (*RevokeCoordinationGrantUnprocessableEntity) revokeCoordinationGrantRes() {}
 
+type RevokeMemberCredentialsConflict ErrorEnvelope
+
+func (*RevokeMemberCredentialsConflict) revokeMemberCredentialsRes() {}
+
+// RevokeMemberCredentialsNoContent is response for RevokeMemberCredentials operation.
+type RevokeMemberCredentialsNoContent struct{}
+
+func (*RevokeMemberCredentialsNoContent) revokeMemberCredentialsRes() {}
+
+type RevokeMemberCredentialsNotFound ErrorEnvelope
+
+func (*RevokeMemberCredentialsNotFound) revokeMemberCredentialsRes() {}
+
 // RevokePersonalAccessTokenNoContent is response for RevokePersonalAccessToken operation.
 type RevokePersonalAccessTokenNoContent struct{}
 
@@ -11722,6 +11890,78 @@ func (s *SessionPage) SetItems(val []Session) {
 }
 
 func (*SessionPage) listSessionsRes() {}
+
+type SetMemberRoleBadRequest ErrorEnvelope
+
+func (*SetMemberRoleBadRequest) setMemberRoleRes() {}
+
+type SetMemberRoleConflict ErrorEnvelope
+
+func (*SetMemberRoleConflict) setMemberRoleRes() {}
+
+// SetMemberRoleNoContent is response for SetMemberRole operation.
+type SetMemberRoleNoContent struct{}
+
+func (*SetMemberRoleNoContent) setMemberRoleRes() {}
+
+type SetMemberRoleNotFound ErrorEnvelope
+
+func (*SetMemberRoleNotFound) setMemberRoleRes() {}
+
+type SetMemberRoleReq struct {
+	Role SetMemberRoleReqRole `json:"role"`
+}
+
+// GetRole returns the value of Role.
+func (s *SetMemberRoleReq) GetRole() SetMemberRoleReqRole {
+	return s.Role
+}
+
+// SetRole sets the value of Role.
+func (s *SetMemberRoleReq) SetRole(val SetMemberRoleReqRole) {
+	s.Role = val
+}
+
+type SetMemberRoleReqRole string
+
+const (
+	SetMemberRoleReqRoleMember SetMemberRoleReqRole = "member"
+	SetMemberRoleReqRoleAdmin  SetMemberRoleReqRole = "admin"
+)
+
+// AllValues returns all SetMemberRoleReqRole values.
+func (SetMemberRoleReqRole) AllValues() []SetMemberRoleReqRole {
+	return []SetMemberRoleReqRole{
+		SetMemberRoleReqRoleMember,
+		SetMemberRoleReqRoleAdmin,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s SetMemberRoleReqRole) MarshalText() ([]byte, error) {
+	switch s {
+	case SetMemberRoleReqRoleMember:
+		return []byte(s), nil
+	case SetMemberRoleReqRoleAdmin:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *SetMemberRoleReqRole) UnmarshalText(data []byte) error {
+	switch SetMemberRoleReqRole(data) {
+	case SetMemberRoleReqRoleMember:
+		*s = SetMemberRoleReqRoleMember
+		return nil
+	case SetMemberRoleReqRoleAdmin:
+		*s = SetMemberRoleReqRoleAdmin
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
 
 type SetThreadEffortBadRequest ErrorEnvelope
 
@@ -14839,12 +15079,17 @@ func (s *UnauthorizedHeaders) SetResponse(val ErrorEnvelope) {
 
 func (*UnauthorizedHeaders) claimInstallationRes()         {}
 func (*UnauthorizedHeaders) createBrowserSessionRes()      {}
+func (*UnauthorizedHeaders) disableMemberRes()             {}
+func (*UnauthorizedHeaders) enableMemberRes()              {}
 func (*UnauthorizedHeaders) getCurrentMemberRes()          {}
+func (*UnauthorizedHeaders) listMembersRes()               {}
 func (*UnauthorizedHeaders) listPersonalAccessTokensRes()  {}
 func (*UnauthorizedHeaders) listSessionsRes()              {}
 func (*UnauthorizedHeaders) mintPersonalAccessTokenRes()   {}
+func (*UnauthorizedHeaders) revokeMemberCredentialsRes()   {}
 func (*UnauthorizedHeaders) revokePersonalAccessTokenRes() {}
 func (*UnauthorizedHeaders) revokeSessionRes()             {}
+func (*UnauthorizedHeaders) setMemberRoleRes()             {}
 func (*UnauthorizedHeaders) signOutRes()                   {}
 
 type UpdateCoordinationGrantBadRequest ErrorEnvelope

@@ -137,6 +137,16 @@ type DenyCoordinationRequestParams struct {
 	IdempotencyKey string
 }
 
+// DisableMemberParams is parameters of disableMember operation.
+type DisableMemberParams struct {
+	UserId string
+}
+
+// EnableMemberParams is parameters of enableMember operation.
+type EnableMemberParams struct {
+	UserId string
+}
+
 // ExportCapsuleWorkspaceParams is parameters of exportCapsuleWorkspace operation.
 type ExportCapsuleWorkspaceParams struct {
 	CapsuleId string
@@ -449,6 +459,11 @@ type RevokeCoordinationGrantParams struct {
 	IdempotencyKey string
 }
 
+// RevokeMemberCredentialsParams is parameters of revokeMemberCredentials operation.
+type RevokeMemberCredentialsParams struct {
+	UserId string
+}
+
 // RevokePersonalAccessTokenParams is parameters of revokePersonalAccessToken operation.
 type RevokePersonalAccessTokenParams struct {
 	TokenId string
@@ -475,6 +490,11 @@ type SealCapsuleParams struct {
 type SendThreadMessageParams struct {
 	ThreadId       string
 	IdempotencyKey string
+}
+
+// SetMemberRoleParams is parameters of setMemberRole operation.
+type SetMemberRoleParams struct {
+	UserId string
 }
 
 // SetProjectHarnessSetupParams is parameters of setProjectHarnessSetup operation.

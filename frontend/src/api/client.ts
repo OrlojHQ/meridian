@@ -19,6 +19,11 @@ import {
   listSessions,
   revokeSession,
   listPersonalAccessTokens,
+  listMembers,
+  disableMember,
+  enableMember,
+  setMemberRole,
+  revokeMemberCredentials,
   mintPersonalAccessToken,
   revokePersonalAccessToken,
   createCapsule,
@@ -84,6 +89,7 @@ import { projectHarnessImage } from "./harnessPacks";
 import type {
   AuthenticationMode, Member, SessionPage,
   MintPersonalAccessTokenRequest, MintedPersonalAccessToken, PersonalAccessTokenPage,
+  MemberPage,
 } from "./generated/types.gen";
 import type { HarnessSetupUpload, HarnessSetupPreview, ImportHarnessSetupRequest, EnvironmentMutation, ProjectEnvironment,
   ProjectHarnessSetup,
@@ -241,6 +247,13 @@ export const api = {
   revokeSession: (sessionId: string) =>
     call<void>(revokeSession({ ...generatedOptions(), path: { sessionId } })),
   signOut: () => call<void>(signOut(generatedOptions())),
+  members: (signal?: AbortSignal) => call<MemberPage>(listMembers(generatedOptions(signal))),
+  disableMember: (userId: string) => call<void>(disableMember({ ...generatedOptions(), path: { userId } })),
+  enableMember: (userId: string) => call<void>(enableMember({ ...generatedOptions(), path: { userId } })),
+  setMemberRole: (userId: string, role: "member" | "admin") =>
+    call<void>(setMemberRole({ ...generatedOptions(), path: { userId }, body: { role } })),
+  revokeMemberCredentials: (userId: string) =>
+    call<void>(revokeMemberCredentials({ ...generatedOptions(), path: { userId } })),
   personalAccessTokens: (signal?: AbortSignal) =>
     call<PersonalAccessTokenPage>(listPersonalAccessTokens(generatedOptions(signal))),
   mintPersonalAccessToken: (body: MintPersonalAccessTokenRequest) =>
