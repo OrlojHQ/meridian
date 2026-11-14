@@ -1369,3 +1369,9 @@ func (t *scopedTx) SetUserRole(context.Context, domain.UserID, domain.UserRole) 
 func (t *scopedTx) RevokeUserCredentials(context.Context, domain.UserID, time.Time) (int, error) {
 	return 0, domain.ErrNotFound
 }
+
+// TransferOwnership is the break-glass departed-member transfer, which
+// internal/app authorizes and then runs as the system.
+func (t *scopedTx) TransferOwnership(context.Context, domain.UserID, domain.UserID) error {
+	return domain.ErrNotFound
+}

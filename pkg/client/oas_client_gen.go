@@ -186,6 +186,14 @@ type Invoker interface {
 	//
 	// POST /capsules/{capsuleId}/delete
 	DeleteCapsule(ctx context.Context, request *LifecycleMutationRequest, params DeleteCapsuleParams) (DeleteCapsuleRes, error)
+	// DeleteMemberObjects invokes deleteMemberObjects operation.
+	//
+	// The member must be disabled. Starts deletion of each of their Projects, crypto-shreds their secrets,
+	// revokes their provider connections, and deletes their harness setups. The member's row and audit
+	// records stay. Older backups still hold their ciphertext.
+	//
+	// POST /users/{userId}/delete-objects
+	DeleteMemberObjects(ctx context.Context, params DeleteMemberObjectsParams) (DeleteMemberObjectsRes, error)
 	// DeleteProject invokes deleteProject operation.
 	//
 	// Deletes the Project's Capsules through the same path as deleteCapsule, so the provider removes owned
@@ -765,6 +773,15 @@ type Invoker interface {
 	//
 	// GET /threads/{threadId}/blocks/stream
 	StreamThreadBlocks(ctx context.Context, params StreamThreadBlocksParams) (StreamThreadBlocksRes, error)
+	// TransferMemberObjects invokes transferMemberObjects operation.
+	//
+	// The member must be disabled. Their Projects with everything under them, their secrets (re-wrapped
+	// for the new owner), and their harness setups move to the receiving member in one transaction.
+	// Provider connections do not move, since a personal login stays with its account holder; Project
+	// grants of them are dropped. Refused when the receiving member already has a secret of the same name.
+	//
+	// POST /users/{userId}/transfer
+	TransferMemberObjects(ctx context.Context, request *TransferMemberObjectsReq, params TransferMemberObjectsParams) (TransferMemberObjectsRes, error)
 	// UpdateCoordinationGrant invokes updateCoordinationGrant operation.
 	//
 	// Changes spawn approval, limits, harnesses, deadline, deadline action, or archiveAfter on an active
@@ -4025,6 +4042,140 @@ func (c *Client) sendDeleteCapsule(ctx context.Context, request *LifecycleMutati
 
 	stage = "DecodeResponse"
 	result, err := decodeDeleteCapsuleResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// DeleteMemberObjects invokes deleteMemberObjects operation.
+//
+// The member must be disabled. Starts deletion of each of their Projects, crypto-shreds their secrets,
+// revokes their provider connections, and deletes their harness setups. The member's row and audit
+// records stay. Older backups still hold their ciphertext.
+//
+// POST /users/{userId}/delete-objects
+func (c *Client) DeleteMemberObjects(ctx context.Context, params DeleteMemberObjectsParams) (DeleteMemberObjectsRes, error) {
+	res, err := c.sendDeleteMemberObjects(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendDeleteMemberObjects(ctx context.Context, params DeleteMemberObjectsParams) (res DeleteMemberObjectsRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("deleteMemberObjects"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/users/{userId}/delete-objects"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, DeleteMemberObjectsOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/users/"
+	{
+		// Encode "userId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "userId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.UserId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/delete-objects"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, DeleteMemberObjectsOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeDeleteMemberObjectsResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -16257,6 +16408,144 @@ func (c *Client) sendStreamThreadBlocks(ctx context.Context, params StreamThread
 
 	stage = "DecodeResponse"
 	result, err := decodeStreamThreadBlocksResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// TransferMemberObjects invokes transferMemberObjects operation.
+//
+// The member must be disabled. Their Projects with everything under them, their secrets (re-wrapped
+// for the new owner), and their harness setups move to the receiving member in one transaction.
+// Provider connections do not move, since a personal login stays with its account holder; Project
+// grants of them are dropped. Refused when the receiving member already has a secret of the same name.
+//
+// POST /users/{userId}/transfer
+func (c *Client) TransferMemberObjects(ctx context.Context, request *TransferMemberObjectsReq, params TransferMemberObjectsParams) (TransferMemberObjectsRes, error) {
+	res, err := c.sendTransferMemberObjects(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendTransferMemberObjects(ctx context.Context, request *TransferMemberObjectsReq, params TransferMemberObjectsParams) (res TransferMemberObjectsRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("transferMemberObjects"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/users/{userId}/transfer"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, TransferMemberObjectsOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/users/"
+	{
+		// Encode "userId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "userId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.UserId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/transfer"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeTransferMemberObjectsRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, TransferMemberObjectsOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeTransferMemberObjectsResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}

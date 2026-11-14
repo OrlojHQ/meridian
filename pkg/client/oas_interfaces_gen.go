@@ -77,6 +77,10 @@ type DeleteCapsuleRes interface {
 	deleteCapsuleRes()
 }
 
+type DeleteMemberObjectsRes interface {
+	deleteMemberObjectsRes()
+}
+
 type DeleteProjectRes interface {
 	deleteProjectRes()
 }
@@ -359,6 +363,10 @@ type StreamRunEventsRes interface {
 
 type StreamThreadBlocksRes interface {
 	streamThreadBlocksRes()
+}
+
+type TransferMemberObjectsRes interface {
+	transferMemberObjectsRes()
 }
 
 type UpdateCoordinationGrantRes interface {

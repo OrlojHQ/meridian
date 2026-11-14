@@ -231,7 +231,8 @@ func isServiceReceiver(fn *ast.FuncDecl) bool {
 }
 
 // startsWithPrincipalCheck accepts `if err := requirePrincipal(ctx); ...`,
-// `if requirePrincipal(ctx) != nil`, the same with requireSystem, and
+// `if requirePrincipal(ctx) != nil`, the same with requireSystem and
+// requireBreakGlass, and
 // `p, err := principal.Require(ctx)`.
 func startsWithPrincipalCheck(fn *ast.FuncDecl) bool {
 	if fn.Body == nil || len(fn.Body.List) == 0 {
@@ -245,7 +246,8 @@ func startsWithPrincipalCheck(fn *ast.FuncDecl) bool {
 		}
 		switch callee := call.Fun.(type) {
 		case *ast.Ident:
-			found = found || callee.Name == "requirePrincipal" || callee.Name == "requireSystem"
+			found = found || callee.Name == "requirePrincipal" || callee.Name == "requireSystem" ||
+				callee.Name == "requireBreakGlass"
 		case *ast.SelectorExpr:
 			pkg, ok := callee.X.(*ast.Ident)
 			found = found || (ok && pkg.Name == "principal" && callee.Sel.Name == "Require")

@@ -116,6 +116,8 @@ const (
 	AuditMemberEnable      AuditAction = "user.enable"
 	AuditMemberRole        AuditAction = "user.role"
 	AuditMemberRevoke      AuditAction = "user.revoke_credentials"
+	AuditMemberTransfer    AuditAction = "user.transfer_objects"
+	AuditMemberDelete      AuditAction = "user.delete_objects"
 	AuditTokenCreate       AuditAction = "token.create"
 	AuditTokenRevoke       AuditAction = "token.revoke"
 	AuditSignIn            AuditAction = "auth.sign_in"

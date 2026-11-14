@@ -3932,6 +3932,63 @@ type DeleteCapsuleUnprocessableEntity ErrorEnvelope
 
 func (*DeleteCapsuleUnprocessableEntity) deleteCapsuleRes() {}
 
+type DeleteMemberObjectsConflict ErrorEnvelope
+
+func (*DeleteMemberObjectsConflict) deleteMemberObjectsRes() {}
+
+type DeleteMemberObjectsNotFound ErrorEnvelope
+
+func (*DeleteMemberObjectsNotFound) deleteMemberObjectsRes() {}
+
+type DeleteMemberObjectsOK struct {
+	Projects    int `json:"projects"`
+	Secrets     int `json:"secrets"`
+	Connections int `json:"connections"`
+	Setups      int `json:"setups"`
+}
+
+// GetProjects returns the value of Projects.
+func (s *DeleteMemberObjectsOK) GetProjects() int {
+	return s.Projects
+}
+
+// GetSecrets returns the value of Secrets.
+func (s *DeleteMemberObjectsOK) GetSecrets() int {
+	return s.Secrets
+}
+
+// GetConnections returns the value of Connections.
+func (s *DeleteMemberObjectsOK) GetConnections() int {
+	return s.Connections
+}
+
+// GetSetups returns the value of Setups.
+func (s *DeleteMemberObjectsOK) GetSetups() int {
+	return s.Setups
+}
+
+// SetProjects sets the value of Projects.
+func (s *DeleteMemberObjectsOK) SetProjects(val int) {
+	s.Projects = val
+}
+
+// SetSecrets sets the value of Secrets.
+func (s *DeleteMemberObjectsOK) SetSecrets(val int) {
+	s.Secrets = val
+}
+
+// SetConnections sets the value of Connections.
+func (s *DeleteMemberObjectsOK) SetConnections(val int) {
+	s.Connections = val
+}
+
+// SetSetups sets the value of Setups.
+func (s *DeleteMemberObjectsOK) SetSetups(val int) {
+	s.Setups = val
+}
+
+func (*DeleteMemberObjectsOK) deleteMemberObjectsRes() {}
+
 type DeleteProjectBadRequest ErrorEnvelope
 
 func (*DeleteProjectBadRequest) deleteProjectRes() {}
@@ -15051,6 +15108,37 @@ func (*TooManyRequestsHeaders) revokeCoordinationGrantRes()    {}
 func (*TooManyRequestsHeaders) sendThreadMessageRes()          {}
 func (*TooManyRequestsHeaders) updateCoordinationGrantRes()    {}
 
+type TransferMemberObjectsBadRequest ErrorEnvelope
+
+func (*TransferMemberObjectsBadRequest) transferMemberObjectsRes() {}
+
+type TransferMemberObjectsConflict ErrorEnvelope
+
+func (*TransferMemberObjectsConflict) transferMemberObjectsRes() {}
+
+// TransferMemberObjectsNoContent is response for TransferMemberObjects operation.
+type TransferMemberObjectsNoContent struct{}
+
+func (*TransferMemberObjectsNoContent) transferMemberObjectsRes() {}
+
+type TransferMemberObjectsNotFound ErrorEnvelope
+
+func (*TransferMemberObjectsNotFound) transferMemberObjectsRes() {}
+
+type TransferMemberObjectsReq struct {
+	ToUserId string `json:"toUserId"`
+}
+
+// GetToUserId returns the value of ToUserId.
+func (s *TransferMemberObjectsReq) GetToUserId() string {
+	return s.ToUserId
+}
+
+// SetToUserId sets the value of ToUserId.
+func (s *TransferMemberObjectsReq) SetToUserId(val string) {
+	s.ToUserId = val
+}
+
 // UnauthorizedHeaders wraps ErrorEnvelope with response headers.
 type UnauthorizedHeaders struct {
 	WWWAuthenticate OptString
@@ -15079,6 +15167,7 @@ func (s *UnauthorizedHeaders) SetResponse(val ErrorEnvelope) {
 
 func (*UnauthorizedHeaders) claimInstallationRes()         {}
 func (*UnauthorizedHeaders) createBrowserSessionRes()      {}
+func (*UnauthorizedHeaders) deleteMemberObjectsRes()       {}
 func (*UnauthorizedHeaders) disableMemberRes()             {}
 func (*UnauthorizedHeaders) enableMemberRes()              {}
 func (*UnauthorizedHeaders) getCurrentMemberRes()          {}
@@ -15091,6 +15180,7 @@ func (*UnauthorizedHeaders) revokePersonalAccessTokenRes() {}
 func (*UnauthorizedHeaders) revokeSessionRes()             {}
 func (*UnauthorizedHeaders) setMemberRoleRes()             {}
 func (*UnauthorizedHeaders) signOutRes()                   {}
+func (*UnauthorizedHeaders) transferMemberObjectsRes()     {}
 
 type UpdateCoordinationGrantBadRequest ErrorEnvelope
 

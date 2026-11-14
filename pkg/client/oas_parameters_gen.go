@@ -113,6 +113,11 @@ type DeleteCapsuleParams struct {
 	IdempotencyKey string
 }
 
+// DeleteMemberObjectsParams is parameters of deleteMemberObjects operation.
+type DeleteMemberObjectsParams struct {
+	UserId string
+}
+
 // DeleteProjectParams is parameters of deleteProject operation.
 type DeleteProjectParams struct {
 	ProjectId      string
@@ -539,6 +544,11 @@ type StreamThreadBlocksParams struct {
 	ThreadId    string
 	After       OptInt64  `json:",omitempty,omitzero"`
 	LastEventID OptString `json:",omitempty,omitzero"`
+}
+
+// TransferMemberObjectsParams is parameters of transferMemberObjects operation.
+type TransferMemberObjectsParams struct {
+	UserId string
 }
 
 // UpdateCoordinationGrantParams is parameters of updateCoordinationGrant operation.

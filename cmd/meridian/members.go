@@ -92,6 +92,61 @@ func newMemberCommand(config *cliConfig) *cobra.Command {
 				client.SetMemberRoleParams{UserId: id})
 		})
 	setRole.Flags().StringVar(&role, "role", "", "member or admin")
-	member.AddCommand(list, disable, enable, revoke, setRole)
+
+	var receiver string
+	transfer := &cobra.Command{
+		Use: "transfer USER_ID", Short: "Move a disabled member's work to another member (break-glass)",
+		Args: cobra.ExactArgs(1),
+		RunE: func(command *cobra.Command, args []string) error {
+			if receiver == "" {
+				return errors.New("--to is required")
+			}
+			api, err := newAPI(config)
+			if err != nil {
+				return err
+			}
+			result, err := api.TransferMemberObjects(command.Context(),
+				&client.TransferMemberObjectsReq{ToUserId: receiver}, client.TransferMemberObjectsParams{UserId: args[0]})
+			if err != nil {
+				return apiCallError(err)
+			}
+			if _, ok := result.(*client.TransferMemberObjectsNoContent); !ok {
+				return responseError(result)
+			}
+			return nil
+		},
+	}
+	transfer.Flags().StringVar(&receiver, "to", "", "the member who receives the work")
+
+	var confirm bool
+	deleteObjects := &cobra.Command{
+		Use: "delete-objects USER_ID", Short: "Delete a disabled member's work (break-glass, irreversible)",
+		Args: cobra.ExactArgs(1),
+		RunE: func(command *cobra.Command, args []string) error {
+			if !confirm {
+				return errors.New("--confirm is required; deletion is irreversible")
+			}
+			api, err := newAPI(config)
+			if err != nil {
+				return err
+			}
+			result, err := api.DeleteMemberObjects(command.Context(), client.DeleteMemberObjectsParams{UserId: args[0]})
+			if err != nil {
+				return apiCallError(err)
+			}
+			deleted, ok := result.(*client.DeleteMemberObjectsOK)
+			if !ok {
+				return responseError(result)
+			}
+			if config.json {
+				return writeJSON(config.stdout, deleted)
+			}
+			_, err = fmt.Fprintf(config.stdout, "projects=%d secrets=%d connections=%d setups=%d\n",
+				deleted.Projects, deleted.Secrets, deleted.Connections, deleted.Setups)
+			return err
+		},
+	}
+	deleteObjects.Flags().BoolVar(&confirm, "confirm", false, "confirm irreversible deletion")
+	member.AddCommand(list, disable, enable, revoke, setRole, transfer, deleteObjects)
 	return member
 }

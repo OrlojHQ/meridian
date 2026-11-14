@@ -2671,6 +2671,92 @@ paths:
           $ref: "#/components/responses/Conflict"
         default:
           $ref: "#/components/responses/DefaultError"
+  /users/{userId}/transfer:
+    post:
+      operationId: transferMemberObjects
+      summary: Move a departed member's work to another member (break-glass only)
+      description: >-
+        The member must be disabled. Their Projects with everything under
+        them, their secrets (re-wrapped for the new owner), and their harness
+        setups move to the receiving member in one transaction. Provider
+        connections do not move, since a personal login stays with its
+        account holder; Project grants of them are dropped. Refused when the
+        receiving member already has a secret of the same name.
+      tags: [members]
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            maxLength: 128
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [toUserId]
+              properties:
+                toUserId:
+                  type: string
+                  maxLength: 128
+      responses:
+        "204":
+          description: Moved
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /users/{userId}/delete-objects:
+    post:
+      operationId: deleteMemberObjects
+      summary: Delete a departed member's work (break-glass only)
+      description: >-
+        The member must be disabled. Starts deletion of each of their
+        Projects, crypto-shreds their secrets, revokes their provider
+        connections, and deletes their harness setups. The member's row and
+        audit records stay. Older backups still hold their ciphertext.
+      tags: [members]
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            maxLength: 128
+      responses:
+        "200":
+          description: What was deleted or started
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [projects, secrets, connections, setups]
+                properties:
+                  projects:
+                    type: integer
+                  secrets:
+                    type: integer
+                  connections:
+                    type: integer
+                  setups:
+                    type: integer
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/DefaultError"
   /users/{userId}/role:
     put:
       operationId: setMemberRole
