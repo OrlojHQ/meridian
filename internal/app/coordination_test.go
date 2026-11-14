@@ -266,7 +266,8 @@ func newCoordFixture(t *testing.T) *coordFixture {
 	now := clock.Now()
 	if err := store.Transact(ctx, func(tx ports.Transaction) error {
 		return tx.InsertProject(ctx, domain.Project{
-			ID: "project-coord", Name: "coord", ImageReference: "meridian-capsule:dev",
+			OwnerUserID: domain.BootstrapOwnerID,
+			ID:          "project-coord", Name: "coord", ImageReference: "meridian-capsule:dev",
 			HarnessImages: []domain.HarnessImage{
 				{Name: "mock", ImageReference: "meridian-capsule:dev"},
 				{Name: "other", ImageReference: "meridian-capsule:dev"},

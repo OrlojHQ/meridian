@@ -52,14 +52,12 @@ func (k Kind) String() string {
 	}
 }
 
-// UserID identifies a member. It is opaque outside the users table, which a
-// later rollout step adds.
-type UserID string
+// UserID identifies a member, as the users table stores it.
+type UserID = domain.UserID
 
 // BootstrapOwner is the user every authenticated caller is in single-user
-// mode. The users table must give the bootstrap owner this id, so rows
-// stamped before and after that migration agree.
-const BootstrapOwner UserID = "usr_bootstrap_owner"
+// mode. Migration 0023 creates its users row.
+const BootstrapOwner = domain.BootstrapOwnerID
 
 // ErrMissing reports a call that reached the control plane without a
 // principal. Its text names no object, caller, or credential.

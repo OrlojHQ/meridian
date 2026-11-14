@@ -348,9 +348,9 @@ func TestSubagentResultsMigrationAddsGitMetadataAndDone(t *testing.T) {
 		t.Fatal("base_commit was rewritten")
 	}
 	if _, err := raw.Exec(`INSERT INTO coordination_requests(id, grant_id, capsule_id, request_key, canonical_digest,
-		kind, link_id, state, created_at, updated_at, resource_version)
+		kind, link_id, state, created_at, updated_at, resource_version, owner_user_id)
 		VALUES ('r-report', 'g1', 'child', 'done-1', '` + strings.Repeat("b", 64) + `', 'report', 'link1',
-		'completed', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 1)`); err != nil {
+		'completed', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 1, 'usr_bootstrap_owner')`); err != nil {
 		t.Fatalf("report kind: %v", err)
 	}
 }

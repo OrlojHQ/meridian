@@ -45,7 +45,8 @@ func TestBackupVerifyRestoreAndCAS(t *testing.T) {
 	now := time.Now().UTC()
 	err = store.Transact(ctx, func(tx ports.Transaction) error {
 		project := domain.Project{
-			ID: "project", Name: "project", CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
+			OwnerUserID: domain.BootstrapOwnerID,
+			ID:          "project", Name: "project", CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
 		}
 		if err := tx.InsertProject(ctx, project); err != nil {
 			return err
@@ -265,7 +266,8 @@ func TestBackupTranscriptCiphertextKeyExclusionDeepVerifyAndRestore(t *testing.T
 	}
 	if err := store.Transact(ctx, func(tx ports.Transaction) error {
 		if err := tx.InsertProject(ctx, domain.Project{
-			ID: "project", Name: "project", CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
+			OwnerUserID: domain.BootstrapOwnerID,
+			ID:          "project", Name: "project", CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
 		}); err != nil {
 			return err
 		}
@@ -573,7 +575,8 @@ func createRotationFixture(t *testing.T, ctx context.Context) (string, string) {
 	now := time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)
 	if err := store.Transact(ctx, func(tx ports.Transaction) error {
 		if err := tx.InsertProject(ctx, domain.Project{
-			ID: "rotation-project", Name: "rotation",
+			OwnerUserID: domain.BootstrapOwnerID,
+			ID:          "rotation-project", Name: "rotation",
 			CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
 		}); err != nil {
 			return err

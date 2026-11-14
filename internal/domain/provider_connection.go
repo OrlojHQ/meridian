@@ -3,6 +3,9 @@ package domain
 import "time"
 
 type ProviderConnection struct {
+	// OwnerUserID is the user who owns this row (ADR 0046). It is never
+	// serialized: the API contract does not expose owners yet.
+	OwnerUserID     UserID          `json:"-"`
 	ID              string          `json:"id"`
 	Provider        string          `json:"provider"`
 	Name            string          `json:"name"`

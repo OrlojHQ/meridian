@@ -385,7 +385,7 @@ func (s *Service) handleCoordinationRequest(
 	}
 	// The poller that pulled this entry is the system; the entry itself is
 	// the Capsule's request and acts as that Capsule (ADR 0046).
-	caller, ok := capsulePrincipal(capsule.ID)
+	caller, ok := capsulePrincipal(capsule)
 	if !ok {
 		return coordproto.Fail(coordproto.CodeInvalidRequest, "invalid coordination request")
 	}

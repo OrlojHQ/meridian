@@ -37,7 +37,8 @@ func TestProjectThreadProvisioningPromotionReplayAndFailure(t *testing.T) {
 	service.ConfigureThreads(runtime, key)
 	if err := store.Transact(ctx, func(tx ports.Transaction) error {
 		return tx.InsertProject(ctx, domain.Project{
-			ID: "project-spawn", Name: "project", CreatedAt: now,
+			OwnerUserID: domain.BootstrapOwnerID,
+			ID:          "project-spawn", Name: "project", CreatedAt: now,
 			UpdatedAt: now, ResourceVersion: 1,
 		})
 	}); err != nil {
@@ -155,7 +156,8 @@ func TestProjectThreadWithoutPromptStartsIdle(t *testing.T) {
 	service.ConfigureThreads(runtime, key)
 	if err := store.Transact(ctx, func(tx ports.Transaction) error {
 		return tx.InsertProject(ctx, domain.Project{
-			ID: "project-idle", Name: "project", CreatedAt: now,
+			OwnerUserID: domain.BootstrapOwnerID,
+			ID:          "project-idle", Name: "project", CreatedAt: now,
 			UpdatedAt: now, ResourceVersion: 1,
 		})
 	}); err != nil {
@@ -228,7 +230,8 @@ func TestProjectThreadRecoveryPromotesWithoutSending(t *testing.T) {
 	service.ConfigureThreads(runtime, key)
 	if err := store.Transact(ctx, func(tx ports.Transaction) error {
 		return tx.InsertProject(ctx, domain.Project{
-			ID: "project-recovery", Name: "project", CreatedAt: now,
+			OwnerUserID: domain.BootstrapOwnerID,
+			ID:          "project-recovery", Name: "project", CreatedAt: now,
 			UpdatedAt: now, ResourceVersion: 1,
 		})
 	}); err != nil {
@@ -276,7 +279,8 @@ func TestCreateProjectThreadAllowlistsHarnessImage(t *testing.T) {
 	service.ConfigureThreads(&structuredRuntime{}, key)
 	if err := store.Transact(ctx, func(tx ports.Transaction) error {
 		return tx.InsertProject(ctx, domain.Project{
-			ID: "project-images", Name: "project", ImageReference: "meridian-capsule:dev",
+			OwnerUserID: domain.BootstrapOwnerID,
+			ID:          "project-images", Name: "project", ImageReference: "meridian-capsule:dev",
 			HarnessImages: []domain.HarnessImage{
 				{Name: "opencode", ImageReference: "meridian-capsule-opencode:dev"},
 				{Name: "mock", ImageReference: "meridian-capsule:dev"},
@@ -354,6 +358,7 @@ func TestCreateProjectThreadRejectsNativeOnlyPackBeforeProvisioning(t *testing.T
 	if err := store.Transact(ctx, func(tx ports.Transaction) error {
 		for _, project := range projects {
 			project.CreatedAt, project.UpdatedAt, project.ResourceVersion = now, now, 1
+			project.OwnerUserID = domain.BootstrapOwnerID
 			if err := tx.InsertProject(ctx, project); err != nil {
 				return err
 			}
@@ -423,7 +428,8 @@ func TestCreateCapsuleForHarnessRejectsStructuredOnlyPackBeforeProvisioning(t *t
 	service := app.NewService(store, &testClock{now: now}, &testIDs{}, queue)
 	service.ConfigureHarnessPacks(domain.InstallationHarnessImages("meridian-capsule:dev", ""))
 	project := domain.Project{
-		ID: "project-dsh", Name: "dsh", ImageReference: "meridian-capsule:dev",
+		OwnerUserID: domain.BootstrapOwnerID,
+		ID:          "project-dsh", Name: "dsh", ImageReference: "meridian-capsule:dev",
 		HarnessImages: []domain.HarnessImage{
 			{Name: "dsh", ImageReference: "meridian-capsule-dsh:dev"},
 			{Name: "claude", ImageReference: "meridian-capsule-claude:dev"},
