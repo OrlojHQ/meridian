@@ -26,6 +26,11 @@ type AttachRunWebSocketParams struct {
 	Ticket string
 }
 
+// BeginMemberIdentityRebindParams is parameters of beginMemberIdentityRebind operation.
+type BeginMemberIdentityRebindParams struct {
+	UserId string
+}
+
 // CancelRunParams is parameters of cancelRun operation.
 type CancelRunParams struct {
 	RunId          string
@@ -52,6 +57,11 @@ type CompleteChatGPTSignInParams struct {
 // CompleteClaudeLoginParams is parameters of completeClaudeLogin operation.
 type CompleteClaudeLoginParams struct {
 	LoginId string
+}
+
+// CompleteMemberIdentityRebindParams is parameters of completeMemberIdentityRebind operation.
+type CompleteMemberIdentityRebindParams struct {
+	UserId string
 }
 
 // CompleteOidcSignInParams is parameters of completeOidcSignIn operation.

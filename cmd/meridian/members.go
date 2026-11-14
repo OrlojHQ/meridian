@@ -147,6 +147,6 @@ func newMemberCommand(config *cliConfig) *cobra.Command {
 		},
 	}
 	deleteObjects.Flags().BoolVar(&confirm, "confirm", false, "confirm irreversible deletion")
-	member.AddCommand(list, disable, enable, revoke, setRole, transfer, deleteObjects)
+	member.AddCommand(list, disable, enable, revoke, setRole, transfer, deleteObjects, newMemberRebindCommand(config))
 	return member
 }

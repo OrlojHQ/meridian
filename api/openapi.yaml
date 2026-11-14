@@ -2671,6 +2671,74 @@ paths:
           $ref: "#/components/responses/Conflict"
         default:
           $ref: "#/components/responses/DefaultError"
+  /users/{userId}/identity-rebind:
+    post:
+      operationId: beginMemberIdentityRebind
+      summary: Start OIDC identity recovery for an existing member (break-glass only)
+      description: >-
+        Requires the installation bearer in team mode. Returns a sign-in URL
+        and a single-use completion token bound to this member for ten minutes.
+        Open the URL as the replacement identity. The OIDC callback only
+        verifies that identity; it creates neither a member nor a session.
+        Keep the completion token private and use it with the installation
+        bearer to complete the rebind. Normal member admins cannot do this.
+      tags: [members]
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string, maxLength: 128 }
+      responses:
+        "201":
+          description: Recovery started; never cache the completion token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdentityRebind"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /users/{userId}/identity-rebind/complete:
+    post:
+      operationId: completeMemberIdentityRebind
+      summary: Rebind a verified OIDC identity and revoke member credentials (break-glass only)
+      description: >-
+        Requires the installation bearer and the completion token. Returns
+        202 until the browser finishes sign-in. Consumes the token once
+        verified, even if the rebind fails. Replaces only the identity and
+        display fields on the existing member, preserving role, disabled
+        state, and owned objects. An identity held by another member or a
+        concurrent identity change is refused. Revokes sessions and personal
+        access tokens and appends the audit record atomically. Drops live
+        tickets and gateway leases. The replacement identity signs in again;
+        this operation issues no credentials.
+      tags: [members]
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token]
+              properties:
+                token: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        "202":
+          description: Waiting for browser sign-in; retry after two seconds
+        "204":
+          description: Identity rebound; all old member sessions and tokens revoked
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/DefaultError" }
   /users/{userId}/transfer:
     post:
       operationId: transferMemberObjects
@@ -3889,6 +3957,22 @@ components:
         disabled:
           type: boolean
         createdAt:
+          type: string
+          format: date-time
+    IdentityRebind:
+      type: object
+      additionalProperties: false
+      required: [signInUrl, token, expiresAt]
+      properties:
+        signInUrl:
+          type: string
+          format: uri
+        token:
+          type: string
+          description: Single-use completion token; returned once, never logged or persisted.
+          minLength: 1
+          maxLength: 128
+        expiresAt:
           type: string
           format: date-time
     MemberPage:

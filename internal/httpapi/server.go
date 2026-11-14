@@ -213,6 +213,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /users/{userId}/enable", s.withIdentity(s.enableMember))
 	s.mux.HandleFunc("PUT /users/{userId}/role", s.withIdentity(s.setMemberRole))
 	s.mux.HandleFunc("POST /users/{userId}/revoke-credentials", s.withIdentity(s.revokeMemberCredentials))
+	s.mux.HandleFunc("POST /users/{userId}/identity-rebind", s.withIdentity(s.beginMemberIdentityRebind))
+	s.mux.HandleFunc("POST /users/{userId}/identity-rebind/complete", s.withIdentity(s.completeMemberIdentityRebind))
 	s.mux.HandleFunc("POST /users/{userId}/transfer", s.transferMemberObjects)
 	s.mux.HandleFunc("POST /users/{userId}/delete-objects", s.deleteMemberObjects)
 	s.mux.HandleFunc("POST /auth/device", s.withIdentity(s.beginDeviceLogin))

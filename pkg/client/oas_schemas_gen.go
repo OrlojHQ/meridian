@@ -2336,6 +2336,42 @@ func (s *ClaudeLoginStatusStatus) UnmarshalText(data []byte) error {
 	}
 }
 
+// CompleteMemberIdentityRebindAccepted is response for CompleteMemberIdentityRebind operation.
+type CompleteMemberIdentityRebindAccepted struct{}
+
+func (*CompleteMemberIdentityRebindAccepted) completeMemberIdentityRebindRes() {}
+
+type CompleteMemberIdentityRebindBadRequest ErrorEnvelope
+
+func (*CompleteMemberIdentityRebindBadRequest) completeMemberIdentityRebindRes() {}
+
+type CompleteMemberIdentityRebindConflict ErrorEnvelope
+
+func (*CompleteMemberIdentityRebindConflict) completeMemberIdentityRebindRes() {}
+
+// CompleteMemberIdentityRebindNoContent is response for CompleteMemberIdentityRebind operation.
+type CompleteMemberIdentityRebindNoContent struct{}
+
+func (*CompleteMemberIdentityRebindNoContent) completeMemberIdentityRebindRes() {}
+
+type CompleteMemberIdentityRebindNotFound ErrorEnvelope
+
+func (*CompleteMemberIdentityRebindNotFound) completeMemberIdentityRebindRes() {}
+
+type CompleteMemberIdentityRebindReq struct {
+	Token string `json:"token"`
+}
+
+// GetToken returns the value of Token.
+func (s *CompleteMemberIdentityRebindReq) GetToken() string {
+	return s.Token
+}
+
+// SetToken sets the value of Token.
+func (s *CompleteMemberIdentityRebindReq) SetToken(val string) {
+	s.Token = val
+}
+
 type CompleteOidcSignInBadRequest struct {
 	Data io.Reader
 }
@@ -5048,6 +5084,7 @@ func (s *ErrorEnvelope) SetError(val APIError) {
 
 func (*ErrorEnvelope) attachRunWebSocketRes()        {}
 func (*ErrorEnvelope) beginDeviceLoginRes()          {}
+func (*ErrorEnvelope) beginMemberIdentityRebindRes() {}
 func (*ErrorEnvelope) claimInstallationRes()         {}
 func (*ErrorEnvelope) createRunAttachTicketRes()     {}
 func (*ErrorEnvelope) getCapsuleRes()                {}
@@ -6073,6 +6110,46 @@ func (s *HarnessSetupUploadHarness) UnmarshalText(data []byte) error {
 		return errors.Errorf("invalid value: %q", data)
 	}
 }
+
+// Ref: #/components/schemas/IdentityRebind
+type IdentityRebind struct {
+	SignInUrl url.URL `json:"signInUrl"`
+	// Single-use completion token; returned once, never logged or persisted.
+	Token     string    `json:"token"`
+	ExpiresAt time.Time `json:"expiresAt"`
+}
+
+// GetSignInUrl returns the value of SignInUrl.
+func (s *IdentityRebind) GetSignInUrl() url.URL {
+	return s.SignInUrl
+}
+
+// GetToken returns the value of Token.
+func (s *IdentityRebind) GetToken() string {
+	return s.Token
+}
+
+// GetExpiresAt returns the value of ExpiresAt.
+func (s *IdentityRebind) GetExpiresAt() time.Time {
+	return s.ExpiresAt
+}
+
+// SetSignInUrl sets the value of SignInUrl.
+func (s *IdentityRebind) SetSignInUrl(val url.URL) {
+	s.SignInUrl = val
+}
+
+// SetToken sets the value of Token.
+func (s *IdentityRebind) SetToken(val string) {
+	s.Token = val
+}
+
+// SetExpiresAt sets the value of ExpiresAt.
+func (s *IdentityRebind) SetExpiresAt(val time.Time) {
+	s.ExpiresAt = val
+}
+
+func (*IdentityRebind) beginMemberIdentityRebindRes() {}
 
 // Ref: #/components/schemas/ImagePullProgress
 type ImagePullProgress struct {
@@ -15247,6 +15324,7 @@ func (s *TooManyRequestsHeaders) SetResponse(val ErrorEnvelope) {
 }
 
 func (*TooManyRequestsHeaders) approveCoordinationRequestRes() {}
+func (*TooManyRequestsHeaders) beginMemberIdentityRebindRes()  {}
 func (*TooManyRequestsHeaders) createCapsulePreviewTicketRes() {}
 func (*TooManyRequestsHeaders) createCapsuleRes()              {}
 func (*TooManyRequestsHeaders) createProjectRes()              {}
@@ -15338,22 +15416,24 @@ func (s *UnauthorizedHeaders) SetResponse(val ErrorEnvelope) {
 	s.Response = val
 }
 
-func (*UnauthorizedHeaders) claimInstallationRes()         {}
-func (*UnauthorizedHeaders) createBrowserSessionRes()      {}
-func (*UnauthorizedHeaders) deleteMemberObjectsRes()       {}
-func (*UnauthorizedHeaders) disableMemberRes()             {}
-func (*UnauthorizedHeaders) enableMemberRes()              {}
-func (*UnauthorizedHeaders) getCurrentMemberRes()          {}
-func (*UnauthorizedHeaders) listMembersRes()               {}
-func (*UnauthorizedHeaders) listPersonalAccessTokensRes()  {}
-func (*UnauthorizedHeaders) listSessionsRes()              {}
-func (*UnauthorizedHeaders) mintPersonalAccessTokenRes()   {}
-func (*UnauthorizedHeaders) revokeMemberCredentialsRes()   {}
-func (*UnauthorizedHeaders) revokePersonalAccessTokenRes() {}
-func (*UnauthorizedHeaders) revokeSessionRes()             {}
-func (*UnauthorizedHeaders) setMemberRoleRes()             {}
-func (*UnauthorizedHeaders) signOutRes()                   {}
-func (*UnauthorizedHeaders) transferMemberObjectsRes()     {}
+func (*UnauthorizedHeaders) beginMemberIdentityRebindRes()    {}
+func (*UnauthorizedHeaders) claimInstallationRes()            {}
+func (*UnauthorizedHeaders) completeMemberIdentityRebindRes() {}
+func (*UnauthorizedHeaders) createBrowserSessionRes()         {}
+func (*UnauthorizedHeaders) deleteMemberObjectsRes()          {}
+func (*UnauthorizedHeaders) disableMemberRes()                {}
+func (*UnauthorizedHeaders) enableMemberRes()                 {}
+func (*UnauthorizedHeaders) getCurrentMemberRes()             {}
+func (*UnauthorizedHeaders) listMembersRes()                  {}
+func (*UnauthorizedHeaders) listPersonalAccessTokensRes()     {}
+func (*UnauthorizedHeaders) listSessionsRes()                 {}
+func (*UnauthorizedHeaders) mintPersonalAccessTokenRes()      {}
+func (*UnauthorizedHeaders) revokeMemberCredentialsRes()      {}
+func (*UnauthorizedHeaders) revokePersonalAccessTokenRes()    {}
+func (*UnauthorizedHeaders) revokeSessionRes()                {}
+func (*UnauthorizedHeaders) setMemberRoleRes()                {}
+func (*UnauthorizedHeaders) signOutRes()                      {}
+func (*UnauthorizedHeaders) transferMemberObjectsRes()        {}
 
 type UpdateCoordinationGrantBadRequest ErrorEnvelope
 

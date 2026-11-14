@@ -156,6 +156,11 @@ func (s *Server) completeOIDCSignIn(writer http.ResponseWriter, request *http.Re
 	}
 	writer.Header().Set("Cache-Control", "no-store")
 	writer.Header().Set("Referrer-Policy", "no-referrer")
+	if result.RebindReady {
+		writeSignInPage(writer, http.StatusOK, "Identity verified. Return to the Meridian command to finish recovery. Then sign in again to use Meridian.")
+		return
+	}
+
 	if result.ClaimToken != "" {
 		http.SetCookie(writer, &http.Cookie{
 			Name: claimCookie, Value: result.ClaimToken, Path: "/auth", MaxAge: int((10 * time.Minute).Seconds()),

@@ -610,8 +610,9 @@ After the claim:
 
 - Members sign in with **Sign in** in the web UI. Sessions end after 12 hours
   idle or 7 days, and members can list and revoke theirs under **Account**.
-- The installation token is break-glass only. It reads the audit log and is
-  refused on everything else, and every use is audited. Loopback page loads no
+- The installation token is break-glass only. It administers membership,
+  recovers member identities, reads the audit log, and transfers or deletes departed members' objects; every use is audited.
+  It is refused on ordinary object endpoints. Loopback page loads no
   longer receive a session, and `POST /auth/browser-session` is refused.
 - The CLI and TUI act as a member through a personal access token. When the
   issuer offers device sign-in, `meridian login --server <public-url>` shows a
@@ -632,6 +633,24 @@ After the claim:
 - If no admin can sign in, the installation token still administers
   membership (`meridian --token-file <installation token> member ...`); every
   use is audited.
+- To recover the bootstrap owner or another existing member with a new OIDC
+  identity, use break-glass recovery before signing in normally as that new
+  identity (normal sign-in would create a separate member):
+
+  ```console
+  meridian --server https://meridian.example.com --token-file <installation token> member rebind-identity usr_bootstrap_owner
+  ```
+
+  Open the printed URL and sign in as the replacement identity. The command
+  waits for verification and completes with the installation token; the
+  browser callback alone changes nothing. Recovery expires in ten minutes
+  and is lost on daemon restart. It refuses an identity already held by
+  another member and concurrent changes to the target. It preserves the
+  member's objects, role, and disabled state, revokes every session and
+  personal token, drops outstanding tickets and gateway leases, and records
+  the rebind in the audit log. Sign in again afterward. Ordinary admins
+  cannot perform recovery. If the old identity is compromised, disable it at
+  the issuer too: otherwise it may rejoin as a new member with no old objects.
 - When a member leaves, disable them, then use the installation token to move
   their work to another member or delete it:
 

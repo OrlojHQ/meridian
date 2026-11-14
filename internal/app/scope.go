@@ -1329,6 +1329,12 @@ func (t *scopedTx) UpdateUserProfile(context.Context, domain.UserID, string, str
 	return domain.ErrNotFound
 }
 
+// Identity replacement is system-only, after Identity verifies break-glass
+// authority and the OIDC ceremony.
+func (t *scopedTx) RebindUserIdentity(context.Context, domain.User, domain.User, time.Time) error {
+	return domain.ErrNotFound
+}
+
 func (t *scopedTx) InsertUserSession(context.Context, domain.UserSession) error {
 	return domain.ErrNotFound
 }

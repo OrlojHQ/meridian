@@ -501,6 +501,15 @@ export type MemberAdmin = {
     createdAt: string;
 };
 
+export type IdentityRebind = {
+    signInUrl: string;
+    /**
+     * Single-use completion token; returned once, never logged or persisted.
+     */
+    token: string;
+    expiresAt: string;
+};
+
 export type MemberPage = {
     items: Array<MemberAdmin>;
 };
@@ -5864,6 +5873,94 @@ export type RevokeMemberCredentialsResponses = {
 };
 
 export type RevokeMemberCredentialsResponse = RevokeMemberCredentialsResponses[keyof RevokeMemberCredentialsResponses];
+
+export type BeginMemberIdentityRebindData = {
+    body?: never;
+    path: {
+        userId: string;
+    };
+    query?: never;
+    url: '/users/{userId}/identity-rebind';
+};
+
+export type BeginMemberIdentityRebindErrors = {
+    /**
+     * Missing or invalid installation authentication
+     */
+    401: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Request rate limit exceeded
+     */
+    429: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type BeginMemberIdentityRebindError = BeginMemberIdentityRebindErrors[keyof BeginMemberIdentityRebindErrors];
+
+export type BeginMemberIdentityRebindResponses = {
+    /**
+     * Recovery started; never cache the completion token
+     */
+    201: IdentityRebind;
+};
+
+export type BeginMemberIdentityRebindResponse = BeginMemberIdentityRebindResponses[keyof BeginMemberIdentityRebindResponses];
+
+export type CompleteMemberIdentityRebindData = {
+    body: {
+        token: string;
+    };
+    path: {
+        userId: string;
+    };
+    query?: never;
+    url: '/users/{userId}/identity-rebind/complete';
+};
+
+export type CompleteMemberIdentityRebindErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Missing or invalid installation authentication
+     */
+    401: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type CompleteMemberIdentityRebindError = CompleteMemberIdentityRebindErrors[keyof CompleteMemberIdentityRebindErrors];
+
+export type CompleteMemberIdentityRebindResponses = {
+    /**
+     * Waiting for browser sign-in; retry after two seconds
+     */
+    202: unknown;
+    /**
+     * Identity rebound; all old member sessions and tokens revoked
+     */
+    204: void;
+};
+
+export type CompleteMemberIdentityRebindResponse = CompleteMemberIdentityRebindResponses[keyof CompleteMemberIdentityRebindResponses];
 
 export type TransferMemberObjectsData = {
     body: {

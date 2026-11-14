@@ -172,6 +172,7 @@ type Transaction interface {
 	ClaimInstallation(ctx context.Context, issuer string, owner domain.User, at time.Time) error
 	InsertUser(context.Context, domain.User) error
 	UpdateUserProfile(ctx context.Context, id domain.UserID, displayName, email string) error
+	RebindUserIdentity(context.Context, domain.User, domain.User, time.Time) error
 	InsertUserSession(context.Context, domain.UserSession) error
 	TouchUserSession(ctx context.Context, id string, at time.Time) error
 	RevokeUserSession(ctx context.Context, id string, at time.Time) error
