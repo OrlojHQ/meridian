@@ -7,13 +7,28 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-13
+
 ### Upgrade notes
 
 - No database migration.
+- API additions: `POST /thread-links/{linkId}/remove` and a `capsuleRemoved`
+  flag on thread links. A lead's `childRollup` no longer counts subagents
+  whose Capsule was removed. New grants default to `deadlineSeconds` 86400
+  (was 28800) and `archiveAfterSeconds` 3600 (was 86400). `pkg/client` is
+  regenerated.
+- Existing leads keep their stored deadline and archive period; only leads
+  started after the upgrade get the new defaults.
 - Subagents that are already archived under a lead with auto-archive on, and
   whose last report changed no files (or whose Delivery succeeded), have
   their Capsules deleted on the first sweep after upgrading. Their
-  transcripts are kept. Existing leads keep their stored archive period.
+  transcripts are kept.
+- Claude Code and Codex leads stop asking you to approve Meridian's own
+  coordination tool calls (ADR 0045). "Approve each spawn" still holds each
+  new subagent for you when it is on.
+- Desktop installs on 0.7.2 show "Meridian 0.8.0 is available" in the
+  sidebar update card. Keep `meridian` and `meridian-desktop` on the same
+  release, as before.
 
 ### Added
 
@@ -23,39 +38,41 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   Capsule. The lead keeps its grant and can start new subagents in the freed
   slot; the subagent's Thread history is kept, and removed subagents move to a
   Removed fold. Promoted subagents are not offered it. The API is
-  `POST /thread-links/{id}/remove`.
-
-### Changed
-
-- The desktop app's update notice is now a compact card at the bottom of
-  the sidebar instead of a wide banner over the top of the window. Close
-  it to be reminded later.
-- Provider connections are listed as rows with the provider's mark, what
-  each connection is, and a status pill, with their actions as quiet links.
-  The add form sits under them with spaced fields.
-- Dropdowns use Meridian's own chevron instead of the platform stepper, and
-  the provider and harness pickers show the chosen mark inside the field.
-- A lead's Agents panel has a header with a status pill, a settings button
-  and a quiet Stop action. Each subagent is a row with its harness mark and a
-  phase pill. The settings button holds "Run at once" (how many subagent
-  Capsules the lead can have at a time, 1 to 16), the spawn-approval switch,
-  and a line with the lifetime total and time left; the started-of-total
-  meter is gone. The header says "Approving spawns" when that switch is on.
-  An empty panel says how to get the lead to start subagents.
-- A lead's default deadline is 24 hours instead of 8, in the web UI, the
-  launcher and `meridian thread spawn --lead`.
+  `POST /thread-links/{id}/remove` (#149).
 - Finished subagents are cleaned up. After a subagent has been idle for its
   lead's cleanup window (default 1 hour, was 24 hours), it is archived and,
   if nothing in its workspace is unsaved, its Capsule is deleted; its
   transcript stays. A subagent whose last report changed files that were not
   delivered is kept until you remove it. Change the window per lead under
   "Clean up finished subagents" in the Agents panel settings, or set it to
-  Never. Capsules you start yourself still only pause.
+  Never. Capsules you start yourself still only pause (#149).
+
+### Changed
+
+- A lead's Agents panel has a header with a status pill, a settings button
+  and a quiet Stop action. Each subagent is a row with its harness mark and a
+  phase pill, and a running subagent shows a small spinner at the left of its
+  row. The settings button holds "Run at once" (how many subagent Capsules
+  the lead can have at a time, 1 to 16), "Clean up finished subagents", the
+  spawn-approval switch, and a line with the lifetime total and time left;
+  the started-of-total meter is gone. The header says "Approving spawns" when
+  that switch is on. An empty panel says how to get the lead to start
+  subagents (#147, #149).
 - A lead's sidebar and board rows show how many subagents it has now, such
   as "2 subagents", instead of "0/1 done, 1 idle". Archived and removed
-  subagents are not counted, so removing one takes the count down by one.
-- Subagents whose session is running show a small spinner at the left of
-  their row in the Agents panel.
+  subagents are not counted, so removing one takes the count down by one
+  (#149).
+- A lead's default deadline is 24 hours instead of 8, in the web UI, the
+  launcher and `meridian thread spawn --lead` (#149).
+- The desktop app's update notice is now a compact card at the bottom of
+  the sidebar instead of a wide banner over the top of the window. Close
+  it to be reminded later (#147).
+- Provider connections are listed as rows with the provider's mark, what
+  each connection is, and a status pill, with their actions as quiet links.
+  The add form sits under them with spaced fields (#147).
+- Dropdowns use Meridian's own chevron instead of the platform stepper, and
+  the provider and harness pickers show the chosen mark inside the field
+  (#147).
 
 ### Fixed
 
@@ -63,13 +80,13 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   or webview reports that it has gone offline. Before, an `offline` event
   paused every request: a Thread's Send button stayed disabled with nothing
   reaching the daemon, and newly opened panels such as a lead's Agents panel
-  never loaded, while the page still showed its last data.
+  never loaded, while the page still showed its last data (#150).
 - A Claude Code or Codex lead no longer stops for an operator approval on
   every Meridian coordination tool call (`meridian_whoami`, `meridian_spawn`,
   `meridian_wait`, and the rest). The adapters allow tool calls for the
   profile's own MCP servers, whose authority is the Coordination Grant.
   "Approve each spawn" still holds each new subagent for you. Calls to other
-  MCP servers still ask (ADR 0045).
+  MCP servers still ask (ADR 0045, #148).
 
 ## [0.7.2] - 2026-11-13
 
@@ -1041,7 +1058,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - Docker and Agent Sandbox are not claimed as hostile multi-tenant isolation
   boundaries; hardened runtime deployment and external review remain required.
 
-[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.7.2...HEAD
+[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/OrlojHQ/meridian/compare/v0.7.2...v0.8.0
 [0.7.2]: https://github.com/OrlojHQ/meridian/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/OrlojHQ/meridian/compare/v0.6.0...v0.7.1
 [0.6.0]: https://github.com/OrlojHQ/meridian/compare/v0.5.0...v0.6.0
