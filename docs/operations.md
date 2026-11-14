@@ -621,6 +621,13 @@ After the claim:
 
 - Members sign in with **Sign in** in the web UI. Sessions end after 12 hours
   idle or 7 days, and members can list and revoke theirs under **Account**.
+- In the desktop app, **Sign in** opens the issuer in your default browser
+  (ADR 0047). After you sign in there, the browser shows "Return to the
+  Meridian app" and the app's window is signed in; the browser itself gets no
+  Meridian session. The browser is redirected to `http://127.0.0.1:<port>`,
+  where the app listens only during the sign-in, so a browser or proxy that
+  blocks loopback addresses breaks desktop sign-in. The claim works the same
+  way from the app.
 - The installation token is break-glass only. It administers membership,
   recovers the bootstrap owner's identity, reads the audit log, and transfers or deletes departed members' objects; every use is audited.
   It is refused on ordinary object endpoints. Loopback page loads no

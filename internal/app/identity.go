@@ -58,12 +58,14 @@ type Identity struct {
 	claims    map[[32]byte]pendingClaim
 	devices   map[[32]byte]*deviceLogin
 	rebinds   map[[32]byte]pendingRebind
+	handoffs  map[[32]byte]desktopHandoff
 	rebinding []IdentityRebinding
 	disabled  []MemberDisabled
 }
 
 type signInAttempt struct {
 	rebindDigest [32]byte
+	desktop      *DesktopSignIn
 	attempt      oidcauth.Attempt
 	expires      time.Time
 }
@@ -74,12 +76,14 @@ type pendingClaim struct {
 }
 
 // SignInResult is a completed sign-in: a session token in team mode, a
-// claim token before the claim, or verification of a break-glass recovery.
+// claim token before the claim, verification of a break-glass recovery, or
+// a desktop handoff for the shell that began the sign-in (ADR 0047).
 // Exactly one field is set.
 type SignInResult struct {
 	SessionToken string
 	ClaimToken   string
 	RebindReady  bool
+	Desktop      *DesktopHandoff
 }
 
 // NewIdentity reads the installation's mode. provider is nil when no
@@ -91,6 +95,7 @@ func NewIdentity(ctx context.Context, store ports.Store, clock ports.Clock, ids 
 		store: newScopedStore(store, clock), clock: clock, ids: ids, provider: provider,
 		attempts: map[string]signInAttempt{}, claims: map[[32]byte]pendingClaim{},
 		devices: map[[32]byte]*deviceLogin{}, rebinds: map[[32]byte]pendingRebind{},
+		handoffs: map[[32]byte]desktopHandoff{},
 	}
 	var installation domain.Installation
 	if err := identity.store.View(principal.WithSystem(ctx), func(reader ports.Reader) error {
@@ -126,6 +131,10 @@ func (i *Identity) Claimable() bool { return i.SignInAvailable() && !i.team.Load
 // BeginSignIn starts an OIDC sign-in and returns the issuer URL to send the
 // browser to. Before the claim, the only sign-in is the claim's.
 func (i *Identity) BeginSignIn(ctx context.Context) (string, error) {
+	return i.beginSignIn(ctx, nil)
+}
+
+func (i *Identity) beginSignIn(ctx context.Context, desktop *DesktopSignIn) (string, error) {
 	if !i.SignInAvailable() {
 		return "", domain.ErrUnsupported
 	}
@@ -143,7 +152,7 @@ func (i *Identity) BeginSignIn(ctx context.Context) (string, error) {
 	}
 	i.mu.Lock()
 	defer i.mu.Unlock()
-	i.attempts[attempt.State] = signInAttempt{attempt: attempt, expires: now.Add(signInAttemptTTL)}
+	i.attempts[attempt.State] = signInAttempt{desktop: desktop, attempt: attempt, expires: now.Add(signInAttemptTTL)}
 	return attempt.URL, nil
 }
 
@@ -172,7 +181,15 @@ func (i *Identity) CompleteSignIn(ctx context.Context, state, code string) (Sign
 	if pending.rebindDigest != ([32]byte{}) {
 		return i.verifyRebind(pending.rebindDigest, verified, i.clock.Now())
 	}
+	if pending.desktop != nil {
+		return i.handOff(*pending.desktop, verified, i.clock.Now())
+	}
+	return i.finishSignIn(ctx, verified, now)
+}
 
+// finishSignIn turns a verified identity into a claim token before the
+// claim, or a member session after it.
+func (i *Identity) finishSignIn(ctx context.Context, verified oidcauth.Identity, now time.Time) (SignInResult, error) {
 	if !i.team.Load() {
 		token, digest, err := newToken()
 		if err != nil {
@@ -437,6 +454,11 @@ func (i *Identity) RecordBreakGlass(ctx context.Context, route string) {
 }
 
 func (i *Identity) pruneLocked(now time.Time) {
+	for digest, handoff := range i.handoffs {
+		if !now.Before(handoff.expires) {
+			delete(i.handoffs, digest)
+		}
+	}
 	for digest, pending := range i.rebinds {
 		if !now.Before(pending.expires) {
 			delete(i.rebinds, digest)

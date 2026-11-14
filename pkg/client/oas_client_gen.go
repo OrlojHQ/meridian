@@ -138,8 +138,9 @@ type Invoker interface {
 	// CompleteOidcSignIn invokes completeOidcSignIn operation.
 	//
 	// Authorized by the single-use state. In team mode it sets an HttpOnly SameSite=Strict session cookie.
-	// Before the claim it sets a short-lived claim cookie instead. It answers with a redirect to the web
-	// UI, or an HTML page that names no account.
+	// Before the claim it sets a short-lived claim cookie instead. A desktop sign-in sets no cookie: it
+	// redirects to http://127.0.0.1:{desktopPort}/meridian-sign-in with the shell's state and a single-use
+	// ticket. It answers with a redirect, or an HTML page that names no account.
 	//
 	// GET /auth/oidc/callback
 	CompleteOidcSignIn(ctx context.Context, params CompleteOidcSignInParams) (CompleteOidcSignInRes, error)
@@ -654,6 +655,16 @@ type Invoker interface {
 	//
 	// GET /capsules/{capsuleId}/files/content
 	ReadCapsuleFile(ctx context.Context, params ReadCapsuleFileParams) (ReadCapsuleFileRes, error)
+	// RedeemDesktopSignIn invokes redeemDesktopSignIn operation.
+	//
+	// ADR 0047. Authorized by the ticket the callback sent to the shell's loopback listener plus the
+	// verifier only that shell holds, in the body so neither appears in a URL. Requires a same-origin
+	// Origin header. The ticket is single-use, even when the verifier is wrong, and expires two minutes
+	// after the callback. Sets the cookie the browser callback would have set (a session, or a claim
+	// cookie before the claim) and names the page to open next.
+	//
+	// POST /auth/desktop/redeem
+	RedeemDesktopSignIn(ctx context.Context, request *RedeemDesktopSignInReq) (RedeemDesktopSignInRes, error)
 	// RejectDelivery invokes rejectDelivery operation.
 	//
 	// Operator-only. Capsules cannot call this. A rejected Delivery is terminal and is never executed.
@@ -784,10 +795,13 @@ type Invoker interface {
 	// StartOidcSignIn invokes startOidcSignIn operation.
 	//
 	// Starts an authorization code sign-in with PKCE. State, nonce, and the PKCE verifier stay in daemon
-	// memory and are single-use. Before the installation is claimed, this sign-in can only claim it.
+	// memory and are single-use. Before the installation is claimed, this sign-in can only claim it. The
+	// desktop shell (ADR 0047) opens this in the system browser with all three desktop parameters; the
+	// callback then hands off to the shell's loopback listener instead of setting a cookie in that
+	// browser.
 	//
 	// GET /auth/oidc/start
-	StartOidcSignIn(ctx context.Context) (*StartOidcSignInFound, error)
+	StartOidcSignIn(ctx context.Context, params StartOidcSignInParams) (*StartOidcSignInFound, error)
 	// StartRun invokes startRun operation.
 	//
 	// Start a Run from a Capsule harness profile.
@@ -2766,8 +2780,9 @@ func (c *Client) sendCompleteMemberIdentityRebind(ctx context.Context, request *
 // CompleteOidcSignIn invokes completeOidcSignIn operation.
 //
 // Authorized by the single-use state. In team mode it sets an HttpOnly SameSite=Strict session cookie.
-// Before the claim it sets a short-lived claim cookie instead. It answers with a redirect to the web
-// UI, or an HTML page that names no account.
+// Before the claim it sets a short-lived claim cookie instead. A desktop sign-in sets no cookie: it
+// redirects to http://127.0.0.1:{desktopPort}/meridian-sign-in with the shell's state and a single-use
+// ticket. It answers with a redirect, or an HTML page that names no account.
 //
 // GET /auth/oidc/callback
 func (c *Client) CompleteOidcSignIn(ctx context.Context, params CompleteOidcSignInParams) (CompleteOidcSignInRes, error) {
@@ -13465,6 +13480,93 @@ func (c *Client) sendReadCapsuleFile(ctx context.Context, params ReadCapsuleFile
 	return result, nil
 }
 
+// RedeemDesktopSignIn invokes redeemDesktopSignIn operation.
+//
+// ADR 0047. Authorized by the ticket the callback sent to the shell's loopback listener plus the
+// verifier only that shell holds, in the body so neither appears in a URL. Requires a same-origin
+// Origin header. The ticket is single-use, even when the verifier is wrong, and expires two minutes
+// after the callback. Sets the cookie the browser callback would have set (a session, or a claim
+// cookie before the claim) and names the page to open next.
+//
+// POST /auth/desktop/redeem
+func (c *Client) RedeemDesktopSignIn(ctx context.Context, request *RedeemDesktopSignInReq) (RedeemDesktopSignInRes, error) {
+	res, err := c.sendRedeemDesktopSignIn(ctx, request)
+	return res, err
+}
+
+func (c *Client) sendRedeemDesktopSignIn(ctx context.Context, request *RedeemDesktopSignInReq) (res RedeemDesktopSignInRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("redeemDesktopSignIn"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/auth/desktop/redeem"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, RedeemDesktopSignInOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/auth/desktop/redeem"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeRedeemDesktopSignInRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeRedeemDesktopSignInResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // RejectDelivery invokes rejectDelivery operation.
 //
 // Operator-only. Capsules cannot call this. A rejected Delivery is terminal and is never executed.
@@ -16183,15 +16285,18 @@ func (c *Client) sendStartChatGPTSignIn(ctx context.Context, request *ChatGPTSig
 // StartOidcSignIn invokes startOidcSignIn operation.
 //
 // Starts an authorization code sign-in with PKCE. State, nonce, and the PKCE verifier stay in daemon
-// memory and are single-use. Before the installation is claimed, this sign-in can only claim it.
+// memory and are single-use. Before the installation is claimed, this sign-in can only claim it. The
+// desktop shell (ADR 0047) opens this in the system browser with all three desktop parameters; the
+// callback then hands off to the shell's loopback listener instead of setting a cookie in that
+// browser.
 //
 // GET /auth/oidc/start
-func (c *Client) StartOidcSignIn(ctx context.Context) (*StartOidcSignInFound, error) {
-	res, err := c.sendStartOidcSignIn(ctx)
+func (c *Client) StartOidcSignIn(ctx context.Context, params StartOidcSignInParams) (*StartOidcSignInFound, error) {
+	res, err := c.sendStartOidcSignIn(ctx, params)
 	return res, err
 }
 
-func (c *Client) sendStartOidcSignIn(ctx context.Context) (res *StartOidcSignInFound, err error) {
+func (c *Client) sendStartOidcSignIn(ctx context.Context, params StartOidcSignInParams) (res *StartOidcSignInFound, err error) {
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("startOidcSignIn"),
 		semconv.HTTPRequestMethodKey.String("GET"),
@@ -16231,6 +16336,61 @@ func (c *Client) sendStartOidcSignIn(ctx context.Context) (res *StartOidcSignInF
 	var pathParts [1]string
 	pathParts[0] = "/auth/oidc/start"
 	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeQueryParams"
+	q := uri.NewQueryEncoder()
+	{
+		// Encode "desktopPort" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "desktopPort",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.DesktopPort.Get(); ok {
+				return e.EncodeValue(conv.IntToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	{
+		// Encode "desktopState" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "desktopState",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.DesktopState.Get(); ok {
+				return e.EncodeValue(conv.StringToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	{
+		// Encode "desktopChallenge" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "desktopChallenge",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.DesktopChallenge.Get(); ok {
+				return e.EncodeValue(conv.StringToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	u.RawQuery = q.Values().Encode()
 
 	stage = "EncodeRequest"
 	r, err := ht.NewRequest(ctx, "GET", u)

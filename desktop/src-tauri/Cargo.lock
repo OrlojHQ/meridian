@@ -2204,10 +2204,12 @@ dependencies = [
 name = "meridian-desktop"
 version = "0.0.0"
 dependencies = [
+ "getrandom 0.3.4",
  "libc",
  "open",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-notification",

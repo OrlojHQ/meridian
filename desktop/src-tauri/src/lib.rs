@@ -6,10 +6,12 @@ mod bridge;
 mod gateway;
 mod notify_text;
 mod sidecar;
+mod sign_in;
 mod update;
 
 use std::collections::BTreeSet;
 use std::fs;
+use std::net::TcpListener;
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
@@ -48,6 +50,10 @@ struct Inner {
     /// revoke one, so `bridge::call_allowed` refuses all but `active`.
     bridge_grants: BTreeSet<String>,
     sidecar: Option<Sidecar>,
+    /// Counts sign-ins started in the system browser. A gateway switch, a
+    /// failure, or a newer sign-in bumps it, and a waiting sign-in whose
+    /// number is no longer current gives up (ADR 0047).
+    sign_in: u64,
     quitting: bool,
     tray: bool,
 }
@@ -127,6 +133,7 @@ pub fn run() {
                     active: None,
                     bridge_grants: BTreeSet::new(),
                     sidecar: None,
+                    sign_in: 0,
                     quitting: false,
                     tray: false,
                 }),
@@ -506,6 +513,7 @@ fn finish_navigation(app: &AppHandle, choice: &SavedGateway) -> Result<(), Strin
             origin,
             bridge: matcher,
         });
+        inner.sign_in += 1;
     }
     navigate(app, &url)
 }
@@ -517,6 +525,7 @@ fn open_gateway(app: &AppHandle) -> Result<(), String> {
         inner.phase = Phase::Choose;
         inner.message.clear();
         inner.active = None;
+        inner.sign_in += 1;
     }
     navigate(app, shell_index_url())
 }
@@ -554,6 +563,7 @@ fn fail(app: &AppHandle, message: String) -> Result<(), String> {
     inner.phase = Phase::Error;
     inner.message = message.clone();
     inner.active = None;
+    inner.sign_in += 1;
     Err(message)
 }
 
@@ -578,10 +588,88 @@ fn allow_navigation(app: &AppHandle, url: &Url) -> bool {
         .active
         .as_ref()
         .is_some_and(|active| active.origin == origin);
+    if allowed && sign_in::is_sign_in_start(url, &origin) {
+        // The identity provider never loads in the webview (ADR 0047).
+        begin_sign_in(app, origin);
+        return false;
+    }
     if !allowed {
         open_external(url);
     }
     allowed
+}
+
+/// Runs a team-mode sign-in in the system browser and redeems its ticket in
+/// the webview, so the session cookie lands here (ADR 0047).
+fn begin_sign_in(app: &AppHandle, origin: String) {
+    let number = {
+        let state = app.state::<AppState>();
+        let mut inner = lock(&state);
+        inner.sign_in += 1;
+        inner.sign_in
+    };
+    let prepared = TcpListener::bind(("127.0.0.1", 0))
+        .map_err(|_| "No loopback port for sign-in.".to_string())
+        .and_then(|listener| {
+            let port = listener
+                .local_addr()
+                .map_err(|_| "No loopback port for sign-in.".to_string())?
+                .port();
+            let handoff = sign_in::Handoff::generate()?;
+            let start = sign_in::start_url(&origin, port, &handoff)?;
+            Ok((listener, handoff, start))
+        });
+    let (listener, handoff, start) = match prepared {
+        Ok(prepared) => prepared,
+        Err(error) => {
+            eprintln!("Meridian sign-in could not start: {error}");
+            return;
+        }
+    };
+    open_external(&start);
+
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        let deadline = Instant::now() + sign_in::TIMEOUT;
+        let ticket = sign_in::wait_for_ticket(&listener, &handoff.state, deadline, &|| {
+            !sign_in_current(&handle, number, &origin)
+        });
+        drop(listener);
+        let Some(ticket) = ticket else {
+            return;
+        };
+        let script = sign_in::redeem_script(&origin, &ticket, &handoff.verifier);
+        let main = handle.clone();
+        let _ = handle.run_on_main_thread(move || {
+            if !sign_in_current(&main, number, &origin) {
+                return;
+            }
+            let Some(window) = main.get_webview_window("main") else {
+                return;
+            };
+            let on_gateway = window
+                .url()
+                .is_ok_and(|url| url.origin().ascii_serialization() == origin);
+            if !on_gateway {
+                return;
+            }
+            let _ = window.eval(&script);
+            show_main(&main);
+        });
+    });
+}
+
+/// Reports whether sign-in `number` is still the one to finish: no newer
+/// sign-in, gateway switch, failure, or quit has happened since.
+fn sign_in_current(app: &AppHandle, number: u64, origin: &str) -> bool {
+    let state = app.state::<AppState>();
+    let inner = lock(&state);
+    !inner.quitting
+        && inner.sign_in == number
+        && inner
+            .active
+            .as_ref()
+            .is_some_and(|active| active.origin == origin)
 }
 
 fn open_external(url: &Url) {

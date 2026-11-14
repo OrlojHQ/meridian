@@ -530,6 +530,16 @@ type SetThreadModelParams struct {
 	IdempotencyKey string
 }
 
+// StartOidcSignInParams is parameters of startOidcSignIn operation.
+type StartOidcSignInParams struct {
+	// The desktop shell's loopback listener port on 127.0.0.1.
+	DesktopPort OptInt `json:",omitempty,omitzero"`
+	// 32 random bytes, base64url; echoed to the listener.
+	DesktopState OptString `json:",omitempty,omitzero"`
+	// Base64url SHA-256 of the verifier the shell keeps for redeemDesktopSignIn.
+	DesktopChallenge OptString `json:",omitempty,omitzero"`
+}
+
 // StartRunParams is parameters of startRun operation.
 type StartRunParams struct {
 	CapsuleId      string
