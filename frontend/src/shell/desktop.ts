@@ -9,10 +9,18 @@ export type DesktopUpdateStatus = {
   detail?: string;
 };
 
+// The gateway this window is on, as the shell names it. Nothing about any
+// other gateway the operator uses is exposed to the page.
+export type DesktopGateway = {
+  label: string;
+  local: boolean;
+};
+
 export type DesktopBridge = {
   notify: (title: string, body: string) => void;
   setAttention: (count: number) => void;
   openGatewaySettings?: () => void;
+  gateway?: () => Promise<DesktopGateway>;
   checkForUpdates?: () => Promise<DesktopUpdateStatus>;
   installUpdate?: () => Promise<void>;
 };

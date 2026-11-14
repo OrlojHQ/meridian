@@ -16,16 +16,16 @@ use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
-use tauri::menu::{Menu, MenuItem};
+use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::utils::acl::RemoteUrlPattern;
-use tauri::{AppHandle, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri::{AppHandle, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent, Wry};
 use tauri_plugin_notification::NotificationExt;
 use url::Url;
 
 use gateway::{
-    is_shell_url, parse_saved, probe_local, shell_index_url, validate_gateway_url, GatewayProbe,
-    SavedGateway,
+    encode_saved, forget, gateway_label, is_shell_url, origin_label, parse_recent, parse_saved,
+    probe_local, remember, shell_index_url, validate_gateway_url, GatewayProbe, SavedGateway,
 };
 use notify_text::{attention_tooltip, validate_attention, validate_needs_you};
 use sidecar::Sidecar;
@@ -43,6 +43,9 @@ struct AppState {
 
 struct Inner {
     saved: Option<SavedGateway>,
+    /// Other gateways' origins, most recent first, for one-click switching
+    /// from the picker and the tray. Never shown to a gateway page.
+    recent: Vec<String>,
     phase: Phase,
     message: String,
     active: Option<ActiveGateway>,
@@ -78,6 +81,14 @@ struct GatewayView {
     origin: Option<String>,
     phase: &'static str,
     message: String,
+    recent: Vec<RecentGateway>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RecentGateway {
+    origin: String,
+    label: String,
 }
 
 impl Inner {
@@ -98,6 +109,14 @@ impl Inner {
                 Phase::Error => "error",
             },
             message: self.message.clone(),
+            recent: self
+                .recent
+                .iter()
+                .map(|origin| RecentGateway {
+                    origin: origin.clone(),
+                    label: origin_label(origin),
+                })
+                .collect(),
         }
     }
 }
@@ -115,11 +134,12 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
-            let saved = read_saved(app.handle());
+            let (saved, recent) = read_saved(app.handle());
             let starting = saved.is_some();
             app.manage(AppState {
                 inner: Mutex::new(Inner {
                     saved: saved.clone(),
+                    recent,
                     phase: if starting {
                         Phase::Starting
                     } else {
@@ -186,9 +206,11 @@ pub fn run() {
                 Box::new(tauri::generate_handler![
                     gateway_state,
                     gateway_connect,
+                    gateway_forget,
                     desktop_notify,
                     desktop_set_attention,
                     desktop_open_gateway,
+                    desktop_gateway,
                     desktop_update_check,
                     desktop_update_install
                 ]);
@@ -249,6 +271,43 @@ async fn gateway_connect(app: AppHandle, mode: String, url: Option<String>) -> R
     tauri::async_runtime::spawn_blocking(move || connect(&app, choice))
         .await
         .map_err(|_| "Could not open the gateway.".to_string())?
+}
+
+/// Removes a gateway from the recent list. Picker only.
+#[tauri::command]
+fn gateway_forget(app: AppHandle, origin: String) -> Result<(), String> {
+    let (saved, recent) = {
+        let state = app.state::<AppState>();
+        let mut inner = lock(&state);
+        inner.recent = forget(&inner.recent, &origin);
+        (inner.saved.clone(), inner.recent.clone())
+    };
+    if let Some(saved) = saved {
+        write_saved(&app, &saved, &recent)?;
+    }
+    refresh_tray(&app);
+    Ok(())
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GatewayIdentity {
+    label: String,
+    local: bool,
+}
+
+/// Names the gateway the window is on, for the page's status bar. It says
+/// nothing about other gateways the operator uses.
+#[tauri::command]
+fn desktop_gateway(state: tauri::State<'_, AppState>) -> Result<GatewayIdentity, String> {
+    let inner = lock(&state);
+    match (&inner.saved, &inner.active) {
+        (Some(saved), Some(active)) if saved.origin() == active.origin => Ok(GatewayIdentity {
+            label: gateway_label(saved),
+            local: *saved == SavedGateway::Local,
+        }),
+        _ => Err("No gateway is open.".into()),
+    }
 }
 
 #[tauri::command]
@@ -399,8 +458,12 @@ fn connect(app: &AppHandle, choice: SavedGateway) -> Result<(), String> {
             SavedGateway::Remote { origin } => format!("Opening {origin}…"),
         };
         inner.saved = Some(choice.clone());
+        if let SavedGateway::Remote { origin } = &choice {
+            inner.recent = remember(&inner.recent, origin);
+        }
     }
-    if let Err(error) = write_saved(app, &choice) {
+    let recent = lock(&app.state::<AppState>()).recent.clone();
+    if let Err(error) = write_saved(app, &choice, &recent) {
         return fail(app, error);
     }
     let result = match &choice {
@@ -515,6 +578,8 @@ fn finish_navigation(app: &AppHandle, choice: &SavedGateway) -> Result<(), Strin
         });
         inner.sign_in += 1;
     }
+    set_title(app, &format!("Meridian — {}", gateway_label(choice)));
+    refresh_tray(app);
     navigate(app, &url)
 }
 
@@ -527,6 +592,8 @@ fn open_gateway(app: &AppHandle) -> Result<(), String> {
         inner.active = None;
         inner.sign_in += 1;
     }
+    set_title(app, "Meridian");
+    refresh_tray(app);
     navigate(app, shell_index_url())
 }
 
@@ -699,17 +766,134 @@ fn show_main(app: &AppHandle) {
     let _ = window.set_focus();
 }
 
-fn build_tray(app: &AppHandle) -> Result<(), String> {
-    let open_item = MenuItem::with_id(app, "open", "Open Meridian", true, None::<&str>)
-        .map_err(|error| error.to_string())?;
-    let gateway_item = MenuItem::with_id(app, "gateway", "Gateway…", true, None::<&str>)
-        .map_err(|error| error.to_string())?;
+fn set_title(app: &AppHandle, title: &str) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.set_title(title);
+    }
+}
+
+/// The tray menu: the window, the picker, one-click switching between this
+/// computer and recent gateways (the active one checked), updates, and Quit.
+fn tray_menu(app: &AppHandle) -> Result<Menu<Wry>, String> {
+    let (saved, active, recent) = {
+        let state = app.state::<AppState>();
+        let inner = lock(&state);
+        (
+            inner.saved.clone(),
+            inner.active.as_ref().map(|active| active.origin.clone()),
+            inner.recent.clone(),
+        )
+    };
+    let on = |choice: &SavedGateway| {
+        saved.as_ref() == Some(choice) && active.as_deref() == Some(choice.origin())
+    };
+    let error = |error: tauri::Error| error.to_string();
+    let mut switches = vec![CheckMenuItem::with_id(
+        app,
+        "switch-local",
+        "This computer",
+        true,
+        on(&SavedGateway::Local),
+        None::<&str>,
+    )
+    .map_err(error)?];
+    for origin in &recent {
+        let choice = SavedGateway::Remote {
+            origin: origin.clone(),
+        };
+        switches.push(
+            CheckMenuItem::with_id(
+                app,
+                format!("switch:{origin}"),
+                origin_label(origin),
+                true,
+                on(&choice),
+                None::<&str>,
+            )
+            .map_err(error)?,
+        );
+    }
+    let switch_items: Vec<&dyn IsMenuItem<Wry>> = switches
+        .iter()
+        .map(|item| item as &dyn IsMenuItem<Wry>)
+        .collect();
+    let switch = Submenu::with_items(app, "Switch gateway", true, &switch_items).map_err(error)?;
+    let open_item =
+        MenuItem::with_id(app, "open", "Open Meridian", true, None::<&str>).map_err(error)?;
+    let gateway_item =
+        MenuItem::with_id(app, "gateway", "Gateway…", true, None::<&str>).map_err(error)?;
     let updates_item = MenuItem::with_id(app, "updates", "Check for updates…", true, None::<&str>)
-        .map_err(|error| error.to_string())?;
-    let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)
-        .map_err(|error| error.to_string())?;
-    let menu = Menu::with_items(app, &[&open_item, &gateway_item, &updates_item, &quit_item])
-        .map_err(|error| error.to_string())?;
+        .map_err(error)?;
+    let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>).map_err(error)?;
+    let separator = PredefinedMenuItem::separator(app).map_err(error)?;
+    Menu::with_items(
+        app,
+        &[
+            &open_item,
+            &gateway_item,
+            &switch,
+            &separator,
+            &updates_item,
+            &quit_item,
+        ],
+    )
+    .map_err(error)
+}
+
+fn refresh_tray(app: &AppHandle) {
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let Some(tray) = handle.tray_by_id("meridian") else {
+            return;
+        };
+        if let Ok(menu) = tray_menu(&handle) {
+            let _ = tray.set_menu(Some(menu));
+        }
+    });
+}
+
+/// Switches from the tray. A remote must still be in the recent list and
+/// validate, so a stale menu cannot open an address the operator forgot.
+fn switch_gateway(app: &AppHandle, id: &str) {
+    let choice = if id == "switch-local" {
+        SavedGateway::Local
+    } else {
+        let Some(origin) = id.strip_prefix("switch:") else {
+            return;
+        };
+        let known = lock(&app.state::<AppState>())
+            .recent
+            .iter()
+            .any(|kept| kept == origin);
+        match validate_gateway_url(origin) {
+            Ok(valid) if known && valid == origin => SavedGateway::Remote { origin: valid },
+            _ => return,
+        }
+    };
+    let already = {
+        let state = app.state::<AppState>();
+        let inner = lock(&state);
+        inner.saved.as_ref() == Some(&choice)
+            && inner
+                .active
+                .as_ref()
+                .is_some_and(|active| active.origin == choice.origin())
+    };
+    if already {
+        show_main(app);
+        refresh_tray(app);
+        return;
+    }
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        if connect(&handle, choice).is_err() {
+            let _ = navigate(&handle, shell_index_url());
+        }
+    });
+}
+
+fn build_tray(app: &AppHandle) -> Result<(), String> {
+    let menu = tray_menu(app)?;
     let icon = app
         .default_window_icon()
         .cloned()
@@ -729,7 +913,7 @@ fn build_tray(app: &AppHandle) -> Result<(), String> {
                 lock(&app.state::<AppState>()).quitting = true;
                 app.exit(0);
             }
-            _ => {}
+            other => switch_gateway(app, other),
         })
         .on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::Click {
@@ -760,13 +944,14 @@ fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(directory.join("gateway.json"))
 }
 
-fn read_saved(app: &AppHandle) -> Option<SavedGateway> {
-    let path = config_path(app).ok()?;
-    let bytes = fs::read(path).ok()?;
-    parse_saved(&bytes)
+fn read_saved(app: &AppHandle) -> (Option<SavedGateway>, Vec<String>) {
+    let Some(bytes) = config_path(app).ok().and_then(|path| fs::read(path).ok()) else {
+        return (None, Vec::new());
+    };
+    (parse_saved(&bytes), parse_recent(&bytes))
 }
 
-fn write_saved(app: &AppHandle, choice: &SavedGateway) -> Result<(), String> {
+fn write_saved(app: &AppHandle, choice: &SavedGateway, recent: &[String]) -> Result<(), String> {
     let path = config_path(app)?;
     let temporary = path.with_extension("json.tmp");
     let mut options = fs::OpenOptions::new();
@@ -776,10 +961,11 @@ fn write_saved(app: &AppHandle, choice: &SavedGateway) -> Result<(), String> {
         use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
     }
-    let file = options
+    let bytes = encode_saved(choice, recent)?;
+    let mut file = options
         .open(&temporary)
         .map_err(|error| error.to_string())?;
-    serde_json::to_writer_pretty(file, choice).map_err(|error| error.to_string())?;
+    std::io::Write::write_all(&mut file, &bytes).map_err(|error| error.to_string())?;
     fs::rename(&temporary, &path).map_err(|error| error.to_string())?;
     Ok(())
 }

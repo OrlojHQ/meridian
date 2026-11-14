@@ -676,8 +676,11 @@ it did not start is left running. A remote gateway must be HTTPS unless it is
 loopback. In single-user mode it uses the existing browser session. In team
 mode the member signs in through the system browser and the shell hands the
 result to its webview (ADR 0047); the webview never loads the identity
-provider. The system webview is not an additional isolation boundary and says
-nothing about Capsule isolation.
+provider. The shell remembers up to five recent gateway origins for one-click switching
+(ADR 0048): origins only, re-validated on read, and never exposed to a gateway
+page. The window title and status bar name the active gateway so work is not
+created on the wrong installation. The system webview is not an additional
+isolation boundary and says nothing about Capsule isolation.
 
 The desktop app is distributed unsigned until Apple signing secrets exist.
 The Homebrew cask and `install-desktop.sh` clear `com.apple.quarantine`, so

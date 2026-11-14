@@ -621,6 +621,10 @@ After the claim:
 
 - Members sign in with **Sign in** in the web UI. Sessions end after 12 hours
   idle or 7 days, and members can list and revoke theirs under **Account**.
+- In the desktop app, the window title and the status bar name the gateway
+  (and, in team mode, who is signed in). The tray's **Switch gateway** menu and
+  the picker's recent list switch between this computer and up to five recent
+  gateways in one click; the app stores only their addresses.
 - In the desktop app, **Sign in** opens the issuer in your default browser
   (ADR 0047). After you sign in there, the browser shows "Return to the
   Meridian app" and the app's window is signed in; the browser itself gets no
