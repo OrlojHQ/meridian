@@ -108,11 +108,27 @@ func TestClaimMovesTheInstallationToTeamMode(t *testing.T) {
 	}
 
 	// Sign in with the issuer, then claim with the installation token.
+	// The start binds the sign-in to this browser with a Lax cookie, which
+	// the issuer's cross-site redirect back still carries.
 	start := do(http.MethodGet, "/auth/oidc/start", nil, false)
-	if start.StatusCode != http.StatusFound || !strings.Contains(start.Header.Get("Location"), "state=the-state") {
-		t.Fatalf("start = %d %s", start.StatusCode, start.Header.Get("Location"))
+	binding := cookieNamed(start, signInCookie)
+	if start.StatusCode != http.StatusFound || !strings.Contains(start.Header.Get("Location"), "state=the-state") ||
+		binding == nil || binding.Value == "" || !binding.HttpOnly || binding.SameSite != http.SameSiteLaxMode ||
+		binding.Path != "/auth/oidc" || strings.Contains(start.Header.Get("Location"), binding.Value) {
+		t.Fatalf("start = %d %s %+v", start.StatusCode, start.Header.Get("Location"), binding)
 	}
-	callback := do(http.MethodGet, "/auth/oidc/callback?state=the-state&code=code", nil, false)
+	// Login CSRF: the same callback URL opened in another browser, without
+	// the binding, signs nobody in and grants no claim.
+	forged := do(http.MethodGet, "/auth/oidc/callback?state=the-state&code=code", nil, false)
+	if forged.StatusCode == http.StatusSeeOther || cookieNamed(forged, claimCookie) != nil {
+		t.Fatalf("callback without the binding = %d %+v", forged.StatusCode, cookieNamed(forged, claimCookie))
+	}
+	start = do(http.MethodGet, "/auth/oidc/start", nil, false)
+	binding = cookieNamed(start, signInCookie)
+	callback := do(http.MethodGet, "/auth/oidc/callback?state=the-state&code=code", []*http.Cookie{binding}, false)
+	if cleared := cookieNamed(callback, signInCookie); cleared == nil || cleared.MaxAge >= 0 {
+		t.Fatalf("callback left the sign-in binding: %+v", cleared)
+	}
 	claim := cookieNamed(callback, claimCookie)
 	if callback.StatusCode != http.StatusSeeOther || callback.Header.Get("Location") != "/ui/settings/account?claim=ready" ||
 		claim == nil || !claim.HttpOnly || claim.SameSite != http.SameSiteStrictMode {
