@@ -151,10 +151,12 @@ func (s *Server) completeOIDCSignIn(writer http.ResponseWriter, request *http.Re
 		return
 	}
 	binding, _ := singleCookie(request, signInCookie)
-	http.SetCookie(writer, &http.Cookie{
-		Name: signInCookie, Value: "", Path: signInPath, MaxAge: -1,
-		HttpOnly: true, Secure: secureCookie(request), SameSite: http.SameSiteLaxMode,
-	})
+	if _, err := request.Cookie(signInCookie); err == nil {
+		http.SetCookie(writer, &http.Cookie{
+			Name: signInCookie, Value: "", Path: signInPath, MaxAge: -1,
+			HttpOnly: true, Secure: secureCookie(request), SameSite: http.SameSiteLaxMode,
+		})
+	}
 	query := request.URL.Query()
 	if query.Get("error") != "" {
 		writeSignInPage(writer, http.StatusBadRequest, "The identity provider did not sign you in. Start again from Meridian.")
