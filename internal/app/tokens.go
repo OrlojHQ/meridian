@@ -10,6 +10,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/OrlojHQ/meridian/internal/apiauth"
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/ports"
 	"github.com/OrlojHQ/meridian/internal/principal"
@@ -18,7 +19,7 @@ import (
 const (
 	// TokenPrefix marks a personal access token, so secret scanners can
 	// find one that leaked (ADR 0046).
-	TokenPrefix          = "mrd_pat_"
+	TokenPrefix          = apiauth.PersonalTokenPrefix
 	defaultTokenLifetime = 90 * 24 * time.Hour
 	maxTokenLifetime     = 365 * 24 * time.Hour
 	minTokenLifetime     = 24 * time.Hour

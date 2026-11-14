@@ -17,6 +17,10 @@ type AttachRunWebSocketRes interface {
 	attachRunWebSocketRes()
 }
 
+type BeginDeviceLoginRes interface {
+	beginDeviceLoginRes()
+}
+
 type CancelRunRes interface {
 	cancelRunRes()
 }
@@ -263,6 +267,10 @@ type PatchProjectRes interface {
 
 type PauseCapsuleRes interface {
 	pauseCapsuleRes()
+}
+
+type PollDeviceLoginRes interface {
+	pollDeviceLoginRes()
 }
 
 type PromoteCapsuleRes interface {

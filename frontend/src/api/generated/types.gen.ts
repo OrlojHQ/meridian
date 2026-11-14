@@ -505,6 +505,18 @@ export type MemberPage = {
     items: Array<MemberAdmin>;
 };
 
+export type DeviceLogin = {
+    /**
+     * Secret to this client; pass it to pollDeviceLogin.
+     */
+    handle: string;
+    userCode: string;
+    verificationUri: string;
+    verificationUriComplete?: string;
+    intervalSeconds: number;
+    expiresAt: string;
+};
+
 export type AuditRecord = {
     sequence: number;
     recordedAt: string;
@@ -5986,6 +5998,79 @@ export type SetMemberRoleResponses = {
 };
 
 export type SetMemberRoleResponse = SetMemberRoleResponses[keyof SetMemberRoleResponses];
+
+export type BeginDeviceLoginData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/auth/device';
+};
+
+export type BeginDeviceLoginErrors = {
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type BeginDeviceLoginError = BeginDeviceLoginErrors[keyof BeginDeviceLoginErrors];
+
+export type BeginDeviceLoginResponses = {
+    /**
+     * Device login started
+     */
+    201: DeviceLogin;
+};
+
+export type BeginDeviceLoginResponse = BeginDeviceLoginResponses[keyof BeginDeviceLoginResponses];
+
+export type PollDeviceLoginData = {
+    body: {
+        handle: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/auth/device/token';
+};
+
+export type PollDeviceLoginErrors = {
+    /**
+     * The member refused, or the code expired
+     */
+    403: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type PollDeviceLoginError = PollDeviceLoginErrors[keyof PollDeviceLoginErrors];
+
+export type PollDeviceLoginResponses = {
+    /**
+     * Approved; the token is shown only here
+     */
+    200: {
+        token: string;
+    };
+    /**
+     * Waiting for approval
+     */
+    202: {
+        status: 'pending';
+        intervalSeconds: number;
+    };
+};
+
+export type PollDeviceLoginResponse = PollDeviceLoginResponses[keyof PollDeviceLoginResponses];
 
 export type CreateBrowserSessionData = {
     body?: never;

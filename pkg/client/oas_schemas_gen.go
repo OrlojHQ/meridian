@@ -4884,6 +4884,79 @@ func (s *DescendantResultReason) UnmarshalText(data []byte) error {
 	}
 }
 
+// Ref: #/components/schemas/DeviceLogin
+type DeviceLogin struct {
+	// Secret to this client; pass it to pollDeviceLogin.
+	Handle                  string    `json:"handle"`
+	UserCode                string    `json:"userCode"`
+	VerificationUri         string    `json:"verificationUri"`
+	VerificationUriComplete OptString `json:"verificationUriComplete"`
+	IntervalSeconds         int       `json:"intervalSeconds"`
+	ExpiresAt               time.Time `json:"expiresAt"`
+}
+
+// GetHandle returns the value of Handle.
+func (s *DeviceLogin) GetHandle() string {
+	return s.Handle
+}
+
+// GetUserCode returns the value of UserCode.
+func (s *DeviceLogin) GetUserCode() string {
+	return s.UserCode
+}
+
+// GetVerificationUri returns the value of VerificationUri.
+func (s *DeviceLogin) GetVerificationUri() string {
+	return s.VerificationUri
+}
+
+// GetVerificationUriComplete returns the value of VerificationUriComplete.
+func (s *DeviceLogin) GetVerificationUriComplete() OptString {
+	return s.VerificationUriComplete
+}
+
+// GetIntervalSeconds returns the value of IntervalSeconds.
+func (s *DeviceLogin) GetIntervalSeconds() int {
+	return s.IntervalSeconds
+}
+
+// GetExpiresAt returns the value of ExpiresAt.
+func (s *DeviceLogin) GetExpiresAt() time.Time {
+	return s.ExpiresAt
+}
+
+// SetHandle sets the value of Handle.
+func (s *DeviceLogin) SetHandle(val string) {
+	s.Handle = val
+}
+
+// SetUserCode sets the value of UserCode.
+func (s *DeviceLogin) SetUserCode(val string) {
+	s.UserCode = val
+}
+
+// SetVerificationUri sets the value of VerificationUri.
+func (s *DeviceLogin) SetVerificationUri(val string) {
+	s.VerificationUri = val
+}
+
+// SetVerificationUriComplete sets the value of VerificationUriComplete.
+func (s *DeviceLogin) SetVerificationUriComplete(val OptString) {
+	s.VerificationUriComplete = val
+}
+
+// SetIntervalSeconds sets the value of IntervalSeconds.
+func (s *DeviceLogin) SetIntervalSeconds(val int) {
+	s.IntervalSeconds = val
+}
+
+// SetExpiresAt sets the value of ExpiresAt.
+func (s *DeviceLogin) SetExpiresAt(val time.Time) {
+	s.ExpiresAt = val
+}
+
+func (*DeviceLogin) beginDeviceLoginRes() {}
+
 type DisableMemberConflict ErrorEnvelope
 
 func (*DisableMemberConflict) disableMemberRes() {}
@@ -4974,6 +5047,7 @@ func (s *ErrorEnvelope) SetError(val APIError) {
 }
 
 func (*ErrorEnvelope) attachRunWebSocketRes()        {}
+func (*ErrorEnvelope) beginDeviceLoginRes()          {}
 func (*ErrorEnvelope) claimInstallationRes()         {}
 func (*ErrorEnvelope) createRunAttachTicketRes()     {}
 func (*ErrorEnvelope) getCapsuleRes()                {}
@@ -9232,6 +9306,105 @@ func (s *PinnedHarnessSetup) SetRevision(val string) {
 // SetRevisedAt sets the value of RevisedAt.
 func (s *PinnedHarnessSetup) SetRevisedAt(val time.Time) {
 	s.RevisedAt = val
+}
+
+type PollDeviceLoginAccepted struct {
+	Status          PollDeviceLoginAcceptedStatus `json:"status"`
+	IntervalSeconds int                           `json:"intervalSeconds"`
+}
+
+// GetStatus returns the value of Status.
+func (s *PollDeviceLoginAccepted) GetStatus() PollDeviceLoginAcceptedStatus {
+	return s.Status
+}
+
+// GetIntervalSeconds returns the value of IntervalSeconds.
+func (s *PollDeviceLoginAccepted) GetIntervalSeconds() int {
+	return s.IntervalSeconds
+}
+
+// SetStatus sets the value of Status.
+func (s *PollDeviceLoginAccepted) SetStatus(val PollDeviceLoginAcceptedStatus) {
+	s.Status = val
+}
+
+// SetIntervalSeconds sets the value of IntervalSeconds.
+func (s *PollDeviceLoginAccepted) SetIntervalSeconds(val int) {
+	s.IntervalSeconds = val
+}
+
+func (*PollDeviceLoginAccepted) pollDeviceLoginRes() {}
+
+type PollDeviceLoginAcceptedStatus string
+
+const (
+	PollDeviceLoginAcceptedStatusPending PollDeviceLoginAcceptedStatus = "pending"
+)
+
+// AllValues returns all PollDeviceLoginAcceptedStatus values.
+func (PollDeviceLoginAcceptedStatus) AllValues() []PollDeviceLoginAcceptedStatus {
+	return []PollDeviceLoginAcceptedStatus{
+		PollDeviceLoginAcceptedStatusPending,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s PollDeviceLoginAcceptedStatus) MarshalText() ([]byte, error) {
+	switch s {
+	case PollDeviceLoginAcceptedStatusPending:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *PollDeviceLoginAcceptedStatus) UnmarshalText(data []byte) error {
+	switch PollDeviceLoginAcceptedStatus(data) {
+	case PollDeviceLoginAcceptedStatusPending:
+		*s = PollDeviceLoginAcceptedStatusPending
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+type PollDeviceLoginForbidden ErrorEnvelope
+
+func (*PollDeviceLoginForbidden) pollDeviceLoginRes() {}
+
+type PollDeviceLoginNotFound ErrorEnvelope
+
+func (*PollDeviceLoginNotFound) pollDeviceLoginRes() {}
+
+type PollDeviceLoginOK struct {
+	Token string `json:"token"`
+}
+
+// GetToken returns the value of Token.
+func (s *PollDeviceLoginOK) GetToken() string {
+	return s.Token
+}
+
+// SetToken sets the value of Token.
+func (s *PollDeviceLoginOK) SetToken(val string) {
+	s.Token = val
+}
+
+func (*PollDeviceLoginOK) pollDeviceLoginRes() {}
+
+type PollDeviceLoginReq struct {
+	Handle string `json:"handle"`
+}
+
+// GetHandle returns the value of Handle.
+func (s *PollDeviceLoginReq) GetHandle() string {
+	return s.Handle
+}
+
+// SetHandle sets the value of Handle.
+func (s *PollDeviceLoginReq) SetHandle(val string) {
+	s.Handle = val
 }
 
 // Ref: #/components/schemas/PreparationProgress

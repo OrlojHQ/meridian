@@ -17,6 +17,9 @@ import (
 const (
 	tokenBytes        = 32
 	maxTokenFileBytes = 256
+	// PersonalTokenPrefix marks a team mode member's personal access token
+	// (ADR 0046), so secret scanners can find a leaked one.
+	PersonalTokenPrefix = "mrd_pat_"
 )
 
 // Token retains only the digest needed to authenticate presented token text.
@@ -106,10 +109,75 @@ func ReadTokenFile(path string) (string, error) {
 		return "", errors.New("API token file exceeds limit")
 	}
 	value := strings.TrimSpace(string(raw))
+	if ValidPersonalToken(value) {
+		return value, nil
+	}
 	if _, err := ParseToken(value); err != nil {
 		return "", err
 	}
 	return value, nil
+}
+
+// ValidPersonalToken reports whether value has a personal access token's
+// shape: the prefix and 256 random bits. Only the daemon can say whether it
+// is live.
+func ValidPersonalToken(value string) bool {
+	encoded, ok := strings.CutPrefix(value, PersonalTokenPrefix)
+	if !ok {
+		return false
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(encoded)
+	defer zero(decoded)
+	return err == nil && len(decoded) == tokenBytes
+}
+
+// DefaultMemberTokenPath is where meridian login keeps a member's personal
+// access token, under configDir.
+func DefaultMemberTokenPath(configDir string) string {
+	return filepath.Join(configDir, "api-auth", "member.token")
+}
+
+// WritePersonalTokenFile stores a personal access token at path, mode 0600 in
+// a 0700 directory, replacing any token already there.
+func WritePersonalTokenFile(path, value string) error {
+	if strings.TrimSpace(path) == "" {
+		return errors.New("token path is required")
+	}
+	if !ValidPersonalToken(value) {
+		return errors.New("not a personal access token")
+	}
+	if err := secureDirectory(filepath.Dir(path), true); err != nil {
+		return err
+	}
+	if info, err := os.Lstat(path); err == nil && (!info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0) {
+		return errors.New("token path must be a regular file")
+	}
+	parent := filepath.Dir(path)
+	temp, err := os.CreateTemp(parent, ".member-token-")
+	if err != nil {
+		return err
+	}
+	tempPath := temp.Name()
+	defer os.Remove(tempPath)
+	if err := temp.Chmod(0o600); err != nil {
+		temp.Close()
+		return err
+	}
+	if _, err := temp.WriteString(value + "\n"); err != nil {
+		temp.Close()
+		return err
+	}
+	if err := temp.Sync(); err != nil {
+		temp.Close()
+		return err
+	}
+	if err := temp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tempPath, path); err != nil {
+		return err
+	}
+	return syncDirectory(parent)
 }
 
 func ParseToken(value string) (*Token, error) {

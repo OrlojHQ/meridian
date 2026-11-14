@@ -215,6 +215,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /users/{userId}/revoke-credentials", s.withIdentity(s.revokeMemberCredentials))
 	s.mux.HandleFunc("POST /users/{userId}/transfer", s.transferMemberObjects)
 	s.mux.HandleFunc("POST /users/{userId}/delete-objects", s.deleteMemberObjects)
+	s.mux.HandleFunc("POST /auth/device", s.withIdentity(s.beginDeviceLogin))
+	s.mux.HandleFunc("POST /auth/device/token", s.withIdentity(s.pollDeviceLogin))
 	s.mux.HandleFunc("GET /auth/tokens", s.withIdentity(s.listTokens))
 	s.mux.HandleFunc("POST /auth/tokens", s.withIdentity(s.mintToken))
 	s.mux.HandleFunc("POST /auth/tokens/{tokenId}/revoke", s.withIdentity(s.revokeToken))
@@ -424,6 +426,12 @@ func authExempt(request *http.Request) bool {
 			request.URL.Path == "/callback" || request.URL.Path == "/claude-login/finished" ||
 			request.URL.Path == "/auth/mode" || request.URL.Path == "/auth/oidc/start" ||
 			request.URL.Path == "/auth/oidc/callback") {
+		return true
+	}
+	// meridian login starts and polls without a credential; its own
+	// single-use handle authorizes the poll.
+	if request.Method == http.MethodPost &&
+		(request.URL.Path == "/auth/device" || request.URL.Path == "/auth/device/token") {
 		return true
 	}
 	if request.Method != http.MethodGet {
