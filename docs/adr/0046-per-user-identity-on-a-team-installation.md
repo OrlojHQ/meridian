@@ -201,7 +201,11 @@ break-glass transfer for a departed user.
 
 ### Credentials
 
-- Secret and connection envelopes bind `owner_user_id` in their AAD. Secret
+- Secret, connection, and harness setup revision envelopes bind
+  `owner_user_id` in their AAD. Setup revision envelope ids are
+  `owner:<owner_user_id>:<revision_id>`; startup alone accepts legacy revision
+  ids for re-wrapping, and break-glass transfer re-seals every readable revision in the
+  ownership transaction. Secret
   envelopes move to `meridian.secret.v2`. Connection envelopes gain the owner
   next to generation and revocation. A ciphertext moved to another user's row
   fails to open.

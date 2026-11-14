@@ -64,10 +64,10 @@ func listOwnedSecrets(ctx context.Context, reader ports.Reader, owner domain.Use
 
 // TransferDepartedMember moves a departed member's Projects and everything
 // under them, their secrets, and their harness setups to another member, in
-// one transaction. Secret envelopes bind their owner, so each is re-wrapped
-// for the new owner at the same resource version; a secret that does not
-// open under the installation key moves unchanged and stays unreadable.
-// Provider connections do
+// one transaction. Secret and setup revision envelopes bind their owner, so
+// each is re-wrapped for the new owner at the same resource version. A secret
+// or setup revision that does not open under the installation key moves
+// unchanged and stays unreadable. Provider connections do
 // not move: a personal login stays with its account holder (ADR 0038), so
 // Project grants of those connections are dropped and the new owner grants
 // their own. The target must not already hold a secret of the same name.
@@ -117,6 +117,46 @@ func (s *Service) TransferDepartedMember(ctx context.Context, from, to domain.Us
 				readable[index] = true
 			}
 		}
+		setups, err := tx.ListHarnessSetups(system)
+		if err != nil {
+			return err
+		}
+		var revisions []domain.HarnessSetupRevision
+		var bundles [][]byte
+		defer func() {
+			for _, plain := range bundles {
+				wipe(plain)
+			}
+		}()
+		for _, setup := range setups {
+			if setup.OwnerUserID != from {
+				continue
+			}
+			listed, err := tx.ListHarnessSetupRevisions(system, setup.ID)
+			if err != nil {
+				return err
+			}
+			for _, item := range listed {
+				if s.secretKey == nil {
+					return domain.ErrUnsupported
+				}
+				revision, err := tx.GetHarnessSetupRevision(system, item.ID)
+				if err != nil {
+					return err
+				}
+				plain, err := s.secretKey.OpenSetup(setupEnvelopeID(revision), revision.KeyID, revision.Nonce, revision.Ciphertext)
+				if err != nil {
+					// An envelope that does not open under the installation key
+					// was already unusable, as at startup re-wrap. It moves
+					// with its setup unchanged and stays unreadable, rather
+					// than blocking the departed member's work for good.
+					continue
+				}
+				revisions = append(revisions, revision)
+				bundles = append(bundles, plain)
+			}
+		}
+
 		if err := tx.TransferOwnership(system, from, to); err != nil {
 			return err
 		}
@@ -133,6 +173,18 @@ func (s *Service) TransferDepartedMember(ctx context.Context, from, to domain.Us
 				return err
 			}
 		}
+		for index, revision := range revisions {
+			revision.OwnerUserID = to
+			revision.KeyID = s.secretKey.ID
+			revision.Nonce, revision.Ciphertext, err = s.secretKey.SealSetup(setupEnvelopeID(revision), bundles[index])
+			if err != nil {
+				return err
+			}
+			if err := tx.ReplaceHarnessSetupRevisionEnvelope(system, revision); err != nil {
+				return err
+			}
+		}
+
 		record, ok := auditRecordFor(principal.With(ctx, caller), s.clock.Now(), domain.AuditMemberTransfer,
 			"user", string(from)+":"+string(to), domain.AuditAllowed)
 		if !ok {

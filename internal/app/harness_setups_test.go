@@ -91,7 +91,7 @@ func TestSetupsPinDefaultsAndRollback(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		plain, err := key.OpenSetup(rev.ID, rev.KeyID, rev.Nonce, rev.Ciphertext)
+		plain, err := key.OpenSetup("owner:"+string(rev.OwnerUserID)+":"+rev.ID, rev.KeyID, rev.Nonce, rev.Ciphertext)
 		if err != nil {
 			return err
 		}

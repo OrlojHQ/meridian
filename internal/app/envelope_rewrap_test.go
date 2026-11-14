@@ -2,6 +2,8 @@ package app
 
 import (
 	"bytes"
+	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -122,5 +124,115 @@ func TestBindEnvelopeOwnersRewrapsLegacyConnectionsOnce(t *testing.T) {
 	}
 	if again != (EnvelopeRewrap{Unreadable: 2}) {
 		t.Fatalf("second re-wrap = %+v", again)
+	}
+}
+
+func TestBindSetupRevisionOwnersIsAtomicAndIdempotent(t *testing.T) {
+	ctx := principal.WithSystem(operatorContext())
+	store, err := sqlite.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	key, err := secrets.OpenOrCreateKey(filepath.Join(t.TempDir(), "key"), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer key.Zero()
+	setup := domain.HarnessSetup{OwnerUserID: domain.BootstrapOwnerID, ID: "setup", Harness: "codex", ResourceVersion: 1}
+	var originals []domain.HarnessSetupRevision
+	for _, id := range []string{"legacy", "current", "unreadable"} {
+		revision := domain.HarnessSetupRevision{OwnerUserID: setup.OwnerUserID, ID: id, SetupID: setup.ID, KeyID: key.ID}
+		envelopeID := revision.ID
+		if id == "current" {
+			envelopeID = setupEnvelopeID(revision)
+		}
+		revision.Nonce, revision.Ciphertext, err = key.SealSetup(envelopeID, []byte(id))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if id == "unreadable" {
+			revision.Ciphertext[0] ^= 1
+		}
+		originals = append(originals, revision)
+	}
+	if err := store.Transact(ctx, func(tx ports.Transaction) error {
+		if err := tx.PutHarnessSetup(ctx, setup); err != nil {
+			return err
+		}
+		for _, revision := range originals {
+			if err := tx.InsertHarnessSetupRevision(ctx, revision); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// A write failure rolls back all changes rather than leaving a partial migration.
+	raw, err := sql.Open("sqlite", store.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	if _, err := raw.Exec(`CREATE TRIGGER fail_rewrap BEFORE UPDATE OF ciphertext ON harness_setup_revisions BEGIN SELECT RAISE(ABORT, 'test write failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if result, err := BindEnvelopeOwners(ctx, store, key); err == nil || result != (EnvelopeRewrap{}) {
+		t.Fatalf("failed migration = %+v, %v", result, err)
+	}
+	read := func(id string) domain.HarnessSetupRevision {
+		t.Helper()
+		var revision domain.HarnessSetupRevision
+		if err := store.View(ctx, func(r ports.Reader) error {
+			var err error
+			revision, err = r.GetHarnessSetupRevision(ctx, id)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return revision
+	}
+	if got := read("legacy"); !bytes.Equal(got.Ciphertext, originals[0].Ciphertext) {
+		t.Fatal("failed rewrap changed ciphertext")
+	}
+	if _, err := raw.Exec("DROP TRIGGER fail_rewrap"); err != nil {
+		t.Fatal(err)
+	}
+	for pass := 0; pass < 2; pass++ {
+		result, err := BindEnvelopeOwners(ctx, store, key)
+		want := EnvelopeRewrap{Unreadable: 1}
+		if pass == 0 {
+			want.SetupRevisions = 1
+		}
+		if err != nil || result != want {
+			t.Fatalf("pass %d = %+v, %v", pass, result, err)
+		}
+	}
+	legacy := read("legacy")
+	if plain, err := key.OpenSetup(setupEnvelopeID(legacy), legacy.KeyID, legacy.Nonce, legacy.Ciphertext); err != nil || string(plain) != "legacy" {
+		t.Fatalf("rewrapped setup = %q, %v", plain, err)
+	}
+	for _, id := range []string{legacy.ID, "owner:usr_other:" + legacy.ID, "owner:" + string(legacy.OwnerUserID) + ":other"} {
+		if _, err := key.OpenSetup(id, legacy.KeyID, legacy.Nonce, legacy.Ciphertext); err == nil {
+			t.Fatalf("opened with substituted context %q", id)
+		}
+	}
+	for _, original := range originals[1:] {
+		if got := read(original.ID); !bytes.Equal(got.Ciphertext, original.Ciphertext) {
+			t.Fatalf("changed %s envelope", original.ID)
+		}
+	}
+	scoped := newScopedStore(store, &fixedClock{now: time.Now()})
+	other, _ := principal.User("usr_other")
+	otherCtx := principal.With(ctx, other)
+	if err := scoped.Transact(otherCtx, func(tx ports.Transaction) error { return tx.ReplaceHarnessSetupRevisionEnvelope(otherCtx, legacy) }); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("another owner replaced envelope: %v", err)
+	}
+	legacy.OwnerUserID = "usr_other"
+	if err := scoped.Transact(operatorContext(), func(tx ports.Transaction) error {
+		return tx.ReplaceHarnessSetupRevisionEnvelope(operatorContext(), legacy)
+	}); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("owner substitution accepted: %v", err)
 	}
 }

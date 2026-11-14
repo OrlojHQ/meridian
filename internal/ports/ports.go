@@ -116,6 +116,7 @@ type Transaction interface {
 	GrantProviderConnection(context.Context, domain.ProjectID, string, string) error
 	PutHarnessSetup(context.Context, domain.HarnessSetup) error
 	InsertHarnessSetupRevision(context.Context, domain.HarnessSetupRevision) error
+	ReplaceHarnessSetupRevisionEnvelope(context.Context, domain.HarnessSetupRevision) error
 	PinHarnessSetup(context.Context, domain.CapsuleID, string, string) error
 	Reader
 	InsertProject(context.Context, domain.Project) error

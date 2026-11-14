@@ -130,11 +130,11 @@ func (s *Service) ImportHarnessSetup(ctx context.Context, input SetupImport, key
 			return err
 		}
 		defer wipe(raw)
-		revision := domain.HarnessSetupRevision{ID: result.Revision, SetupID: result.ID, Digest: input.Bundle.Digest(), KeyID: s.secretKey.ID, CreatedAt: now, Files: []string{}}
+		revision := domain.HarnessSetupRevision{OwnerUserID: result.OwnerUserID, ID: result.Revision, SetupID: result.ID, Digest: input.Bundle.Digest(), KeyID: s.secretKey.ID, CreatedAt: now, Files: []string{}}
 		for _, f := range input.Bundle.Files {
 			revision.Files = append(revision.Files, f.Path)
 		}
-		revision.Nonce, revision.Ciphertext, err = s.secretKey.SealSetup(revision.ID, raw)
+		revision.Nonce, revision.Ciphertext, err = s.secretKey.SealSetup(setupEnvelopeID(revision), raw)
 		if err != nil {
 			return err
 		}
@@ -341,7 +341,7 @@ func (s *Service) runtimeHarnessSetup(ctx context.Context, id domain.CapsuleID, 
 		if err != nil {
 			return err
 		}
-		raw, err := s.secretKey.OpenSetup(item.ID, item.KeyID, item.Nonce, item.Ciphertext)
+		raw, err := s.secretKey.OpenSetup(setupEnvelopeID(item), item.KeyID, item.Nonce, item.Ciphertext)
 		if err != nil {
 			return err
 		}
@@ -433,7 +433,7 @@ func (s *Service) HarnessSetupContents(ctx context.Context, id string) (SetupImp
 		if revision.SetupID != id {
 			return domain.ErrCorrupt
 		}
-		raw, err := s.secretKey.OpenSetup(revision.ID, revision.KeyID, revision.Nonce, revision.Ciphertext)
+		raw, err := s.secretKey.OpenSetup(setupEnvelopeID(revision), revision.KeyID, revision.Nonce, revision.Ciphertext)
 		if err != nil {
 			return err
 		}
@@ -448,4 +448,9 @@ func (s *Service) HarnessSetupContents(ctx context.Context, id string) (SetupImp
 		return result.Bundle.Validate()
 	})
 	return result, err
+}
+
+// setupEnvelopeID binds a revision to its owner as well as its immutable id.
+func setupEnvelopeID(revision domain.HarnessSetupRevision) string {
+	return "owner:" + string(revision.OwnerUserID) + ":" + revision.ID
 }
