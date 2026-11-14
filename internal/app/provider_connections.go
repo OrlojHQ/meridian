@@ -27,9 +27,19 @@ type ConnectionInput struct {
 	Revoked                 bool                   `json:"revoked,omitempty"`
 }
 
+// connectionEnvelopeID is a connection's authenticated envelope context. It
+// binds the owner (ADR 0046), so a ciphertext moved to another user's row
+// fails to open. The rest is the legacy context below.
+func connectionEnvelopeID(item domain.ProviderConnection) string {
+	return "owner:" + string(item.OwnerUserID) + ":" + legacyConnectionEnvelopeID(item)
+}
+
+// legacyConnectionEnvelopeID is the context connections were sealed under
+// before owners were bound. Only the startup re-wrap opens with it.
+//
 // The custom upstream is bound into the envelope context, so a stored key
 // cannot be redirected to another endpoint by editing connection metadata.
-func connectionEnvelopeID(item domain.ProviderConnection) string {
+func legacyConnectionEnvelopeID(item domain.ProviderConnection) string {
 	if item.Provider == providergateway.ChatGPT {
 		// Token sets rotate without a resource version change, so they are
 		// bound to their credential generation instead (ADR 0038).

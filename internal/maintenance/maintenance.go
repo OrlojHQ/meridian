@@ -914,9 +914,21 @@ func deepVerifySecrets(
 		return err
 	}
 	defer db.Close()
+	// A backup from before per-user ownership has no owner column and only
+	// legacy envelopes; the daemon re-wraps them when it next starts.
+	var owned int
+	if err := db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM pragma_table_info('secrets') WHERE name = 'owner_user_id'",
+	).Scan(&owned); err != nil {
+		return err
+	}
+	owner := "''"
+	if owned > 0 {
+		owner = "owner_user_id"
+	}
 	rows, err := db.QueryContext(ctx, `
 		SELECT id, name, purpose, envelope_version, kek_id, kek_version, nonce,
-			ciphertext, created_at, updated_at, resource_version
+			ciphertext, created_at, updated_at, resource_version, `+owner+`
 		FROM secrets ORDER BY name`)
 	if err != nil {
 		return err
@@ -928,7 +940,7 @@ func deepVerifySecrets(
 		if err := rows.Scan(
 			&secret.ID, &secret.Name, &secret.Purpose, &secret.EnvelopeVersion,
 			&secret.KEKID, &secret.KEKVersion, &secret.Nonce, &secret.Ciphertext,
-			&created, &updated, &secret.ResourceVersion,
+			&created, &updated, &secret.ResourceVersion, &secret.OwnerUserID,
 		); err != nil {
 			return err
 		}
@@ -939,7 +951,11 @@ func deepVerifySecrets(
 		if err != nil {
 			return domain.ErrCorrupt
 		}
-		if _, err := key.Open(secret); err != nil {
+		open := key.Open
+		if secret.EnvelopeVersion == credentialsecrets.LegacyEnvelopeVersion {
+			open = key.OpenLegacy
+		}
+		if _, err := open(secret); err != nil {
 			return fmt.Errorf("credential deep verification failed: %w", err)
 		}
 	}

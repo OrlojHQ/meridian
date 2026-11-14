@@ -261,6 +261,23 @@ func run(ctx context.Context, config Config) error {
 		return fmt.Errorf("initialize credential encryption: %w", err)
 	}
 	defer secretKey.Zero()
+	// Bind each credential envelope sealed before owners existed to its
+	// row's owner, before anything can open one (ADR 0046). This daemon
+	// holds the data-directory lease, so no other writer races it.
+	rewrapped, err := app.BindEnvelopeOwners(ctx, store, secretKey)
+	if err != nil {
+		_ = httpServer.Close()
+		_ = previewHTTPServer.Close()
+		return fmt.Errorf("bind credential envelopes to owners: %w", err)
+	}
+	if rewrapped.Secrets+rewrapped.Connections > 0 {
+		config.Logger.Printf("bound %d secret and %d connection envelopes to their owners",
+			rewrapped.Secrets, rewrapped.Connections)
+	}
+	if rewrapped.Unreadable > 0 {
+		config.Logger.Printf("%d credential envelopes do not open with the installation key and were left unchanged",
+			rewrapped.Unreadable)
+	}
 	transcriptKeyPath := config.TranscriptKeyFile
 	if transcriptKeyPath == "" {
 		transcriptKeyPath = transcripts.DefaultKeyPath(config.DataDir)
