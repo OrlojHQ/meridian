@@ -215,6 +215,7 @@ export function buildPaletteCommands({
   go("inbox", "Inbox", "/ui/", "activity board home status subagents leads everything");
   go("threads", "Threads", "/ui/threads", "sessions structured");
   go("harnesses", "Harness settings", "/ui/settings/harnesses", "providers setups");
+  go("account", "Account", "/ui/settings/account", "sign in sign out sessions team mode claim");
 
   commands.push({
     id: "help:shortcuts",

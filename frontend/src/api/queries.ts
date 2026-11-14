@@ -27,6 +27,22 @@ export const queryClient = new QueryClient({
 });
 
 export const queries = {
+  authenticationMode: () =>
+    queryOptions({
+      queryKey: ["authentication-mode"],
+      queryFn: ({ signal }) => api.authenticationMode(signal),
+      staleTime: 30_000,
+    }),
+  currentMember: () =>
+    queryOptions({
+      queryKey: ["current-member"],
+      queryFn: ({ signal }) => api.currentMember(signal),
+    }),
+  sessions: () =>
+    queryOptions({
+      queryKey: ["sessions"],
+      queryFn: ({ signal }) => api.sessions(signal),
+    }),
   capabilities: () =>
     queryOptions({
       queryKey: ["capabilities"],

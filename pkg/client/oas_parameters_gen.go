@@ -54,6 +54,12 @@ type CompleteClaudeLoginParams struct {
 	LoginId string
 }
 
+// CompleteOidcSignInParams is parameters of completeOidcSignIn operation.
+type CompleteOidcSignInParams struct {
+	State OptString `json:",omitempty,omitzero"`
+	Code  OptString `json:",omitempty,omitzero"`
+}
+
 // CreateCapsuleParams is parameters of createCapsule operation.
 type CreateCapsuleParams struct {
 	ProjectId      string
@@ -441,6 +447,11 @@ type RetryCapsuleParams struct {
 type RevokeCoordinationGrantParams struct {
 	GrantId        string
 	IdempotencyKey string
+}
+
+// RevokeSessionParams is parameters of revokeSession operation.
+type RevokeSessionParams struct {
+	SessionId string
 }
 
 // RewindCapsuleParams is parameters of rewindCapsule operation.

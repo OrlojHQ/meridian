@@ -854,6 +854,42 @@ func (r *scopedReader) GetUser(ctx context.Context, id domain.UserID) (domain.Us
 	return r.inner.GetUser(ctx, id)
 }
 
+// GetInstallation reads the installation's mode, which every caller may
+// know: it names no user.
+func (r *scopedReader) GetInstallation(ctx context.Context) (domain.Installation, error) {
+	return r.inner.GetInstallation(ctx)
+}
+
+// GetUserByIdentity and GetUserSessionByDigest resolve a credential to a
+// user. That is authentication, which runs as the system before any user
+// principal exists.
+func (r *scopedReader) GetUserByIdentity(context.Context, string, string) (domain.User, error) {
+	return domain.User{}, domain.ErrNotFound
+}
+
+func (r *scopedReader) GetUserSessionByDigest(context.Context, [32]byte) (domain.UserSession, error) {
+	return domain.UserSession{}, domain.ErrNotFound
+}
+
+// GetUserSession and ListUserSessions read only the caller's own sessions.
+func (r *scopedReader) GetUserSession(ctx context.Context, id string) (domain.UserSession, error) {
+	session, err := r.inner.GetUserSession(ctx, id)
+	if err != nil {
+		return domain.UserSession{}, err
+	}
+	if err := r.keyOwner(session.UserID); err != nil {
+		return domain.UserSession{}, err
+	}
+	return session, nil
+}
+
+func (r *scopedReader) ListUserSessions(ctx context.Context, user domain.UserID) ([]domain.UserSession, error) {
+	if err := r.keyOwner(user); err != nil {
+		return nil, err
+	}
+	return r.inner.ListUserSessions(ctx, user)
+}
+
 // ListAuditRecords lists the caller's own records. Listing every user's
 // records needs the admin role (ADR 0046).
 func (r *scopedReader) ListAuditRecords(ctx context.Context, user domain.UserID, after int64, limit int) ([]domain.AuditRecord, bool, error) {
@@ -1236,4 +1272,33 @@ func (t *scopedTx) AppendAuditRecord(ctx context.Context, record domain.AuditRec
 // PruneAuditRecords is retention, daemon-internal work only.
 func (t *scopedTx) PruneAuditRecords(context.Context, time.Time) (int, error) {
 	return 0, domain.ErrNotFound
+}
+
+// ClaimInstallation, InsertUser, UpdateUserProfile, InsertUserSession, and
+// TouchUserSession are sign-in and the claim, which run as the system once
+// the credential is verified.
+func (t *scopedTx) ClaimInstallation(context.Context, string, domain.User, time.Time) error {
+	return domain.ErrNotFound
+}
+
+func (t *scopedTx) InsertUser(context.Context, domain.User) error { return domain.ErrNotFound }
+
+func (t *scopedTx) UpdateUserProfile(context.Context, domain.UserID, string, string) error {
+	return domain.ErrNotFound
+}
+
+func (t *scopedTx) InsertUserSession(context.Context, domain.UserSession) error {
+	return domain.ErrNotFound
+}
+
+func (t *scopedTx) TouchUserSession(context.Context, string, time.Time) error {
+	return domain.ErrNotFound
+}
+
+// RevokeUserSession revokes only the caller's own session.
+func (t *scopedTx) RevokeUserSession(ctx context.Context, id string, at time.Time) error {
+	if _, err := t.GetUserSession(ctx, id); err != nil {
+		return err
+	}
+	return t.tx.RevokeUserSession(ctx, id, at)
 }

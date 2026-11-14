@@ -426,6 +426,45 @@ export type RunEvent = {
     };
 };
 
+export type AuthenticationMode = {
+    mode: 'single_user' | 'team';
+    /**
+     * An OIDC issuer is configured.
+     */
+    signIn: boolean;
+    /**
+     * The installation can still be claimed for team mode.
+     */
+    claimable: boolean;
+};
+
+export type Member = {
+    mode: 'single_user' | 'team';
+    id: string;
+    role: 'member' | 'admin';
+    /**
+     * Display only; refreshed at sign-in.
+     */
+    displayName?: string;
+    /**
+     * Display only; refreshed at sign-in.
+     */
+    email?: string;
+};
+
+export type Session = {
+    id: string;
+    createdAt: string;
+    lastUsedAt: string;
+    expiresAt: string;
+    revoked: boolean;
+    current: boolean;
+};
+
+export type SessionPage = {
+    items: Array<Session>;
+};
+
 export type AuditRecord = {
     sequence: number;
     recordedAt: string;
@@ -5289,6 +5328,243 @@ export type SealCapsuleResponses = {
 };
 
 export type SealCapsuleResponse = SealCapsuleResponses[keyof SealCapsuleResponses];
+
+export type GetAuthenticationModeData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/auth/mode';
+};
+
+export type GetAuthenticationModeErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type GetAuthenticationModeError = GetAuthenticationModeErrors[keyof GetAuthenticationModeErrors];
+
+export type GetAuthenticationModeResponses = {
+    /**
+     * Authentication mode
+     */
+    200: AuthenticationMode;
+};
+
+export type GetAuthenticationModeResponse = GetAuthenticationModeResponses[keyof GetAuthenticationModeResponses];
+
+export type StartOidcSignInData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/auth/oidc/start';
+};
+
+export type StartOidcSignInErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type StartOidcSignInError = StartOidcSignInErrors[keyof StartOidcSignInErrors];
+
+export type StartOidcSignInResponses = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type StartOidcSignInResponse = StartOidcSignInResponses[keyof StartOidcSignInResponses];
+
+export type CompleteOidcSignInData = {
+    body?: never;
+    path?: never;
+    query?: {
+        state?: string;
+        code?: string;
+    };
+    url: '/auth/oidc/callback';
+};
+
+export type CompleteOidcSignInErrors = {
+    /**
+     * The sign-in failed or is not allowed
+     */
+    400: string;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type CompleteOidcSignInError = CompleteOidcSignInErrors[keyof CompleteOidcSignInErrors];
+
+export type CompleteOidcSignInResponses = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type CompleteOidcSignInResponse = CompleteOidcSignInResponses[keyof CompleteOidcSignInResponses];
+
+export type ClaimInstallationData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/auth/claim';
+};
+
+export type ClaimInstallationErrors = {
+    /**
+     * Missing or invalid installation authentication
+     */
+    401: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ClaimInstallationError = ClaimInstallationErrors[keyof ClaimInstallationErrors];
+
+export type ClaimInstallationResponses = {
+    /**
+     * Installation claimed; the browser is signed in
+     */
+    204: void;
+};
+
+export type ClaimInstallationResponse = ClaimInstallationResponses[keyof ClaimInstallationResponses];
+
+export type GetCurrentMemberData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/auth/me';
+};
+
+export type GetCurrentMemberErrors = {
+    /**
+     * Missing or invalid installation authentication
+     */
+    401: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type GetCurrentMemberError = GetCurrentMemberErrors[keyof GetCurrentMemberErrors];
+
+export type GetCurrentMemberResponses = {
+    /**
+     * The signed-in member
+     */
+    200: Member;
+};
+
+export type GetCurrentMemberResponse = GetCurrentMemberResponses[keyof GetCurrentMemberResponses];
+
+export type SignOutData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/auth/sign-out';
+};
+
+export type SignOutErrors = {
+    /**
+     * Missing or invalid installation authentication
+     */
+    401: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type SignOutError = SignOutErrors[keyof SignOutErrors];
+
+export type SignOutResponses = {
+    /**
+     * Signed out
+     */
+    204: void;
+};
+
+export type SignOutResponse = SignOutResponses[keyof SignOutResponses];
+
+export type ListSessionsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/auth/sessions';
+};
+
+export type ListSessionsErrors = {
+    /**
+     * Missing or invalid installation authentication
+     */
+    401: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ListSessionsError = ListSessionsErrors[keyof ListSessionsErrors];
+
+export type ListSessionsResponses = {
+    /**
+     * Sessions, newest first
+     */
+    200: SessionPage;
+};
+
+export type ListSessionsResponse = ListSessionsResponses[keyof ListSessionsResponses];
+
+export type RevokeSessionData = {
+    body?: never;
+    path: {
+        sessionId: string;
+    };
+    query?: never;
+    url: '/auth/sessions/{sessionId}/revoke';
+};
+
+export type RevokeSessionErrors = {
+    /**
+     * Missing or invalid installation authentication
+     */
+    401: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type RevokeSessionError = RevokeSessionErrors[keyof RevokeSessionErrors];
+
+export type RevokeSessionResponses = {
+    /**
+     * Session revoked
+     */
+    204: void;
+};
+
+export type RevokeSessionResponse = RevokeSessionResponses[keyof RevokeSessionResponses];
 
 export type CreateBrowserSessionData = {
     body?: never;

@@ -2,29 +2,11 @@ package sqlite
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"time"
 
 	"github.com/OrlojHQ/meridian/internal/domain"
 )
-
-func (r *repository) GetUser(ctx context.Context, id domain.UserID) (domain.User, error) {
-	var user domain.User
-	var disabled sql.NullString
-	err := r.q.QueryRowContext(ctx,
-		"SELECT id, role, disabled_at FROM users WHERE id = ?", id,
-	).Scan(&user.ID, &user.Role, &disabled)
-	if err != nil {
-		return domain.User{}, mapError(err)
-	}
-	if disabled.Valid && disabled.String != "" {
-		if user.DisabledAt, err = parseTime(disabled.String); err != nil {
-			return domain.User{}, err
-		}
-	}
-	return user, nil
-}
 
 func (r *repository) AppendAuditRecord(ctx context.Context, record domain.AuditRecord) error {
 	_, err := r.q.ExecContext(ctx, `

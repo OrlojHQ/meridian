@@ -61,6 +61,10 @@ type Config struct {
 	// every record (ADR 0046).
 	AuditRetention time.Duration
 
+	// OIDC configures team mode sign-in (ADR 0046). An empty issuer keeps
+	// the installation in single-user mode.
+	OIDC OIDCConfig
+
 	// ProviderGatewayAllowPrivateHTTP lets custom provider connections opt in
 	// to plaintext HTTP upstreams on private-network addresses.
 	ProviderGatewayAllowPrivateHTTP bool
@@ -495,6 +499,22 @@ func run(ctx context.Context, config Config) error {
 	previewBaseURL := "http://" + previewListener.Addr().String()
 	api := httpapi.NewWithPreview(service, capabilities, previewBaseURL, apiToken)
 	api.SetHarnessPacks(harnessPacks)
+	relyingParty, err := config.OIDC.relyingParty()
+	if err != nil {
+		_ = httpServer.Close()
+		_ = previewHTTPServer.Close()
+		return fmt.Errorf("configure OIDC sign-in: %w", err)
+	}
+	identity, err := app.NewIdentity(ctx, store, clock, ids, relyingParty)
+	if err != nil {
+		_ = httpServer.Close()
+		_ = previewHTTPServer.Close()
+		return err
+	}
+	if identity.Mode() == domain.TeamMode && relyingParty == nil {
+		config.Logger.Printf("team mode is on but no OIDC issuer is configured; only break-glass administration is possible")
+	}
+	api.SetIdentity(identity)
 	api.ConfigureObservability(metrics)
 	handler.set(api)
 	previewHandler.set(api.PreviewHandler())

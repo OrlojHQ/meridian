@@ -476,6 +476,7 @@ describe("Board", () => {
     const views = screen.getByRole("navigation", { name: "Views" });
     expect(within(views).getAllByRole("link").map((link) => link.getAttribute("href"))).toEqual([
       "/ui/settings/harnesses",
+      "/ui/settings/account",
     ]);
     expect(within(views).getByRole("link", { name: /Harness settings/ })).toBeTruthy();
     expect(within(views).queryByRole("link", { name: /^Board$/ })).toBeNull();

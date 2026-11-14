@@ -432,9 +432,11 @@ describe("application shell", () => {
     const links = within(views).getAllByRole("link");
     expect(links.map((link) => link.textContent?.replace(/\d+$/, ""))).toEqual([
       "Harness settings",
+      "Account",
     ]);
     expect(links.map((link) => link.getAttribute("href"))).toEqual([
       "/ui/settings/harnesses",
+      "/ui/settings/account",
     ]);
     expect(within(views).queryByRole("button", { name: "Gateway" })).not.toBeInTheDocument();
     links.forEach((link) => expect(link.querySelector("svg")).not.toBeNull());

@@ -120,6 +120,17 @@ func newRootCommand() *cobra.Command {
 		5*time.Second,
 		"refresh live Run state and structured Thread output while unwatched (0 disables)",
 	)
+	command.Flags().StringVar(&config.OIDC.Issuer, "oidc-issuer", "",
+		"OIDC issuer URL for team mode sign-in (empty keeps single-user mode)")
+	command.Flags().StringVar(&config.OIDC.ClientID, "oidc-client-id", "", "OIDC client id")
+	command.Flags().StringVar(&config.OIDC.ClientSecretFile, "oidc-client-secret-file", "",
+		"file holding the OIDC client secret (kept outside the database)")
+	command.Flags().StringVar(&config.OIDC.RequiredGroup, "oidc-required-group", "",
+		"refuse sign-in without this group in the ID token")
+	command.Flags().StringVar(&config.OIDC.GroupsClaim, "oidc-groups-claim", "groups",
+		"ID token claim that lists the member's groups")
+	command.Flags().StringVar(&config.OIDC.PublicURL, "public-url", "",
+		"external origin browsers use for this daemon; the OIDC callback is <public-url>/auth/oidc/callback")
 	command.Flags().DurationVar(
 		&config.AuditRetention,
 		"audit-retention",
