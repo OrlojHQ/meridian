@@ -2,7 +2,6 @@ package app
 
 import (
 	"bytes"
-	"context"
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
@@ -115,7 +114,7 @@ func itoa(n int) string { return string(rune('0' + n)) }
 // redirected to.
 func (f *fakeOpenAIAuth) signIn(t *testing.T, s *Service, connection string) (ChatGPTSignIn, string) {
 	t.Helper()
-	view, err := s.StartChatGPTSignIn(context.Background(), connection, false)
+	view, err := s.StartChatGPTSignIn(operatorContext(), connection, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +135,7 @@ func (f *fakeOpenAIAuth) signIn(t *testing.T, s *Service, connection string) (Ch
 
 func chatGPTService(t *testing.T) (*Service, ports.Store, *fakeOpenAIAuth, string) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := operatorContext()
 	dataDir := t.TempDir()
 	db, err := sqlite.Open(ctx, dataDir)
 	if err != nil {
@@ -161,7 +160,7 @@ func chatGPTService(t *testing.T) (*Service, ports.Store, *fakeOpenAIAuth, strin
 }
 
 func TestChatGPTSignInStoresSealedTokens(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	s, db, f, dataDir := chatGPTService(t)
 	if !s.ChatGPTAvailable() {
 		t.Fatal("ChatGPT sign-in unavailable")
@@ -206,7 +205,7 @@ func TestChatGPTSignInStoresSealedTokens(t *testing.T) {
 		bytes.Contains(stored.Ciphertext, []byte("refresh-signin")) || bytes.Contains(stored.Ciphertext, []byte("access-signin")) {
 		t.Fatalf("stored = %+v", stored)
 	}
-	again, err := s.ChatGPTSignInStatus(view.ID)
+	again, err := s.ChatGPTSignInStatus(ctx, view.ID)
 	if err != nil || again.State != ChatGPTSignInCompleted {
 		t.Fatalf("status = %+v, %v", again, err)
 	}
@@ -219,7 +218,7 @@ func TestChatGPTSignInStoresSealedTokens(t *testing.T) {
 
 func readyCapsule(t *testing.T, s *Service, db ports.Store) (domain.Project, domain.Capsule) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := operatorContext()
 	project, err := s.CreateProject(ctx, "project", "project")
 	if err != nil {
 		t.Fatal(err)
@@ -240,7 +239,7 @@ func readyCapsule(t *testing.T, s *Service, db ports.Store) (domain.Project, dom
 }
 
 func TestChatGPTLeaseRefreshReauthAndRevoke(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	s, db, f, _ := chatGPTService(t)
 	view, callback := f.signIn(t, s, "")
 	done, err := s.CompleteChatGPTSignIn(ctx, view.ID, callback)
@@ -342,7 +341,7 @@ func TestChatGPTLeaseRefreshReauthAndRevoke(t *testing.T) {
 }
 
 func TestChatGPTRevocationUnconfirmed(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	s, db, f, _ := chatGPTService(t)
 	view, callback := f.signIn(t, s, "")
 	done, err := s.CompleteChatGPTSignIn(ctx, view.ID, callback)
@@ -367,7 +366,7 @@ func TestChatGPTRevocationUnconfirmed(t *testing.T) {
 }
 
 func TestChatGPTLoopbackCallback(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	s, _, f, _ := chatGPTService(t)
 	probe, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -402,7 +401,7 @@ func TestChatGPTLoopbackCallback(t *testing.T) {
 	if response.StatusCode != http.StatusOK || strings.Contains(string(body), "access-signin") || response.Header.Get("Cache-Control") != "no-store" {
 		t.Fatalf("callback: %d %s", response.StatusCode, body)
 	}
-	status, err := s.ChatGPTSignInStatus(view.ID)
+	status, err := s.ChatGPTSignInStatus(ctx, view.ID)
 	if err != nil || status.State != ChatGPTSignInCompleted || status.ConnectionID == "" {
 		t.Fatalf("status = %+v, %v", status, err)
 	}
@@ -424,9 +423,9 @@ func TestChatGPTLoopbackCallback(t *testing.T) {
 func connectionByID(t *testing.T, db ports.Store, id string) domain.ProviderConnection {
 	t.Helper()
 	var item domain.ProviderConnection
-	err := db.View(context.Background(), func(r ports.Reader) error {
+	err := db.View(operatorContext(), func(r ports.Reader) error {
 		var err error
-		item, err = r.GetProviderConnection(context.Background(), id)
+		item, err = r.GetProviderConnection(operatorContext(), id)
 		return err
 	})
 	if err != nil {
@@ -436,7 +435,7 @@ func connectionByID(t *testing.T, db ports.Store, id string) domain.ProviderConn
 }
 
 func TestChatGPTFailedExchangeReportsReasonAndKeepsIssuedClient(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	s, _, f, _ := chatGPTService(t)
 	f.mu.Lock()
 	f.failExchange = "Authorization code was issued to another client\x1b[31m sk-proj-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"

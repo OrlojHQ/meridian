@@ -24,6 +24,7 @@ import (
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/harnesssetup"
 	"github.com/OrlojHQ/meridian/internal/ports"
+	"github.com/OrlojHQ/meridian/internal/principal"
 	"github.com/OrlojHQ/meridian/internal/provider/contract"
 	"github.com/OrlojHQ/meridian/internal/store/sqlite"
 	"github.com/OrlojHQ/meridian/internal/system"
@@ -41,7 +42,7 @@ func TestDockerProviderIntegrationMomentsLineageAndSeal(t *testing.T) {
 		image = "meridian-capsule-integration:dev"
 	}
 	root := t.TempDir()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ownerContext())
 	defer cancel()
 	store, err := sqlite.Open(ctx, path.Join(root, "data"))
 	if err != nil {
@@ -255,11 +256,17 @@ func TestDockerProviderIntegrationMomentsLineageAndSeal(t *testing.T) {
 	}
 }
 
+// ownerContext carries the installation owner, as the daemon attaches to an
+// authenticated request; the Service refuses calls without a principal.
+func ownerContext() context.Context {
+	return principal.With(context.Background(), principal.Owner())
+}
+
 func waitCapsuleReady(t *testing.T, service *app.Service, id domain.CapsuleID) domain.Capsule {
 	t.Helper()
 	deadline := time.Now().Add(20 * time.Second)
 	for {
-		capsule, err := service.GetCapsule(context.Background(), id)
+		capsule, err := service.GetCapsule(ownerContext(), id)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -283,7 +290,7 @@ func waitThreadBlock(
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	for {
-		page, err := service.ThreadBlocks(context.Background(), id, after, 100)
+		page, err := service.ThreadBlocks(ownerContext(), id, after, 100)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -303,8 +310,8 @@ func waitThreadPaused(t *testing.T, service *app.Service, id domain.ThreadID) do
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	for {
-		_, _ = service.ThreadBlocks(context.Background(), id, 0, 100)
-		thread, err := service.GetThread(context.Background(), id)
+		_, _ = service.ThreadBlocks(ownerContext(), id, 0, 100)
+		thread, err := service.GetThread(ownerContext(), id)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -331,7 +338,7 @@ func TestDockerProviderIntegrationControlPlaneRestartRecoversRunningRun(t *testi
 		Image: image, StateDir: path.Join(root, "provider"),
 		OperationTimeout: 30 * time.Second, SetupTimeout: time.Minute,
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ownerContext())
 	store, err := sqlite.Open(ctx, path.Join(root, "data"))
 	if err != nil {
 		t.Fatal(err)
@@ -382,7 +389,7 @@ func TestDockerProviderIntegrationControlPlaneRestartRecoversRunningRun(t *testi
 		t.Fatal(err)
 	}
 
-	restartCtx, restartCancel := context.WithCancel(context.Background())
+	restartCtx, restartCancel := context.WithCancel(ownerContext())
 	defer restartCancel()
 	store, err = sqlite.Open(restartCtx, path.Join(root, "data"))
 	if err != nil {
@@ -990,7 +997,7 @@ func TestDockerProviderIntegrationPreparedNativeCapsules(t *testing.T) {
 	if image == "" {
 		image = "meridian-capsule-integration:dev"
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ownerContext())
 	defer cancel()
 	root := t.TempDir()
 	store, err := sqlite.Open(ctx, path.Join(root, "data"))

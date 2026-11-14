@@ -15,7 +15,7 @@ import (
 )
 
 func TestStartupProgressIsThrottledAndPullFailuresAreSpecific(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(operatorContext())
 	defer cancel()
 	store, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {

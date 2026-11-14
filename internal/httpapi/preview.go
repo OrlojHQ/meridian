@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/OrlojHQ/meridian/internal/domain"
+	"github.com/OrlojHQ/meridian/internal/principal"
 	"github.com/coder/websocket"
 )
 
@@ -38,6 +39,8 @@ type previewTicket struct {
 	ExpiresAt time.Time
 	Revoked   chan struct{}
 	IsRevoked bool
+	// Principal minted the ticket; preview requests act as this principal.
+	Principal principal.Principal
 }
 
 type previewTicketRegistry struct {
@@ -59,6 +62,7 @@ func newPreviewTicketRegistry(max int) *previewTicketRegistry {
 func (r *previewTicketRegistry) mint(
 	capsuleID domain.CapsuleID,
 	port uint16,
+	caller principal.Principal,
 	expiresAt, now time.Time,
 ) (string, error) {
 	random := make([]byte, 32)
@@ -75,6 +79,7 @@ func (r *previewTicketRegistry) mint(
 	}
 	r.entries[digest] = &previewTicket{
 		CapsuleID: capsuleID, Port: port, ExpiresAt: expiresAt, Revoked: make(chan struct{}),
+		Principal: caller,
 	}
 	return value, nil
 }
@@ -157,6 +162,9 @@ func (s *Server) servePreview(writer http.ResponseWriter, request *http.Request)
 		writePreviewAuthorizationError(writer, status)
 		return
 	}
+	// The preview listener has no session; a request acts as whoever minted
+	// its ticket, and nothing the request sends can change that.
+	request = request.WithContext(principal.With(request.Context(), ticket.Principal))
 	if s.metrics != nil {
 		s.metrics.Preview(1)
 		defer s.metrics.Preview(-1)

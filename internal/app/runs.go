@@ -31,6 +31,9 @@ func (s *Service) StartRun(
 	harnessName, prompt, idempotencyKey string,
 	columns, rows uint16,
 ) (domain.Run, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.Run{}, err
+	}
 	if s.runtime == nil {
 		return domain.Run{}, domain.ErrUnsupported
 	}
@@ -145,6 +148,9 @@ func (s *Service) StartRun(
 }
 
 func (s *Service) GetRun(ctx context.Context, id domain.RunID) (domain.Run, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.Run{}, err
+	}
 	var run domain.Run
 	err := s.store.View(ctx, func(reader ports.Reader) error {
 		var err error
@@ -175,6 +181,9 @@ func (s *Service) ListRuns(
 	capsuleID domain.CapsuleID,
 	offset, limit int,
 ) (RunPage, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return RunPage{}, err
+	}
 	page := normalizePage(offset, limit)
 	var result RunPage
 	err := s.store.View(ctx, func(reader ports.Reader) error {
@@ -198,6 +207,9 @@ func (s *Service) CancelRun(
 	expected domain.ResourceVersion,
 	idempotencyKey string,
 ) (domain.Run, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.Run{}, err
+	}
 	if s.runtime == nil {
 		return domain.Run{}, domain.ErrUnsupported
 	}
@@ -276,6 +288,9 @@ func (s *Service) RunEvents(
 	after int64,
 	limit int,
 ) (RunEventPage, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return RunEventPage{}, err
+	}
 	run, err := s.GetRun(ctx, id)
 	if err != nil {
 		return RunEventPage{}, err
@@ -300,10 +315,16 @@ func (s *Service) RunEvents(
 }
 
 func (s *Service) GitStatus(ctx context.Context, capsuleID domain.CapsuleID) (ports.GitResult, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return ports.GitResult{}, err
+	}
 	return s.git(ctx, capsuleID, false)
 }
 
 func (s *Service) GitDiff(ctx context.Context, capsuleID domain.CapsuleID) (ports.GitResult, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return ports.GitResult{}, err
+	}
 	return s.git(ctx, capsuleID, true)
 }
 
@@ -332,6 +353,9 @@ func (s *Service) git(ctx context.Context, capsuleID domain.CapsuleID, diff bool
 }
 
 func (s *Service) AttachRun(ctx context.Context, id domain.RunID, after uint64) (ports.RuntimeAttachment, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return nil, err
+	}
 	if s.runtime == nil {
 		return nil, domain.ErrUnsupported
 	}
@@ -360,6 +384,9 @@ func (s *Service) AttachRun(ctx context.Context, id domain.RunID, after uint64) 
 }
 
 func (s *Service) RecoverRuns(ctx context.Context) error {
+	if err := requirePrincipal(ctx); err != nil {
+		return err
+	}
 	if s.runtime == nil {
 		return nil
 	}

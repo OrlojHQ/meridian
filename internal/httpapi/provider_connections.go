@@ -59,7 +59,7 @@ func (s *Server) startChatGPTSignIn(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, view)
 }
 func (s *Server) chatGPTSignIn(w http.ResponseWriter, r *http.Request) {
-	view, err := s.service.ChatGPTSignInStatus(r.PathValue("signInId"))
+	view, err := s.service.ChatGPTSignInStatus(r.Context(), r.PathValue("signInId"))
 	if err != nil {
 		writeError(w, err)
 		return

@@ -58,6 +58,9 @@ type cachedThreadAttention struct {
 // has an unanswered permission or input request. It is never persisted: the
 // only durable record of a request remains the encrypted transcript.
 func (s *Service) ThreadAwaiting(ctx context.Context, thread domain.Thread) (*ThreadAwaiting, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return nil, err
+	}
 	attention, err := s.ThreadAttention(ctx, thread)
 	return attention.Awaiting, err
 }
@@ -65,6 +68,9 @@ func (s *Service) ThreadAwaiting(ctx context.Context, thread domain.Thread) (*Th
 // ThreadAttention derives the live session's unanswered request and turn state
 // from the trailing transcript window, in memory and never persisted.
 func (s *Service) ThreadAttention(ctx context.Context, thread domain.Thread) (ThreadAttention, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return ThreadAttention{}, err
+	}
 	if s.transcriptKey == nil || thread.State != domain.ThreadActive ||
 		thread.CurrentRunID == "" || thread.MessageCount == 0 {
 		return ThreadAttention{}, nil

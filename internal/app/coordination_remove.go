@@ -22,6 +22,9 @@ import (
 func (s *Service) RemoveSubagent(
 	ctx context.Context, id domain.ThreadLinkID, expected domain.ResourceVersion, key string,
 ) (domain.ThreadLink, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.ThreadLink{}, err
+	}
 	if expected <= 0 {
 		return domain.ThreadLink{}, fmt.Errorf("%w: expected resource version is required", domain.ErrInvalid)
 	}
@@ -109,6 +112,9 @@ func (s *Service) RemoveSubagent(
 // ThreadLinkCapsuleRemoved reports whether the subagent's Capsule is deleted
 // or being deleted.
 func (s *Service) ThreadLinkCapsuleRemoved(ctx context.Context, link domain.ThreadLink) bool {
+	if requirePrincipal(ctx) != nil {
+		return false
+	}
 	capsule, err := s.GetCapsule(ctx, link.ChildCapsuleID)
 	if errors.Is(err, domain.ErrNotFound) {
 		return true

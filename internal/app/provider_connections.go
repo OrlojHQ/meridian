@@ -7,6 +7,7 @@ import (
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/harnesssetup"
 	"github.com/OrlojHQ/meridian/internal/ports"
+	"github.com/OrlojHQ/meridian/internal/principal"
 	"github.com/OrlojHQ/meridian/internal/providergateway"
 	"net/http"
 	"net/url"
@@ -96,11 +97,17 @@ func (s *Service) CloseProviderGateway() {
 	}
 }
 func (s *Service) ListProviderConnections(ctx context.Context) ([]domain.ProviderConnection, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return nil, err
+	}
 	var items []domain.ProviderConnection
 	err := s.store.View(ctx, func(r ports.Reader) error { var err error; items, err = r.ListProviderConnections(ctx); return err })
 	return items, err
 }
 func (s *Service) PutProviderConnection(ctx context.Context, id string, input ConnectionInput) (domain.ProviderConnection, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.ProviderConnection{}, err
+	}
 	if s.secretKey == nil || s.gateway == nil {
 		return domain.ProviderConnection{}, domain.ErrUnsupported
 	}
@@ -221,6 +228,9 @@ func (s *Service) validateConnectionInput(input ConnectionInput) (ConnectionInpu
 	return input, nil
 }
 func (s *Service) GrantProviderConnection(ctx context.Context, project domain.ProjectID, harness, connection string) error {
+	if err := requirePrincipal(ctx); err != nil {
+		return err
+	}
 	if !harnesssetup.ConnectionHarness(harness) {
 		return domain.ErrInvalid
 	}
@@ -255,6 +265,9 @@ func (s *Service) GrantProviderConnection(ctx context.Context, project domain.Pr
 	return err
 }
 func (s *Service) ProjectProviderConnection(ctx context.Context, project domain.ProjectID, harness string) (string, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return "", err
+	}
 	var id string
 	err := s.store.View(ctx, func(r ports.Reader) error {
 		if _, err := r.GetProject(ctx, project); err != nil {
@@ -266,7 +279,15 @@ func (s *Service) ProjectProviderConnection(ctx context.Context, project domain.
 	})
 	return id, err
 }
+
+// authorizeProviderLease runs for each gateway request. A lease is a Capsule
+// credential, so the request acts as that Capsule, never as a user.
 func (s *Service) authorizeProviderLease(ctx context.Context, lease providergateway.Lease) (providergateway.Upstream, error) {
+	caller, ok := capsulePrincipal(domain.CapsuleID(lease.Capsule))
+	if !ok {
+		return providergateway.Upstream{}, domain.ErrNotFound
+	}
+	ctx = principal.With(ctx, caller)
 	var upstream providergateway.Upstream
 	var connection domain.ProviderConnection
 	var raw []byte

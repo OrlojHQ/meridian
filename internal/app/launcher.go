@@ -14,6 +14,9 @@ func (s *Service) ReconcileCapsuleLauncher(
 	ctx context.Context,
 	capsule domain.Capsule,
 ) error {
+	if err := requirePrincipal(ctx); err != nil {
+		return err
+	}
 	if capsule.State != domain.CapsuleReady || capsule.DesiredState != domain.IntentReady ||
 		capsule.Maintenance != "" || capsule.LauncherHarness == "" {
 		return nil

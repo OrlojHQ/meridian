@@ -8,6 +8,7 @@ import (
 
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/ports"
+	"github.com/OrlojHQ/meridian/internal/principal"
 )
 
 const idleScanBatchSize = 100
@@ -38,6 +39,7 @@ func (r *Reconciler) StartIdleScanner(
 	}
 	r.idleStarted = true
 	r.mu.Unlock()
+	ctx = principal.WithSystem(ctx)
 
 	r.wg.Add(1)
 	go func() {
@@ -67,6 +69,7 @@ func (r *Reconciler) ScanIdleCapsules(
 	if threshold <= 0 {
 		return 0, nil
 	}
+	ctx = principal.WithSystem(ctx)
 	capabilities, err := r.provider.Capabilities(ctx)
 	if err != nil {
 		return 0, err

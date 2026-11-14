@@ -52,6 +52,9 @@ func environmentView(ctx context.Context, reader ports.Reader, id domain.Project
 	return result, nil
 }
 func (s *Service) ProjectEnvironment(ctx context.Context, id domain.ProjectID) (ProjectEnvironment, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return ProjectEnvironment{}, err
+	}
 	var result ProjectEnvironment
 	err := s.store.View(ctx, func(reader ports.Reader) error {
 		var err error
@@ -61,6 +64,9 @@ func (s *Service) ProjectEnvironment(ctx context.Context, id domain.ProjectID) (
 	return result, err
 }
 func (s *Service) UpdateProjectEnvironment(ctx context.Context, id domain.ProjectID, input EnvironmentMutation, key string) (ProjectEnvironment, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return ProjectEnvironment{}, err
+	}
 	if err := requireIdempotency(key); err != nil {
 		return ProjectEnvironment{}, err
 	}

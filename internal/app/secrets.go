@@ -65,6 +65,9 @@ func (s *Service) PutSecret(
 	expected domain.ResourceVersion,
 	idempotencyKey string,
 ) (domain.Secret, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.Secret{}, err
+	}
 	if s.secretKey == nil {
 		return domain.Secret{}, domain.ErrUnsupported
 	}
@@ -135,6 +138,9 @@ func (s *Service) PutSecret(
 }
 
 func (s *Service) ListSecrets(ctx context.Context, offset, limit int) (SecretPage, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return SecretPage{}, err
+	}
 	page := normalizePage(offset, limit)
 	var result SecretPage
 	err := s.store.View(ctx, func(reader ports.Reader) error {
@@ -155,6 +161,9 @@ func (s *Service) DeleteSecret(
 	expected domain.ResourceVersion,
 	idempotencyKey string,
 ) (domain.Secret, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.Secret{}, err
+	}
 	if err := validateSecretName(name); err != nil {
 		return domain.Secret{}, err
 	}

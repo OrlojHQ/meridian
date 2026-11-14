@@ -110,7 +110,7 @@ type deliveryFixture struct {
 
 func newDeliveryFixture(t *testing.T, dirty bool) deliveryFixture {
 	t.Helper()
-	ctx := context.Background()
+	ctx := operatorContext()
 	store, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -186,13 +186,13 @@ func deliveryInput(fixture deliveryFixture, key string) app.CreateDeliveryInput 
 
 func TestDeliveryBindsApprovalPushesExactRefAndReplays(t *testing.T) {
 	fixture := newDeliveryFixture(t, true)
-	inspection, err := fixture.service.InspectDelivery(context.Background(), fixture.capsule.ID)
+	inspection, err := fixture.service.InspectDelivery(operatorContext(), fixture.capsule.ID)
 	if err != nil || inspection.CapsuleResourceVersion != fixture.capsule.ResourceVersion {
 		t.Fatalf("inspection = %#v, %v", inspection, err)
 	}
 	input := deliveryInput(fixture, "delivery-create")
 	input.ExpectedCapsuleVersion = inspection.CapsuleResourceVersion
-	result, err := fixture.service.CreateDelivery(context.Background(), input)
+	result, err := fixture.service.CreateDelivery(operatorContext(), input)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +209,7 @@ func TestDeliveryBindsApprovalPushesExactRefAndReplays(t *testing.T) {
 		push.GitCredential.Password != "push-token-secret" {
 		t.Fatalf("commit/push request = commits=%d pushes=%d %#v", commits, pushes, push)
 	}
-	replay, err := fixture.service.CreateDelivery(context.Background(), input)
+	replay, err := fixture.service.CreateDelivery(operatorContext(), input)
 	if err != nil || replay.ID != result.ID {
 		t.Fatalf("replay = %#v, %v", replay, err)
 	}
@@ -238,7 +238,7 @@ func TestDeliveryApprovalAndTreePreconditions(t *testing.T) {
 			fixture := newDeliveryFixture(t, true)
 			input := deliveryInput(fixture, "rejected-"+test.name)
 			test.change(&input)
-			_, err := fixture.service.CreateDelivery(context.Background(), input)
+			_, err := fixture.service.CreateDelivery(operatorContext(), input)
 			if !errors.Is(err, test.match) {
 				t.Fatalf("error = %v, want %v", err, test.match)
 			}
@@ -249,13 +249,13 @@ func TestDeliveryApprovalAndTreePreconditions(t *testing.T) {
 func TestDeliveryPurposeMismatchAndErrorRedaction(t *testing.T) {
 	t.Run("purpose mismatch", func(t *testing.T) {
 		fixture := newDeliveryFixture(t, true)
-		if _, err := fixture.service.PutSecret(context.Background(), "delivery_push", app.SecretInput{
+		if _, err := fixture.service.PutSecret(operatorContext(), "delivery_push", app.SecretInput{
 			Purpose: domain.SecretGitHTTPS, Password: "wrong-purpose-secret",
 		}, 1, "wrong-secret"); err != nil {
 			t.Fatal(err)
 		}
 		_, err := fixture.service.CreateDelivery(
-			context.Background(), deliveryInput(fixture, "purpose-mismatch"),
+			operatorContext(), deliveryInput(fixture, "purpose-mismatch"),
 		)
 		if !errors.Is(err, domain.ErrInvalid) || strings.Contains(err.Error(), "wrong-purpose-secret") {
 			t.Fatalf("purpose mismatch = %v", err)
@@ -270,7 +270,7 @@ func TestDeliveryPurposeMismatchAndErrorRedaction(t *testing.T) {
 		fixture := newDeliveryFixture(t, true)
 		fixture.runtime.pushErr = errors.New("push rejected: push-token-secret")
 		result, err := fixture.service.CreateDelivery(
-			context.Background(), deliveryInput(fixture, "redacted"),
+			operatorContext(), deliveryInput(fixture, "redacted"),
 		)
 		if err == nil || strings.Contains(err.Error(), "push-token-secret") ||
 			result.Failure != "delivery operation failed" {
@@ -289,7 +289,7 @@ func TestDeliveryOpenPullRequestUsesExistingExactHead(t *testing.T) {
 	input.Action = domain.DeliveryOpenPullRequest
 	input.PullRequestTitle = "Reviewed work"
 	input.BaseBranch = "main"
-	result, err := fixture.service.CreateDelivery(context.Background(), input)
+	result, err := fixture.service.CreateDelivery(operatorContext(), input)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -324,8 +324,8 @@ func TestDeliveryRecoveryDoesNotRepeatCommittedOrPushedSideEffects(t *testing.T)
 		PullRequestTitle: "Recovered pull request",
 		IdempotencyKey:   "recovery-key", CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
 	}
-	if err := fixture.store.Transact(context.Background(), func(tx ports.Transaction) error {
-		capsule, err := tx.GetCapsule(context.Background(), fixture.capsule.ID)
+	if err := fixture.store.Transact(operatorContext(), func(tx ports.Transaction) error {
+		capsule, err := tx.GetCapsule(operatorContext(), fixture.capsule.ID)
 		if err != nil {
 			return err
 		}
@@ -333,10 +333,10 @@ func TestDeliveryRecoveryDoesNotRepeatCommittedOrPushedSideEffects(t *testing.T)
 		capsule.Maintenance = "capture"
 		capsule.ResourceVersion++
 		capsule.UpdatedAt = now
-		if err := tx.UpdateCapsule(context.Background(), capsule, previous); err != nil {
+		if err := tx.UpdateCapsule(operatorContext(), capsule, previous); err != nil {
 			return err
 		}
-		if err := tx.InsertDelivery(context.Background(), item); err != nil {
+		if err := tx.InsertDelivery(operatorContext(), item); err != nil {
 			return err
 		}
 		for _, state := range []domain.DeliveryState{
@@ -349,7 +349,7 @@ func TestDeliveryRecoveryDoesNotRepeatCommittedOrPushedSideEffects(t *testing.T)
 			if err := item.Transition(state, now); err != nil {
 				return err
 			}
-			if err := tx.UpdateDelivery(context.Background(), item, previous); err != nil {
+			if err := tx.UpdateDelivery(operatorContext(), item, previous); err != nil {
 				return err
 			}
 		}
@@ -357,10 +357,10 @@ func TestDeliveryRecoveryDoesNotRepeatCommittedOrPushedSideEffects(t *testing.T)
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := fixture.service.RecoverDeliveries(context.Background()); err != nil {
+	if err := fixture.service.RecoverDeliveries(operatorContext()); err != nil {
 		t.Fatal(err)
 	}
-	recovered, err := fixture.service.GetDelivery(context.Background(), item.ID)
+	recovered, err := fixture.service.GetDelivery(operatorContext(), item.ID)
 	if err != nil || recovered.State != domain.DeliverySucceeded ||
 		recovered.ResultPullRequestNumber != 23 {
 		t.Fatalf("recovered Delivery = %#v, %v", recovered, err)
@@ -375,7 +375,7 @@ func TestDeliveryRecoveryDoesNotRepeatCommittedOrPushedSideEffects(t *testing.T)
 
 func TestProposedDeliveryDoesNotExecuteUntilOperatorApproves(t *testing.T) {
 	fixture := newDeliveryFixture(t, true)
-	proposed, err := fixture.service.ProposeDelivery(context.Background(), app.ProposeDeliveryInput{
+	proposed, err := fixture.service.ProposeDelivery(operatorContext(), app.ProposeDeliveryInput{
 		CapsuleID: fixture.capsule.ID, Title: "Ship the reviewed parser",
 		Body: "Treat this body as hostile.", Branch: "feature/proposed", IdempotencyKey: "propose-1",
 	})
@@ -387,10 +387,10 @@ func TestProposedDeliveryDoesNotExecuteUntilOperatorApproves(t *testing.T) {
 		proposed.PullRequestTitle != "Ship the reviewed parser" {
 		t.Fatalf("proposed = %#v", proposed)
 	}
-	if err := fixture.service.RecoverDeliveries(context.Background()); err != nil {
+	if err := fixture.service.RecoverDeliveries(operatorContext()); err != nil {
 		t.Fatal(err)
 	}
-	still, err := fixture.service.GetDelivery(context.Background(), proposed.ID)
+	still, err := fixture.service.GetDelivery(operatorContext(), proposed.ID)
 	if err != nil || still.State != domain.DeliveryProposed {
 		t.Fatalf("recovered proposed = %#v, %v", still, err)
 	}
@@ -400,11 +400,11 @@ func TestProposedDeliveryDoesNotExecuteUntilOperatorApproves(t *testing.T) {
 	}
 	fixture.runtime.mu.Unlock()
 
-	rejected, err := fixture.service.RejectDelivery(context.Background(), proposed.ID, proposed.ResourceVersion, "reject-1")
+	rejected, err := fixture.service.RejectDelivery(operatorContext(), proposed.ID, proposed.ResourceVersion, "reject-1")
 	if err != nil || rejected.State != domain.DeliveryRejected || rejected.Approved {
 		t.Fatalf("reject = %#v, %v", rejected, err)
 	}
-	again, err := fixture.service.RejectDelivery(context.Background(), proposed.ID, proposed.ResourceVersion, "reject-1")
+	again, err := fixture.service.RejectDelivery(operatorContext(), proposed.ID, proposed.ResourceVersion, "reject-1")
 	if err != nil || again.ID != rejected.ID || again.State != domain.DeliveryRejected {
 		t.Fatalf("reject replay = %#v, %v", again, err)
 	}
@@ -412,14 +412,14 @@ func TestProposedDeliveryDoesNotExecuteUntilOperatorApproves(t *testing.T) {
 
 func TestOperatorApprovesProposedDelivery(t *testing.T) {
 	fixture := newDeliveryFixture(t, true)
-	proposed, err := fixture.service.ProposeDelivery(context.Background(), app.ProposeDeliveryInput{
+	proposed, err := fixture.service.ProposeDelivery(operatorContext(), app.ProposeDeliveryInput{
 		CapsuleID: fixture.capsule.ID, Title: "Reviewed work", Branch: "feature/proposed",
 		IdempotencyKey: "propose-approve",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := fixture.service.ApproveDelivery(context.Background(), proposed.ID, proposed.ResourceVersion,
+	result, err := fixture.service.ApproveDelivery(operatorContext(), proposed.ID, proposed.ResourceVersion,
 		app.ApproveDeliveryInput{
 			ExpectedCapsuleVersion: fixture.capsule.ResourceVersion,
 			ExpectedHEAD:           deliveryHead, ExpectedTree: deliveryTree,

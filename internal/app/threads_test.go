@@ -114,7 +114,7 @@ func (*structuredRuntime) HarnessProfiles(
 }
 
 func TestThreadAtomicIdempotencySyncAndCryptoShred(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	store, service, runtime, key, capsuleID := threadService(t, ctx)
 	defer store.Close()
 	defer key.Zero()
@@ -244,7 +244,7 @@ func TestThreadAtomicIdempotencySyncAndCryptoShred(t *testing.T) {
 }
 
 func TestTerminalThreadFreesActiveSlotAndPausedResumeConflicts(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	store, service, _, key, capsuleID := threadService(t, ctx)
 	defer store.Close()
 	defer key.Zero()
@@ -283,7 +283,7 @@ func TestTerminalThreadFreesActiveSlotAndPausedResumeConflicts(t *testing.T) {
 }
 
 func TestThreadGapWrongKeyAndRecoveryDoesNotSend(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	store, service, runtime, key, capsuleID := threadService(t, ctx)
 	defer store.Close()
 	defer key.Zero()
@@ -333,7 +333,7 @@ func TestThreadGapWrongKeyAndRecoveryDoesNotSend(t *testing.T) {
 }
 
 func TestDeferredFirstMessageStartDeliversEarliestOnce(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	store, service, runtime, key, capsuleID := threadService(t, ctx)
 	defer store.Close()
 	defer key.Zero()
@@ -373,7 +373,7 @@ func TestDeferredFirstMessageStartDeliversEarliestOnce(t *testing.T) {
 }
 
 func TestThreadDeliveryRetriesCrashBeforeSendAndAcknowledgesSuccess(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	store, service, runtime, key, capsuleID := threadService(t, ctx)
 	defer store.Close()
 	defer key.Zero()
@@ -452,7 +452,7 @@ func TestThreadDeliveryRetriesCrashBeforeSendAndAcknowledgesSuccess(t *testing.T
 }
 
 func TestSetThreadModelRequiresNegotiatedModelsAndDeliversOnce(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	store, service, runtime, key, capsuleID := threadService(t, ctx)
 	defer store.Close()
 	defer key.Zero()
@@ -509,7 +509,7 @@ func TestSetThreadModelRequiresNegotiatedModelsAndDeliversOnce(t *testing.T) {
 }
 
 func TestSetThreadEffortRequiresNegotiatedEffortAndDeliversOnce(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	store, service, runtime, key, capsuleID := threadService(t, ctx)
 	defer store.Close()
 	defer key.Zero()
@@ -557,7 +557,7 @@ func TestSetThreadEffortRequiresNegotiatedEffortAndDeliversOnce(t *testing.T) {
 }
 
 func TestCancelThreadReturnsRuntimeFailureAndRetriesCancelling(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	store, service, runtime, key, capsuleID := threadService(t, ctx)
 	defer store.Close()
 	defer key.Zero()
@@ -592,7 +592,7 @@ func TestCancelThreadReturnsRuntimeFailureAndRetriesCancelling(t *testing.T) {
 }
 
 func TestThreadMetadataEncryptedAndPathPlaintextDoesNotLeak(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	store, service, runtime, key, capsuleID := threadService(t, ctx)
 	defer store.Close()
 	defer key.Zero()
@@ -719,7 +719,7 @@ func threadServiceWithClock(
 }
 
 func TestThreadModelsSummaryIsDerivedInMemory(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	clock := &testClock{now: time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)}
 	store, service, runtime, key, capsuleID := threadServiceWithClock(t, ctx, clock)
 	defer store.Close()
@@ -773,7 +773,7 @@ func TestThreadModelsSummaryIsDerivedInMemory(t *testing.T) {
 }
 
 func TestThreadCommandsPersistEncryptedAsStatusEvent(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	store, service, runtime, key, capsuleID := threadService(t, ctx)
 	defer store.Close()
 	defer key.Zero()
@@ -823,7 +823,7 @@ func TestThreadCommandsPersistEncryptedAsStatusEvent(t *testing.T) {
 }
 
 func TestThreadSteerAttachesAdapterMetadataAndRetries(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	store, service, runtime, key, capsuleID := threadService(t, ctx)
 	defer store.Close()
 	defer key.Zero()
@@ -890,7 +890,7 @@ func TestThreadSteerAttachesAdapterMetadataAndRetries(t *testing.T) {
 }
 
 func TestCreateThreadStartRejectsNativeOnlyPack(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	store, service, runtime, key, _ := threadService(t, ctx)
 	defer store.Close()
 	defer key.Zero()
@@ -951,7 +951,7 @@ func TestCreateThreadStartRejectsNativeOnlyPack(t *testing.T) {
 }
 
 func TestCreateThreadPersistsCapsuledStructuredStartError(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	store, service, runtime, key, capsuleID := threadService(t, ctx)
 	defer store.Close()
 	defer key.Zero()

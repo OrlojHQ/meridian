@@ -10,6 +10,7 @@ import (
 	"github.com/OrlojHQ/meridian/internal/app"
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/ports"
+	"github.com/OrlojHQ/meridian/internal/principal"
 	"github.com/OrlojHQ/meridian/internal/store/sqlite"
 	"github.com/OrlojHQ/meridian/internal/system"
 	"github.com/moby/moby/client"
@@ -28,7 +29,7 @@ func TestDockerProviderIntegrationStoppedContainerIsRestarted(t *testing.T) {
 		image = "meridian-capsule-integration:dev"
 	}
 	root := t.TempDir()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(principal.With(context.Background(), principal.Owner()))
 	defer cancel()
 	store, err := sqlite.Open(ctx, path.Join(root, "data"))
 	if err != nil {

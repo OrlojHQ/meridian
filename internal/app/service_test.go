@@ -162,7 +162,7 @@ func (q *recordingQueue) Enqueue(_ context.Context, id domain.CapsuleID) error {
 }
 
 func TestServiceIdempotencyConflictsAndIllegalMutations(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	store, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -227,7 +227,7 @@ func TestServiceIdempotencyConflictsAndIllegalMutations(t *testing.T) {
 }
 
 func TestReconcilerRetriesAndStopsOnCancellation(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(operatorContext())
 	store, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -275,7 +275,7 @@ func TestReconcilerRetriesAndStopsOnCancellation(t *testing.T) {
 }
 
 func TestRunUseCasesIdempotencyExclusivityEventsAndCancellation(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(operatorContext())
 	defer cancel()
 	store, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {
@@ -390,7 +390,7 @@ func (r *stoppedRuntime) CancelRun(ctx context.Context, resourceID string, id do
 }
 
 func TestRunRecoveryFailsRunsWhoseReadyCapsuleRuntimeStopped(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(operatorContext())
 	defer cancel()
 	store, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {
@@ -462,7 +462,7 @@ func TestRunRecoveryFailsRunsWhoseReadyCapsuleRuntimeStopped(t *testing.T) {
 }
 
 func TestRuntimeEventSynchronizationIsConcurrentMonotonicAndIdempotent(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(operatorContext())
 	defer cancel()
 	store, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {
@@ -577,7 +577,7 @@ func TestRuntimeEventSynchronizationIsConcurrentMonotonicAndIdempotent(t *testin
 }
 
 func TestCreateProjectConfiguredHarnessImages(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	store, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -631,7 +631,7 @@ func TestCreateProjectConfiguredHarnessImages(t *testing.T) {
 }
 
 func TestCapsuleLauncherStartsOnceAndDoesNotRestartFailedRun(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	store, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -675,7 +675,7 @@ func TestCapsuleLauncherStartsOnceAndDoesNotRestartFailedRun(t *testing.T) {
 }
 
 func TestCreateProjectNormalizesGitHubRepository(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	store, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -722,7 +722,7 @@ func TestCreateProjectNormalizesGitHubRepository(t *testing.T) {
 // added. After an upgrade, new Capsules use this daemon's release (ADR 0041);
 // a custom image is used as written.
 func TestNewCapsulesFollowTheInstallationRelease(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	store, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {
 		t.Fatal(err)

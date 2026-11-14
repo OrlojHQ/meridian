@@ -2,7 +2,6 @@ package app_test
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"testing"
 	"time"
@@ -15,7 +14,7 @@ import (
 )
 
 func TestIdleScannerRequestsOnlyEligibleCapsules(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	store, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -104,7 +103,7 @@ func TestIdleScannerRequestsOnlyEligibleCapsules(t *testing.T) {
 }
 
 func TestIdleScannerIsDisabledAndBounded(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	store, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {
 		t.Fatal(err)

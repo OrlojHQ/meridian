@@ -22,6 +22,9 @@ func (s *Service) DeleteProject(
 	expected domain.ResourceVersion,
 	key string,
 ) (domain.Project, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.Project{}, err
+	}
 	if expected <= 0 {
 		return domain.Project{}, fmt.Errorf("%w: expected resource version is required", domain.ErrInvalid)
 	}
@@ -159,6 +162,9 @@ func (s *Service) capsulesAwaitingCleanup(
 // AdvanceProjectDeletion finishes a deleting Project once every Capsule is
 // Deleted, or records the provider failure that stopped container cleanup.
 func (s *Service) AdvanceProjectDeletion(ctx context.Context, id domain.ProjectID) error {
+	if err := requirePrincipal(ctx); err != nil {
+		return err
+	}
 	var digests []string
 	err := s.store.Transact(ctx, func(tx ports.Transaction) error {
 		project, err := tx.GetProject(ctx, id)
@@ -211,6 +217,9 @@ func (s *Service) AdvanceProjectDeletion(ctx context.Context, id domain.ProjectI
 
 // RecoverProjectDeletions resumes Projects left in deleting or failed after a restart.
 func (s *Service) RecoverProjectDeletions(ctx context.Context) error {
+	if err := requirePrincipal(ctx); err != nil {
+		return err
+	}
 	var projects []domain.Project
 	if err := s.store.View(ctx, func(reader ports.Reader) error {
 		var err error

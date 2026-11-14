@@ -39,6 +39,9 @@ type SetupMutation struct {
 }
 
 func (s *Service) ListHarnessSetups(ctx context.Context) ([]domain.HarnessSetup, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return nil, err
+	}
 	var items []domain.HarnessSetup
 	err := s.store.View(ctx, func(r ports.Reader) error { var err error; items, err = r.ListHarnessSetups(ctx); return err })
 	return items, err
@@ -52,6 +55,9 @@ func findSetup(items []domain.HarnessSetup, id string) (domain.HarnessSetup, err
 	return domain.HarnessSetup{}, domain.ErrNotFound
 }
 func (s *Service) ImportHarnessSetup(ctx context.Context, input SetupImport, key string) (domain.HarnessSetup, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.HarnessSetup{}, err
+	}
 	if s.secretKey == nil {
 		return domain.HarnessSetup{}, domain.ErrUnsupported
 	}
@@ -142,6 +148,9 @@ func (s *Service) ImportHarnessSetup(ctx context.Context, input SetupImport, key
 	return result, err
 }
 func (s *Service) MutateHarnessSetup(ctx context.Context, id string, input SetupMutation, key string) (domain.HarnessSetup, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.HarnessSetup{}, err
+	}
 	if err := requireIdempotency(key); err != nil {
 		return domain.HarnessSetup{}, err
 	}
@@ -220,6 +229,9 @@ func (s *Service) MutateHarnessSetup(ctx context.Context, id string, input Setup
 	return result, err
 }
 func (s *Service) HarnessSetupRevisions(ctx context.Context, id string) ([]domain.HarnessSetupRevision, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return nil, err
+	}
 	var items []domain.HarnessSetupRevision
 	err := s.store.View(ctx, func(r ports.Reader) error {
 		all, err := r.ListHarnessSetups(ctx)
@@ -239,6 +251,9 @@ func (s *Service) HarnessSetupRevisions(ctx context.Context, id string) ([]domai
 // A Capsule that started clean is absent from the map. Names follow renames;
 // the revision and its save time do not.
 func (s *Service) PinnedHarnessSetups(ctx context.Context, ids []domain.CapsuleID) (map[domain.CapsuleID][]domain.PinnedHarnessSetup, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return nil, err
+	}
 	result := map[domain.CapsuleID][]domain.PinnedHarnessSetup{}
 	if len(ids) == 0 {
 		return result, nil
@@ -340,6 +355,9 @@ func (s *Service) runtimeHarnessSetup(ctx context.Context, id domain.CapsuleID, 
 }
 
 func (s *Service) ProjectHarnessSetups(ctx context.Context, id domain.ProjectID) (map[string]string, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return nil, err
+	}
 	var result map[string]string
 	err := s.store.View(ctx, func(r ports.Reader) error {
 		if _, err := r.GetProject(ctx, id); err != nil {
@@ -352,6 +370,9 @@ func (s *Service) ProjectHarnessSetups(ctx context.Context, id domain.ProjectID)
 	return result, err
 }
 func (s *Service) SetProjectHarnessSetup(ctx context.Context, id domain.ProjectID, harness, setup string) error {
+	if err := requirePrincipal(ctx); err != nil {
+		return err
+	}
 	if !harnesssetup.Supported(harness) {
 		return domain.ErrInvalid
 	}
@@ -382,6 +403,9 @@ func (s *Service) SetProjectHarnessSetup(ctx context.Context, id domain.ProjectI
 
 // HarnessSetupContents returns one consistent setup version for explicit editing.
 func (s *Service) HarnessSetupContents(ctx context.Context, id string) (SetupImport, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return SetupImport{}, err
+	}
 	var result SetupImport
 	if s.secretKey == nil {
 		return result, domain.ErrUnsupported

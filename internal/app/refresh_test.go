@@ -46,7 +46,7 @@ func awaitingKind(t *testing.T, ctx context.Context, service *app.Service, id do
 }
 
 func TestRuntimeRefreshSurfacesUnansweredRequestsWithoutAViewer(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	store, service, runtime, key, capsuleID := threadService(t, ctx)
 	defer store.Close()
 	defer key.Zero()
@@ -111,7 +111,7 @@ func TestRuntimeRefreshSurfacesUnansweredRequestsWithoutAViewer(t *testing.T) {
 }
 
 func TestThreadAwaitingMatchesResponsesToTheirRequests(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	store, service, runtime, key, capsuleID := threadService(t, ctx)
 	defer store.Close()
 	defer key.Zero()
@@ -148,7 +148,7 @@ func TestThreadAwaitingMatchesResponsesToTheirRequests(t *testing.T) {
 }
 
 func TestThreadAttentionTracksTheLiveTurn(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	store, service, runtime, key, capsuleID := threadService(t, ctx)
 	defer store.Close()
 	defer key.Zero()
@@ -211,7 +211,7 @@ func TestThreadAttentionTracksTheLiveTurn(t *testing.T) {
 }
 
 func TestRuntimeRefreshIgnoresHeartbeatsForIdleActivity(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	clock := &testClock{now: time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)}
 	store, service, runtime, key, capsuleID := threadServiceWithClock(t, ctx, clock)
 	defer store.Close()
@@ -260,7 +260,7 @@ func TestRuntimeRefreshIgnoresHeartbeatsForIdleActivity(t *testing.T) {
 }
 
 func TestRuntimeRefreshReconcilesUnwatchedNativeRuns(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(operatorContext())
 	defer cancel()
 	store, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {

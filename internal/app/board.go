@@ -97,6 +97,9 @@ type Board struct {
 }
 
 func (s *Service) Board(ctx context.Context, query BoardQuery) (Board, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return Board{}, err
+	}
 	switch query.Expand {
 	case "":
 		query.Expand = BoardExpandAttention

@@ -24,6 +24,7 @@ import (
 	"github.com/OrlojHQ/meridian/internal/httpapi"
 	"github.com/OrlojHQ/meridian/internal/observability"
 	"github.com/OrlojHQ/meridian/internal/ports"
+	"github.com/OrlojHQ/meridian/internal/principal"
 	agentsandboxprovider "github.com/OrlojHQ/meridian/internal/provider/agentsandbox"
 	dockerprovider "github.com/OrlojHQ/meridian/internal/provider/docker"
 	"github.com/OrlojHQ/meridian/internal/providergateway"
@@ -475,9 +476,13 @@ func run(ctx context.Context, config Config) error {
 	api.ConfigureObservability(metrics)
 	handler.set(api)
 	previewHandler.set(api.PreviewHandler())
+	// Startup recovery and the background loops below are daemon-internal
+	// work and run as the system principal (ADR 0046). The API never sees
+	// this context: requests get their principal from internal/httpapi.
+	systemCtx := principal.WithSystem(ctx)
 	recoveryStarted := time.Now()
 	if capabilities.Structured {
-		if err := service.RecoverProjectThreads(ctx); err != nil {
+		if err := service.RecoverProjectThreads(systemCtx); err != nil {
 			metrics.StartupRecovery("project_threads", "error", time.Since(recoveryStarted))
 			_ = httpServer.Close()
 			_ = previewHTTPServer.Close()
@@ -485,10 +490,10 @@ func run(ctx context.Context, config Config) error {
 		}
 		metrics.StartupRecovery("project_threads", "ok", time.Since(recoveryStarted))
 	}
-	reconciler.Start(ctx)
+	reconciler.Start(systemCtx)
 	defer reconciler.Close()
 	recoveryStarted = time.Now()
-	if err := reconciler.Recover(ctx); err != nil {
+	if err := reconciler.Recover(systemCtx); err != nil {
 		metrics.StartupRecovery("capsules", "error", time.Since(recoveryStarted))
 		_ = httpServer.Close()
 		_ = previewHTTPServer.Close()
@@ -496,7 +501,7 @@ func run(ctx context.Context, config Config) error {
 	}
 	metrics.StartupRecovery("capsules", "ok", time.Since(recoveryStarted))
 	recoveryStarted = time.Now()
-	if err := service.RecoverProjectDeletions(ctx); err != nil {
+	if err := service.RecoverProjectDeletions(systemCtx); err != nil {
 		metrics.StartupRecovery("projects", "error", time.Since(recoveryStarted))
 		_ = httpServer.Close()
 		_ = previewHTTPServer.Close()
@@ -504,7 +509,7 @@ func run(ctx context.Context, config Config) error {
 	}
 	metrics.StartupRecovery("projects", "ok", time.Since(recoveryStarted))
 	recoveryStarted = time.Now()
-	if err := service.RecoverThreads(ctx); err != nil {
+	if err := service.RecoverThreads(systemCtx); err != nil {
 		metrics.StartupRecovery("threads", "error", time.Since(recoveryStarted))
 		_ = httpServer.Close()
 		_ = previewHTTPServer.Close()
@@ -512,7 +517,7 @@ func run(ctx context.Context, config Config) error {
 	}
 	metrics.StartupRecovery("threads", "ok", time.Since(recoveryStarted))
 	recoveryStarted = time.Now()
-	if err := service.RecoverRuns(ctx); err != nil {
+	if err := service.RecoverRuns(systemCtx); err != nil {
 		metrics.StartupRecovery("runs", "error", time.Since(recoveryStarted))
 		_ = httpServer.Close()
 		_ = previewHTTPServer.Close()
@@ -521,7 +526,7 @@ func run(ctx context.Context, config Config) error {
 	metrics.StartupRecovery("runs", "ok", time.Since(recoveryStarted))
 	if capabilities.Delivery {
 		recoveryStarted = time.Now()
-		if err := service.RecoverDeliveries(ctx); err != nil {
+		if err := service.RecoverDeliveries(systemCtx); err != nil {
 			metrics.StartupRecovery("deliveries", "error", time.Since(recoveryStarted))
 			_ = httpServer.Close()
 			_ = previewHTTPServer.Close()
@@ -533,12 +538,12 @@ func run(ctx context.Context, config Config) error {
 		if config.IdleScanInterval <= 0 {
 			return fmt.Errorf("idle scan interval must be positive when idle pause is enabled")
 		}
-		if err := reconciler.StartIdleScanner(ctx, config.IdleScanInterval, config.IdlePause); err != nil {
+		if err := reconciler.StartIdleScanner(systemCtx, config.IdleScanInterval, config.IdlePause); err != nil {
 			return fmt.Errorf("start idle Capsule scanner: %w", err)
 		}
 	}
 	if config.RuntimeRefresh > 0 {
-		refreshCtx, stopRefresh := context.WithCancel(ctx)
+		refreshCtx, stopRefresh := context.WithCancel(systemCtx)
 		refreshDone := make(chan struct{})
 		go func() {
 			defer close(refreshDone)
@@ -559,7 +564,7 @@ func run(ctx context.Context, config Config) error {
 		}()
 	}
 	if service.CoordinationSupported() {
-		coordinationCtx, stopCoordination := context.WithCancel(ctx)
+		coordinationCtx, stopCoordination := context.WithCancel(systemCtx)
 		coordinationDone := make(chan struct{})
 		go func() {
 			defer close(coordinationDone)

@@ -2,7 +2,6 @@ package app
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,7 +26,7 @@ type movingClock struct{ now time.Time }
 func (c *movingClock) Now() time.Time { return c.now }
 
 func TestClaudeSignInSealsTokensAndRefreshesWithoutLeavingTheCapsule(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	const access = "sk-ant-oat01-access-canary"
 	const refresh = "sk-ant-ort01-refresh-canary"
 	const renewed = "sk-ant-oat01-renewed-canary"

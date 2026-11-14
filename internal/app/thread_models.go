@@ -79,6 +79,9 @@ func (s *Service) rememberThreadModels(id domain.ThreadID, set *adapterproto.Mod
 // falls back to the latest report in the trailing transcript window that
 // ThreadAttention already decrypts. It reports false when neither has one.
 func (s *Service) ThreadModels(ctx context.Context, thread domain.Thread) (ThreadModelSummary, bool) {
+	if requirePrincipal(ctx) != nil {
+		return ThreadModelSummary{}, false
+	}
 	if thread.State != domain.ThreadActive || thread.CurrentRunID == "" {
 		return ThreadModelSummary{}, false
 	}
@@ -102,6 +105,9 @@ func (s *Service) ThreadModels(ctx context.Context, thread domain.Thread) (Threa
 
 // ThreadLinkModels is ThreadModels for a link's child Thread.
 func (s *Service) ThreadLinkModels(ctx context.Context, link domain.ThreadLink) (ThreadModelSummary, bool) {
+	if requirePrincipal(ctx) != nil {
+		return ThreadModelSummary{}, false
+	}
 	if link.ChildThreadID == "" {
 		return ThreadModelSummary{}, false
 	}

@@ -241,7 +241,7 @@ type coordFixture struct {
 
 func newCoordFixture(t *testing.T) *coordFixture {
 	t.Helper()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(operatorContext())
 	store, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -315,7 +315,7 @@ func tool(t *testing.T, mailbox *capsuleproto.Mailbox, request coordproto.Reques
 	if err := request.Validate(); err != nil {
 		t.Fatalf("invalid tool request: %v", err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(operatorContext(), 10*time.Second)
 	defer cancel()
 	return mailbox.Handle(ctx, request)
 }

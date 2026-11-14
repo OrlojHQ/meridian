@@ -20,7 +20,7 @@ import (
 )
 
 func TestProjectDeleteCascadesDestroysCredentialsAndIsIdempotent(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(operatorContext())
 	defer cancel()
 	dataDir := t.TempDir()
 	store, err := sqlite.Open(ctx, dataDir)
@@ -221,7 +221,7 @@ func TestProjectDeleteCascadesDestroysCredentialsAndIsIdempotent(t *testing.T) {
 }
 
 func TestProjectDeleteKeepsASecretAnotherProjectStillNames(t *testing.T) {
-	ctx := context.Background()
+	ctx := operatorContext()
 	store, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -274,7 +274,7 @@ func TestProjectDeleteKeepsASecretAnotherProjectStillNames(t *testing.T) {
 }
 
 func TestProjectDeleteFailureResumes(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(operatorContext())
 	defer cancel()
 	store, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {
@@ -328,7 +328,7 @@ func TestProjectDeleteFailureResumes(t *testing.T) {
 }
 
 func TestProjectDeleteRejectsAnActiveRun(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(operatorContext())
 	defer cancel()
 	store, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {

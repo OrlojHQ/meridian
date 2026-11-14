@@ -15,6 +15,7 @@ import (
 	"github.com/OrlojHQ/meridian/internal/coordproto"
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/ports"
+	"github.com/OrlojHQ/meridian/internal/principal"
 )
 
 // ConfigureCoordination enables lead/child Thread coordination. maxLive is
@@ -117,6 +118,9 @@ func (s *Service) matchCoordinationReplay(
 func (s *Service) GetCoordinationGrant(
 	ctx context.Context, id domain.CoordinationGrantID,
 ) (domain.CoordinationGrant, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.CoordinationGrant{}, err
+	}
 	var grant domain.CoordinationGrant
 	err := s.store.View(ctx, func(reader ports.Reader) error {
 		var err error
@@ -127,6 +131,9 @@ func (s *Service) GetCoordinationGrant(
 }
 
 func (s *Service) GetThreadLink(ctx context.Context, id domain.ThreadLinkID) (domain.ThreadLink, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.ThreadLink{}, err
+	}
 	var link domain.ThreadLink
 	err := s.store.View(ctx, func(reader ports.Reader) error {
 		var err error
@@ -138,6 +145,9 @@ func (s *Service) GetThreadLink(ctx context.Context, id domain.ThreadLinkID) (do
 
 // ListThreadLinks lists the children a Thread spawned.
 func (s *Service) ListThreadLinks(ctx context.Context, id domain.ThreadID) ([]domain.ThreadLink, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return nil, err
+	}
 	var links []domain.ThreadLink
 	err := s.store.View(ctx, func(reader ports.Reader) error {
 		if _, err := reader.GetThread(ctx, id); err != nil {
@@ -160,6 +170,9 @@ type ThreadCoordination struct {
 }
 
 func (s *Service) ThreadCoordinationOf(ctx context.Context, id domain.ThreadID) (ThreadCoordination, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return ThreadCoordination{}, err
+	}
 	var result ThreadCoordination
 	err := s.store.View(ctx, func(reader ports.Reader) error {
 		if grant, err := reader.GetCoordinationGrantByRootThread(ctx, id); err == nil {
@@ -195,6 +208,9 @@ func (s *Service) RevokeCoordinationGrant(
 	cancelDescendants bool,
 	key string,
 ) (domain.CoordinationGrant, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.CoordinationGrant{}, err
+	}
 	if expected <= 0 {
 		return domain.CoordinationGrant{}, fmt.Errorf("%w: expected resource version is required", domain.ErrInvalid)
 	}
@@ -367,6 +383,13 @@ func (s *Service) handleCoordinationRequest(
 	if err := request.Validate(); err != nil || !request.Remote() {
 		return coordproto.Fail(coordproto.CodeInvalidRequest, "invalid coordination request")
 	}
+	// The poller that pulled this entry is the system; the entry itself is
+	// the Capsule's request and acts as that Capsule (ADR 0046).
+	caller, ok := capsulePrincipal(capsule.ID)
+	if !ok {
+		return coordproto.Fail(coordproto.CodeInvalidRequest, "invalid coordination request")
+	}
+	ctx = principal.With(ctx, caller)
 	if request.Type == coordproto.KindReport {
 		response := s.coordReport(ctx, capsule, request)
 		s.auditRejection(ctx, domain.CoordinationGrant{}, request.Type, response)
@@ -1111,6 +1134,9 @@ func (s *Service) linkView(ctx context.Context, link domain.ThreadLink) coordpro
 
 // ThreadLinkPhase is the content-free phase of a link's child.
 func (s *Service) ThreadLinkPhase(ctx context.Context, link domain.ThreadLink) string {
+	if requirePrincipal(ctx) != nil {
+		return ""
+	}
 	return s.linkPhase(ctx, link)
 }
 

@@ -22,6 +22,7 @@ import (
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/observability"
 	"github.com/OrlojHQ/meridian/internal/ports"
+	"github.com/OrlojHQ/meridian/internal/principal"
 	"github.com/OrlojHQ/meridian/internal/webui"
 	"github.com/coder/websocket"
 	"github.com/felixge/httpsnoop"
@@ -98,6 +99,11 @@ func (f snoopHandlerFunc) ServeHTTP(writer http.ResponseWriter, request *http.Re
 }
 
 func (s *Server) serveHTTP(writer http.ResponseWriter, request *http.Request) {
+	// A request starts with no principal, whatever the listener's base
+	// context carried; only authentication below attaches one (ADR 0046).
+	request = request.WithContext(principal.Without(request.Context()))
+	// The gateway authenticates its own Capsule lease, and the request acts
+	// as that Capsule inside internal/app, never as a user.
 	if strings.HasPrefix(request.URL.Path, "/provider-gateway/") && s.service.ProviderGatewayOnAPIListener() {
 		s.service.ProviderGateway().ServeHTTP(writer, request)
 		return
@@ -108,8 +114,11 @@ func (s *Server) serveHTTP(writer http.ResponseWriter, request *http.Request) {
 		s.ui.ServeHTTP(writer, request)
 		return
 	}
+	// Exempt routes get no principal. Ticket redemption acts as the
+	// principal that minted the ticket, and the Claude callback as the one
+	// that began the sign-in.
 	if !authExempt(request) {
-		authenticated, browser := s.authenticate(request)
+		caller, browser, authenticated := s.authenticate(request)
 		if !authenticated {
 			writeUnauthorized(writer)
 			return
@@ -120,6 +129,7 @@ func (s *Server) serveHTTP(writer http.ResponseWriter, request *http.Request) {
 			})
 			return
 		}
+		request = request.WithContext(principal.With(request.Context(), caller))
 	}
 	s.mux.ServeHTTP(writer, request)
 }
@@ -257,27 +267,36 @@ func (s *Server) initializeBrowserSession() {
 	s.browserValue = value
 }
 
-func (s *Server) authenticate(request *http.Request) (authenticated, browser bool) {
+// authenticate checks the installation bearer or the browser cookie minted
+// from it. This is single-user mode (ADR 0046): either one authenticates as
+// the bootstrap owner.
+func (s *Server) authenticate(request *http.Request) (caller principal.Principal, browser, authenticated bool) {
 	values := request.Header.Values("Authorization")
 	if len(values) > 0 {
 		if len(values) != 1 {
-			return false, false
+			return principal.Principal{}, false, false
 		}
 		scheme, value, ok := strings.Cut(values[0], " ")
-		return ok && strings.EqualFold(scheme, "Bearer") &&
-			value != "" && !strings.ContainsAny(value, " \t\r\n") &&
-			s.apiToken.Matches(value), false
+		if !ok || !strings.EqualFold(scheme, "Bearer") ||
+			value == "" || strings.ContainsAny(value, " \t\r\n") ||
+			!s.apiToken.Matches(value) {
+			return principal.Principal{}, false, false
+		}
+		return principal.Owner(), false, true
 	}
 	var cookieValue string
 	for _, cookie := range request.Cookies() {
 		if cookie.Name == browserSessionCookie {
 			if cookieValue != "" {
-				return false, false
+				return principal.Principal{}, false, false
 			}
 			cookieValue = cookie.Value
 		}
 	}
-	return cookieValue != "" && s.browserToken.Matches(cookieValue), true
+	if cookieValue == "" || !s.browserToken.Matches(cookieValue) {
+		return principal.Principal{}, true, false
+	}
+	return principal.Owner(), true, true
 }
 
 func (s *Server) createBrowserSession(writer http.ResponseWriter, request *http.Request) {
@@ -1166,7 +1185,8 @@ func (s *Server) createPreviewTicket(writer http.ResponseWriter, request *http.R
 	}
 	now := time.Now().UTC()
 	expiresAt := now.Add(previewTicketTTL)
-	token, err := s.previews.mint(capsuleID, port, expiresAt, now)
+	caller, _ := principal.From(request.Context())
+	token, err := s.previews.mint(capsuleID, port, caller, expiresAt, now)
 	if err != nil {
 		writeError(writer, err)
 		return
@@ -1629,6 +1649,9 @@ type attachTicket struct {
 	RunID     domain.RunID
 	ExpiresAt time.Time
 	After     uint64
+	// Principal minted the ticket; redemption is unauthenticated and acts
+	// as this principal.
+	Principal principal.Principal
 }
 
 func (s *Server) createAttachTicket(writer http.ResponseWriter, request *http.Request) {
@@ -1649,8 +1672,9 @@ func (s *Server) createAttachTicket(writer http.ResponseWriter, request *http.Re
 	}
 	value := base64.RawURLEncoding.EncodeToString(random)
 	expiry := time.Now().UTC().Add(30 * time.Second)
+	caller, _ := principal.From(request.Context())
 	if err := s.tickets.mint(
-		value, attachTicket{RunID: runID, ExpiresAt: expiry, After: after}, time.Now().UTC(),
+		value, attachTicket{RunID: runID, ExpiresAt: expiry, After: after, Principal: caller}, time.Now().UTC(),
 	); err != nil {
 		writeError(writer, err)
 		return
@@ -1676,6 +1700,7 @@ func (s *Server) attachRun(writer http.ResponseWriter, request *http.Request) {
 		writeError(writer, fmt.Errorf("%w: attach ticket is expired or out of scope", domain.ErrInvalid))
 		return
 	}
+	request = request.WithContext(principal.With(request.Context(), ticket.Principal))
 	upstream, err := s.service.AttachRun(request.Context(), ticket.RunID, ticket.After)
 	if err != nil {
 		writeError(writer, err)
