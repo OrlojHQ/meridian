@@ -1,6 +1,6 @@
 # ADR 0046: Per-user identity and ownership on a team installation
 
-- Status: Accepted; not yet implemented
+- Status: Accepted; implemented in v0.9.0
 - Date: 2026-11-13
 - Amends: ADR 0015 (single-principal API authentication), ADR 0014
   (credential broker), ADR 0029 (bounded Thread coordination), ADR 0036
