@@ -1308,7 +1308,7 @@ Threats and required controls:
   leases are dropped. The old identity must also be disabled at the issuer
   when compromised: it could otherwise rejoin with a new, empty membership.
 - **Break-glass misuse.** The installation bearer in team mode is accepted
-  only on membership (including identity recovery), revocation, audit, and
+  only on membership (including bootstrap-owner identity recovery), revocation, audit, and
   departed-user transfer and delete endpoints. It is refused on object endpoints, and every use is
   audited. Its custody stays outside SQLite, as in ADR 0015.
 - **Admin overreach.** The admin role manages membership and reads audit. It
