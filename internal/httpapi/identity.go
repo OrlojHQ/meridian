@@ -77,6 +77,13 @@ func (s *Server) setUserCookie(writer http.ResponseWriter, request *http.Request
 	})
 }
 
+func setClaimCookie(writer http.ResponseWriter, request *http.Request, token string) {
+	http.SetCookie(writer, &http.Cookie{
+		Name: claimCookie, Value: token, Path: "/auth", MaxAge: int((10 * time.Minute).Seconds()),
+		HttpOnly: true, Secure: secureCookie(request), SameSite: http.SameSiteStrictMode,
+	})
+}
+
 func clearCookie(writer http.ResponseWriter, request *http.Request, name, path string) {
 	http.SetCookie(writer, &http.Cookie{
 		Name: name, Value: "", Path: path, MaxAge: -1,
@@ -131,7 +138,16 @@ func (s *Server) startOIDCSignIn(writer http.ResponseWriter, request *http.Reque
 		writeError(writer, domain.ErrUnsupported)
 		return
 	}
-	target, binding, err := s.identity.BeginSignIn(request.Context())
+	var target, binding string
+	var err error
+	if desktop, ok, valid := desktopSignInFrom(request); !valid {
+		writeSignInPage(writer, http.StatusBadRequest, "This sign-in link is not valid. Start again from Meridian.")
+		return
+	} else if ok {
+		target, binding, err = s.identity.BeginDesktopSignIn(request.Context(), desktop)
+	} else {
+		target, binding, err = s.identity.BeginSignIn(request.Context())
+	}
 	if err != nil {
 		writeError(writer, err)
 		return
@@ -173,16 +189,19 @@ func (s *Server) completeOIDCSignIn(writer http.ResponseWriter, request *http.Re
 	}
 	writer.Header().Set("Cache-Control", "no-store")
 	writer.Header().Set("Referrer-Policy", "no-referrer")
+	if result.Desktop != nil {
+		// The ticket goes only to the shell's listener on this computer's
+		// loopback address; the system browser keeps no Meridian cookie.
+		http.Redirect(writer, request, desktopHandoffURL(*result.Desktop), http.StatusSeeOther)
+		return
+	}
 	if result.RebindReady {
 		writeSignInPage(writer, http.StatusOK, "Identity verified. Return to the Meridian command to finish recovery. Then sign in again to use Meridian.")
 		return
 	}
 
 	if result.ClaimToken != "" {
-		http.SetCookie(writer, &http.Cookie{
-			Name: claimCookie, Value: result.ClaimToken, Path: "/auth", MaxAge: int((10 * time.Minute).Seconds()),
-			HttpOnly: true, Secure: secureCookie(request), SameSite: http.SameSiteStrictMode,
-		})
+		setClaimCookie(writer, request, result.ClaimToken)
 		http.Redirect(writer, request, "/ui/settings/account?claim=ready", http.StatusSeeOther)
 		return
 	}

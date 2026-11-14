@@ -129,6 +129,52 @@ button {
 
 button:disabled, input:disabled { cursor: default; opacity: 0.7; }
 
+.recent { margin: 0 0 1.25rem; }
+.recent[hidden] { display: none; }
+
+.recent h2 {
+  margin: 0 0 0.5rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 650;
+}
+
+.recent ul {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.recent li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  border: 1px solid var(--line);
+  border-radius: 0.8rem;
+}
+
+.recent li:has(.recent-open[aria-current="true"]) { border-color: var(--accent); }
+
+.recent button {
+  margin: 0;
+  width: auto;
+  background: transparent;
+  color: inherit;
+  font-weight: 450;
+  text-align: left;
+}
+
+.recent .recent-open strong, .recent .recent-open small { display: block; }
+.recent .recent-open small { margin-top: 0.15rem; overflow-wrap: anywhere; }
+
+.recent .recent-forget {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.recent button:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+
 #status {
   min-height: 1.4rem;
   margin: 0.75rem 0 0;

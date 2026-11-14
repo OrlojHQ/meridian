@@ -11226,6 +11226,60 @@ func (s *ReasoningEffortLevel) UnmarshalText(data []byte) error {
 	}
 }
 
+type RedeemDesktopSignInBadRequest ErrorEnvelope
+
+func (*RedeemDesktopSignInBadRequest) redeemDesktopSignInRes() {}
+
+type RedeemDesktopSignInForbidden ErrorEnvelope
+
+func (*RedeemDesktopSignInForbidden) redeemDesktopSignInRes() {}
+
+type RedeemDesktopSignInNotFound ErrorEnvelope
+
+func (*RedeemDesktopSignInNotFound) redeemDesktopSignInRes() {}
+
+type RedeemDesktopSignInOK struct {
+	// A /ui/ path to open next.
+	Next string `json:"next"`
+}
+
+// GetNext returns the value of Next.
+func (s *RedeemDesktopSignInOK) GetNext() string {
+	return s.Next
+}
+
+// SetNext sets the value of Next.
+func (s *RedeemDesktopSignInOK) SetNext(val string) {
+	s.Next = val
+}
+
+func (*RedeemDesktopSignInOK) redeemDesktopSignInRes() {}
+
+type RedeemDesktopSignInReq struct {
+	Ticket   string `json:"ticket"`
+	Verifier string `json:"verifier"`
+}
+
+// GetTicket returns the value of Ticket.
+func (s *RedeemDesktopSignInReq) GetTicket() string {
+	return s.Ticket
+}
+
+// GetVerifier returns the value of Verifier.
+func (s *RedeemDesktopSignInReq) GetVerifier() string {
+	return s.Verifier
+}
+
+// SetTicket sets the value of Ticket.
+func (s *RedeemDesktopSignInReq) SetTicket(val string) {
+	s.Ticket = val
+}
+
+// SetVerifier sets the value of Verifier.
+func (s *RedeemDesktopSignInReq) SetVerifier(val string) {
+	s.Verifier = val
+}
+
 type RejectDeliveryBadRequest ErrorEnvelope
 
 func (*RejectDeliveryBadRequest) rejectDeliveryRes() {}

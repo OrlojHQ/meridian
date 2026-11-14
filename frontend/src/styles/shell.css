@@ -850,6 +850,39 @@
   font-size: 0.64rem;
 }
 
+.status-gateway {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  max-width: 22rem;
+  overflow: hidden;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.status-gateway:hover,
+.status-gateway:focus-visible {
+  color: var(--text);
+}
+
+.status-gateway svg {
+  flex: none;
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+.status-gateway-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .status-trailing {
   display: flex;
   align-items: center;

@@ -18,20 +18,22 @@ use url::Url;
 pub const WINDOW: &str = "main";
 
 /// Commands a gateway page may call through `window.__MERIDIAN_DESKTOP__`.
-pub const COMMANDS: [&str; 5] = [
+pub const COMMANDS: [&str; 6] = [
     "desktop_notify",
     "desktop_set_attention",
     "desktop_open_gateway",
+    "desktop_gateway",
     "desktop_update_check",
     "desktop_update_install",
 ];
 
 /// The app permissions that allow [`COMMANDS`]. The picker's own permissions
 /// (`capabilities/local.json`) are never granted to a gateway origin.
-pub const PERMISSIONS: [&str; 5] = [
+pub const PERMISSIONS: [&str; 6] = [
     "allow-desktop-notify",
     "allow-desktop-set-attention",
     "allow-desktop-open-gateway",
+    "allow-desktop-gateway",
     "allow-desktop-update-check",
     "allow-desktop-update-install",
 ];
@@ -291,6 +293,9 @@ mod tests {
         }
         assert!(!is_bridge_command("gateway_state"));
         assert!(!is_bridge_command("gateway_connect"));
+        // The recent list is the picker's: a gateway page cannot read or
+        // change which other gateways the operator uses.
+        assert!(!is_bridge_command("gateway_forget"));
     }
 
     #[test]
@@ -303,7 +308,11 @@ mod tests {
         for permission in PERMISSIONS {
             assert!(!permissions.contains(&serde_json::Value::from(permission)));
         }
-        for permission in ["allow-gateway-state", "allow-gateway-connect"] {
+        for permission in [
+            "allow-gateway-state",
+            "allow-gateway-connect",
+            "allow-gateway-forget",
+        ] {
             assert!(!PERMISSIONS.contains(&permission));
         }
     }

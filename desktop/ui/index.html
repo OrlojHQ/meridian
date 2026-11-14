@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light dark" />
     <title>Meridian</title>
-    <link rel="stylesheet" href="picker.css?v=2" />
+    <link rel="stylesheet" href="picker.css?v=3" />
   </head>
   <body>
     <main>
@@ -17,6 +17,10 @@
       <!-- The shell validates the address and reports errors in #status.
            Browser validation of the hidden field would silently block
            "This computer" after a bad address was typed. -->
+      <section id="recent" class="recent" aria-labelledby="recent-title" hidden>
+        <h2 id="recent-title">Recent gateways</h2>
+        <ul id="recent-list"></ul>
+      </section>
       <form id="gateway-form" novalidate>
         <fieldset>
           <legend>Gateway</legend>

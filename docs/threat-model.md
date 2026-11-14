@@ -672,10 +672,15 @@ macOS and Linux. The shell rejects any other notification text. It does not
 store the installation token, transcript key, or credential key. Closing the
 window hides it and leaves the tray; that does not stop a daemon. Quit signals
 only a `meridiand` this process started for the bundled-local choice; a daemon
-it did not start is left running. Until per-user accounts exist, a remote
-gateway uses the existing browser session and must be HTTPS unless it is
-loopback. The system webview is not an additional isolation boundary and says
-nothing about Capsule isolation.
+it did not start is left running. A remote gateway must be HTTPS unless it is
+loopback. In single-user mode it uses the existing browser session. In team
+mode the member signs in through the system browser and the shell hands the
+result to its webview (ADR 0047); the webview never loads the identity
+provider. The shell remembers up to five recent gateway origins for one-click switching
+(ADR 0048): origins only, re-validated on read, and never exposed to a gateway
+page. The window title and status bar name the active gateway so work is not
+created on the wrong installation. The system webview is not an additional
+isolation boundary and says nothing about Capsule isolation.
 
 The desktop app is distributed unsigned until Apple signing secrets exist.
 The Homebrew cask and `install-desktop.sh` clear `com.apple.quarantine`, so
@@ -1342,6 +1347,25 @@ Threats and required controls:
   approves at their own issuer, which names the client; the resulting token
   is a normal personal access token, expiring, revocable, and audited, and
   the poller's handle stays secret to the client that started the login.
+- **Desktop sign-in handoff.** The desktop shell never loads the issuer in
+  its webview, because an embedded user-agent can read what the member types
+  and hides the address (RFC 8252). It opens `/auth/oidc/start` in the system
+  browser with a loopback port, a random state, and the SHA-256 challenge of a
+  verifier it keeps in memory (ADR 0047). The callback sets no cookie in that
+  browser. It redirects to `http://127.0.0.1:<port>` with the state and a
+  ticket. The ticket is 256-bit, stored as a digest, expires in two minutes,
+  and is consumed by any redemption attempt. Redemption at
+  `POST /auth/desktop/redeem` needs a same-origin request and the verifier.
+  Membership is decided only then, so a member disabled after the callback is
+  refused. A ticket read from browser history or by an extension redeems
+  nothing without the verifier. A phished start link delivers the ticket to
+  the victim's own loopback address, not the attacker's. A page that posts a
+  forged ticket to the listener lacks its state, and would fail on the
+  verifier anyway. The shell redeems only into the gateway the sign-in began
+  on, while that gateway is active and loaded, and the script checks the
+  page's origin again. A process running as the same OS user can read the
+  shell's memory and the webview's cookies regardless; another local user can
+  only make the listener answer until it times out.
 - **OIDC response forgery and identity confusion.** The daemon chooses the
   redirect URI. `state`, `nonce`, and the PKCE verifier are single-use and
   held in memory. Issuer, audience, signature, expiry, and nonce are

@@ -1,5 +1,6 @@
-//! Gateway choice. The shell remembers a mode and, for another gateway, an origin.
-//! It never stores an installation token.
+//! Gateway choice. The shell remembers a mode and, for another gateway, an origin,
+//! plus the origins of a few recently used gateways. It never stores an
+//! installation token, a session, or anything but those origins.
 
 use std::io::{Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream};
@@ -40,6 +41,80 @@ pub fn parse_saved(bytes: &[u8]) -> Option<SavedGateway> {
             let origin = validate_gateway_url(&origin).ok()?;
             Some(SavedGateway::Remote { origin })
         }
+    }
+}
+
+/// How many other gateways the picker and tray offer to switch back to.
+pub const MAX_RECENT: usize = 5;
+
+/// The recently used gateway origins in a saved file, most recent first.
+/// An entry that no longer validates is dropped, so a tampered file cannot
+/// add a plain-HTTP remote or an address with a token in it.
+pub fn parse_recent(bytes: &[u8]) -> Vec<String> {
+    #[derive(Deserialize)]
+    struct File {
+        #[serde(default)]
+        recent: Vec<String>,
+    }
+    let Ok(file) = serde_json::from_slice::<File>(bytes) else {
+        return Vec::new();
+    };
+    let mut recent = Vec::new();
+    for raw in file.recent.iter().take(MAX_RECENT * 4) {
+        if let Ok(origin) = validate_gateway_url(raw) {
+            if !recent.contains(&origin) {
+                recent.push(origin);
+            }
+        }
+    }
+    recent.truncate(MAX_RECENT);
+    recent
+}
+
+/// `recent` with `origin` moved to the front.
+pub fn remember(recent: &[String], origin: &str) -> Vec<String> {
+    let mut next = vec![origin.to_string()];
+    next.extend(recent.iter().filter(|kept| *kept != origin).cloned());
+    next.truncate(MAX_RECENT);
+    next
+}
+
+/// `recent` without `origin`.
+pub fn forget(recent: &[String], origin: &str) -> Vec<String> {
+    recent
+        .iter()
+        .filter(|kept| *kept != origin)
+        .cloned()
+        .collect()
+}
+
+/// The saved file: the choice, plus the recent origins.
+pub fn encode_saved(choice: &SavedGateway, recent: &[String]) -> Result<Vec<u8>, String> {
+    let mut value = serde_json::to_value(choice).map_err(|error| error.to_string())?;
+    if let Some(object) = value.as_object_mut() {
+        object.insert("recent".into(), serde_json::json!(recent));
+    }
+    serde_json::to_vec_pretty(&value).map_err(|error| error.to_string())
+}
+
+/// What the window title, status bar, and tray call a gateway: "This
+/// computer" for the bundled-local choice, or the remote's host and any
+/// non-default port.
+pub fn gateway_label(choice: &SavedGateway) -> String {
+    match choice {
+        SavedGateway::Local => "This computer".into(),
+        SavedGateway::Remote { origin } => origin_label(origin),
+    }
+}
+
+pub fn origin_label(origin: &str) -> String {
+    let Ok(url) = Url::parse(origin) else {
+        return origin.to_string();
+    };
+    match (url.host_str(), url.port()) {
+        (Some(host), Some(port)) => format!("{host}:{port}"),
+        (Some(host), None) => host.to_string(),
+        _ => origin.to_string(),
     }
 }
 
@@ -259,6 +334,88 @@ mod tests {
             None
         );
         assert_eq!(SavedGateway::Local.ui_url(), "http://127.0.0.1:8080/ui/");
+    }
+
+    #[test]
+    fn recent_gateways_are_validated_origins_only() {
+        let file = br#"{"mode":"local","recent":[
+            "https://a.example.com/ui/",
+            "http://evil.example",
+            "https://user:pw@b.example.com",
+            "https://c.example.com/?token=secret",
+            "https://a.example.com",
+            "https://d.example.com:8443",
+            "http://127.0.0.1:18090",
+            "https://e.example.com",
+            "https://f.example.com",
+            "https://g.example.com"
+        ]}"#;
+        assert_eq!(parse_saved(file), Some(SavedGateway::Local));
+        assert_eq!(
+            parse_recent(file),
+            vec![
+                "https://a.example.com",
+                "https://d.example.com:8443",
+                "http://127.0.0.1:18090",
+                "https://e.example.com",
+                "https://f.example.com",
+            ]
+        );
+        assert!(parse_recent(br#"{"mode":"local"}"#).is_empty());
+        assert!(parse_recent(b"not json").is_empty());
+        assert!(parse_recent(br#"{"recent":"https://a.example.com"}"#).is_empty());
+    }
+
+    #[test]
+    fn remember_moves_to_front_and_caps() {
+        let recent: Vec<String> = ["https://a.test", "https://b.test", "https://c.test"]
+            .map(String::from)
+            .to_vec();
+        assert_eq!(
+            remember(&recent, "https://c.test"),
+            vec!["https://c.test", "https://a.test", "https://b.test"]
+        );
+        let mut many = recent.clone();
+        for origin in ["https://d.test", "https://e.test", "https://f.test"] {
+            many = remember(&many, origin);
+        }
+        assert_eq!(many.len(), MAX_RECENT);
+        assert_eq!(many[0], "https://f.test");
+        assert_eq!(
+            forget(&recent, "https://b.test"),
+            vec!["https://a.test", "https://c.test"]
+        );
+    }
+
+    #[test]
+    fn saved_file_round_trips_choice_and_recent() {
+        let choice = SavedGateway::Remote {
+            origin: "https://gw.example.com".into(),
+        };
+        let recent = vec!["https://gw.example.com".to_string()];
+        let bytes = encode_saved(&choice, &recent).unwrap();
+        assert_eq!(parse_saved(&bytes), Some(choice));
+        assert_eq!(parse_recent(&bytes), recent);
+        let text = String::from_utf8(bytes).unwrap();
+        assert!(!text.contains("token"));
+    }
+
+    #[test]
+    fn labels_name_the_host() {
+        assert_eq!(gateway_label(&SavedGateway::Local), "This computer");
+        for (origin, label) in [
+            ("https://meridian.example.com", "meridian.example.com"),
+            ("https://gw.example.com:8443", "gw.example.com:8443"),
+            ("http://127.0.0.1:18090", "127.0.0.1:18090"),
+            ("http://[::1]:9090", "[::1]:9090"),
+        ] {
+            assert_eq!(
+                gateway_label(&SavedGateway::Remote {
+                    origin: origin.into()
+                }),
+                label
+            );
+        }
     }
 
     #[test]

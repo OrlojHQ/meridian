@@ -2387,9 +2387,36 @@ paths:
       description: >-
         Starts an authorization code sign-in with PKCE. State, nonce, and the
         PKCE verifier stay in daemon memory and are single-use. Before the
-        installation is claimed, this sign-in can only claim it.
+        installation is claimed, this sign-in can only claim it. The desktop
+        shell (ADR 0047) opens this in the system browser with all three
+        desktop parameters; the callback then hands off to the shell's
+        loopback listener instead of setting a cookie in that browser.
       security: []
       tags: [authentication]
+      parameters:
+        - name: desktopPort
+          in: query
+          description: The desktop shell's loopback listener port on 127.0.0.1.
+          schema:
+            type: integer
+            minimum: 1024
+            maximum: 65535
+        - name: desktopState
+          in: query
+          description: 32 random bytes, base64url; echoed to the listener.
+          schema:
+            type: string
+            minLength: 43
+            maxLength: 43
+        - name: desktopChallenge
+          in: query
+          description: >-
+            Base64url SHA-256 of the verifier the shell keeps for
+            redeemDesktopSignIn.
+          schema:
+            type: string
+            minLength: 43
+            maxLength: 43
       responses:
         "302":
           description: Redirect to the OIDC issuer
@@ -2406,7 +2433,9 @@ paths:
       description: >-
         Authorized by the single-use state. In team mode it sets an HttpOnly
         SameSite=Strict session cookie. Before the claim it sets a short-lived
-        claim cookie instead. It answers with a redirect to the web UI, or an
+        claim cookie instead. A desktop sign-in sets no cookie: it redirects
+        to http://127.0.0.1:{desktopPort}/meridian-sign-in with the shell's
+        state and a single-use ticket. It answers with a redirect, or an
         HTML page that names no account.
       security: []
       tags: [authentication]
@@ -2866,6 +2895,59 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /auth/desktop/redeem:
+    post:
+      operationId: redeemDesktopSignIn
+      summary: Redeem a desktop sign-in handoff in the shell's webview
+      description: >-
+        ADR 0047. Authorized by the ticket the callback sent to the shell's
+        loopback listener plus the verifier only that shell holds, in the
+        body so neither appears in a URL. Requires a same-origin Origin
+        header. The ticket is single-use, even when the verifier is wrong,
+        and expires two minutes after the callback. Sets the cookie the
+        browser callback would have set (a session, or a claim cookie before
+        the claim) and names the page to open next.
+      security: []
+      tags: [authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [ticket, verifier]
+              properties:
+                ticket:
+                  type: string
+                  maxLength: 128
+                verifier:
+                  type: string
+                  maxLength: 128
+      responses:
+        "200":
+          description: Signed in, or ready to claim
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [next]
+                properties:
+                  next:
+                    type: string
+                    description: A /ui/ path to open next.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          description: Not same-origin, or this account may not sign in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          $ref: "#/components/responses/NotFound"
         default:
           $ref: "#/components/responses/DefaultError"
   /auth/device:
