@@ -236,3 +236,52 @@ func TestTransferRewrapsSetupRevisionsAndCarriesUnreadableOnes(t *testing.T) {
 		})
 	}
 }
+
+// A secret that no longer opens under the installation key must not block a
+// departed member's transfer: it moves unchanged and stays unreadable, as at
+// startup re-wrap. Readable secrets are still re-sealed for the new owner.
+func TestTransferCarriesUnreadableSecretsUnchanged(t *testing.T) {
+	f := newTwoOwners(t)
+	s := f.service
+	if _, err := s.PutSecret(f.bob, "github_api", app.SecretInput{Purpose: domain.SecretGitHubAPI, Value: "readable-token"}, 0, "readable"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.PutSecret(f.bob, "stale", app.SecretInput{Purpose: domain.SecretHarnessEnv, Value: "lost-value"}, 0, "stale"); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := sql.Open("sqlite", f.store.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	if _, err := raw.Exec("UPDATE secrets SET ciphertext = X'00' WHERE owner_user_id = 'usr_bob' AND name = 'stale'"); err != nil {
+		t.Fatal(err)
+	}
+	disableMember(t, f, "usr_bob")
+	if err := s.TransferDepartedMember(principal.With(context.Background(), principal.BreakGlass()), "usr_bob", principal.BootstrapOwner); err != nil {
+		t.Fatalf("an unreadable secret blocked the transfer: %v", err)
+	}
+	system := principal.WithSystem(context.Background())
+	if err := f.store.View(system, func(reader ports.Reader) error {
+		readable, err := reader.GetSecret(system, principal.BootstrapOwner, "github_api")
+		if err != nil {
+			return err
+		}
+		if payload, err := f.key.Open(readable); err != nil || payload.Value != "readable-token" {
+			t.Fatalf("re-sealed secret = %+v, %v", payload, err)
+		}
+		stale, err := reader.GetSecret(system, principal.BootstrapOwner, "stale")
+		if err != nil {
+			return err
+		}
+		if string(stale.Ciphertext) != "\x00" {
+			t.Fatalf("unreadable secret was rewritten: %x", stale.Ciphertext)
+		}
+		if _, err := f.key.Open(stale); err == nil {
+			t.Fatal("an unreadable secret became readable")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
