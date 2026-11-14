@@ -89,8 +89,12 @@ jobs:
       - name: Test
         run: make test
 
+      # Race instrumentation makes the pure-Go SQLite migrations in each
+      # fresh test fixture expensive. The app package can exceed Go's default
+      # 10-minute limit on shared runners while individual tests still finish
+      # in seconds. Keep a bounded package limit within the 35-minute job.
       - name: Race test
-        run: go test -race ./... -count=1
+        run: go test -race ./... -count=1 -timeout=20m
 
       - name: Vulnerability check
         run: make vulncheck
