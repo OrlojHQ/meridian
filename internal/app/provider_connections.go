@@ -291,7 +291,11 @@ func (s *Service) authorizeProviderLease(ctx context.Context, lease providergate
 	var upstream providergateway.Upstream
 	var connection domain.ProviderConnection
 	var raw []byte
-	err := s.store.View(ctx, func(r ports.Reader) error {
+	// The gateway issued this lease and has authenticated its token; finding
+	// the Capsule it names is daemon work. Everything after acts as that
+	// Capsule, within its owner's rows.
+	lookup := principal.WithSystem(ctx)
+	err := s.store.View(lookup, func(r ports.Reader) error {
 		capsule, err := r.GetCapsule(ctx, domain.CapsuleID(lease.Capsule))
 		if err != nil {
 			return err

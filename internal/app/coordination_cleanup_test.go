@@ -44,13 +44,13 @@ func TestArchivedSubagentWithNothingUnsavedIsDeleted(t *testing.T) {
 	}
 
 	f.advance(59 * time.Minute)
-	f.service.SweepArchivableSubagents(f.ctx)
+	f.service.SweepArchivableSubagents(asSystem(f.ctx))
 	if capsule, _ := f.service.GetCapsule(f.ctx, clean.ChildCapsuleID); capsule.DesiredState == domain.IntentDeleted {
 		t.Fatal("subagent deleted before its archive period")
 	}
 
 	f.advance(2 * time.Minute)
-	f.service.SweepArchivableSubagents(f.ctx)
+	f.service.SweepArchivableSubagents(asSystem(f.ctx))
 	if capsule, _ := f.service.GetCapsule(f.ctx, clean.ChildCapsuleID); capsule.DesiredState != domain.IntentDeleted {
 		t.Fatalf("clean subagent Capsule = %s/%s", capsule.State, capsule.DesiredState)
 	}
@@ -80,7 +80,7 @@ func TestArchivedSubagentWithNothingUnsavedIsDeleted(t *testing.T) {
 
 	// Later sweeps leave the kept subagent alone.
 	f.advance(24 * time.Hour)
-	f.service.SweepArchivableSubagents(f.ctx)
+	f.service.SweepArchivableSubagents(asSystem(f.ctx))
 	if capsule, _ := f.service.GetCapsule(f.ctx, dirty.ChildCapsuleID); capsule.DesiredState == domain.IntentDeleted {
 		t.Fatal("subagent with unsaved changes was deleted later")
 	}
@@ -97,7 +97,7 @@ func TestCleanupWaitsForTheArchivedSessionToEnd(t *testing.T) {
 	f.runtime.mu.Unlock()
 
 	f.advance(2 * time.Hour)
-	f.service.SweepArchivableSubagents(f.ctx)
+	f.service.SweepArchivableSubagents(asSystem(f.ctx))
 	if capsule, _ := f.service.GetCapsule(f.ctx, link.ChildCapsuleID); capsule.DesiredState == domain.IntentDeleted {
 		t.Fatal("Capsule deleted while its session was still stopping")
 	}
@@ -105,11 +105,11 @@ func TestCleanupWaitsForTheArchivedSessionToEnd(t *testing.T) {
 	f.runtime.runs[thread.CurrentRunID] = ports.RuntimeRun{State: domain.RunCancelled, Structured: true}
 	f.runtime.mu.Unlock()
 	for range 3 {
-		f.service.CoordinationTick(f.ctx)
+		f.service.CoordinationTick(asSystem(f.ctx))
 		f.advance(5 * time.Second)
 	}
 	f.advance(archiveSweep)
-	f.service.SweepArchivableSubagents(f.ctx)
+	f.service.SweepArchivableSubagents(asSystem(f.ctx))
 	if capsule, _ := f.service.GetCapsule(f.ctx, link.ChildCapsuleID); capsule.DesiredState != domain.IntentDeleted {
 		t.Fatalf("Capsule after the session ended = %s/%s", capsule.State, capsule.DesiredState)
 	}
@@ -122,7 +122,7 @@ func TestCleanupIsOffWhenAutoArchiveIsDisabled(t *testing.T) {
 	link := f.finishedSubagent(t, mailbox, "kept")
 	f.setLinkFilesChanged(t, link.ID, 0)
 	f.advance(48 * time.Hour)
-	f.service.SweepArchivableSubagents(f.ctx)
+	f.service.SweepArchivableSubagents(asSystem(f.ctx))
 	if capsule, _ := f.service.GetCapsule(f.ctx, link.ChildCapsuleID); capsule.DesiredState == domain.IntentDeleted {
 		t.Fatal("subagent deleted with auto-archive disabled")
 	}

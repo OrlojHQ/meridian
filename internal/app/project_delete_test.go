@@ -47,7 +47,7 @@ func TestProjectDeleteCascadesDestroysCredentialsAndIsIdempotent(t *testing.T) {
 	}
 	service.ConfigureTemporal(nil, artifactStore)
 	reconciler.OnCapsuleSettled(func(ctx context.Context, capsule domain.Capsule) {
-		if err := service.AdvanceProjectDeletion(ctx, capsule.ProjectID); err != nil {
+		if err := service.AdvanceProjectDeletion(asSystem(ctx), capsule.ProjectID); err != nil {
 			t.Errorf("advance project deletion: %v", err)
 		}
 	})
@@ -289,7 +289,7 @@ func TestProjectDeleteFailureResumes(t *testing.T) {
 	defer reconciler.Close()
 	service := app.NewService(store, clock, ids, reconciler)
 	reconciler.OnCapsuleSettled(func(ctx context.Context, capsule domain.Capsule) {
-		if err := service.AdvanceProjectDeletion(ctx, capsule.ProjectID); err != nil {
+		if err := service.AdvanceProjectDeletion(asSystem(ctx), capsule.ProjectID); err != nil {
 			t.Errorf("advance project deletion: %v", err)
 		}
 	})

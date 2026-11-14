@@ -54,7 +54,7 @@ func TestMigrationsPersistenceEventsAndConflicts(t *testing.T) {
 			return err
 		}
 		return tx.PutIdempotency(ctx, ports.IdempotencyRecord{
-			Scope: "test", Key: "key", Outcome: []byte(`{"ok":true}`), CreatedAt: now,
+			Owner: domain.BootstrapOwnerID, Scope: "test", Key: "key", Outcome: []byte(`{"ok":true}`), CreatedAt: now,
 		})
 	}); err != nil {
 		t.Fatal(err)
@@ -105,7 +105,7 @@ func TestMigrationsPersistenceEventsAndConflicts(t *testing.T) {
 		if len(events) != 2 || events[0].Type != "first" || events[0].Sequence >= events[1].Sequence {
 			t.Fatalf("events out of order: %#v", events)
 		}
-		record, err := reader.GetIdempotency(ctx, "test", "key")
+		record, err := reader.GetIdempotency(ctx, domain.BootstrapOwnerID, "test", "key")
 		if err != nil {
 			return err
 		}

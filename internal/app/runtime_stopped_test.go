@@ -219,7 +219,7 @@ func TestRuntimeRefreshFailsRunWhoseRuntimeStoppedAndRechecksCapsule(t *testing.
 	queue.mu.Unlock()
 
 	runtime.stop()
-	if err := service.RefreshLiveRuntime(ctx); err != nil {
+	if err := service.RefreshLiveRuntime(asSystem(ctx)); err != nil {
 		t.Fatal(err)
 	}
 	stored, err := service.GetRunStored(ctx, run.ID)
@@ -258,7 +258,7 @@ func TestRuntimeRefreshFailsStructuredRunWhoseRuntimeStopped(t *testing.T) {
 	runtime.mu.Lock()
 	runtime.getErr = domain.ErrRuntimeStopped
 	runtime.mu.Unlock()
-	if err := service.RefreshLiveRuntime(ctx); err != nil {
+	if err := service.RefreshLiveRuntime(asSystem(ctx)); err != nil {
 		t.Fatal(err)
 	}
 	run, err := service.GetRunStored(ctx, created.Run.ID)

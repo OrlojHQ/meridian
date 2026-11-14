@@ -54,7 +54,7 @@ func TestOperatorRemovesOneSubagentAndTheLeadKeepsSpawning(t *testing.T) {
 	if sibling, _ := f.service.GetThreadLink(f.ctx, second.ID); sibling.State != domain.LinkActive {
 		t.Fatalf("sibling after remove = %#v", sibling)
 	}
-	f.service.CoordinationTick(f.ctx)
+	f.service.CoordinationTick(asSystem(f.ctx))
 	spawnThird.Key = "spawn-third-again"
 	if response := tool(t, mailbox, spawnThird); !response.OK {
 		t.Fatalf("spawn after remove = %+v", response)
@@ -79,7 +79,7 @@ func TestRemoveWaitsForTheSessionToStopBeforeDeleting(t *testing.T) {
 	if capsule, _ := f.service.GetCapsule(f.ctx, link.ChildCapsuleID); capsule.DesiredState == domain.IntentDeleted {
 		t.Fatal("Capsule deleted while its session was still stopping")
 	}
-	f.service.CoordinationTick(f.ctx)
+	f.service.CoordinationTick(asSystem(f.ctx))
 	if capsule, _ := f.service.GetCapsule(f.ctx, link.ChildCapsuleID); capsule.DesiredState != domain.IntentReady {
 		t.Fatalf("Capsule while stopping = %s, want it left running", capsule.DesiredState)
 	}
@@ -87,7 +87,7 @@ func TestRemoveWaitsForTheSessionToStopBeforeDeleting(t *testing.T) {
 	f.runtime.mu.Lock()
 	f.runtime.runs[thread.CurrentRunID] = ports.RuntimeRun{State: domain.RunCancelled, Structured: true}
 	f.runtime.mu.Unlock()
-	f.service.CoordinationTick(f.ctx)
+	f.service.CoordinationTick(asSystem(f.ctx))
 	if capsule, _ := f.service.GetCapsule(f.ctx, link.ChildCapsuleID); capsule.DesiredState != domain.IntentDeleted {
 		t.Fatalf("Capsule after the session stopped = %s, want deleted", capsule.DesiredState)
 	}
@@ -105,8 +105,8 @@ func TestRemoveFallsBackToPauseWhenTheSessionWillNotStop(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.advance(31 * time.Second)
-	f.service.CoordinationTick(f.ctx)
-	f.service.CoordinationTick(f.ctx)
+	f.service.CoordinationTick(asSystem(f.ctx))
+	f.service.CoordinationTick(asSystem(f.ctx))
 	capsule, _ := f.service.GetCapsule(f.ctx, link.ChildCapsuleID)
 	if capsule.DesiredState != domain.IntentPaused {
 		t.Fatalf("stuck subagent Capsule = %s, want paused", capsule.DesiredState)

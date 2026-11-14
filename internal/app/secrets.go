@@ -86,16 +86,16 @@ func (s *Service) PutSecret(
 			result = replay
 			return nil
 		}
+		owner, err := ownerOf(ctx)
+		if err != nil {
+			return err
+		}
 		now := s.clock.Now().UTC()
-		existing, err := tx.GetSecret(ctx, name)
+		existing, err := tx.GetSecret(ctx, owner, name)
 		switch {
 		case errors.Is(err, domain.ErrNotFound):
 			if expected != 0 {
 				return domain.ErrConflict
-			}
-			owner, err := ownerOf(ctx)
-			if err != nil {
-				return err
 			}
 			result = domain.Secret{
 				OwnerUserID: owner,
@@ -151,7 +151,11 @@ func (s *Service) ListSecrets(ctx context.Context, offset, limit int) (SecretPag
 	err := s.store.View(ctx, func(reader ports.Reader) error {
 		var more bool
 		var err error
-		result.Items, more, err = reader.ListSecrets(ctx, page)
+		owner, err := ownerOf(ctx)
+		if err != nil {
+			return err
+		}
+		result.Items, more, err = reader.ListSecrets(ctx, owner, page)
 		if more {
 			result.NextOffset = page.Offset + len(result.Items)
 		}
@@ -187,15 +191,18 @@ func (s *Service) DeleteSecret(
 			result = replay
 			return nil
 		}
-		var err error
-		result, err = tx.GetSecret(ctx, name)
+		owner, err := ownerOf(ctx)
+		if err != nil {
+			return err
+		}
+		result, err = tx.GetSecret(ctx, owner, name)
 		if err != nil {
 			return err
 		}
 		if result.ResourceVersion != expected {
 			return domain.ErrConflict
 		}
-		if err := tx.DeleteSecret(ctx, name, expected); err != nil {
+		if err := tx.DeleteSecret(ctx, owner, name, expected); err != nil {
 			return err
 		}
 		if err := s.appendEvent(ctx, tx, "secret", string(result.ID), "secret.deleted",
@@ -210,8 +217,10 @@ func (s *Service) DeleteSecret(
 	return result, err
 }
 
+// resolveSecret opens owner's secret name. Secrets are named per owner, so
+// the owner is the Project's, not the caller's (ADR 0046).
 func (s *Service) resolveSecret(
-	ctx context.Context, name string, purpose domain.SecretPurpose,
+	ctx context.Context, owner domain.UserID, name string, purpose domain.SecretPurpose,
 ) (secrets.Payload, error) {
 	if s.secretKey == nil {
 		return secrets.Payload{}, domain.ErrUnsupported
@@ -219,7 +228,7 @@ func (s *Service) resolveSecret(
 	var secret domain.Secret
 	err := s.store.View(ctx, func(reader ports.Reader) error {
 		var err error
-		secret, err = reader.GetSecret(ctx, name)
+		secret, err = reader.GetSecret(ctx, owner, name)
 		return err
 	})
 	if err != nil {
@@ -236,7 +245,7 @@ func (s *Service) resolveHarnessSecrets(
 ) (map[string]string, error) {
 	values := make(map[string]string, len(project.HarnessSecretNames))
 	for _, name := range project.HarnessSecretNames {
-		payload, err := s.resolveSecret(ctx, name, domain.SecretHarnessEnv)
+		payload, err := s.resolveSecret(ctx, project.OwnerUserID, name, domain.SecretHarnessEnv)
 		if err != nil {
 			return nil, fmt.Errorf("resolve authorized harness secret: %w", err)
 		}

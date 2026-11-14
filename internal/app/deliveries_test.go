@@ -357,7 +357,7 @@ func TestDeliveryRecoveryDoesNotRepeatCommittedOrPushedSideEffects(t *testing.T)
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := fixture.service.RecoverDeliveries(operatorContext()); err != nil {
+	if err := fixture.service.RecoverDeliveries(asSystem(operatorContext())); err != nil {
 		t.Fatal(err)
 	}
 	recovered, err := fixture.service.GetDelivery(operatorContext(), item.ID)
@@ -387,7 +387,7 @@ func TestProposedDeliveryDoesNotExecuteUntilOperatorApproves(t *testing.T) {
 		proposed.PullRequestTitle != "Ship the reviewed parser" {
 		t.Fatalf("proposed = %#v", proposed)
 	}
-	if err := fixture.service.RecoverDeliveries(operatorContext()); err != nil {
+	if err := fixture.service.RecoverDeliveries(asSystem(operatorContext())); err != nil {
 		t.Fatal(err)
 	}
 	still, err := fixture.service.GetDelivery(operatorContext(), proposed.ID)

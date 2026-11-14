@@ -99,7 +99,7 @@ func NewReconciler(
 	ids ports.IDSource,
 ) *Reconciler {
 	return &Reconciler{
-		store:      store,
+		store:      newScopedStore(store),
 		provider:   provider,
 		clock:      clock,
 		ids:        ids,
@@ -332,7 +332,7 @@ func (r *Reconciler) reconcile(ctx context.Context, id domain.CapsuleID) error {
 			var secret domain.Secret
 			if err := r.store.View(ctx, func(reader ports.Reader) error {
 				var err error
-				secret, err = reader.GetSecret(ctx, project.GitSecretName)
+				secret, err = reader.GetSecret(ctx, project.OwnerUserID, project.GitSecretName)
 				return err
 			}); err != nil {
 				return fmt.Errorf("resolve project Git secret: %w", err)

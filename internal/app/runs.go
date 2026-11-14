@@ -384,7 +384,7 @@ func (s *Service) AttachRun(ctx context.Context, id domain.RunID, after uint64) 
 }
 
 func (s *Service) RecoverRuns(ctx context.Context) error {
-	if err := requirePrincipal(ctx); err != nil {
+	if err := requireSystem(ctx); err != nil {
 		return err
 	}
 	if s.runtime == nil {

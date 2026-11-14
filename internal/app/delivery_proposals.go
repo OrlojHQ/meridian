@@ -198,7 +198,7 @@ func (s *Service) ApproveDelivery(
 	keepMaintenance := false
 	defer func() {
 		if !keepMaintenance {
-			_ = s.clearMaintenance(context.Background(), current.CapsuleID, "capture")
+			_ = s.clearMaintenance(context.WithoutCancel(ctx), current.CapsuleID, "capture")
 		}
 	}()
 	if err := validateDeliveryProject(project, current.Action); err != nil {

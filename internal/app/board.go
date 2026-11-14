@@ -195,7 +195,11 @@ func (s *Service) Board(ctx context.Context, query BoardQuery) (Board, error) {
 func (s *Service) boardCapsules(ctx context.Context, projectID domain.ProjectID) ([]domain.Capsule, bool, error) {
 	var capsules []domain.Capsule
 	truncated := false
-	err := s.store.View(ctx, func(reader ports.Reader) error {
+	scope, err := scopeOf(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	err = s.store.View(ctx, func(reader ports.Reader) error {
 		var projects []domain.ProjectID
 		if projectID != "" {
 			if _, err := reader.GetProject(ctx, projectID); err != nil {
@@ -204,7 +208,7 @@ func (s *Service) boardCapsules(ctx context.Context, projectID domain.ProjectID)
 			projects = []domain.ProjectID{projectID}
 		} else {
 			for offset := 0; ; {
-				page, more, err := reader.ListProjects(ctx, ports.Page{Offset: offset, Limit: 100})
+				page, more, err := reader.ListProjects(ctx, scope.keyOwner(), ports.Page{Offset: offset, Limit: 100})
 				if err != nil {
 					return err
 				}

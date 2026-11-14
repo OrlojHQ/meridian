@@ -146,18 +146,18 @@ func (s *Service) ExportWorkspace(
 	}
 	capture, err := s.snapshotter.CaptureWorkspace(ctx, capsule.ProviderResourceID)
 	if err != nil {
-		_ = s.clearMaintenance(context.Background(), capsuleID, "capture")
+		_ = s.clearMaintenance(context.WithoutCancel(ctx), capsuleID, "capture")
 		return WorkspaceExport{}, err
 	}
 	if capture.Archive == nil {
-		_ = s.clearMaintenance(context.Background(), capsuleID, "capture")
+		_ = s.clearMaintenance(context.WithoutCancel(ctx), capsuleID, "capture")
 		return WorkspaceExport{}, fmt.Errorf("%w: provider returned no archive", domain.ErrCorrupt)
 	}
 	return WorkspaceExport{
 		Archive: &maintenanceArchive{
 			ReadCloser: capture.Archive,
 			release: func() error {
-				return s.clearMaintenance(context.Background(), capsuleID, "capture")
+				return s.clearMaintenance(context.WithoutCancel(ctx), capsuleID, "capture")
 			},
 		},
 		Metadata: capture.Metadata, RepositoryURL: project.RepositoryURL,

@@ -311,7 +311,7 @@ func TestThreadGapWrongKeyAndRecoveryDoesNotSend(t *testing.T) {
 	runtime.mu.Lock()
 	sendsBefore := len(runtime.sends)
 	runtime.mu.Unlock()
-	if err := service.RecoverThreads(ctx); err != nil {
+	if err := service.RecoverThreads(asSystem(ctx)); err != nil {
 		t.Fatal(err)
 	}
 	runtime.mu.Lock()
@@ -663,7 +663,7 @@ func TestThreadMetadataEncryptedAndPathPlaintextDoesNotLeak(t *testing.T) {
 				t.Fatal("Thread path leaked into lifecycle event")
 			}
 		}
-		record, err := reader.GetIdempotency(ctx, "thread:create:"+string(capsuleID), "leak-create")
+		record, err := reader.GetIdempotency(ctx, domain.BootstrapOwnerID, "thread:create:"+string(capsuleID), "leak-create")
 		if err != nil {
 			return err
 		}

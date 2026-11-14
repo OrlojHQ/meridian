@@ -162,7 +162,7 @@ func (s *Service) capsulesAwaitingCleanup(
 // AdvanceProjectDeletion finishes a deleting Project once every Capsule is
 // Deleted, or records the provider failure that stopped container cleanup.
 func (s *Service) AdvanceProjectDeletion(ctx context.Context, id domain.ProjectID) error {
-	if err := requirePrincipal(ctx); err != nil {
+	if err := requireSystem(ctx); err != nil {
 		return err
 	}
 	var digests []string
@@ -217,7 +217,7 @@ func (s *Service) AdvanceProjectDeletion(ctx context.Context, id domain.ProjectI
 
 // RecoverProjectDeletions resumes Projects left in deleting or failed after a restart.
 func (s *Service) RecoverProjectDeletions(ctx context.Context) error {
-	if err := requirePrincipal(ctx); err != nil {
+	if err := requireSystem(ctx); err != nil {
 		return err
 	}
 	var projects []domain.Project

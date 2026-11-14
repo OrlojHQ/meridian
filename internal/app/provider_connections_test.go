@@ -73,13 +73,13 @@ func TestProviderGrantsAndEncryptedRevocation(t *testing.T) {
 		t.Fatal("cross-provider grant accepted")
 	}
 	lease := providergateway.Lease{Connection: connection.ID, Project: string(project.ID), Capsule: string(capsule.ID), Harness: "codex", Provider: "openai"}
-	if _, err := s.authorizeProviderLease(ctx, lease); err == nil {
+	if _, err := s.authorizeProviderLease(gatewayRequest(), lease); err == nil {
 		t.Fatal("ungranted connection accepted")
 	}
 	if err := s.GrantProviderConnection(ctx, project.ID, "codex", connection.ID); err != nil {
 		t.Fatal(err)
 	}
-	upstream, err := s.authorizeProviderLease(ctx, lease)
+	upstream, err := s.authorizeProviderLease(gatewayRequest(), lease)
 	value := upstream.Key
 	if err != nil || value != "upstream-private-key" || upstream.BaseURL != "" {
 		t.Fatal("authorized request failed", err)
@@ -95,7 +95,7 @@ func TestProviderGrantsAndEncryptedRevocation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.authorizeProviderLease(ctx, lease); err == nil {
+	if _, err := s.authorizeProviderLease(gatewayRequest(), lease); err == nil {
 		t.Fatal("revoked connection accepted")
 	}
 	err = db.View(ctx, func(r ports.Reader) error {
@@ -245,7 +245,7 @@ func TestCustomEndpointGrantsAndRuntimeLease(t *testing.T) {
 		t.Fatalf("unexpected dsh runtime connection %+v", dsh)
 	}
 	lease := providergateway.Lease{Connection: openai.ID, Project: string(project.ID), Capsule: string(capsule.ID), Harness: "codex", Provider: "openai-compatible"}
-	upstream, err := s.authorizeProviderLease(ctx, lease)
+	upstream, err := s.authorizeProviderLease(gatewayRequest(), lease)
 	if err != nil || upstream.Key != "local-secret-key" || upstream.BaseURL != "https://vllm.example" || upstream.AllowPrivateHTTP {
 		t.Fatalf("unexpected upstream %+v %v", upstream, err)
 	}
@@ -273,7 +273,7 @@ func TestCustomEndpointGrantsAndRuntimeLease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.authorizeProviderLease(ctx, lease); err == nil {
+	if _, err := s.authorizeProviderLease(gatewayRequest(), lease); err == nil {
 		t.Fatal("key released for a tampered upstream")
 	}
 
@@ -285,7 +285,7 @@ func TestCustomEndpointGrantsAndRuntimeLease(t *testing.T) {
 	if err := s.GrantProviderConnection(ctx, project.ID, "opencode", local.ID); err != nil {
 		t.Fatal(err)
 	}
-	upstream, err = s.authorizeProviderLease(ctx, providergateway.Lease{Connection: local.ID, Project: string(project.ID), Capsule: string(capsule.ID), Harness: "opencode", Provider: "openai-compatible"})
+	upstream, err = s.authorizeProviderLease(gatewayRequest(), providergateway.Lease{Connection: local.ID, Project: string(project.ID), Capsule: string(capsule.ID), Harness: "opencode", Provider: "openai-compatible"})
 	if err != nil || upstream.Key != "" || !upstream.AllowPrivateHTTP || upstream.CredentialKind != "" {
 		t.Fatalf("unexpected upstream %+v %v", upstream, err)
 	}
@@ -488,11 +488,11 @@ func TestClaudeLoginIsCiphertextAndStaysOutOfTheCapsule(t *testing.T) {
 	if codexRuntime.Token == codexKey || len(codexRuntime.Token) != 64 || codexRuntime.Provider != "openai" || codexRuntime.URL != "https://meridian.example/provider-gateway/openai" || codexRuntime.Model != "" {
 		t.Fatalf("codex path changed: %+v", codexRuntime)
 	}
-	upstream, err := s.authorizeProviderLease(ctx, providergateway.Lease{Connection: saved.ID, Project: string(project.ID), Capsule: string(capsule.ID), Harness: "claude", Provider: "anthropic"})
+	upstream, err := s.authorizeProviderLease(gatewayRequest(), providergateway.Lease{Connection: saved.ID, Project: string(project.ID), Capsule: string(capsule.ID), Harness: "claude", Provider: "anthropic"})
 	if err != nil || upstream.Key != login || upstream.CredentialKind != providergateway.CredentialOAuth || upstream.BaseURL != "" {
 		t.Fatalf("gateway did not receive the claude login: %+v %v", upstream, err)
 	}
-	codexUpstream, err := s.authorizeProviderLease(ctx, providergateway.Lease{Connection: codex.ID, Project: string(project.ID), Capsule: string(capsule.ID), Harness: "codex", Provider: "openai"})
+	codexUpstream, err := s.authorizeProviderLease(gatewayRequest(), providergateway.Lease{Connection: codex.ID, Project: string(project.ID), Capsule: string(capsule.ID), Harness: "codex", Provider: "openai"})
 	if err != nil || codexUpstream.Key != codexKey || codexUpstream.CredentialKind != "" || codexUpstream.BaseURL != "" {
 		t.Fatalf("codex upstream changed: %+v %v", codexUpstream, err)
 	}
@@ -507,7 +507,7 @@ func TestClaudeLoginIsCiphertextAndStaysOutOfTheCapsule(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.authorizeProviderLease(ctx, providergateway.Lease{Connection: saved.ID, Project: string(project.ID), Capsule: string(capsule.ID), Harness: "claude", Provider: "anthropic"}); err == nil {
+	if _, err := s.authorizeProviderLease(gatewayRequest(), providergateway.Lease{Connection: saved.ID, Project: string(project.ID), Capsule: string(capsule.ID), Harness: "claude", Provider: "anthropic"}); err == nil {
 		t.Fatal("oauth token released after the stored kind was edited")
 	}
 	cleared, err := s.PutProviderConnection(ctx, saved.ID, ConnectionInput{Name: "Claude", Provider: "anthropic", Revoked: true, ExpectedResourceVersion: saved.ResourceVersion})
@@ -532,7 +532,7 @@ func TestClaudeLoginIsCiphertextAndStaysOutOfTheCapsule(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertLoginAbsent()
-	if _, err := s.authorizeProviderLease(ctx, providergateway.Lease{Connection: codex.ID, Project: string(project.ID), Capsule: string(capsule.ID), Harness: "codex", Provider: "openai"}); err != nil {
+	if _, err := s.authorizeProviderLease(gatewayRequest(), providergateway.Lease{Connection: codex.ID, Project: string(project.ID), Capsule: string(capsule.ID), Harness: "codex", Provider: "openai"}); err != nil {
 		t.Fatal("clearing claude broke codex", err)
 	}
 }

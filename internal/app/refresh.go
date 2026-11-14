@@ -18,7 +18,7 @@ const liveRefreshBatchSize = 100
 // defeat idle pausing. A Run whose Capsule runtime stopped fails, and the
 // Capsule is queued for the reconciler to start its runtime again.
 func (s *Service) RefreshLiveRuntime(ctx context.Context) error {
-	if err := requirePrincipal(ctx); err != nil {
+	if err := requireSystem(ctx); err != nil {
 		return err
 	}
 	if s.runtime == nil && s.structured == nil {

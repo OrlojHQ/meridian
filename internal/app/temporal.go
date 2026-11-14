@@ -96,7 +96,7 @@ func (s *Service) CaptureMoment(
 	success := false
 	defer func() {
 		if !success {
-			_ = s.clearMaintenance(context.Background(), capsuleID, "capture")
+			_ = s.clearMaintenance(context.WithoutCancel(ctx), capsuleID, "capture")
 		}
 	}()
 	ctx, span := otel.Tracer("github.com/OrlojHQ/meridian").Start(ctx, "moment.capture")
@@ -493,12 +493,18 @@ func (s *Service) createDescendant(
 				return fmt.Errorf("%w: Rewind crosses projects", domain.ErrIllegalTransition)
 			}
 		}
+		// The descendant belongs to the Moment's Project and its owner.
+		project, err := tx.GetProject(ctx, moment.ProjectID)
+		if err != nil {
+			return err
+		}
 		now := s.clock.Now().UTC()
 		capsuleID := domain.CapsuleID(s.ids.NewID())
 		timelineID := domain.TimelineID(s.ids.NewID())
 		result = DescendantResult{
 			Capsule: domain.Capsule{
-				ID: capsuleID, ProjectID: moment.ProjectID, TimelineID: timelineID,
+				OwnerUserID: project.OwnerUserID,
+				ID:          capsuleID, ProjectID: moment.ProjectID, TimelineID: timelineID,
 				Name: name, State: domain.CapsuleCreating, DesiredState: domain.IntentReady,
 				OriginMomentID: moment.ID, RestoreComplete: false, Maintenance: "restore",
 				LastActivityAt: now, CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
@@ -571,7 +577,7 @@ func (s *Service) Seal(
 	success := false
 	defer func() {
 		if !success {
-			_ = s.clearMaintenance(context.Background(), capsuleID, "seal")
+			_ = s.clearMaintenance(context.WithoutCancel(ctx), capsuleID, "seal")
 		}
 	}()
 	ctx, span := otel.Tracer("github.com/OrlojHQ/meridian").Start(ctx, "moment.seal")

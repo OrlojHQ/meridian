@@ -26,13 +26,13 @@ func (f *coordFixture) finishedSubagent(t *testing.T, mailbox *capsuleproto.Mail
 		t.Fatal(err)
 	}
 	f.ready(t, link.ChildCapsuleID)
-	f.service.CoordinationTick(f.ctx)
+	f.service.CoordinationTick(asSystem(f.ctx))
 	thread, err := f.service.GetThread(f.ctx, link.ChildThreadID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	f.runtime.finishTurn(thread.CurrentRunID, name+"-answer", name+" is done")
-	f.service.CoordinationTick(f.ctx)
+	f.service.CoordinationTick(asSystem(f.ctx))
 	link, err = f.service.GetThreadLink(f.ctx, link.ID)
 	if err != nil || link.LastReportStatus != domain.ReportTurnEnded {
 		t.Fatalf("subagent %s report = %#v, %v", name, link, err)
@@ -74,22 +74,22 @@ func TestFinishedSubagentIsPausedAndArchivedAfterItsPeriod(t *testing.T) {
 	thread, _ := f.service.GetThread(f.ctx, link.ChildThreadID)
 	run := thread.CurrentRunID
 
-	f.service.SweepArchivableSubagents(f.ctx)
+	f.service.SweepArchivableSubagents(asSystem(f.ctx))
 	f.advance(59 * time.Minute)
-	f.service.SweepArchivableSubagents(f.ctx)
+	f.service.SweepArchivableSubagents(asSystem(f.ctx))
 	if current, _ := f.service.GetThreadLink(f.ctx, link.ID); !current.ArchivedAt.IsZero() || f.cancels(run) != 0 {
 		t.Fatalf("subagent archived before its period: %#v", current)
 	}
 
 	f.advance(2 * time.Minute)
-	f.service.SweepArchivableSubagents(f.ctx)
+	f.service.SweepArchivableSubagents(asSystem(f.ctx))
 	archived, _ := f.service.GetThreadLink(f.ctx, link.ID)
 	if archived.ArchivedAt.IsZero() || archived.State != domain.LinkActive || f.cancels(run) != 1 {
 		t.Fatalf("archived link = %#v, cancels %d", archived, f.cancels(run))
 	}
-	f.service.CoordinationTick(f.ctx)
+	f.service.CoordinationTick(asSystem(f.ctx))
 	f.advance(5 * time.Second)
-	f.service.CoordinationTick(f.ctx)
+	f.service.CoordinationTick(asSystem(f.ctx))
 	thread, _ = f.service.GetThread(f.ctx, link.ChildThreadID)
 	if thread.State != domain.ThreadPaused {
 		t.Fatalf("archived subagent Thread = %s", thread.State)
@@ -109,7 +109,7 @@ func TestFinishedSubagentIsPausedAndArchivedAfterItsPeriod(t *testing.T) {
 	if code(send) != coordproto.CodeUnavailable {
 		t.Fatalf("send to archived subagent = %+v", send)
 	}
-	f.service.SweepArchivableSubagents(f.ctx)
+	f.service.SweepArchivableSubagents(asSystem(f.ctx))
 	if f.cancels(run) != 1 {
 		t.Fatalf("archived subagent was cancelled again")
 	}
@@ -142,7 +142,7 @@ func TestArchiveSkipsPromotedAndDisabledSubagents(t *testing.T) {
 		t.Fatalf("cancel = %+v", response)
 	}
 	for range 3 {
-		f.service.CoordinationTick(f.ctx)
+		f.service.CoordinationTick(asSystem(f.ctx))
 		f.advance(5 * time.Second)
 	}
 	// stopClosedChild asked for a pause; the reconciler would finish it.
@@ -151,7 +151,7 @@ func TestArchiveSkipsPromotedAndDisabledSubagents(t *testing.T) {
 	}
 	setProjectThreadCapsuleState(t, f.ctx, f.store, cancelled.ChildCapsuleID, domain.CapsulePaused)
 	f.advance(2 * time.Hour)
-	f.service.SweepArchivableSubagents(f.ctx)
+	f.service.SweepArchivableSubagents(asSystem(f.ctx))
 	if link, _ := f.service.GetThreadLink(f.ctx, promoted.ID); !link.ArchivedAt.IsZero() {
 		t.Fatal("promoted subagent was archived")
 	}
@@ -167,7 +167,7 @@ func TestArchiveSkipsPromotedAndDisabledSubagents(t *testing.T) {
 	_, other := g.spawnLead(t, domain.CoordinationPolicy{ArchiveAfter: &disabled})
 	kept := g.finishedSubagent(t, other, "kept")
 	g.advance(31 * 24 * time.Hour)
-	g.service.SweepArchivableSubagents(g.ctx)
+	g.service.SweepArchivableSubagents(asSystem(g.ctx))
 	if link, _ := g.service.GetThreadLink(g.ctx, kept.ID); !link.ArchivedAt.IsZero() {
 		t.Fatal("subagent archived with auto-archive disabled")
 	}
@@ -285,7 +285,7 @@ func TestPromoteKeepsTheLinkAndDetachClosesIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range 3 {
-		f.service.CoordinationTick(f.ctx)
+		f.service.CoordinationTick(asSystem(f.ctx))
 		f.advance(5 * time.Second)
 	}
 	if f.cancels(secondThread.CurrentRunID) != 0 {
@@ -302,9 +302,9 @@ func TestResumedSubagentIsArchivedAgainOnceIdle(t *testing.T) {
 	_, mailbox := f.spawnLead(t, domain.CoordinationPolicy{ArchiveAfter: &archiveAfter})
 	link := f.finishedSubagent(t, mailbox, "one")
 	f.advance(2 * time.Minute)
-	f.service.SweepArchivableSubagents(f.ctx)
+	f.service.SweepArchivableSubagents(asSystem(f.ctx))
 	for range 2 {
-		f.service.CoordinationTick(f.ctx)
+		f.service.CoordinationTick(asSystem(f.ctx))
 		f.advance(5 * time.Second)
 	}
 	thread, _ := f.service.GetThread(f.ctx, link.ChildThreadID)
@@ -314,9 +314,9 @@ func TestResumedSubagentIsArchivedAgainOnceIdle(t *testing.T) {
 	}
 	f.ready(t, link.ChildCapsuleID)
 	f.runtime.finishTurn(resumed.Thread.CurrentRunID, "resumed", "back")
-	f.service.CoordinationTick(f.ctx)
+	f.service.CoordinationTick(asSystem(f.ctx))
 	f.advance(2 * time.Minute)
-	f.service.SweepArchivableSubagents(f.ctx)
+	f.service.SweepArchivableSubagents(asSystem(f.ctx))
 	if current, _ := f.service.GetThreadLink(f.ctx, link.ID); current.ArchivedAt.IsZero() {
 		t.Fatalf("resumed subagent was not archived again: %#v", current)
 	}

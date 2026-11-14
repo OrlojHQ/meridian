@@ -208,7 +208,7 @@ func TestRollupAndSubagentPanelAgreeWhenASubagentRunFails(t *testing.T) {
 	if _, err := f.service.ThreadBlocks(f.ctx, waiting.ChildThreadID, 0, 100); err != nil {
 		t.Fatal(err)
 	}
-	f.service.CoordinationTick(f.ctx)
+	f.service.CoordinationTick(asSystem(f.ctx))
 
 	closed, err := f.service.GetThreadLink(f.ctx, failed.ID)
 	if err != nil || closed.State != domain.LinkClosed || closed.CloseReason != domain.LinkEnded {
@@ -257,7 +257,7 @@ func TestOperatorMessageToSubagentIsNoticedOnTheLeadsNextWake(t *testing.T) {
 	f.runtime.finishTurn(lead.Intent.RunID, "lead-1", "waiting")
 	f.runtime.finishTurn(child.CurrentRunID, "child-1", "child done")
 	for range 3 {
-		f.service.CoordinationTick(f.ctx)
+		f.service.CoordinationTick(asSystem(f.ctx))
 		f.advance(5 * time.Second)
 	}
 	f.runtime.mu.Lock()

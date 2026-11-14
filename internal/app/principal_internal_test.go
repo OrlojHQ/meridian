@@ -12,7 +12,9 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/ports"
 	"github.com/OrlojHQ/meridian/internal/principal"
 )
@@ -22,6 +24,17 @@ import (
 // internal/httpapi attaches it to an authenticated request.
 func operatorContext() context.Context {
 	return principal.With(context.Background(), principal.Owner())
+}
+
+// gatewayRequest is a provider gateway request's context: the gateway
+// authenticates the lease itself, so it carries no principal.
+func gatewayRequest() context.Context {
+	return context.Background()
+}
+
+// asSystem is ctx as daemon-internal work.
+func asSystem(ctx context.Context) context.Context {
+	return principal.WithSystem(ctx)
 }
 
 // principalExempt lists the exported Service methods that do not require a
@@ -218,7 +231,8 @@ func isServiceReceiver(fn *ast.FuncDecl) bool {
 }
 
 // startsWithPrincipalCheck accepts `if err := requirePrincipal(ctx); ...`,
-// `if requirePrincipal(ctx) != nil`, and `p, err := principal.Require(ctx)`.
+// `if requirePrincipal(ctx) != nil`, the same with requireSystem, and
+// `p, err := principal.Require(ctx)`.
 func startsWithPrincipalCheck(fn *ast.FuncDecl) bool {
 	if fn.Body == nil || len(fn.Body.List) == 0 {
 		return false
@@ -231,7 +245,7 @@ func startsWithPrincipalCheck(fn *ast.FuncDecl) bool {
 		}
 		switch callee := call.Fun.(type) {
 		case *ast.Ident:
-			found = found || callee.Name == "requirePrincipal"
+			found = found || callee.Name == "requirePrincipal" || callee.Name == "requireSystem"
 		case *ast.SelectorExpr:
 			pkg, ok := callee.X.(*ast.Ident)
 			found = found || (ok && pkg.Name == "principal" && callee.Sel.Name == "Require")
@@ -240,3 +254,50 @@ func startsWithPrincipalCheck(fn *ast.FuncDecl) bool {
 	})
 	return found
 }
+
+// TestSignInsBelongToTheUserWhoBeganThem checks that another user cannot
+// read or complete a pending sign-in, which reads as not found.
+func TestSignInsBelongToTheUserWhoBeganThem(t *testing.T) {
+	s := NewService(nil, &fixedClock{now: time.Date(2026, 11, 13, 0, 0, 0, 0, time.UTC)}, nil, nil)
+	alice := operatorContext()
+	bobPrincipal, ok := principal.User("usr_bob")
+	if !ok {
+		t.Fatal("Bob principal")
+	}
+	bob := principal.With(context.Background(), bobPrincipal)
+
+	s.claudePending = map[string]*claudeCeremony{"login": {
+		id: "login", state: "state", verifier: "verifier", status: claudePending,
+		expires: time.Date(2026, 11, 13, 1, 0, 0, 0, time.UTC), starter: principal.Owner(),
+	}}
+	s.claudeByState = map[string]string{"state": "login"}
+	if _, err := s.ClaudeLoginStatus(bob, "login"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("Bob read Alice's Claude sign-in: %v", err)
+	}
+	if _, err := s.CompleteClaudeLogin(bob, "login", "code#state"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("Bob completed Alice's Claude sign-in: %v", err)
+	}
+	if status, err := s.ClaudeLoginStatus(alice, "login"); err != nil || status.Status != claudePending {
+		t.Fatalf("Alice's Claude sign-in = %+v, %v", status, err)
+	}
+
+	s.ConfigureChatGPT(t.TempDir(), nil)
+	t.Cleanup(s.CloseChatGPT)
+	s.chatgpt.attempts["attempt"] = &chatGPTAttempt{
+		view:    ChatGPTSignIn{ID: "attempt", State: ChatGPTSignInPending, ExpiresAt: time.Date(2026, 11, 13, 1, 0, 0, 0, time.UTC)},
+		starter: principal.Owner(),
+	}
+	if _, err := s.ChatGPTSignInStatus(bob, "attempt"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("Bob read Alice's ChatGPT sign-in: %v", err)
+	}
+	if _, err := s.CompleteChatGPTSignIn(bob, "attempt", "http://localhost:1455/auth/callback?code=c&state=s"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("Bob completed Alice's ChatGPT sign-in: %v", err)
+	}
+	if view, err := s.ChatGPTSignInStatus(alice, "attempt"); err != nil || view.ID != "attempt" {
+		t.Fatalf("Alice's ChatGPT sign-in = %+v, %v", view, err)
+	}
+}
+
+type fixedClock struct{ now time.Time }
+
+func (c *fixedClock) Now() time.Time { return c.now }

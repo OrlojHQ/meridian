@@ -86,7 +86,7 @@ func TestProjectThreadProvisioningPromotionReplayAndFailure(t *testing.T) {
 	capsule := setProjectThreadCapsuleState(
 		t, ctx, store, created.Intent.CapsuleID, domain.CapsuleReady,
 	)
-	if err := service.ReconcileProjectThreadCapsule(ctx, capsule); err != nil {
+	if err := service.ReconcileProjectThreadCapsule(asSystem(ctx), capsule); err != nil {
 		t.Fatal(err)
 	}
 	promoted, err := service.GetProjectThreadIntent(ctx, created.Intent.ID)
@@ -122,7 +122,7 @@ func TestProjectThreadProvisioningPromotionReplayAndFailure(t *testing.T) {
 	failedCapsule := setProjectThreadCapsuleState(
 		t, ctx, store, failed.Intent.CapsuleID, domain.CapsuleFailed,
 	)
-	if err := service.ReconcileProjectThreadCapsule(ctx, failedCapsule); err != nil {
+	if err := service.ReconcileProjectThreadCapsule(asSystem(ctx), failedCapsule); err != nil {
 		t.Fatal(err)
 	}
 	failedResult, err := service.GetProjectThreadIntent(ctx, failed.Intent.ID)
@@ -178,7 +178,7 @@ func TestProjectThreadWithoutPromptStartsIdle(t *testing.T) {
 	capsule := setProjectThreadCapsuleState(
 		t, ctx, store, created.Intent.CapsuleID, domain.CapsuleReady,
 	)
-	if err := service.ReconcileProjectThreadCapsule(ctx, capsule); err != nil {
+	if err := service.ReconcileProjectThreadCapsule(asSystem(ctx), capsule); err != nil {
 		t.Fatal(err)
 	}
 	promoted, err := service.GetProjectThreadIntent(ctx, created.Intent.ID)
@@ -245,7 +245,7 @@ func TestProjectThreadRecoveryPromotesWithoutSending(t *testing.T) {
 		t.Fatal(err)
 	}
 	setProjectThreadCapsuleState(t, ctx, store, created.Intent.CapsuleID, domain.CapsuleReady)
-	if err := service.RecoverProjectThreads(ctx); err != nil {
+	if err := service.RecoverProjectThreads(asSystem(ctx)); err != nil {
 		t.Fatal(err)
 	}
 	result, err := service.GetProjectThreadIntent(ctx, created.Intent.ID)
