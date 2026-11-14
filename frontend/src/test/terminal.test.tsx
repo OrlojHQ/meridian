@@ -137,6 +137,27 @@ describe("terminal ticket scope", () => {
   });
 });
 
+it("refits on every size change but sends the PTY one resize once it settles", async () => {
+  vi.spyOn(api, "attachTicket").mockResolvedValue({
+    ticket: "a".repeat(43),
+    expiresAt: "2099-01-01T00:00:00Z",
+    webSocketPath: "/runs/run-1/attach",
+  });
+  render(<TerminalView runId="run-1" reconnect={true} supported={true} />);
+  await waitFor(() => expect(mocks.socketSend).toHaveBeenCalled());
+  const fits = mocks.fit.mock.calls.length;
+  const sends = mocks.socketSend.mock.calls.length;
+  for (let index = 0; index < 5; index += 1) {
+    mocks.observerCallback?.([], {} as ResizeObserver);
+  }
+  expect(mocks.fit).toHaveBeenCalledTimes(fits + 5);
+  expect(mocks.socketSend).toHaveBeenCalledTimes(sends);
+  await waitFor(() => expect(mocks.socketSend).toHaveBeenCalledTimes(sends + 1));
+  expect(mocks.socketSend).toHaveBeenLastCalledWith(
+    JSON.stringify({ type: "resize", columns: 80, rows: 24 }),
+  );
+});
+
 it("fits, resizes, and disposes every terminal resource", async () => {
   vi.spyOn(api, "attachTicket").mockResolvedValue({
     ticket: "a".repeat(43),

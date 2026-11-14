@@ -256,6 +256,16 @@ func TestMapCapsuleProtocolError(t *testing.T) {
 	if errors.Is(MapCapsuleProtocolError(422, "git_failed"), ErrIllegalTransition) {
 		t.Fatal("git_failed must not be an illegal lifecycle transition")
 	}
+	if errors.Is(MapCapsuleProtocolError(422, "git_failed"), ErrWorkspaceNoRepository) {
+		t.Fatal("git_failed must not report a missing repository")
+	}
+	noRepository := MapCapsuleProtocolError(422, "git_no_repository")
+	if !errors.Is(noRepository, ErrWorkspaceNoRepository) || !errors.Is(noRepository, ErrWorkspaceGit) {
+		t.Fatalf("git_no_repository = %v", noRepository)
+	}
+	if errors.Is(noRepository, ErrIllegalTransition) {
+		t.Fatal("git_no_repository must not be an illegal lifecycle transition")
+	}
 	if got := MapCapsuleProtocolError(422, "structured_interaction_unavailable"); !errors.Is(got, ErrUnsupported) {
 		t.Fatalf("structured_interaction_unavailable = %v", got)
 	}

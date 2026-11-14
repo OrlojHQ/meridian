@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api, normalizeAPIError } from "../api/client";
@@ -36,7 +36,7 @@ const TerminalView = lazy(() =>
   })),
 );
 
-type ContextTab = "changes" | "preview" | "files" | "terminal" | "activity";
+export type ContextTab = "changes" | "preview" | "files" | "terminal" | "activity";
 
 const tabFromPath = (pathname: string): ContextTab => {
   if (pathname.endsWith("/diff")) return "changes";
@@ -118,6 +118,15 @@ function ChangesPane({
     return <p className="tool-empty">Changes are available while the Capsule is Ready.</p>;
   }
   if (diff.isPending) return <p className="tool-loading" role="status">Loading changes…</p>;
+  if (diff.isError && normalizeAPIError(diff.error).code === "no_repository") {
+    return (
+      <p className="tool-empty">
+        This workspace has no Git repository, so there are no changes to
+        review. Run <code>git init</code> in the terminal to start tracking
+        changes.
+      </p>
+    );
+  }
   if (diff.isError) return <InlineError error={diff.error} />;
   return (
     <div className="tool-pane-content">
@@ -353,17 +362,29 @@ export function WorkspaceContext({
   pathname,
   session = "",
   capabilities,
+  initialTab,
 }: {
   capsuleId: string;
   pathname: string;
   session?: string;
   capabilities?: Capabilities;
+  /** Tab to open on mount, such as the one chosen from the collapsed rail. */
+  initialTab?: ContextTab;
 }) {
-  const [tab, setTab] = useState<ContextTab>(() => tabFromPath(pathname));
+  // A route change picks the tab for that route. Adjusting state during
+  // render, rather than in an effect, keeps initialTab on the first render.
+  const [selection, setSelection] = useState(() => ({
+    pathname,
+    tab: initialTab ?? tabFromPath(pathname),
+  }));
+  if (selection.pathname !== pathname) {
+    setSelection({ pathname, tab: tabFromPath(pathname) });
+  }
+  const tab = selection.pathname === pathname ? selection.tab : tabFromPath(pathname);
+  const setTab = (next: ContextTab) => setSelection({ pathname, tab: next });
   const capsule = useQuery(queries.capsule(capsuleId));
   const runs = useQuery(queries.runs(capsuleId));
   const loadedDiff = useLoadedDiff(capsuleId, false);
-  useEffect(() => setTab(tabFromPath(pathname)), [pathname]);
 
   if (capsule.isPending || runs.isPending) {
     return (

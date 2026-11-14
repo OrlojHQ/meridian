@@ -730,6 +730,52 @@
   right: calc(var(--context-width) + 0.45rem);
 }
 
+/* Drag handle on the panel's left edge. It sits over the border and reads
+   the same --context-width as the panel, so it follows every resize. */
+.context-resizer {
+  position: fixed;
+  z-index: 9;
+  top: 0;
+  bottom: var(--statusbar-height);
+  right: var(--context-width);
+  width: 0.6rem;
+  transform: translateX(50%);
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.context-resizer::after {
+  position: absolute;
+  inset: 0 auto 0 50%;
+  width: 2px;
+  content: "";
+  transform: translateX(-50%);
+  background: transparent;
+  transition: background 120ms ease;
+}
+
+.context-resizer:hover::after,
+.context-resizer:focus-visible::after,
+.resizing-context .context-resizer::after {
+  background: var(--accent);
+}
+
+.context-resizer:focus-visible {
+  outline: none;
+}
+
+/* While dragging, keep the resize cursor everywhere, stop text selection,
+   and keep the Preview iframe from taking the pointer. */
+.resizing-context,
+.resizing-context * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+.resizing-context iframe {
+  pointer-events: none;
+}
+
 /* The Capsule tools toggle floats over the top-right of the primary
    surface; keep header content clear of it. */
 .app-shell.with-context-toggle .workspace-main .workspace-view-header,
@@ -937,6 +983,11 @@
 }
 
 @media (max-width: 1040px) {
+  /* Below this width the panel is a drawer, not a column. */
+  .context-resizer {
+    display: none;
+  }
+
   .app-shell.has-context {
     grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
   }

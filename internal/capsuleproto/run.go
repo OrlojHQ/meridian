@@ -803,10 +803,21 @@ func (s *Server) git(writer http.ResponseWriter, request *http.Request, argument
 		return
 	}
 	if err != nil && !errors.Is(err, errOutputTruncated) {
-		writeProtocolError(writer, http.StatusUnprocessableEntity, "git_failed")
+		s.writeGitFailure(writer)
 		return
 	}
 	writeJSON(writer, http.StatusOK, GitResponse{Content: output.String(), Truncated: output.truncated})
+}
+
+// writeGitFailure reports a failed workspace git command. A workspace with no
+// .git, such as a Project created without a repository, gets its own code so
+// clients can show that state instead of an error.
+func (s *Server) writeGitFailure(writer http.ResponseWriter) {
+	code := "git_failed"
+	if _, err := os.Lstat(filepath.Join(s.config.Workspace, ".git")); errors.Is(err, os.ErrNotExist) {
+		code = "git_no_repository"
+	}
+	writeProtocolError(writer, http.StatusUnprocessableEntity, code)
 }
 
 func (s *Server) gitPatch(writer http.ResponseWriter, request *http.Request) {
@@ -834,7 +845,7 @@ func (s *Server) gitPatch(writer http.ResponseWriter, request *http.Request) {
 			writeProtocolError(writer, http.StatusGatewayTimeout, "git_timeout")
 			return
 		}
-		writeProtocolError(writer, http.StatusUnprocessableEntity, "git_failed")
+		s.writeGitFailure(writer)
 		return
 	}
 	head = strings.ToLower(strings.TrimSpace(head))
