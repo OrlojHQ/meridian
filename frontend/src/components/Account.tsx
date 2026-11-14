@@ -10,46 +10,55 @@ import { queries } from "../api/queries";
 export function Account() {
   const mode = useQuery(queries.authenticationMode());
   const [params] = useSearchParams();
-  if (mode.isPending) return <p className="muted">Loading account…</p>;
-  if (mode.isError) {
-    return (
-      <section className="error-state" role="alert">
-        <h2>Account unavailable</h2>
-        <p>{normalizeAPIError(mode.error).message}</p>
-      </section>
-    );
-  }
   return (
-    <section className="settings-page" aria-labelledby="account-title">
-      <h1 id="account-title">Account</h1>
-      {mode.data.mode === "team" ? (
+    <article className="workspace-detail account-settings" aria-labelledby="account-title">
+      <header className="workspace-view-header">
+        <div>
+          <p className="eyebrow">Settings</p>
+          <h1 id="account-title">Account</h1>
+          <p className="view-description">How you sign in to this installation.</p>
+        </div>
+      </header>
+      {mode.isPending ? (
+        <p className="muted account-status" role="status">
+          Loading account…
+        </p>
+      ) : mode.isError ? (
+        <section className="error-state" role="alert">
+          <h2>Account unavailable</h2>
+          <p>{normalizeAPIError(mode.error).message}</p>
+        </section>
+      ) : mode.data.mode === "team" ? (
         <TeamAccount />
       ) : params.get("claim") === "ready" ? (
         <ClaimInstallation />
       ) : (
         <SingleUserAccount claimable={mode.data.claimable} />
       )}
-    </section>
+    </article>
   );
 }
 
 function SingleUserAccount({ claimable }: { claimable: boolean }) {
   return (
     <>
-      <p>
-        This installation is in single-user mode. The installation token and
-        this browser's session act as its owner.
-      </p>
+      <section aria-labelledby="single-user-title">
+        <h2 id="single-user-title">Single-user mode</h2>
+        <p className="muted">
+          This installation is in single-user mode. The installation token and
+          this browser's session act as its owner.
+        </p>
+      </section>
       {claimable ? (
         <section aria-labelledby="team-mode-title">
           <h2 id="team-mode-title">Team mode</h2>
-          <p>
+          <p className="muted">
             Team mode signs each teammate in through your identity provider
             and keeps everyone's work private to them. To turn it on, sign in
             as the owner, then confirm with the installation token. This
             happens once and cannot be undone.
           </p>
-          <a className="button" href="/auth/oidc/start">
+          <a className="button-link primary-button" href="/auth/oidc/start">
             Sign in to claim this installation
           </a>
         </section>
@@ -83,7 +92,7 @@ function ClaimInstallation() {
   return (
     <section aria-labelledby="claim-title">
       <h2 id="claim-title">Claim this installation</h2>
-      <p>
+      <p className="muted">
         You are signed in with your identity provider. Enter the installation
         token to bind that identity to this installation's owner and turn on
         team mode. Every existing Project, secret, and connection stays yours.
@@ -114,23 +123,31 @@ function TeamAccount() {
   });
   return (
     <>
-      {member.data ? (
-        <dl>
-          <dt>Signed in as</dt>
-          <dd>{member.data.displayName || member.data.email || member.data.id}</dd>
-          {member.data.email ? (
-            <>
-              <dt>Email</dt>
-              <dd>{member.data.email}</dd>
-            </>
-          ) : null}
-          <dt>Role</dt>
-          <dd>{member.data.role}</dd>
-        </dl>
-      ) : null}
-      <button type="button" onClick={() => signOut.mutate()} disabled={signOut.isPending}>
-        Sign out
-      </button>
+      <section aria-labelledby="profile-title">
+        <h2 id="profile-title">Signed in</h2>
+        {member.data ? (
+          <dl>
+            <dt>Signed in as</dt>
+            <dd>{member.data.displayName || member.data.email || member.data.id}</dd>
+            {member.data.email ? (
+              <>
+                <dt>Email</dt>
+                <dd>{member.data.email}</dd>
+              </>
+            ) : null}
+            <dt>Role</dt>
+            <dd>{member.data.role}</dd>
+          </dl>
+        ) : null}
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => signOut.mutate()}
+          disabled={signOut.isPending}
+        >
+          Sign out
+        </button>
+      </section>
       <section aria-labelledby="sessions-title">
         <h2 id="sessions-title">Sessions</h2>
         <p className="muted">Sessions end after 12 hours idle or 7 days.</p>
