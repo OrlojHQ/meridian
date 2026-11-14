@@ -82,16 +82,28 @@ func TestDesktopSignInHandsOffToTheShellsLoopbackListener(t *testing.T) {
 		if begun.StatusCode != http.StatusFound || !strings.HasPrefix(begun.Header.Get("Location"), "https://issuer.example/") {
 			t.Fatalf("desktop start = %d %s", begun.StatusCode, begun.Header.Get("Location"))
 		}
-		callback := do(http.MethodGet, "/auth/oidc/callback?state=the-state&code=code", "", "", nil, false)
+		bound := cookieNamed(begun, signInCookie)
+		if bound == nil {
+			t.Fatal("desktop start set no sign-in binding")
+		}
+		if forged := do(http.MethodGet, "/auth/oidc/callback?state=the-state&code=code", "", "", nil, false); forged.StatusCode == http.StatusSeeOther {
+			t.Fatal("desktop callback completed without the starting browser's binding")
+		}
+		begun = do(http.MethodGet, start, "", "", nil, false)
+		bound = cookieNamed(begun, signInCookie)
+		callback := do(http.MethodGet, "/auth/oidc/callback?state=the-state&code=code", "", "", []*http.Cookie{bound}, false)
 		location, err := url.Parse(callback.Header.Get("Location"))
 		if err != nil || callback.StatusCode != http.StatusSeeOther || location.Scheme != "http" ||
 			location.Host != "127.0.0.1:51234" || location.Path != "/meridian-sign-in" ||
 			location.Query().Get("state") != state || location.Query().Get("ticket") == "" {
 			t.Fatalf("desktop callback = %d %s", callback.StatusCode, callback.Header.Get("Location"))
 		}
-		// The system browser gets no Meridian cookie.
-		if len(callback.Cookies()) != 0 {
-			t.Fatalf("desktop callback set cookies %v", callback.Cookies())
+		// The system browser gets no Meridian session or claim cookie;
+		// only the spent binding is cleared.
+		for _, cookie := range callback.Cookies() {
+			if cookie.Name != signInCookie || cookie.MaxAge >= 0 {
+				t.Fatalf("desktop callback set cookie %+v", cookie)
+			}
 		}
 		return location.Query().Get("ticket")
 	}

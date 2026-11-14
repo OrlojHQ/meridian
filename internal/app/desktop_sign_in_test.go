@@ -25,11 +25,22 @@ func desktopRequest(seed byte) (app.DesktopSignIn, string) {
 
 func desktopSignIn(t *testing.T, identity *app.Identity, request app.DesktopSignIn) *app.DesktopHandoff {
 	t.Helper()
-	target, err := identity.BeginDesktopSignIn(context.Background(), request)
+	target, binding, err := identity.BeginDesktopSignIn(context.Background(), request)
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := identity.CompleteSignIn(context.Background(), target[strings.Index(target, "state=")+len("state="):], "code")
+	state := target[strings.Index(target, "state=")+len("state="):]
+	// The desktop attempt's callback runs in the system browser and needs
+	// that browser's binding like any other sign-in.
+	if _, err := identity.CompleteSignIn(context.Background(), state, "code", ""); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("desktop callback without its binding = %v", err)
+	}
+	target, binding, err = identity.BeginDesktopSignIn(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state = target[strings.Index(target, "state=")+len("state="):]
+	result, err := identity.CompleteSignIn(context.Background(), state, "code", binding)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +72,7 @@ func TestDesktopHandoffNeedsTheShellsVerifierAndIsSingleUse(t *testing.T) {
 		{Port: request.Port, State: "short", Challenge: request.Challenge},
 		{Port: request.Port, State: request.State, Challenge: request.Challenge + "A"},
 	} {
-		if _, err := identity.BeginDesktopSignIn(ctx, bad); !errors.Is(err, domain.ErrInvalid) {
+		if _, _, err := identity.BeginDesktopSignIn(ctx, bad); !errors.Is(err, domain.ErrInvalid) {
 			t.Fatalf("BeginDesktopSignIn(%+v) = %v", bad, err)
 		}
 	}

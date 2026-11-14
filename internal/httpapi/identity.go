@@ -21,6 +21,12 @@ const (
 	// claimCookie carries a pending claim from the OIDC callback to the
 	// claim request in the same browser. It lives ten minutes.
 	claimCookie = "meridian_claim"
+	// signInCookie binds an OIDC sign-in to the browser that started it,
+	// so a callback URL from someone else's sign-in cannot sign this
+	// browser in as them. It is Lax, not Strict, because the issuer's
+	// redirect back to the callback is a cross-site navigation.
+	signInCookie = "meridian_oidc"
+	signInPath   = "/auth/oidc"
 )
 
 type sessionKey struct{}
@@ -132,20 +138,24 @@ func (s *Server) startOIDCSignIn(writer http.ResponseWriter, request *http.Reque
 		writeError(writer, domain.ErrUnsupported)
 		return
 	}
-	var target string
+	var target, binding string
 	var err error
 	if desktop, ok, valid := desktopSignInFrom(request); !valid {
 		writeSignInPage(writer, http.StatusBadRequest, "This sign-in link is not valid. Start again from Meridian.")
 		return
 	} else if ok {
-		target, err = s.identity.BeginDesktopSignIn(request.Context(), desktop)
+		target, binding, err = s.identity.BeginDesktopSignIn(request.Context(), desktop)
 	} else {
-		target, err = s.identity.BeginSignIn(request.Context())
+		target, binding, err = s.identity.BeginSignIn(request.Context())
 	}
 	if err != nil {
 		writeError(writer, err)
 		return
 	}
+	http.SetCookie(writer, &http.Cookie{
+		Name: signInCookie, Value: binding, Path: signInPath, MaxAge: int((10 * time.Minute).Seconds()),
+		HttpOnly: true, Secure: secureCookie(request), SameSite: http.SameSiteLaxMode,
+	})
 	writer.Header().Set("Cache-Control", "no-store")
 	writer.Header().Set("Referrer-Policy", "no-referrer")
 	http.Redirect(writer, request, target, http.StatusFound)
@@ -156,12 +166,19 @@ func (s *Server) completeOIDCSignIn(writer http.ResponseWriter, request *http.Re
 		writeSignInPage(writer, http.StatusNotFound, "This Meridian installation has no sign-in configured.")
 		return
 	}
+	binding, _ := singleCookie(request, signInCookie)
+	if _, err := request.Cookie(signInCookie); err == nil {
+		http.SetCookie(writer, &http.Cookie{
+			Name: signInCookie, Value: "", Path: signInPath, MaxAge: -1,
+			HttpOnly: true, Secure: secureCookie(request), SameSite: http.SameSiteLaxMode,
+		})
+	}
 	query := request.URL.Query()
 	if query.Get("error") != "" {
 		writeSignInPage(writer, http.StatusBadRequest, "The identity provider did not sign you in. Start again from Meridian.")
 		return
 	}
-	result, err := s.identity.CompleteSignIn(request.Context(), query.Get("state"), query.Get("code"))
+	result, err := s.identity.CompleteSignIn(request.Context(), query.Get("state"), query.Get("code"), binding)
 	switch {
 	case errors.Is(err, app.ErrSignInDenied):
 		writeSignInPage(writer, http.StatusForbidden, "This account may not sign in to Meridian. Ask your Meridian administrator.")
