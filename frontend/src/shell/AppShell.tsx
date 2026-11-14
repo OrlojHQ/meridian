@@ -622,9 +622,7 @@ export function AppShell() {
                 </small>
               )}
             </span>
-            {rollup && rollup.total > 0 && (
-              <small className="activity-item-rollup">Subagents: {rollupSummary(rollup)}</small>
-            )}
+            {rollup && <small className="activity-item-rollup">{rollupSummary(rollup)}</small>}
           </span>
         </NavLink>
         {deletable && (

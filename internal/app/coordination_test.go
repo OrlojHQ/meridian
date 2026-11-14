@@ -35,6 +35,9 @@ type coordRuntime struct {
 	patches   map[string]ports.GitPatchResult
 
 	stallLongPolls bool
+	// holdCancel leaves cancelled runs Cancelling, like an adapter that has
+	// not stopped yet.
+	holdCancel bool
 }
 
 func newCoordRuntime() *coordRuntime {
@@ -130,6 +133,9 @@ func (r *coordRuntime) CancelStructured(_ context.Context, _ string, id domain.R
 	defer r.mu.Unlock()
 	r.cancels[id]++
 	run := ports.RuntimeRun{State: domain.RunCancelled, Structured: true}
+	if r.holdCancel {
+		run.State = domain.RunCancelling
+	}
 	r.runs[id] = run
 	return run, nil
 }
@@ -347,7 +353,7 @@ func TestCoordinationGrantIsCreatedWithTheLeadAndReplayIsExact(t *testing.T) {
 		grant.MaxLiveCapsules != 2 || grant.MaxMessagesPerLink != 50 ||
 		len(grant.AllowedHarnesses) != 1 || grant.AllowedHarnesses[0] != "mock" ||
 		grant.OnDeadline != domain.DeadlineCancelAndPause || grant.SpawnApproval != domain.SpawnAuto ||
-		grant.DeadlineAt.Sub(grant.CreatedAt) != 8*time.Hour {
+		grant.DeadlineAt.Sub(grant.CreatedAt) != 24*time.Hour {
 		t.Fatalf("defaults = %#v", grant)
 	}
 	if replay, err := f.service.CreateProjectThread(f.ctx, input); err != nil || replay.Intent.ID != created.Intent.ID {

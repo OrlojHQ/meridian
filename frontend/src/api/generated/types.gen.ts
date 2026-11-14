@@ -517,7 +517,7 @@ export type BoardItem = {
 };
 
 /**
- * A lead's subagents by state.
+ * A lead's subagents by state. Subagents whose Capsule the operator removed are not counted.
  */
 export type ChildRollup = {
     total: number;
@@ -662,7 +662,7 @@ export type CoordinationPolicy = {
     allowedHarnesses?: Array<string>;
     deadlineSeconds?: number;
     /**
-     * How long a finished subagent stays idle before its session is ended and its Thread paused. 0 disables auto-archive; otherwise at least 60. Archiving never deletes a workspace or transcript.
+     * How long a finished subagent stays idle before its session is ended and its Thread paused. Its Capsule is then deleted if its workspace holds nothing unsaved (the last report changed no files, or a Delivery of it succeeded); otherwise the Capsule is kept. 0 disables auto-archive and this cleanup; otherwise at least 60. Transcripts are always kept.
      *
      */
     archiveAfterSeconds?: number;
@@ -795,6 +795,10 @@ export type ThreadLink = {
      * When the subagent was promoted to a main Capsule. Promoted subagents are never archived.
      */
     promotedAt?: string;
+    /**
+     * True once the subagent's Capsule is deleted or being deleted. Its Thread history is kept.
+     */
+    capsuleRemoved?: boolean;
     /**
      * Child workspace HEAD when the Capsule became Ready. Patch bytes are never stored.
      */
@@ -2748,6 +2752,56 @@ export type GetThreadLinkResponses = {
 };
 
 export type GetThreadLinkResponse = GetThreadLinkResponses[keyof GetThreadLinkResponses];
+
+export type RemoveSubagentData = {
+    body: LifecycleMutation;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        linkId: string;
+    };
+    query?: never;
+    url: '/thread-links/{linkId}/remove';
+};
+
+export type RemoveSubagentErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Request rate limit exceeded
+     */
+    429: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type RemoveSubagentError = RemoveSubagentErrors[keyof RemoveSubagentErrors];
+
+export type RemoveSubagentResponses = {
+    /**
+     * Link closed; the Capsule is deleted or will be once its session ends
+     */
+    202: ThreadLink;
+};
+
+export type RemoveSubagentResponse = RemoveSubagentResponses[keyof RemoveSubagentResponses];
 
 export type GetCoordinationGrantData = {
     body?: never;

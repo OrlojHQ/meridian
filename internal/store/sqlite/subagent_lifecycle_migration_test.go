@@ -121,7 +121,9 @@ func TestSubagentLifecycleMigrationKeepsLinksAndRequests(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if grant.ArchiveAfter != domain.CoordinationDefaultArchiveAfter {
+		// Migration 0016 backfilled the archive period that was the default
+		// then; later default changes do not rewrite existing grants.
+		if grant.ArchiveAfter != 24*time.Hour {
 			t.Fatalf("migrated archiveAfter = %s", grant.ArchiveAfter)
 		}
 		link, err := reader.GetThreadLink(ctx, "link1")

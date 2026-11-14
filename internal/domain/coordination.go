@@ -67,11 +67,11 @@ const (
 	CoordinationMaxLiveCapsules       = 16
 	CoordinationDefaultMessagesPerLnk = 50
 	CoordinationMaxMessagesPerLink    = 500
-	CoordinationDefaultDeadline       = 8 * time.Hour
+	CoordinationDefaultDeadline       = 24 * time.Hour
 	CoordinationMaxDeadline           = 72 * time.Hour
 	CoordinationMinDeadline           = 5 * time.Minute
 	CoordinationMaxAllowedHarnesses   = MaxHarnessImages
-	CoordinationDefaultArchiveAfter   = 24 * time.Hour
+	CoordinationDefaultArchiveAfter   = time.Hour
 	CoordinationMinArchiveAfter       = time.Minute
 	CoordinationMaxArchiveAfter       = 30 * 24 * time.Hour
 )

@@ -80,6 +80,7 @@ type Reader interface {
 	ListThreadLinksByParent(context.Context, domain.ThreadID) ([]domain.ThreadLink, error)
 	ListThreadLinksByGrant(context.Context, domain.CoordinationGrantID) ([]domain.ThreadLink, error)
 	ListArchivableThreadLinks(context.Context, time.Time, int) ([]domain.ThreadLink, error)
+	ListArchivedLiveThreadLinks(context.Context, int) ([]domain.ThreadLink, error)
 	GetCoordinationRequest(context.Context, domain.CapsuleID, string) (domain.CoordinationRequest, error)
 	GetCoordinationRequestByID(context.Context, domain.CoordinationRequestID) (domain.CoordinationRequest, error)
 	ListCoordinationRequests(context.Context, domain.CoordinationRequestState) ([]domain.CoordinationRequest, error)

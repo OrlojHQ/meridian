@@ -401,6 +401,12 @@ type RejectDeliveryParams struct {
 	IdempotencyKey string
 }
 
+// RemoveSubagentParams is parameters of removeSubagent operation.
+type RemoveSubagentParams struct {
+	LinkId         string
+	IdempotencyKey string
+}
+
 // RespondThreadParams is parameters of respondThread operation.
 type RespondThreadParams struct {
 	ThreadId       string

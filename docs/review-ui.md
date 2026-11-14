@@ -158,7 +158,8 @@ in the Thread before the first turn. When the provider supports coordination,
 a Thread can start as a lead agent with subagents, optionally approving each
 spawn. The dialog asks for no limits: it allows the largest lifetime subagent
 total (16) and leaves the concurrent subagent Capsule limit (4 by default) and
-the deadline (8 hours) at the daemon's defaults. A lead also starts idle and is
+the deadline (24 hours) at the daemon's defaults. Both can be changed from
+the Agents panel's settings button while the lead runs. A lead also starts idle and is
 told to split the work in its first message.
 
 The per-Project launcher (from the board, the command palette, and Project

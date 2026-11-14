@@ -328,6 +328,13 @@ func (s *Service) sweepClosedChildren(ctx context.Context, grant domain.Coordina
 		return
 	}
 	for _, link := range links {
+		s.coordMu.Lock()
+		removing := s.coordRemoving[link.ID]
+		s.coordMu.Unlock()
+		if removing {
+			s.removeClosedChild(ctx, link)
+			continue
+		}
 		s.stopClosedChild(ctx, link)
 	}
 }

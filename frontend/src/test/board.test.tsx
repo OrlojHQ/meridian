@@ -180,7 +180,7 @@ describe("Board", () => {
     expect(within(needsYou).getByRole("link", { name: "Respond" })).toBeTruthy();
 
     const working = screen.getByRole("region", { name: /Working/ });
-    expect(within(working).getByText("0/2 done, 1 needs you, 1 working")).toBeTruthy();
+    expect(within(working).getByText("2 subagents")).toBeTruthy();
     expect(within(working).queryByRole("link", { name: "docs" })).toBeNull();
     await userEvent.click(await within(working).findByRole("button", { name: "Subagents (2)" }));
     const fold = within(working).getByRole("list", { name: "Subagents of release lead" });
@@ -316,10 +316,16 @@ describe("Board", () => {
     await waitFor(() => expect(approve).toHaveBeenCalled());
   });
 
-  it("summarizes a rollup", () => {
+  it("summarizes a rollup as the lead's current subagents", () => {
     expect(
       rollupSummary({ total: 5, working: 1, idle: 0, done: 3, needsYou: 0, failed: 1, archived: 2 }),
-    ).toBe("3/5 done, 1 working, 1 failed, 2 archived");
+    ).toBe("3 subagents");
+    expect(rollupSummary({ total: 2, working: 1, idle: 0, done: 1, needsYou: 0, failed: 0, archived: 1 })).toBe(
+      "1 subagent",
+    );
+    expect(rollupSummary({ total: 0, working: 0, idle: 0, done: 0, needsYou: 0, failed: 0, archived: 0 })).toBe(
+      "0 subagents",
+    );
   });
 
   it("folds archived subagents and offers promotion on a surfaced subagent", async () => {
@@ -338,7 +344,7 @@ describe("Board", () => {
     renderBoard();
 
     const working = await screen.findByRole("region", { name: /Working/ });
-    expect(within(working).getByText("1/2 done, 1 needs you, 1 archived")).toBeTruthy();
+    expect(within(working).getByText("1 subagent")).toBeTruthy();
     await userEvent.click(await within(working).findByRole("button", { name: "Subagents (2)" }));
     const fold = within(working).getByRole("list", { name: "Subagents of release lead" });
     expect(within(fold).getByText("Archived (1)")).toBeTruthy();

@@ -1761,7 +1761,7 @@ func (s *ChatGPTSignInState) UnmarshalText(data []byte) error {
 	}
 }
 
-// A lead's subagents by state.
+// A lead's subagents by state. Subagents whose Capsule the operator removed are not counted.
 // Ref: #/components/schemas/ChildRollup
 type ChildRollup struct {
 	Total    int `json:"total"`
@@ -2498,8 +2498,10 @@ type CoordinationPolicy struct {
 	// lead's harness.
 	AllowedHarnesses []string `json:"allowedHarnesses"`
 	DeadlineSeconds  OptInt   `json:"deadlineSeconds"`
-	// How long a finished subagent stays idle before its session is ended and its Thread paused. 0
-	// disables auto-archive; otherwise at least 60. Archiving never deletes a workspace or transcript.
+	// How long a finished subagent stays idle before its session is ended and its Thread paused. Its
+	// Capsule is then deleted if its workspace holds nothing unsaved (the last report changed no files, or
+	// a Delivery of it succeeded); otherwise the Capsule is kept. 0 disables auto-archive and this
+	// cleanup; otherwise at least 60. Transcripts are always kept.
 	ArchiveAfterSeconds OptInt                          `json:"archiveAfterSeconds"`
 	OnDeadline          OptCoordinationPolicyOnDeadline `json:"onDeadline"`
 	// Auto starts each accepted spawn. operator queues it until the operator approves or denies it. The
@@ -10050,6 +10052,22 @@ type RejectDeliveryUnprocessableEntity ErrorEnvelope
 
 func (*RejectDeliveryUnprocessableEntity) rejectDeliveryRes() {}
 
+type RemoveSubagentBadRequest ErrorEnvelope
+
+func (*RemoveSubagentBadRequest) removeSubagentRes() {}
+
+type RemoveSubagentConflict ErrorEnvelope
+
+func (*RemoveSubagentConflict) removeSubagentRes() {}
+
+type RemoveSubagentNotFound ErrorEnvelope
+
+func (*RemoveSubagentNotFound) removeSubagentRes() {}
+
+type RemoveSubagentUnprocessableEntity ErrorEnvelope
+
+func (*RemoveSubagentUnprocessableEntity) removeSubagentRes() {}
+
 type RespondThreadBadRequest ErrorEnvelope
 
 func (*RespondThreadBadRequest) respondThreadRes() {}
@@ -12294,6 +12312,8 @@ type ThreadLink struct {
 	ArchivedAt OptDateTime `json:"archivedAt"`
 	// When the subagent was promoted to a main Capsule. Promoted subagents are never archived.
 	PromotedAt OptDateTime `json:"promotedAt"`
+	// True once the subagent's Capsule is deleted or being deleted. Its Thread history is kept.
+	CapsuleRemoved OptBool `json:"capsuleRemoved"`
 	// Child workspace HEAD when the Capsule became Ready. Patch bytes are never stored.
 	BaseCommit OptString `json:"baseCommit"`
 	// Latest observed child HEAD. Content-free.
@@ -12424,6 +12444,11 @@ func (s *ThreadLink) GetArchivedAt() OptDateTime {
 // GetPromotedAt returns the value of PromotedAt.
 func (s *ThreadLink) GetPromotedAt() OptDateTime {
 	return s.PromotedAt
+}
+
+// GetCapsuleRemoved returns the value of CapsuleRemoved.
+func (s *ThreadLink) GetCapsuleRemoved() OptBool {
+	return s.CapsuleRemoved
 }
 
 // GetBaseCommit returns the value of BaseCommit.
@@ -12586,6 +12611,11 @@ func (s *ThreadLink) SetPromotedAt(val OptDateTime) {
 	s.PromotedAt = val
 }
 
+// SetCapsuleRemoved sets the value of CapsuleRemoved.
+func (s *ThreadLink) SetCapsuleRemoved(val OptBool) {
+	s.CapsuleRemoved = val
+}
+
 // SetBaseCommit sets the value of BaseCommit.
 func (s *ThreadLink) SetBaseCommit(val OptString) {
 	s.BaseCommit = val
@@ -12721,7 +12751,8 @@ func (s *ThreadLinkHeaders) SetResponse(val ThreadLink) {
 	s.Response = val
 }
 
-func (*ThreadLinkHeaders) getThreadLinkRes() {}
+func (*ThreadLinkHeaders) getThreadLinkRes()  {}
+func (*ThreadLinkHeaders) removeSubagentRes() {}
 
 type ThreadLinkLastReportReason string
 
@@ -13920,6 +13951,7 @@ func (*TooManyRequestsHeaders) listThreadLinksRes()            {}
 func (*TooManyRequestsHeaders) patchProjectRes()               {}
 func (*TooManyRequestsHeaders) pauseCapsuleRes()               {}
 func (*TooManyRequestsHeaders) putSecretRes()                  {}
+func (*TooManyRequestsHeaders) removeSubagentRes()             {}
 func (*TooManyRequestsHeaders) resumeCapsuleRes()              {}
 func (*TooManyRequestsHeaders) retryCapsuleRes()               {}
 func (*TooManyRequestsHeaders) revokeCoordinationGrantRes()    {}

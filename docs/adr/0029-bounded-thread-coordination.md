@@ -35,7 +35,7 @@ Three ways to carry a request out of the Capsule were considered:
   structured allowlist (default: the lead's harness), depth (1), per-parent
   fan-out (default 4, at most 16), total children (at most 32), live child
   Capsules (at most 16), messages per link (default 50, at most 500), an
-  absolute deadline (default 8 hours, 5 minutes to 72 hours) with a deadline
+  absolute deadline (default 24 hours, 5 minutes to 72 hours) with a deadline
   action, and the spawn approval mode (`auto` or `operator`). Only the operator
   creates, updates or revokes a grant. The operator may loosen or tighten
   limits after creation. Switching `spawnApproval` to `auto` does not start
@@ -173,7 +173,8 @@ needs a usable provider connection like any other `dsh` Thread.
 Finished subagents are archived automatically, and the operator can promote a
 subagent to a main Capsule.
 
-- **Auto-archive.** A grant's `archiveAfter` (default 24 hours; 0 disables
+- **Auto-archive.** A grant's `archiveAfter` (default 1 hour, originally 24
+  hours; see the cleanup amendment below; 0 disables
   it; otherwise 1 minute to 30 days in whole seconds) can be changed later by
   the operator, like the other grant limits. A subagent is archived once it has been idle for that long
   after it finished: its link is active and its last report is `turn_ended`
@@ -310,3 +311,91 @@ operator to approve. The agent never ships.
   `rejected`, `proposed_by` agent|operator, `approved` 0|1, nullable approval
   facts until approve, and identity that keeps `proposed_by` immutable.
   Approval fields may change only from `proposed`.
+
+## Amendment: operator removes one subagent
+
+The operator can stop and remove a single subagent without revoking its
+lead's grant. Grant-wide revocation stays the only way to stop the lead from
+spawning.
+
+- **`POST /thread-links/{id}/remove`.** An installation-bearer operator API
+  with `expectedResourceVersion` and an idempotency key; there is no
+  coordination request kind for it, so no Capsule can call it. It closes that
+  one link as `cancelled` with a failed/cancelled report, the same record the
+  lead's own `cancel` writes, so the lead hears that the subagent was
+  cancelled. It then cancels the subagent's session and deletes its Capsule
+  once no Run is active there. The grant, its limits, and sibling links are
+  unchanged; the deleted Capsule leaves the live Capsule count, so the lead
+  can spawn into the freed slot.
+- **This is the one path where closing a link deletes a Capsule.** It is the
+  operator's explicit Capsule delete, scoped to a subagent: the workspace goes
+  with the Capsule and encrypted Thread history is kept, exactly as
+  `POST /capsules/{id}/delete`. Lead cancel, revocation, the deadline, and
+  auto-archive still only cancel and pause.
+- **Refusals.** A promoted subagent is a main Capsule and is refused; the
+  operator deletes it from its Capsule. A Capsule that is not running while a
+  session is still live is refused before anything changes, because ending a
+  session needs the Capsule running and deletion waits for the session.
+- **Ordering and crashes.** The link closes first, in one transaction with
+  the replay record. Deletion is attempted in the request and retried by the
+  coordination tick while the session finishes cancelling. The pending
+  deletion is held in memory only: if the daemon restarts, or the session does
+  not end within the cancel grace, the closed link falls back to the existing
+  cancel-and-pause sweep, and the operator can remove it again. Nothing is
+  left running in either case.
+- **Visibility.** Link views carry a derived, content-free `capsuleRemoved`
+  flag. The lead's Agents panel moves removed subagents to a Removed fold and
+  offers the per-row stop only on subagents that are neither promoted nor
+  removed.
+
+## Amendment: the live limit is the one the operator sees
+
+Leads behave like hosted cloud-agent coordinators: the lead starts subagents
+without asking, and the limit the operator sees and adjusts is how many run
+at once.
+
+- **Defaults.** The default grant deadline is 24 hours instead of 8, so a lead
+  started from the web UI rarely ends mid-task. Fan-out, total, live, message
+  and deadline hard bounds are unchanged, and the schema still enforces them.
+- **Panel.** The lead's Agents panel no longer shows a started-of-total meter.
+  Its settings button holds a "Run at once" choice (1 to 16, patching
+  `maxLiveCapsules`), the spawn-approval switch, and a line with the lifetime
+  total and the time left. Removing a subagent frees a live slot, so the live
+  limit is the one an operator meets in practice.
+- **Why the limits stay.** Hosted coordinators bound runaway leads with
+  account concurrency caps and billing. Meridian runs subagents on the
+  operator's own machine with the operator's provider credentials, so the
+  grant's limits are the only bound on a compromised or looping lead. They
+  stay enforced; only their presentation and the deadline default change.
+
+## Amendment: finished subagents are cleaned up
+
+Subagents do one task and report back. Once one is done, its Capsule has no
+further use, so auto-archive now also deletes it when deleting loses nothing.
+Main Capsules the operator starts are unchanged and keep idle pause.
+
+- **When.** After the archive sweep has archived a subagent and its session
+  has ended, the same sweep deletes the subagent's Capsule if its workspace
+  holds nothing unsaved: its last report's diffstat changed no files, or the
+  latest Delivery of that Capsule succeeded. A subagent with unsaved changes
+  is archived and paused exactly as before and kept until the operator
+  removes it, promotes it, or resumes it.
+- **Default.** `archiveAfter` defaults to 1 hour instead of 24, so a finished
+  subagent is gone about an hour after it last did anything. The operator
+  changes it per lead in the Agents panel (15 minutes, 1 hour, 4 hours, 1
+  day, or Never) or with `--archive-after`. 0 disables archiving and cleanup.
+  Existing grants keep their stored value.
+- **What stays.** The link and the subagent's encrypted Thread history stay,
+  as with any Capsule delete. No report is written, so the lead is not woken;
+  its `send` to an archived subagent was already refused and stays refused.
+  Link views mark the subagent `capsuleRemoved`, the lead's rollup stops
+  counting it, and the Agents panel moves it to the Removed fold.
+- **Durability.** The deletion is derived from stored state (archived link,
+  live sub-Capsule, saved work) and retried every sweep, so a daemon restart
+  only delays it. A session that is still stopping is refreshed from the
+  runtime first; deletion waits for it to end.
+- **Trust.** The diffstat comes from the Capsule and is untrusted. Understating
+  it can only delete that subagent's own workspace, which the Capsule could
+  already destroy. Promoted and failed subagents, and subagents that need the
+  operator or have a Delivery in flight, are never archived and so never
+  cleaned up.

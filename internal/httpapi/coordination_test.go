@@ -223,6 +223,14 @@ func TestCoordinationRoutes(t *testing.T) {
 	} else if _, ok := missing.(*client.ThreadLinkHeaders); ok {
 		t.Fatal("unknown link found")
 	}
+	removedMissing, err := api.RemoveSubagent(ctx, &client.LifecycleMutationRequest{ExpectedResourceVersion: 1},
+		client.RemoveSubagentParams{LinkId: "missing", IdempotencyKey: "remove-missing"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := removedMissing.(*client.RemoveSubagentNotFound); !ok {
+		t.Fatalf("remove an unknown link = %#v", removedMissing)
+	}
 
 	boardResult, err := api.GetBoard(ctx, client.GetBoardParams{
 		ProjectId: client.NewOptString(projectID), Expand: client.NewOptGetBoardExpand(client.GetBoardExpandAll),

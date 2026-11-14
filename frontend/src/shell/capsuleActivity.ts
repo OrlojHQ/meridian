@@ -398,12 +398,13 @@ export function defaultSession(sessions: CapsuleSession[]) {
   );
 }
 
+// currentSubagents counts a lead's subagents that are still with it: archived
+// subagents are folded away and removed ones are not in the rollup at all.
+export function currentSubagents(rollup: ChildRollup) {
+  return Math.max(0, rollup.total - rollup.archived);
+}
+
 export function rollupSummary(rollup: ChildRollup) {
-  const parts = [`${rollup.done}/${rollup.total} done`];
-  if (rollup.needsYou) parts.push(`${rollup.needsYou} need${rollup.needsYou === 1 ? "s" : ""} you`);
-  if (rollup.working) parts.push(`${rollup.working} working`);
-  if (rollup.idle) parts.push(`${rollup.idle} idle`);
-  if (rollup.failed) parts.push(`${rollup.failed} failed`);
-  if (rollup.archived) parts.push(`${rollup.archived} archived`);
-  return parts.join(", ");
+  const count = currentSubagents(rollup);
+  return `${count} ${count === 1 ? "subagent" : "subagents"}`;
 }

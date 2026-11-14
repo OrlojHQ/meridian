@@ -536,6 +536,16 @@ type Invoker interface {
 	//
 	// POST /deliveries/{deliveryId}/reject
 	RejectDelivery(ctx context.Context, request *RejectDeliveryRequest, params RejectDeliveryParams) (RejectDeliveryRes, error)
+	// RemoveSubagent invokes removeSubagent operation.
+	//
+	// Operator-only. Closes this one link as cancelled so the lead hears the subagent was cancelled, ends
+	// the subagent's session, and deletes its Capsule once no Run is active there. The lead's Coordination
+	// Grant is unchanged, so the lead can keep spawning, and the deleted Capsule no longer counts toward
+	// its live Capsules. Encrypted Thread history is kept, as with any Capsule delete. Promoted subagents
+	// are refused; a stopped Capsule with a live session must be resumed first.
+	//
+	// POST /thread-links/{linkId}/remove
+	RemoveSubagent(ctx context.Context, request *LifecycleMutationRequest, params RemoveSubagentParams) (RemoveSubagentRes, error)
 	// RespondThread invokes respondThread operation.
 	//
 	// Answer one permission or input request.
@@ -11543,6 +11553,159 @@ func (c *Client) sendRejectDelivery(ctx context.Context, request *RejectDelivery
 
 	stage = "DecodeResponse"
 	result, err := decodeRejectDeliveryResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// RemoveSubagent invokes removeSubagent operation.
+//
+// Operator-only. Closes this one link as cancelled so the lead hears the subagent was cancelled, ends
+// the subagent's session, and deletes its Capsule once no Run is active there. The lead's Coordination
+// Grant is unchanged, so the lead can keep spawning, and the deleted Capsule no longer counts toward
+// its live Capsules. Encrypted Thread history is kept, as with any Capsule delete. Promoted subagents
+// are refused; a stopped Capsule with a live session must be resumed first.
+//
+// POST /thread-links/{linkId}/remove
+func (c *Client) RemoveSubagent(ctx context.Context, request *LifecycleMutationRequest, params RemoveSubagentParams) (RemoveSubagentRes, error) {
+	res, err := c.sendRemoveSubagent(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendRemoveSubagent(ctx context.Context, request *LifecycleMutationRequest, params RemoveSubagentParams) (res RemoveSubagentRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("removeSubagent"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/thread-links/{linkId}/remove"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, RemoveSubagentOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/thread-links/"
+	{
+		// Encode "linkId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "linkId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.LinkId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/remove"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeRemoveSubagentRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "EncodeHeaderParams"
+	h := uri.NewHeaderEncoder(r.Header)
+	{
+		cfg := uri.HeaderParameterEncodingConfig{
+			Name:    "Idempotency-Key",
+			Explode: false,
+		}
+		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.IdempotencyKey))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode header")
+		}
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, RemoveSubagentOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeRemoveSubagentResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}

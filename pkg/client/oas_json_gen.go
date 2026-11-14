@@ -20839,6 +20839,158 @@ func (s *RejectDeliveryUnprocessableEntity) UnmarshalJSON(data []byte) error {
 	return s.Decode(d)
 }
 
+// Encode encodes RemoveSubagentBadRequest as json.
+func (s *RemoveSubagentBadRequest) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes RemoveSubagentBadRequest from json.
+func (s *RemoveSubagentBadRequest) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode RemoveSubagentBadRequest to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = RemoveSubagentBadRequest(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *RemoveSubagentBadRequest) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *RemoveSubagentBadRequest) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes RemoveSubagentConflict as json.
+func (s *RemoveSubagentConflict) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes RemoveSubagentConflict from json.
+func (s *RemoveSubagentConflict) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode RemoveSubagentConflict to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = RemoveSubagentConflict(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *RemoveSubagentConflict) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *RemoveSubagentConflict) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes RemoveSubagentNotFound as json.
+func (s *RemoveSubagentNotFound) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes RemoveSubagentNotFound from json.
+func (s *RemoveSubagentNotFound) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode RemoveSubagentNotFound to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = RemoveSubagentNotFound(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *RemoveSubagentNotFound) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *RemoveSubagentNotFound) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes RemoveSubagentUnprocessableEntity as json.
+func (s *RemoveSubagentUnprocessableEntity) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes RemoveSubagentUnprocessableEntity from json.
+func (s *RemoveSubagentUnprocessableEntity) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode RemoveSubagentUnprocessableEntity to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = RemoveSubagentUnprocessableEntity(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *RemoveSubagentUnprocessableEntity) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *RemoveSubagentUnprocessableEntity) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
 // Encode encodes RespondThreadBadRequest as json.
 func (s *RespondThreadBadRequest) Encode(e *jx.Encoder) {
 	unwrapped := (*ErrorEnvelope)(s)
@@ -26693,6 +26845,12 @@ func (s *ThreadLink) encodeFields(e *jx.Encoder) {
 		}
 	}
 	{
+		if s.CapsuleRemoved.Set {
+			e.FieldStart("capsuleRemoved")
+			s.CapsuleRemoved.Encode(e)
+		}
+	}
+	{
 		if s.BaseCommit.Set {
 			e.FieldStart("baseCommit")
 			s.BaseCommit.Encode(e)
@@ -26736,7 +26894,7 @@ func (s *ThreadLink) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfThreadLink = [32]string{
+var jsonFieldsNameOfThreadLink = [33]string{
 	0:  "id",
 	1:  "grantId",
 	2:  "parentThreadId",
@@ -26761,14 +26919,15 @@ var jsonFieldsNameOfThreadLink = [32]string{
 	21: "operatorMessages",
 	22: "archivedAt",
 	23: "promotedAt",
-	24: "baseCommit",
-	25: "head",
-	26: "filesChanged",
-	27: "insertions",
-	28: "deletions",
-	29: "createdAt",
-	30: "updatedAt",
-	31: "resourceVersion",
+	24: "capsuleRemoved",
+	25: "baseCommit",
+	26: "head",
+	27: "filesChanged",
+	28: "insertions",
+	29: "deletions",
+	30: "createdAt",
+	31: "updatedAt",
+	32: "resourceVersion",
 }
 
 // Decode decodes ThreadLink from json.
@@ -26776,7 +26935,7 @@ func (s *ThreadLink) Decode(d *jx.Decoder) error {
 	if s == nil {
 		return errors.New("invalid: unable to decode ThreadLink to nil")
 	}
-	var requiredBitSet [4]uint8
+	var requiredBitSet [5]uint8
 
 	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
 		switch string(k) {
@@ -27048,6 +27207,16 @@ func (s *ThreadLink) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"promotedAt\"")
 			}
+		case "capsuleRemoved":
+			if err := func() error {
+				s.CapsuleRemoved.Reset()
+				if err := s.CapsuleRemoved.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"capsuleRemoved\"")
+			}
 		case "baseCommit":
 			if err := func() error {
 				s.BaseCommit.Reset()
@@ -27099,7 +27268,7 @@ func (s *ThreadLink) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"deletions\"")
 			}
 		case "createdAt":
-			requiredBitSet[3] |= 1 << 5
+			requiredBitSet[3] |= 1 << 6
 			if err := func() error {
 				v, err := json.DecodeDateTime(d)
 				s.CreatedAt = v
@@ -27111,7 +27280,7 @@ func (s *ThreadLink) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"createdAt\"")
 			}
 		case "updatedAt":
-			requiredBitSet[3] |= 1 << 6
+			requiredBitSet[3] |= 1 << 7
 			if err := func() error {
 				v, err := json.DecodeDateTime(d)
 				s.UpdatedAt = v
@@ -27123,7 +27292,7 @@ func (s *ThreadLink) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"updatedAt\"")
 			}
 		case "resourceVersion":
-			requiredBitSet[3] |= 1 << 7
+			requiredBitSet[4] |= 1 << 0
 			if err := func() error {
 				v, err := d.Int64()
 				s.ResourceVersion = int64(v)
@@ -27143,11 +27312,12 @@ func (s *ThreadLink) Decode(d *jx.Decoder) error {
 	}
 	// Validate required fields.
 	var failures []validate.FieldError
-	for i, mask := range [4]uint8{
+	for i, mask := range [5]uint8{
 		0b11111111,
 		0b10010111,
 		0b00110001,
-		0b11100000,
+		0b11000000,
+		0b00000001,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.

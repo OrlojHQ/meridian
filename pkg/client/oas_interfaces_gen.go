@@ -241,6 +241,10 @@ type RejectDeliveryRes interface {
 	rejectDeliveryRes()
 }
 
+type RemoveSubagentRes interface {
+	removeSubagentRes()
+}
+
 type RespondThreadRes interface {
 	respondThreadRes()
 }

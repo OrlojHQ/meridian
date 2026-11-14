@@ -17,6 +17,8 @@ import { StructuredLauncher } from "../components/StructuredLauncher";
 import { ThreadConversation } from "../components/ThreadConversation";
 import {
   grantLimits,
+  cleanupChoices,
+  removeNotice,
   SubagentsButton,
   SubagentsPanel,
   ThreadSubagents,
@@ -166,7 +168,7 @@ describe("Lead launcher", () => {
       expect(spawn).toHaveBeenCalledWith(project.id, "mock", "split the work", undefined, {
         maxChildren: 2,
         maxDescendants: 2,
-        deadlineSeconds: 8 * 3600,
+        deadlineSeconds: 24 * 3600,
         spawnApproval: "operator",
       }),
     );
@@ -203,9 +205,9 @@ describe("Subagents panel", () => {
     expect(within(panel).getByText("+4 −1 · 2 files")).toBeInTheDocument();
     expect(within(panel).getByText("GPT-5.5 · High")).toBeInTheDocument();
     expect(within(panel).getByText("Sonnet")).toBeInTheDocument();
-    expect(
-      within(panel).getByText("2 of 4 started · up to 4 at a time", { exact: false }),
-    ).toBeInTheDocument();
+    expect(within(panel).queryByText(/of 4 started/)).not.toBeInTheDocument();
+    await userEvent.click(within(panel).getByRole("button", { name: "Subagent settings" }));
+    expect(within(panel).getByText(/^2 of 4 started/)).toBeInTheDocument();
     await userEvent.click(within(panel).getByRole("button", { name: "Stop subagents" }));
     await userEvent.click(within(panel).getByRole("button", { name: "Confirm stop" }));
     await waitFor(() => expect(revoke).toHaveBeenCalledWith(grant));
@@ -223,13 +225,32 @@ describe("Subagents panel", () => {
     expect(await within(panel).findByText("No subagents yet")).toBeInTheDocument();
     expect(within(panel).getByText(/Ask the lead to split the work/)).toBeInTheDocument();
     expect(within(panel).getByText("Active")).toHaveClass("subagents-state", "state-active");
-    const meter = within(panel).getByRole("meter", { name: "Subagents started" });
-    expect(meter).toHaveAttribute("aria-valuenow", "2");
-    expect(meter).toHaveAttribute("aria-valuemax", "4");
+    expect(within(panel).queryByRole("switch", { name: /Approve each spawn/ })).not.toBeInTheDocument();
+    const toggle = within(panel).getByRole("button", { name: "Subagent settings" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    const atOnce = within(panel).getByRole("combobox", { name: /Run at once/ });
+    expect(atOnce).toHaveValue(String(grant.maxLiveCapsules));
+    await userEvent.selectOptions(atOnce, "8");
+    await waitFor(() => expect(update).toHaveBeenCalledWith(grant, { maxLiveCapsules: 8 }));
+    const cleanup = within(panel).getByRole("combobox", { name: /Clean up finished subagents/ });
+    expect(cleanup).toHaveValue("86400");
+    await userEvent.selectOptions(cleanup, "Never");
+    await waitFor(() => expect(update).toHaveBeenCalledWith(grant, { archiveAfterSeconds: 0 }));
     const approval = within(panel).getByRole("switch", { name: /Approve each spawn/ });
     expect(approval).not.toBeChecked();
     await userEvent.click(approval);
     await waitFor(() => expect(update).toHaveBeenCalledWith(grant, { spawnApproval: "operator" }));
+  });
+
+  it("says in the header when each spawn needs approval", async () => {
+    vi.spyOn(api, "coordinationGrant").mockResolvedValue({ ...grant, spawnApproval: "operator" });
+    vi.spyOn(api, "coordinationRequests").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "threadLinks").mockResolvedValue({ items: [] });
+    wrapper(<SubagentsPanel thread={leadThread} grantId={grant.id} />);
+    const panel = await screen.findByRole("region", { name: "Subagents" });
+    expect(await within(panel).findByText("Approving spawns")).toBeInTheDocument();
   });
 
   it("keeps a lead's subagents behind the composer's Agents button", async () => {
@@ -269,6 +290,7 @@ describe("Subagents panel", () => {
     expect(grantLimits({ ...grant, maxChildren: 16 }, false, now)).toBe(
       "2 of 8 started · up to 4 at a time",
     );
+    expect(grantLimits(grant, true, now, { live: false })).toBe("2 of 4 started · ends in 7h 52m");
     expect(grantLimits({ ...grant, spawnApproval: "operator" }, true, now)).toBe(
       "2 of 4 started · up to 4 at a time · ends in 7h 52m · approve each spawn",
     );
@@ -300,6 +322,103 @@ describe("Subagents panel", () => {
     expect(within(panel).getByText("Archived (1)")).toBeInTheDocument();
     expect(within(panel).getByRole("link", { name: "parked" }).closest("details")).not.toBeNull();
     expect(within(panel).getByRole("link", { name: "kept" }).closest("details")).toBeNull();
+  });
+
+  it("stops and removes one subagent without stopping the lead's spawning", async () => {
+    vi.spyOn(api, "coordinationGrant").mockResolvedValue(grant);
+    vi.spyOn(api, "coordinationRequests").mockResolvedValue({ items: [] });
+    const first = link("subagent-1", "idle", 1);
+    const second = link("subagent-2", "working", 0);
+    const links = vi.spyOn(api, "threadLinks").mockResolvedValue({ items: [first, second] });
+    const revoke = vi.spyOn(api, "revokeCoordinationGrant");
+    const removed: ThreadLink = {
+      ...first,
+      state: "closed",
+      closeReason: "cancelled",
+      phase: "ended",
+      capsuleRemoved: true,
+      resourceVersion: 2,
+    };
+    const remove = vi.spyOn(api, "removeSubagent").mockImplementation(async () => {
+      links.mockResolvedValue({ items: [removed, second] });
+      return removed;
+    });
+    wrapper(<SubagentsPanel thread={leadThread} grantId={grant.id} />);
+    const panel = await screen.findByRole("region", { name: "Subagents" });
+    await within(panel).findByRole("link", { name: "subagent-1" });
+
+    await userEvent.click(within(panel).getByRole("button", { name: "Stop and remove subagent-1" }));
+    const confirm = within(panel).getByRole("alertdialog", { name: "Remove subagent-1" });
+    expect(confirm).toHaveTextContent(
+      "Stop subagent-1 and delete its Capsule? Its workspace goes with it, including 2 changed files. " +
+        "The lead can still start new subagents.",
+    );
+    await userEvent.click(within(confirm).getByRole("button", { name: "Keep" }));
+    expect(within(panel).queryByRole("alertdialog")).not.toBeInTheDocument();
+
+    await userEvent.click(within(panel).getByRole("button", { name: "Stop and remove subagent-1" }));
+    await userEvent.click(within(panel).getByRole("button", { name: "Remove" }));
+    await waitFor(() => expect(remove).toHaveBeenCalledWith(first));
+    expect(revoke).not.toHaveBeenCalled();
+    expect(await within(panel).findByText("Removed (1)")).toBeInTheDocument();
+    const gone = within(panel).getByRole("link", { name: "subagent-1" });
+    expect(gone.closest("details")).not.toBeNull();
+    expect(within(panel).getByText("Removed")).toHaveClass("subagent-phase", "phase-removed");
+    expect(within(panel).queryByRole("button", { name: "Stop and remove subagent-1" })).not.toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "Stop and remove subagent-2" })).toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "Stop subagents" })).toBeInTheDocument();
+  });
+
+  it("offers no per-subagent stop for promoted subagents", async () => {
+    vi.spyOn(api, "coordinationGrant").mockResolvedValue(grant);
+    vi.spyOn(api, "coordinationRequests").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "threadLinks").mockResolvedValue({
+      items: [{ ...link("kept", "idle", 1), promotedAt: "2026-11-01T01:00:00Z" }],
+    });
+    wrapper(<SubagentsPanel thread={leadThread} grantId={grant.id} />);
+    const panel = await screen.findByRole("region", { name: "Subagents" });
+    await within(panel).findByRole("link", { name: "kept" });
+    expect(within(panel).queryByRole("button", { name: "Stop and remove kept" })).not.toBeInTheDocument();
+  });
+
+  it("spins beside subagents whose session is running", async () => {
+    vi.spyOn(api, "coordinationGrant").mockResolvedValue(grant);
+    vi.spyOn(api, "coordinationRequests").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "threadLinks").mockResolvedValue({
+      items: [
+        link("busy", "working", 0),
+        link("booting", "provisioning", 0),
+        link("quiet", "idle", 1),
+        { ...link("gone", "working", 0), capsuleRemoved: true },
+      ],
+    });
+    wrapper(<SubagentsPanel thread={leadThread} grantId={grant.id} />);
+    const panel = await screen.findByRole("region", { name: "Subagents" });
+    await within(panel).findByRole("link", { name: "busy" });
+    const spinning = (name: string) =>
+      Boolean(within(panel).getByRole("link", { name }).closest("li")?.querySelector(".subagent-activity .spinner"));
+    expect(spinning("busy")).toBe(true);
+    expect(spinning("booting")).toBe(true);
+    expect(spinning("quiet")).toBe(false);
+    await userEvent.click(within(panel).getByText("Removed (1)"));
+    expect(spinning("gone")).toBe(false);
+  });
+
+  it("offers cleanup windows and keeps a custom one", () => {
+    expect(cleanupChoices(3600).map((choice) => choice.label)).toEqual([
+      "15 minutes", "1 hour", "4 hours", "1 day", "Never",
+    ]);
+    expect(cleanupChoices(2 * 3600).map((choice) => choice.label)).toEqual([
+      "15 minutes", "1 hour", "2 hours", "4 hours", "1 day", "Never",
+    ]);
+    expect(cleanupChoices(90 * 60).find((choice) => choice.seconds === 5400)?.label).toBe("90 minutes");
+  });
+
+  it("words the remove notice by what the workspace holds", () => {
+    expect(removeNotice({ name: "quiet", filesChanged: 0 })).toBe(
+      "Stop quiet and delete its Capsule? The lead can still start new subagents.",
+    );
+    expect(removeNotice({ name: "one", filesChanged: 1 })).toContain("including 1 changed file.");
   });
 
   it("promotes a subagent, and detaches a promoted one that kept its link", async () => {
