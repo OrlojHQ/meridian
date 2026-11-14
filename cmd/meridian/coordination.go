@@ -33,11 +33,11 @@ func (f *leadFlags) register(command *cobra.Command) {
 	flags.IntVar(&f.maxMessagesPerLink, "max-messages-per-link", 0, "lead messages per subagent (default 50)")
 	flags.StringArrayVar(&f.allowHarnesses, "allow-harness", nil,
 		"structured harness subagents may use; repeatable (default: the lead's harness)")
-	flags.DurationVar(&f.deadline, "lead-deadline", 0, "how long the lead may coordinate (default 8h, 5m to 72h)")
+	flags.DurationVar(&f.deadline, "lead-deadline", 0, "how long the lead may coordinate (default 24h, 5m to 72h)")
 	flags.StringVar(&f.onDeadline, "on-deadline", "",
 		"at the deadline: cancel_and_pause (default) or stop_new_work")
 	flags.DurationVar(&f.archiveAfter, "archive-after", 0,
-		"idle time before a finished subagent is paused and archived (default 24h, 1m to 720h; 0 disables)")
+		"idle time before a finished subagent is archived and, if nothing is unsaved, its Capsule deleted (default 1h, 1m to 720h; 0 disables)")
 	flags.StringVar(&f.spawnApproval, "spawn-approval", "",
 		"auto (default) starts each spawn; operator queues it until you approve")
 }

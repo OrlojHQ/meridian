@@ -63,7 +63,8 @@ type BoardQuery struct {
 	Expand    BoardExpand
 }
 
-// ChildRollup counts a lead's subagents by state.
+// ChildRollup counts a lead's subagents by state. Subagents whose Capsule the
+// operator removed are not counted.
 type ChildRollup struct {
 	Total    int
 	Working  int
@@ -131,8 +132,14 @@ func (s *Service) Board(ctx context.Context, query BoardQuery) (Board, error) {
 		if len(links) == 0 {
 			continue
 		}
-		rollup := ChildRollup{Total: len(links)}
+		// A subagent the operator removed no longer belongs to the lead, so
+		// it is left out of the counts.
+		rollup := ChildRollup{}
 		for _, link := range links {
+			if s.ThreadLinkCapsuleRemoved(ctx, link) {
+				continue
+			}
+			rollup.Total++
 			if !link.ArchivedAt.IsZero() {
 				rollup.Archived++
 				rollup.Done++

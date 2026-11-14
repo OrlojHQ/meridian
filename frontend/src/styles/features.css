@@ -3236,9 +3236,45 @@ button.tool-line:hover {
   background: var(--accent-soft);
 }
 
+.subagents-approving {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.subagents-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  margin-left: auto;
+}
+
+.thread-subagents .subagents-settings-toggle {
+  display: inline-grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  min-height: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: 0;
+  color: var(--faint);
+  background: transparent;
+  box-shadow: none;
+}
+
+.thread-subagents .subagents-settings-toggle svg {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.thread-subagents .subagents-settings-toggle:hover,
+.thread-subagents .subagents-settings-toggle[aria-expanded="true"] {
+  color: var(--text);
+  background: var(--surface-subtle);
+}
+
 .thread-subagents .subagents-stop {
   min-height: 0;
-  margin-left: auto;
   border: 0;
   padding: 0.2rem 0.45rem;
   color: var(--muted);
@@ -3260,20 +3296,38 @@ button.tool-line:hover {
   font-variant-numeric: tabular-nums;
 }
 
-.subagents-meter {
-  height: 0.25rem;
-  overflow: hidden;
-  border-radius: var(--radius-full);
-  background: var(--border);
+.subagents-setting {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0;
 }
 
-.subagents-meter > span {
-  display: block;
-  height: 100%;
+.subagents-setting .subagents-switch-text {
+  flex: 1;
   min-width: 0;
-  border-radius: inherit;
-  background: var(--accent);
-  transition: width var(--duration-fast) var(--ease-standard);
+}
+
+.thread-subagents .subagents-setting select {
+  flex: none;
+  width: 4.25rem;
+  min-height: 1.8rem;
+  padding-block: 0.15rem;
+  font-size: var(--text-xs);
+}
+
+.subagents-settings .subagents-switch {
+  flex-direction: row-reverse;
+  gap: 0.6rem;
+}
+
+.subagents-settings .subagents-switch .subagents-switch-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.thread-subagents .subagents-setting select.subagents-cleanup {
+  width: 7.25rem;
 }
 
 .subagents-confirm {
@@ -3350,6 +3404,23 @@ button.tool-line:hover {
 
 .subagent-row > .harness-mark {
   margin-top: 0.05rem;
+}
+
+/* A spinner left of the harness mark while the subagent's session runs. The
+   slot is kept on every row so names line up. */
+.subagent-activity {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 0.75rem;
+  height: 1.25rem;
+  margin-right: -0.3rem;
+}
+
+.subagent-activity .spinner {
+  width: 0.65rem;
+  height: 0.65rem;
+  border-top-color: var(--accent-text);
 }
 
 .subagent-main {
@@ -3533,9 +3604,12 @@ button.tool-line:hover {
   padding-inline: 0;
 }
 
-.subagents-footer {
+.subagents-settings {
+  display: grid;
+  gap: 0.5rem;
   border-top: 1px solid var(--border);
-  padding: 0.6rem 0.9rem;
+  padding: 0.6rem 0.9rem 0.7rem;
+  background: var(--surface-subtle);
 }
 
 .subagents-switch {

@@ -17,6 +17,7 @@ import { StructuredLauncher } from "../components/StructuredLauncher";
 import { ThreadConversation } from "../components/ThreadConversation";
 import {
   grantLimits,
+  cleanupChoices,
   removeNotice,
   SubagentsButton,
   SubagentsPanel,
@@ -167,7 +168,7 @@ describe("Lead launcher", () => {
       expect(spawn).toHaveBeenCalledWith(project.id, "mock", "split the work", undefined, {
         maxChildren: 2,
         maxDescendants: 2,
-        deadlineSeconds: 8 * 3600,
+        deadlineSeconds: 24 * 3600,
         spawnApproval: "operator",
       }),
     );
@@ -204,9 +205,9 @@ describe("Subagents panel", () => {
     expect(within(panel).getByText("+4 −1 · 2 files")).toBeInTheDocument();
     expect(within(panel).getByText("GPT-5.5 · High")).toBeInTheDocument();
     expect(within(panel).getByText("Sonnet")).toBeInTheDocument();
-    expect(
-      within(panel).getByText("2 of 4 started · up to 4 at a time", { exact: false }),
-    ).toBeInTheDocument();
+    expect(within(panel).queryByText(/of 4 started/)).not.toBeInTheDocument();
+    await userEvent.click(within(panel).getByRole("button", { name: "Subagent settings" }));
+    expect(within(panel).getByText(/^2 of 4 started/)).toBeInTheDocument();
     await userEvent.click(within(panel).getByRole("button", { name: "Stop subagents" }));
     await userEvent.click(within(panel).getByRole("button", { name: "Confirm stop" }));
     await waitFor(() => expect(revoke).toHaveBeenCalledWith(grant));
@@ -224,13 +225,32 @@ describe("Subagents panel", () => {
     expect(await within(panel).findByText("No subagents yet")).toBeInTheDocument();
     expect(within(panel).getByText(/Ask the lead to split the work/)).toBeInTheDocument();
     expect(within(panel).getByText("Active")).toHaveClass("subagents-state", "state-active");
-    const meter = within(panel).getByRole("meter", { name: "Subagents started" });
-    expect(meter).toHaveAttribute("aria-valuenow", "2");
-    expect(meter).toHaveAttribute("aria-valuemax", "4");
+    expect(within(panel).queryByRole("switch", { name: /Approve each spawn/ })).not.toBeInTheDocument();
+    const toggle = within(panel).getByRole("button", { name: "Subagent settings" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    const atOnce = within(panel).getByRole("combobox", { name: /Run at once/ });
+    expect(atOnce).toHaveValue(String(grant.maxLiveCapsules));
+    await userEvent.selectOptions(atOnce, "8");
+    await waitFor(() => expect(update).toHaveBeenCalledWith(grant, { maxLiveCapsules: 8 }));
+    const cleanup = within(panel).getByRole("combobox", { name: /Clean up finished subagents/ });
+    expect(cleanup).toHaveValue("86400");
+    await userEvent.selectOptions(cleanup, "Never");
+    await waitFor(() => expect(update).toHaveBeenCalledWith(grant, { archiveAfterSeconds: 0 }));
     const approval = within(panel).getByRole("switch", { name: /Approve each spawn/ });
     expect(approval).not.toBeChecked();
     await userEvent.click(approval);
     await waitFor(() => expect(update).toHaveBeenCalledWith(grant, { spawnApproval: "operator" }));
+  });
+
+  it("says in the header when each spawn needs approval", async () => {
+    vi.spyOn(api, "coordinationGrant").mockResolvedValue({ ...grant, spawnApproval: "operator" });
+    vi.spyOn(api, "coordinationRequests").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "threadLinks").mockResolvedValue({ items: [] });
+    wrapper(<SubagentsPanel thread={leadThread} grantId={grant.id} />);
+    const panel = await screen.findByRole("region", { name: "Subagents" });
+    expect(await within(panel).findByText("Approving spawns")).toBeInTheDocument();
   });
 
   it("keeps a lead's subagents behind the composer's Agents button", async () => {
@@ -270,6 +290,7 @@ describe("Subagents panel", () => {
     expect(grantLimits({ ...grant, maxChildren: 16 }, false, now)).toBe(
       "2 of 8 started · up to 4 at a time",
     );
+    expect(grantLimits(grant, true, now, { live: false })).toBe("2 of 4 started · ends in 7h 52m");
     expect(grantLimits({ ...grant, spawnApproval: "operator" }, true, now)).toBe(
       "2 of 4 started · up to 4 at a time · ends in 7h 52m · approve each spawn",
     );
@@ -358,6 +379,39 @@ describe("Subagents panel", () => {
     const panel = await screen.findByRole("region", { name: "Subagents" });
     await within(panel).findByRole("link", { name: "kept" });
     expect(within(panel).queryByRole("button", { name: "Stop and remove kept" })).not.toBeInTheDocument();
+  });
+
+  it("spins beside subagents whose session is running", async () => {
+    vi.spyOn(api, "coordinationGrant").mockResolvedValue(grant);
+    vi.spyOn(api, "coordinationRequests").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "threadLinks").mockResolvedValue({
+      items: [
+        link("busy", "working", 0),
+        link("booting", "provisioning", 0),
+        link("quiet", "idle", 1),
+        { ...link("gone", "working", 0), capsuleRemoved: true },
+      ],
+    });
+    wrapper(<SubagentsPanel thread={leadThread} grantId={grant.id} />);
+    const panel = await screen.findByRole("region", { name: "Subagents" });
+    await within(panel).findByRole("link", { name: "busy" });
+    const spinning = (name: string) =>
+      Boolean(within(panel).getByRole("link", { name }).closest("li")?.querySelector(".subagent-activity .spinner"));
+    expect(spinning("busy")).toBe(true);
+    expect(spinning("booting")).toBe(true);
+    expect(spinning("quiet")).toBe(false);
+    await userEvent.click(within(panel).getByText("Removed (1)"));
+    expect(spinning("gone")).toBe(false);
+  });
+
+  it("offers cleanup windows and keeps a custom one", () => {
+    expect(cleanupChoices(3600).map((choice) => choice.label)).toEqual([
+      "15 minutes", "1 hour", "4 hours", "1 day", "Never",
+    ]);
+    expect(cleanupChoices(2 * 3600).map((choice) => choice.label)).toEqual([
+      "15 minutes", "1 hour", "2 hours", "4 hours", "1 day", "Never",
+    ]);
+    expect(cleanupChoices(90 * 60).find((choice) => choice.seconds === 5400)?.label).toBe("90 minutes");
   });
 
   it("words the remove notice by what the workspace holds", () => {

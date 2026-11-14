@@ -120,9 +120,10 @@ func (s *Service) PromoteCapsule(
 }
 
 // SweepArchivableSubagents archives finished subagents that stayed idle for their
-// grant's archiveAfter. Archiving ends the idle session, pauses the Thread
-// and marks the link; the Capsule is left to idle pause (ADR 0019). It never
-// sends a message and never deletes a workspace or transcript.
+// grant's archiveAfter, then deletes the Capsules of archived subagents whose
+// work is saved. Archiving ends the idle session, pauses the Thread and marks
+// the link. It never sends a message and never deletes a transcript; a
+// workspace with unsaved changes is left to idle pause (ADR 0019).
 func (s *Service) SweepArchivableSubagents(ctx context.Context) {
 	if !s.CoordinationSupported() {
 		return
@@ -141,6 +142,64 @@ func (s *Service) SweepArchivableSubagents(ctx context.Context) {
 		}
 		s.archiveSubagent(ctx, link)
 	}
+	s.cleanupArchivedSubagents(ctx)
+}
+
+// cleanupArchivedSubagents deletes the Capsule of each archived subagent once
+// its session has ended, when its workspace holds nothing unsaved: the last
+// report changed no files, or a Delivery of it succeeded. The link is left as
+// it is and no report is written, so the lead is not woken; a later send to
+// the subagent is refused because its Capsule is gone. The encrypted Thread
+// history is kept, as with any Capsule delete. Deletion is retried on each
+// sweep, so a daemon restart only delays it.
+func (s *Service) cleanupArchivedSubagents(ctx context.Context) {
+	var links []domain.ThreadLink
+	if err := s.store.View(ctx, func(reader ports.Reader) error {
+		var err error
+		links, err = reader.ListArchivedLiveThreadLinks(ctx, archiveSweepBatch)
+		return err
+	}); err != nil {
+		return
+	}
+	for _, link := range links {
+		if ctx.Err() != nil {
+			return
+		}
+		capsule, err := s.GetCapsule(ctx, link.ChildCapsuleID)
+		if err != nil || capsuleRemoved(capsule) || capsule.CanMutate() != nil {
+			continue
+		}
+		item, err := s.boardItem(ctx, capsule)
+		if err != nil || !subagentWorkSaved(link, item.LatestDelivery) {
+			continue
+		}
+		// The archive sweep asked the session to end. Pull the runtime's
+		// state for a session still stopping; DeleteCapsule refuses while a
+		// Run is active, so a later sweep finishes this.
+		if thread := item.Thread; thread != nil && item.Run != nil && item.Run.State == domain.RunCancelling {
+			_ = s.reconcileStructuredRun(ctx, capsule, *thread, *item.Run)
+			if capsule, err = s.GetCapsule(ctx, capsule.ID); err != nil {
+				continue
+			}
+		}
+		if _, err := s.DeleteCapsule(ctx, capsule.ID, capsule.ResourceVersion,
+			"subagent-cleanup-"+string(link.ID)); err != nil {
+			continue
+		}
+		s.coordMu.Lock()
+		if s.coordStopped == nil {
+			s.coordStopped = make(map[domain.ThreadLinkID]bool)
+		}
+		s.coordStopped[link.ID] = true
+		s.coordMu.Unlock()
+		s.invalidateCoordinationPush(link.ParentThreadID)
+	}
+}
+
+// subagentWorkSaved reports whether deleting the subagent's workspace loses
+// nothing: its last report changed no files, or its latest Delivery shipped.
+func subagentWorkSaved(link domain.ThreadLink, delivery *domain.Delivery) bool {
+	return link.FilesChanged == 0 || (delivery != nil && delivery.State == domain.DeliverySucceeded)
 }
 
 func (s *Service) archiveSubagent(ctx context.Context, link domain.ThreadLink) {

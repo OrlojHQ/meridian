@@ -447,8 +447,9 @@ diffstat and SHAs. The board still never polls Git.
 Revocation, the deadline, and cancellation are daemon-side state changes that
 take effect on the next request. Revoking or cancelling cancels the subagent's
 run and then pauses its Capsule through the provider without Capsule
-cooperation. Closing a link never deletes a subagent Capsule or transcript. The
-one exception is the operator's per-subagent remove
+cooperation. Closing a link never deletes a subagent Capsule or transcript.
+Deletion comes only from the archive cleanup below or from the operator's
+per-subagent remove
 (`POST /thread-links/{id}/remove`, ADR 0029): an installation-bearer operator
 API with no coordination request kind, so neither a lead nor a subagent can
 reach it. It closes that one link as cancelled, cancels the subagent's run,
@@ -474,12 +475,20 @@ counters monotonic so a notice cannot be replayed or suppressed by rewinding
 them.
 
 Subagent lifecycle changes add no authority either. The auto-archive sweep
-only ends an idle subagent session, pauses its Thread and marks the link; it
-never sends a prompt, deletes a workspace or transcript, or resumes a stopped
-Capsule, and it skips subagents that need the operator, failed, are working,
+ends an idle subagent session, pauses its Thread and marks the link; it never
+sends a prompt, deletes a transcript, or resumes a stopped Capsule, and it
+skips subagents that need the operator, failed, are working,
 have a delivery in flight, or were promoted, so a lead cannot use it to hide a
 pending permission request or a failure. Archiving is an operator-set grant
-limit. The link is marked before the session is cancelled so
+limit. Once an archived subagent's session has ended, the sweep deletes its
+Capsule and workspace when nothing there is unsaved: its last report changed
+no files, or a Delivery of that Capsule succeeded. Otherwise the Capsule is
+kept for the operator. The changed-file count is a Capsule-reported diffstat
+and is untrusted; a subagent that understates it can only get its own
+workspace deleted, which it could already destroy, and the lead gains nothing
+it could not already get by cancelling the subagent. The cleanup writes no
+report, so it does not wake the lead, and it never touches a promoted
+subagent. Setting `archiveAfter` to 0 turns archiving and cleanup off. The link is marked before the session is cancelled so
 the cancellation is not reported to the lead, and an archived subagent refuses
 the lead's messages until the operator resumes it. Promotion is an operator
 API call only; a Capsule cannot promote itself or a sibling. A promoted
@@ -813,6 +822,11 @@ A compromised lead can spend its grant: subagent Capsules, compute, and model
 calls up to the grant's fan-out, total, and live limits, and its messages per
 link. The grant deadline is a separate clock from idle pause and Capsule TTL;
 when it passes, the default action cancels subagents and pauses them. The
+default deadline is 24 hours, so a compromised lead left unattended can spend
+its grant for longer before the deadline stops it than under the earlier
+8-hour default; the hard bounds (16 children, 32 total, 16 live, 72 hours) are
+unchanged and enforced by the daemon and the schema. The web UI lets the
+operator change the live limit within those bounds; no Capsule can. The
 optional `--max-live-capsules` installation cap refuses coordinated spawns
 when that many Capsules already hold compute; it does not limit
 operator-started Capsules. Mailbox polling is a reconciliation poll: it never

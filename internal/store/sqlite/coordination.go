@@ -280,6 +280,42 @@ func (r *repository) ListArchivableThreadLinks(
 	return links, rows.Err()
 }
 
+// ListArchivedLiveThreadLinks returns archived, unpromoted subagent links
+// whose Capsule is not deleted, under a grant with auto-archive enabled. The
+// cleanup sweep deletes those Capsules once their work is saved.
+func (r *repository) ListArchivedLiveThreadLinks(ctx context.Context, limit int) ([]domain.ThreadLink, error) {
+	if limit <= 0 || limit > 1000 {
+		return nil, fmt.Errorf("%w: invalid cleanup scan", domain.ErrInvalid)
+	}
+	rows, err := r.q.QueryContext(ctx, `
+		SELECT l.id, l.grant_id, l.parent_thread_id, l.parent_capsule_id, l.child_intent_id,
+			l.child_thread_id, l.child_capsule_id, l.depth, l.name, l.harness, l.state, l.close_reason,
+			l.report_seq, l.report_delivered_seq, l.report_message_seq, l.last_report_status,
+			l.last_report_reason, l.last_report_at, l.messages_forwarded, l.operator_messages,
+			l.operator_noticed, l.archived_at, l.promoted_at, l.base_commit, l.head, l.files_changed,
+			l.insertions, l.deletions, l.created_at, l.updated_at, l.resource_version
+		FROM thread_links l
+			JOIN coordination_grants g ON g.id = l.grant_id
+			JOIN capsules c ON c.id = l.child_capsule_id
+		WHERE l.archived_at IS NOT NULL AND l.promoted_at IS NULL AND g.archive_after_seconds > 0
+			AND c.role = 'sub' AND c.state NOT IN ('Deleting', 'Deleted', 'Failed')
+			AND c.desired_state <> 'Deleted'
+		ORDER BY l.archived_at, l.id LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var links []domain.ThreadLink
+	for rows.Next() {
+		link, err := scanLink(rows)
+		if err != nil {
+			return nil, err
+		}
+		links = append(links, link)
+	}
+	return links, rows.Err()
+}
+
 func (r *repository) listLinks(ctx context.Context, query string, arg any) ([]domain.ThreadLink, error) {
 	rows, err := r.q.QueryContext(ctx, query, arg)
 	if err != nil {

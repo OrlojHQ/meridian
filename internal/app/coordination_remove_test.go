@@ -59,7 +59,7 @@ func TestOperatorRemovesOneSubagentAndTheLeadKeepsSpawning(t *testing.T) {
 	if response := tool(t, mailbox, spawnThird); !response.OK {
 		t.Fatalf("spawn after remove = %+v", response)
 	}
-	if rollup := f.leadRollup(t, lead.Intent.CapsuleID); rollup.Total != 3 || rollup.Done != 1 {
+	if rollup := f.leadRollup(t, lead.Intent.CapsuleID); rollup.Total != 2 || rollup.Done != 0 {
 		t.Fatalf("rollup after remove = %#v", rollup)
 	}
 }

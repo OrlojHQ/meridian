@@ -517,7 +517,7 @@ export type BoardItem = {
 };
 
 /**
- * A lead's subagents by state.
+ * A lead's subagents by state. Subagents whose Capsule the operator removed are not counted.
  */
 export type ChildRollup = {
     total: number;
@@ -662,7 +662,7 @@ export type CoordinationPolicy = {
     allowedHarnesses?: Array<string>;
     deadlineSeconds?: number;
     /**
-     * How long a finished subagent stays idle before its session is ended and its Thread paused. 0 disables auto-archive; otherwise at least 60. Archiving never deletes a workspace or transcript.
+     * How long a finished subagent stays idle before its session is ended and its Thread paused. Its Capsule is then deleted if its workspace holds nothing unsaved (the last report changed no files, or a Delivery of it succeeded); otherwise the Capsule is kept. 0 disables auto-archive and this cleanup; otherwise at least 60. Transcripts are always kept.
      *
      */
     archiveAfterSeconds?: number;

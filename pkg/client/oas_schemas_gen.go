@@ -1761,7 +1761,7 @@ func (s *ChatGPTSignInState) UnmarshalText(data []byte) error {
 	}
 }
 
-// A lead's subagents by state.
+// A lead's subagents by state. Subagents whose Capsule the operator removed are not counted.
 // Ref: #/components/schemas/ChildRollup
 type ChildRollup struct {
 	Total    int `json:"total"`
@@ -2498,8 +2498,10 @@ type CoordinationPolicy struct {
 	// lead's harness.
 	AllowedHarnesses []string `json:"allowedHarnesses"`
 	DeadlineSeconds  OptInt   `json:"deadlineSeconds"`
-	// How long a finished subagent stays idle before its session is ended and its Thread paused. 0
-	// disables auto-archive; otherwise at least 60. Archiving never deletes a workspace or transcript.
+	// How long a finished subagent stays idle before its session is ended and its Thread paused. Its
+	// Capsule is then deleted if its workspace holds nothing unsaved (the last report changed no files, or
+	// a Delivery of it succeeded); otherwise the Capsule is kept. 0 disables auto-archive and this
+	// cleanup; otherwise at least 60. Transcripts are always kept.
 	ArchiveAfterSeconds OptInt                          `json:"archiveAfterSeconds"`
 	OnDeadline          OptCoordinationPolicyOnDeadline `json:"onDeadline"`
 	// Auto starts each accepted spawn. operator queues it until the operator approves or denies it. The

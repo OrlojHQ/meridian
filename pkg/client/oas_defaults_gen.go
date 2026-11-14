@@ -25,11 +25,11 @@ func (s *CoordinationPolicy) setDefaults() {
 		s.MaxMessagesPerLink.SetTo(val)
 	}
 	{
-		val := int(28800)
+		val := int(86400)
 		s.DeadlineSeconds.SetTo(val)
 	}
 	{
-		val := int(86400)
+		val := int(3600)
 		s.ArchiveAfterSeconds.SetTo(val)
 	}
 	{

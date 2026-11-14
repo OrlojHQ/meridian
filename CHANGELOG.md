@@ -7,6 +7,14 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Upgrade notes
+
+- No database migration.
+- Subagents that are already archived under a lead with auto-archive on, and
+  whose last report changed no files (or whose Delivery succeeded), have
+  their Capsules deleted on the first sweep after upgrading. Their
+  transcripts are kept. Existing leads keep their stored archive period.
+
 ### Added
 
 - Stop and remove one subagent from a lead's Agents panel. A small stop icon
@@ -27,10 +35,27 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   The add form sits under them with spaced fields.
 - Dropdowns use Meridian's own chevron instead of the platform stepper, and
   the provider and harness pickers show the chosen mark inside the field.
-- A lead's Agents panel has a header with a status pill, its usage and a
-  meter, and a quiet Stop action. Each subagent is a row with its harness
-  mark and a phase pill. Spawn approval is a switch at the bottom, and an
-  empty panel says how to get the lead to start subagents.
+- A lead's Agents panel has a header with a status pill, a settings button
+  and a quiet Stop action. Each subagent is a row with its harness mark and a
+  phase pill. The settings button holds "Run at once" (how many subagent
+  Capsules the lead can have at a time, 1 to 16), the spawn-approval switch,
+  and a line with the lifetime total and time left; the started-of-total
+  meter is gone. The header says "Approving spawns" when that switch is on.
+  An empty panel says how to get the lead to start subagents.
+- A lead's default deadline is 24 hours instead of 8, in the web UI, the
+  launcher and `meridian thread spawn --lead`.
+- Finished subagents are cleaned up. After a subagent has been idle for its
+  lead's cleanup window (default 1 hour, was 24 hours), it is archived and,
+  if nothing in its workspace is unsaved, its Capsule is deleted; its
+  transcript stays. A subagent whose last report changed files that were not
+  delivered is kept until you remove it. Change the window per lead under
+  "Clean up finished subagents" in the Agents panel settings, or set it to
+  Never. Capsules you start yourself still only pause.
+- A lead's sidebar and board rows show how many subagents it has now, such
+  as "2 subagents", instead of "0/1 done, 1 idle". Archived and removed
+  subagents are not counted, so removing one takes the count down by one.
+- Subagents whose session is running show a small spinner at the left of
+  their row in the Agents panel.
 
 ### Fixed
 

@@ -404,7 +404,8 @@ describe("application shell", () => {
     );
 
     const leadRow = await screen.findByRole("link", { name: /Release lead/ });
-    expect(leadRow).toHaveTextContent("Subagents: 3/5 done, 1 needs you, 1 working, 2 archived");
+    expect(leadRow).toHaveTextContent("3 subagents");
+    expect(leadRow).not.toHaveTextContent(/done|archived/);
     expect(await screen.findByRole("link", { name: /Blocked subagent/ })).toBeInTheDocument();
     expect(capsules).toHaveBeenCalledWith(project.id, expect.anything(), "main");
     expect(threads.mock.calls.map(([id]) => id).sort()).toEqual([blocked.id, lead.id]);

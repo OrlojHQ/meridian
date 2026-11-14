@@ -353,7 +353,7 @@ func TestCoordinationGrantIsCreatedWithTheLeadAndReplayIsExact(t *testing.T) {
 		grant.MaxLiveCapsules != 2 || grant.MaxMessagesPerLink != 50 ||
 		len(grant.AllowedHarnesses) != 1 || grant.AllowedHarnesses[0] != "mock" ||
 		grant.OnDeadline != domain.DeadlineCancelAndPause || grant.SpawnApproval != domain.SpawnAuto ||
-		grant.DeadlineAt.Sub(grant.CreatedAt) != 8*time.Hour {
+		grant.DeadlineAt.Sub(grant.CreatedAt) != 24*time.Hour {
 		t.Fatalf("defaults = %#v", grant)
 	}
 	if replay, err := f.service.CreateProjectThread(f.ctx, input); err != nil || replay.Intent.ID != created.Intent.ID {

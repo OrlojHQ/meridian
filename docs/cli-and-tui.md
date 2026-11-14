@@ -148,10 +148,12 @@ lead. If you message a subagent directly, the lead's next report wake says so
 `meridian-coord propose-delivery --title TEXT --branch BRANCH` for its own
 Capsule; you still approve that Delivery.
 
-A finished subagent is paused and archived once it has been idle for
-`--archive-after` (default 24h, 1m to 720h; `0` disables it). Its Thread
-moves to paused, its session ends, and idle pause stops the Capsule later;
-the workspace and transcript stay. Subagents that need you, failed, or are still
+A finished subagent is archived once it has been idle for `--archive-after`
+(default 1h, 1m to 720h; `0` disables it). Its Thread moves to paused and its
+session ends. If nothing in its workspace is unsaved (its last report changed
+no files, or a Delivery of it succeeded), its Capsule is then deleted;
+otherwise idle pause stops the Capsule later and the workspace stays. The
+transcript always stays. Subagents that need you, failed, or are still
 working are never archived. Resume the subagent's Thread to bring it back.
 `meridian capsule promote CAPSULE_ID --expected-version N` makes a subagent a
 main Capsule: it joins your sidebar, is never archived or stopped by its lead,
