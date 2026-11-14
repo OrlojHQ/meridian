@@ -1290,7 +1290,9 @@ Threats and required controls:
 - **Departed-member transfer.** Only the break-glass bearer moves or deletes a
   disabled member's work. Owners are immutable in the schema except for that
   transfer, which a per-transaction marker row authorizes for exactly one
-  source and target. Secret envelopes are re-wrapped for the new owner.
+  source and target. Readable secret envelopes are re-wrapped for the new
+  owner; one that does not open under the installation key moves unchanged
+  and stays unreadable, so it cannot block a departed member's transfer.
   Provider connections never move, since a personal login stays with its
   holder; Project grants of them are dropped. Deletion crypto-shreds secrets
   and revokes connections, but older backups still hold the ciphertext.

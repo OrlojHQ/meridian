@@ -642,7 +642,9 @@ After the claim:
   for the new owner), and harness setups, and is refused when the successor
   already has a secret with the same name. Provider connections never move: a
   personal Claude or ChatGPT login stays with its holder, so the successor
-  grants their own. Deletion starts each Project's deletion, crypto-shreds
+  grants their own. A secret that does not open under the installation key
+  moves unchanged and stays unreadable, as it already was; it never blocks
+  the transfer. Deletion starts each Project's deletion, crypto-shreds
   secrets, revokes connections, and deletes setups. Older backups still hold
   the departed member's ciphertext under the installation key.
 
