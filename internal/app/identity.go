@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -62,6 +63,10 @@ type Identity struct {
 
 type signInAttempt struct {
 	attempt oidcauth.Attempt
+	// binding is the digest of the value the starting browser holds. The
+	// callback must present it, so a callback URL from someone else's
+	// sign-in cannot sign this browser in as them (login CSRF).
+	binding [32]byte
 	expires time.Time
 }
 
@@ -118,11 +123,13 @@ func (i *Identity) SignInAvailable() bool { return i != nil && i.provider != nil
 // Claimable reports whether the installation can still be claimed.
 func (i *Identity) Claimable() bool { return i.SignInAvailable() && !i.team.Load() }
 
-// BeginSignIn starts an OIDC sign-in and returns the issuer URL to send the
-// browser to. Before the claim, the only sign-in is the claim's.
-func (i *Identity) BeginSignIn(ctx context.Context) (string, error) {
+// BeginSignIn starts an OIDC sign-in. It returns the issuer URL to send the
+// browser to and a binding that only the starting browser may hold; the
+// callback must present it. Before the claim, the only sign-in is the
+// claim's.
+func (i *Identity) BeginSignIn(ctx context.Context) (string, string, error) {
 	if !i.SignInAvailable() {
-		return "", domain.ErrUnsupported
+		return "", "", domain.ErrUnsupported
 	}
 	now := i.clock.Now()
 	i.mu.Lock()
@@ -130,21 +137,26 @@ func (i *Identity) BeginSignIn(ctx context.Context) (string, error) {
 	full := len(i.attempts) >= maxSignInAttempts
 	i.mu.Unlock()
 	if full {
-		return "", fmt.Errorf("%w: too many sign-ins are waiting", domain.ErrResourceExhausted)
+		return "", "", fmt.Errorf("%w: too many sign-ins are waiting", domain.ErrResourceExhausted)
+	}
+	binding, digest, err := newToken()
+	if err != nil {
+		return "", "", err
 	}
 	attempt, err := i.provider.Begin(ctx)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	i.mu.Lock()
 	defer i.mu.Unlock()
-	i.attempts[attempt.State] = signInAttempt{attempt: attempt, expires: now.Add(signInAttemptTTL)}
-	return attempt.URL, nil
+	i.attempts[attempt.State] = signInAttempt{attempt: attempt, binding: digest, expires: now.Add(signInAttemptTTL)}
+	return attempt.URL, binding, nil
 }
 
-// CompleteSignIn finishes the sign-in that state names. The state is
-// single-use: a second callback with it finds nothing.
-func (i *Identity) CompleteSignIn(ctx context.Context, state, code string) (SignInResult, error) {
+// CompleteSignIn finishes the sign-in that state names, for the browser
+// that holds its binding. The state is single-use: a second callback with
+// it, or one with the wrong binding, finds nothing.
+func (i *Identity) CompleteSignIn(ctx context.Context, state, code, binding string) (SignInResult, error) {
 	if !i.SignInAvailable() {
 		return SignInResult{}, domain.ErrUnsupported
 	}
@@ -154,7 +166,11 @@ func (i *Identity) CompleteSignIn(ctx context.Context, state, code string) (Sign
 	pending, ok := i.attempts[state]
 	delete(i.attempts, state)
 	i.mu.Unlock()
-	if !ok || state == "" {
+	if !ok || state == "" || binding == "" {
+		return SignInResult{}, domain.ErrNotFound
+	}
+	presented := sha256.Sum256([]byte(binding))
+	if subtle.ConstantTimeCompare(presented[:], pending.binding[:]) != 1 {
 		return SignInResult{}, domain.ErrNotFound
 	}
 	verified, err := i.provider.Complete(ctx, pending.attempt, code)

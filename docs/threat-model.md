@@ -1319,6 +1319,14 @@ Threats and required controls:
   held in memory. Issuer, audience, signature, expiry, and nonce are
   verified. Users are keyed by `(issuer, subject)`. Email and display names
   never authorize, so a recycled email inherits nothing.
+- **Login CSRF.** An attacker starts a sign-in with their own account and
+  sends a teammate the callback URL. If it completed there, the teammate
+  would be signed in as the attacker, and secrets or provider logins they
+  then add would land in the attacker's account. The start sets a random
+  binding in an `HttpOnly`, `SameSite=Lax` cookie scoped to `/auth/oidc`,
+  and the daemon keeps only its digest with the attempt. A callback without
+  the matching cookie is refused and spends the state, so the code is never
+  exchanged.
 - **Identity provider compromise or loose membership.** A compromised
   issuer, or one that authenticates people outside the team, can mint
   members. Operators whose issuer serves anyone else must set the required
