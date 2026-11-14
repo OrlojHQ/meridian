@@ -6,6 +6,26 @@
   "properties": {
     "providerGatewayURL": {"type": "string", "pattern": "^(https://[^/?#]+/?)?$"},
     "providerGatewayAllowPrivateHTTP": {"type": "boolean"},
+    "publicUrl": {"type": "string", "pattern": "^(https://[^/?#@]+/?)?$"},
+    "auditRetention": {"type": "string", "pattern": "^$|^0$|^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$"},
+    "oidc": {
+      "type": "object", "additionalProperties": false,
+      "required": ["issuer", "clientId", "clientSecret", "requiredGroup", "groupsClaim"],
+      "properties": {
+        "issuer": {"type": "string", "pattern": "^(https://[^/?#@]+(/[^?#]*)?)?$"},
+        "clientId": {"type": "string"},
+        "clientSecret": {
+          "type": "object", "additionalProperties": false,
+          "required": ["existingSecret", "key"],
+          "properties": {
+            "existingSecret": {"type": "string", "maxLength": 253, "pattern": "^$|^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$"},
+            "key": {"type": "string", "minLength": 1, "maxLength": 253, "pattern": "^[A-Za-z0-9._-]+$"}
+          }
+        },
+        "requiredGroup": {"type": "string"},
+        "groupsClaim": {"type": "string"}
+      }
+    },
     "nameOverride": {"type": "string"},
     "fullnameOverride": {"type": "string"},
     "replicaCount": {"type": "integer", "const": 1},

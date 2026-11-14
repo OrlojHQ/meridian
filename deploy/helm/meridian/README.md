@@ -21,15 +21,75 @@ ownership.
 
 The daemon explicitly opts into its authenticated wildcard pod listener. Its
 256-bit installation API token is atomically generated in the private data
-directory and persists on the control-plane PVC. The chart adds no Ingress;
-operators can retrieve the token through authorized `kubectl exec` for a
-port-forwarded CLI or the UI's one-time bearer-to-HttpOnly-cookie bootstrap.
+directory and persists on the control-plane PVC. The chart supports default
+single-user self-hosting and one team's private per-user work (ADR 0046).
+Team mode does not provide hostile multi-tenancy: Capsules share the selected
+runtime's isolation, and a shared kernel remains a shared kernel.
+
+In single-user mode, authorized operators can retrieve the installation token
+with `kubectl exec` for a port-forwarded CLI or the UI's bearer-to-cookie
+bootstrap. In team mode that token is for the one-time claim and break-glass
+membership recovery, audit, and departed-member actions. Members use OIDC
+sessions or personal access tokens; copying the installation token is not
+team sign-in.
+
+## Team sign-in
+
+Create an OIDC client with callback
+`https://meridian.example.com/auth/oidc/callback`. For a confidential client,
+provision its client secret as an existing Kubernetes Secret in the release
+namespace, then configure:
+
+```yaml
+publicUrl: https://meridian.example.com
+auditRetention: 2160h # 90 days; empty or "0" keeps every audit record
+oidc:
+  issuer: https://id.example.com/realms/meridian
+  clientId: meridian
+  clientSecret:
+    existingSecret: meridian-oidc
+    key: client-secret
+  requiredGroup: meridian-users
+  groupsClaim: groups
+```
+
+All values are optional and default to empty, except the Secret key, which
+defaults to `client-secret`. Set the issuer, client id, and `publicUrl` together.
+Without a required group, every identity the issuer authenticates can join
+once the installation is claimed; configure the group if the issuer serves
+people outside the team. An empty `groupsClaim` uses the daemon's `groups`
+default. Public OIDC clients may omit `clientSecret.existingSecret`.
+`auditRetention` is a nonnegative Go duration such as `2160h`, independently
+of OIDC. Flags are emitted only for values that are set.
+
+The chart mounts only the selected Secret key read-only at
+`/etc/meridian/oidc/client-secret` on the daemon and passes
+`--oidc-client-secret-file`. It creates no Secret, adds no Secret RBAC, and
+never puts the secret value in arguments, environment variables, values, or
+Capsules. File mode `0440` with the pod's fsGroup lets the non-root daemon
+read it. Restart the daemon after rotating the Secret; it reads the file at
+startup.
+
+The chart keeps its ClusterIP Service and creates no public Ingress or TLS
+terminator. Supply HTTPS access separately and preserve the external origin
+so browser cookies and same-origin checks see the configured `publicUrl`.
+Allow the issuer's discovery, token, device, and JWKS destinations through
+`networkPolicy.providerEgressCIDRs` on TCP 443, alongside model-provider
+CIDRs; those destinations are allowed only to the control plane. Default
+egress remains denied. The issuer URLs used here must use HTTPS.
+
+Configuring OIDC does not claim the installation. Follow the **Team mode**
+steps in [`docs/operations.md`](../../../docs/operations.md#team-mode): sign
+in as the intended bootstrap owner and present the installation token once
+in that browser. After the claim, members use **Sign in** or
+`meridian login --server https://meridian.example.com` when the issuer
+supports device authorization; otherwise mint a personal token in **Account**.
+Loopback pages and the installation token no longer mint browser sessions.
 
 Follow [`docs/operations.md`](../../../docs/operations.md) for
 signature/SBOM/checksum verification, backup-before-upgrade, rollback limits,
-deterministic smoke, and uninstall cleanup. The chart supports only the
-single-user self-hosted profile; hosted hostile multi-tenancy requires external
-security review and an independently validated gVisor/Kata runtime deployment.
+deterministic smoke, and uninstall cleanup. Runtime validation and external
+security review remain separate deployment responsibilities.
 
 See [`docs/kubernetes-agentsandbox.md`](../../../docs/kubernetes-agentsandbox.md)
 for installation, RBAC rationale, Secret risks, NetworkPolicy limitations,
