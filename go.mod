@@ -7,10 +7,12 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/coder/websocket v1.8.15
 	github.com/containerd/errdefs v1.0.0
+	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/creack/pty v1.1.24
 	github.com/felixge/httpsnoop v1.1.0
 	github.com/go-faster/errors v0.8.0
 	github.com/go-faster/jx v1.2.0
+	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/goccy/go-yaml v1.19.2
 	github.com/kubernetes-csi/external-snapshotter/client/v8 v8.6.0
 	github.com/moby/moby/api v1.55.0
@@ -25,6 +27,7 @@ require (
 	go.opentelemetry.io/otel/metric v1.45.0
 	go.opentelemetry.io/otel/sdk v1.45.0
 	go.opentelemetry.io/otel/trace v1.45.0
+	golang.org/x/oauth2 v0.38.0
 	golang.org/x/sys v0.49.0
 	golang.org/x/term v0.47.0
 	k8s.io/api v0.36.4
@@ -114,7 +117,6 @@ require (
 	golang.org/x/exp v0.0.0-20251219203646-944ab1f22d93 // indirect
 	golang.org/x/mod v0.41.0 // indirect
 	golang.org/x/net v0.62.0 // indirect
-	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/time v0.15.0 // indirect

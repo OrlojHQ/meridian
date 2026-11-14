@@ -568,6 +568,49 @@ Project removes that Project's Moments first, so their unreferenced blobs are
 deleted with it; a blob still referenced by another Project's Moment stays.
 Meridian does not currently age out Moments automatically.
 
+## Team mode
+
+A fresh installation is in single-user mode: the installation token and the
+loopback browser session act as its owner. Team mode (ADR 0046) serves one
+team from one installation, with each member's Projects, Capsules, secrets,
+and provider connections private to them. Teammates' Capsules still share
+the provider's isolation: with Docker that is one kernel, so team mode is not
+a boundary between mutually untrusted people.
+
+1. Register Meridian as a confidential OIDC client with your issuer
+   (Authentik, Keycloak, Dex, Okta, Entra ID, Google). The redirect URI is
+   `<public-url>/auth/oidc/callback`.
+2. Start `meridiand` with the issuer:
+
+   ```console
+   meridiand --provider=docker \
+     --public-url=https://meridian.example.com \
+     --oidc-issuer=https://id.example.com/application/o/meridian/ \
+     --oidc-client-id=meridian \
+     --oidc-client-secret-file=/etc/meridian/oidc-client-secret \
+     --oidc-required-group=meridian-users
+   ```
+
+   Keep the client secret file outside the data directory, like the key
+   files. Without `--oidc-required-group`, every identity the issuer
+   authenticates becomes a member on first sign-in; set it whenever the
+   issuer serves anyone outside the team.
+3. Claim the installation once. Open **Account** in the web UI, choose
+   **Sign in to claim this installation**, sign in as yourself, then enter
+   the installation token. Your identity becomes the bootstrap owner, every
+   existing object stays yours, and team mode is on. The claim cannot be
+   undone, and the installation keeps the issuer it was claimed with.
+
+After the claim:
+
+- Members sign in with **Sign in** in the web UI. Sessions end after 12 hours
+  idle or 7 days, and members can list and revoke theirs under **Account**.
+- The installation token is break-glass only. It reads the audit log and is
+  refused on everything else, and every use is audited. Loopback page loads no
+  longer receive a session, and `POST /auth/browser-session` is refused.
+- The CLI and TUI cannot yet act as a member; they reach only what the
+  break-glass token allows.
+
 ## Audit records
 
 `meridiand` keeps an append-only audit log (ADR 0046). Each record names the

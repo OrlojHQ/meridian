@@ -29,6 +29,14 @@ type CaptureMomentRes interface {
 	captureMomentRes()
 }
 
+type ClaimInstallationRes interface {
+	claimInstallationRes()
+}
+
+type CompleteOidcSignInRes interface {
+	completeOidcSignInRes()
+}
+
 type CreateBrowserSessionRes interface {
 	createBrowserSessionRes()
 }
@@ -111,6 +119,10 @@ type GetCapsuleRes interface {
 
 type GetCoordinationGrantRes interface {
 	getCoordinationGrantRes()
+}
+
+type GetCurrentMemberRes interface {
+	getCurrentMemberRes()
 }
 
 type GetDeliveryRes interface {
@@ -205,6 +217,10 @@ type ListSecretsRes interface {
 	listSecretsRes()
 }
 
+type ListSessionsRes interface {
+	listSessionsRes()
+}
+
 type ListThreadBlocksRes interface {
 	listThreadBlocksRes()
 }
@@ -269,6 +285,10 @@ type RevokeCoordinationGrantRes interface {
 	revokeCoordinationGrantRes()
 }
 
+type RevokeSessionRes interface {
+	revokeSessionRes()
+}
+
 type RewindCapsuleRes interface {
 	rewindCapsuleRes()
 }
@@ -287,6 +307,10 @@ type SetThreadEffortRes interface {
 
 type SetThreadModelRes interface {
 	setThreadModelRes()
+}
+
+type SignOutRes interface {
+	signOutRes()
 }
 
 type StartRunRes interface {

@@ -90,6 +90,11 @@ type Reader interface {
 	GetCoordinationRequestByID(context.Context, domain.CoordinationRequestID) (domain.CoordinationRequest, error)
 	ListCoordinationRequests(context.Context, domain.CoordinationRequestState) ([]domain.CoordinationRequest, error)
 	GetUser(context.Context, domain.UserID) (domain.User, error)
+	GetInstallation(context.Context) (domain.Installation, error)
+	GetUserByIdentity(ctx context.Context, issuer, subject string) (domain.User, error)
+	GetUserSession(context.Context, string) (domain.UserSession, error)
+	GetUserSessionByDigest(context.Context, [32]byte) (domain.UserSession, error)
+	ListUserSessions(context.Context, domain.UserID) ([]domain.UserSession, error)
 	// ListAuditRecords lists records after a sequence, oldest first. A
 	// non-empty user lists only that user's records; the empty user lists
 	// every record.
@@ -158,6 +163,13 @@ type Transaction interface {
 	InsertCoordinationRequest(context.Context, domain.CoordinationRequest) error
 	UpdateCoordinationRequest(context.Context, domain.CoordinationRequest, domain.ResourceVersion) error
 	AppendAuditRecord(context.Context, domain.AuditRecord) error
+	// ClaimInstallation binds owner's identity and turns on team mode.
+	ClaimInstallation(ctx context.Context, issuer string, owner domain.User, at time.Time) error
+	InsertUser(context.Context, domain.User) error
+	UpdateUserProfile(ctx context.Context, id domain.UserID, displayName, email string) error
+	InsertUserSession(context.Context, domain.UserSession) error
+	TouchUserSession(ctx context.Context, id string, at time.Time) error
+	RevokeUserSession(ctx context.Context, id string, at time.Time) error
 	// PruneAuditRecords deletes records older than before, for retention.
 	PruneAuditRecords(ctx context.Context, before time.Time) (int, error)
 }

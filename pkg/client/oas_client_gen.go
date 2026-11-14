@@ -82,6 +82,14 @@ type Invoker interface {
 	//
 	// POST /capsules/{capsuleId}/moments
 	CaptureMoment(ctx context.Context, request *CaptureMomentRequest, params CaptureMomentParams) (CaptureMomentRes, error)
+	// ClaimInstallation invokes claimInstallation operation.
+	//
+	// Needs both the installation token in the Authorization header and the claim cookie from an OIDC
+	// sign-in in the same browser. Binds that identity to the bootstrap owner, turns on team mode, and
+	// signs the browser in. It can happen once.
+	//
+	// POST /auth/claim
+	ClaimInstallation(ctx context.Context) (ClaimInstallationRes, error)
 	// CompleteChatGPTSignIn invokes completeChatGPTSignIn operation.
 	//
 	// CompleteChatGPTSignIn.
@@ -95,6 +103,14 @@ type Invoker interface {
 	//
 	// POST /claude-login/{loginId}
 	CompleteClaudeLogin(ctx context.Context, request *ClaudeLoginCode, params CompleteClaudeLoginParams) (*ClaudeLoginStatus, error)
+	// CompleteOidcSignIn invokes completeOidcSignIn operation.
+	//
+	// Authorized by the single-use state. In team mode it sets an HttpOnly SameSite=Strict session cookie.
+	// Before the claim it sets a short-lived claim cookie instead. It answers with a redirect to the web
+	// UI, or an HTML page that names no account.
+	//
+	// GET /auth/oidc/callback
+	CompleteOidcSignIn(ctx context.Context, params CompleteOidcSignInParams) (CompleteOidcSignInRes, error)
 	// CreateBrowserSession invokes createBrowserSession operation.
 	//
 	// The installation token is accepted only in the Authorization header and is never returned. The
@@ -209,6 +225,14 @@ type Invoker interface {
 	//
 	// GET /capsules/{capsuleId}/workspace
 	ExportCapsuleWorkspace(ctx context.Context, params ExportCapsuleWorkspaceParams) (ExportCapsuleWorkspaceRes, error)
+	// GetAuthenticationMode invokes getAuthenticationMode operation.
+	//
+	// Single-user mode accepts the installation token and the loopback browser session. Team mode (ADR
+	// 0046) signs members in through the configured OIDC issuer; the installation token is then
+	// break-glass administration only.
+	//
+	// GET /auth/mode
+	GetAuthenticationMode(ctx context.Context) (*AuthenticationMode, error)
 	// GetBoard invokes getBoard operation.
 	//
 	// One row per Capsule, grouped by status. Subagent Capsules fold under their lead's child rollup; with
@@ -260,6 +284,12 @@ type Invoker interface {
 	//
 	// GET /coordination-grants/{grantId}
 	GetCoordinationGrant(ctx context.Context, params GetCoordinationGrantParams) (GetCoordinationGrantRes, error)
+	// GetCurrentMember invokes getCurrentMember operation.
+	//
+	// Describe the signed-in member.
+	//
+	// GET /auth/me
+	GetCurrentMember(ctx context.Context) (GetCurrentMemberRes, error)
 	// GetDelivery invokes getDelivery operation.
 	//
 	// Get a durable Delivery.
@@ -457,6 +487,12 @@ type Invoker interface {
 	//
 	// GET /secrets
 	ListSecrets(ctx context.Context, params ListSecretsParams) (ListSecretsRes, error)
+	// ListSessions invokes listSessions operation.
+	//
+	// List the signed-in member's browser sessions.
+	//
+	// GET /auth/sessions
+	ListSessions(ctx context.Context) (ListSessionsRes, error)
 	// ListThreadBlocks invokes listThreadBlocks operation.
 	//
 	// This is an explicit decryption boundary. Deltas are persisted as delta events; a final assistant
@@ -586,6 +622,12 @@ type Invoker interface {
 	//
 	// POST /coordination-grants/{grantId}/revoke
 	RevokeCoordinationGrant(ctx context.Context, request *RevokeCoordinationGrantRequest, params RevokeCoordinationGrantParams) (RevokeCoordinationGrantRes, error)
+	// RevokeSession invokes revokeSession operation.
+	//
+	// Revoke one of the signed-in member's sessions.
+	//
+	// POST /auth/sessions/{sessionId}/revoke
+	RevokeSession(ctx context.Context, params RevokeSessionParams) (RevokeSessionRes, error)
 	// RewindCapsule invokes rewindCapsule operation.
 	//
 	// Create a non-destructive descendant from an earlier Moment.
@@ -627,6 +669,12 @@ type Invoker interface {
 	//
 	// POST /threads/{threadId}/model
 	SetThreadModel(ctx context.Context, request *ThreadModelRequest, params SetThreadModelParams) (SetThreadModelRes, error)
+	// SignOut invokes signOut operation.
+	//
+	// End the current browser session.
+	//
+	// POST /auth/sign-out
+	SignOut(ctx context.Context) (SignOutRes, error)
 	// StartChatGPTSignIn invokes startChatGPTSignIn operation.
 	//
 	// Starts Sign in with ChatGPT for a new connection, or reauthorizes an existing one. The daemon keeps
@@ -635,6 +683,13 @@ type Invoker interface {
 	//
 	// POST /provider-connections/chatgpt/sign-ins
 	StartChatGPTSignIn(ctx context.Context, request *ChatGPTSignInRequest) (*ChatGPTSignIn, error)
+	// StartOidcSignIn invokes startOidcSignIn operation.
+	//
+	// Starts an authorization code sign-in with PKCE. State, nonce, and the PKCE verifier stay in daemon
+	// memory and are single-use. Before the installation is claimed, this sign-in can only claim it.
+	//
+	// GET /auth/oidc/start
+	StartOidcSignIn(ctx context.Context) (*StartOidcSignInFound, error)
 	// StartRun invokes startRun operation.
 	//
 	// Start a Run from a Capsule harness profile.
@@ -1855,6 +1910,121 @@ func (c *Client) sendCaptureMoment(ctx context.Context, request *CaptureMomentRe
 	return result, nil
 }
 
+// ClaimInstallation invokes claimInstallation operation.
+//
+// Needs both the installation token in the Authorization header and the claim cookie from an OIDC
+// sign-in in the same browser. Binds that identity to the bootstrap owner, turns on team mode, and
+// signs the browser in. It can happen once.
+//
+// POST /auth/claim
+func (c *Client) ClaimInstallation(ctx context.Context) (ClaimInstallationRes, error) {
+	res, err := c.sendClaimInstallation(ctx)
+	return res, err
+}
+
+func (c *Client) sendClaimInstallation(ctx context.Context) (res ClaimInstallationRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("claimInstallation"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/auth/claim"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, ClaimInstallationOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/auth/claim"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, ClaimInstallationOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeClaimInstallationResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // CompleteChatGPTSignIn invokes completeChatGPTSignIn operation.
 //
 // CompleteChatGPTSignIn.
@@ -2118,6 +2288,126 @@ func (c *Client) sendCompleteClaudeLogin(ctx context.Context, request *ClaudeLog
 
 	stage = "DecodeResponse"
 	result, err := decodeCompleteClaudeLoginResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// CompleteOidcSignIn invokes completeOidcSignIn operation.
+//
+// Authorized by the single-use state. In team mode it sets an HttpOnly SameSite=Strict session cookie.
+// Before the claim it sets a short-lived claim cookie instead. It answers with a redirect to the web
+// UI, or an HTML page that names no account.
+//
+// GET /auth/oidc/callback
+func (c *Client) CompleteOidcSignIn(ctx context.Context, params CompleteOidcSignInParams) (CompleteOidcSignInRes, error) {
+	res, err := c.sendCompleteOidcSignIn(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendCompleteOidcSignIn(ctx context.Context, params CompleteOidcSignInParams) (res CompleteOidcSignInRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("completeOidcSignIn"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/auth/oidc/callback"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, CompleteOidcSignInOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/auth/oidc/callback"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeQueryParams"
+	q := uri.NewQueryEncoder()
+	{
+		// Encode "state" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "state",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.State.Get(); ok {
+				return e.EncodeValue(conv.StringToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	{
+		// Encode "code" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "code",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.Code.Get(); ok {
+				return e.EncodeValue(conv.StringToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	u.RawQuery = q.Values().Encode()
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeCompleteOidcSignInResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -4427,6 +4717,88 @@ func (c *Client) sendExportCapsuleWorkspace(ctx context.Context, params ExportCa
 	return result, nil
 }
 
+// GetAuthenticationMode invokes getAuthenticationMode operation.
+//
+// Single-user mode accepts the installation token and the loopback browser session. Team mode (ADR
+// 0046) signs members in through the configured OIDC issuer; the installation token is then
+// break-glass administration only.
+//
+// GET /auth/mode
+func (c *Client) GetAuthenticationMode(ctx context.Context) (*AuthenticationMode, error) {
+	res, err := c.sendGetAuthenticationMode(ctx)
+	return res, err
+}
+
+func (c *Client) sendGetAuthenticationMode(ctx context.Context) (res *AuthenticationMode, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getAuthenticationMode"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/auth/mode"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetAuthenticationModeOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/auth/mode"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeGetAuthenticationModeResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // GetBoard invokes getBoard operation.
 //
 // One row per Capsule, grouped by status. Subagent Capsules fold under their lead's child rollup; with
@@ -5475,6 +5847,119 @@ func (c *Client) sendGetCoordinationGrant(ctx context.Context, params GetCoordin
 
 	stage = "DecodeResponse"
 	result, err := decodeGetCoordinationGrantResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// GetCurrentMember invokes getCurrentMember operation.
+//
+// Describe the signed-in member.
+//
+// GET /auth/me
+func (c *Client) GetCurrentMember(ctx context.Context) (GetCurrentMemberRes, error) {
+	res, err := c.sendGetCurrentMember(ctx)
+	return res, err
+}
+
+func (c *Client) sendGetCurrentMember(ctx context.Context) (res GetCurrentMemberRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getCurrentMember"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/auth/me"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetCurrentMemberOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/auth/me"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, GetCurrentMemberOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeGetCurrentMemberResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -9940,6 +10425,119 @@ func (c *Client) sendListSecrets(ctx context.Context, params ListSecretsParams) 
 	return result, nil
 }
 
+// ListSessions invokes listSessions operation.
+//
+// List the signed-in member's browser sessions.
+//
+// GET /auth/sessions
+func (c *Client) ListSessions(ctx context.Context) (ListSessionsRes, error) {
+	res, err := c.sendListSessions(ctx)
+	return res, err
+}
+
+func (c *Client) sendListSessions(ctx context.Context) (res ListSessionsRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("listSessions"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/auth/sessions"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, ListSessionsOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/auth/sessions"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, ListSessionsOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeListSessionsResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // ListThreadBlocks invokes listThreadBlocks operation.
 //
 // This is an explicit decryption boundary. Deltas are persisted as delta events; a final assistant
@@ -12621,6 +13219,138 @@ func (c *Client) sendRevokeCoordinationGrant(ctx context.Context, request *Revok
 	return result, nil
 }
 
+// RevokeSession invokes revokeSession operation.
+//
+// Revoke one of the signed-in member's sessions.
+//
+// POST /auth/sessions/{sessionId}/revoke
+func (c *Client) RevokeSession(ctx context.Context, params RevokeSessionParams) (RevokeSessionRes, error) {
+	res, err := c.sendRevokeSession(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendRevokeSession(ctx context.Context, params RevokeSessionParams) (res RevokeSessionRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("revokeSession"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/auth/sessions/{sessionId}/revoke"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, RevokeSessionOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/auth/sessions/"
+	{
+		// Encode "sessionId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "sessionId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.SessionId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/revoke"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, RevokeSessionOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeRevokeSessionResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // RewindCapsule invokes rewindCapsule operation.
 //
 // Create a non-destructive descendant from an earlier Moment.
@@ -13525,6 +14255,119 @@ func (c *Client) sendSetThreadModel(ctx context.Context, request *ThreadModelReq
 	return result, nil
 }
 
+// SignOut invokes signOut operation.
+//
+// End the current browser session.
+//
+// POST /auth/sign-out
+func (c *Client) SignOut(ctx context.Context) (SignOutRes, error) {
+	res, err := c.sendSignOut(ctx)
+	return res, err
+}
+
+func (c *Client) sendSignOut(ctx context.Context) (res SignOutRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("signOut"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/auth/sign-out"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, SignOutOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/auth/sign-out"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, SignOutOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeSignOutResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // StartChatGPTSignIn invokes startChatGPTSignIn operation.
 //
 // Starts Sign in with ChatGPT for a new connection, or reauthorizes an existing one. The daemon keeps
@@ -13636,6 +14479,87 @@ func (c *Client) sendStartChatGPTSignIn(ctx context.Context, request *ChatGPTSig
 
 	stage = "DecodeResponse"
 	result, err := decodeStartChatGPTSignInResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// StartOidcSignIn invokes startOidcSignIn operation.
+//
+// Starts an authorization code sign-in with PKCE. State, nonce, and the PKCE verifier stay in daemon
+// memory and are single-use. Before the installation is claimed, this sign-in can only claim it.
+//
+// GET /auth/oidc/start
+func (c *Client) StartOidcSignIn(ctx context.Context) (*StartOidcSignInFound, error) {
+	res, err := c.sendStartOidcSignIn(ctx)
+	return res, err
+}
+
+func (c *Client) sendStartOidcSignIn(ctx context.Context) (res *StartOidcSignInFound, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("startOidcSignIn"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/auth/oidc/start"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, StartOidcSignInOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/auth/oidc/start"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeStartOidcSignInResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}

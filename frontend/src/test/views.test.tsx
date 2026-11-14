@@ -97,6 +97,7 @@ afterEach(() => {
 
 describe("Browser authentication", () => {
   it("exchanges and clears the token without browser storage", async () => {
+    vi.spyOn(api, "authenticationMode").mockResolvedValue({ mode: "single_user", signIn: false, claimable: false });
     const storage = vi.spyOn(Storage.prototype, "setItem");
     const authenticate = vi
       .spyOn(api, "authenticateBrowser")
@@ -108,6 +109,18 @@ describe("Browser authentication", () => {
     await waitFor(() => expect(authenticate).toHaveBeenCalledWith("installation-secret"));
     expect(input).toHaveValue("");
     expect(storage).not.toHaveBeenCalled();
+  });
+});
+
+describe("Team mode sign-in", () => {
+  it("offers identity provider sign-in instead of the installation token", async () => {
+    vi.spyOn(api, "authenticationMode").mockResolvedValue({ mode: "team", signIn: true, claimable: false });
+    const authenticate = vi.spyOn(api, "authenticateBrowser");
+    wrapper(<AuthenticationState />);
+    const link = await screen.findByRole("link", { name: "Sign in" });
+    expect(link).toHaveAttribute("href", "/auth/oidc/start");
+    expect(screen.queryByLabelText("Installation token")).toBeNull();
+    expect(authenticate).not.toHaveBeenCalled();
   });
 });
 

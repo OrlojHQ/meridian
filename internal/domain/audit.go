@@ -57,10 +57,50 @@ const (
 	UserAdmin  UserRole = "admin"
 )
 
-// User is a member of the installation. Display fields are not here: they
-// never authorize anything.
+// User is a member of the installation. A member is identified by
+// (Issuer, Subject); DisplayName and Email are refreshed at each sign-in
+// for display and never authorize anything (ADR 0046).
 type User struct {
-	ID         UserID
-	Role       UserRole
-	DisabledAt time.Time
+	ID          UserID
+	Issuer      string
+	Subject     string
+	DisplayName string
+	Email       string
+	Role        UserRole
+	DisabledAt  time.Time
+	CreatedAt   time.Time
 }
+
+// InstallationMode is single-user until the installation is claimed.
+type InstallationMode string
+
+const (
+	SingleUserMode InstallationMode = "single_user"
+	TeamMode       InstallationMode = "team"
+)
+
+// Installation is the installation's one identity row.
+type Installation struct {
+	Mode       InstallationMode
+	OIDCIssuer string
+	ClaimedAt  time.Time
+}
+
+// UserSession is a browser session. Only the digest of its token is kept.
+type UserSession struct {
+	ID          string
+	TokenDigest [32]byte
+	UserID      UserID
+	CreatedAt   time.Time
+	LastUsedAt  time.Time
+	ExpiresAt   time.Time
+	RevokedAt   time.Time
+}
+
+const (
+	AuditSignIn            AuditAction = "auth.sign_in"
+	AuditSignOut           AuditAction = "auth.sign_out"
+	AuditSessionRevoke     AuditAction = "session.revoke"
+	AuditInstallationClaim AuditAction = "installation.claim"
+	AuditBreakGlassUse     AuditAction = "break_glass.use"
+)

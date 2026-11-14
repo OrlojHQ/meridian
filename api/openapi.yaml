@@ -2360,6 +2360,160 @@ paths:
         "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/Unprocessable" }
         default: { $ref: "#/components/responses/DefaultError" }
+  /auth/mode:
+    get:
+      operationId: getAuthenticationMode
+      summary: Report how this installation signs people in
+      description: >-
+        Single-user mode accepts the installation token and the loopback
+        browser session. Team mode (ADR 0046) signs members in through the
+        configured OIDC issuer; the installation token is then break-glass
+        administration only.
+      security: []
+      tags: [authentication]
+      responses:
+        "200":
+          description: Authentication mode
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthenticationMode"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /auth/oidc/start:
+    get:
+      operationId: startOidcSignIn
+      summary: Redirect the browser to the OIDC issuer to sign in
+      description: >-
+        Starts an authorization code sign-in with PKCE. State, nonce, and the
+        PKCE verifier stay in daemon memory and are single-use. Before the
+        installation is claimed, this sign-in can only claim it.
+      security: []
+      tags: [authentication]
+      responses:
+        "302":
+          description: Redirect to the OIDC issuer
+          headers:
+            Location:
+              schema:
+                type: string
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /auth/oidc/callback:
+    get:
+      operationId: completeOidcSignIn
+      summary: OIDC redirect target; completes a sign-in
+      description: >-
+        Authorized by the single-use state. In team mode it sets an HttpOnly
+        SameSite=Strict session cookie. Before the claim it sets a short-lived
+        claim cookie instead. It answers with a redirect to the web UI, or an
+        HTML page that names no account.
+      security: []
+      tags: [authentication]
+      parameters:
+        - name: state
+          in: query
+          schema:
+            type: string
+        - name: code
+          in: query
+          schema:
+            type: string
+      responses:
+        "303":
+          description: Signed in; redirect to the web UI
+        "400":
+          description: The sign-in failed or is not allowed
+          content:
+            text/html:
+              schema:
+                type: string
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /auth/claim:
+    post:
+      operationId: claimInstallation
+      summary: Claim the installation for the signed-in OIDC identity and turn on team mode
+      description: >-
+        Needs both the installation token in the Authorization header and the
+        claim cookie from an OIDC sign-in in the same browser. Binds that
+        identity to the bootstrap owner, turns on team mode, and signs the
+        browser in. It can happen once.
+      tags: [authentication]
+      responses:
+        "204":
+          description: Installation claimed; the browser is signed in
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /auth/me:
+    get:
+      operationId: getCurrentMember
+      summary: Describe the signed-in member
+      tags: [authentication]
+      responses:
+        "200":
+          description: The signed-in member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Member"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /auth/sign-out:
+    post:
+      operationId: signOut
+      summary: End the current browser session
+      tags: [authentication]
+      responses:
+        "204":
+          description: Signed out
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /auth/sessions:
+    get:
+      operationId: listSessions
+      summary: List the signed-in member's browser sessions
+      tags: [authentication]
+      responses:
+        "200":
+          description: Sessions, newest first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /auth/sessions/{sessionId}/revoke:
+    post:
+      operationId: revokeSession
+      summary: Revoke one of the signed-in member's sessions
+      tags: [authentication]
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+            maxLength: 128
+      responses:
+        "204":
+          description: Session revoked
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/DefaultError"
   /auth/browser-session:
     post:
       operationId: createBrowserSession
@@ -3247,6 +3401,64 @@ components:
           type: object
           additionalProperties: true
           description: Bounded structured metadata; never prompt text, PTY bytes, full diffs, setup output, or secrets.
+    AuthenticationMode:
+      type: object
+      required: [mode, signIn, claimable]
+      properties:
+        mode:
+          type: string
+          enum: [single_user, team]
+        signIn:
+          type: boolean
+          description: An OIDC issuer is configured.
+        claimable:
+          type: boolean
+          description: The installation can still be claimed for team mode.
+    Member:
+      type: object
+      required: [mode, id, role]
+      properties:
+        mode:
+          type: string
+          enum: [single_user, team]
+        id:
+          type: string
+        role:
+          type: string
+          enum: [member, admin]
+        displayName:
+          type: string
+          description: Display only; refreshed at sign-in.
+        email:
+          type: string
+          description: Display only; refreshed at sign-in.
+    Session:
+      type: object
+      required: [id, createdAt, lastUsedAt, expiresAt, revoked, current]
+      properties:
+        id:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        lastUsedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        revoked:
+          type: boolean
+        current:
+          type: boolean
+    SessionPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Session"
     AuditRecord:
       type: object
       required: [sequence, recordedAt, principal, action, objectType, objectId, result]

@@ -1,4 +1,5 @@
 import { HarnessSetups } from "./components/HarnessSetups";
+import { Account } from "./components/Account";
 import {
   useMutation,
   useQuery,
@@ -93,6 +94,7 @@ function ErrorState({ error }: { error: unknown }) {
 export function AuthenticationState() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const mode = useQuery(queries.authenticationMode());
   const hostname = window.location.hostname;
   const safeOrigin =
     window.location.protocol === "https:" ||
@@ -108,6 +110,19 @@ export function AuthenticationState() {
           Remote browser authentication is available only over HTTPS. Use a
           loopback port-forward or configure an operator-controlled TLS proxy.
         </p>
+      </section>
+    );
+  }
+  // In team mode each member signs in with the identity provider; the
+  // installation token no longer opens a browser session (ADR 0046).
+  if (mode.data?.mode === "team") {
+    return (
+      <section className="error-state" role="alert">
+        <h2>Sign in</h2>
+        <p>Sign in with your organization's identity provider to use Meridian.</p>
+        <a className="button" href="/auth/oidc/start">
+          Sign in
+        </a>
       </section>
     );
   }
@@ -1269,6 +1284,7 @@ export function App() {
       <Route path="/ui" element={<AppShell />}>
         <Route index element={<Home />} />
         <Route path="settings/harnesses" element={<HarnessSetups />} />
+        <Route path="settings/account" element={<Account />} />
         <Route path="capsules/:capsuleId" element={<CapsuleDetail />} />
         <Route path="capsules/:capsuleId/diff" element={<DiffPage />} />
         <Route path="projects/:projectId" element={<ProjectSettings />} />

@@ -42,6 +42,7 @@ type Server struct {
 	browserToken  *apiauth.Token
 	browserValue  string
 	harnessImages []domain.HarnessPack
+	identity      *app.Identity
 }
 
 const browserSessionCookie = "meridian_session"
@@ -110,7 +111,11 @@ func (s *Server) serveHTTP(writer http.ResponseWriter, request *http.Request) {
 	}
 	if request.URL.Path == "/" || request.URL.Path == "/ui" ||
 		request.URL.Path == "/ui/" || strings.HasPrefix(request.URL.Path, "/ui/") {
-		s.bootstrapLoopbackBrowser(writer, request)
+		// In team mode a page load mints nothing: any local process on a
+		// shared server could otherwise become the owner (ADR 0046).
+		if !s.teamMode() {
+			s.bootstrapLoopbackBrowser(writer, request)
+		}
 		s.ui.ServeHTTP(writer, request)
 		return
 	}
@@ -118,18 +123,33 @@ func (s *Server) serveHTTP(writer http.ResponseWriter, request *http.Request) {
 	// principal that minted the ticket, and the Claude callback as the one
 	// that began the sign-in.
 	if !authExempt(request) {
-		caller, browser, authenticated := s.authenticate(request)
+		result, authenticated := s.authenticate(request)
 		if !authenticated {
 			writeUnauthorized(writer)
 			return
 		}
-		if browser && !safeMethod(request.Method) && !sameOrigin(request) {
+		if result.browser && !safeMethod(request.Method) && !sameOrigin(request) {
 			writeJSON(writer, http.StatusForbidden, errorEnvelope{
 				Error: apiError{Code: "forbidden", Message: "same-origin request required"},
 			})
 			return
 		}
-		request = request.WithContext(principal.With(request.Context(), caller))
+		// In team mode the installation bearer is break-glass: it reaches
+		// administration only, and every use is audited (ADR 0046).
+		if breakGlass(result.caller) {
+			if !breakGlassRoute(request) {
+				writeJSON(writer, http.StatusForbidden, errorEnvelope{
+					Error: apiError{Code: "forbidden", Message: "in team mode the installation token is for break-glass administration only; sign in instead"},
+				})
+				return
+			}
+			s.identity.RecordBreakGlass(request.Context(), request.Method+" "+request.URL.Path)
+		}
+		ctx := principal.With(request.Context(), result.caller)
+		if result.session != "" {
+			ctx = context.WithValue(ctx, sessionKey{}, result.session)
+		}
+		request = request.WithContext(ctx)
 	}
 	s.mux.ServeHTTP(writer, request)
 }
@@ -174,6 +194,14 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /healthz", s.health)
 	s.mux.HandleFunc("GET /readyz", s.readiness)
 	s.mux.HandleFunc("POST /auth/browser-session", s.createBrowserSession)
+	s.mux.HandleFunc("GET /auth/mode", s.authenticationMode)
+	s.mux.HandleFunc("GET /auth/oidc/start", s.withIdentity(s.startOIDCSignIn))
+	s.mux.HandleFunc("GET /auth/oidc/callback", s.withIdentity(s.completeOIDCSignIn))
+	s.mux.HandleFunc("POST /auth/claim", s.withIdentity(s.claimInstallation))
+	s.mux.HandleFunc("GET /auth/me", s.withIdentity(s.currentMember))
+	s.mux.HandleFunc("POST /auth/sign-out", s.withIdentity(s.signOut))
+	s.mux.HandleFunc("GET /auth/sessions", s.withIdentity(s.listSessions))
+	s.mux.HandleFunc("POST /auth/sessions/{sessionId}/revoke", s.withIdentity(s.revokeSession))
 	s.mux.HandleFunc("GET /capabilities", s.getCapabilities)
 	s.mux.HandleFunc("POST /projects", s.createProject)
 	s.mux.HandleFunc("GET /projects", s.listProjects)
@@ -268,39 +296,61 @@ func (s *Server) initializeBrowserSession() {
 	s.browserValue = value
 }
 
-// authenticate checks the installation bearer or the browser cookie minted
-// from it. This is single-user mode (ADR 0046): either one authenticates as
-// the bootstrap owner.
-func (s *Server) authenticate(request *http.Request) (caller principal.Principal, browser, authenticated bool) {
+type authentication struct {
+	caller  principal.Principal
+	browser bool
+	session string
+}
+
+// authenticate resolves a request's credential (ADR 0046).
+//
+// In single-user mode the installation bearer and the browser cookie
+// minted from it authenticate as the bootstrap owner. In team mode a
+// member's session cookie authenticates as that member, the installation
+// bearer as the break-glass admin, and the installation cookie not at all.
+func (s *Server) authenticate(request *http.Request) (authentication, bool) {
+	team := s.teamMode()
 	values := request.Header.Values("Authorization")
 	if len(values) > 0 {
 		if len(values) != 1 {
-			return principal.Principal{}, false, false
+			return authentication{}, false
 		}
 		scheme, value, ok := strings.Cut(values[0], " ")
 		if !ok || !strings.EqualFold(scheme, "Bearer") ||
 			value == "" || strings.ContainsAny(value, " \t\r\n") ||
 			!s.apiToken.Matches(value) {
-			return principal.Principal{}, false, false
+			return authentication{}, false
 		}
-		return principal.Owner(), false, true
-	}
-	var cookieValue string
-	for _, cookie := range request.Cookies() {
-		if cookie.Name == browserSessionCookie {
-			if cookieValue != "" {
-				return principal.Principal{}, false, false
-			}
-			cookieValue = cookie.Value
+		if team {
+			return authentication{caller: principal.BreakGlass()}, true
 		}
+		return authentication{caller: principal.Owner()}, true
 	}
-	if cookieValue == "" || !s.browserToken.Matches(cookieValue) {
-		return principal.Principal{}, true, false
+	if team {
+		token, ok := singleCookie(request, userCookieName(request))
+		if !ok {
+			return authentication{browser: true}, false
+		}
+		caller, session, err := s.identity.Session(request.Context(), token)
+		if err != nil {
+			return authentication{browser: true}, false
+		}
+		return authentication{caller: caller, browser: true, session: session}, true
 	}
-	return principal.Owner(), true, true
+	cookieValue, ok := singleCookie(request, browserSessionCookie)
+	if !ok || !s.browserToken.Matches(cookieValue) {
+		return authentication{browser: true}, false
+	}
+	return authentication{caller: principal.Owner(), browser: true}, true
 }
 
 func (s *Server) createBrowserSession(writer http.ResponseWriter, request *http.Request) {
+	if s.teamMode() {
+		writeJSON(writer, http.StatusForbidden, errorEnvelope{
+			Error: apiError{Code: "forbidden", Message: "in team mode, sign in instead"},
+		})
+		return
+	}
 	s.setBrowserCookie(writer, request)
 	writer.Header().Set("Cache-Control", "no-store")
 	writer.WriteHeader(http.StatusNoContent)
@@ -344,7 +394,9 @@ func (s *Server) setBrowserCookie(writer http.ResponseWriter, request *http.Requ
 func authExempt(request *http.Request) bool {
 	if request.Method == http.MethodGet &&
 		(request.URL.Path == "/healthz" || request.URL.Path == "/readyz" ||
-			request.URL.Path == "/callback" || request.URL.Path == "/claude-login/finished") {
+			request.URL.Path == "/callback" || request.URL.Path == "/claude-login/finished" ||
+			request.URL.Path == "/auth/mode" || request.URL.Path == "/auth/oidc/start" ||
+			request.URL.Path == "/auth/oidc/callback") {
 		return true
 	}
 	if request.Method != http.MethodGet {
