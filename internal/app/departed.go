@@ -65,7 +65,9 @@ func listOwnedSecrets(ctx context.Context, reader ports.Reader, owner domain.Use
 // TransferDepartedMember moves a departed member's Projects and everything
 // under them, their secrets, and their harness setups to another member, in
 // one transaction. Secret envelopes bind their owner, so each is re-wrapped
-// for the new owner at the same resource version. Provider connections do
+// for the new owner at the same resource version; a secret that does not
+// open under the installation key moves unchanged and stays unreadable.
+// Provider connections do
 // not move: a personal login stays with its account holder (ADR 0038), so
 // Project grants of those connections are dropped and the new owner grants
 // their own. The target must not already hold a secret of the same name.
@@ -105,16 +107,23 @@ func (s *Service) TransferDepartedMember(ctx context.Context, from, to domain.Us
 		if len(moving) > 0 && s.secretKey == nil {
 			return domain.ErrUnsupported
 		}
+		// A secret that does not open under the installation key was already
+		// unusable, as at startup re-wrap. It moves with the member's work
+		// unchanged and stays unreadable, rather than blocking the transfer.
 		payloads := make([]secrets.Payload, len(moving))
+		readable := make([]bool, len(moving))
 		for index, secret := range moving {
-			if payloads[index], err = s.secretKey.Open(secret); err != nil {
-				return fmt.Errorf("open a departed member's secret: %w", err)
+			if payloads[index], err = s.secretKey.Open(secret); err == nil {
+				readable[index] = true
 			}
 		}
 		if err := tx.TransferOwnership(system, from, to); err != nil {
 			return err
 		}
 		for index, secret := range moving {
+			if !readable[index] {
+				continue
+			}
 			next := secret
 			next.OwnerUserID = to
 			if next.Nonce, next.Ciphertext, err = s.secretKey.Seal(next, payloads[index]); err != nil {
