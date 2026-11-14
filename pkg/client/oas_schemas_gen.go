@@ -274,6 +274,255 @@ func (s *AttachTicket) SetWebSocketPath(val string) {
 
 func (*AttachTicket) createRunAttachTicketRes() {}
 
+// Ref: #/components/schemas/AuditRecord
+type AuditRecord struct {
+	Sequence   int64                `json:"sequence"`
+	RecordedAt time.Time            `json:"recordedAt"`
+	Principal  AuditRecordPrincipal `json:"principal"`
+	// The acting user, or the owner a Capsule acted for. Absent for the system and break-glass principals.
+	UserId OptString `json:"userId"`
+	// The acting Capsule, for a Capsule principal.
+	CapsuleId OptString `json:"capsuleId"`
+	// A fixed action name, such as secret.put, provider_connection.sign_in, delivery.approve,
+	// coordination_request.approve, coordination_grant.revoke, or access.cross_owner.
+	Action     string            `json:"action"`
+	ObjectType string            `json:"objectType"`
+	ObjectId   string            `json:"objectId"`
+	Result     AuditRecordResult `json:"result"`
+}
+
+// GetSequence returns the value of Sequence.
+func (s *AuditRecord) GetSequence() int64 {
+	return s.Sequence
+}
+
+// GetRecordedAt returns the value of RecordedAt.
+func (s *AuditRecord) GetRecordedAt() time.Time {
+	return s.RecordedAt
+}
+
+// GetPrincipal returns the value of Principal.
+func (s *AuditRecord) GetPrincipal() AuditRecordPrincipal {
+	return s.Principal
+}
+
+// GetUserId returns the value of UserId.
+func (s *AuditRecord) GetUserId() OptString {
+	return s.UserId
+}
+
+// GetCapsuleId returns the value of CapsuleId.
+func (s *AuditRecord) GetCapsuleId() OptString {
+	return s.CapsuleId
+}
+
+// GetAction returns the value of Action.
+func (s *AuditRecord) GetAction() string {
+	return s.Action
+}
+
+// GetObjectType returns the value of ObjectType.
+func (s *AuditRecord) GetObjectType() string {
+	return s.ObjectType
+}
+
+// GetObjectId returns the value of ObjectId.
+func (s *AuditRecord) GetObjectId() string {
+	return s.ObjectId
+}
+
+// GetResult returns the value of Result.
+func (s *AuditRecord) GetResult() AuditRecordResult {
+	return s.Result
+}
+
+// SetSequence sets the value of Sequence.
+func (s *AuditRecord) SetSequence(val int64) {
+	s.Sequence = val
+}
+
+// SetRecordedAt sets the value of RecordedAt.
+func (s *AuditRecord) SetRecordedAt(val time.Time) {
+	s.RecordedAt = val
+}
+
+// SetPrincipal sets the value of Principal.
+func (s *AuditRecord) SetPrincipal(val AuditRecordPrincipal) {
+	s.Principal = val
+}
+
+// SetUserId sets the value of UserId.
+func (s *AuditRecord) SetUserId(val OptString) {
+	s.UserId = val
+}
+
+// SetCapsuleId sets the value of CapsuleId.
+func (s *AuditRecord) SetCapsuleId(val OptString) {
+	s.CapsuleId = val
+}
+
+// SetAction sets the value of Action.
+func (s *AuditRecord) SetAction(val string) {
+	s.Action = val
+}
+
+// SetObjectType sets the value of ObjectType.
+func (s *AuditRecord) SetObjectType(val string) {
+	s.ObjectType = val
+}
+
+// SetObjectId sets the value of ObjectId.
+func (s *AuditRecord) SetObjectId(val string) {
+	s.ObjectId = val
+}
+
+// SetResult sets the value of Result.
+func (s *AuditRecord) SetResult(val AuditRecordResult) {
+	s.Result = val
+}
+
+// Ref: #/components/schemas/AuditRecordPage
+type AuditRecordPage struct {
+	Items      []AuditRecord `json:"items"`
+	NextCursor int64         `json:"nextCursor"`
+	More       bool          `json:"more"`
+}
+
+// GetItems returns the value of Items.
+func (s *AuditRecordPage) GetItems() []AuditRecord {
+	return s.Items
+}
+
+// GetNextCursor returns the value of NextCursor.
+func (s *AuditRecordPage) GetNextCursor() int64 {
+	return s.NextCursor
+}
+
+// GetMore returns the value of More.
+func (s *AuditRecordPage) GetMore() bool {
+	return s.More
+}
+
+// SetItems sets the value of Items.
+func (s *AuditRecordPage) SetItems(val []AuditRecord) {
+	s.Items = val
+}
+
+// SetNextCursor sets the value of NextCursor.
+func (s *AuditRecordPage) SetNextCursor(val int64) {
+	s.NextCursor = val
+}
+
+// SetMore sets the value of More.
+func (s *AuditRecordPage) SetMore(val bool) {
+	s.More = val
+}
+
+func (*AuditRecordPage) listAuditRecordsRes() {}
+
+type AuditRecordPrincipal string
+
+const (
+	AuditRecordPrincipalUser       AuditRecordPrincipal = "user"
+	AuditRecordPrincipalBreakGlass AuditRecordPrincipal = "break_glass"
+	AuditRecordPrincipalSystem     AuditRecordPrincipal = "system"
+	AuditRecordPrincipalCapsule    AuditRecordPrincipal = "capsule"
+)
+
+// AllValues returns all AuditRecordPrincipal values.
+func (AuditRecordPrincipal) AllValues() []AuditRecordPrincipal {
+	return []AuditRecordPrincipal{
+		AuditRecordPrincipalUser,
+		AuditRecordPrincipalBreakGlass,
+		AuditRecordPrincipalSystem,
+		AuditRecordPrincipalCapsule,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s AuditRecordPrincipal) MarshalText() ([]byte, error) {
+	switch s {
+	case AuditRecordPrincipalUser:
+		return []byte(s), nil
+	case AuditRecordPrincipalBreakGlass:
+		return []byte(s), nil
+	case AuditRecordPrincipalSystem:
+		return []byte(s), nil
+	case AuditRecordPrincipalCapsule:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *AuditRecordPrincipal) UnmarshalText(data []byte) error {
+	switch AuditRecordPrincipal(data) {
+	case AuditRecordPrincipalUser:
+		*s = AuditRecordPrincipalUser
+		return nil
+	case AuditRecordPrincipalBreakGlass:
+		*s = AuditRecordPrincipalBreakGlass
+		return nil
+	case AuditRecordPrincipalSystem:
+		*s = AuditRecordPrincipalSystem
+		return nil
+	case AuditRecordPrincipalCapsule:
+		*s = AuditRecordPrincipalCapsule
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+type AuditRecordResult string
+
+const (
+	AuditRecordResultAllowed AuditRecordResult = "allowed"
+	AuditRecordResultDenied  AuditRecordResult = "denied"
+	AuditRecordResultFailed  AuditRecordResult = "failed"
+)
+
+// AllValues returns all AuditRecordResult values.
+func (AuditRecordResult) AllValues() []AuditRecordResult {
+	return []AuditRecordResult{
+		AuditRecordResultAllowed,
+		AuditRecordResultDenied,
+		AuditRecordResultFailed,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s AuditRecordResult) MarshalText() ([]byte, error) {
+	switch s {
+	case AuditRecordResultAllowed:
+		return []byte(s), nil
+	case AuditRecordResultDenied:
+		return []byte(s), nil
+	case AuditRecordResultFailed:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *AuditRecordResult) UnmarshalText(data []byte) error {
+	switch AuditRecordResult(data) {
+	case AuditRecordResultAllowed:
+		*s = AuditRecordResultAllowed
+		return nil
+	case AuditRecordResultDenied:
+		*s = AuditRecordResultDenied
+		return nil
+	case AuditRecordResultFailed:
+		*s = AuditRecordResultFailed
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
 type BearerAuth struct {
 	Token string
 	Roles []string
@@ -4547,6 +4796,7 @@ func (*ErrorEnvelope) getRunRes()                   {}
 func (*ErrorEnvelope) getThreadLinkRes()            {}
 func (*ErrorEnvelope) getThreadRes()                {}
 func (*ErrorEnvelope) getTimelineRes()              {}
+func (*ErrorEnvelope) listAuditRecordsRes()         {}
 func (*ErrorEnvelope) listCapsuleDeliveriesRes()    {}
 func (*ErrorEnvelope) listCoordinationRequestsRes() {}
 func (*ErrorEnvelope) listMomentsRes()              {}

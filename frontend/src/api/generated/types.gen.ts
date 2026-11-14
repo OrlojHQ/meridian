@@ -426,6 +426,33 @@ export type RunEvent = {
     };
 };
 
+export type AuditRecord = {
+    sequence: number;
+    recordedAt: string;
+    principal: 'user' | 'break_glass' | 'system' | 'capsule';
+    /**
+     * The acting user, or the owner a Capsule acted for. Absent for the system and break-glass principals.
+     */
+    userId?: string;
+    /**
+     * The acting Capsule, for a Capsule principal.
+     */
+    capsuleId?: string;
+    /**
+     * A fixed action name, such as secret.put, provider_connection.sign_in, delivery.approve, coordination_request.approve, coordination_grant.revoke, or access.cross_owner.
+     */
+    action: string;
+    objectType: string;
+    objectId: string;
+    result: 'allowed' | 'denied' | 'failed';
+};
+
+export type AuditRecordPage = {
+    items: Array<AuditRecord>;
+    nextCursor: number;
+    more: boolean;
+};
+
 export type RunEventPage = {
     items: Array<RunEvent>;
     nextCursor: number;
@@ -2225,6 +2252,38 @@ export type GetCapabilitiesResponses = {
 };
 
 export type GetCapabilitiesResponse = GetCapabilitiesResponses[keyof GetCapabilitiesResponses];
+
+export type ListAuditRecordsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        after?: number;
+        limit?: number;
+    };
+    url: '/audit-records';
+};
+
+export type ListAuditRecordsErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ListAuditRecordsError = ListAuditRecordsErrors[keyof ListAuditRecordsErrors];
+
+export type ListAuditRecordsResponses = {
+    /**
+     * Audit records, oldest first
+     */
+    200: AuditRecordPage;
+};
+
+export type ListAuditRecordsResponse = ListAuditRecordsResponses[keyof ListAuditRecordsResponses];
 
 export type ListSecretsData = {
     body?: never;

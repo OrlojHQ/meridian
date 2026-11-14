@@ -126,8 +126,12 @@ func (s *Service) UpdateCoordinationGrant(
 			return err
 		}
 		grant = updated
+		if err := s.audit(ctx, tx, domain.AuditGrantUpdate, "coordination_grant", string(id)); err != nil {
+			return err
+		}
 		return putReplay(ctx, tx, scope, key, want, now)
 	})
+	s.auditFailure(ctx, domain.AuditGrantUpdate, "coordination_grant", string(id), err)
 	if err != nil {
 		return domain.CoordinationGrant{}, err
 	}
@@ -211,6 +215,14 @@ func (s *Service) DenyCoordinationRequest(
 	}
 	request, _, err := s.decideCoordinationRequest(ctx, id, expected, key, false)
 	return request, err
+}
+
+// decisionAudit is the audit action a spawn decision records.
+func decisionAudit(approve bool) domain.AuditAction {
+	if approve {
+		return domain.AuditSpawnApprove
+	}
+	return domain.AuditSpawnDeny
 }
 
 type requestDecision struct {
@@ -301,8 +313,12 @@ func (s *Service) decideCoordinationRequest(
 		if err != nil {
 			return err
 		}
+		if err := s.audit(ctx, tx, decisionAudit(approve), "coordination_request", string(id)); err != nil {
+			return err
+		}
 		return putReplay(ctx, tx, scope, key, want, now)
 	})
+	s.auditFailure(ctx, decisionAudit(approve), "coordination_request", string(id), err)
 	if err != nil {
 		return domain.CoordinationRequest{}, domain.ThreadLink{}, err
 	}

@@ -89,6 +89,11 @@ type Reader interface {
 	GetCoordinationRequest(context.Context, domain.CapsuleID, string) (domain.CoordinationRequest, error)
 	GetCoordinationRequestByID(context.Context, domain.CoordinationRequestID) (domain.CoordinationRequest, error)
 	ListCoordinationRequests(context.Context, domain.CoordinationRequestState) ([]domain.CoordinationRequest, error)
+	GetUser(context.Context, domain.UserID) (domain.User, error)
+	// ListAuditRecords lists records after a sequence, oldest first. A
+	// non-empty user lists only that user's records; the empty user lists
+	// every record.
+	ListAuditRecords(ctx context.Context, user domain.UserID, after int64, limit int) ([]domain.AuditRecord, bool, error)
 }
 
 type Transaction interface {
@@ -152,6 +157,9 @@ type Transaction interface {
 	PromoteCapsule(context.Context, domain.Capsule, domain.ResourceVersion) error
 	InsertCoordinationRequest(context.Context, domain.CoordinationRequest) error
 	UpdateCoordinationRequest(context.Context, domain.CoordinationRequest, domain.ResourceVersion) error
+	AppendAuditRecord(context.Context, domain.AuditRecord) error
+	// PruneAuditRecords deletes records older than before, for retention.
+	PruneAuditRecords(ctx context.Context, before time.Time) (int, error)
 }
 
 type Store interface {

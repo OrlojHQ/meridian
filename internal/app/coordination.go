@@ -240,8 +240,12 @@ func (s *Service) RevokeCoordinationGrant(
 		if err != nil {
 			return err
 		}
+		if err := s.audit(ctx, tx, domain.AuditGrantRevoke, "coordination_grant", string(id)); err != nil {
+			return err
+		}
 		return putReplay(ctx, tx, scope, key, struct{}{}, s.clock.Now().UTC())
 	})
+	s.auditFailure(ctx, domain.AuditGrantRevoke, "coordination_grant", string(id), err)
 	if err != nil {
 		return domain.CoordinationGrant{}, err
 	}
