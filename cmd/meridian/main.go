@@ -56,7 +56,7 @@ func newRootCommand() *cobra.Command {
 		newMomentCommand(config), newTimelineCommand(config), newShardCommand(config),
 		newRewindCommand(config), newSealCommand(config), newTUICommand(config),
 		newAdminCommand(config), newGrantCommand(config), newApprovalsCommand(config), newBoardCommand(config),
-		newAuditCommand(config), newMemberCommand(config),
+		newAuditCommand(config), newMemberCommand(config), newLoginCommand(config),
 	)
 	return command
 }
@@ -938,9 +938,14 @@ func newSecuritySource(path string) (client.SecuritySource, error) {
 	return bearerSecuritySource{token: token}, nil
 }
 
+// defaultAPITokenFile is MERIDIAN_TOKEN_FILE, else the member token
+// meridian login saved, else the local daemon's installation token.
 func defaultAPITokenFile() string {
 	if path := os.Getenv("MERIDIAN_TOKEN_FILE"); path != "" {
 		return path
+	}
+	if member := defaultMemberTokenFile(); fileExists(member) {
+		return member
 	}
 	directory, err := os.UserConfigDir()
 	if err != nil {
@@ -1067,4 +1072,9 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func fileExists(path string) bool {
+	info, err := os.Lstat(path)
+	return err == nil && info.Mode().IsRegular()
 }

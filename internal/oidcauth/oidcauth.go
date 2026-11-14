@@ -180,11 +180,17 @@ func (r *RelyingParty) Complete(ctx context.Context, attempt Attempt, code strin
 	if !ok || raw == "" {
 		return Identity{}, errors.New("OIDC token response has no ID token")
 	}
+	return r.identity(ctx, provider, raw, attempt.Nonce)
+}
+
+// identity verifies an ID token's issuer, audience, signature, and expiry,
+// its nonce when the flow sent one, and the required group.
+func (r *RelyingParty) identity(ctx context.Context, provider *oidc.Provider, raw, nonce string) (Identity, error) {
 	verified, err := provider.Verifier(&oidc.Config{ClientID: r.config.ClientID}).Verify(ctx, raw)
 	if err != nil {
 		return Identity{}, fmt.Errorf("verify ID token: %w", err)
 	}
-	if verified.Nonce == "" || verified.Nonce != attempt.Nonce {
+	if nonce != "" && verified.Nonce != nonce {
 		return Identity{}, errors.New("ID token nonce does not match the sign-in")
 	}
 	var claims map[string]any

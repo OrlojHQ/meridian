@@ -34,8 +34,17 @@ meridian --json run list --capsule CAPSULE_ID
 scriptable commands.
 
 On a team mode installation (ADR 0046) the installation token is break-glass
-only. Use a personal access token instead: mint one under **Account** in the
-web UI, save it to a file only you can read, and pass it the same way:
+only. Sign in with `meridian login`:
+
+```console
+meridian --server https://meridian.example.com login
+```
+
+It prints a code to enter at your identity provider, then saves a personal
+access token under your user config directory, which later commands use when
+`MERIDIAN_TOKEN_FILE` is not set. If the identity provider has no device
+sign-in, mint a token under **Account** in the web UI, save it to a file only
+you can read, and pass it the same way:
 
 ```console
 meridian --server https://meridian.example.com --token-file ~/.config/meridian/token project list

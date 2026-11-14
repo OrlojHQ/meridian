@@ -1306,6 +1306,12 @@ Threats and required controls:
   They are shown once, stored as digests, expire, can be read-only, and are
   revoked when the user is disabled. They never appear in URLs, logs, or
   events.
+- **Device-code phishing.** `meridian login` uses the OAuth device grant: an
+  attacker can start one and persuade a member to approve the attacker's
+  code, receiving a token for that member (RFC 8628 §5.4). The member
+  approves at their own issuer, which names the client; the resulting token
+  is a normal personal access token, expiring, revocable, and audited, and
+  the poller's handle stays secret to the client that started the login.
 - **OIDC response forgery and identity confusion.** The daemon chooses the
   redirect URI. `state`, `nonce`, and the PKCE verifier are single-use and
   held in memory. Issuer, audience, signature, expiry, and nonce are

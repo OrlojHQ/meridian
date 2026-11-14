@@ -613,9 +613,12 @@ After the claim:
 - The installation token is break-glass only. It reads the audit log and is
   refused on everything else, and every use is audited. Loopback page loads no
   longer receive a session, and `POST /auth/browser-session` is refused.
-- The CLI and TUI act as a member through a personal access token. Mint one
-  under **Account** (it is shown once), save it to a file readable only by
-  you, and pass it with `--token-file` or `MERIDIAN_TOKEN_FILE`. Tokens start
+- The CLI and TUI act as a member through a personal access token. When the
+  issuer offers device sign-in, `meridian login --server <public-url>` shows a
+  code to approve at the issuer and saves a 90-day token (mode 0600) that
+  later commands use. Otherwise mint one under **Account** (it is shown
+  once), save it to a file readable only by you, and pass it with
+  `--token-file` or `MERIDIAN_TOKEN_FILE`. Tokens start
   with `mrd_pat_`, expire after 90 days by default (at most a year), can be
   read-only, and can be revoked under **Account**. A token cannot mint
   another; minting needs a signed-in browser.

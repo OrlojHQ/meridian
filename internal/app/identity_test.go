@@ -472,3 +472,103 @@ func TestAdminsManageMembershipWithoutReachingObjects(t *testing.T) {
 		t.Fatalf("membership audit = %v", actions)
 	}
 }
+
+// deviceIssuerParty adds the device grant to the fake issuer.
+type deviceIssuerParty struct {
+	*fakeIssuerParty
+	approved bool
+	polls    int
+}
+
+func (d *deviceIssuerParty) BeginDevice(context.Context) (oidcauth.DeviceAttempt, error) {
+	return oidcauth.DeviceAttempt{
+		DeviceCode: "device", UserCode: "ABCD-EFGH", VerificationURI: fakeIssuer + "/activate",
+		Interval: 5 * time.Second, Expires: time.Date(2026, 11, 14, 1, 0, 0, 0, time.UTC),
+	}, nil
+}
+
+func (d *deviceIssuerParty) PollDevice(context.Context, oidcauth.DeviceAttempt) (oidcauth.Identity, error) {
+	d.polls++
+	if d.deny {
+		return oidcauth.Identity{}, oidcauth.ErrDenied
+	}
+	if !d.approved {
+		return oidcauth.Identity{}, oidcauth.ErrDevicePending
+	}
+	identity := d.next
+	identity.Issuer = d.issuer
+	return identity, nil
+}
+
+func TestDeviceLoginMintsAMemberTokenOnce(t *testing.T) {
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	clock := &testClock{now: time.Date(2026, 11, 14, 0, 0, 0, 0, time.UTC)}
+	party := &deviceIssuerParty{fakeIssuerParty: &fakeIssuerParty{issuer: fakeIssuer}}
+	identity, err := app.NewIdentity(ctx, store, clock, &testIDs{}, party)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Device login is a team mode sign-in.
+	if _, err := identity.BeginDeviceLogin(ctx); !errors.Is(err, domain.ErrUnsupported) {
+		t.Fatalf("pre-claim device login = %v", err)
+	}
+	party.as("alice")
+	if _, err := identity.Claim(principal.With(ctx, principal.Owner()), signIn(t, identity).ClaimToken); err != nil {
+		t.Fatal(err)
+	}
+	login, err := identity.BeginDeviceLogin(ctx)
+	if err != nil || login.UserCode != "ABCD-EFGH" || login.Handle == "" {
+		t.Fatalf("device login = %+v, %v", login, err)
+	}
+	advance := func(by time.Duration) {
+		clock.mu.Lock()
+		clock.now = clock.now.Add(by)
+		clock.mu.Unlock()
+	}
+	// Polling faster than the interval never reaches the issuer.
+	if _, wait, err := identity.PollDeviceLogin(ctx, login.Handle); !errors.Is(err, app.ErrDevicePending) || wait != 5*time.Second || party.polls != 0 {
+		t.Fatalf("early poll = %v %v, %d issuer polls", wait, err, party.polls)
+	}
+	advance(6 * time.Second)
+	if _, _, err := identity.PollDeviceLogin(ctx, login.Handle); !errors.Is(err, app.ErrDevicePending) || party.polls != 1 {
+		t.Fatalf("pending poll = %v, %d issuer polls", err, party.polls)
+	}
+	if _, _, err := identity.PollDeviceLogin(ctx, "someone-elses-handle"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("unknown handle = %v", err)
+	}
+	party.as("bob")
+	party.approved = true
+	advance(6 * time.Second)
+	token, _, err := identity.PollDeviceLogin(ctx, login.Handle)
+	if err != nil || !strings.HasPrefix(token, app.TokenPrefix) {
+		t.Fatalf("approved poll = %q, %v", token, err)
+	}
+	caller, readOnly, err := identity.Token(ctx, token)
+	if err != nil || readOnly || caller.UserID() == principal.BootstrapOwner {
+		t.Fatalf("device token = %+v %v %v", caller, readOnly, err)
+	}
+	member, err := identity.Member(principal.With(ctx, caller))
+	if err != nil || member.Subject != "bob" || member.Role != domain.UserMember {
+		t.Fatalf("device member = %+v, %v", member, err)
+	}
+	// The handle is spent.
+	advance(6 * time.Second)
+	if _, _, err := identity.PollDeviceLogin(ctx, login.Handle); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("spent handle = %v", err)
+	}
+	// A refused login ends.
+	party.deny = true
+	refused, err := identity.BeginDeviceLogin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	advance(6 * time.Second)
+	if _, _, err := identity.PollDeviceLogin(ctx, refused.Handle); !errors.Is(err, app.ErrSignInDenied) {
+		t.Fatalf("refused login = %v", err)
+	}
+}
