@@ -7,8 +7,88 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-14
+
+### Upgrade notes
+
+- **Back up the data directory first.** Migrations 0023–0028 add per-user
+  ownership, audit records, team-mode sessions, personal access tokens, and
+  departed-member transfer. Every existing Project, Capsule, secret, provider
+  connection, and harness setup is backfilled to the bootstrap owner.
+- On first start, the daemon re-wraps secret, provider connection, and
+  harness setup envelopes so each one binds its owner. It logs how many it
+  re-wrapped, and counts and leaves alone any it cannot open. 0.8.0 cannot
+  open the re-wrapped envelopes, and there is no downgrade: rolling back
+  means restoring the backup.
+- Single-user installations behave as before. The only visible change is the
+  new Account page under Settings. Team mode stays off unless you configure an
+  OIDC issuer and claim the installation.
+- API additions: `/auth/*` (mode, OIDC sign-in, claim, sessions, sign-out,
+  device login, desktop sign-in handoff), personal access tokens,
+  `/members/*` membership administration, `/audit-records`, and break-glass
+  transfer, delete, and identity recovery for members. `pkg/client` is
+  regenerated.
+- The Helm chart gains `publicUrl`, `auditRetention`, and `oidc.*` values.
+  The OIDC client secret comes from an existing Kubernetes Secret, never from
+  values. Empty values keep single-user mode.
+- Keep `meridian` and `meridian-desktop` on the same release, as before.
+  Desktop installs on 0.8.0 show "Meridian 0.9.0 is available" in the sidebar
+  update card.
+
 ### Added
 
+- Team mode (ADR 0046). Several people share one installation, each signing
+  in through your OIDC identity provider, with their own Projects, Capsules,
+  secrets, provider logins, and harness setups that no one else can see. No
+  role can read another member's work. Configure it with `--oidc-issuer`,
+  `--oidc-client-id`, `--oidc-client-secret-file`, and `--public-url`, plus
+  `--oidc-required-group` and `--oidc-groups-claim` to restrict who may join.
+  Turn it on once, irreversibly, by signing in as the owner and confirming
+  with the installation token (#155–#162).
+- Sign-in hardening. The authorization code flow uses PKCE and a nonce, and
+  each sign-in is bound to the browser that started it, so a callback link
+  from someone else's sign-in cannot sign you in as them. Sessions end after
+  12 hours idle or 7 days (#160).
+- Credentials are bound to their owner. Secret, provider connection, and
+  harness setup envelopes include the owner in their authenticated data, so
+  ciphertext moved to another member fails to open (#158, #165).
+- Audit log. Sign-ins and sign-outs, the claim, secret and provider
+  connection changes, Project grants, Deliveries, coordination approvals,
+  token and membership changes, refused cross-owner access, and break-glass
+  actions are recorded without secret values. Read it with `meridian audit` or
+  `GET /audit-records`, and limit how long records are kept with
+  `--audit-retention` (#159).
+- Personal access tokens for the CLI and TUI. Create them on the Account page
+  with a name, an expiry of 30 days to a year, and an optional read-only
+  scope. They start with `mrd_pat_`, are shown once, and work with
+  `--token-file` and `MERIDIAN_TOKEN_FILE` (#161).
+- `meridian login` signs in to a team installation from the terminal with
+  the device grant and saves a personal access token (#164).
+- Membership administration for admins: `meridian member list`, `set-role`,
+  `disable`, `enable`, and `revoke-credentials`, and a Members section on the
+  Account page. Disabling a member signs them out everywhere, revokes their
+  tokens, and stops their Capsules' model traffic. The last enabled admin
+  cannot be demoted or disabled (#162, #168).
+- Departed members. With the installation token, `meridian member transfer`
+  moves a disabled member's work to another member, re-sealing their
+  secrets and setup revisions for the new owner, and
+  `meridian member delete-objects` deletes it. Provider logins never move.
+  A secret or setup revision that no longer opens moves unchanged rather
+  than blocking the transfer (#163, #165).
+- Bootstrap owner recovery. `meridian member rebind-identity` moves the
+  owner to a new identity-provider account using the installation token. It
+  revokes the owner's sessions, tokens, and personal Claude and ChatGPT
+  logins (#166).
+- The desktop app signs in to a team gateway through your system browser and
+  hands the session back to the app over a one-time loopback ticket
+  (ADR 0047) (#169).
+- The desktop app shows which gateway it is connected to in the window title
+  and the status bar, with the signed-in member in team mode. The picker and
+  the tray's Switch gateway menu list up to five recent gateways (ADR 0048)
+  (#170).
+- The web UI shows a Sign in screen, a status-bar Sign in link, and an
+  Account sign-in panel when a team-mode session has ended (#168).
+- Helm values for team-mode sign-in (#167).
 - Resize the Capsule tools panel by dragging its left edge, or by focusing
   the edge and using the arrow keys (Shift for bigger steps, Home and End for
   the narrowest and widest). Double-click the edge to return to the default
@@ -1081,7 +1161,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - Docker and Agent Sandbox are not claimed as hostile multi-tenant isolation
   boundaries; hardened runtime deployment and external review remain required.
 
-[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/OrlojHQ/meridian/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/OrlojHQ/meridian/compare/v0.7.2...v0.8.0
 [0.7.2]: https://github.com/OrlojHQ/meridian/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/OrlojHQ/meridian/compare/v0.6.0...v0.7.1
