@@ -8,15 +8,21 @@ const retry = (failureCount: number, error: Error) =>
     error.status === undefined ||
     error.status >= 500);
 
+// Every request goes to the Meridian gateway, usually on loopback, so the
+// browser's internet reachability says nothing about whether it will succeed.
+// The default "online" network mode pauses queries and mutations after an
+// `offline` event; a paused send leaves the composer disabled and the cached
+// page looks live. Always run requests and let a real failure surface instead.
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
+      networkMode: "always",
       retry,
       staleTime: 2_000,
       refetchOnReconnect: true,
       refetchOnWindowFocus: true,
     },
-    mutations: { retry: false },
+    mutations: { networkMode: "always", retry: false },
   },
 });
 
