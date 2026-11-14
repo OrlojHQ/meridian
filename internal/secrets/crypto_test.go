@@ -2,6 +2,8 @@ package secrets
 
 import (
 	"bytes"
+	"crypto/aes"
+	"crypto/cipher"
 	"errors"
 	"os"
 	"path/filepath"
@@ -34,7 +36,8 @@ func TestKeyPermissionsEnvelopeBindingAndMismatch(t *testing.T) {
 	}
 	now := time.Now().UTC()
 	secret := domain.Secret{
-		ID: "secret-id", Name: "TOKEN", Purpose: domain.SecretHarnessEnv,
+		OwnerUserID: domain.BootstrapOwnerID,
+		ID:          "secret-id", Name: "TOKEN", Purpose: domain.SecretHarnessEnv,
 		EnvelopeVersion: EnvelopeVersion, KEKID: key.ID, KEKVersion: key.Version,
 		CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
 	}
@@ -54,6 +57,21 @@ func TestKeyPermissionsEnvelopeBindingAndMismatch(t *testing.T) {
 	renamed.Name = "OTHER"
 	if _, err := key.Open(renamed); !errors.Is(err, domain.ErrKeyMismatch) {
 		t.Fatalf("renamed envelope error = %v", err)
+	}
+	// The owner is bound: the same ciphertext on another user's row does
+	// not open (ADR 0046).
+	moved := secret
+	moved.OwnerUserID = "usr_other"
+	if _, err := key.Open(moved); !errors.Is(err, domain.ErrKeyMismatch) {
+		t.Fatalf("moved envelope error = %v", err)
+	}
+	unowned := secret
+	unowned.OwnerUserID = ""
+	if _, _, err := key.Seal(unowned, Payload{Value: "x"}); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("seal without an owner = %v", err)
+	}
+	if _, err := key.OpenLegacy(secret); !errors.Is(err, domain.ErrKeyMismatch) {
+		t.Fatalf("current envelope opened as legacy: %v", err)
 	}
 	reversioned := secret
 	reversioned.ResourceVersion++
@@ -75,5 +93,57 @@ func TestMissingCredentialKeyCannotRegenerate(t *testing.T) {
 	path := DefaultKeyPath(t.TempDir())
 	if _, err := OpenOrCreateKey(path, false); !errors.Is(err, domain.ErrKeyMismatch) {
 		t.Fatalf("missing locked key error = %v", err)
+	}
+}
+
+func TestLegacyEnvelopesOpenOnlyThroughOpenLegacy(t *testing.T) {
+	key, err := OpenOrCreateKey(DefaultKeyPath(t.TempDir()), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer key.Zero()
+	now := time.Now().UTC()
+	secret := domain.Secret{
+		ID: "secret-id", Name: "TOKEN", Purpose: domain.SecretHarnessEnv,
+		EnvelopeVersion: LegacyEnvelopeVersion, KEKID: key.ID, KEKVersion: key.Version,
+		CreatedAt: now, UpdatedAt: now, ResourceVersion: 3,
+	}
+	block, err := aes.NewCipher(key.key[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secret.Nonce = make([]byte, aead.NonceSize())
+	secret.Ciphertext = aead.Seal(nil, secret.Nonce, []byte(`{"value":"legacy-canary"}`), aad(secret, LegacyEnvelopeVersion))
+	secret.OwnerUserID = domain.BootstrapOwnerID
+	if _, err := key.Open(secret); !errors.Is(err, domain.ErrKeyMismatch) {
+		t.Fatalf("legacy envelope opened as current: %v", err)
+	}
+	payload, err := key.OpenLegacy(secret)
+	if err != nil || payload.Value != "legacy-canary" {
+		t.Fatalf("OpenLegacy = %+v, %v", payload, err)
+	}
+
+	current, err := key.RewrapLegacy(secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.EnvelopeVersion != EnvelopeVersion || current.ResourceVersion != secret.ResourceVersion ||
+		bytes.Equal(current.Ciphertext, secret.Ciphertext) {
+		t.Fatalf("re-wrapped = %+v", current)
+	}
+	if payload, err := key.Open(current); err != nil || payload.Value != "legacy-canary" {
+		t.Fatalf("Open after re-wrap = %+v, %v", payload, err)
+	}
+	moved := current
+	moved.OwnerUserID = "usr_other"
+	if _, err := key.Open(moved); !errors.Is(err, domain.ErrKeyMismatch) {
+		t.Fatalf("re-wrapped envelope opened for another owner: %v", err)
+	}
+	if _, err := key.RewrapLegacy(current); !errors.Is(err, domain.ErrKeyMismatch) {
+		t.Fatalf("re-wrapping a current envelope = %v", err)
 	}
 }

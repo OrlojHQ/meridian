@@ -21,10 +21,15 @@ import (
 )
 
 const (
-	EnvelopeVersion uint16 = 1
-	KeyVersion      uint32 = 1
-	maxKeyFileBytes        = 4096
-	MaxValueBytes          = 256 << 10
+	// EnvelopeVersion 2 binds the owner into the authenticated context, so
+	// a ciphertext moved to another user's row fails to open (ADR 0046).
+	EnvelopeVersion uint16 = 2
+	// LegacyEnvelopeVersion bound no owner. Startup re-wraps every such
+	// envelope; only that re-wrap and backup verification open one.
+	LegacyEnvelopeVersion uint16 = 1
+	KeyVersion            uint32 = 1
+	maxKeyFileBytes              = 4096
+	MaxValueBytes                = 256 << 10
 )
 
 type InstallationKey struct {
@@ -183,7 +188,8 @@ func newKey() (*InstallationKey, error) {
 }
 
 func (k *InstallationKey) Seal(metadata domain.Secret, payload Payload) ([]byte, []byte, error) {
-	if k == nil || metadata.ID == "" || metadata.Name == "" || !metadata.Purpose.Valid() {
+	if k == nil || metadata.ID == "" || metadata.Name == "" || !metadata.Purpose.Valid() ||
+		metadata.OwnerUserID == "" {
 		return nil, nil, domain.ErrInvalid
 	}
 	plain, err := json.Marshal(payload)
@@ -209,9 +215,43 @@ func (k *InstallationKey) Seal(metadata domain.Secret, payload Payload) ([]byte,
 	return nonce, aead.Seal(nil, nonce, plain, aad(metadata, EnvelopeVersion)), nil
 }
 
+// Open opens a current, owner-bound envelope. A legacy envelope does not
+// open here: it carries no owner to check.
 func (k *InstallationKey) Open(secret domain.Secret) (Payload, error) {
-	if k == nil || secret.KEKID != k.ID || secret.KEKVersion != k.Version ||
-		secret.EnvelopeVersion != EnvelopeVersion {
+	if secret.EnvelopeVersion != EnvelopeVersion || secret.OwnerUserID == "" {
+		return Payload{}, domain.ErrKeyMismatch
+	}
+	return k.open(secret)
+}
+
+// OpenLegacy opens an envelope sealed before owners were bound. It is for
+// the one-time startup re-wrap and for verifying older backups.
+func (k *InstallationKey) OpenLegacy(secret domain.Secret) (Payload, error) {
+	if secret.EnvelopeVersion != LegacyEnvelopeVersion {
+		return Payload{}, domain.ErrKeyMismatch
+	}
+	return k.open(secret)
+}
+
+// RewrapLegacy re-seals a legacy envelope as a current one bound to
+// secret.OwnerUserID. The resource version does not change. The returned
+// secret carries the new envelope; the caller stores it.
+func (k *InstallationKey) RewrapLegacy(secret domain.Secret) (domain.Secret, error) {
+	payload, err := k.OpenLegacy(secret)
+	if err != nil {
+		return domain.Secret{}, err
+	}
+	next := secret
+	next.EnvelopeVersion = EnvelopeVersion
+	next.Nonce, next.Ciphertext, err = k.Seal(next, payload)
+	if err != nil {
+		return domain.Secret{}, err
+	}
+	return next, nil
+}
+
+func (k *InstallationKey) open(secret domain.Secret) (Payload, error) {
+	if k == nil || secret.KEKID != k.ID || secret.KEKVersion != k.Version {
 		return Payload{}, domain.ErrKeyMismatch
 	}
 	block, err := aes.NewCipher(k.key[:])
@@ -243,8 +283,12 @@ func (k *InstallationKey) Zero() {
 }
 
 func aad(secret domain.Secret, version uint16) []byte {
-	return []byte(fmt.Sprintf("meridian.secret.v1\x00%s\x00%s\x00%s\x00%d\x00%d",
-		secret.ID, secret.Name, secret.Purpose, version, secret.ResourceVersion))
+	if version == LegacyEnvelopeVersion {
+		return []byte(fmt.Sprintf("meridian.secret.v1\x00%s\x00%s\x00%s\x00%d\x00%d",
+			secret.ID, secret.Name, secret.Purpose, version, secret.ResourceVersion))
+	}
+	return []byte(fmt.Sprintf("meridian.secret.v2\x00%s\x00%s\x00%s\x00%s\x00%d\x00%d",
+		secret.ID, secret.OwnerUserID, secret.Name, secret.Purpose, version, secret.ResourceVersion))
 }
 
 func secureParent(path string, create bool) error {
