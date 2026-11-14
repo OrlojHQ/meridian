@@ -52,7 +52,9 @@ PKCE-style verifier.
   verifier. The verifier stays in the shell's memory.
 - The gateway records the three values with the sign-in attempt. It accepts
   only a port in 1024–65535 and 43-character base64url values, and all
-  three or none. After the issuer verifies the identity, the callback sets
+  three or none. Like every browser sign-in (ADR 0046), the callback also
+  requires the sign-in binding cookie the start set in that same system
+  browser. After the issuer verifies the identity, the callback sets
   no cookie in that browser. It stores the verified identity under a
   single-use ticket (32 random bytes, kept only as a digest, for two
   minutes) and redirects to

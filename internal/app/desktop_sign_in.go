@@ -67,9 +67,11 @@ func desktopValue(value string) bool {
 
 // BeginDesktopSignIn starts an OIDC sign-in whose callback hands off to
 // the desktop shell instead of setting a cookie in the system browser.
-func (i *Identity) BeginDesktopSignIn(ctx context.Context, request DesktopSignIn) (string, error) {
+// Like a browser sign-in, it returns a binding for the system browser's
+// callback: the binding is checked before the handoff ticket is minted.
+func (i *Identity) BeginDesktopSignIn(ctx context.Context, request DesktopSignIn) (string, string, error) {
 	if err := ValidDesktopSignIn(request); err != nil {
-		return "", err
+		return "", "", err
 	}
 	return i.beginSignIn(ctx, &request)
 }

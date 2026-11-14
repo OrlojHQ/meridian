@@ -69,11 +69,13 @@ func verifyRecovery(t *testing.T, f rebindFixture, recovery app.IdentityRebind, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := f.identity.CompleteSignIn(context.Background(), address.Query().Get("state"), "code")
+	// The recovery callback needs no browser binding: it starts from the
+	// break-glass CLI and grants the browser nothing.
+	result, err := f.identity.CompleteSignIn(context.Background(), address.Query().Get("state"), "code", "")
 	if err != nil || !result.RebindReady || result.ClaimToken != "" || result.SessionToken != "" {
 		t.Fatalf("recovery callback = %+v, %v", result, err)
 	}
-	if _, err := f.identity.CompleteSignIn(context.Background(), address.Query().Get("state"), "code"); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := f.identity.CompleteSignIn(context.Background(), address.Query().Get("state"), "code", ""); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("callback replay = %v", err)
 	}
 }
@@ -281,7 +283,7 @@ func TestIdentityRebindBoundsPendingCeremoniesAndChecksGroupPolicy(t *testing.T)
 	}
 	f.party.deny = true
 	address, _ := url.Parse(first.SignInURL)
-	if _, err := f.identity.CompleteSignIn(context.Background(), address.Query().Get("state"), "code"); !errors.Is(err, app.ErrSignInDenied) {
+	if _, err := f.identity.CompleteSignIn(context.Background(), address.Query().Get("state"), "code", ""); !errors.Is(err, app.ErrSignInDenied) {
 		t.Fatalf("group policy bypass = %v", err)
 	}
 	if done, err := f.identity.CompleteIdentityRebind(f.admin, principal.BootstrapOwner, first.Token); done || err != nil {
