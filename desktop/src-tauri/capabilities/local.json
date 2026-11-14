@@ -5,6 +5,7 @@
   "permissions": [
     "core:default",
     "allow-gateway-state",
-    "allow-gateway-connect"
+    "allow-gateway-connect",
+    "allow-gateway-forget"
   ]
 }

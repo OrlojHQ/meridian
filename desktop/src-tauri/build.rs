@@ -3,9 +3,11 @@ fn main() {
         tauri_build::AppManifest::new().commands(&[
             "gateway_state",
             "gateway_connect",
+            "gateway_forget",
             "desktop_notify",
             "desktop_set_attention",
             "desktop_open_gateway",
+            "desktop_gateway",
             "desktop_update_check",
             "desktop_update_install",
         ]),

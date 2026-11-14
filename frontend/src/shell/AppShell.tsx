@@ -19,6 +19,7 @@ import { normalizeAPIError } from "../api/client";
 import type { Project } from "../api/generated/types.gen";
 import { queries } from "../api/queries";
 import { DeleteProjectDialog } from "../components/DeleteProjectDialog";
+import { GatewayIndicator } from "./GatewayIndicator";
 import { NewProjectDialog } from "../components/NewProjectDialog";
 import { NewSessionDialog } from "../components/NewSessionDialog";
 import { NewWorkspaceDialog } from "../components/NewWorkspaceDialog";
@@ -316,6 +317,7 @@ function StatusBar({ items }: { items: WorkingSetItem[] }) {
           {provider}
         </span>
       )}
+      <GatewayIndicator />
       <div className="status-trailing">
         <NotificationOptIn />
         <nav className="status-counts" aria-label="Capsule activity summary">
