@@ -438,7 +438,7 @@ describe("application shell", () => {
       "/ui/settings/harnesses",
       "/ui/settings/account",
     ]);
-    expect(within(views).queryByRole("button", { name: "Gateway" })).not.toBeInTheDocument();
+    expect(within(views).queryByRole("button", { name: "Station" })).not.toBeInTheDocument();
     links.forEach((link) => expect(link.querySelector("svg")).not.toBeNull());
     expect(await screen.findByLabelText("1 need attention")).toHaveTextContent("1");
 
@@ -1027,7 +1027,7 @@ describe("application shell", () => {
     await waitFor(() => expect(sidebar).not.toHaveClass("open"));
   });
 
-  it("opens gateway settings only when the desktop shell is present", async () => {
+  it("opens Station settings only when the desktop shell is present", async () => {
     const openGatewaySettings = vi.fn();
     window.__MERIDIAN_DESKTOP__ = {
       notify: vi.fn(),
@@ -1047,7 +1047,7 @@ describe("application shell", () => {
     );
     expect(await screen.findByText("Desktop alerts on")).toBeInTheDocument();
     const views = screen.getByRole("navigation", { name: "Views" });
-    const gateway = within(views).getByRole("button", { name: "Gateway" });
+    const gateway = within(views).getByRole("button", { name: "Station" });
     expect(gateway.querySelector("svg")).not.toBeNull();
     await userEvent.click(gateway);
     expect(openGatewaySettings).toHaveBeenCalledOnce();

@@ -53,7 +53,7 @@ The macOS file is `meridian-desktop_${VERSION}_macOS_universal.dmg` (a
 universal disk image) plus a zip of `Meridian.app`. The Linux file is
 `meridian-desktop_${VERSION}_linux_amd64.deb`. Its package name is
 `meridian-desktop` (`sudo apt remove meridian-desktop`). The package installs
-`/usr/bin/meridian-desktop` and a private gateway binary named
+`/usr/bin/meridian-desktop` and a private Station binary named
 `meridian-desktop-gateway`. It does not install `/usr/bin/meridian` or
 `/usr/bin/meridiand`, so it can sit beside a separate CLI install. The desktop archives have a `.spdx.json` SBOM
 and a `.sigstore.json` bundle signed by this same workflow. Verify them with
@@ -88,7 +88,7 @@ xattr -dr com.apple.quarantine /Applications/Meridian.app
 
 ### Desktop app beside an existing meridiand
 
-"This computer" in the desktop app first checks `127.0.0.1:8080`. A ready
+"Local" in the desktop app first checks `127.0.0.1:8080`. A ready
 Meridian there is used as it is, and the app does not start a second daemon;
 Quit leaves it running. Only when nothing answers does the app start its
 bundled `meridian-desktop-gateway`, which uses the same default data directory
@@ -97,21 +97,21 @@ as the `meridian` formula and a binary install. The data-directory lease (see
 mismatch fails closed instead of corrupting data. The cases worth knowing:
 
 - **The running meridiand is older than the app.** The window shows that
-  daemon's UI, which has no desktop alerts, Gateway control, or update
+  daemon's UI, which has no desktop alerts, Station control, or update
   notice. The shell detects this and shows a banner asking for an upgrade
   (`brew upgrade meridian`, or the curl installer with `--cli`). The tray's
-  Gateway… item still opens the picker.
-- **The bundled gateway upgraded the database.** If the app's bundled daemon
+  Station… item still opens the picker.
+- **The bundled Station upgraded the database.** If the app's bundled daemon
   ran while the formula's was stopped and the app is newer, it migrates the
   database. An older `meridiand` then refuses to start with "database schema
   version N is newer than supported", and `brew services` restarts it in a
   loop until you run `brew upgrade meridian`. The reverse, an app older than
   the data, makes the picker say to update the app.
 - **A meridiand listening somewhere other than 8080.** The app finds nothing
-  on 8080 and its bundled gateway cannot take the data-directory lease. The
+  on 8080 and its bundled Station cannot take the data-directory lease. The
   picker says another Meridian is using this computer's data; choose Another
-  gateway and enter its address, such as `http://127.0.0.1:9090`.
-- **The app started first.** While the bundled gateway holds 8080 and the
+  Station and enter its address, such as `http://127.0.0.1:9090`.
+- **The app started first.** While the bundled Station holds 8080 and the
   lease, `brew services start meridian` cannot start and launchd retries it,
   logging to `/opt/homebrew/var/log/meridiand.log`. Quit the app and the
   formula's daemon takes over; the app reuses it on the next launch.
@@ -621,10 +621,10 @@ After the claim:
 
 - Members sign in with **Sign in** in the web UI. Sessions end after 12 hours
   idle or 7 days, and members can list and revoke theirs under **Account**.
-- In the desktop app, the window title and the status bar name the gateway
-  (and, in team mode, who is signed in). The tray's **Switch gateway** menu and
-  the picker's recent list switch between this computer and up to five recent
-  gateways in one click; the app stores only their addresses.
+- In the desktop app, the window title and the status bar name the Station
+  (and, in team mode, who is signed in). The tray's **Switch Station** menu and
+  the picker's recent list switch between Local and up to five recent
+  Stations in one click; the app stores only their addresses.
 - In the desktop app, **Sign in** opens the issuer in your default browser
   (ADR 0047). After you sign in there, the browser shows "Return to the
   Meridian app" and the app's window is signed in; the browser itself gets no

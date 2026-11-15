@@ -102,7 +102,7 @@ pub fn encode_saved(choice: &SavedGateway, recent: &[String]) -> Result<Vec<u8>,
 /// non-default port.
 pub fn gateway_label(choice: &SavedGateway) -> String {
     match choice {
-        SavedGateway::Local => "This computer".into(),
+        SavedGateway::Local => "Local".into(),
         SavedGateway::Remote { origin } => origin_label(origin),
     }
 }
@@ -121,35 +121,35 @@ pub fn origin_label(origin: &str) -> String {
 pub fn validate_gateway_url(raw: &str) -> Result<String, String> {
     let raw = raw.trim();
     if raw.is_empty() {
-        return Err("Enter a gateway address.".into());
+        return Err("Enter a Station address.".into());
     }
     if raw.len() > 300 {
-        return Err("That gateway address is too long.".into());
+        return Err("That Station address is too long.".into());
     }
-    let url = Url::parse(raw).map_err(|_| "Enter an http or https gateway address.".to_string())?;
+    let url = Url::parse(raw).map_err(|_| "Enter an http or https Station address.".to_string())?;
     if !url.username().is_empty() || url.password().is_some() {
-        return Err("The gateway address cannot include a username or password.".into());
+        return Err("The Station address cannot include a username or password.".into());
     }
     if url.query().is_some() || url.fragment().is_some() {
-        return Err("The gateway address cannot include a query or a fragment.".into());
+        return Err("The Station address cannot include a query or a fragment.".into());
     }
     let host = url
         .host_str()
-        .ok_or_else(|| "Enter a gateway host.".to_string())?;
+        .ok_or_else(|| "Enter a Station host.".to_string())?;
     match url.scheme() {
         "https" => {}
         "http" if is_loopback_host(host) => {}
         "http" => {
             return Err(
-                "Plain HTTP is only accepted for a loopback gateway. A remote gateway needs HTTPS."
+                "Plain HTTP is only accepted for a loopback Station. A remote Station needs HTTPS."
                     .into(),
             );
         }
-        _ => return Err("Enter an http or https gateway address.".into()),
+        _ => return Err("Enter an http or https Station address.".into()),
     }
     let origin = url.origin().ascii_serialization();
     if origin == "null" || origin.is_empty() {
-        return Err("Enter a gateway address.".into());
+        return Err("Enter a Station address.".into());
     }
     Ok(origin)
 }
@@ -402,7 +402,7 @@ mod tests {
 
     #[test]
     fn labels_name_the_host() {
-        assert_eq!(gateway_label(&SavedGateway::Local), "This computer");
+        assert_eq!(gateway_label(&SavedGateway::Local), "Local");
         for (origin, label) in [
             ("https://meridian.example.com", "meridian.example.com"),
             ("https://gw.example.com:8443", "gw.example.com:8443"),

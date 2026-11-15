@@ -206,7 +206,7 @@ function GatewaySettingsButton() {
   return (
     <button type="button" onClick={() => open()}>
       <GatewayIcon />
-      Gateway
+      Station
     </button>
   );
 }

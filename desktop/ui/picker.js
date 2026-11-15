@@ -18,7 +18,7 @@ function errorText(error) {
   if (error && typeof error === "object" && "message" in error && error.message) {
     return String(error.message);
   }
-  return "Could not open the gateway.";
+  return "Could not open the Station.";
 }
 
 function setStatus(message, isError) {
@@ -43,7 +43,7 @@ function setBusy(busy) {
 }
 
 async function connect(mode, url) {
-  setStatus(mode === "remote" ? "Opening the gateway…" : "Connecting to the local gateway…", false);
+  setStatus(mode === "remote" ? "Opening the Station…" : "Connecting to the local Station…", false);
   setBusy(true);
   try {
     await invoke("gateway_connect", { mode, url: url || null });

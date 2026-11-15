@@ -677,13 +677,13 @@ macOS and Linux. The shell rejects any other notification text. It does not
 store the installation token, transcript key, or credential key. Closing the
 window hides it and leaves the tray; that does not stop a daemon. Quit signals
 only a `meridiand` this process started for the bundled-local choice; a daemon
-it did not start is left running. A remote gateway must be HTTPS unless it is
+it did not start is left running. A remote Station must be HTTPS unless it is
 loopback. In single-user mode it uses the existing browser session. In team
 mode the member signs in through the system browser and the shell hands the
 result to its webview (ADR 0047); the webview never loads the identity
-provider. The shell remembers up to five recent gateway origins for one-click switching
-(ADR 0048): origins only, re-validated on read, and never exposed to a gateway
-page. The window title and status bar name the active gateway so work is not
+provider. The shell remembers up to five recent Station origins for one-click switching
+(ADR 0048): origins only, re-validated on read, and never exposed to a Station
+page. The window title and status bar name the active Station so work is not
 created on the wrong installation. The system webview is not an additional
 isolation boundary and says nothing about Capsule isolation.
 
@@ -705,17 +705,17 @@ repository secret and is never committed. Its theft would let an attacker
 who can also serve the manifest push code to self-updating macOS installs,
 so it is kept offline apart from that secret and rotated by shipping a new
 public key in a hand-installed release. Homebrew and Linux installs never
-self-update; they are shown a command to run. Only the gateway origin the
-operator chose, while it is the active gateway, can call the bridge's
+self-update; they are shown a command to run. Only the Station origin the
+operator chose, while it is the active Station, can call the bridge's
 commands, including the update check and install; the install command still
 requires a verified signature and an operator click, and only restarts the
 app. The shell grants each chosen origin a runtime capability whose one
 remote URL pattern matches that scheme, host, and port, never the shell's own
 pages and never the picker's commands. Tauri cannot revoke a capability, so
-a grant for an earlier gateway remains until the app quits; the shell refuses
-any bridge call that the active gateway's pattern did not match, so a page
+a grant for an earlier Station remains until the app quits; the shell refuses
+any bridge call that the active Station's pattern did not match, so a page
 or frame on that earlier origin gets nothing after a switch. The shell's injected script reads one marker
-element from a gateway page to decide whether to show a fixed "older
+element from a Station page to decide whether to show a fixed "older
 meridiand" banner; it shows no page text and calls no command. Prompt drafts stay in page memory, and
 browser storage may hold only harness names.
 
@@ -920,7 +920,7 @@ they are not a statement that every planned path is already implemented.
   Project grant is. A Capsule cannot write a profile or its own pin. The
   laptop's git config, SSH keys, and auth caches never enter a profile.
   The desktop shell scans the laptop only in its own import window. No
-  bridge command gives a gateway page laptop files, paths, or detection
+  bridge command gives a Station page laptop files, paths, or detection
   results, and an upload happens only after the user clicks Save there,
   including for changes the background check notices.
 - Security and durability requirements fail closed when a provider lacks a capability.
@@ -1338,23 +1338,23 @@ Threats and required controls:
 - **Single-user servers off loopback.** Anyone with the installation bearer
   acts as the bootstrap owner and uses that one profile. The UI says so on a
   server that is not loopback.
-- **A gateway page reaching laptop files through the desktop shell.** A
-  remote or compromised gateway page tries to make the shell read, list, or
+- **A Station page reaching laptop files through the desktop shell.** A
+  remote or compromised Station page tries to make the shell read, list, or
   send it laptop files. Detection and review run in a separate import window
   that loads only bundled shell pages, has its own local capability, and is
-  never granted the gateway bridge. The only new bridge command,
+  never granted the Station bridge. The only new bridge command,
   `desktop_open_import`, takes no arguments and returns only whether the
-  window opened. Like the rest of the bridge, only the active gateway origin
+  window opened. Like the rest of the bridge, only the active Station origin
   may call it. No bridge command returns files, paths, harness names, or
   detection results. The page learns what was imported only from the server,
   after Save. A page that opens the window over and over gains nothing
   without the user's Save.
-- **Desktop import to the wrong gateway or account.** The import window is
-  bound to the gateway origin that was active when it opened. Before Save it
-  shows that origin and the account from `/auth/me`. Switching gateway
-  closes it without uploading, and after a sign-out the gateway refuses its
+- **Desktop import to the wrong Station or account.** The import window is
+  bound to the Station origin that was active when it opened. Before Save it
+  shows that origin and the account from `/auth/me`. Switching Station
+  closes it without uploading, and after a sign-out the Station refuses its
   Save. The upload uses only the main
-  window's session for that one origin, so another gateway in the recent
+  window's session for that one origin, so another Station in the recent
   list never receives it.
 - **Session handling in the desktop importer.** The shell reads the session
   cookie for the bound origin through the webview cookie API and passes it
@@ -1366,7 +1366,7 @@ Threats and required controls:
 - **A second importer drifting from the first.** The desktop app runs the
   same Go importer package as `meridian import`. It runs it through a hidden
   client mode of the `meridiand` binary the app already ships as its signed
-  gateway sidecar, which updates with the app. Detection, the deny list, and
+  Station sidecar, which updates with the app. Detection, the deny list, and
   the sanitizer are not reimplemented in Rust.
 - **Background change checks.** The desktop app re-scans at launch, on
   wake, and every 30 minutes, unless the user turns the setting off. Check
@@ -1382,7 +1382,7 @@ Threats and required controls:
   can rewrite these folders, and an unprompted upload would send every new
   Capsule hooks and MCP servers the user never reviewed.
 - **The hidden client mode widening the daemon.** `meridiand desktop-import`
-  is a client of a gateway, not a daemon. It never starts a listener,
+  is a client of a Station, not a daemon. It never starts a listener,
   opens or locks a data directory, or loads a key, so it cannot compete with
   a running `meridiand` for the data-directory lease (ADR 0035). It is
   hidden from `--help` and leaves the existing help and `--version` behavior
@@ -1509,8 +1509,8 @@ Threats and required controls:
   nothing without the verifier. A phished start link delivers the ticket to
   the victim's own loopback address, not the attacker's. A page that posts a
   forged ticket to the listener lacks its state, and would fail on the
-  verifier anyway. The shell redeems only into the gateway the sign-in began
-  on, while that gateway is active and loaded, and the script checks the
+  verifier anyway. The shell redeems only into the Station the sign-in began
+  on, while that Station is active and loaded, and the script checks the
   page's origin again. A process running as the same OS user can read the
   shell's memory and the webview's cookies regardless; another local user can
   only make the listener answer until it times out.

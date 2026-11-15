@@ -4,9 +4,11 @@
 
 # Meridian
 
-**Self-hosted cloud agents. Run Claude Code, Codex, OpenCode, Pi, or DeepSeek
-Harness in disposable workspaces, let a lead agent hand work to subagents, then
-review and ship what they built.**
+**A self-hosted control station for coding agents.**
+
+Run Claude Code, Codex, OpenCode, Pi, or DeepSeek Harness in disposable
+workspaces, let a lead agent hand work to subagents, then review and ship what
+they built.
 
 [![CI](https://github.com/OrlojHQ/meridian/actions/workflows/ci.yml/badge.svg)](https://github.com/OrlojHQ/meridian/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/OrlojHQ/meridian?include_prereleases&sort=semver)](https://github.com/OrlojHQ/meridian/releases)
@@ -28,9 +30,9 @@ its terminal, let it start subagents for the parts that can run in parallel,
 review the diff, and open a pull request when you like the result. When you
 don't, throw it away.
 
-It runs on your machine or your cluster, with the agents and models you
-already pay for, or your own model server. Use it alone, or share one
-installation with your team.
+Your **Station** is the Meridian you run: one `meridiand` on your machine or
+your cluster, with the agents and models you already pay for, or your own model
+server. Use it alone, or share one Station with your team.
 
 ![The Meridian browser workspace: Capsules that need you are listed first, then every Project's Capsules](docs/assets/screenshots/ui-home.png)
 
@@ -111,7 +113,7 @@ container, plus your git name and email.
 
 ![Harness settings: what new Capsules inherit, with a setup and default connection per harness](docs/assets/screenshots/ui-harnesses.png)
 
-### One installation for your team
+### One Station for your team
 
 Turn on team mode and teammates sign in through your identity provider (OIDC:
 Okta, Entra ID, Google, Keycloak, Authentik, Dex). Every Project, Capsule,
@@ -346,7 +348,7 @@ and an Agent Client Protocol agent can run as a browser Thread through the
 ```mermaid
 flowchart LR
     You["You"] --> Client["meridian<br/>CLI · TUI · browser"]
-    Client -->|"REST / SSE / WebSocket"| Daemon["meridiand"]
+    Client -->|"REST / SSE / WebSocket"| Daemon["Station<br/>meridiand"]
     Daemon --> Store["SQLite + Moments"]
     Daemon --> Provider["Docker or Kubernetes<br/>Agent Sandbox"]
     Provider --> Lead["Lead Capsule"]
@@ -357,14 +359,14 @@ flowchart LR
 
 | Piece | Role |
 | --- | --- |
-| `meridiand` | Daemon: API, storage, Capsule lifecycle, provider gateway, embedded web UI |
-| `meridian` | CLI and terminal dashboard |
-| Capsule | Container with `capsuled` (a small supervisor) and one agent |
+| Station (`meridiand`) | The daemon you run: API, storage, Capsule lifecycle, provider gateway, embedded web UI |
+| `meridian` | CLI and terminal dashboard, a client of one Station |
+| Capsule | Container with `capsuled` (a small supervisor) and one harness, the coding agent |
 
-You run one daemon. It starts Capsules on local Docker or, for a cluster, on
+You run one Station. It starts Capsules on local Docker or, for a cluster, on
 [Kubernetes Agent Sandbox](docs/kubernetes-agentsandbox.md), and stores
 Moments next to its SQLite database. A lead agent asks for subagents through a
-mailbox inside its own Capsule; the daemon picks up each request, checks it
+mailbox inside its own Capsule; the Station picks up each request, checks it
 against the limits you set, and starts the subagent. No Capsule ever holds a
 Meridian credential.
 

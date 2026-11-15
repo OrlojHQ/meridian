@@ -23,12 +23,12 @@ impl Sidecar {
         let command = app
             .shell()
             .sidecar("meridian-desktop-gateway")
-            .map_err(|error| format!("The bundled gateway is not installed ({error})."))?;
+            .map_err(|error| format!("The bundled Station is not installed ({error})."))?;
         let (mut events, child) = command
             .args(["--listen", LOCAL_LISTEN])
             .kill_on_drop(true)
             .spawn()
-            .map_err(|error| format!("Could not start the local gateway ({error})."))?;
+            .map_err(|error| format!("Could not start the local Station ({error})."))?;
         let pid = child.pid();
         let log = Arc::new(Mutex::new(String::new()));
         let exited = Arc::new(AtomicBool::new(false));
@@ -103,7 +103,7 @@ pub fn explain_exit(log: &str) -> Option<&'static str> {
         return Some(
             "Another Meridian is already using this computer's data, but it is not \
              answering at 127.0.0.1:8080. If it listens at another address, choose \
-             Another gateway and enter that address, such as http://127.0.0.1:9090. \
+             Another Station and enter that address, such as http://127.0.0.1:9090. \
              Otherwise stop it (for Homebrew: brew services stop meridian) and try again.",
         );
     }
@@ -145,7 +145,7 @@ mod tests {
     #[test]
     fn explains_a_held_data_directory_and_a_newer_database() {
         let held = "Error: data directory is in use: another Meridian process on this host holds /Users/a/Library/Application Support/meridian\n";
-        assert!(explain_exit(held).unwrap().contains("Another gateway"));
+        assert!(explain_exit(held).unwrap().contains("Another Station"));
         let newer = "Error: open store: schema mismatch: database schema version 31 is newer than supported version 29\n";
         assert!(explain_exit(newer)
             .unwrap()

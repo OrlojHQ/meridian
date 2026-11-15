@@ -29,7 +29,7 @@ describe("gateway indicator", () => {
     expect(mode).not.toHaveBeenCalled();
   });
 
-  it("names this computer and opens the picker on click", async () => {
+  it("names the local Station and opens the picker on click", async () => {
     vi.spyOn(api, "authenticationMode").mockResolvedValue({ mode: "single_user", signIn: false, claimable: false });
     const member = vi.spyOn(api, "currentMember");
     const openGatewaySettings = vi.fn();
@@ -37,11 +37,11 @@ describe("gateway indicator", () => {
       notify: vi.fn(),
       setAttention: vi.fn(),
       openGatewaySettings,
-      gateway: vi.fn().mockResolvedValue({ label: "This computer", local: true }),
+      gateway: vi.fn().mockResolvedValue({ label: "Local", local: true }),
     };
     show();
-    const button = await screen.findByRole("button", { name: /Gateway: This computer\. Switch gateway/ });
-    expect(button).toHaveTextContent("This computer");
+    const button = await screen.findByRole("button", { name: /Station: Local\. Switch Station/ });
+    expect(button).toHaveTextContent("Local");
     await userEvent.click(button);
     expect(openGatewaySettings).toHaveBeenCalledOnce();
     expect(member).not.toHaveBeenCalled();
