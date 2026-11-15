@@ -136,6 +136,7 @@ func newProjectCommand(config *cliConfig) *cobra.Command {
 	var createKey, repositoryURL, imageReference, gitSecretName string
 	var gitPushSecretName, githubAPISecretName, commitAuthorName string
 	var commitAuthorEmail, defaultBaseBranch string
+	var requireIsolation string
 	var setup, harnessSecretNames, harnessImages []string
 	create := &cobra.Command{
 		Use:   "create [NAME]",
@@ -196,6 +197,13 @@ func newProjectCommand(config *cliConfig) *cobra.Command {
 			if defaultBaseBranch != "" {
 				input.DefaultBaseBranch = client.NewOptString(defaultBaseBranch)
 			}
+			if requireIsolation != "" {
+				isolation, err := domain.ParseIsolationClass(requireIsolation)
+				if err != nil {
+					return err
+				}
+				input.RequiredIsolation = client.NewOptIsolationClass(client.IsolationClass(isolation))
+			}
 			result, err := api.CreateProject(
 				command.Context(),
 				input,
@@ -228,6 +236,10 @@ func newProjectCommand(config *cliConfig) *cobra.Command {
 	create.Flags().StringVar(&commitAuthorName, "commit-author-name", "", "Delivery commit author name")
 	create.Flags().StringVar(&commitAuthorEmail, "commit-author-email", "", "Delivery commit author email")
 	create.Flags().StringVar(&defaultBaseBranch, "default-base-branch", "", "pull request base branch")
+	create.Flags().StringVar(
+		&requireIsolation, "require-isolation", "",
+		"isolation class this Project's Capsules require: container, sandbox, or microvm",
+	)
 	create.Flags().StringArrayVar(
 		&harnessSecretNames, "harness-secret", nil,
 		"authorized harness_env secret name; repeat for each name",
@@ -991,6 +1003,9 @@ func (c *cliConfig) writeProject(project client.Project) error {
 		return writeJSON(c.stdout, &project)
 	}
 	line := fmt.Sprintf("%s\t%s\tversion=%d", project.ID, project.Name, project.ResourceVersion)
+	if required, ok := project.RequiredIsolation.Get(); ok && required != "" {
+		line += "\trequired-isolation=" + string(required)
+	}
 	if state, ok := project.State.Get(); ok && state != "" && state != client.ProjectStateActive {
 		line += "\tstate=" + string(state)
 		if failure, ok := project.Failure.Get(); ok && failure != "" {

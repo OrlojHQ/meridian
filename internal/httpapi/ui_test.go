@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/OrlojHQ/meridian/internal/apiauth"
+	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/httpapi"
 	"github.com/OrlojHQ/meridian/internal/ports"
 )
@@ -19,7 +20,7 @@ func TestUICoexistsWithAPIAndPreviewFailsClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := httpapi.NewWithCapabilities(nil, ports.ProviderCapabilities{
-		Version: "test/v1",
+		Version: "test/v1", Isolation: domain.IsolationContainer,
 		Attach:  true,
 		Preview: true,
 	}, token)
@@ -74,7 +75,7 @@ func TestAuthenticationBoundariesAndBrowserSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := httpapi.NewWithCapabilities(nil, ports.ProviderCapabilities{Version: "test/v1"}, token)
+	server := httpapi.NewWithCapabilities(nil, ports.ProviderCapabilities{Version: "test/v1", Isolation: domain.IsolationContainer}, token)
 	server.SetReady(true)
 
 	for _, path := range []string{"/healthz", "/readyz"} {

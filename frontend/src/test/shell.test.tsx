@@ -43,7 +43,7 @@ const capsule: Capsule = {
 };
 
 const capabilities: Capabilities = {
-  providerVersion: "docker/v1",
+  providerVersion: "docker/v1", isolation: "container" as const,
   attach: false,
   run: false,
   structured: false,
@@ -533,7 +533,7 @@ describe("application shell", () => {
     vi.spyOn(api, "projects").mockResolvedValue({ items: [] });
     vi.spyOn(api, "capabilities").mockResolvedValue({
       ...capabilities,
-      providerVersion: "docker/v2",
+      providerVersion: "docker/v2", isolation: "container" as const,
     });
 
     wrapper(

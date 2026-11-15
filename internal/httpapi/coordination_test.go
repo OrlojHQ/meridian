@@ -68,7 +68,7 @@ func TestCoordinationRoutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler := httpapi.NewWithCapabilities(service, ports.ProviderCapabilities{
-		Run: true, Structured: true, Coordination: true,
+		Run: true, Structured: true, Coordination: true, Isolation: domain.IsolationContainer,
 	}, token)
 	handler.SetReady(true)
 	server := httptest.NewServer(handler)

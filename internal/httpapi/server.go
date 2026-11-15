@@ -993,6 +993,7 @@ func (s *Server) getCapabilities(writer http.ResponseWriter, _ *http.Request) {
 		Browse:          s.capabilities.Browse,
 		Delivery:        s.capabilities.Delivery,
 		ResourceMetrics: false,
+		Isolation:       string(s.capabilities.Isolation),
 		Coordination:    s.coordinationCapability(),
 		HarnessImages:   harnessPacksToJSON(s.harnessImages),
 	})
@@ -1001,6 +1002,13 @@ func (s *Server) getCapabilities(writer http.ResponseWriter, _ *http.Request) {
 func (s *Server) createProject(writer http.ResponseWriter, request *http.Request) {
 	var input createProjectRequest
 	if !decode(writer, request, &input) {
+		return
+	}
+	requiredIsolation := domain.IsolationClass(input.RequiredIsolation)
+	if input.RequiredIsolation != "" && !requiredIsolation.Valid() {
+		writeError(writer, fmt.Errorf(
+			"%w: unknown isolation class %q", domain.ErrInvalid, input.RequiredIsolation,
+		))
 		return
 	}
 	project, err := s.service.CreateProjectConfigured(
@@ -1016,6 +1024,7 @@ func (s *Server) createProject(writer http.ResponseWriter, request *http.Request
 			CommitAuthorName:    input.CommitAuthorName,
 			CommitAuthorEmail:   input.CommitAuthorEmail,
 			DefaultBaseBranch:   input.DefaultBaseBranch,
+			RequiredIsolation:   requiredIsolation,
 		},
 		request.Header.Get("Idempotency-Key"),
 	)
@@ -2043,6 +2052,7 @@ type capabilitiesJSON struct {
 	Browse             bool                        `json:"browse"`
 	Delivery           bool                        `json:"delivery"`
 	ResourceMetrics    bool                        `json:"resourceMetrics"`
+	Isolation          string                      `json:"isolation"`
 	Coordination       *coordinationCapabilityJSON `json:"coordination,omitempty"`
 	HarnessImages      []harnessImageJSON          `json:"harnessImages,omitempty"`
 }
@@ -2066,6 +2076,7 @@ type createProjectRequest struct {
 	CommitAuthorName    string             `json:"commitAuthorName,omitempty"`
 	CommitAuthorEmail   string             `json:"commitAuthorEmail,omitempty"`
 	DefaultBaseBranch   string             `json:"defaultBaseBranch,omitempty"`
+	RequiredIsolation   string             `json:"requiredIsolation,omitempty"`
 }
 
 type harnessImageJSON struct {
@@ -2206,6 +2217,7 @@ type projectJSON struct {
 	CommitAuthorName    string             `json:"commitAuthorName,omitempty"`
 	CommitAuthorEmail   string             `json:"commitAuthorEmail,omitempty"`
 	DefaultBaseBranch   string             `json:"defaultBaseBranch,omitempty"`
+	RequiredIsolation   string             `json:"requiredIsolation,omitempty"`
 	State               string             `json:"state,omitempty"`
 	Failure             string             `json:"failure,omitempty"`
 	CreatedAt           string             `json:"createdAt"`
@@ -2522,6 +2534,7 @@ func projectResponse(project domain.Project) projectJSON {
 		CommitAuthorName:    project.CommitAuthorName,
 		CommitAuthorEmail:   project.CommitAuthorEmail,
 		DefaultBaseBranch:   project.DefaultBaseBranch,
+		RequiredIsolation:   string(project.RequiredIsolation),
 		State:               projectStateJSON(project.State),
 		Failure:             project.Failure,
 		CreatedAt:           project.CreatedAt.UTC().Format(time.RFC3339Nano),

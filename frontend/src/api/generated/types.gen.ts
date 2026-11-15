@@ -10,6 +10,11 @@ export type ProbeResponse = {
 
 export type Capabilities = {
     providerVersion: string;
+    /**
+     * The isolation class the provider actually verified against its own runtime configuration, never merely what was declared. A provider without a verifiable boundary reports container (ADR 0050).
+     *
+     */
+    isolation: IsolationClass;
     attach: boolean;
     run: boolean;
     /**
@@ -94,6 +99,11 @@ export type CreateProjectRequest = {
     commitAuthorName?: string;
     commitAuthorEmail?: string;
     defaultBaseBranch?: string;
+    /**
+     * Minimum isolation class every Capsule in this Project must run behind (ADR 0050). Omit for no requirement. Set once at creation; later requests cannot change it.
+     *
+     */
+    requiredIsolation?: IsolationClass;
 };
 
 export type PatchProjectRequest = {
@@ -196,6 +206,11 @@ export type Project = {
     commitAuthorName?: string;
     commitAuthorEmail?: string;
     defaultBaseBranch?: string;
+    /**
+     * Minimum isolation class every Capsule in this Project must run behind (ADR 0050). Omitted when the Project has no requirement.
+     *
+     */
+    requiredIsolation?: IsolationClass;
     state?: ProjectState;
     /**
      * Why deletion stopped. Set when state is failed.
@@ -211,6 +226,12 @@ export type Project = {
  *
  */
 export type ProjectState = 'active' | 'deleting' | 'failed' | 'deleted';
+
+/**
+ * Strength of the boundary a Capsule runs behind (ADR 0050). container is ordinary namespace sharing. sandbox adds a user-space kernel boundary. microvm adds a hardware virtualization boundary. A stronger class satisfies a weaker requirement. Empty means no requirement or none declared.
+ *
+ */
+export type IsolationClass = 'container' | 'sandbox' | 'microvm';
 
 /**
  * Secret metadata only; plaintext and ciphertext are never returned.
@@ -1635,6 +1656,11 @@ export type ProjectHarnessSetup = {
 
 export type CapabilitiesWritable = {
     providerVersion: string;
+    /**
+     * The isolation class the provider actually verified against its own runtime configuration, never merely what was declared. A provider without a verifiable boundary reports container (ADR 0050).
+     *
+     */
+    isolation: IsolationClass;
     attach: boolean;
     run: boolean;
     /**
@@ -1719,6 +1745,11 @@ export type CreateProjectRequestWritable = {
     commitAuthorName?: string;
     commitAuthorEmail?: string;
     defaultBaseBranch?: string;
+    /**
+     * Minimum isolation class every Capsule in this Project must run behind (ADR 0050). Omit for no requirement. Set once at creation; later requests cannot change it.
+     *
+     */
+    requiredIsolation?: IsolationClass;
 };
 
 export type PatchProjectRequestWritable = {
@@ -1754,6 +1785,11 @@ export type ProjectWritable = {
     commitAuthorName?: string;
     commitAuthorEmail?: string;
     defaultBaseBranch?: string;
+    /**
+     * Minimum isolation class every Capsule in this Project must run behind (ADR 0050). Omitted when the Project has no requirement.
+     *
+     */
+    requiredIsolation?: IsolationClass;
     state?: ProjectState;
     /**
      * Why deletion stopped. Set when state is failed.
@@ -2793,6 +2829,11 @@ export type CreateProjectErrors = {
      * Resource version or idempotency conflict
      */
     409: ErrorEnvelope;
+    /**
+     * The Project's requiredIsolation exceeds the isolation class the daemon's provider verified (ADR 0050). The Project is refused before anything is created; no weaker Project can exist to accept Capsules the installation cannot isolate.
+     *
+     */
+    422: ErrorEnvelope;
     /**
      * Request rate limit exceeded
      */

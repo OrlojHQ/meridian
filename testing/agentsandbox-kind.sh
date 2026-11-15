@@ -6,7 +6,7 @@ if [[ "${MERIDIAN_AGENTSANDBOX_TEST:-}" != "1" ]]; then
   exit 0
 fi
 
-for command in docker kind kubectl go; do
+for command in docker kind kubectl curl go; do
   if ! command -v "$command" >/dev/null 2>&1; then
     echo "SKIP: required command '$command' is unavailable"
     exit 0
@@ -29,6 +29,7 @@ created=0
 # ADR 0050 RuntimeClasses applied below; cleanup removes them on any exit.
 isolation_rc="meridian-it-runc"
 kubernetes_rc="meridian-it-kata"
+forward_pid=""
 if ! kind get clusters | grep -qxF "$cluster"; then
   kind create cluster \
     --name "$cluster" \
@@ -46,6 +47,9 @@ cleanup() {
     kubectl -n "$namespace" logs \
       -l app.kubernetes.io/managed-by=meridian \
       --all-containers --tail=200 2>/dev/null || true
+  fi
+  if [[ -n "$forward_pid" ]]; then
+    kill "$forward_pid" 2>/dev/null || true
   fi
   kubectl delete runtimeclass "$isolation_rc" "$kubernetes_rc" --ignore-not-found >/dev/null 2>&1 || true
   if [[ "$created" == "1" && "${MERIDIAN_AGENTSANDBOX_KEEP_CLUSTER:-}" != "1" ]]; then
@@ -119,6 +123,64 @@ MERIDIAN_AGENTSANDBOX_TEST=1 \
 MERIDIAN_AGENTSANDBOX_NAMESPACE="$namespace" \
 MERIDIAN_CAPSULE_IMAGE=meridian-capsule:agentsandbox-it \
   go test ./internal/provider/agentsandbox -run '^TestIntegrationIsolation$' -count=1 -v -timeout=5m
+
+# ADR 0050 through the deployed control plane: the release reconfigured for
+# the kata handler must report the verified class on the public API, not
+# merely inside the provider process. The default release is restored
+# afterwards so the remaining checks keep their original configuration.
+"$HELM" upgrade --install meridian deploy/helm/meridian \
+  --namespace "$namespace" \
+  --set namespace.create=false \
+  --set image.repository=meridian \
+  --set image.tag=agentsandbox-it \
+  --set image.pullPolicy=Never \
+  --set capsuleImage.repository=meridian-capsule \
+  --set capsuleImage.tag=agentsandbox-it \
+  --set capsuleImage.pullPolicy=Never \
+  --set agentSandbox.namespace="$namespace" \
+  --set agentSandbox.runtimeClassName="$kubernetes_rc" \
+  --set agentSandbox.isolationClass=microvm \
+  --set networkPolicy.enabled=false \
+  --wait --timeout 5m
+kubectl -n "$namespace" rollout status \
+  deployment/meridian-meridian --timeout=180s
+pod="$(kubectl -n "$namespace" get pods \
+  -l app.kubernetes.io/name=meridian,app.kubernetes.io/component=control-plane \
+  -o name | head -1)"
+token="$(kubectl -n "$namespace" exec "$pod" -- \
+  cat /var/lib/meridian-volume/data/api-auth/installation.token)"
+kubectl -n "$namespace" port-forward "$pod" 18080:8080 >/dev/null 2>&1 &
+forward_pid=$!
+capabilities=""
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  if capabilities="$(curl -sf \
+    -H "Authorization: Bearer $token" \
+    http://127.0.0.1:18080/capabilities)"; then
+    break
+  fi
+  sleep 2
+done
+kill "$forward_pid" 2>/dev/null || true
+wait "$forward_pid" 2>/dev/null || true
+forward_pid=""
+if ! printf '%s' "$capabilities" | grep -q '"isolation":"microvm"'; then
+  echo "capabilities = $capabilities" >&2
+  echo "the control plane did not report the verified microvm isolation" >&2
+  exit 1
+fi
+
+"$HELM" upgrade --install meridian deploy/helm/meridian \
+  --namespace "$namespace" \
+  --set namespace.create=false \
+  --set image.repository=meridian \
+  --set image.tag=agentsandbox-it \
+  --set image.pullPolicy=Never \
+  --set capsuleImage.repository=meridian-capsule \
+  --set capsuleImage.tag=agentsandbox-it \
+  --set capsuleImage.pullPolicy=Never \
+  --set agentSandbox.namespace="$namespace" \
+  --set networkPolicy.enabled=false \
+  --wait --timeout 5m
 
 if kubectl -n "$namespace" get sandboxes.agents.x-k8s.io \
   -l app.kubernetes.io/managed-by=meridian -o name | grep -q .; then

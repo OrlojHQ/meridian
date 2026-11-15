@@ -17,7 +17,7 @@ const project: Project = {
   resourceVersion: 1,
 };
 const capabilities: Capabilities = {
-  providerVersion: "docker/v1",
+  providerVersion: "docker/v1", isolation: "container" as const,
   attach: true,
   run: true,
   structured: true,
