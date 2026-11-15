@@ -56,11 +56,35 @@ function renderReview(message, label) {
     const section = element("section", undefined, "harness");
     const change = row.status === "unchanged" ? "unchanged" : row.status === "new" ? "new" : "changed";
     section.append(element("h2", `${harnessName(preview.harness)} — ${change}`));
+    // Against the saved profile: + new, ~ changed. A harness with nothing
+    // saved yet is all new, so its files are listed plainly.
+    const added = new Set(row.status === "changed" ? row.added || [] : []);
+    const edited = new Set(row.status === "changed" ? row.changed || [] : []);
     const kept = element("ul");
-    for (const path of preview.files || []) kept.append(element("li", path));
+    for (const path of preview.files || []) {
+      const mark = added.has(path) ? ["+", "new", "added"] : edited.has(path) ? ["~", "changed", "changed"] : null;
+      const item = element("li", undefined, mark ? `diff ${mark[2]}` : "diff");
+      item.append(element("span", mark ? mark[0] : "", "marker"));
+      item.append(document.createTextNode(path));
+      if (mark) item.append(element("span", ` ${mark[1]}`, "tag"));
+      kept.append(item);
+    }
     if (kept.childElementCount) {
       section.append(element("h3", "Kept"));
       section.append(kept);
+    }
+    const removed = row.status === "changed" ? row.removed || [] : [];
+    if (removed.length) {
+      const gone = element("ul");
+      for (const path of removed) {
+        const item = element("li", undefined, "diff removed");
+        item.append(element("span", "−", "marker"));
+        item.append(document.createTextNode(path));
+        item.append(element("span", " removed", "tag"));
+        gone.append(item);
+      }
+      section.append(element("h3", "No longer on this computer"));
+      section.append(gone);
     }
     const left = element("ul");
     for (const issue of preview.issues || []) left.append(element("li", `${issue.path}: ${issue.reason}`));
@@ -122,18 +146,22 @@ async function refresh() {
   }
   if (last.type === "signedOut") {
     destination.textContent = `Sign in to ${label} in the Meridian window, then open this again.`;
-    save.disabled = true;
+    save.hidden = true;
+    dismiss.hidden = true;
+    cancel.textContent = "Close";
     done = true;
   } else if (last.type === "error") {
     setStatus(last.message || "The import could not finish.", true);
-    save.disabled = true;
+    save.hidden = true;
+    dismiss.hidden = true;
+    cancel.textContent = "Close";
     done = true;
   } else if (last.type === "saved") {
     const saved = Array.isArray(last.saved) ? last.saved.map(harnessName) : [];
     setStatus(saved.length
       ? `Saved ${list(saved)}. New Capsules use this profile; existing Capsules keep theirs until you update them.`
       : "Your profile is up to date.", false);
-    save.disabled = true;
+    save.hidden = true;
     dismiss.hidden = true;
     cancel.textContent = "Close";
     done = true;

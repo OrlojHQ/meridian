@@ -200,3 +200,21 @@ body.import .note { opacity: 0.75; font-size: 0.9rem; }
 body.import .actions { display: flex; gap: 0.5rem; margin-top: 1rem; }
 body.import button.secondary { background: transparent; color: inherit; border: 1px solid color-mix(in srgb, currentColor 30%, transparent); }
 .setup-check { display: flex; gap: 0.5rem; align-items: flex-start; margin-top: 1.5rem; text-align: left; }
+body.import ul li.diff { list-style: none; margin-left: -1.2rem; }
+body.import .marker { display: inline-block; width: 1.2rem; font-weight: 700; }
+body.import li.added .marker, body.import li.added .tag { color: var(--accent); }
+body.import li.removed .marker, body.import li.removed .tag { color: var(--danger); }
+body.import li.changed .marker, body.import li.changed .tag { color: var(--muted); }
+body.import .tag { font-family: system-ui, sans-serif; font-size: 0.8rem; }
+/* A disabled action must not look like one you can click. */
+body.import button:disabled {
+  opacity: 1;
+  cursor: not-allowed;
+  background: transparent;
+  color: var(--muted);
+  border: 1px dashed color-mix(in srgb, currentColor 40%, transparent);
+}
+body.import button[hidden] { display: none; }
+.setup-check strong, .setup-check small { display: block; }
+.setup-check small { margin-top: 0.2rem; line-height: 1.4; }
+.setup-check input { margin-top: 0.2rem; flex: none; }
