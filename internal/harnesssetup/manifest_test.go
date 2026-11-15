@@ -115,6 +115,8 @@ func TestInvalidManifestsFailClosed(t *testing.T) {
 		"config instructs":  valid + "instructions: config.toml\n",
 		"unknown provider":  valid + "connection: {providers: [{type: bedrock}]}\n",
 		"xdg outside":       strings.Replace(valid, "env: DEMO_HOME", "env: DEMO_HOME, xdgConfig: true", 1),
+		"exclude unlisted":  valid + "exclude: [history/]\n",
+		"exclude escape":    valid + "exclude: [../skills/]\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			set := parseManifests(fstest.MapFS{"capsule-demo/manifest.yaml": {Data: []byte(body)}})

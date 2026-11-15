@@ -105,7 +105,10 @@ are parsed and sanitized, home-level files such as `~/.claude.json`, and
 shared directories such as `~/.agents/skills`. The CLI, the browser review,
 `meridiand`, and `capsuled` all use the copy compiled into the binary.
 `auth.json`, `.credentials*`, `.env*`, `*.pem`, `*.key`, `.git`, and
-`node_modules` are never imported, whatever a manifest lists. To add personal
+`node_modules` are never imported, whatever a manifest lists. A manifest's
+`exclude` list skips what the harness ships itself, such as Codex's built-in
+skills in `~/.codex/skills/.system`; an import reports that as one line and it
+does not count toward the size limit. To add personal
 setups for a new pack, add its manifest and its name to the harness enum in
 `api/openapi.yaml`.
 

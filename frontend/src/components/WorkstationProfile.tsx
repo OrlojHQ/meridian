@@ -34,6 +34,9 @@ function list(names: string[]) {
 export function ImportThisComputer({ profile }: { profile?: Profile }) {
   const bridge = desktopBridge();
   const [opened, setOpened] = useState<"idle" | "opened" | "failed">("idle");
+  // The "window opened" hint lasts only until the profile changes, which is
+  // what a Save in that window does.
+  const [versionAtOpen, setVersionAtOpen] = useState<number | undefined>(undefined);
   const imported = profile?.setups.map((setup) => harnessName(setup.harness)) ?? [];
   return (
     <div className="profile-import">
@@ -44,6 +47,7 @@ export function ImportThisComputer({ profile }: { profile?: Profile }) {
             type="button"
             className="primary-button"
             onClick={() => {
+              setVersionAtOpen(profile?.resourceVersion);
               void bridge.openImport?.().then(
                 (ok) => setOpened(ok ? "opened" : "failed"),
                 () => setOpened("failed"),
@@ -52,7 +56,9 @@ export function ImportThisComputer({ profile }: { profile?: Profile }) {
           >
             {imported.length > 0 ? "Review this computer's setup again" : "Review this computer's setup"}
           </button>
-          {opened === "opened" && <p role="status">Review and save in the window that opened.</p>}
+          {opened === "opened" && profile?.resourceVersion === versionAtOpen && (
+            <p role="status">Review and save in the window that opened.</p>
+          )}
           {opened === "failed" && <p role="alert">The import window could not open. Use the tray menu instead.</p>}
         </>
       ) : (
@@ -91,10 +97,12 @@ export function FirstRun({ openNewProject }: { openNewProject?: () => void }) {
           {connected ? (
             <p className="is-ready">A provider connection is ready.</p>
           ) : (
-            <p>
-              Your laptop's sign-ins are not copied. <Link to="/ui/settings/harnesses#provider-connections">Connect a provider</Link>{" "}
-              so Threads can use your model.
-            </p>
+            <>
+              <p>Threads need a provider connection to use your model. Sign-ins on your computer are not copied.</p>
+              <p>
+                <Link to="/ui/settings/harnesses#provider-connections">Connect a provider</Link>
+              </p>
+            </>
           )}
         </li>
         <li>

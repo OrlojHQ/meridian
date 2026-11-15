@@ -126,3 +126,25 @@ it("says a matching Capsule matches the profile, not the laptop", async () => {
   expect(await screen.findByText("This Capsule matches your current profile, with nothing left out.")).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Update this Capsule to my current profile" })).toBeNull();
 });
+
+it("drops the window-opened hint once the import is saved", async () => {
+  const openImport = vi.fn().mockResolvedValue(true);
+  window.__MERIDIAN_DESKTOP__ = { notify: vi.fn(), setAttention: vi.fn(), openImport };
+  const profile = vi.spyOn(api, "profile").mockResolvedValue(empty);
+  vi.spyOn(api, "providerConnections").mockResolvedValue({ items: [], enabled: true });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter>
+        <FirstRun />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  await userEvent.click(await screen.findByRole("button", { name: "Review this computer's setup" }));
+  expect(await screen.findByText("Review and save in the window that opened.")).toBeInTheDocument();
+  profile.mockResolvedValue({ ...saved, resourceVersion: 1 });
+  await client.invalidateQueries({ queryKey: ["profile"] });
+  expect(await screen.findByText("Your profile has Codex.")).toBeInTheDocument();
+  expect(screen.queryByText("Review and save in the window that opened.")).toBeNull();
+  expect(screen.getByRole("link", { name: "Connect a provider" }).closest("p")?.textContent).toBe("Connect a provider");
+});

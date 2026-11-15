@@ -14,6 +14,9 @@ paths: [config.toml, AGENTS.md, AGENTS.override.md, skills/, prompts/, agents/]
 configFiles: [config.toml]
 shared: [.agents/skills]
 instructions: AGENTS.md
+# Codex installs its own built-in skills here. They are not the user's
+# setup and would count toward the import limit.
+exclude: [skills/.system/]
 connection:
   providers:
     - type: openai

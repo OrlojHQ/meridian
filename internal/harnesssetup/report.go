@@ -2,6 +2,7 @@ package harnesssetup
 
 import (
 	"errors"
+	"regexp"
 	"unicode"
 	"unicode/utf8"
 )
@@ -20,6 +21,32 @@ const (
 	maxReportPath    = 1024
 	maxReportReason  = 512
 )
+
+// reportHomePath matches a path under a user's home directory inside a report
+// entry, such as the project directory in a Codex trust key
+// (`config.toml:projects:/Users/ada/work/acme:trust_level`). It stops at the
+// next colon, the separator report locations use.
+var reportHomePath = regexp.MustCompile(`(?:/Users/|/home/|/root/|\b[A-Za-z]:\\Users\\)[^:]*`)
+
+// RedactPath replaces any home-directory path in a report entry with "~/…",
+// so a saved report never carries laptop usernames or project names.
+func RedactPath(p string) string {
+	return reportHomePath.ReplaceAllString(p, "~/…")
+}
+
+// Redacted returns the report with home-directory paths removed from every
+// entry. Reports are redacted before they leave the laptop and again before
+// the server seals them.
+func (r Report) Redacted() Report {
+	redact := func(items []Issue) []Issue {
+		out := make([]Issue, 0, len(items))
+		for _, item := range items {
+			out = append(out, Issue{Path: RedactPath(item.Path), Reason: RedactPath(item.Reason)})
+		}
+		return out
+	}
+	return Report{Issues: redact(r.Issues), Warnings: redact(r.Warnings)}
+}
 
 // Report returns the preview's exclusions and warnings.
 func (p Preview) Report() Report {
