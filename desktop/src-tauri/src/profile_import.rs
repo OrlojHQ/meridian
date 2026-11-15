@@ -404,7 +404,7 @@ mod tests {
         );
         assert!(
             state.should_prompt("http://127.0.0.1:8080", "d1"),
-            "each gateway has its own baseline"
+            "each Station has its own baseline"
         );
         state.enabled = false;
         assert!(!state.should_prompt(origin, "d3"));

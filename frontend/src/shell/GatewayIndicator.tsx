@@ -32,7 +32,7 @@ export function GatewayIndicator() {
 
   const who = team && member.data ? member.data.displayName || member.data.email : undefined;
   const text = who ? `${gateway.data.label} · ${who}` : gateway.data.label;
-  const title = `Gateway: ${gateway.data.label}${who ? `, signed in as ${who}` : ""}`;
+  const title = `Station: ${gateway.data.label}${who ? `, signed in as ${who}` : ""}`;
   const open = bridge?.openGatewaySettings;
   if (!open) {
     return (
@@ -46,8 +46,8 @@ export function GatewayIndicator() {
     <button
       type="button"
       className="status-gateway"
-      title={`${title}. Switch gateway`}
-      aria-label={`${title}. Switch gateway`}
+      title={`${title}. Switch Station`}
+      aria-label={`${title}. Switch Station`}
       onClick={() => open()}
     >
       <GatewayIcon aria-hidden="true" />

@@ -162,7 +162,7 @@ async function refresh() {
     setStatus(String(error && error.message ? error.message : error), true);
     return;
   }
-  const label = state.label || state.origin || "this gateway";
+  const label = state.label || state.origin || "this Station";
   const messages = Array.isArray(state.messages) ? state.messages : [];
   const last = messages[messages.length - 1];
   const review = messages.find((message) => message.type === "review");

@@ -164,8 +164,8 @@ pub fn run() {
                         Phase::Choose
                     },
                     message: match &saved {
-                        Some(SavedGateway::Local) => "Connecting to the local gateway…".into(),
-                        Some(SavedGateway::Remote { .. }) => "Opening the gateway…".into(),
+                        Some(SavedGateway::Local) => "Connecting to the local Station…".into(),
+                        Some(SavedGateway::Remote { .. }) => "Opening the Station…".into(),
                         None => String::new(),
                     },
                     active: None,
@@ -261,7 +261,7 @@ pub fn run() {
                     if !allowed {
                         invoke
                             .resolver
-                            .reject("The desktop bridge is only for the chosen gateway.");
+                            .reject("The desktop bridge is only for the chosen Station.");
                         return true;
                     }
                 }
@@ -303,11 +303,11 @@ async fn gateway_connect(app: AppHandle, mode: String, url: Option<String>) -> R
             let origin = validate_gateway_url(url.as_deref().unwrap_or(""))?;
             SavedGateway::Remote { origin }
         }
-        _ => return Err("Choose this computer or another gateway.".into()),
+        _ => return Err("Choose this computer or another Station.".into()),
     };
     tauri::async_runtime::spawn_blocking(move || connect(&app, choice))
         .await
-        .map_err(|_| "Could not open the gateway.".to_string())?
+        .map_err(|_| "Could not open the Station.".to_string())?
 }
 
 /// Removes a gateway from the recent list. Picker only.
@@ -343,7 +343,7 @@ fn desktop_gateway(state: tauri::State<'_, AppState>) -> Result<GatewayIdentity,
             label: gateway_label(saved),
             local: *saved == SavedGateway::Local,
         }),
-        _ => Err("No gateway is open.".into()),
+        _ => Err("No Station is open.".into()),
     }
 }
 
@@ -597,7 +597,7 @@ fn connect(app: &AppHandle, choice: SavedGateway) -> Result<(), String> {
         }
         inner.phase = Phase::Starting;
         inner.message = match &choice {
-            SavedGateway::Local => "Connecting to the local gateway…".into(),
+            SavedGateway::Local => "Connecting to the local Station…".into(),
             SavedGateway::Remote { origin } => format!("Opening {origin}…"),
         };
         inner.saved = Some(choice.clone());
@@ -623,7 +623,7 @@ fn connect_local(app: &AppHandle) -> Result<(), String> {
     match probe_local() {
         GatewayProbe::Ready => {}
         GatewayProbe::Other => {
-            return Err("127.0.0.1:8080 is open, but it is not a Meridian gateway.".into());
+            return Err("127.0.0.1:8080 is open, but it is not a Meridian Station.".into());
         }
         GatewayProbe::Starting => wait_until_ready(app, false)?,
         GatewayProbe::Down => {
@@ -633,7 +633,7 @@ fn connect_local(app: &AppHandle) -> Result<(), String> {
                 if inner.quitting {
                     return Err("Meridian is quitting.".into());
                 }
-                inner.message = "Starting the local gateway…".into();
+                inner.message = "Starting the local Station…".into();
                 if inner.sidecar.as_ref().is_some_and(Sidecar::exited) {
                     inner.sidecar.take();
                 }
@@ -673,7 +673,7 @@ fn wait_until_ready(app: &AppHandle, own_process: bool) -> Result<(), String> {
         match probe_local() {
             GatewayProbe::Ready => return Ok(()),
             GatewayProbe::Other => {
-                return Err("127.0.0.1:8080 is open, but it is not a Meridian gateway.".into());
+                return Err("127.0.0.1:8080 is open, but it is not a Meridian Station.".into());
             }
             GatewayProbe::Down | GatewayProbe::Starting => {}
         }
@@ -684,7 +684,7 @@ fn wait_until_ready(app: &AppHandle, own_process: bool) -> Result<(), String> {
                 if sidecar.exited() {
                     let tail = sidecar.log_tail();
                     let lead = sidecar::explain_exit(&tail)
-                        .unwrap_or("The local gateway exited before it was ready.");
+                        .unwrap_or("The local Station exited before it was ready.");
                     let detail = if tail.trim().is_empty() {
                         lead.to_string()
                     } else {
@@ -695,7 +695,7 @@ fn wait_until_ready(app: &AppHandle, own_process: bool) -> Result<(), String> {
             }
         }
         if started.elapsed() > Duration::from_secs(60) {
-            return Err("The local gateway did not become ready.".into());
+            return Err("The local Station did not become ready.".into());
         }
         std::thread::sleep(Duration::from_millis(200));
     }
@@ -745,7 +745,7 @@ fn open_gateway(app: &AppHandle) -> Result<(), String> {
 fn navigate(app: &AppHandle, url: &str) -> Result<(), String> {
     let parsed: Url = url
         .parse()
-        .map_err(|_| "The gateway address is not a URL.".to_string())?;
+        .map_err(|_| "The Station address is not a URL.".to_string())?;
     let (sender, receiver) = std::sync::mpsc::channel();
     let handle = app.clone();
     app.run_on_main_thread(move || {
@@ -765,7 +765,7 @@ fn navigate(app: &AppHandle, url: &str) -> Result<(), String> {
     .map_err(|error| error.to_string())?;
     receiver
         .recv_timeout(Duration::from_secs(5))
-        .map_err(|_| "The window did not open the gateway.".to_string())?
+        .map_err(|_| "The window did not open the Station.".to_string())?
 }
 
 fn fail(app: &AppHandle, message: String) -> Result<(), String> {
@@ -962,11 +962,11 @@ fn tray_menu(app: &AppHandle) -> Result<Menu<Wry>, String> {
         .iter()
         .map(|item| item as &dyn IsMenuItem<Wry>)
         .collect();
-    let switch = Submenu::with_items(app, "Switch gateway", true, &switch_items).map_err(error)?;
+    let switch = Submenu::with_items(app, "Switch Station", true, &switch_items).map_err(error)?;
     let open_item =
         MenuItem::with_id(app, "open", "Open Meridian", true, None::<&str>).map_err(error)?;
     let gateway_item =
-        MenuItem::with_id(app, "gateway", "Gateway…", true, None::<&str>).map_err(error)?;
+        MenuItem::with_id(app, "gateway", "Station…", true, None::<&str>).map_err(error)?;
     let import_label = if setup_change_pending(app) {
         "Review setup changes…"
     } else {
@@ -1112,10 +1112,10 @@ fn open_import(app: &AppHandle) -> Result<(), String> {
             (Some(saved), Some(active)) if saved.origin() == active.origin => {
                 (active.origin.clone(), gateway_label(saved))
             }
-            _ => return Err("Open a gateway first.".into()),
+            _ => return Err("Open a Station first.".into()),
         }
     };
-    let url = Url::parse(&origin).map_err(|_| "The gateway address is not valid.".to_string())?;
+    let url = Url::parse(&origin).map_err(|_| "The Station address is not valid.".to_string())?;
     let main = app
         .get_webview_window("main")
         .ok_or_else(|| "The Meridian window is closed.".to_string())?;
@@ -1144,7 +1144,7 @@ fn open_import(app: &AppHandle) -> Result<(), String> {
     let command = app
         .shell()
         .sidecar("meridian-desktop-gateway")
-        .map_err(|error| format!("The bundled gateway is not installed ({error})."))?;
+        .map_err(|error| format!("The bundled Station is not installed ({error})."))?;
     let (mut events, mut child) = command
         .args(["desktop-import"])
         .spawn()

@@ -40,7 +40,7 @@ describe("gateway indicator", () => {
       gateway: vi.fn().mockResolvedValue({ label: "This computer", local: true }),
     };
     show();
-    const button = await screen.findByRole("button", { name: /Gateway: This computer\. Switch gateway/ });
+    const button = await screen.findByRole("button", { name: /Station: This computer\. Switch Station/ });
     expect(button).toHaveTextContent("This computer");
     await userEvent.click(button);
     expect(openGatewaySettings).toHaveBeenCalledOnce();

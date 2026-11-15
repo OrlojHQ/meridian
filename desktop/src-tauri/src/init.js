@@ -52,8 +52,8 @@
     var box = document.createElement("div");
     var text = document.createElement("span");
     text.textContent = isLoopback(location.hostname)
-      ? "This meridiand is older than the Meridian desktop app, so desktop alerts, the Gateway control, and update notices are off. Update it with brew upgrade meridian, or the curl installer with --cli."
-      : "This gateway runs a meridiand older than the Meridian desktop app, so desktop alerts, the Gateway control, and update notices are off. Update that gateway to the same Meridian version.";
+      ? "This meridiand is older than the Meridian desktop app, so desktop alerts, the Station control, and update notices are off. Update it with brew upgrade meridian, or the curl installer with --cli."
+      : "This Station runs a meridiand older than the Meridian desktop app, so desktop alerts, the Station control, and update notices are off. Update that Station to the same Meridian version.";
     var close = document.createElement("button");
     close.type = "button";
     close.textContent = "Dismiss";

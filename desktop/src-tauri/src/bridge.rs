@@ -55,7 +55,7 @@ pub fn capability_id(index: usize) -> String {
 /// host, and port, with any path, query, or fragment. `origin` must be the
 /// serialized origin that `validate_gateway_url` returns.
 pub fn origin_pattern(origin: &str) -> Result<String, String> {
-    let rejected = || "The gateway origin cannot be granted the desktop bridge.".to_string();
+    let rejected = || "The Station origin cannot be granted the desktop bridge.".to_string();
     let url = Url::parse(origin).map_err(|_| rejected())?;
     if !matches!(url.scheme(), "http" | "https")
         || url.origin().ascii_serialization() != origin
@@ -96,7 +96,7 @@ fn escape(host: &str) -> String {
 pub fn parse_pattern(pattern: &str) -> Result<RemoteUrlPattern, String> {
     pattern
         .parse()
-        .map_err(|_| "The gateway origin cannot be granted the desktop bridge.".to_string())
+        .map_err(|_| "The Station origin cannot be granted the desktop bridge.".to_string())
 }
 
 /// The bridge capability for one gateway origin pattern: the main window,
@@ -270,7 +270,7 @@ mod tests {
         assert_eq!(capability.identifier, "gateway-bridge-0");
         assert!(
             !capability.local,
-            "a gateway grant must not reach shell pages"
+            "a Station grant must not reach shell pages"
         );
         assert_eq!(capability.windows, vec![WINDOW.to_string()]);
         assert!(capability.webviews.is_empty());

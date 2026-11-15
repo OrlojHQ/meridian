@@ -101,7 +101,7 @@ pub fn is_sign_in_start(url: &Url, origin: &str) -> bool {
 /// The URL the system browser opens: the gateway's sign-in start with the
 /// shell's parameters. `origin` is a serialized origin with no path.
 pub fn start_url(origin: &str, port: u16, handoff: &Handoff) -> Result<Url, String> {
-    let rejected = || "The gateway address cannot start a sign-in.".to_string();
+    let rejected = || "The Station address cannot start a sign-in.".to_string();
     let mut url = Url::parse(origin).map_err(|_| rejected())?;
     if url.origin().ascii_serialization() != origin || url.path() != "/" {
         return Err(rejected());
