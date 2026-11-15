@@ -275,6 +275,10 @@ type ProviderCapabilities struct {
 	Delivery   bool
 	// Coordination reports a Capsule-local mailbox for lead Threads.
 	Coordination bool
+	// Isolation is the isolation class the provider actually verified, never
+	// a stronger claim than the runtime proves (ADR 0050). Empty means the
+	// provider verified no class.
+	Isolation domain.IsolationClass
 }
 
 type RuntimeRunRequest struct {

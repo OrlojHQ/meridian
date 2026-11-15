@@ -23,6 +23,9 @@ func Test(t *testing.T, factory Factory) {
 	if capabilities.Version == "" {
 		t.Fatal("provider capability version is empty")
 	}
+	if capabilities.Isolation != "" && !capabilities.Isolation.Valid() {
+		t.Fatalf("provider reports invalid isolation class %q", capabilities.Isolation)
+	}
 
 	request := ports.CreateCapsuleRequest{CapsuleID: domain.CapsuleID("contract-capsule")}
 	first, err := provider.Create(ctx, request)

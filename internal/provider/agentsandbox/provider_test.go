@@ -416,6 +416,9 @@ func TestReadinessFailureAndUnsupportedSnapshots(t *testing.T) {
 	if !capabilities.Structured {
 		t.Fatalf("configured private transport did not advertise structured support: %#v", capabilities)
 	}
+	if capabilities.Isolation != domain.IsolationContainer {
+		t.Fatalf("Agent Sandbox isolation class = %q, want container until the RuntimeClass is verified", capabilities.Isolation)
+	}
 	ready, err := provider.Create(context.Background(), ports.CreateCapsuleRequest{
 		CapsuleID: "capsule-ready",
 	})

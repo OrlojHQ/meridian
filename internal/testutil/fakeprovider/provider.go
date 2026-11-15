@@ -59,6 +59,9 @@ func (p *Provider) Capabilities(ctx context.Context) (ports.ProviderCapabilities
 	return ports.ProviderCapabilities{
 		Version: "test/v1",
 		Pause:   true,
+		// The contract test requires a valid class when one is reported; the
+		// fake double is a plain container provider (ADR 0050).
+		Isolation: domain.IsolationContainer,
 	}, nil
 }
 
