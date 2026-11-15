@@ -208,6 +208,104 @@ const delivery = {
   resourceVersion: 2,
 };
 
+function setup(harness: string, name: string) {
+  return {
+    id: `setup-${harness}`,
+    name,
+    harness,
+    revision: `rev-${harness}`,
+    default: true,
+    deleted: false,
+    createdAt: ago(day),
+    resourceVersion: 1,
+  };
+}
+
+const harnessSetups = [
+  setup("claude", "My Claude Code setup"),
+  setup("codex", "My Codex setup"),
+  setup("opencode", "My OpenCode setup"),
+  setup("pi", "My Pi setup"),
+];
+
+const profile = {
+  gitName: "Ada Lovelace",
+  gitEmail: "ada@example.com",
+  defaultConnections: { claude: "conn-claude" },
+  setups: harnessSetups,
+  resourceVersion: 3,
+  updatedAt: ago(day),
+};
+
+const member = {
+  mode: "team",
+  id: "usr-ada",
+  role: "admin",
+  displayName: "Ada Lovelace",
+  email: "ada@example.com",
+};
+
+const members = [
+  { id: "usr-ada", role: "admin", displayName: "Ada Lovelace", email: "ada@example.com", disabled: false, createdAt: ago(30 * day) },
+  { id: "usr-grace", role: "member", displayName: "Grace Hopper", email: "grace@example.com", disabled: false, createdAt: ago(21 * day) },
+  { id: "usr-alan", role: "member", displayName: "Alan Turing", email: "alan@example.com", disabled: false, createdAt: ago(9 * day) },
+  { id: "usr-edsger", role: "member", displayName: "Edsger Dijkstra", email: "edsger@example.com", disabled: true, createdAt: ago(60 * day) },
+];
+
+const releaseDiff = [
+  "diff --git a/CHANGELOG.md b/CHANGELOG.md",
+  "--- a/CHANGELOG.md",
+  "+++ b/CHANGELOG.md",
+  "@@ -7,6 +7,17 @@",
+  " ",
+  " ## [Unreleased]",
+  " ",
+  "+## [0.4.0] - 2026-11-10",
+  "+",
+  "+### Added",
+  "+",
+  "+- Harness-pack manifests: a new harness is data, not a Go switch.",
+  "+- Leads can propose a pull request; only you can approve it.",
+  "+",
+  "+### Fixed",
+  "+",
+  "+- Preview links stop working as soon as their Capsule is sealed.",
+  "+",
+  " ## [0.3.0] - 2026-11-08",
+  " ",
+  " ### Added",
+  "",
+].join("\n");
+
+type BoardStatus = "needs_you" | "working" | "ready_for_review" | "paused" | "sealed";
+
+const boardStatus: Record<string, BoardStatus> = {
+  [notes.id]: "needs_you",
+  [tests.id]: "needs_you",
+  [tokens.id]: "working",
+  [preview.id]: "working",
+  [inbox.id]: "ready_for_review",
+  [setups.id]: "working",
+  [paused.id]: "paused",
+  [sealed.id]: "sealed",
+};
+
+function board() {
+  return capsules.map((item) => {
+    const status = boardStatus[item.id];
+    const itemThread = threads.find((candidate) => candidate.capsuleId === item.id);
+    return {
+      capsule: item,
+      thread: itemThread,
+      currentRun: runs[item.id]?.[0],
+      status,
+      since: item.updatedAt,
+      ...(status === "needs_you" ? { needsYou: "permission" } : {}),
+      surfaced: true,
+    };
+  });
+}
+
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
@@ -219,7 +317,7 @@ const emptyPage = { items: [] };
 function route(pathname: string): unknown {
   if (pathname === "/capabilities") {
     return {
-      providerVersion: "docker/v1",
+      providerVersion: "docker/v2",
       attach: true,
       run: true,
       structured: true,
@@ -244,7 +342,7 @@ function route(pathname: string): unknown {
   if (pathname === `/projects/${billing.id}/capsules`) {
     return { items: capsules.filter((item) => item.projectId === billing.id) };
   }
-  if (pathname === "/board") return { items: [], truncated: false };
+  if (pathname === "/board") return { items: board(), truncated: false };
   if (pathname === "/provider-connections") {
     return {
       enabled: true,
@@ -260,22 +358,34 @@ function route(pathname: string): unknown {
       ],
     };
   }
-  if (pathname === "/harness-setups") {
+  if (pathname === "/harness-setups") return { items: harnessSetups };
+  if (pathname === "/profile") return profile;
+  if (pathname === "/auth/mode") return { mode: "team", signIn: true, claimable: false };
+  if (pathname === "/auth/me") return member;
+  if (pathname === "/auth/sessions") {
+    return {
+      items: [
+        { id: "ses-mac", createdAt: ago(2 * day), lastUsedAt: stamp, expiresAt: ago(-12 * day), revoked: false, current: true },
+      ],
+    };
+  }
+  if (pathname === "/auth/tokens") {
     return {
       items: [
         {
-          id: "setup-claude",
-          name: "Default",
-          harness: "claude",
-          revision: "rev-1",
-          default: true,
-          deleted: false,
-          createdAt: stamp,
-          resourceVersion: 1,
+          id: "pat-tui",
+          name: "laptop TUI",
+          readOnly: false,
+          createdAt: ago(6 * day),
+          lastUsedAt: ago(hour),
+          expiresAt: ago(-84 * day),
+          revoked: false,
         },
       ],
     };
   }
+  if (pathname === "/users") return { items: members };
+  if (pathname === "/audit-records") return { items: [], nextCursor: 0, more: false };
   if (pathname.endsWith("/environment")) {
     return { enabled: false, generation: 0, setup: [], imageReference: "", resourceVersion: 1 };
   }
@@ -307,10 +417,7 @@ function route(pathname: string): unknown {
     return { items: id === tokens.id ? [delivery] : [] };
   }
   if (pathname.endsWith("/git/diff")) {
-    return {
-      truncated: false,
-      content: "diff --git a/frontend/src/styles/shell.css b/frontend/src/styles/shell.css\n@@ -1,4 +1,6 @@\n-old\n+new\n",
-    };
+    return { truncated: false, content: releaseDiff };
   }
   if (pathname.endsWith("/git/status")) return { content: "", truncated: false };
   const threadMatch = pathname.match(/^\/threads\/([^/]+)$/);
@@ -379,28 +486,41 @@ class ShotSocket extends EventTarget {
   }
 }
 
+// Any other API socket stays open and silent instead of reaching a daemon.
+class IdleSocket extends EventTarget {
+  readyState = 1;
+  binaryType = "arraybuffer";
+  url: string;
+  protocol = "";
+  bufferedAmount = 0;
+  onopen: ((event: Event) => void) | null = null;
+  onmessage: ((event: MessageEvent) => void) | null = null;
+  onclose: ((event: Event) => void) | null = null;
+  onerror: ((event: Event) => void) | null = null;
+
+  constructor(url: string) {
+    super();
+    this.url = url;
+  }
+
+  send() {}
+  close() {
+    this.readyState = 3;
+  }
+}
+
 export function installShotFixture() {
   const nativeFetch = window.fetch.bind(window);
   const NativeSocket = window.WebSocket;
-  const apiPrefixes = [
-    "/capabilities",
-    "/projects",
-    "/capsules",
-    "/threads",
-    "/board",
-    "/provider-connections",
-    "/harness-setups",
-    "/runs",
-    "/coordination-requests",
-    "/coordination-grants",
-    "/thread-links",
-    "/secrets",
-    "/deliveries",
-  ];
+  // Everything except the dev server's own files is answered here, so a
+  // screenshot never shows data from a daemon the Vite proxy can reach.
+  const devServerPrefixes = ["/ui/", "/@", "/src/", "/node_modules/"];
   window.fetch = async (input, init) => {
     const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
     const url = new URL(raw, window.location.origin);
-    if (!apiPrefixes.some((prefix) => url.pathname.startsWith(prefix))) return nativeFetch(input, init);
+    if (url.origin !== window.location.origin || devServerPrefixes.some((prefix) => url.pathname.startsWith(prefix))) {
+      return nativeFetch(input, init);
+    }
     if (url.pathname.endsWith("/stream")) {
       return new Response(
         new ReadableStream({
@@ -417,8 +537,12 @@ export function installShotFixture() {
   };
   function ShotWebSocket(url: string | URL, protocols?: string | string[]) {
     const target = String(url);
-    if (!target.includes("/attach")) return new NativeSocket(target, protocols);
-    return new ShotSocket(target);
+    const parsed = new URL(target, window.location.href);
+    if (parsed.host !== window.location.host || parsed.pathname.startsWith("/ui/")) {
+      return new NativeSocket(target, protocols);
+    }
+    if (target.includes("/attach")) return new ShotSocket(target);
+    return new IdleSocket(target);
   }
   Object.assign(ShotWebSocket, {
     CONNECTING: NativeSocket.CONNECTING,

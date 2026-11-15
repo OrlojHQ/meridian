@@ -1,4 +1,6 @@
-<img src="docs/assets/meridian-mark.svg" width="72" alt="Meridian logo">
+<div align="center">
+
+<img src="docs/assets/meridian-mark.svg" width="96" alt="Meridian logo">
 
 # Meridian
 
@@ -9,6 +11,10 @@ review and ship what they built.**
 [![CI](https://github.com/OrlojHQ/meridian/actions/workflows/ci.yml/badge.svg)](https://github.com/OrlojHQ/meridian/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/OrlojHQ/meridian?include_prereleases&sort=semver)](https://github.com/OrlojHQ/meridian/releases)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+
+[Quick start](#quick-start) · [What you get](#what-you-get) · [Security model](#security-model) · [Documentation](#documentation)
+
+</div>
 
 Coding agents do their best work when you let them run: install packages, run
 the test suite, rewrite half the repo, try three approaches at once. That is
@@ -23,9 +29,10 @@ review the diff, and open a pull request when you like the result. When you
 don't, throw it away.
 
 It runs on your machine or your cluster, with the agents and models you
-already pay for, or your own model server.
+already pay for, or your own model server. Use it alone, or share one
+installation with your team.
 
-![The Meridian browser workspace: start a task, with Capsules that need you listed first](docs/assets/screenshots/ui-home.png)
+![The Meridian browser workspace: Capsules that need you are listed first, then every Project's Capsules](docs/assets/screenshots/ui-home.png)
 
 ## What you get
 
@@ -53,7 +60,7 @@ answer, and steer from the web UI.
 
 Transcripts are encrypted at rest.
 
-![A Thread waiting for permission to run a shell command, with the Capsule's diff beside it](docs/assets/screenshots/ui-thread.png)
+![A Thread waiting for permission to push release notes, with the Capsule's CHANGELOG diff beside it](docs/assets/screenshots/ui-thread.png)
 
 ### A lead agent with subagents
 
@@ -72,8 +79,6 @@ instructions, waits for their reports, and reads their diffs.
 
 - **Five official agents**: Claude Code, Codex, OpenCode, Pi, and DeepSeek
   Harness, each pinned by checksum and signed on every release.
-- **Your existing setup**: import your configuration, skills, and plugins with
-  **Import my setup**. Login caches and history stay behind.
 - **Your models**: sign in to the agent as you do today, add an OpenAI or
   Anthropic API key once, or point Meridian at your own server: vLLM, Ollama,
   LiteLLM, or any OpenAI- or Anthropic-compatible endpoint, with the reasoning
@@ -82,7 +87,44 @@ instructions, waits for their reports, and reads their diffs.
   [Agent Client Protocol](https://agentclientprotocol.com) agent can also run
   as a browser Thread through the built-in `acp` adapter.
 
-![Harness settings listing OpenCode, Codex, Claude Code, Pi, and DeepSeek Harness](docs/assets/screenshots/ui-harnesses.png)
+### Your setup, in every Capsule
+
+Import your computer once and every new Capsule starts with the agent setup
+you already tuned: settings, `AGENTS.md` and `CLAUDE.md`, skills, slash
+commands, agent definitions, prompts, and MCP servers that can run in a
+container, plus your git name and email.
+
+- **One review, then one save.** `meridian import` on your computer, or
+  **Review this computer's setup** in the desktop app, shows what will be
+  kept, what is left out, and why, before anything is uploaded.
+- **Logins never travel.** `auth.json`, OAuth tokens, API keys, and SSH keys
+  are left out on purpose. Model access comes from a provider connection,
+  whose key stays in the daemon, and laptop-only permission settings are
+  stripped.
+- **A snapshot, not a live link.** Each Capsule pins the profile it started
+  with. When your setup changes, the desktop app offers to review it again;
+  you choose when a Capsule updates.
+
+<p align="center">
+  <img src="docs/assets/screenshots/desktop-import.png" width="420" alt="The desktop app's import window: Claude Code and Codex found, files kept and left out, the git identity, and Save">
+</p>
+
+![Harness settings: what new Capsules inherit, with a setup and default connection per harness](docs/assets/screenshots/ui-harnesses.png)
+
+### One installation for your team
+
+Turn on team mode and teammates sign in through your identity provider (OIDC:
+Okta, Entra ID, Google, Keycloak, Authentik, Dex). Every Project, Capsule,
+secret, setup, and model login belongs to one person and is private by
+default.
+
+- `meridian login` signs the CLI and TUI in; personal access tokens can be
+  read-only and expire.
+- Admins add and disable members, sign them out everywhere, and transfer a
+  departed teammate's work.
+- An append-only audit log records who did what, without prompts or secrets.
+
+![Account settings in team mode: members, roles, and sessions](docs/assets/screenshots/ui-team.png)
 
 ### Snapshot, fork, and rewind
 
@@ -151,8 +193,8 @@ carries this script as `install-desktop.sh`, signed and listed in
 Pin a version, or install only the `meridian` and `meridiand` binaries:
 
 ```console
-curl -fsSL https://raw.githubusercontent.com/OrlojHQ/meridian/main/scripts/install-desktop.sh | sh -s -- --version 0.6.0
-curl -fsSL https://raw.githubusercontent.com/OrlojHQ/meridian/main/scripts/install-desktop.sh | sh -s -- --cli --version 0.6.0
+curl -fsSL https://raw.githubusercontent.com/OrlojHQ/meridian/main/scripts/install-desktop.sh | sh -s -- --version 0.9.0
+curl -fsSL https://raw.githubusercontent.com/OrlojHQ/meridian/main/scripts/install-desktop.sh | sh -s -- --cli --version 0.9.0
 ```
 
 The window checks for a newer release when it opens and every four hours.
@@ -191,7 +233,7 @@ Download the archive for your platform from
 `arm64` or `amd64`) and [verify it](docs/operations.md#verify-a-release):
 
 ```console
-VERSION=0.4.1
+VERSION=0.9.0
 curl -fsSLO "https://github.com/OrlojHQ/meridian/releases/download/v${VERSION}/meridian_${VERSION}_macOS_arm64.tar.gz"
 tar -xzf "meridian_${VERSION}_macOS_arm64.tar.gz" meridian meridiand
 ```
@@ -208,10 +250,14 @@ the Claude Code image, starts a Capsule, and hands you its terminal. Sign in
 there once; Threads in that Capsule use the same login.
 
 Then open the browser workspace at
-[http://127.0.0.1:8080/ui/](http://127.0.0.1:8080/ui/). It asks once for the
+[http://127.0.0.1:8080/ui/](http://127.0.0.1:8080/ui/). On this computer it
+signs you in on its own. From another machine it asks once for the
 installation token, which `meridiand` wrote to
 `~/Library/Application Support/meridian/api-auth/installation.token` on macOS
 or `~/.config/meridian/api-auth/installation.token` on Linux.
+
+To bring your agent setup along, run `meridian import` and review what it
+finds before you save.
 
 Swap `--harness claude` for `codex`, `opencode`, or `pi`.
 
@@ -327,7 +373,10 @@ Meridian credential.
 Meridian treats repositories, agent output, terminals, and Capsule processes as
 hostile.
 
-- The API listens on loopback by default and requires an installation token.
+- The API listens on loopback by default and requires an installation token,
+  or, in team mode, a member's own sign-in session or personal access token.
+- In team mode every object has one owner, and one member's API calls cannot
+  read or change another member's work.
 - Only `meridiand` touches the Docker socket; Capsules never get it, host
   paths, or control-plane credentials.
 - Secrets and transcripts are encrypted at rest, and secrets are scoped to a
@@ -336,10 +385,13 @@ hostile.
 - Subagents ask you, not their lead, for permission, and a lead can propose a
   pull request but never approve one.
 
-Meridian is built for **one trusted person** running agents on their own
-machine or cluster. Docker containers are not a boundary between mutually
-hostile tenants, so do not host Meridian for untrusted users. Read the
-[threat model](docs/threat-model.md) and [security policy](SECURITY.md).
+Meridian is built for **one person or one team of trusted teammates**
+running agents on their own machines or cluster. Team mode keeps teammates'
+work private through the API, but their Capsules still share the provider's
+isolation: with Docker that is one kernel. Containers are not a boundary
+between mutually hostile tenants, so do not host Meridian for untrusted
+users. Read the [threat model](docs/threat-model.md) and
+[security policy](SECURITY.md).
 
 ## Status
 
@@ -353,8 +405,8 @@ releases; see the [changelog](CHANGELOG.md).
   [leads and subagents](docs/cli-and-tui.md#leads-and-subagents), the board,
   sync, ship
 - [Browser workspace and previews](docs/review-ui.md)
-- [Bring your harness setup](docs/personal-harness-setups.md): imports, API
-  keys, and self-hosted models
+- [Bring your harness setup](docs/personal-harness-setups.md): importing your
+  computer, API keys, and self-hosted models
 - [Prepared project environments](docs/prepared-environments.md)
 - [Moments and lineage](docs/moments-and-lineage.md): capture, shard, rewind,
   seal
@@ -366,6 +418,8 @@ releases; see the [changelog](CHANGELOG.md).
 
 **Operate**
 - [Operations](docs/operations.md): install, verify, back up, Compose, Helm
+- [Team mode](docs/operations.md#team-mode): OIDC sign-in, members, and the
+  audit log
 - [Docker development](docs/docker-development.md)
 - [Kubernetes Agent Sandbox](docs/kubernetes-agentsandbox.md)
 - [Threat model](docs/threat-model.md)
