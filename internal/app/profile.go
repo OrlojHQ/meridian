@@ -30,10 +30,7 @@ type ProfileUpdate struct {
 
 // GitIdentity is a commit author's name and email, nothing else from a git
 // config.
-type GitIdentity struct {
-	Name  string `json:"name"`
-	Email string `json:"email"`
-}
+type GitIdentity = harnesssetup.GitIdentity
 
 // ProfileImportSetup is one harness's reviewed bundle and the report of what
 // its import left out.
@@ -509,6 +506,22 @@ func (s *Service) commitAuthor(ctx context.Context, project domain.Project, caps
 		return "", "", err
 	}
 	return pin.GitName, pin.GitEmail, nil
+}
+
+// runtimeGitIdentity is the identity a Capsule pinned, sent to capsuled at
+// each session start.
+func (s *Service) runtimeGitIdentity(ctx context.Context, id domain.CapsuleID) (*harnesssetup.GitIdentity, error) {
+	var pin domain.CapsuleProfilePin
+	var ok bool
+	err := s.store.View(ctx, func(r ports.Reader) error {
+		var err error
+		pin, ok, err = r.GetCapsuleProfilePin(ctx, id)
+		return err
+	})
+	if err != nil || !ok || pin.GitName == "" {
+		return nil, err
+	}
+	return &harnesssetup.GitIdentity{Name: pin.GitName, Email: pin.GitEmail}, nil
 }
 
 var errCommitAuthorRequired = fmt.Errorf("%w: a commit author is required; set one on the Project or in your profile", domain.ErrIllegalTransition)

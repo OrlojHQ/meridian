@@ -12,6 +12,8 @@ import (
 	"github.com/OrlojHQ/meridian/internal/harnesssetup"
 	"github.com/OrlojHQ/meridian/internal/ports"
 	"github.com/OrlojHQ/meridian/internal/principal"
+	"github.com/OrlojHQ/meridian/internal/store/sqlite"
+	fake "github.com/OrlojHQ/meridian/internal/testutil/fakeprovider"
 )
 
 func codexBundle(content string, extra ...harnesssetup.File) harnesssetup.Bundle {
@@ -328,5 +330,54 @@ func TestDepartedTransferResealsReportsAndLeavesTheProfile(t *testing.T) {
 		return nil
 	}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A session start sends capsuled the identity the Capsule pinned, not the
+// profile's current one.
+func TestRunStartSendsThePinnedIdentity(t *testing.T) {
+	ctx := operatorContext()
+	store, err := sqlite.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	clock := &testClock{now: time.Date(2026, 11, 14, 0, 0, 0, 0, time.UTC)}
+	ids := &testIDs{}
+	reconciler := app.NewReconciler(store, fake.New(fake.Options{}), clock, ids)
+	reconciler.Start(ctx)
+	defer reconciler.Close()
+	runtime := &runRuntime{}
+	service := app.NewService(store, clock, ids, reconciler, runtime)
+	if _, err := service.UpdateProfile(ctx, app.ProfileUpdate{GitName: "Ada Lovelace", GitEmail: "ada@example.com"}, "profile"); err != nil {
+		t.Fatal(err)
+	}
+	project, err := service.CreateProject(ctx, "project", "project")
+	if err != nil {
+		t.Fatal(err)
+	}
+	capsule, err := service.CreateCapsule(ctx, project.ID, "capsule", "capsule")
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(time.Second)
+	for capsule.State != domain.CapsuleReady {
+		capsule, err = service.GetCapsule(ctx, capsule.ID)
+		if err != nil || time.Now().After(deadline) {
+			t.Fatalf("Capsule readiness = %#v, %v", capsule, err)
+		}
+		time.Sleep(time.Millisecond)
+	}
+	// The profile changes after the Capsule pinned its identity.
+	if _, err := service.UpdateProfile(ctx, app.ProfileUpdate{GitName: "Someone Else", GitEmail: "else@example.com", ExpectedResourceVersion: 1}, "profile-2"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.StartRun(ctx, capsule.ID, "mock", "prompt", "start", 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	if runtime.lastGit == nil || runtime.lastGit.Name != "Ada Lovelace" || runtime.lastGit.Email != "ada@example.com" {
+		t.Fatalf("identity sent = %+v", runtime.lastGit)
 	}
 }

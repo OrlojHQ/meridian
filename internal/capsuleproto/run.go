@@ -46,6 +46,7 @@ const (
 type RunStartRequest struct {
 	Connection *harnesssetup.Connection   `json:"connection,omitempty"`
 	Setup      *harnesssetup.RuntimeSetup `json:"setup,omitempty"`
+	Git        *harnesssetup.GitIdentity  `json:"git,omitempty"`
 	RunID      string                     `json:"runId"`
 	Harness    string                     `json:"harness"`
 	Prompt     string                     `json:"prompt"`
@@ -278,6 +279,9 @@ func (s *Server) startRun(writer http.ResponseWriter, request *http.Request) {
 	setupEnv, err := s.prepareHarnessSetup(request.Context(), input.Setup, input.Harness)
 	if err == nil {
 		setupEnv, err = s.prepareProviderConnection(request.Context(), input.Connection, input.Setup, input.Harness, setupEnv)
+	}
+	if err == nil {
+		setupEnv, err = s.prepareGitIdentity(input.Git, setupEnv)
 	}
 	if err != nil {
 		code := "harness_setup_unavailable"

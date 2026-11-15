@@ -1422,11 +1422,15 @@ func (s *Service) startStructuredRuntime(
 	if err == nil {
 		connection, err = s.runtimeProviderConnection(ctx, capsule, thread.AdapterID)
 	}
+	var gitIdentity *harnesssetup.GitIdentity
+	if err == nil {
+		gitIdentity, err = s.runtimeGitIdentity(ctx, capsule.ID)
+	}
 	var runtimeRun ports.RuntimeRun
 	if err == nil {
 		runtimeRun, err = s.structured.StartStructured(ctx, ports.RuntimeStructuredStartRequest{
 			RunID: run.ID, ResourceID: capsule.ProviderResourceID, Harness: thread.AdapterID, Frame: frame,
-			Secrets: cloneStringMap(secretValues), Setup: setup, Connection: connection,
+			Secrets: cloneStringMap(secretValues), Setup: setup, Git: gitIdentity, Connection: connection,
 		})
 	}
 	clearStringMap(secretValues)

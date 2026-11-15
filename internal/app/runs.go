@@ -124,11 +124,16 @@ func (s *Service) StartRun(
 		clearStringMap(secretValues)
 		return s.transitionRun(ctx, result.ID, domain.RunFailed, &runCompletion{Failure: "Provider connection unavailable; reconnect in Harness settings"})
 	}
+	gitIdentity, err := s.runtimeGitIdentity(ctx, capsuleID)
+	if err != nil {
+		clearStringMap(secretValues)
+		return s.transitionRun(ctx, result.ID, domain.RunFailed, &runCompletion{Failure: "Saved harness setup could not be prepared"})
+	}
 	started := time.Now()
 	runtimeRun, err := s.runtime.StartRun(ctx, ports.RuntimeRunRequest{
 		RunID: result.ID, ResourceID: capsule.ProviderResourceID, Harness: harnessName,
 		Prompt: prompt, Columns: columns, Rows: rows,
-		Secrets: cloneStringMap(secretValues), Setup: setup, Connection: connection,
+		Secrets: cloneStringMap(secretValues), Setup: setup, Git: gitIdentity, Connection: connection,
 	})
 	clearStringMap(secretValues)
 	if s.observer != nil {

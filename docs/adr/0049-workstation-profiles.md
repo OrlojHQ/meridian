@@ -137,9 +137,14 @@ How each existing mechanism fits:
   manifest is still an open question and is not part of this decision.
 - **`internal/capsuleproto/harness_setup.go`.** Materialization still writes
   one pinned revision into `.meridian-setup-<revision>`. The one addition is
-  the pinned git identity, sent with the runtime setup. `capsuled` writes it
-  as a generated `.gitconfig` in that private home, with only a `[user]`
-  section. The laptop's `~/.gitconfig` is never copied, since it routinely
+  the pinned git identity, sent with each Run and Thread start. `capsuled`
+  writes it as a generated git config file with only a `[user]` section, in
+  the Capsule's private home (`.meridian-identity/gitconfig`), and points
+  `GIT_CONFIG_GLOBAL` at it for the harness process. The file is rewritten
+  at every session start, so it works with or without a pinned setup and
+  picks up an explicit Capsule update even when the setup revision did not
+  change. Delivery's own git commands keep `GIT_CONFIG_GLOBAL=/dev/null`.
+  The laptop's `~/.gitconfig` is never copied, since it routinely
   holds `insteadOf` rewrites, credential helpers, and `core.sshCommand`.
   An identity that contains control characters, quotes, backslashes, or
   `<` / `>` is refused when it is saved and again by `capsuled`, rather than
@@ -486,7 +491,7 @@ Each step is its own PR, as #84 was (#155 to #167):
 2. App: profile get and update, atomic import, the identity on pins,
    Delivery author resolution, Capsule profile update, and the diagnostic.
 3. API: OpenAPI paths, handlers, and `make generate`.
-4. `capsuled`: the generated `.gitconfig` in the setup home.
+4. `capsuled`: the generated git config and `GIT_CONFIG_GLOBAL`.
 5. CLI: `meridian import` with detection, diff, and git identity.
 6. UI: the first-run import step, "What Capsules inherit", and the Capsule
    diagnostic panel.

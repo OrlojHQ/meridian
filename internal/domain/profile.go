@@ -1,8 +1,9 @@
 package domain
 
 import (
-	"strings"
 	"time"
+
+	"github.com/OrlojHQ/meridian/internal/harnesssetup"
 )
 
 // UserProfile is one user's workstation profile (ADR 0049). It groups the
@@ -40,25 +41,9 @@ type CapsuleProfilePin struct {
 	PinnedAt  time.Time
 }
 
-// ValidGitIdentity reports whether a commit identity is safe to store and
-// to write as a quoted value in a generated [user] section. Both parts are
-// set or both are empty. Control characters, quotes, backslashes, and the
-// angle brackets that delimit a commit author are refused rather than
-// escaped, so a quoted value can never end early.
+// ValidGitIdentity reports whether a commit identity is safe to store. The
+// rule lives with harnesssetup so capsuled, which writes the identity into a
+// Capsule, checks exactly the same thing.
 func ValidGitIdentity(name, email string) bool {
-	if (name == "") != (email == "") {
-		return false
-	}
-	if len(name) > 320 || len(email) > 320 {
-		return false
-	}
-	for _, r := range name + email {
-		if r < 0x20 || r == 0x7f {
-			return false
-		}
-	}
-	if strings.ContainsAny(name+email, "\"\\<>") {
-		return false
-	}
-	return strings.TrimSpace(name) == name && strings.TrimSpace(email) == email
+	return harnesssetup.ValidGitIdentity(name, email)
 }

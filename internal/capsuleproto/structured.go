@@ -33,6 +33,7 @@ var errAdapterEnd = errors.New("adapter ended session")
 type StructuredStartRequest struct {
 	Connection *harnesssetup.Connection   `json:"connection,omitempty"`
 	Setup      *harnesssetup.RuntimeSetup `json:"setup,omitempty"`
+	Git        *harnesssetup.GitIdentity  `json:"git,omitempty"`
 	RunID      string                     `json:"runId"`
 	Harness    string                     `json:"harness"`
 	Frame      adapterproto.Frame         `json:"frame"`
@@ -210,6 +211,9 @@ func (s *Server) startStructured(writer http.ResponseWriter, request *http.Reque
 	setupEnv, err := s.prepareHarnessSetup(request.Context(), input.Setup, input.Harness)
 	if err == nil {
 		setupEnv, err = s.prepareProviderConnection(request.Context(), input.Connection, input.Setup, input.Harness, setupEnv)
+	}
+	if err == nil {
+		setupEnv, err = s.prepareGitIdentity(input.Git, setupEnv)
 	}
 	if err != nil {
 		code := "harness_setup_unavailable"

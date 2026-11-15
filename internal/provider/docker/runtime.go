@@ -64,7 +64,7 @@ func (p *Provider) StartRun(ctx context.Context, request ports.RuntimeRunRequest
 	result, err := supervisor.StartRun(ctx, capsuleproto.RunStartRequest{
 		RunID: string(request.RunID), Harness: request.Harness, Prompt: request.Prompt,
 		Columns: request.Columns, Rows: request.Rows,
-		Secrets: request.Secrets, Setup: request.Setup, Connection: request.Connection,
+		Secrets: request.Secrets, Setup: request.Setup, Git: request.Git, Connection: request.Connection,
 	})
 	return runtimeRun(result), mapRuntimeError(err)
 }
@@ -79,7 +79,7 @@ func (p *Provider) StartStructured(
 	}
 	result, err := supervisor.StartStructured(ctx, capsuleproto.StructuredStartRequest{
 		RunID: string(request.RunID), Harness: request.Harness, Frame: request.Frame,
-		Secrets: request.Secrets, Setup: request.Setup, Connection: request.Connection,
+		Secrets: request.Secrets, Setup: request.Setup, Git: request.Git, Connection: request.Connection,
 	})
 	return structuredRuntimeRun(result), mapRuntimeError(err)
 }
