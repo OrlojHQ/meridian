@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import { api, normalizeAPIError } from "../api/client";
-import type { HarnessImage, Project } from "../api/generated/types.gen";
+import type { HarnessImage, IsolationClass, Project } from "../api/generated/types.gen";
 import { projectHarnessImage } from "../api/harnessPacks";
 import { isGitHubRepositoryInput } from "./repositoryUrl";
 import { Button } from "./ui/Button";
@@ -10,6 +10,23 @@ import { Dialog } from "./ui/Dialog";
 import { Input, Select } from "./ui/Field";
 
 const harnessPreferenceKey = "meridian.newProjectHarness";
+
+// The select always offers every class; the server stays authoritative and
+// refuses a requirement the Station cannot serve (ADR 0050). Options the
+// verified class cannot back are disabled, never hidden, so an operator
+// sees what the Station could offer with a stronger provider.
+const isolationOptions: { value: IsolationClass | ""; label: string; rank: number }[] = [
+  { value: "", label: "No requirement", rank: 0 },
+  { value: "container", label: "Container", rank: 1 },
+  { value: "sandbox", label: "Sandbox (gVisor-class)", rank: 2 },
+  { value: "microvm", label: "MicroVM", rank: 3 },
+];
+
+const isolationRanks: Record<IsolationClass, number> = {
+  container: 1,
+  sandbox: 2,
+  microvm: 3,
+};
 
 function rememberedHarness() {
   try {
@@ -39,11 +56,13 @@ export function initialHarness(harnessImages: HarnessImage[]) {
 export function NewProjectDialog({
   open,
   harnessImages,
+  verifiedIsolation,
   onClose,
   onCreated,
 }: {
   open: boolean;
   harnessImages: HarnessImage[];
+  verifiedIsolation?: IsolationClass;
   onClose: () => void;
   onCreated?: (project: Project) => void;
 }) {
@@ -52,18 +71,22 @@ export function NewProjectDialog({
   const [repositoryUrl, setRepositoryUrl] = useState("");
   const [privateRepo, setPrivateRepo] = useState(false);
   const [token, setToken] = useState("");
+  const [requiredIsolation, setRequiredIsolation] = useState<IsolationClass | "">("");
   const github = isGitHubRepositoryInput(repositoryUrl);
+  const verifiedRank = verifiedIsolation ? isolationRanks[verifiedIsolation] : undefined;
   const mutation = useMutation({
     mutationFn: async ({
       name,
       repositoryUrl: repository,
       harnessName,
       token: cloneToken,
+      requiredIsolation: requirement,
     }: {
       name: string;
       repositoryUrl?: string;
       harnessName?: string;
       token?: string;
+      requiredIsolation?: IsolationClass;
     }) => {
       const harness = harnessImages.find((item) => item.name === harnessName);
       let gitSecretName: string | undefined;
@@ -76,6 +99,7 @@ export function NewProjectDialog({
             ...(repository ? { repositoryUrl: repository } : {}),
             gitSecretName,
             ...(harness ? { harnessImages: [projectHarnessImage(harness)] } : {}),
+            ...(requirement ? { requiredIsolation: requirement } : {}),
           });
         } catch (error) {
           await api.deleteSecret(gitSecretName, secret.resourceVersion).catch(() => undefined);
@@ -86,6 +110,7 @@ export function NewProjectDialog({
         name,
         ...(repository ? { repositoryUrl: repository } : {}),
         ...(harness ? { harnessImages: [projectHarnessImage(harness)] } : {}),
+        ...(requirement ? { requiredIsolation: requirement } : {}),
       });
     },
     onSuccess: async (project, { harnessName }) => {
@@ -107,6 +132,7 @@ export function NewProjectDialog({
     setRepositoryUrl("");
     setPrivateRepo(false);
     setToken("");
+    setRequiredIsolation("");
   }, [open]);
 
   useEffect(() => {
@@ -128,6 +154,7 @@ export function NewProjectDialog({
       repositoryUrl: repositoryUrl.trim() || undefined,
       harnessName: String(data.get("harness") ?? "") || undefined,
       ...(cloneToken ? { token: cloneToken } : {}),
+      ...(requiredIsolation ? { requiredIsolation } : {}),
     });
   }
 
@@ -229,6 +256,30 @@ export function NewProjectDialog({
           <p className="notice">
             No installation harness packs are available. The Project can be
             created, but Capsules cannot launch until an operator applies one.
+          </p>
+        )}
+        <label htmlFor="project-isolation">
+          Isolation
+          <Select
+            id="project-isolation"
+            value={requiredIsolation}
+            disabled={mutation.isPending}
+            onChange={(event) => setRequiredIsolation(event.target.value as IsolationClass | "")}
+          >
+            {isolationOptions.map((option) => (
+              <option
+                key={option.value || "none"}
+                value={option.value}
+                disabled={verifiedRank !== undefined && option.rank > verifiedRank}
+              >
+                {option.label}
+              </option>
+            ))}
+          </Select>
+        </label>
+        {verifiedIsolation && (
+          <p className="field-hint">
+            This Station provides {verifiedIsolation} isolation.
           </p>
         )}
         <Button type="submit" variant="primary" disabled={mutation.isPending}>

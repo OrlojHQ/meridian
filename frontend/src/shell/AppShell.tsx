@@ -920,6 +920,7 @@ export function AppShell() {
       <NewProjectDialog
         open={newProjectOpen}
         harnessImages={capabilities.data?.harnessImages ?? []}
+        verifiedIsolation={capabilities.data?.isolation}
         onClose={() => setNewProjectOpen(false)}
       />
       {newSessionOpen && (
