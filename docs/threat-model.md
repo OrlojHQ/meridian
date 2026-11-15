@@ -27,6 +27,11 @@ mode, where the installation bearer and its browser cookie act as the one
 user, the bootstrap owner. "Team mode and per-user identity" below states the
 team-mode threats and controls.
 
+ADR 0049 (proposed) adds per-user workstation profiles: one import of a
+laptop's harness setups and git identity, a default connection per harness,
+and a computed diagnostic. It is not implemented. "Workstation profiles"
+below states the controls it must meet before it ships.
+
 ## Assets
 
 Assets requiring protection include:
@@ -909,6 +914,11 @@ they are not a statement that every planned path is already implemented.
   connections never cross owners. Secret and connection envelopes bind the
   owner. Admins manage membership and audit and cannot read other users'
   objects. The installation bearer is break-glass only.
+- Workstation profiles (ADR 0049, proposed): a profile has one owner, is
+  addressed only by that owner, and references only that owner's setups and
+  connections. A default connection is never an authorization; only a
+  Project grant is. A Capsule cannot write a profile or its own pin. The
+  laptop's git config, SSH keys, and auth caches never enter a profile.
 - Security and durability requirements fail closed when a provider lacks a capability.
 - Reusable credential plaintext is not persisted; encrypted named secrets use
   a dedicated externally custodied credential KEK and cannot cross purpose.
@@ -1035,6 +1045,14 @@ ciphertext under one KEK, so deleting a departed user's rows does not remove
 their data from older backups. The identity provider joins the trust base.
 With container providers, teammates' Capsules share a kernel, and a Capsule
 escape exposes every user on that host.
+
+A workstation profile (ADR 0049, proposed) makes the user's tuned
+configuration the default for every new Capsule. Hooks, plugins, skills,
+and MCP servers in it are code. They run in every Capsule that pins the
+profile, under that provider's isolation, and repository content can steer
+them. The git commit identity is self-asserted and not checked against the
+member's OIDC email, and Delivery commits are not signed. A member can
+commit under any name, as they already can through the Project fields.
 
 These risks must be stated in deployment documentation and revisited before implementing a provider, credentials, PTY access, Moments, delivery, multi-user access, or internet-facing operation.
 
@@ -1240,6 +1258,76 @@ by deployment intermediaries. Directory handles remain ephemeral and read-only;
 allowlisted traversal skips dependency subtrees before enumeration. Browser file
 input fallback still enumerates the selected folder before filtering, and the UI
 explains this difference. Both paths use the same authoritative server validation.
+
+## Workstation profiles
+
+ADR 0049 is proposed and not implemented. A workstation profile groups the
+owner's default harness setups, a sealed import report per revision, a git
+commit identity, and a default provider connection per harness. It adds no
+file storage beyond those reports. The setup controls above still apply in
+full: the manifest allowlist, the Go deny list, sanitization, encrypted
+revisions, rooted materialization, and no host mounts.
+
+Threats and required controls:
+
+- **Cross-owner profile access.** A teammate reads or changes another
+  member's profile, or names another member's setup or connection as a
+  default. The profile API addresses only the caller's own profile and takes
+  no user id, so there is nothing to enumerate. Admins and the break-glass
+  bearer are refused. `internal/app` resolves every reference within the
+  caller's rows, and store triggers refuse a default connection with a
+  different owner.
+- **Report envelope reattachment.** Someone with database write access moves
+  a sealed import report to another user's revision, or into a bundle slot.
+  Reports use their own envelope id, `owner:<owner_user_id>:<revision_id>:report`,
+  in the AAD, so a moved or swapped ciphertext fails to open.
+- **A default connection as a silent grant.** A profile default would hand
+  every new repository a lease that spends the user's login. A default is
+  never an authorization: the gateway checks only Project grants. A grant
+  needs one owner action per Project (Project create with defaults, or the
+  first-launch grant). It goes through the existing grant path and is
+  audited. Changing a default never changes existing grants.
+- **A hostile Capsule writing the profile.** Capsule code tries to save its
+  edited home, or re-pin itself to another revision. The supervisor token,
+  gateway leases, and coordination mailbox have no route to profile import,
+  profile update, or Capsule profile update. Edits inside a Capsule are never
+  written back. Re-pinning is an owner API call, and it is refused while a
+  Run or Thread session is active.
+- **Detection overreach on the laptop.** `meridian import` checks only the
+  manifest roots, `homeFiles`, `shared` paths, and the global git config. It
+  does not walk the rest of `$HOME`. It executes nothing: git config is
+  parsed for `[user] name` and `email` only, without running `git` or
+  following `include` / `includeIf`. `~/.gitconfig` itself is never copied,
+  because it can hold `insteadOf` rewrites, credential helpers, and
+  `core.sshCommand`. SSH keys are not read.
+- **Git identity injection.** `capsuled` writes the pinned identity as a
+  generated `.gitconfig` in the private setup home, with only a `[user]`
+  section. An identity that contains control characters, quotes,
+  backslashes, or `<` / `>` is refused when saved and again by `capsuled`,
+  rather than escaped, so it cannot add a section, an include, or a helper.
+- **Diff fetch exposure.** To show a diff, the CLI reads the owner's current
+  revisions through the existing owner-only, `no-store` contents endpoint.
+  It keeps them in memory, prints secret-shaped values only as "excluded",
+  and writes nothing to disk.
+- **Diagnostic leakage or false comfort.** The diagnostic is computed only
+  from control-plane records, never from Capsule reports. It is owner-only
+  and `no-store`, and it carries no file contents or credential values. It
+  says "matches your profile" only when nothing is outstanding. It never
+  claims the Capsule matches the laptop.
+- **Forged import reports.** The report comes from the importing client.
+  It is bounded, shape-checked, stored sealed, and rendered only as text. A
+  modified CLI can misdescribe its owner's own setup. It cannot change what
+  the server's bundle validation accepts.
+- **Profile in shared caches.** The profile never adds to the Project setup
+  argv, the prepared environment cache key or contents, or Moments.
+  Personal files are applied after preparation, in the private home.
+- **Departed members.** Break-glass transfer moves setups without their
+  default flag, so a recipient's profile does not change without their
+  action. The profile row and its git identity do not move. Deleting a
+  departed member deletes their profile row.
+- **Single-user servers off loopback.** Anyone with the installation bearer
+  acts as the bootstrap owner and uses that one profile. The UI says so on a
+  server that is not loopback.
 
 ## Team mode and per-user identity
 
