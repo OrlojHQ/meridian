@@ -29,7 +29,37 @@ Review shows sanitized file contents, portable npm dependencies and explicit
 exclusions. Login caches, conversation history and local services remain outside
 the import. Native account sign-in is separate.
 
-## CLI import
+## Import your whole computer
+
+`meridian import` reviews every harness on this computer and your git commit
+identity at once, and saves them as your workstation profile (ADR 0049):
+
+```console
+meridian import --preview
+meridian import
+meridian --server https://meridian.example --token-file /path/to/token import
+```
+
+It reads only each harness's configuration directory and your global git
+config (`$GIT_CONFIG_GLOBAL`, or `~/.config/git/config` and `~/.gitconfig`).
+From git it takes `user.name` and `user.email` and nothing else. It does not
+run `git`, follow `include` directives, or copy the file, so `insteadOf`
+rewrites, credential helpers, and `core.sshCommand` stay on your computer. SSH
+keys are never read.
+
+The review compares this computer with your saved profile: `+` added, `~`
+changed, and `-` removed files per harness, what is left out and why, and
+whether a default connection covers each harness's login. One answer saves
+everything in a single request; if any part is refused, nothing is saved. A
+harness over the bundle limit is listed as not imported and the rest can still
+be saved. `--no-git` leaves the identity out. For automation, use
+`--yes --accept-exclusions`; it prints how many exclusions it accepted.
+
+New Capsules pin the saved profile, including the git identity, which agents
+inside the Capsule commit with and which Delivery uses when the Project has no
+commit author. Existing Capsules keep what they pinned until you update them.
+
+## CLI import of one harness
 
 Run `meridian harness import` on the computer containing your configuration.
 Choose all detected harnesses, or specify `claude`, `codex`, `dsh`, `opencode`, or `pi`.
