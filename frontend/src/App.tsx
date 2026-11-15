@@ -43,6 +43,7 @@ import { olderPackRelease } from "./api/harnessPacks";
 import { Home } from "./components/Home";
 import { ProjectSettings } from "./components/ProjectSettings";
 import { CapsuleStartup } from "./components/CapsuleStartup";
+import { CapsuleProfilePanel } from "./components/CapsuleProfilePanel";
 import { DeliveryDecision } from "./components/DeliveryDecision";
 import { isStarting } from "./components/startup";
 import { WorkspaceSkeleton } from "./components/ui/loading";
@@ -714,6 +715,7 @@ export function CapsuleDetail() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [shipOpen, setShipOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const capsule = useQuery(queries.capsule(capsuleId));
   const runs = useQuery(queries.runs(capsuleId));
   const capabilities = useQuery(queries.capabilities());
@@ -835,6 +837,13 @@ export function CapsuleDetail() {
           </span>
         </div>
         <div className="capsule-bar-actions">
+          <button
+            type="button"
+            aria-expanded={profileOpen}
+            onClick={() => setProfileOpen((current) => !current)}
+          >
+            Profile…
+          </button>
           {capabilities.data?.delivery === true && (
             <button
               type="button"
@@ -866,6 +875,11 @@ export function CapsuleDetail() {
       {deliveries.data?.items[0]?.state === "proposed" && (
         <section className="workspace-drawer" aria-label="Proposed Delivery">
           <DeliveryDecision capsuleId={value.id} deliveryId={deliveries.data.items[0].id} />
+        </section>
+      )}
+      {profileOpen && (
+        <section className="workspace-drawer" aria-label="Compared with your profile">
+          <CapsuleProfilePanel capsuleId={value.id} />
         </section>
       )}
       {shipOpen && (

@@ -2,6 +2,7 @@ import { HarnessSetupEditor } from "./HarnessSetupEditor";
 import { HarnessSetupImport } from "./HarnessSetupImport";
 import { connectableHarnesses, connectionSupports, ProviderConnections } from "./ProviderConnections";
 import { HarnessMark } from "./ui/HarnessMark";
+import { WhatCapsulesInherit } from "./WorkstationProfile";
 import { useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -103,6 +104,7 @@ export function HarnessSetups(){
     <p className="view-description">New Capsules use the default setup.</p>
    </div>
   </header>
+  <WhatCapsulesInherit />
   {setups.isPending && <p role="status">Loading saved setups…</p>}
   {setups.isError && <p role="alert">{normalizeAPIError(setups.error).message}<button onClick={()=>void setups.refetch()}>Retry</button></p>}
   <ul className="harness-list">
