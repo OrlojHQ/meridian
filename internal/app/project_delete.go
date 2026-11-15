@@ -353,6 +353,17 @@ func projectAcceptsWork(project domain.Project) error {
 	return fmt.Errorf("%w: project is %s", domain.ErrIllegalTransition, project.State)
 }
 
+// requireProjectIsolation enforces the Project's isolation floor (ADR 0050):
+// every Capsule created in the Project must run behind at least the class the
+// Project was created with. The provider's verified class comes from the
+// daemon, which refused to start when it could not verify its declaration.
+func requireProjectIsolation(project domain.Project, verified domain.IsolationClass) error {
+	if err := domain.RequireIsolation(project.RequiredIsolation, verified); err != nil {
+		return fmt.Errorf("project isolation requirement: %w", err)
+	}
+	return nil
+}
+
 type artifactRemover interface {
 	Remove(context.Context, string) error
 }

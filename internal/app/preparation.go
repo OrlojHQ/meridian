@@ -17,6 +17,47 @@ import (
 
 var errProjectSetup = errors.New("project setup failed")
 
+// errIsolationUnmet marks a provider.Create refused by the Project's
+// isolation floor (ADR 0050). The reconciler stops retrying it: no retry
+// changes the provider's verified class or the Project's requirement.
+var errIsolationUnmet = errors.New("isolation requirement unmet")
+
+// requireIsolation checks the Capsule's Project isolation floor before the
+// reconciler asks the provider for a resource. The provider rechecks its own
+// RuntimeClass declaration on every Create; this check keeps a Project whose
+// requirement the installation no longer meets from ever reaching it.
+func (r *Reconciler) requireIsolation(ctx context.Context, capsule domain.Capsule) error {
+	var project domain.Project
+	if err := r.store.View(ctx, func(reader ports.Reader) error {
+		var err error
+		project, err = reader.GetProject(ctx, capsule.ProjectID)
+		return err
+	}); err != nil {
+		return err
+	}
+	if err := requireProjectIsolation(project, r.isolation); err != nil {
+		return fmt.Errorf("%w: %v", errIsolationUnmet, err)
+	}
+	return nil
+}
+
+// createBehindIsolation runs the isolation check immediately before
+// provider.Create and keeps the provider's own refusal intact.
+func (r *Reconciler) createBehindIsolation(
+	ctx context.Context, capsule domain.Capsule, request ports.CreateCapsuleRequest,
+) (ports.ProviderResource, error) {
+	if err := r.requireIsolation(ctx, capsule); err != nil {
+		return ports.ProviderResource{}, err
+	}
+	resource, err := r.provider.Create(ctx, request)
+	if err != nil && errors.Is(err, domain.ErrUnsupported) {
+		// The provider refused its own RuntimeClass verification. No retry
+		// changes that outcome.
+		return resource, fmt.Errorf("%w: %v", errIsolationUnmet, err)
+	}
+	return resource, err
+}
+
 func (r *Reconciler) preparationSpec(ctx context.Context, c domain.Capsule, p domain.Project) (domain.Preparation, error) {
 	var result domain.Preparation
 	err := r.store.Transact(ctx, func(tx ports.Transaction) error {
@@ -75,7 +116,7 @@ func (r *Reconciler) completePreparation(ctx context.Context, c domain.Capsule, 
 		if p.ImageDigest != "" {
 			image = p.ImageDigest
 		}
-		_, err = r.provider.Create(ctx, r.startupRequest(ctx, c.ID, ports.CreateCapsuleRequest{CapsuleID: c.ID, RepositoryURL: p.RepositoryURL, ImageReference: image, GitCredential: credential, ForcePreparation: true}))
+		_, err = r.createBehindIsolation(ctx, c, r.startupRequest(ctx, c.ID, ports.CreateCapsuleRequest{CapsuleID: c.ID, RepositoryURL: p.RepositoryURL, ImageReference: image, GitCredential: credential, ForcePreparation: true}))
 		if credential != nil {
 			credential.Username, credential.Password = "", ""
 		}
@@ -98,7 +139,7 @@ func (r *Reconciler) completePreparation(ctx context.Context, c domain.Capsule, 
 			if err != nil {
 				return false, err
 			}
-			_, err = r.provider.Create(ctx, r.startupRequest(ctx, c.ID, ports.CreateCapsuleRequest{CapsuleID: c.ID, RepositoryURL: p.RepositoryURL, ImageReference: p.ImageReference, Setup: p.Setup, GitCredential: credential}))
+			_, err = r.createBehindIsolation(ctx, c, r.startupRequest(ctx, c.ID, ports.CreateCapsuleRequest{CapsuleID: c.ID, RepositoryURL: p.RepositoryURL, ImageReference: p.ImageReference, Setup: p.Setup, GitCredential: credential}))
 			if credential != nil {
 				credential.Username, credential.Password = "", ""
 			}

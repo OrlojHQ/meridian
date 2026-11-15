@@ -108,11 +108,15 @@ type Project struct {
 	CommitAuthorName    string
 	CommitAuthorEmail   string
 	DefaultBaseBranch   string
-	State               ProjectState
-	Failure             string
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
-	ResourceVersion     ResourceVersion
+	// RequiredIsolation is the minimum isolation class every Capsule in this
+	// Project must run behind (ADR 0050). Empty means no requirement. It is
+	// set at creation and never updated.
+	RequiredIsolation IsolationClass
+	State             ProjectState
+	Failure           string
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+	ResourceVersion   ResourceVersion
 }
 
 // ProjectState is the deletion lifecycle of a Project. Empty is treated as

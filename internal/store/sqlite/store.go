@@ -33,7 +33,7 @@ type Store struct {
 }
 
 // CurrentSchemaVersion is the newest migration this binary understands.
-const CurrentSchemaVersion = 29
+const CurrentSchemaVersion = 30
 
 func Open(ctx context.Context, dataDir string) (*Store, error) {
 	if strings.TrimSpace(dataDir) == "" {
@@ -249,7 +249,7 @@ type repository struct {
 const projectColumns = `id, name, repository_url, setup_argv, image_reference, harness_images,
 			git_secret_name, harness_secret_names,
 			git_push_secret_name, github_api_secret_name, commit_author_name,
-			commit_author_email, default_base_branch,
+			commit_author_email, default_base_branch, required_isolation,
 			created_at, updated_at, resource_version, state, failure, owner_user_id`
 
 func (r *repository) InsertProject(ctx context.Context, project domain.Project) error {
@@ -278,14 +278,14 @@ func (r *repository) InsertProject(ctx context.Context, project domain.Project) 
 			id, name, repository_url, setup_argv, image_reference, harness_images,
 			git_secret_name, harness_secret_names,
 			git_push_secret_name, github_api_secret_name, commit_author_name,
-			commit_author_email, default_base_branch,
+			commit_author_email, default_base_branch, required_isolation,
 			created_at, updated_at, resource_version, state, failure, owner_user_id
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		project.ID, project.Name, project.RepositoryURL, string(setup), project.ImageReference,
 		string(harnessImages),
 		project.GitSecretName, string(harnessSecrets), project.GitPushSecretName,
 		project.GitHubAPISecretName, project.CommitAuthorName, project.CommitAuthorEmail,
-		project.DefaultBaseBranch,
+		project.DefaultBaseBranch, string(project.RequiredIsolation),
 		formatTime(project.CreatedAt), formatTime(project.UpdatedAt), project.ResourceVersion,
 		state, project.Failure, project.OwnerUserID,
 	)
@@ -386,6 +386,7 @@ func scanProject(row scanner) (domain.Project, error) {
 		&project.GitSecretName, &harnessSecrets,
 		&project.GitPushSecretName, &project.GitHubAPISecretName,
 		&project.CommitAuthorName, &project.CommitAuthorEmail, &project.DefaultBaseBranch,
+		&project.RequiredIsolation,
 		&created, &updated, &project.ResourceVersion, &state, &project.Failure,
 		&project.OwnerUserID,
 	)

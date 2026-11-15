@@ -758,3 +758,103 @@ func TestNewCapsulesFollowTheInstallationRelease(t *testing.T) {
 		t.Fatalf("stored project = %#v, %v", stored, err)
 	}
 }
+
+func TestCreateProjectRequiredIsolation(t *testing.T) {
+	ctx := operatorContext()
+	store, err := sqlite.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	service := app.NewService(store, &testClock{now: time.Date(2026, 11, 15, 0, 0, 0, 0, time.UTC)}, &testIDs{}, &recordingQueue{})
+	if _, err := service.CreateProjectConfigured(ctx, "unknown", app.ProjectConfiguration{
+		RequiredIsolation: "vm",
+	}, "project-isolation-unknown"); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("unknown isolation class error = %v", err)
+	}
+	project, err := service.CreateProjectConfigured(ctx, "sandboxed", app.ProjectConfiguration{
+		RequiredIsolation: domain.IsolationSandbox,
+	}, "project-isolation")
+	if err != nil || project.RequiredIsolation != domain.IsolationSandbox {
+		t.Fatalf("created project = %#v, %v", project, err)
+	}
+	stored, err := service.GetProject(ctx, project.ID)
+	if err != nil || stored.RequiredIsolation != domain.IsolationSandbox {
+		t.Fatalf("stored project = %#v, %v", stored, err)
+	}
+	// The requirement is set at creation and survives an update that
+	// touches nothing else.
+	updated, err := service.UpdateProjectHarnessImages(ctx, project.ID, []domain.HarnessImage{
+		{Name: "mock", ImageReference: "meridian-capsule:dev"},
+	}, stored.ResourceVersion)
+	if err != nil || updated.RequiredIsolation != domain.IsolationSandbox {
+		t.Fatalf("updated project = %#v, %v", updated, err)
+	}
+	plain, err := service.CreateProject(ctx, "plain", "project-plain")
+	if err != nil || plain.RequiredIsolation != "" {
+		t.Fatalf("plain project = %#v, %v", plain, err)
+	}
+}
+
+func TestCreateCapsuleRefusesUnmetIsolation(t *testing.T) {
+	ctx := operatorContext()
+	store, err := sqlite.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	queue := &recordingQueue{}
+	service := app.NewService(store, &testClock{now: time.Date(2026, 11, 15, 0, 0, 0, 0, time.UTC)}, &testIDs{}, queue)
+	service.ConfigureIsolation(domain.IsolationContainer)
+	project, err := service.CreateProjectConfigured(ctx, "sandboxed", app.ProjectConfiguration{
+		RequiredIsolation: domain.IsolationSandbox,
+	}, "project-refuse")
+	if err != nil {
+		t.Fatal(err)
+	}
+	capsule, err := service.CreateCapsule(ctx, project.ID, "capsule", "capsule-refuse")
+	if !errors.Is(err, domain.ErrUnsupported) {
+		t.Fatalf("unmet isolation error = %v", err)
+	}
+	if (capsule != domain.Capsule{}) {
+		t.Fatalf("refused create returned a Capsule: %#v", capsule)
+	}
+	if len(queue.ids) != 0 {
+		t.Fatalf("refused create enqueued reconcile: %#v", queue.ids)
+	}
+	// A Project without a requirement accepts the same provider.
+	plain, err := service.CreateProject(ctx, "plain", "project-plain-refuse")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.CreateCapsule(ctx, plain.ID, "capsule", "capsule-plain"); err != nil {
+		t.Fatalf("plain project Capsule error = %v", err)
+	}
+	// Raising the daemon's verified class satisfies the floor.
+	service.ConfigureIsolation(domain.IsolationSandbox)
+	if _, err := service.CreateCapsule(ctx, project.ID, "capsule", "capsule-after"); err != nil {
+		t.Fatalf("met isolation Capsule error = %v", err)
+	}
+}
+
+func TestCreateProjectThreadRefusesUnmetIsolation(t *testing.T) {
+	ctx := operatorContext()
+	store, err := sqlite.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	service := app.NewService(store, &testClock{now: time.Date(2026, 11, 15, 0, 0, 0, 0, time.UTC)}, &testIDs{}, &recordingQueue{})
+	service.ConfigureIsolation(domain.IsolationContainer)
+	project, err := service.CreateProjectConfigured(ctx, "microvm", app.ProjectConfiguration{
+		RequiredIsolation: domain.IsolationMicroVM,
+	}, "project-thread-refuse")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.CreateProjectThread(ctx, app.CreateProjectThreadInput{
+		ProjectID: project.ID, Name: "thread", IdempotencyKey: "thread-refuse",
+	}); err == nil || !errors.Is(err, domain.ErrUnsupported) {
+		t.Fatalf("unmet Thread isolation error = %v", err)
+	}
+}

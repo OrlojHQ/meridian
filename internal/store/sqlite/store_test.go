@@ -581,3 +581,72 @@ func TestProjectHarnessImagesAndCapsuleImage(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestProjectRequiredIsolationRoundTripAndImmutable(t *testing.T) {
+	ctx := context.Background()
+	store, err := Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	now := time.Date(2026, 11, 15, 9, 0, 0, 0, time.UTC)
+	project := domain.Project{
+		OwnerUserID: domain.BootstrapOwnerID,
+		ID:          "project-isolation", Name: "project",
+		RequiredIsolation: domain.IsolationSandbox,
+		CreatedAt:         now, UpdatedAt: now, ResourceVersion: 1,
+	}
+	if err := store.Transact(ctx, func(tx ports.Transaction) error {
+		return tx.InsertProject(ctx, project)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.View(ctx, func(reader ports.Reader) error {
+		got, err := reader.GetProject(ctx, project.ID)
+		if err != nil {
+			return err
+		}
+		if got.RequiredIsolation != domain.IsolationSandbox {
+			t.Fatalf("required isolation = %q, want sandbox", got.RequiredIsolation)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// UpdateProject never writes the column: the requirement is set at
+	// creation and cannot drift through a later update.
+	project.HarnessImages = []domain.HarnessImage{
+		{Name: "mock", ImageReference: "meridian-capsule:dev"},
+	}
+	project.RequiredIsolation = domain.IsolationMicroVM
+	project.UpdatedAt = now.Add(time.Minute)
+	project.ResourceVersion++
+	if err := store.Transact(ctx, func(tx ports.Transaction) error {
+		return tx.UpdateProject(ctx, project, 1)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.View(ctx, func(reader ports.Reader) error {
+		got, err := reader.GetProject(ctx, project.ID)
+		if err != nil {
+			return err
+		}
+		if got.RequiredIsolation != domain.IsolationSandbox {
+			t.Fatalf("required isolation after update = %q, want sandbox (immutable)", got.RequiredIsolation)
+		}
+		if len(got.HarnessImages) != 1 {
+			t.Fatalf("harness images after update = %#v", got.HarnessImages)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// The CHECK constraint rejects a value outside the vocabulary, even
+	// though the app layer validates first.
+	if _, err := store.db.Exec(`
+		INSERT INTO projects(id, name, created_at, updated_at, resource_version, owner_user_id, required_isolation)
+		VALUES ('project-bad', 'bad', ?, ?, 1, ?, 'vm')`, formatTime(now), formatTime(now), domain.BootstrapOwnerID,
+	); err == nil {
+		t.Fatal("insert with unknown isolation class was accepted")
+	}
+}
