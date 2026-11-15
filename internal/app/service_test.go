@@ -767,16 +767,48 @@ func TestCreateProjectRequiredIsolation(t *testing.T) {
 	}
 	defer store.Close()
 	service := app.NewService(store, &testClock{now: time.Date(2026, 11, 15, 0, 0, 0, 0, time.UTC)}, &testIDs{}, &recordingQueue{})
+	service.ConfigureIsolation(domain.IsolationContainer)
 	if _, err := service.CreateProjectConfigured(ctx, "unknown", app.ProjectConfiguration{
 		RequiredIsolation: "vm",
 	}, "project-isolation-unknown"); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("unknown isolation class error = %v", err)
 	}
+	// A Project this installation could never serve is refused at creation,
+	// with no row and no replay stored.
+	refused, err := service.CreateProjectConfigured(ctx, "unreachable", app.ProjectConfiguration{
+		RequiredIsolation: domain.IsolationMicroVM,
+	}, "project-isolation-unreachable")
+	if !errors.Is(err, domain.ErrUnsupported) {
+		t.Fatalf("unmet creation floor error = %v", err)
+	}
+	if refused.ID != "" {
+		t.Fatalf("refused create returned a Project: %#v", refused)
+	}
+	replayedRefusal, err := service.CreateProjectConfigured(ctx, "unreachable", app.ProjectConfiguration{
+		RequiredIsolation: domain.IsolationMicroVM,
+	}, "project-isolation-unreachable")
+	if !errors.Is(err, domain.ErrUnsupported) || replayedRefusal.ID != "" {
+		t.Fatalf("refused create stored a replay = %#v, %v", replayedRefusal, err)
+	}
+	page, err := service.ListProjects(ctx, 0, 100)
+	if err != nil || len(page.Items) != 0 {
+		t.Fatalf("projects after refusal = %#v, %v", page.Items, err)
+	}
+	// The installation's verified class rises to meet the requirement, so
+	// the same requirement is now accepted.
+	service.ConfigureIsolation(domain.IsolationSandbox)
 	project, err := service.CreateProjectConfigured(ctx, "sandboxed", app.ProjectConfiguration{
 		RequiredIsolation: domain.IsolationSandbox,
 	}, "project-isolation")
 	if err != nil || project.RequiredIsolation != domain.IsolationSandbox {
 		t.Fatalf("created project = %#v, %v", project, err)
+	}
+	// An idempotent replay returns the stored Project.
+	replay, err := service.CreateProjectConfigured(ctx, "ignored on replay", app.ProjectConfiguration{
+		RequiredIsolation: domain.IsolationMicroVM,
+	}, "project-isolation")
+	if err != nil || replay.ID != project.ID || replay.RequiredIsolation != domain.IsolationSandbox {
+		t.Fatalf("replay = %#v, %v", replay, err)
 	}
 	stored, err := service.GetProject(ctx, project.ID)
 	if err != nil || stored.RequiredIsolation != domain.IsolationSandbox {
@@ -805,13 +837,15 @@ func TestCreateCapsuleRefusesUnmetIsolation(t *testing.T) {
 	defer store.Close()
 	queue := &recordingQueue{}
 	service := app.NewService(store, &testClock{now: time.Date(2026, 11, 15, 0, 0, 0, 0, time.UTC)}, &testIDs{}, queue)
-	service.ConfigureIsolation(domain.IsolationContainer)
+	service.ConfigureIsolation(domain.IsolationSandbox)
 	project, err := service.CreateProjectConfigured(ctx, "sandboxed", app.ProjectConfiguration{
 		RequiredIsolation: domain.IsolationSandbox,
 	}, "project-refuse")
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The verified class drops below the Project's floor before the create.
+	service.ConfigureIsolation(domain.IsolationContainer)
 	capsule, err := service.CreateCapsule(ctx, project.ID, "capsule", "capsule-refuse")
 	if !errors.Is(err, domain.ErrUnsupported) {
 		t.Fatalf("unmet isolation error = %v", err)
@@ -845,13 +879,15 @@ func TestCreateProjectThreadRefusesUnmetIsolation(t *testing.T) {
 	}
 	defer store.Close()
 	service := app.NewService(store, &testClock{now: time.Date(2026, 11, 15, 0, 0, 0, 0, time.UTC)}, &testIDs{}, &recordingQueue{})
-	service.ConfigureIsolation(domain.IsolationContainer)
+	service.ConfigureIsolation(domain.IsolationMicroVM)
 	project, err := service.CreateProjectConfigured(ctx, "microvm", app.ProjectConfiguration{
 		RequiredIsolation: domain.IsolationMicroVM,
 	}, "project-thread-refuse")
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The verified class drops below the Project's floor before the spawn.
+	service.ConfigureIsolation(domain.IsolationContainer)
 	if _, err := service.CreateProjectThread(ctx, app.CreateProjectThreadInput{
 		ProjectID: project.ID, Name: "thread", IdempotencyKey: "thread-refuse",
 	}); err == nil || !errors.Is(err, domain.ErrUnsupported) {

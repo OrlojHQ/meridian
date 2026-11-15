@@ -298,6 +298,14 @@ func (s *Service) CreateProjectConfigured(
 			result = replay
 			return nil
 		}
+		// A Project this installation could never serve is refused at
+		// creation (ADR 0050): no weaker Project may exist to accept
+		// Capsules the provider cannot isolate.
+		if err := requireProjectIsolation(domain.Project{
+			RequiredIsolation: config.RequiredIsolation,
+		}, s.isolation); err != nil {
+			return err
+		}
 		owner, err := ownerOf(ctx)
 		if err != nil {
 			return err
