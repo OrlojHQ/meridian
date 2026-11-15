@@ -280,6 +280,8 @@ type ProviderCapabilities struct {
 type RuntimeRunRequest struct {
 	Connection *harnesssetup.Connection   `json:"connection,omitempty"`
 	Setup      *harnesssetup.RuntimeSetup `json:"setup,omitempty"`
+	// Git is the commit identity the Capsule pinned (ADR 0049).
+	Git        *harnesssetup.GitIdentity `json:"git,omitempty"`
 	RunID      domain.RunID
 	ResourceID string
 	Harness    string
@@ -306,6 +308,7 @@ type RuntimeRun struct {
 type RuntimeStructuredStartRequest struct {
 	Connection *harnesssetup.Connection   `json:"connection,omitempty"`
 	Setup      *harnesssetup.RuntimeSetup `json:"setup,omitempty"`
+	Git        *harnesssetup.GitIdentity  `json:"git,omitempty"`
 	RunID      domain.RunID
 	ResourceID string
 	Harness    string

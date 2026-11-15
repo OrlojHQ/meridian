@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/OrlojHQ/meridian/internal/harnesssetup"
 	"reflect"
 	"strings"
 	"sync"
@@ -54,6 +55,7 @@ type runRuntime struct {
 	runs       map[domain.RunID]ports.RuntimeRun
 	eventCalls int
 	eventErr   error
+	lastGit    *harnesssetup.GitIdentity
 }
 
 type nativeProfiles struct{}
@@ -93,6 +95,7 @@ func (r *runRuntime) StartRun(_ context.Context, request ports.RuntimeRunRequest
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.starts++
+	r.lastGit = request.Git
 	if r.runs == nil {
 		r.runs = make(map[domain.RunID]ports.RuntimeRun)
 	}

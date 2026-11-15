@@ -1305,8 +1305,10 @@ Threats and required controls:
   because it can hold `insteadOf` rewrites, credential helpers, and
   `core.sshCommand`. SSH keys are not read.
 - **Git identity injection.** `capsuled` writes the pinned identity as a
-  generated `.gitconfig` in the private setup home, with only a `[user]`
-  section. An identity that contains control characters, quotes,
+  generated git config with only a `[user]` section and quoted values, in
+  the Capsule's private home through a rooted handle, and points
+  `GIT_CONFIG_GLOBAL` at it for the harness process. A link planted in its
+  place is refused. An identity that contains control characters, quotes,
   backslashes, or `<` / `>` is refused when saved and again by `capsuled`,
   rather than escaped, so it cannot add a section, an include, or a helper.
 - **Diff fetch exposure.** To show a diff, the CLI reads the owner's current
