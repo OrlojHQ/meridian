@@ -102,7 +102,7 @@ pub fn encode_saved(choice: &SavedGateway, recent: &[String]) -> Result<Vec<u8>,
 /// non-default port.
 pub fn gateway_label(choice: &SavedGateway) -> String {
     match choice {
-        SavedGateway::Local => "This computer".into(),
+        SavedGateway::Local => "Local".into(),
         SavedGateway::Remote { origin } => origin_label(origin),
     }
 }
@@ -402,7 +402,7 @@ mod tests {
 
     #[test]
     fn labels_name_the_host() {
-        assert_eq!(gateway_label(&SavedGateway::Local), "This computer");
+        assert_eq!(gateway_label(&SavedGateway::Local), "Local");
         for (origin, label) in [
             ("https://meridian.example.com", "meridian.example.com"),
             ("https://gw.example.com:8443", "gw.example.com:8443"),

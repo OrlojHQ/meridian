@@ -303,7 +303,7 @@ async fn gateway_connect(app: AppHandle, mode: String, url: Option<String>) -> R
             let origin = validate_gateway_url(url.as_deref().unwrap_or(""))?;
             SavedGateway::Remote { origin }
         }
-        _ => return Err("Choose this computer or another Station.".into()),
+        _ => return Err("Choose Local or another Station.".into()),
     };
     tauri::async_runtime::spawn_blocking(move || connect(&app, choice))
         .await
@@ -936,7 +936,7 @@ fn tray_menu(app: &AppHandle) -> Result<Menu<Wry>, String> {
     let mut switches = vec![CheckMenuItem::with_id(
         app,
         "switch-local",
-        "This computer",
+        "Local",
         true,
         on(&SavedGateway::Local),
         None::<&str>,

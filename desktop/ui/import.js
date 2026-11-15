@@ -72,7 +72,8 @@ function exclusions(issues) {
 function renderReview(message, label) {
   const account = message.account || {};
   const who = account.mode === "team" ? account.displayName || account.email || "your account" : "this installation";
-  destination.textContent = `Saving to ${label} as ${who}.`;
+  const place = label === "Local" ? "your local Station" : label;
+  destination.textContent = `Saving to ${place} as ${who}.`;
   const review = message.review || {};
   const rows = Array.isArray(review.harnesses) ? review.harnesses : [];
   found.textContent = rows.length

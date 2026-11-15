@@ -88,7 +88,7 @@ xattr -dr com.apple.quarantine /Applications/Meridian.app
 
 ### Desktop app beside an existing meridiand
 
-"This computer" in the desktop app first checks `127.0.0.1:8080`. A ready
+"Local" in the desktop app first checks `127.0.0.1:8080`. A ready
 Meridian there is used as it is, and the app does not start a second daemon;
 Quit leaves it running. Only when nothing answers does the app start its
 bundled `meridian-desktop-gateway`, which uses the same default data directory
@@ -623,7 +623,7 @@ After the claim:
   idle or 7 days, and members can list and revoke theirs under **Account**.
 - In the desktop app, the window title and the status bar name the Station
   (and, in team mode, who is signed in). The tray's **Switch Station** menu and
-  the picker's recent list switch between this computer and up to five recent
+  the picker's recent list switch between Local and up to five recent
   Stations in one click; the app stores only their addresses.
 - In the desktop app, **Sign in** opens the issuer in your default browser
   (ADR 0047). After you sign in there, the browser shows "Return to the
