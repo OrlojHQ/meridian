@@ -330,3 +330,31 @@ func TestDepartedTransferResealsReportsAndLeavesTheProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A report never stores a laptop home path, even when the client sent one.
+func TestImportedReportsAreStoredRedacted(t *testing.T) {
+	f := newTwoOwners(t)
+	s := f.service
+	report := harnesssetup.Report{Issues: []harnesssetup.Issue{{
+		Path: ".codex/config.toml:projects:/Users/ada/Documents/acme-secret:trust_level", Reason: "Machine trust or approval override excluded",
+	}}, Warnings: []harnesssetup.Issue{}}
+	if _, err := s.ImportProfile(f.alice, app.ProfileImport{Setups: []app.ProfileImportSetup{{Bundle: codexBundle("one"), Report: report}}}, "import"); err != nil {
+		t.Fatal(err)
+	}
+	project, err := s.CreateProject(f.alice, "p", "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	capsule, err := s.CreateCapsule(f.alice, project.ID, "c", "c")
+	if err != nil {
+		t.Fatal(err)
+	}
+	diagnostic, err := s.CapsuleProfileDiagnostic(f.alice, capsule.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := diagnostic.Harnesses[0].Exclusions
+	if len(got) != 1 || got[0].Path != ".codex/config.toml:projects:~/…:trust_level" {
+		t.Fatalf("stored exclusions = %+v", got)
+	}
+}

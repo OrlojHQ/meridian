@@ -361,7 +361,9 @@ func (s *Service) importProfileSetup(
 	if err != nil {
 		return domain.HarnessSetup{}, false, err
 	}
-	raw, err := json.Marshal(setup.Report)
+	// A client should already have redacted laptop paths; this makes sure
+	// no home directory, username, or project name is ever sealed.
+	raw, err := json.Marshal(setup.Report.Redacted())
 	if err != nil {
 		return domain.HarnessSetup{}, false, err
 	}
