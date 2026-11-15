@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"strings"
 	"sync"
@@ -27,6 +28,7 @@ type deliveryRuntime struct {
 	commits    int
 	pushes     int
 	push       ports.DeliveryPushRequest
+	commit     ports.DeliveryCommitRequest
 	pushErr    error
 }
 
@@ -44,6 +46,7 @@ func (r *deliveryRuntime) CommitDelivery(
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.commits++
+	r.commit = request
 	if request.ExpectedHEAD != r.inspection.HEAD || request.ExpectedTree != r.inspection.Tree {
 		return ports.DeliveryCommitResult{}, domain.ErrConflict
 	}
@@ -431,5 +434,47 @@ func TestOperatorApprovesProposedDelivery(t *testing.T) {
 	if result.State != domain.DeliverySucceeded || !result.Approved ||
 		result.ResultCommitSHA == "" || result.PullRequestTitle != "Reviewed work" {
 		t.Fatalf("approved = %#v", result)
+	}
+}
+
+// Without a Project commit author, a Delivery commits as the identity the
+// Capsule pinned from its owner's profile, and refuses without one (ADR
+// 0049).
+func TestDeliveryCommitsAsThePinnedProfileIdentity(t *testing.T) {
+	fixture := newDeliveryFixture(t, true)
+	ctx := operatorContext()
+	raw, err := sql.Open("sqlite", fixture.store.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	if _, err := raw.Exec("UPDATE projects SET commit_author_name = '', commit_author_email = '' WHERE id = ?", fixture.project.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.service.CreateDelivery(ctx, deliveryInput(fixture, "no-author")); !errors.Is(err, domain.ErrIllegalTransition) {
+		t.Fatalf("Delivery without any author = %v", err)
+	}
+	if err := fixture.store.Transact(ctx, func(tx ports.Transaction) error {
+		return tx.PutCapsuleProfilePin(ctx, domain.CapsuleProfilePin{
+			CapsuleID: fixture.capsule.ID, GitName: "Ada Lovelace", GitEmail: "ada@example.com",
+			PinnedAt: time.Date(2026, 8, 24, 0, 0, 0, 0, time.UTC),
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	inspection, err := fixture.service.InspectDelivery(ctx, fixture.capsule.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := deliveryInput(fixture, "pinned-author")
+	input.ExpectedCapsuleVersion = inspection.CapsuleResourceVersion
+	result, err := fixture.service.CreateDelivery(ctx, input)
+	if err != nil || result.State != domain.DeliverySucceeded {
+		t.Fatalf("Delivery with a pinned author = %#v, %v", result, err)
+	}
+	fixture.runtime.mu.Lock()
+	defer fixture.runtime.mu.Unlock()
+	if fixture.runtime.commit.AuthorName != "Ada Lovelace" || fixture.runtime.commit.AuthorEmail != "ada@example.com" {
+		t.Fatalf("commit author = %q <%q>", fixture.runtime.commit.AuthorName, fixture.runtime.commit.AuthorEmail)
 	}
 }

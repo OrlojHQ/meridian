@@ -31,6 +31,11 @@ const (
 	AuditGrantUpdate            AuditAction = "coordination_grant.update"
 	AuditGrantRevoke            AuditAction = "coordination_grant.revoke"
 	AuditCrossOwnerAccess       AuditAction = "access.cross_owner"
+	// Workstation profiles (ADR 0049). They record ids only, never the git
+	// identity or file paths.
+	AuditProfileImport             AuditAction = "profile.import"
+	AuditProfileDefaultConnections AuditAction = "profile.default_connections"
+	AuditCapsuleProfileUpdate      AuditAction = "capsule.profile_update"
 )
 
 // AuditRecord is one append-only audit line. It holds ids only: no secret
