@@ -27,10 +27,10 @@ mode, where the installation bearer and its browser cookie act as the one
 user, the bootstrap owner. "Team mode and per-user identity" below states the
 team-mode threats and controls.
 
-ADR 0049 (accepted, not yet implemented) adds per-user workstation profiles: one import of a
+ADR 0049 adds per-user workstation profiles: one import of a
 laptop's harness setups and git identity, a default connection per harness,
-and a computed diagnostic. It is not implemented. "Workstation profiles"
-below states the controls it must meet before it ships.
+and a computed diagnostic. "Workstation profiles" below states its threats
+and controls.
 
 ## Assets
 
@@ -1265,7 +1265,7 @@ explains this difference. Both paths use the same authoritative server validatio
 
 ## Workstation profiles
 
-ADR 0049 is accepted and not yet implemented. A workstation profile groups the
+ADR 0049 is implemented. A workstation profile groups the
 owner's default harness setups, a sealed import report per revision, a git
 commit identity, and a default provider connection per harness. It adds no
 file storage beyond those reports. The setup controls above still apply in
