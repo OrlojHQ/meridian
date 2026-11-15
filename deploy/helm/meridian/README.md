@@ -3,7 +3,14 @@
 This chart installs one Meridian control plane and its namespaced RBAC, PVC,
 ClusterIP Service, quotas, and NetworkPolicies. Agent Sandbox v0.5.6 CRDs and
 controller are external prerequisites. The chart never installs CRDs,
-RuntimeClasses, CSI components, or cluster-scoped RBAC.
+RuntimeClasses, CSI components, or unscoped cluster-scoped RBAC.
+
+When `agentSandbox.isolationClass` is `sandbox` or `microvm`, the chart adds
+exactly one cluster-scoped grant: a ClusterRole and ClusterRoleBinding that
+let the daemon `get` the single RuntimeClass named in
+`agentSandbox.runtimeClassName` (ADR 0050). The default install — and any
+install that leaves `isolationClass` empty — renders no cluster-scoped
+resource at all.
 
 Safe defaults deny API-server, model-provider, and Capsule internet egress
 until CIDRs are configured. Capsules may reach the in-namespace provider
@@ -93,7 +100,8 @@ security review remain separate deployment responsibilities.
 
 See [`docs/kubernetes-agentsandbox.md`](../../../docs/kubernetes-agentsandbox.md)
 for installation, RBAC rationale, Secret risks, NetworkPolicy limitations,
-storage backup, gVisor/Kata validation, and unsupported CSI Moment semantics.
+storage backup, isolation-class verification, gVisor/Kata validation, and
+unsupported CSI Moment semantics.
 
 Validate deterministically with:
 

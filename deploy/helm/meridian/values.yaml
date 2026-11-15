@@ -51,6 +51,12 @@ agentSandbox:
   namespace: ""
   class: ""
   runtimeClassName: ""
+  # Isolation class meridiand verifies through the RuntimeClass (ADR 0050):
+  # empty reports container; sandbox or microvm require runtimeClassName and
+  # render a narrow cluster-scoped Role to read that one RuntimeClass.
+  isolationClass: ""
+  # Additional RuntimeClass handlers accepted for the declared class.
+  isolationHandlers: []
   storageClassName: ""
   workspaceSize: 10Gi
   ttl: 24h

@@ -54,10 +54,16 @@
     },
     "agentSandbox": {
       "type": "object", "additionalProperties": false,
-      "required": ["namespace", "class", "runtimeClassName", "storageClassName", "workspaceSize", "ttl", "operationTimeout", "setupTimeout", "limits"],
+      "required": ["namespace", "class", "runtimeClassName", "isolationClass", "isolationHandlers", "storageClassName", "workspaceSize", "ttl", "operationTimeout", "setupTimeout", "limits"],
       "properties": {
         "namespace": {"type": "string"}, "class": {"type": "string"},
-        "runtimeClassName": {"type": "string"}, "storageClassName": {"type": "string"},
+        "runtimeClassName": {"type": "string"},
+        "isolationClass": {"type": "string", "enum": ["", "container", "sandbox", "microvm"]},
+        "isolationHandlers": {
+          "type": "array", "maxItems": 16,
+          "items": {"type": "string", "pattern": "^[a-z]([-a-z0-9]*[a-z0-9])?$"}
+        },
+        "storageClassName": {"type": "string"},
         "workspaceSize": {"type": "string", "minLength": 1},
         "ttl": {"type": "string", "pattern": "^[0-9]+(s|m|h)$"},
         "operationTimeout": {"type": "string", "pattern": "^[0-9]+(s|m|h)$"},

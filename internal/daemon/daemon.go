@@ -102,6 +102,20 @@ func run(ctx context.Context, config Config) error {
 	if config.RequireIsolation != "" && !config.RequireIsolation.Valid() {
 		return fmt.Errorf("%w: unknown isolation class %q", domain.ErrInvalid, config.RequireIsolation)
 	}
+	if config.Provider == "agentsandbox" && config.AgentSandbox.RuntimeClass != "" &&
+		config.AgentSandbox.IsolationClass == "" {
+		if config.Logger == nil {
+			log.Printf(
+				"WARNING: --agentsandbox-runtime-class is set without --agentsandbox-isolation-class; " +
+					"meridiand reports the provider isolation as container (ADR 0050)",
+			)
+		} else {
+			config.Logger.Printf(
+				"WARNING: --agentsandbox-runtime-class is set without --agentsandbox-isolation-class; " +
+					"meridiand reports the provider isolation as container (ADR 0050)",
+			)
+		}
+	}
 	if config.Listen == "" {
 		return fmt.Errorf("listen address is required")
 	}

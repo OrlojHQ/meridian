@@ -168,7 +168,20 @@ func newRootCommand() *cobra.Command {
 	command.Flags().StringVar(&config.AgentSandbox.Class, "agentsandbox-class", "", "Meridian workload class annotation (policy metadata only)")
 	command.Flags().StringVar(&config.AgentSandbox.Template, "agentsandbox-template", "", "reserved SandboxTemplate name (unsupported by direct v1beta1 Sandbox)")
 	command.Flags().StringVar(&config.AgentSandbox.Image, "agentsandbox-image", defaultCapsule, "default non-root Capsule image")
-	command.Flags().StringVar(&config.AgentSandbox.RuntimeClass, "agentsandbox-runtime-class", "", "Kubernetes RuntimeClass name (gVisor/Kata recommended)")
+	command.Flags().StringVar(&config.AgentSandbox.RuntimeClass, "agentsandbox-runtime-class", "",
+		"Kubernetes RuntimeClass name verified for the declared isolation class")
+	command.Flags().Func("agentsandbox-isolation-class",
+		"isolation class meridiand verifies through the RuntimeClass: sandbox or microvm (empty reports container)",
+		func(value string) error {
+			class := domain.IsolationClass(value)
+			if value != "" && !class.Valid() {
+				return fmt.Errorf("%w: unknown isolation class %q", domain.ErrInvalid, value)
+			}
+			config.AgentSandbox.IsolationClass = class
+			return nil
+		})
+	command.Flags().StringArrayVar(&config.AgentSandbox.IsolationHandlers, "agentsandbox-isolation-handler", nil,
+		"additional RuntimeClass handler accepted for the declared isolation class (repeatable)")
 	command.Flags().Func("require-isolation",
 		"refuse to start unless the provider verifies at least this isolation class: container, sandbox, or microvm",
 		func(value string) error {

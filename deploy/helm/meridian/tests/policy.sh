@@ -219,3 +219,64 @@ if "$HELM" template invalid "$CHART" --kube-version 1.36.0 --set oidc.issuer=htt
   echo "chart accepted OIDC without a public browser origin" >&2
   exit 1
 fi
+
+# ADR 0050: a declared isolation class renders exactly one narrow ClusterRole
+# and ClusterRoleBinding for reading the single configured RuntimeClass.
+"$HELM" template isolation "$CHART" \
+  --namespace meridian \
+  --kube-version 1.36.0 \
+  --set agentSandbox.isolationClass=microvm \
+  --set agentSandbox.runtimeClassName=kata \
+  "${digest_args[@]}" \
+  >"$rendered"
+grep -Eq -- '--agentsandbox-isolation-class=microvm' "$rendered"
+if ! grep -Eq -- '--agentsandbox-runtime-class=kata' "$rendered"; then
+  echo "isolation chart omitted the RuntimeClass flag" >&2
+  exit 1
+fi
+cluster_roles="$(grep -c '^kind: ClusterRole$' "$rendered")"
+cluster_bindings="$(grep -c '^kind: ClusterRoleBinding$' "$rendered")"
+if [[ "$cluster_roles" != "1" || "$cluster_bindings" != "1" ]]; then
+  echo "isolation chart rendered $cluster_roles ClusterRoles and $cluster_bindings ClusterRoleBindings" >&2
+  exit 1
+fi
+runtimeclass_policy="$(extract_policy "isolation-meridian-meridian-runtimeclass" "$rendered")"
+if ! grep -Eq 'apiGroups: \["node\.k8s\.io"\]' <<<"$runtimeclass_policy"; then
+  echo "RuntimeClass ClusterRole misses the node.k8s.io group" >&2
+  exit 1
+fi
+if ! grep -Eq 'resourceNames: \["kata"\]' <<<"$runtimeclass_policy"; then
+  echo "RuntimeClass ClusterRole is not pinned to resourceNames [kata]" >&2
+  exit 1
+fi
+if ! grep -Eq 'verbs: \["get"\]' <<<"$runtimeclass_policy"; then
+  echo "RuntimeClass ClusterRole must grant only get" >&2
+  exit 1
+fi
+if grep -Eq 'verbs: \[[^]]*"(list|watch|create|update|patch|delete|deletecollection|impersonate|bind|escalate)"' <<<"$runtimeclass_policy"; then
+  echo "RuntimeClass ClusterRole grants a verb beyond get" >&2
+  exit 1
+fi
+if grep -Eq '^kind: (CustomResourceDefinition|Ingress)$' "$rendered"; then
+  echo "isolation chart rendered CRD or Ingress" >&2
+  exit 1
+fi
+
+# An isolation class without a RuntimeClass name cannot render.
+if "$HELM" template invalid "$CHART" --kube-version 1.36.0 \
+  --set agentSandbox.isolationClass=microvm >/dev/null 2>&1; then
+  echo "chart accepted an isolation class without a runtimeClassName" >&2
+  exit 1
+fi
+# The schema rejects unknown isolation classes outright.
+if "$HELM" template invalid "$CHART" --kube-version 1.36.0 \
+  --set agentSandbox.isolationClass=vm --set agentSandbox.runtimeClassName=kata >/dev/null 2>&1; then
+  echo "values schema accepted an unknown isolation class" >&2
+  exit 1
+fi
+# Handlers without a class are refused.
+if "$HELM" template invalid "$CHART" --kube-version 1.36.0 \
+  --set agentSandbox.isolationHandlers[0]=acme-vm >/dev/null 2>&1; then
+  echo "chart accepted isolation handlers without an isolation class" >&2
+  exit 1
+fi

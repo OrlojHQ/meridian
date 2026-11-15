@@ -1,6 +1,15 @@
 {{- if and .Values.agentSandbox.namespace (ne .Values.agentSandbox.namespace (include "meridian.namespace" .)) -}}
 {{- fail "agentSandbox.namespace must equal the chart namespace; cross-namespace operation is not supported" -}}
 {{- end }}
+{{- if and .Values.agentSandbox.isolationClass (not (or (eq .Values.agentSandbox.isolationClass "sandbox") (eq .Values.agentSandbox.isolationClass "microvm"))) }}
+{{- fail "agentSandbox.isolationClass must be empty, sandbox, or microvm; container is the default when unset" }}
+{{- end }}
+{{- if and .Values.agentSandbox.isolationClass (not .Values.agentSandbox.runtimeClassName) }}
+{{- fail "agentSandbox.isolationClass requires agentSandbox.runtimeClassName naming the RuntimeClass meridiand verifies" }}
+{{- end }}
+{{- if and (not .Values.agentSandbox.isolationClass) .Values.agentSandbox.isolationHandlers }}
+{{- fail "agentSandbox.isolationHandlers require agentSandbox.isolationClass" }}
+{{- end }}
 {{- if .Values.oidc.issuer }}
 {{- if not .Values.oidc.clientId }}
 {{- fail "oidc.clientId is required when oidc.issuer is set" }}
@@ -95,6 +104,12 @@ spec:
             - --official-pack-tag={{ .Values.capsuleImage.tag }}
             - --agentsandbox-class={{ .Values.agentSandbox.class }}
             - --agentsandbox-runtime-class={{ .Values.agentSandbox.runtimeClassName }}
+            {{- if .Values.agentSandbox.isolationClass }}
+            - --agentsandbox-isolation-class={{ .Values.agentSandbox.isolationClass }}
+            {{- range .Values.agentSandbox.isolationHandlers }}
+            - {{ printf "--agentsandbox-isolation-handler=%s" . | quote }}
+            {{- end }}
+            {{- end }}
             - --agentsandbox-storage-class={{ .Values.agentSandbox.storageClassName }}
             - --agentsandbox-volume-size={{ .Values.agentSandbox.workspaceSize }}
             - --agentsandbox-ttl={{ .Values.agentSandbox.ttl }}

@@ -81,6 +81,48 @@ MERIDIAN_AGENTSANDBOX_NAMESPACE="$namespace" \
 MERIDIAN_CAPSULE_IMAGE=meridian-capsule:agentsandbox-it \
   go test ./internal/provider/agentsandbox -run Integration -count=1 -v -timeout=10m
 
+# ADR 0050 RuntimeClass verification against a real cluster: a runc handler
+# must be refused before any Sandbox side effect, and a kata handler must
+# verify end to end. The fake RuntimeClasses are removed afterwards so the
+# cluster stays as the default release left it.
+isolation_rc="meridian-it-runc"
+kubernetes_rc="meridian-it-kata"
+cleanup_runtimeclasses() {
+  kubectl delete runtimeclass "$isolation_rc" "$kubernetes_rc" --ignore-not-found >/dev/null 2>&1 || true
+}
+trap cleanup_runtimeclasses EXIT
+
+kubectl apply -f - <<EOF
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: $isolation_rc
+handler: runc
+EOF
+AGENTSANDBOX_TEST_REFUSE_ISOLATION=sandbox \
+AGENTSANDBOX_TEST_RUNTIME_CLASS="$isolation_rc" \
+MERIDIAN_AGENTSANDBOX_TEST=1 \
+MERIDIAN_AGENTSANDBOX_NAMESPACE="$namespace" \
+MERIDIAN_CAPSULE_IMAGE=meridian-capsule:agentsandbox-it \
+  go test ./internal/provider/agentsandbox -run Integration -count=1 -v -timeout=10m
+
+kubectl apply -f - <<EOF
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: $kubernetes_rc
+handler: kata-qemu
+EOF
+MERIDIAN_AGENTSANDBOX_RUNTIME_CLASS="$kubernetes_rc" \
+MERIDIAN_AGENTSANDBOX_ISOLATION_CLASS=microvm \
+MERIDIAN_AGENTSANDBOX_TEST=1 \
+MERIDIAN_AGENTSANDBOX_NAMESPACE="$namespace" \
+MERIDIAN_CAPSULE_IMAGE=meridian-capsule:agentsandbox-it \
+  go test ./internal/provider/agentsandbox -run Integration -count=1 -v -timeout=10m
+
+cleanup_runtimeclasses
+trap - EXIT
+
 if kubectl -n "$namespace" get sandboxes.agents.x-k8s.io \
   -l app.kubernetes.io/managed-by=meridian -o name | grep -q .; then
   echo "owned Sandbox resources remained after the integration flow" >&2
