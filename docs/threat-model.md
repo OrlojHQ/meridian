@@ -27,6 +27,11 @@ mode, where the installation bearer and its browser cookie act as the one
 user, the bootstrap owner. "Team mode and per-user identity" below states the
 team-mode threats and controls.
 
+ADR 0049 (accepted, not yet implemented) adds per-user workstation profiles: one import of a
+laptop's harness setups and git identity, a default connection per harness,
+and a computed diagnostic. It is not implemented. "Workstation profiles"
+below states the controls it must meet before it ships.
+
 ## Assets
 
 Assets requiring protection include:
@@ -909,6 +914,15 @@ they are not a statement that every planned path is already implemented.
   connections never cross owners. Secret and connection envelopes bind the
   owner. Admins manage membership and audit and cannot read other users'
   objects. The installation bearer is break-glass only.
+- Workstation profiles (ADR 0049): a profile has one owner, is
+  addressed only by that owner, and references only that owner's setups and
+  connections. A default connection is never an authorization; only a
+  Project grant is. A Capsule cannot write a profile or its own pin. The
+  laptop's git config, SSH keys, and auth caches never enter a profile.
+  The desktop shell scans the laptop only in its own import window. No
+  bridge command gives a gateway page laptop files, paths, or detection
+  results, and an upload happens only after the user clicks Save there,
+  including for changes the background check notices.
 - Security and durability requirements fail closed when a provider lacks a capability.
 - Reusable credential plaintext is not persisted; encrypted named secrets use
   a dedicated externally custodied credential KEK and cannot cross purpose.
@@ -1035,6 +1049,14 @@ ciphertext under one KEK, so deleting a departed user's rows does not remove
 their data from older backups. The identity provider joins the trust base.
 With container providers, teammates' Capsules share a kernel, and a Capsule
 escape exposes every user on that host.
+
+A workstation profile (ADR 0049) makes the user's tuned
+configuration the default for every new Capsule. Hooks, plugins, skills,
+and MCP servers in it are code. They run in every Capsule that pins the
+profile, under that provider's isolation, and repository content can steer
+them. The git commit identity is self-asserted and not checked against the
+member's OIDC email, and Delivery commits are not signed. A member can
+commit under any name, as they already can through the Project fields.
 
 These risks must be stated in deployment documentation and revisited before implementing a provider, credentials, PTY access, Moments, delivery, multi-user access, or internet-facing operation.
 
@@ -1240,6 +1262,125 @@ by deployment intermediaries. Directory handles remain ephemeral and read-only;
 allowlisted traversal skips dependency subtrees before enumeration. Browser file
 input fallback still enumerates the selected folder before filtering, and the UI
 explains this difference. Both paths use the same authoritative server validation.
+
+## Workstation profiles
+
+ADR 0049 is accepted and not yet implemented. A workstation profile groups the
+owner's default harness setups, a sealed import report per revision, a git
+commit identity, and a default provider connection per harness. It adds no
+file storage beyond those reports. The setup controls above still apply in
+full: the manifest allowlist, the Go deny list, sanitization, encrypted
+revisions, rooted materialization, and no host mounts.
+
+Threats and required controls:
+
+- **Cross-owner profile access.** A teammate reads or changes another
+  member's profile, or names another member's setup or connection as a
+  default. The profile API addresses only the caller's own profile and takes
+  no user id, so there is nothing to enumerate. Admins and the break-glass
+  bearer are refused. `internal/app` resolves every reference within the
+  caller's rows, and store triggers refuse a default connection with a
+  different owner.
+- **Report envelope reattachment.** Someone with database write access moves
+  a sealed import report to another user's revision, or into a bundle slot.
+  Reports use their own envelope id, `owner:<owner_user_id>:<revision_id>:report`,
+  in the AAD, so a moved or swapped ciphertext fails to open.
+- **A default connection as a silent grant.** A profile default would hand
+  every new repository a lease that spends the user's login. A default is
+  never an authorization: the gateway checks only Project grants. A grant
+  needs one owner action per Project (Project create with defaults, or the
+  first-launch grant). It goes through the existing grant path and is
+  audited. Changing a default never changes existing grants.
+- **A hostile Capsule writing the profile.** Capsule code tries to save its
+  edited home, or re-pin itself to another revision. The supervisor token,
+  gateway leases, and coordination mailbox have no route to profile import,
+  profile update, or Capsule profile update. Edits inside a Capsule are never
+  written back. Re-pinning is an owner API call, and it is refused while a
+  Run or Thread session is active.
+- **Detection overreach on the laptop.** `meridian import` checks only the
+  manifest roots, `homeFiles`, `shared` paths, and the global git config. It
+  does not walk the rest of `$HOME`. It executes nothing: git config is
+  parsed for `[user] name` and `email` only, without running `git` or
+  following `include` / `includeIf`. `~/.gitconfig` itself is never copied,
+  because it can hold `insteadOf` rewrites, credential helpers, and
+  `core.sshCommand`. SSH keys are not read.
+- **Git identity injection.** `capsuled` writes the pinned identity as a
+  generated `.gitconfig` in the private setup home, with only a `[user]`
+  section. An identity that contains control characters, quotes,
+  backslashes, or `<` / `>` is refused when saved and again by `capsuled`,
+  rather than escaped, so it cannot add a section, an include, or a helper.
+- **Diff fetch exposure.** To show a diff, the CLI reads the owner's current
+  revisions through the existing owner-only, `no-store` contents endpoint.
+  It keeps them in memory, prints secret-shaped values only as "excluded",
+  and writes nothing to disk.
+- **Diagnostic leakage or false comfort.** The diagnostic is computed only
+  from control-plane records, never from Capsule reports. It is owner-only
+  and `no-store`, and it carries no file contents or credential values. It
+  says "matches your profile" only when nothing is outstanding. It never
+  claims the Capsule matches the laptop.
+- **Forged import reports.** The report comes from the importing client.
+  It is bounded, shape-checked, stored sealed, and rendered only as text. A
+  modified CLI can misdescribe its owner's own setup. It cannot change what
+  the server's bundle validation accepts.
+- **Profile in shared caches.** The profile never adds to the Project setup
+  argv, the prepared environment cache key or contents, or Moments.
+  Personal files are applied after preparation, in the private home.
+- **Departed members.** Break-glass transfer moves setups without their
+  default flag, so a recipient's profile does not change without their
+  action. The profile row and its git identity do not move. Deleting a
+  departed member deletes their profile row.
+- **Single-user servers off loopback.** Anyone with the installation bearer
+  acts as the bootstrap owner and uses that one profile. The UI says so on a
+  server that is not loopback.
+- **A gateway page reaching laptop files through the desktop shell.** A
+  remote or compromised gateway page tries to make the shell read, list, or
+  send it laptop files. Detection and review run in a separate import window
+  that loads only bundled shell pages, has its own local capability, and is
+  never granted the gateway bridge. The only new bridge command,
+  `desktop_open_import`, takes no arguments and returns only whether the
+  window opened. Like the rest of the bridge, only the active gateway origin
+  may call it. No bridge command returns files, paths, harness names, or
+  detection results. The page learns what was imported only from the server,
+  after Save. A page that opens the window over and over gains nothing
+  without the user's Save.
+- **Desktop import to the wrong gateway or account.** The import window is
+  bound to the gateway origin that was active when it opened. Before Save it
+  shows that origin and the account from `/auth/me`. Switching gateway or
+  signing out closes it without uploading. The upload uses only the main
+  window's session for that one origin, so another gateway in the recent
+  list never receives it.
+- **Session handling in the desktop importer.** The shell reads the session
+  cookie for the bound origin through the webview cookie API and passes it
+  to the hidden `meridiand desktop-import` mode once, on stdin. It is never
+  put in argv, an environment variable, a file, or a log. The mode uses it
+  only for the owner-only contents read and the one `POST /profile/imports`,
+  then exits. The shell mints no personal access token. A process running as
+  the same OS user could already read the webview's cookies (ADR 0047).
+- **A second importer drifting from the first.** The desktop app runs the
+  same Go importer package as `meridian import`. It runs it through a hidden
+  client mode of the `meridiand` binary the app already ships as its signed
+  gateway sidecar, which updates with the app. Detection, the deny list, and
+  the sanitizer are not reimplemented in Rust.
+- **Background change checks.** The desktop app re-scans at launch, on
+  wake, and every 30 minutes, unless the user turns the setting off. Check
+  mode (`meridiand desktop-import --check`) walks only the manifest roots
+  and the `[user]` git config. It takes no session, makes no network
+  request, and outputs only a digest of the sanitized result. The shell
+  stores only baseline digests and member ids in its own data directory,
+  never file contents or paths. Its notification and tray item say only
+  "Your Meridian setup changed", with no harness names, file names, or
+  counts, so they reveal nothing on a lock screen or in notification
+  history. A change is never uploaded without Save in the import window,
+  even when it only edits files that are already kept. A local agent or tool
+  can rewrite these folders, and an unprompted upload would send every new
+  Capsule hooks and MCP servers the user never reviewed.
+- **The hidden client mode widening the daemon.** `meridiand desktop-import`
+  is a client of a gateway, not a daemon. It never starts a listener,
+  opens or locks a data directory, or loads a key, so it cannot compete with
+  a running `meridiand` for the data-directory lease (ADR 0035). It is
+  hidden from `--help` and leaves the existing help and `--version` behavior
+  unchanged. Anyone who runs it by hand gets only what `meridian import`
+  already offers: their own files, uploaded with a session they supply.
 
 ## Team mode and per-user identity
 
