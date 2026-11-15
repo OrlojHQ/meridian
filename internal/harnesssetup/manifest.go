@@ -32,6 +32,12 @@ type Manifest struct {
 	// the connection gets an empty home.
 	Instructions string             `yaml:"instructions"`
 	Connection   ManifestConnection `yaml:"connection"`
+	// Exclude lists root-relative files and directories (with a trailing
+	// "/") inside the listed paths that an import skips because they ship
+	// with the harness rather than being the user's setup, such as Codex's
+	// bundled skills. It only narrows an import; bundle validation ignores
+	// it, so revisions saved before an entry was added still open.
+	Exclude []string `yaml:"exclude"`
 }
 
 // ManifestRoot is the harness configuration directory. Env names the
@@ -200,6 +206,12 @@ func (m Manifest) validate() error {
 	if m.Instructions != "" && (!files[m.Instructions] || strings.HasSuffix(m.Instructions, "/") || m.isConfig(m.Root.Path+"/"+m.Instructions)) {
 		return fmt.Errorf("instructions %q must be a listed, non-configuration file", m.Instructions)
 	}
+	for _, entry := range m.Exclude {
+		trimmed := strings.TrimSuffix(entry, "/")
+		if !homePath(trimmed) || strings.Contains(entry, "//") || !m.allowed(m.Root.Path+"/"+trimmed+"/entry") && !m.allowed(m.Root.Path+"/"+trimmed) {
+			return fmt.Errorf("exclude %q must be inside a listed path", entry)
+		}
+	}
 	seen := map[string]bool{}
 	for _, provider := range m.Connection.Providers {
 		if !slices.Contains(providerTypes, provider.Type) || seen[provider.Type] {
@@ -226,6 +238,29 @@ func (m Manifest) allowed(p string) bool {
 	}
 	return slices.Contains(m.HomeFiles, p)
 }
+
+// excluded reports whether an import skips a home-relative path because the
+// harness ships it.
+func (m Manifest) excluded(p string) bool {
+	for _, entry := range m.Exclude {
+		full := m.Root.Path + "/" + entry
+		if strings.HasSuffix(full, "/") && (strings.HasPrefix(p, full) || p+"/" == full) || p == full {
+			return true
+		}
+	}
+	return false
+}
+
+// ExcludedFromImport reports whether an import skips a path the harness
+// ships with, such as Codex's bundled skills.
+func ExcludedFromImport(harness, p string) bool {
+	m, ok := LookupManifest(harness)
+	return ok && m.excluded(p)
+}
+
+// bundledReason is the one exclusion line an import reports for a skipped
+// directory the harness ships.
+const bundledReason = "Ships with the harness, not part of your setup; skipped"
 
 func (m Manifest) isConfig(p string) bool {
 	if slices.Contains(m.HomeFiles, p) {

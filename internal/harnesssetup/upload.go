@@ -17,7 +17,21 @@ func ReviewFiles(harness string, files []File) (Preview, error) {
 	}
 	total := 0
 	seen := map[string]bool{}
+	bundled := map[string]bool{}
 	for _, file := range files {
+		// Files the harness ships are skipped before they count toward the
+		// limit, with one line per bundled directory.
+		if ExcludedFromImport(harness, file.Path) {
+			m, _ := LookupManifest(harness)
+			for _, entry := range m.Exclude {
+				full := m.Root.Path + "/" + entry
+				if strings.HasPrefix(file.Path, full) && !bundled[full] {
+					bundled[full] = true
+					result.Issues = append(result.Issues, Issue{strings.TrimSuffix(full, "/"), bundledReason})
+				}
+			}
+			continue
+		}
 		total += len(file.Content)
 		if total > MaxBytes {
 			return result, errors.New("selected configuration exceeds 512 KiB")
