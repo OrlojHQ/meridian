@@ -128,8 +128,14 @@ func (s *Service) CreateDelivery(
 	if inspection.Dirty && input.CommitMessage == "" {
 		return domain.Delivery{}, fmt.Errorf("%w: a dirty tree requires a commit message", domain.ErrIllegalTransition)
 	}
-	if inspection.Dirty && (project.CommitAuthorName == "" || project.CommitAuthorEmail == "") {
-		return domain.Delivery{}, fmt.Errorf("%w: Project commit author is required", domain.ErrIllegalTransition)
+	if inspection.Dirty {
+		name, _, err := s.commitAuthor(ctx, project, input.CapsuleID)
+		if err != nil {
+			return domain.Delivery{}, err
+		}
+		if name == "" {
+			return domain.Delivery{}, errCommitAuthorRequired
+		}
 	}
 	if !inspection.Dirty && input.CommitMessage != "" {
 		return domain.Delivery{}, fmt.Errorf("%w: a clean tree cannot be committed", domain.ErrIllegalTransition)
@@ -323,9 +329,16 @@ func (s *Service) executeDelivery(
 			if err != nil {
 				return result, err
 			}
+			authorName, authorEmail, authorErr := s.commitAuthor(ctx, project, result.CapsuleID)
+			if authorErr == nil && authorName == "" {
+				authorErr = errCommitAuthorRequired
+			}
+			if authorErr != nil {
+				return fail(authorErr)
+			}
 			committed, commitErr := s.delivery.CommitDelivery(ctx, ports.DeliveryCommitRequest{
 				ResourceID: capsule.ProviderResourceID, Message: result.CommitMessage,
-				AuthorName: project.CommitAuthorName, AuthorEmail: project.CommitAuthorEmail,
+				AuthorName: authorName, AuthorEmail: authorEmail,
 				ExpectedHEAD: result.ExpectedHEAD, ExpectedTree: result.ExpectedTree,
 			})
 			if commitErr != nil {

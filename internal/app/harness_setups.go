@@ -10,6 +10,7 @@ import (
 	"github.com/OrlojHQ/meridian/internal/harnesssetup"
 	"github.com/OrlojHQ/meridian/internal/ports"
 	"strings"
+	"time"
 )
 
 type setupReplay struct {
@@ -71,10 +72,11 @@ func (s *Service) ImportHarnessSetup(ctx context.Context, input SetupImport, key
 	if err := requireIdempotency(key); err != nil {
 		return domain.HarnessSetup{}, err
 	}
+	fingerprint := setupFingerprint(input)
+	input.Name = name
 	var result domain.HarnessSetup
 	err = s.store.Transact(ctx, func(tx ports.Transaction) error {
 		scope := "setup:import"
-		fingerprint := setupFingerprint(input)
 		if replay, ok, err := getReplay[setupReplay](ctx, tx, scope, key); err != nil {
 			return err
 		} else if ok {
@@ -89,67 +91,79 @@ func (s *Service) ImportHarnessSetup(ctx context.Context, input SetupImport, key
 			return err
 		}
 		now := s.clock.Now().UTC()
-		if input.ID == "" {
-			if input.ExpectedResourceVersion != 0 {
-				return domain.ErrConflict
-			}
-			if len(items) >= 128 {
-				return fmt.Errorf("%w: setup limit reached", domain.ErrInvalid)
-			}
-			owner, err := ownerOf(ctx)
-			if err != nil {
-				return err
-			}
-			result = domain.HarnessSetup{OwnerUserID: owner, ID: s.ids.NewID(), Harness: input.Bundle.Harness, CreatedAt: now, ResourceVersion: 1}
-		} else {
-			result, err = findSetup(items, input.ID)
-			if err != nil {
-				return err
-			}
-			if result.Deleted || result.Harness != input.Bundle.Harness || result.ResourceVersion != input.ExpectedResourceVersion {
-				return domain.ErrConflict
-			}
-			result.ResourceVersion++
-		}
-		result.Name = name
-		result.Default = input.Default
-		result.Revision = s.ids.NewID()
-		if result.Default {
-			for _, item := range items {
-				if item.Harness == result.Harness && item.Default && item.ID != result.ID {
-					item.Default = false
-					item.ResourceVersion++
-					if err := tx.PutHarnessSetup(ctx, item); err != nil {
-						return err
-					}
-				}
-			}
-		}
-		raw, err := json.Marshal(input.Bundle)
-		if err != nil {
-			return err
-		}
-		defer wipe(raw)
-		revision := domain.HarnessSetupRevision{OwnerUserID: result.OwnerUserID, ID: result.Revision, SetupID: result.ID, Digest: input.Bundle.Digest(), KeyID: s.secretKey.ID, CreatedAt: now, Files: []string{}}
-		for _, f := range input.Bundle.Files {
-			revision.Files = append(revision.Files, f.Path)
-		}
-		revision.Nonce, revision.Ciphertext, err = s.secretKey.SealSetup(setupEnvelopeID(revision), raw)
-		if err != nil {
-			return err
-		}
-		if err := tx.PutHarnessSetup(ctx, result); err != nil {
-			return err
-		}
-		if err := tx.InsertHarnessSetupRevision(ctx, revision); err != nil {
-			return err
-		}
-		if err := s.appendEvent(ctx, tx, "harness_setup", result.ID, "harness_setup.imported", result.ResourceVersion, nil); err != nil {
+		if result, err = s.saveSetupRevision(ctx, tx, items, input, now); err != nil {
 			return err
 		}
 		return putReplay(ctx, tx, scope, key, setupReplay{Hash: fingerprint, Setup: result}, now)
 	})
 	return result, err
+}
+
+// saveSetupRevision saves input as a new revision of a new or existing setup
+// inside tx. items is the caller's setups as listed in tx. It is shared by a
+// single-harness import and a profile import (ADR 0049).
+func (s *Service) saveSetupRevision(ctx context.Context, tx ports.Transaction, items []domain.HarnessSetup, input SetupImport, now time.Time) (domain.HarnessSetup, error) {
+	var result domain.HarnessSetup
+	var err error
+	if input.ID == "" {
+		if input.ExpectedResourceVersion != 0 {
+			return domain.HarnessSetup{}, domain.ErrConflict
+		}
+		if len(items) >= 128 {
+			return domain.HarnessSetup{}, fmt.Errorf("%w: setup limit reached", domain.ErrInvalid)
+		}
+		owner, err := ownerOf(ctx)
+		if err != nil {
+			return domain.HarnessSetup{}, err
+		}
+		result = domain.HarnessSetup{OwnerUserID: owner, ID: s.ids.NewID(), Harness: input.Bundle.Harness, CreatedAt: now, ResourceVersion: 1}
+	} else {
+		result, err = findSetup(items, input.ID)
+		if err != nil {
+			return domain.HarnessSetup{}, err
+		}
+		if result.Deleted || result.Harness != input.Bundle.Harness || result.ResourceVersion != input.ExpectedResourceVersion {
+			return domain.HarnessSetup{}, domain.ErrConflict
+		}
+		result.ResourceVersion++
+	}
+	result.Name = input.Name
+	result.Default = input.Default
+	result.Revision = s.ids.NewID()
+	if result.Default {
+		for _, item := range items {
+			if item.Harness == result.Harness && item.Default && item.ID != result.ID {
+				item.Default = false
+				item.ResourceVersion++
+				if err := tx.PutHarnessSetup(ctx, item); err != nil {
+					return domain.HarnessSetup{}, err
+				}
+			}
+		}
+	}
+	raw, err := json.Marshal(input.Bundle)
+	if err != nil {
+		return domain.HarnessSetup{}, err
+	}
+	defer wipe(raw)
+	revision := domain.HarnessSetupRevision{OwnerUserID: result.OwnerUserID, ID: result.Revision, SetupID: result.ID, Digest: input.Bundle.Digest(), KeyID: s.secretKey.ID, CreatedAt: now, Files: []string{}}
+	for _, f := range input.Bundle.Files {
+		revision.Files = append(revision.Files, f.Path)
+	}
+	revision.Nonce, revision.Ciphertext, err = s.secretKey.SealSetup(setupEnvelopeID(revision), raw)
+	if err != nil {
+		return domain.HarnessSetup{}, err
+	}
+	if err := tx.PutHarnessSetup(ctx, result); err != nil {
+		return domain.HarnessSetup{}, err
+	}
+	if err := tx.InsertHarnessSetupRevision(ctx, revision); err != nil {
+		return domain.HarnessSetup{}, err
+	}
+	if err := s.appendEvent(ctx, tx, "harness_setup", result.ID, "harness_setup.imported", result.ResourceVersion, nil); err != nil {
+		return domain.HarnessSetup{}, err
+	}
+	return result, nil
 }
 func (s *Service) MutateHarnessSetup(ctx context.Context, id string, input SetupMutation, key string) (domain.HarnessSetup, error) {
 	if err := requirePrincipal(ctx); err != nil {
@@ -270,8 +284,10 @@ func (s *Service) PinnedHarnessSetups(ctx context.Context, ids []domain.CapsuleI
 	return result, err
 }
 
-// pinHarnessSetups snapshots defaults inside Capsule creation's transaction.
-// The sentinel "clean" opts out. An explicit setup applies only to its harness.
+// pinHarnessSetups snapshots the owner's profile inside Capsule creation's
+// transaction: one setup revision per harness and the git identity (ADR
+// 0049). The sentinel "clean" opts out of both. An explicit setup applies
+// only to its harness.
 func (s *Service) pinHarnessSetups(ctx context.Context, tx ports.Transaction, id domain.CapsuleID, selection string) error {
 	if selection == "clean" {
 		return nil
@@ -282,6 +298,9 @@ func (s *Service) pinHarnessSetups(ctx context.Context, tx ports.Transaction, id
 	}
 	capsule, err := tx.GetCapsule(ctx, id)
 	if err != nil {
+		return err
+	}
+	if err := pinProfileIdentity(ctx, tx, capsule, s.clock.Now().UTC()); err != nil {
 		return err
 	}
 	if selection != "" {
@@ -301,6 +320,21 @@ func (s *Service) pinHarnessSetups(ctx context.Context, tx ports.Transaction, id
 	if err != nil {
 		return err
 	}
+	selected, err := resolveHarnessSetups(items, overrides)
+	if err != nil {
+		return err
+	}
+	for harness, item := range selected {
+		if err := tx.PinHarnessSetup(ctx, id, harness, item.Revision); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// resolveHarnessSetups is what a new Capsule in a Project pins: the Project
+// override for a harness if it has one, otherwise the owner's default.
+func resolveHarnessSetups(items []domain.HarnessSetup, overrides map[string]string) (map[string]domain.HarnessSetup, error) {
 	selected := map[string]domain.HarnessSetup{}
 	for _, item := range items {
 		if item.Default && !item.Deleted {
@@ -314,19 +348,14 @@ func (s *Service) pinHarnessSetups(ctx context.Context, tx ports.Transaction, id
 		}
 		item, err := findSetup(items, setup)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if item.Deleted {
-			return fmt.Errorf("%w: project setup was deleted; select a replacement", domain.ErrConflict)
+			return nil, fmt.Errorf("%w: project setup was deleted; select a replacement", domain.ErrConflict)
 		}
 		selected[harness] = item
 	}
-	for harness, item := range selected {
-		if err := tx.PinHarnessSetup(ctx, id, harness, item.Revision); err != nil {
-			return err
-		}
-	}
-	return nil
+	return selected, nil
 }
 func (s *Service) runtimeHarnessSetup(ctx context.Context, id domain.CapsuleID, harness string) (*harnesssetup.RuntimeSetup, error) {
 	// Structured adapters may use a suffix but must identify a supported pack.

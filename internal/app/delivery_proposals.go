@@ -220,8 +220,14 @@ func (s *Service) ApproveDelivery(
 	if inspection.Dirty && current.CommitMessage == "" {
 		return domain.Delivery{}, fmt.Errorf("%w: a dirty tree requires a commit message", domain.ErrIllegalTransition)
 	}
-	if inspection.Dirty && (project.CommitAuthorName == "" || project.CommitAuthorEmail == "") {
-		return domain.Delivery{}, fmt.Errorf("%w: Project commit author is required", domain.ErrIllegalTransition)
+	if inspection.Dirty {
+		name, _, err := s.commitAuthor(ctx, project, current.CapsuleID)
+		if err != nil {
+			return domain.Delivery{}, err
+		}
+		if name == "" {
+			return domain.Delivery{}, errCommitAuthorRequired
+		}
 	}
 	if !inspection.Dirty && current.CommitMessage != "" {
 		return domain.Delivery{}, fmt.Errorf("%w: a clean tree cannot be committed", domain.ErrIllegalTransition)

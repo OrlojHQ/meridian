@@ -1319,7 +1319,11 @@ Threats and required controls:
   says "matches your profile" only when nothing is outstanding. It never
   claims the Capsule matches the laptop.
 - **Forged import reports.** The report comes from the importing client.
-  It is bounded, shape-checked, stored sealed, and rendered only as text. A
+  It is bounded, shape-checked, stored sealed, and rendered only as text.
+  Home-directory paths in its entries, such as the project directory in a
+  Codex trust key, are replaced with `~/…` before it leaves the laptop and
+  again before the server seals it, so a stored report carries no username
+  or project name. A
   modified CLI can misdescribe its owner's own setup. It cannot change what
   the server's bundle validation accepts.
 - **Profile in shared caches.** The profile never adds to the Project setup

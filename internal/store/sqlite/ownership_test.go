@@ -17,13 +17,15 @@ import (
 	"github.com/OrlojHQ/meridian/migrations"
 )
 
-// ownedTables are the tables migration 0023 gives an owner column.
+// ownedTables are the tables with an owner column: migration 0023, plus the
+// workstation profile tables of migration 0029.
 var ownedTables = []string{
 	"projects", "secrets", "provider_connections", "harness_setups",
 	"capsules", "timelines", "moments", "project_thread_intents", "setup_moment_cache",
 	"project_preparation_policy", "coordination_grants", "runs", "threads", "deliveries",
 	"capsule_preparations", "capsule_startup", "thread_messages", "thread_blocks",
 	"thread_deliveries", "thread_links", "coordination_requests", "harness_setup_revisions",
+	"user_profiles", "user_profile_connections",
 }
 
 func TestOwnershipMigrationStampsEveryExistingRow(t *testing.T) {

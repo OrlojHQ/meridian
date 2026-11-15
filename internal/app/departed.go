@@ -124,8 +124,14 @@ func (s *Service) TransferDepartedMember(ctx context.Context, from, to domain.Us
 		}
 		var revisions []domain.HarnessSetupRevision
 		var bundles [][]byte
+		// Import reports bind the owner too (ADR 0049); each readable one is
+		// re-sealed with its revision.
+		reports := map[string][]byte{}
 		defer func() {
 			for _, plain := range bundles {
+				wipe(plain)
+			}
+			for _, plain := range reports {
 				wipe(plain)
 			}
 		}()
@@ -155,6 +161,13 @@ func (s *Service) TransferDepartedMember(ctx context.Context, from, to domain.Us
 				}
 				revisions = append(revisions, revision)
 				bundles = append(bundles, plain)
+				if sealed, err := tx.GetHarnessSetupReport(system, revision.ID); err == nil {
+					if report, err := s.secretKey.OpenSetup(reportEnvelopeID(revision), sealed.KeyID, sealed.Nonce, sealed.Ciphertext); err == nil {
+						reports[revision.ID] = report
+					}
+				} else if !errors.Is(err, domain.ErrNotFound) {
+					return err
+				}
 			}
 		}
 
@@ -183,6 +196,15 @@ func (s *Service) TransferDepartedMember(ctx context.Context, from, to domain.Us
 			}
 			if err := tx.ReplaceHarnessSetupRevisionEnvelope(system, revision); err != nil {
 				return err
+			}
+			if report, ok := reports[revision.ID]; ok {
+				sealed := domain.HarnessSetupReport{RevisionID: revision.ID, KeyID: s.secretKey.ID}
+				if sealed.Nonce, sealed.Ciphertext, err = s.secretKey.SealSetup(reportEnvelopeID(revision), report); err != nil {
+					return err
+				}
+				if err := tx.ReplaceHarnessSetupReportEnvelope(system, sealed); err != nil {
+					return err
+				}
 			}
 		}
 
@@ -322,6 +344,13 @@ func (s *Service) DeleteDepartedMember(ctx context.Context, from domain.UserID) 
 			return result, fmt.Errorf("delete a departed member's harness setup: %w", err)
 		}
 		result.Setups++
+	}
+	// The profile names the departed member, so it is deleted, not moved
+	// (ADR 0049).
+	if err := s.store.Transact(system, func(tx ports.Transaction) error {
+		return tx.DeleteUserProfile(system, from)
+	}); err != nil {
+		return result, fmt.Errorf("delete a departed member's profile: %w", err)
 	}
 	record, ok := auditRecordFor(principal.With(ctx, caller), s.clock.Now(), domain.AuditMemberDelete,
 		"user", string(from), domain.AuditAllowed)
