@@ -16,6 +16,7 @@ use std::collections::BTreeMap;
 use std::time::{Duration, SystemTime};
 
 use serde::{Deserialize, Serialize};
+use url::{Host, Url};
 
 /// The import window's label.
 pub const WINDOW: &str = "import";
@@ -30,6 +31,59 @@ pub const MAX_LINE: usize = 4 << 20;
 /// file, or count, so a lock screen or notification history reveals nothing.
 pub const CHANGED_TITLE: &str = "Meridian";
 pub const CHANGED_BODY: &str = "Your Meridian setup changed";
+
+/// One cookie from the main window's store, reduced to what deciding whether
+/// a browser would send it to the gateway needs.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct StoredCookie {
+    pub name: String,
+    pub value: String,
+    pub domain: Option<String>,
+    pub path: Option<String>,
+    pub secure: bool,
+    /// Unix seconds; `None` is a session cookie.
+    pub expires: Option<i64>,
+}
+
+/// Picks the cookies a browser would send with a request to the bound
+/// gateway's API (RFC 6265 section 5.4): the domain matches the origin's
+/// host exactly, or as a parent domain for a name (never for an IP literal),
+/// the path covers every API path, a Secure cookie needs HTTPS, and expired
+/// cookies are left out.
+///
+/// The webview's own per-URL cookie lookup is not used: on macOS it compares
+/// `Url::domain()`, which is `None` for an IP host, so it returns nothing
+/// for `http://127.0.0.1:8080`, the bundled gateway.
+pub fn session_cookies(cookies: &[StoredCookie], origin: &Url, now: i64) -> Vec<(String, String)> {
+    let Some(host) = origin.host() else {
+        return Vec::new();
+    };
+    let ip = matches!(host, Host::Ipv4(_) | Host::Ipv6(_));
+    let host = match host {
+        Host::Ipv6(address) => address.to_string(),
+        other => other.to_string().to_ascii_lowercase(),
+    };
+    let https = origin.scheme() == "https";
+    cookies
+        .iter()
+        .filter(|cookie| {
+            let Some(domain) = cookie.domain.as_deref() else {
+                return false;
+            };
+            let domain = domain
+                .trim_start_matches('.')
+                .trim_start_matches('[')
+                .trim_end_matches(']')
+                .to_ascii_lowercase();
+            let domain_matches = domain == host
+                || (!ip && !domain.is_empty() && host.ends_with(&format!(".{domain}")));
+            let path_matches = matches!(cookie.path.as_deref(), None | Some("") | Some("/"));
+            let expired = cookie.expires.is_some_and(|at| at <= now);
+            domain_matches && path_matches && (https || !cookie.secure) && !expired
+        })
+        .map(|cookie| (cookie.name.clone(), cookie.value.clone()))
+        .collect()
+}
 
 /// Builds the Cookie header for the bound origin from the main window's
 /// cookies, or nothing when there are none. A name or value that could end
@@ -191,6 +245,79 @@ pub fn woke(wall_before: SystemTime, wall_now: SystemTime, monotonic: Duration) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn stored(name: &str, domain: &str) -> StoredCookie {
+        StoredCookie {
+            name: name.into(),
+            value: "v".into(),
+            domain: Some(domain.into()),
+            path: Some("/".into()),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn session_cookies_work_for_ip_literal_gateways() {
+        let local = Url::parse("http://127.0.0.1:8080").unwrap();
+        let cookies = vec![
+            stored("meridian_session", "127.0.0.1"),
+            stored("other_gateway", "10.0.0.5"),
+            stored("parent", ".0.0.1"),
+            stored("site", "example.com"),
+        ];
+        let picked: Vec<String> = session_cookies(&cookies, &local, 0)
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect();
+        assert_eq!(picked, vec!["meridian_session"]);
+
+        let v6 = Url::parse("http://[::1]:8080").unwrap();
+        let picked = session_cookies(
+            &[
+                stored("s", "::1"),
+                stored("bracketed", "[::1]"),
+                stored("v4", "127.0.0.1"),
+            ],
+            &v6,
+            0,
+        );
+        assert_eq!(picked.len(), 2, "{picked:?}");
+    }
+
+    #[test]
+    fn session_cookies_follow_domain_path_secure_and_expiry() {
+        let remote = Url::parse("https://gw.example.com").unwrap();
+        let mut secure = stored("__Host-meridian_user", "gw.example.com");
+        secure.secure = true;
+        let mut scoped = stored("meridian_oidc", "gw.example.com");
+        scoped.path = Some("/auth/oidc".into());
+        let mut expired = stored("old", "gw.example.com");
+        expired.expires = Some(100);
+        let mut later = stored("later", "gw.example.com");
+        later.expires = Some(10_000);
+        let cookies = vec![
+            secure.clone(),
+            stored("parent", ".example.com"),
+            stored("sibling", "other.example.com"),
+            stored("suffix", "le.com"),
+            scoped,
+            expired,
+            later,
+            StoredCookie {
+                domain: None,
+                ..stored("nodomain", "")
+            },
+        ];
+        let picked: Vec<String> = session_cookies(&cookies, &remote, 1_000)
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect();
+        assert_eq!(picked, vec!["__Host-meridian_user", "parent", "later"]);
+
+        // A Secure cookie is never sent to a plain-HTTP gateway.
+        let plain = Url::parse("http://gw.example.com").unwrap();
+        assert!(session_cookies(&[secure], &plain, 0).is_empty());
+    }
 
     #[test]
     fn cookie_header_joins_and_refuses_injection() {

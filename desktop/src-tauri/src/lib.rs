@@ -391,7 +391,14 @@ fn desktop_open_gateway(app: AppHandle) -> Result<(), String> {
 /// the main window's cookies never runs on the main thread.
 #[tauri::command]
 async fn desktop_open_import(app: AppHandle) -> bool {
-    open_import(&app).is_ok()
+    match open_import(&app) {
+        Ok(()) => true,
+        Err(error) => {
+            // The page learns only that the window did not open.
+            eprintln!("Meridian import window: {error}");
+            false
+        }
+    }
 }
 
 #[derive(serde::Serialize)]
@@ -433,7 +440,7 @@ fn import_save(app: AppHandle) -> Result<(), String> {
     send_import_action(&app, "save")
 }
 
-/// Not now: record this computer's state as reviewed, upload nothing, and
+/// "Don't ask about this change": record this computer's state as reviewed, upload nothing, and
 /// stop prompting about this change. Import window only.
 #[tauri::command]
 fn import_dismiss(app: AppHandle) -> Result<(), String> {
@@ -1083,7 +1090,9 @@ fn build_tray(app: &AppHandle) -> Result<(), String> {
 fn open_import_in_background(app: &AppHandle) {
     let handle = app.clone();
     std::thread::spawn(move || {
-        let _ = open_import(&handle);
+        if let Err(error) = open_import(&handle) {
+            eprintln!("Meridian import window: {error}");
+        }
     });
 }
 
@@ -1110,12 +1119,27 @@ fn open_import(app: &AppHandle) -> Result<(), String> {
     let main = app
         .get_webview_window("main")
         .ok_or_else(|| "The Meridian window is closed.".to_string())?;
-    let cookies: Vec<(String, String)> = main
-        .cookies_for_url(url)
-        .unwrap_or_default()
+    // Every cookie in the window's store, filtered here the way a browser
+    // would for this one origin; see profile_import::session_cookies.
+    let stored: Vec<profile_import::StoredCookie> = main
+        .cookies()
+        .map_err(|error| format!("Could not read this window's sign-in ({error})."))?
         .into_iter()
-        .map(|cookie| (cookie.name().to_string(), cookie.value().to_string()))
+        .map(|cookie| profile_import::StoredCookie {
+            name: cookie.name().to_string(),
+            value: cookie.value().to_string(),
+            domain: cookie.domain().map(str::to_string),
+            path: cookie.path().map(str::to_string),
+            secure: cookie.secure().unwrap_or(false),
+            expires: cookie.expires_datetime().map(|at| at.unix_timestamp()),
+        })
         .collect();
+    let now = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs() as i64)
+        .unwrap_or(0);
+    let cookies = profile_import::session_cookies(&stored, &url, now);
+    drop(stored);
     let header = profile_import::cookie_header(&cookies);
     let command = app
         .shell()
