@@ -921,7 +921,8 @@ they are not a statement that every planned path is already implemented.
   laptop's git config, SSH keys, and auth caches never enter a profile.
   The desktop shell scans the laptop only in its own import window. No
   bridge command gives a gateway page laptop files, paths, or detection
-  results, and an upload happens only after the user clicks Save there.
+  results, and an upload happens only after the user clicks Save there,
+  including for changes the background check notices.
 - Security and durability requirements fail closed when a provider lacks a capability.
 - Reusable credential plaintext is not persisted; encrypted named secrets use
   a dedicated externally custodied credential KEK and cannot cross purpose.
@@ -1360,6 +1361,19 @@ Threats and required controls:
   client mode of the `meridiand` binary the app already ships as its signed
   gateway sidecar, which updates with the app. Detection, the deny list, and
   the sanitizer are not reimplemented in Rust.
+- **Background change checks.** The desktop app re-scans at launch, on
+  wake, and every 30 minutes, unless the user turns the setting off. Check
+  mode (`meridiand desktop-import --check`) walks only the manifest roots
+  and the `[user]` git config. It takes no session, makes no network
+  request, and outputs only a digest of the sanitized result. The shell
+  stores only baseline digests and member ids in its own data directory,
+  never file contents or paths. Its notification and tray item say only
+  "Your Meridian setup changed", with no harness names, file names, or
+  counts, so they reveal nothing on a lock screen or in notification
+  history. A change is never uploaded without Save in the import window,
+  even when it only edits files that are already kept. A local agent or tool
+  can rewrite these folders, and an unprompted upload would send every new
+  Capsule hooks and MCP servers the user never reviewed.
 - **The hidden client mode widening the daemon.** `meridiand desktop-import`
   is a client of a gateway, not a daemon. It never starts a listener,
   opens or locks a data directory, or loads a key, so it cannot compete with

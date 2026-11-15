@@ -236,6 +236,12 @@ terminal. For them, importing works like this:
    it will save to.
 3. Click Save, or Cancel.
 
+Later, when the laptop's setup changes, the app says "Your Meridian setup
+changed" in a notification and in the tray. Clicking it opens the same
+window, showing what changed since the last save. Save uploads it, and
+Dismiss stops that change from prompting again. Nothing leaves the laptop
+until Save.
+
 The rest of this section is how the app does that internally.
 
 The shell runs on the laptop, so it can scan. The gateway page in its main
@@ -303,6 +309,60 @@ Inside the import window, the shell says "We found Codex and Claude on this
 computer". In a plain browser, the step says "Run `meridian import` on this
 computer" and offers the folder picker. A desktop app paired with an older
 gateway, whose UI lacks the button, still has the tray item.
+
+#### Noticing setup changes
+
+A profile is a snapshot (above). Laptop changes reach new Capsules only
+after another review and Save. The desktop app notices those changes and
+offers the review in one click, so the profile stays close to current
+without uploading anything the user has not looked at.
+
+- **When the shell checks.** At app launch, when the computer wakes, and
+  every 30 minutes while the app runs, the shell runs
+  `meridiand desktop-import --check`. Check mode walks only the manifest
+  roots and the `[user]` git config, with the same importer as a full scan.
+  It prints one digest of the sanitized result: every harness's bundle
+  digest plus the git identity. It takes no session, makes no network
+  request, and prints no paths or contents. A file watcher is not used in
+  this version, because the shell would need its own copy of the manifest
+  roots to know what to watch.
+- **What the shell keeps.** In the app's own data directory, next to
+  `gateway.json`, it keeps the baseline digest for each gateway origin and
+  member: the digest from the last Save or Dismiss, and the member id from
+  `GET /auth/me`. It stores no file contents and no paths. Nothing goes to
+  the gateway until Save.
+- **What the user sees.** When the digest differs from the active gateway's
+  baseline, the tray gets a "Review setup changes…" item and a badge, and
+  the OS shows one notification. Each new digest notifies at most once. The
+  notification and tray item are content-free, following the threat model's
+  notification rule: they say "Your Meridian setup changed" and nothing else, with
+  no harness names, file names, or counts. Clicking either one opens the
+  existing import window. That window runs the full review, with the diff
+  against the gateway's saved profile. Save uploads exactly as above and
+  records the new baseline. Dismiss records the digest as the baseline
+  without uploading, so the same change does not prompt again. A later
+  change prompts again.
+- **What does not change.** Pins are still snapshots. Saving updates the
+  profile for new Capsules, and existing Capsules stay pinned until the
+  owner clicks "Update this Capsule to my current profile". The gateway page
+  still learns nothing until `profile.updated`.
+- **Edge cases.**
+  - With no signed-in session for the active gateway, the prompt still
+    appears. The import window then asks the user to sign in to that gateway
+    before it shows the diff or enables Save.
+  - Switching gateway compares against that gateway's own baseline and
+    saved profile. A change saved to one gateway can still prompt on
+    another.
+  - In team mode the baseline belongs to the signed-in member. A different
+    member signing in on the same origin starts from no baseline, and the
+    upload is theirs.
+  - When check mode fails, for example because a harness is over the bundle
+    limit, the shell does not prompt. The import window reports the failure
+    the next time it is opened.
+- **A setting.** "Check this computer for setup changes" is a toggle in the
+  desktop app's own settings page, the shell-owned picker in `desktop/ui/`.
+  It is on by default. Turning it off stops the checks and the prompts. A
+  manual review from the first-run button or the tray still works.
 
 ### The "why this differs from your laptop" diagnostic
 
@@ -382,6 +442,17 @@ diagnostic does not inspect the workspace to report on them.
 - Checking whether tools a setup expects exist in the image
 - Sharing profiles between users
 
+### Considered and not chosen
+
+- **Applying laptop changes automatically.** The desktop app could upload
+  without a prompt when a change only edits files that are already kept and
+  adds no new exclusion or warning. This version does not do that. A local
+  agent, a harness, or any other tool on the laptop can rewrite `~/.claude`,
+  `~/.codex`, and the other roots too. An unprompted upload would push
+  changes, including new hooks or MCP servers, that the user never looked
+  at, and every new Capsule would run them. Every upload still needs Save in
+  the import window.
+
 ## Consequences
 
 - Existing setups, Project overrides, and Capsule pins keep working. A user
@@ -419,5 +490,6 @@ Each step is its own PR, as #84 was (#155 to #167):
 5. CLI: `meridian import` with detection, diff, and git identity.
 6. UI: the first-run import step, "What Capsules inherit", and the Capsule
    diagnostic panel.
-7. Desktop: the hidden `meridiand desktop-import` mode, the shell-owned
-   import window, `desktop_open_import`, and the tray item.
+7. Desktop: the hidden `meridiand desktop-import` mode and its `--check`
+   mode, the shell-owned import window, `desktop_open_import`, the tray
+   item, the change prompt with its baselines, and the settings toggle.
