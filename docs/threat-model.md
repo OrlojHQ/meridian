@@ -1347,8 +1347,9 @@ Threats and required controls:
   without the user's Save.
 - **Desktop import to the wrong gateway or account.** The import window is
   bound to the gateway origin that was active when it opened. Before Save it
-  shows that origin and the account from `/auth/me`. Switching gateway or
-  signing out closes it without uploading. The upload uses only the main
+  shows that origin and the account from `/auth/me`. Switching gateway
+  closes it without uploading, and after a sign-out the gateway refuses its
+  Save. The upload uses only the main
   window's session for that one origin, so another gateway in the recent
   list never receives it.
 - **Session handling in the desktop importer.** The shell reads the session

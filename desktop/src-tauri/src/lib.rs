@@ -5,6 +5,7 @@
 mod bridge;
 mod gateway;
 mod notify_text;
+mod profile_import;
 mod sidecar;
 mod sign_in;
 mod update;
@@ -13,14 +14,17 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::net::TcpListener;
 use std::path::PathBuf;
-use std::sync::{Mutex, MutexGuard};
-use std::time::{Duration, Instant};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::{Duration, Instant, SystemTime};
 
 use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::utils::acl::RemoteUrlPattern;
 use tauri::{AppHandle, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent, Wry};
 use tauri_plugin_notification::NotificationExt;
+use tauri_plugin_shell::process::{CommandChild, CommandEvent};
+use tauri_plugin_shell::ShellExt;
 use url::Url;
 
 use gateway::{
@@ -59,6 +63,20 @@ struct Inner {
     sign_in: u64,
     quitting: bool,
     tray: bool,
+    /// The open import window's background session (ADR 0049).
+    import: Option<ImportSession>,
+    /// Change-check baselines and the on/off setting.
+    check: profile_import::CheckState,
+}
+
+/// One import window: the gateway origin it is bound to, the hidden
+/// `desktop-import` process, and the messages it has sent.
+struct ImportSession {
+    origin: String,
+    label: String,
+    child: Option<CommandChild>,
+    messages: Arc<Mutex<Vec<serde_json::Value>>>,
+    finished: Arc<AtomicBool>,
 }
 
 /// The gateway the window may show, and the bridge pattern that matches it.
@@ -156,6 +174,8 @@ pub fn run() {
                     sign_in: 0,
                     quitting: false,
                     tray: false,
+                    import: None,
+                    check: read_check(app.handle()),
                 }),
             });
 
@@ -191,7 +211,17 @@ pub fn run() {
             }
 
             let clicks = app.handle().clone();
-            let _ = app.notification().on_action(move |_| show_main(&clicks));
+            let _ = app.notification().on_action(move |_| {
+                // The change prompt's notification opens the import window.
+                if setup_change_pending(&clicks) {
+                    open_import_in_background(&clicks);
+                } else {
+                    show_main(&clicks);
+                }
+            });
+
+            let checks = app.handle().clone();
+            std::thread::spawn(move || check_loop(checks));
 
             if let Some(choice) = saved {
                 let handle = app.handle().clone();
@@ -212,7 +242,14 @@ pub fn run() {
                     desktop_open_gateway,
                     desktop_gateway,
                     desktop_update_check,
-                    desktop_update_install
+                    desktop_update_install,
+                    desktop_open_import,
+                    import_state,
+                    import_save,
+                    import_dismiss,
+                    import_cancel,
+                    setup_check_state,
+                    setup_check_set
                 ]);
             move |invoke| {
                 if bridge::is_bridge_command(invoke.message.command()) {
@@ -347,6 +384,105 @@ fn desktop_set_attention(app: AppHandle, count: u32) -> Result<(), String> {
 #[tauri::command]
 fn desktop_open_gateway(app: AppHandle) -> Result<(), String> {
     open_gateway(&app)
+}
+
+/// The gateway page's only way into the import (ADR 0049): it takes no
+/// arguments and returns only whether the window opened. Async so reading
+/// the main window's cookies never runs on the main thread.
+#[tauri::command]
+async fn desktop_open_import(app: AppHandle) -> bool {
+    open_import(&app).is_ok()
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ImportView {
+    origin: Option<String>,
+    label: Option<String>,
+    messages: Vec<serde_json::Value>,
+    finished: bool,
+}
+
+/// The import window's own view of its session. Import window only.
+#[tauri::command]
+fn import_state(state: tauri::State<'_, AppState>) -> ImportView {
+    let inner = lock(&state);
+    match &inner.import {
+        Some(session) => ImportView {
+            origin: Some(session.origin.clone()),
+            label: Some(session.label.clone()),
+            messages: session
+                .messages
+                .lock()
+                .map(|messages| messages.clone())
+                .unwrap_or_default(),
+            finished: session.finished.load(Ordering::SeqCst),
+        },
+        None => ImportView {
+            origin: None,
+            label: None,
+            messages: Vec::new(),
+            finished: true,
+        },
+    }
+}
+
+/// Save: the only step that uploads. Import window only.
+#[tauri::command]
+fn import_save(app: AppHandle) -> Result<(), String> {
+    send_import_action(&app, "save")
+}
+
+/// Not now: record this computer's state as reviewed, upload nothing, and
+/// stop prompting about this change. Import window only.
+#[tauri::command]
+fn import_dismiss(app: AppHandle) -> Result<(), String> {
+    let review = {
+        let state = app.state::<AppState>();
+        let inner = lock(&state);
+        inner.import.as_ref().and_then(|session| {
+            let messages = session.messages.lock().ok()?;
+            let review = messages.iter().find(|m| m["type"] == "review")?;
+            Some((
+                session.origin.clone(),
+                review["account"]["id"].as_str()?.to_string(),
+                review["digest"].as_str()?.to_string(),
+            ))
+        })
+    };
+    if let Some((origin, member, digest)) = review {
+        record_baseline(&app, &origin, &member, &digest);
+    }
+    let _ = send_import_action(&app, "cancel");
+    close_import(&app);
+    Ok(())
+}
+
+/// Cancel: upload nothing. Import window only.
+#[tauri::command]
+fn import_cancel(app: AppHandle) -> Result<(), String> {
+    let _ = send_import_action(&app, "cancel");
+    close_import(&app);
+    Ok(())
+}
+
+/// "Check this computer for setup changes". Picker only.
+#[tauri::command]
+fn setup_check_state(state: tauri::State<'_, AppState>) -> bool {
+    lock(&state).check.enabled
+}
+
+#[tauri::command]
+fn setup_check_set(app: AppHandle, enabled: bool) -> Result<(), String> {
+    let check = {
+        let state = app.state::<AppState>();
+        let mut inner = lock(&state);
+        inner.check.enabled = enabled;
+        inner.check.clone()
+    };
+    write_check(&app, &check)?;
+    refresh_tray(&app);
+    Ok(())
 }
 
 #[derive(serde::Serialize)]
@@ -578,6 +714,7 @@ fn finish_navigation(app: &AppHandle, choice: &SavedGateway) -> Result<(), Strin
         });
         inner.sign_in += 1;
     }
+    close_import(app);
     set_title(app, &format!("Meridian — {}", gateway_label(choice)));
     refresh_tray(app);
     navigate(app, &url)
@@ -592,6 +729,7 @@ fn open_gateway(app: &AppHandle) -> Result<(), String> {
         inner.active = None;
         inner.sign_in += 1;
     }
+    close_import(app);
     set_title(app, "Meridian");
     refresh_tray(app);
     navigate(app, shell_index_url())
@@ -822,6 +960,14 @@ fn tray_menu(app: &AppHandle) -> Result<Menu<Wry>, String> {
         MenuItem::with_id(app, "open", "Open Meridian", true, None::<&str>).map_err(error)?;
     let gateway_item =
         MenuItem::with_id(app, "gateway", "Gateway…", true, None::<&str>).map_err(error)?;
+    let import_label = if setup_change_pending(app) {
+        "Review setup changes…"
+    } else {
+        "Import this computer's setup…"
+    };
+    let import_item =
+        MenuItem::with_id(app, "import", import_label, active.is_some(), None::<&str>)
+            .map_err(error)?;
     let updates_item = MenuItem::with_id(app, "updates", "Check for updates…", true, None::<&str>)
         .map_err(error)?;
     let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>).map_err(error)?;
@@ -832,6 +978,7 @@ fn tray_menu(app: &AppHandle) -> Result<Menu<Wry>, String> {
             &open_item,
             &gateway_item,
             &switch,
+            &import_item,
             &separator,
             &updates_item,
             &quit_item,
@@ -909,6 +1056,7 @@ fn build_tray(app: &AppHandle) -> Result<(), String> {
                 let _ = open_gateway(app);
             }
             "updates" => request_update_check(app),
+            "import" => open_import_in_background(app),
             "quit" => {
                 lock(&app.state::<AppState>()).quitting = true;
                 app.exit(0);
@@ -927,6 +1075,312 @@ fn build_tray(app: &AppHandle) -> Result<(), String> {
         })
         .build(app)
         .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+/// Opens the import window from the tray or a notification, off the main
+/// thread so reading cookies cannot block it.
+fn open_import_in_background(app: &AppHandle) {
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        let _ = open_import(&handle);
+    });
+}
+
+/// Opens the import window bound to the active gateway origin, and starts
+/// the hidden `desktop-import` mode with the main window's session for that
+/// origin. A window already open is focused instead.
+fn open_import(app: &AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window(profile_import::WINDOW) {
+        let _ = window.show();
+        let _ = window.set_focus();
+        return Ok(());
+    }
+    let (origin, label) = {
+        let state = app.state::<AppState>();
+        let inner = lock(&state);
+        match (&inner.saved, &inner.active) {
+            (Some(saved), Some(active)) if saved.origin() == active.origin => {
+                (active.origin.clone(), gateway_label(saved))
+            }
+            _ => return Err("Open a gateway first.".into()),
+        }
+    };
+    let url = Url::parse(&origin).map_err(|_| "The gateway address is not valid.".to_string())?;
+    let main = app
+        .get_webview_window("main")
+        .ok_or_else(|| "The Meridian window is closed.".to_string())?;
+    let cookies: Vec<(String, String)> = main
+        .cookies_for_url(url)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|cookie| (cookie.name().to_string(), cookie.value().to_string()))
+        .collect();
+    let header = profile_import::cookie_header(&cookies);
+    let command = app
+        .shell()
+        .sidecar("meridian-desktop-gateway")
+        .map_err(|error| format!("The bundled gateway is not installed ({error})."))?;
+    let (mut events, mut child) = command
+        .args(["desktop-import"])
+        .spawn()
+        .map_err(|error| format!("Could not start the import ({error})."))?;
+    child
+        .write(&profile_import::hello_line(&origin, header.as_deref()))
+        .map_err(|_| "Could not start the import.".to_string())?;
+    drop(header);
+    drop(cookies);
+
+    let messages = Arc::new(Mutex::new(Vec::new()));
+    let finished = Arc::new(AtomicBool::new(false));
+    {
+        let state = app.state::<AppState>();
+        let mut inner = lock(&state);
+        if let Some(previous) = inner.import.take() {
+            if let Some(child) = previous.child {
+                let _ = child.kill();
+            }
+        }
+        inner.import = Some(ImportSession {
+            origin: origin.clone(),
+            label,
+            child: Some(child),
+            messages: Arc::clone(&messages),
+            finished: Arc::clone(&finished),
+        });
+    }
+    let relay = app.clone();
+    let bound = origin.clone();
+    tauri::async_runtime::spawn(async move {
+        let mut member = String::new();
+        while let Some(event) = events.recv().await {
+            match event {
+                CommandEvent::Stdout(line) => {
+                    let Some(message) = profile_import::parse_message(line.trim_ascii()) else {
+                        continue;
+                    };
+                    if message["type"] == "review" {
+                        member = message["account"]["id"]
+                            .as_str()
+                            .unwrap_or_default()
+                            .to_string();
+                    }
+                    if message["type"] == "saved" && !member.is_empty() {
+                        if let Some(digest) = message["digest"].as_str() {
+                            record_baseline(&relay, &bound, &member, digest);
+                        }
+                    }
+                    if let Ok(mut kept) = messages.lock() {
+                        kept.push(message);
+                    }
+                }
+                CommandEvent::Terminated(_) => break,
+                _ => {}
+            }
+        }
+        finished.store(true, Ordering::SeqCst);
+    });
+
+    let closing = app.clone();
+    let window = WebviewWindowBuilder::new(
+        app,
+        profile_import::WINDOW,
+        WebviewUrl::App("import.html".into()),
+    )
+    .title("Import this computer's setup")
+    .inner_size(640.0, 720.0)
+    .min_inner_size(480.0, 480.0)
+    .on_navigation(is_shell_url)
+    .on_new_window(|_url, _features| tauri::webview::NewWindowResponse::Deny)
+    .build()
+    .map_err(|_| "The import window could not open.".to_string())?;
+    window.on_window_event(move |event| {
+        if let WindowEvent::Destroyed = event {
+            end_import(&closing);
+        }
+    });
+    Ok(())
+}
+
+fn send_import_action(app: &AppHandle, action: &str) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let mut inner = lock(&state);
+    let child = inner
+        .import
+        .as_mut()
+        .and_then(|session| session.child.as_mut())
+        .ok_or_else(|| "The import has ended.".to_string())?;
+    child
+        .write(&profile_import::action_line(action))
+        .map_err(|_| "The import has ended.".to_string())
+}
+
+/// Ends the session without uploading: its process is stopped.
+fn end_import(app: &AppHandle) {
+    let session = lock(&app.state::<AppState>()).import.take();
+    if let Some(child) = session.and_then(|session| session.child) {
+        let _ = child.kill();
+    }
+}
+
+/// Closes the import window, for Cancel and whenever the gateway changes.
+fn close_import(app: &AppHandle) {
+    end_import(app);
+    if let Some(window) = app.get_webview_window(profile_import::WINDOW) {
+        let _ = window.close();
+    }
+}
+
+fn record_baseline(app: &AppHandle, origin: &str, member: &str, digest: &str) {
+    let check = {
+        let state = app.state::<AppState>();
+        let mut inner = lock(&state);
+        inner.check.record(origin, member, digest);
+        inner.check.clone()
+    };
+    let _ = write_check(app, &check);
+    refresh_tray(app);
+}
+
+fn setup_change_pending(app: &AppHandle) -> bool {
+    let state = app.state::<AppState>();
+    let inner = lock(&state);
+    inner
+        .active
+        .as_ref()
+        .is_some_and(|active| inner.check.pending(&active.origin))
+}
+
+/// The change check (ADR 0049): at launch, on wake, and every 30 minutes
+/// while the setting is on and a gateway is open. It runs only the hidden
+/// mode's `--check`, which takes no session, makes no network request, and
+/// prints only a digest.
+fn check_loop(app: AppHandle) {
+    let mut last: Option<Instant> = None;
+    let mut wall = SystemTime::now();
+    let mut tick = Instant::now();
+    loop {
+        std::thread::sleep(if last.is_none() {
+            Duration::from_secs(5)
+        } else {
+            Duration::from_secs(60)
+        });
+        let slept = profile_import::woke(wall, SystemTime::now(), tick.elapsed());
+        wall = SystemTime::now();
+        tick = Instant::now();
+        let (origin, enabled, quitting) = {
+            let state = app.state::<AppState>();
+            let inner = lock(&state);
+            (
+                inner.active.as_ref().map(|active| active.origin.clone()),
+                inner.check.enabled,
+                inner.quitting,
+            )
+        };
+        if quitting {
+            return;
+        }
+        let Some(origin) = origin else { continue };
+        let due = slept || last.is_none_or(|at| at.elapsed() >= profile_import::CHECK_INTERVAL);
+        if !enabled || !due {
+            continue;
+        }
+        last = Some(Instant::now());
+        let Some(digest) = run_check(&app) else {
+            continue;
+        };
+        let prompt = {
+            let state = app.state::<AppState>();
+            let mut inner = lock(&state);
+            let still = inner
+                .active
+                .as_ref()
+                .is_some_and(|active| active.origin == origin);
+            let prompt = still && inner.check.should_prompt(&origin, &digest);
+            if prompt {
+                inner.check.notified.insert(origin.clone(), digest.clone());
+            }
+            prompt.then(|| inner.check.clone())
+        };
+        if let Some(check) = prompt {
+            let _ = write_check(&app, &check);
+            let _ = app
+                .notification()
+                .builder()
+                .title(profile_import::CHANGED_TITLE)
+                .body(profile_import::CHANGED_BODY)
+                .show();
+            refresh_tray(&app);
+        }
+    }
+}
+
+/// Runs `desktop-import --check` and returns its digest. A check that does
+/// not finish within a minute is stopped and reports nothing.
+fn run_check(app: &AppHandle) -> Option<String> {
+    let command = app.shell().sidecar("meridian-desktop-gateway").ok()?;
+    let (mut events, child) = command.args(["desktop-import", "--check"]).spawn().ok()?;
+    let child = Arc::new(Mutex::new(Some(child)));
+    let watchdog = Arc::clone(&child);
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(60));
+        if let Some(child) = watchdog.lock().ok().and_then(|mut child| child.take()) {
+            let _ = child.kill();
+        }
+    });
+    let mut output = Vec::new();
+    while let Some(event) = events.blocking_recv() {
+        match event {
+            CommandEvent::Stdout(line) => {
+                if output.len() + line.len() <= 4096 {
+                    output.extend_from_slice(&line);
+                }
+            }
+            CommandEvent::Terminated(status) => {
+                if status.code != Some(0) {
+                    return None;
+                }
+                break;
+            }
+            _ => {}
+        }
+    }
+    child.lock().ok().and_then(|mut child| child.take());
+    profile_import::parse_check(output.trim_ascii())
+}
+
+fn check_path(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(config_path(app)?.with_file_name("profile-check.json"))
+}
+
+fn read_check(app: &AppHandle) -> profile_import::CheckState {
+    check_path(app)
+        .ok()
+        .and_then(|path| fs::read(path).ok())
+        .map(|bytes| profile_import::CheckState::parse(&bytes))
+        .unwrap_or_default()
+}
+
+fn write_check(app: &AppHandle, check: &profile_import::CheckState) -> Result<(), String> {
+    let bytes = serde_json::to_vec(check).map_err(|error| error.to_string())?;
+    write_private(&check_path(app)?, &bytes)
+}
+
+/// Writes a file only this user can read, atomically.
+fn write_private(path: &std::path::Path, bytes: &[u8]) -> Result<(), String> {
+    let temporary = path.with_extension("json.tmp");
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options
+        .open(&temporary)
+        .map_err(|error| error.to_string())?;
+    std::io::Write::write_all(&mut file, bytes).map_err(|error| error.to_string())?;
+    fs::rename(&temporary, path).map_err(|error| error.to_string())?;
     Ok(())
 }
 

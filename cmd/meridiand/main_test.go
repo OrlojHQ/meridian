@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/OrlojHQ/meridian/internal/domain"
@@ -73,5 +76,49 @@ func TestInitDataDirectoryRejectsSymlink(t *testing.T) {
 	command.SetArgs([]string{"init-data-dir", "--path", path})
 	if err := command.Execute(); err == nil {
 		t.Fatal("symlink data directory unexpectedly accepted")
+	}
+}
+
+// The desktop app's import mode is a hidden client mode: help and version
+// stay as they were, and --check prints only a digest.
+func TestDesktopImportIsHiddenAndCheckPrintsOnlyADigest(t *testing.T) {
+	var help bytes.Buffer
+	root := newRootCommand()
+	root.SetOut(&help)
+	root.SetArgs([]string{"--help"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(help.String(), "desktop-import") || !strings.Contains(help.String(), "healthcheck") {
+		t.Fatalf("help:\n%s", help.String())
+	}
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("GIT_CONFIG_GLOBAL", "")
+	for _, name := range []string{"CODEX_HOME", "CLAUDE_CONFIG_DIR", "OPENCODE_CONFIG_DIR", "PI_CODING_AGENT_DIR", "DSH_HOME"} {
+		t.Setenv(name, "")
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".codex", "AGENTS.md"), []byte("secret-looking canary text"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	root = newRootCommand()
+	root.SetOut(&out)
+	root.SetArgs([]string{"desktop-import", "--check"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var result map[string]any
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	digest, ok := result["digest"].(string)
+	if len(result) != 1 || !ok || len(digest) != 64 || strings.Contains(out.String(), "canary") || strings.Contains(out.String(), "AGENTS") {
+		t.Fatalf("check output = %s", out.String())
 	}
 }

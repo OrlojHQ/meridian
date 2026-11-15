@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-import-dismiss"
+description = "Enables the import_dismiss command without any pre-configured scope."
+commands.allow = ["import_dismiss"]
+
+[[permission]]
+identifier = "deny-import-dismiss"
+description = "Denies the import_dismiss command without any pre-configured scope."
+commands.deny = ["import_dismiss"]

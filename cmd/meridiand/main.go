@@ -225,7 +225,7 @@ func newRootCommand() *cobra.Command {
 		},
 	}
 	initializeData.Flags().StringVar(&initDataPath, "path", "", "data directory path to create")
-	command.AddCommand(healthcheck, initializeData)
+	command.AddCommand(healthcheck, initializeData, newDesktopImportCommand())
 	return command
 }
 

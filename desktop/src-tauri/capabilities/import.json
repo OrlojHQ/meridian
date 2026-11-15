@@ -1,0 +1,12 @@
+{
+  "identifier": "import-window",
+  "description": "The shell-owned import window (ADR 0049). Local pages only; never granted to a gateway page.",
+  "windows": ["import"],
+  "permissions": [
+    "core:default",
+    "allow-import-state",
+    "allow-import-save",
+    "allow-import-dismiss",
+    "allow-import-cancel"
+  ]
+}

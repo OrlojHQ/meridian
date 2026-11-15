@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Import this computer's setup</title>
+    <link rel="stylesheet" href="picker.css?v=3" />
+  </head>
+  <body class="import">
+    <main>
+      <h1>Import this computer's setup</h1>
+      <p class="lead" id="destination">Looking at this computer…</p>
+      <p id="found" class="found"></p>
+      <section id="harnesses" aria-label="What will be imported"></section>
+      <section id="git" class="git" hidden></section>
+      <p class="note" id="hooks" hidden>Hooks, plugins, and MCP servers are code that runs inside the Capsule.</p>
+      <p class="note" id="logins" hidden>Your sign-ins on this computer are not copied. Each harness uses a provider connection instead.</p>
+      <div class="actions">
+        <button type="button" id="save" disabled>Save</button>
+        <button type="button" id="dismiss" class="secondary" hidden>Not now</button>
+        <button type="button" id="cancel" class="secondary">Cancel</button>
+      </div>
+      <p id="status" role="status"></p>
+    </main>
+    <script src="import.js"></script>
+  </body>
+</html>

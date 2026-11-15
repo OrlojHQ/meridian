@@ -125,3 +125,18 @@ form.addEventListener("submit", (event) => {
 
 syncUrlField();
 void refresh();
+
+// "Check this computer for setup changes" (ADR 0049). On by default.
+const setupCheck = document.querySelector("#setup-check");
+if (setupCheck) {
+  invoke("setup_check_state").then(
+    (enabled) => { setupCheck.checked = enabled !== false; },
+    () => { setupCheck.closest("label").hidden = true; },
+  );
+  setupCheck.addEventListener("change", () => {
+    invoke("setup_check_set", { enabled: setupCheck.checked }).catch((error) => {
+      setupCheck.checked = !setupCheck.checked;
+      setStatus(errorText(error), true);
+    });
+  });
+}

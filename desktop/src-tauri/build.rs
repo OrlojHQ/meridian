@@ -10,6 +10,13 @@ fn main() {
             "desktop_gateway",
             "desktop_update_check",
             "desktop_update_install",
+            "desktop_open_import",
+            "import_state",
+            "import_save",
+            "import_dismiss",
+            "import_cancel",
+            "setup_check_state",
+            "setup_check_set",
         ]),
     ))
     .expect("failed to run tauri-build");
