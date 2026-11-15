@@ -61,6 +61,7 @@ agentSandbox:
   workspaceSize: 10Gi
   ttl: 24h
   operationTimeout: 2m
+  startTimeout: 10m
   setupTimeout: 10m
   limits:
     cpu: "2"

@@ -848,3 +848,143 @@ func TestNotReadyRunningSandboxReportsStoppedRuntime(t *testing.T) {
 		t.Fatalf("runtime call on a restarting Sandbox = %v", err)
 	}
 }
+
+func TestConfigStartTimeout(t *testing.T) {
+	resolved, err := Config{}.withDefaults()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.StartTimeout != 10*time.Minute {
+		t.Fatalf("default start timeout = %s", resolved.StartTimeout)
+	}
+	for _, config := range []Config{
+		{StartTimeout: -time.Minute},
+		{TTL: 10 * time.Minute, OperationTimeout: time.Minute, StartTimeout: time.Minute, SetupTimeout: 9 * time.Minute},
+	} {
+		if _, err := config.withDefaults(); err == nil {
+			t.Fatalf("configuration accepted: %#v", config)
+		}
+	}
+	resolved, err = Config{
+		TTL: time.Hour, OperationTimeout: time.Minute,
+		StartTimeout: 5 * time.Minute, SetupTimeout: time.Minute,
+	}.withDefaults()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.StartTimeout != 5*time.Minute {
+		t.Fatalf("explicit start timeout = %s", resolved.StartTimeout)
+	}
+}
+
+func TestCreateUsesStartTimeoutForReady(t *testing.T) {
+	provider, agents, _ := testProvider(t)
+	namespace := "test"
+	agents.PrependReactor("create", "sandboxes", func(action ktesting.Action) (bool, runtime.Object, error) {
+		create := action.(ktesting.CreateAction)
+		sandbox := create.GetObject().(*sandboxv1beta1.Sandbox).DeepCopy()
+		sandbox.UID = types.UID("sandbox-uid-" + sandbox.Name)
+		sandbox.ResourceVersion = "1"
+		if err := agents.Tracker().Create(
+			sandboxv1beta1.GroupVersion.WithResource("sandboxes"), sandbox, namespace,
+		); err != nil {
+			return true, nil, err
+		}
+		return true, sandbox, nil
+	})
+	provider.config.OperationTimeout = 50 * time.Millisecond
+	provider.config.StartTimeout = 300 * time.Millisecond
+	start := time.Now()
+	_, err := provider.Create(context.Background(), ports.CreateCapsuleRequest{CapsuleID: "capsule-start-timeout"})
+	elapsed := time.Since(start)
+	if err == nil || !strings.Contains(err.Error(), "did not become ready within 300ms") {
+		t.Fatalf("create = %v", err)
+	}
+	if !strings.Contains(err.Error(), "(last phase: Creating Capsule)") {
+		t.Fatalf("create error did not name the last phase: %v", err)
+	}
+	if elapsed < 250*time.Millisecond {
+		t.Fatalf("create returned after %s; the start timeout did not govern the wait", elapsed)
+	}
+}
+
+func TestCreateStartTimeoutNamesLastPhase(t *testing.T) {
+	provider, agents, core := testProvider(t)
+	namespace := "test"
+	agents.PrependReactor("create", "sandboxes", func(action ktesting.Action) (bool, runtime.Object, error) {
+		create := action.(ktesting.CreateAction)
+		sandbox := create.GetObject().(*sandboxv1beta1.Sandbox).DeepCopy()
+		sandbox.UID = types.UID("sandbox-uid-" + sandbox.Name)
+		sandbox.ResourceVersion = "1"
+		if err := agents.Tracker().Create(
+			sandboxv1beta1.GroupVersion.WithResource("sandboxes"), sandbox, namespace,
+		); err != nil {
+			return true, nil, err
+		}
+		controller := true
+		pod := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: sandbox.Name + "-pod", Namespace: namespace,
+				Labels: sandbox.Spec.PodTemplate.ObjectMeta.Labels,
+				OwnerReferences: []metav1.OwnerReference{{
+					APIVersion: sandboxv1beta1.GroupVersion.String(), Kind: "Sandbox",
+					Name: sandbox.Name, UID: sandbox.UID, Controller: &controller,
+				}},
+			},
+			Status: corev1.PodStatus{
+				Phase: corev1.PodPending,
+				ContainerStatuses: []corev1.ContainerStatus{{
+					Name:  "capsule",
+					State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{Reason: "Pulling"}},
+				}},
+			},
+		}
+		if _, err := core.CoreV1().Pods(namespace).Create(context.Background(), pod, metav1.CreateOptions{}); err != nil {
+			return true, nil, err
+		}
+		return true, sandbox, nil
+	})
+	provider.config.StartTimeout = 300 * time.Millisecond
+	_, err := provider.Create(context.Background(), ports.CreateCapsuleRequest{CapsuleID: "capsule-pulling-phase"})
+	if err == nil || !strings.Contains(err.Error(), "last phase: Pulling image") {
+		t.Fatalf("create = %v", err)
+	}
+}
+
+func TestResourceReadinessFailureIsSanitized(t *testing.T) {
+	provider, agents, _ := testProvider(t)
+	namespace := "test"
+	sandbox := &sandboxv1beta1.Sandbox{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "meridian-capsule-weird", Namespace: namespace,
+			Labels: map[string]string{labelOwned: "meridian"},
+			UID:    "weird-uid", ResourceVersion: "3", Generation: 2,
+		},
+		Spec: sandboxv1beta1.SandboxSpec{},
+	}
+	if err := agents.Tracker().Add(sandbox); err != nil {
+		t.Fatal(err)
+	}
+	sandbox.Status.Conditions = []metav1.Condition{{
+		Type:               string(sandboxv1beta1.SandboxConditionReady),
+		Status:             metav1.ConditionFalse,
+		ObservedGeneration: 2,
+		Reason:             "Weird",
+		Message:            "see https://example.invalid/help\nfor details",
+	}}
+	resource, err := provider.resource(context.Background(), sandbox)
+	if err == nil {
+		t.Fatalf("resource = %#v", resource)
+	}
+	if !strings.Contains(err.Error(), "Sandbox failed readiness: Weird") {
+		t.Fatalf("readiness error = %v", err)
+	}
+	if strings.Contains(err.Error(), "example.invalid") || strings.Contains(err.Error(), "\n") {
+		t.Fatalf("readiness error retained condition message: %v", err)
+	}
+	sandbox.Status.Conditions[0].Reason = "not a reason!"
+	_, err = provider.resource(context.Background(), sandbox)
+	if err == nil || !strings.Contains(err.Error(), "Sandbox failed readiness: Unknown") {
+		t.Fatalf("unusable reason error = %v", err)
+	}
+}

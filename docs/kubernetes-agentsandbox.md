@@ -30,6 +30,20 @@ CPU, memory, ephemeral storage, PVC size, namespace quota, operation time, and
 TTL are bounded. Kubernetes exposes no portable per-Pod PID resource field;
 configure kubelet `podPidsLimit` or runtime policy and validate it separately.
 
+The provider bounds each phase of a Capsule's life with its own budget. The
+operation timeout (`--agentsandbox-operation-timeout`, default `2m`) covers
+each Kubernetes API call: reading, creating, and polling the Sandbox object
+and its token Secret. The start timeout (`--agentsandbox-start-timeout`,
+default `10m`) covers one wait for the Sandbox to become Ready during create,
+including image pull and VM boot; if it expires, the error names the last
+startup phase the provider observed. The setup timeout
+(`--agentsandbox-setup-timeout`, default `10m`) covers the clone and setup
+work inside the Capsule after it is Ready. Their sum must stay below the
+Sandbox TTL. A readiness failure is reported as
+`Sandbox failed readiness: <reason>` with the condition's short reason;
+controller and kubelet message text is never copied into Capsule-facing
+errors.
+
 ## Install
 
 Install the upstream controller from its pinned release asset:

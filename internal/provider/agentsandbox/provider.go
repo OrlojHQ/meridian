@@ -66,6 +66,7 @@ type Config struct {
 	CPULimit          string
 	EphemeralLimit    string
 	OperationTimeout  time.Duration
+	StartTimeout      time.Duration
 	SetupTimeout      time.Duration
 }
 
@@ -96,6 +97,9 @@ func (c Config) withDefaults() (Config, error) {
 	}
 	if c.OperationTimeout == 0 {
 		c.OperationTimeout = 2 * time.Minute
+	}
+	if c.StartTimeout == 0 {
+		c.StartTimeout = 10 * time.Minute
 	}
 	if c.SetupTimeout == 0 {
 		c.SetupTimeout = 10 * time.Minute
@@ -169,12 +173,12 @@ func (c Config) withDefaults() (Config, error) {
 		return Config{}, fmt.Errorf("%w: Agent Sandbox configuration exceeds limits", domain.ErrInvalid)
 	}
 	if c.TTL < time.Minute || c.TTL > 30*24*time.Hour ||
-		c.OperationTimeout <= 0 || c.SetupTimeout <= 0 {
+		c.OperationTimeout <= 0 || c.StartTimeout <= 0 || c.SetupTimeout <= 0 {
 		return Config{}, fmt.Errorf("%w: invalid Agent Sandbox duration", domain.ErrInvalid)
 	}
-	if c.OperationTimeout+c.SetupTimeout >= c.TTL {
+	if c.OperationTimeout+c.StartTimeout+c.SetupTimeout >= c.TTL {
 		return Config{}, fmt.Errorf(
-			"%w: Agent Sandbox TTL must exceed operation plus setup timeouts",
+			"%w: Agent Sandbox TTL must exceed operation, start, and setup timeouts",
 			domain.ErrInvalid,
 		)
 	}
@@ -385,6 +389,19 @@ func (p *Provider) Create(
 	plan := &ports.StartupPublisher{Report: request.ReportStartup}
 	plan.SetPhases([]domain.StartupPhase{domain.PhaseCreatingCapsule, domain.PhaseConnecting})
 	plan.Progress(domain.PhaseCreatingCapsule, 0, 0)
+	// A wrapped publisher records the phase each progress report observed so
+	// a start timeout can name where the Capsule stopped; StartupPublisher
+	// itself keeps no history.
+	lastPhase := domain.PhaseCreatingCapsule
+	observed := &ports.StartupPublisher{Report: func(report ports.StartupReport) {
+		if report.Phase.Valid() {
+			lastPhase = report.Phase
+		}
+		if request.ReportStartup != nil {
+			request.ReportStartup(report)
+		}
+	}}
+	observed.SetPhases([]domain.StartupPhase{domain.PhaseCreatingCapsule, domain.PhaseConnecting})
 	opctx, cancel := context.WithTimeout(ctx, p.config.OperationTimeout)
 	defer cancel()
 	if err := p.recheckIsolation(opctx); err != nil {
@@ -407,13 +424,21 @@ func (p *Provider) Create(
 	if err != nil {
 		return ports.ProviderResource{}, err
 	}
-	ready, err := p.waitForStateHook(opctx, name, ports.ProviderReady, func(ctx context.Context, sandbox *sandboxv1beta1.Sandbox) error {
-		return p.observeSandboxStartup(ctx, sandbox, plan)
+	startCtx, startCancel := context.WithTimeout(ctx, p.config.StartTimeout)
+	defer startCancel()
+	ready, err := p.waitForStateHook(startCtx, name, ports.ProviderReady, func(hookCtx context.Context, sandbox *sandboxv1beta1.Sandbox) error {
+		return p.observeSandboxStartup(hookCtx, sandbox, observed)
 	})
 	if err != nil {
 		var pull *domain.StartupFailure
 		if errors.As(err, &pull) {
 			return ports.ProviderResource{}, pull
+		}
+		if startCtx.Err() != nil && ctx.Err() == nil {
+			return ports.ProviderResource{}, fmt.Errorf(
+				"%w: Capsule did not become ready within %s (last phase: %s)",
+				domain.ErrUnsupported, p.config.StartTimeout, lastPhase.Label(),
+			)
 		}
 		return ports.ProviderResource{}, err
 	}
@@ -446,6 +471,12 @@ func (p *Provider) Create(
 	}
 	if err != nil {
 		return ports.ProviderResource{}, fmt.Errorf("prepare Capsule workspace: %w", mapRuntimeError(err))
+	}
+	if opctx.Err() != nil {
+		imageCtx, imageCancel := context.WithTimeout(ctx, p.config.OperationTimeout)
+		ready.ImageDigest = p.imageIdentity(imageCtx, sandbox)
+		imageCancel()
+		return ready, nil
 	}
 	ready.ImageDigest = p.imageIdentity(opctx, sandbox)
 	return ready, nil
@@ -831,9 +862,32 @@ func (p *Provider) resource(ctx context.Context, sandbox *sandboxv1beta1.Sandbox
 		return ports.ProviderResource{ID: sandbox.Name, State: ports.ProviderDeleted}, nil
 	default:
 		return ports.ProviderResource{}, fmt.Errorf(
-			"Sandbox failed readiness: %s: %s", ready.Reason, bounded(ready.Message, 512),
+			"Sandbox failed readiness: %s", safeReason(ready.Reason),
 		)
 	}
+}
+
+// safeReason keeps a condition reason that is a short identifier and
+// collapses everything else to Unknown: a reason may name a Kubernetes
+// condition, but its message is controller and kubelet text that must
+// never reach Capsule-facing errors (ADR 0050 vocabulary).
+func safeReason(reason string) string {
+	if len(reason) == 0 || len(reason) > 64 {
+		return "Unknown"
+	}
+	for index, character := range reason {
+		if index == 0 {
+			if character < 'A' || (character > 'Z' && character < 'a') {
+				return "Unknown"
+			}
+			continue
+		}
+		if character < '0' || (character > '9' && character < 'A') ||
+			(character > 'Z' && character < 'a') {
+			return "Unknown"
+		}
+	}
+	return reason
 }
 
 func conditionFor(sandbox *sandboxv1beta1.Sandbox, kind sandboxv1beta1.ConditionType) *metav1.Condition {
