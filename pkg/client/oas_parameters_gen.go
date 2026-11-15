@@ -191,6 +191,11 @@ type GetCapsuleGitStatusParams struct {
 	CapsuleId string
 }
 
+// GetCapsuleProfileDiagnosticParams is parameters of getCapsuleProfileDiagnostic operation.
+type GetCapsuleProfileDiagnosticParams struct {
+	CapsuleId string
+}
+
 // GetChatGPTSignInParams is parameters of getChatGPTSignIn operation.
 type GetChatGPTSignInParams struct {
 	SignInId string
@@ -276,6 +281,11 @@ type GrantProjectProviderConnectionParams struct {
 
 // ImportHarnessSetupParams is parameters of importHarnessSetup operation.
 type ImportHarnessSetupParams struct {
+	IdempotencyKey string
+}
+
+// ImportProfileParams is parameters of importProfile operation.
+type ImportProfileParams struct {
 	IdempotencyKey string
 }
 
@@ -571,9 +581,20 @@ type TransferMemberObjectsParams struct {
 	UserId string
 }
 
+// UpdateCapsuleProfileParams is parameters of updateCapsuleProfile operation.
+type UpdateCapsuleProfileParams struct {
+	CapsuleId      string
+	IdempotencyKey string
+}
+
 // UpdateCoordinationGrantParams is parameters of updateCoordinationGrant operation.
 type UpdateCoordinationGrantParams struct {
 	GrantId        string
+	IdempotencyKey string
+}
+
+// UpdateProfileParams is parameters of updateProfile operation.
+type UpdateProfileParams struct {
 	IdempotencyKey string
 }
 

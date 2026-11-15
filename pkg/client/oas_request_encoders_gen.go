@@ -346,6 +346,20 @@ func encodeImportHarnessSetupRequest(
 	return nil
 }
 
+func encodeImportProfileRequest(
+	req *ImportProfileRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodeMintPersonalAccessTokenRequest(
 	req *MintPersonalAccessTokenRequest,
 	r *http.Request,
@@ -740,6 +754,20 @@ func encodeTransferMemberObjectsRequest(
 
 func encodeUpdateCoordinationGrantRequest(
 	req *UpdateCoordinationGrantRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeUpdateProfileRequest(
+	req *UpdateProfileRequest,
 	r *http.Request,
 ) error {
 	const contentType = "application/json"

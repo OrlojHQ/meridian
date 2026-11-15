@@ -481,6 +481,74 @@ paths:
                 $ref: '#/components/schemas/ImportHarnessSetupRequest'
         default:
           $ref: '#/components/responses/DefaultError'
+  /profile:
+    get:
+      operationId: getProfile
+      summary: Read your workstation profile
+      description: >-
+        The caller's own workstation profile (ADR 0049): the git commit identity,
+        a default provider connection per harness, and the current default setup
+        for each harness. A user who never saved one gets resource version 0.
+        No route reads another user's profile.
+      responses:
+        "200":
+          description: The caller's profile
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Profile"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        default:
+          $ref: "#/components/responses/DefaultError"
+    put:
+      operationId: updateProfile
+      summary: Replace your git identity and default connections
+      description: >-
+        A default connection is a suggestion, never a grant. The gateway checks
+        only Project grants, and this call changes none.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/UpdateProfileRequest"}
+      responses:
+        "200":
+          description: The updated profile
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Profile"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "422": {$ref: "#/components/responses/Unprocessable"}
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /profile/imports:
+    post:
+      operationId: importProfile
+      summary: Save one reviewed workstation import
+      description: >-
+        Saves, in one transaction, a new default revision for every harness whose
+        bundle changed, each with its sealed import report, and the git identity
+        when given. A failure saves nothing. Bundles are validated as for a
+        single harness import.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ImportProfileRequest"}
+      responses:
+        "201":
+          description: The import was saved
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProfileImportResult"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "422": {$ref: "#/components/responses/Unprocessable"}
+        default:
+          $ref: "#/components/responses/DefaultError"
   /harness-setups/{setupId}/revisions:
     get:
       operationId: listHarnessSetupRevisions
@@ -1250,6 +1318,51 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/Unprocessable" }
         default: { $ref: "#/components/responses/DefaultError" }
+  /capsules/{capsuleId}/profile-diagnostic:
+    get:
+      operationId: getCapsuleProfileDiagnostic
+      summary: Explain how this Capsule differs from your profile
+      description: >-
+        Computed from control-plane records only: the Capsule's pins, the saved
+        revisions and their import reports, the Project's connection grants, and
+        the profile. It never asks the Capsule and carries no file contents or
+        credential values. It never claims the Capsule matches the laptop.
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+      responses:
+        "200":
+          description: The diagnostic; never cached
+          headers:
+            Cache-Control:
+              schema: {type: string}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProfileDiagnostic"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        default: {$ref: "#/components/responses/DefaultError"}
+  /capsules/{capsuleId}/profile-update:
+    post:
+      operationId: updateCapsuleProfile
+      summary: Update this Capsule to your current profile
+      description: >-
+        Re-pins the Capsule's harness setups and git identity to what a new
+        Capsule in its Project would pin. Refused with 409 while a Run or Thread
+        session is active. The next session start applies the new pin.
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: The diagnostic after the update; never cached
+          headers:
+            Cache-Control:
+              schema: {type: string}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProfileDiagnostic"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        default: {$ref: "#/components/responses/DefaultError"}
   /capsules/{capsuleId}/threads:
     post:
       operationId: createThread
@@ -5204,6 +5317,166 @@ components:
         expectedResourceVersion:
           type: integer
           format: int64
+    HarnessSetupIssue:
+      type: object
+      required: [path, reason]
+      properties:
+        path: {type: string, maxLength: 1024}
+        reason: {type: string, maxLength: 512}
+    HarnessSetupReport:
+      type: object
+      description: >-
+        What an import left out and what it kept with a warning. It is the
+        importing client's account, stored sealed and shown only as text.
+      required: [issues, warnings]
+      properties:
+        issues:
+          type: array
+          maxItems: 512
+          items: {$ref: "#/components/schemas/HarnessSetupIssue"}
+        warnings:
+          type: array
+          maxItems: 512
+          items: {$ref: "#/components/schemas/HarnessSetupIssue"}
+    Profile:
+      type: object
+      required: [gitName, gitEmail, defaultConnections, setups, resourceVersion]
+      properties:
+        gitName: {type: string}
+        gitEmail: {type: string}
+        defaultConnections:
+          type: object
+          description: Harness name to one of the caller's provider connection ids.
+          additionalProperties: {type: string}
+        setups:
+          type: array
+          description: The caller's current default setup for each harness.
+          items: {$ref: "#/components/schemas/HarnessSetup"}
+        resourceVersion:
+          type: integer
+          format: int64
+        updatedAt:
+          type: string
+          format: date-time
+    UpdateProfileRequest:
+      type: object
+      required: [gitName, gitEmail, expectedResourceVersion]
+      properties:
+        gitName: {type: string, maxLength: 320}
+        gitEmail: {type: string, maxLength: 320}
+        defaultConnections:
+          type: object
+          additionalProperties: {type: string}
+        expectedResourceVersion:
+          type: integer
+          format: int64
+    GitIdentity:
+      type: object
+      required: [name, email]
+      properties:
+        name: {type: string, maxLength: 320}
+        email: {type: string, maxLength: 320}
+    ProfileImportSetup:
+      type: object
+      required: [bundle, report]
+      properties:
+        bundle: {$ref: "#/components/schemas/HarnessSetupBundle"}
+        report: {$ref: "#/components/schemas/HarnessSetupReport"}
+    ImportProfileRequest:
+      type: object
+      required: [setups, expectedResourceVersion]
+      properties:
+        setups:
+          type: array
+          maxItems: 16
+          items: {$ref: "#/components/schemas/ProfileImportSetup"}
+        git: {$ref: "#/components/schemas/GitIdentity"}
+        expectedResourceVersion:
+          type: integer
+          format: int64
+    ProfileImportResult:
+      type: object
+      required: [profile, saved, unchanged]
+      properties:
+        profile: {$ref: "#/components/schemas/Profile"}
+        saved:
+          type: array
+          description: Setups that got a new revision.
+          items: {$ref: "#/components/schemas/HarnessSetup"}
+        unchanged:
+          type: array
+          description: Harnesses whose bundle matched the current default.
+          items: {type: string}
+    SetupRevisionRef:
+      type: object
+      required: [setupId, setupName, revision, savedAt]
+      properties:
+        setupId: {type: string}
+        setupName: {type: string}
+        revision: {type: string}
+        savedAt:
+          type: string
+          format: date-time
+    ConnectionDiagnostic:
+      type: object
+      required: [granted, revoked, needsSignIn]
+      properties:
+        granted:
+          type: boolean
+          description: Whether the Project grants a connection to this harness. Only a grant reaches the gateway.
+        connectionId: {type: string}
+        name: {type: string}
+        provider: {type: string}
+        revoked: {type: boolean}
+        needsSignIn: {type: boolean}
+    HarnessProfileDiagnostic:
+      type: object
+      required: [harness, projectOverride, filesAdded, filesRemoved, hasReport, exclusions, warnings, connection]
+      properties:
+        harness: {type: string}
+        pinned: {$ref: "#/components/schemas/SetupRevisionRef"}
+        current: {$ref: "#/components/schemas/SetupRevisionRef"}
+        projectOverride:
+          type: string
+          description: Empty to follow the profile, "clean", or a setup id.
+        filesAdded:
+          type: array
+          items: {type: string}
+        filesRemoved:
+          type: array
+          items: {type: string}
+        hasReport: {type: boolean}
+        exclusions:
+          type: array
+          items: {$ref: "#/components/schemas/HarnessSetupIssue"}
+        warnings:
+          type: array
+          items: {$ref: "#/components/schemas/HarnessSetupIssue"}
+        connection: {$ref: "#/components/schemas/ConnectionDiagnostic"}
+    CommitAuthorDiagnostic:
+      type: object
+      required: [source, name, email, profileName, profileEmail]
+      properties:
+        source: {type: string, enum: [project, capsule, none]}
+        name: {type: string}
+        email: {type: string}
+        profileName: {type: string}
+        profileEmail: {type: string}
+    ProfileDiagnostic:
+      type: object
+      required: [capsuleId, nothingPinned, matchesProfile, harnesses, commitAuthor]
+      properties:
+        capsuleId: {type: string}
+        nothingPinned:
+          type: boolean
+          description: The Capsule took nothing from a profile.
+        matchesProfile:
+          type: boolean
+          description: True only when every pin is current and nothing is outstanding. It never claims the Capsule matches the laptop.
+        harnesses:
+          type: array
+          items: {$ref: "#/components/schemas/HarnessProfileDiagnostic"}
+        commitAuthor: {$ref: "#/components/schemas/CommitAuthorDiagnostic"}
     MutateHarnessSetupRequest:
       type: object
       required: [expectedResourceVersion]

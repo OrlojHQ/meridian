@@ -2344,6 +2344,113 @@ func (s *ClaudeLoginStatusStatus) UnmarshalText(data []byte) error {
 	}
 }
 
+// Ref: #/components/schemas/CommitAuthorDiagnostic
+type CommitAuthorDiagnostic struct {
+	Source       CommitAuthorDiagnosticSource `json:"source"`
+	Name         string                       `json:"name"`
+	Email        string                       `json:"email"`
+	ProfileName  string                       `json:"profileName"`
+	ProfileEmail string                       `json:"profileEmail"`
+}
+
+// GetSource returns the value of Source.
+func (s *CommitAuthorDiagnostic) GetSource() CommitAuthorDiagnosticSource {
+	return s.Source
+}
+
+// GetName returns the value of Name.
+func (s *CommitAuthorDiagnostic) GetName() string {
+	return s.Name
+}
+
+// GetEmail returns the value of Email.
+func (s *CommitAuthorDiagnostic) GetEmail() string {
+	return s.Email
+}
+
+// GetProfileName returns the value of ProfileName.
+func (s *CommitAuthorDiagnostic) GetProfileName() string {
+	return s.ProfileName
+}
+
+// GetProfileEmail returns the value of ProfileEmail.
+func (s *CommitAuthorDiagnostic) GetProfileEmail() string {
+	return s.ProfileEmail
+}
+
+// SetSource sets the value of Source.
+func (s *CommitAuthorDiagnostic) SetSource(val CommitAuthorDiagnosticSource) {
+	s.Source = val
+}
+
+// SetName sets the value of Name.
+func (s *CommitAuthorDiagnostic) SetName(val string) {
+	s.Name = val
+}
+
+// SetEmail sets the value of Email.
+func (s *CommitAuthorDiagnostic) SetEmail(val string) {
+	s.Email = val
+}
+
+// SetProfileName sets the value of ProfileName.
+func (s *CommitAuthorDiagnostic) SetProfileName(val string) {
+	s.ProfileName = val
+}
+
+// SetProfileEmail sets the value of ProfileEmail.
+func (s *CommitAuthorDiagnostic) SetProfileEmail(val string) {
+	s.ProfileEmail = val
+}
+
+type CommitAuthorDiagnosticSource string
+
+const (
+	CommitAuthorDiagnosticSourceProject CommitAuthorDiagnosticSource = "project"
+	CommitAuthorDiagnosticSourceCapsule CommitAuthorDiagnosticSource = "capsule"
+	CommitAuthorDiagnosticSourceNone    CommitAuthorDiagnosticSource = "none"
+)
+
+// AllValues returns all CommitAuthorDiagnosticSource values.
+func (CommitAuthorDiagnosticSource) AllValues() []CommitAuthorDiagnosticSource {
+	return []CommitAuthorDiagnosticSource{
+		CommitAuthorDiagnosticSourceProject,
+		CommitAuthorDiagnosticSourceCapsule,
+		CommitAuthorDiagnosticSourceNone,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s CommitAuthorDiagnosticSource) MarshalText() ([]byte, error) {
+	switch s {
+	case CommitAuthorDiagnosticSourceProject:
+		return []byte(s), nil
+	case CommitAuthorDiagnosticSourceCapsule:
+		return []byte(s), nil
+	case CommitAuthorDiagnosticSourceNone:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *CommitAuthorDiagnosticSource) UnmarshalText(data []byte) error {
+	switch CommitAuthorDiagnosticSource(data) {
+	case CommitAuthorDiagnosticSourceProject:
+		*s = CommitAuthorDiagnosticSourceProject
+		return nil
+	case CommitAuthorDiagnosticSourceCapsule:
+		*s = CommitAuthorDiagnosticSourceCapsule
+		return nil
+	case CommitAuthorDiagnosticSourceNone:
+		*s = CommitAuthorDiagnosticSourceNone
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
 // CompleteMemberIdentityRebindAccepted is response for CompleteMemberIdentityRebind operation.
 type CompleteMemberIdentityRebindAccepted struct{}
 
@@ -2400,6 +2507,77 @@ func (*CompleteOidcSignInBadRequest) completeOidcSignInRes() {}
 type CompleteOidcSignInSeeOther struct{}
 
 func (*CompleteOidcSignInSeeOther) completeOidcSignInRes() {}
+
+// Ref: #/components/schemas/ConnectionDiagnostic
+type ConnectionDiagnostic struct {
+	// Whether the Project grants a connection to this harness. Only a grant reaches the gateway.
+	Granted      bool      `json:"granted"`
+	ConnectionId OptString `json:"connectionId"`
+	Name         OptString `json:"name"`
+	Provider     OptString `json:"provider"`
+	Revoked      bool      `json:"revoked"`
+	NeedsSignIn  bool      `json:"needsSignIn"`
+}
+
+// GetGranted returns the value of Granted.
+func (s *ConnectionDiagnostic) GetGranted() bool {
+	return s.Granted
+}
+
+// GetConnectionId returns the value of ConnectionId.
+func (s *ConnectionDiagnostic) GetConnectionId() OptString {
+	return s.ConnectionId
+}
+
+// GetName returns the value of Name.
+func (s *ConnectionDiagnostic) GetName() OptString {
+	return s.Name
+}
+
+// GetProvider returns the value of Provider.
+func (s *ConnectionDiagnostic) GetProvider() OptString {
+	return s.Provider
+}
+
+// GetRevoked returns the value of Revoked.
+func (s *ConnectionDiagnostic) GetRevoked() bool {
+	return s.Revoked
+}
+
+// GetNeedsSignIn returns the value of NeedsSignIn.
+func (s *ConnectionDiagnostic) GetNeedsSignIn() bool {
+	return s.NeedsSignIn
+}
+
+// SetGranted sets the value of Granted.
+func (s *ConnectionDiagnostic) SetGranted(val bool) {
+	s.Granted = val
+}
+
+// SetConnectionId sets the value of ConnectionId.
+func (s *ConnectionDiagnostic) SetConnectionId(val OptString) {
+	s.ConnectionId = val
+}
+
+// SetName sets the value of Name.
+func (s *ConnectionDiagnostic) SetName(val OptString) {
+	s.Name = val
+}
+
+// SetProvider sets the value of Provider.
+func (s *ConnectionDiagnostic) SetProvider(val OptString) {
+	s.Provider = val
+}
+
+// SetRevoked sets the value of Revoked.
+func (s *ConnectionDiagnostic) SetRevoked(val bool) {
+	s.Revoked = val
+}
+
+// SetNeedsSignIn sets the value of NeedsSignIn.
+func (s *ConnectionDiagnostic) SetNeedsSignIn(val bool) {
+	s.NeedsSignIn = val
+}
 
 // Ref: #/components/schemas/CoordinationCapability
 type CoordinationCapability struct {
@@ -5090,32 +5268,33 @@ func (s *ErrorEnvelope) SetError(val APIError) {
 	s.Error = val
 }
 
-func (*ErrorEnvelope) attachRunWebSocketRes()        {}
-func (*ErrorEnvelope) beginDeviceLoginRes()          {}
-func (*ErrorEnvelope) claimInstallationRes()         {}
-func (*ErrorEnvelope) createRunAttachTicketRes()     {}
-func (*ErrorEnvelope) getCapsuleRes()                {}
-func (*ErrorEnvelope) getCoordinationGrantRes()      {}
-func (*ErrorEnvelope) getDeliveryRes()               {}
-func (*ErrorEnvelope) getMomentRes()                 {}
-func (*ErrorEnvelope) getProjectRes()                {}
-func (*ErrorEnvelope) getProjectThreadIntentRes()    {}
-func (*ErrorEnvelope) getRunRes()                    {}
-func (*ErrorEnvelope) getThreadLinkRes()             {}
-func (*ErrorEnvelope) getThreadRes()                 {}
-func (*ErrorEnvelope) getTimelineRes()               {}
-func (*ErrorEnvelope) listAuditRecordsRes()          {}
-func (*ErrorEnvelope) listCapsuleDeliveriesRes()     {}
-func (*ErrorEnvelope) listCoordinationRequestsRes()  {}
-func (*ErrorEnvelope) listMembersRes()               {}
-func (*ErrorEnvelope) listMomentsRes()               {}
-func (*ErrorEnvelope) listProjectsRes()              {}
-func (*ErrorEnvelope) listSecretsRes()               {}
-func (*ErrorEnvelope) listThreadLinksRes()           {}
-func (*ErrorEnvelope) listThreadsRes()               {}
-func (*ErrorEnvelope) mintPersonalAccessTokenRes()   {}
-func (*ErrorEnvelope) revokePersonalAccessTokenRes() {}
-func (*ErrorEnvelope) revokeSessionRes()             {}
+func (*ErrorEnvelope) attachRunWebSocketRes()          {}
+func (*ErrorEnvelope) beginDeviceLoginRes()            {}
+func (*ErrorEnvelope) claimInstallationRes()           {}
+func (*ErrorEnvelope) createRunAttachTicketRes()       {}
+func (*ErrorEnvelope) getCapsuleProfileDiagnosticRes() {}
+func (*ErrorEnvelope) getCapsuleRes()                  {}
+func (*ErrorEnvelope) getCoordinationGrantRes()        {}
+func (*ErrorEnvelope) getDeliveryRes()                 {}
+func (*ErrorEnvelope) getMomentRes()                   {}
+func (*ErrorEnvelope) getProjectRes()                  {}
+func (*ErrorEnvelope) getProjectThreadIntentRes()      {}
+func (*ErrorEnvelope) getRunRes()                      {}
+func (*ErrorEnvelope) getThreadLinkRes()               {}
+func (*ErrorEnvelope) getThreadRes()                   {}
+func (*ErrorEnvelope) getTimelineRes()                 {}
+func (*ErrorEnvelope) listAuditRecordsRes()            {}
+func (*ErrorEnvelope) listCapsuleDeliveriesRes()       {}
+func (*ErrorEnvelope) listCoordinationRequestsRes()    {}
+func (*ErrorEnvelope) listMembersRes()                 {}
+func (*ErrorEnvelope) listMomentsRes()                 {}
+func (*ErrorEnvelope) listProjectsRes()                {}
+func (*ErrorEnvelope) listSecretsRes()                 {}
+func (*ErrorEnvelope) listThreadLinksRes()             {}
+func (*ErrorEnvelope) listThreadsRes()                 {}
+func (*ErrorEnvelope) mintPersonalAccessTokenRes()     {}
+func (*ErrorEnvelope) revokePersonalAccessTokenRes()   {}
+func (*ErrorEnvelope) revokeSessionRes()               {}
 
 type ExportCapsuleWorkspaceConflict ErrorEnvelope
 
@@ -5283,6 +5462,32 @@ func (*GetReadinessOK) getReadinessRes() {}
 type GetReadinessServiceUnavailable ProbeResponse
 
 func (*GetReadinessServiceUnavailable) getReadinessRes() {}
+
+// Ref: #/components/schemas/GitIdentity
+type GitIdentity struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
+// GetName returns the value of Name.
+func (s *GitIdentity) GetName() string {
+	return s.Name
+}
+
+// GetEmail returns the value of Email.
+func (s *GitIdentity) GetEmail() string {
+	return s.Email
+}
+
+// SetName sets the value of Name.
+func (s *GitIdentity) SetName(val string) {
+	s.Name = val
+}
+
+// SetEmail sets the value of Email.
+func (s *GitIdentity) SetEmail(val string) {
+	s.Email = val
+}
 
 // Ref: #/components/schemas/GitResult
 type GitResult struct {
@@ -5534,6 +5739,121 @@ func (s *HarnessProfileAdapterKind) UnmarshalText(data []byte) error {
 	default:
 		return errors.Errorf("invalid value: %q", data)
 	}
+}
+
+// Ref: #/components/schemas/HarnessProfileDiagnostic
+type HarnessProfileDiagnostic struct {
+	Harness string              `json:"harness"`
+	Pinned  OptSetupRevisionRef `json:"pinned"`
+	Current OptSetupRevisionRef `json:"current"`
+	// Empty to follow the profile, "clean", or a setup id.
+	ProjectOverride string               `json:"projectOverride"`
+	FilesAdded      []string             `json:"filesAdded"`
+	FilesRemoved    []string             `json:"filesRemoved"`
+	HasReport       bool                 `json:"hasReport"`
+	Exclusions      []HarnessSetupIssue  `json:"exclusions"`
+	Warnings        []HarnessSetupIssue  `json:"warnings"`
+	Connection      ConnectionDiagnostic `json:"connection"`
+}
+
+// GetHarness returns the value of Harness.
+func (s *HarnessProfileDiagnostic) GetHarness() string {
+	return s.Harness
+}
+
+// GetPinned returns the value of Pinned.
+func (s *HarnessProfileDiagnostic) GetPinned() OptSetupRevisionRef {
+	return s.Pinned
+}
+
+// GetCurrent returns the value of Current.
+func (s *HarnessProfileDiagnostic) GetCurrent() OptSetupRevisionRef {
+	return s.Current
+}
+
+// GetProjectOverride returns the value of ProjectOverride.
+func (s *HarnessProfileDiagnostic) GetProjectOverride() string {
+	return s.ProjectOverride
+}
+
+// GetFilesAdded returns the value of FilesAdded.
+func (s *HarnessProfileDiagnostic) GetFilesAdded() []string {
+	return s.FilesAdded
+}
+
+// GetFilesRemoved returns the value of FilesRemoved.
+func (s *HarnessProfileDiagnostic) GetFilesRemoved() []string {
+	return s.FilesRemoved
+}
+
+// GetHasReport returns the value of HasReport.
+func (s *HarnessProfileDiagnostic) GetHasReport() bool {
+	return s.HasReport
+}
+
+// GetExclusions returns the value of Exclusions.
+func (s *HarnessProfileDiagnostic) GetExclusions() []HarnessSetupIssue {
+	return s.Exclusions
+}
+
+// GetWarnings returns the value of Warnings.
+func (s *HarnessProfileDiagnostic) GetWarnings() []HarnessSetupIssue {
+	return s.Warnings
+}
+
+// GetConnection returns the value of Connection.
+func (s *HarnessProfileDiagnostic) GetConnection() ConnectionDiagnostic {
+	return s.Connection
+}
+
+// SetHarness sets the value of Harness.
+func (s *HarnessProfileDiagnostic) SetHarness(val string) {
+	s.Harness = val
+}
+
+// SetPinned sets the value of Pinned.
+func (s *HarnessProfileDiagnostic) SetPinned(val OptSetupRevisionRef) {
+	s.Pinned = val
+}
+
+// SetCurrent sets the value of Current.
+func (s *HarnessProfileDiagnostic) SetCurrent(val OptSetupRevisionRef) {
+	s.Current = val
+}
+
+// SetProjectOverride sets the value of ProjectOverride.
+func (s *HarnessProfileDiagnostic) SetProjectOverride(val string) {
+	s.ProjectOverride = val
+}
+
+// SetFilesAdded sets the value of FilesAdded.
+func (s *HarnessProfileDiagnostic) SetFilesAdded(val []string) {
+	s.FilesAdded = val
+}
+
+// SetFilesRemoved sets the value of FilesRemoved.
+func (s *HarnessProfileDiagnostic) SetFilesRemoved(val []string) {
+	s.FilesRemoved = val
+}
+
+// SetHasReport sets the value of HasReport.
+func (s *HarnessProfileDiagnostic) SetHasReport(val bool) {
+	s.HasReport = val
+}
+
+// SetExclusions sets the value of Exclusions.
+func (s *HarnessProfileDiagnostic) SetExclusions(val []HarnessSetupIssue) {
+	s.Exclusions = val
+}
+
+// SetWarnings sets the value of Warnings.
+func (s *HarnessProfileDiagnostic) SetWarnings(val []HarnessSetupIssue) {
+	s.Warnings = val
+}
+
+// SetConnection sets the value of Connection.
+func (s *HarnessProfileDiagnostic) SetConnection(val ConnectionDiagnostic) {
+	s.Connection = val
 }
 
 // Ref: #/components/schemas/HarnessProfilePage
@@ -5816,6 +6136,32 @@ func (s *HarnessSetupFile) SetExecutable(val OptBool) {
 	s.Executable = val
 }
 
+// Ref: #/components/schemas/HarnessSetupIssue
+type HarnessSetupIssue struct {
+	Path   string `json:"path"`
+	Reason string `json:"reason"`
+}
+
+// GetPath returns the value of Path.
+func (s *HarnessSetupIssue) GetPath() string {
+	return s.Path
+}
+
+// GetReason returns the value of Reason.
+func (s *HarnessSetupIssue) GetReason() string {
+	return s.Reason
+}
+
+// SetPath sets the value of Path.
+func (s *HarnessSetupIssue) SetPath(val string) {
+	s.Path = val
+}
+
+// SetReason sets the value of Reason.
+func (s *HarnessSetupIssue) SetReason(val string) {
+	s.Reason = val
+}
+
 // Ref: #/components/schemas/HarnessSetupPage
 type HarnessSetupPage struct {
 	Items []HarnessSetup `json:"items"`
@@ -5954,6 +6300,34 @@ func (s *HarnessSetupPreviewWarningsItem) SetPath(val string) {
 // SetReason sets the value of Reason.
 func (s *HarnessSetupPreviewWarningsItem) SetReason(val string) {
 	s.Reason = val
+}
+
+// What an import left out and what it kept with a warning. It is the importing client's account,
+// stored sealed and shown only as text.
+// Ref: #/components/schemas/HarnessSetupReport
+type HarnessSetupReport struct {
+	Issues   []HarnessSetupIssue `json:"issues"`
+	Warnings []HarnessSetupIssue `json:"warnings"`
+}
+
+// GetIssues returns the value of Issues.
+func (s *HarnessSetupReport) GetIssues() []HarnessSetupIssue {
+	return s.Issues
+}
+
+// GetWarnings returns the value of Warnings.
+func (s *HarnessSetupReport) GetWarnings() []HarnessSetupIssue {
+	return s.Warnings
+}
+
+// SetIssues sets the value of Issues.
+func (s *HarnessSetupReport) SetIssues(val []HarnessSetupIssue) {
+	s.Issues = val
+}
+
+// SetWarnings sets the value of Warnings.
+func (s *HarnessSetupReport) SetWarnings(val []HarnessSetupIssue) {
+	s.Warnings = val
 }
 
 // Ref: #/components/schemas/HarnessSetupRevision
@@ -6243,6 +6617,51 @@ func (s *ImportHarnessSetupRequest) SetDefault(val bool) {
 func (s *ImportHarnessSetupRequest) SetExpectedResourceVersion(val int64) {
 	s.ExpectedResourceVersion = val
 }
+
+type ImportProfileConflict ErrorEnvelope
+
+func (*ImportProfileConflict) importProfileRes() {}
+
+// Ref: #/components/schemas/ImportProfileRequest
+type ImportProfileRequest struct {
+	Setups                  []ProfileImportSetup `json:"setups"`
+	Git                     OptGitIdentity       `json:"git"`
+	ExpectedResourceVersion int64                `json:"expectedResourceVersion"`
+}
+
+// GetSetups returns the value of Setups.
+func (s *ImportProfileRequest) GetSetups() []ProfileImportSetup {
+	return s.Setups
+}
+
+// GetGit returns the value of Git.
+func (s *ImportProfileRequest) GetGit() OptGitIdentity {
+	return s.Git
+}
+
+// GetExpectedResourceVersion returns the value of ExpectedResourceVersion.
+func (s *ImportProfileRequest) GetExpectedResourceVersion() int64 {
+	return s.ExpectedResourceVersion
+}
+
+// SetSetups sets the value of Setups.
+func (s *ImportProfileRequest) SetSetups(val []ProfileImportSetup) {
+	s.Setups = val
+}
+
+// SetGit sets the value of Git.
+func (s *ImportProfileRequest) SetGit(val OptGitIdentity) {
+	s.Git = val
+}
+
+// SetExpectedResourceVersion sets the value of ExpectedResourceVersion.
+func (s *ImportProfileRequest) SetExpectedResourceVersion(val int64) {
+	s.ExpectedResourceVersion = val
+}
+
+type ImportProfileUnprocessableEntity ErrorEnvelope
+
+func (*ImportProfileUnprocessableEntity) importProfileRes() {}
 
 type InspectCapsuleDeliveryConflict ErrorEnvelope
 
@@ -7797,6 +8216,52 @@ func (o OptGetBoardExpand) Or(d GetBoardExpand) GetBoardExpand {
 	return d
 }
 
+// NewOptGitIdentity returns new OptGitIdentity with value set to v.
+func NewOptGitIdentity(v GitIdentity) OptGitIdentity {
+	return OptGitIdentity{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptGitIdentity is optional GitIdentity.
+type OptGitIdentity struct {
+	Value GitIdentity
+	Set   bool
+}
+
+// IsSet returns true if OptGitIdentity was set.
+func (o OptGitIdentity) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptGitIdentity) Reset() {
+	var v GitIdentity
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptGitIdentity) SetTo(v GitIdentity) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptGitIdentity) Get() (v GitIdentity, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptGitIdentity) Or(d GitIdentity) GitIdentity {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptHarnessProfileAdapterKind returns new OptHarnessProfileAdapterKind with value set to v.
 func NewOptHarnessProfileAdapterKind(v HarnessProfileAdapterKind) OptHarnessProfileAdapterKind {
 	return OptHarnessProfileAdapterKind{
@@ -8297,6 +8762,52 @@ func (o OptSendThreadMessageRequestDelivery) Get() (v SendThreadMessageRequestDe
 
 // Or returns value if set, or given parameter if does not.
 func (o OptSendThreadMessageRequestDelivery) Or(d SendThreadMessageRequestDelivery) SendThreadMessageRequestDelivery {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptSetupRevisionRef returns new OptSetupRevisionRef with value set to v.
+func NewOptSetupRevisionRef(v SetupRevisionRef) OptSetupRevisionRef {
+	return OptSetupRevisionRef{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptSetupRevisionRef is optional SetupRevisionRef.
+type OptSetupRevisionRef struct {
+	Value SetupRevisionRef
+	Set   bool
+}
+
+// IsSet returns true if OptSetupRevisionRef was set.
+func (o OptSetupRevisionRef) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptSetupRevisionRef) Reset() {
+	var v SetupRevisionRef
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptSetupRevisionRef) SetTo(v SetupRevisionRef) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptSetupRevisionRef) Get() (v SetupRevisionRef, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptSetupRevisionRef) Or(d SetupRevisionRef) SetupRevisionRef {
 	if v, ok := o.Get(); ok {
 		return v
 	}
@@ -9177,6 +9688,52 @@ func (o OptUpdateCoordinationGrantRequestSpawnApproval) Or(d UpdateCoordinationG
 	return d
 }
 
+// NewOptUpdateProfileRequestDefaultConnections returns new OptUpdateProfileRequestDefaultConnections with value set to v.
+func NewOptUpdateProfileRequestDefaultConnections(v UpdateProfileRequestDefaultConnections) OptUpdateProfileRequestDefaultConnections {
+	return OptUpdateProfileRequestDefaultConnections{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptUpdateProfileRequestDefaultConnections is optional UpdateProfileRequestDefaultConnections.
+type OptUpdateProfileRequestDefaultConnections struct {
+	Value UpdateProfileRequestDefaultConnections
+	Set   bool
+}
+
+// IsSet returns true if OptUpdateProfileRequestDefaultConnections was set.
+func (o OptUpdateProfileRequestDefaultConnections) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptUpdateProfileRequestDefaultConnections) Reset() {
+	var v UpdateProfileRequestDefaultConnections
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptUpdateProfileRequestDefaultConnections) SetTo(v UpdateProfileRequestDefaultConnections) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptUpdateProfileRequestDefaultConnections) Get() (v UpdateProfileRequestDefaultConnections, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptUpdateProfileRequestDefaultConnections) Or(d UpdateProfileRequestDefaultConnections) UpdateProfileRequestDefaultConnections {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 type PatchProjectBadRequest ErrorEnvelope
 
 func (*PatchProjectBadRequest) patchProjectRes() {}
@@ -9781,6 +10338,251 @@ func (s *ProbeResponseStatus) UnmarshalText(data []byte) error {
 	default:
 		return errors.Errorf("invalid value: %q", data)
 	}
+}
+
+// Ref: #/components/schemas/Profile
+type Profile struct {
+	GitName  string `json:"gitName"`
+	GitEmail string `json:"gitEmail"`
+	// Harness name to one of the caller's provider connection ids.
+	DefaultConnections ProfileDefaultConnections `json:"defaultConnections"`
+	// The caller's current default setup for each harness.
+	Setups          []HarnessSetup `json:"setups"`
+	ResourceVersion int64          `json:"resourceVersion"`
+	UpdatedAt       OptDateTime    `json:"updatedAt"`
+}
+
+// GetGitName returns the value of GitName.
+func (s *Profile) GetGitName() string {
+	return s.GitName
+}
+
+// GetGitEmail returns the value of GitEmail.
+func (s *Profile) GetGitEmail() string {
+	return s.GitEmail
+}
+
+// GetDefaultConnections returns the value of DefaultConnections.
+func (s *Profile) GetDefaultConnections() ProfileDefaultConnections {
+	return s.DefaultConnections
+}
+
+// GetSetups returns the value of Setups.
+func (s *Profile) GetSetups() []HarnessSetup {
+	return s.Setups
+}
+
+// GetResourceVersion returns the value of ResourceVersion.
+func (s *Profile) GetResourceVersion() int64 {
+	return s.ResourceVersion
+}
+
+// GetUpdatedAt returns the value of UpdatedAt.
+func (s *Profile) GetUpdatedAt() OptDateTime {
+	return s.UpdatedAt
+}
+
+// SetGitName sets the value of GitName.
+func (s *Profile) SetGitName(val string) {
+	s.GitName = val
+}
+
+// SetGitEmail sets the value of GitEmail.
+func (s *Profile) SetGitEmail(val string) {
+	s.GitEmail = val
+}
+
+// SetDefaultConnections sets the value of DefaultConnections.
+func (s *Profile) SetDefaultConnections(val ProfileDefaultConnections) {
+	s.DefaultConnections = val
+}
+
+// SetSetups sets the value of Setups.
+func (s *Profile) SetSetups(val []HarnessSetup) {
+	s.Setups = val
+}
+
+// SetResourceVersion sets the value of ResourceVersion.
+func (s *Profile) SetResourceVersion(val int64) {
+	s.ResourceVersion = val
+}
+
+// SetUpdatedAt sets the value of UpdatedAt.
+func (s *Profile) SetUpdatedAt(val OptDateTime) {
+	s.UpdatedAt = val
+}
+
+func (*Profile) getProfileRes()    {}
+func (*Profile) updateProfileRes() {}
+
+// Harness name to one of the caller's provider connection ids.
+type ProfileDefaultConnections map[string]string
+
+func (s *ProfileDefaultConnections) init() ProfileDefaultConnections {
+	m := *s
+	if m == nil {
+		m = map[string]string{}
+		*s = m
+	}
+	return m
+}
+
+// Ref: #/components/schemas/ProfileDiagnostic
+type ProfileDiagnostic struct {
+	CapsuleId string `json:"capsuleId"`
+	// The Capsule took nothing from a profile.
+	NothingPinned bool `json:"nothingPinned"`
+	// True only when every pin is current and nothing is outstanding. It never claims the Capsule matches
+	// the laptop.
+	MatchesProfile bool                       `json:"matchesProfile"`
+	Harnesses      []HarnessProfileDiagnostic `json:"harnesses"`
+	CommitAuthor   CommitAuthorDiagnostic     `json:"commitAuthor"`
+}
+
+// GetCapsuleId returns the value of CapsuleId.
+func (s *ProfileDiagnostic) GetCapsuleId() string {
+	return s.CapsuleId
+}
+
+// GetNothingPinned returns the value of NothingPinned.
+func (s *ProfileDiagnostic) GetNothingPinned() bool {
+	return s.NothingPinned
+}
+
+// GetMatchesProfile returns the value of MatchesProfile.
+func (s *ProfileDiagnostic) GetMatchesProfile() bool {
+	return s.MatchesProfile
+}
+
+// GetHarnesses returns the value of Harnesses.
+func (s *ProfileDiagnostic) GetHarnesses() []HarnessProfileDiagnostic {
+	return s.Harnesses
+}
+
+// GetCommitAuthor returns the value of CommitAuthor.
+func (s *ProfileDiagnostic) GetCommitAuthor() CommitAuthorDiagnostic {
+	return s.CommitAuthor
+}
+
+// SetCapsuleId sets the value of CapsuleId.
+func (s *ProfileDiagnostic) SetCapsuleId(val string) {
+	s.CapsuleId = val
+}
+
+// SetNothingPinned sets the value of NothingPinned.
+func (s *ProfileDiagnostic) SetNothingPinned(val bool) {
+	s.NothingPinned = val
+}
+
+// SetMatchesProfile sets the value of MatchesProfile.
+func (s *ProfileDiagnostic) SetMatchesProfile(val bool) {
+	s.MatchesProfile = val
+}
+
+// SetHarnesses sets the value of Harnesses.
+func (s *ProfileDiagnostic) SetHarnesses(val []HarnessProfileDiagnostic) {
+	s.Harnesses = val
+}
+
+// SetCommitAuthor sets the value of CommitAuthor.
+func (s *ProfileDiagnostic) SetCommitAuthor(val CommitAuthorDiagnostic) {
+	s.CommitAuthor = val
+}
+
+// ProfileDiagnosticHeaders wraps ProfileDiagnostic with response headers.
+type ProfileDiagnosticHeaders struct {
+	CacheControl OptString
+	Response     ProfileDiagnostic
+}
+
+// GetCacheControl returns the value of CacheControl.
+func (s *ProfileDiagnosticHeaders) GetCacheControl() OptString {
+	return s.CacheControl
+}
+
+// GetResponse returns the value of Response.
+func (s *ProfileDiagnosticHeaders) GetResponse() ProfileDiagnostic {
+	return s.Response
+}
+
+// SetCacheControl sets the value of CacheControl.
+func (s *ProfileDiagnosticHeaders) SetCacheControl(val OptString) {
+	s.CacheControl = val
+}
+
+// SetResponse sets the value of Response.
+func (s *ProfileDiagnosticHeaders) SetResponse(val ProfileDiagnostic) {
+	s.Response = val
+}
+
+func (*ProfileDiagnosticHeaders) getCapsuleProfileDiagnosticRes() {}
+func (*ProfileDiagnosticHeaders) updateCapsuleProfileRes()        {}
+
+// Ref: #/components/schemas/ProfileImportResult
+type ProfileImportResult struct {
+	Profile Profile `json:"profile"`
+	// Setups that got a new revision.
+	Saved []HarnessSetup `json:"saved"`
+	// Harnesses whose bundle matched the current default.
+	Unchanged []string `json:"unchanged"`
+}
+
+// GetProfile returns the value of Profile.
+func (s *ProfileImportResult) GetProfile() Profile {
+	return s.Profile
+}
+
+// GetSaved returns the value of Saved.
+func (s *ProfileImportResult) GetSaved() []HarnessSetup {
+	return s.Saved
+}
+
+// GetUnchanged returns the value of Unchanged.
+func (s *ProfileImportResult) GetUnchanged() []string {
+	return s.Unchanged
+}
+
+// SetProfile sets the value of Profile.
+func (s *ProfileImportResult) SetProfile(val Profile) {
+	s.Profile = val
+}
+
+// SetSaved sets the value of Saved.
+func (s *ProfileImportResult) SetSaved(val []HarnessSetup) {
+	s.Saved = val
+}
+
+// SetUnchanged sets the value of Unchanged.
+func (s *ProfileImportResult) SetUnchanged(val []string) {
+	s.Unchanged = val
+}
+
+func (*ProfileImportResult) importProfileRes() {}
+
+// Ref: #/components/schemas/ProfileImportSetup
+type ProfileImportSetup struct {
+	Bundle HarnessSetupBundle `json:"bundle"`
+	Report HarnessSetupReport `json:"report"`
+}
+
+// GetBundle returns the value of Bundle.
+func (s *ProfileImportSetup) GetBundle() HarnessSetupBundle {
+	return s.Bundle
+}
+
+// GetReport returns the value of Report.
+func (s *ProfileImportSetup) GetReport() HarnessSetupReport {
+	return s.Report
+}
+
+// SetBundle sets the value of Bundle.
+func (s *ProfileImportSetup) SetBundle(val HarnessSetupBundle) {
+	s.Bundle = val
+}
+
+// SetReport sets the value of Report.
+func (s *ProfileImportSetup) SetReport(val HarnessSetupReport) {
+	s.Report = val
 }
 
 // Ref: #/components/schemas/Project
@@ -12354,6 +13156,54 @@ func (*SetThreadModelConflict) setThreadModelRes() {}
 type SetThreadModelUnprocessableEntity ErrorEnvelope
 
 func (*SetThreadModelUnprocessableEntity) setThreadModelRes() {}
+
+// Ref: #/components/schemas/SetupRevisionRef
+type SetupRevisionRef struct {
+	SetupId   string    `json:"setupId"`
+	SetupName string    `json:"setupName"`
+	Revision  string    `json:"revision"`
+	SavedAt   time.Time `json:"savedAt"`
+}
+
+// GetSetupId returns the value of SetupId.
+func (s *SetupRevisionRef) GetSetupId() string {
+	return s.SetupId
+}
+
+// GetSetupName returns the value of SetupName.
+func (s *SetupRevisionRef) GetSetupName() string {
+	return s.SetupName
+}
+
+// GetRevision returns the value of Revision.
+func (s *SetupRevisionRef) GetRevision() string {
+	return s.Revision
+}
+
+// GetSavedAt returns the value of SavedAt.
+func (s *SetupRevisionRef) GetSavedAt() time.Time {
+	return s.SavedAt
+}
+
+// SetSetupId sets the value of SetupId.
+func (s *SetupRevisionRef) SetSetupId(val string) {
+	s.SetupId = val
+}
+
+// SetSetupName sets the value of SetupName.
+func (s *SetupRevisionRef) SetSetupName(val string) {
+	s.SetupName = val
+}
+
+// SetRevision sets the value of Revision.
+func (s *SetupRevisionRef) SetRevision(val string) {
+	s.Revision = val
+}
+
+// SetSavedAt sets the value of SavedAt.
+func (s *SetupRevisionRef) SetSavedAt(val time.Time) {
+	s.SavedAt = val
+}
 
 // SignOutNoContent is response for SignOut operation.
 type SignOutNoContent struct{}
@@ -15485,6 +16335,7 @@ func (*UnauthorizedHeaders) deleteMemberObjectsRes()          {}
 func (*UnauthorizedHeaders) disableMemberRes()                {}
 func (*UnauthorizedHeaders) enableMemberRes()                 {}
 func (*UnauthorizedHeaders) getCurrentMemberRes()             {}
+func (*UnauthorizedHeaders) getProfileRes()                   {}
 func (*UnauthorizedHeaders) listMembersRes()                  {}
 func (*UnauthorizedHeaders) listPersonalAccessTokensRes()     {}
 func (*UnauthorizedHeaders) listSessionsRes()                 {}
@@ -15495,6 +16346,14 @@ func (*UnauthorizedHeaders) revokeSessionRes()                {}
 func (*UnauthorizedHeaders) setMemberRoleRes()                {}
 func (*UnauthorizedHeaders) signOutRes()                      {}
 func (*UnauthorizedHeaders) transferMemberObjectsRes()        {}
+
+type UpdateCapsuleProfileConflict ErrorEnvelope
+
+func (*UpdateCapsuleProfileConflict) updateCapsuleProfileRes() {}
+
+type UpdateCapsuleProfileNotFound ErrorEnvelope
+
+func (*UpdateCapsuleProfileNotFound) updateCapsuleProfileRes() {}
 
 type UpdateCoordinationGrantBadRequest ErrorEnvelope
 
@@ -15709,6 +16568,77 @@ func (s *UpdateCoordinationGrantRequestSpawnApproval) UnmarshalText(data []byte)
 type UpdateCoordinationGrantUnprocessableEntity ErrorEnvelope
 
 func (*UpdateCoordinationGrantUnprocessableEntity) updateCoordinationGrantRes() {}
+
+type UpdateProfileConflict ErrorEnvelope
+
+func (*UpdateProfileConflict) updateProfileRes() {}
+
+type UpdateProfileNotFound ErrorEnvelope
+
+func (*UpdateProfileNotFound) updateProfileRes() {}
+
+// Ref: #/components/schemas/UpdateProfileRequest
+type UpdateProfileRequest struct {
+	GitName                 string                                    `json:"gitName"`
+	GitEmail                string                                    `json:"gitEmail"`
+	DefaultConnections      OptUpdateProfileRequestDefaultConnections `json:"defaultConnections"`
+	ExpectedResourceVersion int64                                     `json:"expectedResourceVersion"`
+}
+
+// GetGitName returns the value of GitName.
+func (s *UpdateProfileRequest) GetGitName() string {
+	return s.GitName
+}
+
+// GetGitEmail returns the value of GitEmail.
+func (s *UpdateProfileRequest) GetGitEmail() string {
+	return s.GitEmail
+}
+
+// GetDefaultConnections returns the value of DefaultConnections.
+func (s *UpdateProfileRequest) GetDefaultConnections() OptUpdateProfileRequestDefaultConnections {
+	return s.DefaultConnections
+}
+
+// GetExpectedResourceVersion returns the value of ExpectedResourceVersion.
+func (s *UpdateProfileRequest) GetExpectedResourceVersion() int64 {
+	return s.ExpectedResourceVersion
+}
+
+// SetGitName sets the value of GitName.
+func (s *UpdateProfileRequest) SetGitName(val string) {
+	s.GitName = val
+}
+
+// SetGitEmail sets the value of GitEmail.
+func (s *UpdateProfileRequest) SetGitEmail(val string) {
+	s.GitEmail = val
+}
+
+// SetDefaultConnections sets the value of DefaultConnections.
+func (s *UpdateProfileRequest) SetDefaultConnections(val OptUpdateProfileRequestDefaultConnections) {
+	s.DefaultConnections = val
+}
+
+// SetExpectedResourceVersion sets the value of ExpectedResourceVersion.
+func (s *UpdateProfileRequest) SetExpectedResourceVersion(val int64) {
+	s.ExpectedResourceVersion = val
+}
+
+type UpdateProfileRequestDefaultConnections map[string]string
+
+func (s *UpdateProfileRequestDefaultConnections) init() UpdateProfileRequestDefaultConnections {
+	m := *s
+	if m == nil {
+		m = map[string]string{}
+		*s = m
+	}
+	return m
+}
+
+type UpdateProfileUnprocessableEntity ErrorEnvelope
+
+func (*UpdateProfileUnprocessableEntity) updateProfileRes() {}
 
 // Ref: #/components/schemas/WorkspaceFile
 type WorkspaceFile struct {

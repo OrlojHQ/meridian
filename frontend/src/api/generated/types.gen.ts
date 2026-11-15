@@ -1327,6 +1327,130 @@ export type ImportHarnessSetupRequest = {
     expectedResourceVersion: number;
 };
 
+export type HarnessSetupIssue = {
+    path: string;
+    reason: string;
+};
+
+/**
+ * What an import left out and what it kept with a warning. It is the importing client's account, stored sealed and shown only as text.
+ */
+export type HarnessSetupReport = {
+    issues: Array<HarnessSetupIssue>;
+    warnings: Array<HarnessSetupIssue>;
+};
+
+export type Profile = {
+    gitName: string;
+    gitEmail: string;
+    /**
+     * Harness name to one of the caller's provider connection ids.
+     */
+    defaultConnections: {
+        [key: string]: string;
+    };
+    /**
+     * The caller's current default setup for each harness.
+     */
+    setups: Array<HarnessSetup>;
+    resourceVersion: number;
+    updatedAt?: string;
+};
+
+export type UpdateProfileRequest = {
+    gitName: string;
+    gitEmail: string;
+    defaultConnections?: {
+        [key: string]: string;
+    };
+    expectedResourceVersion: number;
+};
+
+export type GitIdentity = {
+    name: string;
+    email: string;
+};
+
+export type ProfileImportSetup = {
+    bundle: HarnessSetupBundle;
+    report: HarnessSetupReport;
+};
+
+export type ImportProfileRequest = {
+    setups: Array<ProfileImportSetup>;
+    git?: GitIdentity;
+    expectedResourceVersion: number;
+};
+
+export type ProfileImportResult = {
+    profile: Profile;
+    /**
+     * Setups that got a new revision.
+     */
+    saved: Array<HarnessSetup>;
+    /**
+     * Harnesses whose bundle matched the current default.
+     */
+    unchanged: Array<string>;
+};
+
+export type SetupRevisionRef = {
+    setupId: string;
+    setupName: string;
+    revision: string;
+    savedAt: string;
+};
+
+export type ConnectionDiagnostic = {
+    /**
+     * Whether the Project grants a connection to this harness. Only a grant reaches the gateway.
+     */
+    granted: boolean;
+    connectionId?: string;
+    name?: string;
+    provider?: string;
+    revoked: boolean;
+    needsSignIn: boolean;
+};
+
+export type HarnessProfileDiagnostic = {
+    harness: string;
+    pinned?: SetupRevisionRef;
+    current?: SetupRevisionRef;
+    /**
+     * Empty to follow the profile, "clean", or a setup id.
+     */
+    projectOverride: string;
+    filesAdded: Array<string>;
+    filesRemoved: Array<string>;
+    hasReport: boolean;
+    exclusions: Array<HarnessSetupIssue>;
+    warnings: Array<HarnessSetupIssue>;
+    connection: ConnectionDiagnostic;
+};
+
+export type CommitAuthorDiagnostic = {
+    source: 'project' | 'capsule' | 'none';
+    name: string;
+    email: string;
+    profileName: string;
+    profileEmail: string;
+};
+
+export type ProfileDiagnostic = {
+    capsuleId: string;
+    /**
+     * The Capsule took nothing from a profile.
+     */
+    nothingPinned: boolean;
+    /**
+     * True only when every pin is current and nothing is outstanding. It never claims the Capsule matches the laptop.
+     */
+    matchesProfile: boolean;
+    harnesses: Array<HarnessProfileDiagnostic>;
+    commitAuthor: CommitAuthorDiagnostic;
+};
+
 export type MutateHarnessSetupRequest = {
     name?: string;
     revision?: string;
@@ -2234,6 +2358,111 @@ export type GetHarnessSetupContentsResponses = {
 };
 
 export type GetHarnessSetupContentsResponse = GetHarnessSetupContentsResponses[keyof GetHarnessSetupContentsResponses];
+
+export type GetProfileData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/profile';
+};
+
+export type GetProfileErrors = {
+    /**
+     * Missing or invalid installation authentication
+     */
+    401: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type GetProfileError = GetProfileErrors[keyof GetProfileErrors];
+
+export type GetProfileResponses = {
+    /**
+     * The caller's profile
+     */
+    200: Profile;
+};
+
+export type GetProfileResponse = GetProfileResponses[keyof GetProfileResponses];
+
+export type UpdateProfileData = {
+    body: UpdateProfileRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/profile';
+};
+
+export type UpdateProfileErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type UpdateProfileError = UpdateProfileErrors[keyof UpdateProfileErrors];
+
+export type UpdateProfileResponses = {
+    /**
+     * The updated profile
+     */
+    200: Profile;
+};
+
+export type UpdateProfileResponse = UpdateProfileResponses[keyof UpdateProfileResponses];
+
+export type ImportProfileData = {
+    body: ImportProfileRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/profile/imports';
+};
+
+export type ImportProfileErrors = {
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ImportProfileError = ImportProfileErrors[keyof ImportProfileErrors];
+
+export type ImportProfileResponses = {
+    /**
+     * The import was saved
+     */
+    201: ProfileImportResult;
+};
+
+export type ImportProfileResponse = ImportProfileResponses[keyof ImportProfileResponses];
 
 export type ListHarnessSetupRevisionsData = {
     body?: never;
@@ -3400,6 +3629,75 @@ export type ListHarnessProfilesResponses = {
 };
 
 export type ListHarnessProfilesResponse = ListHarnessProfilesResponses[keyof ListHarnessProfilesResponses];
+
+export type GetCapsuleProfileDiagnosticData = {
+    body?: never;
+    path: {
+        capsuleId: string;
+    };
+    query?: never;
+    url: '/capsules/{capsuleId}/profile-diagnostic';
+};
+
+export type GetCapsuleProfileDiagnosticErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type GetCapsuleProfileDiagnosticError = GetCapsuleProfileDiagnosticErrors[keyof GetCapsuleProfileDiagnosticErrors];
+
+export type GetCapsuleProfileDiagnosticResponses = {
+    /**
+     * The diagnostic; never cached
+     */
+    200: ProfileDiagnostic;
+};
+
+export type GetCapsuleProfileDiagnosticResponse = GetCapsuleProfileDiagnosticResponses[keyof GetCapsuleProfileDiagnosticResponses];
+
+export type UpdateCapsuleProfileData = {
+    body?: never;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        capsuleId: string;
+    };
+    query?: never;
+    url: '/capsules/{capsuleId}/profile-update';
+};
+
+export type UpdateCapsuleProfileErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type UpdateCapsuleProfileError = UpdateCapsuleProfileErrors[keyof UpdateCapsuleProfileErrors];
+
+export type UpdateCapsuleProfileResponses = {
+    /**
+     * The diagnostic after the update; never cached
+     */
+    200: ProfileDiagnostic;
+};
+
+export type UpdateCapsuleProfileResponse = UpdateCapsuleProfileResponses[keyof UpdateCapsuleProfileResponses];
 
 export type ListThreadsData = {
     body?: never;

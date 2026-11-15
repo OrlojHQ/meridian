@@ -137,6 +137,10 @@ type GetCapsuleGitStatusRes interface {
 	getCapsuleGitStatusRes()
 }
 
+type GetCapsuleProfileDiagnosticRes interface {
+	getCapsuleProfileDiagnosticRes()
+}
+
 type GetCapsuleRes interface {
 	getCapsuleRes()
 }
@@ -159,6 +163,10 @@ type GetHealthRes interface {
 
 type GetMomentRes interface {
 	getMomentRes()
+}
+
+type GetProfileRes interface {
+	getProfileRes()
 }
 
 type GetProjectRes interface {
@@ -187,6 +195,10 @@ type GetThreadRes interface {
 
 type GetTimelineRes interface {
 	getTimelineRes()
+}
+
+type ImportProfileRes interface {
+	importProfileRes()
 }
 
 type InspectCapsuleDeliveryRes interface {
@@ -389,6 +401,14 @@ type TransferMemberObjectsRes interface {
 	transferMemberObjectsRes()
 }
 
+type UpdateCapsuleProfileRes interface {
+	updateCapsuleProfileRes()
+}
+
 type UpdateCoordinationGrantRes interface {
 	updateCoordinationGrantRes()
+}
+
+type UpdateProfileRes interface {
+	updateProfileRes()
 }
