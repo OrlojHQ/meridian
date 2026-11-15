@@ -27,7 +27,7 @@ mode, where the installation bearer and its browser cookie act as the one
 user, the bootstrap owner. "Team mode and per-user identity" below states the
 team-mode threats and controls.
 
-ADR 0049 (proposed) adds per-user workstation profiles: one import of a
+ADR 0049 (accepted, not yet implemented) adds per-user workstation profiles: one import of a
 laptop's harness setups and git identity, a default connection per harness,
 and a computed diagnostic. It is not implemented. "Workstation profiles"
 below states the controls it must meet before it ships.
@@ -914,7 +914,7 @@ they are not a statement that every planned path is already implemented.
   connections never cross owners. Secret and connection envelopes bind the
   owner. Admins manage membership and audit and cannot read other users'
   objects. The installation bearer is break-glass only.
-- Workstation profiles (ADR 0049, proposed): a profile has one owner, is
+- Workstation profiles (ADR 0049): a profile has one owner, is
   addressed only by that owner, and references only that owner's setups and
   connections. A default connection is never an authorization; only a
   Project grant is. A Capsule cannot write a profile or its own pin. The
@@ -1050,7 +1050,7 @@ their data from older backups. The identity provider joins the trust base.
 With container providers, teammates' Capsules share a kernel, and a Capsule
 escape exposes every user on that host.
 
-A workstation profile (ADR 0049, proposed) makes the user's tuned
+A workstation profile (ADR 0049) makes the user's tuned
 configuration the default for every new Capsule. Hooks, plugins, skills,
 and MCP servers in it are code. They run in every Capsule that pins the
 profile, under that provider's isolation, and repository content can steer
@@ -1265,7 +1265,7 @@ explains this difference. Both paths use the same authoritative server validatio
 
 ## Workstation profiles
 
-ADR 0049 is proposed and not implemented. A workstation profile groups the
+ADR 0049 is accepted and not yet implemented. A workstation profile groups the
 owner's default harness setups, a sealed import report per revision, a git
 commit identity, and a default provider connection per harness. It adds no
 file storage beyond those reports. The setup controls above still apply in
