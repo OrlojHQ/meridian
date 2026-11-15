@@ -225,18 +225,36 @@ bounded path and reason lengths), and the UI renders it only as text.
 
 ### Importing from the desktop app
 
-The desktop shell runs on the laptop, so it can offer "We found Codex and
-Claude on this computer" and a one-click import. The gateway page in its
-main window cannot, and this ADR keeps it that way. That page may come from
-a remote gateway and is treated as untrusted.
+Someone who has only the desktop app never runs a command or sees a
+terminal. For them, importing works like this:
 
-- **One importer, in Go.** The app bundles the `meridian` CLI as a second
-  `externalBin` next to `meridian-desktop-gateway`. The shell runs it as
-  `meridian import --desktop`. That mode uses the same detection, manifest
-  roots, deny list, sanitizer, limits, `[user]`-only git config parse, diff,
-  and atomic save as the terminal command. It reads and writes line-delimited
-  JSON on stdin and stdout instead of prompting. There is no second importer
-  in Rust. The shell only starts the process, renders its output, and passes
+1. Click "Review this computer's setup" on the first-run screen, or
+   "Import this computer's setup…" in the tray menu.
+2. An import window from the app opens. It lists the harnesses it found
+   ("We found Codex and Claude on this computer"), the files it will keep,
+   what it leaves out and why, the git identity, and the gateway and account
+   it will save to.
+3. Click Save, or Cancel.
+
+The rest of this section is how the app does that internally.
+
+The shell runs on the laptop, so it can scan. The gateway page in its main
+window cannot, and this ADR keeps it that way. That page may come from a
+remote gateway and is treated as untrusted.
+
+- **One importer, in the binary the app already ships.** The app's
+  `meridian-desktop-gateway` sidecar is `meridiand` (the Makefile copies
+  `bin/meridiand` into `desktop/src-tauri/binaries/`). That binary gains one
+  hidden client mode, `meridiand desktop-import`, which the shell starts in
+  the background. The mode is a cobra command with `Hidden: true`, so it
+  does not appear in `--help`. `meridiand`'s existing help and `--version`
+  behavior does not change. The mode calls the same Go importer package as
+  `meridian import`: the same detection, manifest roots, deny list,
+  sanitizer, limits, `[user]`-only git config parse, diff, and atomic save.
+  It never starts a listener, opens or locks a data directory, or loads a
+  key. It reads and writes line-delimited JSON on stdin and stdout, then
+  exits. The app bundles no second binary, and nothing is reimplemented in
+  Rust. The shell only starts the process, renders its output, and passes
   on the user's Save or Cancel.
 - **A window the shell owns.** Review happens in a separate import window
   that loads bundled pages from `desktop/ui/`, like the gateway picker. That
@@ -247,7 +265,7 @@ a remote gateway and is treated as untrusted.
 - **The page can only open the window.** One new bridge command,
   `desktop_open_import`, takes no arguments and returns nothing except
   whether the window opened. Like the other bridge commands, only the active
-  gateway origin may call it (#137). The tray menu gets the same item. No
+  gateway origin may call it (#137). The tray item opens the same window. No
   bridge command lets the page read, list, or receive laptop files, paths,
   harness names, or detection results. The page learns what was imported only
   from the server, through `profile.updated`, after the user has saved.
@@ -260,19 +278,19 @@ a remote gateway and is treated as untrusted.
   without uploading.
 - **Upload only on Save, as the signed-in user.** The shell reads the main
   window's session cookie for that one origin through Tauri's webview cookie
-  API. The page is not involved. The shell passes the cookie to the importer
-  on stdin, once. It is
-  never passed in argv, an environment variable, a file, or a log. The
-  importer uses it for two things only. It reads the saved revisions for the
-  diff, through the existing owner-only, `no-store` contents endpoint. After
-  the user clicks Save, it sends one `POST /profile/imports` with the
-  gateway origin as `Origin`, the same as the page's own requests. Then it
-  exits. There is no separate desktop credential, and the shell mints no
-  personal access token.
+  API. The page is not involved. The shell passes the cookie to
+  `desktop-import` on stdin, once. It is never passed in argv, an
+  environment variable, a file, or a log. The mode uses it for two things
+  only. It reads the saved revisions for the diff, through the existing
+  owner-only, `no-store` contents endpoint. After the user clicks Save, it
+  sends one `POST /profile/imports` with the gateway origin as `Origin`, the
+  same as the page's own requests. There is no separate desktop credential,
+  and the shell mints no personal access token.
 - **Remote gateways.** It works the same way against a remote gateway as
   against the bundled local one. A remote gateway receives exactly the
   reviewed, sanitized bundle that `meridian --server URL import` would send,
-  and nothing before Save.
+  and nothing before Save. The local scan does not depend on the bundled
+  gateway running.
 - **Team mode.** The member signed in to the window owns the import, under
   the same ownership rules as any other import. Another member's sign-in on
   another gateway in the recent list (ADR 0048) never receives it.
@@ -351,8 +369,8 @@ diagnostic does not inspect the workspace to report on them.
 - Saving a Capsule's edits back to the profile, or any export from a Capsule
 - A localhost helper process that a browser talks to (it would need its own
   ADR, per ADR 0024). The desktop import above is not one: it is the
-  existing desktop app scanning in its own window, with no listener and no
-  file access for any page.
+  existing desktop app scanning in its own window through its own gateway
+  binary, with no listener and no file access for any page.
 - Any bridge command that gives a gateway page laptop files, paths, or
   detection results
 - The manifest connection overlay
@@ -379,9 +397,11 @@ diagnostic does not inspect the workspace to report on them.
   The bundle itself is still validated on the server.
 - A default connection makes it easier to grant a login to a new Project. A
   grant still needs one owner action per Project, and it is audited.
-- The desktop app gets bigger, because it bundles a second Go binary. The
-  shell process briefly holds the window's session for one import, as any
-  browser holds its own cookies. A process running as the same OS user could
+- `meridiand` gains one hidden client mode, `desktop-import`, which the
+  desktop shell runs. It is not in `--help`, never starts a listener, and
+  never opens a data directory. The app still ships one Go binary. The shell
+  process briefly holds the window's session for one import, as any browser
+  holds its own cookies. A process running as the same OS user could
   already read the webview's cookies (ADR 0047).
 - The threat model gains a "Workstation profiles" section, an invariant, and
   a residual-risk paragraph.
@@ -399,5 +419,5 @@ Each step is its own PR, as #84 was (#155 to #167):
 5. CLI: `meridian import` with detection, diff, and git identity.
 6. UI: the first-run import step, "What Capsules inherit", and the Capsule
    diagnostic panel.
-7. Desktop: bundle the CLI, `meridian import --desktop`, the shell-owned
+7. Desktop: the hidden `meridiand desktop-import` mode, the shell-owned
    import window, `desktop_open_import`, and the tray item.

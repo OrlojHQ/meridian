@@ -1350,15 +1350,23 @@ Threats and required controls:
   list never receives it.
 - **Session handling in the desktop importer.** The shell reads the session
   cookie for the bound origin through the webview cookie API and passes it
-  to the bundled `meridian import --desktop` once, on stdin. It is never put
-  in argv, an environment variable, a file, or a log. The importer uses it
+  to the hidden `meridiand desktop-import` mode once, on stdin. It is never
+  put in argv, an environment variable, a file, or a log. The mode uses it
   only for the owner-only contents read and the one `POST /profile/imports`,
   then exits. The shell mints no personal access token. A process running as
   the same OS user could already read the webview's cookies (ADR 0047).
 - **A second importer drifting from the first.** The desktop app runs the
-  same Go importer as the terminal command, as a bundled, signed binary that
-  updates with the app. It does not reimplement detection, the deny list, or
-  the sanitizer in Rust.
+  same Go importer package as `meridian import`. It runs it through a hidden
+  client mode of the `meridiand` binary the app already ships as its signed
+  gateway sidecar, which updates with the app. Detection, the deny list, and
+  the sanitizer are not reimplemented in Rust.
+- **The hidden client mode widening the daemon.** `meridiand desktop-import`
+  is a client of a gateway, not a daemon. It never starts a listener,
+  opens or locks a data directory, or loads a key, so it cannot compete with
+  a running `meridiand` for the data-directory lease (ADR 0035). It is
+  hidden from `--help` and leaves the existing help and `--version` behavior
+  unchanged. Anyone who runs it by hand gets only what `meridian import`
+  already offers: their own files, uploaded with a session they supply.
 
 ## Team mode and per-user identity
 
