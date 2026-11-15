@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/OrlojHQ/meridian/internal/harnesssetup"
 	"github.com/OrlojHQ/meridian/internal/workstation"
 	"github.com/spf13/cobra"
 )
@@ -156,9 +157,7 @@ func printScan(config *cliConfig, scan workstation.Scan) {
 		for _, warning := range preview.Warnings {
 			_, _ = fmt.Fprintf(out, "  Keep %q (warning): %s\n", warning.Path, warning.Reason)
 		}
-		for _, issue := range preview.Issues {
-			_, _ = fmt.Fprintf(out, "  Exclude %q: %s\n", issue.Path, issue.Reason)
-		}
+		printExclusions(config, preview.Issues)
 	}
 	for _, issue := range scan.NotImported {
 		_, _ = fmt.Fprintf(out, "\n%s: not imported: %s\n", issue.Path, issue.Reason)
@@ -201,9 +200,7 @@ func printReview(config *cliConfig, review workstation.Review, includeGit bool, 
 		for _, warning := range preview.Warnings {
 			_, _ = fmt.Fprintf(out, "  Keep %q (warning): %s\n", warning.Path, warning.Reason)
 		}
-		for _, issue := range preview.Issues {
-			_, _ = fmt.Fprintf(out, "  Exclude %q: %s\n", issue.Path, issue.Reason)
-		}
+		printExclusions(config, preview.Issues)
 		if harness.Connection != "" {
 			_, _ = fmt.Fprintf(out, "  Login: your default connection %q\n", harness.Connection)
 		} else {
@@ -224,4 +221,28 @@ func printReview(config *cliConfig, review workstation.Review, includeGit bool, 
 		}
 	}
 	_, _ = fmt.Fprintln(out, "\nHooks, plugins, and MCP servers are code that runs inside the Capsule.")
+}
+
+// printExclusions lists what an import leaves out. A reason shared by more
+// than three items, such as runtime caches and logs, prints once with a
+// count; --json lists every item.
+func printExclusions(config *cliConfig, issues []harnesssetup.Issue) {
+	order := []string{}
+	byReason := map[string][]string{}
+	for _, issue := range issues {
+		if _, ok := byReason[issue.Reason]; !ok {
+			order = append(order, issue.Reason)
+		}
+		byReason[issue.Reason] = append(byReason[issue.Reason], issue.Path)
+	}
+	for _, reason := range order {
+		paths := byReason[reason]
+		if len(paths) <= 3 {
+			for _, p := range paths {
+				_, _ = fmt.Fprintf(config.stdout, "  Exclude %q: %s\n", p, reason)
+			}
+			continue
+		}
+		_, _ = fmt.Fprintf(config.stdout, "  Exclude %d items: %s (e.g. %q; --json lists all)\n", len(paths), reason, paths[0])
+	}
 }

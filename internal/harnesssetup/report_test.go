@@ -31,3 +31,30 @@ func TestReportIsBoundedDisplayText(t *testing.T) {
 		t.Fatalf("preview report = %+v", got)
 	}
 }
+
+func TestReportRedactsHomePaths(t *testing.T) {
+	report := Report{
+		Issues: []Issue{
+			{Path: ".codex/config.toml:projects:/Users/ada/Documents/acme-secret:trust_level", Reason: "Machine trust or approval override excluded"},
+			{Path: ".codex/auth.json", Reason: "Authentication, runtime state, or unsupported file excluded"},
+		},
+		Warnings: []Issue{
+			{Path: ".claude/settings.json:hooks", Reason: "Absolute path /home/ada/bin/hook kept"},
+			{Path: `.pi/agent/settings.json:C:\Users\Ada\repo:trust`, Reason: "kept"},
+		},
+	}
+	got := report.Redacted()
+	for _, entry := range append(got.Issues, got.Warnings...) {
+		for _, leak := range []string{"ada", "Ada", "acme-secret", "/Users/", "/home/"} {
+			if strings.Contains(entry.Path+entry.Reason, leak) && !strings.HasPrefix(entry.Path, ".codex/auth.json") {
+				t.Fatalf("redacted entry %+v still contains %q", entry, leak)
+			}
+		}
+	}
+	if got.Issues[0].Path != ".codex/config.toml:projects:~/…:trust_level" || got.Issues[1].Path != ".codex/auth.json" {
+		t.Fatalf("redacted issues = %+v", got.Issues)
+	}
+	if err := got.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
