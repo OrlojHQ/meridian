@@ -5,6 +5,7 @@ import {
   listProviderConnections, createProviderConnection, updateProviderConnection, getProjectProviderConnection, grantProjectProviderConnection,
   startChatGptSignIn, getChatGptSignIn, completeChatGptSignIn,
   getHarnessSetupContents, listHarnessSetups, mutateHarnessSetup, listHarnessSetupRevisions, previewHarnessSetup, importHarnessSetup,
+  getProfile, updateProfile, getCapsuleProfileDiagnostic, updateCapsuleProfile,
   archiveThread,
   beginClaudeLogin,
   completeClaudeLogin,
@@ -91,6 +92,7 @@ import type {
   MintPersonalAccessTokenRequest, MintedPersonalAccessToken, PersonalAccessTokenPage,
   MemberPage,
 } from "./generated/types.gen";
+import type { Profile, UpdateProfileRequest, ProfileDiagnostic } from "./generated/types.gen";
 import type { HarnessSetupUpload, HarnessSetupPreview, ImportHarnessSetupRequest, EnvironmentMutation, ProjectEnvironment,
   ProjectHarnessSetup,
   ClaudeLogin, ClaudeLoginRequest, ClaudeLoginStatus,
@@ -226,6 +228,12 @@ export const api = {
  harnessSetupContents: (setupId: string) => call<ImportHarnessSetupRequest>(getHarnessSetupContents({...generatedOptions(), path:{setupId}})),
  harnessSetupRevisions: (setupId: string) => call<HarnessSetupRevisionPage>(listHarnessSetupRevisions({...generatedOptions(), path:{setupId}})),
  mutateHarnessSetup: (setupId:string, body:MutateHarnessSetupRequest) => call<HarnessSetup>(mutateHarnessSetup({...generatedOptions(),path:{setupId},headers:idempotencyHeaders(),body})),
+ // Workstation profile (ADR 0049). The page reads and edits only the caller's
+ // own profile; imports come from `meridian import` or the desktop app.
+ profile: () => call<Profile>(getProfile({...generatedOptions()})),
+ updateProfile: (body:UpdateProfileRequest) => call<Profile>(updateProfile({...generatedOptions(),headers:idempotencyHeaders(),body})),
+ capsuleProfileDiagnostic: (capsuleId:string) => call<ProfileDiagnostic>(getCapsuleProfileDiagnostic({...generatedOptions(),path:{capsuleId}})),
+ updateCapsuleProfile: (capsuleId:string) => call<ProfileDiagnostic>(updateCapsuleProfile({...generatedOptions(),path:{capsuleId},headers:idempotencyHeaders()})),
   baseUrl,
   authenticateBrowser: (token: string, signal?: AbortSignal) =>
     call<void>(

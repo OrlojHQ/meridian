@@ -4079,3 +4079,79 @@ button.tool-line:hover {
     max-width: 6rem;
   }
 }
+
+/* Workstation profiles (ADR 0049) */
+.first-run-steps {
+  display: grid;
+  gap: 1rem;
+  max-width: 40rem;
+  margin: 1.5rem auto 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: first-run;
+  text-align: left;
+}
+
+.first-run-steps > li {
+  counter-increment: first-run;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.first-run-steps > li > h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+}
+
+.first-run-steps > li > h2::before {
+  content: counter(first-run) ". ";
+  color: var(--muted);
+}
+
+.first-run-steps > li.is-done > h2::after {
+  content: " — done";
+  color: var(--muted);
+  font-weight: normal;
+}
+
+.first-run-steps p,
+.empty-state .first-run-steps p {
+  margin: 0.35rem 0;
+  max-width: none;
+}
+
+.what-capsules-inherit {
+  margin-bottom: 1.25rem;
+}
+
+.what-capsules-inherit .profile-note {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.profile-git {
+  display: grid;
+  gap: 0.5rem;
+  max-width: 28rem;
+  margin-top: 1rem;
+}
+
+.profile-git label {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.profile-projects details {
+  padding: 0.35rem 0;
+}
+
+.capsule-profile ul {
+  padding-left: 1.1rem;
+}
+
+.profile-diagnostic-harnesses > li > h3 {
+  margin: 0.75rem 0 0.25rem;
+  font-size: 0.95rem;
+}

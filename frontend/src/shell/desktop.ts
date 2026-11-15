@@ -23,6 +23,10 @@ export type DesktopBridge = {
   gateway?: () => Promise<DesktopGateway>;
   checkForUpdates?: () => Promise<DesktopUpdateStatus>;
   installUpdate?: () => Promise<void>;
+  // Opens the desktop app's own import window (ADR 0049). It takes nothing
+  // and returns only whether the window opened: the page is never told what
+  // the app found on this computer.
+  openImport?: () => Promise<boolean>;
 };
 
 declare global {

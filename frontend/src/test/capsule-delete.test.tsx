@@ -228,7 +228,7 @@ describe("delete navigation", () => {
 
     await waitFor(() => expect(location()).toMatch(/^\/ui\/?$/));
     expect(location()).not.toContain("capsule-current");
-    expect(screen.getByRole("heading", { name: "No projects yet" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Bring your setup" })).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "History back" }));
     expect(location()).toBe("/ui/threads");

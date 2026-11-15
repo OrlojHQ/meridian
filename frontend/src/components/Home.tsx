@@ -5,6 +5,7 @@ import { relativeTime, sessionPath } from "../shell/capsuleActivity";
 import type { ShellOutletContext } from "../shell/AppShell";
 import { useWorkingSet } from "../shell/useWorkingSet";
 import { PlusIcon, TerminalIcon, ThreadIcon } from "./ui/Icons";
+import { FirstRun } from "./WorkstationProfile";
 
 // Home lists recent work. Starting a Capsule happens in the New Capsule
 // dialog, which needs only a mode, a Project, and a harness.
@@ -26,17 +27,7 @@ export function Home() {
   );
 
   if (projectItems.length === 0) {
-    return (
-      <section className="home empty-state">
-        <h1>No projects yet</h1>
-        <p>A Project points Meridian at a repository. Every session runs in its own Capsule.</p>
-        {outlet?.openNewProject && (
-          <button type="button" className="primary-button" onClick={outlet.openNewProject}>
-            New project
-          </button>
-        )}
-      </section>
-    );
+    return <FirstRun openNewProject={outlet?.openNewProject} />;
   }
 
   return (
