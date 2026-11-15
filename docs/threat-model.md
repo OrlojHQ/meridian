@@ -919,6 +919,9 @@ they are not a statement that every planned path is already implemented.
   connections. A default connection is never an authorization; only a
   Project grant is. A Capsule cannot write a profile or its own pin. The
   laptop's git config, SSH keys, and auth caches never enter a profile.
+  The desktop shell scans the laptop only in its own import window. No
+  bridge command gives a gateway page laptop files, paths, or detection
+  results, and an upload happens only after the user clicks Save there.
 - Security and durability requirements fail closed when a provider lacks a capability.
 - Reusable credential plaintext is not persisted; encrypted named secrets use
   a dedicated externally custodied credential KEK and cannot cross purpose.
@@ -1328,6 +1331,34 @@ Threats and required controls:
 - **Single-user servers off loopback.** Anyone with the installation bearer
   acts as the bootstrap owner and uses that one profile. The UI says so on a
   server that is not loopback.
+- **A gateway page reaching laptop files through the desktop shell.** A
+  remote or compromised gateway page tries to make the shell read, list, or
+  send it laptop files. Detection and review run in a separate import window
+  that loads only bundled shell pages, has its own local capability, and is
+  never granted the gateway bridge. The only new bridge command,
+  `desktop_open_import`, takes no arguments and returns only whether the
+  window opened. Like the rest of the bridge, only the active gateway origin
+  may call it. No bridge command returns files, paths, harness names, or
+  detection results. The page learns what was imported only from the server,
+  after Save. A page that opens the window over and over gains nothing
+  without the user's Save.
+- **Desktop import to the wrong gateway or account.** The import window is
+  bound to the gateway origin that was active when it opened. Before Save it
+  shows that origin and the account from `/auth/me`. Switching gateway or
+  signing out closes it without uploading. The upload uses only the main
+  window's session for that one origin, so another gateway in the recent
+  list never receives it.
+- **Session handling in the desktop importer.** The shell reads the session
+  cookie for the bound origin through the webview cookie API and passes it
+  to the bundled `meridian import --desktop` once, on stdin. It is never put
+  in argv, an environment variable, a file, or a log. The importer uses it
+  only for the owner-only contents read and the one `POST /profile/imports`,
+  then exits. The shell mints no personal access token. A process running as
+  the same OS user could already read the webview's cookies (ADR 0047).
+- **A second importer drifting from the first.** The desktop app runs the
+  same Go importer as the terminal command, as a bundled, signed binary that
+  updates with the app. It does not reimplement detection, the deny list, or
+  the sanitizer in Rust.
 
 ## Team mode and per-user identity
 

@@ -4,7 +4,8 @@
 - Date: 2026-11-14
 - Amends: ADR 0024 (personal harness setups), ADR 0040 (harness-pack
   manifests), and ADR 0046 (per-user identity), for how a profile is owned
-  and transferred
+  and transferred; ADR 0043 (desktop shell) and ADR 0048 (desktop gateway
+  indicator), for importing from the desktop app
 - Tracks: #83
 
 ## Context
@@ -48,6 +49,13 @@ What is still missing:
 - Nothing answers "what will this Capsule inherit?" or "why is this Capsule
   different from my laptop?".
 - There is no per-user default connection. Every new Project asks again.
+- The desktop app (ADR 0043) runs on the laptop but cannot import from it.
+  It bundles only the `meridian-desktop-gateway` sidecar (`externalBin` in
+  `desktop/src-tauri/tauri.conf.json`), not the CLI. None of its bridge
+  commands (`gateway_*`, `desktop_notify`, `desktop_set_attention`,
+  `desktop_open_gateway`, `desktop_update_*`) reads a file, and #137
+  limited them to the chosen gateway origin. Desktop users therefore get
+  only the browser folder picker, one harness at a time.
 
 ## Decision
 
@@ -205,14 +213,78 @@ stays and does the same per-harness import.
    in one transaction. A failure saves nothing.
 
 Remote daemons work as they do today: `meridian --server URL import`. The
-browser still cannot scan the laptop (ADR 0024), and this ADR adds no local
-helper process. The browser folder picker stays the path for people who
-will not use the CLI, one harness at a time, and it saves its report the
-same way.
+browser still cannot scan the laptop (ADR 0024), and this ADR adds no
+localhost helper that a browser talks to. The desktop app can scan, because
+it already runs on the laptop (below). The browser folder picker stays the
+path for people who use neither the CLI nor the desktop app. It imports one
+harness at a time and saves its report the same way.
 
 The report comes from the client, so the server treats it as display data
 from the owner. Its shape is checked and bounded (at most 512 entries,
 bounded path and reason lengths), and the UI renders it only as text.
+
+### Importing from the desktop app
+
+The desktop shell runs on the laptop, so it can offer "We found Codex and
+Claude on this computer" and a one-click import. The gateway page in its
+main window cannot, and this ADR keeps it that way. That page may come from
+a remote gateway and is treated as untrusted.
+
+- **One importer, in Go.** The app bundles the `meridian` CLI as a second
+  `externalBin` next to `meridian-desktop-gateway`. The shell runs it as
+  `meridian import --desktop`. That mode uses the same detection, manifest
+  roots, deny list, sanitizer, limits, `[user]`-only git config parse, diff,
+  and atomic save as the terminal command. It reads and writes line-delimited
+  JSON on stdin and stdout instead of prompting. There is no second importer
+  in Rust. The shell only starts the process, renders its output, and passes
+  on the user's Save or Cancel.
+- **A window the shell owns.** Review happens in a separate import window
+  that loads bundled pages from `desktop/ui/`, like the gateway picker. That
+  window has a local capability of its own. It cannot load or navigate to a
+  remote URL, and it is never granted the gateway bridge. Its CSP is the
+  shell's `default-src 'self'`. File paths, exclusions, and the git identity
+  are rendered as text.
+- **The page can only open the window.** One new bridge command,
+  `desktop_open_import`, takes no arguments and returns nothing except
+  whether the window opened. Like the other bridge commands, only the active
+  gateway origin may call it (#137). The tray menu gets the same item. No
+  bridge command lets the page read, list, or receive laptop files, paths,
+  harness names, or detection results. The page learns what was imported only
+  from the server, through `profile.updated`, after the user has saved.
+- **Destination and identity are fixed when the window opens.** The window
+  is bound to the gateway origin active at that moment. It shows that origin
+  (with its ADR 0048 name) and the account from `GET /auth/me`: the signed-in
+  member in team mode, or "this installation" in single-user mode. Save is
+  disabled until the window has a signed-in session for that origin. If the
+  user switches gateway or signs out before saving, the window closes
+  without uploading.
+- **Upload only on Save, as the signed-in user.** The shell reads the main
+  window's session cookie for that one origin through Tauri's webview cookie
+  API. The page is not involved. The shell passes the cookie to the importer
+  on stdin, once. It is
+  never passed in argv, an environment variable, a file, or a log. The
+  importer uses it for two things only. It reads the saved revisions for the
+  diff, through the existing owner-only, `no-store` contents endpoint. After
+  the user clicks Save, it sends one `POST /profile/imports` with the
+  gateway origin as `Origin`, the same as the page's own requests. Then it
+  exits. There is no separate desktop credential, and the shell mints no
+  personal access token.
+- **Remote gateways.** It works the same way against a remote gateway as
+  against the bundled local one. A remote gateway receives exactly the
+  reviewed, sanitized bundle that `meridian --server URL import` would send,
+  and nothing before Save.
+- **Team mode.** The member signed in to the window owns the import, under
+  the same ownership rules as any other import. Another member's sign-in on
+  another gateway in the recent list (ADR 0048) never receives it.
+
+The first-run step shows different text depending on where the page runs.
+In the desktop shell (`window.__MERIDIAN_DESKTOP__` is present and offers
+`openImport`), it says "Review this computer's setup" and opens the import
+window. It does not say what was found, because the page is never told.
+Inside the import window, the shell says "We found Codex and Claude on this
+computer". In a plain browser, the step says "Run `meridian import` on this
+computer" and offers the folder picker. A desktop app paired with an older
+gateway, whose UI lacks the button, still has the tray item.
 
 ### The "why this differs from your laptop" diagnostic
 
@@ -258,10 +330,9 @@ diagnostic does not inspect the workspace to report on them.
 ### UI
 
 - **First run.** Three steps: import this computer, connect a model, and
-  create a Project. The page says "we found Codex and Claude" only after a
-  `meridian import` has saved a profile. Until then the step says "Run
-  `meridian import` on this computer" and offers the folder picker. It moves
-  on when the `profile.updated` event arrives. The connect step is skipped
+  create a Project. The page lists imported harnesses only after a profile
+  has been saved. Until then, the step is the desktop or browser text above.
+  It moves on when the `profile.updated` event arrives. The connect step is skipped
   when a connection already covers each imported harness. The Project form
   accepts a GitHub SSH URL and stores the HTTPS form, so the existing clone
   path works.
@@ -278,8 +349,12 @@ diagnostic does not inspect the workspace to report on them.
 
 - A Capsule that follows the profile automatically
 - Saving a Capsule's edits back to the profile, or any export from a Capsule
-- A local helper process the browser talks to (it would need its own ADR,
-  per ADR 0024)
+- A localhost helper process that a browser talks to (it would need its own
+  ADR, per ADR 0024). The desktop import above is not one: it is the
+  existing desktop app scanning in its own window, with no listener and no
+  file access for any page.
+- Any bridge command that gives a gateway page laptop files, paths, or
+  detection results
 - The manifest connection overlay
 - SSH keys, `~/.ssh`, and `core.sshCommand`. Private clone stays the
   `git_https` grant (ADR 0014).
@@ -304,6 +379,10 @@ diagnostic does not inspect the workspace to report on them.
   The bundle itself is still validated on the server.
 - A default connection makes it easier to grant a login to a new Project. A
   grant still needs one owner action per Project, and it is audited.
+- The desktop app gets bigger, because it bundles a second Go binary. The
+  shell process briefly holds the window's session for one import, as any
+  browser holds its own cookies. A process running as the same OS user could
+  already read the webview's cookies (ADR 0047).
 - The threat model gains a "Workstation profiles" section, an invariant, and
   a residual-risk paragraph.
 
@@ -320,3 +399,5 @@ Each step is its own PR, as #84 was (#155 to #167):
 5. CLI: `meridian import` with detection, diff, and git identity.
 6. UI: the first-run import step, "What Capsules inherit", and the Capsule
    diagnostic panel.
+7. Desktop: bundle the CLI, `meridian import --desktop`, the shell-owned
+   import window, `desktop_open_import`, and the tray item.
