@@ -32,6 +32,15 @@ type Reader interface {
 	ListHarnessSetupRevisions(context.Context, string) ([]domain.HarnessSetupRevision, error)
 	GetPinnedHarnessSetup(context.Context, domain.CapsuleID, string) (string, error)
 	ListPinnedHarnessSetups(context.Context, []domain.CapsuleID) (map[domain.CapsuleID][]domain.PinnedHarnessSetup, error)
+	// GetUserProfile returns owner's workstation profile (ADR 0049). A user
+	// who never saved one gets an empty profile with resource version zero.
+	GetUserProfile(context.Context, domain.UserID) (domain.UserProfile, error)
+	// GetHarnessSetupReport returns a revision's sealed import report, or
+	// domain.ErrNotFound when it was saved without one.
+	GetHarnessSetupReport(context.Context, string) (domain.HarnessSetupReport, error)
+	// GetCapsuleProfilePin reports the profile identity a Capsule pinned;
+	// false means the Capsule pinned none.
+	GetCapsuleProfilePin(context.Context, domain.CapsuleID) (domain.CapsuleProfilePin, bool, error)
 	GetProject(context.Context, domain.ProjectID) (domain.Project, error)
 	// ListProjects lists owner's Projects; the empty owner lists every
 	// owner's, for daemon-internal work.
@@ -118,6 +127,22 @@ type Transaction interface {
 	InsertHarnessSetupRevision(context.Context, domain.HarnessSetupRevision) error
 	ReplaceHarnessSetupRevisionEnvelope(context.Context, domain.HarnessSetupRevision) error
 	PinHarnessSetup(context.Context, domain.CapsuleID, string, string) error
+	// UnpinHarnessSetups removes every setup pin of a Capsule, before an
+	// explicit profile update pins the current revisions.
+	UnpinHarnessSetups(context.Context, domain.CapsuleID) error
+	// PutUserProfile writes owner's profile and replaces its default
+	// connections. expected is the stored resource version, zero to create;
+	// a mismatch is domain.ErrConflict.
+	PutUserProfile(context.Context, domain.UserProfile, domain.ResourceVersion) error
+	// DeleteUserProfile removes owner's profile, for departed-member deletion.
+	DeleteUserProfile(context.Context, domain.UserID) error
+	InsertHarnessSetupReport(context.Context, domain.HarnessSetupReport) error
+	ReplaceHarnessSetupReportEnvelope(context.Context, domain.HarnessSetupReport) error
+	// PutCapsuleProfilePin writes or replaces a Capsule's profile identity.
+	PutCapsuleProfilePin(context.Context, domain.CapsuleProfilePin) error
+	// DeleteCapsuleProfilePin removes it, for a profile update to a profile
+	// without an identity.
+	DeleteCapsuleProfilePin(context.Context, domain.CapsuleID) error
 	Reader
 	InsertProject(context.Context, domain.Project) error
 	UpdateProject(context.Context, domain.Project, domain.ResourceVersion) error

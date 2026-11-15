@@ -298,6 +298,8 @@ func oneRow(result sql.Result) error {
 
 // transferredTables are the owned tables a departed-member transfer moves.
 // provider_connections is absent: a personal login stays with its holder.
+// user_profiles and user_profile_connections are absent too: a git identity
+// stays with the person it names (ADR 0049).
 var transferredTables = []string{
 	"projects", "secrets", "harness_setups",
 	"capsules", "timelines", "moments", "project_thread_intents", "setup_moment_cache",
@@ -317,6 +319,17 @@ func (r *repository) TransferOwnership(ctx context.Context, from, to domain.User
 	if _, err := r.q.ExecContext(ctx, `
 		DELETE FROM project_provider_connections
 		WHERE project_id IN (SELECT id FROM projects WHERE owner_user_id = ?)`, from); err != nil {
+		return mapError(err)
+	}
+	// Moved setups arrive without their default flag, so the recipient's
+	// workstation profile changes only by their own action (ADR 0049). The
+	// source's profile row and its default connections do not move.
+	if _, err := r.q.ExecContext(ctx, `
+		UPDATE harness_setups
+		SET metadata = json_set(metadata,
+			'$.default', json('false'),
+			'$.resourceVersion', json_extract(metadata, '$.resourceVersion') + 1)
+		WHERE owner_user_id = ? AND json_extract(metadata, '$.default') = 1`, from); err != nil {
 		return mapError(err)
 	}
 	for _, table := range transferredTables {

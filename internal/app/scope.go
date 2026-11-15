@@ -417,6 +417,29 @@ func (r *scopedReader) ListPinnedHarnessSetups(ctx context.Context, ids []domain
 	return r.inner.ListPinnedHarnessSetups(ctx, allowed)
 }
 
+// GetUserProfile reads only the caller's own profile: a profile has no id
+// another caller could name (ADR 0049).
+func (r *scopedReader) GetUserProfile(ctx context.Context, owner domain.UserID) (domain.UserProfile, error) {
+	if err := r.keyOwner(owner); err != nil {
+		return domain.UserProfile{}, err
+	}
+	return r.inner.GetUserProfile(ctx, owner)
+}
+
+func (r *scopedReader) GetHarnessSetupReport(ctx context.Context, revision string) (domain.HarnessSetupReport, error) {
+	if _, err := r.GetHarnessSetupRevision(ctx, revision); err != nil {
+		return domain.HarnessSetupReport{}, err
+	}
+	return r.inner.GetHarnessSetupReport(ctx, revision)
+}
+
+func (r *scopedReader) GetCapsuleProfilePin(ctx context.Context, id domain.CapsuleID) (domain.CapsuleProfilePin, bool, error) {
+	if err := r.capsule(ctx, id); err != nil {
+		return domain.CapsuleProfilePin{}, false, err
+	}
+	return r.inner.GetCapsuleProfilePin(ctx, id)
+}
+
 func (r *scopedReader) GetProject(ctx context.Context, id domain.ProjectID) (domain.Project, error) {
 	if err := r.project(ctx, id); err != nil {
 		return domain.Project{}, err
@@ -1049,6 +1072,62 @@ func (t *scopedTx) PinHarnessSetup(ctx context.Context, id domain.CapsuleID, har
 		return err
 	}
 	return t.tx.PinHarnessSetup(ctx, id, harness, revision)
+}
+
+func (t *scopedTx) UnpinHarnessSetups(ctx context.Context, id domain.CapsuleID) error {
+	if err := t.capsule(ctx, id); err != nil {
+		return err
+	}
+	return t.tx.UnpinHarnessSetups(ctx, id)
+}
+
+// PutUserProfile writes only the caller's profile, and its default
+// connections must be the caller's own.
+func (t *scopedTx) PutUserProfile(ctx context.Context, profile domain.UserProfile, expected domain.ResourceVersion) error {
+	if err := t.keyOwner(profile.OwnerUserID); err != nil {
+		return err
+	}
+	for _, connection := range profile.DefaultConnections {
+		if err := t.connection(ctx, connection); err != nil {
+			return err
+		}
+	}
+	return t.tx.PutUserProfile(ctx, profile, expected)
+}
+
+func (t *scopedTx) DeleteUserProfile(ctx context.Context, owner domain.UserID) error {
+	if err := t.keyOwner(owner); err != nil {
+		return err
+	}
+	return t.tx.DeleteUserProfile(ctx, owner)
+}
+
+func (t *scopedTx) InsertHarnessSetupReport(ctx context.Context, report domain.HarnessSetupReport) error {
+	if _, err := t.GetHarnessSetupRevision(ctx, report.RevisionID); err != nil {
+		return err
+	}
+	return t.tx.InsertHarnessSetupReport(ctx, report)
+}
+
+func (t *scopedTx) ReplaceHarnessSetupReportEnvelope(ctx context.Context, report domain.HarnessSetupReport) error {
+	if _, err := t.GetHarnessSetupRevision(ctx, report.RevisionID); err != nil {
+		return err
+	}
+	return t.tx.ReplaceHarnessSetupReportEnvelope(ctx, report)
+}
+
+func (t *scopedTx) PutCapsuleProfilePin(ctx context.Context, pin domain.CapsuleProfilePin) error {
+	if err := t.capsule(ctx, pin.CapsuleID); err != nil {
+		return err
+	}
+	return t.tx.PutCapsuleProfilePin(ctx, pin)
+}
+
+func (t *scopedTx) DeleteCapsuleProfilePin(ctx context.Context, id domain.CapsuleID) error {
+	if err := t.capsule(ctx, id); err != nil {
+		return err
+	}
+	return t.tx.DeleteCapsuleProfilePin(ctx, id)
 }
 
 func (t *scopedTx) InsertProject(ctx context.Context, item domain.Project) error {

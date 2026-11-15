@@ -198,8 +198,15 @@ func (r *repository) CollectDeletedHarnessSetups(ctx context.Context) error {
 	if _, err := r.q.ExecContext(ctx, "DELETE FROM capsule_harness_setups WHERE capsule_id IN (SELECT id FROM capsules WHERE state='Deleted')"); err != nil {
 		return err
 	}
-	_, err := r.q.ExecContext(ctx, `DELETE FROM harness_setup_revisions
+	if _, err := r.q.ExecContext(ctx, "DELETE FROM capsule_profile_pins WHERE capsule_id IN (SELECT id FROM capsules WHERE state='Deleted')"); err != nil {
+		return err
+	}
+	const collectable = `SELECT id FROM harness_setup_revisions
  WHERE setup_id IN (SELECT id FROM harness_setups WHERE json_extract(metadata,'$.deleted')=1)
- AND id NOT IN (SELECT revision_id FROM capsule_harness_setups)`)
+ AND id NOT IN (SELECT revision_id FROM capsule_harness_setups)`
+	if _, err := r.q.ExecContext(ctx, "DELETE FROM harness_setup_reports WHERE revision_id IN ("+collectable+")"); err != nil {
+		return err
+	}
+	_, err := r.q.ExecContext(ctx, "DELETE FROM harness_setup_revisions WHERE id IN ("+collectable+")")
 	return err
 }
