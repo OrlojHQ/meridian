@@ -77,10 +77,18 @@ func Discover(home, harness string, env func(string) string) (Preview, error) {
 			return nil
 		}
 		if d.IsDir() {
+			if ExcludedFromImport(harness, dest) {
+				result.Issues = append(result.Issues, Issue{dest, bundledReason})
+				return fs.SkipDir
+			}
 			if !AllowedPath(harness, dest+"/entry") {
 				result.Issues = append(result.Issues, Issue{dest, "Runtime state or unsupported directory excluded"})
 				return fs.SkipDir
 			}
+			return nil
+		}
+		if ExcludedFromImport(harness, dest) {
+			result.Issues = append(result.Issues, Issue{dest, bundledReason})
 			return nil
 		}
 		if !AllowedPath(harness, dest) {

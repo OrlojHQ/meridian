@@ -191,3 +191,49 @@ func TestImportRefusesPlainHTTPToARemoteServer(t *testing.T) {
 		t.Fatalf("plain HTTP import = %v", err)
 	}
 }
+
+// Runtime files that share one reason print once with a count, and a
+// config.toml trust key's laptop path never leaves the computer.
+func TestImportCollapsesRuntimeFilesAndRedactsPaths(t *testing.T) {
+	home := importHome(t)
+	writeHomeFile(t, home, ".codex/AGENTS.md", "review")
+	for _, name := range []string{"auth.json", "history.jsonl", "state.sqlite", "version.json", "models_cache.json"} {
+		writeHomeFile(t, home, ".codex/"+name, "{}")
+	}
+	writeHomeFile(t, home, ".codex/config.toml", "model = \"gpt-5\"\n[projects.\""+home+"/Documents/acme-secret\"]\ntrust_level = \"trusted\"\n")
+	service, url, tokenFile := importServer(t)
+	var output bytes.Buffer
+	config := &cliConfig{server: url, tokenFile: tokenFile, stdout: &output, stdin: strings.NewReader("")}
+	command := importRoot(config)
+	command.SetArgs([]string{"import", "--yes", "--accept-exclusions"})
+	if err := command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if text := output.String(); !strings.Contains(text, "Exclude 5 items: Authentication, runtime state, or unsupported file excluded") ||
+		strings.Count(text, "Exclude \"") > 3 {
+		t.Fatalf("output:\n%s", text)
+	}
+	ctx := principal.With(context.Background(), principal.Owner())
+	project, err := service.CreateProject(ctx, "p", "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	capsule, err := service.CreateCapsule(ctx, project.ID, "c", "c")
+	if err != nil {
+		t.Fatal(err)
+	}
+	diagnostic, err := service.CapsuleProfileDiagnostic(ctx, capsule.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, issue := range diagnostic.Harnesses[0].Exclusions {
+		if strings.Contains(issue.Path, "acme-secret") || strings.Contains(issue.Path, home) {
+			t.Fatalf("stored report kept a laptop path: %q", issue.Path)
+		}
+		found = found || strings.Contains(issue.Path, "trust_level")
+	}
+	if !found {
+		t.Fatalf("trust exclusion missing: %+v", diagnostic.Harnesses[0].Exclusions)
+	}
+}

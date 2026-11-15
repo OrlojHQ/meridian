@@ -194,3 +194,62 @@ func TestDiscoverRejectsDeepSeekExecutableYAML(t *testing.T) {
 		t.Fatalf("!!js accepted: %#v", preview)
 	}
 }
+
+// Codex's bundled skills ship with the harness: an import skips them with
+// one line, before they count toward the limit, and personal skills next to
+// them are kept. Saved revisions that contain them still validate.
+func TestImportSkipsSkillsTheHarnessShips(t *testing.T) {
+	home := t.TempDir()
+	for path, content := range map[string]string{
+		".codex/skills/.system/imagegen/SKILL.md":    strings.Repeat("x", 100<<10),
+		".codex/skills/.system/imagegen/ref/more.md": strings.Repeat("y", 100<<10),
+		".codex/skills/.system/plan/SKILL.md":        strings.Repeat("z", 100<<10),
+		".codex/skills/.system/doc/SKILL.md":         strings.Repeat("w", 100<<10),
+		".codex/skills/.system/fmt/SKILL.md":         strings.Repeat("v", 100<<10),
+		".codex/skills/release/SKILL.md":             "ship it",
+	} {
+		full := filepath.Join(home, path)
+		if err := os.MkdirAll(filepath.Dir(full), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	preview, err := Discover(home, "codex", func(string) string { return "" })
+	if err != nil {
+		t.Fatalf("bundled skills counted toward the limit: %v", err)
+	}
+	if len(preview.Files) != 1 || preview.Files[0] != ".codex/skills/release/SKILL.md" {
+		t.Fatalf("files = %v", preview.Files)
+	}
+	skipped := 0
+	for _, issue := range preview.Issues {
+		if issue.Reason == bundledReason {
+			skipped++
+			if issue.Path != ".codex/skills/.system" {
+				t.Fatalf("skipped path = %q", issue.Path)
+			}
+		}
+	}
+	if skipped != 1 {
+		t.Fatalf("issues = %+v", preview.Issues)
+	}
+
+	upload, err := ReviewFiles("codex", []File{
+		{Path: ".codex/skills/.system/imagegen/SKILL.md", Content: strings.Repeat("x", 120<<10)},
+		{Path: ".codex/skills/.system/plan/SKILL.md", Content: strings.Repeat("x", 120<<10)},
+		{Path: ".codex/skills/.system/doc/SKILL.md", Content: strings.Repeat("x", 120<<10)},
+		{Path: ".codex/skills/.system/fmt/SKILL.md", Content: strings.Repeat("x", 120<<10)},
+		{Path: ".codex/skills/.system/zip/SKILL.md", Content: strings.Repeat("x", 120<<10)},
+		{Path: ".codex/skills/release/SKILL.md", Content: "ship it"},
+	})
+	if err != nil || len(upload.Files) != 1 || len(upload.Issues) != 1 || upload.Issues[0].Reason != bundledReason {
+		t.Fatalf("upload review = %+v, %v", upload, err)
+	}
+
+	old := Bundle{Harness: "codex", Files: []File{{Path: ".codex/skills/.system/plan/SKILL.md", Content: "saved before"}}}
+	if err := old.Validate(); err != nil {
+		t.Fatalf("a revision saved with bundled skills no longer validates: %v", err)
+	}
+}

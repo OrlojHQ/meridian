@@ -13,7 +13,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"sort"
+	"strings"
 
 	"github.com/OrlojHQ/meridian/internal/harnesssetup"
 	"github.com/OrlojHQ/meridian/pkg/client"
@@ -27,12 +29,15 @@ type Scan struct {
 	// imported, such as one over the bundle limit.
 	NotImported []harnesssetup.Issue `json:"notImported"`
 	Git         *GitSource           `json:"git,omitempty"`
+	// home is where the scan ran, so reports can be redacted for this
+	// computer's actual home directory. It is never serialized.
+	home string
 }
 
 // ScanComputer walks only each pack manifest's roots and the global git
 // config. It never walks the rest of home and executes nothing.
 func ScanComputer(home string, env func(string) string) (Scan, error) {
-	scan := Scan{Harnesses: []harnesssetup.Preview{}, NotImported: []harnesssetup.Issue{}}
+	scan := Scan{Harnesses: []harnesssetup.Preview{}, NotImported: []harnesssetup.Issue{}, home: home}
 	for _, harness := range harnesssetup.Harnesses() {
 		preview, err := harnesssetup.Discover(home, harness, env)
 		if errors.Is(err, os.ErrNotExist) {
@@ -113,6 +118,7 @@ type Review struct {
 	NotImported    []harnesssetup.Issue `json:"notImported"`
 	Git            GitReview            `json:"git"`
 	ProfileVersion int64                `json:"profileVersion"`
+	home           string
 }
 
 // Exclusions counts what the review leaves out, which an unattended save
@@ -166,8 +172,8 @@ func Compare(ctx context.Context, api API, scan Scan) (Review, error) {
 	}
 	review := Review{
 		Harnesses: []HarnessReview{}, NotImported: append([]harnesssetup.Issue{}, scan.NotImported...),
-		ProfileVersion: profile.ResourceVersion,
-		Git:            GitReview{Local: scan.Git, Saved: harnesssetup.GitIdentity{Name: profile.GitName, Email: profile.GitEmail}},
+		ProfileVersion: profile.ResourceVersion, home: scan.home,
+		Git: GitReview{Local: scan.Git, Saved: harnesssetup.GitIdentity{Name: profile.GitName, Email: profile.GitEmail}},
 	}
 	if scan.Git != nil && scan.Git.Identity.Name != "" && scan.Git.Identity != review.Git.Saved {
 		review.Git.Changed = true
@@ -255,11 +261,14 @@ func Request(review Review, includeGit bool) *client.ImportProfileRequest {
 		for _, file := range preview.Bundle.Files {
 			bundle.Files = append(bundle.Files, client.HarnessSetupFile{Path: file.Path, Content: file.Content, Executable: client.NewOptBool(file.Executable)})
 		}
+		// Laptop home paths are redacted before the report leaves this
+		// computer; the server redacts again before sealing.
+		redacted := redactHome(preview.Report(), review.home).Redacted()
 		report := client.HarnessSetupReport{Issues: []client.HarnessSetupIssue{}, Warnings: []client.HarnessSetupIssue{}}
-		for _, issue := range preview.Issues {
+		for _, issue := range redacted.Issues {
 			report.Issues = append(report.Issues, client.HarnessSetupIssue{Path: issue.Path, Reason: issue.Reason})
 		}
-		for _, warning := range preview.Warnings {
+		for _, warning := range redacted.Warnings {
 			report.Warnings = append(report.Warnings, client.HarnessSetupIssue{Path: warning.Path, Reason: warning.Reason})
 		}
 		request.Setups = append(request.Setups, client.ProfileImportSetup{Bundle: bundle, Report: report})
@@ -290,4 +299,21 @@ func Save(ctx context.Context, api API, request *client.ImportProfileRequest) (*
 	default:
 		return nil, errors.New("the server refused this import")
 	}
+}
+
+// redactHome replaces this computer's home directory, wherever it is, and
+// everything after it up to the next location separator with "~/…".
+func redactHome(report harnesssetup.Report, home string) harnesssetup.Report {
+	if home == "" || home == "/" {
+		return report
+	}
+	pattern := regexp.MustCompile(regexp.QuoteMeta(strings.TrimSuffix(home, "/")) + `(?:/[^:]*)?`)
+	redact := func(items []harnesssetup.Issue) []harnesssetup.Issue {
+		out := make([]harnesssetup.Issue, 0, len(items))
+		for _, item := range items {
+			out = append(out, harnesssetup.Issue{Path: pattern.ReplaceAllString(item.Path, "~/…"), Reason: pattern.ReplaceAllString(item.Reason, "~/…")})
+		}
+		return out
+	}
+	return harnesssetup.Report{Issues: redact(report.Issues), Warnings: redact(report.Warnings)}
 }
