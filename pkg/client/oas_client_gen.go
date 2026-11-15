@@ -319,6 +319,14 @@ type Invoker interface {
 	//
 	// GET /capsules/{capsuleId}/git/status
 	GetCapsuleGitStatus(ctx context.Context, params GetCapsuleGitStatusParams) (GetCapsuleGitStatusRes, error)
+	// GetCapsuleProfileDiagnostic invokes getCapsuleProfileDiagnostic operation.
+	//
+	// Computed from control-plane records only: the Capsule's pins, the saved revisions and their import
+	// reports, the Project's connection grants, and the profile. It never asks the Capsule and carries no
+	// file contents or credential values. It never claims the Capsule matches the laptop.
+	//
+	// GET /capsules/{capsuleId}/profile-diagnostic
+	GetCapsuleProfileDiagnostic(ctx context.Context, params GetCapsuleProfileDiagnosticParams) (GetCapsuleProfileDiagnosticRes, error)
 	// GetChatGPTSignIn invokes getChatGPTSignIn operation.
 	//
 	// GetChatGPTSignIn.
@@ -367,6 +375,14 @@ type Invoker interface {
 	//
 	// GET /moments/{momentId}
 	GetMoment(ctx context.Context, params GetMomentParams) (GetMomentRes, error)
+	// GetProfile invokes getProfile operation.
+	//
+	// The caller's own workstation profile (ADR 0049): the git commit identity, a default provider
+	// connection per harness, and the current default setup for each harness. A user who never saved one
+	// gets resource version 0. No route reads another user's profile.
+	//
+	// GET /profile
+	GetProfile(ctx context.Context) (GetProfileRes, error)
 	// GetProject invokes getProject operation.
 	//
 	// Get a project.
@@ -439,6 +455,14 @@ type Invoker interface {
 	//
 	// POST /harness-setups
 	ImportHarnessSetup(ctx context.Context, request *ImportHarnessSetupRequest, params ImportHarnessSetupParams) (*HarnessSetup, error)
+	// ImportProfile invokes importProfile operation.
+	//
+	// Saves, in one transaction, a new default revision for every harness whose bundle changed, each with
+	// its sealed import report, and the git identity when given. A failure saves nothing. Bundles are
+	// validated as for a single harness import.
+	//
+	// POST /profile/imports
+	ImportProfile(ctx context.Context, request *ImportProfileRequest, params ImportProfileParams) (ImportProfileRes, error)
 	// InspectCapsuleDelivery invokes inspectCapsuleDelivery operation.
 	//
 	// Inspect exact Git objects for Delivery approval.
@@ -835,6 +859,14 @@ type Invoker interface {
 	//
 	// POST /users/{userId}/transfer
 	TransferMemberObjects(ctx context.Context, request *TransferMemberObjectsReq, params TransferMemberObjectsParams) (TransferMemberObjectsRes, error)
+	// UpdateCapsuleProfile invokes updateCapsuleProfile operation.
+	//
+	// Re-pins the Capsule's harness setups and git identity to what a new Capsule in its Project would
+	// pin. Refused with 409 while a Run or Thread session is active. The next session start applies the
+	// new pin.
+	//
+	// POST /capsules/{capsuleId}/profile-update
+	UpdateCapsuleProfile(ctx context.Context, params UpdateCapsuleProfileParams) (UpdateCapsuleProfileRes, error)
 	// UpdateCoordinationGrant invokes updateCoordinationGrant operation.
 	//
 	// Changes spawn approval, limits, harnesses, deadline, deadline action, or archiveAfter on an active
@@ -844,6 +876,13 @@ type Invoker interface {
 	//
 	// PATCH /coordination-grants/{grantId}
 	UpdateCoordinationGrant(ctx context.Context, request *UpdateCoordinationGrantRequest, params UpdateCoordinationGrantParams) (UpdateCoordinationGrantRes, error)
+	// UpdateProfile invokes updateProfile operation.
+	//
+	// A default connection is a suggestion, never a grant. The gateway checks only Project grants, and
+	// this call changes none.
+	//
+	// PUT /profile
+	UpdateProfile(ctx context.Context, request *UpdateProfileRequest, params UpdateProfileParams) (UpdateProfileRes, error)
 	// UpdateProjectEnvironment invokes updateProjectEnvironment operation.
 	//
 	// Configure preparation or rebuild on next launch.
@@ -6342,6 +6381,140 @@ func (c *Client) sendGetCapsuleGitStatus(ctx context.Context, params GetCapsuleG
 	return result, nil
 }
 
+// GetCapsuleProfileDiagnostic invokes getCapsuleProfileDiagnostic operation.
+//
+// Computed from control-plane records only: the Capsule's pins, the saved revisions and their import
+// reports, the Project's connection grants, and the profile. It never asks the Capsule and carries no
+// file contents or credential values. It never claims the Capsule matches the laptop.
+//
+// GET /capsules/{capsuleId}/profile-diagnostic
+func (c *Client) GetCapsuleProfileDiagnostic(ctx context.Context, params GetCapsuleProfileDiagnosticParams) (GetCapsuleProfileDiagnosticRes, error) {
+	res, err := c.sendGetCapsuleProfileDiagnostic(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendGetCapsuleProfileDiagnostic(ctx context.Context, params GetCapsuleProfileDiagnosticParams) (res GetCapsuleProfileDiagnosticRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getCapsuleProfileDiagnostic"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/capsules/{capsuleId}/profile-diagnostic"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetCapsuleProfileDiagnosticOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/capsules/"
+	{
+		// Encode "capsuleId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "capsuleId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.CapsuleId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/profile-diagnostic"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, GetCapsuleProfileDiagnosticOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeGetCapsuleProfileDiagnosticResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // GetChatGPTSignIn invokes getChatGPTSignIn operation.
 //
 // GetChatGPTSignIn.
@@ -7315,6 +7488,121 @@ func (c *Client) sendGetMoment(ctx context.Context, params GetMomentParams) (res
 
 	stage = "DecodeResponse"
 	result, err := decodeGetMomentResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// GetProfile invokes getProfile operation.
+//
+// The caller's own workstation profile (ADR 0049): the git commit identity, a default provider
+// connection per harness, and the current default setup for each harness. A user who never saved one
+// gets resource version 0. No route reads another user's profile.
+//
+// GET /profile
+func (c *Client) GetProfile(ctx context.Context) (GetProfileRes, error) {
+	res, err := c.sendGetProfile(ctx)
+	return res, err
+}
+
+func (c *Client) sendGetProfile(ctx context.Context) (res GetProfileRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getProfile"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/profile"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetProfileOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/profile"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, GetProfileOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeGetProfileResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -8899,6 +9187,138 @@ func (c *Client) sendImportHarnessSetup(ctx context.Context, request *ImportHarn
 
 	stage = "DecodeResponse"
 	result, err := decodeImportHarnessSetupResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// ImportProfile invokes importProfile operation.
+//
+// Saves, in one transaction, a new default revision for every harness whose bundle changed, each with
+// its sealed import report, and the git identity when given. A failure saves nothing. Bundles are
+// validated as for a single harness import.
+//
+// POST /profile/imports
+func (c *Client) ImportProfile(ctx context.Context, request *ImportProfileRequest, params ImportProfileParams) (ImportProfileRes, error) {
+	res, err := c.sendImportProfile(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendImportProfile(ctx context.Context, request *ImportProfileRequest, params ImportProfileParams) (res ImportProfileRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("importProfile"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/profile/imports"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, ImportProfileOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/profile/imports"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeImportProfileRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "EncodeHeaderParams"
+	h := uri.NewHeaderEncoder(r.Header)
+	{
+		cfg := uri.HeaderParameterEncodingConfig{
+			Name:    "Idempotency-Key",
+			Explode: false,
+		}
+		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.IdempotencyKey))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode header")
+		}
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, ImportProfileOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeImportProfileResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -17197,6 +17617,154 @@ func (c *Client) sendTransferMemberObjects(ctx context.Context, request *Transfe
 	return result, nil
 }
 
+// UpdateCapsuleProfile invokes updateCapsuleProfile operation.
+//
+// Re-pins the Capsule's harness setups and git identity to what a new Capsule in its Project would
+// pin. Refused with 409 while a Run or Thread session is active. The next session start applies the
+// new pin.
+//
+// POST /capsules/{capsuleId}/profile-update
+func (c *Client) UpdateCapsuleProfile(ctx context.Context, params UpdateCapsuleProfileParams) (UpdateCapsuleProfileRes, error) {
+	res, err := c.sendUpdateCapsuleProfile(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendUpdateCapsuleProfile(ctx context.Context, params UpdateCapsuleProfileParams) (res UpdateCapsuleProfileRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("updateCapsuleProfile"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/capsules/{capsuleId}/profile-update"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, UpdateCapsuleProfileOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/capsules/"
+	{
+		// Encode "capsuleId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "capsuleId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.CapsuleId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/profile-update"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "EncodeHeaderParams"
+	h := uri.NewHeaderEncoder(r.Header)
+	{
+		cfg := uri.HeaderParameterEncodingConfig{
+			Name:    "Idempotency-Key",
+			Explode: false,
+		}
+		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.IdempotencyKey))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode header")
+		}
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, UpdateCapsuleProfileOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeUpdateCapsuleProfileResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // UpdateCoordinationGrant invokes updateCoordinationGrant operation.
 //
 // Changes spawn approval, limits, harnesses, deadline, deadline action, or archiveAfter on an active
@@ -17341,6 +17909,137 @@ func (c *Client) sendUpdateCoordinationGrant(ctx context.Context, request *Updat
 
 	stage = "DecodeResponse"
 	result, err := decodeUpdateCoordinationGrantResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// UpdateProfile invokes updateProfile operation.
+//
+// A default connection is a suggestion, never a grant. The gateway checks only Project grants, and
+// this call changes none.
+//
+// PUT /profile
+func (c *Client) UpdateProfile(ctx context.Context, request *UpdateProfileRequest, params UpdateProfileParams) (UpdateProfileRes, error) {
+	res, err := c.sendUpdateProfile(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendUpdateProfile(ctx context.Context, request *UpdateProfileRequest, params UpdateProfileParams) (res UpdateProfileRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("updateProfile"),
+		semconv.HTTPRequestMethodKey.String("PUT"),
+		semconv.URLTemplateKey.String("/profile"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, UpdateProfileOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/profile"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "PUT", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeUpdateProfileRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "EncodeHeaderParams"
+	h := uri.NewHeaderEncoder(r.Header)
+	{
+		cfg := uri.HeaderParameterEncodingConfig{
+			Name:    "Idempotency-Key",
+			Explode: false,
+		}
+		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.IdempotencyKey))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode header")
+		}
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, UpdateProfileOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeUpdateProfileResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
