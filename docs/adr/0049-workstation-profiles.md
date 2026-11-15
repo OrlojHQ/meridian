@@ -285,8 +285,9 @@ remote gateway and is treated as untrusted.
   (with its ADR 0048 name) and the account from `GET /auth/me`: the signed-in
   member in team mode, or "this installation" in single-user mode. Save is
   disabled until the window has a signed-in session for that origin. If the
-  user switches gateway or signs out before saving, the window closes
-  without uploading.
+  user switches gateway before saving, the window closes without uploading.
+  If they sign out, the session the window holds stops working, so a Save
+  is refused by the gateway and nothing is uploaded.
 - **Upload only on Save, as the signed-in user.** The shell reads the main
   window's session cookie for that one origin through Tauri's webview cookie
   API. The page is not involved. The shell passes the cookie to
@@ -337,8 +338,9 @@ without uploading anything the user has not looked at.
   `GET /auth/me`. It stores no file contents and no paths. Nothing goes to
   the gateway until Save.
 - **What the user sees.** When the digest differs from the active gateway's
-  baseline, the tray gets a "Review setup changes…" item and a badge, and
-  the OS shows one notification. Each new digest notifies at most once. The
+  baseline, the tray's import item becomes "Review setup changes…" and the
+  OS shows one notification. The tray icon is not changed, since it already
+  means a Thread needs you. Each new digest notifies at most once. The
   notification and tray item are content-free, following the threat model's
   notification rule: they say "Your Meridian setup changed" and nothing else, with
   no harness names, file names, or counts. Clicking either one opens the

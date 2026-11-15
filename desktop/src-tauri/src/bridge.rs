@@ -18,24 +18,28 @@ use url::Url;
 pub const WINDOW: &str = "main";
 
 /// Commands a gateway page may call through `window.__MERIDIAN_DESKTOP__`.
-pub const COMMANDS: [&str; 6] = [
+pub const COMMANDS: [&str; 7] = [
     "desktop_notify",
     "desktop_set_attention",
     "desktop_open_gateway",
     "desktop_gateway",
     "desktop_update_check",
     "desktop_update_install",
+    // Opens the shell-owned import window. No arguments, and it returns only
+    // whether the window opened (ADR 0049).
+    "desktop_open_import",
 ];
 
 /// The app permissions that allow [`COMMANDS`]. The picker's own permissions
 /// (`capabilities/local.json`) are never granted to a gateway origin.
-pub const PERMISSIONS: [&str; 6] = [
+pub const PERMISSIONS: [&str; 7] = [
     "allow-desktop-notify",
     "allow-desktop-set-attention",
     "allow-desktop-open-gateway",
     "allow-desktop-gateway",
     "allow-desktop-update-check",
     "allow-desktop-update-install",
+    "allow-desktop-open-import",
 ];
 
 pub fn is_bridge_command(command: &str) -> bool {
@@ -296,6 +300,31 @@ mod tests {
         // The recent list is the picker's: a gateway page cannot read or
         // change which other gateways the operator uses.
         assert!(!is_bridge_command("gateway_forget"));
+    }
+
+    /// The import window (ADR 0049) has its own local capability. A gateway
+    /// page can only open it; it cannot read its state, save, or dismiss.
+    #[test]
+    fn import_window_capability_stays_local() {
+        let import: serde_json::Value =
+            serde_json::from_str(include_str!("../capabilities/import.json")).unwrap();
+        assert!(import.get("remote").is_none());
+        assert_eq!(import["windows"], serde_json::json!(["import"]));
+        let permissions = import["permissions"].as_array().unwrap();
+        for permission in PERMISSIONS {
+            assert!(!permissions.contains(&serde_json::Value::from(permission)));
+        }
+        for command in [
+            "import_state",
+            "import_save",
+            "import_dismiss",
+            "import_cancel",
+            "setup_check_state",
+            "setup_check_set",
+        ] {
+            assert!(!is_bridge_command(command), "{command}");
+        }
+        assert!(is_bridge_command("desktop_open_import"));
     }
 
     #[test]

@@ -188,3 +188,38 @@ button:disabled, input:disabled { cursor: default; opacity: 0.7; }
   background: var(--danger-bg);
   color: var(--danger);
 }
+
+/* Import window (ADR 0049) */
+body.import main { max-width: 40rem; text-align: left; }
+body.import h1 { font-size: 1.4rem; }
+body.import .harness { margin: 1rem 0; padding: 0.75rem 1rem; border: 1px solid color-mix(in srgb, currentColor 20%, transparent); border-radius: 0.6rem; }
+body.import .harness h2, body.import .git h2 { font-size: 1rem; margin: 0 0 0.4rem; }
+body.import .harness h3 { font-size: 0.85rem; margin: 0.6rem 0 0.2rem; opacity: 0.8; }
+body.import ul { margin: 0; padding-left: 1.2rem; font-family: ui-monospace, monospace; font-size: 0.85rem; overflow-wrap: anywhere; }
+body.import .note { opacity: 0.75; font-size: 0.9rem; }
+body.import .actions { display: flex; gap: 0.5rem; margin-top: 1rem; }
+body.import button.secondary { background: transparent; color: inherit; border: 1px solid color-mix(in srgb, currentColor 30%, transparent); }
+.setup-check { display: flex; gap: 0.5rem; align-items: flex-start; margin-top: 1.5rem; text-align: left; }
+body.import ul li.diff { list-style: none; margin-left: -1.2rem; }
+body.import .marker { display: inline-block; width: 1.2rem; font-weight: 700; }
+body.import li.added .marker, body.import li.added .tag { color: var(--accent); }
+body.import li.removed .marker, body.import li.removed .tag { color: var(--danger); }
+body.import li.changed .marker, body.import li.changed .tag { color: var(--muted); }
+body.import .tag { font-family: system-ui, sans-serif; font-size: 0.8rem; }
+/* A disabled action must not look like one you can click. */
+body.import button:disabled {
+  opacity: 1;
+  cursor: not-allowed;
+  background: transparent;
+  color: var(--muted);
+  border: 1px dashed color-mix(in srgb, currentColor 40%, transparent);
+}
+body.import button[hidden] { display: none; }
+.setup-check strong, .setup-check small { display: block; }
+.setup-check small { margin-top: 0.2rem; line-height: 1.4; }
+.setup-check input { margin-top: 0.2rem; flex: none; }
+body.import details summary { cursor: pointer; font-family: system-ui, sans-serif; }
+body.import details ul { margin-top: 0.25rem; }
+body.import .actions { flex-wrap: wrap; }
+body.import .actions button { width: auto; flex: 1 1 auto; white-space: nowrap; }
+body.import ul li:has(> details) { list-style: none; margin-left: -1.2rem; }
