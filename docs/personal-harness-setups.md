@@ -65,7 +65,7 @@ In the desktop app you never need a terminal. Click **Review this computer's
 setup** on the first-run screen, or **Import this computer's setup…** in the
 tray menu. A window from the app lists what it found, what it keeps and leaves
 out, your git identity, and the gateway and account it will save to. Click
-**Save**, **Not now**, or **Cancel**. Nothing leaves your computer until Save.
+**Save**, **Don't ask about this change**, or **Cancel**. Nothing leaves your computer until Save.
 
 The app uses the same importer as `meridian import`, run in the background by
 its bundled gateway binary. The gateway page in the main window can only open
@@ -74,7 +74,7 @@ that window; it is never told what was found.
 While the app is open it checks this computer at launch, on wake, and every
 30 minutes. When something a Save would send has changed, it shows one
 notification, "Your Meridian setup changed", and the tray item becomes
-**Review setup changes…**. **Not now** stops that change from prompting again.
+**Review setup changes…**. **Don't ask about this change** stops that change from prompting again without uploading it.
 Turn this off with **Check this computer for setup changes** in the app's
 gateway screen (Tray → Gateway…). It is on by default.
 

@@ -218,3 +218,8 @@ body.import button[hidden] { display: none; }
 .setup-check strong, .setup-check small { display: block; }
 .setup-check small { margin-top: 0.2rem; line-height: 1.4; }
 .setup-check input { margin-top: 0.2rem; flex: none; }
+body.import details summary { cursor: pointer; font-family: system-ui, sans-serif; }
+body.import details ul { margin-top: 0.25rem; }
+body.import .actions { flex-wrap: wrap; }
+body.import .actions button { width: auto; flex: 1 1 auto; white-space: nowrap; }
+body.import ul li:has(> details) { list-style: none; margin-left: -1.2rem; }

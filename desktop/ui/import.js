@@ -12,7 +12,8 @@ const dismiss = document.querySelector("#dismiss");
 const cancel = document.querySelector("#cancel");
 const status = document.querySelector("#status");
 
-const names = { codex: "Codex", claude: "Claude", opencode: "OpenCode", pi: "Pi", dsh: "DeepSeek Harness" };
+// The same names the web UI uses (frontend/src/shell/capsuleActivity.ts).
+const names = { codex: "Codex", claude: "Claude Code", opencode: "OpenCode", pi: "Pi", dsh: "DeepSeek Harness" };
 const harnessName = (id) => names[id] || id;
 
 function invoke(command) {
@@ -39,6 +40,33 @@ function setStatus(text, isError) {
   status.textContent = text || "";
   status.setAttribute("role", isError ? "alert" : "status");
   status.classList.toggle("error", Boolean(isError));
+}
+
+// What an import leaves out, one line per reason. A reason shared by more
+// than three items, such as Codex's runtime caches and logs, is one line with
+// a count that expands to the full list.
+function exclusions(issues) {
+  const groups = new Map();
+  for (const issue of issues) {
+    if (!groups.has(issue.reason)) groups.set(issue.reason, []);
+    groups.get(issue.reason).push(issue.path);
+  }
+  const list = element("ul");
+  for (const [reason, paths] of groups) {
+    if (paths.length <= 3) {
+      for (const path of paths) list.append(element("li", `${path}: ${reason}`));
+      continue;
+    }
+    const item = element("li");
+    const details = element("details");
+    details.append(element("summary", `${paths.length} items: ${reason}`));
+    const inner = element("ul");
+    for (const path of paths) inner.append(element("li", path));
+    details.append(inner);
+    item.append(details);
+    list.append(item);
+  }
+  return list;
 }
 
 function renderReview(message, label) {
@@ -86,8 +114,7 @@ function renderReview(message, label) {
       section.append(element("h3", "No longer on this computer"));
       section.append(gone);
     }
-    const left = element("ul");
-    for (const issue of preview.issues || []) left.append(element("li", `${issue.path}: ${issue.reason}`));
+    const left = exclusions(preview.issues || []);
     if (left.childElementCount) {
       section.append(element("h3", "Left out"));
       section.append(left);
@@ -123,6 +150,9 @@ function renderReview(message, label) {
 }
 
 let done = false;
+// The review arrives once; rendering it again on every poll would close any
+// expanded group and replace the buttons under the pointer.
+let rendered = false;
 async function refresh() {
   if (done) return;
   let state;
@@ -136,7 +166,10 @@ async function refresh() {
   const messages = Array.isArray(state.messages) ? state.messages : [];
   const last = messages[messages.length - 1];
   const review = messages.find((message) => message.type === "review");
-  if (review) renderReview(review, label);
+  if (review && !rendered) {
+    renderReview(review, label);
+    rendered = true;
+  }
   if (!last) {
     if (state.finished) {
       setStatus("The import stopped. Close this window and try again.", true);
