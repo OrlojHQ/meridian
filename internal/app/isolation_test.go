@@ -175,7 +175,7 @@ func TestReconcilerDoesNotRetryUnmetIsolation(t *testing.T) {
 	// the failure names the requirement, and the provider saw no create at
 	// all, so no retry can follow.
 	time.Sleep(50 * time.Millisecond)
-	if !strings.Contains(failed.Failure, "isolation requirement unmet") {
+	if !strings.Contains(failed.Failure, "sandbox isolation is required") {
 		t.Fatalf("failed Capsule failure = %q", failed.Failure)
 	}
 	if got := provider.Calls("create"); got != 0 {

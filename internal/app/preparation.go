@@ -17,10 +17,15 @@ import (
 
 var errProjectSetup = errors.New("project setup failed")
 
-// errIsolationUnmet marks a provider.Create refused by the Project's
-// isolation floor (ADR 0050). The reconciler stops retrying it: no retry
-// changes the provider's verified class or the Project's requirement.
-var errIsolationUnmet = errors.New("isolation requirement unmet")
+// isolationUnmet marks a provider.Create refused by the Project's isolation
+// floor or by the provider's own RuntimeClass verification (ADR 0050). The
+// reconciler stops retrying it: no retry changes the provider's verified
+// class or the Project's requirement. It adds no text and keeps the cause
+// (ErrUnsupported) in the chain for the recorded failure and its callers.
+type isolationUnmet struct{ err error }
+
+func (e *isolationUnmet) Error() string { return e.err.Error() }
+func (e *isolationUnmet) Unwrap() error { return e.err }
 
 // requireIsolation checks the Capsule's Project isolation floor before the
 // reconciler asks the provider for a resource. The provider rechecks its own
@@ -36,7 +41,7 @@ func (r *Reconciler) requireIsolation(ctx context.Context, capsule domain.Capsul
 		return err
 	}
 	if err := requireProjectIsolation(project, r.isolation); err != nil {
-		return fmt.Errorf("%w: %v", errIsolationUnmet, err)
+		return &isolationUnmet{err: err}
 	}
 	return nil
 }
@@ -53,7 +58,7 @@ func (r *Reconciler) createBehindIsolation(
 	if err != nil && errors.Is(err, domain.ErrUnsupported) {
 		// The provider refused its own RuntimeClass verification. No retry
 		// changes that outcome.
-		return resource, fmt.Errorf("%w: %v", errIsolationUnmet, err)
+		return resource, &isolationUnmet{err: err}
 	}
 	return resource, err
 }

@@ -219,7 +219,8 @@ func (r *Reconciler) process(ctx context.Context, id domain.CapsuleID) {
 		if errors.Is(err, errProjectSetup) {
 			break
 		}
-		if errors.Is(err, errIsolationUnmet) {
+		var unmet *isolationUnmet
+		if errors.As(err, &unmet) {
 			break
 		}
 		var startup *domain.StartupFailure
