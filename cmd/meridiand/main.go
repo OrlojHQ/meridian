@@ -174,8 +174,8 @@ func newRootCommand() *cobra.Command {
 		"isolation class meridiand verifies through the RuntimeClass: sandbox or microvm (empty reports container)",
 		func(value string) error {
 			class := domain.IsolationClass(value)
-			if value != "" && !class.Valid() {
-				return fmt.Errorf("%w: unknown isolation class %q", domain.ErrInvalid, value)
+			if value != "" && class != domain.IsolationSandbox && class != domain.IsolationMicroVM {
+				return fmt.Errorf("%w: isolation class must be sandbox or microvm, got %q", domain.ErrInvalid, value)
 			}
 			config.AgentSandbox.IsolationClass = class
 			return nil

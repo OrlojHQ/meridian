@@ -151,6 +151,13 @@ func TestConfigIsolationValidation(t *testing.T) {
 		func() Config { c := valid; c.IsolationClass = domain.IsolationMicroVM; return c }(),
 		// Unknown classes are refused.
 		func() Config { c := valid; c.IsolationClass = "vm"; return c }(),
+		// container is the empty default and has no handler set to verify.
+		func() Config {
+			c := valid
+			c.IsolationClass = domain.IsolationContainer
+			c.RuntimeClass = testRuntimeClass
+			return c
+		}(),
 		// Handlers need a stronger class than container.
 		func() Config {
 			c := valid
@@ -259,10 +266,11 @@ func TestCapabilitiesIsolationRejects(t *testing.T) {
 		t.Fatalf("verification error %q does not name the offending handler", err.Error())
 	}
 
-	// A missing RuntimeClass fails with the fixed NotFound sentence.
+	// A missing RuntimeClass is a verification failure, never ErrNotFound,
+	// which the reconciler reads as a deleted Capsule.
 	provider, _, _ = isolationProvider(t, config, "")
 	_, err = provider.Capabilities(context.Background())
-	if !errors.Is(err, domain.ErrNotFound) {
+	if !errors.Is(err, domain.ErrUnsupported) || errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("missing RuntimeClass error = %v", err)
 	}
 	if !strings.Contains(err.Error(), `does not exist`) {

@@ -16,42 +16,36 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// mergeConfig overlays the isolation fields onto the base integration config.
-func mergeConfig(base, isolation Config) Config {
-	base.RuntimeClass = isolation.RuntimeClass
-	base.IsolationClass = isolation.IsolationClass
-	base.IsolationHandlers = isolation.IsolationHandlers
-	return base
-}
-
-func TestIntegrationLifecycle(t *testing.T) {
-	if os.Getenv("MERIDIAN_AGENTSANDBOX_TEST") != "1" {
-		t.Skip("set MERIDIAN_AGENTSANDBOX_TEST=1 for the opt-in cluster test")
+// TestIntegrationIsolation checks ADR 0050 RuntimeClass verification
+// against a real API server. Kind runs no Kata or gVisor runtime, so it never
+// creates a Sandbox on the isolating class: "refuse" proves a never-isolating
+// handler is refused before any side effect, and "verify" proves the handler
+// check and Capabilities report only.
+func TestIntegrationIsolation(t *testing.T) {
+	mode := os.Getenv("MERIDIAN_AGENTSANDBOX_ISOLATION_MODE")
+	if os.Getenv("MERIDIAN_AGENTSANDBOX_TEST") != "1" || mode == "" {
+		t.Skip("set MERIDIAN_AGENTSANDBOX_TEST=1 and MERIDIAN_AGENTSANDBOX_ISOLATION_MODE for the opt-in cluster test")
 	}
 	namespace := os.Getenv("MERIDIAN_AGENTSANDBOX_NAMESPACE")
 	image := os.Getenv("MERIDIAN_CAPSULE_IMAGE")
-	if namespace == "" || image == "" {
-		t.Skip("MERIDIAN_AGENTSANDBOX_NAMESPACE and MERIDIAN_CAPSULE_IMAGE are required")
+	runtimeClass := os.Getenv("MERIDIAN_AGENTSANDBOX_RUNTIME_CLASS")
+	class := domain.IsolationClass(os.Getenv("MERIDIAN_AGENTSANDBOX_ISOLATION_CLASS"))
+	if namespace == "" || image == "" || runtimeClass == "" || class == "" {
+		t.Fatal("namespace, image, runtime class, and isolation class are required")
 	}
-	// The ADR 0050 negative run sets an isolation class whose RuntimeClass
-	// exists in the cluster but uses a never-isolating handler; Create must
-	// refuse it before any Sandbox side effect.
-	if class := os.Getenv("AGENTSANDBOX_TEST_REFUSE_ISOLATION"); class != "" {
-		runtimeClass := os.Getenv("AGENTSANDBOX_TEST_RUNTIME_CLASS")
-		if runtimeClass == "" {
-			t.Fatal("AGENTSANDBOX_TEST_RUNTIME_CLASS is required with AGENTSANDBOX_TEST_REFUSE_ISOLATION")
-		}
-		provider, err := New(Config{
-			Namespace: namespace, Image: image, NamePrefix: "meridian-it",
-			RuntimeClass: runtimeClass, IsolationClass: domain.IsolationClass(class),
-			VolumeSize: "1Gi", TTL: time.Hour, OperationTimeout: 3 * time.Minute,
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer provider.Close()
-		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-		defer cancel()
+	provider, err := New(Config{
+		Namespace: namespace, Image: image, NamePrefix: "meridian-it",
+		RuntimeClass: runtimeClass, IsolationClass: class,
+		VolumeSize: "1Gi", TTL: time.Hour, OperationTimeout: time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer provider.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	switch mode {
+	case "refuse":
 		if _, err := provider.Create(ctx, ports.CreateCapsuleRequest{
 			CapsuleID: domain.CapsuleID("integration-refuse-" + time.Now().UTC().Format("20060102-150405.000000000")),
 		}); !errors.Is(err, domain.ErrUnsupported) {
@@ -64,24 +58,32 @@ func TestIntegrationLifecycle(t *testing.T) {
 		if len(sandboxes.Items) != 0 {
 			t.Fatalf("refused create still produced %d Sandboxes", len(sandboxes.Items))
 		}
-		return
-	}
-	// The positive run verifies the configured RuntimeClass handler and
-	// reports its class through Capabilities.
-	var isolationConfig Config
-	if runtimeClass := os.Getenv("MERIDIAN_AGENTSANDBOX_RUNTIME_CLASS"); runtimeClass != "" {
-		isolationClass := os.Getenv("MERIDIAN_AGENTSANDBOX_ISOLATION_CLASS")
-		if isolationClass == "" {
-			t.Fatal("MERIDIAN_AGENTSANDBOX_ISOLATION_CLASS is required with MERIDIAN_AGENTSANDBOX_RUNTIME_CLASS")
+	case "verify":
+		capabilities, err := provider.Capabilities(ctx)
+		if err != nil {
+			t.Fatal(err)
 		}
-		isolationConfig = Config{
-			RuntimeClass: runtimeClass, IsolationClass: domain.IsolationClass(isolationClass),
+		if capabilities.Isolation != class {
+			t.Fatalf("verified isolation = %q, want %q", capabilities.Isolation, class)
 		}
+	default:
+		t.Fatalf("unknown MERIDIAN_AGENTSANDBOX_ISOLATION_MODE %q", mode)
 	}
-	provider, err := New(mergeConfig(Config{
+}
+
+func TestIntegrationLifecycle(t *testing.T) {
+	if os.Getenv("MERIDIAN_AGENTSANDBOX_TEST") != "1" {
+		t.Skip("set MERIDIAN_AGENTSANDBOX_TEST=1 for the opt-in cluster test")
+	}
+	namespace := os.Getenv("MERIDIAN_AGENTSANDBOX_NAMESPACE")
+	image := os.Getenv("MERIDIAN_CAPSULE_IMAGE")
+	if namespace == "" || image == "" {
+		t.Skip("MERIDIAN_AGENTSANDBOX_NAMESPACE and MERIDIAN_CAPSULE_IMAGE are required")
+	}
+	provider, err := New(Config{
 		Namespace: namespace, Image: image, NamePrefix: "meridian-it",
 		VolumeSize: "1Gi", TTL: time.Hour, OperationTimeout: 3 * time.Minute,
-	}, isolationConfig))
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,12 +109,6 @@ func TestIntegrationLifecycle(t *testing.T) {
 	capabilities, err := provider.Capabilities(ctx)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if isolationConfig.IsolationClass != "" && capabilities.Isolation != isolationConfig.IsolationClass {
-		t.Fatalf(
-			"verified isolation = %q, want %q",
-			capabilities.Isolation, isolationConfig.IsolationClass,
-		)
 	}
 	if !capabilities.Snapshot || !capabilities.Clone || !capabilities.Preview {
 		t.Fatalf("capsuled transport capabilities = %#v", capabilities)

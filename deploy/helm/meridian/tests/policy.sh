@@ -274,6 +274,12 @@ if "$HELM" template invalid "$CHART" --kube-version 1.36.0 \
   echo "values schema accepted an unknown isolation class" >&2
   exit 1
 fi
+# container is the empty default, not a declarable class.
+if "$HELM" template invalid "$CHART" --kube-version 1.36.0 \
+  --set agentSandbox.isolationClass=container --set agentSandbox.runtimeClassName=kata >/dev/null 2>&1; then
+  echo "values schema accepted container as a declared isolation class" >&2
+  exit 1
+fi
 # Handlers without a class are refused.
 if "$HELM" template invalid "$CHART" --kube-version 1.36.0 \
   --set agentSandbox.isolationHandlers[0]=acme-vm >/dev/null 2>&1; then

@@ -58,7 +58,7 @@
       "properties": {
         "namespace": {"type": "string"}, "class": {"type": "string"},
         "runtimeClassName": {"type": "string"},
-        "isolationClass": {"type": "string", "enum": ["", "container", "sandbox", "microvm"]},
+        "isolationClass": {"type": "string", "enum": ["", "sandbox", "microvm"]},
         "isolationHandlers": {
           "type": "array", "maxItems": 16,
           "items": {"type": "string", "pattern": "^[a-z]([-a-z0-9]*[a-z0-9])?$"}

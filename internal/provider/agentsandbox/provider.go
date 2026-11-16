@@ -134,8 +134,11 @@ func (c Config) withDefaults() (Config, error) {
 	}
 	c.IsolationHandlers = handlers
 	if c.IsolationClass != "" {
-		if !c.IsolationClass.Valid() {
-			return Config{}, fmt.Errorf("%w: unknown isolation class %q", domain.ErrInvalid, c.IsolationClass)
+		if c.IsolationClass != domain.IsolationSandbox && c.IsolationClass != domain.IsolationMicroVM {
+			return Config{}, fmt.Errorf(
+				"%w: declared isolation class must be sandbox or microvm (leave it empty for container), got %q",
+				domain.ErrInvalid, c.IsolationClass,
+			)
 		}
 		if c.RuntimeClass == "" {
 			return Config{}, fmt.Errorf(
@@ -144,8 +147,7 @@ func (c Config) withDefaults() (Config, error) {
 			)
 		}
 	}
-	if c.IsolationClass != domain.IsolationSandbox && c.IsolationClass != domain.IsolationMicroVM &&
-		len(c.IsolationHandlers) > 0 {
+	if c.IsolationClass == "" && len(c.IsolationHandlers) > 0 {
 		return Config{}, fmt.Errorf(
 			"%w: isolation handlers require a sandbox or microvm isolation class",
 			domain.ErrInvalid,

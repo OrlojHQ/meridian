@@ -145,8 +145,10 @@ func (p *Provider) readRuntimeClass(ctx context.Context) (nodev1.RuntimeClass, s
 	class, err := p.core.NodeV1().RuntimeClasses().Get(ctx, p.config.RuntimeClass, metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
+			// Not ErrNotFound: the reconciler reads that as "the Capsule is
+			// gone" and would stop without recording a failure.
 			return nodev1.RuntimeClass{}, "", "", fmt.Errorf(
-				"%w: RuntimeClass %q does not exist", domain.ErrNotFound, p.config.RuntimeClass,
+				"%w: RuntimeClass %q does not exist", domain.ErrUnsupported, p.config.RuntimeClass,
 			)
 		}
 		if apierrors.IsForbidden(err) {
