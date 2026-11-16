@@ -65,7 +65,7 @@ const thread: Thread = {
 };
 
 const capabilities: Capabilities = {
-  providerVersion: "docker/v1",
+  providerVersion: "docker/v1", isolation: "container" as const,
   attach: false,
   run: false,
   structured: false,

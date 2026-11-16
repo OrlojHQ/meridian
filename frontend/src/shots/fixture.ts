@@ -329,6 +329,7 @@ function route(pathname: string): unknown {
       delivery: true,
       preview: true,
       resourceMetrics: false,
+      isolation: "container",
       ptyFallback: true,
       harnessImages: catalog,
     };

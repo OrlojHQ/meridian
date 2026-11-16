@@ -26,17 +26,23 @@ func (p *Provider) RestoreWorkspace(context.Context, string, string, int64, io.R
 type Options struct {
 	Delay    time.Duration
 	Failures map[string]int
+	// Unsupported counts ErrUnsupported refusals per operation, for tests of
+	// refusal paths (for example a Project isolation floor the provider
+	// cannot meet). Unlike Failures they are not retried by the reconciler.
+	Unsupported map[string]int
 	// CreateHook runs after an injected failure check and before the
 	// resource is recorded. Tests use it to publish startup progress.
 	CreateHook func(context.Context, ports.CreateCapsuleRequest) error
 }
 
 type Provider struct {
-	mu         sync.Mutex
-	resources  map[string]ports.ProviderResource
-	delay      time.Duration
-	failures   map[string]int
-	createHook func(context.Context, ports.CreateCapsuleRequest) error
+	mu          sync.Mutex
+	resources   map[string]ports.ProviderResource
+	delay       time.Duration
+	failures    map[string]int
+	unsupported map[string]int
+	calls       map[string]int
+	createHook  func(context.Context, ports.CreateCapsuleRequest) error
 }
 
 func New(options Options) *Provider {
@@ -44,12 +50,26 @@ func New(options Options) *Provider {
 	for operation, count := range options.Failures {
 		failures[operation] = count
 	}
-	return &Provider{
-		resources:  make(map[string]ports.ProviderResource),
-		delay:      options.Delay,
-		failures:   failures,
-		createHook: options.CreateHook,
+	unsupported := make(map[string]int, len(options.Unsupported))
+	for operation, count := range options.Unsupported {
+		unsupported[operation] = count
 	}
+	return &Provider{
+		resources:   make(map[string]ports.ProviderResource),
+		delay:       options.Delay,
+		failures:    failures,
+		unsupported: unsupported,
+		calls:       make(map[string]int),
+		createHook:  options.CreateHook,
+	}
+}
+
+// Calls reports how many times an operation was attempted, including
+// refused attempts. Tests use it to assert that a refusal was not retried.
+func (p *Provider) Calls(operation string) int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.calls[operation]
 }
 
 func (p *Provider) Capabilities(ctx context.Context) (ports.ProviderCapabilities, error) {
@@ -264,9 +284,14 @@ func (p *Provider) before(ctx context.Context, operation string) error {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.calls[operation]++
 	if p.failures[operation] > 0 {
 		p.failures[operation]--
 		return fmt.Errorf("injected test provider %s failure", operation)
+	}
+	if p.unsupported[operation] > 0 {
+		p.unsupported[operation]--
+		return fmt.Errorf("%w: injected test provider %s refusal", domain.ErrUnsupported, operation)
 	}
 	return nil
 }

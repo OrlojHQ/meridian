@@ -949,8 +949,11 @@ func (*CancelThreadUnprocessableEntity) cancelThreadRes() {}
 // Ref: #/components/schemas/Capabilities
 type Capabilities struct {
 	ProviderVersion string `json:"providerVersion"`
-	Attach          bool   `json:"attach"`
-	Run             bool   `json:"run"`
+	// The isolation class the provider actually verified against its own runtime configuration, never
+	// merely what was declared. A provider without a verifiable boundary reports container (ADR 0050).
+	Isolation IsolationClass `json:"isolation"`
+	Attach    bool           `json:"attach"`
+	Run       bool           `json:"run"`
 	// True only when the provider and runtime expose meridian.adapter.v1 structured sessions.
 	Structured         OptBool                           `json:"structured"`
 	StructuredProtocol OptCapabilitiesStructuredProtocol `json:"structuredProtocol"`
@@ -980,6 +983,11 @@ type Capabilities struct {
 // GetProviderVersion returns the value of ProviderVersion.
 func (s *Capabilities) GetProviderVersion() string {
 	return s.ProviderVersion
+}
+
+// GetIsolation returns the value of Isolation.
+func (s *Capabilities) GetIsolation() IsolationClass {
+	return s.Isolation
 }
 
 // GetAttach returns the value of Attach.
@@ -1060,6 +1068,11 @@ func (s *Capabilities) GetHarnessImages() []HarnessImage {
 // SetProviderVersion sets the value of ProviderVersion.
 func (s *Capabilities) SetProviderVersion(val string) {
 	s.ProviderVersion = val
+}
+
+// SetIsolation sets the value of Isolation.
+func (s *Capabilities) SetIsolation(val IsolationClass) {
+	s.Isolation = val
 }
 
 // SetAttach sets the value of Attach.
@@ -3832,6 +3845,9 @@ type CreateProjectRequest struct {
 	CommitAuthorName    OptString `json:"commitAuthorName"`
 	CommitAuthorEmail   OptString `json:"commitAuthorEmail"`
 	DefaultBaseBranch   OptString `json:"defaultBaseBranch"`
+	// Minimum isolation class every Capsule in this Project must run behind (ADR 0050). Omit for no
+	// requirement. Set once at creation; later requests cannot change it.
+	RequiredIsolation OptIsolationClass `json:"requiredIsolation"`
 }
 
 // GetName returns the value of Name.
@@ -3894,6 +3910,11 @@ func (s *CreateProjectRequest) GetDefaultBaseBranch() OptString {
 	return s.DefaultBaseBranch
 }
 
+// GetRequiredIsolation returns the value of RequiredIsolation.
+func (s *CreateProjectRequest) GetRequiredIsolation() OptIsolationClass {
+	return s.RequiredIsolation
+}
+
 // SetName sets the value of Name.
 func (s *CreateProjectRequest) SetName(val string) {
 	s.Name = val
@@ -3952,6 +3973,11 @@ func (s *CreateProjectRequest) SetCommitAuthorEmail(val OptString) {
 // SetDefaultBaseBranch sets the value of DefaultBaseBranch.
 func (s *CreateProjectRequest) SetDefaultBaseBranch(val OptString) {
 	s.DefaultBaseBranch = val
+}
+
+// SetRequiredIsolation sets the value of RequiredIsolation.
+func (s *CreateProjectRequest) SetRequiredIsolation(val OptIsolationClass) {
+	s.RequiredIsolation = val
 }
 
 type CreateProjectThreadBadRequest ErrorEnvelope
@@ -4021,6 +4047,10 @@ func (s *CreateProjectThreadRequest) SetCoordination(val OptCoordinationPolicy) 
 type CreateProjectThreadUnprocessableEntity ErrorEnvelope
 
 func (*CreateProjectThreadUnprocessableEntity) createProjectThreadRes() {}
+
+type CreateProjectUnprocessableEntity ErrorEnvelope
+
+func (*CreateProjectUnprocessableEntity) createProjectRes() {}
 
 type CreateShardBadRequest ErrorEnvelope
 
@@ -6675,6 +6705,58 @@ type InspectCapsuleDeliveryUnprocessableEntity ErrorEnvelope
 
 func (*InspectCapsuleDeliveryUnprocessableEntity) inspectCapsuleDeliveryRes() {}
 
+// Strength of the boundary a Capsule runs behind (ADR 0050). container is ordinary namespace sharing.
+// sandbox adds a user-space kernel boundary. microvm adds a hardware virtualization boundary. A
+// stronger class satisfies a weaker requirement. Empty means no requirement or none declared.
+// Ref: #/components/schemas/IsolationClass
+type IsolationClass string
+
+const (
+	IsolationClassContainer IsolationClass = "container"
+	IsolationClassSandbox   IsolationClass = "sandbox"
+	IsolationClassMicrovm   IsolationClass = "microvm"
+)
+
+// AllValues returns all IsolationClass values.
+func (IsolationClass) AllValues() []IsolationClass {
+	return []IsolationClass{
+		IsolationClassContainer,
+		IsolationClassSandbox,
+		IsolationClassMicrovm,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s IsolationClass) MarshalText() ([]byte, error) {
+	switch s {
+	case IsolationClassContainer:
+		return []byte(s), nil
+	case IsolationClassSandbox:
+		return []byte(s), nil
+	case IsolationClassMicrovm:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *IsolationClass) UnmarshalText(data []byte) error {
+	switch IsolationClass(data) {
+	case IsolationClassContainer:
+		*s = IsolationClassContainer
+		return nil
+	case IsolationClassSandbox:
+		*s = IsolationClassSandbox
+		return nil
+	case IsolationClassMicrovm:
+		*s = IsolationClassMicrovm
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
 // Ref: #/components/schemas/LifecycleMutationRequest
 type LifecycleMutationRequest struct {
 	ExpectedResourceVersion int64 `json:"expectedResourceVersion"`
@@ -8486,6 +8568,52 @@ func (o OptInt64) Get() (v int64, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptInt64) Or(d int64) int64 {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptIsolationClass returns new OptIsolationClass with value set to v.
+func NewOptIsolationClass(v IsolationClass) OptIsolationClass {
+	return OptIsolationClass{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptIsolationClass is optional IsolationClass.
+type OptIsolationClass struct {
+	Value IsolationClass
+	Set   bool
+}
+
+// IsSet returns true if OptIsolationClass was set.
+func (o OptIsolationClass) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptIsolationClass) Reset() {
+	var v IsolationClass
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptIsolationClass) SetTo(v IsolationClass) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptIsolationClass) Get() (v IsolationClass, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptIsolationClass) Or(d IsolationClass) IsolationClass {
 	if v, ok := o.Get(); ok {
 		return v
 	}
@@ -10587,20 +10715,23 @@ func (s *ProfileImportSetup) SetReport(val HarnessSetupReport) {
 
 // Ref: #/components/schemas/Project
 type Project struct {
-	ID                  string          `json:"id"`
-	Name                string          `json:"name"`
-	RepositoryUrl       OptString       `json:"repositoryUrl"`
-	Setup               []string        `json:"setup"`
-	ImageReference      OptString       `json:"imageReference"`
-	HarnessImages       []HarnessImage  `json:"harnessImages"`
-	GitSecretName       OptString       `json:"gitSecretName"`
-	HarnessSecretNames  []string        `json:"harnessSecretNames"`
-	GitPushSecretName   OptString       `json:"gitPushSecretName"`
-	GithubAPISecretName OptString       `json:"githubAPISecretName"`
-	CommitAuthorName    OptString       `json:"commitAuthorName"`
-	CommitAuthorEmail   OptString       `json:"commitAuthorEmail"`
-	DefaultBaseBranch   OptString       `json:"defaultBaseBranch"`
-	State               OptProjectState `json:"state"`
+	ID                  string         `json:"id"`
+	Name                string         `json:"name"`
+	RepositoryUrl       OptString      `json:"repositoryUrl"`
+	Setup               []string       `json:"setup"`
+	ImageReference      OptString      `json:"imageReference"`
+	HarnessImages       []HarnessImage `json:"harnessImages"`
+	GitSecretName       OptString      `json:"gitSecretName"`
+	HarnessSecretNames  []string       `json:"harnessSecretNames"`
+	GitPushSecretName   OptString      `json:"gitPushSecretName"`
+	GithubAPISecretName OptString      `json:"githubAPISecretName"`
+	CommitAuthorName    OptString      `json:"commitAuthorName"`
+	CommitAuthorEmail   OptString      `json:"commitAuthorEmail"`
+	DefaultBaseBranch   OptString      `json:"defaultBaseBranch"`
+	// Minimum isolation class every Capsule in this Project must run behind (ADR 0050). Omitted when the
+	// Project has no requirement.
+	RequiredIsolation OptIsolationClass `json:"requiredIsolation"`
+	State             OptProjectState   `json:"state"`
 	// Why deletion stopped. Set when state is failed.
 	Failure         OptString `json:"failure"`
 	CreatedAt       time.Time `json:"createdAt"`
@@ -10671,6 +10802,11 @@ func (s *Project) GetCommitAuthorEmail() OptString {
 // GetDefaultBaseBranch returns the value of DefaultBaseBranch.
 func (s *Project) GetDefaultBaseBranch() OptString {
 	return s.DefaultBaseBranch
+}
+
+// GetRequiredIsolation returns the value of RequiredIsolation.
+func (s *Project) GetRequiredIsolation() OptIsolationClass {
+	return s.RequiredIsolation
 }
 
 // GetState returns the value of State.
@@ -10761,6 +10897,11 @@ func (s *Project) SetCommitAuthorEmail(val OptString) {
 // SetDefaultBaseBranch sets the value of DefaultBaseBranch.
 func (s *Project) SetDefaultBaseBranch(val OptString) {
 	s.DefaultBaseBranch = val
+}
+
+// SetRequiredIsolation sets the value of RequiredIsolation.
+func (s *Project) SetRequiredIsolation(val OptIsolationClass) {
+	s.RequiredIsolation = val
 }
 
 // SetState sets the value of State.

@@ -245,6 +245,19 @@ The scriptable equivalent creates and auto-starts without attaching:
 meridian capsule create PROJECT_ID review --harness opencode
 ```
 
+A Project can require a minimum isolation class for every Capsule it creates
+(ADR 0050). `meridian project create` accepts the class once at creation; later
+commands cannot change it, and the daemon refuses the Project when its provider
+verified a weaker class:
+
+```console
+meridian project create --require-isolation sandbox
+```
+
+Valid classes are `container`, `sandbox`, and `microvm`; a stronger class
+satisfies a weaker requirement. `project list` and the other Project output add
+`required-isolation=CLASS` when a Project has one.
+
 Enter on an existing Capsule attaches its active native Run. If the Capsule is
 Ready and idle, Enter starts a new Run from its frozen launcher harness and
 attaches. Creating/Preparing Capsules wait for their initial Run. A legacy

@@ -133,3 +133,41 @@ func TestProjectApplyHarnessAllowlistsCustomImageByProfileName(t *testing.T) {
 		t.Fatal("empty custom image reference was accepted")
 	}
 }
+
+func TestProjectCreateSendsRequiredIsolation(t *testing.T) {
+	const project = `{"id":"project-1","name":"demo","setup":[],` +
+		`"harnessImages":[{"name":"mock","imageReference":"capsule:dev"}],` +
+		`"requiredIsolation":"sandbox","harnessSecretNames":[],` +
+		`"createdAt":"2026-11-15T12:00:00Z","updatedAt":"2026-11-15T12:00:00Z","resourceVersion":1,` +
+		`"state":"active","failure":""}`
+	var created string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		value, _ := io.ReadAll(request.Body)
+		created = string(value)
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusCreated)
+		_, _ = io.WriteString(writer, project)
+	}))
+	defer server.Close()
+	var output bytes.Buffer
+	config := &cliConfig{server: server.URL, tokenFile: testAPITokenFile(t), json: true, stdout: &output}
+	root := &cobra.Command{Use: "meridian", SilenceUsage: true, SilenceErrors: true}
+	root.AddCommand(newProjectCommand(config))
+	root.SetArgs([]string{"project", "create", "demo", "--require-isolation", "sandbox"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(created, `"requiredIsolation":"sandbox"`) {
+		t.Fatalf("create request = %s", created)
+	}
+	if !strings.Contains(output.String(), `"requiredIsolation":"sandbox"`) {
+		t.Fatalf("project output = %s", output.String())
+	}
+
+	// An unknown class is refused locally with the domain error.
+	root.SetArgs([]string{"project", "create", "demo", "--require-isolation", "vm"})
+	if err := root.Execute(); err == nil ||
+		!strings.Contains(err.Error(), `unknown isolation class "vm"`) {
+		t.Fatalf("unknown class error = %v", err)
+	}
+}

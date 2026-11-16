@@ -27,6 +27,7 @@ type Reconciler struct {
 	artifacts     ports.ArtifactStore
 	observer      ports.Observer
 	providerName  string
+	isolation     domain.IsolationClass
 	secretKey     *secrets.InstallationKey
 	sessionReady  func(context.Context, domain.Capsule) error
 	launcherReady func(context.Context, domain.Capsule) error
@@ -55,6 +56,13 @@ func (r *Reconciler) ConfigureRuntimeRecovery(
 	failRuns func(context.Context, domain.Capsule) error,
 ) {
 	r.runtimeStopped = failRuns
+}
+
+// ConfigureIsolation records the isolation class the provider verified (ADR
+// 0050). The daemon sets it once from Capabilities, after its own
+// installation-wide floor check refused to start on a weaker provider.
+func (r *Reconciler) ConfigureIsolation(class domain.IsolationClass) {
+	r.isolation = class
 }
 
 func (r *Reconciler) ConfigureSecrets(key *secrets.InstallationKey) {
@@ -209,6 +217,10 @@ func (r *Reconciler) process(ctx context.Context, id domain.CapsuleID) {
 			return
 		}
 		if errors.Is(err, errProjectSetup) {
+			break
+		}
+		var unmet *isolationUnmet
+		if errors.As(err, &unmet) {
 			break
 		}
 		var startup *domain.StartupFailure
@@ -366,7 +378,7 @@ func (r *Reconciler) reconcile(ctx context.Context, id domain.CapsuleID) error {
 			createRequest.Restore = true
 		}
 		started := time.Now()
-		resource, err := r.provider.Create(ctx, createRequest)
+		resource, err := r.createBehindIsolation(ctx, capsule, createRequest)
 		if createRequest.GitCredential != nil {
 			createRequest.GitCredential.Username = ""
 			createRequest.GitCredential.Password = ""

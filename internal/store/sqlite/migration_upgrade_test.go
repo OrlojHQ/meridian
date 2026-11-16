@@ -373,3 +373,76 @@ func TestMigrationTwentyTwoDropsSavedMockHarness(t *testing.T) {
 		t.Fatalf("explicit allowlist = %d %v", version, got)
 	}
 }
+
+func TestMigrationThirtyBackfillsRequiredIsolationEmpty(t *testing.T) {
+	ctx := context.Background()
+	dataDir := t.TempDir()
+	db, err := sql.Open("sqlite", filepath.Join(dataDir, "meridian.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		CREATE TABLE schema_migrations (
+			version INTEGER PRIMARY KEY,
+			name TEXT NOT NULL UNIQUE,
+			applied_at TEXT NOT NULL
+		)`); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := fs.ReadDir(migrations.Files, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".sql" || entry.Name() >= "0030" {
+			continue
+		}
+		content, err := migrations.Files.ReadFile(entry.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(string(content)); err != nil {
+			t.Fatalf("apply %s: %v", entry.Name(), err)
+		}
+		prefix, _, _ := strings.Cut(entry.Name(), "_")
+		version, _ := strconv.Atoi(prefix)
+		if _, err := db.Exec(
+			"INSERT INTO schema_migrations(version, name, applied_at) VALUES (?, ?, ?)",
+			version, entry.Name(), "2026-01-01T00:00:00Z",
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	created := "2026-08-24T12:00:00Z"
+	// The bootstrap owner exists from migration 0023; only the Project needs
+	// seeding here.
+	if _, err := db.Exec(`
+		INSERT INTO projects(id, name, created_at, updated_at, resource_version, owner_user_id)
+		VALUES ('existing', 'existing', ?, ?, 1, ?)`, created, created, domain.BootstrapOwnerID,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := sqlite.Open(ctx, dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	var project domain.Project
+	if err := store.View(ctx, func(reader ports.Reader) error {
+		var err error
+		project, err = reader.GetProject(ctx, "existing")
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// A pre-0030 Project has no requirement: it accepts whatever the
+	// installation provides, as it did before the column existed.
+	if project.RequiredIsolation != "" {
+		t.Fatalf("required isolation = %q, want empty", project.RequiredIsolation)
+	}
+}

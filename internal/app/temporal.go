@@ -498,6 +498,9 @@ func (s *Service) createDescendant(
 		if err != nil {
 			return err
 		}
+		if err := requireProjectIsolation(project, s.isolation); err != nil {
+			return err
+		}
 		now := s.clock.Now().UTC()
 		capsuleID := domain.CapsuleID(s.ids.NewID())
 		timelineID := domain.TimelineID(s.ids.NewID())

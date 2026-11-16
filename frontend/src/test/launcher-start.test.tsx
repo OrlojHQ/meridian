@@ -98,7 +98,7 @@ it("preselects the only live connection instead of asking to sign in again", asy
 
 it("preselects the only live connection on a thread and says it cannot show a browser login", async () => {
   vi.spyOn(api, "capabilities").mockResolvedValue({
-    providerVersion: "docker/v2", attach: true, run: true, structured: true, git: false, pause: false,
+    providerVersion: "docker/v2", isolation: "container" as const, attach: true, run: true, structured: true, git: false, pause: false,
     snapshot: false, clone: false, browse: false, delivery: false, preview: false, resourceMetrics: false, harnessImages: [],
   });
   vi.spyOn(api, "projectConnection").mockResolvedValue({ connectionId: "" });
@@ -148,7 +148,7 @@ it("shows a custom endpoint's default model on the start form", async () => {
 
 it("blocks a thread when the harness has no usable connection", async () => {
   vi.spyOn(api, "capabilities").mockResolvedValue({
-    providerVersion: "docker/v2", attach: true, run: true, structured: true, git: false, pause: false,
+    providerVersion: "docker/v2", isolation: "container" as const, attach: true, run: true, structured: true, git: false, pause: false,
     snapshot: false, clone: false, browse: false, delivery: false, preview: false, resourceMetrics: false, harnessImages: [],
   });
   vi.spyOn(api, "projectConnection").mockResolvedValue({ connectionId: "" });

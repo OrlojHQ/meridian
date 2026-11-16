@@ -239,7 +239,7 @@ describe("Native harness launcher", () => {
   it("adds an installed agent to a Project without leaving the launcher", async () => {
     const opencode = launcherProject.harnessImages![0]!;
     vi.spyOn(api, "capabilities").mockResolvedValue({
-      providerVersion: "docker/v1",
+      providerVersion: "docker/v1", isolation: "container" as const,
       attach: true,
       run: true,
       structured: false,
@@ -278,7 +278,7 @@ describe("Native harness launcher", () => {
     imageReference: "ghcr.io/orlojhq/meridian-capsule:v1",
   };
   const structuredCapabilities = {
-    providerVersion: "docker/v2",
+    providerVersion: "docker/v2", isolation: "container" as const,
     attach: true,
     run: true,
     structured: true,
@@ -564,7 +564,7 @@ describe("Capsule detail states", () => {
     });
     const moments = vi.spyOn(api, "moments").mockResolvedValue({ items: [] });
     vi.spyOn(api, "capabilities").mockResolvedValue({
-      providerVersion: "docker/v1",
+      providerVersion: "docker/v1", isolation: "container" as const,
       attach: false,
       run: false,
       structured: true,
@@ -610,7 +610,7 @@ describe("Capsule detail states", () => {
     });
     vi.spyOn(api, "moments").mockResolvedValue({ items: [] });
     vi.spyOn(api, "capabilities").mockResolvedValue({
-      providerVersion: "docker/v1",
+      providerVersion: "docker/v1", isolation: "container" as const,
       attach: false,
       run: false,
       structured: true,
@@ -651,7 +651,7 @@ describe("Capsule detail states", () => {
       items: [{ name: "opencode-structured", structured: true, pty: false }],
     });
     vi.spyOn(api, "capabilities").mockResolvedValue({
-      providerVersion: "docker/v1",
+      providerVersion: "docker/v1", isolation: "container" as const,
       attach: false,
       run: false,
       structured: true,
@@ -688,7 +688,7 @@ describe("Capsule detail states", () => {
     vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
     vi.spyOn(api, "harnessProfiles").mockResolvedValue({ items: [] });
     vi.spyOn(api, "capabilities").mockResolvedValue({
-      providerVersion: "docker/v1",
+      providerVersion: "docker/v1", isolation: "container" as const,
       attach: false,
       run: false,
       structured: false,
@@ -727,7 +727,7 @@ describe("Capsule detail states", () => {
       items: [{ name: "claude", structured: false, pty: true }],
     });
     vi.spyOn(api, "capabilities").mockResolvedValue({
-      providerVersion: "docker/v2",
+      providerVersion: "docker/v2", isolation: "container" as const,
       attach: false,
       run: false,
       structured: true,
@@ -791,7 +791,7 @@ describe("Capsule detail states", () => {
     vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
     vi.spyOn(api, "harnessProfiles").mockResolvedValue({ items: [] });
     vi.spyOn(api, "capabilities").mockResolvedValue({
-      providerVersion: "docker/v2",
+      providerVersion: "docker/v2", isolation: "container" as const,
       attach: false,
       run: true,
       structured: true,
@@ -868,7 +868,7 @@ describe("Capsule detail states", () => {
     vi.spyOn(api, "capsule").mockResolvedValue(nativeCapsule);
     vi.spyOn(api, "runs").mockResolvedValue({ items: [running] });
     vi.spyOn(api, "capabilities").mockResolvedValue({
-      providerVersion: "docker/v2",
+      providerVersion: "docker/v2", isolation: "container" as const,
       attach: false,
       run: true,
       git: false,
@@ -916,7 +916,7 @@ describe("Capsule detail states", () => {
     vi.spyOn(api, "capsule").mockResolvedValue(nativeCapsule);
     vi.spyOn(api, "runs").mockResolvedValue({ items: [failedRun] });
     vi.spyOn(api, "capabilities").mockResolvedValue({
-      providerVersion: "docker/v1",
+      providerVersion: "docker/v1", isolation: "container" as const,
       attach: true,
       run: true,
       git: false,
@@ -1064,7 +1064,7 @@ it("provides a text alternative for Timeline lineage", () => {
 
 it("reports preview capability as unavailable", async () => {
   vi.spyOn(api, "capabilities").mockResolvedValue({
-    providerVersion: "docker/v1",
+    providerVersion: "docker/v1", isolation: "container" as const,
     attach: true,
     run: true,
     git: true,
@@ -1084,7 +1084,7 @@ it("reports preview capability as unavailable", async () => {
 
 it("discovers previews and exposes expiry and revocation states", async () => {
   vi.spyOn(api, "capabilities").mockResolvedValue({
-    providerVersion: "docker/v2",
+    providerVersion: "docker/v2", isolation: "container" as const,
     attach: true,
     run: true,
     git: true,

@@ -399,6 +399,9 @@ func run(ctx context.Context, config Config) error {
 	reconciler := app.NewReconciler(store, provider, clock, ids)
 	reconciler.ConfigureSecrets(secretKey)
 	reconciler.ConfigureObserver(metrics, config.Provider)
+	// ADR 0050: Capsules are created only behind the isolation class the
+	// provider verified, which checkIsolationFloor already accepted.
+	reconciler.ConfigureIsolation(capabilities.Isolation)
 	var snapshotter ports.WorkspaceSnapshotter
 	if capabilities.Snapshot {
 		snapshotter, _ = provider.(ports.WorkspaceSnapshotter)
@@ -453,6 +456,7 @@ func run(ctx context.Context, config Config) error {
 	service.ConfigureObserver(metrics, config.Provider)
 	harnessPacks := domain.InstallationHarnessImages(installationDefaultImage(config), config.OfficialPackTag)
 	service.ConfigureHarnessPacks(harnessPacks)
+	service.ConfigureIsolation(capabilities.Isolation)
 	if capabilities.Run {
 		if runtime == nil {
 			_ = httpServer.Close()

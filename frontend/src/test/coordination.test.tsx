@@ -42,7 +42,7 @@ const project: Project = {
 };
 
 const capabilities = (coordination: boolean): Capabilities => ({
-  providerVersion: "docker/v2",
+  providerVersion: "docker/v2", isolation: "container" as const,
   attach: true,
   run: true,
   structured: true,

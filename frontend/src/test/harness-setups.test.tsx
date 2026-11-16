@@ -42,7 +42,7 @@ it("offers no provider connection to a harness capsuled cannot configure",async(
  expect(screen.queryByLabelText("Provider connection")).toBeNull();expect(screen.queryByRole("link",{name:"Connect provider"})).toBeNull();
 });
 it("grants a custom endpoint connection to a DeepSeek Harness task before spawning it",async()=>{
- vi.spyOn(api,"capabilities").mockResolvedValue({providerVersion:"docker/v2",attach:true,run:true,structured:true,git:false,pause:false,snapshot:false,clone:false,browse:false,delivery:false,preview:false,resourceMetrics:false,harnessImages:[]});
+ vi.spyOn(api,"capabilities").mockResolvedValue({providerVersion:"docker/v2",attach:true,run:true,structured:true,git:false,pause:false,snapshot:false,clone:false,browse:false,delivery:false,preview:false,resourceMetrics:false,isolation:"container",harnessImages:[]});
  vi.spyOn(api,"projectConnection").mockResolvedValue({connectionId:""});
  vi.spyOn(api,"providerConnections").mockResolvedValue({enabled:true,items:[
   {id:"official",provider:"openai",name:"OpenAI",createdAt:setup.createdAt,resourceVersion:1,revoked:false},

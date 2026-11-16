@@ -94,6 +94,7 @@ type Service struct {
 	artifacts     ports.ArtifactStore
 	observer      ports.Observer
 	providerName  string
+	isolation     domain.IsolationClass
 	structured    ports.StructuredRuntime
 	profiles      ports.HarnessProfileRuntime
 	harnessPacks  []domain.HarnessPack
@@ -170,6 +171,13 @@ func (s *Service) ConfigureHarnessPacks(packs []domain.HarnessPack) {
 	s.harnessPacks = append([]domain.HarnessPack(nil), packs...)
 }
 
+// ConfigureIsolation records the isolation class the provider verified (ADR
+// 0050). The daemon sets it once from Capabilities, after its own
+// installation-wide floor check refused to start on a weaker provider.
+func (s *Service) ConfigureIsolation(class domain.IsolationClass) {
+	s.isolation = class
+}
+
 func (s *Service) ConfigureTemporal(
 	snapshotter ports.WorkspaceSnapshotter,
 	artifacts ports.ArtifactStore,
@@ -243,6 +251,10 @@ type ProjectConfiguration struct {
 	CommitAuthorName    string
 	CommitAuthorEmail   string
 	DefaultBaseBranch   string
+	// RequiredIsolation is the minimum isolation class every Capsule in the
+	// Project must run behind (ADR 0050). It is set at creation and never
+	// updated.
+	RequiredIsolation domain.IsolationClass
 }
 
 func (s *Service) CreateProject(ctx context.Context, name, idempotencyKey string) (domain.Project, error) {
@@ -286,6 +298,14 @@ func (s *Service) CreateProjectConfigured(
 			result = replay
 			return nil
 		}
+		// A Project this installation could never serve is refused at
+		// creation (ADR 0050): no weaker Project may exist to accept
+		// Capsules the provider cannot isolate.
+		if err := requireProjectIsolation(domain.Project{
+			RequiredIsolation: config.RequiredIsolation,
+		}, s.isolation); err != nil {
+			return err
+		}
 		owner, err := ownerOf(ctx)
 		if err != nil {
 			return err
@@ -306,6 +326,7 @@ func (s *Service) CreateProjectConfigured(
 			CommitAuthorName:    config.CommitAuthorName,
 			CommitAuthorEmail:   config.CommitAuthorEmail,
 			DefaultBaseBranch:   config.DefaultBaseBranch,
+			RequiredIsolation:   config.RequiredIsolation,
 			State:               domain.ProjectActive,
 			CreatedAt:           now,
 			UpdatedAt:           now,
@@ -392,6 +413,9 @@ func validateProjectConfiguration(config ProjectConfiguration) error {
 	if config.DefaultBaseBranch != "" && (!validBranch(config.DefaultBaseBranch) ||
 		strings.HasPrefix(config.DefaultBaseBranch, "refs/")) {
 		return fmt.Errorf("%w: default base branch is invalid", domain.ErrInvalid)
+	}
+	if config.RequiredIsolation != "" && !config.RequiredIsolation.Valid() {
+		return fmt.Errorf("%w: unknown isolation class %q", domain.ErrInvalid, config.RequiredIsolation)
 	}
 	if len(config.HarnessSecretNames) > 64 {
 		return fmt.Errorf("%w: too many authorized harness secrets", domain.ErrInvalid)
@@ -575,6 +599,9 @@ func (s *Service) CreateCapsuleForHarness(
 			return err
 		}
 		if err := projectAcceptsWork(project); err != nil {
+			return err
+		}
+		if err := requireProjectIsolation(project, s.isolation); err != nil {
 			return err
 		}
 		image := ""

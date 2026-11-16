@@ -195,7 +195,7 @@ func TestGeneratedClientLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler := httpapi.NewWithCapabilities(service, ports.ProviderCapabilities{
-		Run: true, Attach: true, Structured: true,
+		Run: true, Attach: true, Structured: true, Isolation: domain.IsolationContainer,
 	}, apiToken)
 	handler.SetReady(true)
 	server := httptest.NewServer(handler)
@@ -696,7 +696,7 @@ func TestHarnessCatalogInteractionModes(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler := httpapi.NewWithCapabilities(service, ports.ProviderCapabilities{
-		Run: true, Attach: true, Structured: true,
+		Run: true, Attach: true, Structured: true, Isolation: domain.IsolationContainer,
 	}, apiToken)
 	handler.SetHarnessPacks(packs)
 	handler.SetReady(true)
@@ -772,4 +772,155 @@ func TestHarnessCatalogInteractionModes(t *testing.T) {
 	if accepted := spawn("mock"); accepted.Code != http.StatusAccepted {
 		t.Fatalf("mock spawn = %d %s", accepted.Code, accepted.Body.String())
 	}
+}
+
+func TestCapabilitiesReportVerifiedIsolation(t *testing.T) {
+	ctx := principal.With(context.Background(), principal.Owner())
+	api, _, _ := newIsolationTestServer(t, ctx, domain.IsolationSandbox)
+	capabilities, err := api.GetCapabilities(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := capabilities.(*client.Capabilities).Isolation; got != client.IsolationClassSandbox {
+		t.Fatalf("capabilities isolation = %q, want sandbox", got)
+	}
+}
+
+func TestProjectRequiredIsolationRoundTrip(t *testing.T) {
+	ctx := principal.With(context.Background(), principal.Owner())
+	api, handler, _ := newIsolationTestServer(t, ctx, domain.IsolationSandbox)
+	created, err := api.CreateProject(
+		ctx,
+		&client.CreateProjectRequest{
+			Name:              "isolated",
+			RequiredIsolation: client.NewOptIsolationClass(client.IsolationClassSandbox),
+		},
+		client.CreateProjectParams{IdempotencyKey: "isolated-project"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	project := created.(*client.ProjectHeaders).Response
+	if required, ok := project.RequiredIsolation.Get(); !ok || required != client.IsolationClassSandbox {
+		t.Fatalf("created project requiredIsolation = %#v", project.RequiredIsolation)
+	}
+	fetched, err := api.GetProject(ctx, client.GetProjectParams{ProjectId: project.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fetchedProject := fetched.(*client.ProjectHeaders).Response
+	if required, ok := fetchedProject.RequiredIsolation.Get(); !ok ||
+		required != client.IsolationClassSandbox {
+		t.Fatalf("fetched project requiredIsolation = %#v", fetchedProject.RequiredIsolation)
+	}
+
+	// A Project without a requirement omits the field entirely.
+	plain, err := api.CreateProject(
+		ctx,
+		&client.CreateProjectRequest{Name: "plain"},
+		client.CreateProjectParams{IdempotencyKey: "plain-project"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plainProject := plain.(*client.ProjectHeaders).Response
+	if _, ok := plainProject.RequiredIsolation.Get(); ok {
+		t.Fatalf("plain project requiredIsolation = %#v", plainProject.RequiredIsolation)
+	}
+	rawResponse := httptest.NewRecorder()
+	rawRequest := httptest.NewRequest(http.MethodGet, "/projects/"+plainProject.ID, nil)
+	rawRequest.Header.Set("Authorization", "Bearer "+isolationAPITokenValue)
+	handler.ServeHTTP(rawResponse, rawRequest)
+	if rawResponse.Code != http.StatusOK ||
+		strings.Contains(rawResponse.Body.String(), "requiredIsolation") {
+		t.Fatalf("plain project body = %d %s", rawResponse.Code, rawResponse.Body.String())
+	}
+}
+
+func TestCreateProjectRejectsUnknownIsolationClass(t *testing.T) {
+	ctx := principal.With(context.Background(), principal.Owner())
+	api, _, _ := newIsolationTestServer(t, ctx, domain.IsolationSandbox)
+	result, err := api.CreateProject(
+		ctx,
+		&client.CreateProjectRequest{
+			Name:              "bad",
+			RequiredIsolation: client.NewOptIsolationClass(client.IsolationClass("vm")),
+		},
+		client.CreateProjectParams{IdempotencyKey: "bad-project"},
+	)
+	if err != nil {
+		t.Fatalf("generated client rejected the value before the server: %v", err)
+	}
+	bad, ok := result.(*client.CreateProjectBadRequest)
+	if !ok || bad.Error.Code != "invalid_request" ||
+		!strings.Contains(bad.Error.Message, `unknown isolation class "vm"`) {
+		t.Fatalf("create project response = %#v (%T)", result, result)
+	}
+}
+
+func TestCreateProjectRefusesUnmetIsolation(t *testing.T) {
+	ctx := principal.With(context.Background(), principal.Owner())
+	// The daemon verified only container isolation; microvm exceeds that floor.
+	api, _, _ := newIsolationTestServer(t, ctx, domain.IsolationContainer)
+	result, err := api.CreateProject(
+		ctx,
+		&client.CreateProjectRequest{
+			Name:              "too-strong",
+			RequiredIsolation: client.NewOptIsolationClass(client.IsolationClassMicrovm),
+		},
+		client.CreateProjectParams{IdempotencyKey: "too-strong-project"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	refused, ok := result.(*client.CreateProjectUnprocessableEntity)
+	if !ok || refused.Error.Code != "unsupported" ||
+		!strings.Contains(refused.Error.Message,
+			"microvm isolation is required; this installation provides container") {
+		t.Fatalf("create project response = %#v (%T)", result, result)
+	}
+}
+
+const isolationAPITokenValue = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+
+// newIsolationTestServer starts an HTTP API server whose daemon verified the
+// given isolation class. It returns the generated client, the raw handler, and
+// the server (for callers that need the base URL).
+func newIsolationTestServer(
+	t *testing.T, ctx context.Context, verified domain.IsolationClass,
+) (*client.Client, http.Handler, *httptest.Server) {
+	t.Helper()
+	store, err := sqlite.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+	idSource := &ids{}
+	reconciler := app.NewReconciler(store, fake.New(fake.Options{}), clock{}, idSource)
+	runtime := &runtime{}
+	service := app.NewService(store, clock{}, idSource, reconciler, runtime)
+	key, err := transcripts.NewInstallationKey("http-isolation-test", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(key.Zero)
+	service.ConfigureThreads(runtime, key)
+	service.ConfigureIsolation(verified)
+	reconciler.ConfigureProjectThreads(service.ReconcileProjectThreadCapsule)
+	reconciler.ConfigureIsolation(verified)
+	apiToken, err := apiauth.ParseToken(isolationAPITokenValue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := httpapi.NewWithCapabilities(service, ports.ProviderCapabilities{
+		Run: true, Attach: true, Structured: true, Isolation: verified,
+	}, apiToken)
+	handler.SetReady(true)
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+	api, err := client.NewClient(server.URL, testSecuritySource{token: isolationAPITokenValue})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return api, handler, server
 }

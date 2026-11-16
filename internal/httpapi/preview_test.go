@@ -212,7 +212,7 @@ func TestPreviewHTTPFlowReuseCrossScopeAndDeletionRevocation(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := NewWithPreview(service, ports.ProviderCapabilities{
-		Version: "preview/v1", Preview: true,
+		Version: "preview/v1", Preview: true, Isolation: domain.IsolationContainer,
 	}, "http://127.0.0.1:9191", apiToken)
 	discovery := httptest.NewRecorder()
 	discoveryRequest := httptest.NewRequest(

@@ -56,6 +56,7 @@ var principalExempt = map[string]string{
 	"ConfigureHarnessProfiles":      "startup wiring",
 	"ConfigureHarnessPacks":         "startup wiring",
 	"ConfigureTemporal":             "startup wiring",
+	"ConfigureIsolation":            "startup wiring",
 	"SetClaudeTokenURL":             "startup wiring",
 	// Installation capability flags; they name no object.
 	"ChatGPTAvailable":                 "capability flag",

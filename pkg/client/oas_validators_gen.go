@@ -744,6 +744,17 @@ func (s *Capabilities) Validate() error {
 
 	var failures []validate.FieldError
 	if err := func() error {
+		if err := s.Isolation.Validate(); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		failures = append(failures, validate.FieldError{
+			Name:  "isolation",
+			Error: err,
+		})
+	}
+	if err := func() error {
 		if value, ok := s.StructuredProtocol.Get(); ok {
 			if err := func() error {
 				if err := value.Validate(); err != nil {
@@ -3187,6 +3198,24 @@ func (s *CreateProjectRequest) Validate() error {
 			Error: err,
 		})
 	}
+	if err := func() error {
+		if value, ok := s.RequiredIsolation.Get(); ok {
+			if err := func() error {
+				if err := value.Validate(); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return err
+			}
+		}
+		return nil
+	}(); err != nil {
+		failures = append(failures, validate.FieldError{
+			Name:  "requiredIsolation",
+			Error: err,
+		})
+	}
 	if len(failures) > 0 {
 		return &validate.Error{Fields: failures}
 	}
@@ -5228,6 +5257,19 @@ func (s *ImportProfileRequest) Validate() error {
 	return nil
 }
 
+func (s IsolationClass) Validate() error {
+	switch s {
+	case "container":
+		return nil
+	case "sandbox":
+		return nil
+	case "microvm":
+		return nil
+	default:
+		return errors.Errorf("invalid value: %v", s)
+	}
+}
+
 func (s *LifecycleMutationRequest) Validate() error {
 	if s == nil {
 		return validate.ErrNilPointer
@@ -6212,6 +6254,24 @@ func (s *Project) Validate() error {
 	}(); err != nil {
 		failures = append(failures, validate.FieldError{
 			Name:  "harnessImages",
+			Error: err,
+		})
+	}
+	if err := func() error {
+		if value, ok := s.RequiredIsolation.Get(); ok {
+			if err := func() error {
+				if err := value.Validate(); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return err
+			}
+		}
+		return nil
+	}(); err != nil {
+		failures = append(failures, validate.FieldError{
+			Name:  "requiredIsolation",
 			Error: err,
 		})
 	}

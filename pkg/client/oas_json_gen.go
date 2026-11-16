@@ -2315,6 +2315,10 @@ func (s *Capabilities) encodeFields(e *jx.Encoder) {
 		e.Str(s.ProviderVersion)
 	}
 	{
+		e.FieldStart("isolation")
+		s.Isolation.Encode(e)
+	}
+	{
 		e.FieldStart("attach")
 		e.Bool(s.Attach)
 	}
@@ -2390,23 +2394,24 @@ func (s *Capabilities) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfCapabilities = [16]string{
+var jsonFieldsNameOfCapabilities = [17]string{
 	0:  "providerVersion",
-	1:  "attach",
-	2:  "run",
-	3:  "structured",
-	4:  "structuredProtocol",
-	5:  "ptyFallback",
-	6:  "git",
-	7:  "pause",
-	8:  "snapshot",
-	9:  "clone",
-	10: "preview",
-	11: "browse",
-	12: "delivery",
-	13: "resourceMetrics",
-	14: "coordination",
-	15: "harnessImages",
+	1:  "isolation",
+	2:  "attach",
+	3:  "run",
+	4:  "structured",
+	5:  "structuredProtocol",
+	6:  "ptyFallback",
+	7:  "git",
+	8:  "pause",
+	9:  "snapshot",
+	10: "clone",
+	11: "preview",
+	12: "browse",
+	13: "delivery",
+	14: "resourceMetrics",
+	15: "coordination",
+	16: "harnessImages",
 }
 
 // Decode decodes Capabilities from json.
@@ -2414,7 +2419,7 @@ func (s *Capabilities) Decode(d *jx.Decoder) error {
 	if s == nil {
 		return errors.New("invalid: unable to decode Capabilities to nil")
 	}
-	var requiredBitSet [2]uint8
+	var requiredBitSet [3]uint8
 
 	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
 		switch string(k) {
@@ -2430,8 +2435,18 @@ func (s *Capabilities) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"providerVersion\"")
 			}
-		case "attach":
+		case "isolation":
 			requiredBitSet[0] |= 1 << 1
+			if err := func() error {
+				if err := s.Isolation.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"isolation\"")
+			}
+		case "attach":
+			requiredBitSet[0] |= 1 << 2
 			if err := func() error {
 				v, err := d.Bool()
 				s.Attach = bool(v)
@@ -2443,7 +2458,7 @@ func (s *Capabilities) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"attach\"")
 			}
 		case "run":
-			requiredBitSet[0] |= 1 << 2
+			requiredBitSet[0] |= 1 << 3
 			if err := func() error {
 				v, err := d.Bool()
 				s.Run = bool(v)
@@ -2485,7 +2500,7 @@ func (s *Capabilities) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"ptyFallback\"")
 			}
 		case "git":
-			requiredBitSet[0] |= 1 << 6
+			requiredBitSet[0] |= 1 << 7
 			if err := func() error {
 				v, err := d.Bool()
 				s.Git = bool(v)
@@ -2497,7 +2512,7 @@ func (s *Capabilities) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"git\"")
 			}
 		case "pause":
-			requiredBitSet[0] |= 1 << 7
+			requiredBitSet[1] |= 1 << 0
 			if err := func() error {
 				v, err := d.Bool()
 				s.Pause = bool(v)
@@ -2509,7 +2524,7 @@ func (s *Capabilities) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"pause\"")
 			}
 		case "snapshot":
-			requiredBitSet[1] |= 1 << 0
+			requiredBitSet[1] |= 1 << 1
 			if err := func() error {
 				v, err := d.Bool()
 				s.Snapshot = bool(v)
@@ -2521,7 +2536,7 @@ func (s *Capabilities) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"snapshot\"")
 			}
 		case "clone":
-			requiredBitSet[1] |= 1 << 1
+			requiredBitSet[1] |= 1 << 2
 			if err := func() error {
 				v, err := d.Bool()
 				s.Clone = bool(v)
@@ -2533,7 +2548,7 @@ func (s *Capabilities) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"clone\"")
 			}
 		case "preview":
-			requiredBitSet[1] |= 1 << 2
+			requiredBitSet[1] |= 1 << 3
 			if err := func() error {
 				v, err := d.Bool()
 				s.Preview = bool(v)
@@ -2545,7 +2560,7 @@ func (s *Capabilities) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"preview\"")
 			}
 		case "browse":
-			requiredBitSet[1] |= 1 << 3
+			requiredBitSet[1] |= 1 << 4
 			if err := func() error {
 				v, err := d.Bool()
 				s.Browse = bool(v)
@@ -2557,7 +2572,7 @@ func (s *Capabilities) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"browse\"")
 			}
 		case "delivery":
-			requiredBitSet[1] |= 1 << 4
+			requiredBitSet[1] |= 1 << 5
 			if err := func() error {
 				v, err := d.Bool()
 				s.Delivery = bool(v)
@@ -2569,7 +2584,7 @@ func (s *Capabilities) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"delivery\"")
 			}
 		case "resourceMetrics":
-			requiredBitSet[1] |= 1 << 5
+			requiredBitSet[1] |= 1 << 6
 			if err := func() error {
 				v, err := d.Bool()
 				s.ResourceMetrics = bool(v)
@@ -2616,9 +2631,10 @@ func (s *Capabilities) Decode(d *jx.Decoder) error {
 	}
 	// Validate required fields.
 	var failures []validate.FieldError
-	for i, mask := range [2]uint8{
-		0b11000111,
-		0b00111111,
+	for i, mask := range [3]uint8{
+		0b10001111,
+		0b01111111,
+		0b00000000,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.
@@ -8212,9 +8228,15 @@ func (s *CreateProjectRequest) encodeFields(e *jx.Encoder) {
 			s.DefaultBaseBranch.Encode(e)
 		}
 	}
+	{
+		if s.RequiredIsolation.Set {
+			e.FieldStart("requiredIsolation")
+			s.RequiredIsolation.Encode(e)
+		}
+	}
 }
 
-var jsonFieldsNameOfCreateProjectRequest = [12]string{
+var jsonFieldsNameOfCreateProjectRequest = [13]string{
 	0:  "name",
 	1:  "repositoryUrl",
 	2:  "setup",
@@ -8227,6 +8249,7 @@ var jsonFieldsNameOfCreateProjectRequest = [12]string{
 	9:  "commitAuthorName",
 	10: "commitAuthorEmail",
 	11: "defaultBaseBranch",
+	12: "requiredIsolation",
 }
 
 // Decode decodes CreateProjectRequest from json.
@@ -8384,6 +8407,16 @@ func (s *CreateProjectRequest) Decode(d *jx.Decoder) error {
 				return nil
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"defaultBaseBranch\"")
+			}
+		case "requiredIsolation":
+			if err := func() error {
+				s.RequiredIsolation.Reset()
+				if err := s.RequiredIsolation.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"requiredIsolation\"")
 			}
 		default:
 			return d.Skip()
@@ -8737,6 +8770,44 @@ func (s *CreateProjectThreadUnprocessableEntity) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
 func (s *CreateProjectThreadUnprocessableEntity) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes CreateProjectUnprocessableEntity as json.
+func (s *CreateProjectUnprocessableEntity) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes CreateProjectUnprocessableEntity from json.
+func (s *CreateProjectUnprocessableEntity) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode CreateProjectUnprocessableEntity to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = CreateProjectUnprocessableEntity(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *CreateProjectUnprocessableEntity) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *CreateProjectUnprocessableEntity) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }
@@ -16273,6 +16344,48 @@ func (s *InspectCapsuleDeliveryUnprocessableEntity) UnmarshalJSON(data []byte) e
 	return s.Decode(d)
 }
 
+// Encode encodes IsolationClass as json.
+func (s IsolationClass) Encode(e *jx.Encoder) {
+	e.Str(string(s))
+}
+
+// Decode decodes IsolationClass from json.
+func (s *IsolationClass) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode IsolationClass to nil")
+	}
+	v, err := d.StrBytes()
+	if err != nil {
+		return err
+	}
+	// Try to use constant string.
+	switch IsolationClass(v) {
+	case IsolationClassContainer:
+		*s = IsolationClassContainer
+	case IsolationClassSandbox:
+		*s = IsolationClassSandbox
+	case IsolationClassMicrovm:
+		*s = IsolationClassMicrovm
+	default:
+		*s = IsolationClass(v)
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s IsolationClass) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *IsolationClass) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
 // Encode implements json.Marshaler.
 func (s *LifecycleMutationRequest) Encode(e *jx.Encoder) {
 	e.ObjStart()
@@ -19262,6 +19375,39 @@ func (s OptInt64) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
 func (s *OptInt64) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes IsolationClass as json.
+func (o OptIsolationClass) Encode(e *jx.Encoder) {
+	if !o.Set {
+		return
+	}
+	e.Str(string(o.Value))
+}
+
+// Decode decodes IsolationClass from json.
+func (o *OptIsolationClass) Decode(d *jx.Decoder) error {
+	if o == nil {
+		return errors.New("invalid: unable to decode OptIsolationClass to nil")
+	}
+	o.Set = true
+	if err := o.Value.Decode(d); err != nil {
+		return err
+	}
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s OptIsolationClass) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *OptIsolationClass) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }
@@ -22921,6 +23067,12 @@ func (s *Project) encodeFields(e *jx.Encoder) {
 		}
 	}
 	{
+		if s.RequiredIsolation.Set {
+			e.FieldStart("requiredIsolation")
+			s.RequiredIsolation.Encode(e)
+		}
+	}
+	{
 		if s.State.Set {
 			e.FieldStart("state")
 			s.State.Encode(e)
@@ -22946,7 +23098,7 @@ func (s *Project) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfProject = [18]string{
+var jsonFieldsNameOfProject = [19]string{
 	0:  "id",
 	1:  "name",
 	2:  "repositoryUrl",
@@ -22960,11 +23112,12 @@ var jsonFieldsNameOfProject = [18]string{
 	10: "commitAuthorName",
 	11: "commitAuthorEmail",
 	12: "defaultBaseBranch",
-	13: "state",
-	14: "failure",
-	15: "createdAt",
-	16: "updatedAt",
-	17: "resourceVersion",
+	13: "requiredIsolation",
+	14: "state",
+	15: "failure",
+	16: "createdAt",
+	17: "updatedAt",
+	18: "resourceVersion",
 }
 
 // Decode decodes Project from json.
@@ -23135,6 +23288,16 @@ func (s *Project) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"defaultBaseBranch\"")
 			}
+		case "requiredIsolation":
+			if err := func() error {
+				s.RequiredIsolation.Reset()
+				if err := s.RequiredIsolation.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"requiredIsolation\"")
+			}
 		case "state":
 			if err := func() error {
 				s.State.Reset()
@@ -23156,7 +23319,7 @@ func (s *Project) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"failure\"")
 			}
 		case "createdAt":
-			requiredBitSet[1] |= 1 << 7
+			requiredBitSet[2] |= 1 << 0
 			if err := func() error {
 				v, err := json.DecodeDateTime(d)
 				s.CreatedAt = v
@@ -23168,7 +23331,7 @@ func (s *Project) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"createdAt\"")
 			}
 		case "updatedAt":
-			requiredBitSet[2] |= 1 << 0
+			requiredBitSet[2] |= 1 << 1
 			if err := func() error {
 				v, err := json.DecodeDateTime(d)
 				s.UpdatedAt = v
@@ -23180,7 +23343,7 @@ func (s *Project) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"updatedAt\"")
 			}
 		case "resourceVersion":
-			requiredBitSet[2] |= 1 << 1
+			requiredBitSet[2] |= 1 << 2
 			if err := func() error {
 				v, err := d.Int64()
 				s.ResourceVersion = int64(v)
@@ -23202,8 +23365,8 @@ func (s *Project) Decode(d *jx.Decoder) error {
 	var failures []validate.FieldError
 	for i, mask := range [3]uint8{
 		0b00000011,
-		0b10000000,
-		0b00000011,
+		0b00000000,
+		0b00000111,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.

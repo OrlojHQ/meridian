@@ -771,6 +771,16 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "409":
           $ref: "#/components/responses/Conflict"
+        "422":
+          description: >
+            The Project's requiredIsolation exceeds the isolation class the
+            daemon's provider verified (ADR 0050). The Project is refused
+            before anything is created; no weaker Project can exist to accept
+            Capsules the installation cannot isolate.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "429":
           $ref: "#/components/responses/TooManyRequests"
         default:
@@ -3392,10 +3402,16 @@ components:
           enum: [ok, not_ready]
     Capabilities:
       type: object
-      required: [providerVersion, attach, run, git, pause, snapshot, clone, preview, browse, delivery, resourceMetrics]
+      required: [providerVersion, attach, run, git, pause, snapshot, clone, preview, browse, delivery, resourceMetrics, isolation]
       properties:
         providerVersion:
           type: string
+        isolation:
+          $ref: "#/components/schemas/IsolationClass"
+          description: >
+            The isolation class the provider actually verified against its own
+            runtime configuration, never merely what was declared. A provider
+            without a verifiable boundary reports container (ADR 0050).
         attach:
           type: boolean
         run:
@@ -3507,6 +3523,12 @@ components:
         defaultBaseBranch:
           type: string
           maxLength: 255
+        requiredIsolation:
+          $ref: "#/components/schemas/IsolationClass"
+          description: >
+            Minimum isolation class every Capsule in this Project must run
+            behind (ADR 0050). Omit for no requirement. Set once at creation;
+            later requests cannot change it.
     PatchProjectRequest:
       type: object
       required: [expectedResourceVersion, harnessImages]
@@ -3681,6 +3703,11 @@ components:
         commitAuthorName: { type: string }
         commitAuthorEmail: { type: string }
         defaultBaseBranch: { type: string }
+        requiredIsolation:
+          $ref: "#/components/schemas/IsolationClass"
+          description: >
+            Minimum isolation class every Capsule in this Project must run
+            behind (ADR 0050). Omitted when the Project has no requirement.
         state:
           $ref: "#/components/schemas/ProjectState"
         failure:
@@ -3704,6 +3731,15 @@ components:
         deleted means the Project and its transcripts, artifacts, environment,
         and exclusive named secrets are gone.
       enum: [active, deleting, failed, deleted]
+    IsolationClass:
+      type: string
+      description: >
+        Strength of the boundary a Capsule runs behind (ADR 0050). container
+        is ordinary namespace sharing. sandbox adds a user-space kernel
+        boundary. microvm adds a hardware virtualization boundary. A stronger
+        class satisfies a weaker requirement. Empty means no requirement or
+        none declared.
+      enum: [container, sandbox, microvm]
     Secret:
       type: object
       required: [id, name, purpose, createdAt, updatedAt, resourceVersion]
