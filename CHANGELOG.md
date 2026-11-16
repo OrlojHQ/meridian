@@ -7,6 +7,42 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Upgrade notes
+
+- Migration 0030 adds `projects.required_isolation`. Existing Projects read
+  back with no requirement, so nothing changes until you set one.
+- `GET /capabilities` gains a required `isolation` field and Projects gain
+  `requiredIsolation`. `pkg/client` is regenerated.
+- The Helm chart gains `requireIsolation`, `agentSandbox.isolationClass`,
+  `agentSandbox.isolationHandlers`, and `agentSandbox.startTimeout`. Setting
+  `isolationClass` adds one ClusterRole that can `get` only the configured
+  RuntimeClass; leaving it empty keeps the install namespace-scoped.
+- `agentSandbox.startTimeout` (default `10m`) now bounds the Sandbox Ready
+  wait during create, which used to share `operationTimeout` (`2m`). The TTL
+  must exceed operation plus start plus setup timeouts.
+
+### Added
+
+- Provider isolation classes (ADR 0050, #86). Every provider reports the
+  class it verified: `container`, `sandbox` (gVisor), or `microvm` (Kata).
+  Docker is always `container`. The Agent Sandbox provider reports `sandbox`
+  or `microvm` only when `--agentsandbox-isolation-class` is declared and the
+  configured RuntimeClass's handler is a known handler for that class; an
+  unknown or never-isolating handler, a missing RuntimeClass, or missing RBAC
+  stops startup. `kata-fc` is not accepted.
+- `meridiand --require-isolation` refuses to start on a weaker provider.
+- Projects can require an isolation class at creation (`requiredIsolation`,
+  `meridian project create --require-isolation`, and the New Project
+  dialog). Capsule creation refuses an unmet requirement before any side
+  effect, and the reconciler checks it again before each provider create.
+- A separate Agent Sandbox start timeout
+  (`--agentsandbox-start-timeout`) for image pull and VM boot. A timeout
+  names the last startup phase, and readiness failures report only the
+  condition's short reason, never controller or kubelet text.
+- `make agentsandbox-kata-validation`, an operator-run validation of the
+  Kata microVM profile on KVM nodes, documented with the profile in
+  `docs/kubernetes-agentsandbox.md`.
+
 ## [0.9.0] - 2026-11-14
 
 ### Upgrade notes

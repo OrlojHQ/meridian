@@ -1,6 +1,6 @@
 # ADR 0050: Provider isolation classes and verified RuntimeClasses
 
-- Status: Accepted; not yet implemented
+- Status: Accepted; implemented in v0.10.0
 - Date: 2026-11-15
 - Amends: ADR 0005 (capability advertisement names the isolation class a
   provider actually verified) and ADR 0010 (the Agent Sandbox provider reads
