@@ -386,22 +386,18 @@ func (p *Provider) Create(
 	if strings.TrimSpace(image) == "" || strings.ContainsAny(image, "\x00\r\n") {
 		return ports.ProviderResource{}, fmt.Errorf("%w: image reference is invalid", domain.ErrInvalid)
 	}
-	plan := &ports.StartupPublisher{Report: request.ReportStartup}
-	plan.SetPhases([]domain.StartupPhase{domain.PhaseCreatingCapsule, domain.PhaseConnecting})
-	plan.Progress(domain.PhaseCreatingCapsule, 0, 0)
-	// A wrapped publisher records the phase each progress report observed so
-	// a start timeout can name where the Capsule stopped; StartupPublisher
-	// itself keeps no history.
+	// One publisher for the whole create, wrapped so a start timeout can
+	// name the last phase reported. A second publisher would keep its own
+	// phase list, and the Connecting report would drop the pull phases.
 	lastPhase := domain.PhaseCreatingCapsule
-	observed := &ports.StartupPublisher{Report: func(report ports.StartupReport) {
-		if report.Phase.Valid() {
-			lastPhase = report.Phase
-		}
+	plan := &ports.StartupPublisher{Report: func(report ports.StartupReport) {
+		lastPhase = report.Phase
 		if request.ReportStartup != nil {
 			request.ReportStartup(report)
 		}
 	}}
-	observed.SetPhases([]domain.StartupPhase{domain.PhaseCreatingCapsule, domain.PhaseConnecting})
+	plan.SetPhases([]domain.StartupPhase{domain.PhaseCreatingCapsule, domain.PhaseConnecting})
+	plan.Progress(domain.PhaseCreatingCapsule, 0, 0)
 	opctx, cancel := context.WithTimeout(ctx, p.config.OperationTimeout)
 	defer cancel()
 	if err := p.recheckIsolation(opctx); err != nil {
@@ -427,7 +423,7 @@ func (p *Provider) Create(
 	startCtx, startCancel := context.WithTimeout(ctx, p.config.StartTimeout)
 	defer startCancel()
 	ready, err := p.waitForStateHook(startCtx, name, ports.ProviderReady, func(hookCtx context.Context, sandbox *sandboxv1beta1.Sandbox) error {
-		return p.observeSandboxStartup(hookCtx, sandbox, observed)
+		return p.observeSandboxStartup(hookCtx, sandbox, plan)
 	})
 	if err != nil {
 		var pull *domain.StartupFailure
@@ -437,7 +433,7 @@ func (p *Provider) Create(
 		if startCtx.Err() != nil && ctx.Err() == nil {
 			return ports.ProviderResource{}, fmt.Errorf(
 				"%w: Capsule did not become ready within %s (last phase: %s)",
-				domain.ErrUnsupported, p.config.StartTimeout, lastPhase.Label(),
+				domain.ErrStartTimeout, p.config.StartTimeout, lastPhase.Label(),
 			)
 		}
 		return ports.ProviderResource{}, err
@@ -472,13 +468,11 @@ func (p *Provider) Create(
 	if err != nil {
 		return ports.ProviderResource{}, fmt.Errorf("prepare Capsule workspace: %w", mapRuntimeError(err))
 	}
-	if opctx.Err() != nil {
-		imageCtx, imageCancel := context.WithTimeout(ctx, p.config.OperationTimeout)
-		ready.ImageDigest = p.imageIdentity(imageCtx, sandbox)
-		imageCancel()
-		return ready, nil
-	}
-	ready.ImageDigest = p.imageIdentity(opctx, sandbox)
+	// opctx covered the calls before the Ready wait and has usually expired
+	// by now (a cold pull outlasts it), so this lookup gets its own budget.
+	imageCtx, imageCancel := context.WithTimeout(ctx, p.config.OperationTimeout)
+	defer imageCancel()
+	ready.ImageDigest = p.imageIdentity(imageCtx, sandbox)
 	return ready, nil
 }
 
@@ -875,15 +869,11 @@ func safeReason(reason string) string {
 	if len(reason) == 0 || len(reason) > 64 {
 		return "Unknown"
 	}
-	for index, character := range reason {
-		if index == 0 {
-			if character < 'A' || (character > 'Z' && character < 'a') {
-				return "Unknown"
-			}
-			continue
-		}
-		if character < '0' || (character > '9' && character < 'A') ||
-			(character > 'Z' && character < 'a') {
+	for index := 0; index < len(reason); index++ {
+		character := reason[index]
+		letter := ('A' <= character && character <= 'Z') || ('a' <= character && character <= 'z')
+		digit := '0' <= character && character <= '9'
+		if !letter && (index == 0 || !digit) {
 			return "Unknown"
 		}
 	}

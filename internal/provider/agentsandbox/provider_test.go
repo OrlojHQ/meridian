@@ -903,6 +903,9 @@ func TestCreateUsesStartTimeoutForReady(t *testing.T) {
 	if !strings.Contains(err.Error(), "(last phase: Creating Capsule)") {
 		t.Fatalf("create error did not name the last phase: %v", err)
 	}
+	if !errors.Is(err, domain.ErrStartTimeout) || errors.Is(err, domain.ErrUnsupported) {
+		t.Fatalf("start timeout error class = %v, want ErrStartTimeout only", err)
+	}
 	if elapsed < 250*time.Millisecond {
 		t.Fatalf("create returned after %s; the start timeout did not govern the wait", elapsed)
 	}
@@ -945,9 +948,16 @@ func TestCreateStartTimeoutNamesLastPhase(t *testing.T) {
 		return true, sandbox, nil
 	})
 	provider.config.StartTimeout = 300 * time.Millisecond
-	_, err := provider.Create(context.Background(), ports.CreateCapsuleRequest{CapsuleID: "capsule-pulling-phase"})
+	var reports []ports.StartupReport
+	_, err := provider.Create(context.Background(), ports.CreateCapsuleRequest{
+		CapsuleID:     "capsule-pulling-phase",
+		ReportStartup: func(report ports.StartupReport) { reports = append(reports, report) },
+	})
 	if err == nil || !strings.Contains(err.Error(), "last phase: Pulling image") {
 		t.Fatalf("create = %v", err)
+	}
+	if len(reports) == 0 || reports[len(reports)-1].Phase != domain.PhasePullingImage {
+		t.Fatalf("startup reports = %#v", reports)
 	}
 }
 
@@ -986,5 +996,25 @@ func TestResourceReadinessFailureIsSanitized(t *testing.T) {
 	_, err = provider.resource(context.Background(), sandbox)
 	if err == nil || !strings.Contains(err.Error(), "Sandbox failed readiness: Unknown") {
 		t.Fatalf("unusable reason error = %v", err)
+	}
+}
+
+func TestSafeReason(t *testing.T) {
+	for reason, want := range map[string]string{
+		"PodNotReady":           "PodNotReady",
+		"Ready2":                "Ready2",
+		"":                      "Unknown",
+		"2Ready":                "Unknown",
+		"not a reason!":         "Unknown",
+		"Bad~Reason":            "Unknown",
+		"Bad{Reason}":           "Unknown",
+		"Réason":                "Unknown",
+		"Pod_Ready":             "Unknown",
+		strings.Repeat("A", 64): strings.Repeat("A", 64),
+		strings.Repeat("A", 65): "Unknown",
+	} {
+		if got := safeReason(reason); got != want {
+			t.Errorf("safeReason(%q) = %q, want %q", reason, got, want)
+		}
 	}
 }

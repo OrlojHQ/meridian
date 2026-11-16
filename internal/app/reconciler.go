@@ -216,7 +216,7 @@ func (r *Reconciler) process(ctx context.Context, id domain.CapsuleID) {
 		if err == nil || errors.Is(err, domain.ErrNotFound) {
 			return
 		}
-		if errors.Is(err, errProjectSetup) {
+		if errors.Is(err, errProjectSetup) || errors.Is(err, domain.ErrStartTimeout) {
 			break
 		}
 		var unmet *isolationUnmet
