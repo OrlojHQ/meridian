@@ -147,5 +147,93 @@ func PortabilityWarnings(p, content string) []Issue {
 		}
 	}
 	visit(p, value)
+	if strings.HasSuffix(p, "opencode.json") || strings.HasSuffix(p, "opencode.jsonc") {
+		if warning, ok := openCodeDefaultProviderWarning(p, value); ok {
+			issues = append(issues, warning)
+		}
+	}
 	return issues
+}
+
+// openCodeDefaultProviderWarning tells the importer when the selected model
+// depends on a host environment variable or a server the Capsule will not
+// have. The connection, not that provider, is what reaches the gateway.
+func openCodeDefaultProviderWarning(p string, value any) (Issue, bool) {
+	config, ok := value.(map[string]any)
+	if !ok {
+		return Issue{}, false
+	}
+	id, ok := openCodeModelProvider(config["model"])
+	if !ok || id == "meridian" {
+		return Issue{}, false
+	}
+	provider, ok := openCodeProviderEntry(config, id)
+	if !ok || !openCodeProviderLeavesTheCapsule(provider) {
+		return Issue{}, false
+	}
+	kind := "openai-compatible"
+	if strings.Contains(openCodeProviderPackage(provider), "anthropic") {
+		kind = "anthropic-compatible"
+	}
+	return Issue{p + ":model", "Default model depends on an environment variable or a server outside the Capsule. Create a provider connection and select it on launch: meridian harness connect " + kind}, true
+}
+
+func openCodeModelProvider(model any) (string, bool) {
+	switch value := model.(type) {
+	case string:
+		id, _, ok := strings.Cut(value, "/")
+		if !ok || id == "" || strings.ContainsAny(id, "/#") {
+			return "", false
+		}
+		return id, true
+	case map[string]any:
+		id, _ := value["providerID"].(string)
+		if id == "" || strings.ContainsAny(id, "/#") {
+			return "", false
+		}
+		return id, true
+	}
+	return "", false
+}
+
+func openCodeProviderEntry(config map[string]any, id string) (map[string]any, bool) {
+	for _, key := range []string{"providers", "provider"} {
+		providers, _ := config[key].(map[string]any)
+		if entry, ok := providers[id].(map[string]any); ok {
+			return entry, true
+		}
+	}
+	return nil, false
+}
+
+func openCodeProviderPackage(provider map[string]any) string {
+	for _, key := range []string{"package", "npm"} {
+		if name, ok := provider[key].(string); ok && name != "" {
+			return name
+		}
+	}
+	return ""
+}
+
+func openCodeProviderLeavesTheCapsule(provider map[string]any) bool {
+	if names, ok := provider["env"].([]any); ok {
+		for _, name := range names {
+			if text, ok := name.(string); ok && text != "" {
+				return true
+			}
+		}
+	}
+	for _, key := range []string{"settings", "options"} {
+		object, _ := provider[key].(map[string]any)
+		if apiKey, ok := object["apiKey"].(string); ok && strings.Contains(apiKey, "{env:") {
+			return true
+		}
+		if base, ok := object["baseURL"].(string); ok && (strings.HasPrefix(base, "https://") || strings.HasPrefix(base, "http://")) {
+			return true
+		}
+	}
+	if base, ok := provider["api"].(string); ok && (strings.HasPrefix(base, "https://") || strings.HasPrefix(base, "http://")) {
+		return true
+	}
+	return false
 }

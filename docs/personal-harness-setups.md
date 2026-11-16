@@ -378,6 +378,34 @@ keys.
 
 **3. Authorize it on first launch** as for any other connection.
 
+### Already using OpenCode with a proxy
+
+OpenCode on your computer may already send Chat Completions to a proxy such
+as LiteLLM. The config then looks like this: `model` is `proxy/model-id`,
+`enabled_providers` lists only that proxy, and `providers.proxy` names
+`@opencode/ai/providers/openai-compatible`, a `baseURL`, and an `env` entry
+for the key. The key itself stays in an environment variable on that
+computer. A Capsule has neither the variable nor that server, so the imported
+model cannot answer there.
+
+Import the setup anyway (`meridian import`, or **Import from this computer**
+in Harness settings). Meridian keeps the proxy entry, MCP servers, and other
+settings, and warns when the default model depends on an environment variable
+or a server outside the Capsule. Create a connection with the proxy's base
+URL, its key, and the model id (the part of `model` after the slash):
+
+```console
+printf %s "$PROXY_KEY" | meridian harness connect openai-compatible \
+  --name "Work proxy" --base-url https://proxy.example.com \
+  --model model-id --stdin
+```
+
+Launch OpenCode with that connection, from a terminal or a Thread. Meridian
+adds the `meridian` provider, selects `meridian/model-id`, and adds
+`meridian` to `enabled_providers` when that list is present. Your other
+settings stay. The Capsule receives the gateway address and a short-lived
+lease.
+
 Harness behavior:
 
 - **Codex** uses a `meridian` model provider with `wire_api = "responses"`,
@@ -396,6 +424,16 @@ Harness behavior:
   supports those tools. Official `openai` connections are unchanged.
 - **OpenCode** and **Pi** need a default model. Meridian registers a
   `meridian` provider that uses Chat Completions and selects that model.
+  For OpenCode, that provider is
+  `@opencode/ai/providers/openai-compatible` under `providers`, with the
+  gateway in `settings.baseURL`. If the imported config lists
+  `enabled_providers`, Meridian adds `meridian` to it and removes `meridian`
+  from `disabled_providers`, because OpenCode treats that list as "these
+  providers only." The connection's model stays selected when a repository
+  `opencode.json` names a different one. The terminal and Threads both use
+  that model. See [Already using OpenCode with a
+  proxy](#already-using-opencode-with-a-proxy) if the imported default model
+  already points at one.
 - **Claude Code** accepts only `anthropic-compatible`: vLLM's Messages API, or
   a proxy such as LiteLLM. With a default model, Meridian sets
   `ANTHROPIC_MODEL` and the default opus, sonnet, and haiku model variables

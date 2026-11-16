@@ -54,6 +54,63 @@ func TestCredentialsRemovedWithoutLosingSiblings(t *testing.T) {
 	}
 }
 
+func TestOpenCodeDefaultProviderSuggestsConnection(t *testing.T) {
+	input := `{
+  "model": "proxy/example-coder",
+  "providers": {
+    "proxy": {
+      "name": "Work proxy",
+      "package": "@opencode/ai/providers/openai-compatible",
+      "env": ["PROXY_API_KEY"],
+      "settings": {"baseURL": "https://proxy.internal.example/v1", "includeUsage": true}
+    }
+  }
+}`
+	preview, err := ReviewFiles("opencode", []File{{Path: ".config/opencode/opencode.jsonc", Content: input}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, warning := range preview.Warnings {
+		if warning.Path != ".config/opencode/opencode.jsonc:model" {
+			continue
+		}
+		found = true
+		if !strings.Contains(warning.Reason, "meridian harness connect openai-compatible") || strings.Contains(warning.Reason, "proxy.internal.example") || strings.Contains(warning.Reason, "PROXY_API_KEY") {
+			t.Fatalf("warning = %#v", warning)
+		}
+	}
+	if !found {
+		t.Fatalf("missing connection warning: %#v", preview.Warnings)
+	}
+	if strings.Contains(preview.Bundle.Files[0].Content, "PROXY_API_KEY") == false || strings.Contains(preview.Bundle.Files[0].Content, "includeUsage") == false {
+		t.Fatalf("import dropped the provider: %s", preview.Bundle.Files[0].Content)
+	}
+	anthropic := `{"model":{"providerID":"company","model":"claude-like"},"provider":{"company":{"npm":"@ai-sdk/anthropic","api":"https://anthropic.internal.example"}}}`
+	anthropicPreview, err := ReviewFiles("opencode", []File{{Path: ".config/opencode/opencode.json", Content: anthropic}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(fmtWarnings(anthropicPreview.Warnings), "anthropic-compatible") {
+		t.Fatalf("warnings = %#v", anthropicPreview.Warnings)
+	}
+	plain, err := ReviewFiles("opencode", []File{{Path: ".config/opencode/opencode.json", Content: `{"model":"openai/gpt-test"}`}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(fmtWarnings(plain.Warnings), "provider connection") {
+		t.Fatalf("catalog model warned: %#v", plain.Warnings)
+	}
+}
+
+func fmtWarnings(warnings []Issue) string {
+	parts := make([]string, 0, len(warnings))
+	for _, warning := range warnings {
+		parts = append(parts, warning.Reason)
+	}
+	return strings.Join(parts, "\n")
+}
+
 func TestPortableWarningsDoNotExcludeLocalConfiguration(t *testing.T) {
 	input := `{"instructions":["/Users/person/rules.md"],"mcp":{"local":{"url":"http://localhost:3000","headers":{"X-Feature":"enabled"}}},"plugin":["my-plugin"],"unknown":{"path":"~/tools/check"}}`
 	preview, err := ReviewFiles("opencode", []File{{Path: ".config/opencode/opencode.json", Content: input}})

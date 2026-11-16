@@ -170,11 +170,21 @@ func TestCustomEndpointHarnessConfiguration(t *testing.T) {
 			t.Fatal(err)
 		}
 		config := read(t, env, ".config/opencode/opencode.json")
-		provider := config["provider"].(map[string]any)["meridian"].(map[string]any)
-		options := provider["options"].(map[string]any)
+		provider := config["providers"].(map[string]any)["meridian"].(map[string]any)
+		settings := provider["settings"].(map[string]any)
 		models := provider["models"].(map[string]any)
-		if config["model"] != "meridian/qwen2.5-coder:7b" || provider["npm"] != "@ai-sdk/openai-compatible" || options["baseURL"] != gateway || options["apiKey"] != "{env:MERIDIAN_PROVIDER_TOKEN}" || models["qwen2.5-coder:7b"] == nil {
+		if config["model"] != "meridian/qwen2.5-coder:7b" || provider["package"] != "@opencode/ai/providers/openai-compatible" || settings["baseURL"] != gateway || settings["apiKey"] != "{env:MERIDIAN_PROVIDER_TOKEN}" || models["qwen2.5-coder:7b"] == nil {
 			t.Fatalf("unexpected opencode config %v", config)
+		}
+		if _, legacy := config["provider"]; legacy {
+			t.Fatalf("legacy provider entry left beside the native one: %v", config["provider"])
+		}
+		allow := config["policies"].([]any)[0].(map[string]any)
+		if allow["action"] != "provider.use" || allow["resource"] != "meridian" || allow["effect"] != "allow" {
+			t.Fatalf("connection provider not allowed: %v", config["policies"])
+		}
+		if !strings.Contains(env["OPENCODE_CONFIG_CONTENT"], `"model":"meridian/qwen2.5-coder:7b"`) || strings.Contains(env["OPENCODE_CONFIG_CONTENT"], token) {
+			t.Fatalf("connection document = %s", env["OPENCODE_CONFIG_CONTENT"])
 		}
 	})
 	t.Run("pi", func(t *testing.T) {
@@ -326,10 +336,10 @@ func TestConnectionEffortLevelsReachEachHarness(t *testing.T) {
 		}
 		var config map[string]any
 		readJSON(t, filepath.Join(env["HOME"], ".config/opencode/opencode.json"), &config)
-		model := config["provider"].(map[string]any)["meridian"].(map[string]any)["models"].(map[string]any)["glm-5"].(map[string]any)
-		variants := model["variants"].(map[string]any)
-		if model["reasoning"] != true || len(variants) != 3 ||
-			variants["high"].(map[string]any)["reasoningEffort"] != "high" {
+		model := config["providers"].(map[string]any)["meridian"].(map[string]any)["models"].(map[string]any)["glm-5"].(map[string]any)
+		reasoning := model["capabilities"].(map[string]any)["reasoning"].(map[string]any)
+		effort := reasoning["effort"].([]any)
+		if reasoning["supported"] != true || len(effort) != 3 || effort[0] != "low" || effort[1] != "high" || effort[2] != "max" {
 			t.Fatalf("opencode model = %v", model)
 		}
 	})
@@ -470,5 +480,143 @@ func TestCodexToolDefaultsApplyOnlyToCustomEndpoints(t *testing.T) {
 	features := imported["features"].(map[string]any)
 	if imported["web_search"] != "live" || features["multi_agent"] != true || features["shell_snapshot"] != true {
 		t.Fatalf("imported Codex settings overridden: %v", imported)
+	}
+}
+
+func TestOpenCodeImportedProxyConnection(t *testing.T) {
+	token := strings.Repeat("d", 64)
+	imported := `{
+  // Keep this instruction.
+  "model": "proxy/example-coder",
+  "disabled_providers": ["openai", "meridian"],
+  "enabled_providers": ["proxy"],
+  "providers": {
+    "proxy": {
+      "name": "Work proxy",
+      "package": "@opencode/ai/providers/openai-compatible",
+      "env": ["PROXY_API_KEY"],
+      "settings": {"baseURL": "https://proxy.internal.example/v1", "includeUsage": true},
+      "models": {"example-coder": {"name": "Example"}}
+    }
+  },
+  "policies": [
+    {"action": "provider.use", "resource": "*", "effect": "deny"},
+    {"action": "provider.use", "resource": "proxy", "effect": "allow"}
+  ],
+  "mcp": {
+    "notes": {
+      "type": "remote",
+      "url": "https://mcp.internal.example/mcp",
+      "headers": {"X-Feature": "{env:NOTES_TOKEN}"}
+    }
+  },
+  "instructions": ["Keep answers short."]
+}`
+	s := &Server{config: ServerConfig{HarnessHome: t.TempDir()}}
+	setup := &harnesssetup.RuntimeSetup{Revision: "rev-proxy", Bundle: harnesssetup.Bundle{Harness: "opencode", Files: []harnesssetup.File{{Path: ".config/opencode/opencode.jsonc", Content: imported}}}}
+	env, err := s.prepareHarnessSetup(context.Background(), setup, "opencode")
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, err = s.prepareProviderConnection(context.Background(), &harnesssetup.Connection{
+		Provider: "openai-compatible", URL: "https://meridian.example/provider-gateway/openai-compatible",
+		Token: token, Model: "example-coder", Efforts: []string{"high", "low"},
+	}, setup, "opencode", env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(env["HOME"], ".config/opencode/opencode.jsonc"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), token) {
+		t.Fatal("lease written into the imported config")
+	}
+	config := map[string]any{}
+	if err := json.Unmarshal(raw, &config); err != nil {
+		t.Fatal(err)
+	}
+	if config["model"] != "meridian/example-coder" {
+		t.Fatalf("model = %v", config["model"])
+	}
+	enabled := config["enabled_providers"].([]any)
+	if len(enabled) != 2 || enabled[0] != "proxy" || enabled[1] != "meridian" {
+		t.Fatalf("enabled_providers = %v", enabled)
+	}
+	disabled := config["disabled_providers"].([]any)
+	if len(disabled) != 1 || disabled[0] != "openai" {
+		t.Fatalf("disabled_providers = %v", disabled)
+	}
+	policies := config["policies"].([]any)
+	last := policies[len(policies)-1].(map[string]any)
+	if len(policies) != 3 || last["resource"] != "meridian" || last["effect"] != "allow" {
+		t.Fatalf("policies = %v", policies)
+	}
+	providers := config["providers"].(map[string]any)
+	proxy := providers["proxy"].(map[string]any)
+	settings := proxy["settings"].(map[string]any)
+	if proxy["name"] != "Work proxy" || settings["includeUsage"] != true || settings["baseURL"] != "https://proxy.internal.example/v1" {
+		t.Fatalf("imported provider changed: %v", proxy)
+	}
+	meridian := providers["meridian"].(map[string]any)
+	gateway := meridian["settings"].(map[string]any)
+	model := meridian["models"].(map[string]any)["example-coder"].(map[string]any)
+	effort := model["capabilities"].(map[string]any)["reasoning"].(map[string]any)["effort"].([]any)
+	if meridian["package"] != "@opencode/ai/providers/openai-compatible" || gateway["baseURL"] != "https://meridian.example/provider-gateway/openai-compatible/v1" || gateway["apiKey"] != "{env:MERIDIAN_PROVIDER_TOKEN}" || len(effort) != 2 || effort[0] != "low" || effort[1] != "high" {
+		t.Fatalf("connection provider = %v", meridian)
+	}
+	if _, ok := config["provider"]; ok {
+		t.Fatalf("legacy provider key created: %v", config["provider"])
+	}
+	notes := config["mcp"].(map[string]any)["notes"].(map[string]any)
+	headers := notes["headers"].(map[string]any)
+	instructions := config["instructions"].([]any)
+	if notes["url"] != "https://mcp.internal.example/mcp" || headers["X-Feature"] != "{env:NOTES_TOKEN}" || len(instructions) != 1 || instructions[0] != "Keep answers short." {
+		t.Fatalf("imported settings dropped: %s", raw)
+	}
+	if !strings.Contains(env["OPENCODE_CONFIG_CONTENT"], `"model":"meridian/example-coder"`) || strings.Contains(env["OPENCODE_CONFIG_CONTENT"], token) || strings.Contains(env["OPENCODE_CONFIG_CONTENT"], "proxy.internal.example") {
+		t.Fatalf("connection document = %s", env["OPENCODE_CONFIG_CONTENT"])
+	}
+}
+
+func TestOpenCodeOfficialProviderKeepsNativeSettings(t *testing.T) {
+	token := strings.Repeat("e", 64)
+	imported := `{"model":"openai/gpt-test","providers":{"openai":{"name":"OpenAI","models":{"gpt-test":{"name":"GPT"}}}},"provider":{"openai":{"npm":"@ai-sdk/openai","options":{"baseURL":"https://old.example/v1","temperature":0}}}}`
+	s := &Server{config: ServerConfig{HarnessHome: t.TempDir()}}
+	setup := &harnesssetup.RuntimeSetup{Revision: "rev-openai", Bundle: harnesssetup.Bundle{Harness: "opencode", Files: []harnesssetup.File{{Path: ".config/opencode/opencode.json", Content: imported}}}}
+	env, err := s.prepareHarnessSetup(context.Background(), setup, "opencode")
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, err = s.prepareProviderConnection(context.Background(), &harnesssetup.Connection{
+		Provider: "openai", URL: "https://meridian.example/provider-gateway/openai", Token: token,
+	}, setup, "opencode", env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(env["HOME"], ".config/opencode/opencode.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := map[string]any{}
+	if err := json.Unmarshal(raw, &config); err != nil {
+		t.Fatal(err)
+	}
+	native := config["providers"].(map[string]any)["openai"].(map[string]any)
+	settings := native["settings"].(map[string]any)
+	models := native["models"].(map[string]any)
+	if settings["baseURL"] != "https://meridian.example/provider-gateway/openai/v1" || settings["apiKey"] != "{env:MERIDIAN_PROVIDER_TOKEN}" || native["name"] != "OpenAI" || models["gpt-test"] == nil {
+		t.Fatalf("native openai provider = %v", native)
+	}
+	legacy := config["provider"].(map[string]any)["openai"].(map[string]any)
+	options := legacy["options"].(map[string]any)
+	if options["baseURL"] != "https://meridian.example/provider-gateway/openai/v1" || options["apiKey"] != "{env:MERIDIAN_PROVIDER_TOKEN}" || options["temperature"] != float64(0) {
+		t.Fatalf("legacy openai provider = %v", legacy)
+	}
+	if config["model"] != "openai/gpt-test" {
+		t.Fatalf("official connection replaced the model: %v", config["model"])
+	}
+	if strings.Contains(env["OPENCODE_CONFIG_CONTENT"], token) || !strings.Contains(env["OPENCODE_CONFIG_CONTENT"], "provider-gateway/openai/v1") {
+		t.Fatalf("connection document = %s", env["OPENCODE_CONFIG_CONTENT"])
 	}
 }

@@ -7,6 +7,17 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- An imported OpenCode setup whose `enabled_providers` list left out
+  `meridian` ignored an `openai-compatible` connection. OpenCode 2.2.6 turns
+  that list into a deny-all provider policy. Attaching the connection now
+  allows `meridian`, writes the provider in the shape that version loads
+  (`providers`, with `package` and `settings`), and keeps that model selected
+  in the terminal and in Threads. `meridian import` warns when the imported
+  default model still depends on a host environment variable or a server the
+  Capsule cannot reach.
+
 ## [0.10.1] - 2026-11-15
 
 ### Upgrade notes

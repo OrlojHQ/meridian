@@ -129,33 +129,42 @@ func (s *Server) prepareProviderConnection(ctx context.Context, connection *harn
 		if _, e := root.Stat(".config/opencode/opencode.jsonc"); e == nil {
 			p = ".config/opencode/opencode.jsonc"
 		}
+		// OpenCode 2.2.6 reads providers (package + settings). A legacy
+		// provider entry (npm + options) is migrated, and a native entry for
+		// the same id replaces it entirely.
+		gateway := connection.URL + "/v1"
+		id := connection.Provider
+		var owned map[string]any
+		if custom {
+			id = "meridian"
+			owned = openCodeCompatibleProvider(model, gateway, efforts)
+		}
 		err = editNativeConfig(root, p, func(config map[string]any) {
-			providers := object(config, "provider")
+			allowOpenCodeProvider(config, id)
 			if custom {
-				entry := map[string]any{"name": model}
-				if len(efforts) != 0 {
-					// OpenCode offers a model's variants as its ACP effort
-					// option; each sends its level as reasoning_effort.
-					variants := map[string]any{}
-					for _, level := range efforts {
-						variants[level] = map[string]any{"reasoningEffort": level}
+				object(config, "providers")["meridian"] = owned
+				if legacy, ok := config["provider"].(map[string]any); ok {
+					delete(legacy, "meridian")
+					if len(legacy) == 0 {
+						delete(config, "provider")
 					}
-					entry["reasoning"] = true
-					entry["variants"] = variants
-				}
-				providers["meridian"] = map[string]any{
-					"npm": "@ai-sdk/openai-compatible", "name": "Meridian",
-					"options": map[string]any{"baseURL": connection.URL + "/v1", "apiKey": "{env:MERIDIAN_PROVIDER_TOKEN}"},
-					"models":  map[string]any{model: entry},
 				}
 				config["model"] = "meridian/" + model
 				return
 			}
-			provider := object(providers, connection.Provider)
-			options := object(provider, "options")
-			options["baseURL"] = connection.URL + "/v1"
-			options["apiKey"] = "{env:MERIDIAN_PROVIDER_TOKEN}"
+			patchOpenCodeOfficialProvider(config, id, gateway)
 		})
+		if err == nil {
+			var raw []byte
+			raw, err = json.Marshal(openCodeConnectionDocument(id, model, gateway, owned))
+			if err == nil {
+				// A repository opencode.json is loaded after the imported
+				// file and would otherwise select its own model. This
+				// document is loaded after repository files. The terminal
+				// and opencode acp both read it.
+				env["OPENCODE_CONFIG_CONTENT"] = string(raw)
+			}
+		}
 	case "pi":
 		err = editNativeConfig(root, ".pi/agent/models.json", func(config map[string]any) {
 			providers := object(config, "providers")
@@ -332,6 +341,108 @@ func replaceSetupFile(root *os.Root, p string, raw []byte) error {
 	}
 	return nil
 }
+
+// openCodeCompatibleProvider is the native provider entry OpenCode 2.2.6
+// loads for a Chat Completions connection. capabilities.reasoning is what
+// that version turns into the ACP effort option; each level is sent as
+// reasoning_effort. The legacy reasoning flag is ignored.
+func openCodeCompatibleProvider(model, gateway string, efforts []string) map[string]any {
+	entry := map[string]any{"name": model}
+	if len(efforts) != 0 {
+		entry["capabilities"] = map[string]any{
+			"reasoning": map[string]any{"supported": true, "effort": efforts},
+		}
+	}
+	return map[string]any{
+		"name":    "Meridian",
+		"package": "@opencode/ai/providers/openai-compatible",
+		"settings": map[string]any{
+			"baseURL": gateway,
+			"apiKey":  "{env:MERIDIAN_PROVIDER_TOKEN}",
+		},
+		"models": map[string]any{model: entry},
+	}
+}
+
+// openCodeConnectionDocument overlays the connection after every repository
+// config file. The key stays an environment reference, never the lease.
+func openCodeConnectionDocument(id, model, gateway string, owned map[string]any) map[string]any {
+	provider := owned
+	if provider == nil {
+		provider = map[string]any{"settings": map[string]any{
+			"baseURL": gateway,
+			"apiKey":  "{env:MERIDIAN_PROVIDER_TOKEN}",
+		}}
+	}
+	document := map[string]any{"providers": map[string]any{id: provider}}
+	if id == "meridian" && model != "" {
+		document["model"] = "meridian/" + model
+	}
+	return document
+}
+
+// patchOpenCodeOfficialProvider points an official provider at the gateway.
+// When the imported file has both shapes, OpenCode keeps the native one, so
+// that copy has to carry the gateway. A partial native entry is created only
+// when there is no legacy entry: creating one beside a legacy entry would
+// discard the migrated legacy provider.
+func patchOpenCodeOfficialProvider(config map[string]any, id, gateway string) {
+	native, _ := config["providers"].(map[string]any)
+	legacy, _ := config["provider"].(map[string]any)
+	_, nativeHas := native[id]
+	_, legacyHas := legacy[id]
+	if nativeHas {
+		settings := object(object(native, id), "settings")
+		settings["baseURL"] = gateway
+		settings["apiKey"] = "{env:MERIDIAN_PROVIDER_TOKEN}"
+	}
+	if legacyHas {
+		options := object(object(legacy, id), "options")
+		options["baseURL"] = gateway
+		options["apiKey"] = "{env:MERIDIAN_PROVIDER_TOKEN}"
+	}
+	if nativeHas || legacyHas {
+		return
+	}
+	object(config, "providers")[id] = map[string]any{"settings": map[string]any{
+		"baseURL": gateway,
+		"apiKey":  "{env:MERIDIAN_PROVIDER_TOKEN}",
+	}}
+}
+
+// allowOpenCodeProvider keeps a connection usable when the imported config
+// allow-lists or deny-lists providers. OpenCode 2.2.6 turns enabled_providers
+// into a deny-all policy plus one allow per entry, and disabled_providers
+// into denies. An allow appended here is the last statement in this file,
+// and this file is loaded before a repository config, so it wins.
+func allowOpenCodeProvider(config map[string]any, id string) {
+	if list, ok := config["enabled_providers"].([]any); ok {
+		found := false
+		for _, item := range list {
+			if item == id {
+				found = true
+				break
+			}
+		}
+		if !found {
+			config["enabled_providers"] = append(list, id)
+		}
+	}
+	if list, ok := config["disabled_providers"].([]any); ok {
+		kept := make([]any, 0, len(list))
+		for _, item := range list {
+			if item != id {
+				kept = append(kept, item)
+			}
+		}
+		config["disabled_providers"] = kept
+	}
+	policies, _ := config["policies"].([]any)
+	config["policies"] = append(policies, map[string]any{
+		"action": "provider.use", "resource": id, "effect": "allow",
+	})
+}
+
 func object(parent map[string]any, key string) map[string]any {
 	value, ok := parent[key].(map[string]any)
 	if !ok {
