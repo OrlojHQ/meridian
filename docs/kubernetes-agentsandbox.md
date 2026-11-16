@@ -95,6 +95,45 @@ than a multi-user authorization system.
 Agent Sandbox manages a singleton pod and PVC. It does **not** supply a kernel,
 VM, or multi-tenant isolation boundary.
 
+### Isolation classes
+
+Meridian reports an isolation class in its capabilities (ADR 0050):
+`container` (shared host kernel), `sandbox` (gVisor's user-kernel boundary
+inside the host kernel's process tree), or `microvm` (a hardware-virtualized
+guest with its own kernel, Kata Containers). The order is strict:
+`container < sandbox < microvm`.
+
+The class is **verified, not declared**. Setting
+`agentSandbox.isolationClass=sandbox` or `microvm` also requires
+`agentSandbox.runtimeClassName`; meridiand reads that RuntimeClass from the
+Kubernetes API and checks its `handler` against a built-in vocabulary:
+
+- `sandbox`: `runsc`, `gvisor`;
+- `microvm`: `kata`, `kata-qemu`, `kata-clh`, `kata-dragonball`,
+  `kata-qemu-runtime-rs`, `kata-clh-runtime-rs` (the kata-deploy 4.3.1
+  handler names for QEMU, Cloud Hypervisor, and Dragonball).
+
+A handler that never isolates (`runc`, `crun`, `youki`) is refused for any
+declared class, and so is Firecracker (`kata-fc`): at kata-deploy 4.3.1 it
+needs a devmapper snapshotter and block storage that this provider does not
+provision. Custom handlers can be added per class with the repeatable
+`--agentsandbox-isolation-handler` flag (`agentSandbox.isolationHandlers` in
+the chart); never-isolating handlers and handlers that belong to the other
+class's built-in set stay refused. When the declaration is empty, meridiand
+reports `container` and never reads a RuntimeClass.
+
+Verification is re-run before each Capsule create and before resuming a
+paused Capsule; a RuntimeClass whose handler or UID changed after startup
+fails with a restart error. Pausing and deleting skip the recheck so a paused
+Capsule survives a RuntimeClass change. Adopting an existing Sandbox whose
+runtime class differs from the configured one is refused. Capabilities report
+only the verified class — never the declared text.
+
+Verifying the class needs `get` on the named RuntimeClass, which is
+cluster-scoped. With `agentSandbox.isolationClass` set, the chart renders one
+ClusterRole and ClusterRoleBinding pinned to that single resource name;
+otherwise the install remains purely namespace-scoped.
+
 Private HTTPS clone and authorized `harness_env` references use the same
 authenticated `capsuled` protocol as Docker. Meridian does not create
 Kubernetes Secrets for user credentials and does not place those values in the
@@ -124,12 +163,13 @@ handler: runsc
 Validation must cover the exact Kubernetes/runtime versions, seccomp behavior,
 PVC mount support, DNS/egress policy, process limits, port-forward, suspension,
 node drain, and known gVisor compatibility constraints. Set
-`agentSandbox.runtimeClassName=gvisor` only after those checks pass.
+`agentSandbox.runtimeClassName=gvisor` and
+`agentSandbox.isolationClass=sandbox` only after those checks pass.
 
 ### Validated Kata profile
 
-Install Kata Containers through the cluster operator's supported method and use
-the handler it supplies, for example:
+Install Kata Containers through the cluster operator's supported method and
+use the handler it supplies, for example:
 
 ```yaml
 apiVersion: node.k8s.io/v1
@@ -141,8 +181,9 @@ handler: kata-qemu
 
 Validate hardware virtualization, node selection/taints, guest kernel and image
 policy, PVC/CSI attachment, memory overhead, port-forward, suspension, and
-upgrade behavior. Set `agentSandbox.runtimeClassName=kata` only for the tested
-handler. Neither example is installed by the chart or a security certification.
+upgrade behavior. Set `agentSandbox.runtimeClassName=kata` and
+`agentSandbox.isolationClass=microvm` only for the tested handler. Neither
+example is installed by the chart or a security certification.
 
 Do not claim untrusted multi-tenancy without hardened runtime, node, network,
 storage and control-plane boundaries and external review.
@@ -158,8 +199,11 @@ The Role permits exact lifecycle operations on Sandboxes, token Secret
 create/get/delete, pod listing, and pod port-forward creation. The Agent Sandbox
 controller—not Meridian—owns PVC creation and deletion. Because CSI Moments are
 unsupported, the chart grants no PVC or VolumeSnapshot verbs. It also grants no
-cluster-scoped resource, CRD, RuntimeClass, node, exec, Service, Ingress,
-workload-controller, or Secret list permission.
+cluster-scoped resource, CRD, node, exec, Service, Ingress,
+workload-controller, or Secret list permission — with one exception (ADR 0050):
+when `agentSandbox.isolationClass` is `sandbox` or `microvm`, the chart adds a
+ClusterRole and ClusterRoleBinding whose only rule is `get` on
+`node.k8s.io/runtimeclasses` pinned to the configured RuntimeClass name.
 
 Each Capsule gets an immutable Secret containing only its private `capsuled`
 bearer token. It is owner-referenced and requests projection mode 0400.
@@ -198,5 +242,9 @@ make agentsandbox-integration
 The integration target skips unless `MERIDIAN_AGENTSANDBOX_TEST=1` and Docker,
 Kind, kubectl, Go, and Helm are available. When enabled it uses the pinned Agent
 Sandbox v0.5.6 manifest and pinned Kind v1.36.1 node digest, installs the chart,
-and tests create/adopt, suspend, resume, delete, and cleanup. It does not
-constitute gVisor/Kata or production security validation.
+and tests create/adopt, suspend, resume, delete, and cleanup. It also verifies
+the isolation-class path end to end with temporary RuntimeClasses: a `runc`
+handler must be refused before any Sandbox is created, and a `kata-qemu`
+handler must verify and report `microvm`. None of this constitutes gVisor/Kata
+or production security validation: the Kind node runs no real Kata or gVisor
+runtime, so the positive case proves the API verification flow only.

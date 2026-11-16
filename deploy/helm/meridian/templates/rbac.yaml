@@ -34,3 +34,36 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: {{ include "meridian.fullname" . }}
+{{- if .Values.agentSandbox.isolationClass }}
+---
+# ADR 0050: verifying the declared isolation class requires reading exactly
+# one RuntimeClass by name. Cluster-scoped RuntimeClasses are readable only
+# through a ClusterRole, so this is the narrowest possible grant: one verb,
+# one resource, one resourceName.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "meridian.fullname" . }}-{{ include "meridian.namespace" . }}-runtimeclass
+  labels:
+    {{- include "meridian.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["node.k8s.io"]
+    resources: ["runtimeclasses"]
+    resourceNames: [{{ .Values.agentSandbox.runtimeClassName | quote }}]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "meridian.fullname" . }}-{{ include "meridian.namespace" . }}-runtimeclass
+  labels:
+    {{- include "meridian.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "meridian.serviceAccountName" . }}
+    namespace: {{ include "meridian.namespace" . }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "meridian.fullname" . }}-{{ include "meridian.namespace" . }}-runtimeclass
+{{- end }}

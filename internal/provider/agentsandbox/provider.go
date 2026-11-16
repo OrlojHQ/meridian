@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/OrlojHQ/meridian/internal/capsuleproto"
@@ -47,23 +48,25 @@ const (
 )
 
 type Config struct {
-	Kubeconfig       string
-	Context          string
-	InCluster        bool
-	Namespace        string
-	NamePrefix       string
-	Class            string
-	Template         string
-	Image            string
-	RuntimeClass     string
-	StorageClass     string
-	VolumeSize       string
-	TTL              time.Duration
-	MemoryLimit      string
-	CPULimit         string
-	EphemeralLimit   string
-	OperationTimeout time.Duration
-	SetupTimeout     time.Duration
+	Kubeconfig        string
+	Context           string
+	InCluster         bool
+	Namespace         string
+	NamePrefix        string
+	Class             string
+	Template          string
+	Image             string
+	RuntimeClass      string
+	IsolationClass    domain.IsolationClass
+	IsolationHandlers []string
+	StorageClass      string
+	VolumeSize        string
+	TTL               time.Duration
+	MemoryLimit       string
+	CPULimit          string
+	EphemeralLimit    string
+	OperationTimeout  time.Duration
+	SetupTimeout      time.Duration
 }
 
 func (c Config) withDefaults() (Config, error) {
@@ -125,6 +128,40 @@ func (c Config) withDefaults() (Config, error) {
 	if c.RuntimeClass != "" && len(validation.IsDNS1123Subdomain(c.RuntimeClass)) > 0 {
 		return Config{}, fmt.Errorf("%w: runtime class is not DNS-1123", domain.ErrInvalid)
 	}
+	handlers, err := isolationHandlersFromValues(c.IsolationHandlers)
+	if err != nil {
+		return Config{}, err
+	}
+	c.IsolationHandlers = handlers
+	if c.IsolationClass != "" {
+		if c.IsolationClass != domain.IsolationSandbox && c.IsolationClass != domain.IsolationMicroVM {
+			return Config{}, fmt.Errorf(
+				"%w: declared isolation class must be sandbox or microvm (leave it empty for container), got %q",
+				domain.ErrInvalid, c.IsolationClass,
+			)
+		}
+		if c.RuntimeClass == "" {
+			return Config{}, fmt.Errorf(
+				"%w: isolation class %s requires a runtime class to verify",
+				domain.ErrInvalid, c.IsolationClass.Label(),
+			)
+		}
+	}
+	if c.IsolationClass == "" && len(c.IsolationHandlers) > 0 {
+		return Config{}, fmt.Errorf(
+			"%w: isolation handlers require a sandbox or microvm isolation class",
+			domain.ErrInvalid,
+		)
+	}
+	for _, handler := range c.IsolationHandlers {
+		if builtinHandlers[domain.IsolationSandbox][handler] ||
+			builtinHandlers[domain.IsolationMicroVM][handler] {
+			return Config{}, fmt.Errorf(
+				"%w: isolation handler %q already belongs to a built-in class",
+				domain.ErrInvalid, handler,
+			)
+		}
+	}
 	if c.StorageClass != "" && len(validation.IsDNS1123Subdomain(c.StorageClass)) > 0 {
 		return Config{}, fmt.Errorf("%w: storage class is not DNS-1123", domain.ErrInvalid)
 	}
@@ -161,6 +198,9 @@ type Provider struct {
 	discovery  discovery.DiscoveryInterface
 	snapshots  snapshotclient.Interface
 	forwarder  Forwarder
+
+	isolationMu sync.Mutex
+	isolation   verifiedRuntimeClass
 }
 
 func New(config Config) (*Provider, error) {
@@ -261,6 +301,19 @@ func (p *Provider) Capabilities(ctx context.Context) (ports.ProviderCapabilities
 		}
 	}
 	transportAvailable := p.forwarder != nil
+	verified, err := p.verifyIsolation(ctx)
+	if err != nil {
+		return ports.ProviderCapabilities{}, err
+	}
+	p.isolationMu.Lock()
+	p.isolation = verified
+	p.isolationMu.Unlock()
+	class := verified.class
+	if class == "" {
+		// An empty declaration is legal and reported as container: the
+		// operator must opt in to a stronger claim (ADR 0050).
+		class = domain.IsolationContainer
+	}
 	return ports.ProviderCapabilities{
 		Version: "agentsandbox/v1beta1@v0.5.6",
 		Pause:   true, Run: transportAvailable, Git: transportAvailable,
@@ -268,11 +321,9 @@ func (p *Provider) Capabilities(ctx context.Context) (ports.ProviderCapabilities
 		Snapshot: transportAvailable, Clone: transportAvailable,
 		Preview: transportAvailable, Browse: transportAvailable,
 		Delivery: transportAvailable, Coordination: transportAvailable,
-		// Declared only: this provider does not verify the node's runtime in
-		// isolation-core. ADR 0050 requires a verified claim; the Agent
-		// Sandbox provider verifies the RuntimeClass in a later change and
-		// reports nothing stronger than container until then.
-		Isolation: domain.IsolationContainer,
+		// Only the class the RuntimeClass handler verified, never the
+		// declared text (ADR 0050).
+		Isolation: class,
 	}, nil
 }
 
@@ -336,6 +387,9 @@ func (p *Provider) Create(
 	plan.Progress(domain.PhaseCreatingCapsule, 0, 0)
 	opctx, cancel := context.WithTimeout(ctx, p.config.OperationTimeout)
 	defer cancel()
+	if err := p.recheckIsolation(opctx); err != nil {
+		return ports.ProviderResource{}, err
+	}
 	sandbox, err := p.sandboxes.Get(opctx, name, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
 		sandbox, err = p.sandboxes.Create(opctx, p.sandbox(request.CapsuleID, name, image), metav1.CreateOptions{})
@@ -434,6 +488,14 @@ func (p *Provider) setOperatingMode(
 	}
 	opctx, cancel := context.WithTimeout(ctx, p.config.OperationTimeout)
 	defer cancel()
+	// Resuming runs the Capsule again, so the node's runtime must still prove
+	// the declared class. Pausing and deleting intentionally skip the recheck
+	// so a paused Capsule survives a RuntimeClass change.
+	if mode == sandboxv1beta1.SandboxOperatingModeRunning {
+		if err := p.recheckIsolation(opctx); err != nil {
+			return ports.ProviderResource{}, err
+		}
+	}
 	err := wait.ExponentialBackoffWithContext(opctx, wait.Backoff{
 		Duration: 50 * time.Millisecond, Factor: 1.5, Steps: 8, Cap: time.Second,
 	}, func(ctx context.Context) (bool, error) {
@@ -826,6 +888,9 @@ func (p *Provider) verifySandbox(
 	image string,
 ) error {
 	if _, err := p.verifySandboxIdentity(sandbox, capsuleID); err != nil {
+		return err
+	}
+	if err := p.adoptIsolation(sandbox); err != nil {
 		return err
 	}
 	if sandbox.Annotations[annotationImage] != image {

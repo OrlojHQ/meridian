@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
 	"os"
 	"testing"
@@ -12,7 +13,63 @@ import (
 
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/ports"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+// TestIntegrationIsolation checks ADR 0050 RuntimeClass verification
+// against a real API server. Kind runs no Kata or gVisor runtime, so it never
+// creates a Sandbox on the isolating class: "refuse" proves a never-isolating
+// handler is refused before any side effect, and "verify" proves the handler
+// check and Capabilities report only.
+func TestIntegrationIsolation(t *testing.T) {
+	mode := os.Getenv("MERIDIAN_AGENTSANDBOX_ISOLATION_MODE")
+	if os.Getenv("MERIDIAN_AGENTSANDBOX_TEST") != "1" || mode == "" {
+		t.Skip("set MERIDIAN_AGENTSANDBOX_TEST=1 and MERIDIAN_AGENTSANDBOX_ISOLATION_MODE for the opt-in cluster test")
+	}
+	namespace := os.Getenv("MERIDIAN_AGENTSANDBOX_NAMESPACE")
+	image := os.Getenv("MERIDIAN_CAPSULE_IMAGE")
+	runtimeClass := os.Getenv("MERIDIAN_AGENTSANDBOX_RUNTIME_CLASS")
+	class := domain.IsolationClass(os.Getenv("MERIDIAN_AGENTSANDBOX_ISOLATION_CLASS"))
+	if namespace == "" || image == "" || runtimeClass == "" || class == "" {
+		t.Fatal("namespace, image, runtime class, and isolation class are required")
+	}
+	provider, err := New(Config{
+		Namespace: namespace, Image: image, NamePrefix: "meridian-it",
+		RuntimeClass: runtimeClass, IsolationClass: class,
+		VolumeSize: "1Gi", TTL: time.Hour, OperationTimeout: time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer provider.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	switch mode {
+	case "refuse":
+		if _, err := provider.Create(ctx, ports.CreateCapsuleRequest{
+			CapsuleID: domain.CapsuleID("integration-refuse-" + time.Now().UTC().Format("20060102-150405.000000000")),
+		}); !errors.Is(err, domain.ErrUnsupported) {
+			t.Fatalf("declined handler create error = %v", err)
+		}
+		sandboxes, err := provider.sandboxes.List(ctx, metav1.ListOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(sandboxes.Items) != 0 {
+			t.Fatalf("refused create still produced %d Sandboxes", len(sandboxes.Items))
+		}
+	case "verify":
+		capabilities, err := provider.Capabilities(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if capabilities.Isolation != class {
+			t.Fatalf("verified isolation = %q, want %q", capabilities.Isolation, class)
+		}
+	default:
+		t.Fatalf("unknown MERIDIAN_AGENTSANDBOX_ISOLATION_MODE %q", mode)
+	}
+}
 
 func TestIntegrationLifecycle(t *testing.T) {
 	if os.Getenv("MERIDIAN_AGENTSANDBOX_TEST") != "1" {

@@ -26,6 +26,9 @@ fi
 cluster="${MERIDIAN_AGENTSANDBOX_CLUSTER:-meridian-agentsandbox}"
 namespace="${MERIDIAN_AGENTSANDBOX_NAMESPACE:-meridian-agentsandbox-test}"
 created=0
+# ADR 0050 RuntimeClasses applied below; cleanup removes them on any exit.
+isolation_rc="meridian-it-runc"
+kubernetes_rc="meridian-it-kata"
 if ! kind get clusters | grep -qxF "$cluster"; then
   kind create cluster \
     --name "$cluster" \
@@ -44,6 +47,7 @@ cleanup() {
       -l app.kubernetes.io/managed-by=meridian \
       --all-containers --tail=200 2>/dev/null || true
   fi
+  kubectl delete runtimeclass "$isolation_rc" "$kubernetes_rc" --ignore-not-found >/dev/null 2>&1 || true
   if [[ "$created" == "1" && "${MERIDIAN_AGENTSANDBOX_KEEP_CLUSTER:-}" != "1" ]]; then
     kind delete cluster --name "$cluster"
   fi
@@ -79,7 +83,42 @@ kind load docker-image --name "$cluster" \
 MERIDIAN_AGENTSANDBOX_TEST=1 \
 MERIDIAN_AGENTSANDBOX_NAMESPACE="$namespace" \
 MERIDIAN_CAPSULE_IMAGE=meridian-capsule:agentsandbox-it \
-  go test ./internal/provider/agentsandbox -run Integration -count=1 -v -timeout=10m
+  go test ./internal/provider/agentsandbox -run '^TestIntegrationLifecycle$' -count=1 -v -timeout=10m
+
+# ADR 0050 RuntimeClass verification against a real API server: a runc
+# handler must be refused before any Sandbox side effect, and a kata-qemu
+# handler must verify. Kind has no Kata runtime, so the positive case checks
+# verification and Capabilities only and never schedules a pod on it.
+
+kubectl apply -f - <<EOF
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: $isolation_rc
+handler: runc
+EOF
+MERIDIAN_AGENTSANDBOX_ISOLATION_MODE=refuse \
+MERIDIAN_AGENTSANDBOX_RUNTIME_CLASS="$isolation_rc" \
+MERIDIAN_AGENTSANDBOX_ISOLATION_CLASS=sandbox \
+MERIDIAN_AGENTSANDBOX_TEST=1 \
+MERIDIAN_AGENTSANDBOX_NAMESPACE="$namespace" \
+MERIDIAN_CAPSULE_IMAGE=meridian-capsule:agentsandbox-it \
+  go test ./internal/provider/agentsandbox -run '^TestIntegrationIsolation$' -count=1 -v -timeout=5m
+
+kubectl apply -f - <<EOF
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: $kubernetes_rc
+handler: kata-qemu
+EOF
+MERIDIAN_AGENTSANDBOX_ISOLATION_MODE=verify \
+MERIDIAN_AGENTSANDBOX_RUNTIME_CLASS="$kubernetes_rc" \
+MERIDIAN_AGENTSANDBOX_ISOLATION_CLASS=microvm \
+MERIDIAN_AGENTSANDBOX_TEST=1 \
+MERIDIAN_AGENTSANDBOX_NAMESPACE="$namespace" \
+MERIDIAN_CAPSULE_IMAGE=meridian-capsule:agentsandbox-it \
+  go test ./internal/provider/agentsandbox -run '^TestIntegrationIsolation$' -count=1 -v -timeout=5m
 
 if kubectl -n "$namespace" get sandboxes.agents.x-k8s.io \
   -l app.kubernetes.io/managed-by=meridian -o name | grep -q .; then
