@@ -220,6 +220,29 @@ if "$HELM" template invalid "$CHART" --kube-version 1.36.0 --set oidc.issuer=htt
   exit 1
 fi
 
+# API server ports default to 443 and widen only the control plane.
+if ! grep -Eq 'port: 443' <<<"$control" || grep -Eq 'port: 6443' <<<"$control"; then
+  echo "control-plane API egress must default to TCP 443 only" >&2
+  exit 1
+fi
+"$HELM" template policy "$CHART" --namespace meridian --kube-version 1.36.0 \
+  --set 'networkPolicy.kubernetesAPIServerCIDRs[0]=10.96.0.1/32' \
+  --set-json 'networkPolicy.kubernetesAPIServerPorts=[443,6443]' \
+  "${digest_args[@]}" >"$rendered"
+if ! grep -Eq 'port: 6443' <<<"$(extract_policy "policy-meridian-control-plane" "$rendered")"; then
+  echo "control-plane NetworkPolicy omitted the configured API server port 6443" >&2
+  exit 1
+fi
+if grep -Eq 'port: 6443' <<<"$(extract_policy "policy-meridian-capsules" "$rendered")"; then
+  echo "API server ports must not be granted to Capsules" >&2
+  exit 1
+fi
+if "$HELM" template invalid "$CHART" --kube-version 1.36.0 \
+  --set-json 'networkPolicy.kubernetesAPIServerPorts=[]' >/dev/null 2>&1; then
+  echo "values schema accepted an empty kubernetesAPIServerPorts" >&2
+  exit 1
+fi
+
 # ADR 0050: a declared isolation class renders exactly one narrow ClusterRole
 # and ClusterRoleBinding for reading the single configured RuntimeClass.
 "$HELM" template isolation "$CHART" \
@@ -259,6 +282,25 @@ if grep -Eq 'verbs: \[[^]]*"(list|watch|create|update|patch|delete|deletecollect
 fi
 if grep -Eq '^kind: (CustomResourceDefinition|Ingress)$' "$rendered"; then
   echo "isolation chart rendered CRD or Ingress" >&2
+  exit 1
+fi
+
+# The installation floor renders only when set, and the schema bounds it.
+if grep -q -- '--require-isolation' "$rendered"; then
+  echo "chart rendered --require-isolation without requireIsolation" >&2
+  exit 1
+fi
+"$HELM" template floor "$CHART" --namespace meridian --kube-version 1.36.0 \
+  --set requireIsolation=microvm \
+  --set agentSandbox.isolationClass=microvm --set agentSandbox.runtimeClassName=kata \
+  "${digest_args[@]}" >"$rendered"
+if ! grep -q -- '"--require-isolation=microvm"' "$rendered"; then
+  echo "chart omitted --require-isolation=microvm" >&2
+  exit 1
+fi
+if "$HELM" template invalid "$CHART" --kube-version 1.36.0 \
+  --set requireIsolation=vm >/dev/null 2>&1; then
+  echo "values schema accepted an unknown requireIsolation class" >&2
   exit 1
 fi
 

@@ -3,6 +3,10 @@ providerGatewayURL: ""
 # loopback or private-network addresses (ADR 0027). Requires providerGatewayURL.
 providerGatewayAllowPrivateHTTP: false
 
+# Installation-wide isolation floor (ADR 0050): meridiand refuses to start
+# unless the provider verified at least this class. Empty sets no floor.
+requireIsolation: ""
+
 # Team-mode browser origin and sign-in. Empty values preserve single-user mode.
 publicUrl: ""
 # Go duration, e.g. 2160h for 90 days; empty or 0 retains all audit records.
@@ -100,6 +104,10 @@ networkPolicy:
   # Kubernetes NetworkPolicy cannot select the API server. Set its routable
   # CIDR explicitly; the safe empty default denies API access.
   kubernetesAPIServerCIDRs: []
+  # TCP ports allowed to those CIDRs. Most CNIs match egress after the
+  # kubernetes Service is translated to its endpoint, so a kubeadm cluster,
+  # whose API server listens on 6443, needs [443, 6443].
+  kubernetesAPIServerPorts: [443]
   dnsNamespaceSelector:
     kubernetes.io/metadata.name: kube-system
   dnsPodSelector:

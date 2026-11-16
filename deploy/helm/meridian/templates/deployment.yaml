@@ -76,6 +76,9 @@ spec:
             {{- with .Values.publicUrl }}
             - {{ printf "--public-url=%s" . | quote }}
             {{- end }}
+            {{- with .Values.requireIsolation }}
+            - {{ printf "--require-isolation=%s" . | quote }}
+            {{- end }}
             {{- with .Values.auditRetention }}
             - {{ printf "--audit-retention=%s" . | quote }}
             {{- end }}

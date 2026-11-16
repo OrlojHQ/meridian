@@ -12,6 +12,9 @@ let the daemon `get` the single RuntimeClass named in
 install that leaves `isolationClass` empty — renders no cluster-scoped
 resource at all.
 
+`requireIsolation` sets the installation-wide floor (`--require-isolation`):
+the daemon refuses to start unless the provider verified at least that class.
+
 Safe defaults deny API-server, model-provider, and Capsule internet egress
 until CIDRs are configured. Capsules may reach the in-namespace provider
 gateway on the control-plane Service; they do not receive provider CIDRs,
