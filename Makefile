@@ -21,7 +21,7 @@ PACK_IMAGES := $(PACKS:%=capsule-%-image)
 	desktop-sidecar desktop-test desktop-build desktop-dev \
 	format-check vet vulncheck frontend-typecheck capsule-image $(PACK_IMAGES) \
 	capsule-integration-image docker-integration helm-tool helm-test \
-	agentsandbox-integration clean release-check release-snapshot release-smoke \
+	agentsandbox-integration agentsandbox-kata-validation clean release-check release-snapshot release-smoke \
 	meridiand-image release-docker-validate meridiand-up meridiand-down \
 	meridiand-ready tui try list-packs $(PACKS:%=try-%)
 
@@ -196,6 +196,9 @@ helm-test: .tools/helm
 
 agentsandbox-integration: .tools/helm
 	HELM="$(CURDIR)/.tools/helm" bash testing/agentsandbox-kind.sh
+
+agentsandbox-kata-validation: .tools/helm
+	HELM="$(CURDIR)/.tools/helm" bash testing/agentsandbox-kata.sh
 
 release-check:
 	go run github.com/goreleaser/goreleaser/v2@v2.17.0 check
