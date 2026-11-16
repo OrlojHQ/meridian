@@ -227,9 +227,13 @@ printf %s "$CLAUDE_SETUP_TOKEN" | meridian harness connect anthropic --oauth --s
 The key must come from stdin, never a plaintext command-line argument. On first
 launch, choose the connection to authorize it for the Project and harness.
 That grant is reused on future launches. Revoke a connection in Settings to stop
-active gateway streams and future requests. Replacement keys retain the same
-connection identity. Restart active sessions after a daemon restart or expiry
-of the 24-hour Capsule lease.
+active gateway streams and future requests. The revoked row stays, so a
+ChatGPT sign-out can still say when OpenAI did not confirm it. Remove that
+row with **Remove** in Settings, or `meridian harness disconnect CONNECTION_ID`,
+once no Capsule is still running with it. Removal also drops the Project
+grants and a workstation-profile default that named it. Replacement keys
+retain the same connection identity. Restart active sessions after a daemon
+restart or expiry of the 24-hour Capsule lease.
 
 OpenAI Responses and Chat Completions, and Anthropic Messages and token counting
 are the supported gateway operations, for official and custom endpoints. Other provider operations and arbitrary

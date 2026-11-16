@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/ports"
 	"github.com/OrlojHQ/meridian/internal/principal"
@@ -610,5 +611,84 @@ func TestRevokePersonalLoginsKeepsAPIKeyConnections(t *testing.T) {
 	}
 	if again, err := s.RevokePersonalLogins(asSystem(ctx), domain.BootstrapOwnerID); err != nil || again != 0 {
 		t.Fatalf("second revocation = %d, %v", again, err)
+	}
+}
+
+func TestDeleteRevokedConnectionRemovesGrantsAndStopsAtALiveCapsule(t *testing.T) {
+	ctx := operatorContext()
+	s, db, project, capsule := newConnectionService(t, false)
+	connection, err := s.PutProviderConnection(ctx, "", ConnectionInput{Name: "OpenAI", Provider: "openai", APIKey: "upstream-private-key"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.GrantProviderConnection(ctx, project.ID, "codex", connection.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.UpdateProfile(ctx, ProfileUpdate{GitName: "Ada", GitEmail: "ada@example.com", DefaultConnections: map[string]string{"codex": connection.ID}}, "profile-default"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteProviderConnection(ctx, connection.ID); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("removed a connection that is still signed in: %v", err)
+	}
+	revoked, err := s.PutProviderConnection(ctx, connection.ID, ConnectionInput{Name: "OpenAI", Provider: "openai", Revoked: true, ExpectedResourceVersion: connection.ResourceVersion})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteProviderConnection(asSystem(ctx), revoked.ID); !errors.Is(err, principal.ErrMissing) {
+		t.Fatalf("system removed a connection: %v", err)
+	}
+	other, ok := principal.User("usr_other")
+	if !ok {
+		t.Fatal("other user")
+	}
+	if err := s.DeleteProviderConnection(principal.With(ctx, other), revoked.ID); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("another member removed the connection: %v", err)
+	}
+	if err := s.DeleteProviderConnection(ctx, revoked.ID); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("removed a connection a running Capsule still uses: %v", err)
+	}
+	granted, err := s.ProjectProviderConnection(ctx, project.ID, "codex")
+	if err != nil || granted != revoked.ID {
+		t.Fatalf("grant changed while removal was refused: %q %v", granted, err)
+	}
+	err = db.Transact(ctx, func(tx ports.Transaction) error {
+		current, err := tx.GetCapsule(ctx, capsule.ID)
+		if err != nil {
+			return err
+		}
+		expected := current.ResourceVersion
+		if err := current.Transition(domain.CapsuleSealed, time.Now()); err != nil {
+			return err
+		}
+		return tx.UpdateCapsule(ctx, current, expected)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteProviderConnection(ctx, revoked.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteProviderConnection(ctx, revoked.ID); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("second removal = %v", err)
+	}
+	err = db.View(ctx, func(r ports.Reader) error {
+		if _, err := r.GetProviderConnection(ctx, revoked.ID); !errors.Is(err, domain.ErrNotFound) {
+			return fmt.Errorf("connection row = %v", err)
+		}
+		grant, err := r.GetProjectProviderConnection(ctx, project.ID, "codex")
+		if err != nil || grant != "" {
+			return fmt.Errorf("grant = %q %v", grant, err)
+		}
+		profile, err := r.GetUserProfile(ctx, domain.BootstrapOwnerID)
+		if err != nil {
+			return err
+		}
+		if _, still := profile.DefaultConnections["codex"]; still {
+			return fmt.Errorf("profile still names the connection: %v", profile.DefaultConnections)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

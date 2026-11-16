@@ -134,6 +134,11 @@ type DeleteProjectParams struct {
 	IdempotencyKey string
 }
 
+// DeleteProviderConnectionParams is parameters of deleteProviderConnection operation.
+type DeleteProviderConnectionParams struct {
+	ConnectionId string
+}
+
 // DeleteSecretParams is parameters of deleteSecret operation.
 type DeleteSecretParams struct {
 	IdempotencyKey string

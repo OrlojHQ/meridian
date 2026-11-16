@@ -101,7 +101,7 @@ function ChatGPTSignInPanel({connection,autoStart,onDone}:{connection?:ProviderC
 export function ProviderConnections(){
  const cache=useQueryClient();const connections=useQuery({queryKey:["provider-connections"],queryFn:api.providerConnections});
  const [provider,setProvider]=useState<ProviderConnectionType>("openai");const [name,setName]=useState("");const [key,setKey]=useState("");const [editing,setEditing]=useState<ProviderConnection>();
- const [reauthorizing,setReauthorizing]=useState<string>();
+ const [reauthorizing,setReauthorizing]=useState<string>();const [removing,setRemoving]=useState<string>();
  const [baseUrl,setBaseUrl]=useState("");const [model,setModel]=useState("");const [privateHttp,setPrivateHttp]=useState(false);const [efforts,setEfforts]=useState<ReasoningEffortLevel[]>([]);
  const [loginKind,setLoginKind]=useState<"api_key"|"oauth">("api_key");
  const [fallback,setFallback]=useState(false);const [busy,setBusy]=useState(false);const [message,setMessage]=useState("");const [continueURL,setContinueURL]=useState("");
@@ -112,6 +112,7 @@ export function ProviderConnections(){
  const custom=isCustom(provider);const claude=provider==="anthropic";const chatgpt=provider==="chatgpt";const privateHttpAllowed=!!connections.data?.privateHttpAllowed;
  const reset=()=>{setKey("");setEditing(undefined);setBaseUrl("");setModel("");setPrivateHttp(false);setEfforts([]);setLoginKind("api_key");setFallback(false);};
  const save=useMutation({mutationFn:({body,id}:{body:ProviderConnectionRequestWritable,id?:string})=>api.saveProviderConnection(body,id),onSuccess:()=>{reset();save.reset();return cache.invalidateQueries({queryKey:["provider-connections"]});}});
+ const remove=useMutation({mutationFn:(id:string)=>api.deleteProviderConnection(id),onSuccess:()=>{setRemoving(undefined);return cache.invalidateQueries({queryKey:["provider-connections"]});}});
  const body=():ProviderConnectionRequestWritable=>({name:name||(custom?providerLabels[provider]:claude?"Claude":`${provider} API`),provider,apiKey:key,expectedResourceVersion:editing?.resourceVersion??0,...(claude&&loginKind==="oauth"?{credentialKind:"oauth"}:{}),...(custom?{baseUrl,defaultModel:model||undefined,allowPrivateHttp:privateHttp,...(model&&efforts.length>0?{reasoningEfforts:effortLevels.filter(level=>efforts.includes(level))}:{})}:{})});
  async function signIn(connectionId?:string){
   const generation=++polls.current;
@@ -169,6 +170,14 @@ export function ProviderConnections(){
     <p className="connection-meta">{connectionKind(item)}</p>
     {details && <p className="connection-meta">{details}</p>}
     {item.provider==="chatgpt" && item.revoked && item.revocationUnconfirmed && <p role="note" className="connection-note">OpenAI did not confirm the sign-out. Disconnect Meridian in ChatGPT's settings to be sure.</p>}
+    {item.revoked && (removing===item.id ? <div className="connection-actions" role="group" aria-label={`Remove ${item.name}`}>
+     <span>Remove {item.name}?</span>
+     <button type="button" className="connection-action danger" disabled={remove.isPending} onClick={()=>remove.mutate(item.id)}>Remove</button>
+     <button type="button" className="connection-action" onClick={()=>setRemoving(undefined)}>Keep</button>
+     {remove.isError && <p role="alert">{normalizeAPIError(remove.error).message}</p>}
+    </div> : <div className="connection-actions">
+     <button type="button" className="connection-action danger" onClick={()=>setRemoving(item.id)}>Remove</button>
+    </div>)}
     {item.provider==="chatgpt" && !item.revoked && reauthorizing===item.id ? <ChatGPTSignInPanel connection={item} autoStart onDone={()=>setReauthorizing(undefined)}/> : !item.revoked && <div className="connection-actions">
      {item.provider==="chatgpt" ? <>
       <button type="button" className="connection-action" onClick={()=>setReauthorizing(item.id)}>{item.needsSignIn?"Sign in again":"Reconnect"}</button>

@@ -26,6 +26,10 @@ type Reader interface {
 	ProjectHarnessSetups(context.Context, domain.ProjectID) (map[string]string, error)
 	ListProviderConnections(context.Context) ([]domain.ProviderConnection, error)
 	GetProviderConnection(context.Context, string) (domain.ProviderConnection, error)
+	// ProviderConnectionLive reports whether a Capsule that is starting,
+	// ready, or paused belongs to a Project whose harness grant names this
+	// connection.
+	ProviderConnectionLive(context.Context, string) (bool, error)
 	GetProjectProviderConnection(context.Context, domain.ProjectID, string) (string, error)
 	ListHarnessSetups(context.Context) ([]domain.HarnessSetup, error)
 	GetHarnessSetupRevision(context.Context, string) (domain.HarnessSetupRevision, error)
@@ -122,6 +126,9 @@ type Transaction interface {
 	CollectDeletedHarnessSetups(context.Context) error
 	SetProjectHarnessSetup(context.Context, domain.ProjectID, string, string) error
 	PutProviderConnection(context.Context, domain.ProviderConnection) error
+	// DeleteProviderConnection removes owner's revoked connection, its
+	// project grants, and profile defaults that name it.
+	DeleteProviderConnection(context.Context, string, domain.UserID) error
 	GrantProviderConnection(context.Context, domain.ProjectID, string, string) error
 	PutHarnessSetup(context.Context, domain.HarnessSetup) error
 	InsertHarnessSetupRevision(context.Context, domain.HarnessSetupRevision) error

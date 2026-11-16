@@ -144,7 +144,7 @@ func newHarnessCommand(config *cliConfig) *cobra.Command {
 	command.Flags().BoolVar(&yes, "yes", false, "save the preview without an interactive prompt")
 	command.Flags().BoolVar(&acceptExclusions, "accept-exclusions", false, "explicitly omit reported unsupported or sensitive items")
 	command.Flags().BoolVar(&previewOnly, "preview", false, "inspect local configuration without contacting Meridian")
-	root.AddCommand(newHarnessConnectCommand(config), command, &cobra.Command{Use: "list", Short: "List saved personal setups", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	root.AddCommand(newHarnessConnectCommand(config), newHarnessDisconnectCommand(config), command, &cobra.Command{Use: "list", Short: "List saved personal setups", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		api, err := newAPI(config)
 		if err != nil {
 			return err
@@ -335,4 +335,30 @@ needs no authentication.`, Example: `  meridian harness connect chatgpt
 	cmd.Flags().StringVar(&id, "id", "", "existing connection to replace")
 	cmd.Flags().Int64Var(&expected, "expected-version", 0, "existing connection version")
 	return cmd
+}
+
+func newHarnessDisconnectCommand(config *cliConfig) *cobra.Command {
+	return &cobra.Command{
+		Use:   "disconnect CONNECTION_ID",
+		Short: "Remove a revoked provider connection",
+		Long: `Remove a provider connection that has already been revoked.
+
+A connection that is still signed in stays; revoke it first. A connection a
+starting, ready, or paused Capsule still uses stays until that Capsule stops.
+Project grants and a workstation-profile default that names it are removed
+with it.`,
+		Example: "  meridian harness disconnect conn_123",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			api, err := newAPI(config)
+			if err != nil {
+				return err
+			}
+			if err := api.DeleteProviderConnection(cmd.Context(), client.DeleteProviderConnectionParams{ConnectionId: args[0]}); err != nil {
+				return apiCallError(err)
+			}
+			_, _ = fmt.Fprintln(config.stdout, "Removed the connection.")
+			return nil
+		},
+	}
 }

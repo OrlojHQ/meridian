@@ -40,6 +40,14 @@ func (s *Server) putProviderConnection(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, publicConnection(item))
 }
 
+func (s *Server) deleteProviderConnection(w http.ResponseWriter, r *http.Request) {
+	if err := s.service.DeleteProviderConnection(r.Context(), r.PathValue("connectionId")); err != nil {
+		writeError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // ChatGPT sign-in responses carry an authorization URL but never a token,
 // and are not cached.
 func (s *Server) startChatGPTSignIn(w http.ResponseWriter, r *http.Request) {

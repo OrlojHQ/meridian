@@ -239,6 +239,15 @@ type Invoker interface {
 	//
 	// POST /projects/{projectId}/delete
 	DeleteProject(ctx context.Context, request *LifecycleMutationRequest, params DeleteProjectParams) (DeleteProjectRes, error)
+	// DeleteProviderConnection invokes deleteProviderConnection operation.
+	//
+	// Removes a connection that has already been revoked, including its Project grants and a
+	// workstation-profile default that names it. A connection that is still signed in stays. A Capsule
+	// that is starting, ready, or paused, and whose Project still grants it, must be stopped first.
+	// Another member's connection is not found.
+	//
+	// DELETE /provider-connections/{connectionId}
+	DeleteProviderConnection(ctx context.Context, params DeleteProviderConnectionParams) error
 	// DeleteSecret invokes deleteSecret operation.
 	//
 	// Crypto-shred a named secret by deleting its envelope.
@@ -4785,6 +4794,140 @@ func (c *Client) sendDeleteProject(ctx context.Context, request *LifecycleMutati
 
 	stage = "DecodeResponse"
 	result, err := decodeDeleteProjectResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// DeleteProviderConnection invokes deleteProviderConnection operation.
+//
+// Removes a connection that has already been revoked, including its Project grants and a
+// workstation-profile default that names it. A connection that is still signed in stays. A Capsule
+// that is starting, ready, or paused, and whose Project still grants it, must be stopped first.
+// Another member's connection is not found.
+//
+// DELETE /provider-connections/{connectionId}
+func (c *Client) DeleteProviderConnection(ctx context.Context, params DeleteProviderConnectionParams) error {
+	_, err := c.sendDeleteProviderConnection(ctx, params)
+	return err
+}
+
+func (c *Client) sendDeleteProviderConnection(ctx context.Context, params DeleteProviderConnectionParams) (res *DeleteProviderConnectionNoContent, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("deleteProviderConnection"),
+		semconv.HTTPRequestMethodKey.String("DELETE"),
+		semconv.URLTemplateKey.String("/provider-connections/{connectionId}"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, DeleteProviderConnectionOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [2]string
+	pathParts[0] = "/provider-connections/"
+	{
+		// Encode "connectionId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "connectionId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ConnectionId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "DELETE", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, DeleteProviderConnectionOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeDeleteProviderConnectionResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}

@@ -42,6 +42,7 @@ var operationRolesBearerAuth = map[string][]string{
 	DeleteCapsuleOperation:                  []string{},
 	DeleteMemberObjectsOperation:            []string{},
 	DeleteProjectOperation:                  []string{},
+	DeleteProviderConnectionOperation:       []string{},
 	DeleteSecretOperation:                   []string{},
 	DeleteThreadOperation:                   []string{},
 	DenyCoordinationRequestOperation:        []string{},

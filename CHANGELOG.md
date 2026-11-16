@@ -17,6 +17,14 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   in the terminal and in Threads. `meridian import` warns when the imported
   default model still depends on a host environment variable or a server the
   Capsule cannot reach.
+- A revoked provider connection can be removed. Revoke still keeps the row,
+  so a ChatGPT sign-out can say when the provider did not confirm it.
+  **Remove** in Provider connections, `DELETE /provider-connections/{id}`,
+  and `meridian harness disconnect ID` then delete a revoked connection,
+  its Project grants, and a workstation-profile default that names it. A
+  connection that is still signed in stays. A Capsule that is starting,
+  ready, or paused, and whose Project still grants it, must be stopped
+  first. Another member's connection is not found.
 
 ## [0.10.1] - 2026-11-15
 

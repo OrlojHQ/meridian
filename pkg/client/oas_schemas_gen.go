@@ -4257,6 +4257,9 @@ type DeleteProjectUnprocessableEntity ErrorEnvelope
 
 func (*DeleteProjectUnprocessableEntity) deleteProjectRes() {}
 
+// DeleteProviderConnectionNoContent is response for DeleteProviderConnection operation.
+type DeleteProviderConnectionNoContent struct{}
+
 type DeleteSecretBadRequest ErrorEnvelope
 
 func (*DeleteSecretBadRequest) deleteSecretRes() {}

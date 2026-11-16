@@ -2,7 +2,7 @@ import { client } from "./generated/client.gen";
 import {
   getProjectEnvironment, updateProjectEnvironment,
   getProjectHarnessSetup, setProjectHarnessSetup,
-  listProviderConnections, createProviderConnection, updateProviderConnection, getProjectProviderConnection, grantProjectProviderConnection,
+  listProviderConnections, createProviderConnection, updateProviderConnection, deleteProviderConnection, getProjectProviderConnection, grantProjectProviderConnection,
   startChatGptSignIn, getChatGptSignIn, completeChatGptSignIn,
   getHarnessSetupContents, listHarnessSetups, mutateHarnessSetup, listHarnessSetupRevisions, previewHarnessSetup, importHarnessSetup,
   getProfile, updateProfile, getCapsuleProfileDiagnostic, updateCapsuleProfile,
@@ -219,6 +219,7 @@ export const api = {
  getClaudeLogin:(loginId:string)=>call<ClaudeLoginStatus>(getClaudeLogin({...generatedOptions(),path:{loginId}})),
  finishClaudeLogin:(loginId:string,code:string)=>call<ClaudeLoginStatus>(completeClaudeLogin({...generatedOptions(),path:{loginId},body:{code}})),
  saveProviderConnection:(body:ProviderConnectionRequestWritable,id?:string)=>call<ProviderConnection>(id ? updateProviderConnection({...generatedOptions(),path:{connectionId:id},body}) : createProviderConnection({...generatedOptions(),body})),
+ deleteProviderConnection:(id:string)=>call<void>(deleteProviderConnection({...generatedOptions(),path:{connectionId:id}})),
  startChatGPTSignIn:(connectionId?:string)=>call<ChatGptSignIn>(startChatGptSignIn({...generatedOptions(),body:{...(connectionId?{connectionId}:{}),listen:true}})),
  chatGPTSignIn:(signInId:string,signal?:AbortSignal)=>call<ChatGptSignIn>(getChatGptSignIn({...generatedOptions(signal),path:{signInId}})),
  completeChatGPTSignIn:(signInId:string,callbackUrl:string)=>call<ChatGptSignIn>(completeChatGptSignIn({...generatedOptions(),path:{signInId},body:{callbackUrl}})),

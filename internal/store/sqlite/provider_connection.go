@@ -45,6 +45,33 @@ func (r *repository) GetProviderConnection(ctx context.Context, id string) (doma
 	item.OwnerUserID = owner
 	return item, err
 }
+func (r *repository) ProviderConnectionLive(ctx context.Context, id string) (bool, error) {
+	var one int
+	err := r.q.QueryRowContext(ctx, `
+		SELECT 1 FROM project_provider_connections g
+		JOIN capsules c ON c.project_id = g.project_id
+		WHERE g.connection_id = ? AND c.state IN (?, ?, ?, ?)
+		LIMIT 1`, id, domain.CapsuleCreating, domain.CapsulePreparing, domain.CapsuleReady, domain.CapsulePaused).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+func (r *repository) DeleteProviderConnection(ctx context.Context, id string, owner domain.UserID) error {
+	if _, err := r.q.ExecContext(ctx, "DELETE FROM project_provider_connections WHERE connection_id = ?", id); err != nil {
+		return err
+	}
+	if _, err := r.q.ExecContext(ctx, "DELETE FROM user_profile_connections WHERE connection_id = ? AND owner_user_id = ?", id, owner); err != nil {
+		return err
+	}
+	result, err := r.q.ExecContext(ctx, "DELETE FROM provider_connections WHERE id = ? AND owner_user_id = ?", id, owner)
+	if err != nil {
+		return err
+	}
+	return oneRow(result)
+}
+
 func (r *repository) PutProviderConnection(ctx context.Context, item domain.ProviderConnection) error {
 	raw, err := json.Marshal(item)
 	if err != nil {

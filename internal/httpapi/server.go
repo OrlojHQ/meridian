@@ -186,6 +186,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /provider-connections", s.listProviderConnections)
 	s.mux.HandleFunc("POST /provider-connections", s.putProviderConnection)
 	s.mux.HandleFunc("PUT /provider-connections/{connectionId}", s.putProviderConnection)
+	s.mux.HandleFunc("DELETE /provider-connections/{connectionId}", s.deleteProviderConnection)
 	s.mux.HandleFunc("POST /provider-connections/chatgpt/sign-ins", s.startChatGPTSignIn)
 	s.mux.HandleFunc("GET /provider-connections/chatgpt/sign-ins/{signInId}", s.chatGPTSignIn)
 	s.mux.HandleFunc("POST /provider-connections/chatgpt/sign-ins/{signInId}/complete", s.completeChatGPTSignIn)

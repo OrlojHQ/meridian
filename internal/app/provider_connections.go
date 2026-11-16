@@ -211,6 +211,50 @@ func (s *Service) PutProviderConnection(ctx context.Context, id string, input Co
 	return result, err
 }
 
+// DeleteProviderConnection removes a revoked connection. Revoke keeps the
+// row, including a ChatGPT sign-out whose upstream revocation was not
+// confirmed. Remove is the step after that. It also drops project grants
+// and a workstation-profile default that names the connection. A connection
+// that is still signed in, or that a starting, ready, or paused Capsule
+// still uses, is left in place. Another member's connection is not found.
+func (s *Service) DeleteProviderConnection(ctx context.Context, id string) error {
+	if err := requirePrincipal(ctx); err != nil {
+		return err
+	}
+	owner, err := ownerOf(ctx)
+	if err != nil {
+		return err
+	}
+	err = s.store.Transact(ctx, func(tx ports.Transaction) error {
+		item, err := tx.GetProviderConnection(ctx, id)
+		if err != nil {
+			return err
+		}
+		if !item.Revoked {
+			return fmt.Errorf("%w: revoke the connection before removing it", domain.ErrConflict)
+		}
+		live, err := tx.ProviderConnectionLive(ctx, id)
+		if err != nil {
+			return err
+		}
+		if live {
+			return fmt.Errorf("%w: a Capsule is still using this connection; stop it before removing the connection", domain.ErrConflict)
+		}
+		if err := tx.DeleteProviderConnection(ctx, id, owner); err != nil {
+			return err
+		}
+		if err := s.audit(ctx, tx, domain.AuditConnectionDelete, "provider_connection", id); err != nil {
+			return err
+		}
+		return s.appendEvent(ctx, tx, "provider_connection", id, "provider_connection.deleted", item.ResourceVersion, nil)
+	})
+	s.auditFailure(ctx, domain.AuditConnectionDelete, "provider_connection", id, err)
+	if err == nil && s.gateway != nil {
+		s.gateway.Revoke(id, "", "")
+	}
+	return err
+}
+
 // Custom endpoints may omit the key; official providers require one and use
 // fixed upstreams.
 func (s *Service) validateConnectionInput(input ConnectionInput) (ConnectionInput, error) {

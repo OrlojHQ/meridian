@@ -207,6 +207,27 @@ paths:
                 $ref: "#/components/schemas/ProviderConnection"
         default:
           $ref: "#/components/responses/DefaultError"
+    delete:
+      operationId: deleteProviderConnection
+      summary: Remove a revoked provider connection
+      description: >-
+        Removes a connection that has already been revoked, including its
+        Project grants and a workstation-profile default that names it.
+        A connection that is still signed in stays. A Capsule that is
+        starting, ready, or paused, and whose Project still grants it, must
+        be stopped first.
+        Another member's connection is not found.
+      parameters:
+        - name: connectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: The connection was removed
+        default:
+          $ref: "#/components/responses/DefaultError"
   /provider-connections/chatgpt/sign-ins:
     post:
       operationId: startChatGPTSignIn

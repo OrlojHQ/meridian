@@ -2042,6 +2042,33 @@ export type CreateProviderConnectionResponses = {
 
 export type CreateProviderConnectionResponse = CreateProviderConnectionResponses[keyof CreateProviderConnectionResponses];
 
+export type DeleteProviderConnectionData = {
+    body?: never;
+    path: {
+        connectionId: string;
+    };
+    query?: never;
+    url: '/provider-connections/{connectionId}';
+};
+
+export type DeleteProviderConnectionErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type DeleteProviderConnectionError = DeleteProviderConnectionErrors[keyof DeleteProviderConnectionErrors];
+
+export type DeleteProviderConnectionResponses = {
+    /**
+     * The connection was removed
+     */
+    204: void;
+};
+
+export type DeleteProviderConnectionResponse = DeleteProviderConnectionResponses[keyof DeleteProviderConnectionResponses];
+
 export type UpdateProviderConnectionData = {
     body: ProviderConnectionRequestWritable;
     path: {

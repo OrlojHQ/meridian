@@ -52,7 +52,27 @@ it("lists each connection with its mark, what it is, and its status", async () =
 
   expect(old.querySelector(".provider-mark-openai svg")).not.toBeNull();
   expect(within(old).getByText("Revoked")).toHaveClass("connection-status", "muted");
-  expect(within(old).queryByRole("button")).toBeNull();
+  expect(within(old).getByRole("button", { name: "Remove" })).toBeInTheDocument();
+  expect(within(old).queryByRole("button", { name: "Revoke" })).toBeNull();
+});
+
+it("asks before removing a revoked connection", async () => {
+  vi.spyOn(api, "providerConnections").mockResolvedValue({
+    enabled: true,
+    items: [connection({ id: "old", provider: "openai", name: "Old key", revoked: true })],
+  });
+  const remove = vi.spyOn(api, "deleteProviderConnection").mockResolvedValue(undefined);
+  show();
+  const row = await screen.findByRole("listitem");
+  await userEvent.click(within(row).getByRole("button", { name: "Remove" }));
+  expect(remove).not.toHaveBeenCalled();
+  expect(within(row).getByRole("group", { name: "Remove Old key" })).toBeInTheDocument();
+  await userEvent.click(within(row).getByRole("button", { name: "Keep" }));
+  expect(remove).not.toHaveBeenCalled();
+  await userEvent.click(within(row).getByRole("button", { name: "Remove" }));
+  await userEvent.click(within(row).getByRole("button", { name: "Remove" }));
+  expect(remove).toHaveBeenCalledTimes(1);
+  expect(remove).toHaveBeenCalledWith("old");
 });
 
 it("shows the chosen provider's mark in the provider select and titles the form", async () => {
