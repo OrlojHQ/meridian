@@ -3,8 +3,17 @@ import { Link, Navigate, useOutletContext, useParams } from "react-router-dom";
 
 import { queries } from "../api/queries";
 import type { ShellOutletContext } from "../shell/AppShell";
+import { Badge } from "./ui/Badge";
 import { ProjectEnvironment } from "./ProjectEnvironment";
 import { ProjectHarnesses } from "./ProjectHarnesses";
+
+// The server is the authority on isolation floors (ADR 0050); the label
+// only surfaces what the Project already requires.
+const isolationLabels: Record<string, string> = {
+  container: "Requires Container",
+  sandbox: "Requires Sandbox",
+  microvm: "Requires MicroVM",
+};
 
 export function ProjectSettings() {
   const { projectId = "" } = useParams();
@@ -14,11 +23,17 @@ export function ProjectSettings() {
   if (projects.isError) return <Navigate to="/ui/" replace />;
   const project = projects.data.items.find((item) => item.id === projectId);
   if (!project) return <Navigate to="/ui/" replace />;
+  const isolationLabel = project.requiredIsolation
+    ? isolationLabels[project.requiredIsolation]
+    : undefined;
   return (
     <section className="project-settings">
       <header>
         <p className="eyebrow">Project</p>
-        <h1>{project.name}</h1>
+        <h1>
+          {project.name}
+          {isolationLabel && <Badge>{isolationLabel}</Badge>}
+        </h1>
         <p className="launch-hint">Applies to future Capsules.</p>
       </header>
       <dl>
