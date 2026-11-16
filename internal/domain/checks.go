@@ -25,9 +25,8 @@ const (
 
 type CheckRunID string
 
-// CheckTrigger is why a check suite started. github_ci is reserved for a
-// later connection that records a remote status in the same shape; this
-// build never reads one.
+// CheckTrigger is why a local check suite started. Remote CI is a separate
+// watch in the same summary (ADR 0053), not one of these triggers.
 type CheckTrigger string
 
 const (

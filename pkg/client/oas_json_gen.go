@@ -1982,6 +1982,16 @@ func (s *BoardItemNeedsYou) Decode(d *jx.Decoder) error {
 		*s = BoardItemNeedsYouChecksFailing
 	case BoardItemNeedsYouChecksError:
 		*s = BoardItemNeedsYouChecksError
+	case BoardItemNeedsYouCiPassed:
+		*s = BoardItemNeedsYouCiPassed
+	case BoardItemNeedsYouCiFailing:
+		*s = BoardItemNeedsYouCiFailing
+	case BoardItemNeedsYouCiReconnect:
+		*s = BoardItemNeedsYouCiReconnect
+	case BoardItemNeedsYouCiConnect:
+		*s = BoardItemNeedsYouCiConnect
+	case BoardItemNeedsYouCiUnreadable:
+		*s = BoardItemNeedsYouCiUnreadable
 	default:
 		*s = BoardItemNeedsYou(v)
 	}
@@ -5895,9 +5905,15 @@ func (s *ChecksSummary) encodeFields(e *jx.Encoder) {
 			s.RunId.Encode(e)
 		}
 	}
+	{
+		if s.RemoteCI.Set {
+			e.FieldStart("remoteCI")
+			s.RemoteCI.Encode(e)
+		}
+	}
 }
 
-var jsonFieldsNameOfChecksSummary = [14]string{
+var jsonFieldsNameOfChecksSummary = [15]string{
 	0:  "configured",
 	1:  "phase",
 	2:  "attempt",
@@ -5912,6 +5928,7 @@ var jsonFieldsNameOfChecksSummary = [14]string{
 	11: "passed",
 	12: "failed",
 	13: "runId",
+	14: "remoteCI",
 }
 
 // Decode decodes ChecksSummary from json.
@@ -6066,6 +6083,16 @@ func (s *ChecksSummary) Decode(d *jx.Decoder) error {
 				return nil
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"runId\"")
+			}
+		case "remoteCI":
+			if err := func() error {
+				s.RemoteCI.Reset()
+				if err := s.RemoteCI.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"remoteCI\"")
 			}
 		default:
 			return d.Skip()
@@ -22856,6 +22883,39 @@ func (s *OptProjectState) UnmarshalJSON(data []byte) error {
 	return s.Decode(d)
 }
 
+// Encode encodes RemoteCISummary as json.
+func (o OptRemoteCISummary) Encode(e *jx.Encoder) {
+	if !o.Set {
+		return
+	}
+	o.Value.Encode(e)
+}
+
+// Decode decodes RemoteCISummary from json.
+func (o *OptRemoteCISummary) Decode(d *jx.Decoder) error {
+	if o == nil {
+		return errors.New("invalid: unable to decode OptRemoteCISummary to nil")
+	}
+	o.Set = true
+	if err := o.Value.Decode(d); err != nil {
+		return err
+	}
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s OptRemoteCISummary) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *OptRemoteCISummary) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
 // Encode encodes Run as json.
 func (o OptRun) Encode(e *jx.Encoder) {
 	if !o.Set {
@@ -30285,6 +30345,865 @@ func (s *RejectDeliveryUnprocessableEntity) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
 func (s *RejectDeliveryUnprocessableEntity) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s *RemoteCI) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *RemoteCI) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("state")
+		s.State.Encode(e)
+	}
+	{
+		e.FieldStart("label")
+		e.Str(s.Label)
+	}
+	{
+		if s.Head.Set {
+			e.FieldStart("head")
+			s.Head.Encode(e)
+		}
+	}
+	{
+		if s.Attempt.Set {
+			e.FieldStart("attempt")
+			s.Attempt.Encode(e)
+		}
+	}
+	{
+		if s.MaxAttempts.Set {
+			e.FieldStart("maxAttempts")
+			s.MaxAttempts.Encode(e)
+		}
+	}
+	{
+		if s.Passed.Set {
+			e.FieldStart("passed")
+			s.Passed.Encode(e)
+		}
+	}
+	{
+		if s.Failed.Set {
+			e.FieldStart("failed")
+			s.Failed.Encode(e)
+		}
+	}
+	{
+		if s.Pending.Set {
+			e.FieldStart("pending")
+			s.Pending.Encode(e)
+		}
+	}
+	{
+		if s.PullRequestUrl.Set {
+			e.FieldStart("pullRequestUrl")
+			s.PullRequestUrl.Encode(e)
+		}
+	}
+	{
+		if s.PushReview.Set {
+			e.FieldStart("pushReview")
+			s.PushReview.Encode(e)
+		}
+	}
+	{
+		if s.ReworkSent.Set {
+			e.FieldStart("reworkSent")
+			s.ReworkSent.Encode(e)
+		}
+	}
+	{
+		e.FieldStart("checks")
+		e.ArrStart()
+		for _, elem := range s.Checks {
+			elem.Encode(e)
+		}
+		e.ArrEnd()
+	}
+}
+
+var jsonFieldsNameOfRemoteCI = [12]string{
+	0:  "state",
+	1:  "label",
+	2:  "head",
+	3:  "attempt",
+	4:  "maxAttempts",
+	5:  "passed",
+	6:  "failed",
+	7:  "pending",
+	8:  "pullRequestUrl",
+	9:  "pushReview",
+	10: "reworkSent",
+	11: "checks",
+}
+
+// Decode decodes RemoteCI from json.
+func (s *RemoteCI) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode RemoteCI to nil")
+	}
+	var requiredBitSet [2]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "state":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				if err := s.State.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"state\"")
+			}
+		case "label":
+			requiredBitSet[0] |= 1 << 1
+			if err := func() error {
+				v, err := d.Str()
+				s.Label = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"label\"")
+			}
+		case "head":
+			if err := func() error {
+				s.Head.Reset()
+				if err := s.Head.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"head\"")
+			}
+		case "attempt":
+			if err := func() error {
+				s.Attempt.Reset()
+				if err := s.Attempt.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"attempt\"")
+			}
+		case "maxAttempts":
+			if err := func() error {
+				s.MaxAttempts.Reset()
+				if err := s.MaxAttempts.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"maxAttempts\"")
+			}
+		case "passed":
+			if err := func() error {
+				s.Passed.Reset()
+				if err := s.Passed.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"passed\"")
+			}
+		case "failed":
+			if err := func() error {
+				s.Failed.Reset()
+				if err := s.Failed.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"failed\"")
+			}
+		case "pending":
+			if err := func() error {
+				s.Pending.Reset()
+				if err := s.Pending.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"pending\"")
+			}
+		case "pullRequestUrl":
+			if err := func() error {
+				s.PullRequestUrl.Reset()
+				if err := s.PullRequestUrl.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"pullRequestUrl\"")
+			}
+		case "pushReview":
+			if err := func() error {
+				s.PushReview.Reset()
+				if err := s.PushReview.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"pushReview\"")
+			}
+		case "reworkSent":
+			if err := func() error {
+				s.ReworkSent.Reset()
+				if err := s.ReworkSent.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"reworkSent\"")
+			}
+		case "checks":
+			requiredBitSet[1] |= 1 << 3
+			if err := func() error {
+				s.Checks = make([]RemoteCICheck, 0)
+				if err := d.Arr(func(d *jx.Decoder) error {
+					var elem RemoteCICheck
+					if err := elem.Decode(d); err != nil {
+						return err
+					}
+					s.Checks = append(s.Checks, elem)
+					return nil
+				}); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"checks\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode RemoteCI")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [2]uint8{
+		0b00000011,
+		0b00001000,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfRemoteCI) {
+					name = jsonFieldsNameOfRemoteCI[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *RemoteCI) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *RemoteCI) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s *RemoteCICheck) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *RemoteCICheck) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("name")
+		e.Str(s.Name)
+	}
+	{
+		e.FieldStart("source")
+		s.Source.Encode(e)
+	}
+	{
+		e.FieldStart("conclusion")
+		e.Str(s.Conclusion)
+	}
+	{
+		if s.URL.Set {
+			e.FieldStart("url")
+			s.URL.Encode(e)
+		}
+	}
+	{
+		if s.Output.Set {
+			e.FieldStart("output")
+			s.Output.Encode(e)
+		}
+	}
+}
+
+var jsonFieldsNameOfRemoteCICheck = [5]string{
+	0: "name",
+	1: "source",
+	2: "conclusion",
+	3: "url",
+	4: "output",
+}
+
+// Decode decodes RemoteCICheck from json.
+func (s *RemoteCICheck) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode RemoteCICheck to nil")
+	}
+	var requiredBitSet [1]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "name":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				v, err := d.Str()
+				s.Name = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"name\"")
+			}
+		case "source":
+			requiredBitSet[0] |= 1 << 1
+			if err := func() error {
+				if err := s.Source.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"source\"")
+			}
+		case "conclusion":
+			requiredBitSet[0] |= 1 << 2
+			if err := func() error {
+				v, err := d.Str()
+				s.Conclusion = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"conclusion\"")
+			}
+		case "url":
+			if err := func() error {
+				s.URL.Reset()
+				if err := s.URL.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"url\"")
+			}
+		case "output":
+			if err := func() error {
+				s.Output.Reset()
+				if err := s.Output.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"output\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode RemoteCICheck")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [1]uint8{
+		0b00000111,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfRemoteCICheck) {
+					name = jsonFieldsNameOfRemoteCICheck[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *RemoteCICheck) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *RemoteCICheck) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes RemoteCICheckSource as json.
+func (s RemoteCICheckSource) Encode(e *jx.Encoder) {
+	e.Str(string(s))
+}
+
+// Decode decodes RemoteCICheckSource from json.
+func (s *RemoteCICheckSource) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode RemoteCICheckSource to nil")
+	}
+	v, err := d.StrBytes()
+	if err != nil {
+		return err
+	}
+	// Try to use constant string.
+	switch RemoteCICheckSource(v) {
+	case RemoteCICheckSourceCheckRun:
+		*s = RemoteCICheckSourceCheckRun
+	case RemoteCICheckSourceStatus:
+		*s = RemoteCICheckSourceStatus
+	default:
+		*s = RemoteCICheckSource(v)
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s RemoteCICheckSource) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *RemoteCICheckSource) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes RemoteCIState as json.
+func (s RemoteCIState) Encode(e *jx.Encoder) {
+	e.Str(string(s))
+}
+
+// Decode decodes RemoteCIState from json.
+func (s *RemoteCIState) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode RemoteCIState to nil")
+	}
+	v, err := d.StrBytes()
+	if err != nil {
+		return err
+	}
+	// Try to use constant string.
+	switch RemoteCIState(v) {
+	case RemoteCIStateWaiting:
+		*s = RemoteCIStateWaiting
+	case RemoteCIStatePassed:
+		*s = RemoteCIStatePassed
+	case RemoteCIStateFailing:
+		*s = RemoteCIStateFailing
+	case RemoteCIStateReconnect:
+		*s = RemoteCIStateReconnect
+	case RemoteCIStateConnect:
+		*s = RemoteCIStateConnect
+	case RemoteCIStateUnreadable:
+		*s = RemoteCIStateUnreadable
+	case RemoteCIStateAbsent:
+		*s = RemoteCIStateAbsent
+	default:
+		*s = RemoteCIState(v)
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s RemoteCIState) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *RemoteCIState) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s *RemoteCISummary) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *RemoteCISummary) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("state")
+		s.State.Encode(e)
+	}
+	{
+		e.FieldStart("label")
+		e.Str(s.Label)
+	}
+	{
+		if s.Head.Set {
+			e.FieldStart("head")
+			s.Head.Encode(e)
+		}
+	}
+	{
+		if s.Attempt.Set {
+			e.FieldStart("attempt")
+			s.Attempt.Encode(e)
+		}
+	}
+	{
+		if s.MaxAttempts.Set {
+			e.FieldStart("maxAttempts")
+			s.MaxAttempts.Encode(e)
+		}
+	}
+	{
+		if s.Passed.Set {
+			e.FieldStart("passed")
+			s.Passed.Encode(e)
+		}
+	}
+	{
+		if s.Failed.Set {
+			e.FieldStart("failed")
+			s.Failed.Encode(e)
+		}
+	}
+	{
+		if s.Pending.Set {
+			e.FieldStart("pending")
+			s.Pending.Encode(e)
+		}
+	}
+	{
+		if s.PullRequestUrl.Set {
+			e.FieldStart("pullRequestUrl")
+			s.PullRequestUrl.Encode(e)
+		}
+	}
+	{
+		if s.PushReview.Set {
+			e.FieldStart("pushReview")
+			s.PushReview.Encode(e)
+		}
+	}
+	{
+		if s.ReworkSent.Set {
+			e.FieldStart("reworkSent")
+			s.ReworkSent.Encode(e)
+		}
+	}
+}
+
+var jsonFieldsNameOfRemoteCISummary = [11]string{
+	0:  "state",
+	1:  "label",
+	2:  "head",
+	3:  "attempt",
+	4:  "maxAttempts",
+	5:  "passed",
+	6:  "failed",
+	7:  "pending",
+	8:  "pullRequestUrl",
+	9:  "pushReview",
+	10: "reworkSent",
+}
+
+// Decode decodes RemoteCISummary from json.
+func (s *RemoteCISummary) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode RemoteCISummary to nil")
+	}
+	var requiredBitSet [2]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "state":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				if err := s.State.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"state\"")
+			}
+		case "label":
+			requiredBitSet[0] |= 1 << 1
+			if err := func() error {
+				v, err := d.Str()
+				s.Label = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"label\"")
+			}
+		case "head":
+			if err := func() error {
+				s.Head.Reset()
+				if err := s.Head.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"head\"")
+			}
+		case "attempt":
+			if err := func() error {
+				s.Attempt.Reset()
+				if err := s.Attempt.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"attempt\"")
+			}
+		case "maxAttempts":
+			if err := func() error {
+				s.MaxAttempts.Reset()
+				if err := s.MaxAttempts.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"maxAttempts\"")
+			}
+		case "passed":
+			if err := func() error {
+				s.Passed.Reset()
+				if err := s.Passed.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"passed\"")
+			}
+		case "failed":
+			if err := func() error {
+				s.Failed.Reset()
+				if err := s.Failed.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"failed\"")
+			}
+		case "pending":
+			if err := func() error {
+				s.Pending.Reset()
+				if err := s.Pending.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"pending\"")
+			}
+		case "pullRequestUrl":
+			if err := func() error {
+				s.PullRequestUrl.Reset()
+				if err := s.PullRequestUrl.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"pullRequestUrl\"")
+			}
+		case "pushReview":
+			if err := func() error {
+				s.PushReview.Reset()
+				if err := s.PushReview.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"pushReview\"")
+			}
+		case "reworkSent":
+			if err := func() error {
+				s.ReworkSent.Reset()
+				if err := s.ReworkSent.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"reworkSent\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode RemoteCISummary")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [2]uint8{
+		0b00000011,
+		0b00000000,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfRemoteCISummary) {
+					name = jsonFieldsNameOfRemoteCISummary[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *RemoteCISummary) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *RemoteCISummary) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes RemoteCISummaryState as json.
+func (s RemoteCISummaryState) Encode(e *jx.Encoder) {
+	e.Str(string(s))
+}
+
+// Decode decodes RemoteCISummaryState from json.
+func (s *RemoteCISummaryState) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode RemoteCISummaryState to nil")
+	}
+	v, err := d.StrBytes()
+	if err != nil {
+		return err
+	}
+	// Try to use constant string.
+	switch RemoteCISummaryState(v) {
+	case RemoteCISummaryStateWaiting:
+		*s = RemoteCISummaryStateWaiting
+	case RemoteCISummaryStatePassed:
+		*s = RemoteCISummaryStatePassed
+	case RemoteCISummaryStateFailing:
+		*s = RemoteCISummaryStateFailing
+	case RemoteCISummaryStateReconnect:
+		*s = RemoteCISummaryStateReconnect
+	case RemoteCISummaryStateConnect:
+		*s = RemoteCISummaryStateConnect
+	case RemoteCISummaryStateUnreadable:
+		*s = RemoteCISummaryStateUnreadable
+	case RemoteCISummaryStateAbsent:
+		*s = RemoteCISummaryStateAbsent
+	default:
+		*s = RemoteCISummaryState(v)
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s RemoteCISummaryState) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *RemoteCISummaryState) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }

@@ -31,6 +31,16 @@ func (s *Server) projectChecks(writer http.ResponseWriter, request *http.Request
 	writeJSON(writer, http.StatusOK, result)
 }
 
+func (s *Server) capsuleRemoteCI(writer http.ResponseWriter, request *http.Request) {
+	id := domain.CapsuleID(request.PathValue("capsuleId"))
+	result, err := s.service.RemoteCI(request.Context(), id)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	writeJSON(writer, http.StatusOK, result)
+}
+
 func (s *Server) suggestProjectChecks(writer http.ResponseWriter, request *http.Request) {
 	id := domain.ProjectID(request.PathValue("projectId"))
 	capsuleID := domain.CapsuleID(request.URL.Query().Get("capsuleId"))

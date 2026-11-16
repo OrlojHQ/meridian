@@ -22,6 +22,7 @@ import (
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/gatewaytls"
 	"github.com/OrlojHQ/meridian/internal/githubauth"
+	"github.com/OrlojHQ/meridian/internal/githubci"
 	"github.com/OrlojHQ/meridian/internal/httpapi"
 	"github.com/OrlojHQ/meridian/internal/observability"
 	"github.com/OrlojHQ/meridian/internal/ports"
@@ -583,7 +584,9 @@ func run(ctx context.Context, config Config) error {
 	}
 	reconciler.Start(systemCtx)
 	defer reconciler.Close()
+	service.ConfigureRemoteCI(githubci.New(nil))
 	service.StartChecks(systemCtx)
+	service.StartRemoteCI(systemCtx)
 	recoveryStarted = time.Now()
 	if err := reconciler.Recover(systemCtx); err != nil {
 		metrics.StartupRecovery("capsules", "error", time.Since(recoveryStarted))

@@ -61,6 +61,9 @@ var principalExempt = map[string]string{
 	"ConfigureChecks":               "startup wiring",
 	"SetCheckDebounce":              "startup wiring",
 	"StartChecks":                   "daemon loop",
+	"ConfigureRemoteCI":             "startup wiring",
+	"SetRemoteCIImmediatePoll":      "startup wiring",
+	"StartRemoteCI":                 "daemon loop",
 	"SetClaudeTokenURL":             "startup wiring",
 	// Installation capability flags; they name no object.
 	"ChatGPTAvailable":                 "capability flag",

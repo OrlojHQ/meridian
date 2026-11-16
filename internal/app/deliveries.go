@@ -407,6 +407,9 @@ func (s *Service) executeDelivery(
 		}
 		if result.Action == domain.DeliveryPush {
 			result, err = s.transitionDelivery(ctx, result.ID, domain.DeliverySucceeded)
+			if err == nil {
+				s.noteDeliveryCI(ctx, result)
+			}
 			return result, err
 		}
 		result, err = s.transitionDelivery(ctx, result.ID, domain.DeliveryOpeningPR)
@@ -475,6 +478,9 @@ func (s *Service) executeDelivery(
 			item.ResultPullRequestNumber = pullRequest.Number
 			return item.Transition(domain.DeliverySucceeded, s.clock.Now())
 		})
+		if err == nil {
+			s.noteDeliveryCI(ctx, result)
+		}
 		return result, err
 	}
 	return result, nil

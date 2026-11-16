@@ -781,6 +781,11 @@ const (
 	BoardItemNeedsYouChecksPassed     BoardItemNeedsYou = "checks_passed"
 	BoardItemNeedsYouChecksFailing    BoardItemNeedsYou = "checks_failing"
 	BoardItemNeedsYouChecksError      BoardItemNeedsYou = "checks_error"
+	BoardItemNeedsYouCiPassed         BoardItemNeedsYou = "ci_passed"
+	BoardItemNeedsYouCiFailing        BoardItemNeedsYou = "ci_failing"
+	BoardItemNeedsYouCiReconnect      BoardItemNeedsYou = "ci_reconnect"
+	BoardItemNeedsYouCiConnect        BoardItemNeedsYou = "ci_connect"
+	BoardItemNeedsYouCiUnreadable     BoardItemNeedsYou = "ci_unreadable"
 )
 
 // AllValues returns all BoardItemNeedsYou values.
@@ -794,6 +799,11 @@ func (BoardItemNeedsYou) AllValues() []BoardItemNeedsYou {
 		BoardItemNeedsYouChecksPassed,
 		BoardItemNeedsYouChecksFailing,
 		BoardItemNeedsYouChecksError,
+		BoardItemNeedsYouCiPassed,
+		BoardItemNeedsYouCiFailing,
+		BoardItemNeedsYouCiReconnect,
+		BoardItemNeedsYouCiConnect,
+		BoardItemNeedsYouCiUnreadable,
 	}
 }
 
@@ -815,6 +825,16 @@ func (s BoardItemNeedsYou) MarshalText() ([]byte, error) {
 	case BoardItemNeedsYouChecksFailing:
 		return []byte(s), nil
 	case BoardItemNeedsYouChecksError:
+		return []byte(s), nil
+	case BoardItemNeedsYouCiPassed:
+		return []byte(s), nil
+	case BoardItemNeedsYouCiFailing:
+		return []byte(s), nil
+	case BoardItemNeedsYouCiReconnect:
+		return []byte(s), nil
+	case BoardItemNeedsYouCiConnect:
+		return []byte(s), nil
+	case BoardItemNeedsYouCiUnreadable:
 		return []byte(s), nil
 	default:
 		return nil, errors.Errorf("invalid value: %q", s)
@@ -847,6 +867,21 @@ func (s *BoardItemNeedsYou) UnmarshalText(data []byte) error {
 		return nil
 	case BoardItemNeedsYouChecksError:
 		*s = BoardItemNeedsYouChecksError
+		return nil
+	case BoardItemNeedsYouCiPassed:
+		*s = BoardItemNeedsYouCiPassed
+		return nil
+	case BoardItemNeedsYouCiFailing:
+		*s = BoardItemNeedsYouCiFailing
+		return nil
+	case BoardItemNeedsYouCiReconnect:
+		*s = BoardItemNeedsYouCiReconnect
+		return nil
+	case BoardItemNeedsYouCiConnect:
+		*s = BoardItemNeedsYouCiConnect
+		return nil
+	case BoardItemNeedsYouCiUnreadable:
+		*s = BoardItemNeedsYouCiUnreadable
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)
@@ -2803,6 +2838,7 @@ type ChecksSummary struct {
 	Passed           OptInt                `json:"passed"`
 	Failed           OptInt                `json:"failed"`
 	RunId            OptString             `json:"runId"`
+	RemoteCI         OptRemoteCISummary    `json:"remoteCI"`
 }
 
 // GetConfigured returns the value of Configured.
@@ -2875,6 +2911,11 @@ func (s *ChecksSummary) GetRunId() OptString {
 	return s.RunId
 }
 
+// GetRemoteCI returns the value of RemoteCI.
+func (s *ChecksSummary) GetRemoteCI() OptRemoteCISummary {
+	return s.RemoteCI
+}
+
 // SetConfigured sets the value of Configured.
 func (s *ChecksSummary) SetConfigured(val bool) {
 	s.Configured = val
@@ -2943,6 +2984,11 @@ func (s *ChecksSummary) SetFailed(val OptInt) {
 // SetRunId sets the value of RunId.
 func (s *ChecksSummary) SetRunId(val OptString) {
 	s.RunId = val
+}
+
+// SetRemoteCI sets the value of RemoteCI.
+func (s *ChecksSummary) SetRemoteCI(val OptRemoteCISummary) {
+	s.RemoteCI = val
 }
 
 type ChecksSummaryPhase string
@@ -6275,6 +6321,7 @@ func (*ErrorEnvelope) beginGitHubDeviceRes()           {}
 func (*ErrorEnvelope) claimInstallationRes()           {}
 func (*ErrorEnvelope) createRunAttachTicketRes()       {}
 func (*ErrorEnvelope) getCapsuleProfileDiagnosticRes() {}
+func (*ErrorEnvelope) getCapsuleRemoteCIRes()          {}
 func (*ErrorEnvelope) getCapsuleRes()                  {}
 func (*ErrorEnvelope) getCoordinationGrantRes()        {}
 func (*ErrorEnvelope) getDeliveryRes()                 {}
@@ -10395,6 +10442,52 @@ func (o OptProjectState) Or(d ProjectState) ProjectState {
 	return d
 }
 
+// NewOptRemoteCISummary returns new OptRemoteCISummary with value set to v.
+func NewOptRemoteCISummary(v RemoteCISummary) OptRemoteCISummary {
+	return OptRemoteCISummary{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptRemoteCISummary is optional RemoteCISummary.
+type OptRemoteCISummary struct {
+	Value RemoteCISummary
+	Set   bool
+}
+
+// IsSet returns true if OptRemoteCISummary was set.
+func (o OptRemoteCISummary) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptRemoteCISummary) Reset() {
+	var v RemoteCISummary
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptRemoteCISummary) SetTo(v RemoteCISummary) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptRemoteCISummary) Get() (v RemoteCISummary, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptRemoteCISummary) Or(d RemoteCISummary) RemoteCISummary {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptRun returns new OptRun with value set to v.
 func NewOptRun(v Run) OptRun {
 	return OptRun{
@@ -14044,6 +14137,523 @@ func (s *RejectDeliveryRequest) SetExpectedResourceVersion(val int64) {
 type RejectDeliveryUnprocessableEntity ErrorEnvelope
 
 func (*RejectDeliveryUnprocessableEntity) rejectDeliveryRes() {}
+
+// Ref: #/components/schemas/RemoteCI
+type RemoteCI struct {
+	State          RemoteCIState   `json:"state"`
+	Label          string          `json:"label"`
+	Head           OptString       `json:"head"`
+	Attempt        OptInt          `json:"attempt"`
+	MaxAttempts    OptInt          `json:"maxAttempts"`
+	Passed         OptInt          `json:"passed"`
+	Failed         OptInt          `json:"failed"`
+	Pending        OptInt          `json:"pending"`
+	PullRequestUrl OptString       `json:"pullRequestUrl"`
+	PushReview     OptBool         `json:"pushReview"`
+	ReworkSent     OptBool         `json:"reworkSent"`
+	Checks         []RemoteCICheck `json:"checks"`
+}
+
+// GetState returns the value of State.
+func (s *RemoteCI) GetState() RemoteCIState {
+	return s.State
+}
+
+// GetLabel returns the value of Label.
+func (s *RemoteCI) GetLabel() string {
+	return s.Label
+}
+
+// GetHead returns the value of Head.
+func (s *RemoteCI) GetHead() OptString {
+	return s.Head
+}
+
+// GetAttempt returns the value of Attempt.
+func (s *RemoteCI) GetAttempt() OptInt {
+	return s.Attempt
+}
+
+// GetMaxAttempts returns the value of MaxAttempts.
+func (s *RemoteCI) GetMaxAttempts() OptInt {
+	return s.MaxAttempts
+}
+
+// GetPassed returns the value of Passed.
+func (s *RemoteCI) GetPassed() OptInt {
+	return s.Passed
+}
+
+// GetFailed returns the value of Failed.
+func (s *RemoteCI) GetFailed() OptInt {
+	return s.Failed
+}
+
+// GetPending returns the value of Pending.
+func (s *RemoteCI) GetPending() OptInt {
+	return s.Pending
+}
+
+// GetPullRequestUrl returns the value of PullRequestUrl.
+func (s *RemoteCI) GetPullRequestUrl() OptString {
+	return s.PullRequestUrl
+}
+
+// GetPushReview returns the value of PushReview.
+func (s *RemoteCI) GetPushReview() OptBool {
+	return s.PushReview
+}
+
+// GetReworkSent returns the value of ReworkSent.
+func (s *RemoteCI) GetReworkSent() OptBool {
+	return s.ReworkSent
+}
+
+// GetChecks returns the value of Checks.
+func (s *RemoteCI) GetChecks() []RemoteCICheck {
+	return s.Checks
+}
+
+// SetState sets the value of State.
+func (s *RemoteCI) SetState(val RemoteCIState) {
+	s.State = val
+}
+
+// SetLabel sets the value of Label.
+func (s *RemoteCI) SetLabel(val string) {
+	s.Label = val
+}
+
+// SetHead sets the value of Head.
+func (s *RemoteCI) SetHead(val OptString) {
+	s.Head = val
+}
+
+// SetAttempt sets the value of Attempt.
+func (s *RemoteCI) SetAttempt(val OptInt) {
+	s.Attempt = val
+}
+
+// SetMaxAttempts sets the value of MaxAttempts.
+func (s *RemoteCI) SetMaxAttempts(val OptInt) {
+	s.MaxAttempts = val
+}
+
+// SetPassed sets the value of Passed.
+func (s *RemoteCI) SetPassed(val OptInt) {
+	s.Passed = val
+}
+
+// SetFailed sets the value of Failed.
+func (s *RemoteCI) SetFailed(val OptInt) {
+	s.Failed = val
+}
+
+// SetPending sets the value of Pending.
+func (s *RemoteCI) SetPending(val OptInt) {
+	s.Pending = val
+}
+
+// SetPullRequestUrl sets the value of PullRequestUrl.
+func (s *RemoteCI) SetPullRequestUrl(val OptString) {
+	s.PullRequestUrl = val
+}
+
+// SetPushReview sets the value of PushReview.
+func (s *RemoteCI) SetPushReview(val OptBool) {
+	s.PushReview = val
+}
+
+// SetReworkSent sets the value of ReworkSent.
+func (s *RemoteCI) SetReworkSent(val OptBool) {
+	s.ReworkSent = val
+}
+
+// SetChecks sets the value of Checks.
+func (s *RemoteCI) SetChecks(val []RemoteCICheck) {
+	s.Checks = val
+}
+
+func (*RemoteCI) getCapsuleRemoteCIRes() {}
+
+// Ref: #/components/schemas/RemoteCICheck
+type RemoteCICheck struct {
+	Name       string              `json:"name"`
+	Source     RemoteCICheckSource `json:"source"`
+	Conclusion string              `json:"conclusion"`
+	URL        OptString           `json:"url"`
+	// Redacted tail. Absent when there is none.
+	Output OptString `json:"output"`
+}
+
+// GetName returns the value of Name.
+func (s *RemoteCICheck) GetName() string {
+	return s.Name
+}
+
+// GetSource returns the value of Source.
+func (s *RemoteCICheck) GetSource() RemoteCICheckSource {
+	return s.Source
+}
+
+// GetConclusion returns the value of Conclusion.
+func (s *RemoteCICheck) GetConclusion() string {
+	return s.Conclusion
+}
+
+// GetURL returns the value of URL.
+func (s *RemoteCICheck) GetURL() OptString {
+	return s.URL
+}
+
+// GetOutput returns the value of Output.
+func (s *RemoteCICheck) GetOutput() OptString {
+	return s.Output
+}
+
+// SetName sets the value of Name.
+func (s *RemoteCICheck) SetName(val string) {
+	s.Name = val
+}
+
+// SetSource sets the value of Source.
+func (s *RemoteCICheck) SetSource(val RemoteCICheckSource) {
+	s.Source = val
+}
+
+// SetConclusion sets the value of Conclusion.
+func (s *RemoteCICheck) SetConclusion(val string) {
+	s.Conclusion = val
+}
+
+// SetURL sets the value of URL.
+func (s *RemoteCICheck) SetURL(val OptString) {
+	s.URL = val
+}
+
+// SetOutput sets the value of Output.
+func (s *RemoteCICheck) SetOutput(val OptString) {
+	s.Output = val
+}
+
+type RemoteCICheckSource string
+
+const (
+	RemoteCICheckSourceCheckRun RemoteCICheckSource = "check_run"
+	RemoteCICheckSourceStatus   RemoteCICheckSource = "status"
+)
+
+// AllValues returns all RemoteCICheckSource values.
+func (RemoteCICheckSource) AllValues() []RemoteCICheckSource {
+	return []RemoteCICheckSource{
+		RemoteCICheckSourceCheckRun,
+		RemoteCICheckSourceStatus,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s RemoteCICheckSource) MarshalText() ([]byte, error) {
+	switch s {
+	case RemoteCICheckSourceCheckRun:
+		return []byte(s), nil
+	case RemoteCICheckSourceStatus:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *RemoteCICheckSource) UnmarshalText(data []byte) error {
+	switch RemoteCICheckSource(data) {
+	case RemoteCICheckSourceCheckRun:
+		*s = RemoteCICheckSourceCheckRun
+		return nil
+	case RemoteCICheckSourceStatus:
+		*s = RemoteCICheckSourceStatus
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+type RemoteCIState string
+
+const (
+	RemoteCIStateWaiting    RemoteCIState = "waiting"
+	RemoteCIStatePassed     RemoteCIState = "passed"
+	RemoteCIStateFailing    RemoteCIState = "failing"
+	RemoteCIStateReconnect  RemoteCIState = "reconnect"
+	RemoteCIStateConnect    RemoteCIState = "connect"
+	RemoteCIStateUnreadable RemoteCIState = "unreadable"
+	RemoteCIStateAbsent     RemoteCIState = "absent"
+)
+
+// AllValues returns all RemoteCIState values.
+func (RemoteCIState) AllValues() []RemoteCIState {
+	return []RemoteCIState{
+		RemoteCIStateWaiting,
+		RemoteCIStatePassed,
+		RemoteCIStateFailing,
+		RemoteCIStateReconnect,
+		RemoteCIStateConnect,
+		RemoteCIStateUnreadable,
+		RemoteCIStateAbsent,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s RemoteCIState) MarshalText() ([]byte, error) {
+	switch s {
+	case RemoteCIStateWaiting:
+		return []byte(s), nil
+	case RemoteCIStatePassed:
+		return []byte(s), nil
+	case RemoteCIStateFailing:
+		return []byte(s), nil
+	case RemoteCIStateReconnect:
+		return []byte(s), nil
+	case RemoteCIStateConnect:
+		return []byte(s), nil
+	case RemoteCIStateUnreadable:
+		return []byte(s), nil
+	case RemoteCIStateAbsent:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *RemoteCIState) UnmarshalText(data []byte) error {
+	switch RemoteCIState(data) {
+	case RemoteCIStateWaiting:
+		*s = RemoteCIStateWaiting
+		return nil
+	case RemoteCIStatePassed:
+		*s = RemoteCIStatePassed
+		return nil
+	case RemoteCIStateFailing:
+		*s = RemoteCIStateFailing
+		return nil
+	case RemoteCIStateReconnect:
+		*s = RemoteCIStateReconnect
+		return nil
+	case RemoteCIStateConnect:
+		*s = RemoteCIStateConnect
+		return nil
+	case RemoteCIStateUnreadable:
+		*s = RemoteCIStateUnreadable
+		return nil
+	case RemoteCIStateAbsent:
+		*s = RemoteCIStateAbsent
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Content-free GitHub CI line for the pushed commit. It has no log tail.
+// Ref: #/components/schemas/RemoteCISummary
+type RemoteCISummary struct {
+	State          RemoteCISummaryState `json:"state"`
+	Label          string               `json:"label"`
+	Head           OptString            `json:"head"`
+	Attempt        OptInt               `json:"attempt"`
+	MaxAttempts    OptInt               `json:"maxAttempts"`
+	Passed         OptInt               `json:"passed"`
+	Failed         OptInt               `json:"failed"`
+	Pending        OptInt               `json:"pending"`
+	PullRequestUrl OptString            `json:"pullRequestUrl"`
+	PushReview     OptBool              `json:"pushReview"`
+	ReworkSent     OptBool              `json:"reworkSent"`
+}
+
+// GetState returns the value of State.
+func (s *RemoteCISummary) GetState() RemoteCISummaryState {
+	return s.State
+}
+
+// GetLabel returns the value of Label.
+func (s *RemoteCISummary) GetLabel() string {
+	return s.Label
+}
+
+// GetHead returns the value of Head.
+func (s *RemoteCISummary) GetHead() OptString {
+	return s.Head
+}
+
+// GetAttempt returns the value of Attempt.
+func (s *RemoteCISummary) GetAttempt() OptInt {
+	return s.Attempt
+}
+
+// GetMaxAttempts returns the value of MaxAttempts.
+func (s *RemoteCISummary) GetMaxAttempts() OptInt {
+	return s.MaxAttempts
+}
+
+// GetPassed returns the value of Passed.
+func (s *RemoteCISummary) GetPassed() OptInt {
+	return s.Passed
+}
+
+// GetFailed returns the value of Failed.
+func (s *RemoteCISummary) GetFailed() OptInt {
+	return s.Failed
+}
+
+// GetPending returns the value of Pending.
+func (s *RemoteCISummary) GetPending() OptInt {
+	return s.Pending
+}
+
+// GetPullRequestUrl returns the value of PullRequestUrl.
+func (s *RemoteCISummary) GetPullRequestUrl() OptString {
+	return s.PullRequestUrl
+}
+
+// GetPushReview returns the value of PushReview.
+func (s *RemoteCISummary) GetPushReview() OptBool {
+	return s.PushReview
+}
+
+// GetReworkSent returns the value of ReworkSent.
+func (s *RemoteCISummary) GetReworkSent() OptBool {
+	return s.ReworkSent
+}
+
+// SetState sets the value of State.
+func (s *RemoteCISummary) SetState(val RemoteCISummaryState) {
+	s.State = val
+}
+
+// SetLabel sets the value of Label.
+func (s *RemoteCISummary) SetLabel(val string) {
+	s.Label = val
+}
+
+// SetHead sets the value of Head.
+func (s *RemoteCISummary) SetHead(val OptString) {
+	s.Head = val
+}
+
+// SetAttempt sets the value of Attempt.
+func (s *RemoteCISummary) SetAttempt(val OptInt) {
+	s.Attempt = val
+}
+
+// SetMaxAttempts sets the value of MaxAttempts.
+func (s *RemoteCISummary) SetMaxAttempts(val OptInt) {
+	s.MaxAttempts = val
+}
+
+// SetPassed sets the value of Passed.
+func (s *RemoteCISummary) SetPassed(val OptInt) {
+	s.Passed = val
+}
+
+// SetFailed sets the value of Failed.
+func (s *RemoteCISummary) SetFailed(val OptInt) {
+	s.Failed = val
+}
+
+// SetPending sets the value of Pending.
+func (s *RemoteCISummary) SetPending(val OptInt) {
+	s.Pending = val
+}
+
+// SetPullRequestUrl sets the value of PullRequestUrl.
+func (s *RemoteCISummary) SetPullRequestUrl(val OptString) {
+	s.PullRequestUrl = val
+}
+
+// SetPushReview sets the value of PushReview.
+func (s *RemoteCISummary) SetPushReview(val OptBool) {
+	s.PushReview = val
+}
+
+// SetReworkSent sets the value of ReworkSent.
+func (s *RemoteCISummary) SetReworkSent(val OptBool) {
+	s.ReworkSent = val
+}
+
+type RemoteCISummaryState string
+
+const (
+	RemoteCISummaryStateWaiting    RemoteCISummaryState = "waiting"
+	RemoteCISummaryStatePassed     RemoteCISummaryState = "passed"
+	RemoteCISummaryStateFailing    RemoteCISummaryState = "failing"
+	RemoteCISummaryStateReconnect  RemoteCISummaryState = "reconnect"
+	RemoteCISummaryStateConnect    RemoteCISummaryState = "connect"
+	RemoteCISummaryStateUnreadable RemoteCISummaryState = "unreadable"
+	RemoteCISummaryStateAbsent     RemoteCISummaryState = "absent"
+)
+
+// AllValues returns all RemoteCISummaryState values.
+func (RemoteCISummaryState) AllValues() []RemoteCISummaryState {
+	return []RemoteCISummaryState{
+		RemoteCISummaryStateWaiting,
+		RemoteCISummaryStatePassed,
+		RemoteCISummaryStateFailing,
+		RemoteCISummaryStateReconnect,
+		RemoteCISummaryStateConnect,
+		RemoteCISummaryStateUnreadable,
+		RemoteCISummaryStateAbsent,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s RemoteCISummaryState) MarshalText() ([]byte, error) {
+	switch s {
+	case RemoteCISummaryStateWaiting:
+		return []byte(s), nil
+	case RemoteCISummaryStatePassed:
+		return []byte(s), nil
+	case RemoteCISummaryStateFailing:
+		return []byte(s), nil
+	case RemoteCISummaryStateReconnect:
+		return []byte(s), nil
+	case RemoteCISummaryStateConnect:
+		return []byte(s), nil
+	case RemoteCISummaryStateUnreadable:
+		return []byte(s), nil
+	case RemoteCISummaryStateAbsent:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *RemoteCISummaryState) UnmarshalText(data []byte) error {
+	switch RemoteCISummaryState(data) {
+	case RemoteCISummaryStateWaiting:
+		*s = RemoteCISummaryStateWaiting
+		return nil
+	case RemoteCISummaryStatePassed:
+		*s = RemoteCISummaryStatePassed
+		return nil
+	case RemoteCISummaryStateFailing:
+		*s = RemoteCISummaryStateFailing
+		return nil
+	case RemoteCISummaryStateReconnect:
+		*s = RemoteCISummaryStateReconnect
+		return nil
+	case RemoteCISummaryStateConnect:
+		*s = RemoteCISummaryStateConnect
+		return nil
+	case RemoteCISummaryStateUnreadable:
+		*s = RemoteCISummaryStateUnreadable
+		return nil
+	case RemoteCISummaryStateAbsent:
+		*s = RemoteCISummaryStateAbsent
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
 
 type RemoveSubagentBadRequest ErrorEnvelope
 

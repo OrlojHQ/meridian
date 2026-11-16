@@ -286,6 +286,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("PUT /projects/{projectId}/checks", s.projectChecks)
 	s.mux.HandleFunc("GET /projects/{projectId}/checks/suggestion", s.suggestProjectChecks)
 	s.mux.HandleFunc("GET /capsules/{capsuleId}/check-runs", s.capsuleCheckRuns)
+	s.mux.HandleFunc("GET /capsules/{capsuleId}/remote-ci", s.capsuleRemoteCI)
 	s.mux.HandleFunc("POST /capsules/{capsuleId}/check-runs", s.capsuleCheckRuns)
 	s.mux.HandleFunc("POST /capsules/{capsuleId}/checks/auto-rework", s.capsuleAutoRework)
 	s.mux.HandleFunc("GET /check-runs/{checkRunId}", s.checkRun)

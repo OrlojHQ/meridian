@@ -217,6 +217,11 @@ type GetCapsuleProfileDiagnosticParams struct {
 	CapsuleId string
 }
 
+// GetCapsuleRemoteCIParams is parameters of getCapsuleRemoteCI operation.
+type GetCapsuleRemoteCIParams struct {
+	CapsuleId string
+}
+
 // GetChatGPTSignInParams is parameters of getChatGPTSignIn operation.
 type GetChatGPTSignInParams struct {
 	SignInId string

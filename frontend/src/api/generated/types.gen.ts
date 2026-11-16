@@ -444,6 +444,50 @@ export type ChecksSummary = {
     passed?: number;
     failed?: number;
     runId?: string;
+    remoteCI?: RemoteCiSummary;
+};
+
+/**
+ * Content-free GitHub CI line for the pushed commit. It has no log tail.
+ */
+export type RemoteCiSummary = {
+    state: 'waiting' | 'passed' | 'failing' | 'reconnect' | 'connect' | 'unreadable' | 'absent';
+    label: string;
+    head?: string;
+    attempt?: number;
+    maxAttempts?: number;
+    passed?: number;
+    failed?: number;
+    pending?: number;
+    pullRequestUrl?: string;
+    pushReview?: boolean;
+    reworkSent?: boolean;
+};
+
+export type RemoteCiCheck = {
+    name: string;
+    source: 'check_run' | 'status';
+    conclusion: string;
+    url?: string;
+    /**
+     * Redacted tail. Absent when there is none.
+     */
+    output?: string;
+};
+
+export type RemoteCi = {
+    state: 'waiting' | 'passed' | 'failing' | 'reconnect' | 'connect' | 'unreadable' | 'absent';
+    label: string;
+    head?: string;
+    attempt?: number;
+    maxAttempts?: number;
+    passed?: number;
+    failed?: number;
+    pending?: number;
+    pullRequestUrl?: string;
+    pushReview?: boolean;
+    reworkSent?: boolean;
+    checks: Array<RemoteCiCheck>;
 };
 
 export type PreparationProgress = {
@@ -837,7 +881,7 @@ export type BoardItem = {
     /**
      * Why the row needs the operator; set only with status needs_you.
      */
-    needsYou?: 'permission' | 'input' | 'failed' | 'spawn_approval' | 'proposed_delivery' | 'checks_passed' | 'checks_failing' | 'checks_error';
+    needsYou?: 'permission' | 'input' | 'failed' | 'spawn_approval' | 'proposed_delivery' | 'checks_passed' | 'checks_failing' | 'checks_error' | 'ci_passed' | 'ci_failing' | 'ci_reconnect' | 'ci_connect' | 'ci_unreadable';
     latestDelivery?: DeliverySummary;
     /**
      * The subagent's link to its lead, on sub-Capsules.
@@ -5050,6 +5094,37 @@ export type SuggestProjectChecksResponses = {
 };
 
 export type SuggestProjectChecksResponse = SuggestProjectChecksResponses[keyof SuggestProjectChecksResponses];
+
+export type GetCapsuleRemoteCiData = {
+    body?: never;
+    path: {
+        capsuleId: string;
+    };
+    query?: never;
+    url: '/capsules/{capsuleId}/remote-ci';
+};
+
+export type GetCapsuleRemoteCiErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type GetCapsuleRemoteCiError = GetCapsuleRemoteCiErrors[keyof GetCapsuleRemoteCiErrors];
+
+export type GetCapsuleRemoteCiResponses = {
+    /**
+     * The latest CI reading for this Capsule
+     */
+    200: RemoteCi;
+};
+
+export type GetCapsuleRemoteCiResponse = GetCapsuleRemoteCiResponses[keyof GetCapsuleRemoteCiResponses];
 
 export type ListCapsuleCheckRunsData = {
     body?: never;

@@ -2013,6 +2013,25 @@ paths:
               schema: { $ref: "#/components/schemas/CheckSuggestion" }
         default:
           $ref: "#/components/responses/DefaultError"
+  /capsules/{capsuleId}/remote-ci:
+    get:
+      operationId: getCapsuleRemoteCI
+      summary: Read GitHub CI for the commit Meridian pushed
+      description: >
+        Names, conclusions, links, and a short redacted tail. The response
+        has no token. Absent when this Capsule has no Meridian pull request.
+      tags: [capsules]
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+      responses:
+        "200":
+          description: The latest CI reading for this Capsule
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RemoteCI" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default:
+          $ref: "#/components/responses/DefaultError"
   /capsules/{capsuleId}/check-runs:
     get:
       operationId: listCapsuleCheckRuns
@@ -4378,6 +4397,59 @@ components:
         passed: { type: integer, minimum: 0 }
         failed: { type: integer, minimum: 0 }
         runId: { type: string }
+        remoteCI:
+          $ref: "#/components/schemas/RemoteCISummary"
+    RemoteCISummary:
+      type: object
+      required: [state, label]
+      description: Content-free GitHub CI line for the pushed commit. It has no log tail.
+      properties:
+        state:
+          type: string
+          enum: [waiting, passed, failing, reconnect, connect, unreadable, absent]
+        label: { type: string }
+        head: { type: string }
+        attempt: { type: integer, minimum: 1 }
+        maxAttempts: { type: integer, minimum: 1 }
+        passed: { type: integer, minimum: 0 }
+        failed: { type: integer, minimum: 0 }
+        pending: { type: integer, minimum: 0 }
+        pullRequestUrl: { type: string }
+        pushReview: { type: boolean }
+        reworkSent: { type: boolean }
+    RemoteCICheck:
+      type: object
+      required: [name, source, conclusion]
+      properties:
+        name: { type: string }
+        source:
+          type: string
+          enum: [check_run, status]
+        conclusion: { type: string }
+        url: { type: string }
+        output:
+          type: string
+          description: Redacted tail. Absent when there is none.
+    RemoteCI:
+      type: object
+      required: [state, label, checks]
+      properties:
+        state:
+          type: string
+          enum: [waiting, passed, failing, reconnect, connect, unreadable, absent]
+        label: { type: string }
+        head: { type: string }
+        attempt: { type: integer, minimum: 1 }
+        maxAttempts: { type: integer, minimum: 1 }
+        passed: { type: integer, minimum: 0 }
+        failed: { type: integer, minimum: 0 }
+        pending: { type: integer, minimum: 0 }
+        pullRequestUrl: { type: string }
+        pushReview: { type: boolean }
+        reworkSent: { type: boolean }
+        checks:
+          type: array
+          items: { $ref: "#/components/schemas/RemoteCICheck" }
     PreparationProgress:
       type: object
       required: [stage, reused, updatedAt]
@@ -5001,7 +5073,7 @@ components:
         since: { type: string, format: date-time }
         needsYou:
           type: string
-          enum: [permission, input, failed, spawn_approval, proposed_delivery, checks_passed, checks_failing, checks_error]
+          enum: [permission, input, failed, spawn_approval, proposed_delivery, checks_passed, checks_failing, checks_error, ci_passed, ci_failing, ci_reconnect, ci_connect, ci_unreadable]
           description: Why the row needs the operator; set only with status needs_you.
         latestDelivery: { $ref: "#/components/schemas/DeliverySummary" }
         link:

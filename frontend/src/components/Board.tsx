@@ -43,6 +43,11 @@ const needsYouLabels: Record<NonNullable<BoardItem["needsYou"]>, string> = {
   checks_passed: "Checks passed",
   checks_failing: "Checks failing",
   checks_error: "Checks could not finish",
+  ci_passed: "CI passed",
+  ci_failing: "CI failing",
+  ci_reconnect: "Can't read CI: Reconnect GitHub",
+  ci_connect: "Connect GitHub to read CI",
+  ci_unreadable: "Can't read CI for this repository",
 };
 
 export function boardFailure(item: BoardItem) {

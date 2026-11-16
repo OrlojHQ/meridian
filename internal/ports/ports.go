@@ -128,6 +128,11 @@ type Reader interface {
 	ListReadyCheckedCapsules(context.Context, int) ([]domain.CapsuleID, error)
 	CapsuleHasCheckGate(context.Context, domain.CapsuleID) (bool, error)
 	LatestCheckRuns(context.Context, []domain.CapsuleID) (map[domain.CapsuleID]domain.CheckRun, error)
+	LatestRemoteCI(context.Context, domain.CapsuleID) (domain.RemoteCIWatch, error)
+	GetRemoteCI(context.Context, domain.RemoteCIWatchID) (domain.RemoteCIWatch, error)
+	ListRemoteCIChecks(context.Context, domain.RemoteCIWatchID) ([]domain.RemoteCICheck, error)
+	ListDueRemoteCI(context.Context, time.Time, int) ([]domain.RemoteCIWatch, error)
+	CountRemoteCIFailures(context.Context, domain.CapsuleID, int64) (int, error)
 }
 
 type Transaction interface {
@@ -246,6 +251,10 @@ type Transaction interface {
 	CancelQueuedCheckRuns(context.Context, domain.CapsuleID, time.Time) error
 	InsertDeliveryCheckGate(context.Context, domain.DeliveryID, domain.CapsuleID, time.Time) error
 	DeleteDeliveryCheckGates(context.Context, domain.CapsuleID) error
+	InsertRemoteCI(context.Context, domain.RemoteCIWatch) error
+	UpdateRemoteCI(context.Context, domain.RemoteCIWatch, domain.ResourceVersion) error
+	ReplaceRemoteCIChecks(context.Context, domain.RemoteCIWatchID, []domain.RemoteCICheck) error
+	SupersedeRemoteCI(context.Context, domain.CapsuleID, string) error
 }
 
 type Store interface {

@@ -89,20 +89,21 @@ type CheckResultView struct {
 
 // ChecksSummaryView is the content-free Capsule field.
 type ChecksSummaryView struct {
-	Configured       bool       `json:"configured"`
-	Phase            string     `json:"phase,omitempty"`
-	Attempt          int        `json:"attempt,omitempty"`
-	MaxAttempts      int        `json:"maxAttempts,omitempty"`
-	Tree             string     `json:"tree,omitempty"`
-	Head             string     `json:"head,omitempty"`
-	FinishedAt       *time.Time `json:"finishedAt,omitempty"`
-	ReworkSent       bool       `json:"reworkSent,omitempty"`
-	AutoRework       bool       `json:"autoRework"`
-	Stopped          bool       `json:"stopped,omitempty"`
-	ProposalWithheld bool       `json:"proposalWithheld,omitempty"`
-	Passed           int        `json:"passed,omitempty"`
-	Failed           int        `json:"failed,omitempty"`
-	RunID            string     `json:"runId,omitempty"`
+	Configured       bool                 `json:"configured"`
+	Phase            string               `json:"phase,omitempty"`
+	Attempt          int                  `json:"attempt,omitempty"`
+	MaxAttempts      int                  `json:"maxAttempts,omitempty"`
+	Tree             string               `json:"tree,omitempty"`
+	Head             string               `json:"head,omitempty"`
+	FinishedAt       *time.Time           `json:"finishedAt,omitempty"`
+	ReworkSent       bool                 `json:"reworkSent,omitempty"`
+	AutoRework       bool                 `json:"autoRework"`
+	Stopped          bool                 `json:"stopped,omitempty"`
+	ProposalWithheld bool                 `json:"proposalWithheld,omitempty"`
+	Passed           int                  `json:"passed,omitempty"`
+	Failed           int                  `json:"failed,omitempty"`
+	RunID            string               `json:"runId,omitempty"`
+	RemoteCI         *RemoteCISummaryView `json:"remoteCI,omitempty"`
 }
 
 type checksReplay struct {
@@ -665,6 +666,11 @@ func (s *Service) considerThread(ctx context.Context, id domain.CapsuleID, threa
 		if err != nil {
 			return err
 		}
+		remoteFailed, err := tx.CountRemoteCIFailures(ctx, id, control.Epoch)
+		if err != nil {
+			return err
+		}
+		failed += remoteFailed
 		if failed >= domain.CheckBudget(config.MaxReworkAttempts) {
 			return nil
 		}
@@ -1165,8 +1171,19 @@ func (s *Service) projectChecksView(ctx context.Context, reader ports.Reader, id
 
 func (s *Service) summaryIn(ctx context.Context, reader ports.Reader, capsule domain.Capsule) (ChecksSummaryView, bool, error) {
 	config, err := s.loadChecks(ctx, reader, capsule.ProjectID)
-	if err != nil || !config.Enabled() {
+	if err != nil {
 		return ChecksSummaryView{}, false, err
+	}
+	watch, watchErr := reader.LatestRemoteCI(ctx, capsule.ID)
+	hasCI := watchErr == nil
+	if errors.Is(watchErr, domain.ErrNotFound) {
+		watchErr = nil
+	}
+	if watchErr != nil {
+		return ChecksSummaryView{}, false, watchErr
+	}
+	if !config.Enabled() && !hasCI {
+		return ChecksSummaryView{}, false, nil
 	}
 	control, err := reader.GetCheckControl(ctx, capsule.ID)
 	if err != nil {
@@ -1177,9 +1194,16 @@ func (s *Service) summaryIn(ctx context.Context, reader ports.Reader, capsule do
 		return ChecksSummaryView{}, false, err
 	}
 	view := ChecksSummaryView{
-		Configured: true, AutoRework: config.AutoRework && !control.Stopped,
+		Configured: config.Enabled(), AutoRework: config.AutoRework && !control.Stopped,
 		Stopped: control.Stopped, MaxAttempts: domain.CheckBudget(config.MaxReworkAttempts),
 		ProposalWithheld: withheld,
+	}
+	if hasCI {
+		summary := remoteCISummary(watch, config)
+		view.RemoteCI = &summary
+	}
+	if !config.Enabled() {
+		return view, true, nil
 	}
 	run, err := reader.LatestCheckRun(ctx, capsule.ID)
 	if errors.Is(err, domain.ErrNotFound) {
@@ -1258,7 +1282,7 @@ func (s *Service) checkRunView(ctx context.Context, reader ports.Reader, run dom
 	}
 	view.Results = resultViews
 	if run.State == domain.CheckPassed || run.State == domain.CheckFailed {
-		view.PullRequestSection = checksPullRequestSection(run.GitTree, resultViews)
+		view.PullRequestSection = checksPullRequestSection(run.GitTree, resultViews, nil)
 	}
 	return view, nil
 }
@@ -1297,7 +1321,7 @@ func (s *Service) checksPullRequestBody(ctx context.Context, capsuleID domain.Ca
 		run, err := reader.LatestCheckRun(ctx, capsuleID)
 		if errors.Is(err, domain.ErrNotFound) || run.GitTree != tree ||
 			(run.State != domain.CheckPassed && run.State != domain.CheckFailed) {
-			section = checksPullRequestSection(tree, nil)
+			section = checksPullRequestSection(tree, nil, nil)
 			return nil
 		}
 		if err != nil {
@@ -1340,7 +1364,7 @@ func checkBanner(phase domain.CheckPhase, attempt, maxRework int) string {
 	}
 }
 
-func checksPullRequestSection(tree string, results []CheckResultView) string {
+func checksPullRequestSection(tree string, results []CheckResultView, remote []RemoteCICheckView) string {
 	var builder strings.Builder
 	builder.WriteString(checksMarkerStart)
 	builder.WriteString("\n## Meridian checks\n\n")
@@ -1357,6 +1381,12 @@ func checksPullRequestSection(tree string, results []CheckResultView) string {
 			}
 			seconds := result.DurationMs / 1000
 			fmt.Fprintf(&builder, "- %s `%s` (%s) %ds\n", mark, result.Name, strings.Join(result.Argv, " "), seconds)
+		}
+	}
+	if len(remote) > 0 {
+		builder.WriteString("\nRemote CI:\n\n")
+		for _, check := range remote {
+			fmt.Fprintf(&builder, "- %s `%s`\n", check.Conclusion, check.Name)
 		}
 	}
 	builder.WriteString(checksMarkerEnd)

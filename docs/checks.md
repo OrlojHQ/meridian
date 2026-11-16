@@ -58,6 +58,17 @@ A native terminal session has no turn signal. Meridian runs the checks when that
 
 Output is kept as a short tail, encrypted at rest, and shown to you and to the agent. It is not written into events, audit records, notifications, or the pull request.
 
-## Later
+## GitHub CI
 
-A GitHub connection can later record a remote status as another result in this same summary. This version does not read one.
+After Meridian opens a pull request, or pushes a new commit to one it already opened, it reads that commit's GitHub checks. You see them beside the local commands:
+
+- **Waiting on CI** while GitHub is still running.
+- **CI passed** when the checks succeeded.
+- **CI failing (n/n)** when they failed. The count is the same attempt budget as the local commands. **Stop auto-fix**, a new message, pause, cancel, and rewind stop the loop the same way.
+- **Can't read CI: Reconnect GitHub** when the login itself was rejected.
+- **Connect GitHub to read CI** when nothing is connected. Local checks still run. This is a prompt, not a failed check.
+- **Can't read CI for this repository** when GitHub refuses that one repository. The login stays connected.
+
+A failure can be sent back to the agent. Meridian does not push the fix. The pull request updates only after you review the new commit and ship it, the same as any other push.
+
+The station polls GitHub. It does not need a webhook. The tail you and the agent see is a short redacted excerpt. The pull request body lists names and conclusions only.

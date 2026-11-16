@@ -32,7 +32,7 @@ Checks run as the same user in the same Capsule, without broker grants, provider
 
 A repository file `.meridian/checks.yaml` may be offered as a suggestion. It is never applied by being read.
 
-A later GitHub connection can record a remote status as another check result with the same summary, banner, and tree binding. This decision does not fetch one.
+A GitHub connection can record a remote status in this same summary and pull request section. ADR 0053 fetches it. This decision does not.
 
 ## Consequences
 

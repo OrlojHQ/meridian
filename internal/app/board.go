@@ -45,6 +45,11 @@ const (
 	BoardAttentionChecksPassed     BoardAttention = "checks_passed"
 	BoardAttentionChecksFailing    BoardAttention = "checks_failing"
 	BoardAttentionChecksError      BoardAttention = "checks_error"
+	BoardAttentionCIPassed         BoardAttention = "ci_passed"
+	BoardAttentionCIFailing        BoardAttention = "ci_failing"
+	BoardAttentionCIReconnect      BoardAttention = "ci_reconnect"
+	BoardAttentionCIConnect        BoardAttention = "ci_connect"
+	BoardAttentionCIUnreadable     BoardAttention = "ci_unreadable"
 )
 
 // BoardExpand chooses which subagent Capsules get their own rows.
@@ -340,6 +345,36 @@ func primaryThread(threads []domain.Thread) *domain.Thread {
 	return retained
 }
 
+func remoteCIBoard(item BoardItem) (BoardStatus, time.Time, BoardAttention, bool) {
+	if item.Checks == nil || item.Checks.RemoteCI == nil {
+		return "", time.Time{}, "", false
+	}
+	ci := item.Checks.RemoteCI
+	since := item.Capsule.UpdatedAt
+	switch domain.RemoteCIState(ci.State) {
+	case domain.RemoteCIWaiting:
+		return BoardWorking, since, "", true
+	case domain.RemoteCIFailing:
+		if ci.ReworkSent && ci.Attempt < ci.MaxAttempts {
+			return BoardWorking, since, "", true
+		}
+		return BoardNeedsYou, since, BoardAttentionCIFailing, true
+	case domain.RemoteCIReconnect:
+		return BoardNeedsYou, since, BoardAttentionCIReconnect, true
+	case domain.RemoteCIConnect:
+		return BoardNeedsYou, since, BoardAttentionCIConnect, true
+	case domain.RemoteCIUnreadable:
+		return BoardNeedsYou, since, BoardAttentionCIUnreadable, true
+	case domain.RemoteCIPassed:
+		if item.Attention.Turn == ThreadTurnWorking {
+			return "", time.Time{}, "", false
+		}
+		return BoardNeedsYou, since, BoardAttentionCIPassed, true
+	default:
+		return "", time.Time{}, "", false
+	}
+}
+
 func boardStatus(item BoardItem) (BoardStatus, time.Time, BoardAttention) {
 	capsule, run := item.Capsule, item.Run
 	if item.Link != nil && item.Link.State == domain.LinkPendingApproval {
@@ -383,6 +418,15 @@ func boardStatus(item BoardItem) (BoardStatus, time.Time, BoardAttention) {
 	if delivery := item.LatestDelivery; delivery != nil && delivery.State.Executable() {
 		return BoardWorking, delivery.UpdatedAt, ""
 	}
+	if item.Checks != nil {
+		switch domain.CheckPhase(item.Checks.Phase) {
+		case domain.CheckPhaseQueued, domain.CheckPhaseRunning, domain.CheckPhaseReworking, domain.CheckPhaseStale:
+			return BoardWorking, capsule.UpdatedAt, ""
+		}
+	}
+	if status, since, reason, ok := remoteCIBoard(item); ok {
+		return status, since, reason
+	}
 	if item.Checks != nil && item.Checks.Phase != "" && item.Attention.Turn != ThreadTurnWorking {
 		since := capsule.UpdatedAt
 		if item.Checks.FinishedAt != nil {
@@ -395,14 +439,6 @@ func boardStatus(item BoardItem) (BoardStatus, time.Time, BoardAttention) {
 			return BoardNeedsYou, since, BoardAttentionChecksError
 		case domain.CheckPhasePassed:
 			return BoardNeedsYou, since, BoardAttentionChecksPassed
-		case domain.CheckPhaseQueued, domain.CheckPhaseRunning, domain.CheckPhaseReworking, domain.CheckPhaseStale:
-			return BoardWorking, since, ""
-		}
-	}
-	if item.Checks != nil {
-		switch domain.CheckPhase(item.Checks.Phase) {
-		case domain.CheckPhaseQueued, domain.CheckPhaseRunning, domain.CheckPhaseReworking:
-			return BoardWorking, capsule.UpdatedAt, ""
 		}
 	}
 	sessionIdle := item.Attention.Turn == ThreadTurnIdle

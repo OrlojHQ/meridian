@@ -1075,6 +1075,56 @@ func (r *scopedReader) LatestCheckRuns(ctx context.Context, ids []domain.Capsule
 	return r.inner.LatestCheckRuns(ctx, ids)
 }
 
+func (r *scopedReader) LatestRemoteCI(ctx context.Context, id domain.CapsuleID) (domain.RemoteCIWatch, error) {
+	if err := r.capsule(ctx, id); err != nil {
+		return domain.RemoteCIWatch{}, err
+	}
+	return r.inner.LatestRemoteCI(ctx, id)
+}
+
+func (r *scopedReader) GetRemoteCI(ctx context.Context, id domain.RemoteCIWatchID) (domain.RemoteCIWatch, error) {
+	watch, err := r.inner.GetRemoteCI(ctx, id)
+	if err != nil {
+		return domain.RemoteCIWatch{}, err
+	}
+	if err := r.capsule(ctx, watch.CapsuleID); err != nil {
+		return domain.RemoteCIWatch{}, err
+	}
+	return watch, nil
+}
+
+func (r *scopedReader) ListRemoteCIChecks(ctx context.Context, id domain.RemoteCIWatchID) ([]domain.RemoteCICheck, error) {
+	if _, err := r.GetRemoteCI(ctx, id); err != nil {
+		return nil, err
+	}
+	return r.inner.ListRemoteCIChecks(ctx, id)
+}
+
+func (r *scopedReader) ListDueRemoteCI(ctx context.Context, now time.Time, limit int) ([]domain.RemoteCIWatch, error) {
+	items, err := r.inner.ListDueRemoteCI(ctx, now, limit)
+	if err != nil || r.scope.all {
+		return items, err
+	}
+	var allowed []domain.RemoteCIWatch
+	for _, item := range items {
+		if err := r.capsule(ctx, item.CapsuleID); err != nil {
+			if errors.Is(err, domain.ErrNotFound) {
+				continue
+			}
+			return nil, err
+		}
+		allowed = append(allowed, item)
+	}
+	return allowed, nil
+}
+
+func (r *scopedReader) CountRemoteCIFailures(ctx context.Context, id domain.CapsuleID, epoch int64) (int, error) {
+	if err := r.capsule(ctx, id); err != nil {
+		return 0, err
+	}
+	return r.inner.CountRemoteCIFailures(ctx, id, epoch)
+}
+
 func (r *scopedReader) filterCheckRuns(ctx context.Context, items []domain.CheckRun) ([]domain.CheckRun, error) {
 	var allowed []domain.CheckRun
 	for _, item := range items {
@@ -1676,6 +1726,34 @@ func (t *scopedTx) InsertDeliveryCheckGate(ctx context.Context, delivery domain.
 		return err
 	}
 	return t.tx.InsertDeliveryCheckGate(ctx, delivery, capsule, at)
+}
+
+func (t *scopedTx) InsertRemoteCI(ctx context.Context, watch domain.RemoteCIWatch) error {
+	if err := t.capsule(ctx, watch.CapsuleID); err != nil {
+		return err
+	}
+	return t.tx.InsertRemoteCI(ctx, watch)
+}
+
+func (t *scopedTx) UpdateRemoteCI(ctx context.Context, watch domain.RemoteCIWatch, expected domain.ResourceVersion) error {
+	if err := t.capsule(ctx, watch.CapsuleID); err != nil {
+		return err
+	}
+	return t.tx.UpdateRemoteCI(ctx, watch, expected)
+}
+
+func (t *scopedTx) ReplaceRemoteCIChecks(ctx context.Context, id domain.RemoteCIWatchID, checks []domain.RemoteCICheck) error {
+	if _, err := t.GetRemoteCI(ctx, id); err != nil {
+		return err
+	}
+	return t.tx.ReplaceRemoteCIChecks(ctx, id, checks)
+}
+
+func (t *scopedTx) SupersedeRemoteCI(ctx context.Context, id domain.CapsuleID, keepHead string) error {
+	if err := t.capsule(ctx, id); err != nil {
+		return err
+	}
+	return t.tx.SupersedeRemoteCI(ctx, id, keepHead)
 }
 
 func (t *scopedTx) DeleteDeliveryCheckGates(ctx context.Context, id domain.CapsuleID) error {

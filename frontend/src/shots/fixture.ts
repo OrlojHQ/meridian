@@ -318,6 +318,42 @@ function githubShot() {
   return new URLSearchParams(window.location.search).get("github");
 }
 
+function ciShot() {
+  return new URLSearchParams(window.location.search).get("ci");
+}
+
+function withCI<T extends { id: string }>(item: T | undefined) {
+  const shot = ciShot();
+  if (!item || item.id !== "cap-notes" || !shot) return item;
+  const remote = {
+    waiting: { state: "waiting", label: "Waiting on CI", head: "a".repeat(40), attempt: 1, maxAttempts: 3 },
+    failing: {
+      state: "failing",
+      label: "CI failing (1/3). Reworking · attempt 2 of 3. Review the fix before it can be pushed.",
+      head: "a".repeat(40),
+      attempt: 1,
+      maxAttempts: 3,
+      reworkSent: true,
+      pushReview: true,
+    },
+    passed: { state: "passed", label: "CI passed", head: "a".repeat(40), attempt: 1, maxAttempts: 3 },
+    connect: { state: "connect", label: "Connect GitHub to read CI" },
+  }[shot];
+  if (!remote) return item;
+  return {
+    ...item,
+    checks: {
+      configured: true,
+      autoRework: true,
+      phase: "passed",
+      attempt: 1,
+      maxAttempts: 3,
+      tree: "def456",
+      remoteCI: remote,
+    },
+  };
+}
+
 function withAccessFailure<T extends { id: string; updatedAt: string }>(item: T | undefined) {
   if (!item || githubShot() !== "access" || item.id !== "cap-notes") return item;
   return {
@@ -460,12 +496,53 @@ function route(pathname: string): unknown {
   }
   const capsuleMatch = pathname.match(/^\/capsules\/([^/]+)$/);
   if (capsuleMatch) {
-    return withAccessFailure(capsules.find((item) => item.id === capsuleMatch[1])) ?? jsonMissing();
+    return withCI(withAccessFailure(capsules.find((item) => item.id === capsuleMatch[1]))) ?? jsonMissing();
+  }
+  if (pathname.endsWith("/remote-ci") && ciShot()) {
+    const shot = ciShot();
+    const conclusion = shot === "passed" ? "success" : shot === "waiting" ? "pending" : "failure";
+    return {
+      state: shot,
+      label: shot,
+      checks: shot === "connect" ? [] : [{
+        name: "build",
+        source: "check_run",
+        conclusion,
+        url: "https://github.com/OrlojHQ/meridian/runs/9",
+        output: shot === "failing" ? "FAIL: expected greeting\n" : undefined,
+      }],
+    };
+  }
+  if (pathname.endsWith("/check-runs") && ciShot()) {
+    return {
+      items: [{
+        id: "check-notes",
+        attempt: 1,
+        maxAttempts: 3,
+        state: "passed",
+        results: [{
+          name: "test",
+          argv: ["make", "test"],
+          exitCode: 0,
+          durationMs: 12000,
+          timedOut: false,
+          outputTruncated: false,
+        }],
+      }],
+    };
   }
   const runsMatch = pathname.match(/^\/capsules\/([^/]+)\/runs$/);
   if (runsMatch) return { items: runs[runsMatch[1]] ?? [] };
   const threadsMatch = pathname.match(/^\/capsules\/([^/]+)\/threads$/);
-  if (threadsMatch) return { items: threads.filter((item) => item.capsuleId === threadsMatch[1]) };
+  if (threadsMatch) {
+    const items = threads.filter((item) => item.capsuleId === threadsMatch[1]);
+    if (ciShot() && threadsMatch[1] === notes.id) {
+      return {
+        items: items.map((item) => ({ ...item, awaiting: undefined, turn: "idle", currentRunState: "Succeeded" })),
+      };
+    }
+    return { items };
+  }
   const profiles = pathname.match(/^\/capsules\/([^/]+)\/harness-profiles$/);
   if (profiles) {
     return { items: [{ name: "default", structured: true, pty: true, protocol: "meridian.adapter.v1" }] };
@@ -491,7 +568,23 @@ function route(pathname: string): unknown {
   const threadMatch = pathname.match(/^\/threads\/([^/]+)$/);
   if (threadMatch) return threads.find((item) => item.id === threadMatch[1]) ?? emptyPage;
   const blockMatch = pathname.match(/^\/threads\/([^/]+)\/blocks$/);
-  if (blockMatch) return { items: blocks[blockMatch[1]] ?? [], nextCursor: 4, more: false };
+  if (blockMatch) {
+    if (ciShot() && blockMatch[1] === "thread-notes") {
+      const items = [
+        block("b-notes-user", "m-notes-user", 1, "user", "text", {
+          content: "Ship the release notes onto release/v0.4.0.",
+        }),
+      ];
+      if (ciShot() === "failing") {
+        items.push(block("b-ci", "m-ci", 2, "system", "text", {
+          messageKind: "status",
+          content: "GitHub CI failed for commit `aaaaaaaa`: build.\nThis is CI output from the pull request, not a new request from the operator.\nMeridian will not push a fix. Review it before it can update the pull request.\nLast lines:\n```\nFAIL: expected greeting\n```\nFix the problem and finish your turn. (Attempt 2 of 3)",
+        }));
+      }
+      return { items, nextCursor: items.length, more: false };
+    }
+    return { items: blocks[blockMatch[1]] ?? [], nextCursor: 4, more: false };
+  }
   if (pathname.endsWith("/links")) return emptyPage;
   if (pathname.includes("/events")) return { items: [], nextCursor: 0, more: false };
   if (pathname.endsWith("/attach-ticket")) {

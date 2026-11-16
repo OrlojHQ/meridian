@@ -30,6 +30,11 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   offer Connect GitHub or a token. Creating that Project checks access
   first. Git output is not stored or shown. Migration 0032 allows the
   new failure code.
+- After Meridian opens or updates a pull request, it reads that commit's
+  GitHub checks and shows them beside the local ones. A failure can be sent
+  back to the agent. The fix is not pushed until you review it. See
+  [docs/checks.md](docs/checks.md) and ADR 0053. Migration
+  `0034_remote_ci.sql` stores the summary.
 - A Project can list required checks, such as `make test`. When a structured
   Thread finishes a turn, Meridian runs them inside the Capsule. A failure is
   sent back to the agent up to the attempt limit, then the Capsule shows
