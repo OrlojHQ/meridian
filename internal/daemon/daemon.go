@@ -418,6 +418,9 @@ func run(ctx context.Context, config Config) error {
 	}
 	service := app.NewService(store, clock, ids, reconciler, runtime)
 	service.ConfigureSecrets(secretKey)
+	if checks, ok := provider.(ports.CheckRuntime); ok {
+		service.ConfigureChecks(checks)
+	}
 	reconciler.ConfigureRuntimeRecovery(service.FailStoppedRuntimeRuns)
 	reconciler.OnCapsuleSettled(func(ctx context.Context, capsule domain.Capsule) {
 		_ = service.AdvanceProjectDeletion(ctx, capsule.ProjectID)
@@ -572,6 +575,7 @@ func run(ctx context.Context, config Config) error {
 	}
 	reconciler.Start(systemCtx)
 	defer reconciler.Close()
+	service.StartChecks(systemCtx)
 	recoveryStarted = time.Now()
 	if err := reconciler.Recover(systemCtx); err != nil {
 		metrics.StartupRecovery("capsules", "error", time.Since(recoveryStarted))

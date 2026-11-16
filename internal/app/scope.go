@@ -958,6 +958,130 @@ func (r *scopedReader) ListAuditRecords(ctx context.Context, user domain.UserID,
 	return r.inner.ListAuditRecords(ctx, user, after, limit)
 }
 
+func (r *scopedReader) GetProjectChecks(ctx context.Context, id domain.ProjectID) (domain.ProjectChecks, error) {
+	if err := r.project(ctx, id); err != nil {
+		return domain.ProjectChecks{}, err
+	}
+	return r.inner.GetProjectChecks(ctx, id)
+}
+
+func (r *scopedReader) GetCheckControl(ctx context.Context, id domain.CapsuleID) (domain.CheckControl, error) {
+	if err := r.capsule(ctx, id); err != nil {
+		return domain.CheckControl{}, err
+	}
+	return r.inner.GetCheckControl(ctx, id)
+}
+
+func (r *scopedReader) GetCheckRun(ctx context.Context, id domain.CheckRunID) (domain.CheckRun, error) {
+	run, err := r.inner.GetCheckRun(ctx, id)
+	if err != nil {
+		return domain.CheckRun{}, err
+	}
+	if err := r.capsule(ctx, run.CapsuleID); err != nil {
+		return domain.CheckRun{}, err
+	}
+	return run, nil
+}
+
+func (r *scopedReader) LatestCheckRun(ctx context.Context, id domain.CapsuleID) (domain.CheckRun, error) {
+	if err := r.capsule(ctx, id); err != nil {
+		return domain.CheckRun{}, err
+	}
+	return r.inner.LatestCheckRun(ctx, id)
+}
+
+func (r *scopedReader) ActiveCheckRun(ctx context.Context, id domain.CapsuleID) (domain.CheckRun, error) {
+	if err := r.capsule(ctx, id); err != nil {
+		return domain.CheckRun{}, err
+	}
+	return r.inner.ActiveCheckRun(ctx, id)
+}
+
+func (r *scopedReader) ListCheckRuns(ctx context.Context, id domain.CapsuleID, page ports.Page) ([]domain.CheckRun, bool, error) {
+	if err := r.capsule(ctx, id); err != nil {
+		return nil, false, err
+	}
+	return r.inner.ListCheckRuns(ctx, id, page)
+}
+
+func (r *scopedReader) ListCheckResults(ctx context.Context, id domain.CheckRunID) ([]domain.CheckResult, error) {
+	if _, err := r.GetCheckRun(ctx, id); err != nil {
+		return nil, err
+	}
+	return r.inner.ListCheckResults(ctx, id)
+}
+
+func (r *scopedReader) CountFailedCheckRuns(ctx context.Context, id domain.CapsuleID, epoch int64) (int, error) {
+	if err := r.capsule(ctx, id); err != nil {
+		return 0, err
+	}
+	return r.inner.CountFailedCheckRuns(ctx, id, epoch)
+}
+
+func (r *scopedReader) ListDueCheckRuns(ctx context.Context, now time.Time, limit int) ([]domain.CheckRun, error) {
+	items, err := r.inner.ListDueCheckRuns(ctx, now, limit)
+	if err != nil || r.scope.all {
+		return items, err
+	}
+	return r.filterCheckRuns(ctx, items)
+}
+
+func (r *scopedReader) ListRunningCheckRuns(ctx context.Context) ([]domain.CheckRun, error) {
+	items, err := r.inner.ListRunningCheckRuns(ctx)
+	if err != nil || r.scope.all {
+		return items, err
+	}
+	return r.filterCheckRuns(ctx, items)
+}
+
+func (r *scopedReader) ListReadyCheckedCapsules(ctx context.Context, limit int) ([]domain.CapsuleID, error) {
+	ids, err := r.inner.ListReadyCheckedCapsules(ctx, limit)
+	if err != nil || r.scope.all {
+		return ids, err
+	}
+	var allowed []domain.CapsuleID
+	for _, id := range ids {
+		if err := r.capsule(ctx, id); err != nil {
+			if errors.Is(err, domain.ErrNotFound) {
+				continue
+			}
+			return nil, err
+		}
+		allowed = append(allowed, id)
+	}
+	return allowed, nil
+}
+
+func (r *scopedReader) CapsuleHasCheckGate(ctx context.Context, id domain.CapsuleID) (bool, error) {
+	if err := r.capsule(ctx, id); err != nil {
+		return false, err
+	}
+	return r.inner.CapsuleHasCheckGate(ctx, id)
+}
+
+func (r *scopedReader) LatestCheckRuns(ctx context.Context, ids []domain.CapsuleID) (map[domain.CapsuleID]domain.CheckRun, error) {
+	for _, id := range ids {
+		if err := r.capsule(ctx, id); err != nil {
+			return nil, err
+		}
+	}
+	return r.inner.LatestCheckRuns(ctx, ids)
+}
+
+func (r *scopedReader) filterCheckRuns(ctx context.Context, items []domain.CheckRun) ([]domain.CheckRun, error) {
+	var allowed []domain.CheckRun
+	for _, item := range items {
+		if err := r.capsule(ctx, item.CapsuleID); err != nil {
+			if errors.Is(err, domain.ErrNotFound) {
+				continue
+			}
+			return nil, err
+		}
+		allowed = append(allowed, item)
+	}
+	return allowed, nil
+}
+
 // scopedTx checks each write against the same scope. A root row must be
 // the scope owner's; any other row must belong to a parent the scope can
 // see. The store's triggers then refuse a child whose owner differs from
@@ -1470,4 +1594,60 @@ func (t *scopedTx) RevokeUserCredentials(context.Context, domain.UserID, time.Ti
 // internal/app authorizes and then runs as the system.
 func (t *scopedTx) TransferOwnership(context.Context, domain.UserID, domain.UserID) error {
 	return domain.ErrNotFound
+}
+
+func (t *scopedTx) PutProjectChecks(ctx context.Context, checks domain.ProjectChecks) error {
+	if err := t.project(ctx, checks.ProjectID); err != nil {
+		return err
+	}
+	return t.tx.PutProjectChecks(ctx, checks)
+}
+
+func (t *scopedTx) PutCheckControl(ctx context.Context, control domain.CheckControl) error {
+	if err := t.capsule(ctx, control.CapsuleID); err != nil {
+		return err
+	}
+	return t.tx.PutCheckControl(ctx, control)
+}
+
+func (t *scopedTx) InsertCheckRun(ctx context.Context, run domain.CheckRun) error {
+	if err := t.capsule(ctx, run.CapsuleID); err != nil {
+		return err
+	}
+	return t.tx.InsertCheckRun(ctx, run)
+}
+
+func (t *scopedTx) UpdateCheckRun(ctx context.Context, run domain.CheckRun, expected domain.ResourceVersion) error {
+	if err := t.capsule(ctx, run.CapsuleID); err != nil {
+		return err
+	}
+	return t.tx.UpdateCheckRun(ctx, run, expected)
+}
+
+func (t *scopedTx) ReplaceCheckResults(ctx context.Context, id domain.CheckRunID, results []domain.CheckResult) error {
+	if _, err := t.GetCheckRun(ctx, id); err != nil {
+		return err
+	}
+	return t.tx.ReplaceCheckResults(ctx, id, results)
+}
+
+func (t *scopedTx) CancelQueuedCheckRuns(ctx context.Context, id domain.CapsuleID, now time.Time) error {
+	if err := t.capsule(ctx, id); err != nil {
+		return err
+	}
+	return t.tx.CancelQueuedCheckRuns(ctx, id, now)
+}
+
+func (t *scopedTx) InsertDeliveryCheckGate(ctx context.Context, delivery domain.DeliveryID, capsule domain.CapsuleID, at time.Time) error {
+	if err := t.capsule(ctx, capsule); err != nil {
+		return err
+	}
+	return t.tx.InsertDeliveryCheckGate(ctx, delivery, capsule, at)
+}
+
+func (t *scopedTx) DeleteDeliveryCheckGates(ctx context.Context, id domain.CapsuleID) error {
+	if err := t.capsule(ctx, id); err != nil {
+		return err
+	}
+	return t.tx.DeleteDeliveryCheckGates(ctx, id)
 }

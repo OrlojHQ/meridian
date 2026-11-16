@@ -258,6 +258,19 @@ Valid classes are `container`, `sandbox`, and `microvm`; a stronger class
 satisfies a weaker requirement. `project list` and the other Project output add
 `required-isolation=CLASS` when a Project has one.
 
+A Project can also list checks. The commands run inside the Capsule when an
+agent finishes, and a failure can be sent back a bounded number of times:
+
+```console
+meridian project checks set PROJECT_ID --check "test=make test" --max-attempts 3
+meridian project checks show PROJECT_ID
+meridian capsule checks CAPSULE_ID --run --follow
+```
+
+`capsule get` adds `checks=PHASE` and `attempt=N/M` when the Project has
+checks. The terminal dashboard shows the same summary on the Capsule row.
+Configuration stays in this command and the desktop Project page.
+
 Enter on an existing Capsule attaches its active native Run. If the Capsule is
 Ready and idle, Enter starts a new Run from its frozen launcher harness and
 attaches. Creating/Preparing Capsules wait for their initial Run. A legacy

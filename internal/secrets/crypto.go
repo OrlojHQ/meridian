@@ -276,6 +276,50 @@ func (k *InstallationKey) open(secret domain.Secret) (Payload, error) {
 	return payload, nil
 }
 
+const maxBlobBytes = 256 << 10
+
+// SealBlob encrypts a bounded plaintext under a caller-chosen label. The
+// label is the authenticated context, so a ciphertext cannot be moved to a
+// different check result and still open.
+func (k *InstallationKey) SealBlob(label string, plaintext []byte) ([]byte, []byte, error) {
+	if k == nil || label == "" || len(label) > 512 || len(plaintext) > maxBlobBytes {
+		return nil, nil, domain.ErrInvalid
+	}
+	block, err := aes.NewCipher(k.key[:])
+	if err != nil {
+		return nil, nil, err
+	}
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, nil, err
+	}
+	nonce := make([]byte, aead.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, nil, err
+	}
+	return nonce, aead.Seal(nil, nonce, plaintext, []byte("meridian.check-output.v1\x00"+label)), nil
+}
+
+// OpenBlob opens a blob sealed with the same label.
+func (k *InstallationKey) OpenBlob(label string, nonce, ciphertext []byte) ([]byte, error) {
+	if k == nil || label == "" || len(nonce) == 0 || len(ciphertext) == 0 {
+		return nil, domain.ErrKeyMismatch
+	}
+	block, err := aes.NewCipher(k.key[:])
+	if err != nil {
+		return nil, err
+	}
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	plain, err := aead.Open(nil, nonce, ciphertext, []byte("meridian.check-output.v1\x00"+label))
+	if err != nil {
+		return nil, domain.ErrKeyMismatch
+	}
+	return plain, nil
+}
+
 func (k *InstallationKey) Zero() {
 	if k != nil {
 		zero(k.key[:])

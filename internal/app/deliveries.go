@@ -443,10 +443,14 @@ func (s *Service) executeDelivery(
 			}
 			pullRequest = *existing
 		} else {
+			body := result.PullRequestBody
+			if sectionBody, sectionErr := s.checksPullRequestBody(ctx, result.CapsuleID, result.ExpectedTree, body); sectionErr == nil {
+				body = sectionBody
+			}
 			pullRequest, err = s.github.CreatePullRequest(ctx, token, CreatePullRequestInput{
 				Owner: owner, Repository: repository, Head: result.RemoteBranch,
 				Base: result.BaseBranch, Title: result.PullRequestTitle,
-				Body: result.PullRequestBody,
+				Body: body,
 			})
 			if err != nil {
 				token = ""

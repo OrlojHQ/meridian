@@ -763,6 +763,9 @@ const (
 	BoardItemNeedsYouFailed           BoardItemNeedsYou = "failed"
 	BoardItemNeedsYouSpawnApproval    BoardItemNeedsYou = "spawn_approval"
 	BoardItemNeedsYouProposedDelivery BoardItemNeedsYou = "proposed_delivery"
+	BoardItemNeedsYouChecksPassed     BoardItemNeedsYou = "checks_passed"
+	BoardItemNeedsYouChecksFailing    BoardItemNeedsYou = "checks_failing"
+	BoardItemNeedsYouChecksError      BoardItemNeedsYou = "checks_error"
 )
 
 // AllValues returns all BoardItemNeedsYou values.
@@ -773,6 +776,9 @@ func (BoardItemNeedsYou) AllValues() []BoardItemNeedsYou {
 		BoardItemNeedsYouFailed,
 		BoardItemNeedsYouSpawnApproval,
 		BoardItemNeedsYouProposedDelivery,
+		BoardItemNeedsYouChecksPassed,
+		BoardItemNeedsYouChecksFailing,
+		BoardItemNeedsYouChecksError,
 	}
 }
 
@@ -788,6 +794,12 @@ func (s BoardItemNeedsYou) MarshalText() ([]byte, error) {
 	case BoardItemNeedsYouSpawnApproval:
 		return []byte(s), nil
 	case BoardItemNeedsYouProposedDelivery:
+		return []byte(s), nil
+	case BoardItemNeedsYouChecksPassed:
+		return []byte(s), nil
+	case BoardItemNeedsYouChecksFailing:
+		return []byte(s), nil
+	case BoardItemNeedsYouChecksError:
 		return []byte(s), nil
 	default:
 		return nil, errors.Errorf("invalid value: %q", s)
@@ -811,6 +823,15 @@ func (s *BoardItemNeedsYou) UnmarshalText(data []byte) error {
 		return nil
 	case BoardItemNeedsYouProposedDelivery:
 		*s = BoardItemNeedsYouProposedDelivery
+		return nil
+	case BoardItemNeedsYouChecksPassed:
+		*s = BoardItemNeedsYouChecksPassed
+		return nil
+	case BoardItemNeedsYouChecksFailing:
+		*s = BoardItemNeedsYouChecksFailing
+		return nil
+	case BoardItemNeedsYouChecksError:
+		*s = BoardItemNeedsYouChecksError
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)
@@ -1218,10 +1239,13 @@ type Capsule struct {
 	// On sub-Capsules and promoted Capsules that kept their link, the Thread link to the lead.
 	LinkId OptString `json:"linkId"`
 	// When a subagent Capsule was promoted to a main Capsule.
-	PromotedAt      OptDateTime `json:"promotedAt"`
-	CreatedAt       time.Time   `json:"createdAt"`
-	UpdatedAt       time.Time   `json:"updatedAt"`
-	ResourceVersion int64       `json:"resourceVersion"`
+	PromotedAt OptDateTime `json:"promotedAt"`
+	// Content-free check summary. Absent when the Project has no checks. This is not a Capsule lifecycle
+	// state.
+	Checks          OptChecksSummary `json:"checks"`
+	CreatedAt       time.Time        `json:"createdAt"`
+	UpdatedAt       time.Time        `json:"updatedAt"`
+	ResourceVersion int64            `json:"resourceVersion"`
 }
 
 // GetPreparation returns the value of Preparation.
@@ -1322,6 +1346,11 @@ func (s *Capsule) GetLinkId() OptString {
 // GetPromotedAt returns the value of PromotedAt.
 func (s *Capsule) GetPromotedAt() OptDateTime {
 	return s.PromotedAt
+}
+
+// GetChecks returns the value of Checks.
+func (s *Capsule) GetChecks() OptChecksSummary {
+	return s.Checks
 }
 
 // GetCreatedAt returns the value of CreatedAt.
@@ -1437,6 +1466,11 @@ func (s *Capsule) SetLinkId(val OptString) {
 // SetPromotedAt sets the value of PromotedAt.
 func (s *Capsule) SetPromotedAt(val OptDateTime) {
 	s.PromotedAt = val
+}
+
+// SetChecks sets the value of Checks.
+func (s *Capsule) SetChecks(val OptChecksSummary) {
+	s.Checks = val
 }
 
 // SetCreatedAt sets the value of CreatedAt.
@@ -2105,6 +2139,856 @@ func (s *ChatGPTSignInState) UnmarshalText(data []byte) error {
 		return nil
 	case ChatGPTSignInStateFailed:
 		*s = ChatGPTSignInStateFailed
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Ref: #/components/schemas/CheckAutoReworkRequest
+type CheckAutoReworkRequest struct {
+	// False stops automatic rework for this Capsule.
+	Enabled bool `json:"enabled"`
+}
+
+// GetEnabled returns the value of Enabled.
+func (s *CheckAutoReworkRequest) GetEnabled() bool {
+	return s.Enabled
+}
+
+// SetEnabled sets the value of Enabled.
+func (s *CheckAutoReworkRequest) SetEnabled(val bool) {
+	s.Enabled = val
+}
+
+// An executable and its arguments. Meridian does not start a shell.
+// Ref: #/components/schemas/CheckCommand
+type CheckCommand struct {
+	Name           string   `json:"name"`
+	Argv           []string `json:"argv"`
+	TimeoutSeconds int      `json:"timeoutSeconds"`
+}
+
+// GetName returns the value of Name.
+func (s *CheckCommand) GetName() string {
+	return s.Name
+}
+
+// GetArgv returns the value of Argv.
+func (s *CheckCommand) GetArgv() []string {
+	return s.Argv
+}
+
+// GetTimeoutSeconds returns the value of TimeoutSeconds.
+func (s *CheckCommand) GetTimeoutSeconds() int {
+	return s.TimeoutSeconds
+}
+
+// SetName sets the value of Name.
+func (s *CheckCommand) SetName(val string) {
+	s.Name = val
+}
+
+// SetArgv sets the value of Argv.
+func (s *CheckCommand) SetArgv(val []string) {
+	s.Argv = val
+}
+
+// SetTimeoutSeconds sets the value of TimeoutSeconds.
+func (s *CheckCommand) SetTimeoutSeconds(val int) {
+	s.TimeoutSeconds = val
+}
+
+// Ref: #/components/schemas/CheckResult
+type CheckResult struct {
+	Name            string   `json:"name"`
+	Argv            []string `json:"argv"`
+	ExitCode        OptInt   `json:"exitCode"`
+	DurationMs      int64    `json:"durationMs"`
+	TimedOut        bool     `json:"timedOut"`
+	OutputTruncated bool     `json:"outputTruncated"`
+	// Redacted tail of the command output. Absent when there is none.
+	Output OptString `json:"output"`
+}
+
+// GetName returns the value of Name.
+func (s *CheckResult) GetName() string {
+	return s.Name
+}
+
+// GetArgv returns the value of Argv.
+func (s *CheckResult) GetArgv() []string {
+	return s.Argv
+}
+
+// GetExitCode returns the value of ExitCode.
+func (s *CheckResult) GetExitCode() OptInt {
+	return s.ExitCode
+}
+
+// GetDurationMs returns the value of DurationMs.
+func (s *CheckResult) GetDurationMs() int64 {
+	return s.DurationMs
+}
+
+// GetTimedOut returns the value of TimedOut.
+func (s *CheckResult) GetTimedOut() bool {
+	return s.TimedOut
+}
+
+// GetOutputTruncated returns the value of OutputTruncated.
+func (s *CheckResult) GetOutputTruncated() bool {
+	return s.OutputTruncated
+}
+
+// GetOutput returns the value of Output.
+func (s *CheckResult) GetOutput() OptString {
+	return s.Output
+}
+
+// SetName sets the value of Name.
+func (s *CheckResult) SetName(val string) {
+	s.Name = val
+}
+
+// SetArgv sets the value of Argv.
+func (s *CheckResult) SetArgv(val []string) {
+	s.Argv = val
+}
+
+// SetExitCode sets the value of ExitCode.
+func (s *CheckResult) SetExitCode(val OptInt) {
+	s.ExitCode = val
+}
+
+// SetDurationMs sets the value of DurationMs.
+func (s *CheckResult) SetDurationMs(val int64) {
+	s.DurationMs = val
+}
+
+// SetTimedOut sets the value of TimedOut.
+func (s *CheckResult) SetTimedOut(val bool) {
+	s.TimedOut = val
+}
+
+// SetOutputTruncated sets the value of OutputTruncated.
+func (s *CheckResult) SetOutputTruncated(val bool) {
+	s.OutputTruncated = val
+}
+
+// SetOutput sets the value of Output.
+func (s *CheckResult) SetOutput(val OptString) {
+	s.Output = val
+}
+
+// Ref: #/components/schemas/CheckRun
+type CheckRun struct {
+	ID        string    `json:"id"`
+	CapsuleId string    `json:"capsuleId"`
+	ProjectId string    `json:"projectId"`
+	ThreadId  OptString `json:"threadId"`
+	// One-based try number.
+	Attempt     int              `json:"attempt"`
+	MaxAttempts int              `json:"maxAttempts"`
+	Trigger     CheckRunTrigger  `json:"trigger"`
+	State       CheckRunState    `json:"state"`
+	Phase       OptCheckRunPhase `json:"phase"`
+	GitHead     OptString        `json:"gitHead"`
+	GitTree     OptString        `json:"gitTree"`
+	StartedAt   OptDateTime      `json:"startedAt"`
+	FinishedAt  OptDateTime      `json:"finishedAt"`
+	ReworkSent  bool             `json:"reworkSent"`
+	Banner      OptString        `json:"banner"`
+	// Server-generated pull request text. It contains no command output.
+	PullRequestSection OptString     `json:"pullRequestSection"`
+	Results            []CheckResult `json:"results"`
+	ResourceVersion    int64         `json:"resourceVersion"`
+	CreatedAt          time.Time     `json:"createdAt"`
+}
+
+// GetID returns the value of ID.
+func (s *CheckRun) GetID() string {
+	return s.ID
+}
+
+// GetCapsuleId returns the value of CapsuleId.
+func (s *CheckRun) GetCapsuleId() string {
+	return s.CapsuleId
+}
+
+// GetProjectId returns the value of ProjectId.
+func (s *CheckRun) GetProjectId() string {
+	return s.ProjectId
+}
+
+// GetThreadId returns the value of ThreadId.
+func (s *CheckRun) GetThreadId() OptString {
+	return s.ThreadId
+}
+
+// GetAttempt returns the value of Attempt.
+func (s *CheckRun) GetAttempt() int {
+	return s.Attempt
+}
+
+// GetMaxAttempts returns the value of MaxAttempts.
+func (s *CheckRun) GetMaxAttempts() int {
+	return s.MaxAttempts
+}
+
+// GetTrigger returns the value of Trigger.
+func (s *CheckRun) GetTrigger() CheckRunTrigger {
+	return s.Trigger
+}
+
+// GetState returns the value of State.
+func (s *CheckRun) GetState() CheckRunState {
+	return s.State
+}
+
+// GetPhase returns the value of Phase.
+func (s *CheckRun) GetPhase() OptCheckRunPhase {
+	return s.Phase
+}
+
+// GetGitHead returns the value of GitHead.
+func (s *CheckRun) GetGitHead() OptString {
+	return s.GitHead
+}
+
+// GetGitTree returns the value of GitTree.
+func (s *CheckRun) GetGitTree() OptString {
+	return s.GitTree
+}
+
+// GetStartedAt returns the value of StartedAt.
+func (s *CheckRun) GetStartedAt() OptDateTime {
+	return s.StartedAt
+}
+
+// GetFinishedAt returns the value of FinishedAt.
+func (s *CheckRun) GetFinishedAt() OptDateTime {
+	return s.FinishedAt
+}
+
+// GetReworkSent returns the value of ReworkSent.
+func (s *CheckRun) GetReworkSent() bool {
+	return s.ReworkSent
+}
+
+// GetBanner returns the value of Banner.
+func (s *CheckRun) GetBanner() OptString {
+	return s.Banner
+}
+
+// GetPullRequestSection returns the value of PullRequestSection.
+func (s *CheckRun) GetPullRequestSection() OptString {
+	return s.PullRequestSection
+}
+
+// GetResults returns the value of Results.
+func (s *CheckRun) GetResults() []CheckResult {
+	return s.Results
+}
+
+// GetResourceVersion returns the value of ResourceVersion.
+func (s *CheckRun) GetResourceVersion() int64 {
+	return s.ResourceVersion
+}
+
+// GetCreatedAt returns the value of CreatedAt.
+func (s *CheckRun) GetCreatedAt() time.Time {
+	return s.CreatedAt
+}
+
+// SetID sets the value of ID.
+func (s *CheckRun) SetID(val string) {
+	s.ID = val
+}
+
+// SetCapsuleId sets the value of CapsuleId.
+func (s *CheckRun) SetCapsuleId(val string) {
+	s.CapsuleId = val
+}
+
+// SetProjectId sets the value of ProjectId.
+func (s *CheckRun) SetProjectId(val string) {
+	s.ProjectId = val
+}
+
+// SetThreadId sets the value of ThreadId.
+func (s *CheckRun) SetThreadId(val OptString) {
+	s.ThreadId = val
+}
+
+// SetAttempt sets the value of Attempt.
+func (s *CheckRun) SetAttempt(val int) {
+	s.Attempt = val
+}
+
+// SetMaxAttempts sets the value of MaxAttempts.
+func (s *CheckRun) SetMaxAttempts(val int) {
+	s.MaxAttempts = val
+}
+
+// SetTrigger sets the value of Trigger.
+func (s *CheckRun) SetTrigger(val CheckRunTrigger) {
+	s.Trigger = val
+}
+
+// SetState sets the value of State.
+func (s *CheckRun) SetState(val CheckRunState) {
+	s.State = val
+}
+
+// SetPhase sets the value of Phase.
+func (s *CheckRun) SetPhase(val OptCheckRunPhase) {
+	s.Phase = val
+}
+
+// SetGitHead sets the value of GitHead.
+func (s *CheckRun) SetGitHead(val OptString) {
+	s.GitHead = val
+}
+
+// SetGitTree sets the value of GitTree.
+func (s *CheckRun) SetGitTree(val OptString) {
+	s.GitTree = val
+}
+
+// SetStartedAt sets the value of StartedAt.
+func (s *CheckRun) SetStartedAt(val OptDateTime) {
+	s.StartedAt = val
+}
+
+// SetFinishedAt sets the value of FinishedAt.
+func (s *CheckRun) SetFinishedAt(val OptDateTime) {
+	s.FinishedAt = val
+}
+
+// SetReworkSent sets the value of ReworkSent.
+func (s *CheckRun) SetReworkSent(val bool) {
+	s.ReworkSent = val
+}
+
+// SetBanner sets the value of Banner.
+func (s *CheckRun) SetBanner(val OptString) {
+	s.Banner = val
+}
+
+// SetPullRequestSection sets the value of PullRequestSection.
+func (s *CheckRun) SetPullRequestSection(val OptString) {
+	s.PullRequestSection = val
+}
+
+// SetResults sets the value of Results.
+func (s *CheckRun) SetResults(val []CheckResult) {
+	s.Results = val
+}
+
+// SetResourceVersion sets the value of ResourceVersion.
+func (s *CheckRun) SetResourceVersion(val int64) {
+	s.ResourceVersion = val
+}
+
+// SetCreatedAt sets the value of CreatedAt.
+func (s *CheckRun) SetCreatedAt(val time.Time) {
+	s.CreatedAt = val
+}
+
+// Ref: #/components/schemas/CheckRunPage
+type CheckRunPage struct {
+	Items      []CheckRun `json:"items"`
+	NextCursor OptString  `json:"nextCursor"`
+}
+
+// GetItems returns the value of Items.
+func (s *CheckRunPage) GetItems() []CheckRun {
+	return s.Items
+}
+
+// GetNextCursor returns the value of NextCursor.
+func (s *CheckRunPage) GetNextCursor() OptString {
+	return s.NextCursor
+}
+
+// SetItems sets the value of Items.
+func (s *CheckRunPage) SetItems(val []CheckRun) {
+	s.Items = val
+}
+
+// SetNextCursor sets the value of NextCursor.
+func (s *CheckRunPage) SetNextCursor(val OptString) {
+	s.NextCursor = val
+}
+
+type CheckRunPhase string
+
+const (
+	CheckRunPhaseQueued    CheckRunPhase = "queued"
+	CheckRunPhaseRunning   CheckRunPhase = "running"
+	CheckRunPhaseReworking CheckRunPhase = "reworking"
+	CheckRunPhasePassed    CheckRunPhase = "passed"
+	CheckRunPhaseFailing   CheckRunPhase = "failing"
+	CheckRunPhaseStale     CheckRunPhase = "stale"
+	CheckRunPhaseError     CheckRunPhase = "error"
+)
+
+// AllValues returns all CheckRunPhase values.
+func (CheckRunPhase) AllValues() []CheckRunPhase {
+	return []CheckRunPhase{
+		CheckRunPhaseQueued,
+		CheckRunPhaseRunning,
+		CheckRunPhaseReworking,
+		CheckRunPhasePassed,
+		CheckRunPhaseFailing,
+		CheckRunPhaseStale,
+		CheckRunPhaseError,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s CheckRunPhase) MarshalText() ([]byte, error) {
+	switch s {
+	case CheckRunPhaseQueued:
+		return []byte(s), nil
+	case CheckRunPhaseRunning:
+		return []byte(s), nil
+	case CheckRunPhaseReworking:
+		return []byte(s), nil
+	case CheckRunPhasePassed:
+		return []byte(s), nil
+	case CheckRunPhaseFailing:
+		return []byte(s), nil
+	case CheckRunPhaseStale:
+		return []byte(s), nil
+	case CheckRunPhaseError:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *CheckRunPhase) UnmarshalText(data []byte) error {
+	switch CheckRunPhase(data) {
+	case CheckRunPhaseQueued:
+		*s = CheckRunPhaseQueued
+		return nil
+	case CheckRunPhaseRunning:
+		*s = CheckRunPhaseRunning
+		return nil
+	case CheckRunPhaseReworking:
+		*s = CheckRunPhaseReworking
+		return nil
+	case CheckRunPhasePassed:
+		*s = CheckRunPhasePassed
+		return nil
+	case CheckRunPhaseFailing:
+		*s = CheckRunPhaseFailing
+		return nil
+	case CheckRunPhaseStale:
+		*s = CheckRunPhaseStale
+		return nil
+	case CheckRunPhaseError:
+		*s = CheckRunPhaseError
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Empty object. The idempotency key is the header.
+// Ref: #/components/schemas/CheckRunRequest
+type CheckRunRequest struct{}
+
+type CheckRunState string
+
+const (
+	CheckRunStateQueued    CheckRunState = "queued"
+	CheckRunStateRunning   CheckRunState = "running"
+	CheckRunStatePassed    CheckRunState = "passed"
+	CheckRunStateFailed    CheckRunState = "failed"
+	CheckRunStateError     CheckRunState = "error"
+	CheckRunStateCancelled CheckRunState = "cancelled"
+	CheckRunStateStale     CheckRunState = "stale"
+)
+
+// AllValues returns all CheckRunState values.
+func (CheckRunState) AllValues() []CheckRunState {
+	return []CheckRunState{
+		CheckRunStateQueued,
+		CheckRunStateRunning,
+		CheckRunStatePassed,
+		CheckRunStateFailed,
+		CheckRunStateError,
+		CheckRunStateCancelled,
+		CheckRunStateStale,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s CheckRunState) MarshalText() ([]byte, error) {
+	switch s {
+	case CheckRunStateQueued:
+		return []byte(s), nil
+	case CheckRunStateRunning:
+		return []byte(s), nil
+	case CheckRunStatePassed:
+		return []byte(s), nil
+	case CheckRunStateFailed:
+		return []byte(s), nil
+	case CheckRunStateError:
+		return []byte(s), nil
+	case CheckRunStateCancelled:
+		return []byte(s), nil
+	case CheckRunStateStale:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *CheckRunState) UnmarshalText(data []byte) error {
+	switch CheckRunState(data) {
+	case CheckRunStateQueued:
+		*s = CheckRunStateQueued
+		return nil
+	case CheckRunStateRunning:
+		*s = CheckRunStateRunning
+		return nil
+	case CheckRunStatePassed:
+		*s = CheckRunStatePassed
+		return nil
+	case CheckRunStateFailed:
+		*s = CheckRunStateFailed
+		return nil
+	case CheckRunStateError:
+		*s = CheckRunStateError
+		return nil
+	case CheckRunStateCancelled:
+		*s = CheckRunStateCancelled
+		return nil
+	case CheckRunStateStale:
+		*s = CheckRunStateStale
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+type CheckRunTrigger string
+
+const (
+	CheckRunTriggerTurnIdle         CheckRunTrigger = "turn_idle"
+	CheckRunTriggerDeliveryProposed CheckRunTrigger = "delivery_proposed"
+	CheckRunTriggerRunExit          CheckRunTrigger = "run_exit"
+	CheckRunTriggerManual           CheckRunTrigger = "manual"
+)
+
+// AllValues returns all CheckRunTrigger values.
+func (CheckRunTrigger) AllValues() []CheckRunTrigger {
+	return []CheckRunTrigger{
+		CheckRunTriggerTurnIdle,
+		CheckRunTriggerDeliveryProposed,
+		CheckRunTriggerRunExit,
+		CheckRunTriggerManual,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s CheckRunTrigger) MarshalText() ([]byte, error) {
+	switch s {
+	case CheckRunTriggerTurnIdle:
+		return []byte(s), nil
+	case CheckRunTriggerDeliveryProposed:
+		return []byte(s), nil
+	case CheckRunTriggerRunExit:
+		return []byte(s), nil
+	case CheckRunTriggerManual:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *CheckRunTrigger) UnmarshalText(data []byte) error {
+	switch CheckRunTrigger(data) {
+	case CheckRunTriggerTurnIdle:
+		*s = CheckRunTriggerTurnIdle
+		return nil
+	case CheckRunTriggerDeliveryProposed:
+		*s = CheckRunTriggerDeliveryProposed
+		return nil
+	case CheckRunTriggerRunExit:
+		*s = CheckRunTriggerRunExit
+		return nil
+	case CheckRunTriggerManual:
+		*s = CheckRunTriggerManual
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Ref: #/components/schemas/CheckSuggestion
+type CheckSuggestion struct {
+	Checks []CheckCommand `json:"checks"`
+	// A repository file was present and was not usable.
+	Ignored OptBool `json:"ignored"`
+}
+
+// GetChecks returns the value of Checks.
+func (s *CheckSuggestion) GetChecks() []CheckCommand {
+	return s.Checks
+}
+
+// GetIgnored returns the value of Ignored.
+func (s *CheckSuggestion) GetIgnored() OptBool {
+	return s.Ignored
+}
+
+// SetChecks sets the value of Checks.
+func (s *CheckSuggestion) SetChecks(val []CheckCommand) {
+	s.Checks = val
+}
+
+// SetIgnored sets the value of Ignored.
+func (s *CheckSuggestion) SetIgnored(val OptBool) {
+	s.Ignored = val
+}
+
+// Content-free check summary. It carries no command text and no output.
+// Ref: #/components/schemas/ChecksSummary
+type ChecksSummary struct {
+	Configured       bool                  `json:"configured"`
+	Phase            OptChecksSummaryPhase `json:"phase"`
+	Attempt          OptInt                `json:"attempt"`
+	MaxAttempts      OptInt                `json:"maxAttempts"`
+	Tree             OptString             `json:"tree"`
+	Head             OptString             `json:"head"`
+	FinishedAt       OptDateTime           `json:"finishedAt"`
+	ReworkSent       OptBool               `json:"reworkSent"`
+	AutoRework       bool                  `json:"autoRework"`
+	Stopped          OptBool               `json:"stopped"`
+	ProposalWithheld OptBool               `json:"proposalWithheld"`
+	Passed           OptInt                `json:"passed"`
+	Failed           OptInt                `json:"failed"`
+	RunId            OptString             `json:"runId"`
+}
+
+// GetConfigured returns the value of Configured.
+func (s *ChecksSummary) GetConfigured() bool {
+	return s.Configured
+}
+
+// GetPhase returns the value of Phase.
+func (s *ChecksSummary) GetPhase() OptChecksSummaryPhase {
+	return s.Phase
+}
+
+// GetAttempt returns the value of Attempt.
+func (s *ChecksSummary) GetAttempt() OptInt {
+	return s.Attempt
+}
+
+// GetMaxAttempts returns the value of MaxAttempts.
+func (s *ChecksSummary) GetMaxAttempts() OptInt {
+	return s.MaxAttempts
+}
+
+// GetTree returns the value of Tree.
+func (s *ChecksSummary) GetTree() OptString {
+	return s.Tree
+}
+
+// GetHead returns the value of Head.
+func (s *ChecksSummary) GetHead() OptString {
+	return s.Head
+}
+
+// GetFinishedAt returns the value of FinishedAt.
+func (s *ChecksSummary) GetFinishedAt() OptDateTime {
+	return s.FinishedAt
+}
+
+// GetReworkSent returns the value of ReworkSent.
+func (s *ChecksSummary) GetReworkSent() OptBool {
+	return s.ReworkSent
+}
+
+// GetAutoRework returns the value of AutoRework.
+func (s *ChecksSummary) GetAutoRework() bool {
+	return s.AutoRework
+}
+
+// GetStopped returns the value of Stopped.
+func (s *ChecksSummary) GetStopped() OptBool {
+	return s.Stopped
+}
+
+// GetProposalWithheld returns the value of ProposalWithheld.
+func (s *ChecksSummary) GetProposalWithheld() OptBool {
+	return s.ProposalWithheld
+}
+
+// GetPassed returns the value of Passed.
+func (s *ChecksSummary) GetPassed() OptInt {
+	return s.Passed
+}
+
+// GetFailed returns the value of Failed.
+func (s *ChecksSummary) GetFailed() OptInt {
+	return s.Failed
+}
+
+// GetRunId returns the value of RunId.
+func (s *ChecksSummary) GetRunId() OptString {
+	return s.RunId
+}
+
+// SetConfigured sets the value of Configured.
+func (s *ChecksSummary) SetConfigured(val bool) {
+	s.Configured = val
+}
+
+// SetPhase sets the value of Phase.
+func (s *ChecksSummary) SetPhase(val OptChecksSummaryPhase) {
+	s.Phase = val
+}
+
+// SetAttempt sets the value of Attempt.
+func (s *ChecksSummary) SetAttempt(val OptInt) {
+	s.Attempt = val
+}
+
+// SetMaxAttempts sets the value of MaxAttempts.
+func (s *ChecksSummary) SetMaxAttempts(val OptInt) {
+	s.MaxAttempts = val
+}
+
+// SetTree sets the value of Tree.
+func (s *ChecksSummary) SetTree(val OptString) {
+	s.Tree = val
+}
+
+// SetHead sets the value of Head.
+func (s *ChecksSummary) SetHead(val OptString) {
+	s.Head = val
+}
+
+// SetFinishedAt sets the value of FinishedAt.
+func (s *ChecksSummary) SetFinishedAt(val OptDateTime) {
+	s.FinishedAt = val
+}
+
+// SetReworkSent sets the value of ReworkSent.
+func (s *ChecksSummary) SetReworkSent(val OptBool) {
+	s.ReworkSent = val
+}
+
+// SetAutoRework sets the value of AutoRework.
+func (s *ChecksSummary) SetAutoRework(val bool) {
+	s.AutoRework = val
+}
+
+// SetStopped sets the value of Stopped.
+func (s *ChecksSummary) SetStopped(val OptBool) {
+	s.Stopped = val
+}
+
+// SetProposalWithheld sets the value of ProposalWithheld.
+func (s *ChecksSummary) SetProposalWithheld(val OptBool) {
+	s.ProposalWithheld = val
+}
+
+// SetPassed sets the value of Passed.
+func (s *ChecksSummary) SetPassed(val OptInt) {
+	s.Passed = val
+}
+
+// SetFailed sets the value of Failed.
+func (s *ChecksSummary) SetFailed(val OptInt) {
+	s.Failed = val
+}
+
+// SetRunId sets the value of RunId.
+func (s *ChecksSummary) SetRunId(val OptString) {
+	s.RunId = val
+}
+
+type ChecksSummaryPhase string
+
+const (
+	ChecksSummaryPhaseQueued    ChecksSummaryPhase = "queued"
+	ChecksSummaryPhaseRunning   ChecksSummaryPhase = "running"
+	ChecksSummaryPhaseReworking ChecksSummaryPhase = "reworking"
+	ChecksSummaryPhasePassed    ChecksSummaryPhase = "passed"
+	ChecksSummaryPhaseFailing   ChecksSummaryPhase = "failing"
+	ChecksSummaryPhaseStale     ChecksSummaryPhase = "stale"
+	ChecksSummaryPhaseError     ChecksSummaryPhase = "error"
+)
+
+// AllValues returns all ChecksSummaryPhase values.
+func (ChecksSummaryPhase) AllValues() []ChecksSummaryPhase {
+	return []ChecksSummaryPhase{
+		ChecksSummaryPhaseQueued,
+		ChecksSummaryPhaseRunning,
+		ChecksSummaryPhaseReworking,
+		ChecksSummaryPhasePassed,
+		ChecksSummaryPhaseFailing,
+		ChecksSummaryPhaseStale,
+		ChecksSummaryPhaseError,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s ChecksSummaryPhase) MarshalText() ([]byte, error) {
+	switch s {
+	case ChecksSummaryPhaseQueued:
+		return []byte(s), nil
+	case ChecksSummaryPhaseRunning:
+		return []byte(s), nil
+	case ChecksSummaryPhaseReworking:
+		return []byte(s), nil
+	case ChecksSummaryPhasePassed:
+		return []byte(s), nil
+	case ChecksSummaryPhaseFailing:
+		return []byte(s), nil
+	case ChecksSummaryPhaseStale:
+		return []byte(s), nil
+	case ChecksSummaryPhaseError:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *ChecksSummaryPhase) UnmarshalText(data []byte) error {
+	switch ChecksSummaryPhase(data) {
+	case ChecksSummaryPhaseQueued:
+		*s = ChecksSummaryPhaseQueued
+		return nil
+	case ChecksSummaryPhaseRunning:
+		*s = ChecksSummaryPhaseRunning
+		return nil
+	case ChecksSummaryPhaseReworking:
+		*s = ChecksSummaryPhaseReworking
+		return nil
+	case ChecksSummaryPhasePassed:
+		*s = ChecksSummaryPhasePassed
+		return nil
+	case ChecksSummaryPhaseFailing:
+		*s = ChecksSummaryPhaseFailing
+		return nil
+	case ChecksSummaryPhaseStale:
+		*s = ChecksSummaryPhaseStale
+		return nil
+	case ChecksSummaryPhaseError:
+		*s = ChecksSummaryPhaseError
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)
@@ -7838,6 +8722,144 @@ func (o OptCapsuleStartup) Or(d CapsuleStartup) CapsuleStartup {
 	return d
 }
 
+// NewOptCheckRunPhase returns new OptCheckRunPhase with value set to v.
+func NewOptCheckRunPhase(v CheckRunPhase) OptCheckRunPhase {
+	return OptCheckRunPhase{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptCheckRunPhase is optional CheckRunPhase.
+type OptCheckRunPhase struct {
+	Value CheckRunPhase
+	Set   bool
+}
+
+// IsSet returns true if OptCheckRunPhase was set.
+func (o OptCheckRunPhase) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptCheckRunPhase) Reset() {
+	var v CheckRunPhase
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptCheckRunPhase) SetTo(v CheckRunPhase) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptCheckRunPhase) Get() (v CheckRunPhase, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptCheckRunPhase) Or(d CheckRunPhase) CheckRunPhase {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptChecksSummary returns new OptChecksSummary with value set to v.
+func NewOptChecksSummary(v ChecksSummary) OptChecksSummary {
+	return OptChecksSummary{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptChecksSummary is optional ChecksSummary.
+type OptChecksSummary struct {
+	Value ChecksSummary
+	Set   bool
+}
+
+// IsSet returns true if OptChecksSummary was set.
+func (o OptChecksSummary) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptChecksSummary) Reset() {
+	var v ChecksSummary
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptChecksSummary) SetTo(v ChecksSummary) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptChecksSummary) Get() (v ChecksSummary, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptChecksSummary) Or(d ChecksSummary) ChecksSummary {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptChecksSummaryPhase returns new OptChecksSummaryPhase with value set to v.
+func NewOptChecksSummaryPhase(v ChecksSummaryPhase) OptChecksSummaryPhase {
+	return OptChecksSummaryPhase{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptChecksSummaryPhase is optional ChecksSummaryPhase.
+type OptChecksSummaryPhase struct {
+	Value ChecksSummaryPhase
+	Set   bool
+}
+
+// IsSet returns true if OptChecksSummaryPhase was set.
+func (o OptChecksSummaryPhase) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptChecksSummaryPhase) Reset() {
+	var v ChecksSummaryPhase
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptChecksSummaryPhase) SetTo(v ChecksSummaryPhase) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptChecksSummaryPhase) Get() (v ChecksSummaryPhase, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptChecksSummaryPhase) Or(d ChecksSummaryPhase) ChecksSummaryPhase {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptChildRollup returns new OptChildRollup with value set to v.
 func NewOptChildRollup(v ChildRollup) OptChildRollup {
 	return OptChildRollup{
@@ -10927,6 +11949,114 @@ func (s *Project) SetUpdatedAt(val time.Time) {
 // SetResourceVersion sets the value of ResourceVersion.
 func (s *Project) SetResourceVersion(val int64) {
 	s.ResourceVersion = val
+}
+
+// Ref: #/components/schemas/ProjectChecks
+type ProjectChecks struct {
+	Checks     []CheckCommand `json:"checks"`
+	AutoRework bool           `json:"autoRework"`
+	// Total tries, including the first. 0 runs the checks once and does not send the agent back.
+	MaxReworkAttempts int         `json:"maxReworkAttempts"`
+	ResourceVersion   int64       `json:"resourceVersion"`
+	UpdatedAt         OptDateTime `json:"updatedAt"`
+}
+
+// GetChecks returns the value of Checks.
+func (s *ProjectChecks) GetChecks() []CheckCommand {
+	return s.Checks
+}
+
+// GetAutoRework returns the value of AutoRework.
+func (s *ProjectChecks) GetAutoRework() bool {
+	return s.AutoRework
+}
+
+// GetMaxReworkAttempts returns the value of MaxReworkAttempts.
+func (s *ProjectChecks) GetMaxReworkAttempts() int {
+	return s.MaxReworkAttempts
+}
+
+// GetResourceVersion returns the value of ResourceVersion.
+func (s *ProjectChecks) GetResourceVersion() int64 {
+	return s.ResourceVersion
+}
+
+// GetUpdatedAt returns the value of UpdatedAt.
+func (s *ProjectChecks) GetUpdatedAt() OptDateTime {
+	return s.UpdatedAt
+}
+
+// SetChecks sets the value of Checks.
+func (s *ProjectChecks) SetChecks(val []CheckCommand) {
+	s.Checks = val
+}
+
+// SetAutoRework sets the value of AutoRework.
+func (s *ProjectChecks) SetAutoRework(val bool) {
+	s.AutoRework = val
+}
+
+// SetMaxReworkAttempts sets the value of MaxReworkAttempts.
+func (s *ProjectChecks) SetMaxReworkAttempts(val int) {
+	s.MaxReworkAttempts = val
+}
+
+// SetResourceVersion sets the value of ResourceVersion.
+func (s *ProjectChecks) SetResourceVersion(val int64) {
+	s.ResourceVersion = val
+}
+
+// SetUpdatedAt sets the value of UpdatedAt.
+func (s *ProjectChecks) SetUpdatedAt(val OptDateTime) {
+	s.UpdatedAt = val
+}
+
+// Ref: #/components/schemas/ProjectChecksUpdate
+type ProjectChecksUpdate struct {
+	Checks                  []CheckCommand `json:"checks"`
+	AutoRework              bool           `json:"autoRework"`
+	MaxReworkAttempts       int            `json:"maxReworkAttempts"`
+	ExpectedResourceVersion int64          `json:"expectedResourceVersion"`
+}
+
+// GetChecks returns the value of Checks.
+func (s *ProjectChecksUpdate) GetChecks() []CheckCommand {
+	return s.Checks
+}
+
+// GetAutoRework returns the value of AutoRework.
+func (s *ProjectChecksUpdate) GetAutoRework() bool {
+	return s.AutoRework
+}
+
+// GetMaxReworkAttempts returns the value of MaxReworkAttempts.
+func (s *ProjectChecksUpdate) GetMaxReworkAttempts() int {
+	return s.MaxReworkAttempts
+}
+
+// GetExpectedResourceVersion returns the value of ExpectedResourceVersion.
+func (s *ProjectChecksUpdate) GetExpectedResourceVersion() int64 {
+	return s.ExpectedResourceVersion
+}
+
+// SetChecks sets the value of Checks.
+func (s *ProjectChecksUpdate) SetChecks(val []CheckCommand) {
+	s.Checks = val
+}
+
+// SetAutoRework sets the value of AutoRework.
+func (s *ProjectChecksUpdate) SetAutoRework(val bool) {
+	s.AutoRework = val
+}
+
+// SetMaxReworkAttempts sets the value of MaxReworkAttempts.
+func (s *ProjectChecksUpdate) SetMaxReworkAttempts(val int) {
+	s.MaxReworkAttempts = val
+}
+
+// SetExpectedResourceVersion sets the value of ExpectedResourceVersion.
+func (s *ProjectChecksUpdate) SetExpectedResourceVersion(val int64) {
+	s.ExpectedResourceVersion = val
 }
 
 // Ref: #/components/schemas/ProjectEnvironment

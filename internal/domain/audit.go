@@ -36,6 +36,8 @@ const (
 	AuditProfileImport             AuditAction = "profile.import"
 	AuditProfileDefaultConnections AuditAction = "profile.default_connections"
 	AuditCapsuleProfileUpdate      AuditAction = "capsule.profile_update"
+	// Project checks record that the list changed, not the commands.
+	AuditProjectChecksUpdate AuditAction = "project.checks_update"
 )
 
 // AuditRecord is one append-only audit line. It holds ids only: no secret

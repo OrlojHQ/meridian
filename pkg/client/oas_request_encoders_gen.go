@@ -66,6 +66,20 @@ func encodeBeginClaudeLoginRequest(
 	return nil
 }
 
+func encodeCancelCheckRunRequest(
+	req *LifecycleMutationRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodeCancelRunRequest(
 	req *LifecycleMutationRequest,
 	r *http.Request,
@@ -152,6 +166,20 @@ func encodeCompleteMemberIdentityRebindRequest(
 
 func encodeCreateCapsuleRequest(
 	req *CreateCapsuleRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeCreateCapsuleCheckRunRequest(
+	req *CheckRunRequest,
 	r *http.Request,
 ) error {
 	const contentType = "application/json"
@@ -640,6 +668,20 @@ func encodeSendThreadMessageRequest(
 	return nil
 }
 
+func encodeSetCapsuleCheckAutoReworkRequest(
+	req *CheckAutoReworkRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodeSetMemberRoleRequest(
 	req *SetMemberRoleReq,
 	r *http.Request,
@@ -768,6 +810,20 @@ func encodeUpdateCoordinationGrantRequest(
 
 func encodeUpdateProfileRequest(
 	req *UpdateProfileRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeUpdateProjectChecksRequest(
+	req *ProjectChecksUpdate,
 	r *http.Request,
 ) error {
 	const contentType = "application/json"

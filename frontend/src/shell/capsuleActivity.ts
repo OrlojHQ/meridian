@@ -1,6 +1,7 @@
 import type { Capsule, ChildRollup, PinnedHarnessSetup, Run, Thread } from "../api/generated/types.gen";
 import { phaseLabels } from "../components/startup";
 import { endedSessionState, failureText } from "../components/threadChat";
+import { describeChecks } from "./checks";
 
 // Activity is derived only from Capsule and Run resources. Git status,
 // workspace files, and previews record Capsule activity on the server, so
@@ -134,6 +135,17 @@ export function describeCapsule(
       label: waiting.kind === "permission" ? "Waiting for permission" : "Waiting for input",
       agent,
       since: waiting.since,
+    };
+  }
+
+  const agentWorking = threads.some((thread) => thread.state === "active" && thread.turn === "working");
+  const checks = describeChecks(capsule.checks, agentWorking);
+  if (checks) {
+    return {
+      group: checks.group,
+      label: checks.label,
+      agent,
+      since: capsule.checks?.finishedAt ?? capsule.updatedAt,
     };
   }
 

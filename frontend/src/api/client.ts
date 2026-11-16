@@ -1,6 +1,8 @@
 import { client } from "./generated/client.gen";
 import {
   getProjectEnvironment, updateProjectEnvironment,
+  getProjectChecks, updateProjectChecks, suggestProjectChecks,
+  listCapsuleCheckRuns, createCapsuleCheckRun, getCheckRun, cancelCheckRun, setCapsuleCheckAutoRework,
   getProjectHarnessSetup, setProjectHarnessSetup,
   listProviderConnections, createProviderConnection, updateProviderConnection, getProjectProviderConnection, grantProjectProviderConnection,
   startChatGptSignIn, getChatGptSignIn, completeChatGptSignIn,
@@ -93,6 +95,10 @@ import type {
   MemberPage,
 } from "./generated/types.gen";
 import type { Profile, UpdateProfileRequest, ProfileDiagnostic } from "./generated/types.gen";
+import type {
+  CheckAutoReworkRequest, CheckRun, CheckRunPage, CheckRunRequest, CheckSuggestion,
+  ProjectChecks, ProjectChecksUpdate,
+} from "./generated/types.gen";
 import type { HarnessSetupUpload, HarnessSetupPreview, ImportHarnessSetupRequest, EnvironmentMutation, ProjectEnvironment,
   ProjectHarnessSetup,
   ClaudeLogin, ClaudeLoginRequest, ClaudeLoginStatus,
@@ -464,6 +470,14 @@ export const api = {
   importHarnessSetup: (body: ImportHarnessSetupRequest, key?: string) => call<HarnessSetup>(importHarnessSetup({...generatedOptions(), headers: key ? {"Idempotency-Key":key} : idempotencyHeaders(), body})),
   projectEnvironment: (projectId: string, signal?: AbortSignal) => call<ProjectEnvironment>(getProjectEnvironment({...generatedOptions(signal), path: {projectId}})),
   updateProjectEnvironment: (projectId: string, body: EnvironmentMutation) => call<ProjectEnvironment>(updateProjectEnvironment({...generatedOptions(), path: {projectId}, headers: idempotencyHeaders(), body})),
+  projectChecks: (projectId: string, signal?: AbortSignal) => call<ProjectChecks>(getProjectChecks({...generatedOptions(signal), path: {projectId}})),
+  updateProjectChecks: (projectId: string, body: ProjectChecksUpdate) => call<ProjectChecks>(updateProjectChecks({...generatedOptions(), path: {projectId}, headers: idempotencyHeaders(), body})),
+  suggestProjectChecks: (projectId: string, capsuleId?: string, signal?: AbortSignal) => call<CheckSuggestion>(suggestProjectChecks({...generatedOptions(signal), path: {projectId}, query: capsuleId ? {capsuleId} : {}})),
+  checkRuns: (capsuleId: string, signal?: AbortSignal) => call<CheckRunPage>(listCapsuleCheckRuns({...generatedOptions(signal), path: {capsuleId}, query: {limit: 10}})),
+  createCheckRun: (capsuleId: string) => call<CheckRun>(createCapsuleCheckRun({...generatedOptions(), path: {capsuleId}, headers: idempotencyHeaders(), body: {} as CheckRunRequest})),
+  checkRun: (checkRunId: string, signal?: AbortSignal) => call<CheckRun>(getCheckRun({...generatedOptions(signal), path: {checkRunId}})),
+  cancelCheckRun: (checkRunId: string, expectedResourceVersion: number) => call<CheckRun>(cancelCheckRun({...generatedOptions(), path: {checkRunId}, body: {expectedResourceVersion}})),
+  setCheckAutoRework: (capsuleId: string, body: CheckAutoReworkRequest) => call<CheckAutoReworkRequest>(setCapsuleCheckAutoRework({...generatedOptions(), path: {capsuleId}, body})),
   projectThreadIntent: (intentId: string, signal?: AbortSignal) => call<ProjectThreadIntent>(getProjectThreadIntent({...generatedOptions(signal), path: {intentId}})),
   capsule: (capsuleId: string, signal?: AbortSignal) =>
     call<Capsule>(

@@ -1744,6 +1744,156 @@ paths:
               schema: { $ref: "#/components/schemas/ProjectEnvironment" }
         default:
           $ref: "#/components/responses/DefaultError"
+  /projects/{projectId}/checks:
+    get:
+      operationId: getProjectChecks
+      summary: Read the Project's required checks
+      tags: [projects]
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: Project checks. An empty list means checks are not used.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectChecks" }
+        default:
+          $ref: "#/components/responses/DefaultError"
+    put:
+      operationId: updateProjectChecks
+      summary: Replace the Project's required checks
+      tags: [projects]
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProjectChecksUpdate" }
+      responses:
+        "200":
+          description: Updated project checks
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectChecks" }
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /projects/{projectId}/checks/suggestion:
+    get:
+      operationId: suggestProjectChecks
+      summary: Read a repository suggestion without applying it
+      description: >
+        When a Ready Capsule has .meridian/checks.yaml, return those commands
+        as a suggestion. Nothing is saved. A missing or unusable file returns
+        an empty list.
+      tags: [projects]
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - name: capsuleId
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        "200":
+          description: Suggestion, which may be empty
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CheckSuggestion" }
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /capsules/{capsuleId}/check-runs:
+    get:
+      operationId: listCapsuleCheckRuns
+      summary: List check runs for a Capsule
+      tags: [capsules]
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Check runs, newest first
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CheckRunPage" }
+        default:
+          $ref: "#/components/responses/DefaultError"
+    post:
+      operationId: createCapsuleCheckRun
+      summary: Run the Project's checks now
+      tags: [capsules]
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CheckRunRequest" }
+      responses:
+        "202":
+          description: Check run queued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CheckRun" }
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /capsules/{capsuleId}/checks/auto-rework:
+    post:
+      operationId: setCapsuleCheckAutoRework
+      summary: Stop or resume automatic rework for one Capsule
+      tags: [capsules]
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CheckAutoReworkRequest" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CheckAutoReworkRequest" }
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /check-runs/{checkRunId}:
+    get:
+      operationId: getCheckRun
+      summary: Read one check run, including redacted output tails
+      tags: [capsules]
+      parameters:
+        - $ref: "#/components/parameters/CheckRunId"
+      responses:
+        "200":
+          description: Check run
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CheckRun" }
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /check-runs/{checkRunId}/cancel:
+    post:
+      operationId: cancelCheckRun
+      summary: Cancel a queued or running check run
+      tags: [capsules]
+      parameters:
+        - $ref: "#/components/parameters/CheckRunId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LifecycleMutationRequest" }
+      responses:
+        "200":
+          description: Check run
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CheckRun" }
+        default:
+          $ref: "#/components/responses/DefaultError"
   /capsules/{capsuleId}/resume:
     post:
       operationId: resumeCapsule
@@ -3190,6 +3340,13 @@ components:
       schema:
         type: string
         minLength: 1
+    CheckRunId:
+      name: checkRunId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
     RunId:
       name: runId
       in: path
@@ -3781,6 +3938,154 @@ components:
         setup: {type: array, maxItems: 128, items: {type: string, maxLength: 4096}}
         rebuild: {type: boolean}
         expectedResourceVersion: {type: integer, format: int64, minimum: 1}
+    CheckCommand:
+      type: object
+      required: [name, argv, timeoutSeconds]
+      description: An executable and its arguments. Meridian does not start a shell.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+        argv:
+          type: array
+          minItems: 1
+          maxItems: 128
+          items: { type: string, minLength: 1, maxLength: 4096 }
+        timeoutSeconds:
+          type: integer
+          minimum: 1
+          maximum: 3600
+    ProjectChecks:
+      type: object
+      required: [checks, autoRework, maxReworkAttempts, resourceVersion]
+      properties:
+        checks:
+          type: array
+          maxItems: 16
+          items: { $ref: "#/components/schemas/CheckCommand" }
+        autoRework: { type: boolean }
+        maxReworkAttempts:
+          type: integer
+          minimum: 0
+          maximum: 10
+          description: >
+            Total tries, including the first. 0 runs the checks once and does
+            not send the agent back.
+        resourceVersion: { type: integer, format: int64, minimum: 1 }
+        updatedAt: { type: string, format: date-time }
+    ProjectChecksUpdate:
+      type: object
+      required: [checks, autoRework, maxReworkAttempts, expectedResourceVersion]
+      properties:
+        checks:
+          type: array
+          maxItems: 16
+          items: { $ref: "#/components/schemas/CheckCommand" }
+        autoRework: { type: boolean }
+        maxReworkAttempts: { type: integer, minimum: 0, maximum: 10 }
+        expectedResourceVersion: { type: integer, format: int64, minimum: 1 }
+    CheckSuggestion:
+      type: object
+      required: [checks]
+      properties:
+        checks:
+          type: array
+          items: { $ref: "#/components/schemas/CheckCommand" }
+        ignored:
+          type: boolean
+          description: A repository file was present and was not usable.
+    CheckRunRequest:
+      type: object
+      description: Empty object. The idempotency key is the header.
+      additionalProperties: false
+    CheckAutoReworkRequest:
+      type: object
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+          description: false stops automatic rework for this Capsule.
+    CheckResult:
+      type: object
+      required: [name, argv, durationMs, timedOut, outputTruncated]
+      properties:
+        name: { type: string }
+        argv:
+          type: array
+          items: { type: string }
+        exitCode: { type: integer }
+        durationMs: { type: integer, format: int64, minimum: 0 }
+        timedOut: { type: boolean }
+        outputTruncated: { type: boolean }
+        output:
+          type: string
+          description: Redacted tail of the command output. Absent when there is none.
+    CheckRun:
+      type: object
+      required: [id, capsuleId, projectId, attempt, maxAttempts, trigger, state, reworkSent, results, resourceVersion, createdAt]
+      properties:
+        id: { type: string }
+        capsuleId: { type: string }
+        projectId: { type: string }
+        threadId: { type: string }
+        attempt:
+          type: integer
+          minimum: 1
+          description: One-based try number.
+        maxAttempts: { type: integer, minimum: 1 }
+        trigger:
+          type: string
+          enum: [turn_idle, delivery_proposed, run_exit, manual]
+        state:
+          type: string
+          enum: [queued, running, passed, failed, error, cancelled, stale]
+        phase:
+          type: string
+          enum: [queued, running, reworking, passed, failing, stale, error]
+        gitHead: { type: string }
+        gitTree: { type: string }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time }
+        reworkSent: { type: boolean }
+        banner: { type: string }
+        pullRequestSection:
+          type: string
+          description: Server-generated pull request text. It contains no command output.
+        results:
+          type: array
+          items: { $ref: "#/components/schemas/CheckResult" }
+        resourceVersion: { type: integer, format: int64, minimum: 1 }
+        createdAt: { type: string, format: date-time }
+    CheckRunPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/CheckRun" }
+        nextCursor: { type: string }
+    ChecksSummary:
+      type: object
+      required: [configured, autoRework]
+      description: Content-free check summary. It carries no command text and no output.
+      properties:
+        configured: { type: boolean }
+        phase:
+          type: string
+          enum: [queued, running, reworking, passed, failing, stale, error]
+        attempt: { type: integer, minimum: 1 }
+        maxAttempts: { type: integer, minimum: 1 }
+        tree: { type: string }
+        head: { type: string }
+        finishedAt: { type: string, format: date-time }
+        reworkSent: { type: boolean }
+        autoRework: { type: boolean }
+        stopped: { type: boolean }
+        proposalWithheld: { type: boolean }
+        passed: { type: integer, minimum: 0 }
+        failed: { type: integer, minimum: 0 }
+        runId: { type: string }
     PreparationProgress:
       type: object
       required: [stage, reused, updatedAt]
@@ -3854,6 +4159,11 @@ components:
           type: string
           format: date-time
           description: When a subagent Capsule was promoted to a main Capsule.
+        checks:
+          $ref: "#/components/schemas/ChecksSummary"
+          description: >
+            Content-free check summary. Absent when the Project has no checks.
+            This is not a Capsule lifecycle state.
         createdAt:
           type: string
           format: date-time
@@ -4397,7 +4707,7 @@ components:
         since: { type: string, format: date-time }
         needsYou:
           type: string
-          enum: [permission, input, failed, spawn_approval, proposed_delivery]
+          enum: [permission, input, failed, spawn_approval, proposed_delivery, checks_passed, checks_failing, checks_error]
           description: Why the row needs the operator; set only with status needs_you.
         latestDelivery: { $ref: "#/components/schemas/DeliverySummary" }
         link:

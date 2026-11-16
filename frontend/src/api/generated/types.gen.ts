@@ -266,6 +266,122 @@ export type EnvironmentMutation = {
     expectedResourceVersion: number;
 };
 
+/**
+ * An executable and its arguments. Meridian does not start a shell.
+ */
+export type CheckCommand = {
+    name: string;
+    argv: Array<string>;
+    timeoutSeconds: number;
+};
+
+export type ProjectChecks = {
+    checks: Array<CheckCommand>;
+    autoRework: boolean;
+    /**
+     * Total tries, including the first. 0 runs the checks once and does not send the agent back.
+     *
+     */
+    maxReworkAttempts: number;
+    resourceVersion: number;
+    updatedAt?: string;
+};
+
+export type ProjectChecksUpdate = {
+    checks: Array<CheckCommand>;
+    autoRework: boolean;
+    maxReworkAttempts: number;
+    expectedResourceVersion: number;
+};
+
+export type CheckSuggestion = {
+    checks: Array<CheckCommand>;
+    /**
+     * A repository file was present and was not usable.
+     */
+    ignored?: boolean;
+};
+
+/**
+ * Empty object. The idempotency key is the header.
+ */
+export type CheckRunRequest = {
+    [key: string]: never;
+};
+
+export type CheckAutoReworkRequest = {
+    /**
+     * false stops automatic rework for this Capsule.
+     */
+    enabled: boolean;
+};
+
+export type CheckResult = {
+    name: string;
+    argv: Array<string>;
+    exitCode?: number;
+    durationMs: number;
+    timedOut: boolean;
+    outputTruncated: boolean;
+    /**
+     * Redacted tail of the command output. Absent when there is none.
+     */
+    output?: string;
+};
+
+export type CheckRun = {
+    id: string;
+    capsuleId: string;
+    projectId: string;
+    threadId?: string;
+    /**
+     * One-based try number.
+     */
+    attempt: number;
+    maxAttempts: number;
+    trigger: 'turn_idle' | 'delivery_proposed' | 'run_exit' | 'manual';
+    state: 'queued' | 'running' | 'passed' | 'failed' | 'error' | 'cancelled' | 'stale';
+    phase?: 'queued' | 'running' | 'reworking' | 'passed' | 'failing' | 'stale' | 'error';
+    gitHead?: string;
+    gitTree?: string;
+    startedAt?: string;
+    finishedAt?: string;
+    reworkSent: boolean;
+    banner?: string;
+    /**
+     * Server-generated pull request text. It contains no command output.
+     */
+    pullRequestSection?: string;
+    results: Array<CheckResult>;
+    resourceVersion: number;
+    createdAt: string;
+};
+
+export type CheckRunPage = {
+    items: Array<CheckRun>;
+    nextCursor?: string;
+};
+
+/**
+ * Content-free check summary. It carries no command text and no output.
+ */
+export type ChecksSummary = {
+    configured: boolean;
+    phase?: 'queued' | 'running' | 'reworking' | 'passed' | 'failing' | 'stale' | 'error';
+    attempt?: number;
+    maxAttempts?: number;
+    tree?: string;
+    head?: string;
+    finishedAt?: string;
+    reworkSent?: boolean;
+    autoRework: boolean;
+    stopped?: boolean;
+    proposalWithheld?: boolean;
+    passed?: number;
+    failed?: number;
+    runId?: string;
+};
+
 export type PreparationProgress = {
     stage: 'checkout' | 'preparing' | 'restoring' | 'reclone' | 'saving' | 'ready';
     reused: boolean;
@@ -316,6 +432,11 @@ export type Capsule = {
      * When a subagent Capsule was promoted to a main Capsule.
      */
     promotedAt?: string;
+    /**
+     * Content-free check summary. Absent when the Project has no checks. This is not a Capsule lifecycle state.
+     *
+     */
+    checks?: ChecksSummary;
     createdAt: string;
     updatedAt: string;
     resourceVersion: number;
@@ -651,7 +772,7 @@ export type BoardItem = {
     /**
      * Why the row needs the operator; set only with status needs_you.
      */
-    needsYou?: 'permission' | 'input' | 'failed' | 'spawn_approval' | 'proposed_delivery';
+    needsYou?: 'permission' | 'input' | 'failed' | 'spawn_approval' | 'proposed_delivery' | 'checks_passed' | 'checks_failing' | 'checks_error';
     latestDelivery?: DeliverySummary;
     /**
      * The subagent's link to its lead, on sub-Capsules.
@@ -1836,6 +1957,8 @@ export type ProviderConnectionRequestWritable = {
 export type ProjectId = string;
 
 export type CapsuleId = string;
+
+export type CheckRunId = string;
 
 export type RunId = string;
 
@@ -4471,6 +4594,233 @@ export type UpdateProjectEnvironmentResponses = {
 };
 
 export type UpdateProjectEnvironmentResponse = UpdateProjectEnvironmentResponses[keyof UpdateProjectEnvironmentResponses];
+
+export type GetProjectChecksData = {
+    body?: never;
+    path: {
+        projectId: string;
+    };
+    query?: never;
+    url: '/projects/{projectId}/checks';
+};
+
+export type GetProjectChecksErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type GetProjectChecksError = GetProjectChecksErrors[keyof GetProjectChecksErrors];
+
+export type GetProjectChecksResponses = {
+    /**
+     * Project checks. An empty list means checks are not used.
+     */
+    200: ProjectChecks;
+};
+
+export type GetProjectChecksResponse = GetProjectChecksResponses[keyof GetProjectChecksResponses];
+
+export type UpdateProjectChecksData = {
+    body: ProjectChecksUpdate;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        projectId: string;
+    };
+    query?: never;
+    url: '/projects/{projectId}/checks';
+};
+
+export type UpdateProjectChecksErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type UpdateProjectChecksError = UpdateProjectChecksErrors[keyof UpdateProjectChecksErrors];
+
+export type UpdateProjectChecksResponses = {
+    /**
+     * Updated project checks
+     */
+    200: ProjectChecks;
+};
+
+export type UpdateProjectChecksResponse = UpdateProjectChecksResponses[keyof UpdateProjectChecksResponses];
+
+export type SuggestProjectChecksData = {
+    body?: never;
+    path: {
+        projectId: string;
+    };
+    query?: {
+        capsuleId?: string;
+    };
+    url: '/projects/{projectId}/checks/suggestion';
+};
+
+export type SuggestProjectChecksErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type SuggestProjectChecksError = SuggestProjectChecksErrors[keyof SuggestProjectChecksErrors];
+
+export type SuggestProjectChecksResponses = {
+    /**
+     * Suggestion, which may be empty
+     */
+    200: CheckSuggestion;
+};
+
+export type SuggestProjectChecksResponse = SuggestProjectChecksResponses[keyof SuggestProjectChecksResponses];
+
+export type ListCapsuleCheckRunsData = {
+    body?: never;
+    path: {
+        capsuleId: string;
+    };
+    query?: {
+        cursor?: string;
+        limit?: number;
+    };
+    url: '/capsules/{capsuleId}/check-runs';
+};
+
+export type ListCapsuleCheckRunsErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ListCapsuleCheckRunsError = ListCapsuleCheckRunsErrors[keyof ListCapsuleCheckRunsErrors];
+
+export type ListCapsuleCheckRunsResponses = {
+    /**
+     * Check runs, newest first
+     */
+    200: CheckRunPage;
+};
+
+export type ListCapsuleCheckRunsResponse = ListCapsuleCheckRunsResponses[keyof ListCapsuleCheckRunsResponses];
+
+export type CreateCapsuleCheckRunData = {
+    body: CheckRunRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        capsuleId: string;
+    };
+    query?: never;
+    url: '/capsules/{capsuleId}/check-runs';
+};
+
+export type CreateCapsuleCheckRunErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type CreateCapsuleCheckRunError = CreateCapsuleCheckRunErrors[keyof CreateCapsuleCheckRunErrors];
+
+export type CreateCapsuleCheckRunResponses = {
+    /**
+     * Check run queued
+     */
+    202: CheckRun;
+};
+
+export type CreateCapsuleCheckRunResponse = CreateCapsuleCheckRunResponses[keyof CreateCapsuleCheckRunResponses];
+
+export type SetCapsuleCheckAutoReworkData = {
+    body: CheckAutoReworkRequest;
+    path: {
+        capsuleId: string;
+    };
+    query?: never;
+    url: '/capsules/{capsuleId}/checks/auto-rework';
+};
+
+export type SetCapsuleCheckAutoReworkErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type SetCapsuleCheckAutoReworkError = SetCapsuleCheckAutoReworkErrors[keyof SetCapsuleCheckAutoReworkErrors];
+
+export type SetCapsuleCheckAutoReworkResponses = {
+    /**
+     * Updated
+     */
+    200: CheckAutoReworkRequest;
+};
+
+export type SetCapsuleCheckAutoReworkResponse = SetCapsuleCheckAutoReworkResponses[keyof SetCapsuleCheckAutoReworkResponses];
+
+export type GetCheckRunData = {
+    body?: never;
+    path: {
+        checkRunId: string;
+    };
+    query?: never;
+    url: '/check-runs/{checkRunId}';
+};
+
+export type GetCheckRunErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type GetCheckRunError = GetCheckRunErrors[keyof GetCheckRunErrors];
+
+export type GetCheckRunResponses = {
+    /**
+     * Check run
+     */
+    200: CheckRun;
+};
+
+export type GetCheckRunResponse = GetCheckRunResponses[keyof GetCheckRunResponses];
+
+export type CancelCheckRunData = {
+    body: LifecycleMutationRequest;
+    path: {
+        checkRunId: string;
+    };
+    query?: never;
+    url: '/check-runs/{checkRunId}/cancel';
+};
+
+export type CancelCheckRunErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type CancelCheckRunError = CancelCheckRunErrors[keyof CancelCheckRunErrors];
+
+export type CancelCheckRunResponses = {
+    /**
+     * Check run
+     */
+    200: CheckRun;
+};
+
+export type CancelCheckRunResponse = CancelCheckRunResponses[keyof CancelCheckRunResponses];
 
 export type ResumeCapsuleData = {
     body: LifecycleMutation;

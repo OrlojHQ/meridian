@@ -7,6 +7,14 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- A Project can list required checks, such as `make test`. When a structured
+  Thread finishes a turn, Meridian runs them inside the Capsule. A failure is
+  sent back to the agent up to the attempt limit, then the Capsule shows
+  **Checks failing (n/n)** or **Checks passed**. See [docs/checks.md](docs/checks.md)
+  and ADR 0051. Migration `0031_project_checks.sql` adds the tables.
+
 ## [0.10.1] - 2026-11-15
 
 ### Upgrade notes

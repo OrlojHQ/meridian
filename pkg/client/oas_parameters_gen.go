@@ -31,6 +31,11 @@ type BeginMemberIdentityRebindParams struct {
 	UserId string
 }
 
+// CancelCheckRunParams is parameters of cancelCheckRun operation.
+type CancelCheckRunParams struct {
+	CheckRunId string
+}
+
 // CancelRunParams is parameters of cancelRun operation.
 type CancelRunParams struct {
 	RunId          string
@@ -73,6 +78,12 @@ type CompleteOidcSignInParams struct {
 // CreateCapsuleParams is parameters of createCapsule operation.
 type CreateCapsuleParams struct {
 	ProjectId      string
+	IdempotencyKey string
+}
+
+// CreateCapsuleCheckRunParams is parameters of createCapsuleCheckRun operation.
+type CreateCapsuleCheckRunParams struct {
+	CapsuleId      string
 	IdempotencyKey string
 }
 
@@ -201,6 +212,11 @@ type GetChatGPTSignInParams struct {
 	SignInId string
 }
 
+// GetCheckRunParams is parameters of getCheckRun operation.
+type GetCheckRunParams struct {
+	CheckRunId string
+}
+
 // GetClaudeLoginParams is parameters of getClaudeLogin operation.
 type GetClaudeLoginParams struct {
 	LoginId string
@@ -228,6 +244,11 @@ type GetMomentParams struct {
 
 // GetProjectParams is parameters of getProject operation.
 type GetProjectParams struct {
+	ProjectId string
+}
+
+// GetProjectChecksParams is parameters of getProjectChecks operation.
+type GetProjectChecksParams struct {
 	ProjectId string
 }
 
@@ -298,6 +319,13 @@ type InspectCapsuleDeliveryParams struct {
 type ListAuditRecordsParams struct {
 	After OptInt64 `json:",omitempty,omitzero"`
 	Limit OptInt   `json:",omitempty,omitzero"`
+}
+
+// ListCapsuleCheckRunsParams is parameters of listCapsuleCheckRuns operation.
+type ListCapsuleCheckRunsParams struct {
+	CapsuleId string
+	Cursor    OptString `json:",omitempty,omitzero"`
+	Limit     OptInt    `json:",omitempty,omitzero"`
 }
 
 // ListCapsuleDeliveriesParams is parameters of listCapsuleDeliveries operation.
@@ -517,6 +545,11 @@ type SendThreadMessageParams struct {
 	IdempotencyKey string
 }
 
+// SetCapsuleCheckAutoReworkParams is parameters of setCapsuleCheckAutoRework operation.
+type SetCapsuleCheckAutoReworkParams struct {
+	CapsuleId string
+}
+
 // SetMemberRoleParams is parameters of setMemberRole operation.
 type SetMemberRoleParams struct {
 	UserId string
@@ -576,6 +609,12 @@ type StreamThreadBlocksParams struct {
 	LastEventID OptString `json:",omitempty,omitzero"`
 }
 
+// SuggestProjectChecksParams is parameters of suggestProjectChecks operation.
+type SuggestProjectChecksParams struct {
+	ProjectId string
+	CapsuleId OptString `json:",omitempty,omitzero"`
+}
+
 // TransferMemberObjectsParams is parameters of transferMemberObjects operation.
 type TransferMemberObjectsParams struct {
 	UserId string
@@ -595,6 +634,12 @@ type UpdateCoordinationGrantParams struct {
 
 // UpdateProfileParams is parameters of updateProfile operation.
 type UpdateProfileParams struct {
+	IdempotencyKey string
+}
+
+// UpdateProjectChecksParams is parameters of updateProjectChecks operation.
+type UpdateProjectChecksParams struct {
+	ProjectId      string
 	IdempotencyKey string
 }
 

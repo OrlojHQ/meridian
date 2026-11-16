@@ -41,6 +41,8 @@ function renderSettings(project: Project) {
     defaultOptions: { queries: { retry: false } },
   });
   vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
+  vi.spyOn(api, "projectChecks").mockResolvedValue({ checks: [], autoRework: true, maxReworkAttempts: 3, resourceVersion: 1 });
+  vi.spyOn(api, "suggestProjectChecks").mockResolvedValue({ checks: [] });
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[`/ui/projects/${project.id}/settings`]}>

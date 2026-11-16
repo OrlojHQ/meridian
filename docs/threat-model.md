@@ -1590,6 +1590,27 @@ Threats and required controls:
   alerts stay content-free ("Meridian needs you" and a count) and count only
   the viewer's own work.
 
+## Project checks
+
+ADR 0051 is implemented. Checks are a quality gate, not a privilege boundary.
+
+- **Same authority as the agent.** A check runs in the Capsule as the same
+  user, without broker grants, provider credentials, or a Docker socket. The
+  agent can edit the command it is asked to satisfy. Approval is of the tree,
+  including test changes.
+- **Output is untrusted.** Tails are bounded, stripped of control characters,
+  redacted, and encrypted with the installation key. They are not written to
+  events, audit records, notifications, or the pull request body. The rework
+  message tells the agent the text is command output.
+- **Spend is bounded.** Automatic rework stops at `maxReworkAttempts`. An
+  operator message, pause, cancel, rewind, or Stop auto-fix ends the current
+  loop. A restarted daemon does not leave a suite running forever: a stale
+  `running` row becomes `error` and is queued once.
+- **Repository suggestions.** `.meridian/checks.yaml` can fill a form. It
+  does not change the commands that run.
+- **Delivery stays human.** A passing suite does not ship. A failing suite
+  does not block Ship. The banner is about the exact reviewed tree.
+
 Residual risks specific to team mode are listed under Residual risks: host,
 data-directory, KEK, and daemon compromise; shared-KEK backups; the identity
 provider in the trust base; and container providers sharing a kernel between

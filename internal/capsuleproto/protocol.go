@@ -108,6 +108,7 @@ type Server struct {
 	runs       map[string]*supervisedRun
 	structured map[string]*structuredSession
 	coord      *Mailbox
+	checks     sync.Mutex
 }
 
 func NewServer(config ServerConfig) (*Server, error) {
@@ -181,6 +182,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET "+StatusPath, s.authenticate(http.HandlerFunc(s.status)))
 	mux.Handle("GET /v1/preparation/identity", s.authenticate(http.HandlerFunc(s.preparationIdentity)))
 	mux.Handle("POST /v1/preparation/finish", s.authenticate(http.HandlerFunc(s.finishPreparation)))
+	mux.Handle("POST /v1/checks/run", s.authenticate(http.HandlerFunc(s.runChecks)))
+	mux.Handle("GET /v1/checks/suggestion", s.authenticate(http.HandlerFunc(s.suggestChecks)))
 	mux.Handle("POST "+PreparePath, s.authenticate(http.HandlerFunc(s.prepare)))
 	mux.Handle("POST "+RunStartPath, s.authenticate(http.HandlerFunc(s.startRun)))
 	mux.Handle("GET /v1/runs/{runID}", s.authenticate(http.HandlerFunc(s.runStatus)))
