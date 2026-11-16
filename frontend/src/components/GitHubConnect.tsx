@@ -24,10 +24,15 @@ export function githubReason(reason?: GitHubConnection["reason"]) {
 }
 
 export function GitHubReconnectBanner() {
+  const cache = useQueryClient();
   const connection = useQuery({ ...githubConnectionQuery, staleTime: 60_000, retry: false });
   const check = useQuery({
     queryKey: ["github-connection-check"],
-    queryFn: () => api.checkGitHubConnection(),
+    queryFn: async () => {
+      const next = await api.checkGitHubConnection();
+      cache.setQueryData(githubConnectionQuery.queryKey, next);
+      return next;
+    },
     enabled: connection.data?.connected === true,
     staleTime: 5 * 60_000,
     retry: false,
@@ -53,7 +58,7 @@ export function GitHubConnect() {
   const host = useQuery({
     queryKey: ["github-host-login"],
     queryFn: ({ signal }) => api.hostGitHubLogin(signal),
-    enabled: connection.data?.connected === false,
+    enabled: connection.isSuccess && connection.data.status !== "active",
     retry: false,
   });
   const [device, setDevice] = useState<GitHubDevice | null>(null);
@@ -117,11 +122,14 @@ export function GitHubConnect() {
     };
   }, [device]);
 
-  if (connection.isPending) return <p role="status">Checking GitHub…</p>;
+  if (connection.isPending || (connection.isSuccess && connection.data.status !== "active" && host.isLoading)) {
+    return <p role="status">Checking GitHub…</p>;
+  }
   if (isUnauthenticated(connection.error)) return null;
   if (connection.isError) return <p>{normalizeAPIError(connection.error).message}</p>;
 
   const current = connection.data;
+  const hostLogin = host.data?.available ? host.data.login : undefined;
   if (current.connected && current.status === "active") {
     return (
       <div className="github-connect">
@@ -142,37 +150,40 @@ export function GitHubConnect() {
       {!current.connected && (
         <p>Connect once. Private repositories, push, and pull requests all use this login. A Capsule never keeps the token.</p>
       )}
-      {device ? (
-        <DeviceStep
-          device={device}
-          onCancel={() => {
-            setDevice(null);
-            void api.cancelGitHubDevice().catch(() => undefined);
-          }}
-        />
+      {hostLogin ? (
+        <div className="github-actions">
+          <Button type="button" variant="primary" disabled={useHost.isPending} onClick={() => useHost.mutate()}>
+            {useHost.isPending ? "Connecting…" : `Use your GitHub login @${hostLogin}?`}
+          </Button>
+        </div>
       ) : (
         <div className="github-actions">
-          {host.data?.available && host.data.login && (
-            <p className="field-hint">Found your GitHub login (@{host.data.login}). Use it?</p>
-          )}
-          {host.data?.available && host.data.login && (
-            <Button type="button" variant="primary" disabled={useHost.isPending} onClick={() => useHost.mutate()}>
-              {useHost.isPending ? "Connecting…" : `Use @${host.data.login}`}
-            </Button>
-          )}
-          <Button
-            type="button"
-            variant={host.data?.available ? "secondary" : "primary"}
-            disabled={!current.deviceFlow || startDevice.isPending}
-            onClick={() => startDevice.mutate()}
-          >
-            {startDevice.isPending ? "Starting…" : "Connect with a device code"}
-          </Button>
-          {!current.deviceFlow && (
-            <p className="field-hint">
-              This Station has no GitHub OAuth client id, so the device code is unavailable. On your computer, run{" "}
-              <code>meridian github connect</code>.
-            </p>
+          <p className="field-hint">or install and sign in to the GitHub CLI</p>
+          {device ? (
+            <DeviceStep
+              device={device}
+              onCancel={() => {
+                setDevice(null);
+                void api.cancelGitHubDevice().catch(() => undefined);
+              }}
+            />
+          ) : (
+            <>
+              <Button
+                type="button"
+                variant="primary"
+                disabled={!current.deviceFlow || startDevice.isPending}
+                onClick={() => startDevice.mutate()}
+              >
+                {startDevice.isPending ? "Starting…" : "Connect with a device code"}
+              </Button>
+              {!current.deviceFlow && (
+                <p className="field-hint">
+                  This Station has no GitHub OAuth client id, so the device code is unavailable. On your computer, run{" "}
+                  <code>meridian github connect</code>.
+                </p>
+              )}
+            </>
           )}
         </div>
       )}

@@ -20,7 +20,7 @@ func (s *Server) getGitHubConnection(writer http.ResponseWriter, request *http.R
 
 func (s *Server) checkGitHubConnection(writer http.ResponseWriter, request *http.Request) {
 	writer.Header().Set("Cache-Control", "no-store")
-	state, err := s.service.CheckGitHubConnection(request.Context())
+	state, err := s.service.CheckGitHubConnection(request.Context(), isLoopbackRequest(request))
 	if err != nil {
 		writeError(writer, err)
 		return

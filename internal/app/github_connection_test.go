@@ -22,9 +22,12 @@ type fakeGitHubOAuth struct {
 	login       string
 	scopes      string
 	token       string
+	dead        string
+	last        string
 	device      githubauth.DeviceCode
 	poll        githubauth.DevicePoll
 	repos       []githubauth.Repo
+	listErr     error
 	users       int
 	probeStatus int
 }
@@ -37,12 +40,19 @@ func (f *fakeGitHubOAuth) PollDeviceToken(context.Context, string, string) (gith
 	return f.poll, nil
 }
 
-func (f *fakeGitHubOAuth) CurrentUser(context.Context, string) (githubauth.Account, error) {
+func (f *fakeGitHubOAuth) CurrentUser(_ context.Context, token string) (githubauth.Account, error) {
 	f.users++
+	f.last = token
+	if f.dead != "" && token == f.dead {
+		return githubauth.Account{}, &githubauth.StatusError{Status: http.StatusUnauthorized, Reason: "expired"}
+	}
 	return githubauth.Account{Login: f.login, Scopes: f.scopes}, nil
 }
 
 func (f *fakeGitHubOAuth) ListRepos(context.Context, string, string) ([]githubauth.Repo, error) {
+	if f.listErr != nil {
+		return nil, f.listErr
+	}
 	return f.repos, nil
 }
 
@@ -246,6 +256,75 @@ func TestHostGitHubIsConfirmedAndLocal(t *testing.T) {
 	before := host.reads
 	if _, err := service.UseHostGitHub(ctx, true, state.ResourceVersion, "host-team"); !errors.Is(err, domain.ErrUnsupported) || host.reads != before {
 		t.Fatalf("team confirm = %v reads=%d", err, host.reads)
+	}
+}
+
+func TestHostGitHubRefreshesAfterReauthentication(t *testing.T) {
+	ctx := operatorContext()
+	dir := t.TempDir()
+	store, err := sqlite.Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	service := app.NewService(store, &testClock{now: time.Date(2026, 11, 16, 0, 0, 0, 0, time.UTC)}, &testIDs{}, &recordingQueue{})
+	key, err := secrets.OpenOrCreateKey(secrets.DefaultKeyPath(dir), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(key.Zero)
+	service.ConfigureSecrets(key)
+	host := &fakeGitHubHost{login: "octocat", token: "gho_hosttokenvalue"}
+	oauth := &fakeGitHubOAuth{login: "octocat", scopes: "repo"}
+	service.ConfigureGitHub("", host, oauth)
+	if _, err := service.UseHostGitHub(ctx, true, 0, "host-first"); err != nil {
+		t.Fatal(err)
+	}
+	host.token = "gho_refreshedtokenvalue"
+	oauth.dead = "gho_hosttokenvalue"
+	before := host.reads
+	remote, err := service.CheckGitHubConnection(ctx, false)
+	if err != nil || remote.Status != domain.GitHubConnectionNeedsReconnect || host.reads != before {
+		t.Fatalf("remote check = %+v %v reads=%d", remote, err, host.reads)
+	}
+	refreshed, err := service.CheckGitHubConnection(ctx, true)
+	if err != nil || refreshed.Status != domain.GitHubConnectionActive || refreshed.Login != "octocat" {
+		t.Fatalf("refresh = %+v %v", refreshed, err)
+	}
+	if oauth.last != "gho_refreshedtokenvalue" || host.reads != before+1 {
+		t.Fatalf("last token = %q reads=%d", oauth.last, host.reads)
+	}
+}
+
+func TestOrganizationSSODoesNotRetireTheLogin(t *testing.T) {
+	ctx := operatorContext()
+	dir := t.TempDir()
+	store, err := sqlite.Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	service := app.NewService(store, &testClock{now: time.Date(2026, 11, 16, 0, 0, 0, 0, time.UTC)}, &testIDs{}, &recordingQueue{})
+	key, err := secrets.OpenOrCreateKey(secrets.DefaultKeyPath(dir), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(key.Zero)
+	service.ConfigureSecrets(key)
+	oauth := &fakeGitHubOAuth{
+		login: "octocat", scopes: "repo",
+		listErr: &githubauth.StatusError{Status: http.StatusForbidden},
+	}
+	service.ConfigureGitHub("", nil, oauth)
+	if _, err := service.ConnectGitHubToken(ctx, "gho_approvedtokenvalue", 0, "sso-token"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.SearchGitHubRepos(ctx, ""); err == nil {
+		t.Fatal("organization SSO response was treated as a repository list")
+	}
+	state, err := service.GitHubConnection(ctx)
+	if err != nil || state.Status != domain.GitHubConnectionActive {
+		t.Fatalf("connection = %+v %v", state, err)
 	}
 }
 

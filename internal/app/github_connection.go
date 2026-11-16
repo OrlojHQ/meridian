@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"strings"
@@ -16,7 +17,8 @@ import (
 const gitHubHTTPSUser = "x-access-token"
 
 // GitHubHost reads a local gh login. Login must not return the token.
-// Token is called only after the person confirms.
+// Token is called after the person confirms, and again during a connection
+// check when the stored login already came from gh on this computer.
 type GitHubHost interface {
 	Login(context.Context) (string, error)
 	Token(context.Context) (string, error)
@@ -103,7 +105,7 @@ func (s *Service) GitHubConnection(ctx context.Context) (GitHubConnectionState, 
 	return s.githubState(ctx, owner)
 }
 
-func (s *Service) CheckGitHubConnection(ctx context.Context) (GitHubConnectionState, error) {
+func (s *Service) CheckGitHubConnection(ctx context.Context, loopback bool) (GitHubConnectionState, error) {
 	if err := requirePrincipal(ctx); err != nil {
 		return GitHubConnectionState{}, err
 	}
@@ -122,6 +124,15 @@ func (s *Service) CheckGitHubConnection(ctx context.Context) (GitHubConnectionSt
 	if err != nil {
 		return GitHubConnectionState{}, err
 	}
+	replaced, ok, err := s.useRefreshedHostToken(ctx, connection, loopback, token)
+	if err != nil {
+		wipeString(&token)
+		return GitHubConnectionState{}, err
+	}
+	if ok {
+		wipeString(&token)
+		return replaced, nil
+	}
 	account, probeErr := s.githubOAuth.CurrentUser(ctx, token)
 	wipeString(&token)
 	if probeErr != nil {
@@ -134,6 +145,35 @@ func (s *Service) CheckGitHubConnection(ctx context.Context) (GitHubConnectionSt
 		return GitHubConnectionState{}, probeErr
 	}
 	return s.refreshGitHubAccount(ctx, connection, account)
+}
+
+// useRefreshedHostToken replaces a host-sourced login when gh now holds a
+// different token. The person already confirmed this computer's gh login.
+// A remote request, team mode, or a login that came from the device flow
+// does not read gh. A replacement GitHub rejects is ignored so a still-valid
+// stored token is kept.
+func (s *Service) useRefreshedHostToken(
+	ctx context.Context, connection domain.GitHubConnection, loopback bool, stored string,
+) (GitHubConnectionState, bool, error) {
+	if connection.Source != domain.GitHubSourceHost || s.githubHost == nil || !s.hostGitHubAllowed(ctx, loopback) {
+		return GitHubConnectionState{}, false, nil
+	}
+	next, err := s.githubHost.Token(ctx)
+	if err != nil {
+		return GitHubConnectionState{}, false, nil
+	}
+	if subtle.ConstantTimeCompare([]byte(stored), []byte(next)) == 1 {
+		wipeString(&next)
+		return GitHubConnectionState{}, false, nil
+	}
+	state, err := s.finishGitHubToken(
+		ctx, next, domain.GitHubSourceHost, connection.ResourceVersion, "github-host-"+s.ids.NewID(),
+	)
+	wipeString(&next)
+	if err != nil {
+		return GitHubConnectionState{}, false, nil
+	}
+	return state, true, nil
 }
 
 func (s *Service) DisconnectGitHub(

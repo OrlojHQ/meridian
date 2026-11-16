@@ -96,6 +96,26 @@ func errorAs(err error, target **StatusError) bool {
 	return ok
 }
 
+func TestOrganizationSSOStaysOnTheResource(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-GitHub-SSO", "required; url=https://github.com/orgs/example/sso")
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = io.WriteString(w, `{"message":"Resource protected by organization SAML enforcement."}`)
+	}))
+	defer server.Close()
+	client := New(server.Client())
+	client.APIBase = server.URL
+	_, err := client.ListRepos(context.Background(), "gho_approvedtoken", "")
+	var status *StatusError
+	if err == nil || !errorAs(err, &status) || status.Status != http.StatusForbidden || status.Reason != "" {
+		t.Fatalf("list error = %#v", err)
+	}
+	_, err = client.CurrentUser(context.Background(), "gho_approvedtoken")
+	if err == nil || !errorAs(err, &status) || status.Reason != "missing_access" {
+		t.Fatalf("user error = %#v", err)
+	}
+}
+
 func TestTokenShape(t *testing.T) {
 	if ValidToken("") || ValidToken("short") || ValidToken("has space token") || ValidToken("line\nbreak") {
 		t.Fatal("accepted a bad token")

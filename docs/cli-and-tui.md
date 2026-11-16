@@ -8,10 +8,12 @@ packages.
 ## GitHub
 
 `meridian github connect` stores one login for clone, push, and pull
-requests. It asks before using a `gh` login it finds on this computer.
-`--device` skips that and shows a GitHub device code. `--stdin` reads a
-token. `meridian github status` prints the login. `meridian github
-disconnect --confirm` deletes it. The token is not printed.
+requests. When `gh` is signed in it asks "Use your GitHub login @user?"
+and stops if you decline. `--device` skips `gh` and shows a device code.
+With no `gh` login it says to install and sign in to the GitHub CLI, then
+uses a device code. `--stdin` reads a token. `meridian github status`
+prints the login. `meridian github disconnect --confirm` deletes it. The
+token is not printed.
 
 ## Launch
 

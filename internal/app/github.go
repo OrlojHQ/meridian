@@ -29,7 +29,7 @@ func (e *gitHubStatusError) Error() string {
 
 func (e *gitHubStatusError) GitHubAuthStatus() (int, string) { return e.Status, e.Reason }
 
-func gitHubStatusFrom(status int, sso string, payload []byte) error {
+func gitHubStatusFrom(status int, requestPath, sso string, payload []byte) error {
 	parsed := &gitHubStatusError{Status: status}
 	folded := bytes.ToLower(payload)
 	switch status {
@@ -39,7 +39,9 @@ func gitHubStatusFrom(status int, sso string, payload []byte) error {
 			parsed.Reason = "expired"
 		}
 	case http.StatusForbidden:
-		if sso != "" || bytes.Contains(folded, []byte("saml")) {
+		// A repository or pull request protected by organization SSO is not a
+		// dead login. gh tokens are usually already authorized for those orgs.
+		if requestPath == "/user" && (sso != "" || bytes.Contains(folded, []byte("saml"))) {
 			parsed.Reason = "missing_access"
 		}
 	}
@@ -187,7 +189,7 @@ func (c *githubHTTPClient) call(
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		payload, _ := io.ReadAll(io.LimitReader(response.Body, 4<<10))
-		return gitHubStatusFrom(response.StatusCode, response.Header.Get("X-GitHub-SSO"), payload)
+		return gitHubStatusFrom(response.StatusCode, parsed.Path, response.Header.Get("X-GitHub-SSO"), payload)
 	}
 	decoder := json.NewDecoder(io.LimitReader(response.Body, 1<<20))
 	if err := decoder.Decode(output); err != nil {

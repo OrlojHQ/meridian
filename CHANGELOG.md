@@ -13,8 +13,12 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   `meridian github connect` store one owner-bound login. Clone, push, and
   pull requests use it when a Project does not name its own `git_https`,
   `git_push`, or `github_api` secret. Those secrets still win when they are
-  set. A loopback single-user Station can reuse this computer's `gh` login
-  after you confirm; otherwise the GitHub device flow shows a code. New
+  set. When `gh` is signed in, Connect GitHub asks once: "Use your GitHub
+  login @user?" That token is stored unchanged, so organization SSO and
+  approved-app grants that already apply to `gh` still apply. If it later
+  expires or `gh` re-authenticates, a local check refreshes it or shows
+  Reconnect GitHub. The device code is only the fallback when `gh` is
+  missing or signed out. New
   Project searches repositories, including private ones, and keeps "Use a
   token instead." An invalid, expired, or under-scoped login shows
   Reconnect GitHub. The device flow needs

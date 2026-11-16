@@ -195,7 +195,10 @@ Project does not name a secret for clone, push, or pull request, the station
 uses that connection for the missing purpose and still issues only a one-shot
 git grant or a host-side pull request. A named secret wins. The station reads
 the host `gh` token only after the owner confirms, and only for a loopback
-request on a single-user Station. The device-flow device code stays in
+request on a single-user Station. A connection check may read it again
+when that stored login came from `gh`, to replace an expired or
+re-authenticated token. Team mode and remote requests never read it. The
+device-flow device code stays in
 memory. The connection token is never returned by the API or placed in a
 Capsule environment. A clone GitHub refuses is stored as a fixed sentence
 naming the repository, never git stderr, which can contain a credential URL.

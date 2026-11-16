@@ -63,44 +63,50 @@ func newGitHubConnect(config *cliConfig) *cobra.Command {
 				}
 				if host.Available {
 					login, _ := host.Login.Get()
-					accepted, err := confirmGitHub(config, yes, fmt.Sprintf("Found your GitHub login (@%s). Use it?", login))
+					accepted, err := confirmGitHub(config, yes, fmt.Sprintf("Use your GitHub login @%s?", login))
 					if err != nil {
 						return err
 					}
-					if accepted {
-						key, err := idempotencyKey("")
-						if err != nil {
-							return err
-						}
-						result, err := api.UseHostGitHubLogin(command.Context(), &client.UseHostGitHubRequest{
-							ExpectedResourceVersion: expected,
-						}, client.UseHostGitHubLoginParams{IdempotencyKey: key})
-						if err != nil {
-							return apiCallError(err)
-						}
-						connected, ok := result.(*client.GitHubConnection)
-						if !ok {
-							return responseError(result)
-						}
-						return printGitHubConnection(config, connected)
+					if !accepted {
+						_, err = fmt.Fprintln(config.stdout, "GitHub was not connected")
+						return err
 					}
-				} else if login, ok := localGitHubLogin(command.Context()); ok {
-					accepted, err := confirmGitHub(config, yes, fmt.Sprintf("Found your GitHub login (@%s). Use it?", login))
+					key, err := idempotencyKey("")
 					if err != nil {
 						return err
 					}
-					if accepted {
-						token, err := (githubauth.HostCommands{}).Token(command.Context())
-						if err != nil {
-							return errors.New("gh has no token")
-						}
-						key, err := idempotencyKey("")
-						if err != nil {
-							return err
-						}
-						return storeGitHubToken(command, config, api, token, expected, key)
+					result, err := api.UseHostGitHubLogin(command.Context(), &client.UseHostGitHubRequest{
+						ExpectedResourceVersion: expected,
+					}, client.UseHostGitHubLoginParams{IdempotencyKey: key})
+					if err != nil {
+						return apiCallError(err)
 					}
+					connected, ok := result.(*client.GitHubConnection)
+					if !ok {
+						return responseError(result)
+					}
+					return printGitHubConnection(config, connected)
 				}
+				if login, ok := localGitHubLogin(command.Context()); ok {
+					accepted, err := confirmGitHub(config, yes, fmt.Sprintf("Use your GitHub login @%s?", login))
+					if err != nil {
+						return err
+					}
+					if !accepted {
+						_, err = fmt.Fprintln(config.stdout, "GitHub was not connected")
+						return err
+					}
+					token, err := (githubauth.HostCommands{}).Token(command.Context())
+					if err != nil {
+						return errors.New("gh has no token")
+					}
+					key, err := idempotencyKey("")
+					if err != nil {
+						return err
+					}
+					return storeGitHubToken(command, config, api, token, expected, key)
+				}
+				_, _ = fmt.Fprintln(os.Stderr, "or install and sign in to the GitHub CLI")
 			}
 			return runGitHubDevice(command, config, api, expected)
 		},

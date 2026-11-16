@@ -300,8 +300,11 @@ Connect GitHub once instead of pasting a token per job (ADR 0051):
 meridian github connect
 ```
 
-On a loopback single-user Station this can reuse the `gh` login after you
-confirm. Otherwise it shows a GitHub device code. The device flow needs a
+On a loopback single-user Station, when `gh` is signed in, this asks once
+to use that login. The device code is the fallback when `gh` is missing or
+signed out, and the command says to install and sign in to the GitHub CLI.
+A later check refreshes a host login from `gh` after it re-authenticates.
+The device flow needs a
 public OAuth client id (`meridiand --github-oauth-client-id` or
 `MERIDIAN_GITHUB_OAUTH_CLIENT_ID`). That value is not a secret, and none is
 built in. `meridian github connect --stdin` reads a token when neither `gh`

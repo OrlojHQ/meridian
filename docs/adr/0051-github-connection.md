@@ -27,21 +27,32 @@ transferred.
 
 ### How a login is obtained
 
-- On a loopback request to a single-user Station, the owner can confirm "Use
-  this computer's GitHub login." Only that request runs `gh auth token`. The
-  station does not read it at startup, on a timer, or for a remote request.
-  Team mode never reads the host login: that login belongs to the machine,
-  not the member.
-- Otherwise the station runs GitHub's device flow. The browser shows the
-  user code and opens `https://github.com/login/device`. The device code
-  stays in station memory. The public OAuth client id is
-  `--github-oauth-client-id` or `MERIDIAN_GITHUB_OAUTH_CLIENT_ID`. It is not
-  a secret. An empty id disables the device flow. There is no client secret.
-- `meridian github connect` on the owner's computer can read that computer's
-  `gh` login after the same confirmation and send the token to the station.
-  The station still does not read `gh` itself in that case.
-- `meridian github connect --stdin` is the fallback when neither `gh` nor a
-  client id is available.
+The default path is this computer's `gh` login. When `gh` is installed and
+signed in, Connect GitHub is one confirmation: "Use your GitHub login
+@user?" That confirmation is what runs `gh auth token`. The station stores
+that token unchanged, so organization SSO grants and approved-app
+authorizations that already apply to `gh` still apply. It is not exchanged
+for a new OAuth grant.
+
+The station does not read `gh` at startup, for a remote request, or in team
+mode. That login belongs to the machine, not a team member. After the owner
+has confirmed a host login, a later connection check on loopback may read
+`gh auth token` again. If `gh` has re-authenticated, the stored token is
+replaced. If `gh` is signed out or the token is rejected, the connection
+becomes `needs_reconnect` and the UI shows Reconnect GitHub.
+
+The device flow is only the fallback when `gh` is missing or signed out.
+The page says "or install and sign in to the GitHub CLI" and then shows a
+device code. The device code stays in station memory. The public OAuth
+client id is `--github-oauth-client-id` or
+`MERIDIAN_GITHUB_OAUTH_CLIENT_ID`. It is not a secret. An empty id disables
+the device flow. There is no client secret. A device-flow token is a
+different grant from `gh` and may still need organization approval.
+
+`meridian github connect` asks the same question before using `gh`.
+`--device` skips `gh`. `--stdin` reads a token when neither `gh` nor a
+client id is available. Declining the `gh` question does not start the
+device flow.
 
 The requested scope is `repo` plus `read:user`. `repo` is the classic scope
 that covers private clone, push, and pull requests.
@@ -73,9 +84,12 @@ The pull request is still opened by `meridiand`. The connection token is not
 placed in a Capsule environment, a command argument, a log, or an API
 response.
 
-A rejected login (`401`, or `403` with a SAML/SSO signal) is stored as
-`needs_reconnect` with reason `invalid`, `expired`, or `missing_access`. The
-UI shows Reconnect GitHub. A connection in that state is not used for a
+A rejected login (`401`, or `403` from the user lookup with a SAML/SSO
+signal) is stored as `needs_reconnect` with reason `invalid`, `expired`, or
+`missing_access`. The UI shows Reconnect GitHub. A `403` on one repository
+or pull request, including organization SSO, does not retire the login: the
+token can still be approved for other organizations, which is the usual
+state of a `gh` token. A connection in `needs_reconnect` is not used for a
 grant, so a public clone still works. A non-empty scope list that does not
 include `repo` is `missing_access` immediately. An empty scope list is kept,
 because some tokens do not report classic scopes.

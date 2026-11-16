@@ -352,7 +352,10 @@ function route(pathname: string): unknown {
     }
     return { connected: false, deviceFlow: true };
   }
-  if (pathname === "/github/connection/host") return { available: shot !== "reconnect", login: shot === "reconnect" ? undefined : "octocat" };
+  if (pathname === "/github/connection/host") {
+    if (shot === "device" || shot === "reconnect") return { available: false };
+    return { available: true, login: "octocat" };
+  }
   if (pathname === "/github/connection/device") {
     return {
       userCode: "ABCD-EFGH",

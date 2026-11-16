@@ -340,7 +340,7 @@ func (c *Client) do(request *http.Request, token string, output any) (http.Heade
 		return nil, errors.New("GitHub request failed")
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, classify(response, payload)
+		return nil, classify(request.URL.Path, response, payload)
 	}
 	if output == nil {
 		return response.Header, nil
@@ -351,7 +351,7 @@ func (c *Client) do(request *http.Request, token string, output any) (http.Heade
 	return response.Header, nil
 }
 
-func classify(response *http.Response, payload []byte) error {
+func classify(requestPath string, response *http.Response, payload []byte) error {
 	status := &StatusError{Status: response.StatusCode}
 	folded := bytes.ToLower(payload)
 	switch response.StatusCode {
@@ -361,7 +361,12 @@ func classify(response *http.Response, payload []byte) error {
 			status.Reason = "expired"
 		}
 	case http.StatusForbidden:
-		if response.Header.Get("X-GitHub-SSO") != "" || bytes.Contains(folded, []byte("saml")) {
+		// SSO on one organization resource means that org has not approved
+		// this token. The login itself is still usable, and a gh token is
+		// often already approved. Only a rejection of the user lookup
+		// retires the connection.
+		if requestPath == "/user" &&
+			(response.Header.Get("X-GitHub-SSO") != "" || bytes.Contains(folded, []byte("saml"))) {
 			status.Reason = "missing_access"
 		}
 	}
