@@ -32,6 +32,18 @@ laptop's harness setups and git identity, a default connection per harness,
 and a computed diagnostic. "Workstation profiles" below states its threats
 and controls.
 
+ADR 0050 adds provider isolation classes. Every provider advertises the
+isolation class it actually verified — `container`, `sandbox`, or `microvm` —
+and a Project may require a class, enforced fail-closed before Capsule
+creation. The Kubernetes Agent Sandbox provider grounds a `sandbox` or
+`microvm` claim in the node's RuntimeClass handler, read through a
+one-resource ClusterRole, rather than in configuration text. Per-user scoping
+(ADR 0046) already restricts object visibility at the API: team admins manage
+membership and audit without reading other users' objects, and the break-glass
+installation bearer is refused on object endpoints. Isolation-class
+requirements bind Capsule placement, not API visibility. "Host escape and
+cross-Capsule access" below states the class vocabulary and its limits.
+
 ## Assets
 
 Assets requiring protection include:
@@ -124,6 +136,25 @@ writable mounts. A validated gVisor/Kata RuntimeClass, dedicated nodes where
 appropriate, storage/network isolation, admission policy, and external review
 are required before hostile multi-tenancy. The chart installs or certifies none
 of those controls.
+
+Isolation classes (ADR 0050) make the boundary explicit instead of implied.
+Each provider advertises one class it verified — `container` for a shared
+host kernel with no added user-kernel boundary, `sandbox` for an added
+user-kernel boundary inside the host kernel's process tree (gVisor `runsc`),
+`microvm` for a hardware-virtualized guest with its own kernel (Kata under
+QEMU, Cloud Hypervisor, or Dragonball). The order is strict
+(`container < sandbox < microvm`), a class is never downgraded to meet a
+requirement, and an unmet Project requirement fails Capsule creation with a
+fixed error before any side effect. The Agent Sandbox provider verifies its
+declared class by reading the configured RuntimeClass and comparing its
+handler to a known set: `runc`, `crun`, and `youki` are never accepted as
+isolating, and `kata-fc` is not accepted as `microvm` because Meridian does
+not provision the block storage Firecracker requires. A verified class
+describes the boundary between Capsule processes and the host kernel only. It
+says nothing about guest supply-chain integrity (the operator pins guest
+kernels and images), about network or storage tenancy, or about who can read
+objects at the API — and container-class Capsules still share the host kernel
+between teammates until an installation runs a stronger class.
 
 ### Credential theft and persistence
 

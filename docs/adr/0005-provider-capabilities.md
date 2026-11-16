@@ -1,6 +1,6 @@
 # ADR 0005: Require providers to advertise capabilities
 
-- Status: Accepted
+- Status: Accepted; amended by ADR 0050
 - Date: 2026-08-23
 
 ## Context
