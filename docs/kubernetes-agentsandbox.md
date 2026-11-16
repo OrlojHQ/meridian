@@ -78,6 +78,12 @@ with the current routable addresses of `api.openai.com` / `api.anthropic.com`
 (and any HTTPS custom endpoint) and of the HTTPS gateway origin. NetworkPolicy
 cannot select those hosts by name.
 
+`kubernetesAPIServerCIDRs` is allowed on TCP 443 by default. Most CNIs match
+egress policy after the `kubernetes` Service is translated to its endpoint,
+so on a kubeadm cluster, where the API server listens on 6443, also set
+`--set-json 'networkPolicy.kubernetesAPIServerPorts=[443,6443]'` and include
+the API server's node addresses in the CIDRs.
+
 Set `capsuleImage.tag` to the verified release version even when pinning the
 thin Capsule image by digest. The chart passes that tag as
 `--official-pack-tag` so official harness packs advertise
@@ -182,8 +188,17 @@ node drain, and known gVisor compatibility constraints. Set
 
 ### Validated Kata profile
 
-Install Kata Containers through the cluster operator's supported method and
-use the handler it supplies, for example:
+The documented microVM profile is Kata Containers with the QEMU hypervisor
+(`handler: kata-qemu`). It uses virtio-fs, so the Capsule pod's workspace PVC,
+token Secret, and emptyDir mounts attach as they do on `runc`. `kata-clh` and
+`kata-dragonball` are in the built-in microvm handler set but are not this
+documented profile.
+
+**Node requirements.** Each Kata node needs `/dev/kvm`: bare metal, or a VM
+with nested virtualization enabled. Install Kata with the cluster operator's
+supported method (kata-deploy), on dedicated nodes that carry a taint so
+ordinary workloads stay off them. The RuntimeClass then selects those nodes
+and tolerates the taint:
 
 ```yaml
 apiVersion: node.k8s.io/v1
@@ -191,13 +206,129 @@ kind: RuntimeClass
 metadata:
   name: kata
 handler: kata-qemu
+overhead:
+  podFixed:
+    cpu: 250m
+    memory: 160Mi
+scheduling:
+  nodeSelector:
+    katacontainers.io/kata-runtime: "true"
+  tolerations:
+    - key: meridian.orloj.io/kata
+      operator: Exists
+      effect: NoSchedule
 ```
 
-Validate hardware virtualization, node selection/taints, guest kernel and image
-policy, PVC/CSI attachment, memory overhead, port-forward, suspension, and
-upgrade behavior. Set `agentSandbox.runtimeClassName=kata` and
-`agentSandbox.isolationClass=microvm` only for the tested handler. Neither
-example is installed by the chart or a security certification.
+The overhead values are an example; take them from the Kata release in use.
+ResourceQuota counts pod overhead, so each Capsule consumes its limits plus
+the overhead, and `resourceQuota.hard` may need raising to keep the same
+number of Capsules.
+
+**Helm values.**
+
+```yaml
+requireIsolation: microvm
+agentSandbox:
+  runtimeClassName: kata
+  isolationClass: microvm
+  startTimeout: 10m   # set from the measured cold create below
+  setupTimeout: 10m
+```
+
+`isolationClass: microvm` makes meridiand read the `kata` RuntimeClass at
+startup and refuse to start unless its handler is a known microvm handler.
+`requireIsolation: microvm` makes it refuse to start unless that check
+passed. Projects created with `requiredIsolation: microvm` then cannot get a
+Capsule from any weaker installation.
+
+**What Meridian checks, and what it does not.** Meridian checks the
+RuntimeClass handler name against its built-in set (ADR 0050). It cannot see
+which binary the node's containerd maps that name to, the guest kernel, the
+guest image, or the Kata configuration file. The operator verifies those
+separately: Meridian's Cosign signatures and digest pins cover `meridiand`
+and the Capsule pack images only, not Kata's guest artifacts. A cluster
+admin who maps `kata-qemu` to `runc` defeats the check, which is why the
+validation below also checks the guest kernel from inside the Capsule.
+
+**`kata-fc` is not supported.** Firecracker has no virtio-fs, hotplug, or
+VFIO and needs containerd's devmapper snapshotter with block storage. The
+Capsule pod mounts a filesystem PVC, a Secret, and emptyDirs, so Meridian
+refuses `kata-fc` as a microvm handler, including as an operator extension,
+until a block-mode workspace exists.
+
+**gVisor is the `sandbox` class, never `microvm`.** It is a user-space kernel
+inside the host kernel's process tree, not a hardware VM.
+
+#### Validation
+
+A Kind run, including `make agentsandbox-integration`, does not validate
+isolation: Kind has no Kata runtime. Run the Kata validation on the target
+cluster with an operator kubeconfig:
+
+```console
+MERIDIAN_KATA_VALIDATION=1 \
+MERIDIAN_KATA_CONTEXT="$(kubectl config current-context)" \
+MERIDIAN_KATA_RUNTIME_CLASS=kata \
+MERIDIAN_KATA_MERIDIAN_IMAGE=ghcr.io/orlojhq/meridiand:vX.Y.Z@sha256:VERIFIED \
+MERIDIAN_KATA_CAPSULE_IMAGE=ghcr.io/orlojhq/meridian-capsule:vX.Y.Z@sha256:VERIFIED \
+MERIDIAN_KATA_API_SERVER_CIDRS='["10.96.0.1/32","192.0.2.10/32"]' \
+MERIDIAN_KATA_VERSION=X.Y.Z \
+  make agentsandbox-kata-validation
+```
+
+`MERIDIAN_KATA_CONTEXT` must equal the current context or the script stops
+before touching the cluster. It installs a throwaway release in its own
+labelled namespace (`MERIDIAN_KATA_NAMESPACE`, default
+`meridian-kata-validation`) and removes the release, its one ClusterRole, and
+the namespace on exit, pass or fail. `MERIDIAN_KATA_API_SERVER_CIDRS` must
+cover both the `kubernetes` Service ClusterIP and the API server endpoints:
+some CNIs match egress policy before the Service address is translated and
+some after. `MERIDIAN_KATA_API_SERVER_PORTS` defaults to `[443,6443]` for the
+same reason. Set `MERIDIAN_KATA_COLD=1` after removing
+the Capsule image from the Kata nodes to record a cold create. The cluster's
+CNI must enforce NetworkPolicy.
+
+The script prints `PASS <step>` for each of:
+
+1. install with `isolationClass: microvm` and `requireIsolation: microvm`;
+   the control plane starts and `GET /capabilities` reports `microvm`;
+2. a Project with `requiredIsolation: microvm` gets a Capsule that reaches
+   Ready, timed from the create request;
+3. the Capsule pod's `runtimeClassName` is the configured class;
+4. the Capsule's `uname -r` differs from the node kernel and `/proc/cpuinfo`
+   shows a hypervisor;
+5. `capsuled` does not accept connections on the pod IP (port-forward to
+   loopback is already proven by Ready);
+6. pause ends the pod and its VM, resume returns to Ready, and a file
+   written to `/workspace` before the pause is still there;
+7. from a Capsule, the Kubernetes API Service and `169.254.169.254` do not
+   connect, and a second Capsule's pod IP times out (a refusal means the
+   packet arrived and the NetworkPolicy is not enforced, which fails);
+8. deleting both Capsules removes their Sandboxes, pods, workspace PVCs, and
+   token Secrets;
+9. a summary block for the table below.
+
+The checks that read the guest kernel and probe egress use the operator's
+`kubectl exec`. Meridian's own Role still has no exec permission.
+
+Three checks need a person and are not in the script:
+
+- drain a Kata node with a running Capsule and confirm it reschedules and
+  reaches Ready with its workspace;
+- reboot a Kata node while a Capsule is paused, then resume it and confirm
+  the workspace PVC data is intact;
+- upgrade Kata on the nodes and repeat the script.
+
+#### Measured startup
+
+Fill this table from the script's summary. Set `agentSandbox.startTimeout`
+from the cold create time with headroom, and `agentSandbox.setupTimeout` from
+the slowest repository setup, keeping their sum with `operationTimeout` below
+`ttl`.
+
+| Kata version | Node type | Warm create to Ready | Cold create to Ready |
+|---|---|---|---|
+| _not yet measured_ | | | |
 
 Do not claim untrusted multi-tenancy without hardened runtime, node, network,
 storage and control-plane boundaries and external review.

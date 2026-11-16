@@ -156,6 +156,19 @@ kernels and images), about network or storage tenancy, or about who can read
 objects at the API — and container-class Capsules still share the host kernel
 between teammates until an installation runs a stronger class.
 
+The handler check trusts the node. Meridian reads the handler name from the
+Kubernetes API; it cannot see which runtime binary containerd maps that name
+to, so a cluster admin who maps `kata-qemu` to `runc` defeats it. The Kata
+validation (`make agentsandbox-kata-validation`, run by an operator on KVM
+nodes) checks from inside the Capsule that the guest kernel differs from the
+node's, and checks pause, workspace persistence, and NetworkPolicy egress. A
+Kind run proves the API verification flow only, not isolation. A microVM
+protects the node and other Capsules at the kernel boundary; cluster admins,
+etcd, and the storage system can still read workspace PVCs and token
+Secrets, and ADR 0010's bar for untrusted multi-tenancy (a validated
+RuntimeClass plus node, storage, network, and control-plane controls and
+external review) still applies.
+
 ### Credential theft and persistence
 
 Untrusted processes may read environment variables, command arguments, config files, shell history, process metadata, logs, swap, or snapshots. They may trick tools into forwarding credentials. Reusable credentials remain outside Capsules. The broker issues short-lived, narrowly scoped credentials or performs a constrained operation on behalf of the Capsule. Plaintext credentials must not be persisted in SQLite, local artifacts, Moments, logs, events, crash dumps, or generated configuration. Redact known secret forms, prevent command-line disclosure, support revocation, and audit issuance and use.
