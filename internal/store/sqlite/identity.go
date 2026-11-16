@@ -299,7 +299,8 @@ func oneRow(result sql.Result) error {
 // transferredTables are the owned tables a departed-member transfer moves.
 // provider_connections is absent: a personal login stays with its holder.
 // user_profiles and user_profile_connections are absent too: a git identity
-// stays with the person it names (ADR 0049).
+// stays with the person it names (ADR 0049). github_connections is absent
+// too: a GitHub login stays with the person who connected it (ADR 0051).
 var transferredTables = []string{
 	"projects", "secrets", "harness_setups",
 	"capsules", "timelines", "moments", "project_thread_intents", "setup_moment_cache",

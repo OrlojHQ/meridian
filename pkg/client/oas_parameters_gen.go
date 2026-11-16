@@ -70,6 +70,11 @@ type CompleteOidcSignInParams struct {
 	Code  OptString `json:",omitempty,omitzero"`
 }
 
+// ConnectGitHubTokenParams is parameters of connectGitHubToken operation.
+type ConnectGitHubTokenParams struct {
+	IdempotencyKey string
+}
+
 // CreateCapsuleParams is parameters of createCapsule operation.
 type CreateCapsuleParams struct {
 	ProjectId      string
@@ -155,6 +160,11 @@ type DenyCoordinationRequestParams struct {
 // DisableMemberParams is parameters of disableMember operation.
 type DisableMemberParams struct {
 	UserId string
+}
+
+// DisconnectGitHubParams is parameters of disconnectGitHub operation.
+type DisconnectGitHubParams struct {
+	IdempotencyKey string
 }
 
 // EnableMemberParams is parameters of enableMember operation.
@@ -511,6 +521,11 @@ type SealCapsuleParams struct {
 	IdempotencyKey string
 }
 
+// SearchGitHubReposParams is parameters of searchGitHubRepos operation.
+type SearchGitHubReposParams struct {
+	Q OptString `json:",omitempty,omitzero"`
+}
+
 // SendThreadMessageParams is parameters of sendThreadMessage operation.
 type SendThreadMessageParams struct {
 	ThreadId       string
@@ -607,4 +622,9 @@ type UpdateProjectEnvironmentParams struct {
 // UpdateProviderConnectionParams is parameters of updateProviderConnection operation.
 type UpdateProviderConnectionParams struct {
 	ConnectionId string
+}
+
+// UseHostGitHubLoginParams is parameters of useHostGitHubLogin operation.
+type UseHostGitHubLoginParams struct {
+	IdempotencyKey string
 }

@@ -314,7 +314,48 @@ const json = (body: unknown, status = 200) =>
 
 const emptyPage = { items: [] };
 
+function githubShot() {
+  return new URLSearchParams(window.location.search).get("github");
+}
+
 function route(pathname: string): unknown {
+  const shot = githubShot();
+  if (pathname === "/github/connection" || pathname === "/github/connection/check") {
+    if (shot === "reconnect") {
+      return {
+        connected: true, deviceFlow: true, login: "octocat", status: "needs_reconnect",
+        reason: "expired", resourceVersion: 2, createdAt: stamp, updatedAt: stamp,
+      };
+    }
+    if (shot === "repos") {
+      return {
+        connected: true, deviceFlow: true, login: "octocat", status: "active",
+        resourceVersion: 2, createdAt: stamp, updatedAt: stamp,
+      };
+    }
+    return { connected: false, deviceFlow: true };
+  }
+  if (pathname === "/github/connection/host") return { available: shot !== "reconnect", login: shot === "reconnect" ? undefined : "octocat" };
+  if (pathname === "/github/connection/device") {
+    return {
+      userCode: "ABCD-EFGH",
+      verificationUri: "https://github.com/login/device",
+      expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+      intervalSeconds: 60,
+      status: "pending",
+    };
+  }
+  if (pathname === "/github/repos") {
+    return {
+      items: [
+        { fullName: "OrlojHQ/meridian", private: true, description: "Private repository", defaultBranch: "main", url: "https://github.com/OrlojHQ/meridian" },
+        { fullName: "OrlojHQ/notes", private: false, description: "Notes", defaultBranch: "main", url: "https://github.com/OrlojHQ/notes" },
+      ],
+    };
+  }
+  if ((shot === "connect" || shot === "device") && (pathname === "/projects" || pathname === "/board")) {
+    return pathname === "/board" ? { items: [], truncated: false } : { items: [] };
+  }
   if (pathname === "/capabilities") {
     return {
       providerVersion: "docker/v2",

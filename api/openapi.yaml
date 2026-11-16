@@ -744,6 +744,217 @@ paths:
           $ref: "#/components/responses/TooManyRequests"
         default:
           $ref: "#/components/responses/DefaultError"
+  /github/connection:
+    get:
+      operationId: getGitHubConnection
+      summary: Read the signed-in user's GitHub connection
+      description: >-
+        Returns whether this user has connected GitHub, and whether the
+        device flow can start. The token is never returned. Responses are
+        not cached.
+      tags: [github]
+      responses:
+        "200":
+          description: Connection metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitHubConnection"
+        default:
+          $ref: "#/components/responses/DefaultError"
+    delete:
+      operationId: disconnectGitHub
+      summary: Delete the signed-in user's GitHub connection
+      tags: [github]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DisconnectGitHubRequest"
+      responses:
+        "200":
+          description: The connection is gone
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitHubConnection"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /github/connection/check:
+    post:
+      operationId: checkGitHubConnection
+      summary: Check whether the stored GitHub login still works
+      description: >-
+        Calls GitHub as the station. A rejected login is marked
+        needs_reconnect. The token is never returned.
+      tags: [github]
+      responses:
+        "200":
+          description: Connection metadata after the check
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitHubConnection"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /github/connection/host:
+    get:
+      operationId: getHostGitHubLogin
+      summary: See whether this computer's gh login can be reused
+      description: >-
+        Available only for a loopback request on a single-user Station.
+        Does not read or return the token. Team mode and remote requests
+        report available false.
+      tags: [github]
+      responses:
+        "200":
+          description: Whether a host login was found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HostGitHubLogin"
+        default:
+          $ref: "#/components/responses/DefaultError"
+    post:
+      operationId: useHostGitHubLogin
+      summary: Store this computer's gh login after confirmation
+      description: >-
+        Reads gh auth token only for this request, and only on a loopback
+        single-user Station. The token is stored encrypted and is not
+        returned.
+      tags: [github]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UseHostGitHubRequest"
+      responses:
+        "200":
+          description: Stored connection metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitHubConnection"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /github/connection/token:
+    post:
+      operationId: connectGitHubToken
+      summary: Store a GitHub token the caller already holds
+      description: >-
+        The CLI uses this after the person confirms, including when it read
+        gh on their own computer. The token is verified, stored encrypted,
+        and not returned.
+      tags: [github]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectGitHubTokenRequest"
+      responses:
+        "200":
+          description: Stored connection metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitHubConnection"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /github/connection/device:
+    post:
+      operationId: beginGitHubDevice
+      summary: Start the GitHub device authorization flow
+      tags: [github]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BeginGitHubDeviceRequest"
+      responses:
+        "200":
+          description: The code to enter on GitHub. The device code is not included.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitHubDevice"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+        default:
+          $ref: "#/components/responses/DefaultError"
+    get:
+      operationId: pollGitHubDevice
+      summary: Pick up a GitHub device authorization
+      tags: [github]
+      responses:
+        "200":
+          description: pending, connected, denied, or expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitHubDeviceStatus"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/DefaultError"
+    delete:
+      operationId: cancelGitHubDevice
+      summary: Cancel the signed-in user's GitHub device authorization
+      tags: [github]
+      responses:
+        "204":
+          description: The in-memory device authorization is gone
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /github/repos:
+    get:
+      operationId: searchGitHubRepos
+      summary: Search repositories the GitHub connection can access
+      description: Includes private repositories the login can access. No token is returned.
+      tags: [github]
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 256
+      responses:
+        "200":
+          description: Matching repositories
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitHubRepoPage"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+        default:
+          $ref: "#/components/responses/DefaultError"
   /projects:
     post:
       operationId: createProject
@@ -3763,6 +3974,87 @@ components:
             $ref: "#/components/schemas/Secret"
         nextCursor:
           type: string
+    GitHubConnection:
+      type: object
+      required: [connected, deviceFlow]
+      description: GitHub connection metadata. The token is never included.
+      properties:
+        connected: { type: boolean }
+        deviceFlow:
+          type: boolean
+          description: True when this Station can start the GitHub device flow.
+        login: { type: string }
+        status:
+          type: string
+          enum: [active, needs_reconnect]
+        reason:
+          type: string
+          enum: [invalid, expired, missing_access]
+        scopes: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        resourceVersion: { type: integer, format: int64, minimum: 1 }
+    DisconnectGitHubRequest:
+      type: object
+      required: [expectedResourceVersion]
+      properties:
+        expectedResourceVersion: { type: integer, format: int64, minimum: 1 }
+    UseHostGitHubRequest:
+      type: object
+      required: [expectedResourceVersion]
+      properties:
+        expectedResourceVersion: { type: integer, format: int64, minimum: 0 }
+    ConnectGitHubTokenRequest:
+      type: object
+      required: [token, expectedResourceVersion]
+      properties:
+        token: { type: string, minLength: 8, maxLength: 2048 }
+        expectedResourceVersion: { type: integer, format: int64, minimum: 0 }
+    BeginGitHubDeviceRequest:
+      type: object
+      required: [expectedResourceVersion]
+      properties:
+        expectedResourceVersion: { type: integer, format: int64, minimum: 0 }
+    HostGitHubLogin:
+      type: object
+      required: [available]
+      properties:
+        available: { type: boolean }
+        login: { type: string }
+    GitHubDevice:
+      type: object
+      required: [userCode, verificationUri, expiresAt, intervalSeconds]
+      properties:
+        userCode: { type: string }
+        verificationUri: { type: string }
+        expiresAt: { type: string, format: date-time }
+        intervalSeconds: { type: integer, minimum: 1 }
+    GitHubDeviceStatus:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [pending, connected, denied, expired]
+        connection:
+          $ref: "#/components/schemas/GitHubConnection"
+    GitHubRepo:
+      type: object
+      required: [fullName, private, url]
+      properties:
+        fullName: { type: string }
+        private: { type: boolean }
+        description: { type: string }
+        defaultBranch: { type: string }
+        url: { type: string }
+    GitHubRepoPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/GitHubRepo"
     ProjectEnvironment:
       type: object
       required: [enabled, generation, setup, imageReference, resourceVersion]

@@ -7,6 +7,7 @@ import { queries } from "../api/queries";
 import type { Profile, ProviderConnection } from "../api/generated/types.gen";
 import { harnessName } from "../shell/capsuleActivity";
 import { desktopBridge } from "../shell/desktop";
+import { GitHubConnect, githubConnectionQuery } from "./GitHubConnect";
 import { connectionSupports } from "./ProviderConnections";
 import { HarnessMark } from "./ui/HarnessMark";
 
@@ -76,17 +77,19 @@ export function ImportThisComputer({ profile }: { profile?: Profile }) {
   );
 }
 
-// The three first-run steps. A step is done only from server state, so the
+// The first-run steps. A step is done only from server state, so the
 // page never claims to have found anything on this computer.
 export function FirstRun({ openNewProject }: { openNewProject?: () => void }) {
   const profile = useQuery({ ...profileQuery, refetchInterval: (query) => (query.state.data?.setups.length ? false : 5000) });
   const connections = useQuery({ queryKey: ["provider-connections"], queryFn: api.providerConnections });
+  const github = useQuery(githubConnectionQuery);
   const imported = (profile.data?.setups.length ?? 0) > 0;
   const connected = connections.data?.items.some((item) => !item.revoked && !item.needsSignIn) ?? false;
+  const githubReady = github.data?.status === "active";
   return (
     <section className="home empty-state first-run" aria-label="Get started">
       <h1>Bring your setup</h1>
-      <p>Three steps, and every new Capsule starts the way your computer does.</p>
+      <p>Four steps, and every new Capsule starts the way your computer does.</p>
       <ol className="first-run-steps">
         <li className={imported ? "is-done" : undefined}>
           <h2>Import this computer</h2>
@@ -103,6 +106,14 @@ export function FirstRun({ openNewProject }: { openNewProject?: () => void }) {
                 <Link to="/ui/settings/harnesses#provider-connections">Connect a provider</Link>
               </p>
             </>
+          )}
+        </li>
+        <li className={githubReady ? "is-done" : undefined}>
+          <h2>Connect GitHub</h2>
+          {githubReady ? (
+            <p className="is-ready">Connected as @{github.data?.login}.</p>
+          ) : (
+            <GitHubConnect />
           )}
         </li>
         <li>

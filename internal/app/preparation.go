@@ -295,27 +295,10 @@ func (s *Service) GetPreparation(ctx context.Context, id domain.CapsuleID) (doma
 	return p, err
 }
 
-// preparationGitCredential resolves the Capsule owner's Git secret name.
+// preparationGitCredential resolves the one-shot clone grant: a named
+// git_https secret, or the owner's active GitHub connection.
 func (r *Reconciler) preparationGitCredential(ctx context.Context, owner domain.UserID, name string) (*ports.GitHTTPSCredential, error) {
-	if name == "" {
-		return nil, nil
-	}
-	var secret domain.Secret
-	if err := r.store.View(ctx, func(reader ports.Reader) error {
-		var err error
-		secret, err = reader.GetSecret(ctx, owner, name)
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	if secret.Purpose != domain.SecretGitHTTPS || r.secretKey == nil {
-		return nil, domain.ErrInvalid
-	}
-	payload, err := r.secretKey.Open(secret)
-	if err != nil {
-		return nil, err
-	}
-	return &ports.GitHTTPSCredential{Username: payload.Username, Password: payload.Password}, nil
+	return openCloneCredential(ctx, r.store, r.secretKey, owner, name)
 }
 
 func (r *Reconciler) preparationContext(parent context.Context, id domain.CapsuleID) (context.Context, context.CancelFunc) {

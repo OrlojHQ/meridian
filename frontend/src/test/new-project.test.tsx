@@ -49,7 +49,12 @@ describe("NewProjectDialog", () => {
     localStorage.clear();
   });
 
+  function disconnected() {
+    vi.spyOn(api, "githubConnection").mockResolvedValue({ connected: false, deviceFlow: true });
+  }
+
   it("preselects the first installation pack", () => {
+    disconnected();
     renderDialog();
     expect(harnessSelect()).toHaveValue("opencode");
     expect(screen.getByRole("option", { name: "opencode" })).toHaveValue("opencode");
@@ -58,18 +63,21 @@ describe("NewProjectDialog", () => {
   });
 
   it("preselects the harness remembered from the last Project", () => {
+    disconnected();
     localStorage.setItem(preferenceKey, "claude");
     renderDialog();
     expect(harnessSelect()).toHaveValue("claude");
   });
 
   it("falls back to catalog order when the remembered harness is gone", () => {
+    disconnected();
     localStorage.setItem(preferenceKey, "retired-agent");
     renderDialog();
     expect(harnessSelect()).toHaveValue("opencode");
   });
 
   it("remembers only the harness name after a successful create", async () => {
+    disconnected();
     const create = vi.spyOn(api, "createProject").mockResolvedValue(project);
     const user = userEvent.setup();
     const { onClose } = renderDialog();
@@ -87,6 +95,7 @@ describe("NewProjectDialog", () => {
   });
 
   it("does not remember a choice when creation fails", async () => {
+    disconnected();
     vi.spyOn(api, "createProject").mockRejectedValue(new Error("conflict"));
     const user = userEvent.setup();
     renderDialog();
@@ -100,6 +109,7 @@ describe("NewProjectDialog", () => {
   });
 
   it("works when browser storage throws", async () => {
+    disconnected();
     vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
       throw new DOMException("denied", "SecurityError");
     });
@@ -135,6 +145,7 @@ describe("NewProjectDialog", () => {
   });
 
   it("sends owner/repo and a clone token when the repository is private", async () => {
+    disconnected();
     const create = vi.spyOn(api, "createProject").mockResolvedValue(project);
     const secret = {
       id: "secret-1",
@@ -150,9 +161,10 @@ describe("NewProjectDialog", () => {
     const { onClose } = renderDialog();
 
     expect(screen.queryByRole("checkbox", { name: "Private repository" })).not.toBeInTheDocument();
-    await user.type(screen.getByLabelText(/Repository URL/), "OrlojHQ/meridian");
+    await user.type(screen.getByLabelText(/^Repository/), "OrlojHQ/meridian");
     expect(screen.getByText("Stored as HTTPS.")).toBeInTheDocument();
     expect(screen.queryByLabelText("GitHub token")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Use a token instead" }));
     await user.click(screen.getByRole("checkbox", { name: "Private repository" }));
     await user.type(screen.getByLabelText("GitHub token"), "ghp_exampletoken");
     await user.type(screen.getByLabelText("Project name"), "Meridian");
@@ -174,17 +186,18 @@ describe("NewProjectDialog", () => {
   });
 
   it("sends a GitHub SSH URL and skips the token until the repository is private", async () => {
+    disconnected();
     const create = vi.spyOn(api, "createProject").mockResolvedValue(project);
     const put = vi.spyOn(api, "putGitHTTPSSecret");
     const user = userEvent.setup();
     renderDialog();
 
     await user.type(
-      screen.getByLabelText(/Repository URL/),
+      screen.getByLabelText(/^Repository/),
       "git@github.com:OrlojHQ/meridian.git",
     );
     expect(screen.getByText("Stored as HTTPS.")).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: "Private repository" })).not.toBeChecked();
+    expect(screen.queryByRole("checkbox", { name: "Private repository" })).not.toBeInTheDocument();
     await user.type(screen.getByLabelText("Project name"), "Meridian");
     await user.click(screen.getByRole("button", { name: "Create Project" }));
 
@@ -197,6 +210,7 @@ describe("NewProjectDialog", () => {
   });
 
   it("drops the clone token when creating the Project fails", async () => {
+    disconnected();
     vi.spyOn(api, "createProject").mockRejectedValue(new Error("conflict"));
     const secret = {
       id: "secret-1",
@@ -211,7 +225,8 @@ describe("NewProjectDialog", () => {
     const user = userEvent.setup();
     renderDialog();
 
-    await user.type(screen.getByLabelText(/Repository URL/), "ssh://git@github.com/OrlojHQ/meridian.git");
+    await user.type(screen.getByLabelText(/^Repository/), "ssh://git@github.com/OrlojHQ/meridian.git");
+    await user.click(screen.getByRole("button", { name: "Use a token instead" }));
     await user.click(screen.getByRole("checkbox", { name: "Private repository" }));
     await user.type(screen.getByLabelText("GitHub token"), "ghp_exampletoken");
     await user.type(screen.getByLabelText("Project name"), "Meridian");
@@ -220,5 +235,42 @@ describe("NewProjectDialog", () => {
     expect(await screen.findByRole("alert")).toBeInTheDocument();
     expect(remove).toHaveBeenCalledWith(expect.stringMatching(/^git_[0-9a-f]{32}$/), 4);
     expect(JSON.stringify(remove.mock.calls)).not.toContain("ghp_exampletoken");
+  });
+
+  it("fills a private repository from the picker without a token", async () => {
+    vi.spyOn(api, "githubConnection").mockResolvedValue({
+      connected: true,
+      deviceFlow: true,
+      login: "octocat",
+      status: "active",
+      resourceVersion: 2,
+    });
+    vi.spyOn(api, "searchGitHubRepos").mockResolvedValue({
+      items: [{
+        fullName: "octocat/hidden",
+        private: true,
+        description: "Secret notes",
+        defaultBranch: "main",
+        url: "https://github.com/octocat/hidden",
+      }],
+    });
+    const create = vi.spyOn(api, "createProject").mockResolvedValue(project);
+    const put = vi.spyOn(api, "putGitHTTPSSecret");
+    const user = userEvent.setup();
+    renderDialog();
+
+    await user.click(screen.getByLabelText(/^Repository/));
+    await user.click(await screen.findByRole("option", { name: /octocat\/hidden/ }));
+    expect(screen.getByLabelText(/^Repository/)).toHaveValue("https://github.com/octocat/hidden");
+    expect(screen.queryByLabelText("GitHub token")).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText("Project name"), "Hidden");
+    await user.click(screen.getByRole("button", { name: "Create Project" }));
+
+    await waitFor(() => expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      name: "Hidden",
+      repositoryUrl: "https://github.com/octocat/hidden",
+    })));
+    expect(put).not.toHaveBeenCalled();
+    expect(JSON.stringify(create.mock.calls)).not.toContain("gitSecretName");
   });
 });

@@ -66,6 +66,20 @@ func encodeBeginClaudeLoginRequest(
 	return nil
 }
 
+func encodeBeginGitHubDeviceRequest(
+	req *BeginGitHubDeviceRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodeCancelRunRequest(
 	req *LifecycleMutationRequest,
 	r *http.Request,
@@ -138,6 +152,20 @@ func encodeCompleteClaudeLoginRequest(
 
 func encodeCompleteMemberIdentityRebindRequest(
 	req *CompleteMemberIdentityRebindReq,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeConnectGitHubTokenRequest(
+	req *ConnectGitHubTokenRequest,
 	r *http.Request,
 ) error {
 	const contentType = "application/json"
@@ -306,6 +334,20 @@ func encodeDeleteThreadRequest(
 
 func encodeDenyCoordinationRequestRequest(
 	req *DecideCoordinationRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeDisconnectGitHubRequest(
+	req *DisconnectGitHubRequest,
 	r *http.Request,
 ) error {
 	const contentType = "application/json"
@@ -796,6 +838,20 @@ func encodeUpdateProjectEnvironmentRequest(
 
 func encodeUpdateProviderConnectionRequest(
 	req *ProviderConnectionRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeUseHostGitHubLoginRequest(
+	req *UseHostGitHubRequest,
 	r *http.Request,
 ) error {
 	const contentType = "application/json"

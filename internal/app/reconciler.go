@@ -340,26 +340,11 @@ func (r *Reconciler) reconcile(ctx context.Context, id domain.CapsuleID) error {
 			Setup:          append([]string(nil), project.Setup...),
 			ImageReference: capsule.WorkspaceImage(project),
 		})
-		if project.GitSecretName != "" {
-			var secret domain.Secret
-			if err := r.store.View(ctx, func(reader ports.Reader) error {
-				var err error
-				secret, err = reader.GetSecret(ctx, project.OwnerUserID, project.GitSecretName)
-				return err
-			}); err != nil {
-				return fmt.Errorf("resolve project Git secret: %w", err)
-			}
-			if secret.Purpose != domain.SecretGitHTTPS || r.secretKey == nil {
-				return fmt.Errorf("%w: project Git secret purpose mismatch", domain.ErrInvalid)
-			}
-			payload, err := r.secretKey.Open(secret)
-			if err != nil {
-				return fmt.Errorf("resolve project Git secret: %w", err)
-			}
-			createRequest.GitCredential = &ports.GitHTTPSCredential{
-				Username: payload.Username, Password: payload.Password,
-			}
+		credential, err := openCloneCredential(ctx, r.store, r.secretKey, project.OwnerUserID, project.GitSecretName)
+		if err != nil {
+			return fmt.Errorf("resolve project Git secret: %w", err)
 		}
+		createRequest.GitCredential = credential
 		if capsule.OriginMomentID != "" {
 			var origin domain.Moment
 			if err := r.store.View(ctx, func(reader ports.Reader) error {

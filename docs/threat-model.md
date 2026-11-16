@@ -189,6 +189,16 @@ exact-repository, exact-ref, one-shot grant; GitHub pull-request API authority
 stays host-side. Temporary material is revoked or discarded after its single
 operation and omitted from command arguments and ambient credential helpers.
 
+An owner may also store one GitHub connection (ADR 0051). It is a separate
+envelope, not a secret that can be named for more than one purpose. When a
+Project does not name a secret for clone, push, or pull request, the station
+uses that connection for the missing purpose and still issues only a one-shot
+git grant or a host-side pull request. A named secret wins. The station reads
+the host `gh` token only after the owner confirms, and only for a loopback
+request on a single-user Station. The device-flow device code stays in
+memory. The connection token is never returned by the API or placed in a
+Capsule environment.
+
 Deleting a Project destroys named secrets that no other live Project still
 names (ADR 0039). The live row is removed, including ciphertext, nonce, and
 envelope metadata. A secret another live Project still names is kept. The

@@ -382,7 +382,9 @@ func (s *Service) executeDelivery(
 	}
 
 	if result.State == domain.DeliveryPushing {
-		payload, err := s.resolveSecret(ctx, project.OwnerUserID, project.GitPushSecretName, domain.SecretGitPush)
+		payload, _, err := s.resolveDeliveryCredential(
+			ctx, project.OwnerUserID, project.GitPushSecretName, domain.SecretGitPush,
+		)
 		if err != nil {
 			return fail(err)
 		}
@@ -420,7 +422,7 @@ func (s *Service) executeDelivery(
 		if err != nil {
 			return fail(err)
 		}
-		payload, err := s.resolveSecret(
+		payload, fromConnection, err := s.resolveDeliveryCredential(
 			ctx, project.OwnerUserID, project.GitHubAPISecretName, domain.SecretGitHubAPI,
 		)
 		if err != nil {
@@ -433,6 +435,9 @@ func (s *Service) executeDelivery(
 		)
 		if findErr != nil {
 			token = ""
+			if fromConnection {
+				s.noteGitHubFailure(ctx, project.OwnerUserID, findErr)
+			}
 			return fail(findErr)
 		}
 		var pullRequest PullRequest
@@ -450,6 +455,9 @@ func (s *Service) executeDelivery(
 			})
 			if err != nil {
 				token = ""
+				if fromConnection {
+					s.noteGitHubFailure(ctx, project.OwnerUserID, err)
+				}
 				return fail(err)
 			}
 		}
@@ -529,17 +537,14 @@ func validateCreateDelivery(input CreateDeliveryInput) error {
 	return nil
 }
 
-func validateDeliveryProject(project domain.Project, action domain.DeliveryAction) error {
-	if project.RepositoryURL == "" || project.GitPushSecretName == "" {
-		return fmt.Errorf("%w: Project delivery repository and git_push secret are required", domain.ErrIllegalTransition)
+func validateDeliveryProject(project domain.Project, _ domain.DeliveryAction) error {
+	if project.RepositoryURL == "" {
+		return fmt.Errorf("%w: Project delivery repository is required", domain.ErrIllegalTransition)
 	}
 	repository, err := url.Parse(project.RepositoryURL)
 	if err != nil || repository.Scheme != "https" || repository.Host == "" ||
 		repository.User != nil || repository.RawQuery != "" || repository.Fragment != "" {
 		return fmt.Errorf("%w: Delivery requires a credential-free HTTPS repository", domain.ErrIllegalTransition)
-	}
-	if action == domain.DeliveryOpenPullRequest && project.GitHubAPISecretName == "" {
-		return fmt.Errorf("%w: Project github_api secret is required", domain.ErrIllegalTransition)
 	}
 	return nil
 }
@@ -547,23 +552,35 @@ func validateDeliveryProject(project domain.Project, action domain.DeliveryActio
 func (s *Service) validateDeliverySecrets(
 	ctx context.Context, project domain.Project, action domain.DeliveryAction,
 ) error {
+	if err := s.requireDeliveryCredential(ctx, project.OwnerUserID, project.GitPushSecretName, domain.SecretGitPush); err != nil {
+		return err
+	}
+	if action != domain.DeliveryOpenPullRequest {
+		return nil
+	}
+	return s.requireDeliveryCredential(ctx, project.OwnerUserID, project.GitHubAPISecretName, domain.SecretGitHubAPI)
+}
+
+func (s *Service) requireDeliveryCredential(
+	ctx context.Context, owner domain.UserID, name string, purpose domain.SecretPurpose,
+) error {
+	if name == "" {
+		connection, found, err := s.loadGitHubConnection(ctx, owner)
+		if err != nil {
+			return err
+		}
+		if !found || !connection.Active() {
+			return fmt.Errorf("%w: GitHub connection or a %s secret is required", domain.ErrIllegalTransition, purpose)
+		}
+		return nil
+	}
 	return s.store.View(ctx, func(reader ports.Reader) error {
-		push, err := reader.GetSecret(ctx, project.OwnerUserID, project.GitPushSecretName)
+		secret, err := reader.GetSecret(ctx, owner, name)
 		if err != nil {
 			return err
 		}
-		if push.Purpose != domain.SecretGitPush {
-			return fmt.Errorf("%w: git push secret purpose mismatch", domain.ErrInvalid)
-		}
-		if action != domain.DeliveryOpenPullRequest {
-			return nil
-		}
-		github, err := reader.GetSecret(ctx, project.OwnerUserID, project.GitHubAPISecretName)
-		if err != nil {
-			return err
-		}
-		if github.Purpose != domain.SecretGitHubAPI {
-			return fmt.Errorf("%w: GitHub API secret purpose mismatch", domain.ErrInvalid)
+		if secret.Purpose != purpose {
+			return fmt.Errorf("%w: secret purpose mismatch", domain.ErrInvalid)
 		}
 		return nil
 	})

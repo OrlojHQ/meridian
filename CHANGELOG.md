@@ -7,6 +7,20 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Connect GitHub once (ADR 0051, #197). Home, Settings, and
+  `meridian github connect` store one owner-bound login. Clone, push, and
+  pull requests use it when a Project does not name its own `git_https`,
+  `git_push`, or `github_api` secret. Those secrets still win when they are
+  set. A loopback single-user Station can reuse this computer's `gh` login
+  after you confirm; otherwise the GitHub device flow shows a code. New
+  Project searches repositories, including private ones, and keeps "Use a
+  token instead." An invalid, expired, or under-scoped login shows
+  Reconnect GitHub. The device flow needs
+  `--github-oauth-client-id` or `MERIDIAN_GITHUB_OAUTH_CLIENT_ID`. No client
+  id is shipped.
+
 ## [0.10.1] - 2026-11-15
 
 ### Upgrade notes
