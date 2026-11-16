@@ -17,7 +17,7 @@ jobs:
   verify:
     name: Verify release source
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - name: Checkout complete history
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -46,8 +46,12 @@ jobs:
           make helm-test
           git diff --exit-code
           git diff --check
+      # Same limits as ci.yml: race instrumentation makes the pure-Go SQLite
+      # migrations in each fresh test fixture expensive, and the app package
+      # can exceed Go's default 10-minute limit on shared runners while
+      # individual tests still finish in seconds.
       - name: Race test
-        run: go test -race ./... -count=1
+        run: go test -race ./... -count=1 -timeout=20m
       - name: Vulnerability check
         run: make vulncheck
 
