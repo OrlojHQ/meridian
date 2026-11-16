@@ -5,6 +5,8 @@ import { api, normalizeAPIError } from "../api/client";
 import type { HarnessImage, IsolationClass, Project } from "../api/generated/types.gen";
 import { projectHarnessImage } from "../api/harnessPacks";
 import { githubConnectionQuery } from "./GitHubConnect";
+import { RepositoryAccessNotice } from "./RepositoryAccess";
+import { isRepositoryAccessFailure } from "./startup";
 import { isGitHubRepositoryInput } from "./repositoryUrl";
 import { Button } from "./ui/Button";
 import { Dialog } from "./ui/Dialog";
@@ -352,11 +354,16 @@ export function NewProjectDialog({
           {mutation.isPending ? "Creating…" : "Create Project"}
         </Button>
       </form>
-      {mutation.isError && (
+      {mutation.isError && isRepositoryAccessFailure({
+        failure: normalizeAPIError(mutation.error).message,
+        failureCode: normalizeAPIError(mutation.error).code,
+      }) ? (
+        <RepositoryAccessNotice message={normalizeAPIError(mutation.error).message} />
+      ) : mutation.isError ? (
         <p className="inline-error" role="alert">
           {normalizeAPIError(mutation.error).message}
         </p>
-      )}
+      ) : null}
     </Dialog>
   );
 }

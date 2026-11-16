@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,16 +15,18 @@ import (
 	"github.com/OrlojHQ/meridian/internal/ports"
 	"github.com/OrlojHQ/meridian/internal/secrets"
 	"github.com/OrlojHQ/meridian/internal/store/sqlite"
+	"github.com/OrlojHQ/meridian/internal/testutil/fakeprovider"
 )
 
 type fakeGitHubOAuth struct {
-	login  string
-	scopes string
-	token  string
-	device githubauth.DeviceCode
-	poll   githubauth.DevicePoll
-	repos  []githubauth.Repo
-	users  int
+	login       string
+	scopes      string
+	token       string
+	device      githubauth.DeviceCode
+	poll        githubauth.DevicePoll
+	repos       []githubauth.Repo
+	users       int
+	probeStatus int
 }
 
 func (f *fakeGitHubOAuth) RequestDeviceCode(context.Context, string) (githubauth.DeviceCode, error) {
@@ -40,6 +44,13 @@ func (f *fakeGitHubOAuth) CurrentUser(context.Context, string) (githubauth.Accou
 
 func (f *fakeGitHubOAuth) ListRepos(context.Context, string, string) ([]githubauth.Repo, error) {
 	return f.repos, nil
+}
+
+func (f *fakeGitHubOAuth) ProbeRepository(context.Context, string, string, string) (int, bool, error) {
+	if f.probeStatus != 0 {
+		return f.probeStatus, false, nil
+	}
+	return 200, false, nil
 }
 
 type fakeGitHubHost struct {
@@ -306,5 +317,94 @@ func TestMissingRepoScopeNeedsReconnect(t *testing.T) {
 	state, err := service.ConnectGitHubToken(ctx, "gho_limitedtokenvalue", 0, "limited")
 	if err != nil || state.Status != domain.GitHubConnectionNeedsReconnect || state.Reason != domain.GitHubReasonMissingAccess {
 		t.Fatalf("state = %+v, %v", state, err)
+	}
+}
+
+func TestPrivateGitHubRepositoryIsRefusedBeforeTheProjectExists(t *testing.T) {
+	ctx := operatorContext()
+	dir := t.TempDir()
+	store, err := sqlite.Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	service := app.NewService(store, &testClock{now: time.Date(2026, 11, 16, 0, 0, 0, 0, time.UTC)}, &testIDs{}, &recordingQueue{})
+	key, err := secrets.OpenOrCreateKey(secrets.DefaultKeyPath(dir), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(key.Zero)
+	service.ConfigureSecrets(key)
+	service.ConfigureGitHub("", nil, &fakeGitHubOAuth{probeStatus: http.StatusNotFound})
+	_, err = service.CreateProjectConfigured(ctx, "hidden", app.ProjectConfiguration{
+		RepositoryURL: "https://github.com/octocat/hidden",
+	}, "hidden-project")
+	var access *domain.RepositoryAccessError
+	if !errors.As(err, &access) || access.Error() != "Meridian couldn't access octocat/hidden. It may be private." {
+		t.Fatalf("create = %v", err)
+	}
+	if strings.Contains(err.Error(), "://") {
+		t.Fatal("access error included a URL")
+	}
+	page, err := service.ListProjects(ctx, 0, 10)
+	if err != nil || len(page.Items) != 0 {
+		t.Fatalf("projects = %+v, %v", page.Items, err)
+	}
+}
+
+func TestRepositoryAccessIsNotRetried(t *testing.T) {
+	ctx, cancel := context.WithCancel(operatorContext())
+	t.Cleanup(cancel)
+	store, err := sqlite.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	clock := &testClock{now: time.Date(2026, 11, 16, 0, 0, 0, 0, time.UTC)}
+	ids := &testIDs{}
+	provider := fakeprovider.New(fakeprovider.Options{
+		CreateHook: func(context.Context, ports.CreateCapsuleRequest) error {
+			return domain.RepositoryAccessFromURL("https://github.com/octocat/hidden.git")
+		},
+	})
+	reconciler := app.NewReconciler(store, provider, clock, ids)
+	reconciler.Start(ctx)
+	t.Cleanup(reconciler.Close)
+	service := app.NewService(store, clock, ids, reconciler)
+	now := clock.Now()
+	project := domain.Project{
+		OwnerUserID: domain.BootstrapOwnerID, ID: "project-hidden", Name: "hidden",
+		RepositoryURL: "https://github.com/octocat/hidden",
+		CreatedAt:     now, UpdatedAt: now, ResourceVersion: 1,
+	}
+	capsule := domain.Capsule{
+		ID: "capsule-hidden", ProjectID: project.ID, Name: "hidden",
+		State: domain.CapsuleCreating, DesiredState: domain.IntentReady,
+		CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
+	}
+	if err := store.Transact(ctx, func(tx ports.Transaction) error {
+		if err := tx.InsertProject(ctx, project); err != nil {
+			return err
+		}
+		return tx.InsertCapsule(ctx, capsule)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := reconciler.Enqueue(ctx, capsule.ID); err != nil {
+		t.Fatal(err)
+	}
+	failed := awaitCapsuleState(t, service, capsule.ID, func(item domain.Capsule) bool {
+		return item.State == domain.CapsuleFailed
+	})
+	if failed.FailureCode != domain.RepositoryAccess ||
+		failed.Failure != "Meridian couldn't access octocat/hidden. It may be private." {
+		t.Fatalf("failure = %q %q", failed.FailureCode, failed.Failure)
+	}
+	if strings.Contains(failed.Failure, "://") || strings.Contains(failed.Failure, "@") {
+		t.Fatalf("failure leaked a credential or URL: %q", failed.Failure)
+	}
+	time.Sleep(80 * time.Millisecond)
+	if calls := provider.Calls("create"); calls != 1 {
+		t.Fatalf("create calls = %d, want 1", calls)
 	}
 }

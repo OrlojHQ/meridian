@@ -57,6 +57,17 @@ For each of clone, push, and pull request:
    `active`.
 3. With neither, clone stays anonymous. Push and pull request are refused.
 
+A clone that cannot authenticate is terminal. That includes a missing
+credential for a private or inaccessible repository, HTTP 401, 403, or 404
+from git or the GitHub API, and the "could not read Username",
+"Authentication failed", and "Repository not found" families. The reconciler
+does not retry it. The stored failure code is `repository_access` and the
+text is "Meridian couldn't access owner/repo. It may be private." Git stderr
+is not stored. Creating a Project on github.com with no named `git_https`
+secret probes that repository first and refuses with the same error when
+GitHub says it cannot be read. A probe that cannot reach GitHub does not
+block creation; the clone is still classified if it fails.
+
 Clone and push still receive one one-shot HTTPS grant for that git process.
 The pull request is still opened by `meridiand`. The connection token is not
 placed in a Capsule environment, a command argument, a log, or an API

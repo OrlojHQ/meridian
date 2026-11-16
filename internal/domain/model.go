@@ -954,6 +954,9 @@ var (
 	// It is not a lifecycle transition: Changes must not show
 	// ErrIllegalTransition for capsuled git_failed.
 	ErrWorkspaceGit = errors.New("workspace git command failed")
+	// ErrRepositoryAccess is a clone the station must not retry. The public
+	// message names the repository and never includes git output.
+	ErrRepositoryAccess = errors.New("repository access denied")
 	// ErrWorkspaceNoRepository is a workspace with no Git repository, such as
 	// a Project created without one. It is an ErrWorkspaceGit, so callers
 	// that only check for that keep working.
@@ -977,6 +980,8 @@ func MapCapsuleProtocolError(status int, code string) error {
 		return ErrWorkspaceGit
 	case "git_no_repository":
 		return ErrWorkspaceNoRepository
+	case "repository_access":
+		return ErrRepositoryAccess
 	case "models_unsupported", "effort_unsupported":
 		return ErrUnsupported
 	}

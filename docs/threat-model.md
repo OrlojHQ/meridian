@@ -197,7 +197,8 @@ git grant or a host-side pull request. A named secret wins. The station reads
 the host `gh` token only after the owner confirms, and only for a loopback
 request on a single-user Station. The device-flow device code stays in
 memory. The connection token is never returned by the API or placed in a
-Capsule environment.
+Capsule environment. A clone GitHub refuses is stored as a fixed sentence
+naming the repository, never git stderr, which can contain a credential URL.
 
 Deleting a Project destroys named secrets that no other live Project still
 names (ADR 0039). The live row is removed, including ciphertext, nonce, and

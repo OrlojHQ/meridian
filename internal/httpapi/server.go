@@ -2020,6 +2020,8 @@ func writeError(writer http.ResponseWriter, err error) {
 		status, code, message = http.StatusUnprocessableEntity, "no_repository", "this Capsule's workspace has no Git repository"
 	case errors.Is(err, domain.ErrWorkspaceGit):
 		status, code, message = http.StatusUnprocessableEntity, "git_failed", err.Error()
+	case errors.Is(err, domain.ErrRepositoryAccess):
+		status, code, message = http.StatusUnprocessableEntity, "repository_access", repositoryAccessMessage(err)
 	case errors.Is(err, domain.ErrUnsupported):
 		status, code, message = http.StatusUnprocessableEntity, "unsupported", err.Error()
 	case errors.Is(err, domain.ErrResourceExhausted):
@@ -2028,6 +2030,14 @@ func writeError(writer http.ResponseWriter, err error) {
 	writeJSON(writer, status, errorEnvelope{
 		Error: apiError{Code: code, Message: message},
 	})
+}
+
+func repositoryAccessMessage(err error) string {
+	var access *domain.RepositoryAccessError
+	if errors.As(err, &access) {
+		return access.Error()
+	}
+	return domain.RepositoryAccess.Message()
 }
 
 func writeJSON(writer http.ResponseWriter, status int, value any) {

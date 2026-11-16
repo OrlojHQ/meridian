@@ -411,9 +411,10 @@ export type ImagePullProgress = {
 };
 
 /**
- * Specific image-pull failure. Unset for failures that are not image pulls.
+ * Image-pull failure, or repository_access when a clone cannot read the repository. Git output is never copied into the failure text.
+ *
  */
-export type CapsuleFailureCode = 'registry_unreachable' | 'auth_required' | 'image_not_found';
+export type CapsuleFailureCode = 'registry_unreachable' | 'auth_required' | 'image_not_found' | 'repository_access';
 
 export type CapsuleState = 'Creating' | 'Preparing' | 'Ready' | 'Paused' | 'Failed' | 'Sealed' | 'Deleting' | 'Deleted';
 

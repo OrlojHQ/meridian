@@ -94,6 +94,31 @@ describe("NewProjectDialog", () => {
     expect(localStorage.getItem(preferenceKey)).toBe("codex");
   });
 
+  it("asks to connect GitHub when the repository cannot be read", async () => {
+    disconnected();
+    vi.spyOn(api, "createProject").mockRejectedValue({
+      error: {
+        code: "repository_access",
+        message: "Meridian couldn't access octocat/hidden. It may be private.",
+      },
+    });
+    const user = userEvent.setup();
+    renderDialog();
+    await user.type(screen.getByLabelText(/^Repository/), "https://github.com/octocat/hidden");
+    await user.type(screen.getByLabelText("Project name"), "Hidden");
+    await user.click(screen.getByRole("button", { name: "Create Project" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Meridian couldn't access octocat/hidden. It may be private.",
+    );
+    const links = screen.getAllByRole("link", { name: "Connect GitHub" });
+    expect(links.length).toBeGreaterThan(0);
+    for (const link of links) {
+      expect(link).toHaveAttribute("href", "/ui/settings/account#github");
+    }
+    expect(screen.getByRole("button", { name: "Add a token" })).toBeInTheDocument();
+    expect(screen.queryByText(/internal server error/i)).not.toBeInTheDocument();
+  });
+
   it("does not remember a choice when creation fails", async () => {
     disconnected();
     vi.spyOn(api, "createProject").mockRejectedValue(new Error("conflict"));

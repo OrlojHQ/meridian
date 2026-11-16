@@ -259,6 +259,12 @@ export const api = {
       headers: idempotencyHeaders(),
       body: { expectedResourceVersion },
     })),
+  connectGitHubToken: (token: string, expectedResourceVersion: number) =>
+    call<GitHubConnection>(connectGitHubToken({
+      ...generatedOptions(),
+      headers: idempotencyHeaders(),
+      body: { token, expectedResourceVersion },
+    })),
   searchGitHubRepos: (q: string, signal?: AbortSignal) =>
     call<GitHubRepoPage>(searchGitHubRepos({ ...generatedOptions(signal), query: { q } })),
   baseUrl,

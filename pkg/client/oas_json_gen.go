@@ -3315,6 +3315,8 @@ func (s *CapsuleFailureCode) Decode(d *jx.Decoder) error {
 		*s = CapsuleFailureCodeAuthRequired
 	case CapsuleFailureCodeImageNotFound:
 		*s = CapsuleFailureCodeImageNotFound
+	case CapsuleFailureCodeRepositoryAccess:
+		*s = CapsuleFailureCodeRepositoryAccess
 	default:
 		*s = CapsuleFailureCode(v)
 	}

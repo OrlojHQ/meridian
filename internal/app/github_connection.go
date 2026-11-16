@@ -22,6 +22,12 @@ type GitHubHost interface {
 	Token(context.Context) (string, error)
 }
 
+// RepositoryProbe asks GitHub whether a repository can be read. An empty
+// token is anonymous. A transport error is not an access denial.
+type RepositoryProbe interface {
+	ProbeRepository(context.Context, string, string, string) (int, bool, error)
+}
+
 // GitHubOAuth is the device flow and the repository listing. The device
 // code stays inside the service.
 type GitHubOAuth interface {
@@ -717,6 +723,82 @@ func reconnectReason(err error) (domain.GitHubConnectionReason, bool) {
 		return "", false
 	}
 	return parsed, true
+}
+
+func (s *Service) ensureGitHubRepositoryAccessible(ctx context.Context, repositoryURL, gitSecret string) error {
+	if gitSecret != "" {
+		return nil
+	}
+	probe, ok := s.githubOAuth.(RepositoryProbe)
+	if !ok || probe == nil {
+		return nil
+	}
+	ownerName, repoName, err := parseGitHubRepository(repositoryURL)
+	if err != nil {
+		return nil
+	}
+	token := ""
+	user, err := ownerOf(ctx)
+	if err != nil {
+		return err
+	}
+	connection, found, err := s.loadGitHubConnection(ctx, user)
+	if err != nil {
+		return err
+	}
+	if found && connection.Active() {
+		token, err = s.openGitHubToken(connection)
+		if err != nil {
+			return err
+		}
+		defer wipeString(&token)
+	}
+	status, _, err := probe.ProbeRepository(ctx, token, ownerName, repoName)
+	if err != nil || status == 0 {
+		return nil
+	}
+	if status == 401 && token != "" {
+		_ = s.markGitHubStatus(ctx, user, domain.GitHubConnectionNeedsReconnect, domain.GitHubReasonInvalid)
+	}
+	if status == 401 || status == 403 || status == 404 {
+		return &domain.RepositoryAccessError{Owner: ownerName, Name: repoName}
+	}
+	return nil
+}
+
+func (r *Reconciler) denyInaccessibleGitHub(ctx context.Context, repositoryURL string) error {
+	if r.repoProbe == nil {
+		return nil
+	}
+	ownerName, repoName, err := parseGitHubRepository(repositoryURL)
+	if err != nil {
+		return nil
+	}
+	status, _, err := r.repoProbe.ProbeRepository(ctx, "", ownerName, repoName)
+	if err != nil || status == 0 {
+		return nil
+	}
+	if status == 401 || status == 403 || status == 404 {
+		return &domain.RepositoryAccessError{Owner: ownerName, Name: repoName}
+	}
+	return nil
+}
+
+func (r *Reconciler) repositoryAccessFailure(ctx context.Context, capsule domain.Capsule) string {
+	var project domain.Project
+	err := r.store.View(ctx, func(reader ports.Reader) error {
+		var err error
+		project, err = reader.GetProject(ctx, capsule.ProjectID)
+		return err
+	})
+	if err != nil {
+		return domain.RepositoryAccess.Message()
+	}
+	ownerName, repoName, err := parseGitHubRepository(project.RepositoryURL)
+	if err != nil {
+		return domain.RepositoryAccess.Message()
+	}
+	return domain.RepositoryAccessMessage(ownerName, repoName)
 }
 
 func wipeString(value *string) {

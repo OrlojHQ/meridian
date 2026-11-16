@@ -20,6 +20,12 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   Reconnect GitHub. The device flow needs
   `--github-oauth-client-id` or `MERIDIAN_GITHUB_OAUTH_CLIENT_ID`. No client
   id is shipped.
+- A private or inaccessible GitHub repository with no usable credential
+  fails once, as `repository_access`, instead of retrying checkout.
+  The Capsule and the Thread say which repository could not be read and
+  offer Connect GitHub or a token. Creating that Project checks access
+  first. Git output is not stored or shown. Migration 0032 allows the
+  new failure code.
 
 ## [0.10.1] - 2026-11-15
 

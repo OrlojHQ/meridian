@@ -423,7 +423,9 @@ func run(ctx context.Context, config Config) error {
 	}
 	service := app.NewService(store, clock, ids, reconciler, runtime)
 	service.ConfigureSecrets(secretKey)
-	service.ConfigureGitHub(config.GitHubOAuthClientID, githubauth.HostCommands{}, githubauth.New(nil))
+	githubClient := githubauth.New(nil)
+	service.ConfigureGitHub(config.GitHubOAuthClientID, githubauth.HostCommands{}, githubClient)
+	reconciler.ConfigureRepositoryProbe(githubClient)
 	reconciler.ConfigureRuntimeRecovery(service.FailStoppedRuntimeRuns)
 	reconciler.OnCapsuleSettled(func(ctx context.Context, capsule domain.Capsule) {
 		_ = service.AdvanceProjectDeletion(ctx, capsule.ProjectID)

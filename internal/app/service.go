@@ -302,6 +302,9 @@ func (s *Service) CreateProjectConfigured(
 	if err := validateProjectConfiguration(config); err != nil {
 		return domain.Project{}, err
 	}
+	if err := s.ensureGitHubRepositoryAccessible(ctx, config.RepositoryURL, config.GitSecretName); err != nil {
+		return domain.Project{}, err
+	}
 	if err := requireIdempotency(idempotencyKey); err != nil {
 		return domain.Project{}, err
 	}

@@ -1503,7 +1503,8 @@ func (*CapsuleAcceptedHeaders) pauseCapsuleRes()  {}
 func (*CapsuleAcceptedHeaders) resumeCapsuleRes() {}
 func (*CapsuleAcceptedHeaders) retryCapsuleRes()  {}
 
-// Specific image-pull failure. Unset for failures that are not image pulls.
+// Image-pull failure, or repository_access when a clone cannot read the repository. Git output is
+// never copied into the failure text.
 // Ref: #/components/schemas/CapsuleFailureCode
 type CapsuleFailureCode string
 
@@ -1511,6 +1512,7 @@ const (
 	CapsuleFailureCodeRegistryUnreachable CapsuleFailureCode = "registry_unreachable"
 	CapsuleFailureCodeAuthRequired        CapsuleFailureCode = "auth_required"
 	CapsuleFailureCodeImageNotFound       CapsuleFailureCode = "image_not_found"
+	CapsuleFailureCodeRepositoryAccess    CapsuleFailureCode = "repository_access"
 )
 
 // AllValues returns all CapsuleFailureCode values.
@@ -1519,6 +1521,7 @@ func (CapsuleFailureCode) AllValues() []CapsuleFailureCode {
 		CapsuleFailureCodeRegistryUnreachable,
 		CapsuleFailureCodeAuthRequired,
 		CapsuleFailureCodeImageNotFound,
+		CapsuleFailureCodeRepositoryAccess,
 	}
 }
 
@@ -1530,6 +1533,8 @@ func (s CapsuleFailureCode) MarshalText() ([]byte, error) {
 	case CapsuleFailureCodeAuthRequired:
 		return []byte(s), nil
 	case CapsuleFailureCodeImageNotFound:
+		return []byte(s), nil
+	case CapsuleFailureCodeRepositoryAccess:
 		return []byte(s), nil
 	default:
 		return nil, errors.Errorf("invalid value: %q", s)
@@ -1547,6 +1552,9 @@ func (s *CapsuleFailureCode) UnmarshalText(data []byte) error {
 		return nil
 	case CapsuleFailureCodeImageNotFound:
 		*s = CapsuleFailureCodeImageNotFound
+		return nil
+	case CapsuleFailureCodeRepositoryAccess:
+		*s = CapsuleFailureCodeRepositoryAccess
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)

@@ -175,6 +175,29 @@ func (c *Client) CurrentUser(ctx context.Context, token string) (Account, error)
 	return Account{Login: response.Login, Scopes: header.Get("X-OAuth-Scopes")}, nil
 }
 
+// ProbeRepository reports the HTTP status of GET /repos/owner/name. An empty
+// token is anonymous. 404 is how GitHub hides a private repository from a
+// token that cannot see it. A transport failure is returned as err; the
+// status is then zero.
+func (c *Client) ProbeRepository(ctx context.Context, token, owner, name string) (int, bool, error) {
+	if !validSlug(owner) || !validSlug(name) {
+		return 0, false, errors.New("invalid repository")
+	}
+	endpoint := c.APIBase + "/repos/" + url.PathEscape(owner) + "/" + url.PathEscape(name)
+	var body struct {
+		Private bool `json:"private"`
+	}
+	_, err := c.getJSON(ctx, endpoint, token, &body)
+	if err == nil {
+		return http.StatusOK, body.Private, nil
+	}
+	var status *StatusError
+	if errors.As(err, &status) {
+		return status.Status, false, nil
+	}
+	return 0, false, err
+}
+
 func (c *Client) ListRepos(ctx context.Context, token, query string) ([]Repo, error) {
 	query = strings.TrimSpace(query)
 	var listed []repoItem

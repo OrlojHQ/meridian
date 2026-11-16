@@ -4201,8 +4201,10 @@ components:
           description: Omitted when the registry did not report a total.
     CapsuleFailureCode:
       type: string
-      description: Specific image-pull failure. Unset for failures that are not image pulls.
-      enum: [registry_unreachable, auth_required, image_not_found]
+      description: >
+        Image-pull failure, or repository_access when a clone cannot read the
+        repository. Git output is never copied into the failure text.
+      enum: [registry_unreachable, auth_required, image_not_found, repository_access]
     CapsuleState:
       type: string
       enum: [Creating, Preparing, Ready, Paused, Failed, Sealed, Deleting, Deleted]

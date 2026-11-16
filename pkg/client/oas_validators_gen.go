@@ -1021,6 +1021,8 @@ func (s CapsuleFailureCode) Validate() error {
 		return nil
 	case "image_not_found":
 		return nil
+	case "repository_access":
+		return nil
 	default:
 		return errors.Errorf("invalid value: %v", s)
 	}

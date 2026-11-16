@@ -155,11 +155,15 @@ const (
 	PullRegistryUnreachable PullFailureCode = "registry_unreachable"
 	PullAuthRequired        PullFailureCode = "auth_required"
 	PullImageNotFound       PullFailureCode = "image_not_found"
+	// RepositoryAccess is a clone the station will not retry. The repository
+	// is private, missing, or the credential was rejected. Git output is not
+	// kept.
+	RepositoryAccess PullFailureCode = "repository_access"
 )
 
 func (c PullFailureCode) Valid() bool {
 	switch c {
-	case "", PullRegistryUnreachable, PullAuthRequired, PullImageNotFound:
+	case "", PullRegistryUnreachable, PullAuthRequired, PullImageNotFound, RepositoryAccess:
 		return true
 	default:
 		return false
@@ -174,6 +178,8 @@ func (c PullFailureCode) Message() string {
 		return "The image registry requires authentication."
 	case PullImageNotFound:
 		return "The Capsule image was not found."
+	case RepositoryAccess:
+		return "Meridian couldn't access this repository. It may be private."
 	default:
 		return "The Capsule image could not be pulled."
 	}

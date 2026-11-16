@@ -42,8 +42,28 @@ export function isStarting(capsule: { state: Capsule["state"] }) {
   return capsule.state === "Creating" || capsule.state === "Preparing";
 }
 
+const repositoryAccessPrefix = "Meridian couldn't access ";
+
+export function isRepositoryAccessFailure(capsule: {
+  failure?: string;
+  failureCode?: string;
+}) {
+  return (
+    capsule.failureCode === "repository_access" ||
+    Boolean(capsule.failure?.startsWith(repositoryAccessPrefix))
+  );
+}
+
+export function repositoryAccessCopy(failure?: string) {
+  if (failure?.startsWith(repositoryAccessPrefix) && !failure.includes("://") && !failure.includes("@")) {
+    return failure;
+  }
+  return "Meridian couldn't access this repository. It may be private.";
+}
+
 export function canRetryStartup(capsule: Capsule) {
   if (capsule.state !== "Failed") return false;
   if (capsule.preparation?.stage === "ready") return false;
+  if (isRepositoryAccessFailure(capsule)) return false;
   return Boolean(capsule.failureCode || capsule.startup || capsule.preparation);
 }
