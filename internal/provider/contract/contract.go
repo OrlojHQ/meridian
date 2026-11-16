@@ -23,7 +23,9 @@ func Test(t *testing.T, factory Factory) {
 	if capabilities.Version == "" {
 		t.Fatal("provider capability version is empty")
 	}
-	if capabilities.Isolation != "" && !capabilities.Isolation.Valid() {
+	// ADR 0050: every provider reports the class it verified, and the API
+	// marks isolation required with a closed enum.
+	if !capabilities.Isolation.Valid() {
 		t.Fatalf("provider reports invalid isolation class %q", capabilities.Isolation)
 	}
 
