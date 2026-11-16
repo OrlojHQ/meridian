@@ -1004,13 +1004,6 @@ func (s *Server) createProject(writer http.ResponseWriter, request *http.Request
 	if !decode(writer, request, &input) {
 		return
 	}
-	requiredIsolation := domain.IsolationClass(input.RequiredIsolation)
-	if input.RequiredIsolation != "" && !requiredIsolation.Valid() {
-		writeError(writer, fmt.Errorf(
-			"%w: unknown isolation class %q", domain.ErrInvalid, input.RequiredIsolation,
-		))
-		return
-	}
 	project, err := s.service.CreateProjectConfigured(
 		request.Context(),
 		input.Name,
@@ -1024,7 +1017,7 @@ func (s *Server) createProject(writer http.ResponseWriter, request *http.Request
 			CommitAuthorName:    input.CommitAuthorName,
 			CommitAuthorEmail:   input.CommitAuthorEmail,
 			DefaultBaseBranch:   input.DefaultBaseBranch,
-			RequiredIsolation:   requiredIsolation,
+			RequiredIsolation:   domain.IsolationClass(input.RequiredIsolation),
 		},
 		request.Header.Get("Idempotency-Key"),
 	)

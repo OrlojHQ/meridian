@@ -144,12 +144,11 @@ MERIDIAN_CAPSULE_IMAGE=meridian-capsule:agentsandbox-it \
   --wait --timeout 5m
 kubectl -n "$namespace" rollout status \
   deployment/meridian-meridian --timeout=180s
-pod="$(kubectl -n "$namespace" get pods \
-  -l app.kubernetes.io/name=meridian,app.kubernetes.io/component=control-plane \
-  -o name | head -1)"
-token="$(kubectl -n "$namespace" exec "$pod" -- \
+# Address the Deployment, not a listed pod: right after the rollout the
+# previous pod may still be terminating and sort first.
+token="$(kubectl -n "$namespace" exec deployment/meridian-meridian -- \
   cat /var/lib/meridian-volume/data/api-auth/installation.token)"
-kubectl -n "$namespace" port-forward "$pod" 18080:8080 >/dev/null 2>&1 &
+kubectl -n "$namespace" port-forward deployment/meridian-meridian 18080:8080 >/dev/null 2>&1 &
 forward_pid=$!
 capabilities=""
 for _ in 1 2 3 4 5 6 7 8 9 10; do
