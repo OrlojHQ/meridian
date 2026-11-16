@@ -199,6 +199,7 @@ func newRootCommand() *cobra.Command {
 	command.Flags().StringVar(&config.AgentSandbox.CPULimit, "agentsandbox-cpu-limit", "2", "Capsule CPU limit")
 	command.Flags().StringVar(&config.AgentSandbox.EphemeralLimit, "agentsandbox-ephemeral-limit", "2Gi", "Capsule ephemeral storage limit")
 	command.Flags().DurationVar(&config.AgentSandbox.OperationTimeout, "agentsandbox-operation-timeout", 2*time.Minute, "Kubernetes lifecycle operation timeout")
+	command.Flags().DurationVar(&config.AgentSandbox.StartTimeout, "agentsandbox-start-timeout", 10*time.Minute, "Sandbox Ready wait during create, including image pull and VM boot")
 	command.Flags().DurationVar(&config.AgentSandbox.SetupTimeout, "agentsandbox-setup-timeout", 10*time.Minute, "Capsule clone and setup timeout")
 	var healthAddress string
 	healthcheck := &cobra.Command{

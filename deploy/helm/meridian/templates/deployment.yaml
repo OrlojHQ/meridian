@@ -114,6 +114,7 @@ spec:
             - --agentsandbox-volume-size={{ .Values.agentSandbox.workspaceSize }}
             - --agentsandbox-ttl={{ .Values.agentSandbox.ttl }}
             - --agentsandbox-operation-timeout={{ .Values.agentSandbox.operationTimeout }}
+            - --agentsandbox-start-timeout={{ .Values.agentSandbox.startTimeout }}
             - --agentsandbox-setup-timeout={{ .Values.agentSandbox.setupTimeout }}
             - --agentsandbox-cpu-limit={{ .Values.agentSandbox.limits.cpu }}
             - --agentsandbox-memory-limit={{ .Values.agentSandbox.limits.memory }}

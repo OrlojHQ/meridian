@@ -77,6 +77,12 @@ Capsules. File mode `0440` with the pod's fsGroup lets the non-root daemon
 read it. Restart the daemon after rotating the Secret; it reads the file at
 startup.
 
+The `agentSandbox` section bounds each phase of a Capsule's life:
+`operationTimeout` (default `2m`) per Kubernetes API call, `startTimeout`
+(default `10m`) for one Sandbox Ready wait during create including image
+pull and VM boot, and `setupTimeout` (default `10m`) for the clone and
+setup work inside the Capsule. Their sum must stay below `ttl`.
+
 The chart keeps its ClusterIP Service and creates no public Ingress or TLS
 terminator. Supply HTTPS access separately and preserve the external origin
 so browser cookies and same-origin checks see the configured `publicUrl`.

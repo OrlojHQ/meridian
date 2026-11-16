@@ -3,7 +3,9 @@ package app_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -109,5 +111,54 @@ func TestStartupProgressIsThrottledAndPullFailuresAreSpecific(t *testing.T) {
 	}
 	if retried.State != domain.CapsuleCreating || retried.Failure != "" || retried.FailureCode != "" {
 		t.Fatalf("retry = %#v", retried)
+	}
+}
+
+func TestStartTimeoutFailsWithoutRetry(t *testing.T) {
+	ctx, cancel := context.WithCancel(operatorContext())
+	defer cancel()
+	store, err := sqlite.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	clock := &testClock{now: time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC)}
+	var creates atomic.Int32
+	provider := fake.New(fake.Options{CreateHook: func(context.Context, ports.CreateCapsuleRequest) error {
+		creates.Add(1)
+		return fmt.Errorf("%w: Capsule did not become ready within 10m0s (last phase: Pulling image)", domain.ErrStartTimeout)
+	}})
+	ids := &testIDs{}
+	reconciler := app.NewReconciler(store, provider, clock, ids)
+	reconciler.Start(ctx)
+	defer reconciler.Close()
+	service := app.NewService(store, clock, ids, reconciler)
+	project, err := service.CreateProject(ctx, "project", "project-start-timeout")
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := service.CreateCapsule(ctx, project.ID, "capsule", "capsule-start-timeout")
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		capsule, err := service.GetCapsule(ctx, created.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if capsule.State == domain.CapsuleFailed {
+			if !strings.Contains(capsule.Failure, "last phase: Pulling image") {
+				t.Fatalf("failure = %q", capsule.Failure)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("capsule did not fail: %#v", capsule)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if got := creates.Load(); got != 1 {
+		t.Fatalf("provider creates = %d, want 1: a start timeout is not retried", got)
 	}
 }
