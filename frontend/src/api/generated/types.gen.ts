@@ -250,6 +250,70 @@ export type SecretPage = {
     nextCursor?: string;
 };
 
+/**
+ * GitHub connection metadata. The token is never included.
+ */
+export type GitHubConnection = {
+    connected: boolean;
+    /**
+     * True when this Station can start the GitHub device flow.
+     */
+    deviceFlow: boolean;
+    login?: string;
+    status?: 'active' | 'needs_reconnect';
+    reason?: 'invalid' | 'expired' | 'missing_access';
+    scopes?: string;
+    createdAt?: string;
+    updatedAt?: string;
+    resourceVersion?: number;
+};
+
+export type DisconnectGitHubRequest = {
+    expectedResourceVersion: number;
+};
+
+export type UseHostGitHubRequest = {
+    expectedResourceVersion: number;
+};
+
+export type ConnectGitHubTokenRequest = {
+    token: string;
+    expectedResourceVersion: number;
+};
+
+export type BeginGitHubDeviceRequest = {
+    expectedResourceVersion: number;
+};
+
+export type HostGitHubLogin = {
+    available: boolean;
+    login?: string;
+};
+
+export type GitHubDevice = {
+    userCode: string;
+    verificationUri: string;
+    expiresAt: string;
+    intervalSeconds: number;
+};
+
+export type GitHubDeviceStatus = {
+    status: 'pending' | 'connected' | 'denied' | 'expired';
+    connection?: GitHubConnection;
+};
+
+export type GitHubRepo = {
+    fullName: string;
+    private: boolean;
+    description?: string;
+    defaultBranch?: string;
+    url: string;
+};
+
+export type GitHubRepoPage = {
+    items: Array<GitHubRepo>;
+};
+
 export type ProjectEnvironment = {
     enabled: boolean;
     generation: number;
@@ -468,9 +532,10 @@ export type ImagePullProgress = {
 };
 
 /**
- * Specific image-pull failure. Unset for failures that are not image pulls.
+ * Image-pull failure, or repository_access when a clone cannot read the repository. Git output is never copied into the failure text.
+ *
  */
-export type CapsuleFailureCode = 'registry_unreachable' | 'auth_required' | 'image_not_found';
+export type CapsuleFailureCode = 'registry_unreachable' | 'auth_required' | 'image_not_found' | 'repository_access';
 
 export type CapsuleState = 'Creating' | 'Preparing' | 'Ready' | 'Paused' | 'Failed' | 'Sealed' | 'Deleting' | 'Deleted';
 
@@ -2896,6 +2961,311 @@ export type PutSecretResponses = {
 };
 
 export type PutSecretResponse = PutSecretResponses[keyof PutSecretResponses];
+
+export type DisconnectGitHubData = {
+    body: DisconnectGitHubRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/github/connection';
+};
+
+export type DisconnectGitHubErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type DisconnectGitHubError = DisconnectGitHubErrors[keyof DisconnectGitHubErrors];
+
+export type DisconnectGitHubResponses = {
+    /**
+     * The connection is gone
+     */
+    200: GitHubConnection;
+};
+
+export type DisconnectGitHubResponse = DisconnectGitHubResponses[keyof DisconnectGitHubResponses];
+
+export type GetGitHubConnectionData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/github/connection';
+};
+
+export type GetGitHubConnectionErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type GetGitHubConnectionError = GetGitHubConnectionErrors[keyof GetGitHubConnectionErrors];
+
+export type GetGitHubConnectionResponses = {
+    /**
+     * Connection metadata
+     */
+    200: GitHubConnection;
+};
+
+export type GetGitHubConnectionResponse = GetGitHubConnectionResponses[keyof GetGitHubConnectionResponses];
+
+export type CheckGitHubConnectionData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/github/connection/check';
+};
+
+export type CheckGitHubConnectionErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type CheckGitHubConnectionError = CheckGitHubConnectionErrors[keyof CheckGitHubConnectionErrors];
+
+export type CheckGitHubConnectionResponses = {
+    /**
+     * Connection metadata after the check
+     */
+    200: GitHubConnection;
+};
+
+export type CheckGitHubConnectionResponse = CheckGitHubConnectionResponses[keyof CheckGitHubConnectionResponses];
+
+export type GetHostGitHubLoginData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/github/connection/host';
+};
+
+export type GetHostGitHubLoginErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type GetHostGitHubLoginError = GetHostGitHubLoginErrors[keyof GetHostGitHubLoginErrors];
+
+export type GetHostGitHubLoginResponses = {
+    /**
+     * Whether a host login was found
+     */
+    200: HostGitHubLogin;
+};
+
+export type GetHostGitHubLoginResponse = GetHostGitHubLoginResponses[keyof GetHostGitHubLoginResponses];
+
+export type UseHostGitHubLoginData = {
+    body: UseHostGitHubRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/github/connection/host';
+};
+
+export type UseHostGitHubLoginErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type UseHostGitHubLoginError = UseHostGitHubLoginErrors[keyof UseHostGitHubLoginErrors];
+
+export type UseHostGitHubLoginResponses = {
+    /**
+     * Stored connection metadata
+     */
+    200: GitHubConnection;
+};
+
+export type UseHostGitHubLoginResponse = UseHostGitHubLoginResponses[keyof UseHostGitHubLoginResponses];
+
+export type ConnectGitHubTokenData = {
+    body: ConnectGitHubTokenRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/github/connection/token';
+};
+
+export type ConnectGitHubTokenErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ConnectGitHubTokenError = ConnectGitHubTokenErrors[keyof ConnectGitHubTokenErrors];
+
+export type ConnectGitHubTokenResponses = {
+    /**
+     * Stored connection metadata
+     */
+    200: GitHubConnection;
+};
+
+export type ConnectGitHubTokenResponse = ConnectGitHubTokenResponses[keyof ConnectGitHubTokenResponses];
+
+export type CancelGitHubDeviceData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/github/connection/device';
+};
+
+export type CancelGitHubDeviceErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type CancelGitHubDeviceError = CancelGitHubDeviceErrors[keyof CancelGitHubDeviceErrors];
+
+export type CancelGitHubDeviceResponses = {
+    /**
+     * The in-memory device authorization is gone
+     */
+    204: void;
+};
+
+export type CancelGitHubDeviceResponse = CancelGitHubDeviceResponses[keyof CancelGitHubDeviceResponses];
+
+export type PollGitHubDeviceData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/github/connection/device';
+};
+
+export type PollGitHubDeviceErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type PollGitHubDeviceError = PollGitHubDeviceErrors[keyof PollGitHubDeviceErrors];
+
+export type PollGitHubDeviceResponses = {
+    /**
+     * pending, connected, denied, or expired
+     */
+    200: GitHubDeviceStatus;
+};
+
+export type PollGitHubDeviceResponse = PollGitHubDeviceResponses[keyof PollGitHubDeviceResponses];
+
+export type BeginGitHubDeviceData = {
+    body: BeginGitHubDeviceRequest;
+    path?: never;
+    query?: never;
+    url: '/github/connection/device';
+};
+
+export type BeginGitHubDeviceErrors = {
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type BeginGitHubDeviceError = BeginGitHubDeviceErrors[keyof BeginGitHubDeviceErrors];
+
+export type BeginGitHubDeviceResponses = {
+    /**
+     * The code to enter on GitHub. The device code is not included.
+     */
+    200: GitHubDevice;
+};
+
+export type BeginGitHubDeviceResponse = BeginGitHubDeviceResponses[keyof BeginGitHubDeviceResponses];
+
+export type SearchGitHubReposData = {
+    body?: never;
+    path?: never;
+    query?: {
+        q?: string;
+    };
+    url: '/github/repos';
+};
+
+export type SearchGitHubReposErrors = {
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type SearchGitHubReposError = SearchGitHubReposErrors[keyof SearchGitHubReposErrors];
+
+export type SearchGitHubReposResponses = {
+    /**
+     * Matching repositories
+     */
+    200: GitHubRepoPage;
+};
+
+export type SearchGitHubReposResponse = SearchGitHubReposResponses[keyof SearchGitHubReposResponses];
 
 export type ListProjectsData = {
     body?: never;

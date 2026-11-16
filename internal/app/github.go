@@ -16,6 +16,47 @@ import (
 	"github.com/OrlojHQ/meridian/internal/domain"
 )
 
+// gitHubStatusError is a GitHub HTTP failure. Reason is set only when the
+// login itself is unusable: invalid, expired, or missing_access.
+type gitHubStatusError struct {
+	Status int
+	Reason string
+}
+
+func (e *gitHubStatusError) Error() string {
+	return fmt.Sprintf("GitHub API request failed with status %d", e.Status)
+}
+
+func (e *gitHubStatusError) GitHubAuthStatus() (int, string) { return e.Status, e.Reason }
+
+func gitHubStatusFrom(status int, requestPath, sso string, payload []byte) error {
+	parsed := &gitHubStatusError{Status: status}
+	folded := bytes.ToLower(payload)
+	switch status {
+	case http.StatusUnauthorized:
+		parsed.Reason = "invalid"
+		if bytes.Contains(folded, []byte("expired")) {
+			parsed.Reason = "expired"
+		}
+	case http.StatusForbidden:
+		// A repository or pull request protected by organization SSO is not a
+		// dead login. gh tokens are usually already authorized for those orgs.
+		if requestPath == "/user" && (sso != "" || bytes.Contains(folded, []byte("saml"))) {
+			parsed.Reason = "missing_access"
+		}
+	}
+	return parsed
+}
+
+func gitHubAuthFailure(err error) (int, string, bool) {
+	var parsed interface{ GitHubAuthStatus() (int, string) }
+	if !errors.As(err, &parsed) {
+		return 0, "", false
+	}
+	status, reason := parsed.GitHubAuthStatus()
+	return status, reason, true
+}
+
 type PullRequest struct {
 	Number  int64
 	URL     string
@@ -147,8 +188,8 @@ func (c *githubHTTPClient) call(
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 64<<10))
-		return fmt.Errorf("GitHub API request failed with status %d", response.StatusCode)
+		payload, _ := io.ReadAll(io.LimitReader(response.Body, 4<<10))
+		return gitHubStatusFrom(response.StatusCode, parsed.Path, response.Header.Get("X-GitHub-SSO"), payload)
 	}
 	decoder := json.NewDecoder(io.LimitReader(response.Body, 1<<20))
 	if err := decoder.Decode(output); err != nil {

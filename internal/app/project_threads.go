@@ -381,7 +381,11 @@ func (s *Service) ReconcileProjectThreadCapsule(
 		_, err := s.promoteProjectThread(ctx, capsule.ID, true)
 		return err
 	case domain.CapsuleFailed:
-		return s.failProjectThread(ctx, capsule.ID, "capsule_failed", "Capsule provisioning failed")
+		code, message := "capsule_failed", "Capsule provisioning failed"
+		if capsule.FailureCode == domain.RepositoryAccess && capsule.Failure != "" {
+			code, message = "repository_access", capsule.Failure
+		}
+		return s.failProjectThread(ctx, capsule.ID, code, message)
 	case domain.CapsuleDeleted:
 		return s.failProjectThread(ctx, capsule.ID, "capsule_deleted", "Capsule was deleted")
 	case domain.CapsuleSealed:

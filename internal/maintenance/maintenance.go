@@ -886,9 +886,45 @@ func requiredSecretKeys(
 	if exists == 0 {
 		return nil, nil
 	}
+	requirements, err := secretKeyIDs(ctx, db, "secrets")
+	if err != nil {
+		return nil, err
+	}
+	var github int
+	if err := db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'github_connections'`,
+	).Scan(&github); err != nil {
+		return nil, err
+	}
+	if github == 0 {
+		return requirements, nil
+	}
+	more, err := secretKeyIDs(ctx, db, "github_connections")
+	if err != nil {
+		return nil, err
+	}
+	seen := map[TranscriptKeyRequirement]bool{}
+	for _, requirement := range requirements {
+		seen[requirement] = true
+	}
+	for _, requirement := range more {
+		if !seen[requirement] {
+			requirements = append(requirements, requirement)
+		}
+	}
+	sort.Slice(requirements, func(i, j int) bool {
+		return requirements[i].ID < requirements[j].ID ||
+			(requirements[i].ID == requirements[j].ID && requirements[i].Version < requirements[j].Version)
+	})
+	return requirements, nil
+}
+
+func secretKeyIDs(ctx context.Context, db *sql.DB, table string) ([]TranscriptKeyRequirement, error) {
+	if table != "secrets" && table != "github_connections" {
+		return nil, errors.New("unexpected credential table")
+	}
 	rows, err := db.QueryContext(ctx, `
-		SELECT DISTINCT kek_id, kek_version
-		FROM secrets ORDER BY kek_id, kek_version`)
+		SELECT DISTINCT kek_id, kek_version FROM `+table+` ORDER BY kek_id, kek_version`)
 	if err != nil {
 		return nil, err
 	}
@@ -956,6 +992,43 @@ func deepVerifySecrets(
 			open = key.OpenLegacy
 		}
 		if _, err := open(secret); err != nil {
+			return fmt.Errorf("credential deep verification failed: %w", err)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	return verifyGitHubConnections(ctx, db, key)
+}
+
+func verifyGitHubConnections(ctx context.Context, db *sql.DB, key *credentialsecrets.InstallationKey) error {
+	var exists int
+	if err := db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'github_connections'`,
+	).Scan(&exists); err != nil {
+		return err
+	}
+	if exists == 0 {
+		return nil
+	}
+	rows, err := db.QueryContext(ctx, `
+		SELECT id, owner_user_id, login, envelope_version, kek_id, kek_version,
+			nonce, ciphertext, resource_version
+		FROM github_connections ORDER BY id`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var connection domain.GitHubConnection
+		if err := rows.Scan(
+			&connection.ID, &connection.OwnerUserID, &connection.Login, &connection.EnvelopeVersion,
+			&connection.KEKID, &connection.KEKVersion, &connection.Nonce, &connection.Ciphertext,
+			&connection.ResourceVersion,
+		); err != nil {
+			return err
+		}
+		if _, err := key.OpenGitHub(connection); err != nil {
 			return fmt.Errorf("credential deep verification failed: %w", err)
 		}
 	}

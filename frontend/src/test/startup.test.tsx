@@ -201,4 +201,33 @@ describe("startup progress", () => {
     await userEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(retry).toHaveBeenCalledWith("retry", "capsule-1", 3);
   });
+
+  it("shows a private-repository failure without retry or a server error", async () => {
+    const user = userEvent.setup();
+    show(
+      <StartupTracker
+        capsule={capsule(
+          { phase: "connecting", phases, updatedAt: timestamp },
+          {
+            state: "Failed",
+            failureCode: "repository_access",
+            failure: "Meridian couldn't access octocat/hidden. It may be private.",
+          },
+        )}
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "Couldn't access repository" })).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Meridian couldn't access octocat/hidden. It may be private.",
+    );
+    expect(screen.getByRole("link", { name: "Connect GitHub" })).toHaveAttribute(
+      "href",
+      "/ui/settings/account#github",
+    );
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/internal server error/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/https?:\/\//)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Add a token" }));
+    expect(screen.getByLabelText("GitHub token")).toBeInTheDocument();
+  });
 });

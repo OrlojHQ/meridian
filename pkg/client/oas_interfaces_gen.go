@@ -21,6 +21,10 @@ type BeginDeviceLoginRes interface {
 	beginDeviceLoginRes()
 }
 
+type BeginGitHubDeviceRes interface {
+	beginGitHubDeviceRes()
+}
+
 type BeginMemberIdentityRebindRes interface {
 	beginMemberIdentityRebindRes()
 }
@@ -47,6 +51,10 @@ type CompleteMemberIdentityRebindRes interface {
 
 type CompleteOidcSignInRes interface {
 	completeOidcSignInRes()
+}
+
+type ConnectGitHubTokenRes interface {
+	connectGitHubTokenRes()
 }
 
 type CreateBrowserSessionRes interface {
@@ -111,6 +119,10 @@ type DenyCoordinationRequestRes interface {
 
 type DisableMemberRes interface {
 	disableMemberRes()
+}
+
+type DisconnectGitHubRes interface {
+	disconnectGitHubRes()
 }
 
 type EnableMemberRes interface {
@@ -293,6 +305,10 @@ type PollDeviceLoginRes interface {
 	pollDeviceLoginRes()
 }
 
+type PollGitHubDeviceRes interface {
+	pollGitHubDeviceRes()
+}
+
 type PromoteCapsuleRes interface {
 	promoteCapsuleRes()
 }
@@ -361,6 +377,10 @@ type SealCapsuleRes interface {
 	sealCapsuleRes()
 }
 
+type SearchGitHubReposRes interface {
+	searchGitHubReposRes()
+}
+
 type SendThreadMessageRes interface {
 	sendThreadMessageRes()
 }
@@ -411,4 +431,8 @@ type UpdateCoordinationGrantRes interface {
 
 type UpdateProfileRes interface {
 	updateProfileRes()
+}
+
+type UseHostGitHubLoginRes interface {
+	useHostGitHubLoginRes()
 }

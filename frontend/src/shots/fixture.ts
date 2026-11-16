@@ -314,7 +314,68 @@ const json = (body: unknown, status = 200) =>
 
 const emptyPage = { items: [] };
 
+function githubShot() {
+  return new URLSearchParams(window.location.search).get("github");
+}
+
+function withAccessFailure<T extends { id: string; updatedAt: string }>(item: T | undefined) {
+  if (!item || githubShot() !== "access" || item.id !== "cap-notes") return item;
+  return {
+    ...item,
+    state: "Failed",
+    desiredState: "Ready",
+    failureCode: "repository_access",
+    failure: "Meridian couldn't access OrlojHQ/meridian. It may be private.",
+    startup: {
+      phase: "connecting",
+      phases: ["pulling_image", "creating_capsule", "starting_harness", "connecting"],
+      updatedAt: item.updatedAt,
+    },
+    preparation: { stage: "checkout", reused: false, updatedAt: item.updatedAt },
+  };
+}
+
 function route(pathname: string): unknown {
+  const shot = githubShot();
+  if (pathname === "/github/connection" || pathname === "/github/connection/check") {
+    if (shot === "reconnect") {
+      return {
+        connected: true, deviceFlow: true, login: "octocat", status: "needs_reconnect",
+        reason: "expired", resourceVersion: 2, createdAt: stamp, updatedAt: stamp,
+      };
+    }
+    if (shot === "repos") {
+      return {
+        connected: true, deviceFlow: true, login: "octocat", status: "active",
+        resourceVersion: 2, createdAt: stamp, updatedAt: stamp,
+      };
+    }
+    return { connected: false, deviceFlow: true };
+  }
+  if (pathname === "/github/connection/host") {
+    if (shot === "device" || shot === "reconnect") return { available: false };
+    return { available: true, login: "octocat" };
+  }
+  if (pathname === "/github/connection/device") {
+    return {
+      userCode: "ABCD-EFGH",
+      verificationUri: "https://github.com/login/device",
+      expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+      intervalSeconds: 60,
+      status: "pending",
+    };
+  }
+  if (pathname === "/github/repos") {
+    return {
+      items: [
+        { fullName: "OrlojHQ/meridian", private: true, description: "Private repository", defaultBranch: "main", url: "https://github.com/OrlojHQ/meridian" },
+        { fullName: "OrlojHQ/notes", private: false, description: "Notes", defaultBranch: "main", url: "https://github.com/OrlojHQ/notes" },
+      ],
+    };
+  }
+  if ((shot === "connect" || shot === "device") && (pathname === "/projects" || pathname === "/board")) {
+    return pathname === "/board" ? { items: [], truncated: false } : { items: [] };
+  }
   if (pathname === "/capabilities") {
     return {
       providerVersion: "docker/v2",
@@ -338,7 +399,11 @@ function route(pathname: string): unknown {
   if (pathname === `/projects/${project.id}`) return project;
   if (pathname === `/projects/${billing.id}`) return billing;
   if (pathname === `/projects/${project.id}/capsules`) {
-    return { items: capsules.filter((item) => item.projectId === project.id) };
+    return {
+      items: capsules
+        .filter((item) => item.projectId === project.id)
+        .map((item) => withAccessFailure(item)),
+    };
   }
   if (pathname === `/projects/${billing.id}/capsules`) {
     return { items: capsules.filter((item) => item.projectId === billing.id) };
@@ -394,7 +459,9 @@ function route(pathname: string): unknown {
     return { connectionId: "conn-claude" };
   }
   const capsuleMatch = pathname.match(/^\/capsules\/([^/]+)$/);
-  if (capsuleMatch) return capsules.find((item) => item.id === capsuleMatch[1]) ?? jsonMissing();
+  if (capsuleMatch) {
+    return withAccessFailure(capsules.find((item) => item.id === capsuleMatch[1])) ?? jsonMissing();
+  }
   const runsMatch = pathname.match(/^\/capsules\/([^/]+)\/runs$/);
   if (runsMatch) return { items: runs[runsMatch[1]] ?? [] };
   const threadsMatch = pathname.match(/^\/capsules\/([^/]+)\/threads$/);
@@ -521,6 +588,18 @@ export function installShotFixture() {
     const url = new URL(raw, window.location.origin);
     if (url.origin !== window.location.origin || devServerPrefixes.some((prefix) => url.pathname.startsWith(prefix))) {
       return nativeFetch(input, init);
+    }
+    const method = (
+      init?.method ??
+      (typeof input !== "string" && !(input instanceof URL) && "method" in input ? input.method : "GET")
+    ).toUpperCase();
+    if (githubShot() === "denied" && url.pathname === "/projects" && method === "POST") {
+      return json({
+        error: {
+          code: "repository_access",
+          message: "Meridian couldn't access octocat/hidden. It may be private.",
+        },
+      }, 422);
     }
     if (url.pathname.endsWith("/stream")) {
       return new Response(

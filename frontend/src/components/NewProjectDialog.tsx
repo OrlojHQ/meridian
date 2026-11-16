@@ -1,9 +1,12 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import { api, normalizeAPIError } from "../api/client";
 import type { HarnessImage, IsolationClass, Project } from "../api/generated/types.gen";
 import { projectHarnessImage } from "../api/harnessPacks";
+import { githubConnectionQuery } from "./GitHubConnect";
+import { RepositoryAccessNotice } from "./RepositoryAccess";
+import { isRepositoryAccessFailure } from "./startup";
 import { isGitHubRepositoryInput } from "./repositoryUrl";
 import { Button } from "./ui/Button";
 import { Dialog } from "./ui/Dialog";
@@ -69,9 +72,20 @@ export function NewProjectDialog({
   const queryClient = useQueryClient();
   const closeRef = useRef<HTMLButtonElement>(null);
   const [repositoryUrl, setRepositoryUrl] = useState("");
+  const [repoQuery, setRepoQuery] = useState("");
+  const [repoFocus, setRepoFocus] = useState(false);
+  const [useToken, setUseToken] = useState(false);
   const [privateRepo, setPrivateRepo] = useState(false);
   const [token, setToken] = useState("");
   const [requiredIsolation, setRequiredIsolation] = useState<IsolationClass | "">("");
+  const connection = useQuery({ ...githubConnectionQuery, enabled: open, retry: false });
+  const githubConnected = connection.data?.status === "active";
+  const repos = useQuery({
+    queryKey: ["github-repos", repoQuery],
+    queryFn: ({ signal }) => api.searchGitHubRepos(repoQuery, signal),
+    enabled: open && githubConnected && repoFocus,
+    retry: false,
+  });
   const github = isGitHubRepositoryInput(repositoryUrl);
   const verifiedRank = verifiedIsolation ? isolationRanks[verifiedIsolation] : undefined;
   const mutation = useMutation({
@@ -130,10 +144,19 @@ export function NewProjectDialog({
   useEffect(() => {
     if (open) return;
     setRepositoryUrl("");
+    setRepoQuery("");
+    setRepoFocus(false);
+    setUseToken(false);
     setPrivateRepo(false);
     setToken("");
     setRequiredIsolation("");
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const timer = window.setTimeout(() => setRepoQuery(repositoryUrl.trim()), 200);
+    return () => window.clearTimeout(timer);
+  }, [open, repositoryUrl]);
 
   useEffect(() => {
     if (!open) return;
@@ -148,7 +171,7 @@ export function NewProjectDialog({
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    const cloneToken = privateRepo ? token.trim() : "";
+    const cloneToken = useToken && privateRepo ? token.trim() : "";
     mutation.mutate({
       name: String(data.get("name") ?? ""),
       repositoryUrl: repositoryUrl.trim() || undefined,
@@ -184,13 +207,19 @@ export function NewProjectDialog({
           />
         </label>
         <label htmlFor="project-repository">
-          Repository URL <span className="optional-label">Optional</span>
+          Repository <span className="optional-label">Optional</span>
           <Input
             id="project-repository"
+            role="combobox"
+            aria-expanded={repoFocus && githubConnected}
+            aria-controls="project-repo-results"
             value={repositoryUrl}
             maxLength={2048}
             disabled={mutation.isPending}
-            placeholder="owner/repo or https://github.com/org/repository"
+            placeholder={githubConnected ? "Search repositories or paste a URL" : "owner/repo or https://github.com/org/repository"}
+            autoComplete="off"
+            onFocus={() => setRepoFocus(true)}
+            onBlur={() => window.setTimeout(() => setRepoFocus(false), 150)}
             onChange={(event) => {
               const next = event.target.value;
               setRepositoryUrl(next);
@@ -201,8 +230,47 @@ export function NewProjectDialog({
             }}
           />
         </label>
+        {repoFocus && githubConnected && (
+          <ul id="project-repo-results" className="repo-results" role="listbox">
+            {repos.isPending && <li className="repo-empty">Searching repositories…</li>}
+            {repos.isError && <li className="repo-empty">{normalizeAPIError(repos.error).message}</li>}
+            {repos.data?.items.length === 0 && <li className="repo-empty">No matching repositories.</li>}
+            {repos.data?.items.map((repo) => (
+              <li key={repo.fullName}>
+                <button
+                  type="button"
+                  role="option"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    setRepositoryUrl(repo.url);
+                    setRepoFocus(false);
+                  }}
+                >
+                  <span>
+                    <strong>{repo.fullName}</strong>
+                    {repo.private && <em className="repo-private">Private</em>}
+                  </span>
+                  {repo.description && <small>{repo.description}</small>}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
         {github && <p className="field-hint">Stored as HTTPS.</p>}
-        {github && (
+        {githubConnected && github && !useToken && (
+          <p className="field-hint">Private repositories use your GitHub connection. No token is stored on the Project.</p>
+        )}
+        {!githubConnected && github && !useToken && (
+          <p className="field-hint">
+            <a href="/ui/settings/account#github">Connect GitHub</a> to include private repositories.
+          </p>
+        )}
+        {(github || githubConnected) && !useToken && (
+          <button type="button" className="text-button" onClick={() => setUseToken(true)}>
+            Use a token instead
+          </button>
+        )}
+        {useToken && github && (
           <label className="checkbox-label" htmlFor="project-private">
             <input
               id="project-private"
@@ -217,7 +285,7 @@ export function NewProjectDialog({
             Private repository
           </label>
         )}
-        {github && privateRepo && (
+        {useToken && github && privateRepo && (
           <label htmlFor="project-git-token">
             GitHub token
             <Input
@@ -286,11 +354,16 @@ export function NewProjectDialog({
           {mutation.isPending ? "Creating…" : "Create Project"}
         </Button>
       </form>
-      {mutation.isError && (
+      {mutation.isError && isRepositoryAccessFailure({
+        failure: normalizeAPIError(mutation.error).message,
+        failureCode: normalizeAPIError(mutation.error).code,
+      }) ? (
+        <RepositoryAccessNotice message={normalizeAPIError(mutation.error).message} />
+      ) : mutation.isError ? (
         <p className="inline-error" role="alert">
           {normalizeAPIError(mutation.error).message}
         </p>
-      )}
+      ) : null}
     </Dialog>
   );
 }

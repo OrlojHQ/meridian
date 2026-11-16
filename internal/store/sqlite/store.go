@@ -33,7 +33,9 @@ type Store struct {
 }
 
 // CurrentSchemaVersion is the newest migration this binary understands.
-const CurrentSchemaVersion = 31
+// 0031 is the GitHub connection, 0032 is repository access, and 0033 is
+// Project checks. Remote CI is 0034.
+const CurrentSchemaVersion = 33
 
 func Open(ctx context.Context, dataDir string) (*Store, error) {
 	if strings.TrimSpace(dataDir) == "" {

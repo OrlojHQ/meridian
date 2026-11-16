@@ -129,6 +129,12 @@ type Service struct {
 	claudePending   map[string]*claudeCeremony
 	claudeByState   map[string]string
 	claudeTokenURL  string
+
+	githubOAuthClientID string
+	githubHost          GitHubHost
+	githubOAuth         GitHubOAuth
+	githubMu            sync.Mutex
+	githubDevices       map[domain.UserID]*githubDeviceCeremony
 }
 
 func (s *Service) ConfigureSecrets(key *secrets.InstallationKey) {
@@ -145,6 +151,16 @@ func (s *Service) ConfigureChecks(runtime ports.CheckRuntime) {
 func (s *Service) SetCheckDebounce(wait time.Duration) {
 	s.checkDebounce = wait
 	s.checkDebounceOn = true
+}
+
+// ConfigureGitHub sets the device-flow client id and the ways a login can be
+// read. The client id is public. An empty id disables the device flow; host
+// gh and an explicit token can still connect. host may be nil in tests.
+func (s *Service) ConfigureGitHub(clientID string, host GitHubHost, oauth GitHubOAuth) {
+	s.githubOAuthClientID = strings.TrimSpace(clientID)
+	s.githubHost = host
+	s.githubOAuth = oauth
+	s.githubDevices = map[domain.UserID]*githubDeviceCeremony{}
 }
 
 type transcriptKey interface {
@@ -306,6 +322,9 @@ func (s *Service) CreateProjectConfigured(
 		return domain.Project{}, fmt.Errorf("%w: repository URL is invalid", domain.ErrInvalid)
 	}
 	if err := validateProjectConfiguration(config); err != nil {
+		return domain.Project{}, err
+	}
+	if err := s.ensureGitHubRepositoryAccessible(ctx, config.RepositoryURL, config.GitSecretName); err != nil {
 		return domain.Project{}, err
 	}
 	if err := requireIdempotency(idempotencyKey); err != nil {

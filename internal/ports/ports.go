@@ -52,6 +52,9 @@ type Reader interface {
 	// needs the owner.
 	GetSecret(context.Context, domain.UserID, string) (domain.Secret, error)
 	ListSecrets(context.Context, domain.UserID, Page) ([]domain.Secret, bool, error)
+	// GetGitHubConnection returns the owner's GitHub login, or
+	// domain.ErrNotFound when they have not connected one (ADR 0051).
+	GetGitHubConnection(context.Context, domain.UserID) (domain.GitHubConnection, error)
 	GetCapsule(context.Context, domain.CapsuleID) (domain.Capsule, error)
 	ListCapsules(context.Context, domain.ProjectID, domain.CapsuleRole, Page) ([]domain.Capsule, bool, error)
 	CountLiveCapsules(context.Context) (int, error)
@@ -164,6 +167,11 @@ type Transaction interface {
 	InsertSecret(context.Context, domain.Secret) error
 	UpdateSecret(context.Context, domain.Secret, domain.ResourceVersion) error
 	DeleteSecret(context.Context, domain.UserID, string, domain.ResourceVersion) error
+	InsertGitHubConnection(context.Context, domain.GitHubConnection) error
+	UpdateGitHubConnection(context.Context, domain.GitHubConnection, domain.ResourceVersion) error
+	// DeleteGitHubConnection removes the owner's connection and its envelope.
+	// A missing row is domain.ErrNotFound.
+	DeleteGitHubConnection(context.Context, domain.UserID) error
 	InsertCapsule(context.Context, domain.Capsule) error
 	UpdateCapsule(context.Context, domain.Capsule, domain.ResourceVersion) error
 	TouchCapsuleActivity(context.Context, domain.CapsuleID, time.Time) error

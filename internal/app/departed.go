@@ -346,11 +346,20 @@ func (s *Service) DeleteDepartedMember(ctx context.Context, from domain.UserID) 
 		result.Setups++
 	}
 	// The profile names the departed member, so it is deleted, not moved
-	// (ADR 0049).
+	// (ADR 0049). The GitHub login is personal in the same way (ADR 0051).
 	if err := s.store.Transact(system, func(tx ports.Transaction) error {
 		return tx.DeleteUserProfile(system, from)
 	}); err != nil {
 		return result, fmt.Errorf("delete a departed member's profile: %w", err)
+	}
+	if err := s.store.Transact(system, func(tx ports.Transaction) error {
+		err := tx.DeleteGitHubConnection(system, from)
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil
+		}
+		return err
+	}); err != nil {
+		return result, fmt.Errorf("delete a departed member's GitHub connection: %w", err)
 	}
 	record, ok := auditRecordFor(principal.With(ctx, caller), s.clock.Now(), domain.AuditMemberDelete,
 		"user", string(from), domain.AuditAllowed)

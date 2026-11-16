@@ -650,3 +650,55 @@ func TestProjectRequiredIsolationRoundTripAndImmutable(t *testing.T) {
 		t.Fatal("insert with unknown isolation class was accepted")
 	}
 }
+
+func TestRepositoryAccessFailureCodeIsStored(t *testing.T) {
+	ctx := context.Background()
+	directory := t.TempDir()
+	store, err := Open(ctx, directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 11, 16, 1, 0, 0, 0, time.UTC)
+	message := domain.RepositoryAccessMessage("octocat", "hidden")
+	if err := store.Transact(ctx, func(tx ports.Transaction) error {
+		if err := tx.InsertProject(ctx, domain.Project{
+			OwnerUserID: domain.BootstrapOwnerID, ID: "project-hidden", Name: "hidden",
+			RepositoryURL: "https://github.com/octocat/hidden",
+			CreatedAt:     now, UpdatedAt: now, ResourceVersion: 1,
+		}); err != nil {
+			return err
+		}
+		return tx.InsertCapsule(ctx, domain.Capsule{
+			ID: "capsule-hidden", ProjectID: "project-hidden", Name: "hidden",
+			State: domain.CapsuleFailed, DesiredState: domain.IntentReady,
+			Failure: message, FailureCode: domain.RepositoryAccess,
+			CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.Exec(`UPDATE capsules SET failure_code = 'leaked' WHERE id = 'capsule-hidden'`); err == nil {
+		t.Fatal("unknown failure code was accepted")
+	}
+	var integrity string
+	if err := store.db.QueryRow(`PRAGMA integrity_check`).Scan(&integrity); err != nil || integrity != "ok" {
+		t.Fatalf("integrity = %q, %v", integrity, err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Open(ctx, directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	var code, failure string
+	if err := reopened.db.QueryRow(
+		`SELECT failure_code, failure FROM capsules WHERE id = 'capsule-hidden'`,
+	).Scan(&code, &failure); err != nil {
+		t.Fatal(err)
+	}
+	if code != string(domain.RepositoryAccess) || failure != message {
+		t.Fatalf("stored failure = %q %q", code, failure)
+	}
+}

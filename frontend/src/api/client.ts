@@ -8,6 +8,9 @@ import {
   startChatGptSignIn, getChatGptSignIn, completeChatGptSignIn,
   getHarnessSetupContents, listHarnessSetups, mutateHarnessSetup, listHarnessSetupRevisions, previewHarnessSetup, importHarnessSetup,
   getProfile, updateProfile, getCapsuleProfileDiagnostic, updateCapsuleProfile,
+  getGitHubConnection, checkGitHubConnection, getHostGitHubLogin, useHostGitHubLogin,
+  connectGitHubToken, beginGitHubDevice, pollGitHubDevice, cancelGitHubDevice,
+  disconnectGitHub, searchGitHubRepos,
   archiveThread,
   beginClaudeLogin,
   completeClaudeLogin,
@@ -98,6 +101,7 @@ import type { Profile, UpdateProfileRequest, ProfileDiagnostic } from "./generat
 import type {
   CheckAutoReworkRequest, CheckRun, CheckRunPage, CheckRunRequest, CheckSuggestion,
   ProjectChecks, ProjectChecksUpdate,
+  GitHubConnection, HostGitHubLogin, GitHubDevice, GitHubDeviceStatus, GitHubRepoPage,
 } from "./generated/types.gen";
 import type { HarnessSetupUpload, HarnessSetupPreview, ImportHarnessSetupRequest, EnvironmentMutation, ProjectEnvironment,
   ProjectHarnessSetup,
@@ -239,7 +243,34 @@ export const api = {
  profile: () => call<Profile>(getProfile({...generatedOptions()})),
  updateProfile: (body:UpdateProfileRequest) => call<Profile>(updateProfile({...generatedOptions(),headers:idempotencyHeaders(),body})),
  capsuleProfileDiagnostic: (capsuleId:string) => call<ProfileDiagnostic>(getCapsuleProfileDiagnostic({...generatedOptions(),path:{capsuleId}})),
- updateCapsuleProfile: (capsuleId:string) => call<ProfileDiagnostic>(updateCapsuleProfile({...generatedOptions(),path:{capsuleId},headers:idempotencyHeaders()})),
+  updateCapsuleProfile: (capsuleId:string) => call<ProfileDiagnostic>(updateCapsuleProfile({...generatedOptions(),path:{capsuleId},headers:idempotencyHeaders()})),
+  githubConnection: (signal?: AbortSignal) => call<GitHubConnection>(getGitHubConnection(generatedOptions(signal))),
+  checkGitHubConnection: () => call<GitHubConnection>(checkGitHubConnection(generatedOptions())),
+  hostGitHubLogin: (signal?: AbortSignal) => call<HostGitHubLogin>(getHostGitHubLogin(generatedOptions(signal))),
+  useHostGitHub: (expectedResourceVersion: number) =>
+    call<GitHubConnection>(useHostGitHubLogin({
+      ...generatedOptions(),
+      headers: idempotencyHeaders(),
+      body: { expectedResourceVersion },
+    })),
+  beginGitHubDevice: (expectedResourceVersion: number) =>
+    call<GitHubDevice>(beginGitHubDevice({ ...generatedOptions(), body: { expectedResourceVersion } })),
+  pollGitHubDevice: (signal?: AbortSignal) => call<GitHubDeviceStatus>(pollGitHubDevice(generatedOptions(signal))),
+  cancelGitHubDevice: () => call<void>(cancelGitHubDevice(generatedOptions())),
+  disconnectGitHub: (expectedResourceVersion: number) =>
+    call<GitHubConnection>(disconnectGitHub({
+      ...generatedOptions(),
+      headers: idempotencyHeaders(),
+      body: { expectedResourceVersion },
+    })),
+  connectGitHubToken: (token: string, expectedResourceVersion: number) =>
+    call<GitHubConnection>(connectGitHubToken({
+      ...generatedOptions(),
+      headers: idempotencyHeaders(),
+      body: { token, expectedResourceVersion },
+    })),
+  searchGitHubRepos: (q: string, signal?: AbortSignal) =>
+    call<GitHubRepoPage>(searchGitHubRepos({ ...generatedOptions(signal), query: { q } })),
   baseUrl,
   authenticateBrowser: (token: string, signal?: AbortSignal) =>
     call<void>(

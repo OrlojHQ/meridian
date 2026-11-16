@@ -1,4 +1,4 @@
--- Project checks and automatic rework (ADR 0051).
+-- Project checks and automatic rework (ADR 0052).
 --
 -- The command list lives with the Project. Each suite execution is a
 -- check_runs row plus one check_results row per command. Output tails are

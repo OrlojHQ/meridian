@@ -38,6 +38,9 @@ const (
 	AuditCapsuleProfileUpdate      AuditAction = "capsule.profile_update"
 	// Project checks record that the list changed, not the commands.
 	AuditProjectChecksUpdate AuditAction = "project.checks_update"
+	// GitHub connection (ADR 0051). Records the connection id only.
+	AuditGitHubConnect    AuditAction = "github_connection.connect"
+	AuditGitHubDisconnect AuditAction = "github_connection.disconnect"
 )
 
 // AuditRecord is one append-only audit line. It holds ids only: no secret

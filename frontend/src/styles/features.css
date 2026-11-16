@@ -4122,6 +4122,100 @@ button.tool-line:hover {
   max-width: none;
 }
 
+.github-connect {
+  display: grid;
+  gap: 0.6rem;
+  max-width: 36rem;
+}
+
+.github-actions,
+.github-device {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: start;
+}
+
+.github-code {
+  margin: 0.25rem 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 1.75rem;
+  letter-spacing: 0.14em;
+}
+
+.github-reconnect {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  margin: 0.75rem 1rem 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-md);
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.github-reconnect p {
+  margin: 0;
+}
+
+.repo-results {
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem;
+  max-height: 16rem;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.repo-results button {
+  display: grid;
+  width: 100%;
+  gap: 0.1rem;
+  padding: 0.45rem 0.6rem;
+  text-align: left;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+}
+
+.repo-results button:hover,
+.repo-results button:focus-visible {
+  background: var(--accent-soft);
+}
+
+.repo-results button span {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.repo-private {
+  font-style: normal;
+  font-size: 0.75rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.repo-empty {
+  padding: 0.45rem 0.6rem;
+  color: var(--muted);
+}
+
+.text-button {
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent-text);
+  text-decoration: underline;
+}
+
 .what-capsules-inherit {
   margin-bottom: 1.25rem;
 }

@@ -5,6 +5,16 @@ commands and an interactive Bubble Tea dashboard. The dashboard is a client of
 the generated public API; it does not load daemon, provider, store, or domain
 packages.
 
+## GitHub
+
+`meridian github connect` stores one login for clone, push, and pull
+requests. When `gh` is signed in it asks "Use your GitHub login @user?"
+and stops if you decline. `--device` skips `gh` and shows a device code.
+With no `gh` login it says to install and sign in to the GitHub CLI, then
+uses a device code. `--stdin` reads a token. `meridian github status`
+prints the login. `meridian github disconnect --confirm` deletes it. The
+token is not printed.
+
 ## Launch
 
 Start `meridiand` on its default loopback listener, then run:

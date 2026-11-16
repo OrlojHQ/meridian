@@ -1,4 +1,4 @@
-# ADR 0051: Project checks and automatic rework
+# ADR 0052: Project checks and automatic rework
 
 - Status: Accepted
 - Date: 2026-11-16

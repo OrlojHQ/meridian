@@ -189,6 +189,20 @@ exact-repository, exact-ref, one-shot grant; GitHub pull-request API authority
 stays host-side. Temporary material is revoked or discarded after its single
 operation and omitted from command arguments and ambient credential helpers.
 
+An owner may also store one GitHub connection (ADR 0051). It is a separate
+envelope, not a secret that can be named for more than one purpose. When a
+Project does not name a secret for clone, push, or pull request, the station
+uses that connection for the missing purpose and still issues only a one-shot
+git grant or a host-side pull request. A named secret wins. The station reads
+the host `gh` token only after the owner confirms, and only for a loopback
+request on a single-user Station. A connection check may read it again
+when that stored login came from `gh`, to replace an expired or
+re-authenticated token. Team mode and remote requests never read it. The
+device-flow device code stays in
+memory. The connection token is never returned by the API or placed in a
+Capsule environment. A clone GitHub refuses is stored as a fixed sentence
+naming the repository, never git stderr, which can contain a credential URL.
+
 Deleting a Project destroys named secrets that no other live Project still
 names (ADR 0039). The live row is removed, including ciphertext, nonce, and
 envelope metadata. A secret another live Project still names is kept. The
@@ -1592,7 +1606,7 @@ Threats and required controls:
 
 ## Project checks
 
-ADR 0051 is implemented. Checks are a quality gate, not a privilege boundary.
+ADR 0052 is implemented. Checks are a quality gate, not a privilege boundary.
 
 - **Same authority as the agent.** A check runs in the Capsule as the same
   user, without broker grants, provider credentials, or a Docker socket. The

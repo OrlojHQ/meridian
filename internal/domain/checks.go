@@ -7,7 +7,7 @@ import (
 	"unicode"
 )
 
-// Project checks (ADR 0051). A check is an argv the Capsule runs when an
+// Project checks (ADR 0052). A check is an argv the Capsule runs when an
 // agent finishes. Checks are a quality gate for the operator, not a security
 // boundary: the agent can change the commands it is asked to satisfy.
 
