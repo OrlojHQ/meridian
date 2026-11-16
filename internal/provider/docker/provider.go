@@ -179,6 +179,7 @@ func (p *Provider) Capabilities(context.Context) (ports.ProviderCapabilities, er
 		Version: "docker/v2", Pause: true, Attach: true, Run: true, Git: true,
 		Snapshot: true, Clone: true, Preview: true, Structured: true,
 		Browse: true, Delivery: true, Coordination: true,
+		Isolation: domain.IsolationContainer,
 	}, nil
 }
 

@@ -169,6 +169,16 @@ func newRootCommand() *cobra.Command {
 	command.Flags().StringVar(&config.AgentSandbox.Template, "agentsandbox-template", "", "reserved SandboxTemplate name (unsupported by direct v1beta1 Sandbox)")
 	command.Flags().StringVar(&config.AgentSandbox.Image, "agentsandbox-image", defaultCapsule, "default non-root Capsule image")
 	command.Flags().StringVar(&config.AgentSandbox.RuntimeClass, "agentsandbox-runtime-class", "", "Kubernetes RuntimeClass name (gVisor/Kata recommended)")
+	command.Flags().Func("require-isolation",
+		"refuse to start unless the provider verifies at least this isolation class: container, sandbox, or microvm",
+		func(value string) error {
+			class, err := domain.ParseIsolationClass(value)
+			if err != nil {
+				return err
+			}
+			config.RequireIsolation = class
+			return nil
+		})
 	command.Flags().StringVar(&config.AgentSandbox.StorageClass, "agentsandbox-storage-class", "", "workspace StorageClass (empty uses cluster default)")
 	command.Flags().StringVar(&config.AgentSandbox.VolumeSize, "agentsandbox-volume-size", "10Gi", "workspace PVC request")
 	command.Flags().DurationVar(&config.AgentSandbox.TTL, "agentsandbox-ttl", 24*time.Hour, "Sandbox lifetime before deletion")

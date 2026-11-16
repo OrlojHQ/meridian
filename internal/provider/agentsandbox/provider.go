@@ -268,6 +268,11 @@ func (p *Provider) Capabilities(ctx context.Context) (ports.ProviderCapabilities
 		Snapshot: transportAvailable, Clone: transportAvailable,
 		Preview: transportAvailable, Browse: transportAvailable,
 		Delivery: transportAvailable, Coordination: transportAvailable,
+		// Declared only: this provider does not verify the node's runtime in
+		// isolation-core. ADR 0050 requires a verified claim; the Agent
+		// Sandbox provider verifies the RuntimeClass in a later change and
+		// reports nothing stronger than container until then.
+		Isolation: domain.IsolationContainer,
 	}, nil
 }
 

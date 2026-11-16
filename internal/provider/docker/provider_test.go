@@ -472,6 +472,9 @@ func TestStructuredRuntimeUsesProtectedLoopbackTransport(t *testing.T) {
 	if err != nil || !capabilities.Structured || !capabilities.Browse || !capabilities.Delivery {
 		t.Fatalf("capabilities = %#v, %v", capabilities, err)
 	}
+	if capabilities.Isolation != domain.IsolationContainer {
+		t.Fatalf("Docker isolation class = %q, want container", capabilities.Isolation)
+	}
 	run, err := provider.StartStructured(context.Background(), ports.RuntimeStructuredStartRequest{
 		ResourceID: names.container, RunID: "structured-run", Harness: "structured",
 		Frame: adapterproto.Frame{

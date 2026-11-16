@@ -72,6 +72,11 @@ type Config struct {
 	// (ADR 0037): empty chooses one from the Docker engine, "off" disables
 	// it. It applies only to Docker without ProviderGatewayURL.
 	ProviderGatewayListen string
+
+	// RequireIsolation is an installation-wide floor (ADR 0050): when set,
+	// the daemon refuses to start unless the provider's verified isolation
+	// class is at least this strong.
+	RequireIsolation domain.IsolationClass
 }
 
 // testProvider replaces provider construction when tests call UseTestProvider.
@@ -93,6 +98,9 @@ func Run(ctx context.Context, config Config) error {
 func run(ctx context.Context, config Config) error {
 	if config.Provider != "docker" && config.Provider != "agentsandbox" {
 		return fmt.Errorf("unsupported provider %q (supported: docker, agentsandbox)", config.Provider)
+	}
+	if config.RequireIsolation != "" && !config.RequireIsolation.Valid() {
+		return fmt.Errorf("%w: unknown isolation class %q", domain.ErrInvalid, config.RequireIsolation)
 	}
 	if config.Listen == "" {
 		return fmt.Errorf("listen address is required")
@@ -372,6 +380,12 @@ func run(ctx context.Context, config Config) error {
 		_ = httpServer.Close()
 		_ = previewHTTPServer.Close()
 		return fmt.Errorf("initialize provider: %w", err)
+	}
+	config.Logger.Printf("provider %s isolation: %s", config.Provider, capabilities.Isolation.Label())
+	if err := checkIsolationFloor(config.RequireIsolation, capabilities.Isolation); err != nil {
+		_ = httpServer.Close()
+		_ = previewHTTPServer.Close()
+		return err
 	}
 	clock := system.Clock{}
 	ids := system.IDs{}
@@ -722,6 +736,16 @@ func daemonOperationResult(err error) string {
 	default:
 		return "error"
 	}
+}
+
+// checkIsolationFloor enforces the installation-wide --require-isolation
+// floor (ADR 0050) against the provider's verified class. Extracted so tests
+// can exercise the refusal without starting a provider.
+func checkIsolationFloor(required, verified domain.IsolationClass) error {
+	if err := domain.RequireIsolation(required, verified); err != nil {
+		return fmt.Errorf("provider isolation floor: %w", err)
+	}
+	return nil
 }
 
 func ValidatePreviewListenAddress(address string) error {
