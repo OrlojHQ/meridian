@@ -195,8 +195,8 @@ carries this script as `install-desktop.sh`, signed and listed in
 Pin a version, or install only the `meridian` and `meridiand` binaries:
 
 ```console
-curl -fsSL https://raw.githubusercontent.com/OrlojHQ/meridian/main/scripts/install-desktop.sh | sh -s -- --version 0.9.0
-curl -fsSL https://raw.githubusercontent.com/OrlojHQ/meridian/main/scripts/install-desktop.sh | sh -s -- --cli --version 0.9.0
+curl -fsSL https://raw.githubusercontent.com/OrlojHQ/meridian/main/scripts/install-desktop.sh | sh -s -- --version 0.10.1
+curl -fsSL https://raw.githubusercontent.com/OrlojHQ/meridian/main/scripts/install-desktop.sh | sh -s -- --cli --version 0.10.1
 ```
 
 The window checks for a newer release when it opens and every four hours.
@@ -235,7 +235,7 @@ Download the archive for your platform from
 `arm64` or `amd64`) and [verify it](docs/operations.md#verify-a-release):
 
 ```console
-VERSION=0.9.0
+VERSION=0.10.1
 curl -fsSLO "https://github.com/OrlojHQ/meridian/releases/download/v${VERSION}/meridian_${VERSION}_macOS_arm64.tar.gz"
 tar -xzf "meridian_${VERSION}_macOS_arm64.tar.gz" meridian meridiand
 ```
