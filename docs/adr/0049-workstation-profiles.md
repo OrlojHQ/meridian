@@ -1,6 +1,6 @@
 # ADR 0049: Workstation profiles
 
-- Status: Accepted; implemented
+- Status: Accepted; implemented in v0.10.0
 - Date: 2026-11-14
 - Amends: ADR 0024 (personal harness setups), ADR 0040 (harness-pack
   manifests), and ADR 0046 (per-user identity), for how a profile is owned

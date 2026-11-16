@@ -7,41 +7,95 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-15
+
 ### Upgrade notes
 
-- Migration 0030 adds `projects.required_isolation`. Existing Projects read
-  back with no requirement, so nothing changes until you set one.
-- `GET /capabilities` gains a required `isolation` field and Projects gain
-  `requiredIsolation`. `pkg/client` is regenerated.
+- **Back up the data directory first.** Migration 0029 adds workstation
+  profiles and migration 0030 adds `projects.required_isolation`. 0.9.0
+  refuses a data directory that 0.10.0 has migrated, so rolling back means
+  restoring the backup. Existing Projects read back with no isolation
+  requirement, and nobody has a profile until they import one.
+- API additions: `GET`/`PUT /profile`, `POST /profile/imports`,
+  `GET /capsules/{capsuleId}/profile-diagnostic`, and
+  `POST /capsules/{capsuleId}/profile-update`; a required `isolation` field
+  on `GET /capabilities`; and `requiredIsolation` on Projects.
+  `pkg/client` is regenerated.
 - The Helm chart gains `requireIsolation`, `agentSandbox.isolationClass`,
-  `agentSandbox.isolationHandlers`, and `agentSandbox.startTimeout`. Setting
-  `isolationClass` adds one ClusterRole that can `get` only the configured
-  RuntimeClass; leaving it empty keeps the install namespace-scoped.
+  `agentSandbox.isolationHandlers`, `agentSandbox.startTimeout`, and
+  `networkPolicy.kubernetesAPIServerPorts`. Setting `isolationClass` adds one
+  ClusterRole that can `get` only the configured RuntimeClass; leaving it
+  empty keeps the install namespace-scoped.
 - `agentSandbox.startTimeout` (default `10m`) now bounds the Sandbox Ready
   wait during create, which used to share `operationTimeout` (`2m`). The TTL
-  must exceed operation plus start plus setup timeouts.
+  must exceed operation plus start plus setup timeouts; raise `ttl` if you
+  had set it close to the old sum.
+- The desktop app and web UI call a running `meridiand` a Station, and the
+  bundled one is "Local". Only text changed: identifiers, bridge commands,
+  `gateway.json`, and the API are the same, and older apps and daemons keep
+  working with newer ones.
+- Keep `meridian` and `meridian-desktop` on the same release, as before.
 
 ### Added
 
+- Workstation profiles (ADR 0049, #83). One import brings a computer's
+  harness setups, git identity, and default model connections into a
+  profile that every new Capsule inherits (#174–#182):
+  - `meridian import` reviews every harness on this computer and the git
+    commit identity, lists what it keeps and leaves out, and saves them in
+    one atomic request (#180).
+  - In the desktop app, **Review this computer's setup** on first run, or
+    **Import this computer's setup…** in the tray, does the same in a window
+    without a terminal. The app checks for setup changes at launch, on
+    wake, and every 30 minutes, and offers to re-import (#182).
+  - Home shows first-run steps (import, connect a model, create a Project)
+    until you have a Project. Harness settings gains "What Capsules
+    inherit": the default setup and connection per harness, the git
+    identity, and each Project's overrides (#181).
+  - A Capsule pins the profile it started with. Its **Profile…** drawer
+    compares that pin with your current profile and can update the Capsule
+    when no session is running (#178, #181).
+  - Commits an agent makes inside a Capsule carry your pinned git identity
+    (#179).
+  - A default connection is preselected, never granted: each Project still
+    asks once (#176).
 - Provider isolation classes (ADR 0050, #86). Every provider reports the
   class it verified: `container`, `sandbox` (gVisor), or `microvm` (Kata).
   Docker is always `container`. The Agent Sandbox provider reports `sandbox`
-  or `microvm` only when `--agentsandbox-isolation-class` is declared and the
-  configured RuntimeClass's handler is a known handler for that class; an
-  unknown or never-isolating handler, a missing RuntimeClass, or missing RBAC
-  stops startup. `kata-fc` is not accepted.
-- `meridiand --require-isolation` refuses to start on a weaker provider.
+  or `microvm` only when `--agentsandbox-isolation-class` is declared and
+  the configured RuntimeClass's handler is a known handler for that class;
+  an unknown or never-isolating handler, a missing RuntimeClass, or missing
+  RBAC stops startup. `kata-fc` is not accepted (#186–#188).
+- `meridiand --require-isolation` (Helm `requireIsolation`) refuses to start
+  on a weaker provider (#187, #193).
 - Projects can require an isolation class at creation (`requiredIsolation`,
   `meridian project create --require-isolation`, and the New Project
   dialog). Capsule creation refuses an unmet requirement before any side
-  effect, and the reconciler checks it again before each provider create.
-- A separate Agent Sandbox start timeout
-  (`--agentsandbox-start-timeout`) for image pull and VM boot. A timeout
-  names the last startup phase, and readiness failures report only the
-  condition's short reason, never controller or kubelet text.
+  effect, and the reconciler checks it again before each provider create
+  (#189–#191).
+- A separate Agent Sandbox start timeout (`--agentsandbox-start-timeout`)
+  for image pull and VM boot. A timeout names the last startup phase and is
+  recorded once rather than retried, and readiness failures report only the
+  condition's short reason, never controller or kubelet text (#192).
 - `make agentsandbox-kata-validation`, an operator-run validation of the
   Kata microVM profile on KVM nodes, documented with the profile in
-  `docs/kubernetes-agentsandbox.md`.
+  `docs/kubernetes-agentsandbox.md` (#193).
+
+### Changed
+
+- A running `meridiand` is a Station in the desktop app and web UI ("Switch
+  Station", "Recent Stations"), so "gateway" now means only the provider
+  gateway. The bundled Station is "Local" (#185).
+- The README is reorganised around workstation profiles and team
+  installations, with new screenshots (#184).
+
+### Fixed
+
+- The Helm chart's control-plane API egress was fixed at TCP 443. On
+  clusters whose CNI applies NetworkPolicy after Service translation and
+  whose API server listens on 6443 (kubeadm), the control plane could not
+  reach the API with NetworkPolicy on. Set
+  `networkPolicy.kubernetesAPIServerPorts=[443,6443]` there (#193).
 
 ## [0.9.0] - 2026-11-14
 
@@ -1197,7 +1251,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - Docker and Agent Sandbox are not claimed as hostile multi-tenant isolation
   boundaries; hardened runtime deployment and external review remain required.
 
-[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/OrlojHQ/meridian/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/OrlojHQ/meridian/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/OrlojHQ/meridian/compare/v0.7.2...v0.8.0
 [0.7.2]: https://github.com/OrlojHQ/meridian/compare/v0.7.1...v0.7.2
