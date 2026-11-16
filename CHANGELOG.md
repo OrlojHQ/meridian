@@ -7,13 +7,16 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.10.0] - 2026-11-15
+## [0.10.1] - 2026-11-15
 
 ### Upgrade notes
 
+- v0.10.0 was tagged but never published: its release build's race tests
+  hit Go's default 10-minute limit. 0.10.1 is the first release with the
+  changes below; upgrade from 0.9.0 directly to it.
 - **Back up the data directory first.** Migration 0029 adds workstation
   profiles and migration 0030 adds `projects.required_isolation`. 0.9.0
-  refuses a data directory that 0.10.0 has migrated, so rolling back means
+  refuses a data directory that 0.10.1 has migrated, so rolling back means
   restoring the backup. Existing Projects read back with no isolation
   requirement, and nobody has a profile until they import one.
 - API additions: `GET`/`PUT /profile`, `POST /profile/imports`,
@@ -91,6 +94,9 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The release workflow's race tests use the same 20-minute package limit
+  and 35-minute job limit as CI, so a tag build no longer fails where PR CI
+  passed.
 - The Helm chart's control-plane API egress was fixed at TCP 443. On
   clusters whose CNI applies NetworkPolicy after Service translation and
   whose API server listens on 6443 (kubeadm), the control plane could not
@@ -1251,8 +1257,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - Docker and Agent Sandbox are not claimed as hostile multi-tenant isolation
   boundaries; hardened runtime deployment and external review remain required.
 
-[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.10.0...HEAD
-[0.10.0]: https://github.com/OrlojHQ/meridian/compare/v0.9.0...v0.10.0
+[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.10.1...HEAD
+[0.10.1]: https://github.com/OrlojHQ/meridian/compare/v0.9.0...v0.10.1
 [0.9.0]: https://github.com/OrlojHQ/meridian/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/OrlojHQ/meridian/compare/v0.7.2...v0.8.0
 [0.7.2]: https://github.com/OrlojHQ/meridian/compare/v0.7.1...v0.7.2
