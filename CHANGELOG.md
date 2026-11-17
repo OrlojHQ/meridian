@@ -7,14 +7,17 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.11.0] - 2026-11-16
+## [0.11.1] - 2026-11-16
 
 ### Upgrade notes
 
+- v0.11.0 was tagged but never published: its release check found that the
+  embedded web UI had not been rebuilt for these changes. 0.11.1 is the
+  first release with the changes below; upgrade from 0.10.1 directly to it.
 - **Back up the data directory first.** Migrations 0031 (GitHub
   connections), 0032 (the `repository_access` failure code), 0033 (Project
   checks), and 0034 (remote CI) run on first start. 0.10.1 refuses a data
-  directory that 0.11.0 has migrated, so rolling back means restoring the
+  directory that 0.11.1 has migrated, so rolling back means restoring the
   backup. Existing Projects behave as before until you connect GitHub or
   save checks.
 - **Pushes now go through the Station Git gateway** (ADR 0054). The push
@@ -109,6 +112,11 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The web UI embedded in `meridiand` is rebuilt, so the GitHub connection,
+  checks, remote CI, and connection-removal screens ship with this release.
+  CI now fails a pull request whose committed `internal/webui/dist` differs
+  from a fresh `make ui-build`, instead of the release workflow finding it
+  at tag time.
 - An imported OpenCode setup whose `enabled_providers` list left out
   `meridian` ignored an `openai-compatible` connection. OpenCode 2.2.6 turns
   that list into a deny-all provider policy. Attaching the connection now
@@ -1376,8 +1384,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - Docker and Agent Sandbox are not claimed as hostile multi-tenant isolation
   boundaries; hardened runtime deployment and external review remain required.
 
-[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.11.0...HEAD
-[0.11.0]: https://github.com/OrlojHQ/meridian/compare/v0.10.1...v0.11.0
+[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.11.1...HEAD
+[0.11.1]: https://github.com/OrlojHQ/meridian/compare/v0.10.1...v0.11.1
 [0.10.1]: https://github.com/OrlojHQ/meridian/compare/v0.9.0...v0.10.1
 [0.9.0]: https://github.com/OrlojHQ/meridian/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/OrlojHQ/meridian/compare/v0.7.2...v0.8.0

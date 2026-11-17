@@ -1,6 +1,6 @@
 # ADR 0051: One owner-bound GitHub connection
 
-- Status: Accepted; implemented in v0.11.0
+- Status: Accepted; implemented in v0.11.1
 - Date: 2026-11-16
 - Extends: ADR 0014 (purpose-scoped secrets), ADR 0020 (delivery), ADR 0046
   (per-user ownership), and ADR 0049 (the first-run steps)

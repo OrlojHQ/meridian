@@ -1,6 +1,6 @@
 # ADR 0053: Read GitHub CI on a Meridian pull request
 
-- Status: Accepted; implemented in v0.11.0
+- Status: Accepted; implemented in v0.11.1
 - Date: 2026-11-16
 - Extends: ADR 0020 (delivery binds the reviewed tree), ADR 0051 (one GitHub connection), ADR 0052 (Project checks)
 
