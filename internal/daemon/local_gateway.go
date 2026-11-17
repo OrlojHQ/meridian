@@ -17,6 +17,12 @@ const LocalGatewayOff = "off"
 
 // ValidateProviderGatewayListen checks --provider-gateway-listen against the
 // rest of the configuration. Empty means choose from the Docker engine.
+// Delivery push modes (ADR 0054).
+const (
+	DeliveryPushGateway = "gateway"
+	DeliveryPushCapsule = "capsule"
+)
+
 func ValidateProviderGatewayListen(config Config) error {
 	listen := config.ProviderGatewayListen
 	if listen == "" || listen == LocalGatewayOff {

@@ -315,6 +315,22 @@ A Project with no git secret uses that login for clone, push, and pull
 requests. A named `git_https`, `git_push`, or `github_api` secret still wins
 for that one purpose.
 
+Pushes go through the Station Git gateway (ADR 0054). After you approve a
+push, the Capsule runs `git push` against `/git-gateway/` on the gateway
+listener with a one-time capability for that exact commit and branch.
+`meridiand` checks the push command, adds the push credential, and forwards
+it to the source host. The credential never enters the Capsule. The gateway
+shares the provider gateway's listener: the local listener on Docker, or the
+`--provider-gateway-url` origin, which must route `/git-gateway/` to
+`meridiand` the same way it routes `/provider-gateway/`.
+
+Without a gateway (a remote or rootless Docker engine and no
+`--provider-gateway-url`), pushes fail with a message that names the fix.
+`meridiand --delivery-push=capsule` keeps the older in-Capsule push for that
+installation. It sends the push credential into the Capsule, where any
+process in the Capsule can read it during the push, and `meridiand` logs a
+warning at startup.
+
 Store purpose-scoped credentials through stdin:
 
 ```console

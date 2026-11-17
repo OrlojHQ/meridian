@@ -476,12 +476,25 @@ type DeliveryCommitResult struct {
 	Tree   string
 }
 
+// DeliveryPushRequest pushes one exact commit. Gateway is set for a push
+// through the Station Git gateway (ADR 0054); GitCredential only for the
+// in-Capsule push of --delivery-push=capsule.
 type DeliveryPushRequest struct {
 	ResourceID     string
 	SourceCommit   string
 	DestinationRef string
 	ExpectedOldRef *string
 	GitCredential  GitHTTPSCredential
+	Gateway        *GitGatewayPush
+}
+
+// GitGatewayPush is the gateway address, the CA its certificate chains to
+// (empty when publicly trusted), and the one-time capability for one push.
+type GitGatewayPush struct {
+	URL        string
+	CA         string
+	Username   string
+	Capability string
 }
 
 type DeliveryPushResult struct {

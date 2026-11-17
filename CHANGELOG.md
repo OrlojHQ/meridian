@@ -7,6 +7,30 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Upgrade notes
+
+- **Pushes now go through the Station Git gateway** (ADR 0054). The push
+  credential stays on the Station; the Capsule pushes with a one-time
+  capability for the approved commit and branch. Docker installs get this
+  from the local gateway listener with no change. Behind
+  `--provider-gateway-url`, route `/git-gateway/` to `meridiand` as you
+  route `/provider-gateway/`, and on Kubernetes allow the control plane to
+  reach your Git host. An installation with no gateway (a remote or rootless
+  Docker engine without `--provider-gateway-url`) refuses pushes until one
+  is configured, or until `--delivery-push=capsule` restores the in-Capsule
+  push.
+
+### Changed
+
+- An approved push no longer sends the push credential into the Capsule.
+  `capsuled` pushes to the Station Git gateway with a one-time capability
+  bound to one Delivery's commit, branch, and expected old value.
+  `meridiand` checks the push command, adds the credential, and streams the
+  pack to the source host unparsed. The Station, not the Capsule, reads the
+  remote branch before the push, and the source host checks the expected old
+  value atomically. With the GitHub connection of ADR 0051, this keeps the
+  owner's whole GitHub login out of every Capsule.
+
 ### Added
 
 - Connect GitHub once (ADR 0051, #197). Home, Settings, and

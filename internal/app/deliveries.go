@@ -392,12 +392,7 @@ func (s *Service) executeDelivery(
 			Username: payload.Username, Password: payload.Password,
 		}
 		payload.Username, payload.Password, payload.Value = "", "", ""
-		expectedOldRef := ""
-		pushed, pushErr := s.delivery.PushDelivery(ctx, ports.DeliveryPushRequest{
-			ResourceID: capsule.ProviderResourceID, SourceCommit: sourceCommit,
-			DestinationRef: result.DestinationRef, ExpectedOldRef: &expectedOldRef,
-			GitCredential: credential,
-		})
+		pushed, pushErr := s.pushDelivery(ctx, project, capsule, sourceCommit, result.DestinationRef, credential)
 		credential.Username, credential.Password = "", ""
 		if pushErr != nil {
 			return fail(pushErr)
@@ -562,6 +557,9 @@ func validateDeliveryProject(project domain.Project, _ domain.DeliveryAction) er
 func (s *Service) validateDeliverySecrets(
 	ctx context.Context, project domain.Project, action domain.DeliveryAction,
 ) error {
+	if err := s.requireDeliveryPush(); err != nil {
+		return err
+	}
 	if err := s.requireDeliveryCredential(ctx, project.OwnerUserID, project.RepositoryURL, project.GitPushSecretName, domain.SecretGitPush); err != nil {
 		return err
 	}

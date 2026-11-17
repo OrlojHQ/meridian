@@ -339,14 +339,9 @@ func (p *Provider) PushDelivery(
 	if err != nil {
 		return ports.DeliveryPushResult{}, err
 	}
-	credential := &capsuleproto.GitHTTPSCredential{
-		Username: request.GitCredential.Username, Password: request.GitCredential.Password,
-	}
-	defer func() { credential.Username, credential.Password = "", "" }()
-	result, err := supervisor.DeliveryPush(ctx, capsuleproto.DeliveryPushRequest{
-		SourceCommit: request.SourceCommit, DestinationRef: request.DestinationRef,
-		ExpectedOldRef: request.ExpectedOldRef, GitCredential: credential,
-	})
+	push, wipe := pushRequest(request)
+	defer wipe()
+	result, err := supervisor.DeliveryPush(ctx, push)
 	return ports.DeliveryPushResult{
 		Commit: result.Commit, DestinationRef: result.DestinationRef,
 	}, mapRuntimeError(err)
@@ -500,4 +495,24 @@ func (a *attachment) Write(ctx context.Context, binary bool, value []byte) error
 
 func (a *attachment) Close() error {
 	return a.connection.Close(websocket.StatusNormalClosure, "")
+}
+
+// pushRequest converts a provider push request. wipe clears the copied
+// credential or capability once the request is sent.
+func pushRequest(request ports.DeliveryPushRequest) (capsuleproto.DeliveryPushRequest, func()) {
+	push := capsuleproto.DeliveryPushRequest{
+		SourceCommit: request.SourceCommit, DestinationRef: request.DestinationRef,
+		ExpectedOldRef: request.ExpectedOldRef,
+	}
+	if request.Gateway != nil {
+		push.Gateway = &capsuleproto.GitGatewayPush{
+			URL: request.Gateway.URL, CA: request.Gateway.CA,
+			Username: request.Gateway.Username, Capability: request.Gateway.Capability,
+		}
+		return push, func() { push.Gateway.Capability = "" }
+	}
+	push.GitCredential = &capsuleproto.GitHTTPSCredential{
+		Username: request.GitCredential.Username, Password: request.GitCredential.Password,
+	}
+	return push, func() { push.GitCredential.Username, push.GitCredential.Password = "", "" }
 }

@@ -813,6 +813,20 @@ branch updates, deletes, tags, wildcard refspecs, and non-fast-forward or force
 updates fail closed by default. `meridiand`, not the Capsule, uses the
 purpose-bound `github_api` secret to create or update a pull request for the
 verified repository and refs. No standing GitHub token enters a Capsule.
+
+Push goes through the Station Git gateway (ADR 0054). `capsuled`, the
+harness, and the processes they start share uid 10001, so anything a Capsule
+holds during a push is readable by a leftover process in it. The Capsule
+therefore holds only a one-time capability, bound to one Delivery's commit,
+branch, and expected old value and valid for two minutes. `meridiand` checks
+the receive-pack command against that grant, adds the credential, and streams
+the pack upstream without unpacking it. The gateway parses only the bounded
+pkt-line command section of a request from a hostile Capsule. The upstream URL
+comes from the Project, never from the request, and redirects are not
+followed. A stolen capability can perform only the approved push, once.
+`--delivery-push=capsule` restores the in-Capsule push and its exposure for
+an installation without a gateway; `meridiand` warns at startup when it is
+set.
 Stable step identities, observed commit/ref/PR state, and content-free audit
 make retries idempotent; divergent state is a conflict, not permission to
 repeat an ambiguous side effect.

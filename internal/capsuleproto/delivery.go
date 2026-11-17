@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -45,12 +46,36 @@ type DeliveryCommitResponse struct {
 	Tree   string `json:"tree"`
 }
 
+// DeliveryPushRequest pushes one exact commit to one branch. Gateway is the
+// default: the push goes to the Station Git gateway with a one-time
+// capability, and no source-host credential reaches the Capsule (ADR 0054).
+// GitCredential is the in-Capsule push an installation keeps only with
+// --delivery-push=capsule. Exactly one of the two is set.
 type DeliveryPushRequest struct {
 	SourceCommit   string              `json:"sourceCommit"`
 	DestinationRef string              `json:"destinationRef"`
 	ExpectedOldRef *string             `json:"expectedOldRef,omitempty"`
-	GitCredential  *GitHTTPSCredential `json:"gitCredential"`
+	GitCredential  *GitHTTPSCredential `json:"gitCredential,omitempty"`
+	Gateway        *GitGatewayPush     `json:"gateway,omitempty"`
 }
+
+// GitGatewayPush is where and how a Capsule pushes through the Station.
+// Capability authorizes only the approved ref update, once. CA is the PEM
+// the gateway's certificate chains to, empty when it is publicly trusted.
+type GitGatewayPush struct {
+	URL        string `json:"url"`
+	CA         string `json:"ca,omitempty"`
+	Username   string `json:"username"`
+	Capability string `json:"capability"`
+}
+
+const (
+	gitGatewayPathPrefix = "/git-gateway/"
+	maxGatewayCABytes    = 64 << 10
+	// gatewayPostBuffer matches gitgateway.PostBufferBytes: a push that fits
+	// goes as one request with a length, not Git's probe and chunked upload.
+	gatewayPostBuffer = 64 << 20
+)
 
 type DeliveryPushResponse struct {
 	Commit         string `json:"commit"`
@@ -159,6 +184,9 @@ func (s *Server) deliveryPush(writer http.ResponseWriter, request *http.Request)
 			input.GitCredential = nil
 		}()
 	}
+	if input.Gateway != nil {
+		defer func() { input.Gateway.Capability = "" }()
+	}
 	if validatePushRequest(input) != nil {
 		writeProtocolError(writer, http.StatusBadRequest, "invalid_request")
 		return
@@ -186,6 +214,10 @@ func (s *Server) deliveryPush(writer http.ResponseWriter, request *http.Request)
 		ctx, s.config.Workspace, nil, "cat-file", "-t", input.SourceCommit,
 	); err != nil || kind != "commit" {
 		writeProtocolError(writer, http.StatusBadRequest, "invalid_request")
+		return
+	}
+	if input.Gateway != nil {
+		s.deliveryPushThroughGateway(ctx, writer, input)
 		return
 	}
 	origin, err := deliveryOrigin(ctx, s.config.Workspace)
@@ -233,6 +265,77 @@ func (s *Server) deliveryPush(writer http.ResponseWriter, request *http.Request)
 	})
 }
 
+// deliveryPushThroughGateway pushes to the Station Git gateway. The Station
+// already checked the remote branch and the gateway enforces the expected
+// old value, so there is no ls-remote here and no source-host credential.
+func (s *Server) deliveryPushThroughGateway(ctx context.Context, writer http.ResponseWriter, input DeliveryPushRequest) {
+	helper, err := createGitAskpass()
+	if err != nil {
+		writeProtocolError(writer, http.StatusInternalServerError, "push_failed")
+		return
+	}
+	defer os.Remove(helper)
+	var environment []string
+	if input.Gateway.CA != "" {
+		caFile, err := writeGatewayCA(input.Gateway.CA)
+		if err != nil {
+			writeProtocolError(writer, http.StatusInternalServerError, "push_failed")
+			return
+		}
+		defer os.Remove(caFile)
+		environment = append(environment, "GIT_SSL_CAINFO="+caFile)
+	}
+	credential := GitHTTPSCredential{Username: input.Gateway.Username, Password: input.Gateway.Capability}
+	_, err = secureDeliveryGit(
+		ctx, s.config.Workspace, helper, credential, environment,
+		"-c", "http.postBuffer="+strconv.Itoa(gatewayPostBuffer),
+		"push", "--porcelain", "--no-verify", "--",
+		input.Gateway.URL, input.SourceCommit+":"+input.DestinationRef,
+	)
+	credential.Password = ""
+	if err != nil {
+		writeProtocolError(writer, http.StatusUnprocessableEntity, "push_failed")
+		return
+	}
+	writeJSON(writer, http.StatusOK, DeliveryPushResponse{
+		Commit: input.SourceCommit, DestinationRef: input.DestinationRef,
+	})
+}
+
+func writeGatewayCA(pemText string) (string, error) {
+	file, err := os.CreateTemp("", ".meridian-gateway-ca-*")
+	if err != nil {
+		return "", err
+	}
+	name := file.Name()
+	_, writeErr := io.WriteString(file, pemText)
+	closeErr := file.Close()
+	if writeErr != nil || closeErr != nil {
+		_ = os.Remove(name)
+		return "", errors.New("write gateway CA")
+	}
+	return name, nil
+}
+
+func validateGatewayPush(gateway GitGatewayPush) error {
+	parsed, err := url.Parse(gateway.URL)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil ||
+		parsed.RawQuery != "" || parsed.Fragment != "" ||
+		!strings.HasPrefix(parsed.Path, gitGatewayPathPrefix) || len(gateway.URL) > 4096 {
+		return errors.New("invalid gateway URL")
+	}
+	if len(gateway.CA) > maxGatewayCABytes || strings.ContainsRune(gateway.CA, 0) ||
+		gateway.CA != "" && !strings.Contains(gateway.CA, "-----BEGIN CERTIFICATE-----") {
+		return errors.New("invalid gateway CA")
+	}
+	if gateway.Username == "" || len(gateway.Username) > maxDeliveryAuthorBytes ||
+		len(gateway.Capability) != 64 || strings.Trim(gateway.Capability, "0123456789abcdef") != "" ||
+		strings.ContainsAny(gateway.Username, "\x00\r\n:") {
+		return errors.New("invalid gateway capability")
+	}
+	return nil
+}
+
 func validateCommitRequest(input DeliveryCommitRequest) error {
 	if input.Message == "" || len(input.Message) > maxDeliveryMessageBytes ||
 		strings.ContainsRune(input.Message, '\x00') ||
@@ -249,7 +352,18 @@ func validatePushRequest(input DeliveryPushRequest) error {
 	if !validObjectID(input.SourceCommit) ||
 		!strings.HasPrefix(input.DestinationRef, "refs/heads/") ||
 		len(input.DestinationRef) > maxDeliveryRefBytes ||
-		input.GitCredential == nil || input.GitCredential.Password == "" ||
+		(input.GitCredential == nil) == (input.Gateway == nil) {
+		return errors.New("invalid push request")
+	}
+	if input.Gateway != nil {
+		if input.ExpectedOldRef != nil {
+			// The Station checks the remote branch; the gateway enforces it.
+			return errors.New("a gateway push carries no expected old ref")
+		}
+		if err := validateGatewayPush(*input.Gateway); err != nil {
+			return err
+		}
+	} else if input.GitCredential.Password == "" ||
 		len(input.GitCredential.Username) > maxDeliveryAuthorBytes ||
 		len(input.GitCredential.Password) > maxDeliveryMessageBytes ||
 		strings.ContainsAny(input.GitCredential.Username+input.GitCredential.Password, "\x00\r\n") {
@@ -559,7 +673,7 @@ func secureRemoteRef(
 	credential GitHTTPSCredential,
 ) (string, error) {
 	value, err := secureDeliveryGit(
-		ctx, workspace, helper, credential,
+		ctx, workspace, helper, credential, nil,
 		"ls-remote", "--refs", "--", origin, destination,
 	)
 	if err != nil {
@@ -582,7 +696,7 @@ func secureGitPush(
 	credential GitHTTPSCredential,
 ) error {
 	_, err := secureDeliveryGit(
-		ctx, workspace, helper, credential,
+		ctx, workspace, helper, credential, nil,
 		"push", "--porcelain", "--no-verify", "--", origin, source+":"+destination,
 	)
 	return err
@@ -592,11 +706,13 @@ func secureDeliveryGit(
 	ctx context.Context,
 	workspace, helper string,
 	credential GitHTTPSCredential,
+	environment []string,
 	arguments ...string,
 ) ([]byte, error) {
 	base := []string{
 		"-c", "core.hooksPath=/dev/null",
 		"-c", "credential.helper=",
+		"-c", "http.followRedirects=false",
 		"-c", "core.askPass=" + helper,
 		"-c", "commit.gpgSign=false",
 		"-c", "tag.gpgSign=false",
@@ -609,7 +725,7 @@ func secureDeliveryGit(
 	}
 	command := exec.Command("git", append(base, arguments...)...)
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	command.Env = secureGitEnvironment(deliveryEnvironment(nil), helper, credential)
+	command.Env = append(secureGitEnvironment(deliveryEnvironment(nil), helper, credential), environment...)
 	var output boundedBuffer
 	output.limit = maxDeliveryGitOutput
 	command.Stdout = &output
