@@ -284,7 +284,7 @@ describe("application shell", () => {
     expect(
       screen.getByRole("dialog", { name: "New Capsule" }),
     ).toBeInTheDocument();
-    expect(await screen.findByRole("radio", { name: "OpenCode" })).toBeChecked();
+    expect(await screen.findByRole("combobox", { name: "Harness" })).toHaveTextContent("OpenCode");
     expect(screen.getByRole("tab", { name: "Thread" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("tab", { name: "CLI" })).toHaveAttribute("aria-selected", "false");
     await userEvent.keyboard("{Escape}");

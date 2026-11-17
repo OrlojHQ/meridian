@@ -95,7 +95,7 @@ describe("New Capsule dialog", () => {
     expect(start).toBeEnabled();
     expect(screen.queryByRole("link", { name: "Connect a provider" })).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "Project" })).not.toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: "OpenCode" })).toBeChecked();
+    expect(screen.getByRole("combobox", { name: "Harness" })).toHaveTextContent("OpenCode");
     await userEvent.click(start);
     expect(await screen.findByText("Capsule opened")).toBeInTheDocument();
     expect(create).toHaveBeenCalledWith(project.id, expect.stringMatching(/^opencode-/), "opencode");
@@ -121,9 +121,11 @@ describe("New Capsule dialog", () => {
 
     expect(await screen.findByRole("dialog", { name: "New Capsule" })).toBeInTheDocument();
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
-    expect(screen.queryByRole("combobox", { name: "Harness" })).not.toBeInTheDocument();
+    const harness = await screen.findByRole("combobox", { name: "Harness" });
+    expect(harness).toHaveTextContent("OpenCode");
+    expect(harness).toHaveAttribute("aria-expanded", "false");
     await waitFor(() => expect(screen.getByRole("button", { name: "Start" })).toBeEnabled());
-    screen.getByRole("radio", { name: "OpenCode" }).focus();
+    harness.focus();
     await userEvent.keyboard("{Enter}");
     expect(await screen.findByText("Capsule opened")).toBeInTheDocument();
     // The Thread starts without a first message.
@@ -165,6 +167,34 @@ describe("New Capsule dialog", () => {
     expect(spawn).toHaveBeenCalledWith(project.id, "opencode", "", undefined, {
       maxChildren: 16, maxDescendants: 16, spawnApproval: "operator",
     });
+  });
+
+  it("chooses a harness from the dropdown with the keyboard", async () => {
+    const packs = [
+      { name: "opencode", imageReference: "example.test/opencode:v1" },
+      { name: "pi", imageReference: "example.test/pi:v1" },
+    ];
+    vi.mocked(api.projects).mockResolvedValue({ items: [{ ...project, harnessImages: packs }] });
+    vi.mocked(api.capabilities).mockResolvedValue({ ...capabilities, harnessImages: packs });
+    renderDialog();
+
+    const harness = await screen.findByRole("combobox", { name: "Harness" });
+    expect(harness).toHaveTextContent("OpenCode");
+    harness.focus();
+    await userEvent.keyboard("{ArrowDown}");
+    const list = screen.getByRole("listbox", { name: "Harness" });
+    expect(within(list).getByRole("option", { name: "OpenCode" })).toHaveAttribute("aria-selected", "true");
+    expect(within(list).getByRole("option", { name: "Pi" })).toHaveAttribute("aria-selected", "false");
+    await userEvent.keyboard("{ArrowDown}{Escape}");
+    expect(screen.queryByRole("listbox", { name: "Harness" })).not.toBeInTheDocument();
+    expect(harness).toHaveTextContent("OpenCode");
+
+    harness.focus();
+    await userEvent.keyboard("p");
+    expect(harness).toHaveTextContent("Pi");
+    await userEvent.keyboard("{ArrowDown}{ArrowDown}{Enter}");
+    expect(harness).toHaveTextContent("OpenCode");
+    expect(screen.queryByRole("listbox", { name: "Harness" })).not.toBeInTheDocument();
   });
 
   it("asks which Project only when none is current, recent first", async () => {

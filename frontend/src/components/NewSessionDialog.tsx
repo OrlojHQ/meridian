@@ -16,7 +16,8 @@ import {
 import { Button } from "./ui/Button";
 import { Dialog } from "./ui/Dialog";
 import { HarnessMark } from "./ui/HarnessMark";
-import { TerminalIcon, ThreadIcon } from "./ui/Icons";
+import { CheckIcon, ChevronIcon, TerminalIcon, ThreadIcon } from "./ui/Icons";
+import type { HarnessImage } from "../api/generated/types.gen";
 
 // A lead started here gets the largest lifetime subagent total the daemon
 // allows. The limits that matter in use are the daemon's own: how many
@@ -97,6 +98,158 @@ function ProjectPicker({
               </button>
             </li>
           ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function HarnessPicker({
+  packs,
+  value,
+  disabled,
+  onChange,
+}: {
+  packs: HarnessImage[];
+  value: string;
+  disabled?: boolean;
+  onChange: (name: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [highlight, setHighlight] = useState(0);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const typed = useRef("");
+  const typedTimer = useRef(0);
+  const listId = "new-session-harness-list";
+  const selected = Math.max(0, packs.findIndex((item) => item.name === value));
+  const active = open ? highlight : selected;
+  const current = packs[selected];
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    window.addEventListener("mousedown", close);
+    return () => window.removeEventListener("mousedown", close);
+  }, [open]);
+
+  function choose(index: number) {
+    const pack = packs[index];
+    if (!pack) return;
+    onChange(pack.name);
+    setHighlight(index);
+    setOpen(false);
+  }
+
+  function typeAhead(key: string) {
+    if (key.length !== 1 || key === " ") return false;
+    typed.current = (typed.current + key).toLowerCase();
+    window.clearTimeout(typedTimer.current);
+    typedTimer.current = window.setTimeout(() => {
+      typed.current = "";
+    }, 500);
+    const match = packs.findIndex((item) =>
+      harnessName(item.name).toLowerCase().startsWith(typed.current),
+    );
+    if (match < 0) return false;
+    setHighlight(match);
+    if (!open) onChange(packs[match].name);
+    return true;
+  }
+
+  function onKeyDown(event: { key: string; preventDefault: () => void; stopPropagation: () => void }) {
+    if (disabled || packs.length === 0) return;
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      event.stopPropagation();
+      const direction = event.key === "ArrowDown" ? 1 : -1;
+      if (!open) {
+        setHighlight(selected);
+        setOpen(true);
+        return;
+      }
+      setHighlight((currentIndex) => (currentIndex + direction + packs.length) % packs.length);
+      return;
+    }
+    if (event.key === "Enter") {
+      // A closed picker leaves Enter for the form, which starts the Capsule.
+      if (!open) return;
+      event.preventDefault();
+      event.stopPropagation();
+      choose(highlight);
+      return;
+    }
+    if (event.key === " ") {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!open) setOpen(true);
+      else choose(highlight);
+      return;
+    }
+    if (event.key === "Escape") {
+      if (!open) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setHighlight(selected);
+      setOpen(false);
+      return;
+    }
+    if (event.key === "Tab") {
+      setOpen(false);
+      return;
+    }
+    if (typeAhead(event.key)) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }
+
+  if (!current) return null;
+
+  return (
+    <div className={`harness-select${open ? " open" : ""}`} ref={rootRef} onKeyDown={onKeyDown}>
+      <button
+        type="button"
+        className="harness-select-value"
+        role="combobox"
+        aria-label="Harness"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={open ? listId : undefined}
+        aria-activedescendant={open ? `harness-option-${packs[active]?.name}` : undefined}
+        disabled={disabled}
+        onClick={() => {
+          setHighlight(selected);
+          setOpen((value) => !value);
+        }}
+      >
+        <HarnessMark harness={current.name} size="sm" />
+        <span>{harnessName(current.name)}</span>
+        <ChevronIcon className="chevron" />
+      </button>
+      {open && (
+        <ul className="harness-select-list" id={listId} role="listbox" aria-label="Harness">
+          {packs.map((item, index) => {
+            const chosen = item.name === value;
+            return (
+              <li key={item.name}>
+                <button
+                  type="button"
+                  id={`harness-option-${item.name}`}
+                  role="option"
+                  aria-selected={chosen}
+                  className={index === highlight ? "active" : undefined}
+                  onMouseEnter={() => setHighlight(index)}
+                  onClick={() => choose(index)}
+                >
+                  <HarnessMark harness={item.name} size="sm" />
+                  <span>{harnessName(item.name)}</span>
+                  {chosen ? <CheckIcon /> : <span className="harness-select-check" aria-hidden="true" />}
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
@@ -249,30 +402,20 @@ export function NewSessionDialog({
           if (event.key !== "Enter" || event.shiftKey || event.altKey || event.metaKey || event.ctrlKey) return;
           const target = event.target;
           if (target instanceof HTMLTextAreaElement) return;
-          if (target instanceof HTMLButtonElement && target.type === "button") return;
+          if (target instanceof HTMLButtonElement && target.type === "button" && target.getAttribute("aria-expanded") !== "false") return;
           event.preventDefault();
           formRef.current?.requestSubmit();
         }}
       >
-        <div className="harness-tiles" role="radiogroup" aria-label="Harness">
-          {packs.map((item) => (
-            <label key={item.name} className={item.name === harnessId ? "is-selected" : undefined}>
-              <input
-                type="radio"
-                name="new-session-harness"
-                value={item.name}
-                checked={item.name === harnessId}
-                disabled={start.isPending}
-                onChange={() => {
-                  setHarness(item.name);
-                  setConnection(undefined);
-                }}
-              />
-              <HarnessMark harness={item.name} size="md" />
-              <span>{harnessName(item.name)}</span>
-            </label>
-          ))}
-        </div>
+        <HarnessPicker
+          packs={packs}
+          value={harnessId}
+          disabled={start.isPending}
+          onChange={(name) => {
+            setHarness(name);
+            setConnection(undefined);
+          }}
+        />
         <div className="session-mode" role="tablist" aria-label="How to start">
           <span title={structured ? undefined : "This harness has no structured session"}>
             <button

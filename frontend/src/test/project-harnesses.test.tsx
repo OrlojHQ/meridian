@@ -109,9 +109,14 @@ describe("Project harness management", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "New Capsule" }));
     const dialog = screen.getByRole("dialog", { name: "New Capsule" });
-    expect(within(dialog).getByRole("radio", { name: "OpenCode" })).toBeChecked();
-    await userEvent.click(within(dialog).getByRole("radio", { name: "Pi" }));
-    expect(within(dialog).getByRole("radio", { name: "Pi" })).toBeChecked();
+    const harness = within(dialog).getByRole("combobox", { name: "Harness" });
+    expect(harness).toHaveTextContent("OpenCode");
+    await userEvent.click(harness);
+    const options = within(dialog).getByRole("listbox", { name: "Harness" });
+    expect(within(options).getByRole("option", { name: "OpenCode" })).toHaveAttribute("aria-selected", "true");
+    await userEvent.click(within(options).getByRole("option", { name: "Pi" }));
+    expect(harness).toHaveTextContent("Pi");
+    expect(within(dialog).queryByRole("listbox")).not.toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Start" })).toBeInTheDocument();
   });
 
