@@ -59,12 +59,15 @@ jobs:
           echo "code=$code" >>"$GITHUB_OUTPUT"
           echo "Run full build: $code"
 
-  build-test-lint:
-    name: Build, test, and lint
+  # The checks run as three parallel jobs. "Build, test, and lint" waits for
+  # all of them and is the one required status check, so branch protection
+  # does not change when a job is split or added.
+  test-lint:
+    name: Test and lint
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -89,13 +92,6 @@ jobs:
       - name: Test
         run: make test
 
-      # Race instrumentation makes the pure-Go SQLite migrations in each
-      # fresh test fixture expensive. The app package can exceed Go's default
-      # 10-minute limit on shared runners while individual tests still finish
-      # in seconds. Keep a bounded package limit within the 35-minute job.
-      - name: Race test
-        run: go test -race ./... -count=1 -timeout=20m
-
       - name: Vulnerability check
         run: make vulncheck
 
@@ -111,6 +107,48 @@ jobs:
       - name: Test Helm policy
         run: make helm-test
 
+      - name: Check whitespace
+        run: git diff --check
+
+  race:
+    name: Race test
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Setup Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: "1.26.11"
+          cache: true
+
+      # Each test database is a copy of one migrated template (internal/
+      # store/sqlite/test_template.go), so race instrumentation no longer
+      # replays every migration per fixture. The package limit stays as a
+      # bound, not an expectation.
+      - name: Race test
+        run: go test -race ./... -count=1 -timeout=20m
+
+  snapshot:
+    name: Validate snapshot release
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Setup Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: "1.26.11"
+          cache: true
+
       - name: Validate snapshot release
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7
         with:
@@ -118,5 +156,33 @@ jobs:
           version: v2.17.0
           args: release --snapshot --clean --skip=docker --skip=sbom
 
-      - name: Check whitespace
-        run: git diff --check
+  build-test-lint:
+    name: Build, test, and lint
+    needs: [changes, test-lint, race, snapshot]
+    # Runs even when a needed job fails or is skipped, so a failure fails the
+    # required check instead of skipping it, which would report success.
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every check
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          CODE: ${{ needs.changes.outputs.code }}
+          TEST_LINT: ${{ needs.test-lint.result }}
+          RACE: ${{ needs.race.result }}
+          SNAPSHOT: ${{ needs.snapshot.result }}
+        run: |
+          set -euo pipefail
+          echo "changes=$CHANGES code=$CODE test-lint=$TEST_LINT race=$RACE snapshot=$SNAPSHOT"
+          if [[ "$CHANGES" != "success" ]]; then
+            echo "::error::Detect code changes did not succeed"; exit 1
+          fi
+          if [[ "$CODE" != "true" ]]; then
+            echo "Docs-only change: the build was skipped."; exit 0
+          fi
+          for result in "$TEST_LINT" "$RACE" "$SNAPSHOT"; do
+            if [[ "$result" != "success" ]]; then
+              echo "::error::A required job did not succeed"; exit 1
+            fi
+          done
