@@ -633,7 +633,7 @@ describe("Capsule detail states", () => {
     expect(screen.queryByRole("heading", { name: "Start a session" })).not.toBeInTheDocument();
   });
 
-  it("shows the pinned harness setup and that Settings edits wait for the next Capsule", async () => {
+  it("keeps setup comparison in the actions menu", async () => {
     vi.spyOn(api, "capsule").mockResolvedValue({
       ...capsule,
       harness: "opencode",
@@ -695,6 +695,9 @@ describe("Capsule detail states", () => {
     expect(await screen.findByText(/My opencode setup · /)).toBeInTheDocument();
     expect(screen.queryByText(/My claude setup/)).not.toBeInTheDocument();
     expect(screen.getByText(/Edits in Settings apply to the next Capsule/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Profile…" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Capsule actions" }));
+    expect(screen.getByRole("menuitem", { name: "Setup details" })).toBeInTheDocument();
   });
 
   it("marks a Capsule built on an older harness release without offering to change it", async () => {
@@ -1077,7 +1080,7 @@ describe("Workspace browsing and shipping", () => {
     expect(await screen.findByText("Binary content is unsupported.")).toBeInTheDocument();
   });
 
-  it("requires typed ship approval and binds inspected Git objects", async () => {
+  it("confirms a pull request in one click and still sends the reviewed Git objects", async () => {
     vi.spyOn(api, "deliveryInspection").mockResolvedValue({
       capsuleResourceVersion: capsule.resourceVersion,
       head: "a".repeat(40),
@@ -1086,12 +1089,16 @@ describe("Workspace browsing and shipping", () => {
       defaultBranch: "main",
       dirty: true,
     });
+    vi.spyOn(api, "gitDiff").mockResolvedValue({
+      content: "diff --git a/notes.md b/notes.md\n--- a/notes.md\n+++ b/notes.md\n@@ -1 +1,2 @@\n-old\n+new\n+line\n",
+      truncated: false,
+    });
     const delivery = vi.spyOn(api, "createDelivery").mockResolvedValue({
       id: "delivery-1",
       capsuleId: capsule.id,
       projectId: project.id,
       state: "succeeded",
-      action: "push",
+      action: "open_pull_request",
       proposedBy: "operator",
       approved: true,
       approvedAt: "2026-08-24T00:00:00Z",
@@ -1100,28 +1107,39 @@ describe("Workspace browsing and shipping", () => {
       expectedTree: "b".repeat(40),
       remoteBranch: "feature/remote",
       destinationRef: "refs/heads/feature/remote",
+      pullRequestTitle: "Ship reviewed work",
+      commitMessage: "Ship reviewed work",
+      baseBranch: "main",
       resultCommitSha: "c".repeat(40),
       createdAt: "2026-08-24T00:00:00Z",
       updatedAt: "2026-08-24T00:00:00Z",
       resourceVersion: 4,
     });
     wrapper(<ShipPanel capsule={capsule} />);
-    const ship = await screen.findByRole("button", { name: "Ship" });
-    expect(ship).toBeDisabled();
-    await userEvent.type(screen.getByLabelText("Destination branch"), "feature/remote");
-    await userEvent.type(screen.getByLabelText("Commit message"), "Ship reviewed work");
-    await userEvent.type(screen.getByLabelText("Ship confirmation"), "ship");
-    expect(ship).toBeEnabled();
-    await userEvent.click(ship);
+    const create = await screen.findByRole("button", { name: "Create PR" });
+    expect(create).toBeDisabled();
+    expect(await screen.findByText("1 file changed · +2 −1 · 1 commit")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Ship confirmation")).not.toBeInTheDocument();
+    const reviewed = screen.getByText("Reviewed Git state").closest("details");
+    expect(reviewed).not.toHaveAttribute("open");
+    await userEvent.clear(screen.getByLabelText("Branch"));
+    await userEvent.type(screen.getByLabelText("Branch"), "feature/remote");
+    await userEvent.type(screen.getByLabelText("Title"), "Ship reviewed work");
+    expect(create).toBeEnabled();
+    await userEvent.click(create);
     await waitFor(() =>
       expect(delivery).toHaveBeenCalledWith(
         capsule.id,
         expect.objectContaining({
+          action: "open_pull_request",
           approved: true,
           expectedResourceVersion: capsule.resourceVersion,
           expectedHead: "a".repeat(40),
           expectedTree: "b".repeat(40),
           remoteBranch: "feature/remote",
+          pullRequestTitle: "Ship reviewed work",
+          commitMessage: "Ship reviewed work",
+          baseBranch: "main",
         }),
       ),
     );

@@ -189,10 +189,12 @@ the choice and the Capsule's profiles decide. Native launch lists only harness
 packs applied to that Project, follows provisioning, and opens the first PTY
 Run. Structured launch retains the encrypted Thread intent workflow.
 
-Keyboard shortcuts `n`, `/`, `j`/`k`, the arrow keys, `g` then `n`, and `?`
-open Project creation, focus filtering, move through the Capsule working set,
-jump to the next Capsule that needs the operator, and list every shortcut, only
-while focus is outside terminals and form controls. `g` then `n` is the same
+Keyboard shortcuts `n`, Ctrl+N (⌘N on macOS), `/`, `j`/`k`, the arrow keys,
+`g` then `n`, and `?` open Project creation, start a Capsule in the open
+Project (or ask which Project when none is open), focus filtering, move
+through the Capsule working set, jump to the next Capsule that needs the
+operator, and list every shortcut, only while focus is outside terminals and
+form controls. Ctrl+N is not taken from a focused terminal. `g` then `n` is the same
 command as the palette's "Next item needing me": it cycles oldest-first through
 Inbox items that need you. The command
 palette opens with ⌘K on macOS and Ctrl+K elsewhere, or from "Commands" in the
@@ -249,10 +251,14 @@ The production routes are:
   surface while the contextual Changes tab shows the bounded Git diff;
 - `/ui/threads` and `/ui/threads/:id` — retained structured Thread fleet,
   decrypted typed-block timeline, pinned composer, permissions, and session
-  actions. Threads are titled by their Capsule name, with the agent, Project,
-  role (lead, or subagent of a named lead) and a status chip as secondary
-  text, all from plaintext metadata; no transcript is decrypted to label a
-  row. The list puts Threads that need you first, then sorts by recency. The
+  actions. The fleet and Inbox title a Thread by its Capsule name, with the
+  agent, Project, role (lead, or subagent of a named lead) and a status chip
+  as secondary text, all from plaintext metadata; those lists do not decrypt
+  a transcript to label a row. On the Capsule page, an automatic `thread-`
+  id is shown as a short title from the first message of the open Thread.
+  That read is the transcript the page already decrypts, and the title is
+  not written to browser storage. Clicking the title saves a Capsule name.
+  The list puts Threads that need you first, then sorts by recency. The
   Thread ID appears only in Thread details;
 - `/ui/settings/harnesses` — Harness settings, in three sections: Your setups,
   Import from this computer, and Provider connections;
@@ -300,11 +306,13 @@ binary, symlink, special, and over-1-MiB content is labeled unsupported. File
 bytes and paths are not interpreted as HTML, written to browser storage, or
 logged.
 
-The Ship panel displays the exact inspected HEAD/tree and dirty state. It
-requires the operator to type `ship`, a non-protected destination branch, a
-commit message for dirty trees, and pull-request fields when requested. The
-mutation carries the current Capsule resource version and exact reviewed Git
-objects; repository or agent output cannot supply the confirmation.
+The pull request sheet summarizes files, line counts, and whether the action
+will create a commit. It fills the branch, title, and description from the
+open Thread. The operator confirms with one click. Push branch only sends a
+push and omits pull-request fields. A dirty tree is committed with the title
+(or the commit message, when only pushing); a clean tree is not given a
+commit message. The exact HEAD and tree stay in a collapsed row and are sent
+as `expectedHead` and `expectedTree` with the current Capsule resource version.
 
 Thread transcript routes replay a bounded ordered page and then follow SSE with
 an `AbortController`, durable sequence cursor, ID deduplication, and bounded

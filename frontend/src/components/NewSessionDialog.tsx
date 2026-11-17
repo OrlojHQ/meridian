@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { api, normalizeAPIError } from "../api/client";
-import type { CoordinationPolicy } from "../api/generated/types.gen";
+import type { CoordinationPolicy, Project } from "../api/generated/types.gen";
 import { packMayRunNative, packMayRunStructured } from "../api/harnessPacks";
 import { queries } from "../api/queries";
 import { harnessName, sessionPath, TERMINAL_SESSION } from "../shell/capsuleActivity";
@@ -15,7 +15,7 @@ import {
 } from "./ProviderConnections";
 import { Button } from "./ui/Button";
 import { Dialog } from "./ui/Dialog";
-import { Select } from "./ui/Field";
+import { HarnessMark } from "./ui/HarnessMark";
 import { TerminalIcon, ThreadIcon } from "./ui/Icons";
 
 // A lead started here gets the largest lifetime subagent total the daemon
@@ -24,10 +24,88 @@ import { TerminalIcon, ThreadIcon } from "./ui/Icons";
 // defaults, so the operator never has to guess a number up front.
 const LEAD_POLICY = { maxChildren: 16, maxDescendants: 16 } as const;
 
-// NewSessionDialog starts a fresh Capsule. It asks only what to start: a
-// Thread or the harness CLI, in which Project, with which harness. A Thread
-// starts without a first message, so the harness reports its models and the
-// operator chooses one in the Thread before the first turn.
+function recentProjects(projects: Project[]) {
+  return [...projects].sort(
+    (left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt) || left.name.localeCompare(right.name),
+  );
+}
+
+function ProjectPicker({
+  projects,
+  onSelect,
+}: {
+  projects: Project[];
+  onSelect: (id: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [index, setIndex] = useState(0);
+  const recent = useMemo(() => recentProjects(projects), [projects]);
+  const matches = recent.filter((project) =>
+    project.name.toLowerCase().includes(query.trim().toLowerCase()),
+  );
+  const selected = Math.min(index, Math.max(matches.length - 1, 0));
+
+  function choose(id: string) {
+    onSelect(id);
+  }
+
+  function onKeyDown(event: { key: string; preventDefault: () => void }) {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const direction = event.key === "ArrowDown" ? 1 : -1;
+      setIndex((current) => {
+        const next = Math.min(current, Math.max(matches.length - 1, 0)) + direction;
+        return (next + matches.length) % matches.length;
+      });
+      return;
+    }
+    if (event.key === "Enter" && matches[selected]) {
+      event.preventDefault();
+      choose(matches[selected].id);
+    }
+  }
+
+  return (
+    <div className="project-picker" onKeyDown={onKeyDown}>
+      <label>
+        Find a project
+        <input
+          autoFocus
+          role="searchbox"
+          value={query}
+          placeholder="Search projects"
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setIndex(0);
+          }}
+        />
+      </label>
+      {matches.length === 0 ? (
+        <p className="field-hint">No matching project.</p>
+      ) : (
+        <ul className="project-picker-list" role="listbox" aria-label="Projects">
+          {matches.map((project, itemIndex) => (
+            <li key={project.id}>
+              <button
+                type="button"
+                role="option"
+                aria-selected={itemIndex === selected}
+                onMouseEnter={() => setIndex(itemIndex)}
+                onClick={() => choose(project.id)}
+              >
+                {project.name}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// NewSessionDialog starts a fresh Capsule in one Project. The Project is
+// chosen only when nothing is open yet. A Thread starts without a first
+// message, so the harness reports its models before the first turn.
 export function NewSessionDialog({
   projectId,
   onProjectChange,
@@ -40,7 +118,8 @@ export function NewSessionDialog({
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const closeRef = useRef<HTMLButtonElement>(null);
-  const { projectItems } = useWorkingSet();
+  const formRef = useRef<HTMLFormElement>(null);
+  const { projectItems, projects } = useWorkingSet();
   const capabilities = useQuery(queries.capabilities());
   const [harness, setHarness] = useState("");
   const [mode, setMode] = useState<"thread" | "cli">("thread");
@@ -49,7 +128,7 @@ export function NewSessionDialog({
   const [approveSpawns, setApproveSpawns] = useState(false);
   const [error, setError] = useState("");
 
-  const chosenProject = projectItems.find((project) => project.id === projectId) ?? projectItems[0];
+  const chosenProject = projectItems.find((project) => project.id === projectId);
   const packs = chosenProject?.harnessImages ?? [];
   const catalog = capabilities.data?.harnessImages ?? [];
   const pack = packs.find((item) => item.name === harness) ?? packs[0];
@@ -140,21 +219,60 @@ export function NewSessionDialog({
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (blocked) return;
+    if (blocked || !chosenProject) return;
     start.mutate();
   }
+
+  const picking = !projects.isPending && !chosenProject;
 
   return (
     <Dialog
       labelledBy="new-session-title"
-      title="New Capsule"
+      eyebrow={chosenProject ? chosenProject.name : undefined}
+      title={picking ? "Choose a project" : "New Capsule"}
       closeLabel="Close new Capsule"
       closeRef={closeRef}
       onClose={onClose}
       busy={start.isPending}
       className="new-session-dialog"
     >
-      <form className="launcher-form" onSubmit={submit}>
+      {projects.isPending ? (
+        <p role="status">Loading projects…</p>
+      ) : picking ? (
+        <ProjectPicker projects={projectItems} onSelect={onProjectChange} />
+      ) : (
+      <form
+        ref={formRef}
+        className="launcher-form"
+        onSubmit={submit}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" || event.shiftKey || event.altKey || event.metaKey || event.ctrlKey) return;
+          const target = event.target;
+          if (target instanceof HTMLTextAreaElement) return;
+          if (target instanceof HTMLButtonElement && target.type === "button") return;
+          event.preventDefault();
+          formRef.current?.requestSubmit();
+        }}
+      >
+        <div className="harness-tiles" role="radiogroup" aria-label="Harness">
+          {packs.map((item) => (
+            <label key={item.name} className={item.name === harnessId ? "is-selected" : undefined}>
+              <input
+                type="radio"
+                name="new-session-harness"
+                value={item.name}
+                checked={item.name === harnessId}
+                disabled={start.isPending}
+                onChange={() => {
+                  setHarness(item.name);
+                  setConnection(undefined);
+                }}
+              />
+              <HarnessMark harness={item.name} size="md" />
+              <span>{harnessName(item.name)}</span>
+            </label>
+          ))}
+        </div>
         <div className="session-mode" role="tablist" aria-label="How to start">
           <span title={structured ? undefined : "This harness has no structured session"}>
             <button
@@ -181,43 +299,6 @@ export function NewSessionDialog({
             </button>
           </span>
         </div>
-        <label htmlFor="new-session-project">
-          Project
-          <Select
-            id="new-session-project"
-            value={chosenProject?.id ?? ""}
-            disabled={start.isPending}
-            onChange={(event) => {
-              onProjectChange(event.target.value);
-              setHarness("");
-              setConnection(undefined);
-            }}
-          >
-            {projectItems.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.name}
-              </option>
-            ))}
-          </Select>
-        </label>
-        <label htmlFor="new-session-harness">
-          Harness
-          <Select
-            id="new-session-harness"
-            value={harnessId}
-            disabled={start.isPending || packs.length === 0}
-            onChange={(event) => {
-              setHarness(event.target.value);
-              setConnection(undefined);
-            }}
-          >
-            {packs.map((item) => (
-              <option key={item.name} value={item.name}>
-                {harnessName(item.name)}
-              </option>
-            ))}
-          </Select>
-        </label>
         {packs.length === 0 && (
           <p className="field-hint">
             <Link to={`/ui/projects/${chosenProject?.id ?? ""}`} onClick={onClose}>
@@ -225,24 +306,6 @@ export function NewSessionDialog({
             </Link>{" "}
             to {chosenProject?.name ?? "this Project"} first.
           </p>
-        )}
-        {connectable && available.length > 1 && (
-          <label htmlFor="new-session-connection">
-            Provider connection
-            <Select
-              id="new-session-connection"
-              value={selectedConnection}
-              disabled={start.isPending}
-              onChange={(event) => setConnection(event.target.value)}
-            >
-              <option value="">Sign in inside the harness</option>
-              {available.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </Select>
-          </label>
         )}
         {activeMode === "thread" && coordinationSupported && harnessId && (
           <fieldset className="lead-options">
@@ -276,15 +339,6 @@ export function NewSessionDialog({
               </>
             )}
           </fieldset>
-        )}
-        {harnessId && !blocked && (
-          <p className="field-hint">
-            {activeMode === "thread"
-              ? `Pick ${harnessName(harnessId)}'s model and effort in the Thread before you send anything.`
-              : connectable && !selectedConnection
-                ? `You can sign in inside ${harnessName(harnessId)} after it opens.`
-                : `Opens ${harnessName(harnessId)} in a terminal.`}
-          </p>
         )}
         {blocked && (
           <p className="field-hint" id="new-session-provider-required">
@@ -320,6 +374,7 @@ export function NewSessionDialog({
           </Button>
         </div>
       </form>
+      )}
     </Dialog>
   );
 }

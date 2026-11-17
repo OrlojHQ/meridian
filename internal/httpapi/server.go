@@ -302,6 +302,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /check-runs/{checkRunId}/cancel", s.cancelCheckRun)
 	s.mux.HandleFunc("POST /capsules/{capsuleId}/pause", s.pauseCapsule)
 	s.mux.HandleFunc("POST /capsules/{capsuleId}/promote", s.promoteCapsule)
+	s.mux.HandleFunc("POST /capsules/{capsuleId}/name", s.renameCapsule)
 	s.mux.HandleFunc("POST /capsules/{capsuleId}/resume", s.resumeCapsule)
 	s.mux.HandleFunc("POST /capsules/{capsuleId}/retry", func(w http.ResponseWriter, r *http.Request) { s.lifecycle(w, r, s.service.RetryCapsule) })
 	s.mux.HandleFunc("POST /capsules/{capsuleId}/delete", s.deleteCapsule)
@@ -1335,6 +1336,25 @@ func (s *Server) pauseCapsule(writer http.ResponseWriter, request *http.Request)
 	s.lifecycle(writer, request, s.service.PauseCapsule)
 }
 
+func (s *Server) renameCapsule(writer http.ResponseWriter, request *http.Request) {
+	var input renameCapsuleRequest
+	if !decode(writer, request, &input) {
+		return
+	}
+	capsule, err := s.service.RenameCapsule(
+		request.Context(),
+		domain.CapsuleID(request.PathValue("capsuleId")),
+		input.Name,
+		domain.ResourceVersion(input.ExpectedResourceVersion),
+		request.Header.Get("Idempotency-Key"),
+	)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	s.writeCapsule(writer, request, http.StatusOK, capsule)
+}
+
 func (s *Server) resumeCapsule(writer http.ResponseWriter, request *http.Request) {
 	s.lifecycle(writer, request, s.service.ResumeCapsule)
 }
@@ -2266,6 +2286,11 @@ type lifecycleRequest struct {
 	// Force stops active sessions, then deletes. It does not wait on a harness
 	// that never answers.
 	Force bool `json:"force,omitempty"`
+}
+
+type renameCapsuleRequest struct {
+	Name                    string `json:"name"`
+	ExpectedResourceVersion int64  `json:"expectedResourceVersion"`
 }
 
 type captureMomentRequest struct {

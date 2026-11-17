@@ -29,13 +29,20 @@ export function ProjectSettings() {
     : undefined;
   return (
     <section className="project-settings">
-      <header>
-        <p className="eyebrow">Project</p>
-        <h1>
-          {project.name}
-          {isolationLabel && <Badge>{isolationLabel}</Badge>}
-        </h1>
-        <p className="launch-hint">Applies to future Capsules.</p>
+      <header className="project-settings-header">
+        <div>
+          <p className="eyebrow">Project</p>
+          <h1>
+            {project.name}
+            {isolationLabel && <Badge>{isolationLabel}</Badge>}
+          </h1>
+          <p className="launch-hint">Applies to future Capsules.</p>
+        </div>
+        {outlet?.openNewSession && (project.state ?? "active") === "active" && (
+          <button type="button" className="primary-button" onClick={() => outlet.openNewSession(project.id)}>
+            New Capsule
+          </button>
+        )}
       </header>
       <dl>
         <div>
@@ -64,11 +71,6 @@ export function ProjectSettings() {
         <Link className="button-link" to="/ui/">
           Home
         </Link>
-        {outlet?.openLauncher && (
-          <button type="button" onClick={() => outlet.openLauncher(project)}>
-            Start work in {project.name}
-          </button>
-        )}
         {outlet?.openDeleteProject && (
           <button
             type="button"

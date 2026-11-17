@@ -42,7 +42,7 @@ Only the pass and the used-up budget ask for you. A failure that still has attem
 
 ## Review
 
-The Ship panel says whether the checks passed, failed, or are out of date for the exact tree you are approving. Editing the tree after the checks makes them out of date and offers **Run checks**. Shipping stays available either way: you decide.
+The pull request sheet says whether the checks passed, failed, or are out of date for the exact tree you are approving. Editing the tree after the checks makes them out of date and offers **Run checks**. Opening a pull request stays available either way: you decide.
 
 The pull request body gains a Meridian checks section written by the server from the stored result for that tree. It lists the command names and durations. It does not include command output. The pull request still points at the commit and tree you reviewed.
 

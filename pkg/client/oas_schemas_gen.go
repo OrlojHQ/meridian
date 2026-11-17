@@ -1665,6 +1665,7 @@ func (s *CapsuleHeaders) SetResponse(val Capsule) {
 func (*CapsuleHeaders) createCapsuleRes()  {}
 func (*CapsuleHeaders) getCapsuleRes()     {}
 func (*CapsuleHeaders) promoteCapsuleRes() {}
+func (*CapsuleHeaders) renameCapsuleRes()  {}
 
 // Ref: #/components/schemas/CapsuleIntent
 type CapsuleIntent string
@@ -15000,6 +15001,48 @@ func (*RemoveSubagentNotFound) removeSubagentRes() {}
 type RemoveSubagentUnprocessableEntity ErrorEnvelope
 
 func (*RemoveSubagentUnprocessableEntity) removeSubagentRes() {}
+
+type RenameCapsuleBadRequest ErrorEnvelope
+
+func (*RenameCapsuleBadRequest) renameCapsuleRes() {}
+
+type RenameCapsuleConflict ErrorEnvelope
+
+func (*RenameCapsuleConflict) renameCapsuleRes() {}
+
+type RenameCapsuleNotFound ErrorEnvelope
+
+func (*RenameCapsuleNotFound) renameCapsuleRes() {}
+
+// Ref: #/components/schemas/RenameCapsuleRequest
+type RenameCapsuleRequest struct {
+	Name                    string `json:"name"`
+	ExpectedResourceVersion int64  `json:"expectedResourceVersion"`
+}
+
+// GetName returns the value of Name.
+func (s *RenameCapsuleRequest) GetName() string {
+	return s.Name
+}
+
+// GetExpectedResourceVersion returns the value of ExpectedResourceVersion.
+func (s *RenameCapsuleRequest) GetExpectedResourceVersion() int64 {
+	return s.ExpectedResourceVersion
+}
+
+// SetName sets the value of Name.
+func (s *RenameCapsuleRequest) SetName(val string) {
+	s.Name = val
+}
+
+// SetExpectedResourceVersion sets the value of ExpectedResourceVersion.
+func (s *RenameCapsuleRequest) SetExpectedResourceVersion(val int64) {
+	s.ExpectedResourceVersion = val
+}
+
+type RenameCapsuleUnprocessableEntity ErrorEnvelope
+
+func (*RenameCapsuleUnprocessableEntity) renameCapsuleRes() {}
 
 type RespondThreadBadRequest ErrorEnvelope
 

@@ -71,7 +71,8 @@ const inbox = capsule("cap-inbox", "inbox copy", undefined, "Ready", ago(2 * hou
 const setups = capsule("cap-setups", "harness setups", "pi", "Ready", ago(3 * hour));
 const paused = capsule("cap-pause", "k8s pause", "claude", "Paused", ago(day), billing.id);
 const sealed = capsule("cap-sealed", "thread encryption", undefined, "Sealed", ago(3 * day));
-const capsules = [notes, tests, tokens, preview, inbox, setups, paused, sealed];
+const header = capsule("cap-header", "thread-ad942540f1e7", "opencode", "Ready", ago(2 * minute));
+const capsules = [notes, tests, tokens, preview, inbox, setups, paused, sealed, header];
 
 function run(id: string, capsuleId: string, harness: string, state: string, startedAt: string) {
   return {
@@ -93,6 +94,7 @@ const runs: Record<string, ReturnType<typeof run>[]> = {
   [preview.id]: [run("run-preview", preview.id, "claude", "Running", ago(hour))],
   [inbox.id]: [run("run-inbox", inbox.id, "claude", "Succeeded", ago(2 * hour))],
   [setups.id]: [run("run-setups", setups.id, "pi", "Running", ago(3 * hour))],
+  [header.id]: [run("run-header", header.id, "opencode", "Running", ago(2 * minute))],
 };
 
 function thread(
@@ -136,6 +138,10 @@ const threads = [
   thread("thread-tokens", tokens.id, "codex", "run-tokens", ago(12 * minute)),
   thread("thread-inbox", inbox.id, "claude", "run-inbox", ago(2 * hour), undefined, "idle"),
   thread("thread-sealed", sealed.id, "claude", "run-sealed", ago(3 * day), undefined, "idle"),
+  thread("thread-header", header.id, "opencode", "run-header", ago(2 * minute), {
+    kind: "input",
+    since: ago(minute),
+  }, "idle"),
 ];
 
 function block(
@@ -177,6 +183,11 @@ const blocks: Record<string, unknown[]> = {
           options: ["deny", "allow"],
         },
       },
+    }),
+  ],
+  "thread-header": [
+    block("b-header-user", "m-header-user", 1, "user", "text", {
+      content: "Fix the header so it stays on one line.",
     }),
   ],
   "thread-tokens": [
@@ -288,6 +299,7 @@ const boardStatus: Record<string, BoardStatus> = {
   [setups.id]: "working",
   [paused.id]: "paused",
   [sealed.id]: "sealed",
+  [header.id]: "needs_you",
 };
 
 function board() {
@@ -433,10 +445,14 @@ function route(pathname: string): unknown {
       resourceMetrics: false,
       isolation: "container",
       ptyFallback: true,
+      coordination: { supported: true, maxDepth: 1, maxDescendants: 16 },
       harnessImages: catalog,
     };
   }
-  if (pathname === "/projects") return { items: [project, billing] };
+  if (pathname === "/projects") {
+    if (new URLSearchParams(window.location.search).get("shot") === "empty") return { items: [] };
+    return { items: [project, billing] };
+  }
   if (pathname === `/projects/${project.id}`) return project;
   if (pathname === `/projects/${billing.id}`) return billing;
   if (pathname === `/projects/${project.id}/capsules`) {
@@ -449,7 +465,12 @@ function route(pathname: string): unknown {
   if (pathname === `/projects/${billing.id}/capsules`) {
     return { items: capsules.filter((item) => item.projectId === billing.id) };
   }
-  if (pathname === "/board") return { items: board(), truncated: false };
+  if (pathname === "/board") {
+    if (new URLSearchParams(window.location.search).get("shot") === "empty") {
+      return { items: [], truncated: false };
+    }
+    return { items: board(), truncated: false };
+  }
   if (pathname === "/provider-connections") {
     return {
       enabled: true,
@@ -468,6 +489,33 @@ function route(pathname: string): unknown {
   }
   if (pathname === "/harness-setups") return { items: harnessSetups };
   if (pathname === "/profile") return profile;
+  if (pathname.endsWith("/profile-diagnostic")) {
+    const id = pathname.split("/")[2];
+    return {
+      capsuleId: id,
+      nothingPinned: false,
+      matchesProfile: id !== header.id,
+      harnesses: id === header.id ? [{
+        harness: "opencode",
+        pinned: { setupId: "setup-opencode", setupName: "My OpenCode setup", revision: "rev-1", savedAt: ago(day) },
+        current: { setupId: "setup-opencode", setupName: "My OpenCode setup", revision: "rev-2", savedAt: ago(hour) },
+        projectOverride: "",
+        filesAdded: [],
+        filesRemoved: [],
+        hasReport: true,
+        exclusions: [],
+        warnings: [],
+        connection: { granted: true, name: "work", revoked: false, needsSignIn: false },
+      }] : [],
+      commitAuthor: {
+        source: "capsule",
+        name: "Ada Lovelace",
+        email: "ada@example.com",
+        profileName: "Ada Lovelace",
+        profileEmail: "ada@example.com",
+      },
+    };
+  }
   if (pathname === "/auth/mode") return { mode: "team", signIn: true, claimable: false };
   if (pathname === "/auth/me") return member;
   if (pathname === "/auth/sessions") {
@@ -556,11 +604,11 @@ function route(pathname: string): unknown {
   if (pathname.endsWith("/deliveries/inspection")) {
     return {
       capsuleResourceVersion: 2,
-      head: "abc123",
+      head: "a".repeat(40),
       branch: "release/v0.4.0",
-      dirty: false,
+      dirty: true,
       defaultBranch: "main",
-      tree: "def456",
+      tree: "b".repeat(40),
     };
   }
   if (pathname.endsWith("/deliveries")) {

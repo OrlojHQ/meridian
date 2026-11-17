@@ -13,6 +13,24 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - The Capsule header names only the setup for the harness that Capsule runs, with the revision time in local time. The note that Settings edits apply to the next Capsule appears only after that setup changes.
 - The Terminal tab opens a shell in the Capsule workspace instead of retrying a harness terminal that does not exist. A harness terminal remains available as Harness output when that run has one. A permanent attach failure is shown once, not retried.
 
+### Changed
+
+- The Capsule header uses one row: a title, the branch, and a status only
+  when the session is working, needs input, or failed. An automatic
+  `thread-` id is shown as a short title from the first message. Click the
+  title to rename the Capsule (`POST /capsules/{capsuleId}/name`).
+- Setup comparison moves to the Capsule actions menu as Setup details. When
+  the Capsule differs from the current profile, the header offers to update it.
+- Create PR replaces Ship. The sheet summarizes the change, fills the branch,
+  title, and description from the thread, and confirms in one click. The
+  reviewed HEAD and tree are still sent, and stay in a collapsed row. After a
+  pull request exists, the header links to it and can push an update.
+- A Capsule is started from its Project. The sidebar's main button creates a
+  Project. Each Project row and the Project page open a New Capsule dialog
+  already scoped to that Project. Ctrl+N (⌘N on macOS) does the same for the
+  open Project, and asks which Project only when none is open. The dialog
+  shows harness tiles, Thread or CLI, and an optional lead agent.
+
 ## [0.11.3] - 2026-11-17
 
 ### Fixed

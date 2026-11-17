@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -54,7 +54,7 @@ function renderDialog(onClose = vi.fn()) {
         <Routes>
           <Route
             path="/ui/"
-            element={<NewSessionDialog projectId="" onProjectChange={vi.fn()} onClose={onClose} />}
+            element={<NewSessionDialog projectId={project.id} onProjectChange={vi.fn()} onClose={onClose} />}
           />
           <Route path="/ui/capsules/:capsuleId" element={<p>Capsule opened</p>} />
         </Routes>
@@ -94,7 +94,8 @@ describe("New Capsule dialog", () => {
     await userEvent.click(screen.getByRole("tab", { name: "CLI" }));
     expect(start).toBeEnabled();
     expect(screen.queryByRole("link", { name: "Connect a provider" })).not.toBeInTheDocument();
-    expect(screen.getByText("You can sign in inside OpenCode after it opens.")).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Project" })).not.toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "OpenCode" })).toBeChecked();
     await userEvent.click(start);
     expect(await screen.findByText("Capsule opened")).toBeInTheDocument();
     expect(create).toHaveBeenCalledWith(project.id, expect.stringMatching(/^opencode-/), "opencode");
@@ -120,9 +121,10 @@ describe("New Capsule dialog", () => {
 
     expect(await screen.findByRole("dialog", { name: "New Capsule" })).toBeInTheDocument();
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Harness" })).not.toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("button", { name: "Start" })).toBeEnabled());
-    expect(screen.getByText(/model and effort in the Thread before you send anything/)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    screen.getByRole("radio", { name: "OpenCode" }).focus();
+    await userEvent.keyboard("{Enter}");
     expect(await screen.findByText("Capsule opened")).toBeInTheDocument();
     // The Thread starts without a first message.
     expect(spawn).toHaveBeenCalledWith(project.id, "opencode", "", undefined, undefined);
@@ -163,6 +165,30 @@ describe("New Capsule dialog", () => {
     expect(spawn).toHaveBeenCalledWith(project.id, "opencode", "", undefined, {
       maxChildren: 16, maxDescendants: 16, spawnApproval: "operator",
     });
+  });
+
+  it("asks which Project only when none is current, recent first", async () => {
+    const older = { ...project, id: "project-old", name: "Older", updatedAt: "2026-01-01T00:00:00Z" };
+    const newer = { ...project, id: "project-new", name: "Newer", updatedAt: "2026-11-01T00:00:00Z" };
+    vi.mocked(api.projects).mockResolvedValue({ items: [older, newer] });
+    const onProjectChange = vi.fn();
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <NewSessionDialog projectId="" onProjectChange={onProjectChange} onClose={vi.fn()} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Choose a project" });
+    const options = within(dialog).getAllByRole("option");
+    expect(options.map((option) => option.textContent)).toEqual(["Newer", "Older"]);
+    await userEvent.type(within(dialog).getByRole("searchbox"), "old");
+    expect(within(dialog).getAllByRole("option")).toHaveLength(1);
+    await userEvent.keyboard("{Enter}");
+    expect(onProjectChange).toHaveBeenCalledWith("project-old");
   });
 
   it("allows a terminal-only harness without a provider even when Thread is the initial preference", async () => {

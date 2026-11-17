@@ -349,6 +349,10 @@ type RemoveSubagentRes interface {
 	removeSubagentRes()
 }
 
+type RenameCapsuleRes interface {
+	renameCapsuleRes()
+}
+
 type RespondThreadRes interface {
 	respondThreadRes()
 }

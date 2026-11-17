@@ -1566,6 +1566,43 @@ paths:
           $ref: "#/components/responses/TooManyRequests"
         default:
           $ref: "#/components/responses/DefaultError"
+  /capsules/{capsuleId}/name:
+    post:
+      operationId: renameCapsule
+      summary: Rename a Capsule
+      description: >
+        Saves the name shown for this Capsule. The name is plaintext metadata.
+        It does not change the Thread transcript.
+      tags: [capsules]
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RenameCapsuleRequest"
+      responses:
+        "200":
+          description: Renamed Capsule
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Capsule"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+        default:
+          $ref: "#/components/responses/DefaultError"
   /capsules/{capsuleId}/harness-profiles:
     get:
       operationId: listHarnessProfiles
@@ -4124,6 +4161,18 @@ components:
           type: boolean
           default: false
           description: Close the link to the lead. The lead can no longer message or hear from this Capsule.
+    RenameCapsuleRequest:
+      type: object
+      required: [name, expectedResourceVersion]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        expectedResourceVersion:
+          type: integer
+          format: int64
+          minimum: 1
     CaptureMomentRequest:
       type: object
       required: [name, expectedResourceVersion]

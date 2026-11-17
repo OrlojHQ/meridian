@@ -298,7 +298,7 @@ export function Board() {
         </p>
         {outlet?.openNewProject && (
           <Button type="button" variant="primary" onClick={outlet.openNewProject}>
-            New project
+            Create your first project
           </Button>
         )}
       </Card>

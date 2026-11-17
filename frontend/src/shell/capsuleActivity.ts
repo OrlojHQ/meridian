@@ -361,6 +361,30 @@ export function capsuleSessions(
   return capsule.harness ? [terminalSession(capsule.harness, runs), ...sessions] : sessions;
 }
 
+export type HeaderAttention = {
+  tone: "working" | "attention";
+  label: "Working" | "Needs input" | "Failed";
+};
+
+// The session tab already shows idle and finished. The header speaks only
+// when the open session is working, waiting, or failed.
+export function headerAttention(
+  capsuleState: string,
+  session?: { group: ActivityGroup; label: string },
+): HeaderAttention | undefined {
+  if (capsuleState === "Failed" || session?.label === "Failed") {
+    return { tone: "attention", label: "Failed" };
+  }
+  if (
+    session?.group === "attention" &&
+    (session.label === "Waiting for input" || session.label === "Waiting for permission")
+  ) {
+    return { tone: "attention", label: "Needs input" };
+  }
+  if (session?.group === "working") return { tone: "working", label: "Working" };
+  return undefined;
+}
+
 const revisionMonths = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 export function revisionStamp(value: string) {

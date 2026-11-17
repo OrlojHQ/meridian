@@ -45,6 +45,8 @@ const (
 	// A workspace shell was opened. The record names the Capsule, not the
 	// commands typed in it.
 	AuditCapsuleShell AuditAction = "capsule.shell"
+	// The Capsule's display name changed. The record names the Capsule, not the text.
+	AuditCapsuleRename AuditAction = "capsule.rename"
 )
 
 // AuditRecord is one append-only audit line. It holds ids only: no secret

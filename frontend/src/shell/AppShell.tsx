@@ -104,6 +104,15 @@ const isPaletteShortcut = (event: KeyboardEvent) => {
   return event.ctrlKey && !event.metaKey && !inTerminal(event.target);
 };
 
+// ⌘N on Apple platforms and Ctrl+N elsewhere. Ctrl+N stays with a focused
+// terminal. It starts a Capsule in the open Project, or asks which Project
+// when none is open.
+const isNewCapsuleShortcut = (event: KeyboardEvent) => {
+  if (event.key.toLowerCase() !== "n" || event.altKey || event.shiftKey) return false;
+  if (isApplePlatform()) return event.metaKey && !event.ctrlKey;
+  return event.ctrlKey && !event.metaKey && !inTerminal(event.target);
+};
+
 const MAX_RECENT = 5;
 
 // Matches the phone layout in shell.css, where the Capsule tools pane covers
@@ -394,6 +403,7 @@ export function AppShell() {
 
   useEffect(() => {
     setLaunchProject(undefined);
+    setNewSessionOpen(false);
   }, [location.key]);
 
   const { projects, projectItems, items, ready } = useWorkingSet();
@@ -570,6 +580,11 @@ export function AppShell() {
               navigate,
               requestCapsuleAction,
               openNewProject: () => setNewProjectOpen(true),
+              openNewSession: (projectId) => {
+                setSessionProject(projectId);
+                setSidebarOpen(false);
+                setNewSessionOpen(true);
+              },
               openLauncher: setLaunchProject,
               openDeleteProject: setDeleteProject,
               openShortcuts: () => setShortcutsOpen(true),
@@ -611,10 +626,38 @@ export function AppShell() {
     .sort((left, right) => byTime(left) - byTime(right));
   const activeProjectId = items.find((item) => item.capsule.id === capsuleId)?.capsule.projectId;
   const openNewSession = (projectId?: string) => {
-    if (projectId) setSessionProject(projectId);
+    setSessionProject(projectId ?? "");
     setSidebarOpen(false);
     setNewSessionOpen(true);
   };
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!isNewCapsuleShortcut(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (newSessionOpen || newProjectOpen || paletteOpen) return;
+      const routeProjectId = pathID(location.pathname, "projects");
+      const capsuleProjectId =
+        items.find((item) => item.capsule.id === capsuleId)?.capsule.projectId ?? "";
+      const current = routeProjectId || capsuleProjectId;
+      if (!current && projectItems.length === 0) {
+        setNewProjectOpen(true);
+        return;
+      }
+      openNewSession(current || undefined);
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [
+    capsuleId,
+    items,
+    location.pathname,
+    newProjectOpen,
+    newSessionOpen,
+    openNewSession,
+    paletteOpen,
+    projectItems.length,
+  ]);
   const startCapsuleIn = (project: Project) => openNewSession(project.id);
   const renderItem = (
     { capsule, activity, sessions, rollup }: WorkingSetItem,
@@ -727,18 +770,14 @@ export function AppShell() {
             </span>
             <span>Meridian</span>
           </Link>
-          <button type="button" className="new-work-button" onClick={() => setNewProjectOpen(true)}>
-            <PlusIcon />
-            New project
-          </button>
         </header>
         <button
           type="button"
           className="primary-button new-capsule"
-          onClick={() => openNewSession()}
+          onClick={() => setNewProjectOpen(true)}
         >
           <PlusIcon />
-          New Capsule
+          {projects.isSuccess && projectItems.length === 0 ? "Create your first project" : "New project"}
         </button>
         <label className="activity-filter" htmlFor="activity-filter">
           <SearchIcon />
@@ -778,9 +817,6 @@ export function AppShell() {
                 Connect a provider
               </Link>
               <Link to="/ui/settings/account#github">Connect GitHub</Link>
-              <button type="button" onClick={() => setNewProjectOpen(true)}>
-                Create a Project
-              </button>
             </nav>
           ) : (
             <>

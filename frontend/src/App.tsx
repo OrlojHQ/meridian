@@ -7,7 +7,7 @@ import {
   useQueryClient,
   type UseQueryResult,
 } from "@tanstack/react-query";
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Link,
@@ -25,8 +25,6 @@ import { followRunEvents, type StreamStatus } from "./api/events";
 import type {
   Capabilities,
   Capsule,
-  CreateDeliveryRequest,
-  Delivery,
   GitResult,
   HarnessSetup,
   CapsulePage,
@@ -45,10 +43,10 @@ import { Home } from "./components/Home";
 import { ProjectSettings } from "./components/ProjectSettings";
 import { CapsuleChecks } from "./components/CapsuleChecks";
 import { CapsuleStartup } from "./components/CapsuleStartup";
-import { CapsuleProfilePanel } from "./components/CapsuleProfilePanel";
+import { CapsuleProfilePanel, SetupChangedNote } from "./components/CapsuleProfilePanel";
+import { ShipPanel } from "./components/CreatePullRequest";
 import { DeliveryDecision } from "./components/DeliveryDecision";
 import { isRepositoryAccessFailure, isStarting } from "./components/startup";
-import { checkBanner } from "./shell/checks";
 import { WorkspaceSkeleton } from "./components/ui/loading";
 import {
   ThreadCreate,
@@ -56,6 +54,7 @@ import {
   ThreadFleet,
 } from "./components/Threads";
 import { PendingReviewNotice } from "./components/ReviewComments";
+import { Dialog } from "./components/ui/Dialog";
 import { Menu as ActionsMenu, type MenuItem as ActionsMenuItem } from "./components/ui/Menu";
 import { HarnessMark } from "./components/ui/HarnessMark";
 import { PlusIcon, ThreadIcon } from "./components/ui/Icons";
@@ -69,12 +68,20 @@ import {
   capsuleSessions,
   defaultSession,
   destinationAfterCapsuleDelete,
-  describeCapsule,
   harnessName,
+  headerAttention,
   pinnedSetupText,
   relativeTime,
   TERMINAL_SESSION,
 } from "./shell/capsuleActivity";
+import { deliveryHasChanges } from "./shell/deliveryDraft";
+import {
+  displayThreadTitle,
+  firstUserText,
+  isGeneratedThreadName,
+  pullRequestBodyFromMessage,
+  pullRequestTitleFromMessage,
+} from "./shell/threadTitle";
 import { requestedCapsuleAction } from "./shell/paletteCommands";
 
 export { AuthenticationState };
@@ -259,6 +266,7 @@ function CapsuleMenu({
   capabilitiesKnown = true,
   runs = [],
   threads = [],
+  onSetupDetails,
 }: {
   capsule: Capsule;
   pauseSupported?: boolean;
@@ -266,6 +274,7 @@ function CapsuleMenu({
   capabilitiesKnown?: boolean;
   runs?: Run[];
   threads?: Thread[];
+  onSetupDetails?: () => void;
 }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -363,6 +372,9 @@ function CapsuleMenu({
   ]);
 
   const items: ActionsMenuItem[] = [];
+  if (onSetupDetails) {
+    items.push({ label: "Setup details", onSelect: onSetupDetails });
+  }
   if (canPause) {
     items.push({ label: "Pause", onSelect: () => mutation.mutate("pause") });
   }
@@ -466,89 +478,7 @@ function CapsuleMenu({
   );
 }
 
-export function ShipPanel({ capsule }: { capsule: Capsule }) {
-  const [confirmation, setConfirmation] = useState("");
-  const [result, setResult] = useState<Delivery>();
-  const inspection = useQuery({
-    ...queries.deliveryInspection(capsule.id),
-    enabled: capsule.state === "Ready",
-  });
-  const mutation = useMutation({
-    mutationFn: (input: CreateDeliveryRequest) => api.createDelivery(capsule.id, input),
-    onSuccess: setResult,
-  });
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!inspection.data || confirmation !== "ship") return;
-    const data = new FormData(event.currentTarget);
-    const branch = String(data.get("branch") ?? "").trim();
-    const message = String(data.get("message") ?? "").trim();
-    const title = String(data.get("title") ?? "").trim();
-    const body = String(data.get("body") ?? "");
-    const base = String(data.get("base") ?? "").trim();
-    const openPullRequest = data.get("openPullRequest") === "on";
-    mutation.mutate({
-      action: openPullRequest ? "open_pull_request" : "push",
-      approved: true,
-      expectedResourceVersion: inspection.data.capsuleResourceVersion,
-      expectedHead: inspection.data.head,
-      expectedTree: inspection.data.tree,
-      remoteBranch: branch,
-      ...(message ? { commitMessage: message } : {}),
-      ...(title ? { pullRequestTitle: title } : {}),
-      ...(body ? { pullRequestBody: body } : {}),
-      ...(base ? { baseBranch: base } : {}),
-    });
-  }
-  return (
-    <section className="panel">
-      <h2>Ship reviewed changes</h2>
-      {capsule.state !== "Ready" ? <p>Shipping requires a Ready Capsule.</p> :
-        inspection.isPending ? <p role="status">Inspecting exact Git state…</p> :
-          inspection.isError ? <ErrorState error={inspection.error} /> :
-            <form className="ship-form" onSubmit={submit}>
-              {checkBanner(capsule.checks, inspection.data.tree) && (
-                <p className={`check-banner check-banner-${capsule.checks?.phase || "idle"}`} role="status">
-                  {checkBanner(capsule.checks, inspection.data.tree)}
-                </p>
-              )}
-              <dl className="facts compact">
-                <div><dt>HEAD</dt><dd className="mono">{inspection.data.head}</dd></div>
-                <div><dt>Tree</dt><dd className="mono">{inspection.data.tree}</dd></div>
-                <div><dt>Working tree</dt><dd>{inspection.data.dirty ? "Dirty" : "Clean"}</dd></div>
-                <div><dt>Current branch</dt><dd>{inspection.data.branch || "Detached"}</dd></div>
-              </dl>
-              <label>Destination branch<input name="branch" required /></label>
-              <label>Commit message<input name="message" required={inspection.data.dirty} /></label>
-              <label className="check-label">
-                <input name="openPullRequest" type="checkbox" /> Open GitHub pull request
-              </label>
-              <label>Pull request title<input name="title" /></label>
-              <label>Base branch<input name="base" placeholder={inspection.data.defaultBranch} /></label>
-              <label>Pull request body<textarea name="body" rows={5} /></label>
-              <label>
-                Type <span className="mono">ship</span> to approve this exact HEAD and tree
-                <input
-                  aria-label="Ship confirmation"
-                  autoComplete="off"
-                  value={confirmation}
-                  onChange={(event) => setConfirmation(event.target.value)}
-                />
-              </label>
-              <button type="submit" disabled={confirmation !== "ship" || mutation.isPending}>
-                {mutation.isPending ? "Shipping…" : "Ship"}
-              </button>
-            </form>}
-      {mutation.isError ? <ErrorState error={mutation.error} /> : null}
-      {result ? (
-        <p role="status">
-          Delivery {result.id} is {result.state}.
-          {result.resultPullRequestUrl ? <> <a href={result.resultPullRequestUrl}>Open pull request</a>.</> : null}
-        </p>
-      ) : null}
-    </section>
-  );
-}
+export { ShipPanel };
 
 export function EventActivity({ runId }: { runId: string }) {
   const replay = useQuery(queries.events(runId));
@@ -762,8 +692,11 @@ export function CapsuleDetail() {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const [shipOpen, setShipOpen] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
+  const [prOpen, setPrOpen] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
+  const skipTitleCommit = useRef(false);
   const capsule = useQuery(queries.capsule(capsuleId));
   const runs = useQuery(queries.runs(capsuleId));
   const capabilities = useQuery(queries.capabilities());
@@ -793,6 +726,25 @@ export function CapsuleDetail() {
       capsule.data?.state === "Ready",
     staleTime: 30_000,
     refetchOnWindowFocus: false,
+  });
+  const requestedSession = searchParams.get("session") ?? "";
+  const titleThread =
+    threads.data?.items.find((item) => item.id === requestedSession && item.state !== "deleted") ??
+    threads.data?.items.find((item) => item.state !== "deleted" && item.state !== "archived");
+  const titleBlocks = useQuery({
+    ...queries.threadBlocks(titleThread?.id ?? ""),
+    enabled: Boolean(titleThread?.id) && isGeneratedThreadName(capsule.data?.name ?? ""),
+  });
+  const rename = useMutation({
+    mutationFn: (name: string) => {
+      const current = capsule.data;
+      if (!current) throw new Error("Capsule is not loaded");
+      return api.renameCapsule(current.id, name, current.resourceVersion);
+    },
+    onSuccess: (next) => {
+      queryClient.setQueryData(queries.capsule(capsuleId).queryKey, next);
+      return queryClient.invalidateQueries({ queryKey: ["capsules", next.projectId] });
+    },
   });
   if (capsule.isPending) return <WorkspaceSkeleton label="Loading Capsule…" />;
   if (capsule.isError) return <ErrorState error={capsule.error} />;
@@ -833,18 +785,70 @@ export function CapsuleDetail() {
   const chatSelected =
     selected !== "" && selected !== TERMINAL_SESSION && selected !== NEW_SESSION;
   const cliSelected = selected === TERMINAL_SESSION;
-  const activity = describeCapsule(value, runs.data?.items, threads.data?.items);
+  const selectedSession = sessions.find((session) => session.id === selected);
+  const attention = headerAttention(value.state, selectedSession);
   const pullRequest = deliveries.data?.items.find((item) => item.resultPullRequestUrl);
   const threadTarget = threads.data?.items.find(
     (item) => item.state !== "deleted" && item.state !== "archived",
   );
+  const firstMessage = firstUserText(titleBlocks.data?.items);
+  const title = displayThreadTitle(value.name, firstMessage);
+  const canDeliver = capabilities.data?.delivery === true && value.state === "Ready";
+  const hasChanges = deliveryHasChanges(inspection.data);
+  const suggestion = {
+    title: pullRequestTitleFromMessage(firstMessage, title),
+    body: pullRequestBodyFromMessage(firstMessage),
+  };
+  const startTitleEdit = () => {
+    setTitleDraft(title);
+    setEditingTitle(true);
+  };
+  const commitTitle = () => {
+    const next = titleDraft.trim();
+    setEditingTitle(false);
+    if (!next || next === title) return;
+    rename.mutate(next);
+  };
 
   return (
     <article className={`capsule-workspace${chatSelected ? " chat-session" : ""}${cliSelected ? " cli-session" : ""}${sessions.length <= 1 ? " solo-session" : ""}`}>
       <header className="capsule-bar">
         <div className="capsule-bar-title">
           {harness && <HarnessMark harness={harness} size="md" />}
-          <h1>{value.name}</h1>
+          <h1>
+            {editingTitle ? (
+              <input
+                className="capsule-title-input"
+                aria-label="Thread title"
+                value={titleDraft}
+                maxLength={128}
+                autoFocus
+                onChange={(event) => setTitleDraft(event.target.value)}
+                onBlur={() => {
+                  if (skipTitleCommit.current) {
+                    skipTitleCommit.current = false;
+                    return;
+                  }
+                  commitTitle();
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    event.currentTarget.blur();
+                  }
+                  if (event.key === "Escape") {
+                    skipTitleCommit.current = true;
+                    setTitleDraft(title);
+                    setEditingTitle(false);
+                  }
+                }}
+              />
+            ) : (
+              <button type="button" className="capsule-title" onClick={startTitleEdit}>
+                {title}
+              </button>
+            )}
+          </h1>
           <StateBadge state={value.state} />
           {packRelease && harness && (
             <span
@@ -858,13 +862,22 @@ export function CapsuleDetail() {
             </span>
           )}
           {inspection.data?.branch && (
-            <span className="capsule-branch mono">{inspection.data.branch}</span>
+            <span className="capsule-branch-chip" title={inspection.data.branch}>
+              {inspection.data.branch}
+            </span>
           )}
-          {pullRequest?.resultPullRequestUrl && (
-            <a className="capsule-pr" href={pullRequest.resultPullRequestUrl} target="_blank" rel="noreferrer">
-              PR #{pullRequest.resultPullRequestNumber ?? ""}
-            </a>
+          {attention && (
+            <span className={`header-status header-status-${attention.tone}`}>
+              <ActivityDot group={attention.tone} />
+              {attention.label}
+            </span>
           )}
+          <SetupChangedNote capsuleId={value.id} />
+          <PinnedSetupLine
+            capsule={value}
+            setups={setups.data?.items}
+            known={setups.isSuccess}
+          />
           {cliSelected && (canCreateThread || threadTarget) && (
             <button
               type="button"
@@ -875,10 +888,6 @@ export function CapsuleDetail() {
               Thread
             </button>
           )}
-          <span className={`pill activity-pill activity-pill-${activity.group}`}>
-            <ActivityDot group={activity.group} />
-            {activity.label}
-          </span>
           <span className="capsule-bar-meta">
             {[projectName, `updated ${relativeTime(value.updatedAt)}`]
               .filter(Boolean)
@@ -886,20 +895,14 @@ export function CapsuleDetail() {
           </span>
         </div>
         <div className="capsule-bar-actions">
-          <button
-            type="button"
-            aria-expanded={profileOpen}
-            onClick={() => setProfileOpen((current) => !current)}
-          >
-            Profile…
-          </button>
-          {capabilities.data?.delivery === true && (
-            <button
-              type="button"
-              aria-expanded={shipOpen}
-              onClick={() => setShipOpen((current) => !current)}
-            >
-              Ship…
+          {pullRequest?.resultPullRequestUrl && (
+            <a className="capsule-pr" href={pullRequest.resultPullRequestUrl} target="_blank" rel="noreferrer">
+              PR #{pullRequest.resultPullRequestNumber ?? ""}
+            </a>
+          )}
+          {canDeliver && hasChanges && (
+            <button type="button" className="primary-button" onClick={() => setPrOpen(true)}>
+              {pullRequest ? "Push update" : "Create PR"}
             </button>
           )}
           <CapsuleMenu
@@ -909,14 +912,13 @@ export function CapsuleDetail() {
             capabilitiesKnown={capabilities.isSuccess}
             runs={runs.data?.items}
             threads={threads.data?.items}
+            onSetupDetails={() => setSetupOpen(true)}
           />
         </div>
-        <PinnedSetupLine
-          capsule={value}
-          setups={setups.data?.items}
-          known={setups.isSuccess}
-        />
       </header>
+      {rename.isError && (
+        <p className="error-state" role="alert">{normalizeAPIError(rename.error).message}</p>
+      )}
       {(isStarting(value) || value.startup || value.failureCode || isRepositoryAccessFailure(value)) && (
         <CapsuleStartup capsule={value} />
       )}
@@ -928,15 +930,35 @@ export function CapsuleDetail() {
           <DeliveryDecision capsuleId={value.id} deliveryId={deliveries.data.items[0].id} />
         </section>
       )}
-      {profileOpen && (
-        <section className="workspace-drawer" aria-label="Compared with your profile">
-          <CapsuleProfilePanel capsuleId={value.id} />
-        </section>
+      {setupOpen && createPortal(
+        <Dialog
+          labelledBy="setup-details-title"
+          title="Setup details"
+          closeLabel="Close setup details"
+          onClose={() => setSetupOpen(false)}
+          className="setup-sheet"
+        >
+          <CapsuleProfilePanel capsuleId={value.id} heading={false} />
+        </Dialog>,
+        document.body,
       )}
-      {shipOpen && (
-        <section className="workspace-drawer" aria-label="Ship reviewed changes">
-          <ShipPanel capsule={value} />
-        </section>
+      {prOpen && createPortal(
+        <Dialog
+          labelledBy="create-pr-title"
+          title={pullRequest ? "Push update" : "Create pull request"}
+          closeLabel="Close"
+          onClose={() => setPrOpen(false)}
+          className="pr-sheet"
+        >
+          <ShipPanel
+            capsule={value}
+            mode={pullRequest ? "update" : "create"}
+            existingBranch={pullRequest?.remoteBranch ?? ""}
+            suggestion={suggestion}
+            onCreated={() => setPrOpen(false)}
+          />
+        </Dialog>,
+        document.body,
       )}
       <CapsuleChecks capsule={value} tree={inspection.data?.tree} />
       {(sessions.length > 0 || canCreateThread) && (
@@ -1094,11 +1116,14 @@ function DiffPage() {
       <p className="notice">
         Changes are open in the Capsule tools pane. Comment on lines there and
         send the review to the agent, or inspect the exact Git state here before
-        shipping.
+        opening a pull request.
       </p>
       <PendingReviewNotice capsuleId={capsuleId} />
       {capabilities.data.delivery ? (
-        <ShipPanel capsule={capsule.data} />
+        <section className="panel">
+          <h2>Create pull request</h2>
+          <ShipPanel capsule={capsule.data} />
+        </section>
       ) : (
         <p className="tool-empty">Delivery is unsupported by this provider.</p>
       )}
