@@ -14,6 +14,12 @@ WHERE type = 'table' AND name = 'capsules';
 
 PRAGMA writable_schema = RESET;
 
+-- Editing sqlite_master does not change the schema cookie, so another open
+-- connection could keep the old CHECK. Any DDL in the main schema bumps the
+-- cookie, which makes every connection reload the widened definition.
+CREATE TABLE capsule_failure_code_schema_bump(x INTEGER);
+DROP TABLE capsule_failure_code_schema_bump;
+
 -- Fail the migration if the check was not widened. A zero cannot be inserted.
 CREATE TEMP TABLE capsule_failure_code_widened(ok INTEGER NOT NULL CHECK (ok = 1));
 INSERT INTO capsule_failure_code_widened(ok)
