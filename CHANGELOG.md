@@ -7,6 +7,19 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- A private GitHub clone with an active connection failed as
+  `repository_access`. The Station did pass the login, but the clone helper
+  was written on the Capsule's `noexec` `/tmp`, so git never received it.
+  The helper is now written under the Capsule home directory, which is
+  executable. A connection that cannot be opened is not treated as an
+  anonymous clone.
+- A Capsule that failed because it could not read a repository is retried
+  once when its owner connects or replaces GitHub. The failure notice offers
+  Retry once GitHub is connected, and Connect GitHub stays on the page.
+  Creating a Project keeps what was typed after connecting.
+
 ## [0.11.2] - 2026-11-17
 
 ### Fixed

@@ -59,6 +59,9 @@ type Reader interface {
 	// GetGitHubConnection returns the owner's GitHub login, or
 	// domain.ErrNotFound when they have not connected one (ADR 0051).
 	GetGitHubConnection(context.Context, domain.UserID) (domain.GitHubConnection, error)
+	// ListRepositoryAccessFailures returns owner's Capsules that are Failed
+	// because a clone could not read the repository.
+	ListRepositoryAccessFailures(context.Context, domain.UserID) ([]domain.Capsule, error)
 	GetCapsule(context.Context, domain.CapsuleID) (domain.Capsule, error)
 	ListCapsules(context.Context, domain.ProjectID, domain.CapsuleRole, Page) ([]domain.Capsule, bool, error)
 	CountLiveCapsules(context.Context) (int, error)

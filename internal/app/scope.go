@@ -497,6 +497,17 @@ func (r *scopedReader) GetGitHubConnection(ctx context.Context, owner domain.Use
 	return r.inner.GetGitHubConnection(ctx, owner)
 }
 
+func (r *scopedReader) ListRepositoryAccessFailures(ctx context.Context, owner domain.UserID) ([]domain.Capsule, error) {
+	if err := r.keyOwner(owner); err != nil {
+		return nil, nil
+	}
+	items, err := r.inner.ListRepositoryAccessFailures(ctx, owner)
+	if err != nil {
+		return nil, err
+	}
+	return filter(r, items, func(item domain.Capsule) error { return r.scope.check(item.OwnerUserID) })
+}
+
 func (r *scopedReader) GetCapsule(ctx context.Context, id domain.CapsuleID) (domain.Capsule, error) {
 	if err := r.capsule(ctx, id); err != nil {
 		return domain.Capsule{}, err

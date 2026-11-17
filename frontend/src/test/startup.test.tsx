@@ -204,6 +204,14 @@ describe("startup progress", () => {
 
   it("shows a private-repository failure without retry or a server error", async () => {
     const user = userEvent.setup();
+    vi.spyOn(api, "githubConnection").mockResolvedValue({ connected: false, deviceFlow: true });
+    vi.spyOn(api, "hostGitHubLogin").mockResolvedValue({
+      available: true,
+      state: "signed_in",
+      login: "octocat",
+      path: "/usr/bin/gh",
+      detail: "The GitHub CLI at /usr/bin/gh is signed in as @octocat.",
+    });
     show(
       <StartupTracker
         capsule={capsule(
@@ -220,14 +228,46 @@ describe("startup progress", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Meridian couldn't access octocat/hidden. It may be private.",
     );
-    expect(screen.getByRole("link", { name: "Connect GitHub" })).toHaveAttribute(
-      "href",
-      "/ui/settings/account#github",
-    );
+    const connect = await screen.findByRole("button", { name: "Connect GitHub" });
+    expect(screen.queryByRole("link", { name: "Connect GitHub" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
     expect(screen.queryByText(/internal server error/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/https?:\/\//)).not.toBeInTheDocument();
+    await user.click(connect);
+    expect(await screen.findByRole("button", { name: "Use your GitHub CLI login (@octocat)" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Add a token" }));
     expect(screen.getByLabelText("GitHub token")).toBeInTheDocument();
+  });
+
+  it("offers retry once GitHub is connected", async () => {
+    vi.spyOn(api, "githubConnection").mockResolvedValue({
+      connected: true,
+      deviceFlow: false,
+      login: "octocat",
+      status: "active",
+      resourceVersion: 2,
+    });
+    const retry = vi.spyOn(api, "lifecycle").mockResolvedValue(
+      capsule(
+        { phase: "connecting", phases, updatedAt: timestamp },
+        { state: "Creating", failure: undefined, failureCode: undefined },
+      ),
+    );
+    show(
+      <StartupTracker
+        capsule={capsule(
+          { phase: "connecting", phases, updatedAt: timestamp },
+          {
+            state: "Failed",
+            failureCode: "repository_access",
+            failure: "Meridian couldn't access octocat/hidden. It may be private.",
+          },
+        )}
+      />,
+    );
+    expect(await screen.findByText("GitHub is connected. Retry to clone again.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Connect GitHub" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(retry).toHaveBeenCalledWith("retry", "capsule-1", 3);
   });
 });

@@ -536,6 +536,7 @@ func (s *Service) storeGitHubToken(
 	}
 	scope := "github:connect"
 	var result GitHubConnectionState
+	var changed bool
 	err = s.store.Transact(ctx, func(tx ports.Transaction) error {
 		if replay, ok, err := getReplay[GitHubConnectionState](ctx, tx, scope, idempotencyKey); err != nil {
 			return err
@@ -594,10 +595,35 @@ func (s *Service) storeGitHubToken(
 		if err := s.audit(ctx, tx, domain.AuditGitHubConnect, "github_connection", string(item.ID)); err != nil {
 			return err
 		}
+		changed = true
 		return putReplay(ctx, tx, scope, idempotencyKey, result, now)
 	})
 	s.auditFailure(ctx, domain.AuditGitHubConnect, "github_connection", string(owner), err)
+	if err == nil && changed && result.Status == domain.GitHubConnectionActive {
+		s.retryRepositoryAccessCapsules(ctx, owner, result.ResourceVersion)
+	}
 	return result, err
+}
+
+// retryRepositoryAccessCapsules starts one retry of each Failed Capsule whose
+// clone could not read the repository. It runs once per connection change.
+// A later access failure stays failed until the connection changes again or
+// the owner retries. A retry that cannot start does not fail the connection.
+func (s *Service) retryRepositoryAccessCapsules(
+	ctx context.Context, owner domain.UserID, version domain.ResourceVersion,
+) {
+	var capsules []domain.Capsule
+	err := s.store.View(ctx, func(reader ports.Reader) error {
+		var err error
+		capsules, err = reader.ListRepositoryAccessFailures(ctx, owner)
+		return err
+	})
+	if err != nil {
+		return
+	}
+	for _, capsule := range capsules {
+		_, _ = s.RetryCapsule(ctx, capsule.ID, capsule.ResourceVersion, fmt.Sprintf("github-access-v%d", version))
+	}
 }
 
 func (s *Service) refreshGitHubAccount(

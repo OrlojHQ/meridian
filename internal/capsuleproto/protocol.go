@@ -559,28 +559,15 @@ func secureHTTPSClone(
 	credential GitHTTPSCredential,
 	outputLimit int64,
 ) error {
-	// The Capsule root and /workspace are intentionally not writable places
-	// for credential helpers. The bounded private /tmp tmpfs is outside the
-	// captured workspace and is removed on every outcome.
-	helper, err := os.CreateTemp("", ".meridian-askpass-*")
+	// The helper must be executable. A Docker Capsule mounts /tmp noexec, so a
+	// helper there never runs and git reports that it could not read a
+	// username. That is classified as repository access even when the Station
+	// passed a credential. HOME is the private executable tmpfs.
+	helperPath, err := createGitAskpass()
 	if err != nil {
 		return err
 	}
-	helperPath := helper.Name()
 	defer os.Remove(helperPath)
-	const script = "#!/bin/sh\ncase \"$1\" in\n*Username*) printf '%s\\n' \"$MERIDIAN_GIT_USERNAME\";;\n*) printf '%s\\n' \"$MERIDIAN_GIT_PASSWORD\";;\nesac\n"
-	if err := helper.Chmod(0o700); err == nil {
-		_, err = io.WriteString(helper, script)
-	}
-	if err == nil {
-		err = helper.Sync()
-	}
-	if closeErr := helper.Close(); err == nil {
-		err = closeErr
-	}
-	if err != nil {
-		return err
-	}
 	command := exec.Command("git",
 		"-c", "credential.helper=",
 		"-c", "core.askPass="+helperPath,

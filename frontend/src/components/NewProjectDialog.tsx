@@ -4,7 +4,7 @@ import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { api, normalizeAPIError } from "../api/client";
 import type { HarnessImage, IsolationClass, Project } from "../api/generated/types.gen";
 import { projectHarnessImage } from "../api/harnessPacks";
-import { githubConnectionQuery } from "./GitHubConnect";
+import { GitHubConnect, githubConnectionQuery } from "./GitHubConnect";
 import { RepositoryAccessNotice } from "./RepositoryAccess";
 import { isRepositoryAccessFailure } from "./startup";
 import { isGitHubRepositoryInput } from "./repositoryUrl";
@@ -75,6 +75,7 @@ export function NewProjectDialog({
   const [repoQuery, setRepoQuery] = useState("");
   const [repoFocus, setRepoFocus] = useState(false);
   const [useToken, setUseToken] = useState(false);
+  const [showConnect, setShowConnect] = useState(false);
   const [privateRepo, setPrivateRepo] = useState(false);
   const [token, setToken] = useState("");
   const [requiredIsolation, setRequiredIsolation] = useState<IsolationClass | "">("");
@@ -147,6 +148,7 @@ export function NewProjectDialog({
     setRepoQuery("");
     setRepoFocus(false);
     setUseToken(false);
+    setShowConnect(false);
     setPrivateRepo(false);
     setToken("");
     setRequiredIsolation("");
@@ -262,9 +264,13 @@ export function NewProjectDialog({
         )}
         {!githubConnected && github && !useToken && (
           <p className="field-hint">
-            <a href="/ui/settings/account#github">Connect GitHub</a> to include private repositories.
+            <button type="button" className="text-button" onClick={() => setShowConnect((value) => !value)}>
+              Connect GitHub
+            </button>{" "}
+            to include private repositories.
           </p>
         )}
+        {showConnect && !githubConnected && <GitHubConnect />}
         {(github || githubConnected) && !useToken && (
           <button type="button" className="text-button" onClick={() => setUseToken(true)}>
             Use a token instead

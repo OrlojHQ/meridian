@@ -641,6 +641,7 @@ func (p *Provider) sandbox(capsuleID domain.CapsuleID, name, image string) *sand
 							Args: []string{"serve", "--listen=127.0.0.1:7777", "--workspace=" + workspace,
 								"--token-file=" + tokenPath, "--setup-timeout=" + p.config.SetupTimeout.String()},
 							WorkingDir: workspace,
+							Env:        []corev1.EnvVar{{Name: "HOME", Value: "/home/capsule"}},
 							Ports:      []corev1.ContainerPort{{Name: "capsuled", ContainerPort: protocolPort, Protocol: corev1.ProtocolTCP}},
 							SecurityContext: &corev1.SecurityContext{
 								AllowPrivilegeEscalation: &allowPrivilegeEscalation,
