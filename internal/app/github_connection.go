@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -848,13 +849,25 @@ func wipeString(value *string) {
 	*value = ""
 }
 
+// gitHubHTTPSRepository reports whether a repository URL is an HTTPS
+// github.com repository. Only such a URL may receive the GitHub connection's
+// token: any other host would be handed a GitHub credential it can replay.
+func gitHubHTTPSRepository(repositoryURL string) bool {
+	parsed, err := url.Parse(repositoryURL)
+	if err != nil || parsed.Scheme != "https" || parsed.Port() != "" && parsed.Port() != "443" {
+		return false
+	}
+	_, _, err = parseGitHubRepository(repositoryURL)
+	return err == nil
+}
+
 // openCloneCredential resolves the one-shot clone grant. A named git_https
-// secret wins. Otherwise an active GitHub connection is used. A missing or
-// unusable connection clones anonymously, which is how a public repository
-// works today.
+// secret wins. Otherwise an active GitHub connection is used, and only for an
+// HTTPS github.com repository. A missing or unusable connection, or another
+// host, clones anonymously, which is how a public repository works today.
 func openCloneCredential(
 	ctx context.Context, store ports.Store, key *secrets.InstallationKey,
-	owner domain.UserID, explicitName string,
+	owner domain.UserID, repositoryURL, explicitName string,
 ) (*ports.GitHTTPSCredential, error) {
 	if explicitName != "" {
 		if key == nil {
@@ -879,7 +892,7 @@ func openCloneCredential(
 		payload.Username, payload.Password, payload.Value = "", "", ""
 		return credential, nil
 	}
-	if key == nil {
+	if key == nil || !gitHubHTTPSRepository(repositoryURL) {
 		return nil, nil
 	}
 	var connection domain.GitHubConnection
@@ -905,13 +918,17 @@ func openCloneCredential(
 
 // resolveDeliveryCredential resolves a push or pull-request credential.
 // A named secret for that purpose wins and is never replaced by the
-// connection. An empty name uses the owner's active GitHub connection.
+// connection. An empty name uses the owner's active GitHub connection, and
+// only for an HTTPS github.com repository.
 func (s *Service) resolveDeliveryCredential(
-	ctx context.Context, owner domain.UserID, name string, purpose domain.SecretPurpose,
+	ctx context.Context, owner domain.UserID, repositoryURL, name string, purpose domain.SecretPurpose,
 ) (secrets.Payload, bool, error) {
 	if name != "" {
 		payload, err := s.resolveSecret(ctx, owner, name, purpose)
 		return payload, false, err
+	}
+	if !gitHubHTTPSRepository(repositoryURL) {
+		return secrets.Payload{}, false, fmt.Errorf("%w: a %s secret is required for a repository outside github.com", domain.ErrIllegalTransition, purpose)
 	}
 	connection, found, err := s.loadGitHubConnection(ctx, owner)
 	if err != nil {

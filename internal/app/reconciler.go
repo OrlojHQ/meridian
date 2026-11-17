@@ -349,7 +349,7 @@ func (r *Reconciler) reconcile(ctx context.Context, id domain.CapsuleID) error {
 			Setup:          append([]string(nil), project.Setup...),
 			ImageReference: capsule.WorkspaceImage(project),
 		})
-		credential, err := openCloneCredential(ctx, r.store, r.secretKey, project.OwnerUserID, project.GitSecretName)
+		credential, err := openCloneCredential(ctx, r.store, r.secretKey, project.OwnerUserID, project.RepositoryURL, project.GitSecretName)
 		if err != nil {
 			return fmt.Errorf("resolve project Git secret: %w", err)
 		}

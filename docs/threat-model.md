@@ -193,7 +193,10 @@ An owner may also store one GitHub connection (ADR 0051). It is a separate
 envelope, not a secret that can be named for more than one purpose. When a
 Project does not name a secret for clone, push, or pull request, the station
 uses that connection for the missing purpose and still issues only a one-shot
-git grant or a host-side pull request. A named secret wins. The station reads
+git grant or a host-side pull request. A named secret wins. The connection is
+used only for an HTTPS `github.com` repository on the default port: a Project
+on any other host never receives the GitHub token, clones anonymously, and
+needs a named secret to push. The station reads
 the host `gh` token only after the owner confirms, and only for a loopback
 request on a single-user Station. A connection check may read it again
 when that stored login came from `gh`, to replace an expired or
@@ -201,7 +204,9 @@ re-authenticated token. Team mode and remote requests never read it. The
 device-flow device code stays in
 memory. The connection token is never returned by the API or placed in a
 Capsule environment. A clone GitHub refuses is stored as a fixed sentence
-naming the repository, never git stderr, which can contain a credential URL.
+naming the repository, never git stderr, which can contain a credential URL. A GitHub rate
+limit is not read as an access answer, so it never marks a repository private
+or fails a Capsule on its own.
 
 Deleting a Project destroys named secrets that no other live Project still
 names (ADR 0039). The live row is removed, including ciphertext, nonce, and
