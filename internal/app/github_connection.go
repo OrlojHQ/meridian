@@ -17,13 +17,28 @@ import (
 
 const gitHubHTTPSUser = "x-access-token"
 
-// GitHubHost reads a local gh login. Login must not return the token.
+// GitHubHost reads a local gh login. Probe must not return the token.
 // Token is called after the person confirms, and again during a connection
 // check when the stored login already came from gh on this computer.
 type GitHubHost interface {
-	Login(context.Context) (string, error)
+	Probe(context.Context) githubauth.Status
 	Token(context.Context) (string, error)
 }
+
+// HostGitHubView is the host gh login this station is willing to show.
+// Detail is safe to display. It never contains a token.
+type HostGitHubView struct {
+	Available bool
+	Login     string
+	State     string
+	Path      string
+	Searched  []string
+	Detail    string
+}
+
+// HostGitHubUnavailable is what a team-mode or remote request is told.
+// Those requests do not look for gh.
+const HostGitHubUnavailable = "This Station does not use a GitHub CLI login for this request. On your computer, run `meridian github connect`."
 
 // RepositoryProbe asks GitHub whether a repository can be read. An empty
 // token is anonymous. A transport error is not an access denial.
@@ -226,18 +241,32 @@ func (s *Service) DisconnectGitHub(
 	return result, err
 }
 
-func (s *Service) HostGitHubLogin(ctx context.Context, loopback bool) (string, bool, error) {
+func (s *Service) HostGitHubLogin(ctx context.Context, loopback bool) (HostGitHubView, error) {
 	if err := requirePrincipal(ctx); err != nil {
-		return "", false, err
+		return HostGitHubView{}, err
 	}
 	if s.githubHost == nil || !s.hostGitHubAllowed(ctx, loopback) {
-		return "", false, nil
+		return HostGitHubView{State: githubauth.StateUnavailable, Detail: HostGitHubUnavailable}, nil
 	}
-	login, err := s.githubHost.Login(ctx)
-	if err != nil || !validGitHubLogin(login) {
-		return "", false, nil
+	status := s.githubHost.Probe(ctx)
+	if status.State == "" {
+		status.State = githubauth.StateNotFound
 	}
-	return login, true, nil
+	view := HostGitHubView{
+		Available: status.State == githubauth.StateSignedIn && validGitHubLogin(status.Login),
+		Login:     status.Login,
+		State:     status.State,
+		Path:      status.Path,
+		Searched:  status.Searched,
+		Detail:    status.Detail,
+	}
+	if !view.Available {
+		view.Login = ""
+		if view.State == githubauth.StateSignedIn {
+			view.State = githubauth.StateNotSignedIn
+		}
+	}
+	return view, nil
 }
 
 func (s *Service) UseHostGitHub(
@@ -251,7 +280,7 @@ func (s *Service) UseHostGitHub(
 	}
 	token, err := s.githubHost.Token(ctx)
 	if err != nil {
-		return GitHubConnectionState{}, fmt.Errorf("%w: this computer has no GitHub login", domain.ErrInvalid)
+		return GitHubConnectionState{}, fmt.Errorf("%w: the GitHub CLI token could not be read", domain.ErrInvalid)
 	}
 	return s.finishGitHubToken(ctx, token, domain.GitHubSourceHost, expected, idempotencyKey)
 }

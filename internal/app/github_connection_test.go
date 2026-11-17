@@ -69,7 +69,12 @@ type fakeGitHubHost struct {
 	reads int
 }
 
-func (f *fakeGitHubHost) Login(context.Context) (string, error) { return f.login, nil }
+func (f *fakeGitHubHost) Probe(context.Context) githubauth.Status {
+	if f.login == "" {
+		return githubauth.Status{State: githubauth.StateNotSignedIn, Detail: "The GitHub CLI is not signed in."}
+	}
+	return githubauth.Status{State: githubauth.StateSignedIn, Login: f.login, Path: "/usr/bin/gh"}
+}
 func (f *fakeGitHubHost) Token(context.Context) (string, error) {
 	f.reads++
 	return f.token, nil
@@ -231,16 +236,16 @@ func TestHostGitHubIsConfirmedAndLocal(t *testing.T) {
 	service.ConfigureSecrets(key)
 	host := &fakeGitHubHost{login: "octocat", token: "gho_hosttokenvalue"}
 	service.ConfigureGitHub("", host, &fakeGitHubOAuth{login: "octocat", scopes: "repo"})
-	login, available, err := service.HostGitHubLogin(ctx, false)
-	if err != nil || available || login != "" || host.reads != 0 {
-		t.Fatalf("remote probe = %q %v %v reads=%d", login, available, err, host.reads)
+	remote, err := service.HostGitHubLogin(ctx, false)
+	if err != nil || remote.Available || remote.Login != "" || remote.State != githubauth.StateUnavailable || host.reads != 0 {
+		t.Fatalf("remote probe = %+v %v reads=%d", remote, err, host.reads)
 	}
 	if _, err := service.UseHostGitHub(ctx, false, 0, "host-remote"); !errors.Is(err, domain.ErrUnsupported) || host.reads != 0 {
 		t.Fatalf("remote confirm = %v reads=%d", err, host.reads)
 	}
-	login, available, err = service.HostGitHubLogin(ctx, true)
-	if err != nil || !available || login != "octocat" || host.reads != 0 {
-		t.Fatalf("local probe = %q %v %v reads=%d", login, available, err, host.reads)
+	local, err := service.HostGitHubLogin(ctx, true)
+	if err != nil || !local.Available || local.Login != "octocat" || local.State != githubauth.StateSignedIn || host.reads != 0 {
+		t.Fatalf("local probe = %+v %v reads=%d", local, err, host.reads)
 	}
 	state, err := service.UseHostGitHub(ctx, true, 0, "host-local")
 	if err != nil || state.Login != "octocat" || host.reads != 1 {

@@ -128,6 +128,8 @@ func newRootCommand() *cobra.Command {
 	)
 	command.Flags().StringVar(&config.GitHubOAuthClientID, "github-oauth-client-id", os.Getenv("MERIDIAN_GITHUB_OAUTH_CLIENT_ID"),
 		"public GitHub OAuth client id for the device flow (empty disables it; not a secret)")
+	command.Flags().StringVar(&config.GitHubCLIPath, "gh-path", os.Getenv("MERIDIAN_GH_PATH"),
+		"absolute path to the GitHub CLI (default: PATH, then the usual install locations)")
 	command.Flags().StringVar(&config.OIDC.Issuer, "oidc-issuer", "",
 		"OIDC issuer URL for team mode sign-in (empty keeps single-user mode)")
 	command.Flags().StringVar(&config.OIDC.ClientID, "oidc-client-id", "", "OIDC client id")

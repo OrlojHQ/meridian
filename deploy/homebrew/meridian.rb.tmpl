@@ -47,6 +47,9 @@ class Meridian < Formula
 
   service do
     run [opt_bin/"meridiand", "--provider=docker"]
+    # A service starts with a short PATH. Include the Homebrew prefix so
+    # meridiand can find gh beside other tools installed the same way.
+    environment_variables PATH: "#{HOMEBREW_PREFIX}/bin:#{HOMEBREW_PREFIX}/sbin:/usr/bin:/bin:/usr/sbin:/sbin"
     keep_alive true
     log_path var/"log/meridiand.log"
     error_log_path var/"log/meridiand.log"

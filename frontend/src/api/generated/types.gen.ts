@@ -285,9 +285,36 @@ export type BeginGitHubDeviceRequest = {
     expectedResourceVersion: number;
 };
 
+/**
+ * Whether this computer's GitHub CLI login can be reused. The token is never included.
+ *
+ */
 export type HostGitHubLogin = {
+    /**
+     * True when gh is signed in and a login was read from gh auth status.
+     */
     available: boolean;
+    /**
+     * The signed-in account, when state is signed_in.
+     */
     login?: string;
+    /**
+     * signed_in: gh was found and reports an account. not_signed_in: gh was found and is not signed in. token_unreadable: gh knows an account but could not read its token. not_found: gh was not found. unavailable: this request must not look for a host login.
+     *
+     */
+    state: 'signed_in' | 'not_signed_in' | 'token_unreadable' | 'not_found' | 'unavailable';
+    /**
+     * Absolute path of the gh binary when one was found.
+     */
+    path?: string;
+    /**
+     * Locations checked while looking for gh. A token is never included.
+     */
+    searched?: Array<string>;
+    /**
+     * A short explanation safe to show. A token is never included.
+     */
+    detail?: string;
 };
 
 export type GitHubDevice = {

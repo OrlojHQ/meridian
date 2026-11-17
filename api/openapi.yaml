@@ -834,7 +834,9 @@ paths:
       description: >-
         Available only for a loopback request on a single-user Station.
         Does not read or return the token. Team mode and remote requests
-        report available false.
+        report state unavailable. Other states say whether gh was found,
+        is signed in, or could not read its token, and which paths were
+        searched. Command output is not included.
       tags: [github]
       responses:
         "200":
@@ -4214,10 +4216,40 @@ components:
         expectedResourceVersion: { type: integer, format: int64, minimum: 0 }
     HostGitHubLogin:
       type: object
-      required: [available]
+      required: [available, state]
+      description: >
+        Whether this computer's GitHub CLI login can be reused. The token
+        is never included.
       properties:
-        available: { type: boolean }
-        login: { type: string }
+        available:
+          type: boolean
+          description: True when gh is signed in and a login was read from gh auth status.
+        login:
+          type: string
+          description: The signed-in account, when state is signed_in.
+        state:
+          type: string
+          enum: [signed_in, not_signed_in, token_unreadable, not_found, unavailable]
+          description: >
+            signed_in: gh was found and reports an account.
+            not_signed_in: gh was found and is not signed in.
+            token_unreadable: gh knows an account but could not read its token.
+            not_found: gh was not found.
+            unavailable: this request must not look for a host login.
+        path:
+          type: string
+          description: Absolute path of the gh binary when one was found.
+        searched:
+          type: array
+          maxItems: 32
+          description: Locations checked while looking for gh. A token is never included.
+          items:
+            type: string
+            maxLength: 4096
+        detail:
+          type: string
+          maxLength: 4096
+          description: A short explanation safe to show. A token is never included.
     GitHubDevice:
       type: object
       required: [userCode, verificationUri, expiresAt, intervalSeconds]

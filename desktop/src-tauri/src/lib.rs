@@ -5,6 +5,7 @@
 mod bridge;
 mod gateway;
 mod notify_text;
+mod path_env;
 mod profile_import;
 mod sidecar;
 mod sign_in;

@@ -414,7 +414,7 @@ export const checkGitHubConnection = <ThrowOnError extends boolean = false>(opti
 /**
  * See whether this computer's gh login can be reused
  *
- * Available only for a loopback request on a single-user Station. Does not read or return the token. Team mode and remote requests report available false.
+ * Available only for a loopback request on a single-user Station. Does not read or return the token. Team mode and remote requests report state unavailable. Other states say whether gh was found, is signed in, or could not read its token, and which paths were searched. Command output is not included.
  */
 export const getHostGitHubLogin = <ThrowOnError extends boolean = false>(options?: Options<GetHostGitHubLoginData, ThrowOnError>): RequestResult<GetHostGitHubLoginResponses, GetHostGitHubLoginErrors, ThrowOnError> => (options?.client ?? client).get<GetHostGitHubLoginResponses, GetHostGitHubLoginErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],

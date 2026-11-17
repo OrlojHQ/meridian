@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -27,6 +26,7 @@ func newGitHubCommand(config *cliConfig) *cobra.Command {
 
 func newGitHubConnect(config *cliConfig) *cobra.Command {
 	var yes, deviceOnly, fromStdin bool
+	var ghPath string
 	command := &cobra.Command{
 		Use:   "connect",
 		Short: "Connect GitHub without pasting a token into a Project",
@@ -61,34 +61,37 @@ func newGitHubConnect(config *cliConfig) *cobra.Command {
 				if err != nil {
 					return apiCallError(err)
 				}
-				if host.Available {
-					login, _ := host.Login.Get()
-					accepted, err := confirmGitHub(config, yes, fmt.Sprintf("Use your GitHub login @%s?", login))
-					if err != nil {
-						return err
+				if host.GetAvailable() && host.GetState() == client.HostGitHubLoginStateSignedIn {
+					login, _ := host.GetLogin().Get()
+					if login != "" {
+						accepted, err := confirmGitHub(config, yes, fmt.Sprintf("Use your GitHub CLI login (@%s)?", login))
+						if err != nil {
+							return err
+						}
+						if !accepted {
+							_, err = fmt.Fprintln(config.stdout, "GitHub was not connected")
+							return err
+						}
+						key, err := idempotencyKey("")
+						if err != nil {
+							return err
+						}
+						result, err := api.UseHostGitHubLogin(command.Context(), &client.UseHostGitHubRequest{
+							ExpectedResourceVersion: expected,
+						}, client.UseHostGitHubLoginParams{IdempotencyKey: key})
+						if err != nil {
+							return apiCallError(err)
+						}
+						connected, ok := result.(*client.GitHubConnection)
+						if !ok {
+							return responseError(result)
+						}
+						return printGitHubConnection(config, connected)
 					}
-					if !accepted {
-						_, err = fmt.Fprintln(config.stdout, "GitHub was not connected")
-						return err
-					}
-					key, err := idempotencyKey("")
-					if err != nil {
-						return err
-					}
-					result, err := api.UseHostGitHubLogin(command.Context(), &client.UseHostGitHubRequest{
-						ExpectedResourceVersion: expected,
-					}, client.UseHostGitHubLoginParams{IdempotencyKey: key})
-					if err != nil {
-						return apiCallError(err)
-					}
-					connected, ok := result.(*client.GitHubConnection)
-					if !ok {
-						return responseError(result)
-					}
-					return printGitHubConnection(config, connected)
 				}
-				if login, ok := localGitHubLogin(command.Context()); ok {
-					accepted, err := confirmGitHub(config, yes, fmt.Sprintf("Use your GitHub login @%s?", login))
+				local := (githubauth.HostCommands{Path: ghPath}).Probe(command.Context())
+				if local.State == githubauth.StateSignedIn && local.Login != "" {
+					accepted, err := confirmGitHub(config, yes, fmt.Sprintf("Use your GitHub CLI login (@%s)?", local.Login))
 					if err != nil {
 						return err
 					}
@@ -96,9 +99,9 @@ func newGitHubConnect(config *cliConfig) *cobra.Command {
 						_, err = fmt.Fprintln(config.stdout, "GitHub was not connected")
 						return err
 					}
-					token, err := (githubauth.HostCommands{}).Token(command.Context())
+					token, err := (githubauth.HostCommands{Path: ghPath}).Token(command.Context())
 					if err != nil {
-						return errors.New("gh has no token")
+						return errors.New(local.Path + " is signed in, but its token could not be read")
 					}
 					key, err := idempotencyKey("")
 					if err != nil {
@@ -106,7 +109,14 @@ func newGitHubConnect(config *cliConfig) *cobra.Command {
 					}
 					return storeGitHubToken(command, config, api, token, expected, key)
 				}
-				_, _ = fmt.Fprintln(os.Stderr, "or install and sign in to the GitHub CLI")
+				if local.Detail != "" {
+					_, _ = fmt.Fprintln(command.ErrOrStderr(), local.Detail)
+				} else if detail, ok := host.GetDetail().Get(); ok && detail != "" {
+					_, _ = fmt.Fprintln(command.ErrOrStderr(), detail)
+				}
+				if !current.GetDeviceFlow() {
+					return errors.New("this Station has no GitHub OAuth client id, so a device code is unavailable")
+				}
 			}
 			return runGitHubDevice(command, config, api, expected)
 		},
@@ -114,6 +124,7 @@ func newGitHubConnect(config *cliConfig) *cobra.Command {
 	command.Flags().BoolVar(&yes, "yes", false, "accept the GitHub login already found on this computer")
 	command.Flags().BoolVar(&deviceOnly, "device", false, "skip an existing gh login and use a device code")
 	command.Flags().BoolVar(&fromStdin, "stdin", false, "read a token from stdin instead of gh or a device code")
+	command.Flags().StringVar(&ghPath, "gh-path", os.Getenv("MERIDIAN_GH_PATH"), "absolute path to the GitHub CLI (default: PATH, then the usual install locations)")
 	return command
 }
 
@@ -281,14 +292,6 @@ func confirmGitHub(config *cliConfig, yes bool, prompt string) (bool, error) {
 func isTerminal(file *os.File) bool {
 	info, err := file.Stat()
 	return err == nil && info.Mode()&os.ModeCharDevice != 0
-}
-
-func localGitHubLogin(ctx context.Context) (string, bool) {
-	login, err := (githubauth.HostCommands{}).Login(ctx)
-	if err != nil || login == "" {
-		return "", false
-	}
-	return login, true
 }
 
 func openGitHub(url string) {
