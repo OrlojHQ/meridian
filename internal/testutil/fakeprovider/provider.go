@@ -43,6 +43,7 @@ type Provider struct {
 	unsupported map[string]int
 	calls       map[string]int
 	createHook  func(context.Context, ports.CreateCapsuleRequest) error
+	checkHook   func(context.Context, string, ports.CheckRequest) (ports.CheckExecution, error)
 }
 
 func New(options Options) *Provider {
@@ -154,6 +155,36 @@ func (p *Provider) GitDiff(context.Context, string) (ports.GitResult, error) {
 
 func (p *Provider) GitPatch(context.Context, string, ports.GitPatchRequest) (ports.GitPatchResult, error) {
 	return ports.GitPatchResult{}, domain.ErrUnsupported
+}
+
+// CheckHook, when set, answers Project check runs. The default reports every
+// requested command as passed against a stable tree.
+func (p *Provider) SetCheckHook(hook func(context.Context, string, ports.CheckRequest) (ports.CheckExecution, error)) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.checkHook = hook
+}
+
+func (p *Provider) RunChecks(ctx context.Context, resourceID string, request ports.CheckRequest) (ports.CheckExecution, error) {
+	p.mu.Lock()
+	hook := p.checkHook
+	p.mu.Unlock()
+	if hook != nil {
+		return hook(ctx, resourceID, request)
+	}
+	execution := ports.CheckExecution{
+		HeadBefore: "head", TreeBefore: "tree", HeadAfter: "head", TreeAfter: "tree",
+	}
+	for _, command := range request.Commands {
+		execution.Results = append(execution.Results, ports.CheckCommandResult{
+			Name: command.Name, Argv: append([]string{}, command.Argv...), ExitCode: 0,
+		})
+	}
+	return execution, nil
+}
+
+func (p *Provider) SuggestChecks(context.Context, string) (ports.CheckSuggestion, error) {
+	return ports.CheckSuggestion{}, nil
 }
 
 func (p *Provider) Create(

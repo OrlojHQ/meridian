@@ -282,6 +282,14 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /capsules/{capsuleId}/previews/{port}/tickets", s.createPreviewTicket)
 	s.mux.HandleFunc("GET /projects/{projectId}/environment", s.projectEnvironment)
 	s.mux.HandleFunc("PUT /projects/{projectId}/environment", s.projectEnvironment)
+	s.mux.HandleFunc("GET /projects/{projectId}/checks", s.projectChecks)
+	s.mux.HandleFunc("PUT /projects/{projectId}/checks", s.projectChecks)
+	s.mux.HandleFunc("GET /projects/{projectId}/checks/suggestion", s.suggestProjectChecks)
+	s.mux.HandleFunc("GET /capsules/{capsuleId}/check-runs", s.capsuleCheckRuns)
+	s.mux.HandleFunc("POST /capsules/{capsuleId}/check-runs", s.capsuleCheckRuns)
+	s.mux.HandleFunc("POST /capsules/{capsuleId}/checks/auto-rework", s.capsuleAutoRework)
+	s.mux.HandleFunc("GET /check-runs/{checkRunId}", s.checkRun)
+	s.mux.HandleFunc("POST /check-runs/{checkRunId}/cancel", s.cancelCheckRun)
 	s.mux.HandleFunc("POST /capsules/{capsuleId}/pause", s.pauseCapsule)
 	s.mux.HandleFunc("POST /capsules/{capsuleId}/promote", s.promoteCapsule)
 	s.mux.HandleFunc("POST /capsules/{capsuleId}/resume", s.resumeCapsule)
@@ -1933,9 +1941,17 @@ func (s *Server) capsulesJSON(ctx context.Context, capsules []domain.Capsule) ([
 	if err != nil {
 		return nil, err
 	}
+	summaries, err := s.service.CheckSummaries(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
 	items := make([]capsuleJSON, len(capsules))
 	for i, capsule := range capsules {
 		items[i] = capsuleResponse(capsule, pins[capsule.ID])
+		if summary, ok := summaries[capsule.ID]; ok {
+			copied := summary
+			items[i].Checks = &copied
+		}
 	}
 	return items, nil
 }
@@ -2273,6 +2289,7 @@ type capsuleJSON struct {
 	LinkID              string                      `json:"linkId,omitempty"`
 	PromotedAt          string                      `json:"promotedAt,omitempty"`
 	PinnedHarnessSetups []pinnedHarnessSetupJSON    `json:"pinnedHarnessSetups,omitempty"`
+	Checks              *app.ChecksSummaryView      `json:"checks,omitempty"`
 	CreatedAt           string                      `json:"createdAt"`
 	UpdatedAt           string                      `json:"updatedAt"`
 	ResourceVersion     int64                       `json:"resourceVersion"`

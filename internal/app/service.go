@@ -116,12 +116,19 @@ type Service struct {
 	// coordRemoving holds subagents the operator removed whose session was
 	// still stopping; the coordination tick deletes their Capsule once it
 	// has. A restart forgets it, and the cancelled link is paused instead.
-	coordRemoving  map[domain.ThreadLinkID]bool
-	claudeMu       sync.Mutex
-	claudeRefresh  sync.Mutex
-	claudePending  map[string]*claudeCeremony
-	claudeByState  map[string]string
-	claudeTokenURL string
+	coordRemoving   map[domain.ThreadLinkID]bool
+	checks          ports.CheckRuntime
+	checkDebounce   time.Duration
+	checkDebounceOn bool
+	checkMu         sync.Mutex
+	checkCancel     map[domain.CheckRunID]context.CancelFunc
+	checkOwners     map[domain.CheckRunID]domain.CapsuleID
+	checkWake       chan struct{}
+	claudeMu        sync.Mutex
+	claudeRefresh   sync.Mutex
+	claudePending   map[string]*claudeCeremony
+	claudeByState   map[string]string
+	claudeTokenURL  string
 
 	githubOAuthClientID string
 	githubHost          GitHubHost
@@ -132,6 +139,18 @@ type Service struct {
 
 func (s *Service) ConfigureSecrets(key *secrets.InstallationKey) {
 	s.secretKey = key
+}
+
+// ConfigureChecks attaches the Capsule supervisor that runs Project checks.
+func (s *Service) ConfigureChecks(runtime ports.CheckRuntime) {
+	s.checks = runtime
+}
+
+// SetCheckDebounce overrides how long an idle turn waits before checks run.
+// Zero runs on the next tick. Tests use it; the daemon keeps the default.
+func (s *Service) SetCheckDebounce(wait time.Duration) {
+	s.checkDebounce = wait
+	s.checkDebounceOn = true
 }
 
 // ConfigureGitHub sets the device-flow client id and the ways a login can be
@@ -211,8 +230,11 @@ func NewService(
 ) *Service {
 	service := &Service{
 		store: newScopedStore(store, clock), clock: clock, ids: ids, queue: queue,
-		attention: make(map[domain.ThreadID]cachedThreadAttention),
-		models:    make(map[domain.ThreadID]ThreadModelSummary),
+		attention:   make(map[domain.ThreadID]cachedThreadAttention),
+		models:      make(map[domain.ThreadID]ThreadModelSummary),
+		checkCancel: make(map[domain.CheckRunID]context.CancelFunc),
+		checkOwners: make(map[domain.CheckRunID]domain.CapsuleID),
+		checkWake:   make(chan struct{}, 1),
 	}
 	if len(runtime) > 0 {
 		service.runtime = runtime[0]
@@ -760,7 +782,11 @@ func (s *Service) PauseCapsule(
 	if err := requirePrincipal(ctx); err != nil {
 		return domain.Capsule{}, err
 	}
-	return s.mutateCapsule(ctx, id, expected, key, "pause", domain.IntentPaused, domain.CapsuleReady)
+	capsule, err := s.mutateCapsule(ctx, id, expected, key, "pause", domain.IntentPaused, domain.CapsuleReady)
+	if err == nil {
+		_ = s.InterruptChecks(ctx, id)
+	}
+	return capsule, err
 }
 
 func (s *Service) ResumeCapsule(

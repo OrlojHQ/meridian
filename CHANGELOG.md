@@ -30,6 +30,11 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   offer Connect GitHub or a token. Creating that Project checks access
   first. Git output is not stored or shown. Migration 0032 allows the
   new failure code.
+- A Project can list required checks, such as `make test`. When a structured
+  Thread finishes a turn, Meridian runs them inside the Capsule. A failure is
+  sent back to the agent up to the attempt limit, then the Capsule shows
+  **Checks failing (n/n)** or **Checks passed**. See [docs/checks.md](docs/checks.md)
+  and ADR 0052. Migration `0033_project_checks.sql` adds the tables.
 
 ## [0.10.1] - 2026-11-15
 

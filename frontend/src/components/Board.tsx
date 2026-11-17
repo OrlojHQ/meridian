@@ -40,6 +40,9 @@ const needsYouLabels: Record<NonNullable<BoardItem["needsYou"]>, string> = {
   failed: "Failed",
   spawn_approval: "Waiting for spawn approval",
   proposed_delivery: "Waiting for Delivery approval",
+  checks_passed: "Checks passed",
+  checks_failing: "Checks failing",
+  checks_error: "Checks could not finish",
 };
 
 export function boardFailure(item: BoardItem) {

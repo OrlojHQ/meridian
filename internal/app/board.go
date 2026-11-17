@@ -42,6 +42,9 @@ const (
 	BoardAttentionFailed           BoardAttention = "failed"
 	BoardAttentionSpawnApproval    BoardAttention = "spawn_approval"
 	BoardAttentionProposedDelivery BoardAttention = "proposed_delivery"
+	BoardAttentionChecksPassed     BoardAttention = "checks_passed"
+	BoardAttentionChecksFailing    BoardAttention = "checks_failing"
+	BoardAttentionChecksError      BoardAttention = "checks_error"
 )
 
 // BoardExpand chooses which subagent Capsules get their own rows.
@@ -89,6 +92,7 @@ type BoardItem struct {
 	Rollup         *ChildRollup
 	// Surfaced marks a subagent listed on its own because it needs the operator.
 	Surfaced bool
+	Checks   *ChecksSummaryView
 }
 
 type Board struct {
@@ -290,6 +294,13 @@ func (s *Service) boardItem(ctx context.Context, capsule domain.Capsule) (BoardI
 				return err
 			}
 		}
+		summary, ok, err := s.summaryIn(ctx, reader, capsule)
+		if err != nil {
+			return err
+		}
+		if ok {
+			item.Checks = &summary
+		}
 		return nil
 	})
 	if err != nil {
@@ -355,7 +366,8 @@ func boardStatus(item BoardItem) (BoardStatus, time.Time, BoardAttention) {
 	case capsule.DesiredState != domain.IntentReady, capsule.Maintenance != "":
 		return BoardWorking, capsule.UpdatedAt, ""
 	}
-	if delivery := item.LatestDelivery; delivery != nil && delivery.State == domain.DeliveryProposed {
+	if delivery := item.LatestDelivery; delivery != nil && delivery.State == domain.DeliveryProposed &&
+		(item.Checks == nil || !item.Checks.ProposalWithheld) {
 		return BoardNeedsYou, delivery.UpdatedAt, BoardAttentionProposedDelivery
 	}
 	if awaiting := item.Attention.Awaiting; awaiting != nil {
@@ -370,6 +382,28 @@ func boardStatus(item BoardItem) (BoardStatus, time.Time, BoardAttention) {
 	}
 	if delivery := item.LatestDelivery; delivery != nil && delivery.State.Executable() {
 		return BoardWorking, delivery.UpdatedAt, ""
+	}
+	if item.Checks != nil && item.Checks.Phase != "" && item.Attention.Turn != ThreadTurnWorking {
+		since := capsule.UpdatedAt
+		if item.Checks.FinishedAt != nil {
+			since = *item.Checks.FinishedAt
+		}
+		switch domain.CheckPhase(item.Checks.Phase) {
+		case domain.CheckPhaseFailing:
+			return BoardNeedsYou, since, BoardAttentionChecksFailing
+		case domain.CheckPhaseError:
+			return BoardNeedsYou, since, BoardAttentionChecksError
+		case domain.CheckPhasePassed:
+			return BoardNeedsYou, since, BoardAttentionChecksPassed
+		case domain.CheckPhaseQueued, domain.CheckPhaseRunning, domain.CheckPhaseReworking, domain.CheckPhaseStale:
+			return BoardWorking, since, ""
+		}
+	}
+	if item.Checks != nil {
+		switch domain.CheckPhase(item.Checks.Phase) {
+		case domain.CheckPhaseQueued, domain.CheckPhaseRunning, domain.CheckPhaseReworking:
+			return BoardWorking, capsule.UpdatedAt, ""
+		}
 	}
 	sessionIdle := item.Attention.Turn == ThreadTurnIdle
 	if run != nil && !run.State.Terminal() && !sessionIdle {

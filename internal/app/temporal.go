@@ -445,6 +445,7 @@ func (s *Service) Rewind(
 	if err := requirePrincipal(ctx); err != nil {
 		return DescendantResult{}, err
 	}
+	_ = s.InterruptChecks(ctx, source)
 	return s.createDescendant(ctx, source, momentID, name, key, domain.TimelineRewind)
 }
 

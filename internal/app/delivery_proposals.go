@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/OrlojHQ/meridian/internal/coordproto"
@@ -109,10 +110,52 @@ func (s *Service) ProposeDelivery(
 			"delivery.proposed", proposed.ResourceVersion, nil); err != nil {
 			return err
 		}
+		if err := s.withholdProposalForChecks(ctx, tx, capsule, proposed.ID, now); err != nil {
+			return err
+		}
 		result = proposed
 		return nil
 	})
+	if err == nil {
+		s.wakeChecks()
+	}
 	return result, err
+}
+
+// withholdProposalForChecks hides an agent proposal until the suite passes
+// or attempts run out. A Project with no checks, and a subagent Capsule,
+// leave the proposal visible immediately.
+func (s *Service) withholdProposalForChecks(
+	ctx context.Context, tx ports.Transaction, capsule domain.Capsule, delivery domain.DeliveryID, now time.Time,
+) error {
+	if s.checks == nil || capsule.Role == domain.CapsuleSub {
+		return nil
+	}
+	config, err := s.loadChecks(ctx, tx, capsule.ProjectID)
+	if err != nil || !config.Enabled() {
+		return err
+	}
+	if err := tx.InsertDeliveryCheckGate(ctx, delivery, capsule.ID, now); err != nil {
+		return err
+	}
+	if err := tx.CancelQueuedCheckRuns(ctx, capsule.ID, now); err != nil {
+		return err
+	}
+	active, err := tx.ActiveCheckRun(ctx, capsule.ID)
+	if err == nil && active.State == domain.CheckRunning {
+		return nil
+	}
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		return err
+	}
+	var threadID domain.ThreadID
+	if thread, err := tx.GetActiveThread(ctx, capsule.ID); err == nil {
+		threadID = thread.ID
+	} else if !errors.Is(err, domain.ErrNotFound) {
+		return err
+	}
+	_, err = s.queueCheck(ctx, tx, capsule.ID, domain.CheckTriggerDelivery, 0, threadID, "", true)
+	return err
 }
 
 func (s *Service) ApproveDelivery(
