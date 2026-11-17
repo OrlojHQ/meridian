@@ -7,6 +7,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.3] - 2026-11-17
+
 ### Fixed
 
 - A private GitHub clone with an active connection failed as
@@ -1409,7 +1411,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - Docker and Agent Sandbox are not claimed as hostile multi-tenant isolation
   boundaries; hardened runtime deployment and external review remain required.
 
-[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.11.2...HEAD
+[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.11.3...HEAD
+[0.11.3]: https://github.com/OrlojHQ/meridian/compare/v0.11.2...v0.11.3
 [0.11.2]: https://github.com/OrlojHQ/meridian/compare/v0.11.1...v0.11.2
 [0.11.1]: https://github.com/OrlojHQ/meridian/compare/v0.10.1...v0.11.1
 [0.10.1]: https://github.com/OrlojHQ/meridian/compare/v0.9.0...v0.10.1
