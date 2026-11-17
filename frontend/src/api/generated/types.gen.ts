@@ -168,6 +168,10 @@ export type CreateCapsuleRequest = {
 
 export type LifecycleMutationRequest = {
     expectedResourceVersion: number;
+    /**
+     * Stop active sessions, ending any that do not answer, then delete.
+     */
+    force?: boolean;
 };
 
 export type PromoteCapsuleRequest = {
@@ -1772,6 +1776,31 @@ export type ClaudeLoginStatus = {
     connectionId?: string;
 };
 
+export type ListEndpointModelsRequest = {
+    /**
+     * Use this saved connection's endpoint and key. A key in the body replaces the stored one for this request only.
+     */
+    connectionId?: string;
+    provider?: ProviderConnectionType;
+    baseUrl?: string;
+    allowPrivateHttp?: boolean;
+};
+
+export type EndpointModel = {
+    id: string;
+    name: string;
+    context?: number;
+    output?: number;
+};
+
+export type EndpointModelList = {
+    models: Array<EndpointModel>;
+    /**
+     * Imported default, or the connection's saved model when it matches an entry.
+     */
+    suggested?: string;
+};
+
 export type ProviderConnection = {
     id: string;
     provider: ProviderConnectionType;
@@ -2062,6 +2091,17 @@ export type ProjectPageWritable = {
     nextCursor?: string;
 };
 
+export type ListEndpointModelsRequestWritable = {
+    /**
+     * Use this saved connection's endpoint and key. A key in the body replaces the stored one for this request only.
+     */
+    connectionId?: string;
+    provider?: ProviderConnectionType;
+    baseUrl?: string;
+    apiKey?: string;
+    allowPrivateHttp?: boolean;
+};
+
 export type ProviderConnectionRequestWritable = {
     name: string;
     provider: ProviderConnectionType;
@@ -2250,6 +2290,31 @@ export type CompleteClaudeLoginResponses = {
 };
 
 export type CompleteClaudeLoginResponse = CompleteClaudeLoginResponses[keyof CompleteClaudeLoginResponses];
+
+export type ListEndpointModelsData = {
+    body: ListEndpointModelsRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/provider-connections/models';
+};
+
+export type ListEndpointModelsErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ListEndpointModelsError = ListEndpointModelsErrors[keyof ListEndpointModelsErrors];
+
+export type ListEndpointModelsResponses = {
+    /**
+     * Models
+     */
+    200: EndpointModelList;
+};
+
+export type ListEndpointModelsResponse = ListEndpointModelsResponses[keyof ListEndpointModelsResponses];
 
 export type ListProviderConnectionsData = {
     body?: never;

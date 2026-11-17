@@ -30,8 +30,8 @@ const (
 	acpCancelGrace    = 2 * time.Second
 	// A turn that produces no reply, and a setting change that is not
 	// acknowledged, end with an error so the thread can accept another message.
-	acpAnswerTimeout = 5 * time.Minute
-	acpSwitchTimeout = 45 * time.Second
+	acpAnswerTimeout  = 5 * time.Minute
+	acpSwitchTimeout  = 45 * time.Second
 	acpMaxQueue       = 32
 	acpMaxPending     = 64
 	acpMaxTools       = 1024

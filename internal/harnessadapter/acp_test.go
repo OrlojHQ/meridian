@@ -51,6 +51,20 @@ func sendSetModel(t *testing.T, encoder *adapterproto.Encoder, id, model string)
 	})
 }
 
+func TestProviderAuthFailureNamesTheProvider(t *testing.T) {
+	code, summary, ok := providerAuthFailure("AI.Error Authentication Error: No api key passed in", "Work proxy")
+	if !ok || code != "provider_unauthenticated" || summary != "Work proxy has no key in this Capsule. Connect it in Settings." {
+		t.Fatalf("auth failure = %v %q %v", code, summary, ok)
+	}
+	if _, _, ok := providerAuthFailure("the turn failed", "Work proxy"); ok {
+		t.Fatal("unrelated failure classified as authentication")
+	}
+	code, summary, ok = providerAuthFailure("unauthorized", "")
+	if !ok || code != "provider_unauthenticated" || summary != "This provider has no key in this Capsule. Connect it in Settings." {
+		t.Fatalf("unnamed auth failure = %v %q %v", code, summary, ok)
+	}
+}
+
 func TestACPReportsAndSwitchesModels(t *testing.T) {
 	decoder, encoder, log, _ := runACPFixture(t, "models", ACPConfig{Permissions: true}, adapterproto.KindStart, "")
 	_ = readStatus(t, decoder, adapterproto.StatusStarting)

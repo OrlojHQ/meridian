@@ -853,6 +853,7 @@ describe("Capsule detail states", () => {
     expect(dialog).toHaveTextContent("before deleting");
     const confirm = screen.getByRole("button", { name: "Confirm delete" });
     expect(confirm).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Force stop and delete" })).toBeEnabled();
 
     const sessions = within(screen.getByRole("list", { name: "Running sessions" }));
     const [stopTerminal, stopTask] = sessions.getAllByRole("button", { name: "Stop" });
@@ -871,6 +872,59 @@ describe("Capsule detail states", () => {
       ],
     });
     await waitFor(() => expect(confirm).toBeEnabled(), { timeout: 5_000 });
+  });
+
+  it("shows stop progress and force-deletes without waiting on the harness", async () => {
+    const nativeCapsule: Capsule = { ...capsule, harness: "claude" };
+    const running: Run = {
+      id: "run-live",
+      capsuleId: nativeCapsule.id,
+      harness: "claude",
+      state: "Running",
+      createdAt: "2026-08-26T00:00:00Z",
+      startedAt: "2026-08-26T00:00:01Z",
+      updatedAt: "2026-08-26T00:00:01Z",
+      resourceVersion: 4,
+    };
+    vi.spyOn(api, "capsule").mockResolvedValue(nativeCapsule);
+    vi.spyOn(api, "runs").mockResolvedValue({ items: [running] });
+    vi.spyOn(api, "threads").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
+    vi.spyOn(api, "harnessProfiles").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "capabilities").mockResolvedValue({
+      providerVersion: "docker/v2", isolation: "container" as const,
+      attach: false, run: true, structured: false, git: false, pause: false,
+      snapshot: false, clone: false, browse: false, delivery: false, preview: false,
+      resourceMetrics: false,
+    });
+    vi.spyOn(api, "cancelRun").mockRejectedValue(
+      new MeridianAPIError("The harness did not stop; the session was ended.", "runtime"),
+    );
+    const lifecycle = vi.spyOn(api, "lifecycle").mockImplementation(() => new Promise(() => {}));
+    wrapper(
+      <Routes>
+        <Route path="/ui/capsules/:capsuleId" element={<CapsuleDetail />} />
+      </Routes>,
+      "/ui/capsules/capsule-1",
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Capsule actions" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Delete…" }));
+    const dialog = screen.getByRole("alertdialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Stop" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("The harness did not stop; the session was ended.");
+    expect(within(dialog).getByRole("button", { name: "Stop" })).toBeEnabled();
+    await userEvent.click(screen.getByRole("button", { name: "Force stop and delete" }));
+    await waitFor(() =>
+      expect(lifecycle).toHaveBeenCalledWith(
+        "delete",
+        nativeCapsule.id,
+        nativeCapsule.resourceVersion,
+        undefined,
+        true,
+      ),
+    );
+    expect(await screen.findByText("Stopping sessions. A harness that does not answer is ended, then the Capsule is deleted.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Confirm delete" })).toBeDisabled();
   });
 
   it("stops the native terminal from its heading after confirmation", async () => {

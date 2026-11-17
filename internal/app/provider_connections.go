@@ -11,6 +11,7 @@ import (
 	"github.com/OrlojHQ/meridian/internal/providergateway"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 )
 
@@ -590,4 +591,164 @@ func (s *Service) runtimeProviderConnection(ctx context.Context, capsule domain.
 		}
 	}
 	return runtime, nil
+}
+
+// EndpointModel is one model a custom endpoint serves. Name is the friendly
+// label from an imported setup when one matches the id.
+type EndpointModel struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Context int    `json:"context,omitempty"`
+	Output  int    `json:"output,omitempty"`
+}
+
+// EndpointModelList is the model dropdown for a custom endpoint.
+type EndpointModelList struct {
+	Models    []EndpointModel `json:"models"`
+	Suggested string          `json:"suggested,omitempty"`
+}
+
+// ListEndpointModelsInput asks for a model list. ConnectionID uses the stored
+// endpoint and key. Otherwise the caller supplies them. The key is not returned.
+type ListEndpointModelsInput struct {
+	ConnectionID     string `json:"connectionId,omitempty"`
+	Provider         string `json:"provider,omitempty"`
+	BaseURL          string `json:"baseUrl,omitempty"`
+	APIKey           string `json:"apiKey,omitempty"`
+	AllowPrivateHTTP bool   `json:"allowPrivateHttp,omitempty"`
+}
+
+// ListEndpointModels fetches GET /v1/models and overlays names from the
+// caller's imported OpenCode setup when the endpoint matches.
+func (s *Service) ListEndpointModels(ctx context.Context, input ListEndpointModelsInput) (EndpointModelList, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return EndpointModelList{}, err
+	}
+	base, key, private, stored, err := s.endpointModelSource(ctx, input)
+	if err != nil {
+		return EndpointModelList{}, err
+	}
+	defer wipe([]byte(key))
+	ids, err := providergateway.ListModels(ctx, providergateway.Upstream{BaseURL: base, Key: key, AllowPrivateHTTP: private})
+	if err != nil {
+		return EndpointModelList{}, fmt.Errorf("%w: %s", domain.ErrInvalid, err.Error())
+	}
+	imported, catalog := s.openCodeModelCatalog(ctx, base)
+	models := make([]EndpointModel, 0, len(ids)+1)
+	seen := map[string]bool{}
+	add := func(id string) {
+		if id == "" || seen[id] || !harnesssetup.ValidModel(id) {
+			return
+		}
+		seen[id] = true
+		item := EndpointModel{ID: id, Name: id}
+		if known, ok := catalog[id]; ok {
+			if known.Name != "" {
+				item.Name = known.Name
+			}
+			item.Context, item.Output = known.Context, known.Output
+		}
+		models = append(models, item)
+	}
+	for _, id := range ids {
+		add(id)
+	}
+	add(stored)
+	sort.Slice(models, func(i, j int) bool {
+		if models[i].Name == models[j].Name {
+			return models[i].ID < models[j].ID
+		}
+		return models[i].Name < models[j].Name
+	})
+	suggested := ""
+	if stored != "" && seen[stored] {
+		suggested = stored
+	} else if imported != "" && seen[imported] {
+		suggested = imported
+	}
+	return EndpointModelList{Models: models, Suggested: suggested}, nil
+}
+
+func (s *Service) endpointModelSource(ctx context.Context, input ListEndpointModelsInput) (base, key string, private bool, stored string, err error) {
+	if input.ConnectionID != "" {
+		var connection domain.ProviderConnection
+		var raw []byte
+		err = s.store.View(ctx, func(r ports.Reader) error {
+			connection, err = r.GetProviderConnection(ctx, input.ConnectionID)
+			if err != nil {
+				return err
+			}
+			if connection.Revoked || connection.Provider != providergateway.OpenAICompatible {
+				return fmt.Errorf("%w: model list is available for an OpenAI-compatible endpoint", domain.ErrInvalid)
+			}
+			if s.secretKey == nil {
+				return domain.ErrUnsupported
+			}
+			opened, err := s.secretKey.OpenSetup(connectionEnvelopeID(connection), connection.KeyID, connection.Nonce, connection.Ciphertext)
+			if err != nil {
+				return err
+			}
+			raw = append([]byte(nil), opened...)
+			wipe(opened)
+			return nil
+		})
+		if err != nil {
+			wipe(raw)
+			return "", "", false, "", err
+		}
+		base, private, stored = connection.BaseURL, connection.AllowPrivateHTTP, connection.DefaultModel
+		key = string(raw)
+		wipe(raw)
+		if input.APIKey != "" {
+			key = input.APIKey
+		}
+		if input.BaseURL != "" {
+			normalized, err := providergateway.NormalizeBaseURL(input.BaseURL, input.AllowPrivateHTTP || private)
+			if err != nil {
+				return "", "", false, "", fmt.Errorf("%w: %s", domain.ErrInvalid, err.Error())
+			}
+			base = normalized
+			private = input.AllowPrivateHTTP
+		}
+		return base, key, private, stored, nil
+	}
+	if input.Provider != providergateway.OpenAICompatible {
+		return "", "", false, "", fmt.Errorf("%w: model list is available for an OpenAI-compatible endpoint", domain.ErrInvalid)
+	}
+	normalized, err := providergateway.NormalizeBaseURL(input.BaseURL, input.AllowPrivateHTTP)
+	if err != nil {
+		return "", "", false, "", fmt.Errorf("%w: %s", domain.ErrInvalid, err.Error())
+	}
+	if input.AllowPrivateHTTP && !s.privateHTTP {
+		return "", "", false, "", fmt.Errorf("%w: private-network HTTP upstreams are disabled on this installation", domain.ErrInvalid)
+	}
+	return normalized, input.APIKey, input.AllowPrivateHTTP, "", nil
+}
+
+func (s *Service) openCodeModelCatalog(ctx context.Context, base string) (string, map[string]harnesssetup.OpenCodeModel) {
+	setups, err := s.ListHarnessSetups(ctx)
+	if err != nil {
+		return "", nil
+	}
+	var suggested string
+	merged := map[string]harnesssetup.OpenCodeModel{}
+	for _, setup := range setups {
+		if setup.Deleted || setup.Harness != "opencode" {
+			continue
+		}
+		contents, err := s.HarnessSetupContents(ctx, setup.ID)
+		if err != nil {
+			continue
+		}
+		hint, models := harnesssetup.OpenCodeModelCatalog(contents.Bundle.Files, base)
+		if suggested == "" && hint != "" {
+			suggested = hint
+		}
+		for id, model := range models {
+			if _, ok := merged[id]; !ok {
+				merged[id] = model
+			}
+		}
+	}
+	return suggested, merged
 }

@@ -463,6 +463,44 @@ describe("Model picker", () => {
     expect(screen.getByRole("button", { name: "Reasoning effort: High" })).toHaveTextContent("High");
   });
 
+  it("groups models under the provider name and hides a gateway group", async () => {
+    const t = transcript();
+    t.models({
+      current: "alpha",
+      options: [
+        { id: "alpha", label: "Work proxy · Alpha" },
+        { id: "beta", label: "Work proxy · Beta" },
+        { id: "raw", label: "meridian · raw-id" },
+      ],
+    });
+    const user = userEvent.setup();
+    renderThread(t.blocks);
+    await user.click(await screen.findByRole("button", { name: "Model: Work proxy · Alpha" }));
+    const menu = screen.getByRole("menu", { name: "Models" });
+    expect(within(menu).getByRole("group", { name: "Work proxy" })).toBeInTheDocument();
+    expect(within(menu).queryByRole("group", { name: "meridian" })).not.toBeInTheDocument();
+    expect(within(menu).getAllByRole("menuitemradio").map((item) => item.textContent)).toEqual([
+      "Alpha",
+      "Beta",
+      "raw-id",
+    ]);
+  });
+
+  it("says which provider has no key, without the error code", () => {
+    const t = transcript();
+    t.error(
+      "provider_unauthenticated",
+      "Work proxy has no key in this Capsule. Connect it in Settings.",
+    );
+    expect(buildThreadChat(t.blocks, "Running").items).toEqual([
+      {
+        kind: "error",
+        key: "block-1",
+        text: "Work proxy has no key in this Capsule. Connect it in Settings.",
+      },
+    ]);
+  });
+
   it("names switches and refusals in the transcript", () => {
     const t = transcript();
     t.models(reported);

@@ -6269,6 +6269,81 @@ type EnableMemberNotFound ErrorEnvelope
 
 func (*EnableMemberNotFound) enableMemberRes() {}
 
+// Ref: #/components/schemas/EndpointModel
+type EndpointModel struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Context OptInt `json:"context"`
+	Output  OptInt `json:"output"`
+}
+
+// GetID returns the value of ID.
+func (s *EndpointModel) GetID() string {
+	return s.ID
+}
+
+// GetName returns the value of Name.
+func (s *EndpointModel) GetName() string {
+	return s.Name
+}
+
+// GetContext returns the value of Context.
+func (s *EndpointModel) GetContext() OptInt {
+	return s.Context
+}
+
+// GetOutput returns the value of Output.
+func (s *EndpointModel) GetOutput() OptInt {
+	return s.Output
+}
+
+// SetID sets the value of ID.
+func (s *EndpointModel) SetID(val string) {
+	s.ID = val
+}
+
+// SetName sets the value of Name.
+func (s *EndpointModel) SetName(val string) {
+	s.Name = val
+}
+
+// SetContext sets the value of Context.
+func (s *EndpointModel) SetContext(val OptInt) {
+	s.Context = val
+}
+
+// SetOutput sets the value of Output.
+func (s *EndpointModel) SetOutput(val OptInt) {
+	s.Output = val
+}
+
+// Ref: #/components/schemas/EndpointModelList
+type EndpointModelList struct {
+	Models []EndpointModel `json:"models"`
+	// Imported default, or the connection's saved model when it matches an entry.
+	Suggested OptString `json:"suggested"`
+}
+
+// GetModels returns the value of Models.
+func (s *EndpointModelList) GetModels() []EndpointModel {
+	return s.Models
+}
+
+// GetSuggested returns the value of Suggested.
+func (s *EndpointModelList) GetSuggested() OptString {
+	return s.Suggested
+}
+
+// SetModels sets the value of Models.
+func (s *EndpointModelList) SetModels(val []EndpointModel) {
+	s.Models = val
+}
+
+// SetSuggested sets the value of Suggested.
+func (s *EndpointModelList) SetSuggested(val OptString) {
+	s.Suggested = val
+}
+
 // Ref: #/components/schemas/EnvironmentMutation
 type EnvironmentMutation struct {
 	Enabled                 OptBool  `json:"enabled"`
@@ -8350,6 +8425,8 @@ func (s *IsolationClass) UnmarshalText(data []byte) error {
 // Ref: #/components/schemas/LifecycleMutationRequest
 type LifecycleMutationRequest struct {
 	ExpectedResourceVersion int64 `json:"expectedResourceVersion"`
+	// Stop active sessions, ending any that do not answer, then delete.
+	Force OptBool `json:"force"`
 }
 
 // GetExpectedResourceVersion returns the value of ExpectedResourceVersion.
@@ -8357,9 +8434,19 @@ func (s *LifecycleMutationRequest) GetExpectedResourceVersion() int64 {
 	return s.ExpectedResourceVersion
 }
 
+// GetForce returns the value of Force.
+func (s *LifecycleMutationRequest) GetForce() OptBool {
+	return s.Force
+}
+
 // SetExpectedResourceVersion sets the value of ExpectedResourceVersion.
 func (s *LifecycleMutationRequest) SetExpectedResourceVersion(val int64) {
 	s.ExpectedResourceVersion = val
+}
+
+// SetForce sets the value of Force.
+func (s *LifecycleMutationRequest) SetForce(val OptBool) {
+	s.Force = val
 }
 
 type ListCapsuleFilesBadRequest ErrorEnvelope
@@ -8389,6 +8476,67 @@ func (*ListCapsulesBadRequest) listCapsulesRes() {}
 type ListCapsulesNotFound ErrorEnvelope
 
 func (*ListCapsulesNotFound) listCapsulesRes() {}
+
+// Ref: #/components/schemas/ListEndpointModelsRequest
+type ListEndpointModelsRequest struct {
+	// Use this saved connection's endpoint and key. A key in the body replaces the stored one for this
+	// request only.
+	ConnectionId     OptString                 `json:"connectionId"`
+	Provider         OptProviderConnectionType `json:"provider"`
+	BaseUrl          OptString                 `json:"baseUrl"`
+	ApiKey           OptString                 `json:"apiKey"`
+	AllowPrivateHttp OptBool                   `json:"allowPrivateHttp"`
+}
+
+// GetConnectionId returns the value of ConnectionId.
+func (s *ListEndpointModelsRequest) GetConnectionId() OptString {
+	return s.ConnectionId
+}
+
+// GetProvider returns the value of Provider.
+func (s *ListEndpointModelsRequest) GetProvider() OptProviderConnectionType {
+	return s.Provider
+}
+
+// GetBaseUrl returns the value of BaseUrl.
+func (s *ListEndpointModelsRequest) GetBaseUrl() OptString {
+	return s.BaseUrl
+}
+
+// GetApiKey returns the value of ApiKey.
+func (s *ListEndpointModelsRequest) GetApiKey() OptString {
+	return s.ApiKey
+}
+
+// GetAllowPrivateHttp returns the value of AllowPrivateHttp.
+func (s *ListEndpointModelsRequest) GetAllowPrivateHttp() OptBool {
+	return s.AllowPrivateHttp
+}
+
+// SetConnectionId sets the value of ConnectionId.
+func (s *ListEndpointModelsRequest) SetConnectionId(val OptString) {
+	s.ConnectionId = val
+}
+
+// SetProvider sets the value of Provider.
+func (s *ListEndpointModelsRequest) SetProvider(val OptProviderConnectionType) {
+	s.Provider = val
+}
+
+// SetBaseUrl sets the value of BaseUrl.
+func (s *ListEndpointModelsRequest) SetBaseUrl(val OptString) {
+	s.BaseUrl = val
+}
+
+// SetApiKey sets the value of ApiKey.
+func (s *ListEndpointModelsRequest) SetApiKey(val OptString) {
+	s.ApiKey = val
+}
+
+// SetAllowPrivateHttp sets the value of AllowPrivateHttp.
+func (s *ListEndpointModelsRequest) SetAllowPrivateHttp(val OptBool) {
+	s.AllowPrivateHttp = val
+}
 
 type ListHarnessProfilesNotFound ErrorEnvelope
 
@@ -10572,6 +10720,52 @@ func (o OptProjectState) Get() (v ProjectState, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptProjectState) Or(d ProjectState) ProjectState {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptProviderConnectionType returns new OptProviderConnectionType with value set to v.
+func NewOptProviderConnectionType(v ProviderConnectionType) OptProviderConnectionType {
+	return OptProviderConnectionType{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptProviderConnectionType is optional ProviderConnectionType.
+type OptProviderConnectionType struct {
+	Value ProviderConnectionType
+	Set   bool
+}
+
+// IsSet returns true if OptProviderConnectionType was set.
+func (o OptProviderConnectionType) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptProviderConnectionType) Reset() {
+	var v ProviderConnectionType
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptProviderConnectionType) SetTo(v ProviderConnectionType) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptProviderConnectionType) Get() (v ProviderConnectionType, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptProviderConnectionType) Or(d ProviderConnectionType) ProviderConnectionType {
 	if v, ok := o.Get(); ok {
 		return v
 	}

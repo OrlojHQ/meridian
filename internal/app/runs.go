@@ -181,6 +181,54 @@ func (s *Service) GetRun(ctx context.Context, id domain.RunID) (domain.Run, erro
 	return s.applyRuntimeState(ctx, id, runtimeRun)
 }
 
+// EndCapsuleSessions stops every active Run and Thread on a Capsule. A harness
+// that does not answer is ended locally, so deletion cannot wait forever.
+func (s *Service) EndCapsuleSessions(ctx context.Context, id domain.CapsuleID) error {
+	if err := requirePrincipal(ctx); err != nil {
+		return err
+	}
+	runs, err := s.ListRuns(ctx, id, 0, 100)
+	if err != nil {
+		return err
+	}
+	threads, err := s.ListThreads(ctx, id, 0, 100)
+	if err != nil {
+		return err
+	}
+	byRun := map[domain.RunID]domain.Thread{}
+	for _, thread := range threads.Items {
+		if thread.State != domain.ThreadDeleted && thread.CurrentRunID != "" {
+			byRun[thread.CurrentRunID] = thread
+		}
+	}
+	for _, run := range runs.Items {
+		if run.State.Terminal() {
+			continue
+		}
+		thread, hasThread := byRun[run.ID]
+		if hasThread && s.structured != nil {
+			_, _ = s.CancelThread(ctx, thread.ID, thread.ResourceVersion, "force-stop-"+string(run.ID))
+		} else if s.runtime != nil {
+			_, _ = s.CancelRun(ctx, run.ID, run.ResourceVersion, "force-stop-run-"+string(run.ID))
+		}
+		stored, err := s.GetRunStored(ctx, run.ID)
+		if err != nil {
+			return err
+		}
+		if stored.State.Terminal() {
+			continue
+		}
+		threadID := domain.ThreadID("")
+		if hasThread {
+			threadID = thread.ID
+		}
+		if _, err := s.forceEndRun(ctx, run.ID, threadID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *Service) ListRuns(
 	ctx context.Context,
 	capsuleID domain.CapsuleID,
@@ -288,11 +336,15 @@ func (s *Service) CancelRun(
 		// retry when it returns.
 		return result, nil
 	}
-	if err == nil && runtimeRun.State.Terminal() {
+	if err == nil {
+		if !runtimeRun.State.Terminal() {
+			// Cancel was accepted and the session is still stopping.
+			return result, nil
+		}
 		return s.applyRuntimeState(ctx, id, runtimeRun)
 	}
-	// The harness did not answer. End the run anyway so Stop and Delete
-	// cannot sit on Cancelling with no further event.
+	// The runtime failed or did not answer. End the run anyway so Stop
+	// cannot sit on Running with no further event.
 	run, endErr := s.forceEndRun(ctx, id, "")
 	if endErr != nil {
 		return run, endErr

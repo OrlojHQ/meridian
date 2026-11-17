@@ -288,10 +288,20 @@ export function buildThreadChat(
           });
           break;
         }
+        if (event.code === "provider_unauthenticated") {
+          items.push({
+            kind: "error",
+            key: block.id,
+            text:
+              safeInline(event.summary || event.reason || "").slice(0, 300) ||
+              "This provider has no key in this Capsule. Connect it in Settings.",
+          });
+          break;
+        }
         items.push({
           kind: "error",
           key: block.id,
-          text: boundedThreadText(event.reason || "The agent reported an error."),
+          text: boundedThreadText(event.reason || event.summary || "The agent reported an error."),
           code: event.code ? safeInline(event.code) : undefined,
         });
         break;

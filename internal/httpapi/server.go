@@ -192,6 +192,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /callback", s.claudeLoginCallback)
 	s.mux.HandleFunc("GET /provider-connections", s.listProviderConnections)
 	s.mux.HandleFunc("POST /provider-connections", s.putProviderConnection)
+	s.mux.HandleFunc("POST /provider-connections/models", s.listEndpointModels)
 	s.mux.HandleFunc("PUT /provider-connections/{connectionId}", s.putProviderConnection)
 	s.mux.HandleFunc("DELETE /provider-connections/{connectionId}", s.deleteProviderConnection)
 	s.mux.HandleFunc("POST /provider-connections/chatgpt/sign-ins", s.startChatGPTSignIn)
@@ -1339,18 +1340,25 @@ func (s *Server) resumeCapsule(writer http.ResponseWriter, request *http.Request
 }
 
 func (s *Server) deleteCapsule(writer http.ResponseWriter, request *http.Request) {
-	s.lifecycle(writer, request, func(
-		ctx context.Context,
-		id domain.CapsuleID,
-		version domain.ResourceVersion,
-		key string,
-	) (domain.Capsule, error) {
-		capsule, err := s.service.DeleteCapsule(ctx, id, version, key)
-		if err == nil {
-			s.previews.revokeCapsule(id)
+	var input lifecycleRequest
+	if !decode(writer, request, &input) {
+		return
+	}
+	ctx := request.Context()
+	id := domain.CapsuleID(request.PathValue("capsuleId"))
+	if input.Force {
+		if err := s.service.EndCapsuleSessions(ctx, id); err != nil {
+			writeError(writer, err)
+			return
 		}
-		return capsule, err
-	})
+	}
+	capsule, err := s.service.DeleteCapsule(ctx, id, domain.ResourceVersion(input.ExpectedResourceVersion), request.Header.Get("Idempotency-Key"))
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	s.previews.revokeCapsule(id)
+	s.writeCapsule(writer, request, http.StatusAccepted, capsule)
 }
 
 func (s *Server) lifecycle(
@@ -2255,6 +2263,9 @@ type deleteSecretRequest struct {
 
 type lifecycleRequest struct {
 	ExpectedResourceVersion int64 `json:"expectedResourceVersion"`
+	// Force stops active sessions, then deletes. It does not wait on a harness
+	// that never answers.
+	Force bool `json:"force,omitempty"`
 }
 
 type captureMomentRequest struct {

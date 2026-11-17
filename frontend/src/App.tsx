@@ -238,6 +238,11 @@ function ActiveRuns({
               >
                 {stopping ? "Stopping…" : "Stop"}
               </button>
+              {stopping && (
+                <p className="notice" role="status">
+                  Stopping this session. If the harness does not answer, it will be ended.
+                </p>
+              )}
             </li>
           );
         })}
@@ -271,10 +276,13 @@ function CapsuleMenu({
   // choose a sibling from cache the moment the daemon accepts it.
   const siblings = useQuery(queries.mainCapsules(capsule.projectId));
   const projects = useQuery(queries.projects());
-  const mutation = useMutation<unknown, Error, "pause" | "resume" | "delete" | "seal">({
-    mutationFn: (action: "pause" | "resume" | "delete" | "seal") => {
+  const mutation = useMutation<unknown, Error, "pause" | "resume" | "delete" | "seal" | "delete-force">({
+    mutationFn: (action: "pause" | "resume" | "delete" | "seal" | "delete-force") => {
       if (action === "seal") {
         return api.seal(capsule.id, capsule.resourceVersion);
+      }
+      if (action === "delete-force") {
+        return api.lifecycle("delete", capsule.id, capsule.resourceVersion, undefined, true);
       }
       return api.lifecycle(action, capsule.id, capsule.resourceVersion);
     },
@@ -282,7 +290,7 @@ function CapsuleMenu({
       // Leave on the accepted delete, while the Capsule is still Deleting.
       // Waiting for state Deleted would keep this page up, and would also
       // send a direct visit to an already-deleted Capsule away.
-      if (action === "delete") {
+      if (action === "delete" || action === "delete-force") {
         const siblingKey = queries.mainCapsules(capsule.projectId).queryKey;
         let items =
           queryClient.getQueryData<CapsulePage>(siblingKey)?.items ?? siblings.data?.items;
@@ -409,9 +417,25 @@ function CapsuleMenu({
                     deleting. Anything the agent hasn't saved in the workspace is lost.
                   </p>
                   <ActiveRuns runs={activeRuns} threads={threads} />
+                  {mutation.isPending && (
+                    <p className="notice" role="status">
+                      Stopping sessions. A harness that does not answer is ended, then the Capsule is deleted.
+                    </p>
+                  )}
+                  {mutation.isError && <p role="alert">{normalizeAPIError(mutation.error).message}</p>}
                 </>
               )}
               <div className="actions">
+                {pendingAction === "delete" && blockedByRuns && (
+                  <button
+                    type="button"
+                    className="danger"
+                    disabled={mutation.isPending}
+                    onClick={() => mutation.mutate("delete-force")}
+                  >
+                    {mutation.isPending ? "Stopping sessions…" : "Force stop and delete"}
+                  </button>
+                )}
                 <button
                   type="button"
                   className="danger"

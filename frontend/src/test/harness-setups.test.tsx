@@ -83,13 +83,15 @@ it("groups settings under plain section headings without nested disclosures",asy
 it("saves a self-hosted endpoint with an explicit private HTTP opt-in",async()=>{
  vi.spyOn(api,"harnessSetups").mockResolvedValue({items:[]});vi.spyOn(api,"providerConnections").mockResolvedValue({items:[],enabled:true,privateHttpAllowed:true});
  const save=vi.spyOn(api,"saveProviderConnection").mockResolvedValue({id:"c",provider:"openai-compatible",name:"DGX",createdAt:setup.createdAt,resourceVersion:1,revoked:false});
+ vi.spyOn(api,"listEndpointModels").mockResolvedValue({models:[{id:"qwen3-coder",name:"Qwen coder"}],suggested:"qwen3-coder"});
  show(<HarnessSetups/>);
  await openHarness("Set up Codex");
  await userEvent.selectOptions(await screen.findByLabelText("Provider"),"openai-compatible");
  expect(screen.getByLabelText("API key (optional)")).not.toBeRequired();
  await userEvent.type(screen.getByLabelText("Connection name"),"DGX");
  await userEvent.type(screen.getByLabelText("Base URL"),"http://192.168.1.20:8000");
- await userEvent.type(screen.getByLabelText("Default model"),"qwen3-coder");
+ await userEvent.click(screen.getByRole("button",{name:"Load models"}));
+ expect(await screen.findByRole("option",{name:"Qwen coder"})).toBeInTheDocument();
  await userEvent.click(screen.getByLabelText("Use plain HTTP to a private-network server"));
  expect(screen.getByRole("note")).toHaveTextContent("unencrypted");
  await userEvent.click(screen.getByRole("button",{name:"Save connection"}));
@@ -98,12 +100,14 @@ it("saves a self-hosted endpoint with an explicit private HTTP opt-in",async()=>
 it("saves the reasoning effort levels a self-hosted model accepts",async()=>{
  vi.spyOn(api,"harnessSetups").mockResolvedValue({items:[]});vi.spyOn(api,"providerConnections").mockResolvedValue({items:[],enabled:true});
  const save=vi.spyOn(api,"saveProviderConnection").mockResolvedValue({id:"c",provider:"openai-compatible",name:"GLM",createdAt:setup.createdAt,resourceVersion:1,revoked:false});
+ vi.spyOn(api,"listEndpointModels").mockResolvedValue({models:[{id:"glm-5.3-flash",name:"GLM flash"}],suggested:"glm-5.3-flash"});
  show(<HarnessSetups/>);
  await openHarness("Set up Codex");
  await userEvent.selectOptions(await screen.findByLabelText("Provider"),"openai-compatible");
  expect(screen.queryByRole("group",{name:"Reasoning effort levels (optional)"})).toBeNull();
  await userEvent.type(screen.getByLabelText("Base URL"),"https://models.example.com");
- await userEvent.type(screen.getByLabelText("Default model"),"glm-5.3-flash");
+ await userEvent.click(screen.getByRole("button",{name:"Load models"}));
+ expect(await screen.findByRole("option",{name:"GLM flash"})).toBeInTheDocument();
  const levels=screen.getByRole("group",{name:"Reasoning effort levels (optional)"});
  await userEvent.click(within(levels).getByLabelText("Max"));
  await userEvent.click(within(levels).getByLabelText("Low"));

@@ -27,6 +27,19 @@ func publicConnection(item domain.ProviderConnection) domain.ProviderConnection 
 	item.CredentialGeneration = 0
 	return item
 }
+func (s *Server) listEndpointModels(w http.ResponseWriter, r *http.Request) {
+	var input app.ListEndpointModelsInput
+	if !decode(w, r, &input) {
+		return
+	}
+	list, err := s.service.ListEndpointModels(r.Context(), input)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
 func (s *Server) putProviderConnection(w http.ResponseWriter, r *http.Request) {
 	var input app.ConnectionInput
 	if !decode(w, r, &input) {

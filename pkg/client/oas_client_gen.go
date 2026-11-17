@@ -617,6 +617,13 @@ type Invoker interface {
 	//
 	// GET /coordination-requests
 	ListCoordinationRequests(ctx context.Context, params ListCoordinationRequestsParams) (ListCoordinationRequestsRes, error)
+	// ListEndpointModels invokes listEndpointModels operation.
+	//
+	// Fetches the endpoint's model list and overlays names from an imported OpenCode setup when the
+	// endpoint matches. The key is not returned.
+	//
+	// POST /provider-connections/models
+	ListEndpointModels(ctx context.Context, request *ListEndpointModelsRequest) (*EndpointModelList, error)
 	// ListHarnessProfiles invokes listHarnessProfiles operation.
 	//
 	// Provider-independent discovery. A false structured value identifies PTY/native fallback; clients
@@ -12669,6 +12676,123 @@ func (c *Client) sendListCoordinationRequests(ctx context.Context, params ListCo
 
 	stage = "DecodeResponse"
 	result, err := decodeListCoordinationRequestsResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// ListEndpointModels invokes listEndpointModels operation.
+//
+// Fetches the endpoint's model list and overlays names from an imported OpenCode setup when the
+// endpoint matches. The key is not returned.
+//
+// POST /provider-connections/models
+func (c *Client) ListEndpointModels(ctx context.Context, request *ListEndpointModelsRequest) (*EndpointModelList, error) {
+	res, err := c.sendListEndpointModels(ctx, request)
+	return res, err
+}
+
+func (c *Client) sendListEndpointModels(ctx context.Context, request *ListEndpointModelsRequest) (res *EndpointModelList, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("listEndpointModels"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/provider-connections/models"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, ListEndpointModelsOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/provider-connections/models"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeListEndpointModelsRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, ListEndpointModelsOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeListEndpointModelsResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}

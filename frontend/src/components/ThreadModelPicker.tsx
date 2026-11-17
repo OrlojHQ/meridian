@@ -3,7 +3,7 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 
 import { api, normalizeAPIError } from "../api/client";
 import type { Thread } from "../api/generated/types.gen";
-import type { ThreadModels, ThreadOptionSet } from "./threadModels";
+import type { ThreadModelOption, ThreadModels, ThreadOptionSet } from "./threadModels";
 
 function ChevronIcon() {
   return (
@@ -45,6 +45,35 @@ type Request = { setting: Setting; id: string };
 function pendingLabel(set: ThreadOptionSet | undefined, requested: string | undefined) {
   if (!set || requested === undefined || requested === set.current) return undefined;
   return set.options.find((option) => option.id === requested)?.label ?? requested;
+}
+
+// Groups keep the provider name the harness reported. A gateway id is not a
+// provider the operator chose, so it is not shown as its own group.
+function visibleModelLabel(label: string) {
+  const split = label.indexOf(" · ");
+  if (split <= 0) return label;
+  const group = label.slice(0, split);
+  if (group.toLowerCase() === "meridian") return label.slice(split + 3);
+  return label;
+}
+
+function modelGroups(options: ThreadModelOption[]) {
+  const groups: { title: string; options: ThreadModelOption[] }[] = [];
+  for (const option of options) {
+    const split = option.label.indexOf(" · ");
+    let title = "";
+    let label = option.label;
+    if (split > 0) {
+      title = option.label.slice(0, split);
+      label = option.label.slice(split + 3);
+      if (title.toLowerCase() === "meridian") title = "";
+    }
+    const shown = { ...option, label };
+    const current = groups[groups.length - 1];
+    if (current && current.title === title) current.options.push(shown);
+    else groups.push({ title, options: [shown] });
+  }
+  return groups;
 }
 
 function OptionGroup({
@@ -177,7 +206,7 @@ export function ThreadModelPicker({
   const modelPending = pendingLabel(models, requestedModel);
   const effortPending = pendingLabel(effort, requestedEffort);
   // The button names the model that runs, not the alias that picks it.
-  const modelShown = modelPending ?? (models.resolved || models.currentLabel || "Model");
+  const modelShown = visibleModelLabel(modelPending ?? (models.resolved || models.currentLabel || "Model"));
   const effortShown = effortPending ?? effort?.currentLabel;
   const searchable = models.options.length > SEARCH_THRESHOLD;
   const shownModels =
@@ -261,12 +290,15 @@ export function ThreadModelPicker({
           <div className="composer-model-scroll">
             {models.options.length > 0 &&
               (shownModels.length > 0 ? (
-                <OptionGroup
-                  title="Model · applies from the next turn"
-                  set={{ ...models, options: shownModels }}
-                  selected={requestedModel ?? models.current}
-                  onChoose={(id) => choose("model", id)}
-                />
+                modelGroups(shownModels).map((group) => (
+                  <OptionGroup
+                    key={group.title || "models"}
+                    title={group.title || "Model · applies from the next turn"}
+                    set={{ ...models, options: group.options }}
+                    selected={requestedModel ?? models.current}
+                    onChoose={(id) => choose("model", id)}
+                  />
+                ))
               ) : (
                 <p className="composer-model-empty">No models match “{query}”</p>
               ))}

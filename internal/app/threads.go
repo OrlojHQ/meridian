@@ -1032,7 +1032,13 @@ func (s *Service) finishStructuredCancel(
 	if errors.Is(cancelErr, domain.ErrRuntimeStopped) {
 		return result, nil
 	}
-	if cancelErr == nil && runtimeRun.State.Terminal() {
+	if cancelErr == nil {
+		if !runtimeRun.State.Terminal() {
+			// The runtime accepted the cancel and is still stopping. Leave
+			// the run Cancelling so a later update, or a force delete, can
+			// finish it. A call that never returns is handled below.
+			return result, nil
+		}
 		run, applyErr := s.applyRuntimeState(ctx, result.Run.ID, runtimeRun)
 		result.Run = &run
 		if applyErr != nil {

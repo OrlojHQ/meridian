@@ -102,7 +102,7 @@ export function ProviderConnections(){
  const cache=useQueryClient();const connections=useQuery({queryKey:["provider-connections"],queryFn:api.providerConnections});
  const [provider,setProvider]=useState<ProviderConnectionType>("openai");const [name,setName]=useState("");const [key,setKey]=useState("");const [editing,setEditing]=useState<ProviderConnection>();
  const [reauthorizing,setReauthorizing]=useState<string>();const [removing,setRemoving]=useState<string>();
- const [baseUrl,setBaseUrl]=useState("");const [model,setModel]=useState("");const [privateHttp,setPrivateHttp]=useState(false);const [efforts,setEfforts]=useState<ReasoningEffortLevel[]>([]);
+ const [baseUrl,setBaseUrl]=useState("");const [model,setModel]=useState("");const [catalog,setCatalog]=useState<{id:string;name:string}[]>([]);const [loadingModels,setLoadingModels]=useState(false);const [modelError,setModelError]=useState("");const [privateHttp,setPrivateHttp]=useState(false);const [efforts,setEfforts]=useState<ReasoningEffortLevel[]>([]);
  const [loginKind,setLoginKind]=useState<"api_key"|"oauth">("api_key");
  const [fallback,setFallback]=useState(false);const [busy,setBusy]=useState(false);const [message,setMessage]=useState("");const [continueURL,setContinueURL]=useState("");
  const [active,setActive]=useState<{id:string,manual:boolean}|undefined>();const [wantCode,setWantCode]=useState(false);const [code,setCode]=useState("");
@@ -110,7 +110,18 @@ export function ProviderConnections(){
  const polls=useRef(0);
  useEffect(()=>()=>{polls.current++;},[]);
  const custom=isCustom(provider);const claude=provider==="anthropic";const chatgpt=provider==="chatgpt";const privateHttpAllowed=!!connections.data?.privateHttpAllowed;
- const reset=()=>{setKey("");setEditing(undefined);setBaseUrl("");setModel("");setPrivateHttp(false);setEfforts([]);setLoginKind("api_key");setFallback(false);};
+ const reset=()=>{setKey("");setEditing(undefined);setBaseUrl("");setModel("");setCatalog([]);setModelError("");setPrivateHttp(false);setEfforts([]);setLoginKind("api_key");setFallback(false);};
+ async function loadModels(){
+  setLoadingModels(true);setModelError("");
+  try{
+   const list=await api.listEndpointModels({provider,baseUrl,apiKey:key,allowPrivateHttp:privateHttp,...(editing?{connectionId:editing.id}:{})});
+   const models=list.models??[];
+   setCatalog(models);
+   const suggested=list.suggested&&models.some(item=>item.id===list.suggested)?list.suggested:models[0]?.id??"";
+   setModel(suggested);
+  }catch(error){setModelError(normalizeAPIError(error).message);}
+  finally{setLoadingModels(false);}
+ }
  const save=useMutation({mutationFn:({body,id}:{body:ProviderConnectionRequestWritable,id?:string})=>api.saveProviderConnection(body,id),onSuccess:()=>{reset();save.reset();return cache.invalidateQueries({queryKey:["provider-connections"]});}});
  const remove=useMutation({mutationFn:(id:string)=>api.deleteProviderConnection(id),onSuccess:()=>{setRemoving(undefined);return cache.invalidateQueries({queryKey:["provider-connections"]});}});
  const body=():ProviderConnectionRequestWritable=>({name:name||(custom?providerLabels[provider]:claude?"Claude":`${provider} API`),provider,apiKey:key,expectedResourceVersion:editing?.resourceVersion??0,...(claude&&loginKind==="oauth"?{credentialKind:"oauth"}:{}),...(custom?{baseUrl,defaultModel:model||undefined,allowPrivateHttp:privateHttp,...(model&&efforts.length>0?{reasoningEfforts:effortLevels.filter(level=>efforts.includes(level))}:{})}:{})});
@@ -197,8 +208,14 @@ export function ProviderConnections(){
  {!chatgpt && <label>Connection name<input value={name} maxLength={128} onChange={event=>setName(event.target.value)}/></label>}
  {custom && <>
  <p>{provider==="openai-compatible"?"Codex, OpenCode, and Pi use this endpoint. Codex needs the Responses API (/v1/responses); OpenCode and Pi use Chat Completions and need a default model.":"Claude Code uses this endpoint through the Anthropic Messages API."} Meridian sends requests from the server; Capsules never see this address or key.</p>
- <label>Base URL<input value={baseUrl} required maxLength={2048} placeholder={privateHttp?"http://192.168.1.20:8000":"https://models.example.com"} onChange={event=>setBaseUrl(event.target.value)}/></label>
- <label>Default model<input value={model} maxLength={256} placeholder="Qwen/Qwen3-Coder-30B-A3B-Instruct" onChange={event=>setModel(event.target.value)}/></label>
+ <label>Base URL<input value={baseUrl} required maxLength={2048} placeholder={privateHttp?"http://192.168.1.20:8000":"https://models.example.com"} onChange={event=>{setBaseUrl(event.target.value);setCatalog([]);setModel("");}}/></label>
+ {provider==="openai-compatible" ? <>
+  <div className="connection-form-actions">
+   <button type="button" disabled={!baseUrl||loadingModels} onClick={()=>void loadModels()}>{loadingModels?"Loading models…":"Load models"}</button>
+  </div>
+  {modelError && <p role="alert">{modelError}</p>}
+  {catalog.length>0 && <label>Default model<select value={model} required onChange={event=>setModel(event.target.value)}>{catalog.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
+ </> : <label>Default model<input value={model} maxLength={256} placeholder="model-id" onChange={event=>setModel(event.target.value)}/></label>}
  {model && <fieldset className="effort-levels"><legend>Reasoning effort levels (optional)</legend><p>Check the levels this model accepts. Harnesses then offer them, plus off, in the composer's effort menu and send the chosen level as the request's reasoning effort.</p>{effortLevels.map(level=><label key={level}><input type="checkbox" checked={efforts.includes(level)} onChange={event=>setEfforts(current=>event.target.checked?[...current,level]:current.filter(value=>value!==level))}/>{effortLabels[level]}</label>)}</fieldset>}
  {privateHttpAllowed && <label><input type="checkbox" checked={privateHttp} onChange={event=>setPrivateHttp(event.target.checked)}/>Use plain HTTP to a private-network server</label>}
  {privateHttp && <p role="note">Plain HTTP sends prompts, code, and any API key unencrypted between Meridian and the model server. Use it only on a network you trust, such as a LAN or tailnet. Meridian connects only to loopback and private addresses in this mode.</p>}
@@ -227,7 +244,7 @@ export function ProviderConnections(){
  {editing && custom && <p>Saving replaces the stored key. Enter it again, or leave it empty if the server needs none.</p>}
  {!claude && !chatgpt && <label>{custom?"API key (optional)":"API key"}<input type="password" autoComplete="off" value={key} required={!custom} maxLength={4096} onChange={event=>setKey(event.target.value)}/></label>}
  {((!claude && !chatgpt) || editing) && <div className="connection-form-actions">
-  {!claude && !chatgpt && <button disabled={save.isPending || (!custom && !key) || (custom && !baseUrl)}>{editing?(custom?"Save endpoint":"Replace API key"):"Save connection"}</button>}
+  {!claude && !chatgpt && <button disabled={save.isPending || (!custom && !key) || (custom && !baseUrl) || (provider==="openai-compatible" && !model)}>{editing?(custom?"Save endpoint":"Replace API key"):"Save connection"}</button>}
   {editing && <button type="button" className="secondary" onClick={reset}>Cancel</button>}
  </div>}
  </form>}

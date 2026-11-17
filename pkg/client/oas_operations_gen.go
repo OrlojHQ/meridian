@@ -92,6 +92,7 @@ const (
 	ListCapsulePreviewPortsOperation        OperationName = "ListCapsulePreviewPorts"
 	ListCapsulesOperation                   OperationName = "ListCapsules"
 	ListCoordinationRequestsOperation       OperationName = "ListCoordinationRequests"
+	ListEndpointModelsOperation             OperationName = "ListEndpointModels"
 	ListHarnessProfilesOperation            OperationName = "ListHarnessProfiles"
 	ListHarnessSetupRevisionsOperation      OperationName = "ListHarnessSetupRevisions"
 	ListHarnessSetupsOperation              OperationName = "ListHarnessSetups"

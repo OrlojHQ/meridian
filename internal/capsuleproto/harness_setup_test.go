@@ -559,7 +559,14 @@ func TestOpenCodeImportedProxyConnection(t *testing.T) {
 	}
 	meridian := providers["meridian"].(map[string]any)
 	gateway := meridian["settings"].(map[string]any)
-	model := meridian["models"].(map[string]any)["example-coder"].(map[string]any)
+	models := meridian["models"].(map[string]any)
+	if len(models) != 1 {
+		t.Fatalf("models = %v", models)
+	}
+	model := models["example-coder"].(map[string]any)
+	if model["name"] != "Example" {
+		t.Fatalf("model name = %v", model["name"])
+	}
 	effort := model["capabilities"].(map[string]any)["reasoning"].(map[string]any)["effort"].([]any)
 	if meridian["name"] != "Work proxy" || meridian["package"] != "@opencode/ai/providers/openai-compatible" || gateway["baseURL"] != "https://meridian.example/provider-gateway/openai-compatible/v1" || gateway["apiKey"] != "{env:MERIDIAN_PROVIDER_TOKEN}" || gateway["includeUsage"] != true || len(effort) != 2 || effort[0] != "low" || effort[1] != "high" {
 		t.Fatalf("connection provider = %v", meridian)

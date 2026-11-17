@@ -96,6 +96,7 @@ var operationRolesBearerAuth = map[string][]string{
 	ListCapsulePreviewPortsOperation:        []string{},
 	ListCapsulesOperation:                   []string{},
 	ListCoordinationRequestsOperation:       []string{},
+	ListEndpointModelsOperation:             []string{},
 	ListHarnessProfilesOperation:            []string{},
 	ListHarnessSetupRevisionsOperation:      []string{},
 	ListHarnessSetupsOperation:              []string{},
