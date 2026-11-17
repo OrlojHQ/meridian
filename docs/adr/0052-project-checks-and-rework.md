@@ -1,6 +1,6 @@
 # ADR 0052: Project checks and automatic rework
 
-- Status: Accepted; implemented in v0.11.0
+- Status: Accepted; implemented in v0.11.1
 - Date: 2026-11-16
 - Extends: ADR 0007 (harness runs), ADR 0012 (encrypted transcripts), ADR 0020 (delivery binds the reviewed tree), ADR 0025 (live turn state), ADR 0050 (isolation class)
 

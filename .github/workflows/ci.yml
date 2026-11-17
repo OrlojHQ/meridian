@@ -104,6 +104,19 @@ jobs:
       - name: Build UI
         run: make ui-build
 
+      # meridiand embeds internal/webui/dist, and the release workflow refuses
+      # a tag whose committed bundle differs from a fresh build. Catch it on
+      # the pull request: a frontend change must commit `make ui-build`.
+      - name: Check the embedded UI is current
+        run: |
+          set -euo pipefail
+          changed="$(git status --porcelain -- internal/webui/dist)"
+          if [[ -n "$changed" ]]; then
+            echo "$changed"
+            echo "::error::internal/webui/dist is out of date. Run make ui-build and commit the result."
+            exit 1
+          fi
+
       - name: Test Helm policy
         run: make helm-test
 
