@@ -124,3 +124,38 @@ func TestTokenShape(t *testing.T) {
 		t.Fatal("rejected a normal token")
 	}
 }
+
+func TestRateLimitIsNotAnAccessAnswer(t *testing.T) {
+	for _, respond := range []func(http.ResponseWriter){
+		func(w http.ResponseWriter) {
+			w.Header().Set("X-RateLimit-Remaining", "0")
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = io.WriteString(w, `{"message":"API rate limit exceeded for 203.0.113.1."}`)
+		},
+		func(w http.ResponseWriter) {
+			w.Header().Set("Retry-After", "60")
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = io.WriteString(w, `{"message":"You have exceeded a secondary rate limit."}`)
+		},
+		func(w http.ResponseWriter) { w.WriteHeader(http.StatusTooManyRequests) },
+	} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { respond(w) }))
+		client := New(server.Client())
+		client.APIBase = server.URL
+		status, _, err := client.ProbeRepository(context.Background(), "", "octocat", "hello")
+		server.Close()
+		if err == nil || status != 0 {
+			t.Fatalf("rate-limited probe = %d, %v", status, err)
+		}
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = io.WriteString(w, `{"message":"Resource not accessible by integration"}`)
+	}))
+	defer server.Close()
+	client := New(server.Client())
+	client.APIBase = server.URL
+	if status, _, err := client.ProbeRepository(context.Background(), "", "octocat", "hello"); err != nil || status != http.StatusForbidden {
+		t.Fatalf("plain 403 probe = %d, %v", status, err)
+	}
+}
