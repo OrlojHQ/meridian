@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"testing"
 	"time"
 
 	"github.com/OrlojHQ/meridian/internal/adapterproto"
@@ -38,6 +39,10 @@ type Store struct {
 const CurrentSchemaVersion = 34
 
 func Open(ctx context.Context, dataDir string) (*Store, error) {
+	return open(ctx, dataDir, testing.Testing())
+}
+
+func open(ctx context.Context, dataDir string, seed bool) (*Store, error) {
 	if strings.TrimSpace(dataDir) == "" {
 		return nil, fmt.Errorf("%w: data directory is required", domain.ErrInvalid)
 	}
@@ -62,6 +67,10 @@ func Open(ctx context.Context, dataDir string) (*Store, error) {
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("inspect database path: %w", err)
+	} else if seed {
+		if err := seedTestDatabase(path); err != nil {
+			return nil, err
+		}
 	}
 	dsnURL := url.URL{Scheme: "file", Path: filepath.ToSlash(path)}
 	query := dsnURL.Query()
