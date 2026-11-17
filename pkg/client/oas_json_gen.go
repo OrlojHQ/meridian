@@ -32012,6 +32012,271 @@ func (s *RemoveSubagentUnprocessableEntity) UnmarshalJSON(data []byte) error {
 	return s.Decode(d)
 }
 
+// Encode encodes RenameCapsuleBadRequest as json.
+func (s *RenameCapsuleBadRequest) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes RenameCapsuleBadRequest from json.
+func (s *RenameCapsuleBadRequest) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode RenameCapsuleBadRequest to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = RenameCapsuleBadRequest(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *RenameCapsuleBadRequest) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *RenameCapsuleBadRequest) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes RenameCapsuleConflict as json.
+func (s *RenameCapsuleConflict) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes RenameCapsuleConflict from json.
+func (s *RenameCapsuleConflict) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode RenameCapsuleConflict to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = RenameCapsuleConflict(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *RenameCapsuleConflict) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *RenameCapsuleConflict) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes RenameCapsuleNotFound as json.
+func (s *RenameCapsuleNotFound) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes RenameCapsuleNotFound from json.
+func (s *RenameCapsuleNotFound) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode RenameCapsuleNotFound to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = RenameCapsuleNotFound(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *RenameCapsuleNotFound) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *RenameCapsuleNotFound) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s *RenameCapsuleRequest) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *RenameCapsuleRequest) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("name")
+		e.Str(s.Name)
+	}
+	{
+		e.FieldStart("expectedResourceVersion")
+		e.Int64(s.ExpectedResourceVersion)
+	}
+}
+
+var jsonFieldsNameOfRenameCapsuleRequest = [2]string{
+	0: "name",
+	1: "expectedResourceVersion",
+}
+
+// Decode decodes RenameCapsuleRequest from json.
+func (s *RenameCapsuleRequest) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode RenameCapsuleRequest to nil")
+	}
+	var requiredBitSet [1]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "name":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				v, err := d.Str()
+				s.Name = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"name\"")
+			}
+		case "expectedResourceVersion":
+			requiredBitSet[0] |= 1 << 1
+			if err := func() error {
+				v, err := d.Int64()
+				s.ExpectedResourceVersion = int64(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"expectedResourceVersion\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode RenameCapsuleRequest")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [1]uint8{
+		0b00000011,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfRenameCapsuleRequest) {
+					name = jsonFieldsNameOfRenameCapsuleRequest[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *RenameCapsuleRequest) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *RenameCapsuleRequest) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes RenameCapsuleUnprocessableEntity as json.
+func (s *RenameCapsuleUnprocessableEntity) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes RenameCapsuleUnprocessableEntity from json.
+func (s *RenameCapsuleUnprocessableEntity) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode RenameCapsuleUnprocessableEntity to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = RenameCapsuleUnprocessableEntity(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *RenameCapsuleUnprocessableEntity) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *RenameCapsuleUnprocessableEntity) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
 // Encode encodes RespondThreadBadRequest as json.
 func (s *RespondThreadBadRequest) Encode(e *jx.Encoder) {
 	unwrapped := (*ErrorEnvelope)(s)

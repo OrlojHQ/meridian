@@ -312,11 +312,25 @@ func (s *Service) pendingPrompt(
 	reader ports.Reader,
 	intent domain.ProjectThreadIntent,
 ) (string, error) {
+	payload, err := s.pendingBlock(ctx, reader, intent)
+	if err != nil {
+		return "", err
+	}
+	return payload.Content, nil
+}
+
+// pendingBlock decrypts a Project Thread intent's first prompt, including
+// the origin that marks a message Meridian wrote itself.
+func (s *Service) pendingBlock(
+	ctx context.Context,
+	reader ports.Reader,
+	intent domain.ProjectThreadIntent,
+) (persistedThreadBlock, error) {
 	var dek []byte
 	var err error
 	if len(intent.WrappedDEK) != 0 {
-		if !s.transcriptKey.Matches(intent.KEKID, intent.KEKVersion) {
-			return "", domain.ErrKeyMismatch
+		if s.transcriptKey == nil || !s.transcriptKey.Matches(intent.KEKID, intent.KEKVersion) {
+			return persistedThreadBlock{}, domain.ErrKeyMismatch
 		}
 		dek, err = s.transcriptKey.UnwrapDEK(
 			intent.ThreadID, intent.KEKID, intent.KEKVersion, intent.WrappedDEK,
@@ -324,27 +338,27 @@ func (s *Service) pendingPrompt(
 	} else {
 		thread, getErr := reader.GetThread(ctx, intent.ThreadID)
 		if getErr != nil {
-			return "", getErr
+			return persistedThreadBlock{}, getErr
 		}
 		dek, err = s.unwrapThread(thread)
 	}
 	if err != nil {
-		return "", err
+		return persistedThreadBlock{}, err
 	}
 	defer wipe(dek)
 	plaintext, err := transcripts.DecryptMessage(dek, intent.PendingMessage)
 	if err != nil {
-		return "", err
+		return persistedThreadBlock{}, err
 	}
 	defer transcripts.ZeroPlaintextBlocks(plaintext)
 	if len(plaintext) != 1 {
-		return "", domain.ErrTranscriptCorrupt
+		return persistedThreadBlock{}, domain.ErrTranscriptCorrupt
 	}
 	var payload persistedThreadBlock
 	if err := json.Unmarshal(plaintext[0], &payload); err != nil {
-		return "", domain.ErrTranscriptCorrupt
+		return persistedThreadBlock{}, domain.ErrTranscriptCorrupt
 	}
-	return payload.Content, nil
+	return payload, nil
 }
 
 func (s *Service) loadProjectThreadResult(

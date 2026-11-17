@@ -1051,7 +1051,7 @@
 
 /* Between the phone layout and the three-column desktop layout, Capsule tools
    open as a drawer over the right of the primary surface. Keep header actions
-   (Ship, the Capsule actions menu) and the drawer toggle clear of it. */
+   (Create PR, the Capsule actions menu) and the drawer toggle clear of it. */
 @media (min-width: 721px) and (max-width: 1040px) {
   .app-shell.has-context .workspace-main .workspace-view-header,
   .app-shell.has-context .workspace-main .capsule-bar {

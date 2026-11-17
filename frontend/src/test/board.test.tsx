@@ -446,7 +446,7 @@ describe("Board", () => {
     const openNewProject = vi.fn();
     renderBoard({ openLauncher: vi.fn(), openNewProject }, { projects: [] });
     expect(await screen.findByRole("heading", { name: "No projects yet" })).toBeTruthy();
-    await userEvent.click(screen.getByRole("button", { name: "New project" }));
+    await userEvent.click(screen.getByRole("button", { name: "Create your first project" }));
     expect(openNewProject).toHaveBeenCalled();
   });
 

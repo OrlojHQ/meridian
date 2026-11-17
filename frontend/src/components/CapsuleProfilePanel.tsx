@@ -88,7 +88,7 @@ export function ProfileDiagnosticView({ diagnostic }: { diagnostic: ProfileDiagn
   );
 }
 
-export function CapsuleProfilePanel({ capsuleId }: { capsuleId: string }) {
+export function useCapsuleProfile(capsuleId: string) {
   const cache = useQueryClient();
   const diagnostic = useQuery({ queryKey: ["capsule-profile", capsuleId], queryFn: () => api.capsuleProfileDiagnostic(capsuleId) });
   const update = useMutation({
@@ -98,9 +98,34 @@ export function CapsuleProfilePanel({ capsuleId }: { capsuleId: string }) {
       return cache.invalidateQueries({ queryKey: ["capsule", capsuleId] });
     },
   });
+  return { diagnostic, update };
+}
+
+export function SetupChangedNote({ capsuleId }: { capsuleId: string }) {
+  const { diagnostic, update } = useCapsuleProfile(capsuleId);
+  if (update.isError) {
+    return (
+      <p className="setup-changed-note" role="alert" title={normalizeAPIError(update.error).message}>
+        {normalizeAPIError(update.error).message}
+      </p>
+    );
+  }
+  if (!diagnostic.data || diagnostic.data.matchesProfile) return null;
+  return (
+    <p className="setup-changed-note">
+      <span className="setup-changed-text">Your setup changed.</span>
+      <button type="button" disabled={update.isPending} onClick={() => update.mutate()}>
+        {update.isPending ? "Updating…" : "Update?"}
+      </button>
+    </p>
+  );
+}
+
+export function CapsuleProfilePanel({ capsuleId, heading = true }: { capsuleId: string; heading?: boolean }) {
+  const { diagnostic, update } = useCapsuleProfile(capsuleId);
   return (
     <div className="panel capsule-profile">
-      <h2>Compared with your profile</h2>
+      {heading ? <h2>Setup details</h2> : null}
       {diagnostic.isPending && <p role="status">Comparing…</p>}
       {diagnostic.isError && <p role="alert">{normalizeAPIError(diagnostic.error).message}</p>}
       {diagnostic.data && <ProfileDiagnosticView diagnostic={diagnostic.data} />}

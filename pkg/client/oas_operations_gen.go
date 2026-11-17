@@ -122,6 +122,7 @@ const (
 	RedeemDesktopSignInOperation            OperationName = "RedeemDesktopSignIn"
 	RejectDeliveryOperation                 OperationName = "RejectDelivery"
 	RemoveSubagentOperation                 OperationName = "RemoveSubagent"
+	RenameCapsuleOperation                  OperationName = "RenameCapsule"
 	RespondThreadOperation                  OperationName = "RespondThread"
 	ResumeCapsuleOperation                  OperationName = "ResumeCapsule"
 	ResumeThreadOperation                   OperationName = "ResumeThread"

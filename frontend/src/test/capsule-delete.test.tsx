@@ -202,12 +202,12 @@ describe("delete navigation", () => {
 
     await waitFor(() => expect(location()).toBe("/ui/projects/project-1"));
     expect(await screen.findByRole("heading", { name: "Meridian" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Start work in Meridian" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "New Capsule" })).toBeInTheDocument();
     expect(location()).not.toContain("capsule-current");
 
-    await userEvent.click(screen.getByRole("button", { name: "Start work in Meridian" }));
-    expect(screen.getByRole("dialog", { name: "Start work in Meridian" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Close new workspace" }));
+    await userEvent.click(screen.getByRole("button", { name: "New Capsule" }));
+    expect(screen.getByRole("dialog", { name: "New Capsule" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Close new Capsule" }));
 
     await userEvent.click(screen.getByRole("button", { name: "History back" }));
     expect(location()).toMatch(/^\/ui\/?$/);

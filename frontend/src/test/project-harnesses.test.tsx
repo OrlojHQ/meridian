@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { MeridianAPIError, api } from "../api/client";
 import type { Capabilities, Project } from "../api/generated/types.gen";
+import { NewSessionDialog } from "../components/NewSessionDialog";
 import { NewWorkspaceDialog } from "../components/NewWorkspaceDialog";
 import { ProjectSettings } from "../components/ProjectSettings";
 
@@ -37,10 +38,16 @@ const capabilities: Capabilities = {
 };
 
 function SettingsLayout() {
-  const [launch, setLaunch] = useState<Project>();
+  const [projectId, setProjectId] = useState("");
   return <>
-    <Outlet context={{ openLauncher: setLaunch }} />
-    <NewWorkspaceDialog open={Boolean(launch)} project={launch} onClose={() => setLaunch(undefined)} />
+    <Outlet context={{ openNewSession: setProjectId, openLauncher: () => undefined }} />
+    {projectId && (
+      <NewSessionDialog
+        projectId={projectId}
+        onProjectChange={setProjectId}
+        onClose={() => setProjectId("")}
+      />
+    )}
   </>;
 }
 
@@ -100,12 +107,17 @@ describe("Project harness management", () => {
     expect(within(packs).getByText("Pi")).toBeInTheDocument();
     expect(within(packs).getByText("All installed agents have been added to this Project.")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Start work in Meridian" }));
-    const dialog = screen.getByRole("dialog");
-    expect(within(dialog).getByRole("radio", { name: "OpenCode" })).toBeInTheDocument();
-    await userEvent.click(within(dialog).getByRole("radio", { name: "Pi" }));
-    expect(within(dialog).getByRole("radio", { name: "Pi" })).toBeChecked();
-    expect(within(dialog).getByRole("button", { name: "Start Pi" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "New Capsule" }));
+    const dialog = screen.getByRole("dialog", { name: "New Capsule" });
+    const harness = within(dialog).getByRole("combobox", { name: "Harness" });
+    expect(harness).toHaveTextContent("OpenCode");
+    await userEvent.click(harness);
+    const options = within(dialog).getByRole("listbox", { name: "Harness" });
+    expect(within(options).getByRole("option", { name: "OpenCode" })).toHaveAttribute("aria-selected", "true");
+    await userEvent.click(within(options).getByRole("option", { name: "Pi" }));
+    expect(harness).toHaveTextContent("Pi");
+    expect(within(dialog).queryByRole("listbox")).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Start" })).toBeInTheDocument();
   });
 
   it("keeps the existing harness and allows retrying a failed addition", async () => {

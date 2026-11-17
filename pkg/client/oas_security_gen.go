@@ -123,6 +123,7 @@ var operationRolesBearerAuth = map[string][]string{
 	ReadCapsuleFileOperation:                []string{},
 	RejectDeliveryOperation:                 []string{},
 	RemoveSubagentOperation:                 []string{},
+	RenameCapsuleOperation:                  []string{},
 	RespondThreadOperation:                  []string{},
 	ResumeCapsuleOperation:                  []string{},
 	ResumeThreadOperation:                   []string{},

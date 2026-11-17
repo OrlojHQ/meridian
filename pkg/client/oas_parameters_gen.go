@@ -515,6 +515,12 @@ type RemoveSubagentParams struct {
 	IdempotencyKey string
 }
 
+// RenameCapsuleParams is parameters of renameCapsule operation.
+type RenameCapsuleParams struct {
+	CapsuleId      string
+	IdempotencyKey string
+}
+
 // RespondThreadParams is parameters of respondThread operation.
 type RespondThreadParams struct {
 	ThreadId       string

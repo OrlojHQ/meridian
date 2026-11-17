@@ -87,7 +87,7 @@ describe("application shell", () => {
     vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
     vi.spyOn(api, "capsules").mockResolvedValue({ items: [] });
     vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
-    vi.spyOn(api, "capabilities").mockResolvedValue(capabilities);
+    vi.spyOn(api, "capabilities").mockResolvedValue({ ...capabilities, structured: true });
     vi.spyOn(api, "harnessSetups").mockResolvedValue({ items: [] });
     vi.spyOn(api, "providerConnections").mockResolvedValue({ items: [], enabled: true });
     vi.spyOn(api, "projectHarnessSetup").mockResolvedValue({ setup: "" });
@@ -101,12 +101,12 @@ describe("application shell", () => {
       </Routes>, initial,
     );
     await openMeridianLauncher();
-    expect(screen.getByRole("dialog", { name: "Start work in Meridian" })).toBeInTheDocument();
-    await userEvent.click(await screen.findByRole("link", { name: "Connect provider" }));
+    expect(screen.getByRole("dialog", { name: "New Capsule" })).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("link", { name: "Connect a provider" }));
     expect(await screen.findByRole("heading", { name: "Import from your computer" })).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     await openMeridianLauncher();
-    expect(screen.getByRole("dialog", { name: "Start work in Meridian" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "New Capsule" })).toBeInTheDocument();
   });
 
   it("closes the launcher as soon as a task starts", async () => {
@@ -141,16 +141,14 @@ describe("application shell", () => {
       </Routes>,
     );
     await openMeridianLauncher();
-    expect(screen.getByRole("dialog", { name: "Start work in Meridian" })).toBeInTheDocument();
-    await userEvent.click(await screen.findByRole("tab", { name: "Give it a task" }));
-    await userEvent.type(screen.getByLabelText("Task"), "inspect");
-    await userEvent.click(screen.getByRole("button", { name: "Start task" }));
+    expect(screen.getByRole("dialog", { name: "New Capsule" })).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("button", { name: "Start" }));
     await waitFor(() =>
-      expect(spawn).toHaveBeenCalledWith(project.id, "opencode", "inspect", undefined, undefined),
+      expect(spawn).toHaveBeenCalledWith(project.id, "opencode", "", undefined, undefined),
     );
     await waitFor(() =>
       expect(
-        screen.queryByRole("dialog", { name: "Start work in Meridian" }),
+        screen.queryByRole("dialog", { name: "New Capsule" }),
       ).not.toBeInTheDocument(),
     );
     expect(await screen.findByText("Capsule workspace")).toBeInTheDocument();
@@ -183,17 +181,18 @@ describe("application shell", () => {
       </Routes>,
     );
     await openMeridianLauncher();
-    expect(screen.getByRole("dialog", { name: "Start work in Meridian" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "New Capsule" })).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("tab", { name: "CLI" }));
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Start OpenCode" })).toBeEnabled(),
+      expect(screen.getByRole("button", { name: "Start" })).toBeEnabled(),
     );
-    await userEvent.click(screen.getByRole("button", { name: "Start OpenCode" }));
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
     await waitFor(() =>
-      expect(create).toHaveBeenCalledWith(project.id, expect.any(String), "opencode", undefined, ""),
+      expect(create).toHaveBeenCalledWith(project.id, expect.stringMatching(/^opencode-/), "opencode"),
     );
     await waitFor(() =>
       expect(
-        screen.queryByRole("dialog", { name: "Start work in Meridian" }),
+        screen.queryByRole("dialog", { name: "New Capsule" }),
       ).not.toBeInTheDocument(),
     );
     expect(await screen.findByText("Capsule workspace")).toBeInTheDocument();
@@ -219,11 +218,9 @@ describe("application shell", () => {
       </Routes>,
     );
     await openMeridianLauncher();
-    await userEvent.click(await screen.findByRole("tab", { name: "Give it a task" }));
-    await userEvent.type(screen.getByLabelText("Task"), "inspect");
-    await userEvent.click(screen.getByRole("button", { name: "Start task" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Start" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Capsule quota exceeded");
-    expect(screen.getByRole("dialog", { name: "Start work in Meridian" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "New Capsule" })).toBeInTheDocument();
   });
 
   it("creates Projects globally and Capsules within a Project", async () => {
@@ -285,20 +282,15 @@ describe("application shell", () => {
 
     await openMeridianLauncher();
     expect(
-      screen.getByRole("dialog", { name: "Start work in Meridian" }),
+      screen.getByRole("dialog", { name: "New Capsule" }),
     ).toBeInTheDocument();
-    expect(await screen.findByRole("radio", { name: "OpenCode" })).toBeChecked();
-    expect(
-      await screen.findByRole("tab", { name: "Open terminal" }),
-    ).toHaveAttribute("aria-selected", "true");
-    await userEvent.click(
-      screen.getByRole("tab", { name: "Give it a task" }),
-    );
-    expect(screen.getByLabelText("Task")).toBeInTheDocument();
+    expect(await screen.findByRole("combobox", { name: "Harness" })).toHaveTextContent("OpenCode");
+    expect(screen.getByRole("tab", { name: "Thread" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "CLI" })).toHaveAttribute("aria-selected", "false");
     await userEvent.keyboard("{Escape}");
     await waitFor(() =>
       expect(
-        screen.queryByRole("dialog", { name: "Start work in Meridian" }),
+        screen.queryByRole("dialog", { name: "New Capsule" }),
       ).not.toBeInTheDocument(),
     );
   });
@@ -936,7 +928,7 @@ describe("application shell", () => {
       "href",
       "/ui/settings/harnesses#provider-connections",
     );
-    await user.click(within(start).getByRole("button", { name: "Create a Project" }));
+    await user.click(screen.getByRole("button", { name: "Create your first project" }));
     expect(screen.getByRole("dialog", { name: "Create a Project" })).toBeInTheDocument();
     await user.keyboard("{Escape}");
     await user.click(within(start).getByRole("link", { name: "Import setup" }));
@@ -956,7 +948,8 @@ describe("application shell", () => {
       </Routes>,
     );
 
-    expect(await screen.findByRole("button", { name: "New Capsule" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "New project" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "New Capsule" })).not.toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Get started" })).not.toBeInTheDocument();
     expect(screen.queryByText("No Projects")).not.toBeInTheDocument();
   });
@@ -995,7 +988,8 @@ describe("application shell", () => {
     // A Project row's + opens the New Capsule dialog on that Project.
     await userEvent.click(within(sidebar).getByRole("button", { name: "New Capsule in Empty" }));
     const dialog = await screen.findByRole("dialog", { name: "New Capsule" });
-    expect(within(dialog).getByRole("combobox", { name: "Project" })).toHaveValue("project-2");
+    expect(within(dialog).queryByRole("combobox", { name: "Project" })).not.toBeInTheDocument();
+    expect(dialog).toHaveTextContent("Empty");
     await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     expect(screen.queryByRole("dialog", { name: "New Capsule" })).not.toBeInTheDocument();
 

@@ -121,7 +121,7 @@ export function FirstRun({ openNewProject }: { openNewProject?: () => void }) {
           <p>A Project points Meridian at a repository. Every session runs in its own Capsule.</p>
           {openNewProject && (
             <button type="button" className="primary-button" onClick={openNewProject}>
-              New project
+              Create your first project
             </button>
           )}
         </li>

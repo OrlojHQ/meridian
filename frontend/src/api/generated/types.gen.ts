@@ -182,6 +182,11 @@ export type PromoteCapsuleRequest = {
     detach?: boolean;
 };
 
+export type RenameCapsuleRequest = {
+    name: string;
+    expectedResourceVersion: number;
+};
+
 export type CaptureMomentRequest = {
     name: string;
     expectedResourceVersion: number;
@@ -4291,6 +4296,52 @@ export type GetCapsuleResponses = {
 };
 
 export type GetCapsuleResponse = GetCapsuleResponses[keyof GetCapsuleResponses];
+
+export type RenameCapsuleData = {
+    body: RenameCapsuleRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        capsuleId: string;
+    };
+    query?: never;
+    url: '/capsules/{capsuleId}/name';
+};
+
+export type RenameCapsuleErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type RenameCapsuleError = RenameCapsuleErrors[keyof RenameCapsuleErrors];
+
+export type RenameCapsuleResponses = {
+    /**
+     * Renamed Capsule
+     */
+    200: Capsule;
+};
+
+export type RenameCapsuleResponse = RenameCapsuleResponses[keyof RenameCapsuleResponses];
 
 export type ListHarnessProfilesData = {
     body?: never;

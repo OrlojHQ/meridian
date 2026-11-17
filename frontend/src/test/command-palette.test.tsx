@@ -287,7 +287,7 @@ describe("command palette", () => {
     expect(newProject).toHaveAttribute("aria-keyshortcuts", "N");
     expect(within(newProject).getByText("N")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("option", { name: /New Capsule in Meridian/ }));
-    expect(screen.getByRole("dialog", { name: "Start work in Meridian" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "New Capsule" })).toBeInTheDocument();
   });
 
   it("jumps to the oldest item that needs the operator", async () => {

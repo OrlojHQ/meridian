@@ -92,6 +92,7 @@ import {
   denyCoordinationRequest,
   getBoard,
   promoteCapsule,
+  renameCapsule,
 } from "./generated/sdk.gen";
 import { projectHarnessImage } from "./harnessPacks";
 import type {
@@ -389,6 +390,15 @@ export const api = {
         path: { capsuleId: capsule.id },
         headers: idempotencyHeaders(),
         body: { expectedResourceVersion: capsule.resourceVersion, detach },
+      }),
+    ),
+  renameCapsule: (capsuleId: string, name: string, expectedResourceVersion: number) =>
+    call<Capsule>(
+      renameCapsule({
+        ...generatedOptions(),
+        path: { capsuleId },
+        headers: idempotencyHeaders(),
+        body: { name, expectedResourceVersion },
       }),
     ),
   createCapsule: (

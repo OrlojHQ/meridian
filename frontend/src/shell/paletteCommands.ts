@@ -57,6 +57,7 @@ export type PaletteActions = {
   navigate: (path: string) => void;
   requestCapsuleAction: (capsuleId: string, action: CapsuleActionRequest) => void;
   openNewProject: () => void;
+  openNewSession: (projectId: string) => void;
   openLauncher: (project: Project) => void;
   openDeleteProject: (project: Project) => void;
   openShortcuts: () => void;
@@ -185,7 +186,7 @@ export function buildPaletteCommands({
       group: "Create",
       label: `New Capsule in ${project.name}`,
       keywords: "launch start agent",
-      run: () => actions.openLauncher(project),
+      run: () => actions.openNewSession(project.id),
     });
     commands.push({
       id: `delete-project:${project.id}`,
@@ -334,6 +335,7 @@ export const keyboardShortcuts = (): ShortcutHelp[] => [
   { keys: [paletteShortcut()], description: "Open the command palette" },
   { keys: [["G", "N"]], description: "Next item needing me" },
   { keys: [["N"]], description: "New project" },
+  { keys: [isApplePlatform() ? ["⌘", "N"] : ["Ctrl", "N"]], description: "New Capsule" },
   { keys: [["/"]], description: "Filter Capsules" },
   { keys: [["J"], ["↓"]], description: "Next Capsule" },
   { keys: [["K"], ["↑"]], description: "Previous Capsule" },
