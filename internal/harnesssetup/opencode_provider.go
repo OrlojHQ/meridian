@@ -17,6 +17,9 @@ type OpenCodeModel struct {
 	// Entry is the model object with credential fields removed, so a Capsule
 	// can keep names and limits without a copied secret.
 	Entry map[string]any
+	// Reasoning is "yes" or "no" when the model configuration says whether
+	// it accepts an effort level, and empty when it does not say.
+	Reasoning string
 }
 
 // OpenCodeProvider is one provider entry from an imported OpenCode config.
@@ -159,6 +162,7 @@ func openCodeModels(entry map[string]any) []OpenCodeModel {
 			limit, _ := model["limit"].(map[string]any)
 			item.Context = numberField(limit, "context")
 			item.Output = numberField(limit, "output")
+			item.Reasoning = ModelReasoning(model)
 			item.Entry = copyModelEntry(model)
 		}
 		if item.Entry == nil {

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, normalizeAPIError } from "../api/client";
-import type { ChatGptSignIn, ProviderConnection, ProviderConnectionRequestWritable, ProviderConnectionType, ReasoningEffortLevel } from "../api/generated/types.gen";
+import type { ChatGptSignIn, ProviderConnection, ProviderConnectionRequestWritable, ProviderConnectionType } from "../api/generated/types.gen";
 // Official Claude mark, unchanged, from https://claude.com/icon.svg.
 // It only identifies the sign-in. Anthropic's mark stays its own.
 import claudeMark from "../assets/claude-mark.svg";
@@ -39,9 +39,6 @@ export function connectionModelNote(item: ProviderConnection | undefined) {
  if (item.provider === "openai" || item.provider === "anthropic" || item.provider === "chatgpt") return "The harness will choose";
  return "";
 }
-
-const effortLevels:ReasoningEffortLevel[]=["minimal","low","medium","high","xhigh","max"];
-const effortLabels:Record<ReasoningEffortLevel,string>={minimal:"Minimal",low:"Low",medium:"Medium",high:"High",xhigh:"Extra high",max:"Max"};
 
 type ConnectionStatus={label:string;tone:"ok"|"warn"|"muted"};
 
@@ -102,7 +99,7 @@ export function ProviderConnections(){
  const cache=useQueryClient();const connections=useQuery({queryKey:["provider-connections"],queryFn:api.providerConnections});
  const [provider,setProvider]=useState<ProviderConnectionType>("openai");const [name,setName]=useState("");const [key,setKey]=useState("");const [editing,setEditing]=useState<ProviderConnection>();
  const [reauthorizing,setReauthorizing]=useState<string>();const [removing,setRemoving]=useState<string>();
- const [baseUrl,setBaseUrl]=useState("");const [model,setModel]=useState("");const [catalog,setCatalog]=useState<{id:string;name:string}[]>([]);const [loadingModels,setLoadingModels]=useState(false);const [modelError,setModelError]=useState("");const [privateHttp,setPrivateHttp]=useState(false);const [efforts,setEfforts]=useState<ReasoningEffortLevel[]>([]);
+ const [baseUrl,setBaseUrl]=useState("");const [model,setModel]=useState("");const [catalog,setCatalog]=useState<{id:string;name:string}[]>([]);const [loadingModels,setLoadingModels]=useState(false);const [modelError,setModelError]=useState("");const [privateHttp,setPrivateHttp]=useState(false);
  const [loginKind,setLoginKind]=useState<"api_key"|"oauth">("api_key");
  const [fallback,setFallback]=useState(false);const [busy,setBusy]=useState(false);const [message,setMessage]=useState("");const [continueURL,setContinueURL]=useState("");
  const [active,setActive]=useState<{id:string,manual:boolean}|undefined>();const [wantCode,setWantCode]=useState(false);const [code,setCode]=useState("");
@@ -110,7 +107,7 @@ export function ProviderConnections(){
  const polls=useRef(0);
  useEffect(()=>()=>{polls.current++;},[]);
  const custom=isCustom(provider);const claude=provider==="anthropic";const chatgpt=provider==="chatgpt";const privateHttpAllowed=!!connections.data?.privateHttpAllowed;
- const reset=()=>{setKey("");setEditing(undefined);setBaseUrl("");setModel("");setCatalog([]);setModelError("");setPrivateHttp(false);setEfforts([]);setLoginKind("api_key");setFallback(false);};
+ const reset=()=>{setKey("");setEditing(undefined);setBaseUrl("");setModel("");setCatalog([]);setModelError("");setPrivateHttp(false);setLoginKind("api_key");setFallback(false);};
  async function loadModels(){
   setLoadingModels(true);setModelError("");
   try{
@@ -124,7 +121,8 @@ export function ProviderConnections(){
  }
  const save=useMutation({mutationFn:({body,id}:{body:ProviderConnectionRequestWritable,id?:string})=>api.saveProviderConnection(body,id),onSuccess:()=>{reset();save.reset();return cache.invalidateQueries({queryKey:["provider-connections"]});}});
  const remove=useMutation({mutationFn:(id:string)=>api.deleteProviderConnection(id),onSuccess:()=>{setRemoving(undefined);return cache.invalidateQueries({queryKey:["provider-connections"]});}});
- const body=():ProviderConnectionRequestWritable=>({name:name||(custom?providerLabels[provider]:claude?"Claude":`${provider} API`),provider,apiKey:key,expectedResourceVersion:editing?.resourceVersion??0,...(claude&&loginKind==="oauth"?{credentialKind:"oauth"}:{}),...(custom?{baseUrl,defaultModel:model||undefined,allowPrivateHttp:privateHttp,...(model&&efforts.length>0?{reasoningEfforts:effortLevels.filter(level=>efforts.includes(level))}:{})}:{})});
+ const keptEfforts=editing?.reasoningEfforts?.length?(editing.defaultModel===model?editing.reasoningEfforts:[]):undefined;
+ const body=():ProviderConnectionRequestWritable=>({name:name||(custom?providerLabels[provider]:claude?"Claude":`${provider} API`),provider,apiKey:key,expectedResourceVersion:editing?.resourceVersion??0,...(claude&&loginKind==="oauth"?{credentialKind:"oauth"}:{}),...(custom?{baseUrl,defaultModel:model||undefined,allowPrivateHttp:privateHttp,...(keptEfforts?{reasoningEfforts:keptEfforts}:{})}:{})});
  async function signIn(connectionId?:string){
   const generation=++polls.current;
   const popup=window.open("about:blank","meridian-claude-login","popup,width=520,height=760");
@@ -165,7 +163,7 @@ export function ProviderConnections(){
  }
  const savedKind=loginKind==="oauth"?"setup token":"API key";
  const items=connections.data?.items??[];
- const startEditing=(item:ProviderConnection)=>{setEditing(item);setProvider(item.provider);setName(item.name);setKey("");setBaseUrl(item.baseUrl??"");setModel(item.defaultModel??"");setPrivateHttp(!!item.allowPrivateHttp);setEfforts(item.reasoningEfforts??[]);setLoginKind(item.credentialKind==="oauth"?"oauth":"api_key");setFallback(item.provider==="anthropic");};
+ const startEditing=(item:ProviderConnection)=>{setEditing(item);setProvider(item.provider);setName(item.name);setKey("");setBaseUrl(item.baseUrl??"");setModel(item.defaultModel??"");setPrivateHttp(!!item.allowPrivateHttp);setLoginKind(item.credentialKind==="oauth"?"oauth":"api_key");setFallback(item.provider==="anthropic");};
  const revoke=(item:ProviderConnection)=>save.mutate({id:item.id,body:{provider:item.provider,name:item.name,apiKey:"",expectedResourceVersion:item.resourceVersion,revoked:true}});
  return <section className="panel provider-connections" id="provider-connections"><h2>Provider connections</h2><p className="provider-connections-lede">Sign in with ChatGPT or Claude, or connect an API key or a self-hosted model server such as vLLM, Ollama, or a LiteLLM proxy, once. Then authorize it for each Project.</p>
  {connections.isPending && <p role="status">Loading connections…</p>}
@@ -216,8 +214,7 @@ export function ProviderConnections(){
   {modelError && <p role="alert">{modelError}</p>}
   {catalog.length>0 && <label>Default model<select value={model} required onChange={event=>setModel(event.target.value)}>{catalog.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
  </> : <label>Default model<input value={model} maxLength={256} placeholder="model-id" onChange={event=>setModel(event.target.value)}/></label>}
- {model && <fieldset className="effort-levels"><legend>Reasoning effort levels (optional)</legend><p>Check the levels this model accepts. Harnesses then offer them, plus off, in the composer's effort menu and send the chosen level as the request's reasoning effort.</p>{effortLevels.map(level=><label key={level}><input type="checkbox" checked={efforts.includes(level)} onChange={event=>setEfforts(current=>event.target.checked?[...current,level]:current.filter(value=>value!==level))}/>{effortLabels[level]}</label>)}</fieldset>}
- {privateHttpAllowed && <label><input type="checkbox" checked={privateHttp} onChange={event=>setPrivateHttp(event.target.checked)}/>Use plain HTTP to a private-network server</label>}
+ {privateHttpAllowed && <label className="checkbox-label"><input type="checkbox" checked={privateHttp} onChange={event=>setPrivateHttp(event.target.checked)}/>Use plain HTTP to a private-network server</label>}
  {privateHttp && <p role="note">Plain HTTP sends prompts, code, and any API key unencrypted between Meridian and the model server. Use it only on a network you trust, such as a LAN or tailnet. Meridian connects only to loopback and private addresses in this mode.</p>}
  </>}
  {chatgpt && <div className="chatgpt-sign-in">

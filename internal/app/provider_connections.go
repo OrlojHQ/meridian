@@ -182,7 +182,12 @@ func (s *Service) PutProviderConnection(ctx context.Context, id string, input Co
 		result.Revoked = input.Revoked
 		if !input.Revoked {
 			result.BaseURL, result.DefaultModel, result.AllowPrivateHTTP = input.BaseURL, input.DefaultModel, input.AllowPrivateHTTP
-			result.ReasoningEfforts = input.ReasoningEfforts
+			// An update that omits levels keeps a declaration the operator
+			// already saved. A new connection, or an explicit list, uses
+			// what was sent.
+			if id == "" || input.ReasoningEfforts != nil {
+				result.ReasoningEfforts = input.ReasoningEfforts
+			}
 			result.CredentialKind = input.CredentialKind
 		} else {
 			result.CredentialKind = ""
@@ -580,11 +585,12 @@ func (s *Service) runtimeProviderConnection(ctx context.Context, capsule domain.
 			return nil, err
 		}
 	}
-	token, err := s.gateway.Issue(providergateway.Lease{Connection: id, Project: string(capsule.ProjectID), Capsule: string(capsule.ID), Harness: harness, Provider: connection.Provider})
+	efforts, reasoning := s.connectionReasoning(ctx, connection, connection.DefaultModel)
+	token, err := s.gateway.Issue(providergateway.Lease{Connection: id, Project: string(capsule.ProjectID), Capsule: string(capsule.ID), Harness: harness, Provider: connection.Provider, Reasoning: reasoning})
 	if err != nil {
 		return nil, err
 	}
-	runtime := &harnesssetup.Connection{Provider: connection.Provider, URL: s.gatewayURL + "/" + connection.Provider, Token: token, Model: connection.DefaultModel, Efforts: connection.ReasoningEfforts, CA: ca, Name: connection.Name}
+	runtime := &harnesssetup.Connection{Provider: connection.Provider, URL: s.gatewayURL + "/" + connection.Provider, Token: token, Model: connection.DefaultModel, Efforts: efforts, CA: ca, Name: connection.Name}
 	if connection.BaseURL != "" && strings.TrimSuffix(harness, "-structured") == "opencode" {
 		if setup, err := s.runtimeHarnessSetup(ctx, capsule.ID, harness); err == nil && setup != nil {
 			runtime.Fold = harnesssetup.OpenCodeFoldIDs(setup.Bundle.Files, connection.BaseURL)

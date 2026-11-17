@@ -342,6 +342,14 @@ func TestConnectionEffortLevelsReachEachHarness(t *testing.T) {
 		if reasoning["supported"] != true || len(effort) != 3 || effort[0] != "low" || effort[1] != "high" || effort[2] != "max" {
 			t.Fatalf("opencode model = %v", model)
 		}
+		variants := model["variants"].(map[string]any)
+		high := variants["high"].(map[string]any)
+		if high["reasoningEffort"] != "high" || variants["medium"] != nil {
+			t.Fatalf("variants = %v", variants)
+		}
+		if _, set := model["options"]; set {
+			t.Fatalf("medium default written without that level: %v", model["options"])
+		}
 	})
 	t.Run("codex", func(t *testing.T) {
 		env, err := prepare(t, "codex", "openai-compatible", levels)

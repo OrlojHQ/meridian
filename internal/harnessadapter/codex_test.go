@@ -144,12 +144,12 @@ func TestCodexAppServerOffersConnectionEffortForItsConfiguredModel(t *testing.T)
 	t.Setenv("MERIDIAN_CODEX_HELPER_MODEL", "glm-local")
 	decoder, encoder, argumentsPath, _ := runCodexFixtureWith(t, CodexConfig{
 		ApprovalPolicy: "on-request", Sandbox: "workspace-write",
-		ModelEfforts: CodexModelEfforts("low,high,max"),
+		ModelEfforts: CodexModelEfforts("low,medium,high,max"),
 	}, adapterproto.KindStart, "", true)
 	_ = readStatus(t, decoder, adapterproto.StatusStarting)
 	models := readKind(t, decoder, adapterproto.KindModels).Models
-	if models.Current != "glm-local" || models.Effort == nil || len(models.Effort.Options) != 3 ||
-		models.Effort.Options[2].Label != "Max" || models.Effort.Current != "" {
+	if models.Current != "glm-local" || models.Effort == nil || len(models.Effort.Options) != 4 ||
+		models.Effort.Options[3].Label != "Max" || models.Effort.Current != "medium" {
 		t.Fatalf("models = %#v", models)
 	}
 	sendSetEffort(t, encoder, "effort-1", "max")

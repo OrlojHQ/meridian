@@ -71,3 +71,69 @@ func ListModels(ctx context.Context, upstream Upstream) ([]string, error) {
 	}
 	return ids, nil
 }
+
+// EndpointReasoning reads explicit per-model reasoning support. It never
+// fails the caller: a missing or unreadable document means nothing was said.
+// The key is not included in any error, and this function returns no error.
+func EndpointReasoning(ctx context.Context, upstream Upstream) map[string]string {
+	base, err := NormalizeBaseURL(upstream.BaseURL, upstream.AllowPrivateHTTP)
+	if err != nil {
+		return nil
+	}
+	allow := dialable
+	if upstream.AllowPrivateHTTP {
+		allow = PrivateNetwork
+	}
+	client := &http.Client{
+		Transport:     transport(allow, 4*time.Second),
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		Timeout:       4 * time.Second,
+	}
+	merged := map[string]string{}
+	merge := func(flags map[string]string) {
+		for id, state := range flags {
+			if merged[id] == "yes" {
+				continue
+			}
+			merged[id] = state
+		}
+	}
+	if body, ok := getQuiet(ctx, client, upstream.Key, base+"/v1/models"); ok {
+		merge(readReasoningFlags(body))
+	}
+	for _, path := range []string{"/model/info", "/v1/model/info"} {
+		body, ok := getQuiet(ctx, client, upstream.Key, base+path)
+		if !ok {
+			continue
+		}
+		merge(readReasoningFlags(body))
+		break
+	}
+	if len(merged) == 0 {
+		return nil
+	}
+	return merged
+}
+
+func getQuiet(ctx context.Context, client *http.Client, key, target string) ([]byte, bool) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+	if err != nil {
+		return nil, false
+	}
+	if key != "" {
+		request.Header.Set("Authorization", "Bearer "+key)
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		return nil, false
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return nil, false
+	}
+	body, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+	if err != nil {
+		return nil, false
+	}
+	return body, true
+}

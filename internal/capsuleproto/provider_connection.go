@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -531,6 +532,31 @@ func rewriteOpenCodeProviders(config map[string]any, rw *openCodeRewrite) map[st
 			}
 			caps["reasoning"] = map[string]any{"supported": true, "effort": rw.Efforts}
 			entry["capabilities"] = caps
+			variants, _ := entry["variants"].(map[string]any)
+			if variants == nil {
+				variants = map[string]any{}
+			}
+			for _, level := range rw.Efforts {
+				current, _ := variants[level].(map[string]any)
+				if current == nil {
+					current = map[string]any{}
+				}
+				if _, set := current["reasoningEffort"]; !set {
+					current["reasoningEffort"] = level
+				}
+				variants[level] = current
+			}
+			entry["variants"] = variants
+			if slices.Contains(rw.Efforts, "medium") {
+				options, _ := entry["options"].(map[string]any)
+				if options == nil {
+					options = map[string]any{}
+				}
+				if _, set := options["reasoningEffort"]; !set {
+					options["reasoningEffort"] = "medium"
+				}
+				entry["options"] = options
+			}
 		}
 	}
 	if len(models) == 0 && rw.Model != "" {

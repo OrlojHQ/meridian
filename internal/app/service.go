@@ -113,6 +113,8 @@ type Service struct {
 	attention             map[domain.ThreadID]cachedThreadAttention
 	modelsMu              sync.Mutex
 	models                map[domain.ThreadID]ThreadModelSummary
+	endpointReasoningMu   sync.Mutex
+	endpointReasoning     map[string]endpointReasoningCache
 	coordination          ports.CoordinationRuntime
 	coordMaxLive          int
 	coordMu               sync.Mutex

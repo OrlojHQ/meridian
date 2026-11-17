@@ -453,6 +453,7 @@ function route(pathname: string): unknown {
   if (pathname === "/provider-connections") {
     return {
       enabled: true,
+      privateHttpAllowed: new URLSearchParams(window.location.search).get("shot") === "models",
       items: [
         {
           id: "conn-claude",
@@ -575,7 +576,7 @@ function route(pathname: string): unknown {
   const blockMatch = pathname.match(/^\/threads\/([^/]+)\/blocks$/);
   if (blockMatch) {
     const shot = new URLSearchParams(window.location.search).get("shot");
-    if ((shot === "picker" || shot === "error") && blockMatch[1] === "thread-tokens") {
+    if ((shot === "picker" || shot === "error" || shot === "effort") && blockMatch[1] === "thread-tokens") {
       const items = [...(blocks[blockMatch[1]] ?? [])];
       items.push(
         block("b-models", "m-models", items.length + 1, "system", "json", {
@@ -587,6 +588,22 @@ function route(pathname: string): unknown {
                 { id: "alpha", label: "Work proxy · Alpha" },
                 { id: "beta", label: "Work proxy · Beta" },
               ],
+              ...(shot === "effort"
+                ? {
+                    effort: {
+                      current: "medium",
+                      options: [
+                        { id: "off", label: "Off" },
+                        { id: "minimal", label: "Minimal" },
+                        { id: "low", label: "Low" },
+                        { id: "medium", label: "Medium" },
+                        { id: "high", label: "High" },
+                        { id: "xhigh", label: "Extra high" },
+                        { id: "max", label: "Max" },
+                      ],
+                    },
+                  }
+                : {}),
             },
           },
         }),
@@ -865,8 +882,26 @@ function driveShot(shot: string) {
         if (load && !load.disabled) load.click();
         return;
       }
-      modelSelect.closest("label")?.scrollIntoView({ block: "center" });
+      if (drawer.querySelector("fieldset")) return;
+      const heading = [...drawer.querySelectorAll("h3")].find((entry) => entry.textContent === "Add another connection");
+      if (heading) {
+        const top = heading.getBoundingClientRect().top - drawer.getBoundingClientRect().top + drawer.scrollTop - 12;
+        drawer.scrollTop = top;
+      }
       document.documentElement.dataset.shotReady = "1";
+      return;
+    }
+    if (shot === "effort") {
+      const button = document.querySelector<HTMLButtonElement>(".composer-effort-button");
+      if (!button) return;
+      button.scrollIntoView({ block: "center" });
+      if (button.getAttribute("aria-expanded") !== "true") {
+        button.click();
+        return;
+      }
+      if (document.querySelector('[role="menuitemradio"]')) {
+        document.documentElement.dataset.shotReady = "1";
+      }
     }
   }, 250);
 }

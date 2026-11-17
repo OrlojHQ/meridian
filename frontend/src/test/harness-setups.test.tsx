@@ -97,23 +97,20 @@ it("saves a self-hosted endpoint with an explicit private HTTP opt-in",async()=>
  await userEvent.click(screen.getByRole("button",{name:"Save connection"}));
  await waitFor(()=>expect(save).toHaveBeenCalledWith({name:"DGX",provider:"openai-compatible",apiKey:"",expectedResourceVersion:0,baseUrl:"http://192.168.1.20:8000",defaultModel:"qwen3-coder",allowPrivateHttp:true},undefined));
 });
-it("saves the reasoning effort levels a self-hosted model accepts",async()=>{
+it("does not ask for reasoning effort levels when saving a self-hosted model",async()=>{
  vi.spyOn(api,"harnessSetups").mockResolvedValue({items:[]});vi.spyOn(api,"providerConnections").mockResolvedValue({items:[],enabled:true});
  const save=vi.spyOn(api,"saveProviderConnection").mockResolvedValue({id:"c",provider:"openai-compatible",name:"GLM",createdAt:setup.createdAt,resourceVersion:1,revoked:false});
  vi.spyOn(api,"listEndpointModels").mockResolvedValue({models:[{id:"glm-5.3-flash",name:"GLM flash"}],suggested:"glm-5.3-flash"});
  show(<HarnessSetups/>);
  await openHarness("Set up Codex");
  await userEvent.selectOptions(await screen.findByLabelText("Provider"),"openai-compatible");
- expect(screen.queryByRole("group",{name:"Reasoning effort levels (optional)"})).toBeNull();
  await userEvent.type(screen.getByLabelText("Base URL"),"https://models.example.com");
  await userEvent.click(screen.getByRole("button",{name:"Load models"}));
  expect(await screen.findByRole("option",{name:"GLM flash"})).toBeInTheDocument();
- const levels=screen.getByRole("group",{name:"Reasoning effort levels (optional)"});
- await userEvent.click(within(levels).getByLabelText("Max"));
- await userEvent.click(within(levels).getByLabelText("Low"));
- await userEvent.click(within(levels).getByLabelText("High"));
+ expect(screen.queryByRole("group",{name:"Reasoning effort levels (optional)"})).toBeNull();
  await userEvent.click(screen.getByRole("button",{name:"Save connection"}));
- await waitFor(()=>expect(save).toHaveBeenCalledWith(expect.objectContaining({defaultModel:"glm-5.3-flash",reasoningEfforts:["low","high","max"]}),undefined));
+ await waitFor(()=>expect(save).toHaveBeenCalledWith(expect.objectContaining({defaultModel:"glm-5.3-flash"}),undefined));
+ expect(save.mock.calls[0]?.[0]).not.toHaveProperty("reasoningEfforts");
 });
 it("signs in to Claude from the settings page and does not show a token",async()=>{
  const user=userEvent.setup();
