@@ -729,6 +729,37 @@ func (r *repository) ListIdleCapsules(
 	return capsules, rows.Err()
 }
 
+func (r *repository) ListRepositoryAccessFailures(
+	ctx context.Context, owner domain.UserID,
+) ([]domain.Capsule, error) {
+	if owner == "" {
+		return nil, fmt.Errorf("%w: owner is required", domain.ErrInvalid)
+	}
+	rows, err := r.q.QueryContext(ctx, `
+		SELECT id, project_id, timeline_id, name, launcher_harness, state, desired_state, provider_resource_id,
+			origin_moment_id, restore_complete, maintenance, failure, failure_code, image_reference,
+			role, lead_thread_id, link_id, promoted_at,
+			last_activity_at, created_at, updated_at, resource_version, owner_user_id
+		FROM capsules
+		WHERE owner_user_id = ? AND state = ? AND failure_code = ?
+		ORDER BY created_at, id`,
+		owner, domain.CapsuleFailed, domain.RepositoryAccess,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var capsules []domain.Capsule
+	for rows.Next() {
+		capsule, err := scanCapsule(rows)
+		if err != nil {
+			return nil, err
+		}
+		capsules = append(capsules, capsule)
+	}
+	return capsules, rows.Err()
+}
+
 func (r *repository) ListRecoverableCapsules(ctx context.Context) ([]domain.Capsule, error) {
 	rows, err := r.q.QueryContext(ctx, `
 		SELECT id, project_id, timeline_id, name, launcher_harness, state, desired_state, provider_resource_id,

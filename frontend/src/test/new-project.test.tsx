@@ -96,6 +96,55 @@ describe("NewProjectDialog", () => {
 
   it("asks to connect GitHub when the repository cannot be read", async () => {
     disconnected();
+    vi.spyOn(api, "hostGitHubLogin").mockResolvedValue({
+      available: true,
+      state: "signed_in",
+      login: "octocat",
+      path: "/usr/bin/gh",
+    });
+    vi.spyOn(api, "createProject").mockRejectedValue({
+      error: {
+        code: "repository_access",
+        message: "Meridian couldn't access octocat/hidden. It may be private.",
+      },
+    });
+    const user = userEvent.setup();
+    renderDialog();
+    const repository = screen.getByLabelText(/^Repository/);
+    await user.type(repository, "https://github.com/octocat/hidden");
+    await user.type(screen.getByLabelText("Project name"), "Hidden");
+    await user.click(screen.getByRole("button", { name: "Create Project" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Meridian couldn't access octocat/hidden. It may be private.",
+    );
+    const connects = screen.getAllByRole("button", { name: "Connect GitHub" });
+    expect(connects.length).toBeGreaterThan(0);
+    expect(screen.queryByRole("link", { name: "Connect GitHub" })).not.toBeInTheDocument();
+    await user.click(connects[0]);
+    expect(await screen.findByRole("button", { name: "Use your GitHub CLI login (@octocat)" })).toBeInTheDocument();
+    expect(repository).toHaveValue("https://github.com/octocat/hidden");
+    expect(screen.getByLabelText("Project name")).toHaveValue("Hidden");
+    expect(screen.getByRole("button", { name: "Add a token" })).toBeInTheDocument();
+    expect(screen.queryByText(/internal server error/i)).not.toBeInTheDocument();
+  });
+
+  it("keeps the Project form after GitHub connects", async () => {
+    let active = false;
+    vi.spyOn(api, "githubConnection").mockImplementation(async () =>
+      active
+        ? { connected: true, deviceFlow: false, login: "octocat", status: "active", resourceVersion: 1 }
+        : { connected: false, deviceFlow: false },
+    );
+    vi.spyOn(api, "hostGitHubLogin").mockResolvedValue({
+      available: true,
+      state: "signed_in",
+      login: "octocat",
+      path: "/usr/bin/gh",
+    });
+    vi.spyOn(api, "useHostGitHub").mockImplementation(async () => {
+      active = true;
+      return { connected: true, deviceFlow: false, login: "octocat", status: "active", resourceVersion: 1 };
+    });
     vi.spyOn(api, "createProject").mockRejectedValue({
       error: {
         code: "repository_access",
@@ -107,16 +156,13 @@ describe("NewProjectDialog", () => {
     await user.type(screen.getByLabelText(/^Repository/), "https://github.com/octocat/hidden");
     await user.type(screen.getByLabelText("Project name"), "Hidden");
     await user.click(screen.getByRole("button", { name: "Create Project" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Meridian couldn't access octocat/hidden. It may be private.",
-    );
-    const links = screen.getAllByRole("link", { name: "Connect GitHub" });
-    expect(links.length).toBeGreaterThan(0);
-    for (const link of links) {
-      expect(link).toHaveAttribute("href", "/ui/settings/account#github");
-    }
-    expect(screen.getByRole("button", { name: "Add a token" })).toBeInTheDocument();
-    expect(screen.queryByText(/internal server error/i)).not.toBeInTheDocument();
+    const connects = await screen.findAllByRole("button", { name: "Connect GitHub" });
+    await user.click(connects.at(-1)!);
+    await user.click(await screen.findByRole("button", { name: "Use your GitHub CLI login (@octocat)" }));
+    expect(await screen.findByText("GitHub is connected. Create the Project again.")).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Repository/)).toHaveValue("https://github.com/octocat/hidden");
+    expect(screen.getByLabelText("Project name")).toHaveValue("Hidden");
+    expect(screen.getByRole("button", { name: "Create Project" })).toBeEnabled();
   });
 
   it("does not remember a choice when creation fails", async () => {

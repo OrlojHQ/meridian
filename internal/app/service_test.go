@@ -164,6 +164,12 @@ func (q *recordingQueue) Enqueue(_ context.Context, id domain.CapsuleID) error {
 	return nil
 }
 
+func (q *recordingQueue) snapshot() []domain.CapsuleID {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return append([]domain.CapsuleID(nil), q.ids...)
+}
+
 func TestServiceIdempotencyConflictsAndIllegalMutations(t *testing.T) {
 	ctx := operatorContext()
 	store, err := sqlite.Open(ctx, t.TempDir())

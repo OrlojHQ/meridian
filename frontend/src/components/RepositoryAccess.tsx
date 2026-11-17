@@ -1,8 +1,9 @@
 import { type FormEvent, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api, normalizeAPIError } from "../api/client";
 import type { Capsule } from "../api/generated/types.gen";
+import { GitHubConnect, githubConnectionQuery } from "./GitHubConnect";
 import { repositoryAccessCopy } from "./startup";
 import { Button } from "./ui/Button";
 
@@ -22,6 +23,9 @@ export function RepositoryAccessNotice({
   capsule?: Pick<Capsule, "id" | "resourceVersion">;
 }) {
   const client = useQueryClient();
+  const connection = useQuery({ ...githubConnectionQuery, retry: false });
+  const connected = connection.data?.status === "active";
+  const [connecting, setConnecting] = useState(false);
   const [open, setOpen] = useState(false);
   const [token, setToken] = useState("");
   const save = useMutation({
@@ -29,12 +33,22 @@ export function RepositoryAccessNotice({
       const current = await api.githubConnection().catch(() => undefined);
       const version = current?.connected ? current.resourceVersion ?? 0 : 0;
       await api.connectGitHubToken(token.trim(), version);
-      if (capsule) await api.lifecycle("retry", capsule.id, capsule.resourceVersion);
     },
     onSuccess: async () => {
       setToken("");
       setOpen(false);
       await client.invalidateQueries({ queryKey: ["github-connection"] });
+      if (!capsule) return;
+      await client.invalidateQueries({ queryKey: ["capsule", capsule.id] });
+      await client.invalidateQueries({ queryKey: ["project-thread-intent"] });
+    },
+  });
+  const retry = useMutation({
+    mutationFn: async () => {
+      if (!capsule) return;
+      await api.lifecycle("retry", capsule.id, capsule.resourceVersion);
+    },
+    onSuccess: async () => {
       if (!capsule) return;
       await client.invalidateQueries({ queryKey: ["capsule", capsule.id] });
       await client.invalidateQueries({ queryKey: ["project-thread-intent"] });
@@ -49,12 +63,28 @@ export function RepositoryAccessNotice({
   return (
     <div className="access-failure">
       <p className="startup-reason" role="alert">{repositoryAccessCopy(message)}</p>
+      {connected && (
+        <p role="status">
+          {capsule
+            ? "GitHub is connected. Retry to clone again."
+            : "GitHub is connected. Create the Project again."}
+        </p>
+      )}
       <p className="startup-actions">
-        <a className="button-link primary-button" href="/ui/settings/account#github">Connect GitHub</a>
+        {connected && capsule ? (
+          <Button type="button" variant="primary" disabled={retry.isPending} onClick={() => retry.mutate()}>
+            {retry.isPending ? "Retrying…" : "Retry"}
+          </Button>
+        ) : !connected ? (
+          <Button type="button" variant="primary" onClick={() => setConnecting((value) => !value)}>
+            Connect GitHub
+          </Button>
+        ) : null}
         <Button type="button" variant="secondary" onClick={() => setOpen((value) => !value)}>
           Add a token
         </Button>
       </p>
+      {connecting && !connected && <GitHubConnect />}
       {open && (
         <form className="access-token-form" onSubmit={submit}>
           <label htmlFor={capsule ? `access-token-${capsule.id}` : "access-token"}>
@@ -78,7 +108,8 @@ export function RepositoryAccessNotice({
         </form>
       )}
       {save.isError && <p role="alert">{tokenError(save.error)}</p>}
-      {save.isSuccess && !capsule && <p role="status">Token saved. Create the Project again.</p>}
+      {retry.isError && <p role="alert">{normalizeAPIError(retry.error).message}</p>}
+      {save.isSuccess && !capsule && !connected && <p role="status">Token saved. Create the Project again.</p>}
     </div>
   );
 }

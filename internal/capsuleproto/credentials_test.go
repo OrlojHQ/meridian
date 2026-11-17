@@ -3,7 +3,9 @@ package capsuleproto
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -20,7 +22,11 @@ func TestPrepareHashExcludesGitCredentialAndAskpassCleansUp(t *testing.T) {
 	if requestHash(first) != requestHash(second) {
 		t.Fatal("prepare marker hash includes credential material")
 	}
-	before, err := filepath.Glob(filepath.Join(os.TempDir(), ".meridian-askpass-*"))
+	dir, err := askpassDirectory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := filepath.Glob(filepath.Join(dir, ".meridian-askpass-*"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +52,7 @@ mkdir -p "$destination"
 	); err != nil {
 		t.Fatalf("private askpass fixture failed: %v", err)
 	}
-	after, err := filepath.Glob(filepath.Join(os.TempDir(), ".meridian-askpass-*"))
+	after, err := filepath.Glob(filepath.Join(dir, ".meridian-askpass-*"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,6 +61,31 @@ mkdir -p "$destination"
 	}
 	if info, err := os.Stat(base.Destination); err != nil || !info.IsDir() {
 		t.Fatalf("fixture destination = %#v, %v", info, err)
+	}
+}
+
+func TestAskpassHelperIsCreatedUnderHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	blocked := t.TempDir()
+	t.Setenv("TMPDIR", blocked)
+	name, err := createGitAskpass()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(name)
+	if !strings.HasPrefix(name, home+string(os.PathSeparator)) {
+		t.Fatalf("helper %s is not under HOME", name)
+	}
+	if strings.HasPrefix(name, blocked+string(os.PathSeparator)) {
+		t.Fatalf("helper %s was written to TMPDIR", name)
+	}
+	command := exec.Command(name, "Username for https://github.com")
+	command.Env = []string{"MERIDIAN_GIT_USERNAME=x-access-token", "MERIDIAN_GIT_PASSWORD=not-used"}
+	output, err := command.Output()
+	if err != nil || string(output) != "x-access-token\n" {
+		t.Fatalf("helper output = %q, %v", output, err)
 	}
 }
 

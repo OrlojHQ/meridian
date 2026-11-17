@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -44,6 +45,20 @@ func TestGitHubConnectionTokenStaysOnGitHub(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	scoped := newScopedStore(store, &fixedClock{now: now})
+	system := principal.WithSystem(context.Background())
+	credential, err := openCloneCredential(system, scoped, key, domain.BootstrapOwnerID, "https://github.com/octocat/hello.git", "")
+	if err != nil || credential == nil || credential.Username != gitHubHTTPSUser || credential.Password != token {
+		t.Fatalf("system clone credential = %+v, %v", credential, err)
+	}
+	other, ok := principal.User("usr_other")
+	if !ok {
+		t.Fatal("other principal")
+	}
+	denied, err := openCloneCredential(principal.With(context.Background(), other), scoped, key, domain.BootstrapOwnerID, "https://github.com/octocat/hello.git", "")
+	if err != nil || denied != nil {
+		t.Fatalf("other owner clone = %+v, %v", denied, err)
+	}
 	service := &Service{store: store, secretKey: key}
 
 	for _, repository := range []string{
@@ -82,5 +97,17 @@ func TestGitHubConnectionTokenStaysOnGitHub(t *testing.T) {
 				t.Fatalf("require %s %s = %v", purpose, repository, err)
 			}
 		}
+	}
+	broken := connection
+	broken.Ciphertext = []byte("not-a-sealed-token")
+	broken.ResourceVersion++
+	if err := store.Transact(ctx, func(tx ports.Transaction) error {
+		return tx.UpdateGitHubConnection(ctx, broken, connection.ResourceVersion)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	unreadable, err := openCloneCredential(system, scoped, key, domain.BootstrapOwnerID, "https://github.com/octocat/hello.git", "")
+	if err == nil || unreadable != nil {
+		t.Fatalf("unreadable connection cloned anonymously: %+v, %v", unreadable, err)
 	}
 }

@@ -525,3 +525,199 @@ func TestUnchangedGitHubCheckKeepsTheVersion(t *testing.T) {
 		t.Fatalf("disconnect with the version from before the checks = %v", err)
 	}
 }
+
+func TestConnectingGitHubRetriesRepositoryAccessOnce(t *testing.T) {
+	ctx := operatorContext()
+	dir := t.TempDir()
+	store, err := sqlite.Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	clock := &testClock{now: time.Date(2026, 11, 16, 0, 0, 0, 0, time.UTC)}
+	queue := &recordingQueue{}
+	service := app.NewService(store, clock, &testIDs{}, queue)
+	key, err := secrets.OpenOrCreateKey(secrets.DefaultKeyPath(dir), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(key.Zero)
+	service.ConfigureSecrets(key)
+	service.ConfigureGitHub("", nil, &fakeGitHubOAuth{login: "octocat", scopes: "repo read:user"})
+	now := clock.Now()
+	project := domain.Project{
+		OwnerUserID: domain.BootstrapOwnerID, ID: "project-access", Name: "access",
+		RepositoryURL: "https://github.com/octocat/hidden.git",
+		CreatedAt:     now, UpdatedAt: now, ResourceVersion: 1,
+	}
+	access := domain.Capsule{
+		ID: "capsule-access", ProjectID: project.ID, Name: "access",
+		State: domain.CapsuleFailed, DesiredState: domain.IntentReady,
+		Failure:     "Meridian couldn't access octocat/hidden. It may be private.",
+		FailureCode: domain.RepositoryAccess,
+		CreatedAt:   now, UpdatedAt: now, ResourceVersion: 4,
+	}
+	other := access
+	other.ID = "capsule-image"
+	other.Name = "image"
+	other.Failure = "The Capsule image was not found."
+	other.FailureCode = domain.PullImageNotFound
+	other.ResourceVersion = 2
+	if err := store.Transact(ctx, func(tx ports.Transaction) error {
+		if err := tx.InsertProject(ctx, project); err != nil {
+			return err
+		}
+		if err := tx.InsertCapsule(ctx, access); err != nil {
+			return err
+		}
+		return tx.InsertCapsule(ctx, other)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	connected, err := service.ConnectGitHubToken(ctx, "gho_connectiontokenvalue", 0, "connect-access")
+	if err != nil {
+		t.Fatal(err)
+	}
+	retried, err := service.GetCapsule(ctx, access.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retried.State != domain.CapsuleCreating || retried.Failure != "" || retried.FailureCode != "" {
+		t.Fatalf("retried = %+v", retried)
+	}
+	untouched, err := service.GetCapsule(ctx, other.ID)
+	if err != nil || untouched.State != domain.CapsuleFailed || untouched.FailureCode != domain.PullImageNotFound {
+		t.Fatalf("other failure = %+v, %v", untouched, err)
+	}
+	if queued := queue.snapshot(); len(queued) != 1 || queued[0] != access.ID {
+		t.Fatalf("queue = %#v", queued)
+	}
+	if _, err := service.ConnectGitHubToken(ctx, "gho_connectiontokenvalue", 0, "connect-access"); err != nil {
+		t.Fatal(err)
+	}
+	if queued := queue.snapshot(); len(queued) != 1 {
+		t.Fatalf("replay queued again: %#v", queued)
+	}
+	previous := retried.ResourceVersion
+	retried.State = domain.CapsuleFailed
+	retried.Failure = access.Failure
+	retried.FailureCode = domain.RepositoryAccess
+	retried.ResourceVersion++
+	retried.UpdatedAt = clock.Now()
+	if err := store.Transact(ctx, func(tx ports.Transaction) error {
+		return tx.UpdateCapsule(ctx, retried, previous)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	limited := &fakeGitHubOAuth{login: "octocat", scopes: "read:user"}
+	service.ConfigureGitHub("", nil, limited)
+	if _, err := service.ConnectGitHubToken(ctx, "gho_limitedtokenvalue", connected.ResourceVersion, "connect-limited"); err != nil {
+		t.Fatal(err)
+	}
+	stayed, err := service.GetCapsule(ctx, access.ID)
+	if err != nil || stayed.State != domain.CapsuleFailed || stayed.FailureCode != domain.RepositoryAccess {
+		t.Fatalf("limited connect retried = %+v, %v", stayed, err)
+	}
+	if queued := queue.snapshot(); len(queued) != 1 {
+		t.Fatalf("limited connect queued: %#v", queued)
+	}
+	service.ConfigureGitHub("", nil, &fakeGitHubOAuth{login: "octocat", scopes: "repo"})
+	replaced, err := service.ConnectGitHubToken(ctx, "gho_replacementtokenvalue", connected.ResourceVersion+1, "connect-replace")
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := service.GetCapsule(ctx, access.ID)
+	if err != nil || again.State != domain.CapsuleCreating || again.FailureCode != "" {
+		t.Fatalf("replaced = %+v, %v", again, err)
+	}
+	if queued := queue.snapshot(); len(queued) != 2 || queued[1] != access.ID {
+		t.Fatalf("queue after replace = %#v", queued)
+	}
+	if replaced.ResourceVersion != connected.ResourceVersion+2 {
+		t.Fatalf("connection version = %d, connected at %d", replaced.ResourceVersion, connected.ResourceVersion)
+	}
+}
+
+// A private github.com repository with an active owner connection must be
+// cloned with that connection. The reconciler runs as the system principal.
+func TestReconcilerPassesGitHubCredentialForPrivateRepository(t *testing.T) {
+	ctx, cancel := context.WithCancel(operatorContext())
+	t.Cleanup(cancel)
+	dir := t.TempDir()
+	store, err := sqlite.Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	clock := &testClock{now: time.Date(2026, 11, 16, 0, 0, 0, 0, time.UTC)}
+	ids := &testIDs{}
+	const token = "gho_connectiontokenvalue"
+	var got *ports.GitHTTPSCredential
+	provider := fakeprovider.New(fakeprovider.Options{
+		CreateHook: func(_ context.Context, request ports.CreateCapsuleRequest) error {
+			if request.GitCredential == nil {
+				got = nil
+				return nil
+			}
+			copy := *request.GitCredential
+			got = &copy
+			return nil
+		},
+	})
+	reconciler := app.NewReconciler(store, provider, clock, ids)
+	key, err := secrets.OpenOrCreateKey(secrets.DefaultKeyPath(dir), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(key.Zero)
+	reconciler.ConfigureSecrets(key)
+	reconciler.ConfigureRepositoryProbe(anonymousDeniedProbe{})
+	reconciler.Start(ctx)
+	t.Cleanup(reconciler.Close)
+	service := app.NewService(store, clock, ids, reconciler)
+	service.ConfigureSecrets(key)
+	service.ConfigureGitHub("", nil, &fakeGitHubOAuth{login: "octocat", scopes: "repo, read:user"})
+	if _, err := service.ConnectGitHubToken(ctx, token, 0, "connect-private"); err != nil {
+		t.Fatal(err)
+	}
+	now := clock.Now()
+	project := domain.Project{
+		OwnerUserID: domain.BootstrapOwnerID, ID: "project-private", Name: "private",
+		RepositoryURL: "https://github.com/seontechnologies/seon-agent-hub.git",
+		CreatedAt:     now, UpdatedAt: now, ResourceVersion: 1,
+	}
+	capsule := domain.Capsule{
+		ID: "capsule-private", ProjectID: project.ID, Name: "private",
+		State: domain.CapsuleCreating, DesiredState: domain.IntentReady,
+		CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
+	}
+	if err := store.Transact(ctx, func(tx ports.Transaction) error {
+		if err := tx.InsertProject(ctx, project); err != nil {
+			return err
+		}
+		return tx.InsertCapsule(ctx, capsule)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := reconciler.Enqueue(ctx, capsule.ID); err != nil {
+		t.Fatal(err)
+	}
+	settled := awaitCapsuleState(t, service, capsule.ID, func(item domain.Capsule) bool {
+		return item.State == domain.CapsuleFailed || item.State == domain.CapsuleReady || item.ProviderResourceID != ""
+	})
+	if got == nil || got.Username != "x-access-token" || got.Password != token {
+		t.Fatalf("clone credential = %+v, capsule = %+v", got, settled)
+	}
+	if settled.FailureCode == domain.RepositoryAccess {
+		t.Fatalf("private clone failed as repository_access: %q", settled.Failure)
+	}
+}
+
+// anonymousDeniedProbe is what GitHub returns for a private repository read
+// with no credential. A clone that drops the connection hits this and fails
+// as repository_access before git runs.
+type anonymousDeniedProbe struct{}
+
+func (anonymousDeniedProbe) ProbeRepository(context.Context, string, string, string) (int, bool, error) {
+	return http.StatusNotFound, false, nil
+}

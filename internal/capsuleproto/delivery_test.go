@@ -196,7 +196,11 @@ exec "$REAL_GIT" "$@"
 	t.Setenv("EXPECTED_GIT_PASSWORD", credential.Password)
 	t.Setenv("EXPECTED_OLD_REF", head)
 	t.Setenv("PUSH_ARGUMENT_RECORD", record)
-	before, err := filepath.Glob(filepath.Join(os.TempDir(), ".meridian-askpass-*"))
+	dir, err := askpassDirectory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := filepath.Glob(filepath.Join(dir, ".meridian-askpass-*"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +272,7 @@ exec "$REAL_GIT" "$@"
 		!strings.Contains(value, "https://example.invalid/repository.git") {
 		t.Fatalf("unsafe push arguments = %q", value)
 	}
-	after, err := filepath.Glob(filepath.Join(os.TempDir(), ".meridian-askpass-*"))
+	after, err := filepath.Glob(filepath.Join(dir, ".meridian-askpass-*"))
 	if err != nil {
 		t.Fatal(err)
 	}

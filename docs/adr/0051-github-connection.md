@@ -88,13 +88,16 @@ A GitHub rate limit (429, or 403 with `X-RateLimit-Remaining: 0`,
 `Retry-After`, or a rate-limit message) is not an access answer. The access
 probe treats it as "could not check", like a network error.
 
-A clone that cannot authenticate is terminal. That includes a missing
-credential for a private or inaccessible repository, HTTP 401, 403, or 404
-from git or the GitHub API, and the "could not read Username",
+A clone that cannot authenticate is terminal for that attempt. That includes
+a missing credential for a private or inaccessible repository, HTTP 401,
+403, or 404 from git or the GitHub API, and the "could not read Username",
 "Authentication failed", and "Repository not found" families. The reconciler
-does not retry it. The stored failure code is `repository_access` and the
-text is "Meridian couldn't access owner/repo. It may be private." Git stderr
-is not stored. Creating a Project on github.com with no named `git_https`
+does not retry it on its own. Creating or replacing an active GitHub
+connection retries each Failed Capsule with that failure once. If the clone
+fails for access again, the Capsule stays failed until the connection
+changes or the owner retries. The stored failure code is `repository_access`
+and the text is "Meridian couldn't access owner/repo. It may be private."
+Git stderr is not stored. Creating a Project on github.com with no named `git_https`
 secret probes that repository first and refuses with the same error when
 GitHub says it cannot be read. A probe that cannot reach GitHub does not
 block creation; the clone is still classified if it fails.

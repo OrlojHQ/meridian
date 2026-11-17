@@ -901,7 +901,8 @@ func (s *Service) mutateCapsule(
 				return domain.ErrConflict
 			}
 			intent, err := tx.GetProjectThreadIntentByCapsule(ctx, id)
-			if err == nil && intent.State == domain.ProjectThreadFailed && intent.FailureCode == "capsule_failed" {
+			if err == nil && intent.State == domain.ProjectThreadFailed &&
+				(intent.FailureCode == "capsule_failed" || intent.FailureCode == string(domain.RepositoryAccess)) {
 				previous := intent.ResourceVersion
 				intent.State = domain.ProjectThreadProvisioning
 				intent.FailureCode = ""

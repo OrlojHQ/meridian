@@ -637,8 +637,30 @@ func deliveryEnvironment(extra []string) []string {
 	return append(result, extra...)
 }
 
+// askpassDirectory is a directory this process can execute a short-lived git
+// helper from. Docker mounts the general /tmp tmpfs noexec and sets HOME to
+// a private executable tmpfs. Writing the helper on /tmp makes every
+// authenticated clone look like a missing login. When HOME is unset, the
+// process temp directory is used; a HOME that cannot be written is an error
+// rather than a silent fall back onto noexec /tmp.
+func askpassDirectory() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil || !filepath.IsAbs(home) {
+		return os.TempDir(), nil
+	}
+	dir := filepath.Join(home, ".meridian")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	return dir, nil
+}
+
 func createGitAskpass() (string, error) {
-	helper, err := os.CreateTemp("", ".meridian-askpass-*")
+	dir, err := askpassDirectory()
+	if err != nil {
+		return "", err
+	}
+	helper, err := os.CreateTemp(dir, ".meridian-askpass-*")
 	if err != nil {
 		return "", err
 	}

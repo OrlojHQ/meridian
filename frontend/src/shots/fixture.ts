@@ -354,8 +354,13 @@ function withCI<T extends { id: string }>(item: T | undefined) {
   };
 }
 
+function showsAccessFailure() {
+  const shot = githubShot();
+  return shot === "access" || shot === "connected";
+}
+
 function withAccessFailure<T extends { id: string; updatedAt: string }>(item: T | undefined) {
-  if (!item || githubShot() !== "access" || item.id !== "cap-notes") return item;
+  if (!item || !showsAccessFailure() || item.id !== "cap-notes") return item;
   return {
     ...item,
     state: "Failed",
@@ -380,7 +385,7 @@ function route(pathname: string): unknown {
         reason: "expired", resourceVersion: 2, createdAt: stamp, updatedAt: stamp,
       };
     }
-    if (shot === "repos") {
+    if (shot === "repos" || shot === "connected") {
       return {
         connected: true, deviceFlow: true, login: "octocat", status: "active",
         resourceVersion: 2, createdAt: stamp, updatedAt: stamp,
