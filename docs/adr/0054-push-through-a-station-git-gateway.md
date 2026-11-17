@@ -1,6 +1,6 @@
 # ADR 0054: Push through a Station Git gateway
 
-- Status: Accepted
+- Status: Accepted; implemented in v0.11.0
 - Date: 2026-11-16
 - Extends: ADR 0014 (purpose-scoped secrets), ADR 0020 (Capsule delivery), ADR 0051 (one GitHub connection)
 - Uses: the gateway listener of ADRs 0027 and 0037
