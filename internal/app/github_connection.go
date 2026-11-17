@@ -614,7 +614,11 @@ func (s *Service) refreshGitHubAccount(
 			return err
 		}
 		current.Nonce, current.Ciphertext = nonce, ciphertext
-		return tx.UpdateGitHubConnection(ctx, current, previous)
+		if err := tx.UpdateGitHubConnection(ctx, current, previous); err != nil {
+			return err
+		}
+		return s.appendEvent(ctx, tx, "github_connection", string(current.ID),
+			"github_connection.updated", current.ResourceVersion, nil)
 	})
 	if err != nil {
 		return GitHubConnectionState{}, err
@@ -648,17 +652,17 @@ func (s *Service) markGitHubStatus(
 	})
 }
 
+// touchGitHubChecked records a check that changed nothing. It keeps the
+// resource version, so a client holding the connection's version can still
+// disconnect or reconnect without a conflict it has no event to explain.
 func (s *Service) touchGitHubChecked(ctx context.Context, owner domain.UserID) error {
 	return s.store.Transact(ctx, func(tx ports.Transaction) error {
 		current, err := tx.GetGitHubConnection(ctx, owner)
 		if err != nil {
 			return err
 		}
-		previous := current.ResourceVersion
 		current.CheckedAt = s.clock.Now().UTC()
-		current.ResourceVersion++
-		current.UpdatedAt = current.CheckedAt
-		return tx.UpdateGitHubConnection(ctx, current, previous)
+		return tx.UpdateGitHubConnection(ctx, current, current.ResourceVersion)
 	})
 }
 
@@ -842,6 +846,9 @@ func (r *Reconciler) repositoryAccessFailure(ctx context.Context, capsule domain
 	return domain.RepositoryAccessMessage(ownerName, repoName)
 }
 
+// wipeString drops a reference to a token so it is not kept or logged by
+// accident. Go strings are immutable: this does not overwrite the bytes, which
+// stay in memory until the garbage collector reclaims them.
 func wipeString(value *string) {
 	if value == nil || *value == "" {
 		return

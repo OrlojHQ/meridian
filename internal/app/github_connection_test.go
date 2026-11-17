@@ -487,3 +487,34 @@ func TestRepositoryAccessIsNotRetried(t *testing.T) {
 		t.Fatalf("create calls = %d, want 1", calls)
 	}
 }
+
+func TestUnchangedGitHubCheckKeepsTheVersion(t *testing.T) {
+	ctx := operatorContext()
+	dir := t.TempDir()
+	store, err := sqlite.Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	service := app.NewService(store, &testClock{now: time.Date(2026, 11, 16, 0, 0, 0, 0, time.UTC)}, &testIDs{}, &recordingQueue{})
+	key, err := secrets.OpenOrCreateKey(secrets.DefaultKeyPath(dir), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(key.Zero)
+	service.ConfigureSecrets(key)
+	service.ConfigureGitHub("", nil, &fakeGitHubOAuth{login: "octocat", scopes: "repo"})
+	connected, err := service.ConnectGitHubToken(ctx, "gho_connectiontokenvalue", 0, "connect")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		checked, err := service.CheckGitHubConnection(ctx, false)
+		if err != nil || checked.ResourceVersion != connected.ResourceVersion {
+			t.Fatalf("check = %+v, %v; connected at version %d", checked, err, connected.ResourceVersion)
+		}
+	}
+	if _, err := service.DisconnectGitHub(ctx, connected.ResourceVersion, "disconnect"); err != nil {
+		t.Fatalf("disconnect with the version from before the checks = %v", err)
+	}
+}
