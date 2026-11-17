@@ -3,6 +3,9 @@
 -- The command list lives with the Project. Each suite execution is a
 -- check_runs row plus one check_results row per command. Output tails are
 -- ciphertext only; this migration stores no plaintext.
+--
+-- Owners never change except by a departed-member transfer (ADR 0046):
+-- each owner trigger allows exactly the move that owner_transfers names.
 
 CREATE TABLE project_checks (
     project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
@@ -25,6 +28,10 @@ END;
 CREATE TRIGGER project_checks_owner_immutable
 BEFORE UPDATE OF owner_user_id ON project_checks
 WHEN NEW.owner_user_id IS NOT OLD.owner_user_id
+    AND NOT EXISTS (
+        SELECT 1 FROM owner_transfers
+        WHERE id = 1 AND from_user = OLD.owner_user_id AND to_user = NEW.owner_user_id
+    )
 BEGIN
     SELECT RAISE(ABORT, 'owner immutable');
 END;
@@ -47,6 +54,10 @@ END;
 CREATE TRIGGER capsule_check_controls_owner_immutable
 BEFORE UPDATE OF owner_user_id ON capsule_check_controls
 WHEN NEW.owner_user_id IS NOT OLD.owner_user_id
+    AND NOT EXISTS (
+        SELECT 1 FROM owner_transfers
+        WHERE id = 1 AND from_user = OLD.owner_user_id AND to_user = NEW.owner_user_id
+    )
 BEGIN
     SELECT RAISE(ABORT, 'owner immutable');
 END;
@@ -94,6 +105,10 @@ END;
 CREATE TRIGGER check_runs_owner_immutable
 BEFORE UPDATE OF owner_user_id ON check_runs
 WHEN NEW.owner_user_id IS NOT OLD.owner_user_id
+    AND NOT EXISTS (
+        SELECT 1 FROM owner_transfers
+        WHERE id = 1 AND from_user = OLD.owner_user_id AND to_user = NEW.owner_user_id
+    )
 BEGIN
     SELECT RAISE(ABORT, 'owner immutable');
 END;
@@ -134,6 +149,10 @@ END;
 CREATE TRIGGER delivery_check_gates_owner_immutable
 BEFORE UPDATE OF owner_user_id ON delivery_check_gates
 WHEN NEW.owner_user_id IS NOT OLD.owner_user_id
+    AND NOT EXISTS (
+        SELECT 1 FROM owner_transfers
+        WHERE id = 1 AND from_user = OLD.owner_user_id AND to_user = NEW.owner_user_id
+    )
 BEGIN
     SELECT RAISE(ABORT, 'owner immutable');
 END;
