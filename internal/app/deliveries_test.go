@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"net/http"
 	"strings"
 	"sync"
 	"testing"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/OrlojHQ/meridian/internal/app"
 	"github.com/OrlojHQ/meridian/internal/domain"
+	"github.com/OrlojHQ/meridian/internal/gitgateway"
 	"github.com/OrlojHQ/meridian/internal/ports"
 	"github.com/OrlojHQ/meridian/internal/secrets"
 	"github.com/OrlojHQ/meridian/internal/store/sqlite"
@@ -70,6 +72,59 @@ func (r *deliveryRuntime) PushDelivery(
 	}, nil
 }
 
+// fakeGitGateway stands in for the Station Git gateway. It records each grant
+// and answers remote-ref reads from refs.
+type fakeGitGateway struct {
+	mu      sync.Mutex
+	refs    map[string]string
+	grants  []gitgateway.Grant
+	revoked int
+	readErr error
+}
+
+func (g *fakeGitGateway) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
+	w.WriteHeader(http.StatusNotFound)
+}
+
+func (g *fakeGitGateway) Issue(grant gitgateway.Grant) (string, func(), error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.grants = append(g.grants, grant)
+	return strings.Repeat("c", 64), func() {
+		g.mu.Lock()
+		g.revoked++
+		g.mu.Unlock()
+	}, nil
+}
+
+func (g *fakeGitGateway) RemoteRef(_ context.Context, _ string, _ gitgateway.Credential, ref string) (string, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.readErr != nil {
+		return "", g.readErr
+	}
+	return g.refs[ref], nil
+}
+
+func (g *fakeGitGateway) lastGrant() (gitgateway.Grant, int, int) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if len(g.grants) == 0 {
+		return gitgateway.Grant{}, 0, g.revoked
+	}
+	return g.grants[len(g.grants)-1], len(g.grants), g.revoked
+}
+
+// configureFakeGitGateway attaches a fake gateway, as meridiand does at start.
+func configureFakeGitGateway(t *testing.T, service *app.Service) *fakeGitGateway {
+	t.Helper()
+	gateway := &fakeGitGateway{refs: map[string]string{}}
+	if err := service.ConfigureGitGateway(gateway, "https://gateway.test:8443", nil); err != nil {
+		t.Fatal(err)
+	}
+	return gateway
+}
+
 type deliveryGitHub struct {
 	mu       sync.Mutex
 	existing *app.PullRequest
@@ -106,12 +161,21 @@ type deliveryFixture struct {
 	service *app.Service
 	runtime *deliveryRuntime
 	github  *deliveryGitHub
+	gateway *fakeGitGateway
 	key     *secrets.InstallationKey
 	project domain.Project
 	capsule domain.Capsule
 }
 
 func newDeliveryFixture(t *testing.T, dirty bool) deliveryFixture {
+	t.Helper()
+	return newDeliveryFixtureWith(t, dirty, func(service *app.Service) *fakeGitGateway {
+		return configureFakeGitGateway(t, service)
+	})
+}
+
+// newDeliveryFixtureWith lets a test choose how pushes leave the Station.
+func newDeliveryFixtureWith(t *testing.T, dirty bool, push func(*app.Service) *fakeGitGateway) deliveryFixture {
 	t.Helper()
 	ctx := operatorContext()
 	store, err := sqlite.Open(ctx, t.TempDir())
@@ -134,6 +198,7 @@ func newDeliveryFixture(t *testing.T, dirty bool) deliveryFixture {
 	}}
 	github := &deliveryGitHub{}
 	service.ConfigureDelivery(runtime, github)
+	gateway := push(service)
 	project, err := service.CreateProjectConfigured(ctx, "delivery", app.ProjectConfiguration{
 		RepositoryURL:     "https://github.com/orlojhq/meridian",
 		GitPushSecretName: "delivery_push", GitHubAPISecretName: "delivery_github",
@@ -172,7 +237,7 @@ func newDeliveryFixture(t *testing.T, dirty bool) deliveryFixture {
 		t.Fatal(err)
 	}
 	return deliveryFixture{
-		store: store, service: service, runtime: runtime, github: github, key: key,
+		store: store, service: service, runtime: runtime, github: github, gateway: gateway, key: key,
 		project: project, capsule: capsule,
 	}
 }
@@ -207,10 +272,22 @@ func TestDeliveryBindsApprovalPushesExactRefAndReplays(t *testing.T) {
 	commits, pushes := fixture.runtime.commits, fixture.runtime.pushes
 	fixture.runtime.mu.Unlock()
 	if commits != 1 || pushes != 1 || push.SourceCommit != deliveryCommit ||
-		push.DestinationRef != "refs/heads/feature/reviewed" ||
-		push.GitCredential.Username != "git-user" ||
-		push.GitCredential.Password != "push-token-secret" {
+		push.DestinationRef != "refs/heads/feature/reviewed" {
 		t.Fatalf("commit/push request = commits=%d pushes=%d %#v", commits, pushes, push)
+	}
+	// The push credential stays on the Station: the Capsule gets only the
+	// gateway and a capability for this exact update (ADR 0054).
+	if push.GitCredential != (ports.GitHTTPSCredential{}) || push.Gateway == nil ||
+		push.Gateway.URL != "https://gateway.test:8443/git-gateway/push.git" ||
+		push.Gateway.Username != gitgateway.Username || push.Gateway.Capability == "" {
+		t.Fatalf("push reached the Capsule with %#v", push)
+	}
+	grant, grants, revoked := fixture.gateway.lastGrant()
+	if grants != 1 || revoked != 1 || grant.Credential.Username != "git-user" ||
+		grant.Credential.Password != "push-token-secret" || grant.SourceCommit != deliveryCommit ||
+		grant.DestinationRef != "refs/heads/feature/reviewed" || grant.ExpectedOld != "" ||
+		grant.Upstream != "https://github.com/orlojhq/meridian" {
+		t.Fatalf("gateway grant = %#v (grants=%d revoked=%d)", grant, grants, revoked)
 	}
 	replay, err := fixture.service.CreateDelivery(operatorContext(), input)
 	if err != nil || replay.ID != result.ID {

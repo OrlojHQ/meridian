@@ -77,43 +77,48 @@ func ownerOf(ctx context.Context) (domain.UserID, error) {
 }
 
 type Service struct {
-	gateway       *providergateway.Gateway
-	chatgpt       *chatGPTState
-	gatewayURL    string
-	privateHTTP   bool
-	gatewayTrust  func() (string, error)
-	store         ports.Store
-	clock         ports.Clock
-	ids           ports.IDSource
-	queue         ports.ReconcileQueue
-	runtime       ports.CapsuleRuntime
-	preview       ports.PreviewRuntime
-	snapshotter   ports.WorkspaceSnapshotter
-	browser       ports.WorkspaceBrowser
-	delivery      ports.DeliveryRuntime
-	github        GitHubClient
-	artifacts     ports.ArtifactStore
-	observer      ports.Observer
-	providerName  string
-	isolation     domain.IsolationClass
-	structured    ports.StructuredRuntime
-	profiles      ports.HarnessProfileRuntime
-	harnessPacks  []domain.HarnessPack
-	transcriptKey transcriptKey
-	secretKey     *secrets.InstallationKey
-	runSync       [64]sync.Mutex
-	threadSync    [64]sync.Mutex
-	deliverySync  [64]sync.Mutex
-	attentionMu   sync.Mutex
-	attention     map[domain.ThreadID]cachedThreadAttention
-	modelsMu      sync.Mutex
-	models        map[domain.ThreadID]ThreadModelSummary
-	coordination  ports.CoordinationRuntime
-	coordMaxLive  int
-	coordMu       sync.Mutex
-	coordPollers  map[domain.CapsuleID]context.CancelFunc
-	coordPushed   map[domain.ThreadID]string
-	coordStopped  map[domain.ThreadLinkID]bool
+	gateway      *providergateway.Gateway
+	chatgpt      *chatGPTState
+	gatewayURL   string
+	privateHTTP  bool
+	gatewayTrust func() (string, error)
+
+	gitGateway            GitGateway
+	gitGatewayURL         string
+	gitGatewayTrust       func() (string, error)
+	deliveryPushInCapsule bool
+	store                 ports.Store
+	clock                 ports.Clock
+	ids                   ports.IDSource
+	queue                 ports.ReconcileQueue
+	runtime               ports.CapsuleRuntime
+	preview               ports.PreviewRuntime
+	snapshotter           ports.WorkspaceSnapshotter
+	browser               ports.WorkspaceBrowser
+	delivery              ports.DeliveryRuntime
+	github                GitHubClient
+	artifacts             ports.ArtifactStore
+	observer              ports.Observer
+	providerName          string
+	isolation             domain.IsolationClass
+	structured            ports.StructuredRuntime
+	profiles              ports.HarnessProfileRuntime
+	harnessPacks          []domain.HarnessPack
+	transcriptKey         transcriptKey
+	secretKey             *secrets.InstallationKey
+	runSync               [64]sync.Mutex
+	threadSync            [64]sync.Mutex
+	deliverySync          [64]sync.Mutex
+	attentionMu           sync.Mutex
+	attention             map[domain.ThreadID]cachedThreadAttention
+	modelsMu              sync.Mutex
+	models                map[domain.ThreadID]ThreadModelSummary
+	coordination          ports.CoordinationRuntime
+	coordMaxLive          int
+	coordMu               sync.Mutex
+	coordPollers          map[domain.CapsuleID]context.CancelFunc
+	coordPushed           map[domain.ThreadID]string
+	coordStopped          map[domain.ThreadLinkID]bool
 	// coordRemoving holds subagents the operator removed whose session was
 	// still stopping; the coordination tick deletes their Capsule once it
 	// has. A restart forgets it, and the cancelled link is paused instead.

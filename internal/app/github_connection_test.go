@@ -100,6 +100,7 @@ func TestGitHubConnectionCoversDeliveryAndNamedSecretsWin(t *testing.T) {
 	}}
 	github := &deliveryGitHub{}
 	service.ConfigureDelivery(runtime, github)
+	gateway := configureFakeGitGateway(t, service)
 
 	const connectionToken = "gho_connectiontokenvalue"
 	state, err := service.ConnectGitHubToken(ctx, connectionToken, 0, "connect-1")
@@ -147,10 +148,11 @@ func TestGitHubConnectionCoversDeliveryAndNamedSecretsWin(t *testing.T) {
 		t.Fatalf("pull request token = %q", got)
 	}
 	runtime.mu.Lock()
-	pushed := runtime.push.GitCredential.Password
+	inCapsule := runtime.push.GitCredential.Password
 	runtime.mu.Unlock()
-	if pushed != connectionToken {
-		t.Fatalf("push token = %q", pushed)
+	grant, _, _ := gateway.lastGrant()
+	if grant.Credential.Password != connectionToken || grant.Credential.Username != "x-access-token" || inCapsule != "" {
+		t.Fatalf("push token at the gateway = %q, in the Capsule = %q", grant.Credential.Password, inCapsule)
 	}
 
 	if _, err := service.PutSecret(ctx, "delivery_push", app.SecretInput{

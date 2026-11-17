@@ -196,27 +196,41 @@ func (a *Authority) GetCertificate(*tls.ClientHelloInfo) (*tls.Certificate, erro
 	return a.leaf, nil
 }
 
-// Prefix is the only path prefix the listener serves.
+// Prefix is the provider gateway's path prefix on the listener.
 const Prefix = "/provider-gateway/"
 
-// Handler passes only provider gateway routes to gateway and answers
-// everything else with 404, before any other handler sees the request.
-func Handler(gateway http.Handler) http.Handler {
+// Route is one more prefix the listener serves, such as the Station Git
+// gateway (ADR 0054).
+type Route struct {
+	Prefix  string
+	Handler http.Handler
+}
+
+// Handler passes provider gateway routes to gateway and each extra route to
+// its handler, and answers everything else with 404, before any other
+// handler sees the request.
+func Handler(gateway http.Handler, routes ...Route) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, Prefix) {
-			http.NotFound(w, r)
+		if strings.HasPrefix(r.URL.Path, Prefix) {
+			gateway.ServeHTTP(w, r)
 			return
 		}
-		gateway.ServeHTTP(w, r)
+		for _, route := range routes {
+			if route.Handler != nil && strings.HasPrefix(r.URL.Path, route.Prefix) {
+				route.Handler.ServeHTTP(w, r)
+				return
+			}
+		}
+		http.NotFound(w, r)
 	})
 }
 
 // Server returns the TLS server for the local gateway listener. Handshake
 // and protocol errors are discarded: any container on the engine can cause
 // them.
-func Server(authority *Authority, gateway http.Handler) *http.Server {
+func Server(authority *Authority, gateway http.Handler, routes ...Route) *http.Server {
 	return &http.Server{
-		Handler: Handler(gateway),
+		Handler: Handler(gateway, routes...),
 		TLSConfig: &tls.Config{
 			MinVersion:     tls.VersionTLS12,
 			GetCertificate: authority.GetCertificate,

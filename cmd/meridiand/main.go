@@ -45,6 +45,12 @@ func newRootCommand() *cobra.Command {
 		"",
 		"local provider gateway TLS listen address for Docker Capsules (default: chosen from the Docker engine; \"off\" disables it); not used with --provider-gateway-url",
 	)
+	command.Flags().StringVar(
+		&config.DeliveryPush,
+		"delivery-push",
+		daemon.DeliveryPushGateway,
+		"how approved pushes leave the Station: \"gateway\" keeps the Git credential on the Station; \"capsule\" sends it into the Capsule, for installs with no gateway",
+	)
 	command.Flags().StringVar(&config.Provider, "provider", "docker", "Capsule provider (docker or agentsandbox)")
 	command.Flags().StringVar(&config.Listen, "listen", "127.0.0.1:8080", "HTTP listen address")
 	command.Flags().BoolVar(

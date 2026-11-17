@@ -78,6 +78,13 @@ with the current routable addresses of `api.openai.com` / `api.anthropic.com`
 (and any HTTPS custom endpoint) and of the HTTPS gateway origin. NetworkPolicy
 cannot select those hosts by name.
 
+Pushes go through the Station Git gateway at `/git-gateway/` on the same
+`--provider-gateway-url` origin (ADR 0054). Route that prefix to `meridiand`
+as you route `/provider-gateway/`. The control plane, not the Capsule, then
+reaches the source host for a push, so include `github.com` (or your Git
+host) in `providerEgressCIDRs`. Capsules still need their source host for
+the initial clone.
+
 `kubernetesAPIServerCIDRs` is allowed on TCP 443 by default. Most CNIs match
 egress policy after the `kubernetes` Service is translated to its endpoint,
 so on a kubeadm cluster, where the API server listens on 6443, also set

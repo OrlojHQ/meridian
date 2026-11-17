@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -250,5 +251,34 @@ func TestServerServesOnlyGatewayRoutes(t *testing.T) {
 	}}
 	if _, err := untrusted.Get(base + "/provider-gateway/openai/v1/responses"); err == nil {
 		t.Fatal("untrusted client completed a handshake")
+	}
+}
+
+func TestHandlerRoutesExtraPrefixes(t *testing.T) {
+	var seen []string
+	record := func(name string) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			seen = append(seen, name+" "+r.URL.Path)
+			w.WriteHeader(http.StatusNoContent)
+		})
+	}
+	handler := Handler(record("provider"),
+		Route{Prefix: "/git-gateway/", Handler: record("git")},
+		Route{Prefix: "/off/", Handler: nil})
+	for path, want := range map[string]int{
+		"/provider-gateway/openai":        http.StatusNoContent,
+		"/git-gateway/push.git/info/refs": http.StatusNoContent,
+		"/off/anything":                   http.StatusNotFound,
+		"/projects":                       http.StatusNotFound,
+		"/git-gateway":                    http.StatusNotFound,
+	} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		if response.Code != want {
+			t.Fatalf("%s: status %d, want %d", path, response.Code, want)
+		}
+	}
+	if len(seen) != 2 || seen[0] != "provider /provider-gateway/openai" && seen[1] != "provider /provider-gateway/openai" {
+		t.Fatalf("seen = %v", seen)
 	}
 }

@@ -20,6 +20,7 @@ import (
 	"github.com/OrlojHQ/meridian/internal/apiauth"
 	"github.com/OrlojHQ/meridian/internal/app"
 	"github.com/OrlojHQ/meridian/internal/domain"
+	"github.com/OrlojHQ/meridian/internal/gitgateway"
 	"github.com/OrlojHQ/meridian/internal/observability"
 	"github.com/OrlojHQ/meridian/internal/ports"
 	"github.com/OrlojHQ/meridian/internal/principal"
@@ -107,6 +108,12 @@ func (s *Server) serveHTTP(writer http.ResponseWriter, request *http.Request) {
 	// as that Capsule inside internal/app, never as a user.
 	if strings.HasPrefix(request.URL.Path, "/provider-gateway/") && s.service.ProviderGatewayOnAPIListener() {
 		s.service.ProviderGateway().ServeHTTP(writer, request)
+		return
+	}
+	// The Git gateway authenticates its one-time push capability itself
+	// (ADR 0054); the request acts as no user.
+	if strings.HasPrefix(request.URL.Path, gitgateway.Prefix) && s.service.GitGatewayOnAPIListener() {
+		s.service.GitGatewayHandler().ServeHTTP(writer, request)
 		return
 	}
 	if request.URL.Path == "/" || request.URL.Path == "/ui" ||

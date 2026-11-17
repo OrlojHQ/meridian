@@ -21,6 +21,7 @@ import (
 	"github.com/OrlojHQ/meridian/internal/datadir"
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/gatewaytls"
+	"github.com/OrlojHQ/meridian/internal/gitgateway"
 	"github.com/OrlojHQ/meridian/internal/githubauth"
 	"github.com/OrlojHQ/meridian/internal/githubci"
 	"github.com/OrlojHQ/meridian/internal/httpapi"
@@ -70,6 +71,11 @@ type Config struct {
 	// ProviderGatewayAllowPrivateHTTP lets custom provider connections opt in
 	// to plaintext HTTP upstreams on private-network addresses.
 	ProviderGatewayAllowPrivateHTTP bool
+	// DeliveryPush is how an approved push leaves the Station (ADR 0054):
+	// "gateway" (the default) pushes through the Station Git gateway and
+	// keeps the source-host credential out of Capsules; "capsule" keeps the
+	// ADR 0020 push for an installation with no gateway.
+	DeliveryPush string
 	// ProviderGatewayListen is the local provider gateway's listen address
 	// (ADR 0037): empty chooses one from the Docker engine, "off" disables
 	// it. It applies only to Docker without ProviderGatewayURL.
@@ -113,6 +119,11 @@ func run(ctx context.Context, config Config) error {
 	}
 	if err := ValidateProviderGatewayListen(config); err != nil {
 		return err
+	}
+	switch config.DeliveryPush {
+	case "", DeliveryPushGateway, DeliveryPushCapsule:
+	default:
+		return fmt.Errorf("--delivery-push must be %q or %q", DeliveryPushGateway, DeliveryPushCapsule)
 	}
 	// A fresh install has no data directory yet. Create it private, as the
 	// store did before the lease ran first; an existing directory keeps its
@@ -435,6 +446,8 @@ func run(ctx context.Context, config Config) error {
 		_ = service.AdvanceProjectDeletion(ctx, capsule.ProjectID)
 	})
 	var gatewayServer *http.Server
+	pushInCapsule := config.DeliveryPush == DeliveryPushCapsule
+	service.ConfigureDeliveryPushInCapsule(pushInCapsule)
 	if gatewayListener != nil {
 		authority, err := gatewaytls.NewAuthority(nil, providergateway.LeaseLifetime)
 		if err != nil {
@@ -443,9 +456,31 @@ func run(ctx context.Context, config Config) error {
 		if err := service.ConfigureLocalProviderGateway(gatewayOrigin, authority.Trust, config.ProviderGatewayAllowPrivateHTTP); err != nil {
 			return err
 		}
-		gatewayServer = gatewaytls.Server(authority, service.ProviderGateway())
-	} else if err := service.ConfigureProviderGateway(config.ProviderGatewayURL, config.ProviderGatewayAllowPrivateHTTP); err != nil {
-		return err
+		if !pushInCapsule {
+			if err := service.ConfigureGitGateway(gitgateway.New(nil), gatewayOrigin, authority.Trust); err != nil {
+				return err
+			}
+		}
+		gatewayServer = gatewaytls.Server(authority, service.ProviderGateway(),
+			gatewaytls.Route{Prefix: gitgateway.Prefix, Handler: service.GitGatewayHandler()})
+	} else {
+		if err := service.ConfigureProviderGateway(config.ProviderGatewayURL, config.ProviderGatewayAllowPrivateHTTP); err != nil {
+			return err
+		}
+		if config.ProviderGatewayURL != "" && !pushInCapsule {
+			if err := service.ConfigureGitGateway(gitgateway.New(nil), config.ProviderGatewayURL, nil); err != nil {
+				return err
+			}
+		}
+	}
+	defer service.CloseGitGateway()
+	switch {
+	case pushInCapsule:
+		config.Logger.Printf("WARNING: --delivery-push=capsule sends each push credential into its Capsule; " +
+			"a process in the Capsule can read it during the push (ADR 0054)")
+	case service.GitGatewayHandler() == nil:
+		config.Logger.Printf("WARNING: pushes are unavailable: no Station Git gateway; " +
+			"set --provider-gateway-url, or --delivery-push=capsule to push from inside the Capsule")
 	}
 	defer service.CloseProviderGateway()
 	gatewayServerErrors := make(chan error, 1)
@@ -740,6 +775,7 @@ func run(ctx context.Context, config Config) error {
 	if gatewayServer != nil {
 		// Streams may be open; revocation on CloseProviderGateway ends them.
 		service.CloseProviderGateway()
+		service.CloseGitGateway()
 		if err := gatewayServer.Shutdown(shutdownCtx); err != nil {
 			return fmt.Errorf("shutdown provider gateway: %w", err)
 		}

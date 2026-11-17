@@ -316,6 +316,10 @@ reverse proxy or Kubernetes.
   [Reusable API connections](docs/personal-harness-setups.md#reusable-api-connections).
   On Linux, also check that a firewall such as `ufw` allows containers to
   reach the host.
+- **`pushes are unavailable: no Station Git gateway`**: pushes go through the
+  same gateway listener so the Git credential never enters a Capsule
+  (ADR 0054). Fix the provider gateway as above. Only if that is impossible,
+  `--delivery-push=capsule` pushes from inside the Capsule instead.
 - **`data directory is in use`**: another `meridiand`, or a maintenance
   command, already holds that data directory. Stop it, or give this daemon
   its own `--data-dir`. Never point two daemons at one directory.
