@@ -31,6 +31,40 @@ describe("check presentation", () => {
     expect(describeChecks({ ...base, phase: "passed" }, true)).toBeUndefined();
   });
 
+  it("shows GitHub CI beside local checks", () => {
+    const waiting: ChecksSummary = {
+      ...base,
+      phase: "passed",
+      remoteCI: { state: "waiting", label: "Waiting on CI" },
+    };
+    expect(describeChecks(waiting, false)?.label).toBe("Waiting on CI");
+    expect(checkBanner(waiting)).toBe("Checks passed on this tree · Waiting on CI");
+    const connect: ChecksSummary = {
+      ...base,
+      phase: "passed",
+      remoteCI: { state: "connect", label: "Connect GitHub to read CI" },
+    };
+    expect(describeChecks(connect, false)).toEqual({
+      group: "attention",
+      label: "Connect GitHub to read CI",
+    });
+    const failing: ChecksSummary = {
+      ...base,
+      phase: "passed",
+      remoteCI: {
+        state: "failing",
+        label: "CI failing (3/3). Review the fix before it can be pushed.",
+        attempt: 3,
+        maxAttempts: 3,
+      },
+    };
+    expect(describeChecks(failing, false)?.group).toBe("attention");
+    expect(describeChecks({
+      ...base,
+      remoteCI: { state: "reconnect", label: "Can't read CI: Reconnect GitHub" },
+    }, false)?.label).toBe("Can't read CI: Reconnect GitHub");
+  });
+
   it("marks a result stale when the tree no longer matches", () => {
     expect(checkBanner({ ...base, phase: "passed", tree: "abc" }, "def")).toBe(
       "Checks are out of date for this tree",

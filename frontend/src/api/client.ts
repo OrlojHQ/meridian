@@ -3,6 +3,7 @@ import {
   getProjectEnvironment, updateProjectEnvironment,
   getProjectChecks, updateProjectChecks, suggestProjectChecks,
   listCapsuleCheckRuns, createCapsuleCheckRun, getCheckRun, cancelCheckRun, setCapsuleCheckAutoRework,
+  getCapsuleRemoteCi,
   getProjectHarnessSetup, setProjectHarnessSetup,
   listProviderConnections, createProviderConnection, updateProviderConnection, getProjectProviderConnection, grantProjectProviderConnection,
   startChatGptSignIn, getChatGptSignIn, completeChatGptSignIn,
@@ -100,7 +101,7 @@ import type {
 import type { Profile, UpdateProfileRequest, ProfileDiagnostic } from "./generated/types.gen";
 import type {
   CheckAutoReworkRequest, CheckRun, CheckRunPage, CheckRunRequest, CheckSuggestion,
-  ProjectChecks, ProjectChecksUpdate,
+  ProjectChecks, ProjectChecksUpdate, RemoteCi,
   GitHubConnection, HostGitHubLogin, GitHubDevice, GitHubDeviceStatus, GitHubRepoPage,
 } from "./generated/types.gen";
 import type { HarnessSetupUpload, HarnessSetupPreview, ImportHarnessSetupRequest, EnvironmentMutation, ProjectEnvironment,
@@ -509,6 +510,7 @@ export const api = {
   checkRun: (checkRunId: string, signal?: AbortSignal) => call<CheckRun>(getCheckRun({...generatedOptions(signal), path: {checkRunId}})),
   cancelCheckRun: (checkRunId: string, expectedResourceVersion: number) => call<CheckRun>(cancelCheckRun({...generatedOptions(), path: {checkRunId}, body: {expectedResourceVersion}})),
   setCheckAutoRework: (capsuleId: string, body: CheckAutoReworkRequest) => call<CheckAutoReworkRequest>(setCapsuleCheckAutoRework({...generatedOptions(), path: {capsuleId}, body})),
+  remoteCI: (capsuleId: string, signal?: AbortSignal) => call<RemoteCi>(getCapsuleRemoteCi({...generatedOptions(signal), path: {capsuleId}})),
   projectThreadIntent: (intentId: string, signal?: AbortSignal) => call<ProjectThreadIntent>(getProjectThreadIntent({...generatedOptions(signal), path: {intentId}})),
   capsule: (capsuleId: string, signal?: AbortSignal) =>
     call<Capsule>(

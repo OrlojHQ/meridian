@@ -8,7 +8,7 @@ export type CheckPresentation = {
 // describeChecks turns the content-free summary into the words the operator
 // sees. Intermediate retries stay in the working group. A pass or a used-up
 // budget is what asks for the operator.
-export function describeChecks(
+function describeLocal(
   checks: ChecksSummary | undefined,
   agentWorking: boolean,
 ): CheckPresentation | undefined {
@@ -38,7 +38,46 @@ export function describeChecks(
   }
 }
 
-export function checkBanner(checks: ChecksSummary | undefined, tree?: string): string | undefined {
+function describeRemote(checks: ChecksSummary | undefined, agentWorking: boolean): CheckPresentation | undefined {
+  const ci = checks?.remoteCI;
+  if (!ci || ci.state === "absent") return undefined;
+  const label = ci.label;
+  switch (ci.state) {
+    case "waiting":
+      return { group: "working", label };
+    case "failing":
+      if (ci.reworkSent && (ci.attempt ?? 1) < (ci.maxAttempts ?? 1)) {
+        return { group: "working", label };
+      }
+      if (agentWorking) return { group: "working", label };
+      return { group: "attention", label };
+    case "passed":
+    case "reconnect":
+    case "connect":
+    case "unreadable":
+      if (agentWorking) return undefined;
+      return { group: "attention", label };
+    default:
+      return undefined;
+  }
+}
+
+// describeChecks turns the content-free summary into the words the operator
+// sees. Remote CI sits beside the local commands. A pass, a used-up budget,
+// or a login the station cannot read is what asks for the operator.
+export function describeChecks(
+  checks: ChecksSummary | undefined,
+  agentWorking: boolean,
+): CheckPresentation | undefined {
+  const local = describeLocal(checks, agentWorking);
+  const remote = describeRemote(checks, agentWorking);
+  if (local?.group === "working") return local;
+  if (remote?.group === "working") return remote;
+  if (remote) return remote;
+  return local;
+}
+
+function localBanner(checks: ChecksSummary | undefined, tree?: string): string | undefined {
   if (!checks?.configured) return undefined;
   if (!checks.phase) return "Checks have not run for this tree";
   if (tree && checks.tree && checks.tree !== tree) return "Checks are out of date for this tree";
@@ -65,4 +104,11 @@ export function checkBanner(checks: ChecksSummary | undefined, tree?: string): s
     default:
       return undefined;
   }
+}
+
+export function checkBanner(checks: ChecksSummary | undefined, tree?: string): string | undefined {
+  const local = localBanner(checks, tree);
+  const remote = checks?.remoteCI && checks.remoteCI.state !== "absent" ? checks.remoteCI.label : undefined;
+  if (local && remote) return `${local} · ${remote}`;
+  return remote || local;
 }

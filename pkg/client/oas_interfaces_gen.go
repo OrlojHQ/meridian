@@ -153,6 +153,10 @@ type GetCapsuleProfileDiagnosticRes interface {
 	getCapsuleProfileDiagnosticRes()
 }
 
+type GetCapsuleRemoteCIRes interface {
+	getCapsuleRemoteCIRes()
+}
+
 type GetCapsuleRes interface {
 	getCapsuleRes()
 }

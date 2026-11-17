@@ -1636,6 +1636,22 @@ ADR 0052 is implemented. Checks are a quality gate, not a privilege boundary.
 - **Delivery stays human.** A passing suite does not ship. A failing suite
   does not block Ship. The banner is about the exact reviewed tree.
 
+## Remote CI
+
+ADR 0053 is implemented. After a reviewed push, the station polls GitHub
+for that commit.
+
+- **The token stays on the station.** The read uses the owner's GitHub
+  connection or the Project's named `github_api` secret. It is not placed
+  in a Capsule environment, a log, or an error string. A `403` on one
+  repository does not retire the login.
+- **Stored text is a short tail.** Names, conclusions, links, and at most
+  4 KiB of redacted annotations or summary are kept. The tail is encrypted
+  with the installation key. The pull request body and events do not
+  include it.
+- **A failure does not push.** The agent may be sent the tail. Updating
+  the pull request still requires a reviewed Delivery of the new commit.
+
 Residual risks specific to team mode are listed under Residual risks: host,
 data-directory, KEK, and daemon compromise; shared-KEK backups; the identity
 provider in the trust base; and container providers sharing a kernel between

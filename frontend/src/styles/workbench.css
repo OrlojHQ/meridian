@@ -919,6 +919,10 @@
   color: var(--warning);
 }
 
+.check-banner-waiting,
+.check-banner-connect {
+  color: var(--ink);
+}
 .check-banner-passed {
   background: var(--accent-soft);
   color: var(--accent-text);

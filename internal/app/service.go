@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/OrlojHQ/meridian/internal/domain"
+	"github.com/OrlojHQ/meridian/internal/githubci"
 	"github.com/OrlojHQ/meridian/internal/localrepo"
 	"github.com/OrlojHQ/meridian/internal/ports"
 	"github.com/OrlojHQ/meridian/internal/principal"
@@ -124,6 +125,9 @@ type Service struct {
 	checkCancel     map[domain.CheckRunID]context.CancelFunc
 	checkOwners     map[domain.CheckRunID]domain.CapsuleID
 	checkWake       chan struct{}
+	remoteCI        githubci.Reader
+	ciImmediate     bool
+	ciWake          chan struct{}
 	claudeMu        sync.Mutex
 	claudeRefresh   sync.Mutex
 	claudePending   map[string]*claudeCeremony
@@ -235,6 +239,7 @@ func NewService(
 		checkCancel: make(map[domain.CheckRunID]context.CancelFunc),
 		checkOwners: make(map[domain.CheckRunID]domain.CapsuleID),
 		checkWake:   make(chan struct{}, 1),
+		ciWake:      make(chan struct{}, 1),
 	}
 	if len(runtime) > 0 {
 		service.runtime = runtime[0]

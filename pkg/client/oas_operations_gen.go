@@ -54,6 +54,7 @@ const (
 	GetCapsuleGitDiffOperation              OperationName = "GetCapsuleGitDiff"
 	GetCapsuleGitStatusOperation            OperationName = "GetCapsuleGitStatus"
 	GetCapsuleProfileDiagnosticOperation    OperationName = "GetCapsuleProfileDiagnostic"
+	GetCapsuleRemoteCIOperation             OperationName = "GetCapsuleRemoteCI"
 	GetChatGPTSignInOperation               OperationName = "GetChatGPTSignIn"
 	GetCheckRunOperation                    OperationName = "GetCheckRun"
 	GetClaudeLoginOperation                 OperationName = "GetClaudeLogin"

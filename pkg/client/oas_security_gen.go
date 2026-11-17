@@ -61,6 +61,7 @@ var operationRolesBearerAuth = map[string][]string{
 	GetCapsuleGitDiffOperation:              []string{},
 	GetCapsuleGitStatusOperation:            []string{},
 	GetCapsuleProfileDiagnosticOperation:    []string{},
+	GetCapsuleRemoteCIOperation:             []string{},
 	GetChatGPTSignInOperation:               []string{},
 	GetCheckRunOperation:                    []string{},
 	GetClaudeLoginOperation:                 []string{},
