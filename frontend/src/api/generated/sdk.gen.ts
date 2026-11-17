@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, ServerSentEventsResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { ApproveCoordinationRequestData, ApproveCoordinationRequestErrors, ApproveCoordinationRequestResponses, ApproveDeliveryData, ApproveDeliveryErrors, ApproveDeliveryResponses, ArchiveThreadData, ArchiveThreadErrors, ArchiveThreadResponses, AttachRunWebSocketData, AttachRunWebSocketErrors, AttachRunWebSocketResponses, BeginClaudeLoginData, BeginClaudeLoginErrors, BeginClaudeLoginResponses, BeginDeviceLoginData, BeginDeviceLoginErrors, BeginDeviceLoginResponses, BeginMemberIdentityRebindData, BeginMemberIdentityRebindErrors, BeginMemberIdentityRebindResponses, CancelRunData, CancelRunErrors, CancelRunResponses, CancelThreadData, CancelThreadErrors, CancelThreadResponses, CaptureMomentData, CaptureMomentErrors, CaptureMomentResponses, ClaimInstallationData, ClaimInstallationErrors, ClaimInstallationResponses, CompleteChatGptSignInData, CompleteChatGptSignInErrors, CompleteChatGptSignInResponses, CompleteClaudeLoginData, CompleteClaudeLoginErrors, CompleteClaudeLoginResponses, CompleteMemberIdentityRebindData, CompleteMemberIdentityRebindErrors, CompleteMemberIdentityRebindResponses, CompleteOidcSignInData, CompleteOidcSignInErrors, CompleteOidcSignInResponses, CreateBrowserSessionData, CreateBrowserSessionErrors, CreateBrowserSessionResponses, CreateCapsuleData, CreateCapsuleDeliveryData, CreateCapsuleDeliveryErrors, CreateCapsuleDeliveryResponses, CreateCapsuleErrors, CreateCapsulePreviewTicketData, CreateCapsulePreviewTicketErrors, CreateCapsulePreviewTicketResponses, CreateCapsuleResponses, CreateProjectData, CreateProjectErrors, CreateProjectResponses, CreateProjectThreadData, CreateProjectThreadErrors, CreateProjectThreadResponses, CreateProviderConnectionData, CreateProviderConnectionErrors, CreateProviderConnectionResponses, CreateRunAttachTicketData, CreateRunAttachTicketErrors, CreateRunAttachTicketResponses, CreateShardData, CreateShardErrors, CreateShardResponses, CreateThreadData, CreateThreadErrors, CreateThreadResponses, DeleteCapsuleData, DeleteCapsuleErrors, DeleteCapsuleResponses, DeleteMemberObjectsData, DeleteMemberObjectsErrors, DeleteMemberObjectsResponses, DeleteProjectData, DeleteProjectErrors, DeleteProjectResponses, DeleteProviderConnectionData, DeleteProviderConnectionErrors, DeleteProviderConnectionResponses, DeleteSecretData, DeleteSecretErrors, DeleteSecretResponses, DeleteThreadData, DeleteThreadErrors, DeleteThreadResponses, DenyCoordinationRequestData, DenyCoordinationRequestErrors, DenyCoordinationRequestResponses, DisableMemberData, DisableMemberErrors, DisableMemberResponses, EnableMemberData, EnableMemberErrors, EnableMemberResponses, ExportCapsuleWorkspaceData, ExportCapsuleWorkspaceErrors, ExportCapsuleWorkspaceResponses, GetAuthenticationModeData, GetAuthenticationModeErrors, GetAuthenticationModeResponses, GetBoardData, GetBoardErrors, GetBoardResponses, GetCapabilitiesData, GetCapabilitiesErrors, GetCapabilitiesResponses, GetCapsuleData, GetCapsuleErrors, GetCapsuleGitDiffData, GetCapsuleGitDiffErrors, GetCapsuleGitDiffResponses, GetCapsuleGitStatusData, GetCapsuleGitStatusErrors, GetCapsuleGitStatusResponses, GetCapsuleProfileDiagnosticData, GetCapsuleProfileDiagnosticErrors, GetCapsuleProfileDiagnosticResponses, GetCapsuleResponses, GetChatGptSignInData, GetChatGptSignInErrors, GetChatGptSignInResponses, GetClaudeLoginData, GetClaudeLoginErrors, GetClaudeLoginResponses, GetCoordinationGrantData, GetCoordinationGrantErrors, GetCoordinationGrantResponses, GetCurrentMemberData, GetCurrentMemberErrors, GetCurrentMemberResponses, GetDeliveryData, GetDeliveryErrors, GetDeliveryResponses, GetHarnessSetupContentsData, GetHarnessSetupContentsErrors, GetHarnessSetupContentsResponses, GetHealthData, GetHealthErrors, GetHealthResponses, GetMomentData, GetMomentErrors, GetMomentResponses, GetProfileData, GetProfileErrors, GetProfileResponses, GetProjectData, GetProjectEnvironmentData, GetProjectEnvironmentErrors, GetProjectEnvironmentResponses, GetProjectErrors, GetProjectHarnessSetupData, GetProjectHarnessSetupErrors, GetProjectHarnessSetupResponses, GetProjectProviderConnectionData, GetProjectProviderConnectionErrors, GetProjectProviderConnectionResponses, GetProjectResponses, GetProjectThreadIntentData, GetProjectThreadIntentErrors, GetProjectThreadIntentResponses, GetReadinessData, GetReadinessErrors, GetReadinessResponses, GetRunData, GetRunErrors, GetRunResponses, GetThreadData, GetThreadErrors, GetThreadLinkData, GetThreadLinkErrors, GetThreadLinkResponses, GetThreadResponses, GetTimelineData, GetTimelineErrors, GetTimelineResponses, GrantProjectProviderConnectionData, GrantProjectProviderConnectionErrors, GrantProjectProviderConnectionResponses, ImportHarnessSetupData, ImportHarnessSetupErrors, ImportHarnessSetupResponses, ImportProfileData, ImportProfileErrors, ImportProfileResponses, InspectCapsuleDeliveryData, InspectCapsuleDeliveryErrors, InspectCapsuleDeliveryResponses, ListAuditRecordsData, ListAuditRecordsErrors, ListAuditRecordsResponses, ListCapsuleDeliveriesData, ListCapsuleDeliveriesErrors, ListCapsuleDeliveriesResponses, ListCapsuleFilesData, ListCapsuleFilesErrors, ListCapsuleFilesResponses, ListCapsulePreviewPortsData, ListCapsulePreviewPortsErrors, ListCapsulePreviewPortsResponses, ListCapsulesData, ListCapsulesErrors, ListCapsulesResponses, ListCoordinationRequestsData, ListCoordinationRequestsErrors, ListCoordinationRequestsResponses, ListHarnessProfilesData, ListHarnessProfilesErrors, ListHarnessProfilesResponses, ListHarnessSetupRevisionsData, ListHarnessSetupRevisionsErrors, ListHarnessSetupRevisionsResponses, ListHarnessSetupsData, ListHarnessSetupsErrors, ListHarnessSetupsResponses, ListMembersData, ListMembersErrors, ListMembersResponses, ListMomentsData, ListMomentsErrors, ListMomentsResponses, ListPersonalAccessTokensData, ListPersonalAccessTokensErrors, ListPersonalAccessTokensResponses, ListProjectsData, ListProjectsErrors, ListProjectsResponses, ListProviderConnectionsData, ListProviderConnectionsErrors, ListProviderConnectionsResponses, ListRunEventsData, ListRunEventsErrors, ListRunEventsResponses, ListRunsData, ListRunsErrors, ListRunsResponses, ListSecretsData, ListSecretsErrors, ListSecretsResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, ListThreadBlocksData, ListThreadBlocksErrors, ListThreadBlocksResponses, ListThreadLinksData, ListThreadLinksErrors, ListThreadLinksResponses, ListThreadsData, ListThreadsErrors, ListThreadsResponses, MintPersonalAccessTokenData, MintPersonalAccessTokenErrors, MintPersonalAccessTokenResponses, MutateHarnessSetupData, MutateHarnessSetupErrors, MutateHarnessSetupResponses, PatchProjectData, PatchProjectErrors, PatchProjectResponses, PauseCapsuleData, PauseCapsuleErrors, PauseCapsuleResponses, PollDeviceLoginData, PollDeviceLoginErrors, PollDeviceLoginResponses, PreviewHarnessSetupData, PreviewHarnessSetupErrors, PreviewHarnessSetupResponses, PromoteCapsuleData, PromoteCapsuleErrors, PromoteCapsuleResponses, ProxyProviderInferenceData, ProxyProviderInferenceErrors, ProxyProviderInferenceResponses, PutSecretData, PutSecretErrors, PutSecretResponses, ReadCapsuleFileData, ReadCapsuleFileErrors, ReadCapsuleFileResponses, RedeemDesktopSignInData, RedeemDesktopSignInErrors, RedeemDesktopSignInResponses, RejectDeliveryData, RejectDeliveryErrors, RejectDeliveryResponses, RemoveSubagentData, RemoveSubagentErrors, RemoveSubagentResponses, RespondThreadData, RespondThreadErrors, RespondThreadResponses, ResumeCapsuleData, ResumeCapsuleErrors, ResumeCapsuleResponses, ResumeThreadData, ResumeThreadErrors, ResumeThreadResponses, RetryCapsuleData, RetryCapsuleErrors, RetryCapsuleResponses, RevokeCoordinationGrantData, RevokeCoordinationGrantErrors, RevokeCoordinationGrantResponses, RevokeMemberCredentialsData, RevokeMemberCredentialsErrors, RevokeMemberCredentialsResponses, RevokePersonalAccessTokenData, RevokePersonalAccessTokenErrors, RevokePersonalAccessTokenResponses, RevokeSessionData, RevokeSessionErrors, RevokeSessionResponses, RewindCapsuleData, RewindCapsuleErrors, RewindCapsuleResponses, SealCapsuleData, SealCapsuleErrors, SealCapsuleResponses, SendThreadMessageData, SendThreadMessageErrors, SendThreadMessageResponses, SetMemberRoleData, SetMemberRoleErrors, SetMemberRoleResponses, SetProjectHarnessSetupData, SetProjectHarnessSetupErrors, SetProjectHarnessSetupResponses, SetThreadEffortData, SetThreadEffortErrors, SetThreadEffortResponses, SetThreadModelData, SetThreadModelErrors, SetThreadModelResponses, SignOutData, SignOutErrors, SignOutResponses, StartChatGptSignInData, StartChatGptSignInErrors, StartChatGptSignInResponses, StartOidcSignInData, StartOidcSignInErrors, StartOidcSignInResponses, StartRunData, StartRunErrors, StartRunResponses, StartThreadData, StartThreadErrors, StartThreadResponses, StreamRunEventsData, StreamRunEventsErrors, StreamRunEventsResponse, StreamRunEventsResponses, StreamThreadBlocksData, StreamThreadBlocksErrors, StreamThreadBlocksResponse, StreamThreadBlocksResponses, TransferMemberObjectsData, TransferMemberObjectsErrors, TransferMemberObjectsResponses, UpdateCapsuleProfileData, UpdateCapsuleProfileErrors, UpdateCapsuleProfileResponses, UpdateCoordinationGrantData, UpdateCoordinationGrantErrors, UpdateCoordinationGrantResponses, UpdateProfileData, UpdateProfileErrors, UpdateProfileResponses, UpdateProjectEnvironmentData, UpdateProjectEnvironmentErrors, UpdateProjectEnvironmentResponses, UpdateProviderConnectionData, UpdateProviderConnectionErrors, UpdateProviderConnectionResponses } from './types.gen';
+import type { ApproveCoordinationRequestData, ApproveCoordinationRequestErrors, ApproveCoordinationRequestResponses, ApproveDeliveryData, ApproveDeliveryErrors, ApproveDeliveryResponses, ArchiveThreadData, ArchiveThreadErrors, ArchiveThreadResponses, AttachRunWebSocketData, AttachRunWebSocketErrors, AttachRunWebSocketResponses, BeginClaudeLoginData, BeginClaudeLoginErrors, BeginClaudeLoginResponses, BeginDeviceLoginData, BeginDeviceLoginErrors, BeginDeviceLoginResponses, BeginGitHubDeviceData, BeginGitHubDeviceErrors, BeginGitHubDeviceResponses, BeginMemberIdentityRebindData, BeginMemberIdentityRebindErrors, BeginMemberIdentityRebindResponses, CancelCheckRunData, CancelCheckRunErrors, CancelCheckRunResponses, CancelGitHubDeviceData, CancelGitHubDeviceErrors, CancelGitHubDeviceResponses, CancelRunData, CancelRunErrors, CancelRunResponses, CancelThreadData, CancelThreadErrors, CancelThreadResponses, CaptureMomentData, CaptureMomentErrors, CaptureMomentResponses, CheckGitHubConnectionData, CheckGitHubConnectionErrors, CheckGitHubConnectionResponses, ClaimInstallationData, ClaimInstallationErrors, ClaimInstallationResponses, CompleteChatGptSignInData, CompleteChatGptSignInErrors, CompleteChatGptSignInResponses, CompleteClaudeLoginData, CompleteClaudeLoginErrors, CompleteClaudeLoginResponses, CompleteMemberIdentityRebindData, CompleteMemberIdentityRebindErrors, CompleteMemberIdentityRebindResponses, CompleteOidcSignInData, CompleteOidcSignInErrors, CompleteOidcSignInResponses, ConnectGitHubTokenData, ConnectGitHubTokenErrors, ConnectGitHubTokenResponses, CreateBrowserSessionData, CreateBrowserSessionErrors, CreateBrowserSessionResponses, CreateCapsuleCheckRunData, CreateCapsuleCheckRunErrors, CreateCapsuleCheckRunResponses, CreateCapsuleData, CreateCapsuleDeliveryData, CreateCapsuleDeliveryErrors, CreateCapsuleDeliveryResponses, CreateCapsuleErrors, CreateCapsulePreviewTicketData, CreateCapsulePreviewTicketErrors, CreateCapsulePreviewTicketResponses, CreateCapsuleResponses, CreateProjectData, CreateProjectErrors, CreateProjectResponses, CreateProjectThreadData, CreateProjectThreadErrors, CreateProjectThreadResponses, CreateProviderConnectionData, CreateProviderConnectionErrors, CreateProviderConnectionResponses, CreateRunAttachTicketData, CreateRunAttachTicketErrors, CreateRunAttachTicketResponses, CreateShardData, CreateShardErrors, CreateShardResponses, CreateThreadData, CreateThreadErrors, CreateThreadResponses, DeleteCapsuleData, DeleteCapsuleErrors, DeleteCapsuleResponses, DeleteMemberObjectsData, DeleteMemberObjectsErrors, DeleteMemberObjectsResponses, DeleteProjectData, DeleteProjectErrors, DeleteProjectResponses, DeleteProviderConnectionData, DeleteProviderConnectionErrors, DeleteProviderConnectionResponses, DeleteSecretData, DeleteSecretErrors, DeleteSecretResponses, DeleteThreadData, DeleteThreadErrors, DeleteThreadResponses, DenyCoordinationRequestData, DenyCoordinationRequestErrors, DenyCoordinationRequestResponses, DisableMemberData, DisableMemberErrors, DisableMemberResponses, DisconnectGitHubData, DisconnectGitHubErrors, DisconnectGitHubResponses, EnableMemberData, EnableMemberErrors, EnableMemberResponses, ExportCapsuleWorkspaceData, ExportCapsuleWorkspaceErrors, ExportCapsuleWorkspaceResponses, GetAuthenticationModeData, GetAuthenticationModeErrors, GetAuthenticationModeResponses, GetBoardData, GetBoardErrors, GetBoardResponses, GetCapabilitiesData, GetCapabilitiesErrors, GetCapabilitiesResponses, GetCapsuleData, GetCapsuleErrors, GetCapsuleGitDiffData, GetCapsuleGitDiffErrors, GetCapsuleGitDiffResponses, GetCapsuleGitStatusData, GetCapsuleGitStatusErrors, GetCapsuleGitStatusResponses, GetCapsuleProfileDiagnosticData, GetCapsuleProfileDiagnosticErrors, GetCapsuleProfileDiagnosticResponses, GetCapsuleRemoteCiData, GetCapsuleRemoteCiErrors, GetCapsuleRemoteCiResponses, GetCapsuleResponses, GetChatGptSignInData, GetChatGptSignInErrors, GetChatGptSignInResponses, GetCheckRunData, GetCheckRunErrors, GetCheckRunResponses, GetClaudeLoginData, GetClaudeLoginErrors, GetClaudeLoginResponses, GetCoordinationGrantData, GetCoordinationGrantErrors, GetCoordinationGrantResponses, GetCurrentMemberData, GetCurrentMemberErrors, GetCurrentMemberResponses, GetDeliveryData, GetDeliveryErrors, GetDeliveryResponses, GetGitHubConnectionData, GetGitHubConnectionErrors, GetGitHubConnectionResponses, GetHarnessSetupContentsData, GetHarnessSetupContentsErrors, GetHarnessSetupContentsResponses, GetHealthData, GetHealthErrors, GetHealthResponses, GetHostGitHubLoginData, GetHostGitHubLoginErrors, GetHostGitHubLoginResponses, GetMomentData, GetMomentErrors, GetMomentResponses, GetProfileData, GetProfileErrors, GetProfileResponses, GetProjectChecksData, GetProjectChecksErrors, GetProjectChecksResponses, GetProjectData, GetProjectEnvironmentData, GetProjectEnvironmentErrors, GetProjectEnvironmentResponses, GetProjectErrors, GetProjectHarnessSetupData, GetProjectHarnessSetupErrors, GetProjectHarnessSetupResponses, GetProjectProviderConnectionData, GetProjectProviderConnectionErrors, GetProjectProviderConnectionResponses, GetProjectResponses, GetProjectThreadIntentData, GetProjectThreadIntentErrors, GetProjectThreadIntentResponses, GetReadinessData, GetReadinessErrors, GetReadinessResponses, GetRunData, GetRunErrors, GetRunResponses, GetThreadData, GetThreadErrors, GetThreadLinkData, GetThreadLinkErrors, GetThreadLinkResponses, GetThreadResponses, GetTimelineData, GetTimelineErrors, GetTimelineResponses, GrantProjectProviderConnectionData, GrantProjectProviderConnectionErrors, GrantProjectProviderConnectionResponses, ImportHarnessSetupData, ImportHarnessSetupErrors, ImportHarnessSetupResponses, ImportProfileData, ImportProfileErrors, ImportProfileResponses, InspectCapsuleDeliveryData, InspectCapsuleDeliveryErrors, InspectCapsuleDeliveryResponses, ListAuditRecordsData, ListAuditRecordsErrors, ListAuditRecordsResponses, ListCapsuleCheckRunsData, ListCapsuleCheckRunsErrors, ListCapsuleCheckRunsResponses, ListCapsuleDeliveriesData, ListCapsuleDeliveriesErrors, ListCapsuleDeliveriesResponses, ListCapsuleFilesData, ListCapsuleFilesErrors, ListCapsuleFilesResponses, ListCapsulePreviewPortsData, ListCapsulePreviewPortsErrors, ListCapsulePreviewPortsResponses, ListCapsulesData, ListCapsulesErrors, ListCapsulesResponses, ListCoordinationRequestsData, ListCoordinationRequestsErrors, ListCoordinationRequestsResponses, ListHarnessProfilesData, ListHarnessProfilesErrors, ListHarnessProfilesResponses, ListHarnessSetupRevisionsData, ListHarnessSetupRevisionsErrors, ListHarnessSetupRevisionsResponses, ListHarnessSetupsData, ListHarnessSetupsErrors, ListHarnessSetupsResponses, ListMembersData, ListMembersErrors, ListMembersResponses, ListMomentsData, ListMomentsErrors, ListMomentsResponses, ListPersonalAccessTokensData, ListPersonalAccessTokensErrors, ListPersonalAccessTokensResponses, ListProjectsData, ListProjectsErrors, ListProjectsResponses, ListProviderConnectionsData, ListProviderConnectionsErrors, ListProviderConnectionsResponses, ListRunEventsData, ListRunEventsErrors, ListRunEventsResponses, ListRunsData, ListRunsErrors, ListRunsResponses, ListSecretsData, ListSecretsErrors, ListSecretsResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, ListThreadBlocksData, ListThreadBlocksErrors, ListThreadBlocksResponses, ListThreadLinksData, ListThreadLinksErrors, ListThreadLinksResponses, ListThreadsData, ListThreadsErrors, ListThreadsResponses, MintPersonalAccessTokenData, MintPersonalAccessTokenErrors, MintPersonalAccessTokenResponses, MutateHarnessSetupData, MutateHarnessSetupErrors, MutateHarnessSetupResponses, PatchProjectData, PatchProjectErrors, PatchProjectResponses, PauseCapsuleData, PauseCapsuleErrors, PauseCapsuleResponses, PollDeviceLoginData, PollDeviceLoginErrors, PollDeviceLoginResponses, PollGitHubDeviceData, PollGitHubDeviceErrors, PollGitHubDeviceResponses, PreviewHarnessSetupData, PreviewHarnessSetupErrors, PreviewHarnessSetupResponses, PromoteCapsuleData, PromoteCapsuleErrors, PromoteCapsuleResponses, ProxyProviderInferenceData, ProxyProviderInferenceErrors, ProxyProviderInferenceResponses, PutSecretData, PutSecretErrors, PutSecretResponses, ReadCapsuleFileData, ReadCapsuleFileErrors, ReadCapsuleFileResponses, RedeemDesktopSignInData, RedeemDesktopSignInErrors, RedeemDesktopSignInResponses, RejectDeliveryData, RejectDeliveryErrors, RejectDeliveryResponses, RemoveSubagentData, RemoveSubagentErrors, RemoveSubagentResponses, RespondThreadData, RespondThreadErrors, RespondThreadResponses, ResumeCapsuleData, ResumeCapsuleErrors, ResumeCapsuleResponses, ResumeThreadData, ResumeThreadErrors, ResumeThreadResponses, RetryCapsuleData, RetryCapsuleErrors, RetryCapsuleResponses, RevokeCoordinationGrantData, RevokeCoordinationGrantErrors, RevokeCoordinationGrantResponses, RevokeMemberCredentialsData, RevokeMemberCredentialsErrors, RevokeMemberCredentialsResponses, RevokePersonalAccessTokenData, RevokePersonalAccessTokenErrors, RevokePersonalAccessTokenResponses, RevokeSessionData, RevokeSessionErrors, RevokeSessionResponses, RewindCapsuleData, RewindCapsuleErrors, RewindCapsuleResponses, SealCapsuleData, SealCapsuleErrors, SealCapsuleResponses, SearchGitHubReposData, SearchGitHubReposErrors, SearchGitHubReposResponses, SendThreadMessageData, SendThreadMessageErrors, SendThreadMessageResponses, SetCapsuleCheckAutoReworkData, SetCapsuleCheckAutoReworkErrors, SetCapsuleCheckAutoReworkResponses, SetMemberRoleData, SetMemberRoleErrors, SetMemberRoleResponses, SetProjectHarnessSetupData, SetProjectHarnessSetupErrors, SetProjectHarnessSetupResponses, SetThreadEffortData, SetThreadEffortErrors, SetThreadEffortResponses, SetThreadModelData, SetThreadModelErrors, SetThreadModelResponses, SignOutData, SignOutErrors, SignOutResponses, StartChatGptSignInData, StartChatGptSignInErrors, StartChatGptSignInResponses, StartOidcSignInData, StartOidcSignInErrors, StartOidcSignInResponses, StartRunData, StartRunErrors, StartRunResponses, StartThreadData, StartThreadErrors, StartThreadResponses, StreamRunEventsData, StreamRunEventsErrors, StreamRunEventsResponse, StreamRunEventsResponses, StreamThreadBlocksData, StreamThreadBlocksErrors, StreamThreadBlocksResponse, StreamThreadBlocksResponses, SuggestProjectChecksData, SuggestProjectChecksErrors, SuggestProjectChecksResponses, TransferMemberObjectsData, TransferMemberObjectsErrors, TransferMemberObjectsResponses, UpdateCapsuleProfileData, UpdateCapsuleProfileErrors, UpdateCapsuleProfileResponses, UpdateCoordinationGrantData, UpdateCoordinationGrantErrors, UpdateCoordinationGrantResponses, UpdateProfileData, UpdateProfileErrors, UpdateProfileResponses, UpdateProjectChecksData, UpdateProjectChecksErrors, UpdateProjectChecksResponses, UpdateProjectEnvironmentData, UpdateProjectEnvironmentErrors, UpdateProjectEnvironmentResponses, UpdateProviderConnectionData, UpdateProviderConnectionErrors, UpdateProviderConnectionResponses, UseHostGitHubLoginData, UseHostGitHubLoginErrors, UseHostGitHubLoginResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -374,6 +374,124 @@ export const putSecret = <ThrowOnError extends boolean = false>(options: Options
         'Content-Type': 'application/json',
         ...options.headers
     }
+});
+
+/**
+ * Delete the signed-in user's GitHub connection
+ */
+export const disconnectGitHub = <ThrowOnError extends boolean = false>(options: Options<DisconnectGitHubData, ThrowOnError>): RequestResult<DisconnectGitHubResponses, DisconnectGitHubErrors, ThrowOnError> => (options.client ?? client).delete<DisconnectGitHubResponses, DisconnectGitHubErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/github/connection',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Read the signed-in user's GitHub connection
+ *
+ * Returns whether this user has connected GitHub, and whether the device flow can start. The token is never returned. Responses are not cached.
+ */
+export const getGitHubConnection = <ThrowOnError extends boolean = false>(options?: Options<GetGitHubConnectionData, ThrowOnError>): RequestResult<GetGitHubConnectionResponses, GetGitHubConnectionErrors, ThrowOnError> => (options?.client ?? client).get<GetGitHubConnectionResponses, GetGitHubConnectionErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/github/connection',
+    ...options
+});
+
+/**
+ * Check whether the stored GitHub login still works
+ *
+ * Calls GitHub as the station. A rejected login is marked needs_reconnect. The token is never returned.
+ */
+export const checkGitHubConnection = <ThrowOnError extends boolean = false>(options?: Options<CheckGitHubConnectionData, ThrowOnError>): RequestResult<CheckGitHubConnectionResponses, CheckGitHubConnectionErrors, ThrowOnError> => (options?.client ?? client).post<CheckGitHubConnectionResponses, CheckGitHubConnectionErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/github/connection/check',
+    ...options
+});
+
+/**
+ * See whether this computer's gh login can be reused
+ *
+ * Available only for a loopback request on a single-user Station. Does not read or return the token. Team mode and remote requests report available false.
+ */
+export const getHostGitHubLogin = <ThrowOnError extends boolean = false>(options?: Options<GetHostGitHubLoginData, ThrowOnError>): RequestResult<GetHostGitHubLoginResponses, GetHostGitHubLoginErrors, ThrowOnError> => (options?.client ?? client).get<GetHostGitHubLoginResponses, GetHostGitHubLoginErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/github/connection/host',
+    ...options
+});
+
+/**
+ * Store this computer's gh login after confirmation
+ *
+ * Reads gh auth token only for this request, and only on a loopback single-user Station. The token is stored encrypted and is not returned.
+ */
+export const useHostGitHubLogin = <ThrowOnError extends boolean = false>(options: Options<UseHostGitHubLoginData, ThrowOnError>): RequestResult<UseHostGitHubLoginResponses, UseHostGitHubLoginErrors, ThrowOnError> => (options.client ?? client).post<UseHostGitHubLoginResponses, UseHostGitHubLoginErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/github/connection/host',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Store a GitHub token the caller already holds
+ *
+ * The CLI uses this after the person confirms, including when it read gh on their own computer. The token is verified, stored encrypted, and not returned.
+ */
+export const connectGitHubToken = <ThrowOnError extends boolean = false>(options: Options<ConnectGitHubTokenData, ThrowOnError>): RequestResult<ConnectGitHubTokenResponses, ConnectGitHubTokenErrors, ThrowOnError> => (options.client ?? client).post<ConnectGitHubTokenResponses, ConnectGitHubTokenErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/github/connection/token',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Cancel the signed-in user's GitHub device authorization
+ */
+export const cancelGitHubDevice = <ThrowOnError extends boolean = false>(options?: Options<CancelGitHubDeviceData, ThrowOnError>): RequestResult<CancelGitHubDeviceResponses, CancelGitHubDeviceErrors, ThrowOnError> => (options?.client ?? client).delete<CancelGitHubDeviceResponses, CancelGitHubDeviceErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/github/connection/device',
+    ...options
+});
+
+/**
+ * Pick up a GitHub device authorization
+ */
+export const pollGitHubDevice = <ThrowOnError extends boolean = false>(options?: Options<PollGitHubDeviceData, ThrowOnError>): RequestResult<PollGitHubDeviceResponses, PollGitHubDeviceErrors, ThrowOnError> => (options?.client ?? client).get<PollGitHubDeviceResponses, PollGitHubDeviceErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/github/connection/device',
+    ...options
+});
+
+/**
+ * Start the GitHub device authorization flow
+ */
+export const beginGitHubDevice = <ThrowOnError extends boolean = false>(options: Options<BeginGitHubDeviceData, ThrowOnError>): RequestResult<BeginGitHubDeviceResponses, BeginGitHubDeviceErrors, ThrowOnError> => (options.client ?? client).post<BeginGitHubDeviceResponses, BeginGitHubDeviceErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/github/connection/device',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Search repositories the GitHub connection can access
+ *
+ * Includes private repositories the login can access. No token is returned.
+ */
+export const searchGitHubRepos = <ThrowOnError extends boolean = false>(options?: Options<SearchGitHubReposData, ThrowOnError>): RequestResult<SearchGitHubReposResponses, SearchGitHubReposErrors, ThrowOnError> => (options?.client ?? client).get<SearchGitHubReposResponses, SearchGitHubReposErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/github/repos',
+    ...options
 });
 
 /**
@@ -882,6 +1000,109 @@ export const getProjectEnvironment = <ThrowOnError extends boolean = false>(opti
 export const updateProjectEnvironment = <ThrowOnError extends boolean = false>(options: Options<UpdateProjectEnvironmentData, ThrowOnError>): RequestResult<UpdateProjectEnvironmentResponses, UpdateProjectEnvironmentErrors, ThrowOnError> => (options.client ?? client).put<UpdateProjectEnvironmentResponses, UpdateProjectEnvironmentErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/projects/{projectId}/environment',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Read the Project's required checks
+ */
+export const getProjectChecks = <ThrowOnError extends boolean = false>(options: Options<GetProjectChecksData, ThrowOnError>): RequestResult<GetProjectChecksResponses, GetProjectChecksErrors, ThrowOnError> => (options.client ?? client).get<GetProjectChecksResponses, GetProjectChecksErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/projects/{projectId}/checks',
+    ...options
+});
+
+/**
+ * Replace the Project's required checks
+ */
+export const updateProjectChecks = <ThrowOnError extends boolean = false>(options: Options<UpdateProjectChecksData, ThrowOnError>): RequestResult<UpdateProjectChecksResponses, UpdateProjectChecksErrors, ThrowOnError> => (options.client ?? client).put<UpdateProjectChecksResponses, UpdateProjectChecksErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/projects/{projectId}/checks',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Read a repository suggestion without applying it
+ *
+ * When a Ready Capsule has .meridian/checks.yaml, return those commands as a suggestion. Nothing is saved. A missing or unusable file returns an empty list.
+ *
+ */
+export const suggestProjectChecks = <ThrowOnError extends boolean = false>(options: Options<SuggestProjectChecksData, ThrowOnError>): RequestResult<SuggestProjectChecksResponses, SuggestProjectChecksErrors, ThrowOnError> => (options.client ?? client).get<SuggestProjectChecksResponses, SuggestProjectChecksErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/projects/{projectId}/checks/suggestion',
+    ...options
+});
+
+/**
+ * Read GitHub CI for the commit Meridian pushed
+ *
+ * Names, conclusions, links, and a short redacted tail. The response has no token. Absent when this Capsule has no Meridian pull request.
+ *
+ */
+export const getCapsuleRemoteCi = <ThrowOnError extends boolean = false>(options: Options<GetCapsuleRemoteCiData, ThrowOnError>): RequestResult<GetCapsuleRemoteCiResponses, GetCapsuleRemoteCiErrors, ThrowOnError> => (options.client ?? client).get<GetCapsuleRemoteCiResponses, GetCapsuleRemoteCiErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/capsules/{capsuleId}/remote-ci',
+    ...options
+});
+
+/**
+ * List check runs for a Capsule
+ */
+export const listCapsuleCheckRuns = <ThrowOnError extends boolean = false>(options: Options<ListCapsuleCheckRunsData, ThrowOnError>): RequestResult<ListCapsuleCheckRunsResponses, ListCapsuleCheckRunsErrors, ThrowOnError> => (options.client ?? client).get<ListCapsuleCheckRunsResponses, ListCapsuleCheckRunsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/capsules/{capsuleId}/check-runs',
+    ...options
+});
+
+/**
+ * Run the Project's checks now
+ */
+export const createCapsuleCheckRun = <ThrowOnError extends boolean = false>(options: Options<CreateCapsuleCheckRunData, ThrowOnError>): RequestResult<CreateCapsuleCheckRunResponses, CreateCapsuleCheckRunErrors, ThrowOnError> => (options.client ?? client).post<CreateCapsuleCheckRunResponses, CreateCapsuleCheckRunErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/capsules/{capsuleId}/check-runs',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Stop or resume automatic rework for one Capsule
+ */
+export const setCapsuleCheckAutoRework = <ThrowOnError extends boolean = false>(options: Options<SetCapsuleCheckAutoReworkData, ThrowOnError>): RequestResult<SetCapsuleCheckAutoReworkResponses, SetCapsuleCheckAutoReworkErrors, ThrowOnError> => (options.client ?? client).post<SetCapsuleCheckAutoReworkResponses, SetCapsuleCheckAutoReworkErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/capsules/{capsuleId}/checks/auto-rework',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Read one check run, including redacted output tails
+ */
+export const getCheckRun = <ThrowOnError extends boolean = false>(options: Options<GetCheckRunData, ThrowOnError>): RequestResult<GetCheckRunResponses, GetCheckRunErrors, ThrowOnError> => (options.client ?? client).get<GetCheckRunResponses, GetCheckRunErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/check-runs/{checkRunId}',
+    ...options
+});
+
+/**
+ * Cancel a queued or running check run
+ */
+export const cancelCheckRun = <ThrowOnError extends boolean = false>(options: Options<CancelCheckRunData, ThrowOnError>): RequestResult<CancelCheckRunResponses, CancelCheckRunErrors, ThrowOnError> => (options.client ?? client).post<CancelCheckRunResponses, CancelCheckRunErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/check-runs/{checkRunId}/cancel',
     ...options,
     headers: {
         'Content-Type': 'application/json',

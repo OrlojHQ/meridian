@@ -29,6 +29,7 @@ type Reconciler struct {
 	providerName  string
 	isolation     domain.IsolationClass
 	secretKey     *secrets.InstallationKey
+	repoProbe     RepositoryProbe
 	sessionReady  func(context.Context, domain.Capsule) error
 	launcherReady func(context.Context, domain.Capsule) error
 	onSettled     func(context.Context, domain.Capsule)
@@ -67,6 +68,13 @@ func (r *Reconciler) ConfigureIsolation(class domain.IsolationClass) {
 
 func (r *Reconciler) ConfigureSecrets(key *secrets.InstallationKey) {
 	r.secretKey = key
+}
+
+// ConfigureRepositoryProbe lets the reconciler refuse a GitHub clone that
+// has no credential and that GitHub says it cannot read. A probe error does
+// not fail the Capsule; the clone still runs and is classified from git.
+func (r *Reconciler) ConfigureRepositoryProbe(probe RepositoryProbe) {
+	r.repoProbe = probe
 }
 
 func (r *Reconciler) ConfigureProjectThreads(
@@ -216,7 +224,8 @@ func (r *Reconciler) process(ctx context.Context, id domain.CapsuleID) {
 		if err == nil || errors.Is(err, domain.ErrNotFound) {
 			return
 		}
-		if errors.Is(err, errProjectSetup) || errors.Is(err, domain.ErrStartTimeout) {
+		if errors.Is(err, errProjectSetup) || errors.Is(err, domain.ErrStartTimeout) ||
+			errors.Is(err, domain.ErrRepositoryAccess) {
 			break
 		}
 		var unmet *isolationUnmet
@@ -340,24 +349,14 @@ func (r *Reconciler) reconcile(ctx context.Context, id domain.CapsuleID) error {
 			Setup:          append([]string(nil), project.Setup...),
 			ImageReference: capsule.WorkspaceImage(project),
 		})
-		if project.GitSecretName != "" {
-			var secret domain.Secret
-			if err := r.store.View(ctx, func(reader ports.Reader) error {
-				var err error
-				secret, err = reader.GetSecret(ctx, project.OwnerUserID, project.GitSecretName)
+		credential, err := openCloneCredential(ctx, r.store, r.secretKey, project.OwnerUserID, project.RepositoryURL, project.GitSecretName)
+		if err != nil {
+			return fmt.Errorf("resolve project Git secret: %w", err)
+		}
+		createRequest.GitCredential = credential
+		if credential == nil && !createRequest.Restore && createRequest.RepositoryURL != "" {
+			if err := r.denyInaccessibleGitHub(ctx, createRequest.RepositoryURL); err != nil {
 				return err
-			}); err != nil {
-				return fmt.Errorf("resolve project Git secret: %w", err)
-			}
-			if secret.Purpose != domain.SecretGitHTTPS || r.secretKey == nil {
-				return fmt.Errorf("%w: project Git secret purpose mismatch", domain.ErrInvalid)
-			}
-			payload, err := r.secretKey.Open(secret)
-			if err != nil {
-				return fmt.Errorf("resolve project Git secret: %w", err)
-			}
-			createRequest.GitCredential = &ports.GitHTTPSCredential{
-				Username: payload.Username, Password: payload.Password,
 			}
 		}
 		if capsule.OriginMomentID != "" {
@@ -723,8 +722,11 @@ func (r *Reconciler) recordFailure(ctx context.Context, id domain.CapsuleID, cau
 	if errors.As(cause, &pull) {
 		capsule.Failure = pull.Error()
 		capsule.FailureCode = pull.Code
+	} else if errors.Is(cause, domain.ErrRepositoryAccess) {
+		capsule.Failure = r.repositoryAccessFailure(ctx, capsule)
+		capsule.FailureCode = domain.RepositoryAccess
 	} else {
-		capsule.Failure = cause.Error()
+		capsule.Failure = domain.RedactFailureText(cause.Error())
 		capsule.FailureCode = ""
 	}
 	r.clearStartupMark(id)

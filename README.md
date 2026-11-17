@@ -362,6 +362,7 @@ flowchart LR
 | Station (`meridiand`) | The daemon you run: API, storage, Capsule lifecycle, provider gateway, embedded web UI |
 | `meridian` | CLI and terminal dashboard, a client of one Station |
 | Capsule | Container with `capsuled` (a small supervisor) and one harness, the coding agent |
+| Project checks | Commands such as `make test` that run in the Capsule when the agent finishes, with a bounded number of automatic retries, plus GitHub CI on a pull request Meridian opened |
 
 You run one Station. It starts Capsules on local Docker or, for a cluster, on
 [Kubernetes Agent Sandbox](docs/kubernetes-agentsandbox.md), and stores
@@ -410,6 +411,7 @@ releases; see the [changelog](CHANGELOG.md).
 - [Bring your harness setup](docs/personal-harness-setups.md): importing your
   computer, API keys, and self-hosted models
 - [Prepared project environments](docs/prepared-environments.md)
+- [Project checks](docs/checks.md): run tests when the agent finishes, and send failures back
 - [Moments and lineage](docs/moments-and-lineage.md): capture, shard, rewind,
   seal
 

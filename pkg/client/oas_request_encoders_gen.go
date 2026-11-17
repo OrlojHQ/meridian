@@ -66,6 +66,34 @@ func encodeBeginClaudeLoginRequest(
 	return nil
 }
 
+func encodeBeginGitHubDeviceRequest(
+	req *BeginGitHubDeviceRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeCancelCheckRunRequest(
+	req *LifecycleMutationRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodeCancelRunRequest(
 	req *LifecycleMutationRequest,
 	r *http.Request,
@@ -150,8 +178,36 @@ func encodeCompleteMemberIdentityRebindRequest(
 	return nil
 }
 
+func encodeConnectGitHubTokenRequest(
+	req *ConnectGitHubTokenRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodeCreateCapsuleRequest(
 	req *CreateCapsuleRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeCreateCapsuleCheckRunRequest(
+	req *CheckRunRequest,
 	r *http.Request,
 ) error {
 	const contentType = "application/json"
@@ -306,6 +362,20 @@ func encodeDeleteThreadRequest(
 
 func encodeDenyCoordinationRequestRequest(
 	req *DecideCoordinationRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeDisconnectGitHubRequest(
+	req *DisconnectGitHubRequest,
 	r *http.Request,
 ) error {
 	const contentType = "application/json"
@@ -640,6 +710,20 @@ func encodeSendThreadMessageRequest(
 	return nil
 }
 
+func encodeSetCapsuleCheckAutoReworkRequest(
+	req *CheckAutoReworkRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodeSetMemberRoleRequest(
 	req *SetMemberRoleReq,
 	r *http.Request,
@@ -780,6 +864,20 @@ func encodeUpdateProfileRequest(
 	return nil
 }
 
+func encodeUpdateProjectChecksRequest(
+	req *ProjectChecksUpdate,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodeUpdateProjectEnvironmentRequest(
 	req *EnvironmentMutation,
 	r *http.Request,
@@ -796,6 +894,20 @@ func encodeUpdateProjectEnvironmentRequest(
 
 func encodeUpdateProviderConnectionRequest(
 	req *ProviderConnectionRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeUseHostGitHubLoginRequest(
+	req *UseHostGitHubRequest,
 	r *http.Request,
 ) error {
 	const contentType = "application/json"

@@ -5,6 +5,7 @@ import { useSearchParams } from "react-router-dom";
 import { api, normalizeAPIError } from "../api/client";
 import { queries } from "../api/queries";
 import { isUnauthenticated, TEAM_SIGN_IN_PATH } from "./Authentication";
+import { GitHubConnect } from "./GitHubConnect";
 
 // Account shows who is signed in, their sessions, and, before the
 // installation is claimed, how to turn on team mode (ADR 0046).
@@ -36,7 +37,17 @@ export function Account() {
       ) : (
         <SingleUserAccount claimable={mode.data.claimable} />
       )}
+      <GitHubSettings />
     </article>
+  );
+}
+
+function GitHubSettings() {
+  return (
+    <section id="github" aria-labelledby="github-title">
+      <h2 id="github-title">GitHub</h2>
+      <GitHubConnect />
+    </section>
   );
 }
 

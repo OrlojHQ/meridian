@@ -250,6 +250,70 @@ export type SecretPage = {
     nextCursor?: string;
 };
 
+/**
+ * GitHub connection metadata. The token is never included.
+ */
+export type GitHubConnection = {
+    connected: boolean;
+    /**
+     * True when this Station can start the GitHub device flow.
+     */
+    deviceFlow: boolean;
+    login?: string;
+    status?: 'active' | 'needs_reconnect';
+    reason?: 'invalid' | 'expired' | 'missing_access';
+    scopes?: string;
+    createdAt?: string;
+    updatedAt?: string;
+    resourceVersion?: number;
+};
+
+export type DisconnectGitHubRequest = {
+    expectedResourceVersion: number;
+};
+
+export type UseHostGitHubRequest = {
+    expectedResourceVersion: number;
+};
+
+export type ConnectGitHubTokenRequest = {
+    token: string;
+    expectedResourceVersion: number;
+};
+
+export type BeginGitHubDeviceRequest = {
+    expectedResourceVersion: number;
+};
+
+export type HostGitHubLogin = {
+    available: boolean;
+    login?: string;
+};
+
+export type GitHubDevice = {
+    userCode: string;
+    verificationUri: string;
+    expiresAt: string;
+    intervalSeconds: number;
+};
+
+export type GitHubDeviceStatus = {
+    status: 'pending' | 'connected' | 'denied' | 'expired';
+    connection?: GitHubConnection;
+};
+
+export type GitHubRepo = {
+    fullName: string;
+    private: boolean;
+    description?: string;
+    defaultBranch?: string;
+    url: string;
+};
+
+export type GitHubRepoPage = {
+    items: Array<GitHubRepo>;
+};
+
 export type ProjectEnvironment = {
     enabled: boolean;
     generation: number;
@@ -264,6 +328,166 @@ export type EnvironmentMutation = {
     setup?: Array<string>;
     rebuild?: boolean;
     expectedResourceVersion: number;
+};
+
+/**
+ * An executable and its arguments. Meridian does not start a shell.
+ */
+export type CheckCommand = {
+    name: string;
+    argv: Array<string>;
+    timeoutSeconds: number;
+};
+
+export type ProjectChecks = {
+    checks: Array<CheckCommand>;
+    autoRework: boolean;
+    /**
+     * Total tries, including the first. 0 runs the checks once and does not send the agent back.
+     *
+     */
+    maxReworkAttempts: number;
+    resourceVersion: number;
+    updatedAt?: string;
+};
+
+export type ProjectChecksUpdate = {
+    checks: Array<CheckCommand>;
+    autoRework: boolean;
+    maxReworkAttempts: number;
+    expectedResourceVersion: number;
+};
+
+export type CheckSuggestion = {
+    checks: Array<CheckCommand>;
+    /**
+     * A repository file was present and was not usable.
+     */
+    ignored?: boolean;
+};
+
+/**
+ * Empty object. The idempotency key is the header.
+ */
+export type CheckRunRequest = {
+    [key: string]: never;
+};
+
+export type CheckAutoReworkRequest = {
+    /**
+     * false stops automatic rework for this Capsule.
+     */
+    enabled: boolean;
+};
+
+export type CheckResult = {
+    name: string;
+    argv: Array<string>;
+    exitCode?: number;
+    durationMs: number;
+    timedOut: boolean;
+    outputTruncated: boolean;
+    /**
+     * Redacted tail of the command output. Absent when there is none.
+     */
+    output?: string;
+};
+
+export type CheckRun = {
+    id: string;
+    capsuleId: string;
+    projectId: string;
+    threadId?: string;
+    /**
+     * One-based try number.
+     */
+    attempt: number;
+    maxAttempts: number;
+    trigger: 'turn_idle' | 'delivery_proposed' | 'run_exit' | 'manual';
+    state: 'queued' | 'running' | 'passed' | 'failed' | 'error' | 'cancelled' | 'stale';
+    phase?: 'queued' | 'running' | 'reworking' | 'passed' | 'failing' | 'stale' | 'error';
+    gitHead?: string;
+    gitTree?: string;
+    startedAt?: string;
+    finishedAt?: string;
+    reworkSent: boolean;
+    banner?: string;
+    /**
+     * Server-generated pull request text. It contains no command output.
+     */
+    pullRequestSection?: string;
+    results: Array<CheckResult>;
+    resourceVersion: number;
+    createdAt: string;
+};
+
+export type CheckRunPage = {
+    items: Array<CheckRun>;
+    nextCursor?: string;
+};
+
+/**
+ * Content-free check summary. It carries no command text and no output.
+ */
+export type ChecksSummary = {
+    configured: boolean;
+    phase?: 'queued' | 'running' | 'reworking' | 'passed' | 'failing' | 'stale' | 'error';
+    attempt?: number;
+    maxAttempts?: number;
+    tree?: string;
+    head?: string;
+    finishedAt?: string;
+    reworkSent?: boolean;
+    autoRework: boolean;
+    stopped?: boolean;
+    proposalWithheld?: boolean;
+    passed?: number;
+    failed?: number;
+    runId?: string;
+    remoteCI?: RemoteCiSummary;
+};
+
+/**
+ * Content-free GitHub CI line for the pushed commit. It has no log tail.
+ */
+export type RemoteCiSummary = {
+    state: 'waiting' | 'passed' | 'failing' | 'reconnect' | 'connect' | 'unreadable' | 'absent';
+    label: string;
+    head?: string;
+    attempt?: number;
+    maxAttempts?: number;
+    passed?: number;
+    failed?: number;
+    pending?: number;
+    pullRequestUrl?: string;
+    pushReview?: boolean;
+    reworkSent?: boolean;
+};
+
+export type RemoteCiCheck = {
+    name: string;
+    source: 'check_run' | 'status';
+    conclusion: string;
+    url?: string;
+    /**
+     * Redacted tail. Absent when there is none.
+     */
+    output?: string;
+};
+
+export type RemoteCi = {
+    state: 'waiting' | 'passed' | 'failing' | 'reconnect' | 'connect' | 'unreadable' | 'absent';
+    label: string;
+    head?: string;
+    attempt?: number;
+    maxAttempts?: number;
+    passed?: number;
+    failed?: number;
+    pending?: number;
+    pullRequestUrl?: string;
+    pushReview?: boolean;
+    reworkSent?: boolean;
+    checks: Array<RemoteCiCheck>;
 };
 
 export type PreparationProgress = {
@@ -316,6 +540,11 @@ export type Capsule = {
      * When a subagent Capsule was promoted to a main Capsule.
      */
     promotedAt?: string;
+    /**
+     * Content-free check summary. Absent when the Project has no checks. This is not a Capsule lifecycle state.
+     *
+     */
+    checks?: ChecksSummary;
     createdAt: string;
     updatedAt: string;
     resourceVersion: number;
@@ -347,9 +576,10 @@ export type ImagePullProgress = {
 };
 
 /**
- * Specific image-pull failure. Unset for failures that are not image pulls.
+ * Image-pull failure, or repository_access when a clone cannot read the repository. Git output is never copied into the failure text.
+ *
  */
-export type CapsuleFailureCode = 'registry_unreachable' | 'auth_required' | 'image_not_found';
+export type CapsuleFailureCode = 'registry_unreachable' | 'auth_required' | 'image_not_found' | 'repository_access';
 
 export type CapsuleState = 'Creating' | 'Preparing' | 'Ready' | 'Paused' | 'Failed' | 'Sealed' | 'Deleting' | 'Deleted';
 
@@ -651,7 +881,7 @@ export type BoardItem = {
     /**
      * Why the row needs the operator; set only with status needs_you.
      */
-    needsYou?: 'permission' | 'input' | 'failed' | 'spawn_approval' | 'proposed_delivery';
+    needsYou?: 'permission' | 'input' | 'failed' | 'spawn_approval' | 'proposed_delivery' | 'checks_passed' | 'checks_failing' | 'checks_error' | 'ci_passed' | 'ci_failing' | 'ci_reconnect' | 'ci_connect' | 'ci_unreadable';
     latestDelivery?: DeliverySummary;
     /**
      * The subagent's link to its lead, on sub-Capsules.
@@ -1837,6 +2067,8 @@ export type ProjectId = string;
 
 export type CapsuleId = string;
 
+export type CheckRunId = string;
+
 export type RunId = string;
 
 export type ThreadId = string;
@@ -2800,6 +3032,311 @@ export type PutSecretResponses = {
 };
 
 export type PutSecretResponse = PutSecretResponses[keyof PutSecretResponses];
+
+export type DisconnectGitHubData = {
+    body: DisconnectGitHubRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/github/connection';
+};
+
+export type DisconnectGitHubErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type DisconnectGitHubError = DisconnectGitHubErrors[keyof DisconnectGitHubErrors];
+
+export type DisconnectGitHubResponses = {
+    /**
+     * The connection is gone
+     */
+    200: GitHubConnection;
+};
+
+export type DisconnectGitHubResponse = DisconnectGitHubResponses[keyof DisconnectGitHubResponses];
+
+export type GetGitHubConnectionData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/github/connection';
+};
+
+export type GetGitHubConnectionErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type GetGitHubConnectionError = GetGitHubConnectionErrors[keyof GetGitHubConnectionErrors];
+
+export type GetGitHubConnectionResponses = {
+    /**
+     * Connection metadata
+     */
+    200: GitHubConnection;
+};
+
+export type GetGitHubConnectionResponse = GetGitHubConnectionResponses[keyof GetGitHubConnectionResponses];
+
+export type CheckGitHubConnectionData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/github/connection/check';
+};
+
+export type CheckGitHubConnectionErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type CheckGitHubConnectionError = CheckGitHubConnectionErrors[keyof CheckGitHubConnectionErrors];
+
+export type CheckGitHubConnectionResponses = {
+    /**
+     * Connection metadata after the check
+     */
+    200: GitHubConnection;
+};
+
+export type CheckGitHubConnectionResponse = CheckGitHubConnectionResponses[keyof CheckGitHubConnectionResponses];
+
+export type GetHostGitHubLoginData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/github/connection/host';
+};
+
+export type GetHostGitHubLoginErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type GetHostGitHubLoginError = GetHostGitHubLoginErrors[keyof GetHostGitHubLoginErrors];
+
+export type GetHostGitHubLoginResponses = {
+    /**
+     * Whether a host login was found
+     */
+    200: HostGitHubLogin;
+};
+
+export type GetHostGitHubLoginResponse = GetHostGitHubLoginResponses[keyof GetHostGitHubLoginResponses];
+
+export type UseHostGitHubLoginData = {
+    body: UseHostGitHubRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/github/connection/host';
+};
+
+export type UseHostGitHubLoginErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type UseHostGitHubLoginError = UseHostGitHubLoginErrors[keyof UseHostGitHubLoginErrors];
+
+export type UseHostGitHubLoginResponses = {
+    /**
+     * Stored connection metadata
+     */
+    200: GitHubConnection;
+};
+
+export type UseHostGitHubLoginResponse = UseHostGitHubLoginResponses[keyof UseHostGitHubLoginResponses];
+
+export type ConnectGitHubTokenData = {
+    body: ConnectGitHubTokenRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/github/connection/token';
+};
+
+export type ConnectGitHubTokenErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ConnectGitHubTokenError = ConnectGitHubTokenErrors[keyof ConnectGitHubTokenErrors];
+
+export type ConnectGitHubTokenResponses = {
+    /**
+     * Stored connection metadata
+     */
+    200: GitHubConnection;
+};
+
+export type ConnectGitHubTokenResponse = ConnectGitHubTokenResponses[keyof ConnectGitHubTokenResponses];
+
+export type CancelGitHubDeviceData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/github/connection/device';
+};
+
+export type CancelGitHubDeviceErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type CancelGitHubDeviceError = CancelGitHubDeviceErrors[keyof CancelGitHubDeviceErrors];
+
+export type CancelGitHubDeviceResponses = {
+    /**
+     * The in-memory device authorization is gone
+     */
+    204: void;
+};
+
+export type CancelGitHubDeviceResponse = CancelGitHubDeviceResponses[keyof CancelGitHubDeviceResponses];
+
+export type PollGitHubDeviceData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/github/connection/device';
+};
+
+export type PollGitHubDeviceErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type PollGitHubDeviceError = PollGitHubDeviceErrors[keyof PollGitHubDeviceErrors];
+
+export type PollGitHubDeviceResponses = {
+    /**
+     * pending, connected, denied, or expired
+     */
+    200: GitHubDeviceStatus;
+};
+
+export type PollGitHubDeviceResponse = PollGitHubDeviceResponses[keyof PollGitHubDeviceResponses];
+
+export type BeginGitHubDeviceData = {
+    body: BeginGitHubDeviceRequest;
+    path?: never;
+    query?: never;
+    url: '/github/connection/device';
+};
+
+export type BeginGitHubDeviceErrors = {
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type BeginGitHubDeviceError = BeginGitHubDeviceErrors[keyof BeginGitHubDeviceErrors];
+
+export type BeginGitHubDeviceResponses = {
+    /**
+     * The code to enter on GitHub. The device code is not included.
+     */
+    200: GitHubDevice;
+};
+
+export type BeginGitHubDeviceResponse = BeginGitHubDeviceResponses[keyof BeginGitHubDeviceResponses];
+
+export type SearchGitHubReposData = {
+    body?: never;
+    path?: never;
+    query?: {
+        q?: string;
+    };
+    url: '/github/repos';
+};
+
+export type SearchGitHubReposErrors = {
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type SearchGitHubReposError = SearchGitHubReposErrors[keyof SearchGitHubReposErrors];
+
+export type SearchGitHubReposResponses = {
+    /**
+     * Matching repositories
+     */
+    200: GitHubRepoPage;
+};
+
+export type SearchGitHubReposResponse = SearchGitHubReposResponses[keyof SearchGitHubReposResponses];
 
 export type ListProjectsData = {
     body?: never;
@@ -4498,6 +5035,264 @@ export type UpdateProjectEnvironmentResponses = {
 };
 
 export type UpdateProjectEnvironmentResponse = UpdateProjectEnvironmentResponses[keyof UpdateProjectEnvironmentResponses];
+
+export type GetProjectChecksData = {
+    body?: never;
+    path: {
+        projectId: string;
+    };
+    query?: never;
+    url: '/projects/{projectId}/checks';
+};
+
+export type GetProjectChecksErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type GetProjectChecksError = GetProjectChecksErrors[keyof GetProjectChecksErrors];
+
+export type GetProjectChecksResponses = {
+    /**
+     * Project checks. An empty list means checks are not used.
+     */
+    200: ProjectChecks;
+};
+
+export type GetProjectChecksResponse = GetProjectChecksResponses[keyof GetProjectChecksResponses];
+
+export type UpdateProjectChecksData = {
+    body: ProjectChecksUpdate;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        projectId: string;
+    };
+    query?: never;
+    url: '/projects/{projectId}/checks';
+};
+
+export type UpdateProjectChecksErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type UpdateProjectChecksError = UpdateProjectChecksErrors[keyof UpdateProjectChecksErrors];
+
+export type UpdateProjectChecksResponses = {
+    /**
+     * Updated project checks
+     */
+    200: ProjectChecks;
+};
+
+export type UpdateProjectChecksResponse = UpdateProjectChecksResponses[keyof UpdateProjectChecksResponses];
+
+export type SuggestProjectChecksData = {
+    body?: never;
+    path: {
+        projectId: string;
+    };
+    query?: {
+        capsuleId?: string;
+    };
+    url: '/projects/{projectId}/checks/suggestion';
+};
+
+export type SuggestProjectChecksErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type SuggestProjectChecksError = SuggestProjectChecksErrors[keyof SuggestProjectChecksErrors];
+
+export type SuggestProjectChecksResponses = {
+    /**
+     * Suggestion, which may be empty
+     */
+    200: CheckSuggestion;
+};
+
+export type SuggestProjectChecksResponse = SuggestProjectChecksResponses[keyof SuggestProjectChecksResponses];
+
+export type GetCapsuleRemoteCiData = {
+    body?: never;
+    path: {
+        capsuleId: string;
+    };
+    query?: never;
+    url: '/capsules/{capsuleId}/remote-ci';
+};
+
+export type GetCapsuleRemoteCiErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type GetCapsuleRemoteCiError = GetCapsuleRemoteCiErrors[keyof GetCapsuleRemoteCiErrors];
+
+export type GetCapsuleRemoteCiResponses = {
+    /**
+     * The latest CI reading for this Capsule
+     */
+    200: RemoteCi;
+};
+
+export type GetCapsuleRemoteCiResponse = GetCapsuleRemoteCiResponses[keyof GetCapsuleRemoteCiResponses];
+
+export type ListCapsuleCheckRunsData = {
+    body?: never;
+    path: {
+        capsuleId: string;
+    };
+    query?: {
+        cursor?: string;
+        limit?: number;
+    };
+    url: '/capsules/{capsuleId}/check-runs';
+};
+
+export type ListCapsuleCheckRunsErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ListCapsuleCheckRunsError = ListCapsuleCheckRunsErrors[keyof ListCapsuleCheckRunsErrors];
+
+export type ListCapsuleCheckRunsResponses = {
+    /**
+     * Check runs, newest first
+     */
+    200: CheckRunPage;
+};
+
+export type ListCapsuleCheckRunsResponse = ListCapsuleCheckRunsResponses[keyof ListCapsuleCheckRunsResponses];
+
+export type CreateCapsuleCheckRunData = {
+    body: CheckRunRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        capsuleId: string;
+    };
+    query?: never;
+    url: '/capsules/{capsuleId}/check-runs';
+};
+
+export type CreateCapsuleCheckRunErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type CreateCapsuleCheckRunError = CreateCapsuleCheckRunErrors[keyof CreateCapsuleCheckRunErrors];
+
+export type CreateCapsuleCheckRunResponses = {
+    /**
+     * Check run queued
+     */
+    202: CheckRun;
+};
+
+export type CreateCapsuleCheckRunResponse = CreateCapsuleCheckRunResponses[keyof CreateCapsuleCheckRunResponses];
+
+export type SetCapsuleCheckAutoReworkData = {
+    body: CheckAutoReworkRequest;
+    path: {
+        capsuleId: string;
+    };
+    query?: never;
+    url: '/capsules/{capsuleId}/checks/auto-rework';
+};
+
+export type SetCapsuleCheckAutoReworkErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type SetCapsuleCheckAutoReworkError = SetCapsuleCheckAutoReworkErrors[keyof SetCapsuleCheckAutoReworkErrors];
+
+export type SetCapsuleCheckAutoReworkResponses = {
+    /**
+     * Updated
+     */
+    200: CheckAutoReworkRequest;
+};
+
+export type SetCapsuleCheckAutoReworkResponse = SetCapsuleCheckAutoReworkResponses[keyof SetCapsuleCheckAutoReworkResponses];
+
+export type GetCheckRunData = {
+    body?: never;
+    path: {
+        checkRunId: string;
+    };
+    query?: never;
+    url: '/check-runs/{checkRunId}';
+};
+
+export type GetCheckRunErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type GetCheckRunError = GetCheckRunErrors[keyof GetCheckRunErrors];
+
+export type GetCheckRunResponses = {
+    /**
+     * Check run
+     */
+    200: CheckRun;
+};
+
+export type GetCheckRunResponse = GetCheckRunResponses[keyof GetCheckRunResponses];
+
+export type CancelCheckRunData = {
+    body: LifecycleMutationRequest;
+    path: {
+        checkRunId: string;
+    };
+    query?: never;
+    url: '/check-runs/{checkRunId}/cancel';
+};
+
+export type CancelCheckRunErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type CancelCheckRunError = CancelCheckRunErrors[keyof CancelCheckRunErrors];
+
+export type CancelCheckRunResponses = {
+    /**
+     * Check run
+     */
+    200: CheckRun;
+};
+
+export type CancelCheckRunResponse = CancelCheckRunResponses[keyof CancelCheckRunResponses];
 
 export type ResumeCapsuleData = {
     body: LifecycleMutation;

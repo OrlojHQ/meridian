@@ -42,10 +42,12 @@ import { queries } from "./api/queries";
 import { olderPackRelease } from "./api/harnessPacks";
 import { Home } from "./components/Home";
 import { ProjectSettings } from "./components/ProjectSettings";
+import { CapsuleChecks } from "./components/CapsuleChecks";
 import { CapsuleStartup } from "./components/CapsuleStartup";
 import { CapsuleProfilePanel } from "./components/CapsuleProfilePanel";
 import { DeliveryDecision } from "./components/DeliveryDecision";
-import { isStarting } from "./components/startup";
+import { isRepositoryAccessFailure, isStarting } from "./components/startup";
+import { checkBanner } from "./shell/checks";
 import { WorkspaceSkeleton } from "./components/ui/loading";
 import {
   ThreadCreate,
@@ -480,6 +482,11 @@ export function ShipPanel({ capsule }: { capsule: Capsule }) {
         inspection.isPending ? <p role="status">Inspecting exact Git state…</p> :
           inspection.isError ? <ErrorState error={inspection.error} /> :
             <form className="ship-form" onSubmit={submit}>
+              {checkBanner(capsule.checks, inspection.data.tree) && (
+                <p className={`check-banner check-banner-${capsule.checks?.phase || "idle"}`} role="status">
+                  {checkBanner(capsule.checks, inspection.data.tree)}
+                </p>
+              )}
               <dl className="facts compact">
                 <div><dt>HEAD</dt><dd className="mono">{inspection.data.head}</dd></div>
                 <div><dt>Tree</dt><dd className="mono">{inspection.data.tree}</dd></div>
@@ -866,13 +873,13 @@ export function CapsuleDetail() {
           <p className="capsule-setup-pin">{pinnedSetupText(value.pinnedHarnessSetups)}</p>
         )}
       </header>
-      {(isStarting(value) || value.startup || value.failureCode) && (
+      {(isStarting(value) || value.startup || value.failureCode || isRepositoryAccessFailure(value)) && (
         <CapsuleStartup capsule={value} />
       )}
       {value.failure && !value.startup && !value.failureCode && (
         <p className="error-state" role="alert">{value.failure}</p>
       )}
-      {deliveries.data?.items[0]?.state === "proposed" && (
+      {deliveries.data?.items[0]?.state === "proposed" && !value.checks?.proposalWithheld && (
         <section className="workspace-drawer" aria-label="Proposed Delivery">
           <DeliveryDecision capsuleId={value.id} deliveryId={deliveries.data.items[0].id} />
         </section>
@@ -887,6 +894,7 @@ export function CapsuleDetail() {
           <ShipPanel capsule={value} />
         </section>
       )}
+      <CapsuleChecks capsule={value} tree={inspection.data?.tree} />
       {(sessions.length > 0 || canCreateThread) && (
         <div className="session-tabs" role="tablist" aria-label="Sessions">
           {sessions.map((session) => (

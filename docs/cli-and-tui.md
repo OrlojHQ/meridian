@@ -5,6 +5,16 @@ commands and an interactive Bubble Tea dashboard. The dashboard is a client of
 the generated public API; it does not load daemon, provider, store, or domain
 packages.
 
+## GitHub
+
+`meridian github connect` stores one login for clone, push, and pull
+requests. When `gh` is signed in it asks "Use your GitHub login @user?"
+and stops if you decline. `--device` skips `gh` and shows a device code.
+With no `gh` login it says to install and sign in to the GitHub CLI, then
+uses a device code. `--stdin` reads a token. `meridian github status`
+prints the login. `meridian github disconnect --confirm` deletes it. The
+token is not printed.
+
 ## Launch
 
 Start `meridiand` on its default loopback listener, then run:
@@ -257,6 +267,19 @@ meridian project create --require-isolation sandbox
 Valid classes are `container`, `sandbox`, and `microvm`; a stronger class
 satisfies a weaker requirement. `project list` and the other Project output add
 `required-isolation=CLASS` when a Project has one.
+
+A Project can also list checks. The commands run inside the Capsule when an
+agent finishes, and a failure can be sent back a bounded number of times:
+
+```console
+meridian project checks set PROJECT_ID --check "test=make test" --max-attempts 3
+meridian project checks show PROJECT_ID
+meridian capsule checks CAPSULE_ID --run --follow
+```
+
+`capsule get` adds `checks=PHASE` and `attempt=N/M` when the Project has
+checks. The terminal dashboard shows the same summary on the Capsule row.
+Configuration stays in this command and the desktop Project page.
 
 Enter on an existing Capsule attaches its active native Run. If the Capsule is
 Ready and idle, Enter starts a new Run from its frozen launcher harness and

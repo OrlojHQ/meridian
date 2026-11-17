@@ -89,13 +89,16 @@ type ServerConfig struct {
 	BodyLimit               int64
 	OutputLimit             int64
 	CommandRunner           func(context.Context, string, []string, string, int64) error
-	RunLimit                int
-	EventLimit              int
-	DiffLimit               int64
-	PreviewTimeout          time.Duration
-	PreviewBodyLimit        int64
-	PreviewPortDiscovery    func() ([]uint16, error)
-	ArchiveLimits           ArchiveLimits
+	// captureClone classifies git clone output. It is set only when Meridian
+	// owns the git command. A test double that supplies CommandRunner does not.
+	captureClone         bool
+	RunLimit             int
+	EventLimit           int
+	DiffLimit            int64
+	PreviewTimeout       time.Duration
+	PreviewBodyLimit     int64
+	PreviewPortDiscovery func() ([]uint16, error)
+	ArchiveLimits        ArchiveLimits
 }
 
 type Server struct {
@@ -108,6 +111,7 @@ type Server struct {
 	runs       map[string]*supervisedRun
 	structured map[string]*structuredSession
 	coord      *Mailbox
+	checks     sync.Mutex
 }
 
 func NewServer(config ServerConfig) (*Server, error) {
@@ -135,6 +139,7 @@ func NewServer(config ServerConfig) (*Server, error) {
 	}
 	if config.CommandRunner == nil {
 		config.CommandRunner = runCommand
+		config.captureClone = true
 	}
 	if config.RunLimit <= 0 {
 		config.RunLimit = defaultRunLimit
@@ -181,6 +186,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET "+StatusPath, s.authenticate(http.HandlerFunc(s.status)))
 	mux.Handle("GET /v1/preparation/identity", s.authenticate(http.HandlerFunc(s.preparationIdentity)))
 	mux.Handle("POST /v1/preparation/finish", s.authenticate(http.HandlerFunc(s.finishPreparation)))
+	mux.Handle("POST /v1/checks/run", s.authenticate(http.HandlerFunc(s.runChecks)))
+	mux.Handle("GET /v1/checks/suggestion", s.authenticate(http.HandlerFunc(s.suggestChecks)))
 	mux.Handle("POST "+PreparePath, s.authenticate(http.HandlerFunc(s.prepare)))
 	mux.Handle("POST "+RunStartPath, s.authenticate(http.HandlerFunc(s.startRun)))
 	mux.Handle("GET /v1/runs/{runID}", s.authenticate(http.HandlerFunc(s.runStatus)))
@@ -438,8 +445,12 @@ func (s *Server) prepare(writer http.ResponseWriter, request *http.Request) {
 	ctx, cancel := context.WithTimeout(request.Context(), s.config.SetupTimeout)
 	defer cancel()
 	if err := s.prepareWorkspace(ctx, input); err != nil {
+		code := "preparation_failed"
+		if errors.Is(err, errRepositoryAccess) {
+			code = "repository_access"
+		}
 		s.state, s.err = StateFailed, boundedError(err)
-		writeProtocolError(writer, http.StatusUnprocessableEntity, "preparation_failed")
+		writeProtocolError(writer, http.StatusUnprocessableEntity, code)
 		return
 	}
 	s.state, s.err = StateReady, ""
@@ -480,18 +491,8 @@ func (s *Server) prepareWorkspace(ctx context.Context, input PrepareRequest) err
 		return err
 	}
 	if input.RepositoryURL != "" {
-		var err error
-		if input.GitCredential == nil {
-			err = s.config.CommandRunner(
-				ctx, "git", []string{"clone", "--", input.RepositoryURL, input.Destination},
-				filepath.Dir(input.Destination), s.config.OutputLimit,
-			)
-		} else {
-			err = secureHTTPSClone(ctx, input.RepositoryURL, input.Destination,
-				*input.GitCredential, s.config.OutputLimit)
-		}
-		if err != nil {
-			return fmt.Errorf("clone repository: %w", err)
+		if err := s.cloneRepository(ctx, input); err != nil {
+			return err
 		}
 	}
 	if len(input.Setup) > 0 {
@@ -587,25 +588,30 @@ func secureHTTPSClone(
 	command.Dir = filepath.Dir(destination)
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	command.Env = secureGitEnvironment(os.Environ(), helperPath, credential)
-	output := &limitWriter{remaining: outputLimit}
-	command.Stdout, command.Stderr = output, output
+	limited := &limitWriter{remaining: outputLimit}
+	captured := &prefixWriter{max: 4096}
+	command.Stdout, command.Stderr = io.MultiWriter(limited, captured), io.MultiWriter(limited, captured)
 	if err := command.Start(); err != nil {
 		clearEnvironment(command.Env)
 		command.Env = nil
+		wipeBytes(captured.buf)
 		return err
 	}
 	clearEnvironment(command.Env)
 	command.Env = nil
 	done := make(chan error, 1)
 	go func() { done <- command.Wait() }()
+	var waitErr error
 	select {
-	case err := <-done:
-		return err
+	case waitErr = <-done:
 	case <-ctx.Done():
 		_ = syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
 		<-done
-		return ctx.Err()
+		waitErr = ctx.Err()
 	}
+	classified := classifyCloneError(captured.buf, waitErr)
+	wipeBytes(captured.buf)
+	return classified
 }
 
 func clearEnvironment(environment []string) {
@@ -739,7 +745,40 @@ func boundedError(err error) string {
 	if errors.Is(err, context.Canceled) {
 		return "preparation canceled"
 	}
+	if errors.Is(err, errRepositoryAccess) {
+		return "repository access denied"
+	}
 	return "preparation command failed"
+}
+
+func (s *Server) cloneRepository(ctx context.Context, input PrepareRequest) error {
+	var output []byte
+	var err error
+	if !s.config.captureClone {
+		// A test double owns the command.
+		if input.GitCredential == nil {
+			err = s.config.CommandRunner(
+				ctx, "git", []string{"clone", "--", input.RepositoryURL, input.Destination},
+				filepath.Dir(input.Destination), s.config.OutputLimit,
+			)
+		} else {
+			err = secureHTTPSClone(ctx, input.RepositoryURL, input.Destination,
+				*input.GitCredential, s.config.OutputLimit)
+		}
+	} else if input.GitCredential == nil {
+		output, err = runGitClone(ctx, input.RepositoryURL, input.Destination)
+	} else {
+		err = secureHTTPSClone(ctx, input.RepositoryURL, input.Destination,
+			*input.GitCredential, s.config.OutputLimit)
+	}
+	defer wipeBytes(output)
+	if classified := classifyCloneError(output, err); errors.Is(classified, errRepositoryAccess) {
+		return errRepositoryAccess
+	}
+	if err != nil {
+		return fmt.Errorf("clone repository: %w", err)
+	}
+	return nil
 }
 
 func writeProtocolError(writer http.ResponseWriter, status int, code string) {

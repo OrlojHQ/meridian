@@ -466,7 +466,10 @@ func (p *Provider) Create(
 		prepareRequest.GitCredential.Password = ""
 	}
 	if err != nil {
-		return ports.ProviderResource{}, fmt.Errorf("prepare Capsule workspace: %w", mapRuntimeError(err))
+		if repositoryAccess(err) {
+			return ports.ProviderResource{}, domain.RepositoryAccessFromURL(request.RepositoryURL)
+		}
+		return ports.ProviderResource{}, fmt.Errorf("prepare Capsule workspace: %s", domain.RedactFailureText(mapRuntimeError(err).Error()))
 	}
 	// opctx covered the calls before the Ready wait and has usually expired
 	// by now (a cold pull outlasts it), so this lookup gets its own budget.

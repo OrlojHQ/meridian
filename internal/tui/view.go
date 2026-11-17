@@ -261,6 +261,9 @@ func (m Model) capsuleSessionRow(detail CapsuleDetail, width int, selected bool)
 		}
 	}
 	dot := theme.chip(detail.Capsule.State).Render("·")
+	if summary := checkSummary(detail.Capsule); summary != "" {
+		name += "  " + summary
+	}
 	row := marker + name
 	if preview != "" {
 		row += "  " + theme.muted.Render(preview)
@@ -336,6 +339,9 @@ func (m Model) newCapsuleView() string {
 func (m Model) capsuleHomeView(detail CapsuleDetail) string {
 	theme := currentTheme()
 	lines := []string{theme.title.Render(safeInline(detail.Capsule.Name))}
+	if summary := checkSummary(detail.Capsule); summary != "" {
+		lines = append(lines, theme.muted.Render(summary))
+	}
 	if failure, ok := detail.Capsule.Failure.Get(); ok && failure != "" {
 		lines = append(lines, theme.error.Render("Failure: "+safeInline(failure)))
 	}

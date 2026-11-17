@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { api, normalizeAPIError } from "../api/client";
 import { queries } from "../api/queries";
+import { checkBanner } from "../shell/checks";
 import { boundedThreadText, safeInline } from "./threadText";
 
 const MAX_PROPOSAL_TITLE = 512;
@@ -16,6 +17,7 @@ export function DeliveryDecision({
 }) {
   const queryClient = useQueryClient();
   const delivery = useQuery(queries.delivery(deliveryId));
+  const capsule = useQuery(queries.capsule(capsuleId));
   const inspection = useQuery({
     ...queries.deliveryInspection(capsuleId),
     enabled: Boolean(capsuleId) && delivery.data?.state === "proposed",
@@ -65,6 +67,7 @@ export function DeliveryDecision({
       </p>
     );
   }
+  const banner = checkBanner(capsule.data?.checks, inspection.data?.tree);
   const title = safeInline(delivery.data.pullRequestTitle ?? "").slice(0, MAX_PROPOSAL_TITLE);
   const body = boundedThreadText(delivery.data.pullRequestBody ?? "");
   const pending = approve.isPending || reject.isPending;
@@ -72,6 +75,7 @@ export function DeliveryDecision({
   return (
     <div className="delivery-decision">
       <p className="inbox-status">Proposed Delivery — review as untrusted text</p>
+      {banner && <p className={`check-banner check-banner-${capsule.data?.checks?.phase || "idle"}`} role="status">{banner}</p>}
       <dl className="facts compact">
         <div>
           <dt>Branch</dt>

@@ -21,6 +21,8 @@ import (
 	"github.com/OrlojHQ/meridian/internal/datadir"
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/gatewaytls"
+	"github.com/OrlojHQ/meridian/internal/githubauth"
+	"github.com/OrlojHQ/meridian/internal/githubci"
 	"github.com/OrlojHQ/meridian/internal/httpapi"
 	"github.com/OrlojHQ/meridian/internal/observability"
 	"github.com/OrlojHQ/meridian/internal/ports"
@@ -77,6 +79,10 @@ type Config struct {
 	// the daemon refuses to start unless the provider's verified isolation
 	// class is at least this strong.
 	RequireIsolation domain.IsolationClass
+
+	// GitHubOAuthClientID is the public client id for the GitHub device
+	// flow (ADR 0051). Empty disables that flow. It is not a secret.
+	GitHubOAuthClientID string
 }
 
 // testProvider replaces provider construction when tests call UseTestProvider.
@@ -418,6 +424,12 @@ func run(ctx context.Context, config Config) error {
 	}
 	service := app.NewService(store, clock, ids, reconciler, runtime)
 	service.ConfigureSecrets(secretKey)
+	if checks, ok := provider.(ports.CheckRuntime); ok {
+		service.ConfigureChecks(checks)
+	}
+	githubClient := githubauth.New(nil)
+	service.ConfigureGitHub(config.GitHubOAuthClientID, githubauth.HostCommands{}, githubClient)
+	reconciler.ConfigureRepositoryProbe(githubClient)
 	reconciler.ConfigureRuntimeRecovery(service.FailStoppedRuntimeRuns)
 	reconciler.OnCapsuleSettled(func(ctx context.Context, capsule domain.Capsule) {
 		_ = service.AdvanceProjectDeletion(ctx, capsule.ProjectID)
@@ -572,6 +584,9 @@ func run(ctx context.Context, config Config) error {
 	}
 	reconciler.Start(systemCtx)
 	defer reconciler.Close()
+	service.ConfigureRemoteCI(githubci.New(nil))
+	service.StartChecks(systemCtx)
+	service.StartRemoteCI(systemCtx)
 	recoveryStarted = time.Now()
 	if err := reconciler.Recover(systemCtx); err != nil {
 		metrics.StartupRecovery("capsules", "error", time.Since(recoveryStarted))

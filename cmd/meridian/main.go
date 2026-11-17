@@ -51,7 +51,7 @@ func newRootCommand() *cobra.Command {
 	command.PersistentFlags().BoolVar(&config.json, "json", false, "write stable API JSON")
 	command.AddCommand(
 		newProjectCommand(config), newCapsuleCommand(config), newRunCommand(config),
-		newSecretCommand(config), newHarnessCommand(config), newImportCommand(config),
+		newSecretCommand(config), newGitHubCommand(config), newHarnessCommand(config), newImportCommand(config),
 		newThreadCommand(config),
 		newMomentCommand(config), newTimelineCommand(config), newShardCommand(config),
 		newRewindCommand(config), newSealCommand(config), newTUICommand(config),
@@ -447,7 +447,7 @@ func newProjectCommand(config *cliConfig) *cobra.Command {
 	deleteProject.Flags().BoolVar(&deleteYes, "yes", false, "confirm deletion of the project and everything it owns")
 	deleteProject.Flags().StringVar(&deleteKey, "idempotency-key", "", "mutation replay key (generated if omitted)")
 
-	project.AddCommand(create, list, get, apply, deleteProject)
+	project.AddCommand(create, list, get, apply, deleteProject, newProjectChecksCommand(config))
 	return project
 }
 
@@ -857,7 +857,7 @@ func newCapsuleCommand(config *cliConfig) *cobra.Command {
 		},
 	}
 
-	capsule.AddCommand(create, list, get, newCapsulePromoteCommand(config))
+	capsule.AddCommand(create, list, get, newCapsulePromoteCommand(config), newCapsuleChecksCommand(config))
 	capsule.AddCommand(newLifecycleCommand(config, "pause"), newLifecycleCommand(config, "resume"))
 	capsule.AddCommand(newLifecycleCommand(config, "delete"), newLifecycleCommand(config, "retry"))
 	capsule.AddCommand(newCapsuleGitCommand(config, false), newCapsuleGitCommand(config, true))
@@ -1032,6 +1032,12 @@ func (c *cliConfig) writeCapsule(capsule client.Capsule) error {
 	}
 	if lead, ok := capsule.LeadThreadId.Get(); ok {
 		preparation += "\tlead=" + lead
+	}
+	if checks, ok := capsule.Checks.Get(); ok && checks.Configured {
+		preparation += "\tchecks=" + string(checks.Phase.Value)
+		if checks.Attempt.Set && checks.MaxAttempts.Set {
+			preparation += fmt.Sprintf("\tattempt=%d/%d", checks.Attempt.Value, checks.MaxAttempts.Value)
+		}
 	}
 	_, err := fmt.Fprintf(
 		c.stdout, "%s\t%s\tstate=%s\tdesired=%s\tversion=%d%s\n",

@@ -350,6 +350,13 @@ function ChatEntry({
       );
     case "notice":
       return <li className="chat-notice">{item.text}</li>;
+    case "meridian":
+      return (
+        <li className="chat-meridian">
+          <span className="chat-origin">Meridian</span>
+          <pre>{item.text}</pre>
+        </li>
+      );
   }
 }
 

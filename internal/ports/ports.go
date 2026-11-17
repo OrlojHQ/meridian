@@ -56,6 +56,9 @@ type Reader interface {
 	// needs the owner.
 	GetSecret(context.Context, domain.UserID, string) (domain.Secret, error)
 	ListSecrets(context.Context, domain.UserID, Page) ([]domain.Secret, bool, error)
+	// GetGitHubConnection returns the owner's GitHub login, or
+	// domain.ErrNotFound when they have not connected one (ADR 0051).
+	GetGitHubConnection(context.Context, domain.UserID) (domain.GitHubConnection, error)
 	GetCapsule(context.Context, domain.CapsuleID) (domain.Capsule, error)
 	ListCapsules(context.Context, domain.ProjectID, domain.CapsuleRole, Page) ([]domain.Capsule, bool, error)
 	CountLiveCapsules(context.Context) (int, error)
@@ -116,6 +119,24 @@ type Reader interface {
 	// non-empty user lists only that user's records; the empty user lists
 	// every record.
 	ListAuditRecords(ctx context.Context, user domain.UserID, after int64, limit int) ([]domain.AuditRecord, bool, error)
+	GetProjectChecks(context.Context, domain.ProjectID) (domain.ProjectChecks, error)
+	GetCheckControl(context.Context, domain.CapsuleID) (domain.CheckControl, error)
+	GetCheckRun(context.Context, domain.CheckRunID) (domain.CheckRun, error)
+	LatestCheckRun(context.Context, domain.CapsuleID) (domain.CheckRun, error)
+	ActiveCheckRun(context.Context, domain.CapsuleID) (domain.CheckRun, error)
+	ListCheckRuns(context.Context, domain.CapsuleID, Page) ([]domain.CheckRun, bool, error)
+	ListCheckResults(context.Context, domain.CheckRunID) ([]domain.CheckResult, error)
+	CountFailedCheckRuns(context.Context, domain.CapsuleID, int64) (int, error)
+	ListDueCheckRuns(context.Context, time.Time, int) ([]domain.CheckRun, error)
+	ListRunningCheckRuns(context.Context) ([]domain.CheckRun, error)
+	ListReadyCheckedCapsules(context.Context, int) ([]domain.CapsuleID, error)
+	CapsuleHasCheckGate(context.Context, domain.CapsuleID) (bool, error)
+	LatestCheckRuns(context.Context, []domain.CapsuleID) (map[domain.CapsuleID]domain.CheckRun, error)
+	LatestRemoteCI(context.Context, domain.CapsuleID) (domain.RemoteCIWatch, error)
+	GetRemoteCI(context.Context, domain.RemoteCIWatchID) (domain.RemoteCIWatch, error)
+	ListRemoteCIChecks(context.Context, domain.RemoteCIWatchID) ([]domain.RemoteCICheck, error)
+	ListDueRemoteCI(context.Context, time.Time, int) ([]domain.RemoteCIWatch, error)
+	CountRemoteCIFailures(context.Context, domain.CapsuleID, int64) (int, error)
 }
 
 type Transaction interface {
@@ -158,6 +179,11 @@ type Transaction interface {
 	InsertSecret(context.Context, domain.Secret) error
 	UpdateSecret(context.Context, domain.Secret, domain.ResourceVersion) error
 	DeleteSecret(context.Context, domain.UserID, string, domain.ResourceVersion) error
+	InsertGitHubConnection(context.Context, domain.GitHubConnection) error
+	UpdateGitHubConnection(context.Context, domain.GitHubConnection, domain.ResourceVersion) error
+	// DeleteGitHubConnection removes the owner's connection and its envelope.
+	// A missing row is domain.ErrNotFound.
+	DeleteGitHubConnection(context.Context, domain.UserID) error
 	InsertCapsule(context.Context, domain.Capsule) error
 	UpdateCapsule(context.Context, domain.Capsule, domain.ResourceVersion) error
 	TouchCapsuleActivity(context.Context, domain.CapsuleID, time.Time) error
@@ -224,6 +250,18 @@ type Transaction interface {
 	RevokePersonalAccessToken(ctx context.Context, id string, at time.Time) error
 	// PruneAuditRecords deletes records older than before, for retention.
 	PruneAuditRecords(ctx context.Context, before time.Time) (int, error)
+	PutProjectChecks(context.Context, domain.ProjectChecks) error
+	PutCheckControl(context.Context, domain.CheckControl) error
+	InsertCheckRun(context.Context, domain.CheckRun) error
+	UpdateCheckRun(context.Context, domain.CheckRun, domain.ResourceVersion) error
+	ReplaceCheckResults(context.Context, domain.CheckRunID, []domain.CheckResult) error
+	CancelQueuedCheckRuns(context.Context, domain.CapsuleID, time.Time) error
+	InsertDeliveryCheckGate(context.Context, domain.DeliveryID, domain.CapsuleID, time.Time) error
+	DeleteDeliveryCheckGates(context.Context, domain.CapsuleID) error
+	InsertRemoteCI(context.Context, domain.RemoteCIWatch) error
+	UpdateRemoteCI(context.Context, domain.RemoteCIWatch, domain.ResourceVersion) error
+	ReplaceRemoteCIChecks(context.Context, domain.RemoteCIWatchID, []domain.RemoteCICheck) error
+	SupersedeRemoteCI(context.Context, domain.CapsuleID, string) error
 }
 
 type Store interface {
@@ -659,4 +697,56 @@ type WorkspacePreparer interface {
 type PreparationIdentity struct {
 	SourceRevision string
 	Platform       string
+}
+
+// CheckCommand is one argv the Capsule supervisor runs. It is never a shell
+// line. Timeout is the per-command limit.
+type CheckCommand struct {
+	Name    string
+	Argv    []string
+	Timeout time.Duration
+}
+
+// CheckRequest is one suite. OutputLimit is the retained tail, in bytes.
+type CheckRequest struct {
+	Commands    []CheckCommand
+	OutputLimit int64
+}
+
+// CheckCommandResult is one command's outcome. Output is the redacted tail
+// and is untrusted repository text.
+type CheckCommandResult struct {
+	Name      string
+	Argv      []string
+	ExitCode  int
+	Duration  time.Duration
+	TimedOut  bool
+	Truncated bool
+	Output    []byte
+}
+
+// CheckExecution is what the supervisor observed, including the worktree
+// identity before and after the commands. Stale means the tree changed
+// while the commands ran.
+type CheckExecution struct {
+	HeadBefore string
+	TreeBefore string
+	HeadAfter  string
+	TreeAfter  string
+	Stale      bool
+	Results    []CheckCommandResult
+}
+
+// CheckSuggestion is a repository file the operator may accept. It is not
+// applied by reading it.
+type CheckSuggestion struct {
+	Checks  []CheckCommand
+	Ignored bool
+}
+
+// CheckRuntime runs Project checks inside an existing Capsule. It grants
+// nothing the harness does not already have.
+type CheckRuntime interface {
+	RunChecks(context.Context, string, CheckRequest) (CheckExecution, error)
+	SuggestChecks(context.Context, string) (CheckSuggestion, error)
 }

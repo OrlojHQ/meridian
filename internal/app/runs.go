@@ -275,6 +275,7 @@ func (s *Service) CancelRun(
 	if err != nil || replayed {
 		return result, err
 	}
+	_ = s.InterruptChecks(ctx, capsule.ID)
 	started := time.Now()
 	runtimeRun, err := s.runtime.CancelRun(ctx, capsule.ProviderResourceID, id)
 	if s.observer != nil {

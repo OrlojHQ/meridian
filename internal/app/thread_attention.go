@@ -113,6 +113,9 @@ func (s *Service) ThreadAttention(ctx context.Context, thread domain.Thread) (Th
 		if message.Role == domain.ThreadRoleUser && message.Kind == domain.ThreadMessagePrompt {
 			working = true
 		}
+		// A rework prompt is a system status with text and no adapter event.
+		// It means Meridian asked the agent to continue, so the turn is working
+		// until the agent ends it.
 		plaintext, err := transcripts.DecryptMessage(dek, message)
 		if err != nil {
 			return ThreadAttention{}, err
@@ -124,6 +127,10 @@ func (s *Service) ThreadAttention(ctx context.Context, thread domain.Thread) (Th
 				return ThreadAttention{}, domain.ErrTranscriptCorrupt
 			}
 			if payload.Event == nil {
+				if message.Role == domain.ThreadRoleSystem && message.Kind == domain.ThreadMessageStatus &&
+					payload.Content != "" {
+					working = true
+				}
 				continue
 			}
 			switch payload.Event.Type {

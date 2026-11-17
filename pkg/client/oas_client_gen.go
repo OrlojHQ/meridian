@@ -72,6 +72,12 @@ type Invoker interface {
 	//
 	// POST /auth/device
 	BeginDeviceLogin(ctx context.Context) (BeginDeviceLoginRes, error)
+	// BeginGitHubDevice invokes beginGitHubDevice operation.
+	//
+	// Start the GitHub device authorization flow.
+	//
+	// POST /github/connection/device
+	BeginGitHubDevice(ctx context.Context, request *BeginGitHubDeviceRequest) (BeginGitHubDeviceRes, error)
 	// BeginMemberIdentityRebind invokes beginMemberIdentityRebind operation.
 	//
 	// Requires the installation bearer in team mode, and userId must be the bootstrap owner
@@ -83,6 +89,18 @@ type Invoker interface {
 	//
 	// POST /users/{userId}/identity-rebind
 	BeginMemberIdentityRebind(ctx context.Context, params BeginMemberIdentityRebindParams) (BeginMemberIdentityRebindRes, error)
+	// CancelCheckRun invokes cancelCheckRun operation.
+	//
+	// Cancel a queued or running check run.
+	//
+	// POST /check-runs/{checkRunId}/cancel
+	CancelCheckRun(ctx context.Context, request *LifecycleMutationRequest, params CancelCheckRunParams) (*CheckRun, error)
+	// CancelGitHubDevice invokes cancelGitHubDevice operation.
+	//
+	// Cancel the signed-in user's GitHub device authorization.
+	//
+	// DELETE /github/connection/device
+	CancelGitHubDevice(ctx context.Context) error
 	// CancelRun invokes cancelRun operation.
 	//
 	// Request Run cancellation.
@@ -101,6 +119,13 @@ type Invoker interface {
 	//
 	// POST /capsules/{capsuleId}/moments
 	CaptureMoment(ctx context.Context, request *CaptureMomentRequest, params CaptureMomentParams) (CaptureMomentRes, error)
+	// CheckGitHubConnection invokes checkGitHubConnection operation.
+	//
+	// Calls GitHub as the station. A rejected login is marked needs_reconnect. The token is never
+	// returned.
+	//
+	// POST /github/connection/check
+	CheckGitHubConnection(ctx context.Context) (*GitHubConnection, error)
 	// ClaimInstallation invokes claimInstallation operation.
 	//
 	// Needs both the installation token in the Authorization header and the claim cookie from an OIDC
@@ -144,6 +169,13 @@ type Invoker interface {
 	//
 	// GET /auth/oidc/callback
 	CompleteOidcSignIn(ctx context.Context, params CompleteOidcSignInParams) (CompleteOidcSignInRes, error)
+	// ConnectGitHubToken invokes connectGitHubToken operation.
+	//
+	// The CLI uses this after the person confirms, including when it read gh on their own computer. The
+	// token is verified, stored encrypted, and not returned.
+	//
+	// POST /github/connection/token
+	ConnectGitHubToken(ctx context.Context, request *ConnectGitHubTokenRequest, params ConnectGitHubTokenParams) (ConnectGitHubTokenRes, error)
 	// CreateBrowserSession invokes createBrowserSession operation.
 	//
 	// The installation token is accepted only in the Authorization header and is never returned. The
@@ -158,6 +190,12 @@ type Invoker interface {
 	//
 	// POST /projects/{projectId}/capsules
 	CreateCapsule(ctx context.Context, request *CreateCapsuleRequest, params CreateCapsuleParams) (CreateCapsuleRes, error)
+	// CreateCapsuleCheckRun invokes createCapsuleCheckRun operation.
+	//
+	// Run the Project's checks now.
+	//
+	// POST /capsules/{capsuleId}/check-runs
+	CreateCapsuleCheckRun(ctx context.Context, request *CheckRunRequest, params CreateCapsuleCheckRunParams) (*CheckRun, error)
 	// CreateCapsuleDelivery invokes createCapsuleDelivery operation.
 	//
 	// Approval binds the exact Capsule resource version, HEAD, and worktree tree. Only one exact
@@ -274,6 +312,12 @@ type Invoker interface {
 	//
 	// POST /users/{userId}/disable
 	DisableMember(ctx context.Context, params DisableMemberParams) (DisableMemberRes, error)
+	// DisconnectGitHub invokes disconnectGitHub operation.
+	//
+	// Delete the signed-in user's GitHub connection.
+	//
+	// DELETE /github/connection
+	DisconnectGitHub(ctx context.Context, request *DisconnectGitHubRequest, params DisconnectGitHubParams) (DisconnectGitHubRes, error)
 	// EnableMember invokes enableMember operation.
 	//
 	// Re-enable a member; their old sessions and tokens stay revoked.
@@ -336,12 +380,25 @@ type Invoker interface {
 	//
 	// GET /capsules/{capsuleId}/profile-diagnostic
 	GetCapsuleProfileDiagnostic(ctx context.Context, params GetCapsuleProfileDiagnosticParams) (GetCapsuleProfileDiagnosticRes, error)
+	// GetCapsuleRemoteCI invokes getCapsuleRemoteCI operation.
+	//
+	// Names, conclusions, links, and a short redacted tail. The response has no token. Absent when this
+	// Capsule has no Meridian pull request.
+	//
+	// GET /capsules/{capsuleId}/remote-ci
+	GetCapsuleRemoteCI(ctx context.Context, params GetCapsuleRemoteCIParams) (GetCapsuleRemoteCIRes, error)
 	// GetChatGPTSignIn invokes getChatGPTSignIn operation.
 	//
 	// GetChatGPTSignIn.
 	//
 	// GET /provider-connections/chatgpt/sign-ins/{signInId}
 	GetChatGPTSignIn(ctx context.Context, params GetChatGPTSignInParams) (*ChatGPTSignIn, error)
+	// GetCheckRun invokes getCheckRun operation.
+	//
+	// Read one check run, including redacted output tails.
+	//
+	// GET /check-runs/{checkRunId}
+	GetCheckRun(ctx context.Context, params GetCheckRunParams) (*CheckRun, error)
 	// GetClaudeLogin invokes getClaudeLogin operation.
 	//
 	// Sign-in status. Never includes a token or an authorization code.
@@ -366,6 +423,13 @@ type Invoker interface {
 	//
 	// GET /deliveries/{deliveryId}
 	GetDelivery(ctx context.Context, params GetDeliveryParams) (GetDeliveryRes, error)
+	// GetGitHubConnection invokes getGitHubConnection operation.
+	//
+	// Returns whether this user has connected GitHub, and whether the device flow can start. The token is
+	// never returned. Responses are not cached.
+	//
+	// GET /github/connection
+	GetGitHubConnection(ctx context.Context) (*GitHubConnection, error)
 	// GetHarnessSetupContents invokes getHarnessSetupContents operation.
 	//
 	// Read saved configuration for editing.
@@ -378,6 +442,13 @@ type Invoker interface {
 	//
 	// GET /healthz
 	GetHealth(ctx context.Context) (GetHealthRes, error)
+	// GetHostGitHubLogin invokes getHostGitHubLogin operation.
+	//
+	// Available only for a loopback request on a single-user Station. Does not read or return the token.
+	// Team mode and remote requests report available false.
+	//
+	// GET /github/connection/host
+	GetHostGitHubLogin(ctx context.Context) (*HostGitHubLogin, error)
 	// GetMoment invokes getMoment operation.
 	//
 	// Get an immutable Moment.
@@ -398,6 +469,12 @@ type Invoker interface {
 	//
 	// GET /projects/{projectId}
 	GetProject(ctx context.Context, params GetProjectParams) (GetProjectRes, error)
+	// GetProjectChecks invokes getProjectChecks operation.
+	//
+	// Read the Project's required checks.
+	//
+	// GET /projects/{projectId}/checks
+	GetProjectChecks(ctx context.Context, params GetProjectChecksParams) (*ProjectChecks, error)
 	// GetProjectEnvironment invokes getProjectEnvironment operation.
 	//
 	// Inspect project preparation settings and recent progress.
@@ -486,6 +563,12 @@ type Invoker interface {
 	//
 	// GET /audit-records
 	ListAuditRecords(ctx context.Context, params ListAuditRecordsParams) (ListAuditRecordsRes, error)
+	// ListCapsuleCheckRuns invokes listCapsuleCheckRuns operation.
+	//
+	// List check runs for a Capsule.
+	//
+	// GET /capsules/{capsuleId}/check-runs
+	ListCapsuleCheckRuns(ctx context.Context, params ListCapsuleCheckRunsParams) (*CheckRunPage, error)
 	// ListCapsuleDeliveries invokes listCapsuleDeliveries operation.
 	//
 	// List durable Delivery resources.
@@ -645,6 +728,12 @@ type Invoker interface {
 	//
 	// POST /auth/device/token
 	PollDeviceLogin(ctx context.Context, request *PollDeviceLoginReq) (PollDeviceLoginRes, error)
+	// PollGitHubDevice invokes pollGitHubDevice operation.
+	//
+	// Pick up a GitHub device authorization.
+	//
+	// GET /github/connection/device
+	PollGitHubDevice(ctx context.Context) (PollGitHubDeviceRes, error)
 	// PreviewHarnessSetup invokes previewHarnessSetup operation.
 	//
 	// Original file content is processed in memory only. Returns sanitized portable files and exclusions.
@@ -777,12 +866,24 @@ type Invoker interface {
 	//
 	// POST /capsules/{capsuleId}/seal
 	SealCapsule(ctx context.Context, request *LifecycleMutationRequest, params SealCapsuleParams) (SealCapsuleRes, error)
+	// SearchGitHubRepos invokes searchGitHubRepos operation.
+	//
+	// Includes private repositories the login can access. No token is returned.
+	//
+	// GET /github/repos
+	SearchGitHubRepos(ctx context.Context, params SearchGitHubReposParams) (SearchGitHubReposRes, error)
 	// SendThreadMessage invokes sendThreadMessage operation.
 	//
 	// The encrypted message and idempotency resource references commit before the adapter side effect.
 	//
 	// POST /threads/{threadId}/messages
 	SendThreadMessage(ctx context.Context, request *SendThreadMessageRequest, params SendThreadMessageParams) (SendThreadMessageRes, error)
+	// SetCapsuleCheckAutoRework invokes setCapsuleCheckAutoRework operation.
+	//
+	// Stop or resume automatic rework for one Capsule.
+	//
+	// POST /capsules/{capsuleId}/checks/auto-rework
+	SetCapsuleCheckAutoRework(ctx context.Context, request *CheckAutoReworkRequest, params SetCapsuleCheckAutoReworkParams) (*CheckAutoReworkRequest, error)
 	// SetMemberRole invokes setMemberRole operation.
 	//
 	// Grant or remove the admin role.
@@ -859,6 +960,13 @@ type Invoker interface {
 	//
 	// GET /threads/{threadId}/blocks/stream
 	StreamThreadBlocks(ctx context.Context, params StreamThreadBlocksParams) (StreamThreadBlocksRes, error)
+	// SuggestProjectChecks invokes suggestProjectChecks operation.
+	//
+	// When a Ready Capsule has .meridian/checks.yaml, return those commands as a suggestion. Nothing is
+	// saved. A missing or unusable file returns an empty list.
+	//
+	// GET /projects/{projectId}/checks/suggestion
+	SuggestProjectChecks(ctx context.Context, params SuggestProjectChecksParams) (*CheckSuggestion, error)
 	// TransferMemberObjects invokes transferMemberObjects operation.
 	//
 	// The member must be disabled. Their Projects with everything under them, their secrets (re-wrapped
@@ -892,6 +1000,12 @@ type Invoker interface {
 	//
 	// PUT /profile
 	UpdateProfile(ctx context.Context, request *UpdateProfileRequest, params UpdateProfileParams) (UpdateProfileRes, error)
+	// UpdateProjectChecks invokes updateProjectChecks operation.
+	//
+	// Replace the Project's required checks.
+	//
+	// PUT /projects/{projectId}/checks
+	UpdateProjectChecks(ctx context.Context, request *ProjectChecksUpdate, params UpdateProjectChecksParams) (*ProjectChecks, error)
 	// UpdateProjectEnvironment invokes updateProjectEnvironment operation.
 	//
 	// Configure preparation or rebuild on next launch.
@@ -904,6 +1018,13 @@ type Invoker interface {
 	//
 	// PUT /provider-connections/{connectionId}
 	UpdateProviderConnection(ctx context.Context, request *ProviderConnectionRequest, params UpdateProviderConnectionParams) (*ProviderConnection, error)
+	// UseHostGitHubLogin invokes useHostGitHubLogin operation.
+	//
+	// Reads gh auth token only for this request, and only on a loopback single-user Station. The token is
+	// stored encrypted and is not returned.
+	//
+	// POST /github/connection/host
+	UseHostGitHubLogin(ctx context.Context, request *UseHostGitHubRequest, params UseHostGitHubLoginParams) (UseHostGitHubLoginRes, error)
 }
 
 // Client implements OAS client.
@@ -1714,6 +1835,122 @@ func (c *Client) sendBeginDeviceLogin(ctx context.Context) (res BeginDeviceLogin
 	return result, nil
 }
 
+// BeginGitHubDevice invokes beginGitHubDevice operation.
+//
+// Start the GitHub device authorization flow.
+//
+// POST /github/connection/device
+func (c *Client) BeginGitHubDevice(ctx context.Context, request *BeginGitHubDeviceRequest) (BeginGitHubDeviceRes, error) {
+	res, err := c.sendBeginGitHubDevice(ctx, request)
+	return res, err
+}
+
+func (c *Client) sendBeginGitHubDevice(ctx context.Context, request *BeginGitHubDeviceRequest) (res BeginGitHubDeviceRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("beginGitHubDevice"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/github/connection/device"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, BeginGitHubDeviceOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/github/connection/device"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeBeginGitHubDeviceRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, BeginGitHubDeviceOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeBeginGitHubDeviceResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // BeginMemberIdentityRebind invokes beginMemberIdentityRebind operation.
 //
 // Requires the installation bearer in team mode, and userId must be the bootstrap owner
@@ -1844,6 +2081,254 @@ func (c *Client) sendBeginMemberIdentityRebind(ctx context.Context, params Begin
 
 	stage = "DecodeResponse"
 	result, err := decodeBeginMemberIdentityRebindResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// CancelCheckRun invokes cancelCheckRun operation.
+//
+// Cancel a queued or running check run.
+//
+// POST /check-runs/{checkRunId}/cancel
+func (c *Client) CancelCheckRun(ctx context.Context, request *LifecycleMutationRequest, params CancelCheckRunParams) (*CheckRun, error) {
+	res, err := c.sendCancelCheckRun(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendCancelCheckRun(ctx context.Context, request *LifecycleMutationRequest, params CancelCheckRunParams) (res *CheckRun, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("cancelCheckRun"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/check-runs/{checkRunId}/cancel"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, CancelCheckRunOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/check-runs/"
+	{
+		// Encode "checkRunId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "checkRunId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.CheckRunId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/cancel"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeCancelCheckRunRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, CancelCheckRunOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeCancelCheckRunResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// CancelGitHubDevice invokes cancelGitHubDevice operation.
+//
+// Cancel the signed-in user's GitHub device authorization.
+//
+// DELETE /github/connection/device
+func (c *Client) CancelGitHubDevice(ctx context.Context) error {
+	_, err := c.sendCancelGitHubDevice(ctx)
+	return err
+}
+
+func (c *Client) sendCancelGitHubDevice(ctx context.Context) (res *CancelGitHubDeviceNoContent, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("cancelGitHubDevice"),
+		semconv.HTTPRequestMethodKey.String("DELETE"),
+		semconv.URLTemplateKey.String("/github/connection/device"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, CancelGitHubDeviceOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/github/connection/device"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "DELETE", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, CancelGitHubDeviceOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeCancelGitHubDeviceResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -2291,6 +2776,120 @@ func (c *Client) sendCaptureMoment(ctx context.Context, request *CaptureMomentRe
 
 	stage = "DecodeResponse"
 	result, err := decodeCaptureMomentResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// CheckGitHubConnection invokes checkGitHubConnection operation.
+//
+// Calls GitHub as the station. A rejected login is marked needs_reconnect. The token is never
+// returned.
+//
+// POST /github/connection/check
+func (c *Client) CheckGitHubConnection(ctx context.Context) (*GitHubConnection, error) {
+	res, err := c.sendCheckGitHubConnection(ctx)
+	return res, err
+}
+
+func (c *Client) sendCheckGitHubConnection(ctx context.Context) (res *GitHubConnection, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("checkGitHubConnection"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/github/connection/check"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, CheckGitHubConnectionOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/github/connection/check"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, CheckGitHubConnectionOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeCheckGitHubConnectionResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -2946,6 +3545,137 @@ func (c *Client) sendCompleteOidcSignIn(ctx context.Context, params CompleteOidc
 	return result, nil
 }
 
+// ConnectGitHubToken invokes connectGitHubToken operation.
+//
+// The CLI uses this after the person confirms, including when it read gh on their own computer. The
+// token is verified, stored encrypted, and not returned.
+//
+// POST /github/connection/token
+func (c *Client) ConnectGitHubToken(ctx context.Context, request *ConnectGitHubTokenRequest, params ConnectGitHubTokenParams) (ConnectGitHubTokenRes, error) {
+	res, err := c.sendConnectGitHubToken(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendConnectGitHubToken(ctx context.Context, request *ConnectGitHubTokenRequest, params ConnectGitHubTokenParams) (res ConnectGitHubTokenRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("connectGitHubToken"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/github/connection/token"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, ConnectGitHubTokenOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/github/connection/token"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeConnectGitHubTokenRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "EncodeHeaderParams"
+	h := uri.NewHeaderEncoder(r.Header)
+	{
+		cfg := uri.HeaderParameterEncodingConfig{
+			Name:    "Idempotency-Key",
+			Explode: false,
+		}
+		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.IdempotencyKey))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode header")
+		}
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, ConnectGitHubTokenOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeConnectGitHubTokenResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // CreateBrowserSession invokes createBrowserSession operation.
 //
 // The installation token is accepted only in the Authorization header and is never returned. The
@@ -3203,6 +3933,155 @@ func (c *Client) sendCreateCapsule(ctx context.Context, request *CreateCapsuleRe
 
 	stage = "DecodeResponse"
 	result, err := decodeCreateCapsuleResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// CreateCapsuleCheckRun invokes createCapsuleCheckRun operation.
+//
+// Run the Project's checks now.
+//
+// POST /capsules/{capsuleId}/check-runs
+func (c *Client) CreateCapsuleCheckRun(ctx context.Context, request *CheckRunRequest, params CreateCapsuleCheckRunParams) (*CheckRun, error) {
+	res, err := c.sendCreateCapsuleCheckRun(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendCreateCapsuleCheckRun(ctx context.Context, request *CheckRunRequest, params CreateCapsuleCheckRunParams) (res *CheckRun, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("createCapsuleCheckRun"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/capsules/{capsuleId}/check-runs"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, CreateCapsuleCheckRunOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/capsules/"
+	{
+		// Encode "capsuleId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "capsuleId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.CapsuleId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/check-runs"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeCreateCapsuleCheckRunRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "EncodeHeaderParams"
+	h := uri.NewHeaderEncoder(r.Header)
+	{
+		cfg := uri.HeaderParameterEncodingConfig{
+			Name:    "Idempotency-Key",
+			Explode: false,
+		}
+		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.IdempotencyKey))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode header")
+		}
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, CreateCapsuleCheckRunOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeCreateCapsuleCheckRunResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -5515,6 +6394,136 @@ func (c *Client) sendDisableMember(ctx context.Context, params DisableMemberPara
 	return result, nil
 }
 
+// DisconnectGitHub invokes disconnectGitHub operation.
+//
+// Delete the signed-in user's GitHub connection.
+//
+// DELETE /github/connection
+func (c *Client) DisconnectGitHub(ctx context.Context, request *DisconnectGitHubRequest, params DisconnectGitHubParams) (DisconnectGitHubRes, error) {
+	res, err := c.sendDisconnectGitHub(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendDisconnectGitHub(ctx context.Context, request *DisconnectGitHubRequest, params DisconnectGitHubParams) (res DisconnectGitHubRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("disconnectGitHub"),
+		semconv.HTTPRequestMethodKey.String("DELETE"),
+		semconv.URLTemplateKey.String("/github/connection"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, DisconnectGitHubOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/github/connection"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "DELETE", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeDisconnectGitHubRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "EncodeHeaderParams"
+	h := uri.NewHeaderEncoder(r.Header)
+	{
+		cfg := uri.HeaderParameterEncodingConfig{
+			Name:    "Idempotency-Key",
+			Explode: false,
+		}
+		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.IdempotencyKey))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode header")
+		}
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, DisconnectGitHubOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeDisconnectGitHubResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // EnableMember invokes enableMember operation.
 //
 // Re-enable a member; their old sessions and tokens stay revoked.
@@ -6658,6 +7667,139 @@ func (c *Client) sendGetCapsuleProfileDiagnostic(ctx context.Context, params Get
 	return result, nil
 }
 
+// GetCapsuleRemoteCI invokes getCapsuleRemoteCI operation.
+//
+// Names, conclusions, links, and a short redacted tail. The response has no token. Absent when this
+// Capsule has no Meridian pull request.
+//
+// GET /capsules/{capsuleId}/remote-ci
+func (c *Client) GetCapsuleRemoteCI(ctx context.Context, params GetCapsuleRemoteCIParams) (GetCapsuleRemoteCIRes, error) {
+	res, err := c.sendGetCapsuleRemoteCI(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendGetCapsuleRemoteCI(ctx context.Context, params GetCapsuleRemoteCIParams) (res GetCapsuleRemoteCIRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getCapsuleRemoteCI"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/capsules/{capsuleId}/remote-ci"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetCapsuleRemoteCIOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/capsules/"
+	{
+		// Encode "capsuleId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "capsuleId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.CapsuleId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/remote-ci"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, GetCapsuleRemoteCIOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeGetCapsuleRemoteCIResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // GetChatGPTSignIn invokes getChatGPTSignIn operation.
 //
 // GetChatGPTSignIn.
@@ -6782,6 +7924,137 @@ func (c *Client) sendGetChatGPTSignIn(ctx context.Context, params GetChatGPTSign
 
 	stage = "DecodeResponse"
 	result, err := decodeGetChatGPTSignInResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// GetCheckRun invokes getCheckRun operation.
+//
+// Read one check run, including redacted output tails.
+//
+// GET /check-runs/{checkRunId}
+func (c *Client) GetCheckRun(ctx context.Context, params GetCheckRunParams) (*CheckRun, error) {
+	res, err := c.sendGetCheckRun(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendGetCheckRun(ctx context.Context, params GetCheckRunParams) (res *CheckRun, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getCheckRun"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/check-runs/{checkRunId}"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetCheckRunOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [2]string
+	pathParts[0] = "/check-runs/"
+	{
+		// Encode "checkRunId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "checkRunId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.CheckRunId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, GetCheckRunOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeGetCheckRunResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -7295,6 +8568,120 @@ func (c *Client) sendGetDelivery(ctx context.Context, params GetDeliveryParams) 
 	return result, nil
 }
 
+// GetGitHubConnection invokes getGitHubConnection operation.
+//
+// Returns whether this user has connected GitHub, and whether the device flow can start. The token is
+// never returned. Responses are not cached.
+//
+// GET /github/connection
+func (c *Client) GetGitHubConnection(ctx context.Context) (*GitHubConnection, error) {
+	res, err := c.sendGetGitHubConnection(ctx)
+	return res, err
+}
+
+func (c *Client) sendGetGitHubConnection(ctx context.Context) (res *GitHubConnection, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getGitHubConnection"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/github/connection"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetGitHubConnectionOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/github/connection"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, GetGitHubConnectionOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeGetGitHubConnectionResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // GetHarnessSetupContents invokes getHarnessSetupContents operation.
 //
 // Read saved configuration for editing.
@@ -7500,6 +8887,120 @@ func (c *Client) sendGetHealth(ctx context.Context) (res GetHealthRes, err error
 
 	stage = "DecodeResponse"
 	result, err := decodeGetHealthResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// GetHostGitHubLogin invokes getHostGitHubLogin operation.
+//
+// Available only for a loopback request on a single-user Station. Does not read or return the token.
+// Team mode and remote requests report available false.
+//
+// GET /github/connection/host
+func (c *Client) GetHostGitHubLogin(ctx context.Context) (*HostGitHubLogin, error) {
+	res, err := c.sendGetHostGitHubLogin(ctx)
+	return res, err
+}
+
+func (c *Client) sendGetHostGitHubLogin(ctx context.Context) (res *HostGitHubLogin, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getHostGitHubLogin"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/github/connection/host"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetHostGitHubLoginOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/github/connection/host"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, GetHostGitHubLoginOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeGetHostGitHubLoginResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -7877,6 +9378,138 @@ func (c *Client) sendGetProject(ctx context.Context, params GetProjectParams) (r
 
 	stage = "DecodeResponse"
 	result, err := decodeGetProjectResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// GetProjectChecks invokes getProjectChecks operation.
+//
+// Read the Project's required checks.
+//
+// GET /projects/{projectId}/checks
+func (c *Client) GetProjectChecks(ctx context.Context, params GetProjectChecksParams) (*ProjectChecks, error) {
+	res, err := c.sendGetProjectChecks(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendGetProjectChecks(ctx context.Context, params GetProjectChecksParams) (res *ProjectChecks, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getProjectChecks"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/projects/{projectId}/checks"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetProjectChecksOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/projects/"
+	{
+		// Encode "projectId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "projectId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ProjectId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/checks"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, GetProjectChecksOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeGetProjectChecksResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -9747,6 +11380,176 @@ func (c *Client) sendListAuditRecords(ctx context.Context, params ListAuditRecor
 
 	stage = "DecodeResponse"
 	result, err := decodeListAuditRecordsResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// ListCapsuleCheckRuns invokes listCapsuleCheckRuns operation.
+//
+// List check runs for a Capsule.
+//
+// GET /capsules/{capsuleId}/check-runs
+func (c *Client) ListCapsuleCheckRuns(ctx context.Context, params ListCapsuleCheckRunsParams) (*CheckRunPage, error) {
+	res, err := c.sendListCapsuleCheckRuns(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendListCapsuleCheckRuns(ctx context.Context, params ListCapsuleCheckRunsParams) (res *CheckRunPage, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("listCapsuleCheckRuns"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/capsules/{capsuleId}/check-runs"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, ListCapsuleCheckRunsOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/capsules/"
+	{
+		// Encode "capsuleId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "capsuleId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.CapsuleId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/check-runs"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeQueryParams"
+	q := uri.NewQueryEncoder()
+	{
+		// Encode "cursor" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "cursor",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.Cursor.Get(); ok {
+				return e.EncodeValue(conv.StringToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	{
+		// Encode "limit" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "limit",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.Limit.Get(); ok {
+				return e.EncodeValue(conv.IntToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	u.RawQuery = q.Values().Encode()
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, ListCapsuleCheckRunsOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeListCapsuleCheckRunsResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -13316,6 +15119,119 @@ func (c *Client) sendPollDeviceLogin(ctx context.Context, request *PollDeviceLog
 	return result, nil
 }
 
+// PollGitHubDevice invokes pollGitHubDevice operation.
+//
+// Pick up a GitHub device authorization.
+//
+// GET /github/connection/device
+func (c *Client) PollGitHubDevice(ctx context.Context) (PollGitHubDeviceRes, error) {
+	res, err := c.sendPollGitHubDevice(ctx)
+	return res, err
+}
+
+func (c *Client) sendPollGitHubDevice(ctx context.Context) (res PollGitHubDeviceRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("pollGitHubDevice"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/github/connection/device"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, PollGitHubDeviceOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/github/connection/device"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, PollGitHubDeviceOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodePollGitHubDeviceResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // PreviewHarnessSetup invokes previewHarnessSetup operation.
 //
 // Original file content is processed in memory only. Returns sanitized portable files and exclusions.
@@ -15874,6 +17790,140 @@ func (c *Client) sendSealCapsule(ctx context.Context, request *LifecycleMutation
 	return result, nil
 }
 
+// SearchGitHubRepos invokes searchGitHubRepos operation.
+//
+// Includes private repositories the login can access. No token is returned.
+//
+// GET /github/repos
+func (c *Client) SearchGitHubRepos(ctx context.Context, params SearchGitHubReposParams) (SearchGitHubReposRes, error) {
+	res, err := c.sendSearchGitHubRepos(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendSearchGitHubRepos(ctx context.Context, params SearchGitHubReposParams) (res SearchGitHubReposRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("searchGitHubRepos"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/github/repos"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, SearchGitHubReposOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/github/repos"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeQueryParams"
+	q := uri.NewQueryEncoder()
+	{
+		// Encode "q" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "q",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.Q.Get(); ok {
+				return e.EncodeValue(conv.StringToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	u.RawQuery = q.Values().Encode()
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, SearchGitHubReposOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeSearchGitHubReposResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // SendThreadMessage invokes sendThreadMessage operation.
 //
 // The encrypted message and idempotency resource references commit before the adapter side effect.
@@ -16016,6 +18066,141 @@ func (c *Client) sendSendThreadMessage(ctx context.Context, request *SendThreadM
 
 	stage = "DecodeResponse"
 	result, err := decodeSendThreadMessageResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// SetCapsuleCheckAutoRework invokes setCapsuleCheckAutoRework operation.
+//
+// Stop or resume automatic rework for one Capsule.
+//
+// POST /capsules/{capsuleId}/checks/auto-rework
+func (c *Client) SetCapsuleCheckAutoRework(ctx context.Context, request *CheckAutoReworkRequest, params SetCapsuleCheckAutoReworkParams) (*CheckAutoReworkRequest, error) {
+	res, err := c.sendSetCapsuleCheckAutoRework(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendSetCapsuleCheckAutoRework(ctx context.Context, request *CheckAutoReworkRequest, params SetCapsuleCheckAutoReworkParams) (res *CheckAutoReworkRequest, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("setCapsuleCheckAutoRework"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/capsules/{capsuleId}/checks/auto-rework"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, SetCapsuleCheckAutoReworkOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/capsules/"
+	{
+		// Encode "capsuleId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "capsuleId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.CapsuleId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/checks/auto-rework"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeSetCapsuleCheckAutoReworkRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, SetCapsuleCheckAutoReworkOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeSetCapsuleCheckAutoReworkResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -17622,6 +19807,160 @@ func (c *Client) sendStreamThreadBlocks(ctx context.Context, params StreamThread
 	return result, nil
 }
 
+// SuggestProjectChecks invokes suggestProjectChecks operation.
+//
+// When a Ready Capsule has .meridian/checks.yaml, return those commands as a suggestion. Nothing is
+// saved. A missing or unusable file returns an empty list.
+//
+// GET /projects/{projectId}/checks/suggestion
+func (c *Client) SuggestProjectChecks(ctx context.Context, params SuggestProjectChecksParams) (*CheckSuggestion, error) {
+	res, err := c.sendSuggestProjectChecks(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendSuggestProjectChecks(ctx context.Context, params SuggestProjectChecksParams) (res *CheckSuggestion, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("suggestProjectChecks"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/projects/{projectId}/checks/suggestion"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, SuggestProjectChecksOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/projects/"
+	{
+		// Encode "projectId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "projectId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ProjectId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/checks/suggestion"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeQueryParams"
+	q := uri.NewQueryEncoder()
+	{
+		// Encode "capsuleId" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "capsuleId",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.CapsuleId.Get(); ok {
+				return e.EncodeValue(conv.StringToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	u.RawQuery = q.Values().Encode()
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, SuggestProjectChecksOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeSuggestProjectChecksResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // TransferMemberObjects invokes transferMemberObjects operation.
 //
 // The member must be disabled. Their Projects with everything under them, their secrets (re-wrapped
@@ -18190,6 +20529,155 @@ func (c *Client) sendUpdateProfile(ctx context.Context, request *UpdateProfileRe
 	return result, nil
 }
 
+// UpdateProjectChecks invokes updateProjectChecks operation.
+//
+// Replace the Project's required checks.
+//
+// PUT /projects/{projectId}/checks
+func (c *Client) UpdateProjectChecks(ctx context.Context, request *ProjectChecksUpdate, params UpdateProjectChecksParams) (*ProjectChecks, error) {
+	res, err := c.sendUpdateProjectChecks(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendUpdateProjectChecks(ctx context.Context, request *ProjectChecksUpdate, params UpdateProjectChecksParams) (res *ProjectChecks, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("updateProjectChecks"),
+		semconv.HTTPRequestMethodKey.String("PUT"),
+		semconv.URLTemplateKey.String("/projects/{projectId}/checks"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, UpdateProjectChecksOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/projects/"
+	{
+		// Encode "projectId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "projectId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ProjectId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/checks"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "PUT", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeUpdateProjectChecksRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "EncodeHeaderParams"
+	h := uri.NewHeaderEncoder(r.Header)
+	{
+		cfg := uri.HeaderParameterEncodingConfig{
+			Name:    "Idempotency-Key",
+			Explode: false,
+		}
+		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.IdempotencyKey))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode header")
+		}
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, UpdateProjectChecksOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeUpdateProjectChecksResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // UpdateProjectEnvironment invokes updateProjectEnvironment operation.
 //
 // Configure preparation or rebuild on next launch.
@@ -18466,6 +20954,137 @@ func (c *Client) sendUpdateProviderConnection(ctx context.Context, request *Prov
 
 	stage = "DecodeResponse"
 	result, err := decodeUpdateProviderConnectionResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// UseHostGitHubLogin invokes useHostGitHubLogin operation.
+//
+// Reads gh auth token only for this request, and only on a loopback single-user Station. The token is
+// stored encrypted and is not returned.
+//
+// POST /github/connection/host
+func (c *Client) UseHostGitHubLogin(ctx context.Context, request *UseHostGitHubRequest, params UseHostGitHubLoginParams) (UseHostGitHubLoginRes, error) {
+	res, err := c.sendUseHostGitHubLogin(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendUseHostGitHubLogin(ctx context.Context, request *UseHostGitHubRequest, params UseHostGitHubLoginParams) (res UseHostGitHubLoginRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("useHostGitHubLogin"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/github/connection/host"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, UseHostGitHubLoginOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/github/connection/host"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeUseHostGitHubLoginRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "EncodeHeaderParams"
+	h := uri.NewHeaderEncoder(r.Header)
+	{
+		cfg := uri.HeaderParameterEncodingConfig{
+			Name:    "Idempotency-Key",
+			Explode: false,
+		}
+		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.IdempotencyKey))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode header")
+		}
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, UseHostGitHubLoginOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeUseHostGitHubLoginResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}

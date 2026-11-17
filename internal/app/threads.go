@@ -649,10 +649,14 @@ func (s *Service) SendThreadMessage(
 	if expected <= 0 {
 		return ThreadMutationResult{}, fmt.Errorf("%w: expected resource version is required", domain.ErrInvalid)
 	}
-	return s.appendAndSendHook(ctx, id, expected, key, "message", domain.ThreadRoleUser,
+	result, err := s.appendAndSendHook(ctx, id, expected, key, "message", domain.ThreadRoleUser,
 		domain.ThreadMessagePrompt, domain.ThreadBlockText,
 		persistedThreadBlock{Content: content, Metadata: metadata}, frame,
 		s.countOperatorMessage(ctx))
+	if err == nil {
+		_ = s.InterruptChecks(ctx, result.Thread.CapsuleID)
+	}
+	return result, err
 }
 
 func userMessageFrame(
@@ -1004,6 +1008,7 @@ func (s *Service) CancelThread(
 	if err != nil {
 		return ThreadMutationResult{}, err
 	}
+	_ = s.InterruptChecks(ctx, capsule.ID)
 	runtimeRun, cancelErr := s.structured.CancelStructured(
 		ctx, capsule.ProviderResourceID, result.Run.ID)
 	if cancelErr == nil {
@@ -1260,6 +1265,9 @@ func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
 		if err == nil {
 			err = s.pauseCompletedThread(ctx, id, run.ID)
 		}
+	}
+	if err == nil {
+		s.ConsiderChecks(ctx, capsule.ID)
 	}
 	return err
 }

@@ -189,6 +189,25 @@ exact-repository, exact-ref, one-shot grant; GitHub pull-request API authority
 stays host-side. Temporary material is revoked or discarded after its single
 operation and omitted from command arguments and ambient credential helpers.
 
+An owner may also store one GitHub connection (ADR 0051). It is a separate
+envelope, not a secret that can be named for more than one purpose. When a
+Project does not name a secret for clone, push, or pull request, the station
+uses that connection for the missing purpose and still issues only a one-shot
+git grant or a host-side pull request. A named secret wins. The connection is
+used only for an HTTPS `github.com` repository on the default port: a Project
+on any other host never receives the GitHub token, clones anonymously, and
+needs a named secret to push. The station reads
+the host `gh` token only after the owner confirms, and only for a loopback
+request on a single-user Station. A connection check may read it again
+when that stored login came from `gh`, to replace an expired or
+re-authenticated token. Team mode and remote requests never read it. The
+device-flow device code stays in
+memory. The connection token is never returned by the API or placed in a
+Capsule environment. A clone GitHub refuses is stored as a fixed sentence
+naming the repository, never git stderr, which can contain a credential URL. A GitHub rate
+limit is not read as an access answer, so it never marks a repository private
+or fails a Capsule on its own.
+
 Deleting a Project destroys named secrets that no other live Project still
 names (ADR 0039). The live row is removed, including ciphertext, nonce, and
 envelope metadata. A secret another live Project still names is kept. The
@@ -1589,6 +1608,49 @@ Threats and required controls:
 - **Notifications.** Attention counts are per user. Desktop and browser
   alerts stay content-free ("Meridian needs you" and a count) and count only
   the viewer's own work.
+
+## Project checks
+
+ADR 0052 is implemented. Checks are a quality gate, not a privilege boundary.
+
+- **Same authority as the agent.** A check runs in the Capsule as the same
+  user, without broker grants, provider credentials, or a Docker socket. The
+  agent can edit the command it is asked to satisfy. Approval is of the tree,
+  including test changes.
+- **Output is untrusted.** Tails are bounded, stripped of control characters,
+  redacted, and encrypted with the installation key. They are not written to
+  events, audit records, notifications, or the pull request body. The rework
+  message tells the agent the text is command output.
+- **Rework is a prompt-injection channel.** The failing tail reaches the agent
+  as a user-role message, so a hostile repository or dependency can put text in
+  front of the agent that reads like an instruction. The agent could already
+  read that text from the repository, and the message grants nothing: it does
+  not approve a tool call, widen a grant, or deliver a change, and Delivery
+  still needs an operator's approval of the exact tree.
+- **Spend is bounded.** Automatic rework stops at `maxReworkAttempts`. An
+  operator message, pause, cancel, rewind, or Stop auto-fix ends the current
+  loop. A restarted daemon does not leave a suite running forever: a stale
+  `running` row becomes `error` and is queued once.
+- **Repository suggestions.** `.meridian/checks.yaml` can fill a form. It
+  does not change the commands that run.
+- **Delivery stays human.** A passing suite does not ship. A failing suite
+  does not block Ship. The banner is about the exact reviewed tree.
+
+## Remote CI
+
+ADR 0053 is implemented. After a reviewed push, the station polls GitHub
+for that commit.
+
+- **The token stays on the station.** The read uses the owner's GitHub
+  connection or the Project's named `github_api` secret. It is not placed
+  in a Capsule environment, a log, or an error string. A `403` on one
+  repository does not retire the login.
+- **Stored text is a short tail.** Names, conclusions, links, and at most
+  4 KiB of redacted annotations or summary are kept. The tail is encrypted
+  with the installation key. The pull request body and events do not
+  include it.
+- **A failure does not push.** The agent may be sent the tail. Updating
+  the pull request still requires a reviewed Delivery of the new commit.
 
 Residual risks specific to team mode are listed under Residual risks: host,
 data-directory, KEK, and daemon compromise; shared-KEK backups; the identity

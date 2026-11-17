@@ -54,7 +54,8 @@ export type ChatItem =
   | { kind: "tools"; key: string; calls: ToolCall[] }
   | { kind: "request"; key: string; request: ChatRequest; actionable: boolean }
   | { kind: "error"; key: string; text: string; code?: string }
-  | { kind: "notice"; key: string; text: string };
+  | { kind: "notice"; key: string; text: string }
+  | { kind: "meridian"; key: string; text: string };
 
 export type ChatActivity = "idle" | "starting" | "working" | "waiting" | "stopping";
 
@@ -197,7 +198,9 @@ export function buildThreadChat(
   for (const block of blocks) {
     const event = block.event;
     if (!event) {
-      if (block.role === "user" && block.kind === "text") {
+      if (block.role === "system" && block.kind === "text") {
+        items.push({ kind: "meridian", key: block.id, text: boundedThreadText(block.content) });
+      } else if (block.role === "user" && block.kind === "text") {
         turn += 1;
         busy = true;
         if (block.origin?.kind === "from_subagents") {

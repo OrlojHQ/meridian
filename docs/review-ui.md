@@ -76,6 +76,13 @@ permission details, or transcript text. The document title shows `(N) Meridian`
 for the same count. The permission lives in the browser; Meridian does not
 write it, or any prompt draft, to browser storage, and there is no phone push.
 
+When a Project has checks, the Capsule header and the Inbox use that result
+instead of treating every idle agent as ready for review. A retry stays in
+Working. **Checks passed** and **Checks failing (n/n)** need you. The Ship
+panel states whether those checks match the exact tree being approved, and
+the pull request body gains a server-written summary with no command output.
+See [checks](checks.md).
+
 The Terminal tool appears only when the primary surface is not already showing
 that native PTY, avoiding duplicate attachments while keeping PTY access beside
 structured Threads and inspectors.

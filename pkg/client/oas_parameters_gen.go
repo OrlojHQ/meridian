@@ -31,6 +31,11 @@ type BeginMemberIdentityRebindParams struct {
 	UserId string
 }
 
+// CancelCheckRunParams is parameters of cancelCheckRun operation.
+type CancelCheckRunParams struct {
+	CheckRunId string
+}
+
 // CancelRunParams is parameters of cancelRun operation.
 type CancelRunParams struct {
 	RunId          string
@@ -70,9 +75,20 @@ type CompleteOidcSignInParams struct {
 	Code  OptString `json:",omitempty,omitzero"`
 }
 
+// ConnectGitHubTokenParams is parameters of connectGitHubToken operation.
+type ConnectGitHubTokenParams struct {
+	IdempotencyKey string
+}
+
 // CreateCapsuleParams is parameters of createCapsule operation.
 type CreateCapsuleParams struct {
 	ProjectId      string
+	IdempotencyKey string
+}
+
+// CreateCapsuleCheckRunParams is parameters of createCapsuleCheckRun operation.
+type CreateCapsuleCheckRunParams struct {
+	CapsuleId      string
 	IdempotencyKey string
 }
 
@@ -162,6 +178,11 @@ type DisableMemberParams struct {
 	UserId string
 }
 
+// DisconnectGitHubParams is parameters of disconnectGitHub operation.
+type DisconnectGitHubParams struct {
+	IdempotencyKey string
+}
+
 // EnableMemberParams is parameters of enableMember operation.
 type EnableMemberParams struct {
 	UserId string
@@ -201,9 +222,19 @@ type GetCapsuleProfileDiagnosticParams struct {
 	CapsuleId string
 }
 
+// GetCapsuleRemoteCIParams is parameters of getCapsuleRemoteCI operation.
+type GetCapsuleRemoteCIParams struct {
+	CapsuleId string
+}
+
 // GetChatGPTSignInParams is parameters of getChatGPTSignIn operation.
 type GetChatGPTSignInParams struct {
 	SignInId string
+}
+
+// GetCheckRunParams is parameters of getCheckRun operation.
+type GetCheckRunParams struct {
+	CheckRunId string
 }
 
 // GetClaudeLoginParams is parameters of getClaudeLogin operation.
@@ -233,6 +264,11 @@ type GetMomentParams struct {
 
 // GetProjectParams is parameters of getProject operation.
 type GetProjectParams struct {
+	ProjectId string
+}
+
+// GetProjectChecksParams is parameters of getProjectChecks operation.
+type GetProjectChecksParams struct {
 	ProjectId string
 }
 
@@ -303,6 +339,13 @@ type InspectCapsuleDeliveryParams struct {
 type ListAuditRecordsParams struct {
 	After OptInt64 `json:",omitempty,omitzero"`
 	Limit OptInt   `json:",omitempty,omitzero"`
+}
+
+// ListCapsuleCheckRunsParams is parameters of listCapsuleCheckRuns operation.
+type ListCapsuleCheckRunsParams struct {
+	CapsuleId string
+	Cursor    OptString `json:",omitempty,omitzero"`
+	Limit     OptInt    `json:",omitempty,omitzero"`
 }
 
 // ListCapsuleDeliveriesParams is parameters of listCapsuleDeliveries operation.
@@ -516,10 +559,20 @@ type SealCapsuleParams struct {
 	IdempotencyKey string
 }
 
+// SearchGitHubReposParams is parameters of searchGitHubRepos operation.
+type SearchGitHubReposParams struct {
+	Q OptString `json:",omitempty,omitzero"`
+}
+
 // SendThreadMessageParams is parameters of sendThreadMessage operation.
 type SendThreadMessageParams struct {
 	ThreadId       string
 	IdempotencyKey string
+}
+
+// SetCapsuleCheckAutoReworkParams is parameters of setCapsuleCheckAutoRework operation.
+type SetCapsuleCheckAutoReworkParams struct {
+	CapsuleId string
 }
 
 // SetMemberRoleParams is parameters of setMemberRole operation.
@@ -581,6 +634,12 @@ type StreamThreadBlocksParams struct {
 	LastEventID OptString `json:",omitempty,omitzero"`
 }
 
+// SuggestProjectChecksParams is parameters of suggestProjectChecks operation.
+type SuggestProjectChecksParams struct {
+	ProjectId string
+	CapsuleId OptString `json:",omitempty,omitzero"`
+}
+
 // TransferMemberObjectsParams is parameters of transferMemberObjects operation.
 type TransferMemberObjectsParams struct {
 	UserId string
@@ -603,6 +662,12 @@ type UpdateProfileParams struct {
 	IdempotencyKey string
 }
 
+// UpdateProjectChecksParams is parameters of updateProjectChecks operation.
+type UpdateProjectChecksParams struct {
+	ProjectId      string
+	IdempotencyKey string
+}
+
 // UpdateProjectEnvironmentParams is parameters of updateProjectEnvironment operation.
 type UpdateProjectEnvironmentParams struct {
 	ProjectId      string
@@ -612,4 +677,9 @@ type UpdateProjectEnvironmentParams struct {
 // UpdateProviderConnectionParams is parameters of updateProviderConnection operation.
 type UpdateProviderConnectionParams struct {
 	ConnectionId string
+}
+
+// UseHostGitHubLoginParams is parameters of useHostGitHubLogin operation.
+type UseHostGitHubLoginParams struct {
+	IdempotencyKey string
 }

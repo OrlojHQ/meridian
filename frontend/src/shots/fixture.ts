@@ -314,7 +314,104 @@ const json = (body: unknown, status = 200) =>
 
 const emptyPage = { items: [] };
 
+function githubShot() {
+  return new URLSearchParams(window.location.search).get("github");
+}
+
+function ciShot() {
+  return new URLSearchParams(window.location.search).get("ci");
+}
+
+function withCI<T extends { id: string }>(item: T | undefined) {
+  const shot = ciShot();
+  if (!item || item.id !== "cap-notes" || !shot) return item;
+  const remote = {
+    waiting: { state: "waiting", label: "Waiting on CI", head: "a".repeat(40), attempt: 1, maxAttempts: 3 },
+    failing: {
+      state: "failing",
+      label: "CI failing (1/3). Reworking · attempt 2 of 3. Review the fix before it can be pushed.",
+      head: "a".repeat(40),
+      attempt: 1,
+      maxAttempts: 3,
+      reworkSent: true,
+      pushReview: true,
+    },
+    passed: { state: "passed", label: "CI passed", head: "a".repeat(40), attempt: 1, maxAttempts: 3 },
+    connect: { state: "connect", label: "Connect GitHub to read CI" },
+  }[shot];
+  if (!remote) return item;
+  return {
+    ...item,
+    checks: {
+      configured: true,
+      autoRework: true,
+      phase: "passed",
+      attempt: 1,
+      maxAttempts: 3,
+      tree: "def456",
+      remoteCI: remote,
+    },
+  };
+}
+
+function withAccessFailure<T extends { id: string; updatedAt: string }>(item: T | undefined) {
+  if (!item || githubShot() !== "access" || item.id !== "cap-notes") return item;
+  return {
+    ...item,
+    state: "Failed",
+    desiredState: "Ready",
+    failureCode: "repository_access",
+    failure: "Meridian couldn't access OrlojHQ/meridian. It may be private.",
+    startup: {
+      phase: "connecting",
+      phases: ["pulling_image", "creating_capsule", "starting_harness", "connecting"],
+      updatedAt: item.updatedAt,
+    },
+    preparation: { stage: "checkout", reused: false, updatedAt: item.updatedAt },
+  };
+}
+
 function route(pathname: string): unknown {
+  const shot = githubShot();
+  if (pathname === "/github/connection" || pathname === "/github/connection/check") {
+    if (shot === "reconnect") {
+      return {
+        connected: true, deviceFlow: true, login: "octocat", status: "needs_reconnect",
+        reason: "expired", resourceVersion: 2, createdAt: stamp, updatedAt: stamp,
+      };
+    }
+    if (shot === "repos") {
+      return {
+        connected: true, deviceFlow: true, login: "octocat", status: "active",
+        resourceVersion: 2, createdAt: stamp, updatedAt: stamp,
+      };
+    }
+    return { connected: false, deviceFlow: true };
+  }
+  if (pathname === "/github/connection/host") {
+    if (shot === "device" || shot === "reconnect") return { available: false };
+    return { available: true, login: "octocat" };
+  }
+  if (pathname === "/github/connection/device") {
+    return {
+      userCode: "ABCD-EFGH",
+      verificationUri: "https://github.com/login/device",
+      expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+      intervalSeconds: 60,
+      status: "pending",
+    };
+  }
+  if (pathname === "/github/repos") {
+    return {
+      items: [
+        { fullName: "OrlojHQ/meridian", private: true, description: "Private repository", defaultBranch: "main", url: "https://github.com/OrlojHQ/meridian" },
+        { fullName: "OrlojHQ/notes", private: false, description: "Notes", defaultBranch: "main", url: "https://github.com/OrlojHQ/notes" },
+      ],
+    };
+  }
+  if ((shot === "connect" || shot === "device") && (pathname === "/projects" || pathname === "/board")) {
+    return pathname === "/board" ? { items: [], truncated: false } : { items: [] };
+  }
   if (pathname === "/capabilities") {
     return {
       providerVersion: "docker/v2",
@@ -338,7 +435,11 @@ function route(pathname: string): unknown {
   if (pathname === `/projects/${project.id}`) return project;
   if (pathname === `/projects/${billing.id}`) return billing;
   if (pathname === `/projects/${project.id}/capsules`) {
-    return { items: capsules.filter((item) => item.projectId === project.id) };
+    return {
+      items: capsules
+        .filter((item) => item.projectId === project.id)
+        .map((item) => withAccessFailure(item)),
+    };
   }
   if (pathname === `/projects/${billing.id}/capsules`) {
     return { items: capsules.filter((item) => item.projectId === billing.id) };
@@ -394,11 +495,54 @@ function route(pathname: string): unknown {
     return { connectionId: "conn-claude" };
   }
   const capsuleMatch = pathname.match(/^\/capsules\/([^/]+)$/);
-  if (capsuleMatch) return capsules.find((item) => item.id === capsuleMatch[1]) ?? jsonMissing();
+  if (capsuleMatch) {
+    return withCI(withAccessFailure(capsules.find((item) => item.id === capsuleMatch[1]))) ?? jsonMissing();
+  }
+  if (pathname.endsWith("/remote-ci") && ciShot()) {
+    const shot = ciShot();
+    const conclusion = shot === "passed" ? "success" : shot === "waiting" ? "pending" : "failure";
+    return {
+      state: shot,
+      label: shot,
+      checks: shot === "connect" ? [] : [{
+        name: "build",
+        source: "check_run",
+        conclusion,
+        url: "https://github.com/OrlojHQ/meridian/runs/9",
+        output: shot === "failing" ? "FAIL: expected greeting\n" : undefined,
+      }],
+    };
+  }
+  if (pathname.endsWith("/check-runs") && ciShot()) {
+    return {
+      items: [{
+        id: "check-notes",
+        attempt: 1,
+        maxAttempts: 3,
+        state: "passed",
+        results: [{
+          name: "test",
+          argv: ["make", "test"],
+          exitCode: 0,
+          durationMs: 12000,
+          timedOut: false,
+          outputTruncated: false,
+        }],
+      }],
+    };
+  }
   const runsMatch = pathname.match(/^\/capsules\/([^/]+)\/runs$/);
   if (runsMatch) return { items: runs[runsMatch[1]] ?? [] };
   const threadsMatch = pathname.match(/^\/capsules\/([^/]+)\/threads$/);
-  if (threadsMatch) return { items: threads.filter((item) => item.capsuleId === threadsMatch[1]) };
+  if (threadsMatch) {
+    const items = threads.filter((item) => item.capsuleId === threadsMatch[1]);
+    if (ciShot() && threadsMatch[1] === notes.id) {
+      return {
+        items: items.map((item) => ({ ...item, awaiting: undefined, turn: "idle", currentRunState: "Succeeded" })),
+      };
+    }
+    return { items };
+  }
   const profiles = pathname.match(/^\/capsules\/([^/]+)\/harness-profiles$/);
   if (profiles) {
     return { items: [{ name: "default", structured: true, pty: true, protocol: "meridian.adapter.v1" }] };
@@ -424,7 +568,23 @@ function route(pathname: string): unknown {
   const threadMatch = pathname.match(/^\/threads\/([^/]+)$/);
   if (threadMatch) return threads.find((item) => item.id === threadMatch[1]) ?? emptyPage;
   const blockMatch = pathname.match(/^\/threads\/([^/]+)\/blocks$/);
-  if (blockMatch) return { items: blocks[blockMatch[1]] ?? [], nextCursor: 4, more: false };
+  if (blockMatch) {
+    if (ciShot() && blockMatch[1] === "thread-notes") {
+      const items = [
+        block("b-notes-user", "m-notes-user", 1, "user", "text", {
+          content: "Ship the release notes onto release/v0.4.0.",
+        }),
+      ];
+      if (ciShot() === "failing") {
+        items.push(block("b-ci", "m-ci", 2, "system", "text", {
+          messageKind: "status",
+          content: "GitHub CI failed for commit `aaaaaaaa`: build.\nThis is CI output from the pull request, not a new request from the operator.\nMeridian will not push a fix. Review it before it can update the pull request.\nLast lines:\n```\nFAIL: expected greeting\n```\nFix the problem and finish your turn. (Attempt 2 of 3)",
+        }));
+      }
+      return { items, nextCursor: items.length, more: false };
+    }
+    return { items: blocks[blockMatch[1]] ?? [], nextCursor: 4, more: false };
+  }
   if (pathname.endsWith("/links")) return emptyPage;
   if (pathname.includes("/events")) return { items: [], nextCursor: 0, more: false };
   if (pathname.endsWith("/attach-ticket")) {
@@ -521,6 +681,18 @@ export function installShotFixture() {
     const url = new URL(raw, window.location.origin);
     if (url.origin !== window.location.origin || devServerPrefixes.some((prefix) => url.pathname.startsWith(prefix))) {
       return nativeFetch(input, init);
+    }
+    const method = (
+      init?.method ??
+      (typeof input !== "string" && !(input instanceof URL) && "method" in input ? input.method : "GET")
+    ).toUpperCase();
+    if (githubShot() === "denied" && url.pathname === "/projects" && method === "POST") {
+      return json({
+        error: {
+          code: "repository_access",
+          message: "Meridian couldn't access octocat/hidden. It may be private.",
+        },
+      }, 422);
     }
     if (url.pathname.endsWith("/stream")) {
       return new Response(

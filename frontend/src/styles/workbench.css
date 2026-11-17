@@ -886,6 +886,106 @@
   margin-top: 1.2rem;
 }
 
+.project-checks-section {
+  margin-top: 1.6rem;
+}
+
+.project-checks,
+.capsule-checks {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.check-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.7rem;
+}
+
+.check-rows li {
+  display: grid;
+  grid-template-columns: minmax(6rem, 8rem) minmax(0, 1fr) 8rem auto;
+  gap: 0.5rem;
+  align-items: end;
+}
+
+.check-banner {
+  margin: 0;
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.5rem;
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.check-banner-waiting,
+.check-banner-connect {
+  color: var(--ink);
+}
+.check-banner-passed {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.check-banner-failing,
+.check-banner-error {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.check-pill-passed {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.check-pill-failing,
+.check-pill-error {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.check-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.check-result.failed strong {
+  color: var(--danger);
+}
+
+.check-result.passed strong {
+  color: var(--accent-text);
+}
+
+.check-result pre {
+  max-height: 16rem;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.chat-meridian {
+  margin: 0.4rem 0;
+  padding: 0.6rem 0.75rem;
+  border-left: 3px solid var(--warning);
+  background: var(--warning-soft);
+}
+
+.chat-meridian pre {
+  margin: 0.35rem 0 0;
+  white-space: pre-wrap;
+  font-size: 0.85rem;
+}
+
+@media (max-width: 720px) {
+  .check-rows li {
+    grid-template-columns: 1fr;
+  }
+}
+
 .project-settings .agent-picker {
   margin-top: 1.2rem;
 }

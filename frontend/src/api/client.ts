@@ -1,11 +1,17 @@
 import { client } from "./generated/client.gen";
 import {
   getProjectEnvironment, updateProjectEnvironment,
+  getProjectChecks, updateProjectChecks, suggestProjectChecks,
+  listCapsuleCheckRuns, createCapsuleCheckRun, getCheckRun, cancelCheckRun, setCapsuleCheckAutoRework,
+  getCapsuleRemoteCi,
   getProjectHarnessSetup, setProjectHarnessSetup,
   listProviderConnections, createProviderConnection, updateProviderConnection, deleteProviderConnection, getProjectProviderConnection, grantProjectProviderConnection,
   startChatGptSignIn, getChatGptSignIn, completeChatGptSignIn,
   getHarnessSetupContents, listHarnessSetups, mutateHarnessSetup, listHarnessSetupRevisions, previewHarnessSetup, importHarnessSetup,
   getProfile, updateProfile, getCapsuleProfileDiagnostic, updateCapsuleProfile,
+  getGitHubConnection, checkGitHubConnection, getHostGitHubLogin, useHostGitHubLogin,
+  connectGitHubToken, beginGitHubDevice, pollGitHubDevice, cancelGitHubDevice,
+  disconnectGitHub, searchGitHubRepos,
   archiveThread,
   beginClaudeLogin,
   completeClaudeLogin,
@@ -93,6 +99,11 @@ import type {
   MemberPage,
 } from "./generated/types.gen";
 import type { Profile, UpdateProfileRequest, ProfileDiagnostic } from "./generated/types.gen";
+import type {
+  CheckAutoReworkRequest, CheckRun, CheckRunPage, CheckRunRequest, CheckSuggestion,
+  ProjectChecks, ProjectChecksUpdate, RemoteCi,
+  GitHubConnection, HostGitHubLogin, GitHubDevice, GitHubDeviceStatus, GitHubRepoPage,
+} from "./generated/types.gen";
 import type { HarnessSetupUpload, HarnessSetupPreview, ImportHarnessSetupRequest, EnvironmentMutation, ProjectEnvironment,
   ProjectHarnessSetup,
   ClaudeLogin, ClaudeLoginRequest, ClaudeLoginStatus,
@@ -234,7 +245,34 @@ export const api = {
  profile: () => call<Profile>(getProfile({...generatedOptions()})),
  updateProfile: (body:UpdateProfileRequest) => call<Profile>(updateProfile({...generatedOptions(),headers:idempotencyHeaders(),body})),
  capsuleProfileDiagnostic: (capsuleId:string) => call<ProfileDiagnostic>(getCapsuleProfileDiagnostic({...generatedOptions(),path:{capsuleId}})),
- updateCapsuleProfile: (capsuleId:string) => call<ProfileDiagnostic>(updateCapsuleProfile({...generatedOptions(),path:{capsuleId},headers:idempotencyHeaders()})),
+  updateCapsuleProfile: (capsuleId:string) => call<ProfileDiagnostic>(updateCapsuleProfile({...generatedOptions(),path:{capsuleId},headers:idempotencyHeaders()})),
+  githubConnection: (signal?: AbortSignal) => call<GitHubConnection>(getGitHubConnection(generatedOptions(signal))),
+  checkGitHubConnection: () => call<GitHubConnection>(checkGitHubConnection(generatedOptions())),
+  hostGitHubLogin: (signal?: AbortSignal) => call<HostGitHubLogin>(getHostGitHubLogin(generatedOptions(signal))),
+  useHostGitHub: (expectedResourceVersion: number) =>
+    call<GitHubConnection>(useHostGitHubLogin({
+      ...generatedOptions(),
+      headers: idempotencyHeaders(),
+      body: { expectedResourceVersion },
+    })),
+  beginGitHubDevice: (expectedResourceVersion: number) =>
+    call<GitHubDevice>(beginGitHubDevice({ ...generatedOptions(), body: { expectedResourceVersion } })),
+  pollGitHubDevice: (signal?: AbortSignal) => call<GitHubDeviceStatus>(pollGitHubDevice(generatedOptions(signal))),
+  cancelGitHubDevice: () => call<void>(cancelGitHubDevice(generatedOptions())),
+  disconnectGitHub: (expectedResourceVersion: number) =>
+    call<GitHubConnection>(disconnectGitHub({
+      ...generatedOptions(),
+      headers: idempotencyHeaders(),
+      body: { expectedResourceVersion },
+    })),
+  connectGitHubToken: (token: string, expectedResourceVersion: number) =>
+    call<GitHubConnection>(connectGitHubToken({
+      ...generatedOptions(),
+      headers: idempotencyHeaders(),
+      body: { token, expectedResourceVersion },
+    })),
+  searchGitHubRepos: (q: string, signal?: AbortSignal) =>
+    call<GitHubRepoPage>(searchGitHubRepos({ ...generatedOptions(signal), query: { q } })),
   baseUrl,
   authenticateBrowser: (token: string, signal?: AbortSignal) =>
     call<void>(
@@ -465,6 +503,15 @@ export const api = {
   importHarnessSetup: (body: ImportHarnessSetupRequest, key?: string) => call<HarnessSetup>(importHarnessSetup({...generatedOptions(), headers: key ? {"Idempotency-Key":key} : idempotencyHeaders(), body})),
   projectEnvironment: (projectId: string, signal?: AbortSignal) => call<ProjectEnvironment>(getProjectEnvironment({...generatedOptions(signal), path: {projectId}})),
   updateProjectEnvironment: (projectId: string, body: EnvironmentMutation) => call<ProjectEnvironment>(updateProjectEnvironment({...generatedOptions(), path: {projectId}, headers: idempotencyHeaders(), body})),
+  projectChecks: (projectId: string, signal?: AbortSignal) => call<ProjectChecks>(getProjectChecks({...generatedOptions(signal), path: {projectId}})),
+  updateProjectChecks: (projectId: string, body: ProjectChecksUpdate) => call<ProjectChecks>(updateProjectChecks({...generatedOptions(), path: {projectId}, headers: idempotencyHeaders(), body})),
+  suggestProjectChecks: (projectId: string, capsuleId?: string, signal?: AbortSignal) => call<CheckSuggestion>(suggestProjectChecks({...generatedOptions(signal), path: {projectId}, query: capsuleId ? {capsuleId} : {}})),
+  checkRuns: (capsuleId: string, signal?: AbortSignal) => call<CheckRunPage>(listCapsuleCheckRuns({...generatedOptions(signal), path: {capsuleId}, query: {limit: 10}})),
+  createCheckRun: (capsuleId: string) => call<CheckRun>(createCapsuleCheckRun({...generatedOptions(), path: {capsuleId}, headers: idempotencyHeaders(), body: {} as CheckRunRequest})),
+  checkRun: (checkRunId: string, signal?: AbortSignal) => call<CheckRun>(getCheckRun({...generatedOptions(signal), path: {checkRunId}})),
+  cancelCheckRun: (checkRunId: string, expectedResourceVersion: number) => call<CheckRun>(cancelCheckRun({...generatedOptions(), path: {checkRunId}, body: {expectedResourceVersion}})),
+  setCheckAutoRework: (capsuleId: string, body: CheckAutoReworkRequest) => call<CheckAutoReworkRequest>(setCapsuleCheckAutoRework({...generatedOptions(), path: {capsuleId}, body})),
+  remoteCI: (capsuleId: string, signal?: AbortSignal) => call<RemoteCi>(getCapsuleRemoteCi({...generatedOptions(signal), path: {capsuleId}})),
   projectThreadIntent: (intentId: string, signal?: AbortSignal) => call<ProjectThreadIntent>(getProjectThreadIntent({...generatedOptions(signal), path: {intentId}})),
   capsule: (capsuleId: string, signal?: AbortSignal) =>
     call<Capsule>(

@@ -765,6 +765,217 @@ paths:
           $ref: "#/components/responses/TooManyRequests"
         default:
           $ref: "#/components/responses/DefaultError"
+  /github/connection:
+    get:
+      operationId: getGitHubConnection
+      summary: Read the signed-in user's GitHub connection
+      description: >-
+        Returns whether this user has connected GitHub, and whether the
+        device flow can start. The token is never returned. Responses are
+        not cached.
+      tags: [github]
+      responses:
+        "200":
+          description: Connection metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitHubConnection"
+        default:
+          $ref: "#/components/responses/DefaultError"
+    delete:
+      operationId: disconnectGitHub
+      summary: Delete the signed-in user's GitHub connection
+      tags: [github]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DisconnectGitHubRequest"
+      responses:
+        "200":
+          description: The connection is gone
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitHubConnection"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /github/connection/check:
+    post:
+      operationId: checkGitHubConnection
+      summary: Check whether the stored GitHub login still works
+      description: >-
+        Calls GitHub as the station. A rejected login is marked
+        needs_reconnect. The token is never returned.
+      tags: [github]
+      responses:
+        "200":
+          description: Connection metadata after the check
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitHubConnection"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /github/connection/host:
+    get:
+      operationId: getHostGitHubLogin
+      summary: See whether this computer's gh login can be reused
+      description: >-
+        Available only for a loopback request on a single-user Station.
+        Does not read or return the token. Team mode and remote requests
+        report available false.
+      tags: [github]
+      responses:
+        "200":
+          description: Whether a host login was found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HostGitHubLogin"
+        default:
+          $ref: "#/components/responses/DefaultError"
+    post:
+      operationId: useHostGitHubLogin
+      summary: Store this computer's gh login after confirmation
+      description: >-
+        Reads gh auth token only for this request, and only on a loopback
+        single-user Station. The token is stored encrypted and is not
+        returned.
+      tags: [github]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UseHostGitHubRequest"
+      responses:
+        "200":
+          description: Stored connection metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitHubConnection"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /github/connection/token:
+    post:
+      operationId: connectGitHubToken
+      summary: Store a GitHub token the caller already holds
+      description: >-
+        The CLI uses this after the person confirms, including when it read
+        gh on their own computer. The token is verified, stored encrypted,
+        and not returned.
+      tags: [github]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectGitHubTokenRequest"
+      responses:
+        "200":
+          description: Stored connection metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitHubConnection"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /github/connection/device:
+    post:
+      operationId: beginGitHubDevice
+      summary: Start the GitHub device authorization flow
+      tags: [github]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BeginGitHubDeviceRequest"
+      responses:
+        "200":
+          description: The code to enter on GitHub. The device code is not included.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitHubDevice"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+        default:
+          $ref: "#/components/responses/DefaultError"
+    get:
+      operationId: pollGitHubDevice
+      summary: Pick up a GitHub device authorization
+      tags: [github]
+      responses:
+        "200":
+          description: pending, connected, denied, or expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitHubDeviceStatus"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/DefaultError"
+    delete:
+      operationId: cancelGitHubDevice
+      summary: Cancel the signed-in user's GitHub device authorization
+      tags: [github]
+      responses:
+        "204":
+          description: The in-memory device authorization is gone
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /github/repos:
+    get:
+      operationId: searchGitHubRepos
+      summary: Search repositories the GitHub connection can access
+      description: Includes private repositories the login can access. No token is returned.
+      tags: [github]
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 256
+      responses:
+        "200":
+          description: Matching repositories
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitHubRepoPage"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+        default:
+          $ref: "#/components/responses/DefaultError"
   /projects:
     post:
       operationId: createProject
@@ -1763,6 +1974,175 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ProjectEnvironment" }
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /projects/{projectId}/checks:
+    get:
+      operationId: getProjectChecks
+      summary: Read the Project's required checks
+      tags: [projects]
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: Project checks. An empty list means checks are not used.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectChecks" }
+        default:
+          $ref: "#/components/responses/DefaultError"
+    put:
+      operationId: updateProjectChecks
+      summary: Replace the Project's required checks
+      tags: [projects]
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProjectChecksUpdate" }
+      responses:
+        "200":
+          description: Updated project checks
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectChecks" }
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /projects/{projectId}/checks/suggestion:
+    get:
+      operationId: suggestProjectChecks
+      summary: Read a repository suggestion without applying it
+      description: >
+        When a Ready Capsule has .meridian/checks.yaml, return those commands
+        as a suggestion. Nothing is saved. A missing or unusable file returns
+        an empty list.
+      tags: [projects]
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - name: capsuleId
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        "200":
+          description: Suggestion, which may be empty
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CheckSuggestion" }
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /capsules/{capsuleId}/remote-ci:
+    get:
+      operationId: getCapsuleRemoteCI
+      summary: Read GitHub CI for the commit Meridian pushed
+      description: >
+        Names, conclusions, links, and a short redacted tail. The response
+        has no token. Absent when this Capsule has no Meridian pull request.
+      tags: [capsules]
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+      responses:
+        "200":
+          description: The latest CI reading for this Capsule
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RemoteCI" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /capsules/{capsuleId}/check-runs:
+    get:
+      operationId: listCapsuleCheckRuns
+      summary: List check runs for a Capsule
+      tags: [capsules]
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Check runs, newest first
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CheckRunPage" }
+        default:
+          $ref: "#/components/responses/DefaultError"
+    post:
+      operationId: createCapsuleCheckRun
+      summary: Run the Project's checks now
+      tags: [capsules]
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CheckRunRequest" }
+      responses:
+        "202":
+          description: Check run queued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CheckRun" }
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /capsules/{capsuleId}/checks/auto-rework:
+    post:
+      operationId: setCapsuleCheckAutoRework
+      summary: Stop or resume automatic rework for one Capsule
+      tags: [capsules]
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CheckAutoReworkRequest" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CheckAutoReworkRequest" }
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /check-runs/{checkRunId}:
+    get:
+      operationId: getCheckRun
+      summary: Read one check run, including redacted output tails
+      tags: [capsules]
+      parameters:
+        - $ref: "#/components/parameters/CheckRunId"
+      responses:
+        "200":
+          description: Check run
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CheckRun" }
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /check-runs/{checkRunId}/cancel:
+    post:
+      operationId: cancelCheckRun
+      summary: Cancel a queued or running check run
+      tags: [capsules]
+      parameters:
+        - $ref: "#/components/parameters/CheckRunId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LifecycleMutationRequest" }
+      responses:
+        "200":
+          description: Check run
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CheckRun" }
         default:
           $ref: "#/components/responses/DefaultError"
   /capsules/{capsuleId}/resume:
@@ -3211,6 +3591,13 @@ components:
       schema:
         type: string
         minLength: 1
+    CheckRunId:
+      name: checkRunId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
     RunId:
       name: runId
       in: path
@@ -3784,6 +4171,87 @@ components:
             $ref: "#/components/schemas/Secret"
         nextCursor:
           type: string
+    GitHubConnection:
+      type: object
+      required: [connected, deviceFlow]
+      description: GitHub connection metadata. The token is never included.
+      properties:
+        connected: { type: boolean }
+        deviceFlow:
+          type: boolean
+          description: True when this Station can start the GitHub device flow.
+        login: { type: string }
+        status:
+          type: string
+          enum: [active, needs_reconnect]
+        reason:
+          type: string
+          enum: [invalid, expired, missing_access]
+        scopes: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        resourceVersion: { type: integer, format: int64, minimum: 1 }
+    DisconnectGitHubRequest:
+      type: object
+      required: [expectedResourceVersion]
+      properties:
+        expectedResourceVersion: { type: integer, format: int64, minimum: 1 }
+    UseHostGitHubRequest:
+      type: object
+      required: [expectedResourceVersion]
+      properties:
+        expectedResourceVersion: { type: integer, format: int64, minimum: 0 }
+    ConnectGitHubTokenRequest:
+      type: object
+      required: [token, expectedResourceVersion]
+      properties:
+        token: { type: string, minLength: 8, maxLength: 2048 }
+        expectedResourceVersion: { type: integer, format: int64, minimum: 0 }
+    BeginGitHubDeviceRequest:
+      type: object
+      required: [expectedResourceVersion]
+      properties:
+        expectedResourceVersion: { type: integer, format: int64, minimum: 0 }
+    HostGitHubLogin:
+      type: object
+      required: [available]
+      properties:
+        available: { type: boolean }
+        login: { type: string }
+    GitHubDevice:
+      type: object
+      required: [userCode, verificationUri, expiresAt, intervalSeconds]
+      properties:
+        userCode: { type: string }
+        verificationUri: { type: string }
+        expiresAt: { type: string, format: date-time }
+        intervalSeconds: { type: integer, minimum: 1 }
+    GitHubDeviceStatus:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [pending, connected, denied, expired]
+        connection:
+          $ref: "#/components/schemas/GitHubConnection"
+    GitHubRepo:
+      type: object
+      required: [fullName, private, url]
+      properties:
+        fullName: { type: string }
+        private: { type: boolean }
+        description: { type: string }
+        defaultBranch: { type: string }
+        url: { type: string }
+    GitHubRepoPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/GitHubRepo"
     ProjectEnvironment:
       type: object
       required: [enabled, generation, setup, imageReference, resourceVersion]
@@ -3802,6 +4270,207 @@ components:
         setup: {type: array, maxItems: 128, items: {type: string, maxLength: 4096}}
         rebuild: {type: boolean}
         expectedResourceVersion: {type: integer, format: int64, minimum: 1}
+    CheckCommand:
+      type: object
+      required: [name, argv, timeoutSeconds]
+      description: An executable and its arguments. Meridian does not start a shell.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+        argv:
+          type: array
+          minItems: 1
+          maxItems: 128
+          items: { type: string, minLength: 1, maxLength: 4096 }
+        timeoutSeconds:
+          type: integer
+          minimum: 1
+          maximum: 3600
+    ProjectChecks:
+      type: object
+      required: [checks, autoRework, maxReworkAttempts, resourceVersion]
+      properties:
+        checks:
+          type: array
+          maxItems: 16
+          items: { $ref: "#/components/schemas/CheckCommand" }
+        autoRework: { type: boolean }
+        maxReworkAttempts:
+          type: integer
+          minimum: 0
+          maximum: 10
+          description: >
+            Total tries, including the first. 0 runs the checks once and does
+            not send the agent back.
+        resourceVersion: { type: integer, format: int64, minimum: 1 }
+        updatedAt: { type: string, format: date-time }
+    ProjectChecksUpdate:
+      type: object
+      required: [checks, autoRework, maxReworkAttempts, expectedResourceVersion]
+      properties:
+        checks:
+          type: array
+          maxItems: 16
+          items: { $ref: "#/components/schemas/CheckCommand" }
+        autoRework: { type: boolean }
+        maxReworkAttempts: { type: integer, minimum: 0, maximum: 10 }
+        expectedResourceVersion: { type: integer, format: int64, minimum: 1 }
+    CheckSuggestion:
+      type: object
+      required: [checks]
+      properties:
+        checks:
+          type: array
+          items: { $ref: "#/components/schemas/CheckCommand" }
+        ignored:
+          type: boolean
+          description: A repository file was present and was not usable.
+    CheckRunRequest:
+      type: object
+      description: Empty object. The idempotency key is the header.
+      additionalProperties: false
+    CheckAutoReworkRequest:
+      type: object
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+          description: false stops automatic rework for this Capsule.
+    CheckResult:
+      type: object
+      required: [name, argv, durationMs, timedOut, outputTruncated]
+      properties:
+        name: { type: string }
+        argv:
+          type: array
+          items: { type: string }
+        exitCode: { type: integer }
+        durationMs: { type: integer, format: int64, minimum: 0 }
+        timedOut: { type: boolean }
+        outputTruncated: { type: boolean }
+        output:
+          type: string
+          description: Redacted tail of the command output. Absent when there is none.
+    CheckRun:
+      type: object
+      required: [id, capsuleId, projectId, attempt, maxAttempts, trigger, state, reworkSent, results, resourceVersion, createdAt]
+      properties:
+        id: { type: string }
+        capsuleId: { type: string }
+        projectId: { type: string }
+        threadId: { type: string }
+        attempt:
+          type: integer
+          minimum: 1
+          description: One-based try number.
+        maxAttempts: { type: integer, minimum: 1 }
+        trigger:
+          type: string
+          enum: [turn_idle, delivery_proposed, run_exit, manual]
+        state:
+          type: string
+          enum: [queued, running, passed, failed, error, cancelled, stale]
+        phase:
+          type: string
+          enum: [queued, running, reworking, passed, failing, stale, error]
+        gitHead: { type: string }
+        gitTree: { type: string }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time }
+        reworkSent: { type: boolean }
+        banner: { type: string }
+        pullRequestSection:
+          type: string
+          description: Server-generated pull request text. It contains no command output.
+        results:
+          type: array
+          items: { $ref: "#/components/schemas/CheckResult" }
+        resourceVersion: { type: integer, format: int64, minimum: 1 }
+        createdAt: { type: string, format: date-time }
+    CheckRunPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/CheckRun" }
+        nextCursor: { type: string }
+    ChecksSummary:
+      type: object
+      required: [configured, autoRework]
+      description: Content-free check summary. It carries no command text and no output.
+      properties:
+        configured: { type: boolean }
+        phase:
+          type: string
+          enum: [queued, running, reworking, passed, failing, stale, error]
+        attempt: { type: integer, minimum: 1 }
+        maxAttempts: { type: integer, minimum: 1 }
+        tree: { type: string }
+        head: { type: string }
+        finishedAt: { type: string, format: date-time }
+        reworkSent: { type: boolean }
+        autoRework: { type: boolean }
+        stopped: { type: boolean }
+        proposalWithheld: { type: boolean }
+        passed: { type: integer, minimum: 0 }
+        failed: { type: integer, minimum: 0 }
+        runId: { type: string }
+        remoteCI:
+          $ref: "#/components/schemas/RemoteCISummary"
+    RemoteCISummary:
+      type: object
+      required: [state, label]
+      description: Content-free GitHub CI line for the pushed commit. It has no log tail.
+      properties:
+        state:
+          type: string
+          enum: [waiting, passed, failing, reconnect, connect, unreadable, absent]
+        label: { type: string }
+        head: { type: string }
+        attempt: { type: integer, minimum: 1 }
+        maxAttempts: { type: integer, minimum: 1 }
+        passed: { type: integer, minimum: 0 }
+        failed: { type: integer, minimum: 0 }
+        pending: { type: integer, minimum: 0 }
+        pullRequestUrl: { type: string }
+        pushReview: { type: boolean }
+        reworkSent: { type: boolean }
+    RemoteCICheck:
+      type: object
+      required: [name, source, conclusion]
+      properties:
+        name: { type: string }
+        source:
+          type: string
+          enum: [check_run, status]
+        conclusion: { type: string }
+        url: { type: string }
+        output:
+          type: string
+          description: Redacted tail. Absent when there is none.
+    RemoteCI:
+      type: object
+      required: [state, label, checks]
+      properties:
+        state:
+          type: string
+          enum: [waiting, passed, failing, reconnect, connect, unreadable, absent]
+        label: { type: string }
+        head: { type: string }
+        attempt: { type: integer, minimum: 1 }
+        maxAttempts: { type: integer, minimum: 1 }
+        passed: { type: integer, minimum: 0 }
+        failed: { type: integer, minimum: 0 }
+        pending: { type: integer, minimum: 0 }
+        pullRequestUrl: { type: string }
+        pushReview: { type: boolean }
+        reworkSent: { type: boolean }
+        checks:
+          type: array
+          items: { $ref: "#/components/schemas/RemoteCICheck" }
     PreparationProgress:
       type: object
       required: [stage, reused, updatedAt]
@@ -3875,6 +4544,11 @@ components:
           type: string
           format: date-time
           description: When a subagent Capsule was promoted to a main Capsule.
+        checks:
+          $ref: "#/components/schemas/ChecksSummary"
+          description: >
+            Content-free check summary. Absent when the Project has no checks.
+            This is not a Capsule lifecycle state.
         createdAt:
           type: string
           format: date-time
@@ -3930,8 +4604,10 @@ components:
           description: Omitted when the registry did not report a total.
     CapsuleFailureCode:
       type: string
-      description: Specific image-pull failure. Unset for failures that are not image pulls.
-      enum: [registry_unreachable, auth_required, image_not_found]
+      description: >
+        Image-pull failure, or repository_access when a clone cannot read the
+        repository. Git output is never copied into the failure text.
+      enum: [registry_unreachable, auth_required, image_not_found, repository_access]
     CapsuleState:
       type: string
       enum: [Creating, Preparing, Ready, Paused, Failed, Sealed, Deleting, Deleted]
@@ -4418,7 +5094,7 @@ components:
         since: { type: string, format: date-time }
         needsYou:
           type: string
-          enum: [permission, input, failed, spawn_approval, proposed_delivery]
+          enum: [permission, input, failed, spawn_approval, proposed_delivery, checks_passed, checks_failing, checks_error, ci_passed, ci_failing, ci_reconnect, ci_connect, ci_unreadable]
           description: Why the row needs the operator; set only with status needs_you.
         latestDelivery: { $ref: "#/components/schemas/DeliverySummary" }
         link:

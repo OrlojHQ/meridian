@@ -4,6 +4,7 @@ import { Link, Navigate, useOutletContext, useParams } from "react-router-dom";
 import { queries } from "../api/queries";
 import type { ShellOutletContext } from "../shell/AppShell";
 import { Badge } from "./ui/Badge";
+import { ProjectChecks } from "./ProjectChecks";
 import { ProjectEnvironment } from "./ProjectEnvironment";
 import { ProjectHarnesses } from "./ProjectHarnesses";
 
@@ -57,6 +58,7 @@ export function ProjectSettings() {
         </div>
       </dl>
       <ProjectHarnesses key={project.id} project={project} />
+      <ProjectChecks projectId={project.id} />
       <ProjectEnvironment projectId={project.id} />
       <div className="project-settings-actions">
         <Link className="button-link" to="/ui/">

@@ -256,11 +256,14 @@ func (p *Provider) Create(
 		prepareRequest.GitCredential.Password = ""
 	}
 	if err != nil {
+		if repositoryAccess(err) {
+			return ports.ProviderResource{}, domain.RepositoryAccessFromURL(request.RepositoryURL)
+		}
 		status, statusErr := supervisor.Status(context.Background())
 		if statusErr == nil && status.Error != "" {
-			return ports.ProviderResource{}, fmt.Errorf("Capsule setup failed: %s", status.Error)
+			return ports.ProviderResource{}, fmt.Errorf("Capsule setup failed: %s", domain.RedactFailureText(status.Error))
 		}
-		return ports.ProviderResource{}, fmt.Errorf("Capsule setup failed: %w", err)
+		return ports.ProviderResource{}, fmt.Errorf("Capsule setup failed: %s", domain.RedactFailureText(err.Error()))
 	}
 	return ports.ProviderResource{
 		ID: names.container, State: ports.ProviderReady, ImageDigest: imageID,

@@ -223,6 +223,24 @@
   margin: 0;
 }
 
+.access-failure {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.access-failure .startup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.access-token-form {
+  display: grid;
+  gap: 0.5rem;
+  max-width: 24rem;
+}
+
 .chat-working {
   display: grid;
   gap: 0.45rem;
