@@ -20,7 +20,9 @@ import {
   threadSession,
   type CapsuleSession,
 } from "../shell/capsuleActivity";
+import { RepositoryAccessNotice } from "./RepositoryAccess";
 import { SessionEnded } from "./SessionEnded";
+import { isRepositoryAccessFailure } from "./startup";
 import {
   endedSessionState,
   isActiveRunState,
@@ -574,6 +576,9 @@ export function ThreadDetail({
             <ThreadStatusChip thread={thread} />
           </div>
         </header>
+      )}
+      {!embedded && owner.data && isRepositoryAccessFailure(owner.data) && (
+        <RepositoryAccessNotice message={owner.data.failure} capsule={owner.data} />
       )}
       <div className="thread-toolbar">
         <button

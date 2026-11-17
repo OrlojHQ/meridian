@@ -3,12 +3,21 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, normalizeAPIError } from "../api/client";
 import type { Capsule, CapsuleStartupPhase } from "../api/generated/types.gen";
 import { ActivityDot, ProgressBar } from "./ui/loading";
-import { canRetryStartup, phaseLabels, preparationLabels, pullSummary } from "./startup";
+import { RepositoryAccessNotice } from "./RepositoryAccess";
+import {
+  canRetryStartup,
+  isRepositoryAccessFailure,
+  phaseLabels,
+  preparationLabels,
+  pullSummary,
+  repositoryAccessCopy,
+} from "./startup";
 
-const failureTitles: Record<NonNullable<Capsule["failureCode"]>, string> = {
+const failureTitles: Record<string, string> = {
   registry_unreachable: "Registry unreachable",
   auth_required: "Authentication required",
   image_not_found: "Image not found",
+  repository_access: "Couldn't access repository",
 };
 
 function stepState(
@@ -30,6 +39,7 @@ export function CapsuleStartup({ capsule }: { capsule: Capsule }) {
   const client = useQueryClient();
   const startup = capsule.startup;
   const failed = capsule.state === "Failed";
+  const access = isRepositoryAccessFailure(capsule);
   const retryable = canRetryStartup(capsule);
   const retry = useMutation({
     mutationFn: () => api.lifecycle("retry", capsule.id, capsule.resourceVersion),
@@ -53,8 +63,21 @@ export function CapsuleStartup({ capsule }: { capsule: Capsule }) {
       ? capsule.failure || "The Capsule image could not be pulled."
       : activeLabel;
   const title = failed
-    ? (capsule.failureCode ? failureTitles[capsule.failureCode] : "Startup failed")
+    ? (access
+      ? "Couldn't access repository"
+      : capsule.failureCode
+        ? failureTitles[capsule.failureCode] ?? "Startup failed"
+        : "Startup failed")
     : activeLabel;
+
+  if (!startup && failed && access) {
+    return (
+      <section className="startup-tracker is-failed" aria-label="Capsule startup">
+        <h2>Couldn't access repository</h2>
+        <RepositoryAccessNotice message={capsule.failure} capsule={capsule} />
+      </section>
+    );
+  }
 
   if (!startup && !failed) {
     return (
@@ -116,7 +139,10 @@ export function CapsuleStartup({ capsule }: { capsule: Capsule }) {
         />
       )}
       {!pull && !failed && current && <ProgressBar label={activeLabel} />}
-      {failed && (
+      {failed && access && (
+        <RepositoryAccessNotice message={repositoryAccessCopy(capsule.failure)} capsule={capsule} />
+      )}
+      {failed && !access && (
         <p className="startup-reason" role="alert">
           {capsule.failure || "The Capsule image could not be pulled."}
         </p>

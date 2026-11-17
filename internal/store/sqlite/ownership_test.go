@@ -25,7 +25,7 @@ var ownedTables = []string{
 	"project_preparation_policy", "coordination_grants", "runs", "threads", "deliveries",
 	"capsule_preparations", "capsule_startup", "thread_messages", "thread_blocks",
 	"thread_deliveries", "thread_links", "coordination_requests", "harness_setup_revisions",
-	"user_profiles", "user_profile_connections",
+	"user_profiles", "user_profile_connections", "github_connections",
 }
 
 func TestOwnershipMigrationStampsEveryExistingRow(t *testing.T) {

@@ -51,7 +51,7 @@ func newRootCommand() *cobra.Command {
 	command.PersistentFlags().BoolVar(&config.json, "json", false, "write stable API JSON")
 	command.AddCommand(
 		newProjectCommand(config), newCapsuleCommand(config), newRunCommand(config),
-		newSecretCommand(config), newHarnessCommand(config), newImportCommand(config),
+		newSecretCommand(config), newGitHubCommand(config), newHarnessCommand(config), newImportCommand(config),
 		newThreadCommand(config),
 		newMomentCommand(config), newTimelineCommand(config), newShardCommand(config),
 		newRewindCommand(config), newSealCommand(config), newTUICommand(config),

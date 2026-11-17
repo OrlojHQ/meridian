@@ -12,7 +12,16 @@ import type {
 import { queries } from "../api/queries";
 import { harnessName, sessionPath } from "../shell/capsuleActivity";
 import { PreparationProgress } from "./PreparationProgress";
+import { RepositoryAccessNotice } from "./RepositoryAccess";
+import { isRepositoryAccessFailure } from "./startup";
 import { connectableHarnesses, connectionModelNote, connectionSupports, preferredConnectionId } from "./ProviderConnections";
+
+function accessIntent(intent: ProjectThreadIntent) {
+  return intent.state === "failed" && isRepositoryAccessFailure({
+    failure: intent.failureMessage,
+    failureCode: intent.failureCode,
+  });
+}
 
 export function StructuredLauncher({
   project,
@@ -208,7 +217,10 @@ export function StructuredLauncher({
         </p>
       ) : null}
       {capsuleQuery.data && <PreparationProgress capsule={capsuleQuery.data} />}
-      {intent && (
+      {intent && accessIntent(intent) && !isRepositoryAccessFailure(capsuleQuery.data ?? {}) && (
+        <RepositoryAccessNotice message={intent.failureMessage} />
+      )}
+      {intent && !accessIntent(intent) && (
         <p role="status" className="launch-result">
           {sessionReady ? <Link to={`/ui/threads/${encodeURIComponent(intent.threadId)}`}>Open Thread</Link> : intent.state === "failed" ? intent.failureMessage || "Session preparation failed" : "Preparing your session…"}
         </p>

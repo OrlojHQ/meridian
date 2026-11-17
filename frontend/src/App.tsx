@@ -45,7 +45,7 @@ import { ProjectSettings } from "./components/ProjectSettings";
 import { CapsuleStartup } from "./components/CapsuleStartup";
 import { CapsuleProfilePanel } from "./components/CapsuleProfilePanel";
 import { DeliveryDecision } from "./components/DeliveryDecision";
-import { isStarting } from "./components/startup";
+import { isRepositoryAccessFailure, isStarting } from "./components/startup";
 import { WorkspaceSkeleton } from "./components/ui/loading";
 import {
   ThreadCreate,
@@ -866,7 +866,7 @@ export function CapsuleDetail() {
           <p className="capsule-setup-pin">{pinnedSetupText(value.pinnedHarnessSetups)}</p>
         )}
       </header>
-      {(isStarting(value) || value.startup || value.failureCode) && (
+      {(isStarting(value) || value.startup || value.failureCode || isRepositoryAccessFailure(value)) && (
         <CapsuleStartup capsule={value} />
       )}
       {value.failure && !value.startup && !value.failureCode && (

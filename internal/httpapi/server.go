@@ -250,6 +250,16 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("PUT /secrets/{secretName}", s.putSecret)
 	s.mux.HandleFunc("GET /secrets", s.listSecrets)
 	s.mux.HandleFunc("DELETE /secrets/{secretName}", s.deleteSecret)
+	s.mux.HandleFunc("GET /github/connection", s.getGitHubConnection)
+	s.mux.HandleFunc("DELETE /github/connection", s.disconnectGitHub)
+	s.mux.HandleFunc("POST /github/connection/check", s.checkGitHubConnection)
+	s.mux.HandleFunc("GET /github/connection/host", s.getHostGitHubLogin)
+	s.mux.HandleFunc("POST /github/connection/host", s.useHostGitHubLogin)
+	s.mux.HandleFunc("POST /github/connection/token", s.connectGitHubToken)
+	s.mux.HandleFunc("POST /github/connection/device", s.beginGitHubDevice)
+	s.mux.HandleFunc("GET /github/connection/device", s.pollGitHubDevice)
+	s.mux.HandleFunc("DELETE /github/connection/device", s.cancelGitHubDevice)
+	s.mux.HandleFunc("GET /github/repos", s.searchGitHubRepos)
 	s.mux.HandleFunc("POST /projects/{projectId}/capsules", s.createCapsule)
 	s.mux.HandleFunc("GET /projects/{projectId}/capsules", s.listCapsules)
 	s.mux.HandleFunc("GET /capsules/{capsuleId}", s.getCapsule)
@@ -2010,6 +2020,8 @@ func writeError(writer http.ResponseWriter, err error) {
 		status, code, message = http.StatusUnprocessableEntity, "no_repository", "this Capsule's workspace has no Git repository"
 	case errors.Is(err, domain.ErrWorkspaceGit):
 		status, code, message = http.StatusUnprocessableEntity, "git_failed", err.Error()
+	case errors.Is(err, domain.ErrRepositoryAccess):
+		status, code, message = http.StatusUnprocessableEntity, "repository_access", repositoryAccessMessage(err)
 	case errors.Is(err, domain.ErrUnsupported):
 		status, code, message = http.StatusUnprocessableEntity, "unsupported", err.Error()
 	case errors.Is(err, domain.ErrResourceExhausted):
@@ -2018,6 +2030,14 @@ func writeError(writer http.ResponseWriter, err error) {
 	writeJSON(writer, status, errorEnvelope{
 		Error: apiError{Code: code, Message: message},
 	})
+}
+
+func repositoryAccessMessage(err error) string {
+	var access *domain.RepositoryAccessError
+	if errors.As(err, &access) {
+		return access.Error()
+	}
+	return domain.RepositoryAccess.Message()
 }
 
 func writeJSON(writer http.ResponseWriter, status int, value any) {

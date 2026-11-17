@@ -24,6 +24,7 @@ import {
   TEAM_SIGN_IN_PATH,
 } from "../components/Authentication";
 import { DeleteProjectDialog } from "../components/DeleteProjectDialog";
+import { GitHubReconnectBanner } from "../components/GitHubConnect";
 import { GatewayIndicator } from "./GatewayIndicator";
 import { NewProjectDialog } from "../components/NewProjectDialog";
 import { NewSessionDialog } from "../components/NewSessionDialog";
@@ -776,6 +777,7 @@ export function AppShell() {
               <Link to="/ui/settings/harnesses#provider-connections">
                 Connect a provider
               </Link>
+              <Link to="/ui/settings/account#github">Connect GitHub</Link>
               <button type="button" onClick={() => setNewProjectOpen(true)}>
                 Create a Project
               </button>
@@ -833,6 +835,7 @@ export function AppShell() {
       </aside>
 
       <main id="content" className="workspace-main" tabIndex={-1}>
+        {!signInRequired && <GitHubReconnectBanner />}
         {signInRequired && !location.pathname.startsWith("/ui/settings/account") ? (
           <AuthenticationState />
         ) : (

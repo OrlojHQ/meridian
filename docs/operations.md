@@ -294,6 +294,27 @@ token, diff, or source bytes. Startup resumes queued/committing/pushing/PR
 states; an exact ref push is retry-safe and GitHub recovery first queries the
 exact head/base pair to avoid duplicate pull requests.
 
+Connect GitHub once instead of pasting a token per job (ADR 0051):
+
+```console
+meridian github connect
+```
+
+On a loopback single-user Station, when `gh` is signed in, this asks once
+to use that login. The device code is the fallback when `gh` is missing or
+signed out, and the command says to install and sign in to the GitHub CLI.
+A later check refreshes a host login from `gh` after it re-authenticates.
+The device flow needs a
+public OAuth client id (`meridiand --github-oauth-client-id` or
+`MERIDIAN_GITHUB_OAUTH_CLIENT_ID`). That value is not a secret, and none is
+built in. `meridian github connect --stdin` reads a token when neither `gh`
+nor a client id is available. `meridian github status` and
+`meridian github disconnect --confirm` show and remove the login.
+
+A Project with no git secret uses that login for clone, push, and pull
+requests. A named `git_https`, `git_push`, or `github_api` secret still wins
+for that one purpose.
+
 Store purpose-scoped credentials through stdin:
 
 ```console

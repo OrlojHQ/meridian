@@ -628,6 +628,21 @@ func (s *BearerAuth) SetRoles(val []string) {
 	s.Roles = val
 }
 
+// Ref: #/components/schemas/BeginGitHubDeviceRequest
+type BeginGitHubDeviceRequest struct {
+	ExpectedResourceVersion int64 `json:"expectedResourceVersion"`
+}
+
+// GetExpectedResourceVersion returns the value of ExpectedResourceVersion.
+func (s *BeginGitHubDeviceRequest) GetExpectedResourceVersion() int64 {
+	return s.ExpectedResourceVersion
+}
+
+// SetExpectedResourceVersion sets the value of ExpectedResourceVersion.
+func (s *BeginGitHubDeviceRequest) SetExpectedResourceVersion(val int64) {
+	s.ExpectedResourceVersion = val
+}
+
 type BeginMemberIdentityRebindBadRequest ErrorEnvelope
 
 func (*BeginMemberIdentityRebindBadRequest) beginMemberIdentityRebindRes() {}
@@ -921,6 +936,9 @@ func (s *BoardPage) SetTruncated(val bool) {
 }
 
 func (*BoardPage) getBoardRes() {}
+
+// CancelGitHubDeviceNoContent is response for CancelGitHubDevice operation.
+type CancelGitHubDeviceNoContent struct{}
 
 type CancelRunBadRequest ErrorEnvelope
 
@@ -1485,7 +1503,8 @@ func (*CapsuleAcceptedHeaders) pauseCapsuleRes()  {}
 func (*CapsuleAcceptedHeaders) resumeCapsuleRes() {}
 func (*CapsuleAcceptedHeaders) retryCapsuleRes()  {}
 
-// Specific image-pull failure. Unset for failures that are not image pulls.
+// Image-pull failure, or repository_access when a clone cannot read the repository. Git output is
+// never copied into the failure text.
 // Ref: #/components/schemas/CapsuleFailureCode
 type CapsuleFailureCode string
 
@@ -1493,6 +1512,7 @@ const (
 	CapsuleFailureCodeRegistryUnreachable CapsuleFailureCode = "registry_unreachable"
 	CapsuleFailureCodeAuthRequired        CapsuleFailureCode = "auth_required"
 	CapsuleFailureCodeImageNotFound       CapsuleFailureCode = "image_not_found"
+	CapsuleFailureCodeRepositoryAccess    CapsuleFailureCode = "repository_access"
 )
 
 // AllValues returns all CapsuleFailureCode values.
@@ -1501,6 +1521,7 @@ func (CapsuleFailureCode) AllValues() []CapsuleFailureCode {
 		CapsuleFailureCodeRegistryUnreachable,
 		CapsuleFailureCodeAuthRequired,
 		CapsuleFailureCodeImageNotFound,
+		CapsuleFailureCodeRepositoryAccess,
 	}
 }
 
@@ -1512,6 +1533,8 @@ func (s CapsuleFailureCode) MarshalText() ([]byte, error) {
 	case CapsuleFailureCodeAuthRequired:
 		return []byte(s), nil
 	case CapsuleFailureCodeImageNotFound:
+		return []byte(s), nil
+	case CapsuleFailureCodeRepositoryAccess:
 		return []byte(s), nil
 	default:
 		return nil, errors.Errorf("invalid value: %q", s)
@@ -1529,6 +1552,9 @@ func (s *CapsuleFailureCode) UnmarshalText(data []byte) error {
 		return nil
 	case CapsuleFailureCodeImageNotFound:
 		*s = CapsuleFailureCodeImageNotFound
+		return nil
+	case CapsuleFailureCodeRepositoryAccess:
+		*s = CapsuleFailureCodeRepositoryAccess
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)
@@ -2520,6 +2546,40 @@ func (*CompleteOidcSignInBadRequest) completeOidcSignInRes() {}
 type CompleteOidcSignInSeeOther struct{}
 
 func (*CompleteOidcSignInSeeOther) completeOidcSignInRes() {}
+
+type ConnectGitHubTokenBadRequest ErrorEnvelope
+
+func (*ConnectGitHubTokenBadRequest) connectGitHubTokenRes() {}
+
+type ConnectGitHubTokenConflict ErrorEnvelope
+
+func (*ConnectGitHubTokenConflict) connectGitHubTokenRes() {}
+
+// Ref: #/components/schemas/ConnectGitHubTokenRequest
+type ConnectGitHubTokenRequest struct {
+	Token                   string `json:"token"`
+	ExpectedResourceVersion int64  `json:"expectedResourceVersion"`
+}
+
+// GetToken returns the value of Token.
+func (s *ConnectGitHubTokenRequest) GetToken() string {
+	return s.Token
+}
+
+// GetExpectedResourceVersion returns the value of ExpectedResourceVersion.
+func (s *ConnectGitHubTokenRequest) GetExpectedResourceVersion() int64 {
+	return s.ExpectedResourceVersion
+}
+
+// SetToken sets the value of Token.
+func (s *ConnectGitHubTokenRequest) SetToken(val string) {
+	s.Token = val
+}
+
+// SetExpectedResourceVersion sets the value of ExpectedResourceVersion.
+func (s *ConnectGitHubTokenRequest) SetExpectedResourceVersion(val int64) {
+	s.ExpectedResourceVersion = val
+}
 
 // Ref: #/components/schemas/ConnectionDiagnostic
 type ConnectionDiagnostic struct {
@@ -5222,6 +5282,33 @@ type DisableMemberNotFound ErrorEnvelope
 
 func (*DisableMemberNotFound) disableMemberRes() {}
 
+type DisconnectGitHubBadRequest ErrorEnvelope
+
+func (*DisconnectGitHubBadRequest) disconnectGitHubRes() {}
+
+type DisconnectGitHubConflict ErrorEnvelope
+
+func (*DisconnectGitHubConflict) disconnectGitHubRes() {}
+
+type DisconnectGitHubNotFound ErrorEnvelope
+
+func (*DisconnectGitHubNotFound) disconnectGitHubRes() {}
+
+// Ref: #/components/schemas/DisconnectGitHubRequest
+type DisconnectGitHubRequest struct {
+	ExpectedResourceVersion int64 `json:"expectedResourceVersion"`
+}
+
+// GetExpectedResourceVersion returns the value of ExpectedResourceVersion.
+func (s *DisconnectGitHubRequest) GetExpectedResourceVersion() int64 {
+	return s.ExpectedResourceVersion
+}
+
+// SetExpectedResourceVersion sets the value of ExpectedResourceVersion.
+func (s *DisconnectGitHubRequest) SetExpectedResourceVersion(val int64) {
+	s.ExpectedResourceVersion = val
+}
+
 type EnableMemberConflict ErrorEnvelope
 
 func (*EnableMemberConflict) enableMemberRes() {}
@@ -5300,6 +5387,7 @@ func (s *ErrorEnvelope) SetError(val APIError) {
 
 func (*ErrorEnvelope) attachRunWebSocketRes()          {}
 func (*ErrorEnvelope) beginDeviceLoginRes()            {}
+func (*ErrorEnvelope) beginGitHubDeviceRes()           {}
 func (*ErrorEnvelope) claimInstallationRes()           {}
 func (*ErrorEnvelope) createRunAttachTicketRes()       {}
 func (*ErrorEnvelope) getCapsuleProfileDiagnosticRes() {}
@@ -5323,8 +5411,10 @@ func (*ErrorEnvelope) listSecretsRes()                 {}
 func (*ErrorEnvelope) listThreadLinksRes()             {}
 func (*ErrorEnvelope) listThreadsRes()                 {}
 func (*ErrorEnvelope) mintPersonalAccessTokenRes()     {}
+func (*ErrorEnvelope) pollGitHubDeviceRes()            {}
 func (*ErrorEnvelope) revokePersonalAccessTokenRes()   {}
 func (*ErrorEnvelope) revokeSessionRes()               {}
+func (*ErrorEnvelope) searchGitHubReposRes()           {}
 
 type ExportCapsuleWorkspaceConflict ErrorEnvelope
 
@@ -5492,6 +5582,413 @@ func (*GetReadinessOK) getReadinessRes() {}
 type GetReadinessServiceUnavailable ProbeResponse
 
 func (*GetReadinessServiceUnavailable) getReadinessRes() {}
+
+// GitHub connection metadata. The token is never included.
+// Ref: #/components/schemas/GitHubConnection
+type GitHubConnection struct {
+	Connected bool `json:"connected"`
+	// True when this Station can start the GitHub device flow.
+	DeviceFlow      bool                      `json:"deviceFlow"`
+	Login           OptString                 `json:"login"`
+	Status          OptGitHubConnectionStatus `json:"status"`
+	Reason          OptGitHubConnectionReason `json:"reason"`
+	Scopes          OptString                 `json:"scopes"`
+	CreatedAt       OptDateTime               `json:"createdAt"`
+	UpdatedAt       OptDateTime               `json:"updatedAt"`
+	ResourceVersion OptInt64                  `json:"resourceVersion"`
+}
+
+// GetConnected returns the value of Connected.
+func (s *GitHubConnection) GetConnected() bool {
+	return s.Connected
+}
+
+// GetDeviceFlow returns the value of DeviceFlow.
+func (s *GitHubConnection) GetDeviceFlow() bool {
+	return s.DeviceFlow
+}
+
+// GetLogin returns the value of Login.
+func (s *GitHubConnection) GetLogin() OptString {
+	return s.Login
+}
+
+// GetStatus returns the value of Status.
+func (s *GitHubConnection) GetStatus() OptGitHubConnectionStatus {
+	return s.Status
+}
+
+// GetReason returns the value of Reason.
+func (s *GitHubConnection) GetReason() OptGitHubConnectionReason {
+	return s.Reason
+}
+
+// GetScopes returns the value of Scopes.
+func (s *GitHubConnection) GetScopes() OptString {
+	return s.Scopes
+}
+
+// GetCreatedAt returns the value of CreatedAt.
+func (s *GitHubConnection) GetCreatedAt() OptDateTime {
+	return s.CreatedAt
+}
+
+// GetUpdatedAt returns the value of UpdatedAt.
+func (s *GitHubConnection) GetUpdatedAt() OptDateTime {
+	return s.UpdatedAt
+}
+
+// GetResourceVersion returns the value of ResourceVersion.
+func (s *GitHubConnection) GetResourceVersion() OptInt64 {
+	return s.ResourceVersion
+}
+
+// SetConnected sets the value of Connected.
+func (s *GitHubConnection) SetConnected(val bool) {
+	s.Connected = val
+}
+
+// SetDeviceFlow sets the value of DeviceFlow.
+func (s *GitHubConnection) SetDeviceFlow(val bool) {
+	s.DeviceFlow = val
+}
+
+// SetLogin sets the value of Login.
+func (s *GitHubConnection) SetLogin(val OptString) {
+	s.Login = val
+}
+
+// SetStatus sets the value of Status.
+func (s *GitHubConnection) SetStatus(val OptGitHubConnectionStatus) {
+	s.Status = val
+}
+
+// SetReason sets the value of Reason.
+func (s *GitHubConnection) SetReason(val OptGitHubConnectionReason) {
+	s.Reason = val
+}
+
+// SetScopes sets the value of Scopes.
+func (s *GitHubConnection) SetScopes(val OptString) {
+	s.Scopes = val
+}
+
+// SetCreatedAt sets the value of CreatedAt.
+func (s *GitHubConnection) SetCreatedAt(val OptDateTime) {
+	s.CreatedAt = val
+}
+
+// SetUpdatedAt sets the value of UpdatedAt.
+func (s *GitHubConnection) SetUpdatedAt(val OptDateTime) {
+	s.UpdatedAt = val
+}
+
+// SetResourceVersion sets the value of ResourceVersion.
+func (s *GitHubConnection) SetResourceVersion(val OptInt64) {
+	s.ResourceVersion = val
+}
+
+func (*GitHubConnection) connectGitHubTokenRes() {}
+func (*GitHubConnection) disconnectGitHubRes()   {}
+func (*GitHubConnection) useHostGitHubLoginRes() {}
+
+type GitHubConnectionReason string
+
+const (
+	GitHubConnectionReasonInvalid       GitHubConnectionReason = "invalid"
+	GitHubConnectionReasonExpired       GitHubConnectionReason = "expired"
+	GitHubConnectionReasonMissingAccess GitHubConnectionReason = "missing_access"
+)
+
+// AllValues returns all GitHubConnectionReason values.
+func (GitHubConnectionReason) AllValues() []GitHubConnectionReason {
+	return []GitHubConnectionReason{
+		GitHubConnectionReasonInvalid,
+		GitHubConnectionReasonExpired,
+		GitHubConnectionReasonMissingAccess,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s GitHubConnectionReason) MarshalText() ([]byte, error) {
+	switch s {
+	case GitHubConnectionReasonInvalid:
+		return []byte(s), nil
+	case GitHubConnectionReasonExpired:
+		return []byte(s), nil
+	case GitHubConnectionReasonMissingAccess:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *GitHubConnectionReason) UnmarshalText(data []byte) error {
+	switch GitHubConnectionReason(data) {
+	case GitHubConnectionReasonInvalid:
+		*s = GitHubConnectionReasonInvalid
+		return nil
+	case GitHubConnectionReasonExpired:
+		*s = GitHubConnectionReasonExpired
+		return nil
+	case GitHubConnectionReasonMissingAccess:
+		*s = GitHubConnectionReasonMissingAccess
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+type GitHubConnectionStatus string
+
+const (
+	GitHubConnectionStatusActive         GitHubConnectionStatus = "active"
+	GitHubConnectionStatusNeedsReconnect GitHubConnectionStatus = "needs_reconnect"
+)
+
+// AllValues returns all GitHubConnectionStatus values.
+func (GitHubConnectionStatus) AllValues() []GitHubConnectionStatus {
+	return []GitHubConnectionStatus{
+		GitHubConnectionStatusActive,
+		GitHubConnectionStatusNeedsReconnect,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s GitHubConnectionStatus) MarshalText() ([]byte, error) {
+	switch s {
+	case GitHubConnectionStatusActive:
+		return []byte(s), nil
+	case GitHubConnectionStatusNeedsReconnect:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *GitHubConnectionStatus) UnmarshalText(data []byte) error {
+	switch GitHubConnectionStatus(data) {
+	case GitHubConnectionStatusActive:
+		*s = GitHubConnectionStatusActive
+		return nil
+	case GitHubConnectionStatusNeedsReconnect:
+		*s = GitHubConnectionStatusNeedsReconnect
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Ref: #/components/schemas/GitHubDevice
+type GitHubDevice struct {
+	UserCode        string    `json:"userCode"`
+	VerificationUri string    `json:"verificationUri"`
+	ExpiresAt       time.Time `json:"expiresAt"`
+	IntervalSeconds int       `json:"intervalSeconds"`
+}
+
+// GetUserCode returns the value of UserCode.
+func (s *GitHubDevice) GetUserCode() string {
+	return s.UserCode
+}
+
+// GetVerificationUri returns the value of VerificationUri.
+func (s *GitHubDevice) GetVerificationUri() string {
+	return s.VerificationUri
+}
+
+// GetExpiresAt returns the value of ExpiresAt.
+func (s *GitHubDevice) GetExpiresAt() time.Time {
+	return s.ExpiresAt
+}
+
+// GetIntervalSeconds returns the value of IntervalSeconds.
+func (s *GitHubDevice) GetIntervalSeconds() int {
+	return s.IntervalSeconds
+}
+
+// SetUserCode sets the value of UserCode.
+func (s *GitHubDevice) SetUserCode(val string) {
+	s.UserCode = val
+}
+
+// SetVerificationUri sets the value of VerificationUri.
+func (s *GitHubDevice) SetVerificationUri(val string) {
+	s.VerificationUri = val
+}
+
+// SetExpiresAt sets the value of ExpiresAt.
+func (s *GitHubDevice) SetExpiresAt(val time.Time) {
+	s.ExpiresAt = val
+}
+
+// SetIntervalSeconds sets the value of IntervalSeconds.
+func (s *GitHubDevice) SetIntervalSeconds(val int) {
+	s.IntervalSeconds = val
+}
+
+func (*GitHubDevice) beginGitHubDeviceRes() {}
+
+// Ref: #/components/schemas/GitHubDeviceStatus
+type GitHubDeviceStatus struct {
+	Status     GitHubDeviceStatusStatus `json:"status"`
+	Connection OptGitHubConnection      `json:"connection"`
+}
+
+// GetStatus returns the value of Status.
+func (s *GitHubDeviceStatus) GetStatus() GitHubDeviceStatusStatus {
+	return s.Status
+}
+
+// GetConnection returns the value of Connection.
+func (s *GitHubDeviceStatus) GetConnection() OptGitHubConnection {
+	return s.Connection
+}
+
+// SetStatus sets the value of Status.
+func (s *GitHubDeviceStatus) SetStatus(val GitHubDeviceStatusStatus) {
+	s.Status = val
+}
+
+// SetConnection sets the value of Connection.
+func (s *GitHubDeviceStatus) SetConnection(val OptGitHubConnection) {
+	s.Connection = val
+}
+
+func (*GitHubDeviceStatus) pollGitHubDeviceRes() {}
+
+type GitHubDeviceStatusStatus string
+
+const (
+	GitHubDeviceStatusStatusPending   GitHubDeviceStatusStatus = "pending"
+	GitHubDeviceStatusStatusConnected GitHubDeviceStatusStatus = "connected"
+	GitHubDeviceStatusStatusDenied    GitHubDeviceStatusStatus = "denied"
+	GitHubDeviceStatusStatusExpired   GitHubDeviceStatusStatus = "expired"
+)
+
+// AllValues returns all GitHubDeviceStatusStatus values.
+func (GitHubDeviceStatusStatus) AllValues() []GitHubDeviceStatusStatus {
+	return []GitHubDeviceStatusStatus{
+		GitHubDeviceStatusStatusPending,
+		GitHubDeviceStatusStatusConnected,
+		GitHubDeviceStatusStatusDenied,
+		GitHubDeviceStatusStatusExpired,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s GitHubDeviceStatusStatus) MarshalText() ([]byte, error) {
+	switch s {
+	case GitHubDeviceStatusStatusPending:
+		return []byte(s), nil
+	case GitHubDeviceStatusStatusConnected:
+		return []byte(s), nil
+	case GitHubDeviceStatusStatusDenied:
+		return []byte(s), nil
+	case GitHubDeviceStatusStatusExpired:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *GitHubDeviceStatusStatus) UnmarshalText(data []byte) error {
+	switch GitHubDeviceStatusStatus(data) {
+	case GitHubDeviceStatusStatusPending:
+		*s = GitHubDeviceStatusStatusPending
+		return nil
+	case GitHubDeviceStatusStatusConnected:
+		*s = GitHubDeviceStatusStatusConnected
+		return nil
+	case GitHubDeviceStatusStatusDenied:
+		*s = GitHubDeviceStatusStatusDenied
+		return nil
+	case GitHubDeviceStatusStatusExpired:
+		*s = GitHubDeviceStatusStatusExpired
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Ref: #/components/schemas/GitHubRepo
+type GitHubRepo struct {
+	FullName      string    `json:"fullName"`
+	Private       bool      `json:"private"`
+	Description   OptString `json:"description"`
+	DefaultBranch OptString `json:"defaultBranch"`
+	URL           string    `json:"url"`
+}
+
+// GetFullName returns the value of FullName.
+func (s *GitHubRepo) GetFullName() string {
+	return s.FullName
+}
+
+// GetPrivate returns the value of Private.
+func (s *GitHubRepo) GetPrivate() bool {
+	return s.Private
+}
+
+// GetDescription returns the value of Description.
+func (s *GitHubRepo) GetDescription() OptString {
+	return s.Description
+}
+
+// GetDefaultBranch returns the value of DefaultBranch.
+func (s *GitHubRepo) GetDefaultBranch() OptString {
+	return s.DefaultBranch
+}
+
+// GetURL returns the value of URL.
+func (s *GitHubRepo) GetURL() string {
+	return s.URL
+}
+
+// SetFullName sets the value of FullName.
+func (s *GitHubRepo) SetFullName(val string) {
+	s.FullName = val
+}
+
+// SetPrivate sets the value of Private.
+func (s *GitHubRepo) SetPrivate(val bool) {
+	s.Private = val
+}
+
+// SetDescription sets the value of Description.
+func (s *GitHubRepo) SetDescription(val OptString) {
+	s.Description = val
+}
+
+// SetDefaultBranch sets the value of DefaultBranch.
+func (s *GitHubRepo) SetDefaultBranch(val OptString) {
+	s.DefaultBranch = val
+}
+
+// SetURL sets the value of URL.
+func (s *GitHubRepo) SetURL(val string) {
+	s.URL = val
+}
+
+// Ref: #/components/schemas/GitHubRepoPage
+type GitHubRepoPage struct {
+	Items []GitHubRepo `json:"items"`
+}
+
+// GetItems returns the value of Items.
+func (s *GitHubRepoPage) GetItems() []GitHubRepo {
+	return s.Items
+}
+
+// SetItems sets the value of Items.
+func (s *GitHubRepoPage) SetItems(val []GitHubRepo) {
+	s.Items = val
+}
+
+func (*GitHubRepoPage) searchGitHubReposRes() {}
 
 // Ref: #/components/schemas/GitIdentity
 type GitIdentity struct {
@@ -6520,6 +7017,32 @@ func (s *HarnessSetupUploadHarness) UnmarshalText(data []byte) error {
 	default:
 		return errors.Errorf("invalid value: %q", data)
 	}
+}
+
+// Ref: #/components/schemas/HostGitHubLogin
+type HostGitHubLogin struct {
+	Available bool      `json:"available"`
+	Login     OptString `json:"login"`
+}
+
+// GetAvailable returns the value of Available.
+func (s *HostGitHubLogin) GetAvailable() bool {
+	return s.Available
+}
+
+// GetLogin returns the value of Login.
+func (s *HostGitHubLogin) GetLogin() OptString {
+	return s.Login
+}
+
+// SetAvailable sets the value of Available.
+func (s *HostGitHubLogin) SetAvailable(val bool) {
+	s.Available = val
+}
+
+// SetLogin sets the value of Login.
+func (s *HostGitHubLogin) SetLogin(val OptString) {
+	s.Login = val
 }
 
 // Ref: #/components/schemas/IdentityRebind
@@ -8292,6 +8815,144 @@ func (o OptGetBoardExpand) Get() (v GetBoardExpand, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptGetBoardExpand) Or(d GetBoardExpand) GetBoardExpand {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptGitHubConnection returns new OptGitHubConnection with value set to v.
+func NewOptGitHubConnection(v GitHubConnection) OptGitHubConnection {
+	return OptGitHubConnection{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptGitHubConnection is optional GitHubConnection.
+type OptGitHubConnection struct {
+	Value GitHubConnection
+	Set   bool
+}
+
+// IsSet returns true if OptGitHubConnection was set.
+func (o OptGitHubConnection) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptGitHubConnection) Reset() {
+	var v GitHubConnection
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptGitHubConnection) SetTo(v GitHubConnection) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptGitHubConnection) Get() (v GitHubConnection, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptGitHubConnection) Or(d GitHubConnection) GitHubConnection {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptGitHubConnectionReason returns new OptGitHubConnectionReason with value set to v.
+func NewOptGitHubConnectionReason(v GitHubConnectionReason) OptGitHubConnectionReason {
+	return OptGitHubConnectionReason{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptGitHubConnectionReason is optional GitHubConnectionReason.
+type OptGitHubConnectionReason struct {
+	Value GitHubConnectionReason
+	Set   bool
+}
+
+// IsSet returns true if OptGitHubConnectionReason was set.
+func (o OptGitHubConnectionReason) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptGitHubConnectionReason) Reset() {
+	var v GitHubConnectionReason
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptGitHubConnectionReason) SetTo(v GitHubConnectionReason) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptGitHubConnectionReason) Get() (v GitHubConnectionReason, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptGitHubConnectionReason) Or(d GitHubConnectionReason) GitHubConnectionReason {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptGitHubConnectionStatus returns new OptGitHubConnectionStatus with value set to v.
+func NewOptGitHubConnectionStatus(v GitHubConnectionStatus) OptGitHubConnectionStatus {
+	return OptGitHubConnectionStatus{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptGitHubConnectionStatus is optional GitHubConnectionStatus.
+type OptGitHubConnectionStatus struct {
+	Value GitHubConnectionStatus
+	Set   bool
+}
+
+// IsSet returns true if OptGitHubConnectionStatus was set.
+func (o OptGitHubConnectionStatus) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptGitHubConnectionStatus) Reset() {
+	var v GitHubConnectionStatus
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptGitHubConnectionStatus) SetTo(v GitHubConnectionStatus) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptGitHubConnectionStatus) Get() (v GitHubConnectionStatus, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptGitHubConnectionStatus) Or(d GitHubConnectionStatus) GitHubConnectionStatus {
 	if v, ok := o.Get(); ok {
 		return v
 	}
@@ -16780,6 +17441,33 @@ func (s *UpdateProfileRequestDefaultConnections) init() UpdateProfileRequestDefa
 type UpdateProfileUnprocessableEntity ErrorEnvelope
 
 func (*UpdateProfileUnprocessableEntity) updateProfileRes() {}
+
+type UseHostGitHubLoginBadRequest ErrorEnvelope
+
+func (*UseHostGitHubLoginBadRequest) useHostGitHubLoginRes() {}
+
+type UseHostGitHubLoginConflict ErrorEnvelope
+
+func (*UseHostGitHubLoginConflict) useHostGitHubLoginRes() {}
+
+type UseHostGitHubLoginUnprocessableEntity ErrorEnvelope
+
+func (*UseHostGitHubLoginUnprocessableEntity) useHostGitHubLoginRes() {}
+
+// Ref: #/components/schemas/UseHostGitHubRequest
+type UseHostGitHubRequest struct {
+	ExpectedResourceVersion int64 `json:"expectedResourceVersion"`
+}
+
+// GetExpectedResourceVersion returns the value of ExpectedResourceVersion.
+func (s *UseHostGitHubRequest) GetExpectedResourceVersion() int64 {
+	return s.ExpectedResourceVersion
+}
+
+// SetExpectedResourceVersion sets the value of ExpectedResourceVersion.
+func (s *UseHostGitHubRequest) SetExpectedResourceVersion(val int64) {
+	s.ExpectedResourceVersion = val
+}
 
 // Ref: #/components/schemas/WorkspaceFile
 type WorkspaceFile struct {

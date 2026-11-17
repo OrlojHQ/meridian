@@ -483,6 +483,13 @@ func (r *scopedReader) ListSecrets(ctx context.Context, owner domain.UserID, pag
 	return r.inner.ListSecrets(ctx, owner, page)
 }
 
+func (r *scopedReader) GetGitHubConnection(ctx context.Context, owner domain.UserID) (domain.GitHubConnection, error) {
+	if err := r.keyOwner(owner); err != nil {
+		return domain.GitHubConnection{}, err
+	}
+	return r.inner.GetGitHubConnection(ctx, owner)
+}
+
 func (r *scopedReader) GetCapsule(ctx context.Context, id domain.CapsuleID) (domain.Capsule, error) {
 	if err := r.capsule(ctx, id); err != nil {
 		return domain.Capsule{}, err
@@ -1177,6 +1184,32 @@ func (t *scopedTx) DeleteSecret(ctx context.Context, owner domain.UserID, name s
 		return err
 	}
 	return t.tx.DeleteSecret(ctx, owner, name, expected)
+}
+
+func (t *scopedTx) InsertGitHubConnection(ctx context.Context, item domain.GitHubConnection) error {
+	if err := t.keyOwner(item.OwnerUserID); err != nil {
+		return err
+	}
+	return t.tx.InsertGitHubConnection(ctx, item)
+}
+
+func (t *scopedTx) UpdateGitHubConnection(
+	ctx context.Context, item domain.GitHubConnection, expected domain.ResourceVersion,
+) error {
+	if err := t.keyOwner(item.OwnerUserID); err != nil {
+		return err
+	}
+	return t.tx.UpdateGitHubConnection(ctx, item, expected)
+}
+
+// DeleteGitHubConnection allows the system principal to remove a departed
+// member's login. A user can delete only their own. allows() is true for
+// the system, unlike keyOwner, which is empty for the system.
+func (t *scopedTx) DeleteGitHubConnection(ctx context.Context, owner domain.UserID) error {
+	if owner == "" || !t.scope.allows(owner) {
+		return domain.ErrNotFound
+	}
+	return t.tx.DeleteGitHubConnection(ctx, owner)
 }
 
 func (t *scopedTx) InsertCapsule(ctx context.Context, item domain.Capsule) error {

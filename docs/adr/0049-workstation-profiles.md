@@ -414,8 +414,8 @@ diagnostic does not inspect the workspace to report on them.
 
 ### UI
 
-- **First run.** Three steps: import this computer, connect a model, and
-  create a Project. The page lists imported harnesses only after a profile
+- **First run.** Import this computer, connect a model, connect GitHub
+  (ADR 0051), and create a Project. The page lists imported harnesses only after a profile
   has been saved. Until then, the step is the desktop or browser text above.
   It moves on when the `profile.updated` event arrives. The connect step is skipped
   when a connection already covers each imported harness. The Project form

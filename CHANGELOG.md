@@ -7,6 +7,30 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Connect GitHub once (ADR 0051, #197). Home, Settings, and
+  `meridian github connect` store one owner-bound login. Clone, push, and
+  pull requests use it when a Project does not name its own `git_https`,
+  `git_push`, or `github_api` secret. Those secrets still win when they are
+  set. When `gh` is signed in, Connect GitHub asks once: "Use your GitHub
+  login @user?" That token is stored unchanged, so organization SSO and
+  approved-app grants that already apply to `gh` still apply. If it later
+  expires or `gh` re-authenticates, a local check refreshes it or shows
+  Reconnect GitHub. The device code is only the fallback when `gh` is
+  missing or signed out. New
+  Project searches repositories, including private ones, and keeps "Use a
+  token instead." An invalid, expired, or under-scoped login shows
+  Reconnect GitHub. The device flow needs
+  `--github-oauth-client-id` or `MERIDIAN_GITHUB_OAUTH_CLIENT_ID`. No client
+  id is shipped.
+- A private or inaccessible GitHub repository with no usable credential
+  fails once, as `repository_access`, instead of retrying checkout.
+  The Capsule and the Thread say which repository could not be read and
+  offer Connect GitHub or a token. Creating that Project checks access
+  first. Git output is not stored or shown. Migration 0032 allows the
+  new failure code.
+
 ## [0.10.1] - 2026-11-15
 
 ### Upgrade notes

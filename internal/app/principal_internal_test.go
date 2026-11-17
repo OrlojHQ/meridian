@@ -48,6 +48,7 @@ var principalExempt = map[string]string{
 	"ConfigureLocalProviderGateway": "startup wiring",
 	"ConfigureProviderGateway":      "startup wiring",
 	"ConfigureSecrets":              "startup wiring",
+	"ConfigureGitHub":               "startup wiring",
 	"ConfigureObserver":             "startup wiring",
 	"ConfigurePreview":              "startup wiring",
 	"ConfigureBrowse":               "startup wiring",
