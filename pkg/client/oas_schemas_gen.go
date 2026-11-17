@@ -7953,10 +7953,23 @@ func (s *HarnessSetupUploadHarness) UnmarshalText(data []byte) error {
 	}
 }
 
+// Whether this computer's GitHub CLI login can be reused. The token is never included.
 // Ref: #/components/schemas/HostGitHubLogin
 type HostGitHubLogin struct {
-	Available bool      `json:"available"`
-	Login     OptString `json:"login"`
+	// True when gh is signed in and a login was read from gh auth status.
+	Available bool `json:"available"`
+	// The signed-in account, when state is signed_in.
+	Login OptString `json:"login"`
+	// Signed_in: gh was found and reports an account. not_signed_in: gh was found and is not signed in.
+	// token_unreadable: gh knows an account but could not read its token. not_found: gh was not found.
+	// unavailable: this request must not look for a host login.
+	State HostGitHubLoginState `json:"state"`
+	// Absolute path of the gh binary when one was found.
+	Path OptString `json:"path"`
+	// Locations checked while looking for gh. A token is never included.
+	Searched []string `json:"searched"`
+	// A short explanation safe to show. A token is never included.
+	Detail OptString `json:"detail"`
 }
 
 // GetAvailable returns the value of Available.
@@ -7969,6 +7982,26 @@ func (s *HostGitHubLogin) GetLogin() OptString {
 	return s.Login
 }
 
+// GetState returns the value of State.
+func (s *HostGitHubLogin) GetState() HostGitHubLoginState {
+	return s.State
+}
+
+// GetPath returns the value of Path.
+func (s *HostGitHubLogin) GetPath() OptString {
+	return s.Path
+}
+
+// GetSearched returns the value of Searched.
+func (s *HostGitHubLogin) GetSearched() []string {
+	return s.Searched
+}
+
+// GetDetail returns the value of Detail.
+func (s *HostGitHubLogin) GetDetail() OptString {
+	return s.Detail
+}
+
 // SetAvailable sets the value of Available.
 func (s *HostGitHubLogin) SetAvailable(val bool) {
 	s.Available = val
@@ -7977,6 +8010,91 @@ func (s *HostGitHubLogin) SetAvailable(val bool) {
 // SetLogin sets the value of Login.
 func (s *HostGitHubLogin) SetLogin(val OptString) {
 	s.Login = val
+}
+
+// SetState sets the value of State.
+func (s *HostGitHubLogin) SetState(val HostGitHubLoginState) {
+	s.State = val
+}
+
+// SetPath sets the value of Path.
+func (s *HostGitHubLogin) SetPath(val OptString) {
+	s.Path = val
+}
+
+// SetSearched sets the value of Searched.
+func (s *HostGitHubLogin) SetSearched(val []string) {
+	s.Searched = val
+}
+
+// SetDetail sets the value of Detail.
+func (s *HostGitHubLogin) SetDetail(val OptString) {
+	s.Detail = val
+}
+
+// Signed_in: gh was found and reports an account. not_signed_in: gh was found and is not signed in.
+// token_unreadable: gh knows an account but could not read its token. not_found: gh was not found.
+// unavailable: this request must not look for a host login.
+type HostGitHubLoginState string
+
+const (
+	HostGitHubLoginStateSignedIn        HostGitHubLoginState = "signed_in"
+	HostGitHubLoginStateNotSignedIn     HostGitHubLoginState = "not_signed_in"
+	HostGitHubLoginStateTokenUnreadable HostGitHubLoginState = "token_unreadable"
+	HostGitHubLoginStateNotFound        HostGitHubLoginState = "not_found"
+	HostGitHubLoginStateUnavailable     HostGitHubLoginState = "unavailable"
+)
+
+// AllValues returns all HostGitHubLoginState values.
+func (HostGitHubLoginState) AllValues() []HostGitHubLoginState {
+	return []HostGitHubLoginState{
+		HostGitHubLoginStateSignedIn,
+		HostGitHubLoginStateNotSignedIn,
+		HostGitHubLoginStateTokenUnreadable,
+		HostGitHubLoginStateNotFound,
+		HostGitHubLoginStateUnavailable,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s HostGitHubLoginState) MarshalText() ([]byte, error) {
+	switch s {
+	case HostGitHubLoginStateSignedIn:
+		return []byte(s), nil
+	case HostGitHubLoginStateNotSignedIn:
+		return []byte(s), nil
+	case HostGitHubLoginStateTokenUnreadable:
+		return []byte(s), nil
+	case HostGitHubLoginStateNotFound:
+		return []byte(s), nil
+	case HostGitHubLoginStateUnavailable:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *HostGitHubLoginState) UnmarshalText(data []byte) error {
+	switch HostGitHubLoginState(data) {
+	case HostGitHubLoginStateSignedIn:
+		*s = HostGitHubLoginStateSignedIn
+		return nil
+	case HostGitHubLoginStateNotSignedIn:
+		*s = HostGitHubLoginStateNotSignedIn
+		return nil
+	case HostGitHubLoginStateTokenUnreadable:
+		*s = HostGitHubLoginStateTokenUnreadable
+		return nil
+	case HostGitHubLoginStateNotFound:
+		*s = HostGitHubLoginStateNotFound
+		return nil
+	case HostGitHubLoginStateUnavailable:
+		*s = HostGitHubLoginStateUnavailable
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
 }
 
 // Ref: #/components/schemas/IdentityRebind

@@ -49,12 +49,19 @@ func (s *Server) disconnectGitHub(writer http.ResponseWriter, request *http.Requ
 
 func (s *Server) getHostGitHubLogin(writer http.ResponseWriter, request *http.Request) {
 	writer.Header().Set("Cache-Control", "no-store")
-	login, available, err := s.service.HostGitHubLogin(request.Context(), isLoopbackRequest(request))
+	view, err := s.service.HostGitHubLogin(request.Context(), isLoopbackRequest(request))
 	if err != nil {
 		writeError(writer, err)
 		return
 	}
-	writeJSON(writer, http.StatusOK, hostGitHubJSON{Available: available, Login: login})
+	writeJSON(writer, http.StatusOK, hostGitHubJSON{
+		Available: view.Available,
+		Login:     view.Login,
+		State:     view.State,
+		Path:      view.Path,
+		Searched:  view.Searched,
+		Detail:    view.Detail,
+	})
 }
 
 func (s *Server) useHostGitHubLogin(writer http.ResponseWriter, request *http.Request) {
@@ -194,8 +201,12 @@ func newGitHubConnectionJSON(state app.GitHubConnectionState) gitHubConnectionJS
 }
 
 type hostGitHubJSON struct {
-	Available bool   `json:"available"`
-	Login     string `json:"login,omitempty"`
+	Available bool     `json:"available"`
+	Login     string   `json:"login,omitempty"`
+	State     string   `json:"state"`
+	Path      string   `json:"path,omitempty"`
+	Searched  []string `json:"searched,omitempty"`
+	Detail    string   `json:"detail,omitempty"`
 }
 
 type gitHubDeviceJSON struct {

@@ -10,6 +10,7 @@ use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 
 use crate::gateway::LOCAL_LISTEN;
+use crate::path_env::station_path;
 
 pub struct Sidecar {
     pid: u32,
@@ -24,8 +25,12 @@ impl Sidecar {
             .shell()
             .sidecar("meridian-desktop-gateway")
             .map_err(|error| format!("The bundled Station is not installed ({error})."))?;
+        // A graphical launch leaves PATH as /usr/bin:/bin:/usr/sbin:/sbin.
+        // Give the Station the login shell's PATH and the usual install
+        // locations so it can find gh.
         let (mut events, child) = command
             .args(["--listen", LOCAL_LISTEN])
+            .env("PATH", station_path())
             .kill_on_drop(true)
             .spawn()
             .map_err(|error| format!("Could not start the local Station ({error})."))?;

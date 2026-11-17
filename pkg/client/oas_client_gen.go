@@ -445,7 +445,9 @@ type Invoker interface {
 	// GetHostGitHubLogin invokes getHostGitHubLogin operation.
 	//
 	// Available only for a loopback request on a single-user Station. Does not read or return the token.
-	// Team mode and remote requests report available false.
+	// Team mode and remote requests report state unavailable. Other states say whether gh was found, is
+	// signed in, or could not read its token, and which paths were searched. Command output is not
+	// included.
 	//
 	// GET /github/connection/host
 	GetHostGitHubLogin(ctx context.Context) (*HostGitHubLogin, error)
@@ -8897,7 +8899,9 @@ func (c *Client) sendGetHealth(ctx context.Context) (res GetHealthRes, err error
 // GetHostGitHubLogin invokes getHostGitHubLogin operation.
 //
 // Available only for a loopback request on a single-user Station. Does not read or return the token.
-// Team mode and remote requests report available false.
+// Team mode and remote requests report state unavailable. Other states say whether gh was found, is
+// signed in, or could not read its token, and which paths were searched. Command output is not
+// included.
 //
 // GET /github/connection/host
 func (c *Client) GetHostGitHubLogin(ctx context.Context) (*HostGitHubLogin, error) {

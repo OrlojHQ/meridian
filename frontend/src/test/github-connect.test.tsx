@@ -22,7 +22,13 @@ afterEach(() => {
 
 it("confirms the host GitHub login in one step", async () => {
   vi.spyOn(api, "githubConnection").mockResolvedValue({ connected: false, deviceFlow: true });
-  vi.spyOn(api, "hostGitHubLogin").mockResolvedValue({ available: true, login: "octocat" });
+  vi.spyOn(api, "hostGitHubLogin").mockResolvedValue({
+    available: true,
+    state: "signed_in",
+    login: "octocat",
+    path: "/opt/homebrew/bin/gh",
+    detail: "The GitHub CLI at /opt/homebrew/bin/gh is signed in as @octocat.",
+  });
   const useHost = vi.spyOn(api, "useHostGitHub").mockResolvedValue({
     connected: true,
     deviceFlow: true,
@@ -31,14 +37,20 @@ it("confirms the host GitHub login in one step", async () => {
     resourceVersion: 1,
   });
   show(<GitHubConnect />);
+  expect(await screen.findByText("The GitHub CLI at /opt/homebrew/bin/gh is signed in as @octocat.")).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Connect with a device code" })).not.toBeInTheDocument();
-  await userEvent.click(await screen.findByRole("button", { name: "Use your GitHub login @octocat?" }));
+  await userEvent.click(screen.getByRole("button", { name: "Use your GitHub CLI login (@octocat)" }));
   expect(useHost).toHaveBeenCalledWith(0);
 });
 
-it("uses a device code only when the GitHub CLI is not signed in", async () => {
+it("names a GitHub CLI that is installed but not signed in", async () => {
   vi.spyOn(api, "githubConnection").mockResolvedValue({ connected: false, deviceFlow: true });
-  vi.spyOn(api, "hostGitHubLogin").mockResolvedValue({ available: false });
+  vi.spyOn(api, "hostGitHubLogin").mockResolvedValue({
+    available: false,
+    state: "not_signed_in",
+    path: "/opt/homebrew/bin/gh",
+    detail: "The GitHub CLI at /opt/homebrew/bin/gh is not signed in. Run `gh auth login` on this computer, then connect again.",
+  });
   const begin = vi.spyOn(api, "beginGitHubDevice").mockResolvedValue({
     userCode: "ABCD-EFGH",
     verificationUri: "https://github.com/login/device",
@@ -46,7 +58,7 @@ it("uses a device code only when the GitHub CLI is not signed in", async () => {
     intervalSeconds: 60,
   });
   show(<GitHubConnect />);
-  expect(await screen.findByText("or install and sign in to the GitHub CLI")).toBeInTheDocument();
+  expect(await screen.findByText(/\/opt\/homebrew\/bin\/gh is not signed in/)).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "Connect with a device code" }));
   expect(await screen.findByLabelText("GitHub device code")).toHaveTextContent("ABCD-EFGH");
   expect(screen.getByRole("link", { name: "Open github.com/login/device" })).toHaveAttribute(
@@ -54,6 +66,36 @@ it("uses a device code only when the GitHub CLI is not signed in", async () => {
     "https://github.com/login/device",
   );
   expect(begin).toHaveBeenCalledWith(0);
+});
+
+it("names the paths searched when the GitHub CLI is missing and hides a disabled device code", async () => {
+  vi.spyOn(api, "githubConnection").mockResolvedValue({ connected: false, deviceFlow: false });
+  vi.spyOn(api, "hostGitHubLogin").mockResolvedValue({
+    available: false,
+    state: "not_found",
+    searched: ["PATH", "/opt/homebrew/bin/gh", "/usr/local/bin/gh"],
+    detail: "The GitHub CLI was not found. Searched PATH, /opt/homebrew/bin/gh, /usr/local/bin/gh.",
+  });
+  show(<GitHubConnect />);
+  expect(await screen.findByText(/Searched PATH, \/opt\/homebrew\/bin\/gh, \/usr\/local\/bin\/gh/)).toBeInTheDocument();
+  expect(screen.getByText(/no GitHub OAuth client id/)).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Connect with a device code" })).not.toBeInTheDocument();
+});
+
+it("says when the GitHub CLI token cannot be read", async () => {
+  vi.spyOn(api, "githubConnection").mockResolvedValue({ connected: false, deviceFlow: false });
+  vi.spyOn(api, "hostGitHubLogin").mockResolvedValue({
+    available: false,
+    state: "token_unreadable",
+    login: "octocat",
+    path: "/opt/homebrew/bin/gh",
+    detail:
+      "The GitHub CLI at /opt/homebrew/bin/gh is signed in as @octocat, but its token could not be read. Run `meridian github connect` in a terminal on this computer.",
+  });
+  show(<GitHubConnect />);
+  expect(await screen.findByText(/its token could not be read/)).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Use your GitHub CLI login (@octocat)" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Connect with a device code" })).not.toBeInTheDocument();
 });
 
 it("offers the host login again when a connection needs reconnect", async () => {
@@ -65,9 +107,14 @@ it("offers the host login again when a connection needs reconnect", async () => 
     reason: "expired",
     resourceVersion: 4,
   });
-  vi.spyOn(api, "hostGitHubLogin").mockResolvedValue({ available: true, login: "octocat" });
+  vi.spyOn(api, "hostGitHubLogin").mockResolvedValue({
+    available: true,
+    state: "signed_in",
+    login: "octocat",
+    path: "/usr/bin/gh",
+  });
   show(<GitHubConnect />);
-  expect(await screen.findByRole("button", { name: "Use your GitHub login @octocat?" })).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "Use your GitHub CLI login (@octocat)" })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Connect with a device code" })).not.toBeInTheDocument();
 });
 

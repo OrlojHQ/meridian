@@ -7,6 +7,16 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Settings and `meridian github connect` reuse a GitHub CLI login when the
+  Station was started from the desktop app or a service whose `PATH` does
+  not include the usual install location. The card says whether `gh` is
+  signed in, not signed in, unable to read its token, or missing, including
+  the path that was searched. A device code is not offered unless an OAuth
+  client id is configured. `MERIDIAN_GH_PATH` or `--gh-path` selects the
+  binary. The token is not shown.
+
 ## [0.11.1] - 2026-11-16
 
 ### Upgrade notes

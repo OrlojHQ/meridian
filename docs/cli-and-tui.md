@@ -8,12 +8,15 @@ packages.
 ## GitHub
 
 `meridian github connect` stores one login for clone, push, and pull
-requests. When `gh` is signed in it asks "Use your GitHub login @user?"
-and stops if you decline. `--device` skips `gh` and shows a device code.
-With no `gh` login it says to install and sign in to the GitHub CLI, then
-uses a device code. `--stdin` reads a token. `meridian github status`
-prints the login. `meridian github disconnect --confirm` deletes it. The
-token is not printed.
+requests. When `gh` is signed in it asks "Use your GitHub CLI login (@user)?"
+and stops if you decline. It finds `gh` on `PATH`, in the usual install
+locations, and on the login shell's `PATH`. `--gh-path` or `MERIDIAN_GH_PATH`
+names an absolute binary. If `gh` is missing, not signed in, or cannot read
+its token, the command says which, including the path it searched. `--device`
+skips `gh` and shows a device code when the Station has an OAuth client id.
+Without a client id it stops after that explanation. `--stdin` reads a token.
+`meridian github status` prints the login. `meridian github disconnect --confirm`
+deletes it. The token is not printed.
 
 ## Launch
 

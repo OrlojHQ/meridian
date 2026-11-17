@@ -18722,11 +18722,41 @@ func (s *HostGitHubLogin) encodeFields(e *jx.Encoder) {
 			s.Login.Encode(e)
 		}
 	}
+	{
+		e.FieldStart("state")
+		s.State.Encode(e)
+	}
+	{
+		if s.Path.Set {
+			e.FieldStart("path")
+			s.Path.Encode(e)
+		}
+	}
+	{
+		if s.Searched != nil {
+			e.FieldStart("searched")
+			e.ArrStart()
+			for _, elem := range s.Searched {
+				e.Str(elem)
+			}
+			e.ArrEnd()
+		}
+	}
+	{
+		if s.Detail.Set {
+			e.FieldStart("detail")
+			s.Detail.Encode(e)
+		}
+	}
 }
 
-var jsonFieldsNameOfHostGitHubLogin = [2]string{
+var jsonFieldsNameOfHostGitHubLogin = [6]string{
 	0: "available",
 	1: "login",
+	2: "state",
+	3: "path",
+	4: "searched",
+	5: "detail",
 }
 
 // Decode decodes HostGitHubLogin from json.
@@ -18760,6 +18790,55 @@ func (s *HostGitHubLogin) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"login\"")
 			}
+		case "state":
+			requiredBitSet[0] |= 1 << 2
+			if err := func() error {
+				if err := s.State.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"state\"")
+			}
+		case "path":
+			if err := func() error {
+				s.Path.Reset()
+				if err := s.Path.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"path\"")
+			}
+		case "searched":
+			if err := func() error {
+				s.Searched = make([]string, 0)
+				if err := d.Arr(func(d *jx.Decoder) error {
+					var elem string
+					v, err := d.Str()
+					elem = string(v)
+					if err != nil {
+						return err
+					}
+					s.Searched = append(s.Searched, elem)
+					return nil
+				}); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"searched\"")
+			}
+		case "detail":
+			if err := func() error {
+				s.Detail.Reset()
+				if err := s.Detail.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"detail\"")
+			}
 		default:
 			return d.Skip()
 		}
@@ -18770,7 +18849,7 @@ func (s *HostGitHubLogin) Decode(d *jx.Decoder) error {
 	// Validate required fields.
 	var failures []validate.FieldError
 	for i, mask := range [1]uint8{
-		0b00000001,
+		0b00000101,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.
@@ -18812,6 +18891,52 @@ func (s *HostGitHubLogin) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
 func (s *HostGitHubLogin) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes HostGitHubLoginState as json.
+func (s HostGitHubLoginState) Encode(e *jx.Encoder) {
+	e.Str(string(s))
+}
+
+// Decode decodes HostGitHubLoginState from json.
+func (s *HostGitHubLoginState) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode HostGitHubLoginState to nil")
+	}
+	v, err := d.StrBytes()
+	if err != nil {
+		return err
+	}
+	// Try to use constant string.
+	switch HostGitHubLoginState(v) {
+	case HostGitHubLoginStateSignedIn:
+		*s = HostGitHubLoginStateSignedIn
+	case HostGitHubLoginStateNotSignedIn:
+		*s = HostGitHubLoginStateNotSignedIn
+	case HostGitHubLoginStateTokenUnreadable:
+		*s = HostGitHubLoginStateTokenUnreadable
+	case HostGitHubLoginStateNotFound:
+		*s = HostGitHubLoginStateNotFound
+	case HostGitHubLoginStateUnavailable:
+		*s = HostGitHubLoginStateUnavailable
+	default:
+		*s = HostGitHubLoginState(v)
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s HostGitHubLoginState) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *HostGitHubLoginState) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }

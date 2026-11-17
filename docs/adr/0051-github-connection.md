@@ -28,11 +28,25 @@ transferred.
 ### How a login is obtained
 
 The default path is this computer's `gh` login. When `gh` is installed and
-signed in, Connect GitHub is one confirmation: "Use your GitHub login
-@user?" That confirmation is what runs `gh auth token`. The station stores
+signed in, Connect GitHub is one confirmation: "Use your GitHub CLI login
+(@user)?" That confirmation is what runs `gh auth token`. The station stores
 that token unchanged, so organization SSO grants and approved-app
 authorizations that already apply to `gh` still apply. It is not exchanged
 for a new OAuth grant.
+
+The station finds `gh` on `PATH`, then at `/opt/homebrew/bin/gh`,
+`/usr/local/bin/gh`, `/home/linuxbrew/.linuxbrew/bin/gh`, `~/.local/bin/gh`,
+and `/usr/bin/gh`, then on the login shell's `PATH`. `MERIDIAN_GH_PATH` or
+`--gh-path` names one absolute binary and is not searched past. A desktop
+app started from the graphical session inherits
+`PATH=/usr/bin:/bin:/usr/sbin:/sbin`; before it starts the bundled station
+it prepends the login shell's `PATH` and those install locations.
+`gh auth status` and `gh auth token` run with that environment, and with
+`HOME` filled in when the session left it empty, so a keyring token stored
+for the user can be read. The status probe does not keep command output
+and does not take the token. The settings card and `meridian github connect`
+say which case it is: signed in, not signed in, signed in but the token
+could not be read, or not found, and the path that was searched.
 
 The station does not read `gh` at startup, for a remote request, or in team
 mode. That login belongs to the machine, not a team member. After the owner
@@ -41,10 +55,11 @@ has confirmed a host login, a later connection check on loopback may read
 replaced. If `gh` is signed out or the token is rejected, the connection
 becomes `needs_reconnect` and the UI shows Reconnect GitHub.
 
-The device flow is only the fallback when `gh` is missing or signed out.
-The page says "or install and sign in to the GitHub CLI" and then shows a
-device code. The device code stays in station memory. The public OAuth
-client id is `--github-oauth-client-id` or
+The device flow is only the fallback when `gh` is missing, signed out, or
+unable to read its token. The page says which of those it is. It shows a
+device code only when a public OAuth client id is configured; otherwise it
+does not offer one. The device code stays in station memory. The public
+OAuth client id is `--github-oauth-client-id` or
 `MERIDIAN_GITHUB_OAUTH_CLIENT_ID`. It is not a secret. An empty id disables
 the device flow. There is no client secret. A device-flow token is a
 different grant from `gh` and may still need organization approval.

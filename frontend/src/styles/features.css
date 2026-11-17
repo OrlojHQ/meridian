@@ -4128,6 +4128,11 @@ button.tool-line:hover {
   max-width: 36rem;
 }
 
+.github-status {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 .github-actions,
 .github-device {
   display: grid;

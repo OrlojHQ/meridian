@@ -198,7 +198,9 @@ used only for an HTTPS `github.com` repository on the default port: a Project
 on any other host never receives the GitHub token, clones anonymously, and
 needs a named secret to push. The station reads
 the host `gh` token only after the owner confirms, and only for a loopback
-request on a single-user Station. A connection check may read it again
+request on a single-user Station. Finding `gh` and running `gh auth status`
+does not take the token and does not keep command output, which can contain
+one. A connection check may read the token again
 when that stored login came from `gh`, to replace an expired or
 re-authenticated token. Team mode and remote requests never read it. The
 device-flow device code stays in

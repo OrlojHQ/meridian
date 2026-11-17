@@ -301,8 +301,12 @@ meridian github connect
 ```
 
 On a loopback single-user Station, when `gh` is signed in, this asks once
-to use that login. The device code is the fallback when `gh` is missing or
-signed out, and the command says to install and sign in to the GitHub CLI.
+to use that login. The station finds `gh` even when it was started with a
+short `PATH` (the desktop app, or `brew services`). `MERIDIAN_GH_PATH` or
+`meridiand --gh-path` selects a binary. The command says when `gh` is
+missing, not signed in, or unable to read its token, and which paths it
+searched. The device code is the fallback only when a public OAuth client
+id is configured.
 A later check refreshes a host login from `gh` after it re-authenticates.
 The device flow needs a
 public OAuth client id (`meridiand --github-oauth-client-id` or

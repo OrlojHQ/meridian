@@ -89,6 +89,9 @@ type Config struct {
 	// GitHubOAuthClientID is the public client id for the GitHub device
 	// flow (ADR 0051). Empty disables that flow. It is not a secret.
 	GitHubOAuthClientID string
+	// GitHubCLIPath is an absolute gh binary. Empty discovers one on PATH
+	// and in the usual install locations. It is not a secret.
+	GitHubCLIPath string
 }
 
 // testProvider replaces provider construction when tests call UseTestProvider.
@@ -439,7 +442,7 @@ func run(ctx context.Context, config Config) error {
 		service.ConfigureChecks(checks)
 	}
 	githubClient := githubauth.New(nil)
-	service.ConfigureGitHub(config.GitHubOAuthClientID, githubauth.HostCommands{}, githubClient)
+	service.ConfigureGitHub(config.GitHubOAuthClientID, githubauth.HostCommands{Path: config.GitHubCLIPath}, githubClient)
 	reconciler.ConfigureRepositoryProbe(githubClient)
 	reconciler.ConfigureRuntimeRecovery(service.FailStoppedRuntimeRuns)
 	reconciler.OnCapsuleSettled(func(ctx context.Context, capsule domain.Capsule) {
