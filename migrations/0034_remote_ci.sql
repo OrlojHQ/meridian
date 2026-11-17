@@ -51,6 +51,10 @@ END;
 CREATE TRIGGER remote_ci_watches_owner_immutable
 BEFORE UPDATE OF owner_user_id ON remote_ci_watches
 WHEN NEW.owner_user_id IS NOT OLD.owner_user_id
+    AND NOT EXISTS (
+        SELECT 1 FROM owner_transfers
+        WHERE id = 1 AND from_user = OLD.owner_user_id AND to_user = NEW.owner_user_id
+    )
 BEGIN
     SELECT RAISE(ABORT, 'owner immutable');
 END;
