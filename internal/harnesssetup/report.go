@@ -2,6 +2,7 @@ package harnesssetup
 
 import (
 	"errors"
+	"net/url"
 	"regexp"
 	"unicode"
 	"unicode/utf8"
@@ -41,11 +42,24 @@ func (r Report) Redacted() Report {
 	redact := func(items []Issue) []Issue {
 		out := make([]Issue, 0, len(items))
 		for _, item := range items {
-			out = append(out, Issue{Path: RedactPath(item.Path), Reason: RedactPath(item.Reason)})
+			out = append(out, redactIssue(item))
 		}
 		return out
 	}
 	return Report{Issues: redact(r.Issues), Warnings: redact(r.Warnings)}
+}
+
+func redactIssue(item Issue) Issue {
+	item.Path = RedactPath(item.Path)
+	item.Reason = RedactPath(item.Reason)
+	if item.Connect != nil {
+		action := *item.Connect
+		action.Name = RedactPath(action.Name)
+		action.BaseURL = RedactPath(action.BaseURL)
+		action.Model = RedactPath(action.Model)
+		item.Connect = &action
+	}
+	return item
 }
 
 // Report returns the preview's exclusions and warnings.
@@ -64,9 +78,29 @@ func (r Report) Validate() error {
 			if !reportText(issue.Path, maxReportPath) || issue.Reason == "" || !reportText(issue.Reason, maxReportReason) {
 				return errors.New("import report entry is not bounded display text")
 			}
+			if issue.Connect != nil && !validConnect(*issue.Connect) {
+				return errors.New("import report connection offer is invalid")
+			}
 		}
 	}
 	return nil
+}
+
+func validConnect(action ConnectAction) bool {
+	if action.Provider != "openai-compatible" && action.Provider != "anthropic-compatible" {
+		return false
+	}
+	if action.Name == "" || !reportText(action.Name, 128) || !reportText(action.BaseURL, 2048) {
+		return false
+	}
+	if action.Model != "" && !ValidModel(action.Model) {
+		return false
+	}
+	u, err := url.Parse(action.BaseURL)
+	if err != nil || u.User != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") || u.RawQuery != "" || u.Fragment != "" {
+		return false
+	}
+	return true
 }
 
 func reportText(value string, limit int) bool {

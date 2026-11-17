@@ -521,6 +521,7 @@ func TestOpenCodeImportedProxyConnection(t *testing.T) {
 	env, err = s.prepareProviderConnection(context.Background(), &harnesssetup.Connection{
 		Provider: "openai-compatible", URL: "https://meridian.example/provider-gateway/openai-compatible",
 		Token: token, Model: "example-coder", Efforts: []string{"high", "low"},
+		Name: "Work proxy", Fold: []string{"proxy"},
 	}, setup, "opencode", env)
 	if err != nil {
 		t.Fatal(err)
@@ -540,11 +541,11 @@ func TestOpenCodeImportedProxyConnection(t *testing.T) {
 		t.Fatalf("model = %v", config["model"])
 	}
 	enabled := config["enabled_providers"].([]any)
-	if len(enabled) != 2 || enabled[0] != "proxy" || enabled[1] != "meridian" {
+	if len(enabled) != 1 || enabled[0] != "meridian" {
 		t.Fatalf("enabled_providers = %v", enabled)
 	}
 	disabled := config["disabled_providers"].([]any)
-	if len(disabled) != 1 || disabled[0] != "openai" {
+	if len(disabled) != 2 || disabled[0] != "openai" || disabled[1] != "proxy" {
 		t.Fatalf("disabled_providers = %v", disabled)
 	}
 	policies := config["policies"].([]any)
@@ -553,17 +554,18 @@ func TestOpenCodeImportedProxyConnection(t *testing.T) {
 		t.Fatalf("policies = %v", policies)
 	}
 	providers := config["providers"].(map[string]any)
-	proxy := providers["proxy"].(map[string]any)
-	settings := proxy["settings"].(map[string]any)
-	if proxy["name"] != "Work proxy" || settings["includeUsage"] != true || settings["baseURL"] != "https://proxy.internal.example/v1" {
-		t.Fatalf("imported provider changed: %v", proxy)
+	if _, ok := providers["proxy"]; ok {
+		t.Fatalf("unauthenticated provider kept: %v", providers["proxy"])
 	}
 	meridian := providers["meridian"].(map[string]any)
 	gateway := meridian["settings"].(map[string]any)
 	model := meridian["models"].(map[string]any)["example-coder"].(map[string]any)
 	effort := model["capabilities"].(map[string]any)["reasoning"].(map[string]any)["effort"].([]any)
-	if meridian["package"] != "@opencode/ai/providers/openai-compatible" || gateway["baseURL"] != "https://meridian.example/provider-gateway/openai-compatible/v1" || gateway["apiKey"] != "{env:MERIDIAN_PROVIDER_TOKEN}" || len(effort) != 2 || effort[0] != "low" || effort[1] != "high" {
+	if meridian["name"] != "Work proxy" || meridian["package"] != "@opencode/ai/providers/openai-compatible" || gateway["baseURL"] != "https://meridian.example/provider-gateway/openai-compatible/v1" || gateway["apiKey"] != "{env:MERIDIAN_PROVIDER_TOKEN}" || gateway["includeUsage"] != true || len(effort) != 2 || effort[0] != "low" || effort[1] != "high" {
 		t.Fatalf("connection provider = %v", meridian)
+	}
+	if strings.Contains(string(raw), "PROXY_API_KEY") || strings.Contains(string(raw), "proxy.internal.example") {
+		t.Fatalf("imported provider or its key reference was copied: %s", raw)
 	}
 	if _, ok := config["provider"]; ok {
 		t.Fatalf("legacy provider key created: %v", config["provider"])

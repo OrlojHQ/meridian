@@ -420,6 +420,28 @@ func (p *Provider) RunEvents(
 	return output, nil
 }
 
+func (p *Provider) StartShell(ctx context.Context, resourceID string, columns, rows uint16) error {
+	client, session, err := p.runtimeClient(ctx, resourceID)
+	if err != nil {
+		return err
+	}
+	defer session.Close()
+	return mapRuntimeError(client.StartShell(ctx, columns, rows))
+}
+
+func (p *Provider) AttachShell(ctx context.Context, resourceID string) (ports.RuntimeAttachment, error) {
+	client, session, err := p.runtimeClient(ctx, resourceID)
+	if err != nil {
+		return nil, err
+	}
+	connection, err := client.AttachShell(ctx)
+	if err != nil {
+		_ = session.Close()
+		return nil, mapRuntimeError(err)
+	}
+	return &attachment{connection: connection, session: session}, nil
+}
+
 func (p *Provider) AttachRun(
 	ctx context.Context,
 	resourceID string,

@@ -7,6 +7,12 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- An imported OpenCode provider whose key comes from an environment variable, a file, or is missing is no longer copied into the Capsule. When its endpoint matches a provider connection, its models run through the gateway under the provider's own name. Otherwise it is left out of the model list, and the import report says it needs a connection. A turn that fails because a provider has no key says so. A turn or model change that gets no reply ends with an error, and stopping a session ends it even when the harness ignores the cancel.
+- The Capsule header names only the setup for the harness that Capsule runs, with the revision time in local time. The note that Settings edits apply to the next Capsule appears only after that setup changes.
+- The Terminal tab opens a shell in the Capsule workspace instead of retrying a harness terminal that does not exist. A harness terminal remains available as Harness output when that run has one. A permanent attach failure is shown once, not retried.
+
 ## [0.11.3] - 2026-11-17
 
 ### Fixed

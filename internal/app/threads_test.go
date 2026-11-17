@@ -571,12 +571,33 @@ func TestCancelThreadReturnsRuntimeFailureAndRetriesCancelling(t *testing.T) {
 	runtime.cancelErr = errors.New("runtime cancellation failed")
 	if _, err := service.CancelThread(
 		ctx, created.Thread.ID, created.Thread.ResourceVersion, "cancel-retry",
-	); err == nil || err.Error() != "runtime cancellation failed" {
+	); err == nil || !strings.Contains(err.Error(), "session was ended") {
 		t.Fatalf("cancel error = %v", err)
 	}
 	run, err := service.GetRunStored(ctx, created.Run.ID)
-	if err != nil || run.State != domain.RunCancelling {
-		t.Fatalf("durable cancelling run = %#v, %v", run, err)
+	if err != nil || run.State != domain.RunCancelled || run.Failure == "" {
+		t.Fatalf("ended run = %#v, %v", run, err)
+	}
+	var sawCancelling, sawCancelled bool
+	if err := store.View(ctx, func(reader ports.Reader) error {
+		events, err := reader.ListEvents(ctx, "run", string(run.ID))
+		if err != nil {
+			return err
+		}
+		for _, event := range events {
+			if event.Type == "run.cancelling" {
+				sawCancelling = true
+			}
+			if event.Type == "run.cancelled" {
+				sawCancelled = true
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !sawCancelling || !sawCancelled {
+		t.Fatal("stop did not record cancelling and cancelled")
 	}
 	runtime.cancelErr = nil
 	if _, err := service.CancelThread(
@@ -586,7 +607,7 @@ func TestCancelThreadReturnsRuntimeFailureAndRetriesCancelling(t *testing.T) {
 	}
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
-	if runtime.cancels != 2 {
+	if runtime.cancels != 1 {
 		t.Fatalf("runtime cancel attempts = %d", runtime.cancels)
 	}
 }

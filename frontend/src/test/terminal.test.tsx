@@ -134,7 +134,25 @@ describe("terminal ticket scope", () => {
         "run-1",
       ),
     ).toThrow(/invalid WebSocket path/);
+    expect(
+      terminalSocketURL({
+        ticket: "secret",
+        expiresAt: "2099-01-01T00:00:00Z",
+        webSocketPath: "/capsules/capsule-1/shell/attach",
+      }),
+    ).toContain("/capsules/capsule-1/shell/attach");
   });
+});
+
+it("does not reconnect when a terminal attach is permanently unavailable", async () => {
+  const attach = vi.spyOn(api, "attachTicket").mockRejectedValue({
+    error: { code: "not_found", message: "This run has no terminal." },
+  });
+  render(<TerminalView runId="run-1" reconnect={true} supported={true} />);
+  expect(await screen.findByRole("status")).toHaveTextContent("Terminal unavailable");
+  await new Promise((resolve) => setTimeout(resolve, 1200));
+  expect(attach).toHaveBeenCalledTimes(1);
+  expect(screen.getByText("This session has no terminal to attach.")).toBeInTheDocument();
 });
 
 it("refits on every size change but sends the PTY one resize once it settles", async () => {

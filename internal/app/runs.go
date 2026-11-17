@@ -276,16 +276,28 @@ func (s *Service) CancelRun(
 		return result, err
 	}
 	_ = s.InterruptChecks(ctx, capsule.ID)
+	cancelCtx, stop := context.WithTimeout(context.WithoutCancel(ctx), harnessCancelWait)
+	defer stop()
 	started := time.Now()
-	runtimeRun, err := s.runtime.CancelRun(ctx, capsule.ProviderResourceID, id)
+	runtimeRun, err := s.runtime.CancelRun(cancelCtx, capsule.ProviderResourceID, id)
 	if s.observer != nil {
 		s.observer.ProviderOperation(s.providerName, "cancel", operationResult(err), time.Since(started))
 	}
-	if err != nil {
-		// Keep Cancelling: startup/periodic reconciliation safely retries.
+	if errors.Is(err, domain.ErrRuntimeStopped) {
+		// The runtime is gone. Cancelling stays durable so recovery can
+		// retry when it returns.
 		return result, nil
 	}
-	return s.applyRuntimeState(ctx, id, runtimeRun)
+	if err == nil && runtimeRun.State.Terminal() {
+		return s.applyRuntimeState(ctx, id, runtimeRun)
+	}
+	// The harness did not answer. End the run anyway so Stop and Delete
+	// cannot sit on Cancelling with no further event.
+	run, endErr := s.forceEndRun(ctx, id, "")
+	if endErr != nil {
+		return run, endErr
+	}
+	return run, errors.New("the harness did not stop; the session was ended")
 }
 
 func (s *Service) RunEvents(
@@ -318,6 +330,51 @@ func (s *Service) RunEvents(
 		return err
 	})
 	return result, err
+}
+
+// OpenShell starts the Capsule workspace shell if it is not already running.
+// The audit record names the Capsule and not anything typed into the shell.
+func (s *Service) OpenShell(ctx context.Context, id domain.CapsuleID, columns, rows uint16) error {
+	if err := requirePrincipal(ctx); err != nil {
+		return err
+	}
+	shells, ok := s.runtime.(ports.ShellRuntime)
+	if s.runtime == nil || !ok {
+		return domain.ErrUnsupported
+	}
+	capsule, err := s.GetCapsule(ctx, id)
+	if err != nil {
+		return err
+	}
+	if capsule.State != domain.CapsuleReady || capsule.DesiredState != domain.IntentReady || capsule.Maintenance != "" {
+		return fmt.Errorf("%w: Capsule must be Ready", domain.ErrIllegalTransition)
+	}
+	if err := shells.StartShell(ctx, capsule.ProviderResourceID, columns, rows); err != nil {
+		s.auditFailure(ctx, domain.AuditCapsuleShell, "capsule", string(id), err)
+		return err
+	}
+	err = s.store.Transact(ctx, func(tx ports.Transaction) error {
+		return s.audit(ctx, tx, domain.AuditCapsuleShell, "capsule", string(id))
+	})
+	return err
+}
+
+func (s *Service) AttachShell(ctx context.Context, id domain.CapsuleID) (ports.RuntimeAttachment, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return nil, err
+	}
+	shells, ok := s.runtime.(ports.ShellRuntime)
+	if s.runtime == nil || !ok {
+		return nil, domain.ErrUnsupported
+	}
+	capsule, err := s.GetCapsule(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if capsule.State != domain.CapsuleReady || capsule.DesiredState != domain.IntentReady || capsule.Maintenance != "" {
+		return nil, fmt.Errorf("%w: Capsule must be Ready", domain.ErrIllegalTransition)
+	}
+	return shells.AttachShell(ctx, capsule.ProviderResourceID)
 }
 
 func (s *Service) GitStatus(ctx context.Context, capsuleID domain.CapsuleID) (ports.GitResult, error) {

@@ -774,6 +774,7 @@ func (s *structuredSession) status() StructuredStatusResponse {
 func (s *structuredSession) requestCancel() {
 	s.mu.Lock()
 	cancel := s.cancel
+	command := s.command
 	if cancel == nil {
 		s.cancelPending = true
 		s.mu.Unlock()
@@ -787,6 +788,20 @@ func (s *structuredSession) requestCancel() {
 	})
 	stop()
 	cancel()
+	// The adapter is asked to end, then the process group is killed if it
+	// is still running. Stop does not return while the harness is alive.
+	select {
+	case <-s.done:
+		return
+	case <-time.After(structuredCancelGrace):
+	}
+	if command != nil && command.Process != nil {
+		_ = syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
+	}
+	select {
+	case <-s.done:
+	case <-time.After(2 * time.Second):
+	}
 }
 
 func (s *structuredSession) terminate(command *exec.Cmd, writerDone <-chan struct{}) {

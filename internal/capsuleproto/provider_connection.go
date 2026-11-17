@@ -20,10 +20,17 @@ import (
 )
 
 func (s *Server) prepareProviderConnection(ctx context.Context, connection *harnesssetup.Connection, setup *harnesssetup.RuntimeSetup, harness string, env map[string]string) (map[string]string, error) {
+	harness = strings.TrimSuffix(harness, "-structured")
 	if connection == nil {
+		if harness == "opencode" && setup != nil {
+			if err := s.editSetupConfig(setup.Revision, opencodeConfigPath, func(config map[string]any) {
+				rewriteOpenCodeProviders(config, nil)
+			}); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return nil, err
+			}
+		}
 		return env, nil
 	}
-	harness = strings.TrimSuffix(harness, "-structured")
 	u, err := url.Parse(connection.URL)
 	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || len(connection.Token) != 64 || connection.Model != "" && !harnesssetup.ValidModel(connection.Model) || !validGatewayCA(connection.CA) {
 		return nil, errors.New("invalid provider connection")
@@ -129,30 +136,22 @@ func (s *Server) prepareProviderConnection(ctx context.Context, connection *harn
 		if _, e := root.Stat(".config/opencode/opencode.jsonc"); e == nil {
 			p = ".config/opencode/opencode.jsonc"
 		}
-		// OpenCode 2.2.6 reads providers (package + settings). A legacy
-		// provider entry (npm + options) is migrated, and a native entry for
-		// the same id replaces it entirely.
+		// OpenCode reads providers (package + settings). A legacy provider
+		// entry (npm + options) is migrated, and a native entry for the same
+		// id replaces it entirely. Imported providers whose key cannot be
+		// supplied are folded onto this connection when the endpoint matches,
+		// and dropped otherwise.
 		gateway := connection.URL + "/v1"
 		id := connection.Provider
-		var owned map[string]any
 		if custom {
 			id = "meridian"
-			owned = openCodeCompatibleProvider(model, gateway, efforts)
 		}
+		var owned map[string]any
 		err = editNativeConfig(root, p, func(config map[string]any) {
-			allowOpenCodeProvider(config, id)
-			if custom {
-				object(config, "providers")["meridian"] = owned
-				if legacy, ok := config["provider"].(map[string]any); ok {
-					delete(legacy, "meridian")
-					if len(legacy) == 0 {
-						delete(config, "provider")
-					}
-				}
-				config["model"] = "meridian/" + model
-				return
-			}
-			patchOpenCodeOfficialProvider(config, id, gateway)
+			owned = rewriteOpenCodeProviders(config, &openCodeRewrite{
+				GatewayID: id, GatewayURL: gateway, Model: model, Name: connection.Name,
+				Efforts: efforts, Fold: connection.Fold, Custom: custom,
+			})
 		})
 		if err == nil {
 			var raw []byte
@@ -342,28 +341,6 @@ func replaceSetupFile(root *os.Root, p string, raw []byte) error {
 	return nil
 }
 
-// openCodeCompatibleProvider is the native provider entry OpenCode 2.2.6
-// loads for a Chat Completions connection. capabilities.reasoning is what
-// that version turns into the ACP effort option; each level is sent as
-// reasoning_effort. The legacy reasoning flag is ignored.
-func openCodeCompatibleProvider(model, gateway string, efforts []string) map[string]any {
-	entry := map[string]any{"name": model}
-	if len(efforts) != 0 {
-		entry["capabilities"] = map[string]any{
-			"reasoning": map[string]any{"supported": true, "effort": efforts},
-		}
-	}
-	return map[string]any{
-		"name":    "Meridian",
-		"package": "@opencode/ai/providers/openai-compatible",
-		"settings": map[string]any{
-			"baseURL": gateway,
-			"apiKey":  "{env:MERIDIAN_PROVIDER_TOKEN}",
-		},
-		"models": map[string]any{model: entry},
-	}
-}
-
 // openCodeConnectionDocument overlays the connection after every repository
 // config file. The key stays an environment reference, never the lease.
 func openCodeConnectionDocument(id, model, gateway string, owned map[string]any) map[string]any {
@@ -452,6 +429,216 @@ func allowOpenCodeProvider(config map[string]any, id string) {
 	config["policies"] = append(kept, map[string]any{
 		"action": "provider.use", "resource": id, "effect": "allow",
 	})
+}
+
+// openCodeRewrite describes the gateway provider written into an imported
+// OpenCode config. Fold is provider ids, never an upstream address.
+type openCodeRewrite struct {
+	GatewayID  string
+	GatewayURL string
+	Model      string
+	Name       string
+	Efforts    []string
+	Fold       []string
+	Custom     bool
+}
+
+// rewriteOpenCodeProviders removes providers the Capsule cannot authenticate.
+// Providers in Fold have their models copied onto the gateway provider, under
+// the imported display name when it has one. The returned map is that
+// provider, or nil for an official connection whose settings are patched in
+// place.
+func rewriteOpenCodeProviders(config map[string]any, rw *openCodeRewrite) map[string]any {
+	fold := map[string]bool{}
+	gatewayID := ""
+	if rw != nil {
+		gatewayID = rw.GatewayID
+		for _, id := range rw.Fold {
+			if id != "" && id != gatewayID {
+				fold[id] = true
+			}
+		}
+	}
+	display := ""
+	var safeSettings map[string]any
+	models := map[string]any{}
+	var dropped []string
+	for _, key := range []string{"providers", "provider"} {
+		providers, _ := config[key].(map[string]any)
+		for id, raw := range providers {
+			entry, _ := raw.(map[string]any)
+			if entry == nil || id == gatewayID {
+				continue
+			}
+			listed := harnesssetup.OpenCodeProviders(map[string]any{"providers": map[string]any{id: entry}})
+			if len(listed) == 0 {
+				continue
+			}
+			info := listed[0]
+			switch {
+			case fold[id]:
+				if display == "" && info.Name != id {
+					display = info.Name
+				}
+				if safeSettings == nil {
+					safeSettings = safeProviderSettings(entry)
+				}
+				for _, model := range info.Models {
+					if _, exists := models[model.ID]; !exists {
+						models[model.ID] = model.Entry
+					}
+				}
+				delete(providers, id)
+			case info.Unsupplied():
+				delete(providers, id)
+				dropped = append(dropped, id)
+			}
+		}
+		if len(providers) == 0 {
+			delete(config, key)
+		}
+	}
+	for _, id := range dropped {
+		dropOpenCodeProvider(config, id)
+	}
+	for id := range fold {
+		dropOpenCodeProvider(config, id)
+	}
+	if rw == nil || gatewayID == "" {
+		return nil
+	}
+	if !rw.Custom {
+		patchOpenCodeOfficialProvider(config, gatewayID, rw.GatewayURL)
+		allowOpenCodeProvider(config, gatewayID)
+		return nil
+	}
+	if display == "" {
+		display = cleanProviderName(rw.Name)
+	}
+	if display == "" {
+		display = "Connection"
+	}
+	if rw.Model != "" {
+		entry, _ := models[rw.Model].(map[string]any)
+		if entry == nil {
+			entry = map[string]any{"name": rw.Model}
+			models[rw.Model] = entry
+		}
+		if len(rw.Efforts) != 0 {
+			caps, _ := entry["capabilities"].(map[string]any)
+			if caps == nil {
+				caps = map[string]any{}
+			}
+			caps["reasoning"] = map[string]any{"supported": true, "effort": rw.Efforts}
+			entry["capabilities"] = caps
+		}
+	}
+	if len(models) == 0 && rw.Model != "" {
+		models[rw.Model] = map[string]any{"name": rw.Model}
+	}
+	settings := map[string]any{}
+	for key, value := range safeSettings {
+		settings[key] = value
+	}
+	settings["baseURL"] = rw.GatewayURL
+	settings["apiKey"] = "{env:MERIDIAN_PROVIDER_TOKEN}"
+	owned := map[string]any{
+		"name":     display,
+		"package":  "@opencode/ai/providers/openai-compatible",
+		"settings": settings,
+		"models":   models,
+	}
+	object(config, "providers")[gatewayID] = owned
+	if legacy, ok := config["provider"].(map[string]any); ok {
+		delete(legacy, gatewayID)
+		if len(legacy) == 0 {
+			delete(config, "provider")
+		}
+	}
+	allowOpenCodeProvider(config, gatewayID)
+	if rw.Model != "" {
+		config["model"] = gatewayID + "/" + rw.Model
+	}
+	return owned
+}
+
+func safeProviderSettings(entry map[string]any) map[string]any {
+	source, _ := entry["settings"].(map[string]any)
+	if source == nil {
+		source, _ = entry["options"].(map[string]any)
+	}
+	out := map[string]any{}
+	for key, value := range source {
+		if strings.EqualFold(key, "baseURL") || strings.EqualFold(key, "apiKey") || strings.EqualFold(key, "headers") {
+			continue
+		}
+		switch value.(type) {
+		case bool, float64:
+			out[key] = value
+		}
+	}
+	return out
+}
+
+func cleanProviderName(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" || len(name) > 128 || strings.ContainsAny(name, "\r\n\x00") {
+		return ""
+	}
+	return name
+}
+
+// dropOpenCodeProvider removes id from the allow list and records a deny so
+// a built-in provider of the same id is not offered without a key.
+func dropOpenCodeProvider(config map[string]any, id string) {
+	if list, ok := config["enabled_providers"].([]any); ok {
+		kept := make([]any, 0, len(list))
+		for _, item := range list {
+			if item != id {
+				kept = append(kept, item)
+			}
+		}
+		config["enabled_providers"] = kept
+	}
+	list, _ := config["disabled_providers"].([]any)
+	for _, item := range list {
+		if item == id {
+			return
+		}
+	}
+	config["disabled_providers"] = append(list, id)
+}
+
+func (s *Server) editSetupConfig(revision string, pick func(*os.Root) (string, error), edit func(map[string]any)) error {
+	base := s.config.HarnessHome
+	if base == "" {
+		base = "/home/capsule"
+	}
+	outer, err := os.OpenRoot(base)
+	if err != nil {
+		return err
+	}
+	defer outer.Close()
+	root, err := outer.OpenRoot(".meridian-setup-" + revision)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	path, err := pick(root)
+	if err != nil {
+		return err
+	}
+	return editNativeConfig(root, path, edit)
+}
+
+func opencodeConfigPath(root *os.Root) (string, error) {
+	if _, err := root.Stat(".config/opencode/opencode.jsonc"); err == nil {
+		return ".config/opencode/opencode.jsonc", nil
+	}
+	if _, err := root.Stat(".config/opencode/opencode.json"); err == nil {
+		return ".config/opencode/opencode.json", nil
+	}
+	return "", os.ErrNotExist
 }
 
 func object(parent map[string]any, key string) map[string]any {

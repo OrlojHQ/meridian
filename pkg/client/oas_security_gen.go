@@ -44,6 +44,7 @@ var operationRolesBearerAuth = map[string][]string{
 	CreateProviderConnectionOperation:       []string{},
 	CreateRunAttachTicketOperation:          []string{},
 	CreateShardOperation:                    []string{},
+	CreateShellAttachTicketOperation:        []string{},
 	CreateThreadOperation:                   []string{},
 	DeleteCapsuleOperation:                  []string{},
 	DeleteMemberObjectsOperation:            []string{},

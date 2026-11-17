@@ -5780,6 +5780,81 @@ export type AttachRunWebSocketResponses = {
 
 export type AttachRunWebSocketResponse = AttachRunWebSocketResponses[keyof AttachRunWebSocketResponses];
 
+export type CreateShellAttachTicketData = {
+    body?: never;
+    path: {
+        capsuleId: string;
+    };
+    query?: {
+        columns?: number;
+        rows?: number;
+    };
+    url: '/capsules/{capsuleId}/shell/attach-ticket';
+};
+
+export type CreateShellAttachTicketErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Request rate limit exceeded
+     */
+    429: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type CreateShellAttachTicketError = CreateShellAttachTicketErrors[keyof CreateShellAttachTicketErrors];
+
+export type CreateShellAttachTicketResponses = {
+    /**
+     * Attach ticket
+     */
+    201: AttachTicket;
+};
+
+export type CreateShellAttachTicketResponse = CreateShellAttachTicketResponses[keyof CreateShellAttachTicketResponses];
+
+export type AttachShellWebSocketData = {
+    body?: never;
+    path: {
+        capsuleId: string;
+    };
+    query: {
+        ticket: string;
+    };
+    url: '/capsules/{capsuleId}/shell/attach';
+};
+
+export type AttachShellWebSocketErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type AttachShellWebSocketError = AttachShellWebSocketErrors[keyof AttachShellWebSocketErrors];
+
+export type AttachShellWebSocketResponses = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type AttachShellWebSocketResponse = AttachShellWebSocketResponses[keyof AttachShellWebSocketResponses];
+
 export type ListCapsulePreviewPortsData = {
     body?: never;
     path: {

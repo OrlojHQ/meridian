@@ -311,6 +311,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /runs/{runId}/events", s.runEvents)
 	s.mux.HandleFunc("GET /runs/{runId}/events/stream", s.streamRunEvents)
 	s.mux.HandleFunc("POST /runs/{runId}/attach-ticket", s.createAttachTicket)
+	s.mux.HandleFunc("POST /capsules/{capsuleId}/shell/attach-ticket", s.createShellTicket)
+	s.mux.HandleFunc("GET /capsules/{capsuleId}/shell/attach", s.attachShell)
 	s.mux.HandleFunc("GET /runs/{runId}/attach", s.attachRun)
 	s.mux.HandleFunc("GET /capsules/{capsuleId}/git/status", s.gitStatus)
 	s.mux.HandleFunc("GET /capsules/{capsuleId}/git/diff", s.gitDiff)
@@ -475,7 +477,10 @@ func authExempt(request *http.Request) bool {
 		return false
 	}
 	parts := strings.Split(strings.Trim(request.URL.Path, "/"), "/")
-	return len(parts) == 3 && parts[0] == "runs" && parts[1] != "" && parts[2] == "attach"
+	if len(parts) == 3 && parts[0] == "runs" && parts[1] != "" && parts[2] == "attach" {
+		return true
+	}
+	return len(parts) == 4 && parts[0] == "capsules" && parts[1] != "" && parts[2] == "shell" && parts[3] == "attach"
 }
 
 func safeMethod(method string) bool {
@@ -1774,6 +1779,8 @@ func (s *Server) listDeliveries(writer http.ResponseWriter, request *http.Reques
 
 type attachTicket struct {
 	RunID     domain.RunID
+	CapsuleID domain.CapsuleID
+	Shell     bool
 	ExpiresAt time.Time
 	After     uint64
 	// Principal minted the ticket; redemption is unauthenticated and acts
@@ -1832,11 +1839,86 @@ func (s *Server) attachRun(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	request = request.WithContext(principal.With(request.Context(), ticket.Principal))
+	if ticket.Shell {
+		writeError(writer, fmt.Errorf("%w: attach ticket is expired or out of scope", domain.ErrInvalid))
+		return
+	}
 	upstream, err := s.service.AttachRun(request.Context(), ticket.RunID, ticket.After)
 	if err != nil {
 		writeError(writer, err)
 		return
 	}
+	s.proxyAttachment(writer, request, upstream)
+}
+
+func (s *Server) createShellTicket(writer http.ResponseWriter, request *http.Request) {
+	capsuleID := domain.CapsuleID(request.PathValue("capsuleId"))
+	columns, rows := uint16(80), uint16(24)
+	if raw := request.URL.Query().Get("columns"); raw != "" {
+		parsed, err := strconv.ParseUint(raw, 10, 16)
+		if err != nil || parsed == 0 {
+			writeError(writer, fmt.Errorf("%w: invalid shell size", domain.ErrInvalid))
+			return
+		}
+		columns = uint16(parsed)
+	}
+	if raw := request.URL.Query().Get("rows"); raw != "" {
+		parsed, err := strconv.ParseUint(raw, 10, 16)
+		if err != nil || parsed == 0 {
+			writeError(writer, fmt.Errorf("%w: invalid shell size", domain.ErrInvalid))
+			return
+		}
+		rows = uint16(parsed)
+	}
+	if err := s.service.OpenShell(request.Context(), capsuleID, columns, rows); err != nil {
+		writeError(writer, err)
+		return
+	}
+	random := make([]byte, 32)
+	if _, err := rand.Read(random); err != nil {
+		writeError(writer, err)
+		return
+	}
+	value := base64.RawURLEncoding.EncodeToString(random)
+	expiry := time.Now().UTC().Add(30 * time.Second)
+	caller, _ := principal.From(request.Context())
+	if err := s.tickets.mint(value, attachTicket{
+		CapsuleID: capsuleID, Shell: true, ExpiresAt: expiry, Principal: caller,
+	}, time.Now().UTC()); err != nil {
+		writeError(writer, err)
+		return
+	}
+	writeJSON(writer, http.StatusCreated, attachTicketJSON{
+		Ticket: value, ExpiresAt: expiry.Format(time.RFC3339Nano),
+		WebSocketPath: "/capsules/" + url.PathEscape(string(capsuleID)) + "/shell/attach",
+	})
+}
+
+func (s *Server) attachShell(writer http.ResponseWriter, request *http.Request) {
+	if !allowedOrigin(request.Header.Get("Origin")) {
+		writeError(writer, fmt.Errorf("%w: WebSocket origin is not allowed", domain.ErrInvalid))
+		return
+	}
+	ticketValue := request.URL.Query().Get("ticket")
+	ticket, found := s.tickets.take(ticketValue, time.Now().UTC())
+	if !found || !ticket.Shell || ticket.CapsuleID != domain.CapsuleID(request.PathValue("capsuleId")) {
+		writeError(writer, fmt.Errorf("%w: attach ticket is invalid", domain.ErrInvalid))
+		return
+	}
+	if !s.identity.MemberActive(request.Context(), ticket.Principal) {
+		writeError(writer, fmt.Errorf("%w: attach ticket is expired or out of scope", domain.ErrInvalid))
+		return
+	}
+	request = request.WithContext(principal.With(request.Context(), ticket.Principal))
+	upstream, err := s.service.AttachShell(request.Context(), ticket.CapsuleID)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	s.proxyAttachment(writer, request, upstream)
+}
+
+func (s *Server) proxyAttachment(writer http.ResponseWriter, request *http.Request, upstream ports.RuntimeAttachment) {
 	defer upstream.Close()
 	if s.metrics != nil {
 		s.metrics.PTY(1)

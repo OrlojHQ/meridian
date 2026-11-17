@@ -56,6 +56,13 @@ type Invoker interface {
 	//
 	// GET /runs/{runId}/attach
 	AttachRunWebSocket(ctx context.Context, params AttachRunWebSocketParams) (AttachRunWebSocketRes, error)
+	// AttachShellWebSocket invokes attachShellWebSocket operation.
+	//
+	// Binary frames are shell input and output. A JSON text frame of type exit means the shell ended. A
+	// JSON text frame of type resize sets the terminal size.
+	//
+	// GET /capsules/{capsuleId}/shell/attach
+	AttachShellWebSocket(ctx context.Context, params AttachShellWebSocketParams) (AttachShellWebSocketRes, error)
 	// BeginClaudeLogin invokes beginClaudeLogin operation.
 	//
 	// Start a Claude account sign-in. The response authorizeUrl is opened in the browser. The PKCE
@@ -243,6 +250,13 @@ type Invoker interface {
 	//
 	// POST /moments/{momentId}/shards
 	CreateShard(ctx context.Context, request *CreateDescendantRequest, params CreateShardParams) (CreateShardRes, error)
+	// CreateShellAttachTicket invokes createShellAttachTicket operation.
+	//
+	// The shell runs in the Capsule workspace. It ends when the Capsule stops. A new ticket after the
+	// shell exits starts another shell.
+	//
+	// POST /capsules/{capsuleId}/shell/attach-ticket
+	CreateShellAttachTicket(ctx context.Context, params CreateShellAttachTicketParams) (CreateShellAttachTicketRes, error)
 	// CreateThread invokes createThread operation.
 	//
 	// The Thread, encrypted first message, Run intent, and idempotency resource references are committed
@@ -1630,6 +1644,124 @@ func (c *Client) sendAttachRunWebSocket(ctx context.Context, params AttachRunWeb
 
 	stage = "DecodeResponse"
 	result, err := decodeAttachRunWebSocketResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// AttachShellWebSocket invokes attachShellWebSocket operation.
+//
+// Binary frames are shell input and output. A JSON text frame of type exit means the shell ended. A
+// JSON text frame of type resize sets the terminal size.
+//
+// GET /capsules/{capsuleId}/shell/attach
+func (c *Client) AttachShellWebSocket(ctx context.Context, params AttachShellWebSocketParams) (AttachShellWebSocketRes, error) {
+	res, err := c.sendAttachShellWebSocket(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendAttachShellWebSocket(ctx context.Context, params AttachShellWebSocketParams) (res AttachShellWebSocketRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("attachShellWebSocket"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/capsules/{capsuleId}/shell/attach"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, AttachShellWebSocketOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/capsules/"
+	{
+		// Encode "capsuleId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "capsuleId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.CapsuleId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/shell/attach"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeQueryParams"
+	q := uri.NewQueryEncoder()
+	{
+		// Encode "ticket" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "ticket",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.Ticket))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	u.RawQuery = q.Values().Encode()
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeAttachShellWebSocketResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -5086,6 +5218,177 @@ func (c *Client) sendCreateShard(ctx context.Context, request *CreateDescendantR
 
 	stage = "DecodeResponse"
 	result, err := decodeCreateShardResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// CreateShellAttachTicket invokes createShellAttachTicket operation.
+//
+// The shell runs in the Capsule workspace. It ends when the Capsule stops. A new ticket after the
+// shell exits starts another shell.
+//
+// POST /capsules/{capsuleId}/shell/attach-ticket
+func (c *Client) CreateShellAttachTicket(ctx context.Context, params CreateShellAttachTicketParams) (CreateShellAttachTicketRes, error) {
+	res, err := c.sendCreateShellAttachTicket(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendCreateShellAttachTicket(ctx context.Context, params CreateShellAttachTicketParams) (res CreateShellAttachTicketRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("createShellAttachTicket"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/capsules/{capsuleId}/shell/attach-ticket"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, CreateShellAttachTicketOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/capsules/"
+	{
+		// Encode "capsuleId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "capsuleId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.CapsuleId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/shell/attach-ticket"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeQueryParams"
+	q := uri.NewQueryEncoder()
+	{
+		// Encode "columns" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "columns",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.Columns.Get(); ok {
+				return e.EncodeValue(conv.IntToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	{
+		// Encode "rows" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "rows",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.Rows.Get(); ok {
+				return e.EncodeValue(conv.IntToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	u.RawQuery = q.Values().Encode()
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, CreateShellAttachTicketOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeCreateShellAttachTicketResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}

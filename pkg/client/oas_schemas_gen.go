@@ -235,6 +235,11 @@ type AttachRunWebSocketSwitchingProtocols struct{}
 
 func (*AttachRunWebSocketSwitchingProtocols) attachRunWebSocketRes() {}
 
+// AttachShellWebSocketSwitchingProtocols is response for AttachShellWebSocket operation.
+type AttachShellWebSocketSwitchingProtocols struct{}
+
+func (*AttachShellWebSocketSwitchingProtocols) attachShellWebSocketRes() {}
+
 // Ref: #/components/schemas/AttachTicket
 type AttachTicket struct {
 	Ticket        string    `json:"ticket"`
@@ -272,7 +277,8 @@ func (s *AttachTicket) SetWebSocketPath(val string) {
 	s.WebSocketPath = val
 }
 
-func (*AttachTicket) createRunAttachTicketRes() {}
+func (*AttachTicket) createRunAttachTicketRes()   {}
+func (*AttachTicket) createShellAttachTicketRes() {}
 
 // Ref: #/components/schemas/AuditRecord
 type AuditRecord struct {
@@ -5058,6 +5064,14 @@ type CreateShardUnprocessableEntity ErrorEnvelope
 
 func (*CreateShardUnprocessableEntity) createShardRes() {}
 
+type CreateShellAttachTicketNotFound ErrorEnvelope
+
+func (*CreateShellAttachTicketNotFound) createShellAttachTicketRes() {}
+
+type CreateShellAttachTicketUnprocessableEntity ErrorEnvelope
+
+func (*CreateShellAttachTicketUnprocessableEntity) createShellAttachTicketRes() {}
+
 type CreateThreadBadRequest ErrorEnvelope
 
 func (*CreateThreadBadRequest) createThreadRes() {}
@@ -6319,6 +6333,7 @@ func (s *ErrorEnvelope) SetError(val APIError) {
 }
 
 func (*ErrorEnvelope) attachRunWebSocketRes()          {}
+func (*ErrorEnvelope) attachShellWebSocketRes()        {}
 func (*ErrorEnvelope) beginDeviceLoginRes()            {}
 func (*ErrorEnvelope) beginGitHubDeviceRes()           {}
 func (*ErrorEnvelope) claimInstallationRes()           {}
@@ -18904,6 +18919,7 @@ func (*TooManyRequestsHeaders) createCapsuleRes()              {}
 func (*TooManyRequestsHeaders) createProjectRes()              {}
 func (*TooManyRequestsHeaders) createProjectThreadRes()        {}
 func (*TooManyRequestsHeaders) createRunAttachTicketRes()      {}
+func (*TooManyRequestsHeaders) createShellAttachTicketRes()    {}
 func (*TooManyRequestsHeaders) createThreadRes()               {}
 func (*TooManyRequestsHeaders) deleteCapsuleRes()              {}
 func (*TooManyRequestsHeaders) deleteProjectRes()              {}

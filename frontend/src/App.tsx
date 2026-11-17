@@ -28,6 +28,7 @@ import type {
   CreateDeliveryRequest,
   Delivery,
   GitResult,
+  HarnessSetup,
   CapsulePage,
   Moment,
   PreviewTicket,
@@ -716,6 +717,22 @@ function TerminalSession({
 
 const NEW_SESSION = "new";
 
+function PinnedSetupLine({
+  capsule,
+  setups,
+  known,
+}: {
+  capsule: Capsule;
+  setups?: HarnessSetup[];
+  known: boolean;
+}) {
+  const harness = capsule.harness?.replace(/-structured$/, "") ?? "";
+  const saved = setups?.filter((item) => item.harness === harness && !item.deleted) ?? [];
+  const current = known ? (saved.find((item) => item.default) ?? saved[0] ?? null) : undefined;
+  const line = pinnedSetupText(capsule.pinnedHarnessSetups, capsule.harness, current);
+  return line ? <p className="capsule-setup-pin">{line}</p> : null;
+}
+
 export function CapsuleDetail() {
   const { capsuleId = "" } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -733,6 +750,7 @@ export function CapsuleDetail() {
     ...queries.threads(capsuleId),
     enabled: Boolean(capsuleId) && structured,
   });
+  const setups = useQuery({ queryKey: ["harness-setups"], queryFn: api.harnessSetups });
   // The installation capability says structured sessions exist somewhere;
   // only the Capsule's own harness profiles say whether it can start one.
   const profiles = useQuery({
@@ -869,9 +887,11 @@ export function CapsuleDetail() {
             threads={threads.data?.items}
           />
         </div>
-        {value.pinnedHarnessSetups && value.pinnedHarnessSetups.length > 0 && (
-          <p className="capsule-setup-pin">{pinnedSetupText(value.pinnedHarnessSetups)}</p>
-        )}
+        <PinnedSetupLine
+          capsule={value}
+          setups={setups.data?.items}
+          known={setups.isSuccess}
+        />
       </header>
       {(isStarting(value) || value.startup || value.failureCode || isRepositoryAccessFailure(value)) && (
         <CapsuleStartup capsule={value} />

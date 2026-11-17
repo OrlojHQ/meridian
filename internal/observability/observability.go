@@ -326,6 +326,7 @@ func routeLabel(value string) string {
 		"GET /runs/{runId}", "POST /runs/{runId}/cancel",
 		"GET /runs/{runId}/events", "GET /runs/{runId}/events/stream",
 		"POST /runs/{runId}/attach-ticket", "GET /runs/{runId}/attach",
+		"POST /capsules/{capsuleId}/shell/attach-ticket", "GET /capsules/{capsuleId}/shell/attach",
 		"GET /capsules/{capsuleId}/git/status", "GET /capsules/{capsuleId}/git/diff",
 		"POST /capsules/{capsuleId}/moments", "GET /capsules/{capsuleId}/moments",
 		"GET /moments/{momentId}", "GET /timelines/{timelineId}",

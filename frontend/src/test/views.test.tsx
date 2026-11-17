@@ -636,12 +636,34 @@ describe("Capsule detail states", () => {
   it("shows the pinned harness setup and that Settings edits wait for the next Capsule", async () => {
     vi.spyOn(api, "capsule").mockResolvedValue({
       ...capsule,
-      pinnedHarnessSetups: [{
-        harness: "codex",
-        setupId: "setup",
-        name: "Codex home",
-        revision: "rev-1",
-        revisedAt: "2026-11-09T14:05:00Z",
+      harness: "opencode",
+      pinnedHarnessSetups: [
+        {
+          harness: "opencode",
+          setupId: "setup",
+          name: "My opencode setup",
+          revision: "rev-1",
+          revisedAt: "2026-11-16T14:51:00Z",
+        },
+        {
+          harness: "claude",
+          setupId: "claude",
+          name: "My claude setup",
+          revision: "rev-c",
+          revisedAt: "2026-11-16T14:51:00Z",
+        },
+      ],
+    });
+    vi.spyOn(api, "harnessSetups").mockResolvedValue({
+      items: [{
+        id: "setup",
+        name: "My opencode setup",
+        harness: "opencode",
+        revision: "rev-9",
+        default: true,
+        deleted: false,
+        createdAt: "2026-11-16T14:51:00Z",
+        resourceVersion: 2,
       }],
     });
     vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
@@ -670,11 +692,9 @@ describe("Capsule detail states", () => {
       </Routes>,
       "/ui/capsules/capsule-1",
     );
-    expect(
-      await screen.findByText(
-        "Codex home · revised Nov 9, 14:05 UTC. Edits in Settings apply to the next Capsule.",
-      ),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/My opencode setup · /)).toBeInTheDocument();
+    expect(screen.queryByText(/My claude setup/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Edits in Settings apply to the next Capsule/)).toBeInTheDocument();
   });
 
   it("marks a Capsule built on an older harness release without offering to change it", async () => {

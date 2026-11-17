@@ -519,6 +519,13 @@ type RuntimeAttachment interface {
 	Close() error
 }
 
+// ShellRuntime is the on-demand workspace shell. It is optional: a runtime
+// that does not implement it has no Terminal shell.
+type ShellRuntime interface {
+	StartShell(context.Context, string, uint16, uint16) error
+	AttachShell(context.Context, string) (RuntimeAttachment, error)
+}
+
 // CapsuleRuntime is deliberately separate from CapsuleProvider lifecycle.
 type CapsuleRuntime interface {
 	StartRun(context.Context, RuntimeRunRequest) (RuntimeRun, error)

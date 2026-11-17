@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { lazy, Suspense, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api, normalizeAPIError } from "../api/client";
@@ -252,39 +252,67 @@ function TerminalPane({
   supported: boolean;
   focused: boolean;
 }) {
-  const run =
-    runs.find((item) =>
+  const profiles = useQuery({
+    ...queries.harnessProfiles(capsule.id),
+    enabled: capsule.state === "Ready",
+  });
+  const ptyNames = new Set(
+    (profiles.data?.items ?? []).filter((item) => item.pty).map((item) => item.name),
+  );
+  const harnessRun = runs.find(
+    (item) =>
+      ptyNames.has(item.harness) &&
       ["Queued", "Starting", "Running", "Cancelling"].includes(item.state),
-    ) ?? runs[0];
+  );
+  const [view, setView] = useState<"shell" | "harness">("shell");
+  const requestTicket = useCallback(
+    (signal: AbortSignal) => api.shellTicket(capsule.id, signal),
+    [capsule.id],
+  );
   if (!supported) {
     return <p className="tool-empty">Terminal attachment is unsupported.</p>;
   }
-  if (!run) {
-    return <p className="tool-empty">No Run terminal exists for this Capsule.</p>;
+  if (capsule.state !== "Ready" && !harnessRun) {
+    return <p className="tool-empty">The shell starts when the Capsule is ready.</p>;
   }
-  if (focused) {
+  if (focused && harnessRun && view === "harness") {
     return (
       <div className="tool-empty">
         Terminal is focused in the main workspace.
-        <Link to={`/ui/runs/${encodeURIComponent(run.id)}`}>Inspect Run</Link>
+        <Link to={`/ui/runs/${encodeURIComponent(harnessRun.id)}`}>Inspect Run</Link>
       </div>
     );
   }
-  const reconnect = ["Queued", "Starting", "Running", "Cancelling"].includes(
-    run.state,
-  );
+  const showHarness = view === "harness" && harnessRun;
   return (
     <div className="context-terminal">
       <div className="tool-pane-actions">
-        <span>{run.harness} · {run.state}</span>
-        <Link to={`/ui/runs/${encodeURIComponent(run.id)}/terminal`}>Focus</Link>
+        <span>{showHarness ? `${harnessRun.harness} output` : "Shell"}</span>
+        {harnessRun && (
+          <button type="button" onClick={() => setView((current) => (current === "shell" ? "harness" : "shell"))}>
+            {showHarness ? "Shell" : "Harness output"}
+          </button>
+        )}
       </div>
       <Suspense fallback={<p className="tool-loading">Loading terminal…</p>}>
-        <TerminalView
-          runId={run.id}
-          reconnect={reconnect}
-          supported={supported}
-        />
+        {showHarness ? (
+          <TerminalView
+            key={harnessRun.id}
+            runId={harnessRun.id}
+            reconnect={["Queued", "Starting", "Running", "Cancelling"].includes(harnessRun.state)}
+            supported={supported}
+            label="Harness output"
+          />
+        ) : (
+          <TerminalView
+            key="shell"
+            reconnect={false}
+            restartable
+            supported={supported && capsule.state === "Ready"}
+            requestTicket={requestTicket}
+            label="Capsule shell"
+          />
+        )}
       </Suspense>
     </div>
   );

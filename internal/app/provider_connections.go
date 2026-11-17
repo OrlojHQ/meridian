@@ -583,5 +583,11 @@ func (s *Service) runtimeProviderConnection(ctx context.Context, capsule domain.
 	if err != nil {
 		return nil, err
 	}
-	return &harnesssetup.Connection{Provider: connection.Provider, URL: s.gatewayURL + "/" + connection.Provider, Token: token, Model: connection.DefaultModel, Efforts: connection.ReasoningEfforts, CA: ca}, nil
+	runtime := &harnesssetup.Connection{Provider: connection.Provider, URL: s.gatewayURL + "/" + connection.Provider, Token: token, Model: connection.DefaultModel, Efforts: connection.ReasoningEfforts, CA: ca, Name: connection.Name}
+	if connection.BaseURL != "" && strings.TrimSuffix(harness, "-structured") == "opencode" {
+		if setup, err := s.runtimeHarnessSetup(ctx, capsule.ID, harness); err == nil && setup != nil {
+			runtime.Fold = harnesssetup.OpenCodeFoldIDs(setup.Bundle.Files, connection.BaseURL)
+		}
+	}
+	return runtime, nil
 }

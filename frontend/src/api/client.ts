@@ -39,6 +39,7 @@ import {
   createProject,
   createProjectThread,
   createRunAttachTicket,
+  createShellAttachTicket,
   createThread,
   deleteCapsule,
   deleteProject as deleteProjectOperation,
@@ -879,6 +880,13 @@ export const api = {
         ...generatedOptions(signal),
         path: { runId },
         query: { after },
+      }),
+    ),
+  shellTicket: (capsuleId: string, signal?: AbortSignal) =>
+    call<AttachTicket>(
+      createShellAttachTicket({
+        ...generatedOptions(signal),
+        path: { capsuleId },
       }),
     ),
   previewPorts: (capsuleId: string, signal?: AbortSignal) =>
