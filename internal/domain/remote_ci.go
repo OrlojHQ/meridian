@@ -16,8 +16,10 @@ const (
 	RemoteCIDetailBytes = 4 << 10
 	RemoteCIMaxChecks   = 100
 	RemoteCIQuietPolls  = 8
-	maxRemoteCIName     = 128
-	maxRemoteCIURL      = 2048
+	// RemoteCIWatchLifetime is how long one watch keeps polling GitHub.
+	RemoteCIWatchLifetime = 7 * 24 * time.Hour
+	maxRemoteCIName       = 128
+	maxRemoteCIURL        = 2048
 )
 
 type RemoteCIWatchID string
@@ -128,6 +130,14 @@ func (w RemoteCIWatch) Validate() error {
 		return fmt.Errorf("%w: invalid remote CI watch", ErrInvalid)
 	}
 	return nil
+}
+
+// RemoteCIStalledDelay spaces polls for a watch that cannot read CI yet:
+// no login, a login to reconnect, or a repository GitHub refuses. It is a
+// tenth of the watch's age, from one minute up to one hour, so a fresh login
+// or SSO approval is picked up quickly and an abandoned watch costs little.
+func RemoteCIStalledDelay(age time.Duration) time.Duration {
+	return min(max(age/10, time.Minute), time.Hour)
 }
 
 // RemoteCIBackoff is the wait before the next poll. It starts at five

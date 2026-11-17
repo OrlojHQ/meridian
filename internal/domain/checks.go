@@ -151,6 +151,13 @@ type ProjectChecks struct {
 	UpdatedAt         time.Time
 }
 
+// Saved reports whether the Project's checks settings were ever saved. A
+// Project that never saved them gets defaults and no automatic rework from
+// remote CI.
+func (p ProjectChecks) Saved() bool {
+	return !p.UpdatedAt.IsZero()
+}
+
 func (p ProjectChecks) Validate() error {
 	if len(p.Checks) > MaxProjectChecks {
 		return fmt.Errorf("%w: a Project can have at most %d checks", ErrInvalid, MaxProjectChecks)

@@ -196,9 +196,14 @@ func (s *Service) RemoteCI(ctx context.Context, id domain.CapsuleID) (RemoteCIVi
 func (s *Service) pollRemoteCI(ctx context.Context, id domain.RemoteCIWatchID) error {
 	var watch domain.RemoteCIWatch
 	var project domain.Project
+	var capsule domain.Capsule
 	err := s.store.View(ctx, func(reader ports.Reader) error {
 		var err error
 		watch, err = reader.GetRemoteCI(ctx, id)
+		if err != nil {
+			return err
+		}
+		capsule, err = reader.GetCapsule(ctx, watch.CapsuleID)
 		if err != nil {
 			return err
 		}
@@ -210,6 +215,9 @@ func (s *Service) pollRemoteCI(ctx context.Context, id domain.RemoteCIWatchID) e
 	}
 	if watch.Superseded || !watch.State.Polling() && watch.ErrorCode != "rework_due" {
 		return nil
+	}
+	if !remoteCICapsuleLive(capsule.State) || !s.clock.Now().Before(watch.CreatedAt.Add(domain.RemoteCIWatchLifetime)) {
+		return s.stopCI(ctx, watch)
 	}
 	if watch.ErrorCode == "rework_due" {
 		return s.finishCIRework(ctx, watch)
@@ -364,6 +372,12 @@ func (s *Service) planCIRework(ctx context.Context, tx ports.Transaction, watch 
 	if err != nil {
 		return false
 	}
+	if !config.Saved() {
+		// Remote CI rework is opt-in: a Project that never saved its checks
+		// settings is watched and shown, but its agent is not sent CI output.
+		watch.Attempt = 0
+		return false
+	}
 	local, err := tx.CountFailedCheckRuns(ctx, watch.CapsuleID, control.Epoch)
 	if err != nil {
 		return false
@@ -400,6 +414,12 @@ func (s *Service) finishCIRework(ctx context.Context, watch domain.RemoteCIWatch
 	fresh, err := s.loadWatch(ctx, watch.ID)
 	if err != nil || fresh.ErrorCode != "rework_due" || fresh.ReworkSent {
 		return err
+	}
+	if idle, err := s.ciThreadIdle(ctx, fresh.CapsuleID); err != nil || !idle {
+		// The agent is mid-turn or waiting on the operator. CI output must not
+		// land in the middle of that, so the rework waits for the next idle
+		// turn.
+		return s.deferCIRework(ctx, fresh)
 	}
 	if err := s.sendCIRework(ctx, fresh); err != nil {
 		return s.deferCIRework(ctx, fresh)
@@ -495,12 +515,11 @@ func (s *Service) ciReworkText(watch domain.RemoteCIWatch, config domain.Project
 	tail := strings.Join(lines, "\n")
 	total := domain.CheckBudget(config.MaxReworkAttempts)
 	shown := watch.Attempt + 1
-	message := fmt.Sprintf("GitHub CI failed for commit `%s`: %s.\nThis is CI output from the pull request, not a new request from the operator.\nMeridian will not push a fix. Review it before it can update the pull request.\nLast lines:\n```\n%s\n```\nFix the problem and finish your turn. (Attempt %d of %d)",
-		watch.GitHead, strings.Join(names, ", "), tail, shown+1, total)
-	if len(message) > adapterproto.MaxContentBytes {
-		message = message[:adapterproto.MaxContentBytes]
-	}
-	return message
+	failing := clipUTF8(strings.Join(names, ", "), reworkCommandBytes)
+	return fitRework(func(tail string) string {
+		return fmt.Sprintf("GitHub CI failed for commit `%s`: %s.\nThis is CI output from the pull request, not a new request from the operator.\nMeridian will not push a fix. Review it before it can update the pull request.\nLast lines:\n```\n%s\n```\nFix the problem and finish your turn. (Attempt %d of %d)",
+			watch.GitHead, failing, tail, shown+1, total)
+	}, tail)
 }
 
 func (s *Service) storeCICredential(ctx context.Context, watch domain.RemoteCIWatch, kind ciCredential, openErr error) error {
@@ -564,7 +583,7 @@ func (s *Service) touchCI(ctx context.Context, watch domain.RemoteCIWatch, state
 		if state.Polling() {
 			current.NextPollAt = now.Add(s.ciBackoff(current.PollCount))
 			if state != domain.RemoteCIWaiting {
-				current.NextPollAt = now.Add(time.Minute)
+				current.NextPollAt = now.Add(s.ciStalledDelay(now.Sub(current.CreatedAt)))
 			}
 		} else {
 			current.NextPollAt = time.Time{}
@@ -692,6 +711,70 @@ func remoteCISummary(watch domain.RemoteCIWatch, config domain.ProjectChecks) Re
 		Passed: watch.Passed, Failed: watch.Failed, Pending: watch.Pending,
 		PullRequestURL: watch.PullURL, PushReview: watch.PushReview, ReworkSent: watch.ReworkSent,
 	}
+}
+
+func (s *Service) ciStalledDelay(age time.Duration) time.Duration {
+	if s.ciImmediate {
+		return 0
+	}
+	return domain.RemoteCIStalledDelay(age)
+}
+
+// remoteCICapsuleLive reports whether a Capsule can still use a CI result.
+// A failed, sealed, or deleted Capsule's watch stops polling.
+func remoteCICapsuleLive(state domain.CapsuleState) bool {
+	switch state {
+	case domain.CapsuleCreating, domain.CapsulePreparing, domain.CapsuleReady, domain.CapsulePaused:
+		return true
+	default:
+		return false
+	}
+}
+
+// stopCI ends polling for a watch. A watch still waiting on GitHub becomes
+// absent; one that could not read CI keeps its state so the reason stays
+// visible.
+func (s *Service) stopCI(ctx context.Context, watch domain.RemoteCIWatch) error {
+	return s.store.Transact(ctx, func(tx ports.Transaction) error {
+		current, err := tx.GetRemoteCI(ctx, watch.ID)
+		if err != nil {
+			return err
+		}
+		if current.ResourceVersion != watch.ResourceVersion {
+			return domain.ErrConflict
+		}
+		previous := current.ResourceVersion
+		now := s.clock.Now().UTC()
+		if current.State == domain.RemoteCIWaiting {
+			current.State = domain.RemoteCIAbsent
+		}
+		if current.ErrorCode == "rework_due" {
+			current.ErrorCode = ""
+		}
+		current.NextPollAt = time.Time{}
+		current.FinishedAt = now
+		current.UpdatedAt = now
+		current.ResourceVersion++
+		return tx.UpdateRemoteCI(ctx, current, previous)
+	})
+}
+
+// ciThreadIdle reports whether the Capsule's active Thread is between turns
+// and not waiting on the operator.
+func (s *Service) ciThreadIdle(ctx context.Context, id domain.CapsuleID) (bool, error) {
+	var thread domain.Thread
+	if err := s.store.View(ctx, func(reader ports.Reader) error {
+		var err error
+		thread, err = reader.GetActiveThread(ctx, id)
+		return err
+	}); err != nil {
+		return false, err
+	}
+	attention, err := s.ThreadAttention(ctx, thread)
+	if err != nil {
+		return false, err
+	}
+	return attention.Awaiting == nil && attention.Turn == ThreadTurnIdle, nil
 }
 
 func (s *Service) ciBackoff(polls int) time.Duration {

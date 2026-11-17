@@ -64,11 +64,11 @@ After Meridian opens a pull request, or pushes a new commit to one it already op
 
 - **Waiting on CI** while GitHub is still running.
 - **CI passed** when the checks succeeded.
-- **CI failing (n/n)** when they failed. The count is the same attempt budget as the local commands. **Stop auto-fix**, a new message, pause, cancel, and rewind stop the loop the same way.
+- **CI failing (n/n)** when they failed. The count is the same attempt budget as the local commands. **Stop auto-fix**, a new message, pause, cancel, and rewind stop the loop the same way. A failure is sent to the agent only when the Project has saved its checks settings with automatic rework on, and only between turns: if the agent is working or waiting on you, the message waits for the next idle turn.
 - **Can't read CI: Reconnect GitHub** when the login itself was rejected.
 - **Connect GitHub to read CI** when nothing is connected. Local checks still run. This is a prompt, not a failed check.
 - **Can't read CI for this repository** when GitHub refuses that one repository. The login stays connected.
 
 A failure can be sent back to the agent. Meridian does not push the fix. The pull request updates only after you review the new commit and ship it, the same as any other push.
 
-The station polls GitHub. It does not need a webhook. The tail you and the agent see is a short redacted excerpt. The pull request body lists names and conclusions only.
+The station polls GitHub. It does not need a webhook. A watch that cannot read CI (no login, a login to reconnect, or a repository GitHub refuses) polls more slowly as it ages, up to once an hour. A watch stops when its Capsule fails, is sealed, or is deleted, and after seven days. The tail you and the agent see is a short redacted excerpt. The pull request body lists names and conclusions only.

@@ -129,10 +129,12 @@ func TestRemoteCIFailureReworksWithoutPushing(t *testing.T) {
 	if _, err := service.ConnectGitHubToken(ctx, "ghp_testtokenvalue", 0, "connect-ci"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.CreateThread(ctx, app.CreateThreadInput{
+	saveCIChecks(t, ctx, service)
+	created, err := service.CreateThread(ctx, app.CreateThreadInput{
 		CapsuleID: capsuleID, Harness: "mock", FirstMessage: "do the work",
 		Start: true, IdempotencyKey: "thread-ci",
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 	reader := &scriptCI{snapshots: []githubci.Snapshot{{Checks: []githubci.Check{{
@@ -153,7 +155,24 @@ func TestRemoteCIFailureReworksWithoutPushing(t *testing.T) {
 	if err := service.TickRemoteCI(ctx); err != nil {
 		t.Fatal(err)
 	}
+	// The agent is still on its first turn, so the CI output waits.
 	view, err := service.RemoteCI(ctx, capsuleID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.State != "failing" || view.ReworkSent {
+		t.Fatalf("mid-turn view = %#v", view)
+	}
+	for _, frame := range runtime.frames {
+		if strings.Contains(frame.Content, "GitHub CI failed") {
+			t.Fatal("CI rework was sent while the agent was mid-turn")
+		}
+	}
+	endTurn(t, ctx, service, runtime, created.Thread.ID)
+	if err := service.TickRemoteCI(ctx); err != nil {
+		t.Fatal(err)
+	}
+	view, err = service.RemoteCI(ctx, capsuleID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -340,5 +359,143 @@ func TestRemoteCIWaitsThenPasses(t *testing.T) {
 	view, err = service.RemoteCI(ctx, capsuleID)
 	if err != nil || view.Label != "CI passed" || view.State != "passed" {
 		t.Fatalf("view = %#v %v", view, err)
+	}
+}
+
+func saveCIChecks(t *testing.T, ctx context.Context, service *app.Service) {
+	t.Helper()
+	project, err := service.GetProject(ctx, "project-ci")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.UpdateProjectChecks(ctx, project.ID, app.ProjectChecksUpdate{
+		Checks:     []app.CheckCommandView{{Name: "test", Argv: []string{"make", "test"}, TimeoutSeconds: 30}},
+		AutoRework: true, MaxReworkAttempts: 3, ExpectedResourceVersion: project.ResourceVersion,
+	}, "save-ci-checks"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func endTurn(t *testing.T, ctx context.Context, service *app.Service, runtime *structuredRuntime, thread domain.ThreadID) {
+	t.Helper()
+	runtime.events = ports.RuntimeStructuredEvents{
+		Items: []ports.RuntimeStructuredEvent{{Sequence: 1, Frame: adapterproto.Frame{
+			Protocol: adapterproto.Version, Type: adapterproto.KindEnd,
+		}}},
+		NextCursor: 1,
+	}
+	if err := service.SyncThread(ctx, thread); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func failingCI() *scriptCI {
+	return &scriptCI{snapshots: []githubci.Snapshot{{Checks: []githubci.Check{{
+		Name: "build", Source: "check_run", Conclusion: "failure",
+		URL: "https://github.com/orloj/meridian/runs/9", Detail: "boom-log\n",
+	}}}}}
+}
+
+// A Project that never saved its checks settings is watched and shown, but
+// its agent is not sent CI output.
+func TestRemoteCIReworkIsOptIn(t *testing.T) {
+	ctx, _, _, service, runtime, capsuleID := ciService(t)
+	if _, err := service.ConnectGitHubToken(ctx, "ghp_testtokenvalue", 0, "connect-ci"); err != nil {
+		t.Fatal(err)
+	}
+	created, err := service.CreateThread(ctx, app.CreateThreadInput{
+		CapsuleID: capsuleID, Harness: "mock", FirstMessage: "do the work",
+		Start: true, IdempotencyKey: "thread-ci",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	endTurn(t, ctx, service, runtime, created.Thread.ID)
+	service.ConfigureRemoteCI(failingCI())
+	if err := service.RecordRemoteCI(ctx, app.RemoteCIOrigin{
+		CapsuleID: capsuleID, Owner: "orloj", Repository: "meridian", Number: 7,
+		Head: strings.Repeat("a", 40),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		if err := service.TickRemoteCI(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	view, err := service.RemoteCI(ctx, capsuleID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.State != "failing" || view.ReworkSent {
+		t.Fatalf("view = %#v", view)
+	}
+	for _, frame := range runtime.frames {
+		if strings.Contains(frame.Content, "GitHub CI failed") {
+			t.Fatal("CI rework was sent to a Project that did not opt in")
+		}
+	}
+}
+
+// A watch whose Capsule can no longer use the result stops polling.
+func TestRemoteCIStopsPollingForASealedCapsule(t *testing.T) {
+	ctx, _, store, service, _, capsuleID := ciService(t)
+	if err := service.RecordRemoteCI(ctx, app.RemoteCIOrigin{
+		CapsuleID: capsuleID, Owner: "orloj", Repository: "meridian", Number: 7,
+		Head: strings.Repeat("a", 40),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.TickRemoteCI(ctx); err != nil {
+		t.Fatal(err)
+	}
+	watch := latestWatch(t, ctx, store, capsuleID)
+	if watch.State != domain.RemoteCIConnect || watch.NextPollAt.IsZero() {
+		t.Fatalf("watch before sealing = %#v", watch)
+	}
+	if err := store.Transact(ctx, func(tx ports.Transaction) error {
+		capsule, err := tx.GetCapsule(ctx, capsuleID)
+		if err != nil {
+			return err
+		}
+		previous := capsule.ResourceVersion
+		capsule.State = domain.CapsuleSealed
+		capsule.ResourceVersion++
+		return tx.UpdateCapsule(ctx, capsule, previous)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.TickRemoteCI(ctx); err != nil {
+		t.Fatal(err)
+	}
+	watch = latestWatch(t, ctx, store, capsuleID)
+	if !watch.NextPollAt.IsZero() || watch.FinishedAt.IsZero() || watch.State != domain.RemoteCIConnect {
+		t.Fatalf("watch after sealing = %#v", watch)
+	}
+}
+
+func latestWatch(t *testing.T, ctx context.Context, store *sqlite.Store, id domain.CapsuleID) domain.RemoteCIWatch {
+	t.Helper()
+	var watch domain.RemoteCIWatch
+	if err := store.View(ctx, func(reader ports.Reader) error {
+		var err error
+		watch, err = reader.LatestRemoteCI(ctx, id)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return watch
+}
+
+func TestRemoteCIStalledDelayIsBounded(t *testing.T) {
+	for _, item := range []struct {
+		age, want time.Duration
+	}{
+		{0, time.Minute}, {5 * time.Minute, time.Minute}, {time.Hour, 6 * time.Minute},
+		{24 * time.Hour, time.Hour}, {30 * 24 * time.Hour, time.Hour},
+	} {
+		if got := domain.RemoteCIStalledDelay(item.age); got != item.want {
+			t.Fatalf("delay(%s) = %s, want %s", item.age, got, item.want)
+		}
 	}
 }
