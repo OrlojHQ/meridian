@@ -65,8 +65,13 @@ For each of clone, push, and pull request:
    `githubAPISecretName`) uses that secret. A missing or wrong-purpose secret
    fails closed. The connection is not a fallback for a named secret.
 2. An empty name uses the owner's GitHub connection when its status is
-   `active`.
+   `active` and the repository is an HTTPS `github.com` URL on the default
+   port. Any other host never receives the connection's token.
 3. With neither, clone stays anonymous. Push and pull request are refused.
+
+A GitHub rate limit (429, or 403 with `X-RateLimit-Remaining: 0`,
+`Retry-After`, or a rate-limit message) is not an access answer. The access
+probe treats it as "could not check", like a network error.
 
 A clone that cannot authenticate is terminal. That includes a missing
 credential for a private or inaccessible repository, HTTP 401, 403, or 404

@@ -31,6 +31,9 @@ const (
 type StatusError struct {
 	Status int
 	Reason string
+	// RateLimited is a primary or secondary rate limit. It says nothing
+	// about whether the token or the repository is usable.
+	RateLimited bool
 }
 
 func (e *StatusError) Error() string {
@@ -193,6 +196,11 @@ func (c *Client) ProbeRepository(ctx context.Context, token, owner, name string)
 	}
 	var status *StatusError
 	if errors.As(err, &status) {
+		if status.RateLimited {
+			// A rate limit is not an access answer. The caller treats an
+			// error as "could not check" and lets the clone decide.
+			return 0, false, err
+		}
 		return status.Status, false, nil
 	}
 	return 0, false, err
@@ -354,6 +362,13 @@ func (c *Client) do(request *http.Request, token string, output any) (http.Heade
 func classify(requestPath string, response *http.Response, payload []byte) error {
 	status := &StatusError{Status: response.StatusCode}
 	folded := bytes.ToLower(payload)
+	if response.StatusCode == http.StatusTooManyRequests ||
+		response.StatusCode == http.StatusForbidden &&
+			(response.Header.Get("X-RateLimit-Remaining") == "0" || response.Header.Get("Retry-After") != "" ||
+				bytes.Contains(folded, []byte("rate limit"))) {
+		status.RateLimited = true
+		return status
+	}
 	switch response.StatusCode {
 	case http.StatusUnauthorized:
 		status.Reason = "invalid"

@@ -383,7 +383,7 @@ func (s *Service) executeDelivery(
 
 	if result.State == domain.DeliveryPushing {
 		payload, _, err := s.resolveDeliveryCredential(
-			ctx, project.OwnerUserID, project.GitPushSecretName, domain.SecretGitPush,
+			ctx, project.OwnerUserID, project.RepositoryURL, project.GitPushSecretName, domain.SecretGitPush,
 		)
 		if err != nil {
 			return fail(err)
@@ -423,7 +423,7 @@ func (s *Service) executeDelivery(
 			return fail(err)
 		}
 		payload, fromConnection, err := s.resolveDeliveryCredential(
-			ctx, project.OwnerUserID, project.GitHubAPISecretName, domain.SecretGitHubAPI,
+			ctx, project.OwnerUserID, project.RepositoryURL, project.GitHubAPISecretName, domain.SecretGitHubAPI,
 		)
 		if err != nil {
 			return fail(err)
@@ -556,19 +556,22 @@ func validateDeliveryProject(project domain.Project, _ domain.DeliveryAction) er
 func (s *Service) validateDeliverySecrets(
 	ctx context.Context, project domain.Project, action domain.DeliveryAction,
 ) error {
-	if err := s.requireDeliveryCredential(ctx, project.OwnerUserID, project.GitPushSecretName, domain.SecretGitPush); err != nil {
+	if err := s.requireDeliveryCredential(ctx, project.OwnerUserID, project.RepositoryURL, project.GitPushSecretName, domain.SecretGitPush); err != nil {
 		return err
 	}
 	if action != domain.DeliveryOpenPullRequest {
 		return nil
 	}
-	return s.requireDeliveryCredential(ctx, project.OwnerUserID, project.GitHubAPISecretName, domain.SecretGitHubAPI)
+	return s.requireDeliveryCredential(ctx, project.OwnerUserID, project.RepositoryURL, project.GitHubAPISecretName, domain.SecretGitHubAPI)
 }
 
 func (s *Service) requireDeliveryCredential(
-	ctx context.Context, owner domain.UserID, name string, purpose domain.SecretPurpose,
+	ctx context.Context, owner domain.UserID, repositoryURL, name string, purpose domain.SecretPurpose,
 ) error {
 	if name == "" {
+		if !gitHubHTTPSRepository(repositoryURL) {
+			return fmt.Errorf("%w: a %s secret is required for a repository outside github.com", domain.ErrIllegalTransition, purpose)
+		}
 		connection, found, err := s.loadGitHubConnection(ctx, owner)
 		if err != nil {
 			return err
