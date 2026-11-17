@@ -7,8 +7,16 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-16
+
 ### Upgrade notes
 
+- **Back up the data directory first.** Migrations 0031 (GitHub
+  connections), 0032 (the `repository_access` failure code), 0033 (Project
+  checks), and 0034 (remote CI) run on first start. 0.10.1 refuses a data
+  directory that 0.11.0 has migrated, so rolling back means restoring the
+  backup. Existing Projects behave as before until you connect GitHub or
+  save checks.
 - **Pushes now go through the Station Git gateway** (ADR 0054). The push
   credential stays on the Station; the Capsule pushes with a one-time
   capability for the approved commit and branch. Docker installs get this
@@ -19,17 +27,33 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   Docker engine without `--provider-gateway-url`) refuses pushes until one
   is configured, or until `--delivery-push=capsule` restores the in-Capsule
   push.
-
-### Changed
-
-- An approved push no longer sends the push credential into the Capsule.
-  `capsuled` pushes to the Station Git gateway with a one-time capability
-  bound to one Delivery's commit, branch, and expected old value.
-  `meridiand` checks the push command, adds the credential, and streams the
-  pack to the source host unparsed. The Station, not the Capsule, reads the
-  remote branch before the push, and the source host checks the expected old
-  value atomically. With the GitHub connection of ADR 0051, this keeps the
-  owner's whole GitHub login out of every Capsule.
+- A Project that names no `git_https`, `git_push`, or `github_api` secret now
+  uses its owner's GitHub connection for clone, push, and pull requests, but
+  only for an HTTPS `github.com` repository. A Project on another host still
+  needs named secrets, and named secrets still win.
+- Remote CI sends failures back to the agent only for a Project that has
+  saved its checks settings with automatic rework on. Other Projects show the
+  CI result without rework.
+- API additions: `GET`/`DELETE /github/connection`,
+  `POST /github/connection/check`, `GET`/`POST /github/connection/host`,
+  `POST /github/connection/token`, `POST`/`GET`/`DELETE
+  /github/connection/device`, and `GET /github/repos`;
+  `GET`/`PUT /projects/{projectId}/checks` and
+  `GET /projects/{projectId}/checks/suggestion`;
+  `GET`/`POST /capsules/{capsuleId}/check-runs`,
+  `POST /capsules/{capsuleId}/checks/auto-rework`,
+  `GET /check-runs/{checkRunId}`, and `POST /check-runs/{checkRunId}/cancel`;
+  `GET /capsules/{capsuleId}/remote-ci`; and
+  `DELETE /provider-connections/{connectionId}`. `pkg/client` is
+  regenerated.
+- New `meridiand` flags: `--github-oauth-client-id` (or
+  `MERIDIAN_GITHUB_OAUTH_CLIENT_ID`), needed only for the device-code
+  fallback when `gh` is missing or signed out, with no client id built in;
+  and `--delivery-push`.
+- New commands: `meridian github connect`, `status`, and `disconnect`;
+  `meridian project checks show` and `set`; `meridian capsule checks`; and
+  `meridian harness disconnect`.
+- Keep `meridian` and `meridian-desktop` on the same release, as before.
 
 ### Added
 
@@ -47,23 +71,41 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   token instead." An invalid, expired, or under-scoped login shows
   Reconnect GitHub. The device flow needs
   `--github-oauth-client-id` or `MERIDIAN_GITHUB_OAUTH_CLIENT_ID`. No client
-  id is shipped.
+  id is shipped. Without a named secret the login is used only for an
+  HTTPS `github.com` repository (#203).
 - A private or inaccessible GitHub repository with no usable credential
   fails once, as `repository_access`, instead of retrying checkout.
   The Capsule and the Thread say which repository could not be read and
   offer Connect GitHub or a token. Creating that Project checks access
   first. Git output is not stored or shown. Migration 0032 allows the
-  new failure code.
+  new failure code (#203).
 - After Meridian opens or updates a pull request, it reads that commit's
   GitHub checks and shows them beside the local ones. A failure can be sent
   back to the agent. The fix is not pushed until you review it. See
   [docs/checks.md](docs/checks.md) and ADR 0053. Migration
-  `0034_remote_ci.sql` stores the summary.
+  `0034_remote_ci.sql` stores the summary. Automatic rework from CI is
+  opt-in through the Project's saved checks settings (#206).
 - A Project can list required checks, such as `make test`. When a structured
   Thread finishes a turn, Meridian runs them inside the Capsule. A failure is
   sent back to the agent up to the attempt limit, then the Capsule shows
   **Checks failing (n/n)** or **Checks passed**. See [docs/checks.md](docs/checks.md)
-  and ADR 0052. Migration `0033_project_checks.sql` adds the tables.
+  and ADR 0052. Migration `0033_project_checks.sql` adds the tables
+  (#198, #205).
+
+### Changed
+
+- An approved push no longer sends the push credential into the Capsule.
+  `capsuled` pushes to the Station Git gateway with a one-time capability
+  bound to one Delivery's commit, branch, and expected old value.
+  `meridiand` checks the push command, adds the credential, and streams the
+  pack to the source host unparsed. The Station, not the Capsule, reads the
+  remote branch before the push, and the source host checks the expected old
+  value atomically. With the GitHub connection of ADR 0051, this keeps the
+  owner's whole GitHub login out of every Capsule (#207).
+- Tests seed each SQLite database from one migrated template, and CI runs
+  test and lint, the race test, and the snapshot release as parallel jobs.
+  The race test takes about 4 minutes instead of 15 to 18, and the required
+  check is still "Build, test, and lint" (#208).
 
 ### Fixed
 
@@ -74,7 +116,7 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   (`providers`, with `package` and `settings`), and keeps that model selected
   in the terminal and in Threads. `meridian import` warns when the imported
   default model still depends on a host environment variable or a server the
-  Capsule cannot reach.
+  Capsule cannot reach (#202).
 - A revoked provider connection can be removed. Revoke still keeps the row,
   so a ChatGPT sign-out can say when the provider did not confirm it.
   **Remove** in Provider connections, `DELETE /provider-connections/{id}`,
@@ -82,7 +124,7 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   its Project grants, and a workstation-profile default that names it. A
   connection that is still signed in stays. A Capsule that is starting,
   ready, or paused, and whose Project still grants it, must be stopped
-  first. Another member's connection is not found.
+  first. Another member's connection is not found (#202).
 
 ## [0.10.1] - 2026-11-15
 
@@ -1334,7 +1376,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - Docker and Agent Sandbox are not claimed as hostile multi-tenant isolation
   boundaries; hardened runtime deployment and external review remain required.
 
-[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.10.1...HEAD
+[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/OrlojHQ/meridian/compare/v0.10.1...v0.11.0
 [0.10.1]: https://github.com/OrlojHQ/meridian/compare/v0.9.0...v0.10.1
 [0.9.0]: https://github.com/OrlojHQ/meridian/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/OrlojHQ/meridian/compare/v0.7.2...v0.8.0
