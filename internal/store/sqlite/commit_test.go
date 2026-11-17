@@ -51,7 +51,8 @@ func TestOpenCancelledDuringMigrationReportsCancellation(t *testing.T) {
 	hook, fired := cancelInsideTransaction(t, cancel)
 	t.Cleanup(SetCommitHookForTesting(hook))
 
-	store, err := Open(ctx, t.TempDir())
+	// The real migration path: a seeded test database runs no migration.
+	store, err := open(ctx, t.TempDir(), false)
 	if err == nil {
 		_ = store.Close()
 	}
