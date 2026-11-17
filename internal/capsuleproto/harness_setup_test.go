@@ -620,3 +620,26 @@ func TestOpenCodeOfficialProviderKeepsNativeSettings(t *testing.T) {
 		t.Fatalf("connection document = %s", env["OPENCODE_CONFIG_CONTENT"])
 	}
 }
+
+func TestOpenCodeAllowPolicyIsAddedOnce(t *testing.T) {
+	config := map[string]any{
+		"enabled_providers": []any{"proxy"},
+		"policies": []any{
+			map[string]any{"action": "provider.use", "resource": "*", "effect": "deny"},
+		},
+	}
+	for range 3 {
+		allowOpenCodeProvider(config, "meridian")
+	}
+	policies := config["policies"].([]any)
+	if len(policies) != 2 {
+		t.Fatalf("policies = %#v", policies)
+	}
+	last := policies[len(policies)-1].(map[string]any)
+	if last["resource"] != "meridian" || last["effect"] != "allow" {
+		t.Fatalf("last policy = %#v", last)
+	}
+	if providers := config["enabled_providers"].([]any); len(providers) != 2 {
+		t.Fatalf("enabled_providers = %#v", providers)
+	}
+}

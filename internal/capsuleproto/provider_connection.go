@@ -414,7 +414,10 @@ func patchOpenCodeOfficialProvider(config map[string]any, id, gateway string) {
 // allow-lists or deny-lists providers. OpenCode 2.2.6 turns enabled_providers
 // into a deny-all policy plus one allow per entry, and disabled_providers
 // into denies. An allow appended here is the last statement in this file,
-// and this file is loaded before a repository config, so it wins.
+// so it wins within the file. OpenCode evaluates earlier-loaded files last,
+// and this file is loaded before a repository config, so it also wins over
+// a repository allow-list. A copy left by an earlier start is removed first,
+// so restarting a Capsule does not grow the list.
 func allowOpenCodeProvider(config map[string]any, id string) {
 	if list, ok := config["enabled_providers"].([]any); ok {
 		found := false
@@ -438,7 +441,15 @@ func allowOpenCodeProvider(config map[string]any, id string) {
 		config["disabled_providers"] = kept
 	}
 	policies, _ := config["policies"].([]any)
-	config["policies"] = append(policies, map[string]any{
+	kept := make([]any, 0, len(policies)+1)
+	for _, item := range policies {
+		if policy, ok := item.(map[string]any); ok && len(policy) == 3 &&
+			policy["action"] == "provider.use" && policy["resource"] == id && policy["effect"] == "allow" {
+			continue
+		}
+		kept = append(kept, item)
+	}
+	config["policies"] = append(kept, map[string]any{
 		"action": "provider.use", "resource": id, "effect": "allow",
 	})
 }
