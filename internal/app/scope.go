@@ -369,6 +369,13 @@ func (r *scopedReader) GetProviderConnection(ctx context.Context, id string) (do
 	return item, nil
 }
 
+func (r *scopedReader) ProviderConnectionLive(ctx context.Context, id string) (bool, error) {
+	if _, err := r.GetProviderConnection(ctx, id); err != nil {
+		return false, err
+	}
+	return r.inner.ProviderConnectionLive(ctx, id)
+}
+
 func (r *scopedReader) GetProjectProviderConnection(ctx context.Context, id domain.ProjectID, harness string) (string, error) {
 	if err := r.project(ctx, id); err != nil {
 		return "", err
@@ -1209,6 +1216,16 @@ func (t *scopedTx) PutProviderConnection(ctx context.Context, item domain.Provid
 		return err
 	}
 	return t.tx.PutProviderConnection(ctx, item)
+}
+
+func (t *scopedTx) DeleteProviderConnection(ctx context.Context, id string, owner domain.UserID) error {
+	if err := t.scope.check(owner); err != nil {
+		return err
+	}
+	if _, err := t.GetProviderConnection(ctx, id); err != nil {
+		return err
+	}
+	return t.tx.DeleteProviderConnection(ctx, id, owner)
 }
 
 func (t *scopedTx) GrantProviderConnection(ctx context.Context, id domain.ProjectID, harness, connection string) error {

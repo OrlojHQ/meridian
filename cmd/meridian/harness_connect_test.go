@@ -105,3 +105,25 @@ func TestHarnessConnectFlagRules(t *testing.T) {
 		t.Fatalf("sent %d requests", requests)
 	}
 }
+
+func TestHarnessDisconnectRemovesRevokedConnection(t *testing.T) {
+	var method, path string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		method, path = request.Method, request.URL.Path
+		writer.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	var output bytes.Buffer
+	config := &cliConfig{server: server.URL, tokenFile: testAPITokenFile(t), stdout: &output}
+	command := harnessTestRoot(config)
+	command.SetArgs([]string{"harness", "disconnect", "conn_123"})
+	if err := command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if method != http.MethodDelete || path != "/provider-connections/conn_123" {
+		t.Fatalf("%s %s", method, path)
+	}
+	if !strings.Contains(output.String(), "Removed the connection.") {
+		t.Fatal(output.String())
+	}
+}

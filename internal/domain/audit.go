@@ -21,6 +21,7 @@ const (
 	AuditConnectionPut          AuditAction = "provider_connection.put"
 	AuditConnectionSignIn       AuditAction = "provider_connection.sign_in"
 	AuditConnectionDisconnect   AuditAction = "provider_connection.disconnect"
+	AuditConnectionDelete       AuditAction = "provider_connection.delete"
 	AuditProjectSecretsGrant    AuditAction = "project.grant_secrets"
 	AuditProjectConnectionGrant AuditAction = "project.grant_connection"
 	AuditDeliveryCreate         AuditAction = "delivery.create"

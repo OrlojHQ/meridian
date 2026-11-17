@@ -40,6 +40,7 @@ const (
 	DeleteCapsuleOperation                  OperationName = "DeleteCapsule"
 	DeleteMemberObjectsOperation            OperationName = "DeleteMemberObjects"
 	DeleteProjectOperation                  OperationName = "DeleteProject"
+	DeleteProviderConnectionOperation       OperationName = "DeleteProviderConnection"
 	DeleteSecretOperation                   OperationName = "DeleteSecret"
 	DeleteThreadOperation                   OperationName = "DeleteThread"
 	DenyCoordinationRequestOperation        OperationName = "DenyCoordinationRequest"

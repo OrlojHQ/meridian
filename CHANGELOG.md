@@ -41,6 +41,25 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   **Checks failing (n/n)** or **Checks passed**. See [docs/checks.md](docs/checks.md)
   and ADR 0052. Migration `0033_project_checks.sql` adds the tables.
 
+### Fixed
+
+- An imported OpenCode setup whose `enabled_providers` list left out
+  `meridian` ignored an `openai-compatible` connection. OpenCode 2.2.6 turns
+  that list into a deny-all provider policy. Attaching the connection now
+  allows `meridian`, writes the provider in the shape that version loads
+  (`providers`, with `package` and `settings`), and keeps that model selected
+  in the terminal and in Threads. `meridian import` warns when the imported
+  default model still depends on a host environment variable or a server the
+  Capsule cannot reach.
+- A revoked provider connection can be removed. Revoke still keeps the row,
+  so a ChatGPT sign-out can say when the provider did not confirm it.
+  **Remove** in Provider connections, `DELETE /provider-connections/{id}`,
+  and `meridian harness disconnect ID` then delete a revoked connection,
+  its Project grants, and a workstation-profile default that names it. A
+  connection that is still signed in stays. A Capsule that is starting,
+  ready, or paused, and whose Project still grants it, must be stopped
+  first. Another member's connection is not found.
+
 ## [0.10.1] - 2026-11-15
 
 ### Upgrade notes
