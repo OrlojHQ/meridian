@@ -7,6 +7,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.4] - 2026-11-17
+
 ### Fixed
 
 - An imported OpenCode provider whose key comes from an environment variable, a file, or is missing is no longer copied into the Capsule. When its endpoint matches a provider connection, its models run through the gateway under that provider's own name, in one group. Otherwise it is left out of the model list, and the import report says it needs a connection. A turn that fails because a provider has no key names that provider and asks to connect it in Settings. A connection's default model is chosen from the endpoint's model list, with imported names, instead of a typed id. Reasoning effort is detected from the endpoint and the imported setup: a model that reasons offers the standard levels, starting at medium, and a rejected reasoning parameter is retried once without it. A turn or model change that gets no reply ends with an error. Stopping a session ends it even when the harness ignores the cancel, and the stop shows its progress and any error. Deleting a Capsule can force-stop a session that is still running and then delete.
@@ -1440,7 +1442,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - Docker and Agent Sandbox are not claimed as hostile multi-tenant isolation
   boundaries; hardened runtime deployment and external review remain required.
 
-[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.11.3...HEAD
+[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.11.4...HEAD
+[0.11.4]: https://github.com/OrlojHQ/meridian/compare/v0.11.3...v0.11.4
 [0.11.3]: https://github.com/OrlojHQ/meridian/compare/v0.11.2...v0.11.3
 [0.11.2]: https://github.com/OrlojHQ/meridian/compare/v0.11.1...v0.11.2
 [0.11.1]: https://github.com/OrlojHQ/meridian/compare/v0.10.1...v0.11.1
