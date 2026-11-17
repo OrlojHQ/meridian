@@ -17,6 +17,10 @@ type AttachRunWebSocketRes interface {
 	attachRunWebSocketRes()
 }
 
+type AttachShellWebSocketRes interface {
+	attachShellWebSocketRes()
+}
+
 type BeginDeviceLoginRes interface {
 	beginDeviceLoginRes()
 }
@@ -87,6 +91,10 @@ type CreateRunAttachTicketRes interface {
 
 type CreateShardRes interface {
 	createShardRes()
+}
+
+type CreateShellAttachTicketRes interface {
+	createShellAttachTicketRes()
 }
 
 type CreateThreadRes interface {

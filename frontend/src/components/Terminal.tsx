@@ -4,7 +4,7 @@ import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { useEffect, useRef, useState } from "react";
 
-import { api } from "../api/client";
+import { api, normalizeAPIError } from "../api/client";
 import type { AttachTicket } from "../api/generated/types.gen";
 
 type TerminalStatus =
@@ -12,7 +12,9 @@ type TerminalStatus =
   | "attached"
   | "reconnecting"
   | "closed"
-  | "expired";
+  | "expired"
+  | "unavailable"
+  | "exited";
 
 const terminalStatusLabel: Record<TerminalStatus, string> = {
   connecting: "Connecting…",
@@ -20,7 +22,17 @@ const terminalStatusLabel: Record<TerminalStatus, string> = {
   reconnecting: "Reconnecting…",
   closed: "Connection closed",
   expired: "Connection expired",
+  unavailable: "Terminal unavailable",
+  exited: "Shell exited",
 };
+
+const permanentCodes = new Set([
+  "not_found",
+  "attach_unavailable",
+  "shell_unavailable",
+  "unsupported",
+  "illegal_transition",
+]);
 
 export function ticketExpired(ticket: AttachTicket, now = Date.now()) {
   return Date.parse(ticket.expiresAt) <= now;
@@ -32,10 +44,11 @@ export function terminalSocketURL(ticket: AttachTicket, runId?: string) {
   const expectedPath = runId
     ? `/runs/${encodeURIComponent(runId)}/attach`
     : undefined;
+  const shell = /^\/capsules\/[^/]+\/shell\/attach$/.test(target.pathname);
   if (
     target.origin !== base.origin ||
-    !target.pathname.startsWith("/runs/") ||
-    (expectedPath !== undefined && target.pathname !== expectedPath)
+    !(target.pathname.startsWith("/runs/") || shell) ||
+    (expectedPath !== undefined && !shell && target.pathname !== expectedPath)
   ) {
     throw new Error("Attach ticket returned an invalid WebSocket path");
   }
@@ -45,15 +58,23 @@ export function terminalSocketURL(ticket: AttachTicket, runId?: string) {
 }
 
 interface TerminalViewProps {
-  runId: string;
+  runId?: string;
   reconnect: boolean;
   supported: boolean;
+  /** When set, this mints the attach ticket instead of the harness Run. */
+  requestTicket?: (signal: AbortSignal) => Promise<AttachTicket>;
+  /** After the shell exits, offer another one instead of reconnecting. */
+  restartable?: boolean;
+  label?: string;
 }
 
 export function TerminalView({
   runId,
   reconnect,
   supported,
+  requestTicket,
+  restartable = false,
+  label = "Run terminal",
 }: TerminalViewProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const cursorRef = useRef(0);
@@ -61,6 +82,7 @@ export function TerminalView({
   const socketRef = useRef<WebSocket | null>(null);
   const [status, setStatus] = useState<TerminalStatus>("connecting");
   const [gap, setGap] = useState<number>();
+  const [generation, setGeneration] = useState(0);
 
   useEffect(() => {
     if (!supported || !hostRef.current) {
@@ -136,11 +158,9 @@ export function TerminalView({
       setStatus(cursorRef.current > 0 ? "reconnecting" : "connecting");
       currentController = new AbortController();
       try {
-        const ticket = await api.attachTicket(
-          runId,
-          cursorRef.current,
-          currentController.signal,
-        );
+        const ticket = requestTicket
+          ? await requestTicket(currentController.signal)
+          : await api.attachTicket(runId ?? "", cursorRef.current, currentController.signal);
         if (!activeRef.current) return;
         if (ticketExpired(ticket)) {
           setStatus("expired");
@@ -172,6 +192,11 @@ export function TerminalView({
               type?: string;
               data?: string;
             };
+            if (frame.type === "exit") {
+              setStatus("exited");
+              socket.close(1000, "shell exited");
+              return;
+            }
             if (frame.type === "gap") {
               setGap(frame.sequence ?? cursorRef.current);
               return;
@@ -193,16 +218,23 @@ export function TerminalView({
         socket.addEventListener("close", () => {
           if (socketRef.current === socket) socketRef.current = null;
           if (!activeRef.current) return;
-          if (reconnect) {
-            setStatus("reconnecting");
-            timer = window.setTimeout(connect, 1_000);
-          } else {
-            setStatus("closed");
-          }
+          setStatus((current) => {
+            if (current === "exited" || current === "unavailable") return current;
+            if (reconnect) {
+              timer = window.setTimeout(connect, 1_000);
+              return "reconnecting";
+            }
+            return "closed";
+          });
         });
         socket.addEventListener("error", () => socket.close());
-      } catch {
+      } catch (error) {
         if (!activeRef.current) return;
+        const normalized = normalizeAPIError(error);
+        if (permanentCodes.has(normalized.code) || normalized.status === 404) {
+          setStatus("unavailable");
+          return;
+        }
         if (reconnect) {
           setStatus("reconnecting");
           timer = window.setTimeout(connect, 1_000);
@@ -227,7 +259,7 @@ export function TerminalView({
       }
       terminal.dispose();
     };
-  }, [reconnect, runId, supported]);
+  }, [generation, reconnect, requestTicket, restartable, runId, supported]);
 
   if (!supported) {
     return (
@@ -238,9 +270,17 @@ export function TerminalView({
   }
 
   return (
-    <section aria-label="Run terminal">
+    <section aria-label={label}>
       <div className="terminal-toolbar">
         <span role="status">{terminalStatusLabel[status]}</span>
+        {status === "exited" && restartable && (
+          <button type="button" onClick={() => setGeneration((value) => value + 1)}>
+            New shell
+          </button>
+        )}
+        {status === "unavailable" && (
+          <span>This session has no terminal to attach.</span>
+        )}
       </div>
       {gap !== undefined && (
         <p className="warning" role="alert">

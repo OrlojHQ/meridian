@@ -151,6 +151,27 @@ paths:
                 $ref: "#/components/schemas/ClaudeLoginStatus"
         default:
           $ref: "#/components/responses/DefaultError"
+  /provider-connections/models:
+    post:
+      operationId: listEndpointModels
+      summary: List models served by a custom endpoint
+      description: Fetches the endpoint's model list and overlays names from an imported OpenCode setup when the endpoint matches. The key is not returned.
+      tags: [provider-connections]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ListEndpointModelsRequest"
+      responses:
+        "200":
+          description: Models
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EndpointModelList"
+        default:
+          $ref: "#/components/responses/DefaultError"
   /provider-connections:
     get:
       operationId: listProviderConnections
@@ -2433,6 +2454,55 @@ paths:
           $ref: "#/components/responses/BadRequest"
         default:
           $ref: "#/components/responses/DefaultError"
+  /capsules/{capsuleId}/shell/attach-ticket:
+    post:
+      operationId: createShellAttachTicket
+      summary: Start the Capsule workspace shell if needed and mint an attach ticket
+      description: The shell runs in the Capsule workspace. It ends when the Capsule stops. A new ticket after the shell exits starts another shell.
+      tags: [capsules]
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+        - name: columns
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 500, default: 80}
+        - name: rows
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 500, default: 24}
+      responses:
+        "201":
+          description: Attach ticket
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttachTicket"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /capsules/{capsuleId}/shell/attach:
+    get:
+      operationId: attachShellWebSocket
+      summary: Upgrade to the workspace shell WebSocket
+      description: Binary frames are shell input and output. A JSON text frame of type exit means the shell ended. A JSON text frame of type resize sets the terminal size.
+      security: []
+      tags: [capsules]
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+        - name: ticket
+          in: query
+          required: true
+          schema: {type: string, minLength: 32}
+      responses:
+        "101":
+          description: WebSocket protocol switch
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        default:
+          $ref: "#/components/responses/DefaultError"
   /capsules/{capsuleId}/previews:
     get:
       operationId: listCapsulePreviewPorts
@@ -4039,6 +4109,9 @@ components:
           type: integer
           format: int64
           minimum: 1
+        force:
+          type: boolean
+          description: Stop active sessions, ending any that do not answer, then delete.
     PromoteCapsuleRequest:
       type: object
       required: [expectedResourceVersion]
@@ -6296,6 +6369,42 @@ components:
         connectionId:
           type: string
           description: Set when status is complete. Not a secret.
+    ListEndpointModelsRequest:
+      type: object
+      properties:
+        connectionId:
+          type: string
+          description: Use this saved connection's endpoint and key. A key in the body replaces the stored one for this request only.
+        provider:
+          $ref: "#/components/schemas/ProviderConnectionType"
+        baseUrl:
+          type: string
+          maxLength: 2048
+        apiKey:
+          type: string
+          writeOnly: true
+          maxLength: 4096
+        allowPrivateHttp:
+          type: boolean
+    EndpointModel:
+      type: object
+      required: [id, name]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        context: {type: integer, minimum: 0}
+        output: {type: integer, minimum: 0}
+    EndpointModelList:
+      type: object
+      required: [models]
+      properties:
+        models:
+          type: array
+          maxItems: 512
+          items: {$ref: "#/components/schemas/EndpointModel"}
+        suggested:
+          type: string
+          description: Imported default, or the connection's saved model when it matches an entry.
     ProviderConnection:
       type: object
       required: [id, provider, name, createdAt, resourceVersion, revoked]

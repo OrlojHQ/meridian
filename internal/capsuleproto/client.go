@@ -356,6 +356,25 @@ func (c *Client) DeliveryPush(
 	return response, err
 }
 
+func (c *Client) StartShell(ctx context.Context, columns, rows uint16) error {
+	path := "/v1/shell?columns=" + strconv.FormatUint(uint64(columns), 10) + "&rows=" + strconv.FormatUint(uint64(rows), 10)
+	return c.call(ctx, http.MethodPost, path, nil, &map[string]string{}, true)
+}
+
+func (c *Client) AttachShell(ctx context.Context) (*websocket.Conn, error) {
+	endpoint := strings.Replace(c.baseURL, "http://", "ws://", 1) + "/v1/shell/attach"
+	headers := http.Header{}
+	headers.Set(VersionHeader, Version)
+	headers.Set("Authorization", "Bearer "+c.token)
+	connection, response, err := websocket.Dial(ctx, endpoint, &websocket.DialOptions{
+		HTTPClient: c.http, HTTPHeader: headers,
+	})
+	if response != nil && response.Body != nil {
+		_ = response.Body.Close()
+	}
+	return connection, err
+}
+
 func (c *Client) Attach(ctx context.Context, runID string, after uint64) (*websocket.Conn, error) {
 	endpoint := strings.Replace(c.baseURL, "http://", "ws://", 1) +
 		"/v1/runs/" + url.PathEscape(runID) + "/attach?after=" + strconv.FormatUint(after, 10)

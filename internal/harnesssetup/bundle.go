@@ -160,6 +160,13 @@ type Connection struct {
 	// CA is the PEM certificate set the harness must trust for URL, set
 	// only for the local provider gateway (ADR 0037).
 	CA string `json:"ca,omitempty"`
+	// Name is the connection's display name. OpenCode shows it instead of
+	// the gateway provider id. It is not a secret.
+	Name string `json:"name,omitempty"`
+	// Fold lists imported OpenCode provider ids whose endpoint matches this
+	// connection. The Capsule copies their models onto the gateway provider.
+	// The upstream address is not included.
+	Fold []string `json:"fold,omitempty"`
 }
 
 // EffortLevels is the effort vocabulary a connection may declare, from least

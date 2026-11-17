@@ -28,6 +28,7 @@ import type {
   CreateDeliveryRequest,
   Delivery,
   GitResult,
+  HarnessSetup,
   CapsulePage,
   Moment,
   PreviewTicket,
@@ -237,6 +238,11 @@ function ActiveRuns({
               >
                 {stopping ? "Stopping…" : "Stop"}
               </button>
+              {stopping && (
+                <p className="notice" role="status">
+                  Stopping this session. If the harness does not answer, it will be ended.
+                </p>
+              )}
             </li>
           );
         })}
@@ -270,10 +276,13 @@ function CapsuleMenu({
   // choose a sibling from cache the moment the daemon accepts it.
   const siblings = useQuery(queries.mainCapsules(capsule.projectId));
   const projects = useQuery(queries.projects());
-  const mutation = useMutation<unknown, Error, "pause" | "resume" | "delete" | "seal">({
-    mutationFn: (action: "pause" | "resume" | "delete" | "seal") => {
+  const mutation = useMutation<unknown, Error, "pause" | "resume" | "delete" | "seal" | "delete-force">({
+    mutationFn: (action: "pause" | "resume" | "delete" | "seal" | "delete-force") => {
       if (action === "seal") {
         return api.seal(capsule.id, capsule.resourceVersion);
+      }
+      if (action === "delete-force") {
+        return api.lifecycle("delete", capsule.id, capsule.resourceVersion, undefined, true);
       }
       return api.lifecycle(action, capsule.id, capsule.resourceVersion);
     },
@@ -281,7 +290,7 @@ function CapsuleMenu({
       // Leave on the accepted delete, while the Capsule is still Deleting.
       // Waiting for state Deleted would keep this page up, and would also
       // send a direct visit to an already-deleted Capsule away.
-      if (action === "delete") {
+      if (action === "delete" || action === "delete-force") {
         const siblingKey = queries.mainCapsules(capsule.projectId).queryKey;
         let items =
           queryClient.getQueryData<CapsulePage>(siblingKey)?.items ?? siblings.data?.items;
@@ -408,9 +417,25 @@ function CapsuleMenu({
                     deleting. Anything the agent hasn't saved in the workspace is lost.
                   </p>
                   <ActiveRuns runs={activeRuns} threads={threads} />
+                  {mutation.isPending && (
+                    <p className="notice" role="status">
+                      Stopping sessions. A harness that does not answer is ended, then the Capsule is deleted.
+                    </p>
+                  )}
+                  {mutation.isError && <p role="alert">{normalizeAPIError(mutation.error).message}</p>}
                 </>
               )}
               <div className="actions">
+                {pendingAction === "delete" && blockedByRuns && (
+                  <button
+                    type="button"
+                    className="danger"
+                    disabled={mutation.isPending}
+                    onClick={() => mutation.mutate("delete-force")}
+                  >
+                    {mutation.isPending ? "Stopping sessions…" : "Force stop and delete"}
+                  </button>
+                )}
                 <button
                   type="button"
                   className="danger"
@@ -716,6 +741,22 @@ function TerminalSession({
 
 const NEW_SESSION = "new";
 
+function PinnedSetupLine({
+  capsule,
+  setups,
+  known,
+}: {
+  capsule: Capsule;
+  setups?: HarnessSetup[];
+  known: boolean;
+}) {
+  const harness = capsule.harness?.replace(/-structured$/, "") ?? "";
+  const saved = setups?.filter((item) => item.harness === harness && !item.deleted) ?? [];
+  const current = known ? (saved.find((item) => item.default) ?? saved[0] ?? null) : undefined;
+  const line = pinnedSetupText(capsule.pinnedHarnessSetups, capsule.harness, current);
+  return line ? <p className="capsule-setup-pin">{line}</p> : null;
+}
+
 export function CapsuleDetail() {
   const { capsuleId = "" } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -733,6 +774,7 @@ export function CapsuleDetail() {
     ...queries.threads(capsuleId),
     enabled: Boolean(capsuleId) && structured,
   });
+  const setups = useQuery({ queryKey: ["harness-setups"], queryFn: api.harnessSetups });
   // The installation capability says structured sessions exist somewhere;
   // only the Capsule's own harness profiles say whether it can start one.
   const profiles = useQuery({
@@ -869,9 +911,11 @@ export function CapsuleDetail() {
             threads={threads.data?.items}
           />
         </div>
-        {value.pinnedHarnessSetups && value.pinnedHarnessSetups.length > 0 && (
-          <p className="capsule-setup-pin">{pinnedSetupText(value.pinnedHarnessSetups)}</p>
-        )}
+        <PinnedSetupLine
+          capsule={value}
+          setups={setups.data?.items}
+          known={setups.isSuccess}
+        />
       </header>
       {(isStarting(value) || value.startup || value.failureCode || isRepositoryAccessFailure(value)) && (
         <CapsuleStartup capsule={value} />

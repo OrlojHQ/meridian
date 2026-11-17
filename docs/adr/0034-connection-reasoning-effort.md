@@ -62,8 +62,14 @@ own name:
   keep their own levels.
 - Claude Code: unchanged.
 
-The CLI takes `--effort low,high,max`, and the Harness settings form shows a
-checkbox per level once a default model is set.
+The CLI still takes `--effort low,high,max` for an explicit list. The Harness
+settings form does not ask. When a connection has no saved list, Meridian
+reads the imported setup (variants and options) and the endpoint's model
+info. A model that reasons gets the standard levels, with medium as the
+default. When support is unknown, the gateway sends medium; if the endpoint
+rejects that parameter, the request is retried once without it and that
+model is remembered for the rest of the process, so the turn does not fail
+on the parameter. A saved list is left as the operator wrote it.
 
 ## Consequences
 
@@ -71,9 +77,9 @@ The composer's effort picker (ADR 0033) works for self-hosted models in Pi,
 DeepSeek Harness, OpenCode, and Codex.
 
 The levels are operator configuration, not credentials. Like the model name,
-they reach the Capsule; the base URL and key still do not. A wrong
-declaration only makes the harness send a level the server rejects, which
-fails that turn.
+they reach the Capsule; the base URL and key still do not. A level the
+server rejects is removed and the request is retried once, so that rejection
+is not shown as a failed turn.
 
 Imported personal setups keep their own model declarations: the connection
 writes only the `meridian` provider or route it owns.

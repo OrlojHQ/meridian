@@ -26,6 +26,12 @@ type AttachRunWebSocketParams struct {
 	Ticket string
 }
 
+// AttachShellWebSocketParams is parameters of attachShellWebSocket operation.
+type AttachShellWebSocketParams struct {
+	CapsuleId string
+	Ticket    string
+}
+
 // BeginMemberIdentityRebindParams is parameters of beginMemberIdentityRebind operation.
 type BeginMemberIdentityRebindParams struct {
 	UserId string
@@ -125,6 +131,13 @@ type CreateRunAttachTicketParams struct {
 type CreateShardParams struct {
 	MomentId       string
 	IdempotencyKey string
+}
+
+// CreateShellAttachTicketParams is parameters of createShellAttachTicket operation.
+type CreateShellAttachTicketParams struct {
+	CapsuleId string
+	Columns   OptInt `json:",omitempty,omitzero"`
+	Rows      OptInt `json:",omitempty,omitzero"`
 }
 
 // CreateThreadParams is parameters of createThread operation.

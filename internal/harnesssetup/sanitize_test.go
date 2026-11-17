@@ -72,12 +72,15 @@ func TestOpenCodeDefaultProviderSuggestsConnection(t *testing.T) {
 	}
 	var found bool
 	for _, warning := range preview.Warnings {
-		if warning.Path != ".config/opencode/opencode.jsonc:model" {
+		if warning.Path != ".config/opencode/opencode.jsonc:provider:proxy" {
 			continue
 		}
 		found = true
-		if !strings.Contains(warning.Reason, "meridian harness connect openai-compatible") || strings.Contains(warning.Reason, "proxy.internal.example") || strings.Contains(warning.Reason, "PROXY_API_KEY") {
+		if !strings.Contains(warning.Reason, "openai-compatible") || warning.Connect == nil || warning.Connect.Name != "Work proxy" || warning.Connect.Provider != "openai-compatible" || warning.Connect.BaseURL != "https://proxy.internal.example/v1" || warning.Connect.Model != "example-coder" {
 			t.Fatalf("warning = %#v", warning)
+		}
+		if strings.Contains(warning.Reason, "proxy.internal.example") || strings.Contains(warning.Reason, "PROXY_API_KEY") {
+			t.Fatalf("warning leaked the endpoint or key name: %#v", warning)
 		}
 	}
 	if !found {

@@ -112,6 +112,9 @@ type Server struct {
 	structured map[string]*structuredSession
 	coord      *Mailbox
 	checks     sync.Mutex
+	shell      *shellSession
+	stopped    chan struct{}
+	stopOnce   sync.Once
 }
 
 func NewServer(config ServerConfig) (*Server, error) {
@@ -166,6 +169,7 @@ func NewServer(config ServerConfig) (*Server, error) {
 		runs:       make(map[string]*supervisedRun),
 		structured: make(map[string]*structuredSession),
 		coord:      NewMailbox(),
+		stopped:    make(chan struct{}),
 	}
 	if err := ensureWorkspace(config.Workspace); err != nil {
 		return nil, err
@@ -194,6 +198,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /v1/runs/{runID}/cancel", s.authenticate(http.HandlerFunc(s.cancelRun)))
 	mux.Handle("GET /v1/runs/{runID}/events", s.authenticate(http.HandlerFunc(s.runEvents)))
 	mux.Handle("GET /v1/runs/{runID}/attach", s.authenticate(http.HandlerFunc(s.attachRun)))
+	mux.Handle("POST /v1/shell", s.authenticate(http.HandlerFunc(s.shellStart)))
+	mux.Handle("GET /v1/shell/attach", s.authenticate(http.HandlerFunc(s.shellAttach)))
 	mux.Handle("POST /v1/structured/sessions", s.authenticate(http.HandlerFunc(s.startStructured)))
 	mux.Handle("GET /v1/structured/sessions/{runID}", s.authenticate(http.HandlerFunc(s.structuredStatus)))
 	mux.Handle("POST /v1/structured/sessions/{runID}/frames", s.authenticate(http.HandlerFunc(s.sendStructured)))

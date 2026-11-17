@@ -333,26 +333,31 @@ describe("Capsule activity", () => {
     expect(destinationAfterCapsuleDelete(current, [current], false)).toBe("/ui/");
   });
 
-  it("names the pinned setup, its revision time, and that Settings edits wait", () => {
+  it("names only this Capsule's harness setup, in local time", () => {
     expect(revisionStamp("not-a-date")).toBe("");
-    expect(revisionStamp("2026-11-09T14:05:00Z")).toBe("Nov 9, 14:05 UTC");
     const pin = {
-      harness: "codex",
+      harness: "opencode",
       setupId: "setup",
-      name: "Codex home",
+      name: "My opencode setup",
       revision: "rev-1",
-      revisedAt: "2026-11-09T14:05:00Z",
+      revisedAt: "2026-11-16T14:51:00Z",
     };
-    expect(pinnedSetupText([pin])).toBe(
-      "Codex home · revised Nov 9, 14:05 UTC. Edits in Settings apply to the next Capsule.",
-    );
-    expect(pinnedSetupText([
+    const others = [
       pin,
-      { ...pin, harness: "claude", name: "Claude home", revision: "rev-2", revisedAt: "2026-11-10T09:00:00Z" },
-    ])).toBe(
-      "Codex home (Codex) · revised Nov 9, 14:05 UTC; Claude home (Claude Code) · revised Nov 10, 09:00 UTC. Edits in Settings apply to the next Capsule.",
+      { ...pin, harness: "claude", setupId: "claude", name: "My claude setup", revision: "rev-c" },
+      { ...pin, harness: "pi", setupId: "pi", name: "My pi setup", revision: "rev-p" },
+    ];
+    const line = pinnedSetupText(others, "opencode", { id: "setup", revision: "rev-1" });
+    expect(line).toBe(`My opencode setup · ${revisionStamp(pin.revisedAt)}`);
+    expect(line).not.toContain("claude");
+    expect(line).not.toContain("UTC");
+    expect(line).not.toContain("Edits in Settings");
+    expect(pinnedSetupText(others, "opencode", { id: "setup", revision: "rev-2" })).toBe(
+      `My opencode setup · ${revisionStamp(pin.revisedAt)}. Edits in Settings apply to the next Capsule.`,
     );
-    expect(pinnedSetupText([])).toBe("");
+    expect(pinnedSetupText(others, "claude")).toBe(`My claude setup · ${revisionStamp(pin.revisedAt)}`);
+    expect(pinnedSetupText(others, "")).toBe("");
+    expect(pinnedSetupText([], "opencode")).toBe("");
   });
 
   it("leaves a deleted Project for the next Project's latest Capsule or the Inbox", () => {

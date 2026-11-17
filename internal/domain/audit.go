@@ -42,6 +42,9 @@ const (
 	// GitHub connection (ADR 0051). Records the connection id only.
 	AuditGitHubConnect    AuditAction = "github_connection.connect"
 	AuditGitHubDisconnect AuditAction = "github_connection.disconnect"
+	// A workspace shell was opened. The record names the Capsule, not the
+	// commands typed in it.
+	AuditCapsuleShell AuditAction = "capsule.shell"
 )
 
 // AuditRecord is one append-only audit line. It holds ids only: no secret

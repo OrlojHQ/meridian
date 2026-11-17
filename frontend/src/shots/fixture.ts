@@ -453,6 +453,7 @@ function route(pathname: string): unknown {
   if (pathname === "/provider-connections") {
     return {
       enabled: true,
+      privateHttpAllowed: new URLSearchParams(window.location.search).get("shot") === "models",
       items: [
         {
           id: "conn-claude",
@@ -574,6 +575,52 @@ function route(pathname: string): unknown {
   if (threadMatch) return threads.find((item) => item.id === threadMatch[1]) ?? emptyPage;
   const blockMatch = pathname.match(/^\/threads\/([^/]+)\/blocks$/);
   if (blockMatch) {
+    const shot = new URLSearchParams(window.location.search).get("shot");
+    if ((shot === "picker" || shot === "error" || shot === "effort") && blockMatch[1] === "thread-tokens") {
+      const items = [...(blocks[blockMatch[1]] ?? [])];
+      items.push(
+        block("b-models", "m-models", items.length + 1, "system", "json", {
+          event: {
+            type: "models",
+            models: {
+              current: "alpha",
+              options: [
+                { id: "alpha", label: "Work proxy · Alpha" },
+                { id: "beta", label: "Work proxy · Beta" },
+              ],
+              ...(shot === "effort"
+                ? {
+                    effort: {
+                      current: "medium",
+                      options: [
+                        { id: "off", label: "Off" },
+                        { id: "minimal", label: "Minimal" },
+                        { id: "low", label: "Low" },
+                        { id: "medium", label: "Medium" },
+                        { id: "high", label: "High" },
+                        { id: "xhigh", label: "Extra high" },
+                        { id: "max", label: "Max" },
+                      ],
+                    },
+                  }
+                : {}),
+            },
+          },
+        }),
+      );
+      if (shot === "error") {
+        items.push(
+          block("b-auth", "m-auth", items.length + 1, "system", "error", {
+            event: {
+              type: "error",
+              code: "provider_unauthenticated",
+              summary: "Work proxy has no key in this Capsule. Connect it in Settings.",
+            },
+          }),
+        );
+      }
+      return { items, nextCursor: items.length, more: false };
+    }
     if (ciShot() && blockMatch[1] === "thread-notes") {
       const items = [
         block("b-notes-user", "m-notes-user", 1, "user", "text", {
@@ -699,6 +746,19 @@ export function installShotFixture() {
         },
       }, 422);
     }
+    const shot = new URLSearchParams(window.location.search).get("shot");
+    if (shot === "models" && url.pathname === "/provider-connections/models" && method === "POST") {
+      return json({
+        models: [
+          { id: "alpha", name: "Alpha" },
+          { id: "beta", name: "Beta" },
+        ],
+        suggested: "alpha",
+      });
+    }
+    if (shot === "delete" && method === "POST" && url.pathname.endsWith("/cancel")) {
+      return new Promise(() => {});
+    }
     if (url.pathname.endsWith("/stream")) {
       return new Response(
         new ReadableStream({
@@ -729,4 +789,119 @@ export function installShotFixture() {
     CLOSED: NativeSocket.CLOSED,
   });
   window.WebSocket = ShotWebSocket as unknown as typeof WebSocket;
+  driveShot(new URLSearchParams(window.location.search).get("shot") ?? "");
+}
+
+function setControlValue(element: HTMLInputElement | HTMLSelectElement, value: string) {
+  const prototype = element instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+  Object.getOwnPropertyDescriptor(prototype, "value")?.set?.call(element, value);
+}
+
+// Opens the control each screenshot needs. Dev-only, and only with ?shot=.
+function driveShot(shot: string) {
+  if (!shot) return;
+  const timer = window.setInterval(() => {
+    if (document.documentElement.dataset.shotReady === "1") {
+      window.clearInterval(timer);
+      return;
+    }
+    if (shot === "picker") {
+      const button = document.querySelector<HTMLButtonElement>(".composer-model-button");
+      if (!button) return;
+      button.scrollIntoView({ block: "center" });
+      if (button.getAttribute("aria-expanded") !== "true") {
+        button.click();
+        return;
+      }
+      if (document.querySelector('[role="group"][aria-label="Work proxy"]')) {
+        document.documentElement.dataset.shotReady = "1";
+      }
+      return;
+    }
+    if (shot === "error") {
+      const alert = [...document.querySelectorAll(".chat-error")].find((item) =>
+        item.textContent?.includes("has no key"),
+      );
+      if (!alert) return;
+      alert.scrollIntoView({ block: "center" });
+      document.documentElement.dataset.shotReady = "1";
+      return;
+    }
+    if (shot === "delete") {
+      const dialog = document.querySelector(".confirm-dialog");
+      if (!dialog) {
+        const menu = document.querySelector<HTMLButtonElement>('[aria-label="Capsule actions"]');
+        if (!menu) return;
+        if (menu.getAttribute("aria-expanded") !== "true") {
+          menu.click();
+          return;
+        }
+        const item = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((entry) =>
+          entry.textContent?.startsWith("Delete"),
+        );
+        item?.click();
+        return;
+      }
+      const stop = [...dialog.querySelectorAll<HTMLButtonElement>("button")].find(
+        (entry) => entry.textContent === "Stop",
+      );
+      if (stop) {
+        stop.click();
+        return;
+      }
+      if (dialog.textContent?.includes("If the harness does not answer")) {
+        document.documentElement.dataset.shotReady = "1";
+      }
+      return;
+    }
+    if (shot === "models") {
+      const drawer = document.querySelector(".wb-drawer");
+      if (!drawer) return;
+      const provider = [...drawer.querySelectorAll("select")].find((entry) =>
+        [...entry.options].some((option) => option.value === "openai-compatible"),
+      );
+      if (!provider) return;
+      if (provider.value !== "openai-compatible") {
+        setControlValue(provider, "openai-compatible");
+        provider.dispatchEvent(new Event("change", { bubbles: true }));
+        return;
+      }
+      const base = [...drawer.querySelectorAll("input")].find((entry) =>
+        entry.placeholder.includes("models.example.com"),
+      );
+      if (base && base.value === "") {
+        setControlValue(base, "https://models.example.com");
+        base.dispatchEvent(new Event("input", { bubbles: true }));
+        return;
+      }
+      const modelSelect = [...drawer.querySelectorAll("select")].find((entry) =>
+        [...entry.options].some((option) => option.textContent === "Alpha"),
+      );
+      if (!modelSelect) {
+        const load = [...drawer.querySelectorAll("button")].find((entry) => entry.textContent === "Load models");
+        if (load && !load.disabled) load.click();
+        return;
+      }
+      if (drawer.querySelector("fieldset")) return;
+      const heading = [...drawer.querySelectorAll("h3")].find((entry) => entry.textContent === "Add another connection");
+      if (heading) {
+        const top = heading.getBoundingClientRect().top - drawer.getBoundingClientRect().top + drawer.scrollTop - 12;
+        drawer.scrollTop = top;
+      }
+      document.documentElement.dataset.shotReady = "1";
+      return;
+    }
+    if (shot === "effort") {
+      const button = document.querySelector<HTMLButtonElement>(".composer-effort-button");
+      if (!button) return;
+      button.scrollIntoView({ block: "center" });
+      if (button.getAttribute("aria-expanded") !== "true") {
+        button.click();
+        return;
+      }
+      if (document.querySelector('[role="menuitemradio"]')) {
+        document.documentElement.dataset.shotReady = "1";
+      }
+    }
+  }, 250);
 }

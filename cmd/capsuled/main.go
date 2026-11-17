@@ -91,6 +91,7 @@ func newServeCommand() *cobra.Command {
 					return fmt.Errorf("serve Capsule protocol: %w", err)
 				}
 			}
+			server.Close()
 			shutdownContext, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			return httpServer.Shutdown(shutdownContext)

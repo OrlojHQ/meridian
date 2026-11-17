@@ -27,7 +27,7 @@ func ReviewFiles(harness string, files []File) (Preview, error) {
 				full := m.Root.Path + "/" + entry
 				if strings.HasPrefix(file.Path, full) && !bundled[full] {
 					bundled[full] = true
-					result.Issues = append(result.Issues, Issue{strings.TrimSuffix(full, "/"), bundledReason})
+					result.Issues = append(result.Issues, Issue{Path: strings.TrimSuffix(full, "/"), Reason: bundledReason})
 				}
 			}
 			continue
@@ -37,11 +37,11 @@ func ReviewFiles(harness string, files []File) (Preview, error) {
 			return result, errors.New("selected configuration exceeds 512 KiB")
 		}
 		if len(file.Content) > 128<<10 || !utf8.ValidString(file.Content) || strings.ContainsRune(file.Content, 0) {
-			result.Issues = append(result.Issues, Issue{file.Path, "File is too large or is not UTF-8 text"})
+			result.Issues = append(result.Issues, Issue{Path: file.Path, Reason: "File is too large or is not UTF-8 text"})
 			continue
 		}
 		if !AllowedPath(harness, file.Path) {
-			result.Issues = append(result.Issues, Issue{file.Path, "Authentication, runtime state, or unsupported file excluded"})
+			result.Issues = append(result.Issues, Issue{Path: file.Path, Reason: "Authentication, runtime state, or unsupported file excluded"})
 			continue
 		}
 		if seen[file.Path] {
@@ -55,19 +55,19 @@ func ReviewFiles(harness string, files []File) (Preview, error) {
 			target := m.Root.Path
 			relocated, err := RelocateConfig(harness, file.Path, file.Content, "/@meridian-browser-root", target)
 			if err != nil {
-				result.Issues = append(result.Issues, Issue{file.Path, "Configuration could not be parsed"})
+				result.Issues = append(result.Issues, Issue{Path: file.Path, Reason: "Configuration could not be parsed"})
 				continue
 			}
 			content, issues, err := Sanitize(harness, file.Path, relocated)
 			result.Issues = append(result.Issues, issues...)
 			if err != nil {
-				result.Issues = append(result.Issues, Issue{file.Path, "Configuration could not be parsed"})
+				result.Issues = append(result.Issues, Issue{Path: file.Path, Reason: "Configuration could not be parsed"})
 				continue
 			}
 			file.Content = content
 		}
 		if Sensitive(file.Content) {
-			result.Issues = append(result.Issues, Issue{file.Path, "Credential-shaped content excluded; use a provider connection for authentication"})
+			result.Issues = append(result.Issues, Issue{Path: file.Path, Reason: "Credential-shaped content excluded; use a provider connection for authentication"})
 			continue
 		}
 		result.Bundle.Files = append(result.Bundle.Files, file)

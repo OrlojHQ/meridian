@@ -5,7 +5,7 @@ import {
   listCapsuleCheckRuns, createCapsuleCheckRun, getCheckRun, cancelCheckRun, setCapsuleCheckAutoRework,
   getCapsuleRemoteCi,
   getProjectHarnessSetup, setProjectHarnessSetup,
-  listProviderConnections, createProviderConnection, updateProviderConnection, deleteProviderConnection, getProjectProviderConnection, grantProjectProviderConnection,
+  listProviderConnections, createProviderConnection, updateProviderConnection, deleteProviderConnection, listEndpointModels, getProjectProviderConnection, grantProjectProviderConnection,
   startChatGptSignIn, getChatGptSignIn, completeChatGptSignIn,
   getHarnessSetupContents, listHarnessSetups, mutateHarnessSetup, listHarnessSetupRevisions, previewHarnessSetup, importHarnessSetup,
   getProfile, updateProfile, getCapsuleProfileDiagnostic, updateCapsuleProfile,
@@ -39,6 +39,7 @@ import {
   createProject,
   createProjectThread,
   createRunAttachTicket,
+  createShellAttachTicket,
   createThread,
   deleteCapsule,
   deleteProject as deleteProjectOperation,
@@ -98,7 +99,7 @@ import type {
   MintPersonalAccessTokenRequest, MintedPersonalAccessToken, PersonalAccessTokenPage,
   MemberPage,
 } from "./generated/types.gen";
-import type { Profile, UpdateProfileRequest, ProfileDiagnostic } from "./generated/types.gen";
+import type { Profile, UpdateProfileRequest, ProfileDiagnostic, EndpointModelList, ListEndpointModelsRequestWritable } from "./generated/types.gen";
 import type {
   CheckAutoReworkRequest, CheckRun, CheckRunPage, CheckRunRequest, CheckSuggestion,
   ProjectChecks, ProjectChecksUpdate, RemoteCi,
@@ -819,12 +820,13 @@ export const api = {
     capsuleId: string,
     expectedResourceVersion: number,
     signal?: AbortSignal,
+    force = false,
   ) => {
     const options = {
       ...generatedOptions(signal),
       path: { capsuleId },
       headers: idempotencyHeaders(),
-      body: { expectedResourceVersion },
+      body: { expectedResourceVersion, ...(action === "delete" && force ? { force: true } : {}) },
     };
     const operation =
       action === "pause"
@@ -879,6 +881,15 @@ export const api = {
         ...generatedOptions(signal),
         path: { runId },
         query: { after },
+      }),
+    ),
+  listEndpointModels: (body: ListEndpointModelsRequestWritable) =>
+    call<EndpointModelList>(listEndpointModels({ ...generatedOptions(), body })),
+  shellTicket: (capsuleId: string, signal?: AbortSignal) =>
+    call<AttachTicket>(
+      createShellAttachTicket({
+        ...generatedOptions(signal),
+        path: { capsuleId },
       }),
     ),
   previewPorts: (capsuleId: string, signal?: AbortSignal) =>

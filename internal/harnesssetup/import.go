@@ -17,6 +17,18 @@ import (
 type Issue struct {
 	Path   string `json:"path"`
 	Reason string `json:"reason"`
+	// Connect offers to add a provider connection for a provider the Capsule
+	// cannot authenticate. It never contains a key.
+	Connect *ConnectAction `json:"connect,omitempty"`
+}
+
+// ConnectAction is the one-click offer on an import warning. BaseURL is the
+// endpoint from the imported setup, shown only to the person who imported it.
+type ConnectAction struct {
+	Name     string `json:"name"`
+	Provider string `json:"provider"`
+	BaseURL  string `json:"baseUrl"`
+	Model    string `json:"model,omitempty"`
 }
 type Preview struct {
 	Warnings     []Issue  `json:"warnings"`
@@ -73,30 +85,30 @@ func Discover(home, harness string, env func(string) string) (Preview, error) {
 		}
 		dest := target + "/" + p
 		if d.Type()&os.ModeSymlink != 0 {
-			result.Issues = append(result.Issues, Issue{dest, "Symbolic link excluded; copy portable source into this configuration directory"})
+			result.Issues = append(result.Issues, Issue{Path: dest, Reason: "Symbolic link excluded; copy portable source into this configuration directory"})
 			return nil
 		}
 		if d.IsDir() {
 			if ExcludedFromImport(harness, dest) {
-				result.Issues = append(result.Issues, Issue{dest, bundledReason})
+				result.Issues = append(result.Issues, Issue{Path: dest, Reason: bundledReason})
 				return fs.SkipDir
 			}
 			if !AllowedPath(harness, dest+"/entry") {
-				result.Issues = append(result.Issues, Issue{dest, "Runtime state or unsupported directory excluded"})
+				result.Issues = append(result.Issues, Issue{Path: dest, Reason: "Runtime state or unsupported directory excluded"})
 				return fs.SkipDir
 			}
 			return nil
 		}
 		if ExcludedFromImport(harness, dest) {
-			result.Issues = append(result.Issues, Issue{dest, bundledReason})
+			result.Issues = append(result.Issues, Issue{Path: dest, Reason: bundledReason})
 			return nil
 		}
 		if !AllowedPath(harness, dest) {
-			result.Issues = append(result.Issues, Issue{dest, "Authentication, runtime state, or unsupported file excluded"})
+			result.Issues = append(result.Issues, Issue{Path: dest, Reason: "Authentication, runtime state, or unsupported file excluded"})
 			return nil
 		}
 		if !d.Type().IsRegular() {
-			result.Issues = append(result.Issues, Issue{dest, "Non-regular file excluded"})
+			result.Issues = append(result.Issues, Issue{Path: dest, Reason: "Non-regular file excluded"})
 			return nil
 		}
 		f, err := root.Open(p)
@@ -117,7 +129,7 @@ func Discover(home, harness string, env func(string) string) (Preview, error) {
 			return closeErr
 		}
 		if len(raw) > 128<<10 {
-			result.Issues = append(result.Issues, Issue{dest, "File exceeds 128 KiB"})
+			result.Issues = append(result.Issues, Issue{Path: dest, Reason: "File exceeds 128 KiB"})
 			return nil
 		}
 		content := string(raw)
@@ -130,13 +142,13 @@ func Discover(home, harness string, env func(string) string) (Preview, error) {
 			content, issues, err = Sanitize(harness, dest, content)
 			result.Issues = append(result.Issues, issues...)
 			if err != nil {
-				result.Issues = append(result.Issues, Issue{dest, "Configuration could not be parsed"})
+				result.Issues = append(result.Issues, Issue{Path: dest, Reason: "Configuration could not be parsed"})
 				return nil
 			}
 		}
 		item := File{Path: dest, Content: content, Executable: info.Mode()&0o111 != 0}
 		if !IsConfig(dest) && (Bundle{Harness: harness, Files: []File{item}}).Validate() != nil {
-			result.Issues = append(result.Issues, Issue{dest, "Nonportable or credential-shaped content excluded"})
+			result.Issues = append(result.Issues, Issue{Path: dest, Reason: "Nonportable or credential-shaped content excluded"})
 			return nil
 		}
 		total += len(content)
@@ -255,7 +267,7 @@ func collectHomeFiles(home, harness string, names []string, result *Preview) err
 		content, issues, parseErr := Sanitize(harness, name, string(raw))
 		result.Issues = append(result.Issues, issues...)
 		if parseErr != nil {
-			result.Issues = append(result.Issues, Issue{name, "Invalid configuration excluded"})
+			result.Issues = append(result.Issues, Issue{Path: name, Reason: "Invalid configuration excluded"})
 			continue
 		}
 		result.Bundle.Files = append(result.Bundle.Files, File{Path: name, Content: content})
@@ -289,7 +301,7 @@ func collectShared(home, harness, dir string, result *Preview) error {
 		}
 		destination := dir + "/" + p
 		if d.Type()&os.ModeSymlink != 0 {
-			result.Issues = append(result.Issues, Issue{destination, "Symbolic link excluded"})
+			result.Issues = append(result.Issues, Issue{Path: destination, Reason: "Symbolic link excluded"})
 			return nil
 		}
 		if d.IsDir() {
@@ -299,7 +311,7 @@ func collectShared(home, harness, dir string, result *Preview) error {
 			return nil
 		}
 		if !d.Type().IsRegular() || !AllowedPath(harness, destination) {
-			result.Issues = append(result.Issues, Issue{destination, "Unsupported skill file excluded"})
+			result.Issues = append(result.Issues, Issue{Path: destination, Reason: "Unsupported skill file excluded"})
 			return nil
 		}
 		file, err := root.Open(p)
@@ -316,7 +328,7 @@ func collectShared(home, harness, dir string, result *Preview) error {
 		}
 		item := File{Path: destination, Content: string(raw)}
 		if err := (Bundle{Harness: harness, Files: []File{item}}).Validate(); err != nil {
-			result.Issues = append(result.Issues, Issue{destination, "Oversized or sensitive skill file excluded"})
+			result.Issues = append(result.Issues, Issue{Path: destination, Reason: "Oversized or sensitive skill file excluded"})
 			return nil
 		}
 		result.Bundle.Files = append(result.Bundle.Files, item)

@@ -366,21 +366,29 @@ const revisionMonths = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", 
 export function revisionStamp(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  const hours = String(date.getUTCHours()).padStart(2, "0");
-  const minutes = String(date.getUTCMinutes()).padStart(2, "0");
-  return `${revisionMonths[date.getUTCMonth()]} ${date.getUTCDate()}, ${hours}:${minutes} UTC`;
+  let hours = date.getHours();
+  const suffix = hours >= 12 ? "PM" : "AM";
+  hours = hours % 12 || 12;
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${revisionMonths[date.getMonth()]} ${date.getDate()}, ${hours}:${minutes} ${suffix}`;
 }
 
-// One line for the Capsule page: which saved setup this Capsule is pinned to.
-// Settings edits apply to the next Capsule, not this one.
-export function pinnedSetupText(pins: PinnedHarnessSetup[] = []) {
-  if (pins.length === 0) return "";
-  const parts = pins.map((pin) => {
-    const label = pins.length > 1 ? `${pin.name} (${harnessName(pin.harness)})` : pin.name;
-    const stamp = revisionStamp(pin.revisedAt);
-    return stamp ? `${label} · revised ${stamp}` : label;
-  });
-  return `${parts.join("; ")}. Edits in Settings apply to the next Capsule.`;
+// One line under the Capsule title: the saved setup for the harness this
+// Capsule runs. The time is local. The Settings sentence appears only when
+// that setup's current revision is not the one this Capsule started with.
+export function pinnedSetupText(
+  pins: PinnedHarnessSetup[] = [],
+  harness = "",
+  current?: { id: string; revision: string } | null,
+) {
+  const base = harness.replace(/-structured$/, "");
+  const pin = base ? pins.find((item) => item.harness === base) : undefined;
+  if (!pin) return "";
+  const stamp = revisionStamp(pin.revisedAt);
+  const line = stamp ? `${pin.name} · ${stamp}` : pin.name;
+  const edited =
+    current != null && (current.id !== pin.setupId || current.revision !== pin.revision);
+  return edited ? `${line}. Edits in Settings apply to the next Capsule.` : line;
 }
 
 export function relativeTime(value?: string, now = Date.now()) {

@@ -215,6 +215,26 @@ func (p *Provider) RunEvents(
 	return output, nil
 }
 
+func (p *Provider) StartShell(ctx context.Context, resourceID string, columns, rows uint16) error {
+	supervisor, err := p.runtimeClient(ctx, resourceID)
+	if err != nil {
+		return err
+	}
+	return mapRuntimeError(supervisor.StartShell(ctx, columns, rows))
+}
+
+func (p *Provider) AttachShell(ctx context.Context, resourceID string) (ports.RuntimeAttachment, error) {
+	supervisor, err := p.runtimeClient(ctx, resourceID)
+	if err != nil {
+		return nil, err
+	}
+	connection, err := supervisor.AttachShell(ctx)
+	if err != nil {
+		return nil, mapRuntimeError(err)
+	}
+	return &attachment{connection: connection}, nil
+}
+
 func (p *Provider) AttachRun(
 	ctx context.Context,
 	resourceID string,

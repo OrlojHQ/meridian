@@ -111,7 +111,7 @@ func pruneMissingReferences(p, content string, files []File) (string, []Issue, e
 		}
 		// Undo the relocation when its target was not imported. Keep the original
 		// home-relative setting so the user can provide it separately.
-		issues = append(issues, Issue{p, "Referenced file was not imported; home-relative path kept"})
+		issues = append(issues, Issue{Path: p, Reason: "Referenced file was not imported; home-relative path kept"})
 		return "~/" + ref
 	})
 

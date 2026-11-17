@@ -1001,6 +1001,9 @@ func (s *Service) CancelThread(
 			if err := tx.UpdateRun(ctx, run, previous); err != nil {
 				return err
 			}
+			if err := s.appendEvent(ctx, tx, "run", string(run.ID), "run.cancelling", run.ResourceVersion, nil); err != nil {
+				return err
+			}
 		}
 		result.Thread, result.Run = thread, &run
 		return putReplay(ctx, tx, scope, key, threadOutcome{ThreadID: id, RunID: run.ID}, s.clock.Now())
@@ -1008,26 +1011,80 @@ func (s *Service) CancelThread(
 	if err != nil {
 		return ThreadMutationResult{}, err
 	}
+	if result.Run.State.Terminal() {
+		return result, nil
+	}
 	_ = s.InterruptChecks(ctx, capsule.ID)
-	runtimeRun, cancelErr := s.structured.CancelStructured(
-		ctx, capsule.ProviderResourceID, result.Run.ID)
+	return s.finishStructuredCancel(ctx, id, capsule.ProviderResourceID, result)
+}
+
+// harnessCancelWait bounds a stop. The harness is asked to cancel, then the
+// session is ended even if it never answers, so a hung turn cannot leave the
+// run Running with no event.
+var harnessCancelWait = 5 * time.Second
+
+func (s *Service) finishStructuredCancel(
+	ctx context.Context, id domain.ThreadID, resourceID string, result ThreadMutationResult,
+) (ThreadMutationResult, error) {
+	cancelCtx, stop := context.WithTimeout(context.WithoutCancel(ctx), harnessCancelWait)
+	defer stop()
+	runtimeRun, cancelErr := s.structured.CancelStructured(cancelCtx, resourceID, result.Run.ID)
+	if errors.Is(cancelErr, domain.ErrRuntimeStopped) {
+		return result, nil
+	}
 	if cancelErr == nil {
+		if !runtimeRun.State.Terminal() {
+			// The runtime accepted the cancel and is still stopping. Leave
+			// the run Cancelling so a later update, or a force delete, can
+			// finish it. A call that never returns is handled below.
+			return result, nil
+		}
 		run, applyErr := s.applyRuntimeState(ctx, result.Run.ID, runtimeRun)
 		result.Run = &run
 		if applyErr != nil {
 			return result, applyErr
 		}
-		if run.State.Terminal() {
-			if pauseErr := s.pauseCompletedThread(ctx, id, run.ID); pauseErr != nil {
-				return result, pauseErr
-			}
-			if fresh, getErr := s.GetThread(ctx, id); getErr == nil {
-				result.Thread = fresh
-			}
+		if err := s.pauseCompletedThread(ctx, id, run.ID); err != nil {
+			return result, err
+		}
+		if fresh, getErr := s.GetThread(ctx, id); getErr == nil {
+			result.Thread = fresh
 		}
 		return result, nil
 	}
-	return result, cancelErr
+	run, err := s.forceEndRun(ctx, result.Run.ID, id)
+	if err != nil {
+		return result, err
+	}
+	result.Run = &run
+	if fresh, getErr := s.GetThread(ctx, id); getErr == nil {
+		result.Thread = fresh
+	}
+	return result, errors.New("the harness did not stop; the session was ended")
+}
+
+// forceEndRun marks a session cancelled when the harness does not answer a
+// stop. The failure is a fixed sentence and contains no harness output.
+func (s *Service) forceEndRun(ctx context.Context, id domain.RunID, thread domain.ThreadID) (domain.Run, error) {
+	current, err := s.GetRunStored(ctx, id)
+	if err != nil {
+		return domain.Run{}, err
+	}
+	if current.State.Terminal() {
+		return current, nil
+	}
+	run, err := s.transitionRun(ctx, id, domain.RunCancelled, &runCompletion{
+		Failure: "The harness did not stop; the session was ended.",
+	})
+	if err != nil {
+		return domain.Run{}, err
+	}
+	if thread != "" {
+		if err := s.pauseCompletedThread(ctx, thread, id); err != nil {
+			return run, err
+		}
+	}
+	return run, nil
 }
 
 func (s *Service) ThreadBlocks(

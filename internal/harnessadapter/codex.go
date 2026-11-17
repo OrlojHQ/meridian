@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -745,6 +746,9 @@ func (s *codexSession) reportModels(record map[string]json.RawMessage) error {
 		var efforts codexEfforts
 		for _, level := range s.config.ModelEfforts {
 			efforts.levels = append(efforts.levels, adapterproto.ModelOption{ID: level})
+		}
+		if slices.Contains(s.config.ModelEfforts, "medium") {
+			efforts.fallback = "medium"
 		}
 		s.catalog[s.threadModel] = efforts
 	}

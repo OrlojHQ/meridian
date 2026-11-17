@@ -69,6 +69,37 @@ const LeaseLifetime = 24 * time.Hour
 type Lease struct {
 	Connection, Project, Capsule, Harness, Provider string
 	Expires                                         time.Time
+	// Reasoning is "yes" when the model accepts an effort level, "no" when
+	// it does not, and empty when that is not known. Only custom endpoints
+	// use it.
+	Reasoning string
+}
+
+func reasoningKey(connection, model string) string {
+	return connection + "\x00" + model
+}
+
+// ReasoningBlocked reports whether this process has already seen the
+// endpoint reject a reasoning effort for the model.
+func (g *Gateway) ReasoningBlocked(connection, model string) bool {
+	if g == nil || connection == "" || model == "" {
+		return false
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.blockedReasoning[reasoningKey(connection, model)]
+}
+
+func (g *Gateway) blockReasoning(connection, model string) {
+	if connection == "" || model == "" {
+		return
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.blockedReasoning == nil {
+		g.blockedReasoning = map[string]bool{}
+	}
+	g.blockedReasoning[reasoningKey(connection, model)] = true
 }
 
 // Upstream is resolved on the control plane for every request. BaseURL and
@@ -112,6 +143,10 @@ type Gateway struct {
 	private          *http.Client
 	allowPrivateHTTP bool
 	upstream         map[string]string
+	// blockedReasoning remembers models whose endpoint rejected a reasoning
+	// effort, keyed by connection and model id. It is process memory: a
+	// restart tries again.
+	blockedReasoning map[string]bool
 }
 
 var errBlockedAddress = errors.New("upstream address is not permitted")
@@ -313,19 +348,27 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 8<<20)
 	defer r.Body.Close()
-	// ChatGPT requests are buffered: their shape is checked, and they can be
-	// retried once with a refreshed credential.
+	// ChatGPT and custom-endpoint requests are buffered so they can be
+	// retried once. ChatGPT refreshes a credential. A custom endpoint can
+	// drop a reasoning effort the server rejected.
 	var buffered []byte
-	if provider == ChatGPT {
+	if provider == ChatGPT || Custom(provider) {
 		buffered, err = io.ReadAll(r.Body)
 		if err != nil {
 			gatewayError(w, "provider request too large", http.StatusRequestEntityTooLarge)
 			return
 		}
+	}
+	if provider == ChatGPT {
 		if reason := chatGPTRequestProblem(buffered); reason != "" {
 			gatewayError(w, reason, http.StatusBadRequest)
 			return
 		}
+	}
+	sentReasoning := false
+	if Custom(provider) {
+		strip := item.lease.Reasoning == "no" || g.ReasoningBlocked(item.lease.Connection, requestModel(buffered))
+		buffered, sentReasoning = applyReasoning(buffered, route, item.lease.Reasoning, strip)
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
 	defer cancel()
@@ -408,13 +451,43 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer response.Body.Close()
+	failed := response.StatusCode < 200 || response.StatusCode >= 300
+	var reason string
+	if failed && response.StatusCode >= 400 && Custom(provider) && sentReasoning {
+		reason = upstreamReason(response, resolved.Key, token, upstream.URL.Hostname())
+		if reasoningRejected(reason) {
+			g.blockReasoning(item.lease.Connection, requestModel(buffered))
+			buffered, _ = applyReasoning(buffered, route, "no", true)
+			_ = response.Body.Close()
+			retry, buildErr := newRequest()
+			if buildErr != nil {
+				gatewayError(w, "invalid provider request", 400)
+				return
+			}
+			retry.Header = upstream.Header.Clone()
+			response, err = client.Do(retry)
+			if err != nil {
+				gatewayError(w, "provider request failed", http.StatusBadGateway)
+				return
+			}
+			defer response.Body.Close()
+			upstream = retry
+			failed = response.StatusCode < 200 || response.StatusCode >= 300
+			reason = ""
+			if failed && response.StatusCode >= 400 {
+				reason = upstreamReason(response, resolved.Key, token, upstream.URL.Hostname())
+			}
+		}
+	} else if failed && response.StatusCode >= 400 {
+		reason = upstreamReason(response, resolved.Key, token, upstream.URL.Hostname())
+	}
 	if response.StatusCode >= 300 && response.StatusCode < 400 {
 		gatewayError(w, "upstream provider redirected the request", http.StatusBadGateway)
 		return
 	}
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
+	if failed {
 		message := fmt.Sprintf("upstream provider rejected the request (HTTP %d)", response.StatusCode)
-		if reason := upstreamReason(response, resolved.Key, token, upstream.URL.Hostname()); reason != "" {
+		if reason != "" {
 			message += ": " + reason
 		}
 		status := response.StatusCode

@@ -28,6 +28,10 @@ const (
 	acpRecordLimit    = 16 << 20
 	acpStartupTimeout = time.Minute
 	acpCancelGrace    = 2 * time.Second
+	// A turn that produces no reply, and a setting change that is not
+	// acknowledged, end with an error so the thread can accept another message.
+	acpAnswerTimeout  = 5 * time.Minute
+	acpSwitchTimeout  = 45 * time.Second
 	acpMaxQueue       = 32
 	acpMaxPending     = 64
 	acpMaxTools       = 1024
@@ -131,6 +135,14 @@ type acpSession struct {
 	sequence int
 
 	cancelled bool
+	// retiredRPC are prompt and setting requests that timed out. A late
+	// reply is ignored so it cannot fail the next turn.
+	retiredRPC map[int]bool
+	// pendingModel and pendingEffort wait until the current turn finishes
+	// so a switch is not sent beside an unanswered prompt.
+	pendingModel  string
+	pendingEffort string
+	switchRPC     int
 
 	// models is the agent's model config option, if it reported one, and
 	// efforts its thought_level option; modelConfig and effortConfig are
@@ -174,7 +186,7 @@ func RunACP(ctx context.Context, input io.Reader, output io.Writer, config ACPCo
 	session := &acpSession{
 		stream: stream, config: config, pending: map[int]string{},
 		tools: map[string]*acpTool{}, prompts: map[string]*acpPermission{},
-		byRPC: map[string]string{}, retired: retiredPrompts{},
+		byRPC: map[string]string{}, retired: retiredPrompts{}, retiredRPC: map[int]bool{},
 	}
 	if initial.Type == adapterproto.KindResume {
 		session.resume, err = acpResumeID(initial.ResumeState)
@@ -233,6 +245,31 @@ func RunACP(ctx context.Context, input io.Reader, output io.Writer, config ACPCo
 	cancelGrace.Stop()
 	defer cancelGrace.Stop()
 	var grace <-chan time.Time
+	stall := time.NewTimer(time.Hour)
+	stall.Stop()
+	defer stall.Stop()
+	var stallC <-chan time.Time
+	armStall := func() {
+		if !stall.Stop() {
+			select {
+			case <-stall.C:
+			default:
+			}
+		}
+		if session.promptID == 0 && session.switching == "" {
+			stallC = nil
+			return
+		}
+		wait := acpAnswerTimeout
+		if session.promptID == 0 {
+			wait = acpSwitchTimeout
+		}
+		if acpAnswerTimeoutOverride > 0 {
+			wait = acpAnswerTimeoutOverride
+		}
+		stall.Reset(wait)
+		stallC = stall.C
+	}
 
 	for {
 		select {
@@ -240,6 +277,11 @@ func RunACP(ctx context.Context, input io.Reader, output io.Writer, config ACPCo
 			return session.fail("acp_startup_timeout", errors.New("ACP agent startup timed out"))
 		case <-grace:
 			return session.endCancelled()
+		case <-stallC:
+			if err := session.answerTimedOut(); err != nil {
+				return err
+			}
+			armStall()
 		case <-ctx.Done():
 			return ctx.Err()
 		case err := <-frameErrors:
@@ -264,6 +306,7 @@ func RunACP(ctx context.Context, input io.Reader, output io.Writer, config ACPCo
 				cancelGrace.Reset(acpCancelGrace)
 				grace = cancelGrace.C
 			}
+			armStall()
 		case record, open := <-records:
 			if !open {
 				return session.fail("acp_process_exited", errors.New("ACP agent exited unexpectedly"))
@@ -276,9 +319,13 @@ func RunACP(ctx context.Context, input io.Reader, output io.Writer, config ACPCo
 				startup.Stop()
 				deadline = nil
 			}
+			armStall()
 		}
 	}
 }
+
+// acpAnswerTimeoutOverride shortens the unanswered-request deadline in tests.
+var acpAnswerTimeoutOverride time.Duration
 
 func (s *acpSession) write(frame adapterproto.Frame) error {
 	frame.Protocol = adapterproto.Version
@@ -340,7 +387,7 @@ func (s *acpSession) controller(frame adapterproto.Frame) (bool, error) {
 		if s.cancelled {
 			return false, nil
 		}
-		if !s.ready || s.promptID != 0 {
+		if !s.ready || s.promptID != 0 || s.switching != "" || s.pendingModel != "" || s.pendingEffort != "" {
 			if len(s.queue) >= acpMaxQueue {
 				return false, s.write(adapterproto.Frame{
 					Type: adapterproto.KindError, Code: "acp_queue_full",
@@ -348,6 +395,9 @@ func (s *acpSession) controller(frame adapterproto.Frame) (bool, error) {
 				})
 			}
 			s.queue = append(s.queue, frame)
+			if s.promptID == 0 && s.switching == "" {
+				return false, s.flushSwitch()
+			}
 			return false, nil
 		}
 		return false, s.startTurn(frame)
@@ -439,6 +489,9 @@ func (s *acpSession) response(rawID json.RawMessage, record map[string]json.RawM
 	id, err := strconv.Atoi(string(rawID))
 	method, exists := s.pending[id]
 	if err != nil || !exists {
+		if err == nil && s.retiredRPC[id] {
+			return false, nil
+		}
 		return false, s.fail("acp_response_invalid", errors.New("ACP response correlation failed"))
 	}
 	delete(s.pending, id)
@@ -488,12 +541,18 @@ func (s *acpSession) response(rawID json.RawMessage, record map[string]json.RawM
 		requested, effort := s.switching, s.switchingEffort
 		s.switching, s.switchingEffort = "", false
 		if failed && effort {
-			return false, s.stream.effortUnavailable(acpLine(
-				defaultString(failure.Message, "The agent did not change its reasoning effort"), adapterproto.MaxToolSummaryBytes))
+			if err := s.stream.effortUnavailable(acpLine(
+				defaultString(failure.Message, "The agent did not change its reasoning effort"), adapterproto.MaxToolSummaryBytes)); err != nil {
+				return false, err
+			}
+			return false, s.next()
 		}
 		if failed {
-			return false, s.stream.modelUnavailable(acpLine(
-				defaultString(failure.Message, "The agent did not switch models"), adapterproto.MaxToolSummaryBytes))
+			if err := s.stream.modelUnavailable(acpLine(
+				defaultString(failure.Message, "The agent did not switch models"), adapterproto.MaxToolSummaryBytes)); err != nil {
+				return false, err
+			}
+			return false, s.next()
 		}
 		switch {
 		case effort && s.efforts != nil && requested != "":
@@ -502,11 +561,15 @@ func (s *acpSession) response(rawID json.RawMessage, record map[string]json.RawM
 			s.models.setCurrent(requested)
 		}
 		reported, err := s.reportConfigOptions(record["result"])
-		if err != nil || reported {
+		if err != nil {
 			return false, err
 		}
-		// The response carried no options; report the switch ourselves.
-		return false, s.reportModels()
+		if !reported {
+			if err := s.reportModels(); err != nil {
+				return false, err
+			}
+		}
+		return false, s.next()
 	case "session/prompt":
 		if id != s.promptID {
 			return false, s.fail("acp_response_invalid", errors.New("ACP prompt response correlation failed"))
@@ -554,7 +617,10 @@ func (s *acpSession) initialized(record map[string]json.RawMessage, failed bool)
 }
 
 func (s *acpSession) next() error {
-	if len(s.queue) == 0 || !s.ready || s.promptID != 0 {
+	if err := s.flushSwitch(); err != nil {
+		return err
+	}
+	if len(s.queue) == 0 || !s.ready || s.promptID != 0 || s.switching != "" {
 		return nil
 	}
 	frame := s.queue[0]
@@ -579,7 +645,11 @@ func (s *acpSession) finishTurn(record map[string]json.RawMessage, failed bool, 
 	code, summary := "", ""
 	switch {
 	case failed:
-		code, summary = "acp_turn_failed", defaultString(acpText(message, adapterproto.MaxToolSummaryBytes), "The agent turn failed")
+		if authCode, authSummary, ok := providerAuthFailure(message, s.providerLabel()); ok {
+			code, summary = authCode, authSummary
+		} else {
+			code, summary = "acp_turn_failed", defaultString(acpText(message, adapterproto.MaxToolSummaryBytes), "The agent turn failed")
+		}
 	case result.StopReason == "max_tokens":
 		code, summary = "acp_max_tokens", "The agent stopped at its token limit"
 	case result.StopReason == "max_turn_requests":
@@ -1160,22 +1230,16 @@ func validateACPConfig(config ACPConfig) error {
 }
 
 // setModel switches the agent's model config option to a value it reported.
+// A switch asked during a turn waits until that turn ends.
 func (s *acpSession) setModel(id string) error {
 	switch {
 	case !s.ready || s.sessionID == "" || s.modelConfig == "":
 		return s.stream.modelUnavailable("The agent has not reported a model option")
-	case s.switching != "":
-		return s.stream.modelUnavailable("The agent is already changing a setting")
 	case !s.models.has(id):
 		return s.stream.modelUnavailable("The agent does not offer that model")
 	}
-	s.switching, s.switchingEffort = id, false
-	if err := s.call("session/set_config_option", map[string]any{
-		"sessionId": s.sessionID, "configId": s.modelConfig, "value": id,
-	}); err != nil {
-		return s.fail("acp_write_failed", err)
-	}
-	return nil
+	s.pendingModel = id
+	return s.flushSwitch()
 }
 
 // setEffort changes the agent's thought_level config option to a value it
@@ -1184,18 +1248,113 @@ func (s *acpSession) setEffort(id string) error {
 	switch {
 	case !s.ready || s.sessionID == "" || s.effortConfig == "":
 		return s.stream.effortUnavailable("The agent has not reported a reasoning effort option")
-	case s.switching != "":
-		return s.stream.effortUnavailable("The agent is already changing a setting")
 	case !s.efforts.has(id):
 		return s.stream.effortUnavailable("The agent does not offer that reasoning effort")
 	}
-	s.switching, s.switchingEffort = id, true
-	if err := s.call("session/set_config_option", map[string]any{
-		"sessionId": s.sessionID, "configId": s.effortConfig, "value": id,
-	}); err != nil {
-		return s.fail("acp_write_failed", err)
+	s.pendingEffort = id
+	return s.flushSwitch()
+}
+
+func (s *acpSession) flushSwitch() error {
+	if s.switching != "" || s.promptID != 0 || !s.ready || s.sessionID == "" {
+		return nil
+	}
+	if s.pendingModel != "" {
+		id := s.pendingModel
+		s.pendingModel = ""
+		if s.modelConfig == "" || !s.models.has(id) {
+			return s.stream.modelUnavailable("The agent does not offer that model")
+		}
+		s.switching, s.switchingEffort = id, false
+		if err := s.call("session/set_config_option", map[string]any{
+			"sessionId": s.sessionID, "configId": s.modelConfig, "value": id,
+		}); err != nil {
+			return s.fail("acp_write_failed", err)
+		}
+		s.switchRPC = s.request
+		return nil
+	}
+	if s.pendingEffort != "" {
+		id := s.pendingEffort
+		s.pendingEffort = ""
+		if s.effortConfig == "" || !s.efforts.has(id) {
+			return s.stream.effortUnavailable("The agent does not offer that reasoning effort")
+		}
+		s.switching, s.switchingEffort = id, true
+		if err := s.call("session/set_config_option", map[string]any{
+			"sessionId": s.sessionID, "configId": s.effortConfig, "value": id,
+		}); err != nil {
+			return s.fail("acp_write_failed", err)
+		}
+		s.switchRPC = s.request
+		return nil
 	}
 	return nil
+}
+
+func (s *acpSession) answerTimedOut() error {
+	switch {
+	case s.promptID != 0:
+		s.retiredRPC[s.promptID] = true
+		delete(s.pending, s.promptID)
+		_, err := s.finishTurn(nil, true, "The harness did not answer")
+		return err
+	case s.switching != "":
+		s.retiredRPC[s.switchRPC] = true
+		delete(s.pending, s.switchRPC)
+		effort := s.switchingEffort
+		s.switching, s.switchingEffort = "", false
+		var err error
+		if effort {
+			err = s.stream.effortUnavailable("The harness did not change its reasoning effort")
+		} else {
+			err = s.stream.modelUnavailable("The harness did not switch models")
+		}
+		if err != nil {
+			return err
+		}
+		return s.next()
+	default:
+		return nil
+	}
+}
+
+func (s *acpSession) providerLabel() string {
+	if s.models == nil {
+		return ""
+	}
+	label := ""
+	for _, option := range s.models.options {
+		if option.ID == s.models.current {
+			label = option.Label
+			break
+		}
+	}
+	if group, _, ok := strings.Cut(label, " · "); ok {
+		group = strings.TrimSpace(group)
+		if group != "" && !strings.EqualFold(group, "meridian") {
+			return group
+		}
+	}
+	if id, _, ok := strings.Cut(s.models.current, "/"); ok && id != "" && id != "meridian" {
+		return id
+	}
+	if label != "" && !strings.EqualFold(label, "meridian") && !strings.HasPrefix(label, "meridian/") {
+		return label
+	}
+	return ""
+}
+
+func providerAuthFailure(message, provider string) (string, string, bool) {
+	lower := strings.ToLower(message)
+	if !strings.Contains(lower, "api key") && !strings.Contains(lower, "authentication") &&
+		!strings.Contains(lower, "unauthorized") && !strings.Contains(lower, "auth required") {
+		return "", "", false
+	}
+	if provider == "" {
+		provider = "This provider"
+	}
+	return "provider_unauthenticated", provider + " has no key in this Capsule. Connect it in Settings.", true
 }
 
 // reportModels reports the model option with the current effort option.
