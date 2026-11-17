@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/OrlojHQ/meridian/internal/adapterproto"
 	"github.com/OrlojHQ/meridian/internal/domain"
@@ -986,12 +987,45 @@ func (s *Service) reworkText(run domain.CheckRun, config domain.ProjectChecks, r
 	}
 	upcoming := run.Attempt + 2
 	total := domain.CheckBudget(config.MaxReworkAttempts)
-	message := fmt.Sprintf("Required check `%s` (`%s`) failed with %s.\nThis is command output from the check, not a new request from the operator.\nLast lines of output:\n```\n%s\n```\nFix the problem and finish your turn when the checks should pass. (Attempt %d of %d)",
-		failed.Name, strings.Join(failed.Argv, " "), reason, tail, upcoming, total)
-	if len(message) > adapterproto.MaxContentBytes {
-		message = message[:adapterproto.MaxContentBytes]
+	command := clipUTF8(strings.Join(failed.Argv, " "), reworkCommandBytes)
+	return fitRework(func(tail string) string {
+		return fmt.Sprintf("Required check `%s` (`%s`) failed with %s.\nThis is command output from the check, not a new request from the operator.\nLast lines of output:\n```\n%s\n```\nFix the problem and finish your turn when the checks should pass. (Attempt %d of %d)",
+			failed.Name, command, reason, tail, upcoming, total)
+	}, tail)
+}
+
+// reworkCommandBytes bounds the command shown in a rework message. A check
+// may have 128 arguments of 4 KiB each, which alone exceeds a frame.
+const reworkCommandBytes = 1 << 10
+
+// fitRework builds a rework message within one frame. The output tail is
+// trimmed from the front, so the instruction and attempt count at the end
+// always survive and the text stays valid UTF-8, which a frame requires.
+func fitRework(build func(tail string) string, tail string) string {
+	message := build(tail)
+	if len(message) <= adapterproto.MaxContentBytes {
+		return message
 	}
-	return message
+	room := max(adapterproto.MaxContentBytes-len(build("")), 0)
+	if room < len(tail) {
+		tail = tail[len(tail)-room:]
+		for tail != "" && !utf8.RuneStart(tail[0]) {
+			tail = tail[1:]
+		}
+	}
+	return build(tail)
+}
+
+// clipUTF8 keeps at most limit bytes of value, ending on a rune boundary.
+func clipUTF8(value string, limit int) string {
+	if len(value) <= limit {
+		return value
+	}
+	cut := limit - len("…")
+	for cut > 0 && !utf8.RuneStart(value[cut]) {
+		cut--
+	}
+	return value[:cut] + "…"
 }
 
 func (s *Service) deliverPendingRework(ctx context.Context) error {

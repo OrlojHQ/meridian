@@ -1621,6 +1621,12 @@ ADR 0052 is implemented. Checks are a quality gate, not a privilege boundary.
   redacted, and encrypted with the installation key. They are not written to
   events, audit records, notifications, or the pull request body. The rework
   message tells the agent the text is command output.
+- **Rework is a prompt-injection channel.** The failing tail reaches the agent
+  as a user-role message, so a hostile repository or dependency can put text in
+  front of the agent that reads like an instruction. The agent could already
+  read that text from the repository, and the message grants nothing: it does
+  not approve a tool call, widen a grant, or deliver a change, and Delivery
+  still needs an operator's approval of the exact tree.
 - **Spend is bounded.** Automatic rework stops at `maxReworkAttempts`. An
   operator message, pause, cancel, rewind, or Stop auto-fix ends the current
   loop. A restarted daemon does not leave a suite running forever: a stale
