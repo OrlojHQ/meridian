@@ -63,6 +63,14 @@ import {
 } from "./capsuleActivity";
 import { CommandPalette, KeyboardShortcutsDialog } from "./CommandPalette";
 import { desktopBridge } from "./desktop";
+import { StationSwitcher } from "./StationSwitcher";
+import {
+  bindStationSwitch,
+  isStationShortcut,
+  parseStations,
+  stationNeedsDraftWarning,
+  switchStationNow,
+} from "./stationSwitch";
 import { DesktopUpdateNotice } from "./DesktopUpdateNotice";
 import {
   GO_PREFIX_MS,
@@ -112,6 +120,13 @@ const isNewCapsuleShortcut = (event: KeyboardEvent) => {
   if (isApplePlatform()) return event.metaKey && !event.ctrlKey;
   return event.ctrlKey && !event.metaKey && !inTerminal(event.target);
 };
+
+const stationShortcut = (event: KeyboardEvent) =>
+  isStationShortcut(
+    event,
+    isApplePlatform(),
+    !isApplePlatform() && inTerminal(event.target),
+  );
 
 const MAX_RECENT = 5;
 
@@ -211,8 +226,9 @@ function notificationPermission(): NotificationPermission | "unsupported" {
 }
 
 function GatewaySettingsButton() {
-  const open = desktopBridge()?.openGatewaySettings;
-  if (!open) return null;
+  const bridge = desktopBridge();
+  const open = bridge?.openGatewaySettings;
+  if (!open || bridge?.stations) return null;
   return (
     <button type="button" onClick={() => open()}>
       <GatewayIcon />
@@ -392,6 +408,31 @@ export function AppShell() {
   const [launchProject, setLaunchProject] = useState<Project>();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [pendingSwitch, setPendingSwitch] = useState<string | null>(null);
+  const savedStations = useQuery({
+    queryKey: ["desktop-stations"],
+    queryFn: async () => parseStations(await desktopBridge()?.stations?.()) ?? [],
+    enabled: Boolean(desktopBridge()?.stations),
+    staleTime: 15_000,
+    retry: false,
+  });
+  const requestSwitch = useCallback((id: string) => {
+    if (stationNeedsDraftWarning()) setPendingSwitch(id);
+    else switchStationNow(id);
+  }, []);
+  useEffect(() => bindStationSwitch(requestSwitch), [requestSwitch]);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!stationShortcut(event)) return;
+      const station = savedStations.data?.[Number(event.key) - 1];
+      if (!station) return;
+      event.preventDefault();
+      event.stopPropagation();
+      requestSwitch(station.id);
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [requestSwitch, savedStations.data]);
   // Recent palette commands live only in page memory.
   const [recentCommands, setRecentCommands] = useState<string[]>([]);
   const [now, setNow] = useState(() => Date.now());
@@ -576,6 +617,12 @@ export function AppShell() {
             projects: projectItems,
             capsuleId,
             capabilities: capabilities.data,
+            stations: (savedStations.data ?? []).map((station) => ({
+              id: station.id,
+              name: station.name,
+              host: station.host,
+              current: station.current,
+            })),
             actions: {
               navigate,
               requestCapsuleAction,
@@ -588,6 +635,17 @@ export function AppShell() {
               openLauncher: setLaunchProject,
               openDeleteProject: setDeleteProject,
               openShortcuts: () => setShortcutsOpen(true),
+              switchStation: requestSwitch,
+              openAddStation: desktopBridge()?.openAddStation
+                ? () => {
+                    void desktopBridge()?.openAddStation?.();
+                  }
+                : undefined,
+              manageStations: desktopBridge()?.openGatewaySettings
+                ? () => {
+                    void desktopBridge()?.openGatewaySettings?.();
+                  }
+                : undefined,
             },
           })
         : [],
@@ -599,6 +657,8 @@ export function AppShell() {
       capabilities.data,
       navigate,
       requestCapsuleAction,
+      savedStations.data,
+      requestSwitch,
     ],
   );
   const runPaletteCommand = (command: PaletteCommand) => {
@@ -764,12 +824,16 @@ export function AppShell() {
         onKeyDown={onSidebarKeyDown}
       >
         <header className="sidebar-header">
-          <Link className="brand" to="/ui/" aria-label="Meridian home">
-            <span className="brand-mark">
-              <MeridianMark />
-            </span>
-            <span>Meridian</span>
-          </Link>
+          {desktopBridge()?.stations ? (
+            <StationSwitcher />
+          ) : (
+            <Link className="brand" to="/ui/" aria-label="Meridian home">
+              <span className="brand-mark">
+                <MeridianMark />
+              </span>
+              <span>Meridian</span>
+            </Link>
+          )}
         </header>
         <button
           type="button"
@@ -974,6 +1038,36 @@ export function AppShell() {
         project={launchProject}
         onClose={() => setLaunchProject(undefined)}
       />
+      {pendingSwitch && (
+        <div className="dialog-backdrop" role="presentation">
+          <section className="launch-dialog" role="dialog" aria-labelledby="switch-station-title" aria-modal="true">
+            <header className="dialog-header">
+              <h1 id="switch-station-title">Switch Station?</h1>
+            </header>
+            <div className="dialog-body">
+              <p>
+                This Thread has an unsent message. Switching reloads the window and leaves that draft behind.
+              </p>
+              <div className="dialog-actions">
+                <button type="button" className="secondary" onClick={() => setPendingSwitch(null)}>
+                  Stay
+                </button>
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={() => {
+                    const id = pendingSwitch;
+                    setPendingSwitch(null);
+                    switchStationNow(id);
+                  }}
+                >
+                  Switch
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
       {paletteOpen && (
         <CommandPalette
           commands={paletteCommands}

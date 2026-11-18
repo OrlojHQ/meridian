@@ -1,6 +1,6 @@
 # ADR 0048: Desktop gateway indicator and recent gateways
 
-- Status: Accepted
+- Status: Accepted; the five-origin recent list is replaced by named Stations in ADR 0055
 - Date: 2026-11-14
 - Amends: ADR 0043 (desktop shell)
 

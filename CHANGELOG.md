@@ -7,6 +7,21 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Saved Stations keep a name and an address, with no cap. The launch screen,
+  the sidebar, the command palette, and the tray switch by those names.
+  ⌘1–⌘9 (Ctrl+1–9 elsewhere) switch the first nine. An unsent Thread message
+  asks before a switch reloads the window. A host and port is enough; HTTPS
+  is assumed.
+
+### Changed
+
+- Stations you used before are kept and named by their host, instead of
+  remembering only the last five addresses.
+- "Check this computer for setup changes" is in Harness settings. It stays
+  on unless you turn it off, and nothing is uploaded until you click Save.
+
 ### Fixed
 
 - A release whose macOS desktop job is cancelled before a runner accepts it

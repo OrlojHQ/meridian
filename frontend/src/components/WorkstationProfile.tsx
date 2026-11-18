@@ -32,6 +32,42 @@ function list(names: string[]) {
 // desktop app it can only ask the app to open its own window, and it is
 // never told what the app found. In a browser it points at the CLI and the
 // folder picker.
+// The desktop app's setup-change check. On by default. A browser has no
+// laptop to watch, so this renders nothing there.
+export function SetupChangeCheck() {
+  const bridge = desktopBridge();
+  const client = useQueryClient();
+  const check = useQuery({
+    queryKey: ["desktop-setup-check"],
+    queryFn: async () => (await bridge?.setupCheck?.()) !== false,
+    enabled: Boolean(bridge?.setupCheck),
+    retry: false,
+  });
+  if (!bridge?.setupCheck || check.data === undefined) return null;
+  return (
+    <label className="setup-change-check">
+      <input
+        type="checkbox"
+        checked={check.data}
+        onChange={(event) => {
+          const enabled = event.target.checked;
+          client.setQueryData(["desktop-setup-check"], enabled);
+          void bridge.setSetupCheck?.(enabled).catch(() => {
+            client.setQueryData(["desktop-setup-check"], !enabled);
+          });
+        }}
+      />
+      <span>
+        <strong>Check this computer for setup changes</strong>
+        <small>
+          When your harness settings or git identity change, Meridian offers to review them. Nothing is uploaded until
+          you click Save.
+        </small>
+      </span>
+    </label>
+  );
+}
+
 export function ImportThisComputer({ profile }: { profile?: Profile }) {
   const bridge = desktopBridge();
   const [opened, setOpened] = useState<"idle" | "opened" | "failed">("idle");

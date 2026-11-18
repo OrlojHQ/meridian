@@ -29,8 +29,10 @@ use tauri_plugin_shell::ShellExt;
 use url::Url;
 
 use gateway::{
-    encode_saved, forget, gateway_label, is_shell_url, origin_label, parse_recent, parse_saved,
-    probe_local, remember, shell_index_url, validate_gateway_url, GatewayProbe, SavedGateway,
+    encode_saved, is_shell_url, load_stations, origin_label, probe_local, probe_online,
+    remove_remote, rename_station, shell_index_url, station_name, upsert_remote,
+    validate_gateway_url, GatewayProbe, LoadedStations, SavedGateway, StationBook, LOCAL_ID,
+    LOCAL_ORIGIN,
 };
 use notify_text::{attention_tooltip, validate_attention, validate_needs_you};
 use sidecar::Sidecar;
@@ -48,9 +50,10 @@ struct AppState {
 
 struct Inner {
     saved: Option<SavedGateway>,
-    /// Other gateways' origins, most recent first, for one-click switching
-    /// from the picker and the tray. Never shown to a gateway page.
-    recent: Vec<String>,
+    /// Named Stations. Origins only, plus the local Station's name.
+    book: StationBook,
+    /// The picker should open its add sheet once.
+    open_add: bool,
     phase: Phase,
     message: String,
     active: Option<ActiveGateway>,
@@ -100,14 +103,55 @@ struct GatewayView {
     origin: Option<String>,
     phase: &'static str,
     message: String,
-    recent: Vec<RecentGateway>,
+    /// True when there is no saved choice and no remote Station yet.
+    first_run: bool,
+    /// The welcome line says "this Mac" only on macOS.
+    mac: bool,
+    local_name: String,
+    /// Open the add sheet once. Cleared by the picker after it is shown.
+    add_sheet: bool,
+    stations: Vec<StationRow>,
 }
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-struct RecentGateway {
-    origin: String,
-    label: String,
+struct StationRow {
+    id: String,
+    name: String,
+    host: String,
+    local: bool,
+    current: bool,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StationStatus {
+    id: String,
+    online: bool,
+}
+
+fn station_rows(saved: Option<&SavedGateway>, book: &StationBook) -> Vec<StationRow> {
+    let current_id = saved.map(|choice| match choice {
+        SavedGateway::Local => LOCAL_ID.to_string(),
+        SavedGateway::Remote { origin } => origin.clone(),
+    });
+    let mut rows = vec![StationRow {
+        id: LOCAL_ID.to_string(),
+        name: book.local_name.clone(),
+        host: "This computer".to_string(),
+        local: true,
+        current: current_id.as_deref() == Some(LOCAL_ID),
+    }];
+    for station in &book.remotes {
+        rows.push(StationRow {
+            id: station.origin.clone(),
+            name: station.name.clone(),
+            host: origin_label(&station.origin),
+            local: false,
+            current: current_id.as_deref() == Some(station.origin.as_str()),
+        });
+    }
+    rows
 }
 
 impl Inner {
@@ -128,14 +172,11 @@ impl Inner {
                 Phase::Error => "error",
             },
             message: self.message.clone(),
-            recent: self
-                .recent
-                .iter()
-                .map(|origin| RecentGateway {
-                    origin: origin.clone(),
-                    label: origin_label(origin),
-                })
-                .collect(),
+            first_run: self.saved.is_none() && self.book.remotes.is_empty(),
+            mac: cfg!(target_os = "macos"),
+            local_name: self.book.local_name.clone(),
+            add_sheet: self.open_add,
+            stations: station_rows(self.saved.as_ref(), &self.book),
         }
     }
 }
@@ -153,12 +194,17 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
-            let (saved, recent) = read_saved(app.handle());
+            let loaded = read_saved(app.handle());
+            if loaded.migrated {
+                let _ = write_saved(app.handle(), loaded.choice.as_ref(), &loaded.book);
+            }
+            let saved = loaded.choice.clone();
             let starting = saved.is_some();
             app.manage(AppState {
                 inner: Mutex::new(Inner {
                     saved: saved.clone(),
-                    recent,
+                    book: loaded.book,
+                    open_add: false,
                     phase: if starting {
                         Phase::Starting
                     } else {
@@ -237,11 +283,18 @@ pub fn run() {
                 Box::new(tauri::generate_handler![
                     gateway_state,
                     gateway_connect,
-                    gateway_forget,
+                    gateway_rename,
+                    gateway_remove,
+                    gateway_status,
                     desktop_notify,
                     desktop_set_attention,
                     desktop_open_gateway,
                     desktop_gateway,
+                    desktop_stations,
+                    desktop_switch_station,
+                    desktop_station_status,
+                    desktop_setup_check,
+                    desktop_setup_check_set,
                     desktop_update_check,
                     desktop_update_install,
                     desktop_open_import,
@@ -297,34 +350,94 @@ fn gateway_state(state: tauri::State<'_, AppState>) -> GatewayView {
 // Async so the picker's click does not run on the main thread: connecting
 // to the bundled gateway can wait up to a minute for readiness.
 #[tauri::command]
-async fn gateway_connect(app: AppHandle, mode: String, url: Option<String>) -> Result<(), String> {
-    let choice = match mode.as_str() {
-        "local" => SavedGateway::Local,
-        "remote" => {
-            let origin = validate_gateway_url(url.as_deref().unwrap_or(""))?;
-            SavedGateway::Remote { origin }
+async fn gateway_connect(
+    app: AppHandle,
+    mode: Option<String>,
+    url: Option<String>,
+    name: Option<String>,
+    id: Option<String>,
+) -> Result<(), String> {
+    let choice = {
+        let state = app.state::<AppState>();
+        let mut inner = lock(&state);
+        inner.open_add = false;
+        if let Some(id) = id.as_deref() {
+            if id == LOCAL_ID {
+                SavedGateway::Local
+            } else {
+                let origin = inner
+                    .book
+                    .remotes
+                    .iter()
+                    .find(|station| station.origin == id)
+                    .map(|station| station.origin.clone())
+                    .ok_or_else(|| "That Station is not saved.".to_string())?;
+                SavedGateway::Remote { origin }
+            }
+        } else {
+            match mode.as_deref().unwrap_or("local") {
+                "local" => SavedGateway::Local,
+                "remote" => {
+                    let origin = upsert_remote(
+                        &mut inner.book,
+                        name.as_deref(),
+                        url.as_deref().unwrap_or(""),
+                    )?;
+                    SavedGateway::Remote { origin }
+                }
+                _ => return Err("Choose a Station.".into()),
+            }
         }
-        _ => return Err("Choose Local or another Station.".into()),
     };
     tauri::async_runtime::spawn_blocking(move || connect(&app, choice))
         .await
         .map_err(|_| "Could not open the Station.".to_string())?
 }
 
-/// Removes a gateway from the recent list. Picker only.
+/// Renames a saved Station, including the one on this computer. Picker only.
 #[tauri::command]
-fn gateway_forget(app: AppHandle, origin: String) -> Result<(), String> {
-    let (saved, recent) = {
+fn gateway_rename(app: AppHandle, id: String, name: String) -> Result<(), String> {
+    let (choice, book) = {
         let state = app.state::<AppState>();
         let mut inner = lock(&state);
-        inner.recent = forget(&inner.recent, &origin);
-        (inner.saved.clone(), inner.recent.clone())
+        rename_station(&mut inner.book, &id, &name)?;
+        (inner.saved.clone(), inner.book.clone())
     };
-    if let Some(saved) = saved {
-        write_saved(&app, &saved, &recent)?;
+    write_saved(&app, choice.as_ref(), &book)?;
+    if lock(&app.state::<AppState>()).active.is_some() {
+        let title = station_name(&book, choice.as_ref().unwrap_or(&SavedGateway::Local));
+        set_title(&app, &format!("Meridian — {title}"));
     }
     refresh_tray(&app);
     Ok(())
+}
+
+/// Removes a remote Station after the picker has confirmed. Picker only.
+#[tauri::command]
+fn gateway_remove(app: AppHandle, id: String) -> Result<(), String> {
+    let (choice, book) = {
+        let state = app.state::<AppState>();
+        let mut inner = lock(&state);
+        remove_remote(&mut inner.book, &id)?;
+        if let Some(SavedGateway::Remote { origin }) = &inner.saved {
+            if origin == &id {
+                inner.saved = None;
+            }
+        }
+        (inner.saved.clone(), inner.book.clone())
+    };
+    write_saved(&app, choice.as_ref(), &book)?;
+    refresh_tray(&app);
+    Ok(())
+}
+
+/// Probes saved Stations off the UI thread. A miss still leaves the Station openable.
+#[tauri::command]
+async fn gateway_status(app: AppHandle) -> Vec<StationStatus> {
+    let ids = station_ids(&app);
+    tauri::async_runtime::spawn_blocking(move || probe_ids(&ids))
+        .await
+        .unwrap_or_default()
 }
 
 #[derive(serde::Serialize)]
@@ -341,7 +454,7 @@ fn desktop_gateway(state: tauri::State<'_, AppState>) -> Result<GatewayIdentity,
     let inner = lock(&state);
     match (&inner.saved, &inner.active) {
         (Some(saved), Some(active)) if saved.origin() == active.origin => Ok(GatewayIdentity {
-            label: gateway_label(saved),
+            label: station_name(&inner.book, saved),
             local: *saved == SavedGateway::Local,
         }),
         _ => Err("No Station is open.".into()),
@@ -383,8 +496,68 @@ fn desktop_set_attention(app: AppHandle, count: u32) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn desktop_open_gateway(app: AppHandle) -> Result<(), String> {
-    open_gateway(&app)
+fn desktop_open_gateway(app: AppHandle, add: Option<bool>) -> Result<(), String> {
+    open_gateway(&app, add.unwrap_or(false))
+}
+
+/// Saved Stations for the in-app switcher. Names and origins only.
+#[tauri::command]
+fn desktop_stations(state: tauri::State<'_, AppState>) -> Result<Vec<StationRow>, String> {
+    let inner = lock(&state);
+    if inner.active.is_none() {
+        return Err("No Station is open.".into());
+    }
+    Ok(station_rows(inner.saved.as_ref(), &inner.book))
+}
+
+/// Switches to a Station already in the saved list. The page cannot supply a new address.
+#[tauri::command]
+async fn desktop_switch_station(app: AppHandle, id: String) -> Result<(), String> {
+    let choice = {
+        let state = app.state::<AppState>();
+        let inner = lock(&state);
+        if inner.active.is_none() {
+            return Err("No Station is open.".into());
+        }
+        if id == LOCAL_ID {
+            SavedGateway::Local
+        } else {
+            let origin = inner
+                .book
+                .remotes
+                .iter()
+                .find(|station| station.origin == id)
+                .map(|station| station.origin.clone())
+                .ok_or_else(|| "That Station is not saved.".to_string())?;
+            SavedGateway::Remote { origin }
+        }
+    };
+    tauri::async_runtime::spawn_blocking(move || connect(&app, choice))
+        .await
+        .map_err(|_| "Could not open the Station.".to_string())?
+}
+
+#[tauri::command]
+async fn desktop_station_status(app: AppHandle) -> Result<Vec<StationStatus>, String> {
+    if lock(&app.state::<AppState>()).active.is_none() {
+        return Err("No Station is open.".into());
+    }
+    let ids = station_ids(&app);
+    Ok(
+        tauri::async_runtime::spawn_blocking(move || probe_ids(&ids))
+            .await
+            .unwrap_or_default(),
+    )
+}
+
+#[tauri::command]
+fn desktop_setup_check(state: tauri::State<'_, AppState>) -> bool {
+    lock(&state).check.enabled
+}
+
+#[tauri::command]
+fn desktop_setup_check_set(app: AppHandle, enabled: bool) -> Result<(), String> {
+    setup_check_set(app, enabled)
 }
 
 /// The gateway page's only way into the import (ADR 0049): it takes no
@@ -602,12 +775,10 @@ fn connect(app: &AppHandle, choice: SavedGateway) -> Result<(), String> {
             SavedGateway::Remote { origin } => format!("Opening {origin}…"),
         };
         inner.saved = Some(choice.clone());
-        if let SavedGateway::Remote { origin } = &choice {
-            inner.recent = remember(&inner.recent, origin);
-        }
+        inner.open_add = false;
     }
-    let recent = lock(&app.state::<AppState>()).recent.clone();
-    if let Err(error) = write_saved(app, &choice, &recent) {
+    let book = lock(&app.state::<AppState>()).book.clone();
+    if let Err(error) = write_saved(app, Some(&choice), &book) {
         return fail(app, error);
     }
     let result = match &choice {
@@ -723,18 +894,24 @@ fn finish_navigation(app: &AppHandle, choice: &SavedGateway) -> Result<(), Strin
         inner.sign_in += 1;
     }
     close_import(app);
-    set_title(app, &format!("Meridian — {}", gateway_label(choice)));
+    let title = {
+        let state = app.state::<AppState>();
+        let inner = lock(&state);
+        station_name(&inner.book, choice)
+    };
+    set_title(app, &format!("Meridian — {title}"));
     refresh_tray(app);
     navigate(app, &url)
 }
 
-fn open_gateway(app: &AppHandle) -> Result<(), String> {
+fn open_gateway(app: &AppHandle, add: bool) -> Result<(), String> {
     {
         let state = app.state::<AppState>();
         let mut inner = lock(&state);
         inner.phase = Phase::Choose;
         inner.message.clear();
         inner.active = None;
+        inner.open_add = add;
         inner.sign_in += 1;
     }
     close_import(app);
@@ -918,16 +1095,16 @@ fn set_title(app: &AppHandle, title: &str) {
     }
 }
 
-/// The tray menu: the window, the picker, one-click switching between this
-/// computer and recent gateways (the active one checked), updates, and Quit.
+/// The tray menu: the window, the picker, one-click switching between saved
+/// Stations by name (the active one checked), updates, and Quit.
 fn tray_menu(app: &AppHandle) -> Result<Menu<Wry>, String> {
-    let (saved, active, recent) = {
+    let (saved, active, book) = {
         let state = app.state::<AppState>();
         let inner = lock(&state);
         (
             inner.saved.clone(),
             inner.active.as_ref().map(|active| active.origin.clone()),
-            inner.recent.clone(),
+            inner.book.clone(),
         )
     };
     let on = |choice: &SavedGateway| {
@@ -937,21 +1114,21 @@ fn tray_menu(app: &AppHandle) -> Result<Menu<Wry>, String> {
     let mut switches = vec![CheckMenuItem::with_id(
         app,
         "switch-local",
-        "Local",
+        book.local_name.clone(),
         true,
         on(&SavedGateway::Local),
         None::<&str>,
     )
     .map_err(error)?];
-    for origin in &recent {
+    for station in &book.remotes {
         let choice = SavedGateway::Remote {
-            origin: origin.clone(),
+            origin: station.origin.clone(),
         };
         switches.push(
             CheckMenuItem::with_id(
                 app,
-                format!("switch:{origin}"),
-                origin_label(origin),
+                format!("switch:{}", station.origin),
+                station.name.clone(),
                 true,
                 on(&choice),
                 None::<&str>,
@@ -1007,8 +1184,8 @@ fn refresh_tray(app: &AppHandle) {
     });
 }
 
-/// Switches from the tray. A remote must still be in the recent list and
-/// validate, so a stale menu cannot open an address the operator forgot.
+/// Switches from the tray. A remote must still be saved and validate, so a
+/// stale menu cannot open an address the operator removed.
 fn switch_gateway(app: &AppHandle, id: &str) {
     let choice = if id == "switch-local" {
         SavedGateway::Local
@@ -1017,9 +1194,10 @@ fn switch_gateway(app: &AppHandle, id: &str) {
             return;
         };
         let known = lock(&app.state::<AppState>())
-            .recent
+            .book
+            .remotes
             .iter()
-            .any(|kept| kept == origin);
+            .any(|station| station.origin == origin);
         match validate_gateway_url(origin) {
             Ok(valid) if known && valid == origin => SavedGateway::Remote { origin: valid },
             _ => return,
@@ -1061,7 +1239,7 @@ fn build_tray(app: &AppHandle) -> Result<(), String> {
         .on_menu_event(|app, event| match event.id.as_ref() {
             "open" => show_main(app),
             "gateway" => {
-                let _ = open_gateway(app);
+                let _ = open_gateway(app, false);
             }
             "updates" => request_update_check(app),
             "import" => open_import_in_background(app),
@@ -1111,7 +1289,7 @@ fn open_import(app: &AppHandle) -> Result<(), String> {
         let inner = lock(&state);
         match (&inner.saved, &inner.active) {
             (Some(saved), Some(active)) if saved.origin() == active.origin => {
-                (active.origin.clone(), gateway_label(saved))
+                (active.origin.clone(), station_name(&inner.book, saved))
             }
             _ => return Err("Open a Station first.".into()),
         }
@@ -1423,14 +1601,68 @@ fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(directory.join("gateway.json"))
 }
 
-fn read_saved(app: &AppHandle) -> (Option<SavedGateway>, Vec<String>) {
+fn read_saved(app: &AppHandle) -> LoadedStations {
     let Some(bytes) = config_path(app).ok().and_then(|path| fs::read(path).ok()) else {
-        return (None, Vec::new());
+        return LoadedStations {
+            choice: None,
+            book: StationBook::default(),
+            migrated: false,
+        };
     };
-    (parse_saved(&bytes), parse_recent(&bytes))
+    load_stations(&bytes)
 }
 
-fn write_saved(app: &AppHandle, choice: &SavedGateway, recent: &[String]) -> Result<(), String> {
+fn station_ids(app: &AppHandle) -> Vec<String> {
+    let state = app.state::<AppState>();
+    let inner = lock(&state);
+    let mut ids = vec![LOCAL_ORIGIN.to_string()];
+    ids.extend(
+        inner
+            .book
+            .remotes
+            .iter()
+            .map(|station| station.origin.clone()),
+    );
+    ids
+}
+
+fn probe_ids(ids: &[String]) -> Vec<StationStatus> {
+    std::thread::scope(|scope| {
+        let handles: Vec<_> = ids
+            .iter()
+            .map(|origin| {
+                let origin = origin.clone();
+                scope.spawn(move || {
+                    let id = if origin == LOCAL_ORIGIN {
+                        LOCAL_ID.to_string()
+                    } else {
+                        origin.clone()
+                    };
+                    StationStatus {
+                        id,
+                        online: probe_online(&origin),
+                    }
+                })
+            })
+            .collect();
+        handles
+            .into_iter()
+            .map(|handle| {
+                handle.join().unwrap_or(StationStatus {
+                    id: String::new(),
+                    online: false,
+                })
+            })
+            .filter(|status| !status.id.is_empty())
+            .collect()
+    })
+}
+
+fn write_saved(
+    app: &AppHandle,
+    choice: Option<&SavedGateway>,
+    book: &StationBook,
+) -> Result<(), String> {
     let path = config_path(app)?;
     let temporary = path.with_extension("json.tmp");
     let mut options = fs::OpenOptions::new();
@@ -1440,7 +1672,7 @@ fn write_saved(app: &AppHandle, choice: &SavedGateway, recent: &[String]) -> Res
         use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
     }
-    let bytes = encode_saved(choice, recent)?;
+    let bytes = encode_saved(choice, book)?;
     let mut file = options
         .open(&temporary)
         .map_err(|error| error.to_string())?;

@@ -13,6 +13,7 @@ import type { WorkingSetItem } from "./useWorkingSet";
 
 export type PaletteGroup =
   | "Recent"
+  | "Stations"
   | "Current Capsule"
   | "Capsules"
   | "Sessions"
@@ -53,6 +54,13 @@ export function isApplePlatform() {
 
 export const paletteShortcut = () => (isApplePlatform() ? ["⌘", "K"] : ["Ctrl", "K"]);
 
+export type PaletteStation = {
+  id: string;
+  name: string;
+  host: string;
+  current: boolean;
+};
+
 export type PaletteActions = {
   navigate: (path: string) => void;
   requestCapsuleAction: (capsuleId: string, action: CapsuleActionRequest) => void;
@@ -61,6 +69,9 @@ export type PaletteActions = {
   openLauncher: (project: Project) => void;
   openDeleteProject: (project: Project) => void;
   openShortcuts: () => void;
+  switchStation?: (id: string) => void;
+  openAddStation?: () => void;
+  manageStations?: () => void;
 };
 
 export function buildPaletteCommands({
@@ -69,14 +80,46 @@ export function buildPaletteCommands({
   capsuleId,
   capabilities,
   actions,
+  stations = [],
 }: {
   items: WorkingSetItem[];
   projects: Project[];
   capsuleId: string;
   capabilities?: Capabilities;
   actions: PaletteActions;
+  stations?: PaletteStation[];
 }): PaletteCommand[] {
   const commands: PaletteCommand[] = [];
+  const modifier = isApplePlatform() ? "⌘" : "Ctrl";
+  stations.slice(0, 9).forEach((station, index) => {
+    commands.push({
+      id: `station:${station.id}`,
+      group: "Stations",
+      label: `Switch to ${station.name}`,
+      detail: station.current ? `${station.host} · Current` : station.host,
+      keywords: "station switch",
+      shortcut: [modifier, String(index + 1)],
+      run: () => actions.switchStation?.(station.id),
+    });
+  });
+  if (actions.openAddStation) {
+    commands.push({
+      id: "station:add",
+      group: "Stations",
+      label: "Add Station…",
+      keywords: "station remote",
+      run: () => actions.openAddStation?.(),
+    });
+  }
+  if (actions.manageStations) {
+    commands.push({
+      id: "station:manage",
+      group: "Stations",
+      label: "Manage Stations…",
+      keywords: "station rename remove",
+      run: () => actions.manageStations?.(),
+    });
+  }
   const projectName = new Map(projects.map((project) => [project.id, project.name]));
   const current = items.find((item) => item.capsule.id === capsuleId)?.capsule;
 
@@ -279,6 +322,7 @@ export function fuzzyScore(query: string, command: PaletteCommand): number | und
 }
 
 const groupOrder: PaletteGroup[] = [
+  "Stations",
   "Current Capsule",
   "Capsules",
   "Sessions",
@@ -333,6 +377,10 @@ export type ShortcutHelp = { keys: string[][]; description: string };
 
 export const keyboardShortcuts = (): ShortcutHelp[] => [
   { keys: [paletteShortcut()], description: "Open the command palette" },
+  {
+    keys: [[isApplePlatform() ? "⌘1–⌘9" : "Ctrl+1–9"]],
+    description: "Switch to one of the first nine saved Stations",
+  },
   { keys: [["G", "N"]], description: "Next item needing me" },
   { keys: [["N"]], description: "New project" },
   { keys: [isApplePlatform() ? ["⌘", "N"] : ["Ctrl", "N"]], description: "New Capsule" },

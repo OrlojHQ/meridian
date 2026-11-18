@@ -18,6 +18,24 @@
       gateway: function () {
         return internals.invoke("desktop_gateway");
       },
+      stations: function () {
+        return internals.invoke("desktop_stations");
+      },
+      switchStation: function (id) {
+        return internals.invoke("desktop_switch_station", { id: id });
+      },
+      stationStatus: function () {
+        return internals.invoke("desktop_station_status");
+      },
+      openAddStation: function () {
+        return internals.invoke("desktop_open_gateway", { add: true });
+      },
+      setupCheck: function () {
+        return internals.invoke("desktop_setup_check");
+      },
+      setSetupCheck: function (enabled) {
+        return internals.invoke("desktop_setup_check_set", { enabled: enabled });
+      },
       checkForUpdates: function () {
         return internals.invoke("desktop_update_check");
       },
