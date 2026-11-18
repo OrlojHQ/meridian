@@ -161,6 +161,10 @@ jobs:
   desktop-macos:
     name: Publish macOS desktop app
     needs: release
+    # Hosted runners sometimes never accept this job. It is cancelled with
+    # no steps, the manifest job is skipped, and the release run fails.
+    # .github/workflows/release-retry.yml reruns that case. A failure after
+    # a runner is assigned is left as-is.
     # Desktop bundles need a MAJOR.MINOR.PATCH version, and prereleases
     # never reach the tap or the updater, so release candidates skip them.
     if: ${{ !contains(github.ref_name, '-') }}
