@@ -113,6 +113,32 @@ func TestStructuredReplayGapCrashAndCancellation(t *testing.T) {
 		waitStructuredTerminal(t, client, "gap-run")
 	})
 
+	t.Run("session failure", func(t *testing.T) {
+		client := structuredTestClient(t, "session-failed", 16)
+		startStructuredTestRun(t, client, "session-failed-run")
+		status := waitStructuredTerminal(t, client, "session-failed-run")
+		if status.State != RunFailed || status.Failure != "Internal error: No models are available" {
+			t.Fatalf("session failure status = %#v", status)
+		}
+		events, err := client.RunEvents(context.Background(), "session-failed-run", 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var failed bool
+		for _, event := range events.Events {
+			if event.Type != "run.failed" {
+				continue
+			}
+			failed = true
+			if event.Metadata["failure"] != status.Failure {
+				t.Fatalf("run.failed = %#v", event)
+			}
+		}
+		if !failed {
+			t.Fatalf("run.failed missing: %#v", events.Events)
+		}
+	})
+
 	t.Run("crash", func(t *testing.T) {
 		client := structuredTestClient(t, "crash", 16)
 		startStructuredTestRun(t, client, "crash-run")
@@ -401,6 +427,19 @@ func TestStructuredAdapterHelper(t *testing.T) {
 	}
 	if mode == "crash" {
 		os.Exit(23)
+	}
+	if mode == "session-failed" {
+		_ = encoder.Encode(adapterproto.Frame{
+			Protocol: adapterproto.Version, Type: adapterproto.KindError,
+			Code: "acp_session_failed", Summary: "Internal error: No models are available",
+		})
+		_ = encoder.Encode(adapterproto.Frame{
+			Protocol: adapterproto.Version, Type: adapterproto.KindEnd,
+			Status: adapterproto.StatusFailed,
+		})
+		for {
+			time.Sleep(time.Hour)
+		}
 	}
 	if mode == "commands" || mode == "unnegotiated-commands" {
 		_ = encoder.Encode(adapterproto.Frame{

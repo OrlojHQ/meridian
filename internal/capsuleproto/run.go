@@ -557,7 +557,11 @@ func (r *supervisedRun) finish(state RunState, code *int, failure string) {
 	// Publish the terminal state only after every output event is recorded,
 	// so a client that observes it can read complete output.
 	r.capture.Wait()
-	r.addEvent("run."+strings.ToLower(string(state)), nil, nil)
+	var metadata map[string]any
+	if failure != "" {
+		metadata = map[string]any{"failure": failure}
+	}
+	r.addEvent("run."+strings.ToLower(string(state)), nil, metadata)
 	r.mu.Lock()
 	r.state, r.exitCode, r.failure = state, code, failure
 	r.endedAt = time.Now().UTC()

@@ -159,28 +159,29 @@ type frameWrite struct {
 }
 
 type structuredSession struct {
-	setupEnv      map[string]string
-	mu            sync.Mutex
-	run           *supervisedRun
-	profile       harness.Profile
-	directory     string
-	initial       adapterproto.Frame
-	command       *exec.Cmd
-	cancel        context.CancelFunc
-	cancelPending bool
-	writes        chan frameWrite
-	events        []StructuredEvent
-	eventBytes    int64
-	next          uint64
-	eventLimit    int
-	outputLimit   int64
-	notify        chan struct{}
-	capabilities  *adapterproto.Capabilities
-	restartCount  uint32
-	controllerIDs map[string]bool
-	ready         chan struct{}
-	done          chan struct{}
-	secrets       map[string]string
+	setupEnv       map[string]string
+	mu             sync.Mutex
+	run            *supervisedRun
+	profile        harness.Profile
+	directory      string
+	initial        adapterproto.Frame
+	command        *exec.Cmd
+	cancel         context.CancelFunc
+	cancelPending  bool
+	writes         chan frameWrite
+	events         []StructuredEvent
+	eventBytes     int64
+	next           uint64
+	eventLimit     int
+	outputLimit    int64
+	notify         chan struct{}
+	capabilities   *adapterproto.Capabilities
+	restartCount   uint32
+	controllerIDs  map[string]bool
+	adapterFailure string
+	ready          chan struct{}
+	done           chan struct{}
+	secrets        map[string]string
 }
 
 func (s *Server) startStructured(writer http.ResponseWriter, request *http.Request) {
@@ -522,7 +523,12 @@ func (s *structuredSession) execute() {
 	case readErr := <-readerDone:
 		if errors.Is(readErr, errAdapterEnd) {
 			s.terminateWaiting(command, waitDone, writerDone)
-			s.run.finish(s.endState(), nil, "")
+			state := s.endState()
+			failure := ""
+			if state == RunFailed {
+				failure = s.failureText()
+			}
+			s.run.finish(state, nil, failure)
 			return
 		}
 		if readErr != nil && !errors.Is(readErr, io.EOF) && ctx.Err() == nil {
@@ -695,6 +701,11 @@ func adapterFrame(kind adapterproto.Kind) bool {
 func (s *structuredSession) addEvent(frame adapterproto.Frame) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if frame.Type == adapterproto.KindError {
+		if text := adapterFailureText(frame.Summary); text != "" {
+			s.adapterFailure = text
+		}
+	}
 	s.next++
 	frame.Cursor = s.next
 	event := StructuredEvent{Sequence: s.next, Frame: frame}
@@ -864,6 +875,35 @@ func (s *structuredSession) finishWait(waitErr, contextErr error) {
 		return
 	}
 	s.run.finish(RunFailed, exitCode(waitErr), "structured adapter exited unsuccessfully")
+}
+
+func (s *structuredSession) failureText() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.adapterFailure
+}
+
+// adapterFailureText keeps a harness error that is safe to store on the run.
+// A URL with userinfo is dropped: that is where a credential would appear.
+func adapterFailureText(summary string) string {
+	summary = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, summary)
+	summary = strings.Join(strings.Fields(summary), " ")
+	if summary == "" {
+		return ""
+	}
+	if strings.Contains(summary, "://") && strings.Contains(summary, "@") {
+		return "The session could not be opened."
+	}
+	const limit = 300
+	if len(summary) > limit {
+		summary = summary[:limit]
+	}
+	return summary
 }
 
 func (s *structuredSession) endState() RunState {

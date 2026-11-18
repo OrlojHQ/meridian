@@ -86,10 +86,21 @@ jobs:
       - name: Bootstrap
         run: make bootstrap
 
+      - name: Cache pinned OpenCode
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: .cache/opencode
+          key: opencode-${{ runner.arch }}-${{ hashFiles('images/capsule-opencode/pack.env') }}
+
+      - name: Install pinned OpenCode
+        run: make opencode-binary
+
       - name: Build
         run: make build
 
       - name: Test
+        env:
+          MERIDIAN_OPENCODE_BINARY: ${{ github.workspace }}/.cache/opencode/opencode
         run: make test
 
       - name: Vulnerability check

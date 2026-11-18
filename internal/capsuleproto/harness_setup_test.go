@@ -342,13 +342,20 @@ func TestConnectionEffortLevelsReachEachHarness(t *testing.T) {
 		if reasoning["supported"] != true || len(effort) != 3 || effort[0] != "low" || effort[1] != "high" || effort[2] != "max" {
 			t.Fatalf("opencode model = %v", model)
 		}
-		variants := model["variants"].(map[string]any)
-		high := variants["high"].(map[string]any)
-		if high["reasoningEffort"] != "high" || variants["medium"] != nil {
-			t.Fatalf("variants = %v", variants)
+		// OpenCode 2.2.6 rejects a variants object and drops the provider.
+		variants, ok := model["variants"].([]any)
+		if !ok || len(variants) != 3 {
+			t.Fatalf("variants = %v", model["variants"])
+		}
+		for i, level := range []string{"low", "high", "max"} {
+			item := variants[i].(map[string]any)
+			settings := item["settings"].(map[string]any)
+			if item["id"] != level || settings["reasoningEffort"] != level {
+				t.Fatalf("variant %d = %v", i, item)
+			}
 		}
 		if _, set := model["options"]; set {
-			t.Fatalf("medium default written without that level: %v", model["options"])
+			t.Fatalf("model options are not part of the OpenCode 2.2.6 schema: %v", model["options"])
 		}
 	})
 	t.Run("codex", func(t *testing.T) {
@@ -504,7 +511,7 @@ func TestOpenCodeImportedProxyConnection(t *testing.T) {
       "package": "@opencode/ai/providers/openai-compatible",
       "env": ["PROXY_API_KEY"],
       "settings": {"baseURL": "https://proxy.internal.example/v1", "includeUsage": true},
-      "models": {"example-coder": {"name": "Example"}}
+      "models": {"example-coder": {"name": "Example", "variants": {"high": {"reasoningEffort": "high"}, "low": {"reasoning_effort": "low"}}}}
     }
   },
   "policies": [
@@ -576,8 +583,20 @@ func TestOpenCodeImportedProxyConnection(t *testing.T) {
 		t.Fatalf("model name = %v", model["name"])
 	}
 	effort := model["capabilities"].(map[string]any)["reasoning"].(map[string]any)["effort"].([]any)
-	if meridian["name"] != "Work proxy" || meridian["package"] != "@opencode/ai/providers/openai-compatible" || gateway["baseURL"] != "https://meridian.example/provider-gateway/openai-compatible/v1" || gateway["apiKey"] != "{env:MERIDIAN_PROVIDER_TOKEN}" || gateway["includeUsage"] != true || len(effort) != 2 || effort[0] != "low" || effort[1] != "high" {
+	variants, _ := model["variants"].([]any)
+	if meridian["name"] != "Work proxy" || meridian["package"] != "@opencode/ai/providers/openai-compatible" || gateway["baseURL"] != "https://meridian.example/provider-gateway/openai-compatible/v1" || gateway["apiKey"] != "{env:MERIDIAN_PROVIDER_TOKEN}" || gateway["includeUsage"] != true || len(effort) != 2 || effort[0] != "low" || effort[1] != "high" || len(variants) != 2 {
 		t.Fatalf("connection provider = %v", meridian)
+	}
+	seen := map[string]string{}
+	for _, item := range variants {
+		entry := item.(map[string]any)
+		id, _ := entry["id"].(string)
+		settings, _ := entry["settings"].(map[string]any)
+		level, _ := settings["reasoningEffort"].(string)
+		seen[id] = level
+	}
+	if seen["low"] != "low" || seen["high"] != "high" {
+		t.Fatalf("folded variants = %v", variants)
 	}
 	if strings.Contains(string(raw), "PROXY_API_KEY") || strings.Contains(string(raw), "proxy.internal.example") {
 		t.Fatalf("imported provider or its key reference was copied: %s", raw)

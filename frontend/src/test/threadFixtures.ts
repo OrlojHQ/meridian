@@ -74,6 +74,8 @@ export function transcript(start = 1) {
       }),
     error: (code: string, reason: string) =>
       push("system", "status", "error", { type: "error", code, reason }),
+    sessionError: (code: string, summary: string) =>
+      push("system", "status", "error", { type: "error", code, summary }),
     commands: (commands: ThreadCommand[]) =>
       push("system", "status", "json", { type: "commands", commands }),
     models: (models: ThreadModels) =>

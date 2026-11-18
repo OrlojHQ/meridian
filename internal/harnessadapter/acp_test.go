@@ -572,23 +572,25 @@ func TestACPResume(t *testing.T) {
 
 func TestACPFailsClosed(t *testing.T) {
 	for _, test := range []struct {
-		mode, code, resume string
+		mode, code, resume, summary string
 	}{
 		{mode: "new", code: "acp_resume_unsupported", resume: `{"driver":"acp","sessionId":"sess-1"}`},
 		{mode: "new", code: "acp_resume_invalid", resume: `{"driver":"opencode-server","sessionId":"sess-1"}`},
-		{mode: "missing", code: "acp_resume_failed", resume: `{"driver":"acp","sessionId":"sess-1"}`},
-		{mode: "auth", code: "acp_auth_required"},
+		{mode: "missing", code: "acp_resume_failed", resume: `{"driver":"acp","sessionId":"sess-1"}`, summary: "no such session"},
+		{mode: "auth", code: "acp_auth_required", summary: "log in first"},
+		{mode: "catalog", code: "acp_session_failed", summary: "Internal error: No models are available"},
 		{mode: "version", code: "acp_protocol_unsupported"},
 		{mode: "garbage", code: "acp_protocol_failed"},
 		{mode: "uncorrelated", code: "acp_response_invalid"},
 	} {
-		t.Run(test.code, func(t *testing.T) {
+		t.Run(test.code+"/"+test.mode, func(t *testing.T) {
 			initial := adapterproto.KindStart
 			if test.resume != "" {
 				initial = adapterproto.KindResume
 			}
 			decoder, _, _, done := runACPFixture(t, test.mode, ACPConfig{}, initial, test.resume)
-			if failure := readKind(t, decoder, adapterproto.KindError); failure.Code != test.code {
+			failure := readKind(t, decoder, adapterproto.KindError)
+			if failure.Code != test.code || (test.summary != "" && failure.Summary != test.summary) {
 				t.Fatalf("error = %#v", failure)
 			}
 			if end := readKind(t, decoder, adapterproto.KindEnd); end.Status != adapterproto.StatusFailed {
@@ -685,6 +687,13 @@ func TestACPAgentHelper(t *testing.T) {
 		case "session/new":
 			if mode == "auth" {
 				send(map[string]any{"id": record.ID, "error": map[string]any{"code": -32000, "message": "log in first"}})
+				continue
+			}
+			if mode == "catalog" {
+				send(map[string]any{"id": record.ID, "error": map[string]any{
+					"code": -32603, "message": "Internal error: No models are available",
+					"data": map[string]any{"errorName": "CatalogNotReady"},
+				}})
 				continue
 			}
 			if mode == "models" {

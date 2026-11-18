@@ -29,6 +29,9 @@ import (
 // in images/capsule-opencode against the config a connection writes. Docker is
 // not required. Set MERIDIAN_OPENCODE_BINARY to that binary.
 func TestPinnedOpenCodeUsesCompatibleConnection(t *testing.T) {
+	if os.Getenv("MERIDIAN_OPENCODE_RUN") != "1" {
+		t.Skip("MERIDIAN_OPENCODE_RUN=1 is not set")
+	}
 	binary := os.Getenv("MERIDIAN_OPENCODE_BINARY")
 	if binary == "" {
 		t.Skip("MERIDIAN_OPENCODE_BINARY is not set")
@@ -206,6 +209,156 @@ func TestPinnedOpenCodeUsesCompatibleConnection(t *testing.T) {
 	encoded, _ := json.Marshal(created)
 	if !strings.Contains(string(encoded), "meridian/example-coder") || !strings.Contains(string(encoded), `"low"`) || !strings.Contains(string(encoded), `"high"`) {
 		t.Fatalf("ACP session did not select the connection model: %s", encoded)
+	}
+}
+
+// TestOpenCodeGeneratedConfigOpensSession feeds Meridian's generated config
+// to the OpenCode binary pinned in images/capsule-opencode. It checks that
+// the connection's models are listed and that ACP initialize + session/new
+// succeeds. The stub records a call but is not required to answer a turn.
+func TestOpenCodeGeneratedConfigOpensSession(t *testing.T) {
+	binary := os.Getenv("MERIDIAN_OPENCODE_BINARY")
+	if binary == "" {
+		t.Skip("MERIDIAN_OPENCODE_BINARY is not set")
+	}
+	caPEM, leaf := localGatewayCert(t)
+	called := make(chan struct{}, 1)
+	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case called <- struct{}{}:
+		default:
+		}
+		http.Error(w, "model calls are out of scope", http.StatusBadGateway)
+	})}
+	listener, err := tls.Listen("tcp", "127.0.0.1:0", &tls.Config{Certificates: []tls.Certificate{leaf}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	go server.Serve(listener)
+	defer server.Close()
+	port := listener.Addr().(*net.TCPAddr).Port
+	gateway := "https://127.0.0.1:" + strconv.Itoa(port)
+
+	token := strings.Repeat("ab", 32)
+	imported := `{
+  "model": "proxy/example-coder",
+  "disabled_providers": ["opencode", "litellm"],
+  "enabled_providers": ["proxy"],
+  "providers": {
+    "proxy": {
+      "name": "Work proxy",
+      "package": "@opencode/ai/providers/openai-compatible",
+      "settings": {"baseURL": "https://proxy.internal.example/v1", "includeUsage": true},
+      "models": {
+        "example-coder": {
+          "name": "Example",
+          "variants": {"high": {"reasoningEffort": "high"}, "low": {"reasoningEffort": "low"}}
+        }
+      }
+    }
+  }
+}`
+	s := &Server{config: ServerConfig{HarnessHome: t.TempDir()}}
+	setup := &harnesssetup.RuntimeSetup{Revision: "rev-schema", Bundle: harnesssetup.Bundle{Harness: "opencode", Files: []harnesssetup.File{{Path: ".config/opencode/opencode.jsonc", Content: imported}}}}
+	env, err := s.prepareHarnessSetup(context.Background(), setup, "opencode")
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, err = s.prepareProviderConnection(context.Background(), &harnesssetup.Connection{
+		Provider: "openai-compatible", URL: gateway, Token: token, Model: "example-coder",
+		Efforts: []string{"low", "high"}, Name: "Work proxy", Fold: []string{"proxy"}, CA: caPEM,
+	}, setup, "opencode", env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(env["HOME"], ".config/opencode/opencode.jsonc"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"variants": [`) || strings.Contains(string(raw), `"variants": {`) {
+		t.Fatalf("generated variants are not an array:\n%s", raw)
+	}
+	workspace := t.TempDir()
+	if err := os.WriteFile(filepath.Join(workspace, "opencode.json"), []byte(`{"model":"proxy/example-coder"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	processEnv := []string{"PATH=" + os.Getenv("PATH"), "TMPDIR=" + os.TempDir()}
+	for key, value := range env {
+		processEnv = append(processEnv, key+"="+value)
+	}
+	run := func(args ...string) []byte {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, binary, args...)
+		cmd.Dir = workspace
+		cmd.Env = processEnv
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("run %v: %v\n%s", args, err, output)
+		}
+		return output
+	}
+	models := run("models", "--standalone")
+	if !strings.Contains(string(models), "meridian/example-coder") {
+		t.Fatalf("models = %s", models)
+	}
+
+	acpCtx, acpCancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer acpCancel()
+	acp := exec.CommandContext(acpCtx, binary, "acp")
+	acp.Dir = workspace
+	acp.Env = processEnv
+	stdin, err := acp.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdout, err := acp.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	acp.Stderr = nil
+	if err := acp.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = stdin.Close()
+		_ = acp.Wait()
+	}()
+	reader := bufio.NewReader(stdout)
+	write := func(value any) {
+		t.Helper()
+		encoded, err := json.Marshal(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := stdin.Write(append(encoded, '\n')); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{
+		"protocolVersion": 1, "clientCapabilities": map[string]any{},
+		"clientInfo": map[string]any{"name": "meridian-test", "version": "0"},
+	}})
+	if _, err := readACPResult(t, reader, stdin, 1); err != nil {
+		t.Fatal(err)
+	}
+	write(map[string]any{"jsonrpc": "2.0", "id": 2, "method": "session/new", "params": map[string]any{
+		"cwd": workspace, "mcpServers": []any{},
+	}})
+	created, err := readACPResult(t, reader, stdin, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, _ := json.Marshal(created)
+	if !strings.Contains(string(encoded), "meridian/example-coder") || !strings.Contains(string(encoded), `"low"`) || !strings.Contains(string(encoded), `"high"`) {
+		t.Fatalf("ACP session did not select the connection model: %s", encoded)
+	}
+	select {
+	case <-called:
+		t.Fatal("session startup called the provider")
+	default:
 	}
 }
 

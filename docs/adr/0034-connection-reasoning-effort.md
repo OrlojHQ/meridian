@@ -28,7 +28,7 @@ pinned pack images:
 | --- | --- | --- |
 | Pi | `models.json` model `reasoning: true`, `thinkingLevelMap` (a level mapped to `null` is unsupported), `compat.supportsReasoningEffort` | `reasoning_effort` |
 | DeepSeek Harness | `llm-pi-ai` route model `reasoningEfforts` (level to wire value, `off` empty) and `compat.supportsReasoningEffort` | `reasoning_effort` |
-| OpenCode | provider model `variants`, each with provider option `reasoningEffort`; its ACP agent offers them as the `thought_level` option | `reasoning_effort` |
+| OpenCode | provider model `capabilities.reasoning` (`supported` and `effort`) and `variants` as an array of `{id, settings: {reasoningEffort}}`; a variants object is rejected and drops the provider. Its ACP agent offers the levels as the `thought_level` option | `reasoning_effort` |
 | Codex | none for the catalog; `model_supports_reasoning_summaries` makes Codex send reasoning settings for an unknown model | `reasoning.effort` |
 | Claude Code | lists its own levels for its model aliases | Claude Code's own effort field |
 
@@ -53,8 +53,11 @@ own name:
 - DeepSeek Harness: the route model gets `reasoningEfforts` with `off` empty
   and each declared level mapped to itself, plus
   `compat.supportsReasoningEffort` for Chat Completions routes.
-- OpenCode: the model gets `reasoning: true` and one variant per level with
-  `reasoningEffort` set to it.
+- OpenCode: the model gets `capabilities.reasoning` of
+  `{supported: true, effort: [levels]}` and one `variants` entry per level,
+  `{id, settings: {reasoningEffort}}`. OpenCode 2.2.6 rejects a variants
+  object and then drops the whole provider, so the legacy map is rewritten
+  into that array before the file is written.
 - Codex: `model_supports_reasoning_summaries = true` unless the imported
   configuration sets it, and `MERIDIAN_MODEL_EFFORTS` in the adapter's
   environment. The `codex-app-server` adapter offers those levels for the

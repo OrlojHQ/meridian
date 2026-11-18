@@ -15,6 +15,9 @@ coverage.out
 # Generated-client scratch output
 /.generated/
 
+# Pinned harness binaries fetched for schema tests (make opencode-binary).
+/.cache/
+
 # Local state and credentials
 .env
 .env.*

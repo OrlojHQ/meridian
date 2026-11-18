@@ -26,6 +26,7 @@ type structuredRuntime struct {
 	starts       map[domain.RunID]int
 	sends        map[string]int
 	frames       map[string]adapterproto.Frame
+	startFrames  []adapterproto.Frame
 	sendFailures int
 	events       ports.RuntimeStructuredEvents
 	cancels      int
@@ -46,6 +47,7 @@ func (r *structuredRuntime) StartStructured(
 		r.frames = make(map[string]adapterproto.Frame)
 	}
 	r.starts[request.RunID]++
+	r.startFrames = append(r.startFrames, request.Frame)
 	if r.startErr != nil {
 		return ports.RuntimeRun{}, r.startErr
 	}
@@ -240,6 +242,45 @@ func TestThreadAtomicIdempotencySyncAndCryptoShred(t *testing.T) {
 	}
 	if _, err := service.ThreadBlocks(ctx, thread.ID, 0, 10); !errors.Is(err, domain.ErrKeyMismatch) {
 		t.Fatalf("read after crypto-shred = %v", err)
+	}
+}
+
+func TestResumeWithoutHarnessSessionStartsFresh(t *testing.T) {
+	ctx := operatorContext()
+	store, service, runtime, key, capsuleID := threadService(t, ctx)
+	defer store.Close()
+	defer key.Zero()
+
+	created, err := service.CreateThread(ctx, app.CreateThreadInput{
+		CapsuleID: capsuleID, Harness: "mock", FirstMessage: "first",
+		Start: true, IdempotencyKey: "fresh-thread",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.CancelThread(
+		ctx, created.Thread.ID, created.Thread.ResourceVersion, "cancel-fresh",
+	); err != nil {
+		t.Fatal(err)
+	}
+	created.Thread, err = service.GetThread(ctx, created.Thread.ID)
+	if err != nil || created.Thread.State != domain.ThreadPaused {
+		t.Fatalf("paused Thread = %#v, %v", created.Thread, err)
+	}
+	resumed, err := service.ResumeThread(
+		ctx, created.Thread.ID, created.Thread.ResourceVersion, "resume-fresh",
+	)
+	if err != nil {
+		t.Fatalf("resume without a session = %v", err)
+	}
+	if resumed.Run == nil || resumed.Run.State != domain.RunRunning {
+		t.Fatalf("resumed run = %#v", resumed.Run)
+	}
+	runtime.mu.Lock()
+	frames := append([]adapterproto.Frame(nil), runtime.startFrames...)
+	runtime.mu.Unlock()
+	if len(frames) != 2 || frames[1].Type != adapterproto.KindStart || frames[1].ResumeState != "" {
+		t.Fatalf("start frames = %#v", frames)
 	}
 }
 
