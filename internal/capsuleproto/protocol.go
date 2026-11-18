@@ -177,6 +177,9 @@ func NewServer(config ServerConfig) (*Server, error) {
 	if err := cleanupRestoreState(config.Workspace); err != nil {
 		return nil, err
 	}
+	if err := ensurePrivateWorktreeExcludes(config.Workspace); err != nil {
+		return nil, err
+	}
 	if _, err := server.prepared(config.Workspace, PrepareRequest{}); err != nil {
 		return nil, err
 	}
@@ -501,6 +504,11 @@ func (s *Server) prepareWorkspace(ctx context.Context, input PrepareRequest) err
 		if err := s.cloneRepository(ctx, input); err != nil {
 			return err
 		}
+	}
+	// Record supervisor paths before the preparation marker is written, so a
+	// fresh checkout is not reported as a dirty worktree.
+	if err := ensurePrivateWorktreeExcludes(input.Destination); err != nil {
+		return err
 	}
 	if len(input.Setup) > 0 {
 		if err := s.config.CommandRunner(

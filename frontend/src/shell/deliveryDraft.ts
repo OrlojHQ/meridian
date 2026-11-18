@@ -1,15 +1,37 @@
 const PROTECTED = new Set(["main", "master", "trunk"]);
 
-export function deliveryHasChanges(inspection?: {
-  dirty: boolean;
-  branch?: string;
-  defaultBranch?: string;
-} | null) {
+const activeRunStates = new Set(["Queued", "Starting", "Running", "Cancelling"]);
+
+export function deliveryHasChanges(
+  inspection?: {
+    dirty?: boolean;
+    hasDeliverableChanges?: boolean;
+    unpushedCount?: number;
+  } | null,
+  mode: "create" | "update" = "create",
+) {
   if (!inspection) return false;
-  if (inspection.dirty) return true;
-  const branch = inspection.branch?.trim() ?? "";
-  const base = inspection.defaultBranch?.trim() ?? "";
-  return Boolean(branch && base && branch !== base);
+  if (mode === "update") {
+    return inspection.dirty === true || (inspection.unpushedCount ?? 0) > 0;
+  }
+  if (typeof inspection.hasDeliverableChanges === "boolean") {
+    return inspection.hasDeliverableChanges;
+  }
+  return inspection.dirty === true;
+}
+
+// A turn or run that can still write the worktree. Inspection is read again
+// while this is true, and once more when it becomes false.
+export function agentMayEditWorkspace(input: {
+  threads?: { state?: string; turn?: string; currentRunState?: string }[];
+  runs?: { state?: string }[];
+}) {
+  const threadBusy = input.threads?.some((item) => {
+    if (item.state === "deleted" || item.state === "archived") return false;
+    return item.turn === "working" || activeRunStates.has(item.currentRunState ?? "");
+  });
+  const runBusy = input.runs?.some((item) => activeRunStates.has(item.state ?? ""));
+  return threadBusy === true || runBusy === true;
 }
 
 export function suggestedBranch(branch: string | undefined, base: string | undefined, title: string) {

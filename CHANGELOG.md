@@ -44,6 +44,18 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   revision and commit identity already match the profile. Files an import
   left out, or kept with a warning, stay listed in Setup details and no
   longer keep that banner up.
+- The Capsule header shows Create PR only when a delivery would publish
+  something: commits ahead of the default branch's remote head, or
+  uncommitted project files. A clean checkout, a branch with no commits of
+  its own, and files the supervisor writes into the worktree no longer show
+  the button. Push update stays only when an existing pull request has
+  commits or file changes that are not on the remote branch yet, and a
+  delivery push records the pushed commit so the button clears once the
+  push succeeds. A project `.gitignore` cannot pull supervisor files back
+  into a delivery commit. Inspection
+  reports `aheadCount`, `unpushedCount`, and `hasDeliverableChanges`, and
+  the header reads them again while a turn is writing and once the turn
+  finishes.
 
 ## [0.11.5] - 2026-11-18
 

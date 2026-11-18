@@ -12982,9 +12982,21 @@ func (s *DeliveryInspection) encodeFields(e *jx.Encoder) {
 		e.FieldStart("tree")
 		e.Str(s.Tree)
 	}
+	{
+		e.FieldStart("aheadCount")
+		e.Int(s.AheadCount)
+	}
+	{
+		e.FieldStart("unpushedCount")
+		e.Int(s.UnpushedCount)
+	}
+	{
+		e.FieldStart("hasDeliverableChanges")
+		e.Bool(s.HasDeliverableChanges)
+	}
 }
 
-var jsonFieldsNameOfDeliveryInspection = [7]string{
+var jsonFieldsNameOfDeliveryInspection = [10]string{
 	0: "capsuleResourceVersion",
 	1: "head",
 	2: "branch",
@@ -12992,6 +13004,9 @@ var jsonFieldsNameOfDeliveryInspection = [7]string{
 	4: "originUrl",
 	5: "defaultBranch",
 	6: "tree",
+	7: "aheadCount",
+	8: "unpushedCount",
+	9: "hasDeliverableChanges",
 }
 
 // Decode decodes DeliveryInspection from json.
@@ -12999,7 +13014,7 @@ func (s *DeliveryInspection) Decode(d *jx.Decoder) error {
 	if s == nil {
 		return errors.New("invalid: unable to decode DeliveryInspection to nil")
 	}
-	var requiredBitSet [1]uint8
+	var requiredBitSet [2]uint8
 
 	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
 		switch string(k) {
@@ -13081,6 +13096,42 @@ func (s *DeliveryInspection) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"tree\"")
 			}
+		case "aheadCount":
+			requiredBitSet[0] |= 1 << 7
+			if err := func() error {
+				v, err := d.Int()
+				s.AheadCount = int(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"aheadCount\"")
+			}
+		case "unpushedCount":
+			requiredBitSet[1] |= 1 << 0
+			if err := func() error {
+				v, err := d.Int()
+				s.UnpushedCount = int(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"unpushedCount\"")
+			}
+		case "hasDeliverableChanges":
+			requiredBitSet[1] |= 1 << 1
+			if err := func() error {
+				v, err := d.Bool()
+				s.HasDeliverableChanges = bool(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"hasDeliverableChanges\"")
+			}
 		default:
 			return d.Skip()
 		}
@@ -13090,8 +13141,9 @@ func (s *DeliveryInspection) Decode(d *jx.Decoder) error {
 	}
 	// Validate required fields.
 	var failures []validate.FieldError
-	for i, mask := range [1]uint8{
-		0b01001011,
+	for i, mask := range [2]uint8{
+		0b11001011,
+		0b00000011,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.

@@ -1695,6 +1695,8 @@ func (s *Server) inspectDelivery(writer http.ResponseWriter, request *http.Reque
 		CapsuleResourceVersion: int64(result.CapsuleResourceVersion),
 		HEAD:                   result.HEAD, Branch: result.Branch, Dirty: result.Dirty,
 		OriginURL: result.OriginURL, DefaultBranch: result.DefaultBranch, Tree: result.Tree,
+		AheadCount: result.AheadCount, UnpushedCount: result.UnpushedCount,
+		HasDeliverableChanges: result.HasDeliverableChanges,
 	})
 }
 
@@ -2696,6 +2698,9 @@ type deliveryInspectionJSON struct {
 	OriginURL              string `json:"originUrl,omitempty"`
 	DefaultBranch          string `json:"defaultBranch,omitempty"`
 	Tree                   string `json:"tree"`
+	AheadCount             int    `json:"aheadCount"`
+	UnpushedCount          int    `json:"unpushedCount"`
+	HasDeliverableChanges  bool   `json:"hasDeliverableChanges"`
 }
 
 type deliveryJSON struct {

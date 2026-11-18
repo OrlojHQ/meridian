@@ -649,6 +649,20 @@ function route(pathname: string): unknown {
     return { items: [{ name: "default", structured: true, pty: true, protocol: "meridian.adapter.v1" }] };
   }
   if (pathname.endsWith("/deliveries/inspection")) {
+    const delivery = new URLSearchParams(window.location.search).get("delivery");
+    if (delivery === "clean") {
+      return {
+        capsuleResourceVersion: 2,
+        head: "a".repeat(40),
+        branch: "master",
+        dirty: false,
+        defaultBranch: "main",
+        tree: "a".repeat(40),
+        aheadCount: 0,
+        unpushedCount: 0,
+        hasDeliverableChanges: false,
+      };
+    }
     return {
       capsuleResourceVersion: 2,
       head: "a".repeat(40),
@@ -656,6 +670,9 @@ function route(pathname: string): unknown {
       dirty: true,
       defaultBranch: "main",
       tree: "b".repeat(40),
+      aheadCount: 1,
+      unpushedCount: 1,
+      hasDeliverableChanges: true,
     };
   }
   if (pathname.endsWith("/deliveries")) {
@@ -885,6 +902,9 @@ class IdleSocket extends EventTarget {
 }
 
 export function installShotFixture() {
+  if (new URLSearchParams(window.location.search).get("theme") === "dark") {
+    localStorage.setItem("meridian.theme", "dark");
+  }
   const nativeFetch = window.fetch.bind(window);
   const NativeSocket = window.WebSocket;
   // Everything except the dev server's own files is answered here, so a

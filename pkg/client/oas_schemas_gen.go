@@ -5710,6 +5710,15 @@ type DeliveryInspection struct {
 	OriginUrl              OptString `json:"originUrl"`
 	DefaultBranch          OptString `json:"defaultBranch"`
 	Tree                   string    `json:"tree"`
+	// Commits on HEAD that are not on the default branch's remote head. Zero when that remote head is
+	// absent or HEAD is not ahead of it.
+	AheadCount int `json:"aheadCount"`
+	// Commits on HEAD that are not on the remote branch of the same name. Matches aheadCount when that
+	// remote branch does not exist.
+	UnpushedCount int `json:"unpushedCount"`
+	// True when aheadCount is greater than zero or the worktree has changes a delivery would commit. Files
+	// the supervisor writes into the worktree are excluded.
+	HasDeliverableChanges bool `json:"hasDeliverableChanges"`
 }
 
 // GetCapsuleResourceVersion returns the value of CapsuleResourceVersion.
@@ -5747,6 +5756,21 @@ func (s *DeliveryInspection) GetTree() string {
 	return s.Tree
 }
 
+// GetAheadCount returns the value of AheadCount.
+func (s *DeliveryInspection) GetAheadCount() int {
+	return s.AheadCount
+}
+
+// GetUnpushedCount returns the value of UnpushedCount.
+func (s *DeliveryInspection) GetUnpushedCount() int {
+	return s.UnpushedCount
+}
+
+// GetHasDeliverableChanges returns the value of HasDeliverableChanges.
+func (s *DeliveryInspection) GetHasDeliverableChanges() bool {
+	return s.HasDeliverableChanges
+}
+
 // SetCapsuleResourceVersion sets the value of CapsuleResourceVersion.
 func (s *DeliveryInspection) SetCapsuleResourceVersion(val int64) {
 	s.CapsuleResourceVersion = val
@@ -5780,6 +5804,21 @@ func (s *DeliveryInspection) SetDefaultBranch(val OptString) {
 // SetTree sets the value of Tree.
 func (s *DeliveryInspection) SetTree(val string) {
 	s.Tree = val
+}
+
+// SetAheadCount sets the value of AheadCount.
+func (s *DeliveryInspection) SetAheadCount(val int) {
+	s.AheadCount = val
+}
+
+// SetUnpushedCount sets the value of UnpushedCount.
+func (s *DeliveryInspection) SetUnpushedCount(val int) {
+	s.UnpushedCount = val
+}
+
+// SetHasDeliverableChanges sets the value of HasDeliverableChanges.
+func (s *DeliveryInspection) SetHasDeliverableChanges(val bool) {
+	s.HasDeliverableChanges = val
 }
 
 func (*DeliveryInspection) inspectCapsuleDeliveryRes() {}

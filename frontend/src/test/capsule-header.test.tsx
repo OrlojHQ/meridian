@@ -75,15 +75,18 @@ function show(session = "thread-1") {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  return render(
-    <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[`/ui/capsules/capsule-1?session=${session}`]}>
-        <Routes>
-          <Route path="/ui/capsules/:capsuleId" element={<CapsuleDetail />} />
-        </Routes>
-      </MemoryRouter>
-    </QueryClientProvider>,
-  );
+  return {
+    client,
+    ...render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={[`/ui/capsules/capsule-1?session=${session}`]}>
+          <Routes>
+            <Route path="/ui/capsules/:capsuleId" element={<CapsuleDetail />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    ),
+  };
 }
 
 const savedAt = "2026-11-10T09:00:00Z";
@@ -133,6 +136,9 @@ function ready(options?: {
   delivery?: boolean;
   dirty?: boolean;
   branch?: string;
+  aheadCount?: number;
+  unpushedCount?: number;
+  hasDeliverableChanges?: boolean;
   pullRequest?: boolean;
   matches?: boolean;
   diagnostic?: ProfileDiagnostic;
@@ -171,13 +177,19 @@ function ready(options?: {
     nextCursor: 1,
     more: false,
   });
+  const dirty = options?.dirty ?? true;
+  const aheadCount = options?.aheadCount ?? 0;
+  const unpushedCount = options?.unpushedCount ?? 0;
   vi.spyOn(api, "deliveryInspection").mockResolvedValue({
     capsuleResourceVersion: capsule.resourceVersion,
     head: "a".repeat(40),
     tree: "b".repeat(40),
     branch: options?.branch ?? "feature/header",
     defaultBranch: "main",
-    dirty: options?.dirty ?? true,
+    dirty,
+    aheadCount,
+    unpushedCount,
+    hasDeliverableChanges: options?.hasDeliverableChanges ?? (dirty || aheadCount > 0),
   });
   vi.spyOn(api, "gitDiff").mockResolvedValue({ content: "", truncated: false });
   vi.spyOn(api, "deliveries").mockResolvedValue({
@@ -319,6 +331,97 @@ describe("Capsule header", () => {
     show();
     await screen.findByRole("heading", { name: "Fix the header so the title can be read" });
     expect(screen.queryByRole("button", { name: "Create PR" })).not.toBeInTheDocument();
+  });
+
+  it("hides Create PR on a clean checkout and on a branch with no commits", async () => {
+    ready({
+      dirty: false,
+      branch: "master",
+      aheadCount: 0,
+      unpushedCount: 0,
+      hasDeliverableChanges: false,
+    });
+    const { unmount } = show();
+    await screen.findByRole("heading", { name: "Fix the header so the title can be read" });
+    expect(screen.getByText("master")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Create PR" })).not.toBeInTheDocument();
+    unmount();
+    cleanup();
+    vi.restoreAllMocks();
+    ready({
+      dirty: false,
+      branch: "topic",
+      aheadCount: 0,
+      unpushedCount: 0,
+      hasDeliverableChanges: false,
+    });
+    show();
+    await screen.findByRole("heading", { name: "Fix the header so the title can be read" });
+    expect(screen.queryByRole("button", { name: "Create PR" })).not.toBeInTheDocument();
+  });
+
+  it("shows Create PR for commits ahead or an untracked project file", async () => {
+    ready({ dirty: false, branch: "topic", aheadCount: 2, unpushedCount: 2, hasDeliverableChanges: true });
+    const { unmount } = show();
+    expect(await screen.findByRole("button", { name: "Create PR" })).toBeInTheDocument();
+    unmount();
+    cleanup();
+    vi.restoreAllMocks();
+    ready({ dirty: true, branch: "master", aheadCount: 0, unpushedCount: 0, hasDeliverableChanges: true });
+    show();
+    expect(await screen.findByRole("button", { name: "Create PR" })).toBeInTheDocument();
+  });
+
+  it("keeps Push update only when commits or edits are not on the remote branch", async () => {
+    ready({
+      dirty: false,
+      branch: "feature/header",
+      aheadCount: 3,
+      unpushedCount: 0,
+      hasDeliverableChanges: true,
+      pullRequest: true,
+    });
+    const { unmount } = show();
+    expect(await screen.findByRole("link", { name: "PR #18" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Push update" })).not.toBeInTheDocument();
+    unmount();
+    cleanup();
+    vi.restoreAllMocks();
+    ready({
+      dirty: false,
+      branch: "feature/header",
+      aheadCount: 4,
+      unpushedCount: 1,
+      hasDeliverableChanges: true,
+      pullRequest: true,
+    });
+    show();
+    expect(await screen.findByRole("button", { name: "Push update" })).toBeInTheDocument();
+  });
+
+  it("shows Create PR after a turn finishes with something to deliver", async () => {
+    ready({ turn: "working", dirty: false, branch: "master", hasDeliverableChanges: false });
+    let changed = false;
+    vi.mocked(api.deliveryInspection).mockImplementation(async () => ({
+      capsuleResourceVersion: capsule.resourceVersion,
+      head: "a".repeat(40),
+      tree: "b".repeat(40),
+      branch: "master",
+      defaultBranch: "main",
+      dirty: changed,
+      aheadCount: changed ? 1 : 0,
+      unpushedCount: changed ? 1 : 0,
+      hasDeliverableChanges: changed,
+    }));
+    const view = show();
+    await screen.findByRole("heading", { name: "Fix the header so the title can be read" });
+    await waitFor(() => expect(api.deliveryInspection).toHaveBeenCalled());
+    expect(screen.queryByRole("button", { name: "Create PR" })).not.toBeInTheDocument();
+    changed = true;
+    view.client.setQueryData(["threads", capsule.id], {
+      items: [{ ...thread, turn: "idle", currentRunState: "Succeeded" }],
+    });
+    expect(await screen.findByRole("button", { name: "Create PR" })).toBeInTheDocument();
   });
 
   it("opens a pull request sheet and becomes a link once a pull request exists", async () => {

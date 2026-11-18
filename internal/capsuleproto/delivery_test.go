@@ -24,6 +24,9 @@ func TestDeliveryStateAndCommitEnforcePreconditionsAndDisableHooks(t *testing.T)
 	if err := os.WriteFile(filepath.Join(workspace, ".meridian-prepared"), []byte("private marker"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(workspace, ".meridian-setup-complete"), []byte(strings.Repeat("a", 64)), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	hookMarker := filepath.Join(t.TempDir(), "hook-ran")
 	hook := "#!/bin/sh\nprintf ran >" + shellSingleQuote(hookMarker) + "\nexit 99\n"
 	if err := os.MkdirAll(filepath.Join(workspace, ".git", "hooks"), 0o700); err != nil {
@@ -50,7 +53,10 @@ func TestDeliveryStateAndCommitEnforcePreconditionsAndDisableHooks(t *testing.T)
 	if !state.Dirty || !validObjectID(state.HEAD) || !validObjectID(state.Tree) ||
 		state.Tree == state.HEAD || state.Branch != "main" ||
 		state.OriginURL != "https://example.invalid/repository.git" ||
-		state.DefaultBranch != "main" {
+		state.DefaultBranch != "main" ||
+		state.AheadCount == nil || *state.AheadCount != 0 ||
+		state.UnpushedCount == nil || *state.UnpushedCount != 0 ||
+		state.HasDeliverableChanges == nil || !*state.HasDeliverableChanges {
 		t.Fatalf("delivery state = %#v", state)
 	}
 	bad := DeliveryCommitRequest{
@@ -78,7 +84,7 @@ func TestDeliveryStateAndCommitEnforcePreconditionsAndDisableHooks(t *testing.T)
 	if author := gitOutput(t, workspace, "show", "-s", "--format=%an <%ae>", "HEAD"); author != "Meridian User <user@example.invalid>" {
 		t.Fatalf("commit author = %q", author)
 	}
-	if tracked := gitOutput(t, workspace, "ls-files", "--", ".meridian-prepared"); tracked != "" {
+	if tracked := gitOutput(t, workspace, "ls-files", "--", ".meridian-prepared", ".meridian-setup-complete"); tracked != "" {
 		t.Fatalf("private supervisor marker was committed: %q", tracked)
 	}
 
@@ -141,6 +147,12 @@ func TestDeliveryRejectsURLRewritesAndTrackedSupervisorMarker(t *testing.T) {
 				t.Fatal(err)
 			}
 			gitRun(t, workspace, "add", "--", ".meridian-prepared")
+		},
+		"tracked setup marker": func(t *testing.T, workspace string) {
+			if err := os.WriteFile(filepath.Join(workspace, ".meridian-setup-complete"), []byte("marker"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			gitRun(t, workspace, "add", "--", ".meridian-setup-complete")
 		},
 	} {
 		t.Run(name, func(t *testing.T) {

@@ -60,7 +60,8 @@ it("reconnects with a cursor, deduplicates blocks, reports gaps, and aborts", as
     }),
   );
   expect(statuses).toContain("reconnecting");
-  expect(statuses.at(-1)).toBe("closed");
+  // The caller aborted, so nothing is reported after it stopped listening.
+  expect(statuses).not.toContain("closed");
 });
 
 it("stops after the server closes the stream of an ended session", async () => {
