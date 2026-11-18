@@ -187,9 +187,15 @@ func TestDeliveryInspectionReportsDeliverableChanges(t *testing.T) {
 		gitRun(t, workspace, "checkout", "-b", "feature")
 		commitDeliveryFile(t, workspace, "first.txt", "one\n", "first")
 		head := gitOutput(t, workspace, "rev-parse", "HEAD")
-		// A delivery pushes to a URL with an explicit refspec, which leaves
-		// refs/remotes/origin/feature alone.
+		// A delivery pushes to a URL with an explicit refspec. Some Git
+		// versions still move origin's tracking ref when that URL is origin,
+		// so drop it and leave the ref stale the way a different push URL does.
 		gitRun(t, workspace, "push", remote, head+":refs/heads/feature")
+		tracking := exec.Command("git", "rev-parse", "--verify", "--quiet", "refs/remotes/origin/feature")
+		tracking.Dir = workspace
+		if tracking.Run() == nil {
+			gitRun(t, workspace, "update-ref", "-d", "refs/remotes/origin/feature")
+		}
 		state := mustInspect(t, workspace)
 		if count(state.UnpushedCount) != 1 {
 			t.Fatalf("before recording the push = %#v", state)
