@@ -634,7 +634,6 @@ func (s *Service) ListEndpointModels(ctx context.Context, input ListEndpointMode
 	if err != nil {
 		return EndpointModelList{}, err
 	}
-	defer wipe([]byte(key))
 	ids, err := providergateway.ListModels(ctx, providergateway.Upstream{BaseURL: base, Key: key, AllowPrivateHTTP: private})
 	if err != nil {
 		return EndpointModelList{}, fmt.Errorf("%w: %s", domain.ErrInvalid, err.Error())
@@ -675,10 +674,13 @@ func (s *Service) ListEndpointModels(ctx context.Context, input ListEndpointMode
 	return EndpointModelList{Models: models, Suggested: suggested}, nil
 }
 
+// endpointModelSource resolves where a model list is read from and with which
+// key. A saved key is only ever sent to the saved endpoint: a caller that
+// names a different base URL must supply the key for it, so this request
+// cannot be used to send a stored credential somewhere else.
 func (s *Service) endpointModelSource(ctx context.Context, input ListEndpointModelsInput) (base, key string, private bool, stored string, err error) {
 	if input.ConnectionID != "" {
 		var connection domain.ProviderConnection
-		var raw []byte
 		err = s.store.View(ctx, func(r ports.Reader) error {
 			connection, err = r.GetProviderConnection(ctx, input.ConnectionID)
 			if err != nil {
@@ -687,34 +689,34 @@ func (s *Service) endpointModelSource(ctx context.Context, input ListEndpointMod
 			if connection.Revoked || connection.Provider != providergateway.OpenAICompatible {
 				return fmt.Errorf("%w: model list is available for an OpenAI-compatible endpoint", domain.ErrInvalid)
 			}
-			if s.secretKey == nil {
-				return domain.ErrUnsupported
-			}
-			opened, err := s.secretKey.OpenSetup(connectionEnvelopeID(connection), connection.KeyID, connection.Nonce, connection.Ciphertext)
-			if err != nil {
-				return err
-			}
-			raw = append([]byte(nil), opened...)
-			wipe(opened)
 			return nil
 		})
 		if err != nil {
-			wipe(raw)
 			return "", "", false, "", err
 		}
-		base, private, stored = connection.BaseURL, connection.AllowPrivateHTTP, connection.DefaultModel
-		key = string(raw)
-		wipe(raw)
-		if input.APIKey != "" {
-			key = input.APIKey
-		}
+		savedBase, savedErr := providergateway.NormalizeBaseURL(connection.BaseURL, connection.AllowPrivateHTTP)
+		base, private, stored = savedBase, connection.AllowPrivateHTTP, connection.DefaultModel
 		if input.BaseURL != "" {
-			normalized, err := providergateway.NormalizeBaseURL(input.BaseURL, input.AllowPrivateHTTP || private)
+			normalized, err := providergateway.NormalizeBaseURL(input.BaseURL, input.AllowPrivateHTTP)
 			if err != nil {
 				return "", "", false, "", fmt.Errorf("%w: %s", domain.ErrInvalid, err.Error())
 			}
-			base = normalized
-			private = input.AllowPrivateHTTP
+			base, private = normalized, input.AllowPrivateHTTP
+		} else if savedErr != nil {
+			return "", "", false, "", fmt.Errorf("%w: %s", domain.ErrInvalid, savedErr.Error())
+		}
+		if private && !s.privateHTTP {
+			return "", "", false, "", fmt.Errorf("%w: private-network HTTP upstreams are disabled on this installation", domain.ErrInvalid)
+		}
+		if input.APIKey != "" {
+			return base, input.APIKey, private, stored, nil
+		}
+		if savedErr != nil || base != savedBase {
+			return "", "", false, "", fmt.Errorf("%w: enter the API key to list models from a different endpoint", domain.ErrInvalid)
+		}
+		key, err = s.openConnectionKey(ctx, connection)
+		if err != nil {
+			return "", "", false, "", err
 		}
 		return base, key, private, stored, nil
 	}
@@ -729,6 +731,30 @@ func (s *Service) endpointModelSource(ctx context.Context, input ListEndpointMod
 		return "", "", false, "", fmt.Errorf("%w: private-network HTTP upstreams are disabled on this installation", domain.ErrInvalid)
 	}
 	return normalized, input.APIKey, input.AllowPrivateHTTP, "", nil
+}
+
+// openConnectionKey decrypts a saved connection key.
+func (s *Service) openConnectionKey(ctx context.Context, connection domain.ProviderConnection) (string, error) {
+	if s.secretKey == nil {
+		return "", domain.ErrUnsupported
+	}
+	var raw []byte
+	err := s.store.View(ctx, func(ports.Reader) error {
+		opened, err := s.secretKey.OpenSetup(connectionEnvelopeID(connection), connection.KeyID, connection.Nonce, connection.Ciphertext)
+		if err != nil {
+			return err
+		}
+		raw = append([]byte(nil), opened...)
+		wipe(opened)
+		return nil
+	})
+	if err != nil {
+		wipe(raw)
+		return "", err
+	}
+	key := string(raw)
+	wipe(raw)
+	return key, nil
 }
 
 func (s *Service) openCodeModelCatalog(ctx context.Context, base string) (string, map[string]harnesssetup.OpenCodeModel) {

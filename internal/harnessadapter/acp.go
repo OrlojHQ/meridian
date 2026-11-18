@@ -1138,11 +1138,24 @@ func acpJSON(raw json.RawMessage) string {
 	return compact
 }
 
-// publicACPError is one bounded line of harness text, with a credential-shaped
-// URL replaced by the fallback so a session failure can be shown as-is.
+// credentialText matches harness error text that may carry a credential:
+// a URL with user info, a known token prefix, a bearer or basic header, an
+// assignment to a secret-named field, a JWT, or a long unbroken token such as
+// a Meridian provider lease.
+var credentialText = regexp.MustCompile(`(?i)` +
+	`://[^/\s]*@` +
+	`|\b(?:ghp_|gho_|ghu_|ghs_|ghr_|github_pat_|glpat-|sk-|xox[abprs]-|AKIA|ASIA|AIza)[A-Za-z0-9_\-]{6,}` +
+	`|\b(?:bearer|basic)\s+[A-Za-z0-9._~+/\-]{8,}` +
+	`|\b(?:api[_-]?key|token|secret|password|passwd|authorization)\b\s*["']?\s*[=:]\s*\S{4,}` +
+	`|\beyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}` +
+	`|[A-Za-z0-9_+/]{32,}`)
+
+// publicACPError is one bounded line of harness text, shown as-is when a
+// session fails. Text that looks like it carries a credential is replaced by
+// the fallback as a whole rather than partly redacted.
 func publicACPError(message, fallback string) string {
 	text := acpLine(message, 300)
-	if text == "" || (strings.Contains(text, "://") && strings.Contains(text, "@")) {
+	if text == "" || credentialText.MatchString(text) {
 		return fallback
 	}
 	return text

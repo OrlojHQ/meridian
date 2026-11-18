@@ -120,7 +120,6 @@ func (s *Service) Board(ctx context.Context, query BoardQuery) (Board, error) {
 	if err != nil {
 		return Board{}, err
 	}
-	capsules = s.backfillCapsuleTitles(ctx, capsules)
 	items := make([]BoardItem, 0, len(capsules))
 	byThread := make(map[domain.ThreadID]int)
 	for _, capsule := range capsules {

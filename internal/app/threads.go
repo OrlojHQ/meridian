@@ -1064,7 +1064,7 @@ func (s *Service) finishStructuredCancel(
 	if fresh, getErr := s.GetThread(ctx, id); getErr == nil {
 		result.Thread = fresh
 	}
-	return result, errors.New("the harness did not stop; the session was ended")
+	return result, domain.ErrHarnessUnresponsive
 }
 
 // forceEndRun marks a session cancelled when the harness does not answer a
@@ -1078,7 +1078,7 @@ func (s *Service) forceEndRun(ctx context.Context, id domain.RunID, thread domai
 		return current, nil
 	}
 	run, err := s.transitionRun(ctx, id, domain.RunCancelled, &runCompletion{
-		Failure: "The harness did not stop; the session was ended.",
+		Failure: domain.ErrHarnessUnresponsive.Error(),
 	})
 	if err != nil {
 		return domain.Run{}, err

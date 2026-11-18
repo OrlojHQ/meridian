@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -325,5 +326,40 @@ func TestReadyCapsuleStaysReadyWhileProviderRestartsItsRuntime(t *testing.T) {
 	}
 	if state := h.provider.State(h.resourceID()); state != ports.ProviderPreparing {
 		t.Fatalf("reconciler acted on a provider-managed restart: %s", state)
+	}
+}
+
+func TestForceDeleteChecksTheVersionBeforeStoppingSessions(t *testing.T) {
+	ctx := operatorContext()
+	h := newRestartHarness(t)
+	run, err := h.service.StartRun(ctx, h.capsule.ID, "mock", "prompt", "start-force", 0, 0)
+	if err != nil || run.State != domain.RunRunning {
+		t.Fatalf("start Run = %#v, %v", run, err)
+	}
+	current, err := h.service.GetCapsule(ctx, h.capsule.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.service.ForceDeleteCapsule(ctx, h.capsule.ID, current.ResourceVersion-1, "force-stale"); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("stale force delete = %v, want conflict", err)
+	}
+	stored, err := h.service.GetRunStored(ctx, run.ID)
+	if err != nil || stored.State != domain.RunRunning {
+		t.Fatalf("stale force delete stopped the Run: %#v, %v", stored, err)
+	}
+	if _, err := h.service.ForceDeleteCapsule(ctx, h.capsule.ID, current.ResourceVersion, ""); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("force delete without a key = %v, want invalid", err)
+	}
+	deleted, err := h.service.ForceDeleteCapsule(ctx, h.capsule.ID, current.ResourceVersion, "force-current")
+	if err != nil || deleted.DesiredState != domain.IntentDeleted {
+		t.Fatalf("force delete = %#v, %v", deleted, err)
+	}
+	stored, err = h.service.GetRunStored(ctx, run.ID)
+	if err != nil || !stored.State.Terminal() {
+		t.Fatalf("force delete left the Run %#v, %v", stored, err)
+	}
+	replay, err := h.service.ForceDeleteCapsule(ctx, h.capsule.ID, current.ResourceVersion, "force-current")
+	if err != nil || replay.ID != deleted.ID {
+		t.Fatalf("force delete replay = %#v, %v", replay, err)
 	}
 }

@@ -250,3 +250,70 @@ func contains(items []string, want string) bool {
 	}
 	return false
 }
+
+func TestProbeUsesTheActiveAccount(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PATH", dir)
+	bin := filepath.Join(dir, "gh")
+	probe := func(lines ...string) Status {
+		t.Helper()
+		script := "#!/bin/sh\n"
+		for _, line := range lines {
+			script += "printf '%s\\n' '" + line + "'\n"
+		}
+		writeExecutable(t, bin, script+"exit 1\n")
+		return (HostCommands{Candidates: []string{}, SkipLoginShell: true}).Probe(context.Background())
+	}
+
+	status := probe(
+		"github.com",
+		"  ✓ Logged in to github.com account octocat (keyring)",
+		"  - Active account: true",
+		"  - Token: gho_************************************",
+		"",
+		"  X Failed to log in to github.com account old-login (keyring)",
+		"  - Active account: false",
+		"  - The token in keyring is invalid.",
+	)
+	if status.State != StateSignedIn || status.Login != "octocat" {
+		t.Fatalf("inactive failed account hid the active login: %+v", status)
+	}
+
+	status = probe(
+		"github.com",
+		"  ✓ Logged in to github.com account other (keyring)",
+		"  - Active account: false",
+		"",
+		"  X Failed to log in to github.com account octocat (keyring)",
+		"  - Active account: true",
+		"  - The token in keyring is invalid.",
+	)
+	if status.State != StateTokenUnreadable || status.Login != "octocat" {
+		t.Fatalf("failed active account = %+v", status)
+	}
+
+	status = probe(
+		"github.com",
+		"  ✓ Logged in to github.com account octocat (keyring)",
+		"  - Active account: true",
+		"ghe.example.com",
+		"  X Failed to log in to ghe.example.com account octocat (keyring)",
+		"  - The token in keyring is invalid.",
+	)
+	if status.State != StateSignedIn || status.Login != "octocat" {
+		t.Fatalf("another host's failure = %+v", status)
+	}
+}
+
+func TestProbeSaysWhenGHDoesNotAnswer(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PATH", dir)
+	bin := filepath.Join(dir, "gh")
+	writeExecutable(t, bin, "#!/bin/sh\nexec sleep 5\n")
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	status := (HostCommands{Candidates: []string{}, SkipLoginShell: true}).Probe(ctx)
+	if status.Path != bin || !strings.Contains(status.Detail, "did not answer") || strings.Contains(status.Detail, "not found") {
+		t.Fatalf("hung gh = %+v", status)
+	}
+}

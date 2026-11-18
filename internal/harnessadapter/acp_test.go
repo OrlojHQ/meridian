@@ -880,3 +880,29 @@ func TestACPAgentHelper(t *testing.T) {
 	}
 	os.Exit(0)
 }
+
+func TestPublicACPErrorHidesCredentialShapedText(t *testing.T) {
+	const fallback = "The session could not be opened."
+	for _, message := range []string{
+		"Provider meridian has no models. Connect it in Settings.",
+		"Model qwen3-coder-30b-a3b-instruct is not available on this endpoint",
+		"Request failed with status 401 Unauthorized",
+	} {
+		if got := publicACPError(message, fallback); got != message {
+			t.Fatalf("plain error %q became %q", message, got)
+		}
+	}
+	for _, message := range []string{
+		"fetch https://user:pass@models.example/v1 failed",
+		"Incorrect API key provided: sk-proj-abcdef123456",
+		"auth failed: Authorization: Bearer abcdefghijklmnop",
+		"invalid apiKey=hunter2-secret",
+		"github token ghp_abcdefghijklmnopqrstuvwxyz rejected",
+		"lease 0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0 expired",
+		"jwt eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.sig rejected",
+	} {
+		if got := publicACPError(message, fallback); got != fallback {
+			t.Fatalf("credential-shaped error shown: %q", got)
+		}
+	}
+}

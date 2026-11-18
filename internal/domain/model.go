@@ -967,6 +967,10 @@ var (
 	// ErrIllegalTransition, so callers that only check for that still see an
 	// inactive runtime; a paused runtime is not stopped.
 	ErrRuntimeStopped = fmt.Errorf("%w: Capsule runtime stopped", ErrIllegalTransition)
+	// ErrHarnessUnresponsive is a stop the harness did not answer. Meridian
+	// ended the session anyway, so the Run is already terminal; the error
+	// tells the caller the harness process may not have exited cleanly.
+	ErrHarnessUnresponsive = errors.New("The harness did not stop; the session was ended.")
 )
 
 // MapCapsuleProtocolError translates a capsuled HTTP status and protocol code

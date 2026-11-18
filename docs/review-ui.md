@@ -253,12 +253,13 @@ The production routes are:
   decrypted typed-block timeline, pinned composer, permissions, and session
   actions. The fleet and Inbox title a Thread by its Capsule name, with the
   agent, Project, role (lead, or subagent of a named lead) and a status chip
-  as secondary text, all from the Capsule's stored name. An automatic
-  `thread-` id is replaced, once, by a short title from the first operator
-  message the next time that Capsule is read. A name the operator set is not
-  replaced. Later list reads use the stored name and do not decrypt the
-  transcript. The title is not written to browser storage. Clicking the
-  title on the Capsule page saves a Capsule name.
+  as secondary text, all from plaintext metadata; no transcript is
+  decrypted to label a list row. The Capsule name is plaintext, so the
+  Station never derives it from an encrypted transcript. For an automatic
+  `thread-` id, the Capsule page shows a short title from the first operator
+  message, read through the Thread API and not saved or written to browser
+  storage. Clicking the title on the Capsule page saves a Capsule name the
+  operator chose.
   The list puts Threads that need you first, then sorts by recency. The
   Thread ID appears only in Thread details;
 - `/ui/settings/harnesses` — Harness settings, in three sections: Your setups,

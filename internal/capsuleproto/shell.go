@@ -26,11 +26,32 @@ type shellSession struct {
 	mu          sync.Mutex
 	command     *exec.Cmd
 	terminal    *os.File
-	subscribers map[int]chan []byte
+	subscribers map[int]*shellSubscriber
 	nextSub     int
 	attachments int
 	exited      bool
 	dead        chan struct{}
+}
+
+// shellSubscriberBuffer bounds the output held for one attached viewer.
+// Output is never dropped silently: a viewer that falls this far behind is
+// disconnected, because a terminal stream with a gap in it is corrupt.
+const shellSubscriberBuffer = 1 << 20
+
+// shellSubscriber is one attached viewer. pending is the output it has not
+// written yet. ready is signalled whenever pending, overflow, or the shell's
+// exit changes.
+type shellSubscriber struct {
+	pending  []byte
+	overflow bool
+	ready    chan struct{}
+}
+
+func (sub *shellSubscriber) signal() {
+	select {
+	case sub.ready <- struct{}{}:
+	default:
+	}
 }
 
 func (s *Server) startShell(columns, rows uint16) error {
@@ -64,7 +85,7 @@ func (s *Server) startShell(columns, rows uint16) error {
 		return err
 	}
 	session := &shellSession{
-		command: command, terminal: terminal, subscribers: map[int]chan []byte{},
+		command: command, terminal: terminal, subscribers: map[int]*shellSubscriber{},
 		dead: make(chan struct{}),
 	}
 	s.shell = session
@@ -131,13 +152,18 @@ func (sh *shellSession) readLoop() {
 	for {
 		n, err := sh.terminal.Read(buffer)
 		if n > 0 {
-			chunk := append([]byte(nil), buffer[:n]...)
 			sh.mu.Lock()
 			for _, subscriber := range sh.subscribers {
-				select {
-				case subscriber <- chunk:
-				default:
+				if subscriber.overflow {
+					continue
 				}
+				if len(subscriber.pending)+n > shellSubscriberBuffer {
+					subscriber.overflow = true
+					subscriber.pending = nil
+				} else {
+					subscriber.pending = append(subscriber.pending, buffer[:n]...)
+				}
+				subscriber.signal()
 			}
 			sh.mu.Unlock()
 		}
@@ -162,7 +188,7 @@ func (sh *shellSession) finish() {
 	sh.exited = true
 	close(sh.dead)
 	for _, subscriber := range sh.subscribers {
-		close(subscriber)
+		subscriber.signal()
 	}
 	_ = sh.terminal.Close()
 }
@@ -174,7 +200,7 @@ func (sh *shellSession) kill() {
 	sh.finish()
 }
 
-func (sh *shellSession) subscribe() (int, <-chan []byte, error) {
+func (sh *shellSession) subscribe() (int, *shellSubscriber, error) {
 	sh.mu.Lock()
 	defer sh.mu.Unlock()
 	if sh.exited {
@@ -186,9 +212,32 @@ func (sh *shellSession) subscribe() (int, <-chan []byte, error) {
 	sh.attachments++
 	sh.nextSub++
 	id := sh.nextSub
-	channel := make(chan []byte, 32)
-	sh.subscribers[id] = channel
-	return id, channel, nil
+	subscriber := &shellSubscriber{ready: make(chan struct{}, 1)}
+	sh.subscribers[id] = subscriber
+	return id, subscriber, nil
+}
+
+// errShellOverflow is a viewer that did not keep up with the shell output.
+var errShellOverflow = errors.New("shell output overflow")
+
+// take returns the viewer's unwritten output. With none left it reports
+// whether the viewer overflowed or the shell exited. Output written before
+// either is always returned first.
+func (sh *shellSession) take(subscriber *shellSubscriber) ([]byte, error) {
+	sh.mu.Lock()
+	defer sh.mu.Unlock()
+	if len(subscriber.pending) > 0 {
+		chunk := subscriber.pending
+		subscriber.pending = nil
+		return chunk, nil
+	}
+	if subscriber.overflow {
+		return nil, errShellOverflow
+	}
+	if sh.exited {
+		return nil, io.EOF
+	}
+	return nil, nil
 }
 
 func (sh *shellSession) unsubscribe(id int) {
@@ -224,11 +273,11 @@ func (s *Server) shellAttach(writer http.ResponseWriter, request *http.Request) 
 	s.mu.Lock()
 	session := s.shell
 	s.mu.Unlock()
-	if session == nil || session.exited {
+	if session == nil {
 		writeProtocolError(writer, http.StatusNotFound, "shell_unavailable")
 		return
 	}
-	id, output, err := session.subscribe()
+	id, subscriber, err := session.subscribe()
 	if errors.Is(err, errShellBusy) {
 		writeProtocolError(writer, http.StatusTooManyRequests, "attachment_limit")
 		return
@@ -249,6 +298,24 @@ func (s *Server) shellAttach(writer http.ResponseWriter, request *http.Request) 
 	errc := make(chan error, 2)
 	go func() {
 		for {
+			chunk, state := session.take(subscriber)
+			if chunk != nil {
+				if err := connection.Write(ctx, websocket.MessageBinary, chunk); err != nil {
+					errc <- err
+					return
+				}
+				continue
+			}
+			if errors.Is(state, errShellOverflow) {
+				_ = connection.Close(websocket.StatusPolicyViolation, "shell output overflow")
+				errc <- state
+				return
+			}
+			if state != nil {
+				_ = connection.Write(context.Background(), websocket.MessageText, []byte(`{"type":"exit"}`))
+				errc <- state
+				return
+			}
 			select {
 			case <-ctx.Done():
 				errc <- ctx.Err()
@@ -256,20 +323,7 @@ func (s *Server) shellAttach(writer http.ResponseWriter, request *http.Request) 
 			case <-s.stopped:
 				errc <- errors.New("capsule stopping")
 				return
-			case <-session.dead:
-				_ = connection.Write(context.Background(), websocket.MessageText, []byte(`{"type":"exit"}`))
-				errc <- io.EOF
-				return
-			case chunk, ok := <-output:
-				if !ok {
-					_ = connection.Write(context.Background(), websocket.MessageText, []byte(`{"type":"exit"}`))
-					errc <- io.EOF
-					return
-				}
-				if err := connection.Write(ctx, websocket.MessageBinary, chunk); err != nil {
-					errc <- err
-					return
-				}
+			case <-subscriber.ready:
 			}
 		}
 	}()

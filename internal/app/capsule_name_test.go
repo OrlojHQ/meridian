@@ -89,7 +89,7 @@ func TestRenameCapsuleSavesTheNameWithoutATranscript(t *testing.T) {
 	}
 }
 
-func TestGeneratedThreadNameBackfillsFromTheFirstPrompt(t *testing.T) {
+func TestGeneratedThreadNameIsNotDerivedFromTheTranscript(t *testing.T) {
 	ctx := operatorContext()
 	store, err := sqlite.Open(ctx, t.TempDir())
 	if err != nil {
@@ -98,7 +98,7 @@ func TestGeneratedThreadNameBackfillsFromTheFirstPrompt(t *testing.T) {
 	defer store.Close()
 	now := time.Date(2026, 11, 17, 0, 0, 0, 0, time.UTC)
 	queue := &recordingQueue{}
-	key, err := transcripts.NewInstallationKey("capsule-title-backfill", 1)
+	key, err := transcripts.NewInstallationKey("capsule-title-plaintext", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,71 +115,39 @@ func TestGeneratedThreadNameBackfillsFromTheFirstPrompt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	const tail = "TAIL-NOT-STORED-IN-THE-CAPSULE-NAME"
-	prompt := "Please fix the header layout so it does not wrap onto two lines. " + tail
+	// The transcript is encrypted at rest. No part of it may become the
+	// plaintext Capsule name because someone read the Capsule.
+	const secret = "PROMPT-TEXT-STAYS-ENCRYPTED"
+	prompt := secret + " fix the header layout so it does not wrap."
 	created, err := service.CreateProjectThread(ctx, app.CreateProjectThreadInput{
 		ProjectID: "project-titles", Harness: "mock", Prompt: prompt, IdempotencyKey: "auto",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(created.Intent.CapsuleName, "thread-") {
-		t.Fatalf("generated name = %q", created.Intent.CapsuleName)
+	generated := created.Intent.CapsuleName
+	if !strings.HasPrefix(generated, "thread-") {
+		t.Fatalf("generated name = %q", generated)
 	}
-	enqueued := len(queue.snapshot())
 
-	const want = "Please fix the header layout so it does not"
 	got, err := service.GetCapsule(ctx, created.Intent.CapsuleID)
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || got.Name != generated {
+		t.Fatalf("get = %q, %v; want %q", got.Name, err, generated)
 	}
-	if got.Name != want {
-		t.Fatalf("title = %q", got.Name)
-	}
-	if len(queue.snapshot()) != enqueued {
-		t.Fatalf("backfill enqueued work: %d -> %d", enqueued, len(queue.snapshot()))
-	}
-	again, err := service.GetCapsule(ctx, created.Intent.CapsuleID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if again.Name != want || again.ResourceVersion != got.ResourceVersion {
-		t.Fatalf("second read = %q version %d, want %q version %d", again.Name, again.ResourceVersion, want, got.ResourceVersion)
-	}
-
 	listed, err := service.ListCapsules(ctx, "project-titles", "", 0, 20)
-	if err != nil || len(listed.Items) != 1 || listed.Items[0].Name != want {
+	if err != nil || len(listed.Items) != 1 || listed.Items[0].Name != generated {
 		t.Fatalf("list = %#v, %v", listed.Items, err)
 	}
 	board, err := service.Board(ctx, app.BoardQuery{ProjectID: "project-titles"})
-	if err != nil || len(board.Items) != 1 || board.Items[0].Capsule.Name != want {
+	if err != nil || len(board.Items) != 1 || board.Items[0].Capsule.Name != generated {
 		t.Fatalf("board = %#v, %v", board.Items, err)
 	}
-
-	named, err := service.CreateProjectThread(ctx, app.CreateProjectThreadInput{
-		ProjectID: "project-titles", Name: "release notes", Harness: "mock",
-		Prompt: "Write the notes", IdempotencyKey: "named",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	kept, err := service.GetCapsule(ctx, named.Intent.CapsuleID)
-	if err != nil || kept.Name != "release notes" {
-		t.Fatalf("user name = %#v, %v", kept, err)
+	again, err := service.GetCapsule(ctx, created.Intent.CapsuleID)
+	if err != nil || again.ResourceVersion != got.ResourceVersion {
+		t.Fatalf("a read changed the Capsule: version %d -> %d, %v", got.ResourceVersion, again.ResourceVersion, err)
 	}
 
-	empty, err := service.CreateProjectThread(ctx, app.CreateProjectThreadInput{
-		ProjectID: "project-titles", Harness: "mock", IdempotencyKey: "empty",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	untouched, err := service.GetCapsule(ctx, empty.Intent.CapsuleID)
-	if err != nil || untouched.Name != empty.Intent.CapsuleName {
-		t.Fatalf("empty prompt name = %q, generated %q, %v", untouched.Name, empty.Intent.CapsuleName, err)
-	}
-
-	renamed, err := service.RenameCapsule(ctx, got.ID, "My title", got.ResourceVersion, "rename-backfill")
+	renamed, err := service.RenameCapsule(ctx, got.ID, "My title", got.ResourceVersion, "rename-explicit")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,43 +161,8 @@ func TestGeneratedThreadNameBackfillsFromTheFirstPrompt(t *testing.T) {
 		if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
 			t.Fatal(readErr)
 		}
-		if bytes.Contains(raw, []byte(tail)) {
-			t.Fatalf("prompt tail stored in %s", path)
+		if bytes.Contains(raw, []byte(secret)) {
+			t.Fatalf("prompt text stored in plaintext in %s", path)
 		}
-	}
-	if err := store.View(ctx, func(reader ports.Reader) error {
-		records, _, err := reader.ListAuditRecords(ctx, domain.BootstrapOwnerID, 0, 100)
-		if err != nil {
-			return err
-		}
-		auto := 0
-		for _, record := range records {
-			if record.Action == domain.AuditCapsuleRename && record.ObjectID == string(got.ID) {
-				auto++
-			}
-		}
-		if auto != 1 {
-			t.Fatalf("audit rows for the automatic title = %d, want the operator rename only", auto)
-		}
-		events, err := reader.ListEvents(ctx, "capsule", string(got.ID))
-		if err != nil {
-			return err
-		}
-		renames := 0
-		for _, event := range events {
-			if event.Type != "capsule.rename" {
-				continue
-			}
-			renames++
-			if len(event.Data) != 0 {
-				t.Fatalf("rename event stored text: %q", event.Data)
-			}
-		}
-		if renames != 2 {
-			t.Fatalf("rename events = %d, want the backfill and the operator rename", renames)
-		}
-		return nil
-	}); err != nil {
-		t.Fatal(err)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -68,5 +69,55 @@ func TestWorkspaceShellStartsAnswersAndOmitsSecrets(t *testing.T) {
 	defer stop()
 	if err := client.StartShell(exitCtx, 40, 12); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestWorkspaceShellKeepsBurstOutputForASlowViewer(t *testing.T) {
+	workspace := filepath.Join(t.TempDir(), "workspace")
+	server, err := NewServer(ServerConfig{Token: testToken, Workspace: workspace})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer server.Close()
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+	client, err := NewClient(httpServer.URL, testToken, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	conn, err := client.AttachShell(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close(websocket.StatusNormalClosure, "")
+	const lines = 20000
+	command := "stty -echo; seq 1 " + strconv.Itoa(lines) + "; echo BURST-$((1+1))\n"
+	if err := conn.Write(ctx, websocket.MessageBinary, []byte(command)); err != nil {
+		t.Fatal(err)
+	}
+	// Let the whole burst arrive before reading, as a slow browser would.
+	time.Sleep(time.Second)
+	var output strings.Builder
+	for !strings.Contains(output.String(), "BURST-2") {
+		kind, payload, err := conn.Read(ctx)
+		if err != nil {
+			t.Fatalf("read after %d bytes: %v", output.Len(), err)
+		}
+		if kind == websocket.MessageBinary {
+			output.Write(payload)
+		}
+	}
+	seen := map[int]bool{}
+	for _, line := range strings.Split(output.String(), "\n") {
+		if value, err := strconv.Atoi(strings.TrimSpace(line)); err == nil {
+			seen[value] = true
+		}
+	}
+	for value := 1; value <= lines; value++ {
+		if !seen[value] {
+			t.Fatalf("line %d was dropped (%d of %d lines arrived)", value, len(seen), lines)
+		}
 	}
 }
