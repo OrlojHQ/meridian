@@ -95,5 +95,8 @@ export async function followThreadBlocks(
       await delay(Math.min(5_000, 250 * 2 ** attempts), signal);
     }
   }
-  onStatus("closed");
+  // An abort means the caller stopped listening, usually because its view
+  // unmounted. Reporting a status then would update state that is gone, and
+  // in tests it can land after the DOM environment is torn down.
+  if (!signal.aborted) onStatus("closed");
 }
