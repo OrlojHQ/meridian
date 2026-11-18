@@ -7,6 +7,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-18
+
 ### Added
 
 - Subagents can open as tabs on the lead Capsule's page. Open tabs survive
@@ -1561,7 +1563,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - Docker and Agent Sandbox are not claimed as hostile multi-tenant isolation
   boundaries; hardened runtime deployment and external review remain required.
 
-[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.11.5...HEAD
+[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/OrlojHQ/meridian/compare/v0.11.5...v0.12.0
 [0.11.5]: https://github.com/OrlojHQ/meridian/compare/v0.11.4...v0.11.5
 [0.11.4]: https://github.com/OrlojHQ/meridian/compare/v0.11.3...v0.11.4
 [0.11.3]: https://github.com/OrlojHQ/meridian/compare/v0.11.2...v0.11.3

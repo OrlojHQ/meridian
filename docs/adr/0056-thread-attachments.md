@@ -1,6 +1,6 @@
 # ADR 0056: Thread attachments stay in the Capsule
 
-- Status: Accepted
+- Status: Accepted; implemented in v0.12.0
 - Date: 2026-11-18
 - Extends: ADR 0012 (encrypted transcripts), ADR 0017 (workspace access through capsuled), ADR 0030 (ACP adapter)
 
