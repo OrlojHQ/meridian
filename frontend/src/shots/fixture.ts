@@ -678,7 +678,7 @@ function route(pathname: string): unknown {
   const threadMatch = pathname.match(/^\/threads\/([^/]+)$/);
   if (threadMatch) {
     const found = threads.find((item) => item.id === threadMatch[1]);
-    if (viewShot === "reply" && found?.id === "thread-header") {
+    if ((viewShot === "reply" || viewShot === "attach") && found?.id === "thread-header") {
       return { ...found, awaiting: undefined, turn: "idle" };
     }
     return found ?? emptyPage;
@@ -686,6 +686,46 @@ function route(pathname: string): unknown {
   const blockMatch = pathname.match(/^\/threads\/([^/]+)\/blocks$/);
   if (blockMatch) {
     const shot = new URLSearchParams(window.location.search).get("shot");
+    if (shot === "attach" && blockMatch[1] === "thread-header") {
+      return {
+        items: [
+          block("b-attach-models", "m-attach-models", 1, "system", "json", {
+            event: {
+              type: "models",
+              models: {
+                current: "vision",
+                images: true,
+                options: [{ id: "vision", label: "Vision" }],
+              },
+            },
+          }),
+          block("b-attach-user", "m-attach-user", 2, "user", "text", {
+            content: "Look at the screenshot and the notes.",
+            attachments: [
+              {
+                name: "shot.png",
+                mediaType: "image/png",
+                size: 128,
+                path: ".meridian/attachments/0123456789abcdef/1-shot.png",
+                kind: "image",
+              },
+              {
+                name: "notes.txt",
+                mediaType: "text/plain",
+                size: 24,
+                path: ".meridian/attachments/0123456789abcdef/2-notes.txt",
+                kind: "file",
+              },
+            ],
+          }),
+          block("b-attach-idle", "m-attach-idle", 3, "system", "json", {
+            event: { type: "status", status: "idle" },
+          }),
+        ],
+        nextCursor: 3,
+        more: false,
+      };
+    }
     if (shot === "reply" && blockMatch[1] === "thread-header") {
       return {
         items: [

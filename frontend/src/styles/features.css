@@ -511,6 +511,13 @@ button.blocker-peek-toggle {
   min-height: 0;
 }
 
+.thread-conversation {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .thread-workspace > .workspace-view-header {
   flex: none;
 }
@@ -1207,6 +1214,11 @@ button.tool-line:hover {
   margin: 0 auto;
 }
 
+.thread-conversation.drop-target .composer-frame {
+  outline: 2px dashed var(--accent);
+  outline-offset: 2px;
+}
+
 .slash-menu {
   position: absolute;
   z-index: 5;
@@ -1302,6 +1314,114 @@ button.tool-line:hover {
   background: var(--accent-soft);
 }
 
+.composer-attachments,
+.chat-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.composer-attachment,
+.chat-attachment {
+  display: flex;
+  max-width: 16rem;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.15rem 0.35rem 0.15rem 0.55rem;
+  background: var(--surface-subtle);
+  color: var(--text);
+  font-size: 0.78rem;
+}
+
+.composer-attachment span,
+.chat-attachment span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-attachment svg,
+.chat-attachment svg {
+  width: 0.9rem;
+  height: 0.9rem;
+  flex: none;
+}
+
+.composer-attachment-image,
+.chat-attachment-image {
+  border-radius: 0.7rem;
+  padding: 0.25rem 0.35rem 0.25rem 0.25rem;
+}
+
+.composer-attachment img {
+  width: 3.2rem;
+  height: 3.2rem;
+  flex: none;
+  border-radius: 0.45rem;
+  object-fit: cover;
+  background: var(--surface);
+}
+
+.composer-attachment-remove {
+  display: inline-flex;
+  width: 1.3rem;
+  height: 1.3rem;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  padding: 0;
+  background: transparent;
+  color: var(--muted);
+}
+
+.composer-attachment-remove:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.composer-attachment-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 0.8rem;
+}
+
+.composer-attach {
+  display: inline-flex;
+  width: 2rem;
+  height: 2rem;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-end;
+  border: 0;
+  border-radius: 999px;
+  padding: 0;
+  background: transparent;
+  color: var(--muted);
+}
+
+.composer-attach:hover:not(:disabled) {
+  background: var(--surface-subtle);
+  color: var(--text);
+}
+
+.composer-attach svg {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.chat-attachments {
+  margin-bottom: 0.35rem;
+  white-space: normal;
+}
+
 .composer-box {
   display: flex;
   width: 100%;
@@ -1311,7 +1431,7 @@ button.tool-line:hover {
   margin: 0;
   border: 1px solid var(--border-strong);
   border-radius: 1.25rem;
-  padding: 0.3rem 0.3rem 0.3rem 0.9rem;
+  padding: 0.3rem 0.3rem 0.3rem 0.35rem;
   background: var(--surface-raised);
   box-shadow: 0 1px 4px rgb(28 33 29 / 6%);
 }

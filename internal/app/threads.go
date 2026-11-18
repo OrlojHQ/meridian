@@ -49,6 +49,7 @@ type ThreadBlockView struct {
 	Content         string                   `json:"content,omitempty"`
 	Event           *ThreadAdapterEvent      `json:"event,omitempty"`
 	Origin          *ThreadOrigin            `json:"origin,omitempty"`
+	Attachments     []ThreadAttachment       `json:"attachments,omitempty"`
 	CreatedAt       time.Time                `json:"createdAt"`
 }
 
@@ -95,6 +96,7 @@ type persistedThreadBlock struct {
 	SessionID   string              `json:"sessionId,omitempty"`
 	ResumeState string              `json:"resumeState,omitempty"`
 	Origin      *ThreadOrigin       `json:"origin,omitempty"`
+	Attachments []ThreadAttachment  `json:"attachments,omitempty"`
 }
 
 // ThreadOrigin marks a user-role message that Meridian wrote on behalf of
@@ -638,25 +640,86 @@ func (s *Service) SendThreadMessage(
 	if err := requirePrincipal(ctx); err != nil {
 		return ThreadMutationResult{}, err
 	}
-	if content == "" || len(content) > adapterproto.MaxContentBytes {
+	return s.SendThreadMessageWithAttachments(ctx, id, expected, content, key, delivery, nil)
+}
+
+func (s *Service) SendThreadMessageWithAttachments(
+	ctx context.Context, id domain.ThreadID, expected domain.ResourceVersion,
+	content, key, delivery string, attachments []ThreadAttachmentInput,
+) (result ThreadMutationResult, err error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return ThreadMutationResult{}, err
+	}
+	defer wipeAttachments(attachments)
+	if len(content) > adapterproto.MaxContentBytes {
 		return ThreadMutationResult{}, fmt.Errorf("%w: message must be non-empty and bounded", domain.ErrInvalid)
 	}
-	metadata, err := userMessageDeliveryMetadata(delivery)
+	if content == "" && len(attachments) == 0 {
+		return ThreadMutationResult{}, fmt.Errorf("%w: message must be non-empty and bounded", domain.ErrInvalid)
+	}
+	if expected <= 0 {
+		return ThreadMutationResult{}, fmt.Errorf("%w: expected resource version is required", domain.ErrInvalid)
+	}
+	deliveryMeta, err := userMessageDeliveryMetadata(delivery)
 	if err != nil {
 		return ThreadMutationResult{}, err
+	}
+	thread, err := s.GetThread(ctx, id)
+	if err != nil {
+		return ThreadMutationResult{}, err
+	}
+	images := len(attachments) > 0 && s.threadAcceptsImages(ctx, thread)
+	_, prepared, imageMeta, err := prepareAttachments(id, key, content, attachments, images)
+	if err != nil {
+		return ThreadMutationResult{}, err
+	}
+	metadata, err := mergeMessageMetadata(deliveryMeta, imageMeta)
+	if err != nil {
+		return ThreadMutationResult{}, err
+	}
+	replayed := false
+	if len(prepared) > 0 {
+		viewErr := s.store.View(ctx, func(reader ports.Reader) error {
+			_, replayed, err = getReplay[threadOutcome](ctx, reader, "thread:"+string(id)+":message", key)
+			return err
+		})
+		if viewErr != nil {
+			return ThreadMutationResult{}, viewErr
+		}
+	}
+	if len(prepared) > 0 && !replayed {
+		capsule, capsuleErr := s.GetCapsule(ctx, thread.CapsuleID)
+		if capsuleErr != nil {
+			return ThreadMutationResult{}, capsuleErr
+		}
+		if writeErr := s.writePreparedAttachments(ctx, capsule.ProviderResourceID, prepared); writeErr != nil {
+			s.auditFailure(ctx, domain.AuditWorkspaceWrite, "capsule", string(thread.CapsuleID), writeErr)
+			return ThreadMutationResult{}, writeErr
+		}
+	}
+	payload := persistedThreadBlock{
+		Content: content, Metadata: metadata, Attachments: storedAttachments(prepared),
 	}
 	frame := func(
 		messageID domain.ThreadMessageID, thread domain.Thread, saved persistedThreadBlock,
 	) adapterproto.Frame {
 		return userMessageFrame(messageID, thread.ID, saved)
 	}
-	if expected <= 0 {
-		return ThreadMutationResult{}, fmt.Errorf("%w: expected resource version is required", domain.ErrInvalid)
+	hook := s.countOperatorMessage(ctx)
+	if len(prepared) > 0 {
+		counted := hook
+		hook = func(tx ports.Transaction, thread domain.Thread, messageID domain.ThreadMessageID, now time.Time) error {
+			if err := s.audit(ctx, tx, domain.AuditWorkspaceWrite, "capsule", string(thread.CapsuleID)); err != nil {
+				return err
+			}
+			if counted != nil {
+				return counted(tx, thread, messageID, now)
+			}
+			return nil
+		}
 	}
-	result, err := s.appendAndSendHook(ctx, id, expected, key, "message", domain.ThreadRoleUser,
-		domain.ThreadMessagePrompt, domain.ThreadBlockText,
-		persistedThreadBlock{Content: content, Metadata: metadata}, frame,
-		s.countOperatorMessage(ctx))
+	result, err = s.appendAndSendHook(ctx, id, expected, key, "message", domain.ThreadRoleUser,
+		domain.ThreadMessagePrompt, domain.ThreadBlockText, payload, frame, hook)
 	if err == nil {
 		_ = s.InterruptChecks(ctx, result.Thread.CapsuleID)
 	}
@@ -666,10 +729,20 @@ func (s *Service) SendThreadMessage(
 func userMessageFrame(
 	messageID domain.ThreadMessageID, threadID domain.ThreadID, saved persistedThreadBlock,
 ) adapterproto.Frame {
+	content := saved.Content
+	if len(saved.Attachments) > 0 {
+		prepared := make([]preparedAttachment, len(saved.Attachments))
+		for i, item := range saved.Attachments {
+			prepared[i].ThreadAttachment = item
+		}
+		if prompt, err := harnessPrompt(saved.Content, prepared); err == nil {
+			content = prompt
+		}
+	}
 	return adapterproto.Frame{
 		Protocol: adapterproto.Version, Type: adapterproto.KindUserMessage,
 		ID: string(messageID), SessionID: string(threadID), Role: adapterproto.RoleUser,
-		Content: saved.Content, Metadata: saved.Metadata,
+		Content: content, Metadata: saved.Metadata,
 	}
 }
 
@@ -1146,7 +1219,7 @@ func (s *Service) ThreadBlocks(
 				ID: block.ID, MessageID: message.ID, MessageSequence: message.Sequence,
 				Sequence: block.Sequence, Role: message.Role, MessageKind: message.Kind,
 				Kind: block.Kind, Content: payload.Content, Event: payload.Event,
-				Origin: payload.Origin, CreatedAt: block.CreatedAt,
+				Origin: payload.Origin, Attachments: payload.Attachments, CreatedAt: block.CreatedAt,
 			}
 			if payload.Event != nil && payload.Event.Type == adapterproto.KindGap {
 				result.Gap = payload.Event

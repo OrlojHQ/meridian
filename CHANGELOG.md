@@ -17,6 +17,14 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   A host and port is enough; HTTPS is assumed. Status dots in the picker come
   from one check at a time, with a few workers and a three-second limit; a
   Station it cannot reach in time shows no dot.
+- The Thread composer can attach files and images. A **+** button, drag and
+  drop, and pasting an image add chips above the message. Images are sent as
+  image content when the harness says it can take them. Other files are
+  copied into the Capsule workspace and named by path. Size and type limits
+  fail with a short explanation, and image attach stays hidden when the
+  harness cannot take images. The transcript keeps the file's name and path,
+  not its bytes, and shows a chip after reload. Attachments stay out of
+  `git status` and are never included in a delivery commit.
 
 ### Changed
 

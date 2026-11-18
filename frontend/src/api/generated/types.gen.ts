@@ -826,7 +826,7 @@ export type AuditRecord = {
      */
     capsuleId?: string;
     /**
-     * A fixed action name, such as secret.put, provider_connection.sign_in, delivery.approve, coordination_request.approve, coordination_grant.revoke, or access.cross_owner.
+     * A fixed action name, such as secret.put, provider_connection.sign_in, delivery.approve, coordination_request.approve, coordination_grant.revoke, capsule.workspace_write, or access.cross_owner.
      */
     action: string;
     objectType: string;
@@ -1299,7 +1299,7 @@ export type DeleteThreadRequest = {
 export type SendThreadMessageRequest = {
     expectedResourceVersion: number;
     /**
-     * Encrypted before SQLite persistence.
+     * Encrypted before SQLite persistence. May be empty when attachments are present. The harness prompt may also name workspace paths for files that are not sent as image content.
      */
     content: string;
     /**
@@ -1307,6 +1307,36 @@ export type SendThreadMessageRequest = {
      *
      */
     delivery?: 'steer';
+    /**
+     * Files copied into the Capsule workspace before the message is sent. Image bytes are not stored in the transcript. At most 4 MiB each and 8 MiB together.
+     */
+    attachments?: Array<ThreadAttachmentInput>;
+};
+
+export type ThreadAttachmentInput = {
+    /**
+     * The operator's file name. The Capsule path is chosen by the Station.
+     */
+    name: string;
+    mediaType: string;
+    /**
+     * Standard base64 of the file bytes. Not retained outside the Capsule.
+     */
+    data: string;
+};
+
+/**
+ * An attachment as kept in the encrypted transcript. Bytes are not included.
+ */
+export type ThreadAttachment = {
+    name: string;
+    mediaType: string;
+    size: number;
+    /**
+     * Workspace-relative path inside the Capsule.
+     */
+    path: string;
+    kind: 'image' | 'file';
 };
 
 export type ThreadResponseRequest = {
@@ -1454,6 +1484,10 @@ export type ThreadModels = {
      * Display name of the model the current option runs, when the harness reports it, such as "Opus 5.5" behind a "default" alias.
      */
     resolved?: string;
+    /**
+     * True when the harness accepts image content. Reported from the agent's prompt capabilities. Absent or false means image attach is unavailable. The latest models event replaces earlier ones.
+     */
+    images?: boolean;
     options: Array<ThreadModelOption>;
     effort?: ThreadEffort;
 };
@@ -1495,6 +1529,10 @@ export type ThreadBlock = {
      * Present only at explicit read/stream decryption boundaries.
      */
     content?: string;
+    /**
+     * Present on a user message that included attachments. Names and workspace paths only; image bytes are not returned.
+     */
+    attachments?: Array<ThreadAttachment>;
     event?: ThreadAdapterEvent;
     origin?: ThreadOrigin;
     createdAt: string;

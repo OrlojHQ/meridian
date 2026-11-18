@@ -45,6 +45,9 @@ const (
 	// A workspace shell was opened. The record names the Capsule, not the
 	// commands typed in it.
 	AuditCapsuleShell AuditAction = "capsule.shell"
+	// Composer attachments were written into the Capsule workspace. The
+	// record names the Capsule, not the file names or bytes.
+	AuditWorkspaceWrite AuditAction = "capsule.workspace_write"
 	// The Capsule's display name changed. The record names the Capsule, not the text.
 	AuditCapsuleRename AuditAction = "capsule.rename"
 )

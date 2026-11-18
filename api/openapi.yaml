@@ -5115,7 +5115,7 @@ components:
           description: >-
             A fixed action name, such as secret.put, provider_connection.sign_in,
             delivery.approve, coordination_request.approve, coordination_grant.revoke,
-            or access.cross_owner.
+            capsule.workspace_write, or access.cross_owner.
         objectType:
           type: string
           maxLength: 64
@@ -5743,9 +5743,12 @@ components:
         expectedResourceVersion: { type: integer, format: int64, minimum: 1 }
         content:
           type: string
-          minLength: 1
+          minLength: 0
           maxLength: 131072
-          description: Encrypted before SQLite persistence.
+          description: >-
+            Encrypted before SQLite persistence. May be empty when attachments
+            are present. The harness prompt may also name workspace paths for
+            files that are not sent as image content.
         delivery:
           type: string
           enum: [steer]
@@ -5755,6 +5758,48 @@ components:
             adapters ignore it. Omit when idle. Queued follow-ups stay in the
             web UI's memory until the turn is idle and are never written to
             browser storage.
+        attachments:
+          type: array
+          maxItems: 8
+          description: >-
+            Files copied into the Capsule workspace before the message is
+            sent. Image bytes are not stored in the transcript. At most 4 MiB
+            each and 8 MiB together.
+          items: { $ref: "#/components/schemas/ThreadAttachmentInput" }
+    ThreadAttachmentInput:
+      type: object
+      required: [name, mediaType, data]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+          description: The operator's file name. The Capsule path is chosen by the Station.
+        mediaType:
+          type: string
+          minLength: 1
+          maxLength: 128
+        data:
+          type: string
+          minLength: 1
+          maxLength: 5592408
+          description: Standard base64 of the file bytes. Not retained outside the Capsule.
+    ThreadAttachment:
+      type: object
+      required: [name, mediaType, size, path, kind]
+      description: >-
+        An attachment as kept in the encrypted transcript. Bytes are not included.
+      properties:
+        name: { type: string, maxLength: 120 }
+        mediaType: { type: string, maxLength: 128 }
+        size: { type: integer, format: int64, minimum: 1, maximum: 4194304 }
+        path:
+          type: string
+          maxLength: 256
+          description: Workspace-relative path inside the Capsule.
+        kind:
+          type: string
+          enum: [image, file]
     ThreadResponseRequest:
       type: object
       required: [expectedResourceVersion, responseTo]
@@ -5943,6 +5988,12 @@ components:
           description: >-
             Display name of the model the current option runs, when the
             harness reports it, such as "Opus 5.5" behind a "default" alias.
+        images:
+          type: boolean
+          description: >-
+            True when the harness accepts image content. Reported from the
+            agent's prompt capabilities. Absent or false means image attach
+            is unavailable. The latest models event replaces earlier ones.
         options:
           type: array
           maxItems: 128
@@ -6007,6 +6058,13 @@ components:
           type: string
           maxLength: 1048576
           description: Present only at explicit read/stream decryption boundaries.
+        attachments:
+          type: array
+          maxItems: 8
+          description: >-
+            Present on a user message that included attachments. Names and
+            workspace paths only; image bytes are not returned.
+          items: { $ref: "#/components/schemas/ThreadAttachment" }
         event: { $ref: "#/components/schemas/ThreadAdapterEvent" }
         origin: { $ref: "#/components/schemas/ThreadOrigin" }
         createdAt: { type: string, format: date-time }

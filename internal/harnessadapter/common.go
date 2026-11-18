@@ -35,6 +35,7 @@ type Stream struct {
 	models   bool
 	effort   bool
 	resolved bool
+	images   bool
 }
 
 func NewStream(input io.Reader, output io.Writer) *Stream {
@@ -81,6 +82,8 @@ func (s *Stream) Handshake(capabilities adapterproto.Capabilities) error {
 	capabilities.Effort = s.effort
 	s.resolved = s.models && capabilities.ResolvedModel && frame.Capabilities.ResolvedModel
 	capabilities.ResolvedModel = s.resolved
+	s.images = s.models && capabilities.Images && frame.Capabilities.Images
+	capabilities.Images = s.images
 	return s.Write(adapterproto.Frame{
 		Protocol:     adapterproto.Version,
 		Type:         adapterproto.KindHello,
