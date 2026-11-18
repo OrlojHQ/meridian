@@ -1731,7 +1731,7 @@ export type ProfileDiagnostic = {
      */
     nothingPinned: boolean;
     /**
-     * True only when every pin is current and nothing is outstanding. It never claims the Capsule matches the laptop.
+     * True when every harness is pinned to what a new Capsule would pin and the commit identity matches the profile. Import exclusions and warnings do not affect it. It never claims the Capsule matches the laptop.
      */
     matchesProfile: boolean;
     harnesses: Array<HarnessProfileDiagnostic>;
