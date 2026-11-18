@@ -178,6 +178,37 @@ textarea:hover {
   border-color: color-mix(in srgb, var(--text) 22%, var(--border-strong));
 }
 
+/* A slightly stronger 1px border is the focus indicator for text fields.
+   Checkboxes, radios, and file inputs keep the shared focus outline.
+   This rule follows hover so a focused field stays on the focus border. */
+input:not(
+    [type="button"],
+    [type="checkbox"],
+    [type="color"],
+    [type="file"],
+    [type="hidden"],
+    [type="image"],
+    [type="radio"],
+    [type="range"],
+    [type="reset"],
+    [type="submit"]
+  ):focus,
+select:focus,
+textarea:focus,
+.ui-input:focus,
+.ui-select:focus {
+  border-color: var(--field-focus-border);
+  outline: none;
+}
+
+/* The title field has no border, so it keeps a visible keyboard outline. */
+input.capsule-title-input:focus,
+input.capsule-title-input:focus-visible {
+  border-color: transparent;
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
 .ui-card,
 .card,
 .panel,
@@ -529,9 +560,8 @@ textarea:hover {
 }
 
 .activity-filter:focus-within {
-  border-color: var(--accent);
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
+  border-color: var(--field-focus-border);
+  outline: none;
 }
 
 .sidebar-links {
@@ -887,14 +917,24 @@ textarea:hover {
 
 .composer-box:focus-within,
 .composer-box:has(textarea:focus-visible) {
-  border-color: var(--accent);
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
+  border-color: var(--field-focus-border);
+  outline: none;
 }
 
+.composer-box textarea:focus,
+.composer-box textarea:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.palette-search:focus-within {
+  border-bottom-color: var(--field-focus-border);
+}
+
+.palette-search input:focus,
 .palette-search input:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: none;
 }
 
 .command-palette {

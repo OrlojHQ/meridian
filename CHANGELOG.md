@@ -34,6 +34,11 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- The Thread composer focus state is a slightly lighter 1px border, in dark
+  and light. The thick offset ring and outer glow are gone, and the message
+  field does not draw a second outline. Text fields that used that ring,
+  including the command palette, the activity filter, and settings inputs,
+  use the same border.
 - Stations you used before are kept and named by their host, instead of
   remembering only the last five addresses.
 - "Check this computer for setup changes" is in Harness settings. It stays

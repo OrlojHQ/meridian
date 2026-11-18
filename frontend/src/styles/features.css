@@ -1512,8 +1512,10 @@ button.tool-line:hover {
   box-shadow: 0 1px 4px rgb(28 33 29 / 6%);
 }
 
-.composer-box:focus-within {
-  border-color: color-mix(in srgb, var(--accent) 55%, var(--border-strong));
+.composer-box:focus-within,
+.composer-box:has(textarea:focus-visible) {
+  border-color: var(--field-focus-border);
+  outline: none;
 }
 
 .composer-box textarea {
@@ -1532,13 +1534,10 @@ button.tool-line:hover {
   resize: none;
 }
 
+.composer-box textarea:focus,
 .composer-box textarea:focus-visible {
-  outline: 0;
-}
-
-.composer-box:has(textarea:focus-visible) {
-  outline: 2px solid color-mix(in srgb, var(--focus) 55%, transparent);
-  outline-offset: 1px;
+  outline: none;
+  box-shadow: none;
 }
 
 .composer-queue {
@@ -4300,9 +4299,10 @@ button.tool-line:hover {
   font-size: 0.85rem;
 }
 
+.composer-model-search:focus,
 .composer-model-search:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 1px;
+  border-color: var(--field-focus-border);
+  outline: none;
 }
 
 .composer-model-empty {

@@ -40,6 +40,8 @@
   --terminal-text: #e7eee9;
   --terminal-bar: #1c2420;
   --focus: #315c4e;
+  /* Text fields show focus as a 1px border. The offset ring stays on other controls. */
+  --field-focus-border: color-mix(in srgb, var(--text) 42%, var(--border-strong));
   --harness-claude: #d97757;
   --harness-codex: #000000;
   --harness-opencode: #1f221e;
