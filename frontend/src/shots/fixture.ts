@@ -649,6 +649,20 @@ function route(pathname: string): unknown {
     return { items: [{ name: "default", structured: true, pty: true, protocol: "meridian.adapter.v1" }] };
   }
   if (pathname.endsWith("/deliveries/inspection")) {
+    const delivery = new URLSearchParams(window.location.search).get("delivery");
+    if (delivery === "clean") {
+      return {
+        capsuleResourceVersion: 2,
+        head: "a".repeat(40),
+        branch: "master",
+        dirty: false,
+        defaultBranch: "main",
+        tree: "a".repeat(40),
+        aheadCount: 0,
+        unpushedCount: 0,
+        hasDeliverableChanges: false,
+      };
+    }
     return {
       capsuleResourceVersion: 2,
       head: "a".repeat(40),
@@ -656,6 +670,9 @@ function route(pathname: string): unknown {
       dirty: true,
       defaultBranch: "main",
       tree: "b".repeat(40),
+      aheadCount: 1,
+      unpushedCount: 1,
+      hasDeliverableChanges: true,
     };
   }
   if (pathname.endsWith("/deliveries")) {
@@ -678,7 +695,7 @@ function route(pathname: string): unknown {
   const threadMatch = pathname.match(/^\/threads\/([^/]+)$/);
   if (threadMatch) {
     const found = threads.find((item) => item.id === threadMatch[1]);
-    if (viewShot === "reply" && found?.id === "thread-header") {
+    if ((viewShot === "reply" || viewShot === "attach") && found?.id === "thread-header") {
       return { ...found, awaiting: undefined, turn: "idle" };
     }
     return found ?? emptyPage;
@@ -686,6 +703,46 @@ function route(pathname: string): unknown {
   const blockMatch = pathname.match(/^\/threads\/([^/]+)\/blocks$/);
   if (blockMatch) {
     const shot = new URLSearchParams(window.location.search).get("shot");
+    if (shot === "attach" && blockMatch[1] === "thread-header") {
+      return {
+        items: [
+          block("b-attach-models", "m-attach-models", 1, "system", "json", {
+            event: {
+              type: "models",
+              models: {
+                current: "vision",
+                images: true,
+                options: [{ id: "vision", label: "Vision" }],
+              },
+            },
+          }),
+          block("b-attach-user", "m-attach-user", 2, "user", "text", {
+            content: "Look at the screenshot and the notes.",
+            attachments: [
+              {
+                name: "shot.png",
+                mediaType: "image/png",
+                size: 128,
+                path: ".meridian/attachments/0123456789abcdef/1-shot.png",
+                kind: "image",
+              },
+              {
+                name: "notes.txt",
+                mediaType: "text/plain",
+                size: 24,
+                path: ".meridian/attachments/0123456789abcdef/2-notes.txt",
+                kind: "file",
+              },
+            ],
+          }),
+          block("b-attach-idle", "m-attach-idle", 3, "system", "json", {
+            event: { type: "status", status: "idle" },
+          }),
+        ],
+        nextCursor: 3,
+        more: false,
+      };
+    }
     if (shot === "reply" && blockMatch[1] === "thread-header") {
       return {
         items: [
@@ -705,10 +762,13 @@ function route(pathname: string): unknown {
           event: {
             type: "models",
             models: {
-              current: "alpha",
+              current: "fast",
               options: [
-                { id: "alpha", label: "Work proxy · Alpha" },
+                { id: "fast", label: "meridian/Fast 4.5 (US)" },
+                { id: "strong", label: "meridian/Strong 4.8 (EU)" },
+                { id: "alpha", label: "Work proxy/Alpha" },
                 { id: "beta", label: "Work proxy · Beta" },
+                { id: "quant", label: "Local Q (4bit/8bit)" },
               ],
               ...(shot === "effort"
                 ? {
@@ -845,6 +905,15 @@ class IdleSocket extends EventTarget {
 }
 
 export function installShotFixture() {
+  // A screenshot URL can pin the theme (?theme=dark) before the app reads it.
+  const theme = new URLSearchParams(window.location.search).get("theme");
+  if (theme === "dark" || theme === "light") {
+    try {
+      localStorage.setItem("meridian.theme", theme);
+    } catch {
+      // The view still follows the stored or system theme.
+    }
+  }
   const nativeFetch = window.fetch.bind(window);
   const NativeSocket = window.WebSocket;
   // Everything except the dev server's own files is answered here, so a

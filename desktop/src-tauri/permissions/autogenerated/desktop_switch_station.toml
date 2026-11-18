@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-desktop-switch-station"
+description = "Enables the desktop_switch_station command without any pre-configured scope."
+commands.allow = ["desktop_switch_station"]
+
+[[permission]]
+identifier = "deny-desktop-switch-station"
+description = "Denies the desktop_switch_station command without any pre-configured scope."
+commands.deny = ["desktop_switch_station"]

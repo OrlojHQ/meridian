@@ -98,6 +98,11 @@ exec "$REAL_GIT" "$@"
 	if len(after) != len(before) {
 		t.Fatalf("gateway CA file leaked: before=%v after=%v", before, after)
 	}
+	// The push named a URL, so git did not move the tracking ref. capsuled
+	// does, or inspection would count the pushed commit as unpushed.
+	if tracking := gitOutput(t, workspace, "rev-parse", "refs/remotes/origin/review/topic"); tracking != head {
+		t.Fatalf("tracking ref after push = %q, want %q", tracking, head)
+	}
 
 	old := head
 	for name, request := range map[string]DeliveryPushRequest{

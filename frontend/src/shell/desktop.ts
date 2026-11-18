@@ -21,6 +21,12 @@ export type DesktopBridge = {
   setAttention: (count: number) => void;
   openGatewaySettings?: () => void;
   gateway?: () => Promise<DesktopGateway>;
+  // Switches to saved Station 1–9 (1 is this computer). The desktop app
+  // resolves the slot; the page never receives the saved list.
+  switchStation?: (slot: number) => Promise<void>;
+  openAddStation?: () => Promise<void>;
+  setupCheck?: () => Promise<boolean>;
+  setSetupCheck?: (enabled: boolean) => Promise<void>;
   checkForUpdates?: () => Promise<DesktopUpdateStatus>;
   installUpdate?: () => Promise<void>;
   // Opens the desktop app's own import window (ADR 0049). It takes nothing

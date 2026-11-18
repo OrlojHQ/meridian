@@ -96,6 +96,7 @@ func TestWorkspaceShellKeepsBurstOutputForASlowViewer(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "")
+	conn.SetReadLimit(maxFrameBytes)
 	const lines = 20000
 	// The markers are computed by the shell so the echoed command line does
 	// not contain them; only real output does.

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -532,6 +532,7 @@ describe("Model picker", () => {
     expect(latestThreadModels(t.blocks)).toEqual({
       current: "claude-opus-5-5",
       currentLabel: "claude-opus-5-5",
+      images: false,
       resolved: "",
       options: [
         { id: "sonnet", label: "Sonnet", description: "" },
@@ -573,6 +574,108 @@ describe("Model picker", () => {
       "Alpha",
       "Beta",
       "raw-id",
+    ]);
+  });
+
+  it("hides a meridian provider prefix in both label forms and keeps other providers", async () => {
+    const t = transcript();
+    const options = [
+      { id: "fast-us", label: "meridian/Fast 4.5 (US)", description: "Quick" },
+      { id: "strong-eu", label: "MERIDIAN/Strong 4.8 (EU)" },
+      { id: "raw", label: "meridian · raw-id" },
+      { id: "work/alpha", label: "Work proxy/Alpha", description: "Routed" },
+      { id: "work/beta", label: "Work proxy · Beta" },
+      ...Array.from({ length: 4 }, (_, index) => ({ id: `extra-${index}`, label: `Extra ${index}` })),
+    ];
+    t.models({ current: "fast-us", options });
+    const user = userEvent.setup();
+    renderThread(t.blocks);
+    await user.click(await screen.findByRole("button", { name: "Model: Fast 4.5 (US)" }));
+    const menu = screen.getByRole("menu", { name: "Models" });
+    expect(within(menu).queryByRole("group", { name: /meridian/i })).not.toBeInTheDocument();
+    expect(within(menu).getByRole("group", { name: "Work proxy" })).toBeInTheDocument();
+    expect(within(menu).getAllByRole("menuitemradio").map((item) => item.textContent)).toEqual([
+      "Fast 4.5 (US)Quick",
+      "Strong 4.8 (EU)",
+      "raw-id",
+      "AlphaRouted",
+      "Beta",
+      "Extra 0",
+      "Extra 1",
+      "Extra 2",
+      "Extra 3",
+    ]);
+    // The menu hides the prefix, but search still sees the reported label and id.
+    const search = screen.getByRole("searchbox", { name: "Search models" });
+    await user.type(search, "meridian/strong");
+    expect(within(menu).getAllByRole("menuitemradio").map((item) => item.textContent)).toEqual([
+      "Strong 4.8 (EU)",
+    ]);
+    await user.clear(search);
+    await user.type(search, "work proxy/alpha");
+    expect(within(menu).getAllByRole("menuitemradio").map((item) => item.textContent)).toEqual([
+      "AlphaRouted",
+    ]);
+    await user.clear(search);
+    await user.type(search, "fast-us");
+    expect(within(menu).getAllByRole("menuitemradio").map((item) => item.textContent)).toEqual([
+      "Fast 4.5 (US)Quick",
+    ]);
+  });
+
+  it("keeps a slash that belongs to the model's own name", async () => {
+    const t = transcript();
+    t.models({
+      current: "quant",
+      options: [
+        { id: "quant", label: "Model X (4bit/8bit)" },
+        { id: "spaced", label: "Fast / cheap" },
+        { id: "lone", label: "Acme/Solo 1" },
+        { id: "fast-us", label: "meridian/Fast 4.5 (US)" },
+        { id: "work/alpha", label: "Work proxy/Alpha" },
+        { id: "work/beta", label: "Work proxy/Beta" },
+      ],
+    });
+    const user = userEvent.setup();
+    renderThread(t.blocks);
+    await user.click(await screen.findByRole("button", { name: "Model: Model X (4bit/8bit)" }));
+    const menu = screen.getByRole("menu", { name: "Models" });
+    // No group is made from text before a slash inside the name, beside a
+    // space, or from a provider only one option names.
+    expect(within(menu).queryByRole("group", { name: /Model X|Fast|Acme/ })).not.toBeInTheDocument();
+    expect(within(menu).getByRole("group", { name: "Work proxy" })).toBeInTheDocument();
+    expect(within(menu).getAllByRole("menuitemradio").map((item) => item.textContent)).toEqual([
+      "Model X (4bit/8bit)",
+      "Fast / cheap",
+      "Acme/Solo 1",
+      "Fast 4.5 (US)",
+      "Alpha",
+      "Beta",
+    ]);
+  });
+
+  it("keeps another provider's prefix on the selected model", async () => {
+    const t = transcript();
+    t.models({
+      current: "work/alpha",
+      options: [
+        { id: "fast-us", label: "meridian/Fast 4.5 (US)" },
+        { id: "work/alpha", label: "Work proxy/Alpha" },
+        { id: "work/beta", label: "Work proxy/Beta" },
+      ],
+    });
+    const user = userEvent.setup();
+    renderThread(t.blocks);
+    const button = await screen.findByRole("button", { name: "Model: Work proxy/Alpha" });
+    expect(button).toHaveTextContent("Work proxy/Alpha");
+    await user.click(button);
+    const menu = screen.getByRole("menu", { name: "Models" });
+    expect(within(menu).getByRole("group", { name: "Work proxy" })).toBeInTheDocument();
+    expect(within(menu).queryByRole("group", { name: /meridian/i })).not.toBeInTheDocument();
+    expect(within(menu).getAllByRole("menuitemradio").map((item) => item.textContent)).toEqual([
+      "Fast 4.5 (US)",
+      "Alpha",
+      "Beta",
     ]);
   });
 
@@ -1094,6 +1197,107 @@ describe("Thread markdown", () => {
     expect(screen.getByText("js").tagName).toBe("SPAN");
     expect(screen.getByText("local").tagName).toBe("SPAN");
     expect(view.container.querySelector("pre code")).toHaveTextContent("make test");
+  });
+
+  it("attaches a file from the picker, removes the chip, and sends it", async () => {
+    const t = transcript();
+    t.user("hi");
+    t.status("idle");
+    const send = vi.spyOn(api, "sendThreadMessage").mockResolvedValue({ thread });
+    const user = userEvent.setup();
+    renderThread(t.blocks);
+    const input = await screen.findByLabelText("Choose files");
+    const file = new File(["hello notes"], "notes.txt", { type: "text/plain" });
+    await user.upload(input, file);
+    expect(await screen.findByRole("button", { name: "Remove notes.txt" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Remove notes.txt" }));
+    expect(screen.queryByRole("button", { name: "Remove notes.txt" })).not.toBeInTheDocument();
+    await user.upload(input, file);
+    await user.type(await screen.findByLabelText("Message"), "see this{Enter}");
+    await waitFor(() =>
+      expect(send).toHaveBeenCalledWith(
+        thread.id,
+        thread.resourceVersion,
+        "see this",
+        expect.objectContaining({
+          attachments: [expect.objectContaining({ name: "notes.txt", mediaType: "text/plain" })],
+        }),
+      ),
+    );
+  });
+
+  it("adds an image thumbnail from the clipboard and a file from a drop", async () => {
+    const t = transcript();
+    t.user("hi");
+    t.status("idle");
+    t.models({
+      current: "vision",
+      options: [{ id: "vision", label: "Vision" }],
+      images: true,
+    });
+    renderThread(t.blocks);
+    const png = new File(
+      [Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0])],
+      "shot.png",
+      { type: "image/png" },
+    );
+    const composer = await screen.findByLabelText("Message");
+    fireEvent.paste(composer, { clipboardData: { files: [png], items: [] } });
+    const chip = await screen.findByRole("button", { name: "Remove shot.png" });
+    expect(chip.closest("li")?.querySelector("img")).not.toBeNull();
+    const notes = new File(["notes"], "notes.txt", { type: "text/plain" });
+    const column = document.querySelector(".thread-conversation");
+    if (!column) throw new Error("missing thread");
+    fireEvent.drop(column, { dataTransfer: { files: [notes], types: ["Files"] } });
+    expect(await screen.findByRole("button", { name: "Remove notes.txt" })).toBeInTheDocument();
+  });
+
+  it("explains an oversized file and refuses an image the model cannot take", async () => {
+    const t = transcript();
+    t.user("hi");
+    t.status("idle");
+    const user = userEvent.setup();
+    renderThread(t.blocks);
+    const input = await screen.findByLabelText("Choose files");
+    await user.upload(input, new File([new Uint8Array(4 * 1024 * 1024 + 1)], "notes.txt", { type: "text/plain" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("This file is larger than 4 MB.");
+    const png = new File(
+      [Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])],
+      "shot.png",
+      { type: "image/png" },
+    );
+    fireEvent.paste(await screen.findByLabelText("Message"), {
+      clipboardData: { files: [png], items: [] },
+    });
+    expect(await screen.findByRole("alert")).toHaveTextContent("This model can't take images.");
+    expect(screen.queryByRole("button", { name: "Remove shot.png" })).not.toBeInTheDocument();
+  });
+
+  it("shows an attachment chip on a sent message", async () => {
+    const t = transcript();
+    t.user("look");
+    const block = t.blocks.at(-1);
+    if (!block) throw new Error("missing message");
+    block.attachments = [
+      {
+        name: "shot.png",
+        mediaType: "image/png",
+        size: 12,
+        path: ".meridian/attachments/0123456789abcdef/1-shot.png",
+        kind: "image",
+      },
+      {
+        name: "notes.txt",
+        mediaType: "text/plain",
+        size: 5,
+        path: ".meridian/attachments/0123456789abcdef/2-notes.txt",
+        kind: "file",
+      },
+    ];
+    renderThread(t.blocks);
+    expect(await screen.findByText("shot.png")).toBeInTheDocument();
+    expect(screen.getByText("notes.txt")).toBeInTheDocument();
+    expect(screen.getByText("look")).toBeInTheDocument();
   });
 
   it("allows only absolute http, https, and mailto targets", () => {

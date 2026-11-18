@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { headerAttention } from "../shell/capsuleActivity";
-import { changeSummary, deliveryHasChanges, suggestedBranch } from "../shell/deliveryDraft";
+import { agentMayEditWorkspace, changeSummary, deliveryHasChanges, suggestedBranch } from "../shell/deliveryDraft";
 import {
   displayThreadTitle,
   firstUserText,
@@ -56,11 +56,29 @@ describe("header attention", () => {
 });
 
 describe("delivery draft", () => {
-  it("hides creation when nothing differs from the default branch", () => {
-    expect(deliveryHasChanges({ dirty: false, branch: "main", defaultBranch: "main" })).toBe(false);
-    expect(deliveryHasChanges({ dirty: true, branch: "main", defaultBranch: "main" })).toBe(true);
-    expect(deliveryHasChanges({ dirty: false, branch: "feature", defaultBranch: "main" })).toBe(true);
+  it("offers delivery only when the inspection says there is something to publish", () => {
+    expect(deliveryHasChanges({ dirty: false, hasDeliverableChanges: false })).toBe(false);
+    expect(deliveryHasChanges({ dirty: true, hasDeliverableChanges: true })).toBe(true);
+    expect(deliveryHasChanges({
+      dirty: false,
+      hasDeliverableChanges: false,
+      unpushedCount: 0,
+    })).toBe(false);
+    expect(deliveryHasChanges({
+      dirty: false,
+      hasDeliverableChanges: true,
+      unpushedCount: 0,
+    }, "update")).toBe(false);
+    expect(deliveryHasChanges({
+      dirty: false,
+      hasDeliverableChanges: true,
+      unpushedCount: 1,
+    }, "update")).toBe(true);
+    expect(deliveryHasChanges({ dirty: true, unpushedCount: 0 }, "update")).toBe(true);
     expect(deliveryHasChanges(undefined)).toBe(false);
+    expect(agentMayEditWorkspace({ threads: [{ turn: "working", state: "active" }] })).toBe(true);
+    expect(agentMayEditWorkspace({ threads: [{ turn: "idle", state: "active", currentRunState: "Succeeded" }] })).toBe(false);
+    expect(agentMayEditWorkspace({ runs: [{ state: "Running" }] })).toBe(true);
   });
 
   it("suggests the current branch unless it is protected", () => {

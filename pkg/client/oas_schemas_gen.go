@@ -290,7 +290,8 @@ type AuditRecord struct {
 	// The acting Capsule, for a Capsule principal.
 	CapsuleId OptString `json:"capsuleId"`
 	// A fixed action name, such as secret.put, provider_connection.sign_in, delivery.approve,
-	// coordination_request.approve, coordination_grant.revoke, or access.cross_owner.
+	// coordination_request.approve, coordination_grant.revoke, capsule.workspace_write, or
+	// access.cross_owner.
 	Action     string            `json:"action"`
 	ObjectType string            `json:"objectType"`
 	ObjectId   string            `json:"objectId"`
@@ -5709,6 +5710,15 @@ type DeliveryInspection struct {
 	OriginUrl              OptString `json:"originUrl"`
 	DefaultBranch          OptString `json:"defaultBranch"`
 	Tree                   string    `json:"tree"`
+	// Commits on HEAD that are not on the default branch's remote head. Zero when that remote head is
+	// absent or HEAD is not ahead of it.
+	AheadCount int `json:"aheadCount"`
+	// Commits on HEAD that are not on the remote branch of the same name. Matches aheadCount when that
+	// remote branch does not exist.
+	UnpushedCount int `json:"unpushedCount"`
+	// True when aheadCount is greater than zero or the worktree has changes a delivery would commit. Files
+	// the supervisor writes into the worktree are excluded.
+	HasDeliverableChanges bool `json:"hasDeliverableChanges"`
 }
 
 // GetCapsuleResourceVersion returns the value of CapsuleResourceVersion.
@@ -5746,6 +5756,21 @@ func (s *DeliveryInspection) GetTree() string {
 	return s.Tree
 }
 
+// GetAheadCount returns the value of AheadCount.
+func (s *DeliveryInspection) GetAheadCount() int {
+	return s.AheadCount
+}
+
+// GetUnpushedCount returns the value of UnpushedCount.
+func (s *DeliveryInspection) GetUnpushedCount() int {
+	return s.UnpushedCount
+}
+
+// GetHasDeliverableChanges returns the value of HasDeliverableChanges.
+func (s *DeliveryInspection) GetHasDeliverableChanges() bool {
+	return s.HasDeliverableChanges
+}
+
 // SetCapsuleResourceVersion sets the value of CapsuleResourceVersion.
 func (s *DeliveryInspection) SetCapsuleResourceVersion(val int64) {
 	s.CapsuleResourceVersion = val
@@ -5779,6 +5804,21 @@ func (s *DeliveryInspection) SetDefaultBranch(val OptString) {
 // SetTree sets the value of Tree.
 func (s *DeliveryInspection) SetTree(val string) {
 	s.Tree = val
+}
+
+// SetAheadCount sets the value of AheadCount.
+func (s *DeliveryInspection) SetAheadCount(val int) {
+	s.AheadCount = val
+}
+
+// SetUnpushedCount sets the value of UnpushedCount.
+func (s *DeliveryInspection) SetUnpushedCount(val int) {
+	s.UnpushedCount = val
+}
+
+// SetHasDeliverableChanges sets the value of HasDeliverableChanges.
+func (s *DeliveryInspection) SetHasDeliverableChanges(val bool) {
+	s.HasDeliverableChanges = val
 }
 
 func (*DeliveryInspection) inspectCapsuleDeliveryRes() {}
@@ -12667,7 +12707,8 @@ type ProfileDiagnostic struct {
 	CapsuleId string `json:"capsuleId"`
 	// The Capsule took nothing from a profile.
 	NothingPinned bool `json:"nothingPinned"`
-	// True only when every pin is current and nothing is outstanding. It never claims the Capsule matches
+	// True when every harness is pinned to what a new Capsule would pin and the commit identity matches
+	// the profile. Import exclusions and warnings do not affect it. It never claims the Capsule matches
 	// the laptop.
 	MatchesProfile bool                       `json:"matchesProfile"`
 	Harnesses      []HarnessProfileDiagnostic `json:"harnesses"`
@@ -15810,12 +15851,16 @@ func (*SendThreadMessageLocked) sendThreadMessageRes() {}
 // Ref: #/components/schemas/SendThreadMessageRequest
 type SendThreadMessageRequest struct {
 	ExpectedResourceVersion int64 `json:"expectedResourceVersion"`
-	// Encrypted before SQLite persistence.
+	// Encrypted before SQLite persistence. May be empty when attachments are present. The harness prompt
+	// may also name workspace paths for files that are not sent as image content.
 	Content string `json:"content"`
 	// Inject into the running turn at the next tool boundary. The daemon sets the documented Pi and Codex
 	// user-message metadata; other adapters ignore it. Omit when idle. Queued follow-ups stay in the web
 	// UI's memory until the turn is idle and are never written to browser storage.
 	Delivery OptSendThreadMessageRequestDelivery `json:"delivery"`
+	// Files copied into the Capsule workspace before the message is sent. Image bytes are not stored in
+	// the transcript. At most 4 MiB each and 8 MiB together.
+	Attachments []ThreadAttachmentInput `json:"attachments"`
 }
 
 // GetExpectedResourceVersion returns the value of ExpectedResourceVersion.
@@ -15833,6 +15878,11 @@ func (s *SendThreadMessageRequest) GetDelivery() OptSendThreadMessageRequestDeli
 	return s.Delivery
 }
 
+// GetAttachments returns the value of Attachments.
+func (s *SendThreadMessageRequest) GetAttachments() []ThreadAttachmentInput {
+	return s.Attachments
+}
+
 // SetExpectedResourceVersion sets the value of ExpectedResourceVersion.
 func (s *SendThreadMessageRequest) SetExpectedResourceVersion(val int64) {
 	s.ExpectedResourceVersion = val
@@ -15846,6 +15896,11 @@ func (s *SendThreadMessageRequest) SetContent(val string) {
 // SetDelivery sets the value of Delivery.
 func (s *SendThreadMessageRequest) SetDelivery(val OptSendThreadMessageRequestDelivery) {
 	s.Delivery = val
+}
+
+// SetAttachments sets the value of Attachments.
+func (s *SendThreadMessageRequest) SetAttachments(val []ThreadAttachmentInput) {
+	s.Attachments = val
 }
 
 // Inject into the running turn at the next tool boundary. The daemon sets the documented Pi and Codex
@@ -16970,6 +17025,147 @@ func (s *ThreadAdapterEventType) UnmarshalText(data []byte) error {
 	}
 }
 
+// An attachment as kept in the encrypted transcript. Bytes are not included.
+// Ref: #/components/schemas/ThreadAttachment
+type ThreadAttachment struct {
+	Name      string `json:"name"`
+	MediaType string `json:"mediaType"`
+	Size      int64  `json:"size"`
+	// Workspace-relative path inside the Capsule.
+	Path string               `json:"path"`
+	Kind ThreadAttachmentKind `json:"kind"`
+}
+
+// GetName returns the value of Name.
+func (s *ThreadAttachment) GetName() string {
+	return s.Name
+}
+
+// GetMediaType returns the value of MediaType.
+func (s *ThreadAttachment) GetMediaType() string {
+	return s.MediaType
+}
+
+// GetSize returns the value of Size.
+func (s *ThreadAttachment) GetSize() int64 {
+	return s.Size
+}
+
+// GetPath returns the value of Path.
+func (s *ThreadAttachment) GetPath() string {
+	return s.Path
+}
+
+// GetKind returns the value of Kind.
+func (s *ThreadAttachment) GetKind() ThreadAttachmentKind {
+	return s.Kind
+}
+
+// SetName sets the value of Name.
+func (s *ThreadAttachment) SetName(val string) {
+	s.Name = val
+}
+
+// SetMediaType sets the value of MediaType.
+func (s *ThreadAttachment) SetMediaType(val string) {
+	s.MediaType = val
+}
+
+// SetSize sets the value of Size.
+func (s *ThreadAttachment) SetSize(val int64) {
+	s.Size = val
+}
+
+// SetPath sets the value of Path.
+func (s *ThreadAttachment) SetPath(val string) {
+	s.Path = val
+}
+
+// SetKind sets the value of Kind.
+func (s *ThreadAttachment) SetKind(val ThreadAttachmentKind) {
+	s.Kind = val
+}
+
+// Ref: #/components/schemas/ThreadAttachmentInput
+type ThreadAttachmentInput struct {
+	// The operator's file name. The Capsule path is chosen by the Station.
+	Name      string `json:"name"`
+	MediaType string `json:"mediaType"`
+	// Standard base64 of the file bytes. Not retained outside the Capsule.
+	Data string `json:"data"`
+}
+
+// GetName returns the value of Name.
+func (s *ThreadAttachmentInput) GetName() string {
+	return s.Name
+}
+
+// GetMediaType returns the value of MediaType.
+func (s *ThreadAttachmentInput) GetMediaType() string {
+	return s.MediaType
+}
+
+// GetData returns the value of Data.
+func (s *ThreadAttachmentInput) GetData() string {
+	return s.Data
+}
+
+// SetName sets the value of Name.
+func (s *ThreadAttachmentInput) SetName(val string) {
+	s.Name = val
+}
+
+// SetMediaType sets the value of MediaType.
+func (s *ThreadAttachmentInput) SetMediaType(val string) {
+	s.MediaType = val
+}
+
+// SetData sets the value of Data.
+func (s *ThreadAttachmentInput) SetData(val string) {
+	s.Data = val
+}
+
+type ThreadAttachmentKind string
+
+const (
+	ThreadAttachmentKindImage ThreadAttachmentKind = "image"
+	ThreadAttachmentKindFile  ThreadAttachmentKind = "file"
+)
+
+// AllValues returns all ThreadAttachmentKind values.
+func (ThreadAttachmentKind) AllValues() []ThreadAttachmentKind {
+	return []ThreadAttachmentKind{
+		ThreadAttachmentKindImage,
+		ThreadAttachmentKindFile,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s ThreadAttachmentKind) MarshalText() ([]byte, error) {
+	switch s {
+	case ThreadAttachmentKindImage:
+		return []byte(s), nil
+	case ThreadAttachmentKindFile:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *ThreadAttachmentKind) UnmarshalText(data []byte) error {
+	switch ThreadAttachmentKind(data) {
+	case ThreadAttachmentKindImage:
+		*s = ThreadAttachmentKindImage
+		return nil
+	case ThreadAttachmentKindFile:
+		*s = ThreadAttachmentKindFile
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
 // Present while the active structured session has an unanswered permission or input request. Derived
 // in memory from the encrypted transcript and never persisted in plaintext; it carries no request
 // summary, options, or prompt text.
@@ -17050,10 +17246,13 @@ type ThreadBlock struct {
 	MessageKind     ThreadMessageKind `json:"messageKind"`
 	Kind            ThreadBlockKind   `json:"kind"`
 	// Present only at explicit read/stream decryption boundaries.
-	Content   OptString             `json:"content"`
-	Event     OptThreadAdapterEvent `json:"event"`
-	Origin    OptThreadOrigin       `json:"origin"`
-	CreatedAt time.Time             `json:"createdAt"`
+	Content OptString `json:"content"`
+	// Present on a user message that included attachments. Names and workspace paths only; image bytes are
+	// not returned.
+	Attachments []ThreadAttachment    `json:"attachments"`
+	Event       OptThreadAdapterEvent `json:"event"`
+	Origin      OptThreadOrigin       `json:"origin"`
+	CreatedAt   time.Time             `json:"createdAt"`
 }
 
 // GetID returns the value of ID.
@@ -17094,6 +17293,11 @@ func (s *ThreadBlock) GetKind() ThreadBlockKind {
 // GetContent returns the value of Content.
 func (s *ThreadBlock) GetContent() OptString {
 	return s.Content
+}
+
+// GetAttachments returns the value of Attachments.
+func (s *ThreadBlock) GetAttachments() []ThreadAttachment {
+	return s.Attachments
 }
 
 // GetEvent returns the value of Event.
@@ -17149,6 +17353,11 @@ func (s *ThreadBlock) SetKind(val ThreadBlockKind) {
 // SetContent sets the value of Content.
 func (s *ThreadBlock) SetContent(val OptString) {
 	s.Content = val
+}
+
+// SetAttachments sets the value of Attachments.
+func (s *ThreadBlock) SetAttachments(val []ThreadAttachment) {
+	s.Attachments = val
 }
 
 // SetEvent sets the value of Event.
@@ -18421,9 +18630,12 @@ type ThreadModels struct {
 	Current OptString `json:"current"`
 	// Display name of the model the current option runs, when the harness reports it, such as "Opus 5.5"
 	// behind a "default" alias.
-	Resolved OptString           `json:"resolved"`
-	Options  []ThreadModelOption `json:"options"`
-	Effort   OptThreadEffort     `json:"effort"`
+	Resolved OptString `json:"resolved"`
+	// True when the harness accepts image content. Reported from the agent's prompt capabilities. Absent
+	// or false means image attach is unavailable. The latest models event replaces earlier ones.
+	Images  OptBool             `json:"images"`
+	Options []ThreadModelOption `json:"options"`
+	Effort  OptThreadEffort     `json:"effort"`
 }
 
 // GetCurrent returns the value of Current.
@@ -18434,6 +18646,11 @@ func (s *ThreadModels) GetCurrent() OptString {
 // GetResolved returns the value of Resolved.
 func (s *ThreadModels) GetResolved() OptString {
 	return s.Resolved
+}
+
+// GetImages returns the value of Images.
+func (s *ThreadModels) GetImages() OptBool {
+	return s.Images
 }
 
 // GetOptions returns the value of Options.
@@ -18454,6 +18671,11 @@ func (s *ThreadModels) SetCurrent(val OptString) {
 // SetResolved sets the value of Resolved.
 func (s *ThreadModels) SetResolved(val OptString) {
 	s.Resolved = val
+}
+
+// SetImages sets the value of Images.
+func (s *ThreadModels) SetImages(val OptBool) {
+	s.Images = val
 }
 
 // SetOptions sets the value of Options.

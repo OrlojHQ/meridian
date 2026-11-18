@@ -7,6 +7,32 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Saved Stations keep a name and an address, with no cap. The launch screen
+  and the tray switch by those names. The sidebar names the open Station and
+  opens that picker; ⌘1–⌘9 (Ctrl+1–9 elsewhere) switch to the first nine. A
+  Station's page never receives your other Stations' names, addresses, or
+  status. An unsent Thread message asks before a switch reloads the window.
+  A host and port is enough; HTTPS is assumed. Status dots in the picker come
+  from one check at a time, with a few workers and a three-second limit; a
+  Station it cannot reach in time shows no dot.
+- The Thread composer can attach files and images. A **+** button, drag and
+  drop, and pasting an image add chips above the message. Images are sent as
+  image content when the harness says it can take them. Other files are
+  copied into the Capsule workspace and named by path. Size and type limits
+  fail with a short explanation, and image attach stays hidden when the
+  harness cannot take images. The transcript keeps the file's name and path,
+  not its bytes, and shows a chip after reload. Attachments stay out of
+  `git status` and are never included in a delivery commit.
+
+### Changed
+
+- Stations you used before are kept and named by their host, instead of
+  remembering only the last five addresses.
+- "Check this computer for setup changes" is in Harness settings. It stays
+  on unless you turn it off, and nothing is uploaded until you click Save.
+
 ### Fixed
 
 - The Thread column scrolls in one place. The transcript is the only
@@ -20,6 +46,27 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   that job never started and its annotation says it was not acquired. A job
   that received a runner and then failed stays failed, and the desktop
   manifest job runs again with the retried build.
+- The Capsule header no longer asks to update a setup when the pinned
+  revision and commit identity already match the profile. Files an import
+  left out, or kept with a warning, stay listed in Setup details and no
+  longer keep that banner up.
+- The Capsule header shows Create PR only when a delivery would publish
+  something: commits ahead of the default branch's remote head, or
+  uncommitted project files. A clean checkout, a branch with no commits of
+  its own, and files the supervisor writes into the worktree no longer show
+  the button. Push update stays only when an existing pull request has
+  commits or file changes that are not on the remote branch yet, and a
+  delivery push records the pushed commit so the button clears once the
+  push succeeds. A project `.gitignore` cannot pull supervisor files back
+  into a delivery commit. Inspection
+  reports `aheadCount`, `unpushedCount`, and `hasDeliverableChanges`, and
+  the header reads them again while a turn is writing and once the turn
+  finishes.
+- The model picker hides a `meridian/` provider prefix on a reported model
+  label, the same way it hides `meridian · `. Other providers keep their
+  prefix, and a list from several providers still groups by provider. A
+  slash inside a model's own name, such as `Model X (4bit/8bit)`, does not
+  make a group. Search still matches the full id and label.
 
 ## [0.11.5] - 2026-11-18
 
