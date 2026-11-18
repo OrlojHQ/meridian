@@ -507,8 +507,15 @@ button.blocker-peek-toggle {
 }
 
 .thread-workspace.thread-chat {
-  height: 100%;
+  flex: 1 1 auto;
+  height: auto;
+  min-width: 0;
   min-height: 0;
+  overflow: hidden;
+}
+
+.thread-workspace.thread-chat > * {
+  min-width: 0;
 }
 
 .thread-conversation {
@@ -522,9 +529,18 @@ button.blocker-peek-toggle {
   flex: none;
 }
 
-.capsule-workspace.chat-session {
-  height: 100%;
+.capsule-workspace.chat-session,
+.capsule-workspace.cli-session {
+  flex: 1 1 auto;
+  height: auto;
+  min-width: 0;
   min-height: 0;
+  overflow: hidden;
+}
+
+.capsule-workspace.chat-session > *,
+.capsule-workspace.cli-session > * {
+  min-width: 0;
 }
 
 .thread-workspace > .notice,
@@ -541,8 +557,10 @@ button.blocker-peek-toggle {
 .thread-toolbar {
   display: flex;
   flex: none;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.6rem;
+  min-width: 0;
   min-height: 2.5rem;
   border-bottom: 1px solid var(--border);
   padding: 0.25rem 0.6rem 0.25rem 1rem;
@@ -621,16 +639,29 @@ button.blocker-peek-toggle {
 .thread-scroll-frame {
   position: relative;
   display: flex;
-  min-height: 12rem;
-  flex: 1;
+  min-width: 0;
+  /* The column clips rather than scrolls, so the transcript keeps a floor
+     and a tall draft scrolls inside the message box instead (see the
+     textarea's max-height). Without it a short window can hide the
+     transcript entirely. */
+  min-height: min(8rem, 18dvh);
+  flex: 1 1 auto;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .thread-scroll {
+  min-width: 0;
   min-height: 0;
-  flex: 1;
+  flex: 1 1 auto;
+  overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+.thread-scroll-content {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .thread-scroll-content > .notice,
@@ -642,12 +673,20 @@ button.blocker-peek-toggle {
 .chat-transcript,
 .raw-events {
   display: flex;
+  width: 100%;
   max-width: 48rem;
+  min-width: 0;
   flex-direction: column;
   gap: 0.85rem;
   margin: 0 auto;
   padding: 1.4rem 1.25rem 1.6rem;
   list-style: none;
+}
+
+.chat-transcript > li,
+.raw-events > li {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .chat-empty {
@@ -679,7 +718,10 @@ button.blocker-peek-toggle {
 }
 
 .markdown {
+  min-width: 0;
+  max-width: 100%;
   line-height: 1.6;
+  overflow-wrap: anywhere;
 }
 
 .markdown.plain {
@@ -725,6 +767,11 @@ button.blocker-peek-toggle {
   margin-top: 0.2rem;
 }
 
+.markdown a,
+.markdown :not(pre) > code {
+  overflow-wrap: anywhere;
+}
+
 .markdown code {
   border-radius: var(--radius-sm);
   padding: 0.08rem 0.3rem;
@@ -734,12 +781,17 @@ button.blocker-peek-toggle {
 }
 
 .markdown pre {
+  max-width: 100%;
+  min-width: 0;
   overflow-x: auto;
+  overflow-y: hidden;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 0.65rem 0.8rem;
   background: var(--surface-subtle);
   line-height: 1.45;
+  white-space: pre;
+  overflow-wrap: normal;
 }
 
 .markdown pre code {
@@ -761,6 +813,8 @@ button.blocker-peek-toggle {
 }
 
 .markdown .markdown-table {
+  max-width: 100%;
+  min-width: 0;
   overflow-x: auto;
 }
 
@@ -798,12 +852,22 @@ button.blocker-peek-toggle {
   padding-left: 0.4rem;
 }
 
+.tool-group,
+.tool-rows,
+.tool-row {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .tool-line {
   display: flex;
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   min-height: 1.75rem;
   align-items: center;
   gap: 0.45rem;
+  overflow: hidden;
   border: 0;
   border-radius: var(--radius-sm);
   padding: 0.2rem 0.4rem;
@@ -872,6 +936,8 @@ button.tool-line:hover {
 }
 
 .tool-output {
+  max-width: 100%;
+  min-width: 0;
   max-height: 18rem;
   margin: 0.15rem 0 0.4rem 1.75rem;
   overflow: auto;
@@ -1001,11 +1067,17 @@ button.tool-line:hover {
 
 .chat-error {
   display: flex;
+  min-width: 0;
   align-items: center;
   gap: 0.45rem;
   padding: 0 0.4rem;
   color: var(--danger);
   font-size: 0.78rem;
+}
+
+.chat-error > span:not(.chat-error-code) {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .chat-error svg {
@@ -1100,9 +1172,11 @@ button.tool-line:hover {
 }
 
 .chat-notice {
+  min-width: 0;
   padding: 0 0.4rem;
   color: var(--faint);
   font-size: 0.74rem;
+  overflow-wrap: anywhere;
 }
 
 .chat-working {
@@ -1195,6 +1269,7 @@ button.tool-line:hover {
 
 .thread-composer {
   flex: none;
+  min-width: 0;
   margin: 0;
   border: 0;
   border-radius: 0;
@@ -1210,6 +1285,7 @@ button.tool-line:hover {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  min-width: 0;
   max-width: 48rem;
   margin: 0 auto;
 }
@@ -1442,7 +1518,7 @@ button.tool-line:hover {
 
 .composer-box textarea {
   min-width: 0;
-  max-height: 12rem;
+  max-height: min(12rem, 20dvh);
   min-height: 1.85rem;
   flex: 1;
   border: 0;
@@ -3104,6 +3180,7 @@ button.tool-line:hover {
   display: flex;
   align-items: stretch;
   gap: 0.15rem;
+  min-width: 0;
   border-bottom: 1px solid var(--border);
   padding: 0 0.7rem;
   overflow-x: auto;
@@ -3153,14 +3230,19 @@ button.tool-line:hover {
 
 .session-panel {
   display: flex;
+  min-width: 0;
   min-height: 0;
-  flex: 1;
+  flex: 1 1 auto;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .session-panel > .primary-session,
 .session-panel > .thread-workspace {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .session-new {

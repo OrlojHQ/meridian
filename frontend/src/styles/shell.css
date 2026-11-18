@@ -623,12 +623,33 @@
   grid-column: 2;
   width: auto;
   min-width: 0;
+  min-height: 0;
   height: var(--shell-height);
   margin: 0;
   padding: 0;
   overflow: auto;
   overscroll-behavior: contain;
   background: var(--surface);
+}
+
+/* A Thread or Terminal fills this column. Document pages keep the scroll
+   above. Here the transcript (or the terminal) is the only scroller, so a
+   long line cannot open a second pair of scrollbars around the composer. */
+.workspace-main:has(> .capsule-workspace.chat-session),
+.workspace-main:has(> .capsule-workspace.cli-session),
+.workspace-main:has(> .thread-workspace.thread-chat) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.workspace-main:has(> .capsule-workspace.chat-session) > .capsule-workspace,
+.workspace-main:has(> .capsule-workspace.cli-session) > .capsule-workspace,
+.workspace-main:has(> .thread-workspace.thread-chat) > .thread-workspace {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .context-panel {

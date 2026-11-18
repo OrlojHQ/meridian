@@ -901,15 +901,30 @@
 
 .cli-session .primary-session {
   display: flex;
-  flex: 1;
+  flex: 1 1 auto;
   flex-direction: column;
+  min-width: 0;
   min-height: 0;
+  overflow: hidden;
+}
+
+/* The terminal view is wrapped in its own section. That section has to grow
+   so the host fills the column and scrolls inside the terminal, not the page. */
+.cli-session .primary-session > :not(.section-heading) {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .cli-session .primary-session .terminal-host {
-  flex: 1;
+  flex: 1 1 auto;
   height: auto;
+  min-width: 0;
   min-height: 0;
+  overflow: hidden;
 }
 
 .workbench.with-rail {
@@ -1091,6 +1106,8 @@
 }
 
 .chat-meridian {
+  min-width: 0;
+  max-width: 100%;
   margin: 0.4rem 0;
   padding: 0.6rem 0.75rem;
   border-left: 3px solid var(--warning);
@@ -1098,8 +1115,12 @@
 }
 
 .chat-meridian pre {
+  max-width: 100%;
+  min-width: 0;
   margin: 0.35rem 0 0;
+  overflow-x: auto;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
   font-size: 0.85rem;
 }
 

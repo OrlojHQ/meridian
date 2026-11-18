@@ -35,6 +35,12 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The Thread column scrolls in one place. The transcript is the only
+  vertical scroller, the composer stays pinned under it, and a long tool
+  line no longer opens a second pair of scrollbars around the column. A
+  code block still scrolls sideways inside itself. The Terminal fills the
+  same column without scrolling the page. On a short window the transcript
+  keeps some height, and a long draft scrolls inside the message box.
 - A release whose macOS desktop job is cancelled before a runner accepts it
   is retried automatically, up to three attempts. The retry runs only when
   that job never started and its annotation says it was not acquired. A job
