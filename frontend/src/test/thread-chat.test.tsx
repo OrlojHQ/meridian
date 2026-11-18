@@ -425,8 +425,8 @@ describe("Thread transcript scroll", () => {
     expect(declarations(composerCss, ".thread-scroll-frame")).toMatch(/overflow:\s*hidden/);
     // The transcript keeps a floor on a short window, and a tall draft
     // scrolls inside the message box rather than pushing it out of view.
-    expect(declarations(composerCss, ".thread-scroll-frame")).toMatch(/min-height:\s*min\(8rem,\s*22dvh\)/);
-    expect(declarations(composerCss, ".composer-box textarea")).toMatch(/max-height:\s*min\(12rem,\s*24dvh\)/);
+    expect(declarations(composerCss, ".thread-scroll-frame")).toMatch(/min-height:\s*min\(8rem,\s*18dvh\)/);
+    expect(declarations(composerCss, ".composer-box textarea")).toMatch(/max-height:\s*min\(12rem,\s*20dvh\)/);
     expect(declarations(composerCss, ".thread-scroll-frame")).toMatch(/min-width:\s*0/);
     expect(declarations(composerCss, ".thread-workspace.thread-chat")).toMatch(/overflow:\s*hidden/);
     expect(declarations(composerCss, ".thread-workspace.thread-chat")).toMatch(/min-width:\s*0/);
