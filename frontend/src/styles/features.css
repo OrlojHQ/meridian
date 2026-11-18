@@ -633,7 +633,11 @@ button.blocker-peek-toggle {
   position: relative;
   display: flex;
   min-width: 0;
-  min-height: 0;
+  /* The column clips rather than scrolls, so the transcript keeps a floor
+     and a tall draft scrolls inside the message box instead (see the
+     textarea's max-height). Without it a short window can hide the
+     transcript entirely. */
+  min-height: min(8rem, 22dvh);
   flex: 1 1 auto;
   flex-direction: column;
   overflow: hidden;
@@ -1394,7 +1398,7 @@ button.tool-line:hover {
 
 .composer-box textarea {
   min-width: 0;
-  max-height: 12rem;
+  max-height: min(12rem, 24dvh);
   min-height: 1.85rem;
   flex: 1;
   border: 0;
