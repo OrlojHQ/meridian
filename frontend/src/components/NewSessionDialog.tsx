@@ -224,7 +224,7 @@ function HarnessPicker({
           setOpen((value) => !value);
         }}
       >
-        <HarnessMark harness={current.name} size="sm" />
+        <HarnessMark harness={current.name} size="md" />
         <span>{harnessName(current.name)}</span>
         <ChevronIcon className="chevron" />
       </button>
@@ -243,9 +243,13 @@ function HarnessPicker({
                   onMouseEnter={() => setHighlight(index)}
                   onClick={() => choose(index)}
                 >
-                  <HarnessMark harness={item.name} size="sm" />
+                  <HarnessMark harness={item.name} size="md" />
                   <span>{harnessName(item.name)}</span>
-                  {chosen ? <CheckIcon /> : <span className="harness-select-check" aria-hidden="true" />}
+                  {chosen ? (
+                    <CheckIcon className="harness-select-check" />
+                  ) : (
+                    <span className="harness-select-check" aria-hidden="true" />
+                  )}
                 </button>
               </li>
             );

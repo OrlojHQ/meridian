@@ -12,6 +12,7 @@ const catalog = [
   { name: "claude", imageReference: "capsule-claude", interactionModes: ["native", "structured"] },
   { name: "codex", imageReference: "capsule-codex", interactionModes: ["native", "structured"] },
   { name: "opencode", imageReference: "capsule-opencode", interactionModes: ["native", "structured"] },
+  { name: "dsh", imageReference: "capsule-dsh", interactionModes: ["native", "structured"] },
   { name: "pi", imageReference: "capsule-pi", interactionModes: ["native", "structured"] },
 ];
 

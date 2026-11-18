@@ -610,6 +610,7 @@
 
 .new-session-dialog {
   width: min(32rem, 100%);
+  overflow: visible;
 }
 
 .new-session-dialog .dialog-body {
@@ -626,7 +627,7 @@
   align-items: center;
   gap: 0.55rem;
   width: 100%;
-  min-height: 2.4rem;
+  min-height: 2.55rem;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   background: var(--surface);
@@ -677,7 +678,6 @@
 }
 
 .harness-select-list button {
-  min-height: 2.15rem;
   border-color: transparent;
   background: transparent;
 }
@@ -687,17 +687,19 @@
   background: var(--surface-hover);
 }
 
-.harness-select-list button svg:last-child,
+/* Neutral plate. A currentColor wash fades light marks into the dark menu. */
+.harness-select .harness-mark {
+  border-color: var(--border-strong);
+  background: var(--surface-subtle);
+}
+
 .harness-select-check {
+  display: block;
   flex: none;
   width: 0.9rem;
   height: 0.9rem;
   margin-left: auto;
   color: var(--accent);
-}
-
-.harness-select-check {
-  display: block;
 }
 
 .project-picker {

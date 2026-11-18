@@ -183,7 +183,11 @@ describe("New Capsule dialog", () => {
     harness.focus();
     await userEvent.keyboard("{ArrowDown}");
     const list = screen.getByRole("listbox", { name: "Harness" });
-    expect(within(list).getByRole("option", { name: "OpenCode" })).toHaveAttribute("aria-selected", "true");
+    const openCode = within(list).getByRole("option", { name: "OpenCode" });
+    expect(openCode).toHaveAttribute("aria-selected", "true");
+    expect(openCode.querySelector(".harness-mark")).toHaveClass("harness-mark-md");
+    expect(openCode.querySelector(".harness-logo")).not.toHaveClass("harness-select-check");
+    expect(openCode.querySelector(":scope > .harness-select-check")).toBeInTheDocument();
     expect(within(list).getByRole("option", { name: "Pi" })).toHaveAttribute("aria-selected", "false");
     await userEvent.keyboard("{ArrowDown}{Escape}");
     expect(screen.queryByRole("listbox", { name: "Harness" })).not.toBeInTheDocument();
