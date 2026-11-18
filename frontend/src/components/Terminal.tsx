@@ -34,6 +34,46 @@ const permanentCodes = new Set([
   "illegal_transition",
 ]);
 
+const compactFontSize = 13;
+const compactLineHeight = 1.2;
+
+function cssPx(value: string, rootPx: number) {
+  const trimmed = value.trim();
+  const size = Number.parseFloat(trimmed);
+  if (!Number.isFinite(size) || size <= 0) return undefined;
+  if (trimmed.endsWith("rem") || trimmed.endsWith("em")) return size * rootPx;
+  return size;
+}
+
+// xterm paints with canvas, which does not resolve CSS variables. The stack
+// is the computed --font-mono value so the app mono face stays first.
+export function terminalTextMetrics(
+  styles = getComputedStyle(document.documentElement),
+) {
+  const rootPx = Number.parseFloat(styles.fontSize) || 16;
+  const small = cssPx(styles.getPropertyValue("--text-sm"), rootPx);
+  const mono = cssPx(styles.getPropertyValue("--text-xs"), rootPx);
+  const preferred = small ?? mono ?? compactFontSize;
+  const fontSize = Math.min(13, Math.max(12, Math.round(preferred)));
+  const leading = Number.parseFloat(styles.getPropertyValue("--leading-tight"));
+  const lineHeight =
+    Number.isFinite(leading) && leading >= 1.2 && leading <= 1.3
+      ? leading
+      : compactLineHeight;
+  const family = styles.getPropertyValue("--font-mono").trim();
+  return {
+    fontFamily: family || "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+    fontSize,
+    lineHeight,
+  };
+}
+
+export function terminalTheme(styles = getComputedStyle(document.documentElement)) {
+  const background = styles.getPropertyValue("--terminal").trim() || "#121614";
+  const foreground = styles.getPropertyValue("--terminal-text").trim() || "#e7eee9";
+  return { background, foreground, cursor: foreground };
+}
+
 export function ticketExpired(ticket: AttachTicket, now = Date.now()) {
   return Date.parse(ticket.expiresAt) <= now;
 }
@@ -95,17 +135,19 @@ export function TerminalView({
       cursorBlink: true,
       convertEol: false,
       customGlyphs: true,
-      fontFamily:
-        '"SFMono-Regular", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace',
       scrollback: 2_000,
-      theme: {
-        background: "#111315",
-        foreground: "#e7e8ea",
-      },
+      ...terminalTextMetrics(),
+      theme: terminalTheme(),
     });
     const fit = new FitAddon();
     terminal.loadAddon(fit);
     terminal.open(hostRef.current);
+    const applyTheme = () => {
+      terminal.options.theme = terminalTheme();
+    };
+    document.documentElement.addEventListener("meridian-theme", applyTheme);
+    const themeMedia = window.matchMedia?.("(prefers-color-scheme: dark)");
+    themeMedia?.addEventListener("change", applyTheme);
     let webgl: WebglAddon | undefined;
     try {
       webgl = new WebglAddon();
@@ -251,6 +293,8 @@ export function TerminalView({
       if (resizeTimer !== undefined) window.clearTimeout(resizeTimer);
       currentController?.abort();
       resizeObserver.disconnect();
+      document.documentElement.removeEventListener("meridian-theme", applyTheme);
+      themeMedia?.removeEventListener("change", applyTheme);
       input.dispose();
       const socket = socketRef.current;
       socketRef.current = null;
@@ -270,7 +314,7 @@ export function TerminalView({
   }
 
   return (
-    <section aria-label={label}>
+    <section className="terminal-view" aria-label={label}>
       <div className="terminal-toolbar">
         <span role="status">{terminalStatusLabel[status]}</span>
         {status === "exited" && restartable && (
@@ -288,7 +332,9 @@ export function TerminalView({
           available.
         </p>
       )}
-      <div ref={hostRef} className="terminal-host" />
+      <div className="terminal-host">
+        <div ref={hostRef} className="terminal-frame" />
+      </div>
       <p className="sensitive-note">
         PTY bytes are displayed in memory only and are never logged or persisted by
         this interface.

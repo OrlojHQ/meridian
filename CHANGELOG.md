@@ -34,6 +34,9 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- The Shell panel terminal is compact: 13px monospace, tighter line height,
+  and shorter Shell and Connected rows. Harness output is a small button.
+  An 8px inset stays outside the fitted columns and rows, in dark and light.
 - Stations you used before are kept and named by their host, instead of
   remembering only the last five addresses.
 - "Check this computer for setup changes" is in Harness settings. It stays

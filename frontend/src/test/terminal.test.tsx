@@ -9,12 +9,18 @@ const mocks = vi.hoisted(() => ({
   socketClose: vi.fn(),
   observerDisconnect: vi.fn(),
   observerCallback: undefined as ResizeObserverCallback | undefined,
+  options: undefined as Record<string, unknown> | undefined,
 }));
 
 vi.mock("@xterm/xterm", () => ({
   Terminal: class {
     cols = 80;
     rows = 24;
+    options: Record<string, unknown>;
+    constructor(options?: Record<string, unknown>) {
+      this.options = options ?? {};
+      mocks.options = this.options;
+    }
     loadAddon() {}
     open() {}
     onData() {
@@ -46,6 +52,8 @@ import { api } from "../api/client";
 import {
   TerminalView,
   terminalSocketURL,
+  terminalTextMetrics,
+  terminalTheme,
   ticketExpired,
 } from "../components/Terminal";
 
@@ -174,6 +182,35 @@ it("refits on every size change but sends the PTY one resize once it settles", a
   expect(mocks.socketSend).toHaveBeenLastCalledWith(
     JSON.stringify({ type: "resize", columns: 80, rows: 24 }),
   );
+});
+
+it("uses the compact mono metrics and refits after opening", async () => {
+  document.documentElement.style.fontSize = "16px";
+  document.documentElement.style.setProperty(
+    "--font-mono",
+    '"JetBrains Mono", ui-monospace, monospace',
+  );
+  document.documentElement.style.setProperty("--text-sm", "0.8125rem");
+  document.documentElement.style.setProperty("--text-xs", "0.75rem");
+  document.documentElement.style.setProperty("--leading-tight", "1.2");
+  document.documentElement.style.setProperty("--terminal", "#0c100e");
+  document.documentElement.style.setProperty("--terminal-text", "#d7e0d8");
+  vi.spyOn(api, "attachTicket").mockResolvedValue({
+    ticket: "a".repeat(43),
+    expiresAt: "2099-01-01T00:00:00Z",
+    webSocketPath: "/runs/run-1/attach",
+  });
+  render(<TerminalView runId="run-1" reconnect={true} supported={true} />);
+  await waitFor(() => expect(mocks.socketSend).toHaveBeenCalled());
+  expect(mocks.options).toMatchObject({
+    fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+    fontSize: 13,
+    lineHeight: 1.2,
+    theme: terminalTheme(),
+  });
+  expect(terminalTextMetrics().fontSize).toBe(13);
+  expect(mocks.fit).toHaveBeenCalled();
+  expect(document.querySelector(".terminal-frame")).toBeInTheDocument();
 });
 
 it("fits, resizes, and disposes every terminal resource", async () => {
