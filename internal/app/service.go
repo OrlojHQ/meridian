@@ -746,8 +746,7 @@ func (s *Service) GetCapsule(ctx context.Context, id domain.CapsuleID) (domain.C
 	if err != nil {
 		return domain.Capsule{}, err
 	}
-	filled := s.backfillCapsuleTitles(ctx, []domain.Capsule{result})
-	return filled[0], nil
+	return result, nil
 }
 
 func (s *Service) ListCapsules(
@@ -789,7 +788,6 @@ func (s *Service) ListCapsules(
 	if err != nil {
 		return CapsulePage{}, err
 	}
-	result.Items = s.backfillCapsuleTitles(ctx, result.Items)
 	return result, nil
 }
 

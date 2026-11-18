@@ -692,3 +692,46 @@ func TestDeleteRevokedConnectionRemovesGrantsAndStopsAtALiveCapsule(t *testing.T
 		t.Fatal(err)
 	}
 }
+
+func TestEndpointModelsKeepSavedKeyOnSavedEndpoint(t *testing.T) {
+	ctx := operatorContext()
+	for _, allowPrivate := range []bool{false, true} {
+		s, _, _, _ := newConnectionService(t, allowPrivate)
+		saved, err := s.PutProviderConnection(ctx, "", ConnectionInput{
+			Name: "Models", Provider: "openai-compatible", APIKey: "upstream-private-key",
+			BaseURL: "https://models.example", DefaultModel: "qwen3-coder",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		base, key, _, stored, err := s.endpointModelSource(ctx, ListEndpointModelsInput{ConnectionID: saved.ID})
+		if err != nil || base != "https://models.example" || key != "upstream-private-key" || stored != "qwen3-coder" {
+			t.Fatalf("saved endpoint = %q %q %q %v", base, key, stored, err)
+		}
+		if _, key, _, _, err := s.endpointModelSource(ctx, ListEndpointModelsInput{
+			ConnectionID: saved.ID, BaseURL: "https://models.example/",
+		}); err != nil || key != "upstream-private-key" {
+			t.Fatalf("same endpoint = %q %v", key, err)
+		}
+		if _, key, _, _, err := s.endpointModelSource(ctx, ListEndpointModelsInput{
+			ConnectionID: saved.ID, BaseURL: "https://elsewhere.example",
+		}); !errors.Is(err, domain.ErrInvalid) || key != "" {
+			t.Fatalf("saved key sent to another endpoint: %q %v", key, err)
+		}
+		base, key, _, _, err = s.endpointModelSource(ctx, ListEndpointModelsInput{
+			ConnectionID: saved.ID, BaseURL: "https://elsewhere.example", APIKey: "typed-key",
+		})
+		if err != nil || base != "https://elsewhere.example" || key != "typed-key" {
+			t.Fatalf("typed key = %q %q %v", base, key, err)
+		}
+		_, _, _, _, err = s.endpointModelSource(ctx, ListEndpointModelsInput{
+			ConnectionID: saved.ID, BaseURL: "http://192.168.1.20:8000", AllowPrivateHTTP: true, APIKey: "typed-key",
+		})
+		if allowPrivate && err != nil {
+			t.Fatal("private endpoint refused with the opt-in", err)
+		}
+		if !allowPrivate && !errors.Is(err, domain.ErrInvalid) {
+			t.Fatal("private endpoint accepted without the installation opt-in", err)
+		}
+	}
+}

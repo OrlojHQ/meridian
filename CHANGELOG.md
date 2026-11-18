@@ -7,6 +7,41 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+
+- Listing a saved connection's models sends its saved key only to its saved
+  endpoint. A different base URL needs its own key, and private-network HTTP
+  needs the installation opt-in on this path too.
+- An automatic `thread-` Capsule name is no longer replaced with text from
+  the first message. The name is plaintext and the transcript is encrypted, so
+  the Station does not copy one into the other. The Capsule page still shows a
+  title from the first message without saving it; click it to save a name.
+  Reading a Capsule, a Capsule list, or the board no longer writes to it.
+- A session error from the harness is shown only when it does not look like
+  it carries a credential, such as a token, key assignment, bearer header, or
+  long token string.
+
+### Fixed
+
+- A stop the harness never answers returns 409 `harness_unresponsive` with
+  the explanation, instead of a 500 with no message. The session is still
+  ended.
+- A forced Capsule delete checks the version and that the Capsule can be
+  deleted before it stops any session. A replay does not stop sessions again.
+- The workspace shell no longer drops output for a viewer that reads slowly.
+  A viewer that falls more than 1 MiB behind is disconnected instead.
+- Opening, attaching to, and typing in the workspace shell count as Capsule
+  activity, so the idle scan does not pause a Capsule in use from its
+  Terminal.
+- The GitHub CLI login check uses the active github.com account, so a stale
+  second account or another host no longer hides a working login. A `gh`
+  that does not answer is reported as such, not as signed out or missing. A
+  login-shell PATH lookup that fails is retried after a minute instead of
+  never.
+- `make opencode-binary` explains that the pinned OpenCode build is
+  Linux-only, and checks the archive with `shasum` when `sha256sum` is
+  missing.
+
 ## [0.11.4] - 2026-11-17
 
 ### Fixed

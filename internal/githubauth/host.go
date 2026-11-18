@@ -80,46 +80,112 @@ func (h HostCommands) Probe(ctx context.Context) Status {
 	wipe(stdout)
 	wipe(stderr)
 	if runErr != nil {
+		// gh was found but did not run or answer in time. The state stays
+		// not_found so older clients that know only the existing states keep
+		// working; the detail says what actually happened.
 		return Status{
 			State:    StateNotFound,
 			Path:     found.path,
 			Searched: found.searched,
-			Detail:   notFoundDetail(found),
+			Detail:   notRespondingDetail(found.path),
 		}
 	}
-	login := firstMatch(loginPattern, text)
-	failed := firstMatch(failedLoginPattern, text)
 	// A zero exit is not required. gh can print a signed-in account and
-	// still exit non-zero for a host that is not github.com. A keyring
-	// failure takes priority: the account is known, but the token is not.
-	if login != "" && failed == "" && !keyringFailure(text) {
+	// still exit non-zero for a host that is not github.com, or for another
+	// github.com account that is not the active one. Only the active
+	// account decides the state, because `gh auth token` returns its token.
+	accounts := gitHubAccounts(text)
+	if len(accounts) == 0 {
+		if keyringFailure(text) {
+			return Status{
+				State:    StateTokenUnreadable,
+				Path:     found.path,
+				Searched: found.searched,
+				Detail:   tokenUnreadableDetail(found.path, ""),
+			}
+		}
 		return Status{
-			State:    StateSignedIn,
-			Login:    login,
+			State:    StateNotSignedIn,
 			Path:     found.path,
 			Searched: found.searched,
-			Detail:   signedInDetail(found.path, login),
+			Detail:   notSignedInDetail(found.path),
 		}
 	}
-	if failed != "" || keyringFailure(text) {
-		account := failed
-		if account == "" {
-			account = login
-		}
+	active := activeAccount(accounts)
+	// A keyring failure takes priority: the account is known, but the token
+	// is not.
+	if active.failed || keyringFailure(active.text) {
 		return Status{
 			State:    StateTokenUnreadable,
-			Login:    account,
+			Login:    active.login,
 			Path:     found.path,
 			Searched: found.searched,
-			Detail:   tokenUnreadableDetail(found.path, account),
+			Detail:   tokenUnreadableDetail(found.path, active.login),
 		}
 	}
 	return Status{
-		State:    StateNotSignedIn,
+		State:    StateSignedIn,
+		Login:    active.login,
 		Path:     found.path,
 		Searched: found.searched,
-		Detail:   notSignedInDetail(found.path),
+		Detail:   signedInDetail(found.path, active.login),
 	}
+}
+
+// gitHubAccount is one github.com account in `gh auth status` output. text
+// is the indented lines under it; it is matched against fixed phrases only
+// and never returned.
+type gitHubAccount struct {
+	login  string
+	failed bool
+	active bool
+	text   string
+}
+
+// gitHubAccounts splits `gh auth status` output into github.com accounts.
+// An unindented line starts another host, so lines under a different host
+// are not attributed to a github.com account.
+func gitHubAccounts(text string) []gitHubAccount {
+	var accounts []gitHubAccount
+	current := -1
+	for _, line := range strings.Split(text, "\n") {
+		if login := firstMatch(loginPattern, line); login != "" {
+			accounts = append(accounts, gitHubAccount{login: login})
+			current = len(accounts) - 1
+			continue
+		}
+		if login := firstMatch(failedLoginPattern, line); login != "" {
+			accounts = append(accounts, gitHubAccount{login: login, failed: true})
+			current = len(accounts) - 1
+			continue
+		}
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if line[0] != ' ' && line[0] != '\t' {
+			current = -1
+			continue
+		}
+		if current < 0 {
+			continue
+		}
+		accounts[current].text += line + "\n"
+		if strings.Contains(strings.ToLower(line), "active account: true") {
+			accounts[current].active = true
+		}
+	}
+	return accounts
+}
+
+// activeAccount is the account gh marks active. A gh too old to mark one
+// lists a single account per host, which is then the active one.
+func activeAccount(accounts []gitHubAccount) gitHubAccount {
+	for _, account := range accounts {
+		if account.active {
+			return account
+		}
+	}
+	return accounts[0]
 }
 
 // Token returns the gh token. The caller must confirm first. On failure the
@@ -164,6 +230,13 @@ func runGH(ctx context.Context, path string, args ...string) (stdout, stderr []b
 	command.Stdout = &out
 	command.Stderr = &errBuf
 	err := command.Run()
+	if err != nil && ctx.Err() != nil {
+		// gh was stopped for taking too long. Its exit status says nothing
+		// about the login, so it is not treated as an answer.
+		wipe(out.Bytes())
+		wipe(errBuf.Bytes())
+		return nil, nil, nil, ctx.Err()
+	}
 	if err != nil {
 		var exit *exec.ExitError
 		if errors.As(err, &exit) {
@@ -219,6 +292,10 @@ func tokenUnreadableDetail(path, login string) string {
 		who = "is signed in as @" + login
 	}
 	return "The GitHub CLI at " + path + " " + who + ", but its token could not be read. Run `meridian github connect` in a terminal on this computer."
+}
+
+func notRespondingDetail(path string) string {
+	return "The GitHub CLI at " + path + " did not answer. Run `gh auth status` in a terminal on this computer to check it."
 }
 
 func notFoundDetail(found resolved) string {

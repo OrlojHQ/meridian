@@ -181,6 +181,53 @@ func (s *Service) GetRun(ctx context.Context, id domain.RunID) (domain.Run, erro
 	return s.applyRuntimeState(ctx, id, runtimeRun)
 }
 
+// ForceDeleteCapsule ends the Capsule's sessions, then deletes it. A stale
+// version, a missing idempotency key, or a Capsule that cannot be deleted is
+// refused before any session is stopped. A replay of a delete that already
+// succeeded does not stop anything again.
+func (s *Service) ForceDeleteCapsule(
+	ctx context.Context,
+	id domain.CapsuleID,
+	expected domain.ResourceVersion,
+	key string,
+) (domain.Capsule, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return domain.Capsule{}, err
+	}
+	if expected <= 0 {
+		return domain.Capsule{}, fmt.Errorf("%w: expected resource version is required", domain.ErrInvalid)
+	}
+	if err := requireIdempotency(key); err != nil {
+		return domain.Capsule{}, err
+	}
+	replayed := false
+	err := s.store.View(ctx, func(reader ports.Reader) error {
+		if _, ok, err := getReplay[domain.Capsule](ctx, reader, "capsule:"+string(id)+":delete", key); err != nil {
+			return err
+		} else if ok {
+			replayed = true
+			return nil
+		}
+		current, err := reader.GetCapsule(ctx, id)
+		if err != nil {
+			return err
+		}
+		if current.ResourceVersion != expected {
+			return domain.ErrConflict
+		}
+		return current.CanMutate()
+	})
+	if err != nil {
+		return domain.Capsule{}, err
+	}
+	if !replayed {
+		if err := s.EndCapsuleSessions(ctx, id); err != nil {
+			return domain.Capsule{}, err
+		}
+	}
+	return s.DeleteCapsule(ctx, id, expected, key)
+}
+
 // EndCapsuleSessions stops every active Run and Thread on a Capsule. A harness
 // that does not answer is ended locally, so deletion cannot wait forever.
 func (s *Service) EndCapsuleSessions(ctx context.Context, id domain.CapsuleID) error {
@@ -349,7 +396,7 @@ func (s *Service) CancelRun(
 	if endErr != nil {
 		return run, endErr
 	}
-	return run, errors.New("the harness did not stop; the session was ended")
+	return run, domain.ErrHarnessUnresponsive
 }
 
 func (s *Service) RunEvents(
@@ -405,10 +452,13 @@ func (s *Service) OpenShell(ctx context.Context, id domain.CapsuleID, columns, r
 		s.auditFailure(ctx, domain.AuditCapsuleShell, "capsule", string(id), err)
 		return err
 	}
-	err = s.store.Transact(ctx, func(tx ports.Transaction) error {
+	now := s.clock.Now().UTC()
+	return s.store.Transact(ctx, func(tx ports.Transaction) error {
+		if err := s.touchCapsuleActivityTx(ctx, tx, id, now); err != nil {
+			return err
+		}
 		return s.audit(ctx, tx, domain.AuditCapsuleShell, "capsule", string(id))
 	})
-	return err
 }
 
 func (s *Service) AttachShell(ctx context.Context, id domain.CapsuleID) (ports.RuntimeAttachment, error) {
@@ -426,7 +476,15 @@ func (s *Service) AttachShell(ctx context.Context, id domain.CapsuleID) (ports.R
 	if capsule.State != domain.CapsuleReady || capsule.DesiredState != domain.IntentReady || capsule.Maintenance != "" {
 		return nil, fmt.Errorf("%w: Capsule must be Ready", domain.ErrIllegalTransition)
 	}
-	return shells.AttachShell(ctx, capsule.ProviderResourceID)
+	attachment, err := shells.AttachShell(ctx, capsule.ProviderResourceID)
+	if err == nil {
+		err = s.TouchCapsuleActivity(ctx, capsule.ID)
+		if err != nil {
+			_ = attachment.Close()
+			return nil, err
+		}
+	}
+	return attachment, err
 }
 
 func (s *Service) GitStatus(ctx context.Context, capsuleID domain.CapsuleID) (ports.GitResult, error) {

@@ -1366,13 +1366,11 @@ func (s *Server) deleteCapsule(writer http.ResponseWriter, request *http.Request
 	}
 	ctx := request.Context()
 	id := domain.CapsuleID(request.PathValue("capsuleId"))
+	remove := s.service.DeleteCapsule
 	if input.Force {
-		if err := s.service.EndCapsuleSessions(ctx, id); err != nil {
-			writeError(writer, err)
-			return
-		}
+		remove = s.service.ForceDeleteCapsule
 	}
-	capsule, err := s.service.DeleteCapsule(ctx, id, domain.ResourceVersion(input.ExpectedResourceVersion), request.Header.Get("Idempotency-Key"))
+	capsule, err := remove(ctx, id, domain.ResourceVersion(input.ExpectedResourceVersion), request.Header.Get("Idempotency-Key"))
 	if err != nil {
 		writeError(writer, err)
 		return
@@ -1943,7 +1941,41 @@ func (s *Server) attachShell(writer http.ResponseWriter, request *http.Request) 
 		writeError(writer, err)
 		return
 	}
-	s.proxyAttachment(writer, request, upstream)
+	s.proxyAttachment(writer, request, newShellActivity(request.Context(), upstream, func(ctx context.Context) {
+		_ = s.service.TouchCapsuleActivity(ctx, ticket.CapsuleID)
+	}))
+}
+
+// shellActivityInterval bounds how often typing in a shell is recorded as
+// Capsule activity.
+const shellActivityInterval = 30 * time.Second
+
+// shellActivity records typed input as Capsule activity. A shell is not a
+// Run or Thread, so without this the idle scan pauses a Capsule while
+// someone is working in its terminal. An open terminal nobody types into
+// does not keep the Capsule awake.
+type shellActivity struct {
+	ports.RuntimeAttachment
+	ctx   context.Context
+	touch func(context.Context)
+	last  atomic.Int64
+}
+
+func newShellActivity(ctx context.Context, upstream ports.RuntimeAttachment, touch func(context.Context)) *shellActivity {
+	activity := &shellActivity{RuntimeAttachment: upstream, ctx: context.WithoutCancel(ctx), touch: touch}
+	activity.last.Store(time.Now().UnixNano())
+	return activity
+}
+
+func (a *shellActivity) Write(ctx context.Context, binary bool, value []byte) error {
+	if binary && len(value) > 0 {
+		now := time.Now().UnixNano()
+		last := a.last.Load()
+		if now-last >= int64(shellActivityInterval) && a.last.CompareAndSwap(last, now) {
+			go a.touch(a.ctx)
+		}
+	}
+	return a.RuntimeAttachment.Write(ctx, binary, value)
 }
 
 func (s *Server) proxyAttachment(writer http.ResponseWriter, request *http.Request, upstream ports.RuntimeAttachment) {
@@ -2141,6 +2173,8 @@ func writeError(writer http.ResponseWriter, err error) {
 		status, code, message = http.StatusBadRequest, "invalid_request", err.Error()
 	case errors.Is(err, domain.ErrNotFound):
 		status, code, message = http.StatusNotFound, "not_found", "resource not found"
+	case errors.Is(err, domain.ErrHarnessUnresponsive):
+		status, code, message = http.StatusConflict, "harness_unresponsive", err.Error()
 	case errors.Is(err, domain.ErrConflict):
 		status, code, message = http.StatusConflict, "conflict", err.Error()
 	case errors.Is(err, domain.ErrCorrupt):

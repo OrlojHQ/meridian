@@ -443,11 +443,18 @@ func TestGeneratedClientLifecycle(t *testing.T) {
 	runtime.mu.Lock()
 	runtime.cancelErr = errors.New("injected runtime cancel failure")
 	runtime.mu.Unlock()
-	if _, err := api.CancelThread(ctx,
+	failedCancel, err := api.CancelThread(ctx,
 		&client.LifecycleMutationRequest{ExpectedResourceVersion: currentThread.ResourceVersion},
 		client.CancelThreadParams{ThreadId: currentThread.ID, IdempotencyKey: "thread-cancel"},
-	); err == nil {
-		t.Fatal("HTTP cancel hid runtime failure")
+	)
+	if err == nil {
+		conflict, ok := failedCancel.(*client.CancelThreadConflict)
+		if !ok {
+			t.Fatalf("HTTP cancel hid runtime failure: %T", failedCancel)
+		}
+		if conflict.Error.Code != "harness_unresponsive" || !strings.Contains(conflict.Error.Message, "the session was ended") {
+			t.Fatalf("HTTP cancel failure = %#v", conflict.Error)
+		}
 	}
 	runtime.mu.Lock()
 	runtime.cancelErr = nil

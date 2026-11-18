@@ -29,6 +29,10 @@ while IFS= read -r line || [ -n "$line" ]; do
 	esac
 done <"$envfile"
 
+# The pinned archive is the Linux build the Capsule image installs. It cannot
+# run on another OS, and the schema test needs to run it.
+[ "$(uname -s)" = Linux ] || die "the pinned OpenCode build is Linux-only; run this on Linux (CI does) or in a Linux container"
+
 case $(uname -m) in
 x86_64) arch=$arch_amd64 checksum=$sha_amd64 ;;
 aarch64 | arm64) arch=$arch_arm64 checksum=$sha_arm64 ;;
@@ -48,7 +52,11 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
 	"$url" -o "$work/pack.tar.gz"
-printf '%s  %s\n' "$checksum" "$work/pack.tar.gz" | sha256sum -c -
+if command -v sha256sum >/dev/null 2>&1; then
+	printf '%s  %s\n' "$checksum" "$work/pack.tar.gz" | sha256sum -c -
+else
+	printf '%s  %s\n' "$checksum" "$work/pack.tar.gz" | shasum -a 256 -c -
+fi
 tar -xzf "$work/pack.tar.gz" -C "$work" --no-same-owner
 found=$(find "$work" -type f -name opencode ! -path "$work/pack.tar.gz")
 [ "$(printf '%s\n' "$found" | wc -l)" -eq 1 ] || die "archive does not contain one opencode binary"

@@ -113,18 +113,40 @@ func lookInPath(pathEnv, name string) string {
 	return ""
 }
 
-var (
-	loginPATHOnce  sync.Once
-	loginPATHValue string
-)
+// loginPATHTimeout bounds one login-shell start. Profiles that load version
+// managers can take a few seconds.
+const loginPATHTimeout = 5 * time.Second
+
+// loginPATHRetry is how long a failed login-shell lookup is remembered. A
+// PATH that was read is kept for the life of the process; a lookup that
+// timed out or failed is tried again later instead of never.
+const loginPATHRetry = time.Minute
+
+var loginPATHCache struct {
+	sync.Mutex
+	value    string
+	read     bool
+	failedAt time.Time
+}
 
 func cachedLoginPATH(context.Context) string {
-	loginPATHOnce.Do(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		loginPATHValue = readLoginShellPATH(ctx, loginShell())
-	})
-	return loginPATHValue
+	loginPATHCache.Lock()
+	defer loginPATHCache.Unlock()
+	if loginPATHCache.read {
+		return loginPATHCache.value
+	}
+	if !loginPATHCache.failedAt.IsZero() && time.Since(loginPATHCache.failedAt) < loginPATHRetry {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), loginPATHTimeout)
+	defer cancel()
+	value := readLoginShellPATH(ctx, loginShell())
+	if value == "" {
+		loginPATHCache.failedAt = time.Now()
+		return ""
+	}
+	loginPATHCache.value, loginPATHCache.read = value, true
+	return value
 }
 
 func loginShell() string {

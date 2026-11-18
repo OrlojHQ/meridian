@@ -165,3 +165,15 @@ func TestAttachTicketRegistryStoresOnlyDigests(t *testing.T) {
 		t.Fatal("digest-backed ticket was not redeemable")
 	}
 }
+
+func TestWriteErrorExplainsAForcedStop(t *testing.T) {
+	response := httptest.NewRecorder()
+	writeError(response, domain.ErrHarnessUnresponsive)
+	if response.Code != http.StatusConflict {
+		t.Fatalf("forced stop HTTP status = %d", response.Code)
+	}
+	body := response.Body.String()
+	if !strings.Contains(body, `"harness_unresponsive"`) || !strings.Contains(body, "the session was ended") {
+		t.Fatalf("forced stop envelope = %s", body)
+	}
+}
