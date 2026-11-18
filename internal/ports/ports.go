@@ -450,9 +450,12 @@ type WorkspaceFile struct {
 
 // WorkspaceBrowser is optional and exposes only the bounded, supervisor-owned
 // browser. Implementations must not access provider filesystems directly.
+// WriteWorkspaceFile creates one composer attachment inside the Capsule and
+// nowhere else.
 type WorkspaceBrowser interface {
 	ListWorkspaceFiles(context.Context, string, string, string, int) (WorkspaceFilePage, error)
 	ReadWorkspaceFile(context.Context, string, string) (WorkspaceFile, error)
+	WriteWorkspaceFile(context.Context, string, string, []byte) error
 }
 
 type DeliveryInspection struct {
@@ -463,6 +466,13 @@ type DeliveryInspection struct {
 	OriginURL              string
 	DefaultBranch          string
 	Tree                   string
+	// AheadCount is commits on HEAD that are not on the default branch's
+	// remote head. UnpushedCount is commits not on the same-named remote
+	// branch. HasDeliverableChanges is true when a new delivery would publish
+	// commits or worktree changes, excluding files the supervisor writes.
+	AheadCount            int
+	UnpushedCount         int
+	HasDeliverableChanges bool
 }
 
 type DeliveryCommitRequest struct {

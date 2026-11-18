@@ -20,9 +20,10 @@ type ProfileDiagnostic struct {
 	// NothingPinned is true when the Capsule took nothing from a profile:
 	// it was created clean, or before the owner saved one.
 	NothingPinned bool
-	// MatchesProfile is true only when every harness is pinned to what a new
-	// Capsule would pin, the identity matches, and no exclusion or warning
-	// is outstanding. It never claims the Capsule matches the laptop.
+	// MatchesProfile is true when every harness is pinned to what a new
+	// Capsule would pin and the commit identity matches the profile.
+	// Import exclusions and warnings belong to the revision, so they do
+	// not affect it. It never claims the Capsule matches the laptop.
 	MatchesProfile bool
 	Harnesses      []HarnessDiagnostic
 	CommitAuthor   CommitAuthorDiagnostic
@@ -160,7 +161,10 @@ func (s *Service) profileDiagnostic(ctx context.Context, r ports.Reader, id doma
 		NothingPinned: len(pinned) == 0 && !hasIdentity,
 		Harnesses:     []HarnessDiagnostic{},
 	}
-	matches := !result.NothingPinned
+	// A clean Capsule matches an empty profile: updating would pin nothing.
+	// Drift is only a pin that a new Capsule would not take, or an identity
+	// that is not the profile's.
+	matches := true
 	for _, harness := range names {
 		row := HarnessDiagnostic{Harness: harness, ProjectOverride: overrides[harness], FilesAdded: []string{}, FilesRemoved: []string{},
 			Exclusions: []harnesssetup.Issue{}, Warnings: []harnesssetup.Issue{}}
@@ -198,8 +202,7 @@ func (s *Service) profileDiagnostic(ctx context.Context, r ports.Reader, id doma
 			return ProfileDiagnostic{}, err
 		}
 		if (row.Pinned == nil) != (row.Current == nil) ||
-			(row.Pinned != nil && row.Pinned.Revision != row.Current.Revision) ||
-			len(row.Exclusions) > 0 || len(row.Warnings) > 0 {
+			(row.Pinned != nil && row.Pinned.Revision != row.Current.Revision) {
 			matches = false
 		}
 		result.Harnesses = append(result.Harnesses, row)

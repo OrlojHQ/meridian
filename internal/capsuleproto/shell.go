@@ -220,15 +220,25 @@ func (sh *shellSession) subscribe() (int, *shellSubscriber, error) {
 // errShellOverflow is a viewer that did not keep up with the shell output.
 var errShellOverflow = errors.New("shell output overflow")
 
-// take returns the viewer's unwritten output. With none left it reports
-// whether the viewer overflowed or the shell exited. Output written before
-// either is always returned first.
+// take returns the viewer's unwritten output, at most one websocket frame.
+// A slow writer must not coalesce the backlog into a message the peer's
+// read limit rejects. With none left it reports whether the viewer
+// overflowed or the shell exited. Output written before either is always
+// returned first.
 func (sh *shellSession) take(subscriber *shellSubscriber) ([]byte, error) {
 	sh.mu.Lock()
 	defer sh.mu.Unlock()
 	if len(subscriber.pending) > 0 {
-		chunk := subscriber.pending
-		subscriber.pending = nil
+		n := len(subscriber.pending)
+		if n > maxFrameBytes {
+			n = maxFrameBytes
+		}
+		chunk := append([]byte(nil), subscriber.pending[:n]...)
+		if n == len(subscriber.pending) {
+			subscriber.pending = nil
+		} else {
+			subscriber.pending = append([]byte(nil), subscriber.pending[n:]...)
+		}
 		return chunk, nil
 	}
 	if subscriber.overflow {

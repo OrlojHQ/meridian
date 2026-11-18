@@ -1088,6 +1088,9 @@ describe("Workspace browsing and shipping", () => {
       branch: "feature/local",
       defaultBranch: "main",
       dirty: true,
+      aheadCount: 0,
+      unpushedCount: 0,
+      hasDeliverableChanges: true,
     });
     vi.spyOn(api, "gitDiff").mockResolvedValue({
       content: "diff --git a/notes.md b/notes.md\n--- a/notes.md\n+++ b/notes.md\n@@ -1 +1,2 @@\n-old\n+new\n+line\n",

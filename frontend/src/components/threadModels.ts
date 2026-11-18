@@ -19,6 +19,8 @@ export type ThreadModels = ThreadOptionSet & {
   // resolved names the model the current option runs, such as "Opus 5.5"
   // behind a "default" alias, when the harness reports it; otherwise empty.
   resolved: string;
+  // images is true when the harness accepts image content.
+  images: boolean;
   // effort is the current model's reasoning effort levels, when the harness
   // reports any. An empty current means the harness did not say which.
   effort?: ThreadOptionSet;
@@ -61,6 +63,7 @@ export function latestThreadModels(blocks: ThreadBlock[]): ThreadModels | undefi
     const models: ThreadModels = {
       ...optionSet(event.models, MAX_MODELS),
       resolved: clean(event.models.resolved, 128),
+      images: event.models.images === true,
     };
     if (event.models.effort) {
       const effort = optionSet(event.models.effort, MAX_EFFORTS);

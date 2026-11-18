@@ -18,11 +18,16 @@ use url::Url;
 pub const WINDOW: &str = "main";
 
 /// Commands a gateway page may call through `window.__MERIDIAN_DESKTOP__`.
-pub const COMMANDS: [&str; 7] = [
+pub const COMMANDS: [&str; 10] = [
     "desktop_notify",
     "desktop_set_attention",
     "desktop_open_gateway",
     "desktop_gateway",
+    // Takes a slot number for ⌘1–9 and returns nothing about the Station.
+    // A Station page never receives the saved list or its status (ADR 0055).
+    "desktop_switch_station",
+    "desktop_setup_check",
+    "desktop_setup_check_set",
     "desktop_update_check",
     "desktop_update_install",
     // Opens the shell-owned import window. No arguments, and it returns only
@@ -32,11 +37,14 @@ pub const COMMANDS: [&str; 7] = [
 
 /// The app permissions that allow [`COMMANDS`]. The picker's own permissions
 /// (`capabilities/local.json`) are never granted to a gateway origin.
-pub const PERMISSIONS: [&str; 7] = [
+pub const PERMISSIONS: [&str; 10] = [
     "allow-desktop-notify",
     "allow-desktop-set-attention",
     "allow-desktop-open-gateway",
     "allow-desktop-gateway",
+    "allow-desktop-switch-station",
+    "allow-desktop-setup-check",
+    "allow-desktop-setup-check-set",
     "allow-desktop-update-check",
     "allow-desktop-update-install",
     "allow-desktop-open-import",
@@ -297,9 +305,15 @@ mod tests {
         }
         assert!(!is_bridge_command("gateway_state"));
         assert!(!is_bridge_command("gateway_connect"));
-        // The recent list is the picker's: a gateway page cannot read or
-        // change which other gateways the operator uses.
-        assert!(!is_bridge_command("gateway_forget"));
+        // Adding, renaming, and removing stay on the picker. A Station page
+        // can list and switch among Stations the operator already saved.
+        assert!(!is_bridge_command("gateway_rename"));
+        assert!(!is_bridge_command("gateway_remove"));
+        // A Station page cannot read the saved list or probe other Stations.
+        assert!(!is_bridge_command("desktop_stations"));
+        assert!(!is_bridge_command("desktop_station_status"));
+        assert!(!is_bridge_command("gateway_status"));
+        assert!(is_bridge_command("desktop_switch_station"));
     }
 
     /// The import window (ADR 0049) has its own local capability. A gateway
@@ -340,7 +354,9 @@ mod tests {
         for permission in [
             "allow-gateway-state",
             "allow-gateway-connect",
-            "allow-gateway-forget",
+            "allow-gateway-rename",
+            "allow-gateway-remove",
+            "allow-gateway-status",
         ] {
             assert!(!PERMISSIONS.contains(&permission));
         }

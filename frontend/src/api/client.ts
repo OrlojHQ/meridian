@@ -224,6 +224,12 @@ const idempotencyHeaders = () => ({
   "Idempotency-Key": crypto.randomUUID(),
 });
 
+export type SendMessageOptions = {
+  delivery?: "steer";
+  signal?: AbortSignal;
+  attachments?: { name: string; mediaType: string; data: string }[];
+};
+
 export const api = {
  projectHarnessSetup:(projectId:string,harness:string)=>call<ProjectHarnessSetup>(getProjectHarnessSetup({...generatedOptions(),path:{projectId,harness}})),
  setProjectHarnessSetup:(projectId:string,harness:string,setup:string)=>call<ProjectHarnessSetup>(setProjectHarnessSetup({...generatedOptions(),path:{projectId,harness},body:{setup}})),
@@ -631,21 +637,27 @@ export const api = {
     threadId: string,
     expectedResourceVersion: number,
     content: string,
-    delivery?: "steer",
+    delivery?: "steer" | SendMessageOptions,
     signal?: AbortSignal,
-  ) =>
-    call<ThreadMutationResult>(
+  ) => {
+    const options: SendMessageOptions =
+      delivery !== undefined && typeof delivery === "object" ? delivery : { delivery, signal };
+    return call<ThreadMutationResult>(
       sendThreadMessage({
-        ...generatedOptions(signal),
+        ...generatedOptions(options.signal),
         path: { threadId },
         headers: idempotencyHeaders(),
         body: {
           expectedResourceVersion,
           content,
-          ...(delivery === "steer" ? { delivery } : {}),
+          ...(options.delivery === "steer" ? { delivery: "steer" as const } : {}),
+          ...(options.attachments && options.attachments.length > 0
+            ? { attachments: options.attachments }
+            : {}),
         },
       }),
-    ),
+    );
+  },
   respondThread: (
     threadId: string,
     body: ThreadResponseRequest,

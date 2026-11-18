@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-desktop-setup-check-set"
+description = "Enables the desktop_setup_check_set command without any pre-configured scope."
+commands.allow = ["desktop_setup_check_set"]
+
+[[permission]]
+identifier = "deny-desktop-setup-check-set"
+description = "Denies the desktop_setup_check_set command without any pre-configured scope."
+commands.deny = ["desktop_setup_check_set"]

@@ -40,8 +40,22 @@ export type ChatRequest = {
   answer?: string;
 };
 
+export type ChatAttachment = {
+  name: string;
+  mediaType: string;
+  size: number;
+  path: string;
+  kind: "image" | "file";
+};
+
 export type ChatItem =
-  | { kind: "user"; key: string; text: string; origin?: "from_lead" | "from_subagents" }
+  | {
+      kind: "user";
+      key: string;
+      text: string;
+      origin?: "from_lead" | "from_subagents";
+      attachments?: ChatAttachment[];
+    }
   | {
       kind: "subagent_reports";
       key: string;
@@ -97,6 +111,22 @@ export function lastOperatorPrompt(blocks: ThreadBlock[]) {
     }
   }
   return undefined;
+}
+
+function chatAttachments(value: ThreadBlock["attachments"]): ChatAttachment[] | undefined {
+  if (!value || value.length === 0) return undefined;
+  const items: ChatAttachment[] = [];
+  for (const item of value) {
+    if ((item.kind !== "image" && item.kind !== "file") || !item.name || !item.path) continue;
+    items.push({
+      name: safeInline(item.name),
+      mediaType: safeInline(item.mediaType ?? ""),
+      size: item.size,
+      path: safeInline(item.path),
+      kind: item.kind,
+    });
+  }
+  return items.length > 0 ? items : undefined;
 }
 
 // Matches responses to their requests. Responses name their request through
@@ -210,8 +240,9 @@ export function buildThreadChat(
           items.push({
             kind: "user",
             key: block.id,
-            text: boundedThreadText(block.content),
+            text: block.content ? boundedThreadText(block.content) : "",
             ...(block.origin ? { origin: block.origin.kind } : {}),
+            attachments: chatAttachments(block.attachments),
           });
         }
       } else if (block.kind === "error") {

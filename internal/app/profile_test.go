@@ -262,7 +262,7 @@ func TestCapsulePinsTheProfileAndExplainsDifferences(t *testing.T) {
 	}
 	row = diagnostic.Harnesses[0]
 	if row.Pinned == nil || row.Current == nil || row.Pinned.Revision != row.Current.Revision ||
-		!row.HasReport || len(row.Exclusions) != 1 || row.Exclusions[0].Path != ".codex/auth.json" || diagnostic.MatchesProfile {
+		!row.HasReport || len(row.Exclusions) != 1 || row.Exclusions[0].Path != ".codex/auth.json" || !diagnostic.MatchesProfile {
 		t.Fatalf("updated Capsule diagnostic = %+v", diagnostic)
 	}
 
@@ -330,6 +330,79 @@ func TestDepartedTransferResealsReportsAndLeavesTheProfile(t *testing.T) {
 		return nil
 	}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// Import exclusions and warnings are part of the saved revision. They stay
+// visible, and they do not make a Capsule look out of date when its pins and
+// commit identity already match. A different revision or identity does.
+func TestProfileMatchIsPinAndIdentityOnly(t *testing.T) {
+	f := newTwoOwners(t)
+	s := f.service
+	report := harnesssetup.Report{
+		Issues:   []harnesssetup.Issue{},
+		Warnings: []harnesssetup.Issue{{Path: "settings/local.json", Reason: "Absolute path kept"}},
+	}
+	if _, err := s.ImportProfile(f.alice, app.ProfileImport{
+		Setups: []app.ProfileImportSetup{{Bundle: codexBundle("one"), Report: report}},
+		Git:    &app.GitIdentity{Name: "Ada Lovelace", Email: "ada@example.com"},
+	}, "import-1"); err != nil {
+		t.Fatal(err)
+	}
+	project, err := s.CreateProject(f.alice, "p", "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	capsule, err := s.CreateCapsule(f.alice, project.ID, "c", "c")
+	if err != nil {
+		t.Fatal(err)
+	}
+	diagnostic, err := s.CapsuleProfileDiagnostic(f.alice, capsule.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := diagnostic.Harnesses[0]
+	if !diagnostic.MatchesProfile || row.Pinned == nil || row.Current == nil || row.Pinned.Revision != row.Current.Revision ||
+		len(row.Warnings) != 1 || row.Warnings[0].Path != "settings/local.json" || len(row.Exclusions) != 0 {
+		t.Fatalf("matching pin with a warning = %+v", diagnostic)
+	}
+
+	if _, err := s.UpdateProfile(f.alice, app.ProfileUpdate{
+		GitName: "Ada King", GitEmail: "ada@example.com", ExpectedResourceVersion: 1,
+	}, "identity"); err != nil {
+		t.Fatal(err)
+	}
+	diagnostic, err = s.CapsuleProfileDiagnostic(f.alice, capsule.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if diagnostic.MatchesProfile || diagnostic.CommitAuthor.Name == diagnostic.CommitAuthor.ProfileName ||
+		diagnostic.Harnesses[0].Pinned.Revision != diagnostic.Harnesses[0].Current.Revision {
+		t.Fatalf("identity drift = %+v", diagnostic)
+	}
+
+	if _, err := s.UpdateProfile(f.alice, app.ProfileUpdate{
+		GitName: "Ada Lovelace", GitEmail: "ada@example.com", ExpectedResourceVersion: 2,
+	}, "identity-restore"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ImportProfile(f.alice, app.ProfileImport{
+		Setups: []app.ProfileImportSetup{{
+			Bundle: codexBundle("two"),
+			Report: report,
+		}},
+		ExpectedResourceVersion: 3,
+	}, "import-2"); err != nil {
+		t.Fatal(err)
+	}
+	diagnostic, err = s.CapsuleProfileDiagnostic(f.alice, capsule.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row = diagnostic.Harnesses[0]
+	if diagnostic.MatchesProfile || row.Pinned == nil || row.Current == nil || row.Pinned.Revision == row.Current.Revision ||
+		diagnostic.CommitAuthor.Name != diagnostic.CommitAuthor.ProfileName {
+		t.Fatalf("revision drift = %+v", diagnostic)
 	}
 }
 
