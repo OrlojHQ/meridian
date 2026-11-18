@@ -377,9 +377,21 @@ body:not(.import) main {
   padding: 0.28rem 0.45rem;
 }
 .quiet.remove { color: var(--danger); }
-.confirm p { margin: 0 0 0.8rem; color: var(--muted); }
+/* A one-line confirmation: smaller than the page title and the main button,
+   in proportion with the Station rows behind it. */
+.confirm { padding: 0.85rem 0.95rem 0.8rem; }
+.confirm h1 { margin: 0 0 0.3rem; font-size: 1.05rem; font-weight: 680; letter-spacing: -0.01em; }
+.confirm p { margin: 0 0 0.85rem; color: var(--muted); font-size: 0.85rem; line-height: 1.4; }
 .confirm .row { display: flex; justify-content: flex-end; gap: 0.5rem; }
 .confirm .row button, .sheet .row button { width: auto; margin: 0; }
+.confirm .row button {
+  min-height: 2rem;
+  border-radius: 0.55rem;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.82rem;
+  font-weight: 620;
+}
+.confirm .row button.danger { background: var(--danger-bg); color: var(--danger); }
 .sheet .row button.secondary, .confirm .row button.secondary {
   background: transparent;
   color: inherit;
@@ -395,3 +407,4 @@ body:not(.import) main {
   background: rgb(6 10 8 / 58%);
 }
 .backdrop .sheet, .backdrop .confirm { width: min(28rem, 100%); margin: 0; }
+.backdrop .confirm { width: min(22rem, 100%); }
