@@ -34,18 +34,29 @@ export function isStationShortcut(
   return event.ctrlKey && !event.metaKey && !inTerminal;
 }
 
+// The desktop shell's own limits (gateway.rs): a name is at most 60 Unicode
+// scalar values, counted the same way here rather than in UTF-16 units, and
+// a saved origin is at most 300 bytes.
+const MAX_STATION_NAME_CHARS = 60;
+const MAX_STATION_ID_LENGTH = 300;
+const MAX_STATIONS = 513;
+
+function parseStation(item: unknown): DesktopStation | undefined {
+  if (!item || typeof item !== "object") return undefined;
+  const { id, name, host, local, current } = item as Record<string, unknown>;
+  if (typeof id !== "string" || id.length === 0 || id.length > MAX_STATION_ID_LENGTH) return undefined;
+  if (typeof name !== "string" || name.trim() === "" || [...name].length > MAX_STATION_NAME_CHARS) return undefined;
+  if (typeof host !== "string" || host.length > MAX_STATION_ID_LENGTH) return undefined;
+  if (typeof local !== "boolean" || typeof current !== "boolean") return undefined;
+  return { id, name, host, local, current };
+}
+
+// One entry the page cannot show is skipped. It does not hide the switcher
+// or the other Stations.
 export function parseStations(value: unknown): DesktopStation[] | undefined {
-  if (!Array.isArray(value) || value.length > 512) return undefined;
-  const stations: DesktopStation[] = [];
-  for (const item of value) {
-    if (!item || typeof item !== "object") return undefined;
-    const record = item as Record<string, unknown>;
-    const { id, name, host, local, current } = record;
-    if (typeof id !== "string" || id.length === 0 || id.length > 300) return undefined;
-    if (typeof name !== "string" || name.trim() === "" || name.length > 80) return undefined;
-    if (typeof host !== "string" || host.length > 300) return undefined;
-    if (typeof local !== "boolean" || typeof current !== "boolean") return undefined;
-    stations.push({ id, name, host, local, current });
-  }
-  return stations;
+  if (!Array.isArray(value) || value.length > MAX_STATIONS) return undefined;
+  return value.flatMap((item) => {
+    const station = parseStation(item);
+    return station ? [station] : [];
+  });
 }

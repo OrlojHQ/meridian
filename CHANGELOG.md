@@ -13,7 +13,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   the sidebar, the command palette, and the tray switch by those names.
   ⌘1–⌘9 (Ctrl+1–9 elsewhere) switch the first nine. An unsent Thread message
   asks before a switch reloads the window. A host and port is enough; HTTPS
-  is assumed.
+  is assumed. Status dots come from one check at a time, with a few workers
+  and a three-second limit; a Station it cannot reach in time shows no dot.
 
 ### Changed
 

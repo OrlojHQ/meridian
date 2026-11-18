@@ -5,7 +5,9 @@
 
 use std::io::{Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream, ToSocketAddrs};
-use std::time::Duration;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{mpsc, Mutex};
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -16,7 +18,12 @@ pub const LOCAL_LISTEN: &str = "127.0.0.1:8080";
 /// be removed.
 pub const LOCAL_ID: &str = "local";
 const LOCAL_PORT: u16 = 8080;
-const MAX_NAME_CHARS: usize = 60;
+/// The longest Station name, in Unicode scalar values. The web UI checks
+/// names with the same count.
+pub const MAX_NAME_CHARS: usize = 60;
+/// The longest saved origin, in bytes, after a scheme is added and the host
+/// is converted to ASCII. The web UI accepts ids up to this length.
+pub const MAX_ORIGIN_BYTES: usize = 300;
 /// A hostile file cannot grow without bound. This is not a product cap:
 /// a person can save every Station they use.
 const MAX_SAVED_STATIONS: usize = 512;
@@ -349,6 +356,11 @@ pub fn validate_gateway_url(raw: &str) -> Result<String, String> {
     if origin == "null" || origin.is_empty() {
         return Err("Enter a Station address.".into());
     }
+    // A host typed without a scheme, or one that becomes punycode, can grow
+    // past the raw-input check. The saved origin itself stays bounded.
+    if origin.len() > MAX_ORIGIN_BYTES {
+        return Err("That Station address is too long.".into());
+    }
     Ok(origin)
 }
 
@@ -396,29 +408,121 @@ pub fn probe_local() -> GatewayProbe {
     probe_port(LOCAL_PORT)
 }
 
-/// Whether a saved Station answers. The bundled Station uses the readiness
-/// probe. Any other saved origin is a short TCP connect, so a dot can update
-/// off the UI thread without a new TLS stack. Offline does not block opening.
-pub fn probe_online(origin: &str) -> bool {
+/// How many saved Stations one status pass checks at a time.
+const PROBE_WORKERS: usize = 8;
+/// One status pass ends here. A Station it did not reach stays unknown.
+pub const PROBE_BUDGET: Duration = Duration::from_secs(3);
+const PROBE_CONNECT: Duration = Duration::from_millis(400);
+const PROBE_RESOLVE: Duration = Duration::from_secs(1);
+/// Addresses tried per Station.
+const PROBE_ADDRESSES: usize = 2;
+/// The system resolver cannot be cancelled. A lookup that outlives
+/// [`PROBE_RESOLVE`] is left to finish on its own thread; past this many
+/// lookups in flight, a Station is reported unknown instead of starting
+/// another one.
+const MAX_LOOKUPS_IN_FLIGHT: usize = 16;
+static LOOKUPS_IN_FLIGHT: AtomicUsize = AtomicUsize::new(0);
+
+/// Checks every origin with a fixed pool of workers inside
+/// [`PROBE_BUDGET`]. Returns `(origin, online)` for each Station it could
+/// decide; one it could not reach in time, or whose lookup did not answer,
+/// is left out and shows no status.
+pub fn probe_stations(origins: &[String]) -> Vec<(String, bool)> {
+    probe_stations_within(origins, PROBE_BUDGET)
+}
+
+fn probe_stations_within(origins: &[String], budget: Duration) -> Vec<(String, bool)> {
+    let deadline = Instant::now() + budget;
+    let next = AtomicUsize::new(0);
+    let results: Mutex<Vec<Option<bool>>> = Mutex::new(vec![None; origins.len()]);
+    std::thread::scope(|scope| {
+        for _ in 0..PROBE_WORKERS.min(origins.len()) {
+            scope.spawn(|| loop {
+                let index = next.fetch_add(1, Ordering::Relaxed);
+                if index >= origins.len() || Instant::now() >= deadline {
+                    break;
+                }
+                let online = probe_online(&origins[index], deadline);
+                if let Ok(mut results) = results.lock() {
+                    results[index] = online;
+                }
+            });
+        }
+    });
+    let results = results.into_inner().unwrap_or_default();
+    origins
+        .iter()
+        .zip(results)
+        .filter_map(|(origin, online)| online.map(|online| (origin.clone(), online)))
+        .collect()
+}
+
+/// Whether a saved Station answers, or `None` when that could not be decided
+/// before `deadline`. The bundled Station uses the readiness probe. Any other
+/// saved origin is a short TCP connect, so a dot can update off the UI thread
+/// without a new TLS stack. Offline does not block opening.
+fn probe_online(origin: &str, deadline: Instant) -> Option<bool> {
     if origin == LOCAL_ORIGIN {
-        return matches!(probe_local(), GatewayProbe::Ready | GatewayProbe::Starting);
+        return Some(matches!(
+            probe_local(),
+            GatewayProbe::Ready | GatewayProbe::Starting
+        ));
     }
     let Ok(url) = Url::parse(origin) else {
-        return false;
+        return Some(false);
     };
     let Some(host) = url.host_str() else {
-        return false;
+        return Some(false);
     };
     let Some(port) = url.port_or_known_default() else {
-        return false;
+        return Some(false);
     };
     let host = host.trim_matches(|character| character == '[' || character == ']');
-    let Ok(addrs) = (host, port).to_socket_addrs() else {
-        return false;
-    };
-    addrs
-        .take(4)
-        .any(|address| TcpStream::connect_timeout(&address, Duration::from_millis(400)).is_ok())
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    let addresses = resolve(host, port, remaining.min(PROBE_RESOLVE))?;
+    for address in addresses.iter().take(PROBE_ADDRESSES) {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return None;
+        }
+        if TcpStream::connect_timeout(address, remaining.min(PROBE_CONNECT)).is_ok() {
+            return Some(true);
+        }
+    }
+    Some(false)
+}
+
+/// Resolves `host` within `timeout`. `None` means the lookup did not answer
+/// in time, or too many lookups are already waiting; an empty list means the
+/// name did not resolve.
+fn resolve(host: &str, port: u16, timeout: Duration) -> Option<Vec<SocketAddr>> {
+    if let Ok(ip) = host.parse::<IpAddr>() {
+        return Some(vec![SocketAddr::new(ip, port)]);
+    }
+    if timeout.is_zero() {
+        return None;
+    }
+    if LOOKUPS_IN_FLIGHT.fetch_add(1, Ordering::AcqRel) >= MAX_LOOKUPS_IN_FLIGHT {
+        LOOKUPS_IN_FLIGHT.fetch_sub(1, Ordering::AcqRel);
+        return None;
+    }
+    let (sender, receiver) = mpsc::channel();
+    let name = host.to_string();
+    let spawned = std::thread::Builder::new()
+        .name("station-lookup".into())
+        .spawn(move || {
+            let addresses = (name.as_str(), port)
+                .to_socket_addrs()
+                .map(|addresses| addresses.take(PROBE_ADDRESSES).collect::<Vec<_>>())
+                .unwrap_or_default();
+            LOOKUPS_IN_FLIGHT.fetch_sub(1, Ordering::AcqRel);
+            let _ = sender.send(addresses);
+        });
+    if spawned.is_err() {
+        LOOKUPS_IN_FLIGHT.fetch_sub(1, Ordering::AcqRel);
+        return None;
+    }
+    receiver.recv_timeout(timeout).ok()
 }
 
 pub fn probe_port(port: u16) -> GatewayProbe {
@@ -648,6 +752,45 @@ mod tests {
         let text = String::from_utf8(bytes).unwrap();
         assert!(!text.contains("token"));
         assert!(!text.contains("recent"));
+    }
+
+    #[test]
+    fn saved_origins_stay_within_the_page_limit() {
+        let host = format!(
+            "{}.example",
+            "a".repeat(MAX_ORIGIN_BYTES - "https://.example".len())
+        );
+        assert!(validate_gateway_url(&host).is_ok());
+        let longer = format!("b{host}");
+        assert!(longer.len() <= 300);
+        assert_eq!(
+            validate_gateway_url(&longer).unwrap_err(),
+            "That Station address is too long."
+        );
+    }
+
+    #[test]
+    fn status_pass_is_bounded_and_reports_what_it_decided() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let online = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
+        let closed = {
+            let spare = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            format!("http://127.0.0.1:{}", spare.local_addr().unwrap().port())
+        };
+        let mut origins = vec![online.clone(), closed.clone()];
+        origins.extend((0..MAX_SAVED_STATIONS).map(|_| closed.clone()));
+        let started = Instant::now();
+        let statuses = probe_stations_within(&origins, Duration::from_secs(2));
+        assert!(
+            started.elapsed() < Duration::from_secs(4),
+            "{:?}",
+            started.elapsed()
+        );
+        assert!(statuses.contains(&(online, true)));
+        assert!(statuses.contains(&(closed, false)));
+        assert!(statuses.len() <= origins.len());
+        let none = probe_stations_within(&origins, Duration::ZERO);
+        assert!(none.is_empty());
     }
 
     #[test]

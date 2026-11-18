@@ -29,7 +29,7 @@ use tauri_plugin_shell::ShellExt;
 use url::Url;
 
 use gateway::{
-    encode_saved, is_shell_url, load_stations, origin_label, probe_local, probe_online,
+    encode_saved, is_shell_url, load_stations, origin_label, probe_local, probe_stations,
     remove_remote, rename_station, shell_index_url, station_name, upsert_remote,
     validate_gateway_url, GatewayProbe, LoadedStations, SavedGateway, StationBook, LOCAL_ID,
     LOCAL_ORIGIN,
@@ -46,7 +46,20 @@ const IDLE_ICON: &[u8] = include_bytes!("../icons/32x32.png");
 
 struct AppState {
     inner: Mutex<Inner>,
+    /// The last Station status pass. Held for the whole pass, so only one
+    /// runs at a time however often a page or the picker asks.
+    statuses: Mutex<Option<StatusPass>>,
 }
+
+/// A finished status pass and the saved Stations it covered.
+struct StatusPass {
+    ids: Vec<String>,
+    finished: Instant,
+    statuses: Vec<StationStatus>,
+}
+
+/// A status pass this recent is returned again instead of probing.
+const STATUS_FRESH: Duration = Duration::from_secs(5);
 
 struct Inner {
     saved: Option<SavedGateway>,
@@ -123,7 +136,7 @@ struct StationRow {
     current: bool,
 }
 
-#[derive(serde::Serialize)]
+#[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct StationStatus {
     id: String,
@@ -201,6 +214,7 @@ pub fn run() {
             let saved = loaded.choice.clone();
             let starting = saved.is_some();
             app.manage(AppState {
+                statuses: Mutex::new(None),
                 inner: Mutex::new(Inner {
                     saved: saved.clone(),
                     book: loaded.book,
@@ -434,8 +448,7 @@ fn gateway_remove(app: AppHandle, id: String) -> Result<(), String> {
 /// Probes saved Stations off the UI thread. A miss still leaves the Station openable.
 #[tauri::command]
 async fn gateway_status(app: AppHandle) -> Vec<StationStatus> {
-    let ids = station_ids(&app);
-    tauri::async_runtime::spawn_blocking(move || probe_ids(&ids))
+    tauri::async_runtime::spawn_blocking(move || station_statuses(&app))
         .await
         .unwrap_or_default()
 }
@@ -542,9 +555,8 @@ async fn desktop_station_status(app: AppHandle) -> Result<Vec<StationStatus>, St
     if lock(&app.state::<AppState>()).active.is_none() {
         return Err("No Station is open.".into());
     }
-    let ids = station_ids(&app);
     Ok(
-        tauri::async_runtime::spawn_blocking(move || probe_ids(&ids))
+        tauri::async_runtime::spawn_blocking(move || station_statuses(&app))
             .await
             .unwrap_or_default(),
     )
@@ -1626,36 +1638,39 @@ fn station_ids(app: &AppHandle) -> Vec<String> {
     ids
 }
 
-fn probe_ids(ids: &[String]) -> Vec<StationStatus> {
-    std::thread::scope(|scope| {
-        let handles: Vec<_> = ids
-            .iter()
-            .map(|origin| {
-                let origin = origin.clone();
-                scope.spawn(move || {
-                    let id = if origin == LOCAL_ORIGIN {
-                        LOCAL_ID.to_string()
-                    } else {
-                        origin.clone()
-                    };
-                    StationStatus {
-                        id,
-                        online: probe_online(&origin),
-                    }
-                })
-            })
-            .collect();
-        handles
-            .into_iter()
-            .map(|handle| {
-                handle.join().unwrap_or(StationStatus {
-                    id: String::new(),
-                    online: false,
-                })
-            })
-            .filter(|status| !status.id.is_empty())
-            .collect()
-    })
+/// Online status for every saved Station. One pass runs at a time, with a
+/// fixed number of workers and a time budget (see `gateway::probe_stations`).
+/// A caller that waited for a pass, or asks again within [`STATUS_FRESH`],
+/// gets that pass's answer. A Station the pass could not decide is left out.
+fn station_statuses(app: &AppHandle) -> Vec<StationStatus> {
+    let ids = station_ids(app);
+    let state = app.state::<AppState>();
+    let mut last = state
+        .statuses
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    if let Some(pass) = last.as_ref() {
+        if pass.ids == ids && pass.finished.elapsed() < STATUS_FRESH {
+            return pass.statuses.clone();
+        }
+    }
+    let statuses: Vec<StationStatus> = probe_stations(&ids)
+        .into_iter()
+        .map(|(origin, online)| StationStatus {
+            id: if origin == LOCAL_ORIGIN {
+                LOCAL_ID.to_string()
+            } else {
+                origin
+            },
+            online,
+        })
+        .collect();
+    *last = Some(StatusPass {
+        ids,
+        finished: Instant::now(),
+        statuses: statuses.clone(),
+    });
+    statuses
 }
 
 fn write_saved(

@@ -124,7 +124,28 @@ describe("saved Stations", () => {
 
   it("rejects a station list that is not names and origins", () => {
     expect(parseStations([{ id: "local", name: "This Mac", host: "This computer", local: true, current: true }])).toHaveLength(1);
-    expect(parseStations([{ id: "x", name: "", host: "h", local: true, current: false }])).toBeUndefined();
+    expect(parseStations([{ id: "x", name: "", host: "h", local: true, current: false }])).toEqual([]);
+    // The shell allows 60 characters, counted as Unicode scalar values. Emoji
+    // are two UTF-16 units each and must not push a valid name over.
+    const emoji = "🛰️".replace("\uFE0F", "").repeat(60);
+    expect(parseStations([{ id: "local", name: emoji, host: "This computer", local: true, current: true }])).toHaveLength(1);
+    expect(
+      parseStations([{ id: "local", name: `${emoji}x`, host: "This computer", local: true, current: true }]),
+    ).toEqual([]);
+    // An address at the shell's 300-byte limit is accepted.
+    const longOrigin = `https://${"a".repeat(292)}`;
+    expect(longOrigin).toHaveLength(300);
+    expect(
+      parseStations([{ id: longOrigin, name: "Long", host: longOrigin.slice(8), local: false, current: false }]),
+    ).toHaveLength(1);
+    // One bad entry is skipped without hiding the rest.
+    expect(
+      parseStations([
+        { id: "local", name: "This Mac", host: "This computer", local: true, current: true },
+        { id: "bad", name: 7, host: "h", local: false, current: false },
+        { id: "https://spark.local:8080", name: "Spark", host: "spark.local:8080", local: false, current: false },
+      ])?.map((station) => station.id),
+    ).toEqual(["local", "https://spark.local:8080"]);
     expect(parseStations("nope")).toBeUndefined();
   });
 
