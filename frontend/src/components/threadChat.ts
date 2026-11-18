@@ -53,7 +53,7 @@ export type ChatItem =
       kind: "user";
       key: string;
       text: string;
-      origin?: "from_lead" | "from_subagents";
+      origin?: "from_lead" | "from_subagents" | "from_schedule";
       attachments?: ChatAttachment[];
     }
   | {

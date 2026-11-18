@@ -151,7 +151,7 @@ func newRootCommand() *cobra.Command {
 		&config.MaxLiveCapsules,
 		"max-live-capsules",
 		0,
-		"refuse coordinated subagent spawns while this many Capsules are live (0 disables)",
+		"skip scheduled fires and refuse coordinated subagent spawns while this many Capsules are live (0 disables)",
 	)
 	command.Flags().StringVar(&config.Docker.Host, "docker-host", "", "Docker endpoint (empty uses official client environment)")
 	defaultCapsule := domain.DefaultCapsuleImage(buildinfo.Version)

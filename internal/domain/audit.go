@@ -50,6 +50,13 @@ const (
 	AuditWorkspaceWrite AuditAction = "capsule.workspace_write"
 	// The Capsule's display name changed. The record names the Capsule, not the text.
 	AuditCapsuleRename AuditAction = "capsule.rename"
+	// Scheduled Project Threads (ADR 0057). Records name the schedule, never
+	// its prompt. A clock fire is recorded as the system principal.
+	AuditScheduleCreate AuditAction = "schedule.create"
+	AuditScheduleUpdate AuditAction = "schedule.update"
+	AuditScheduleDelete AuditAction = "schedule.delete"
+	AuditScheduleRun    AuditAction = "schedule.run"
+	AuditScheduleFire   AuditAction = "schedule.fire"
 )
 
 // AuditRecord is one append-only audit line. It holds ids only: no secret

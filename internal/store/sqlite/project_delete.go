@@ -114,6 +114,8 @@ func (r *repository) PurgeProjectContents(
 		return domain.Project{}, nil, mapError(err)
 	}
 	for _, statement := range []string{
+		`DELETE FROM schedule_fires WHERE project_id = ?`,
+		`DELETE FROM schedules WHERE project_id = ?`,
 		`DELETE FROM remote_ci_checks WHERE watch_id IN (SELECT id FROM remote_ci_watches WHERE project_id = ?)`,
 		`DELETE FROM remote_ci_watches WHERE project_id = ?`,
 		`DELETE FROM check_results WHERE run_id IN (SELECT id FROM check_runs WHERE project_id = ?)`,

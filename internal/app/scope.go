@@ -1790,3 +1790,148 @@ func (t *scopedTx) DeleteDeliveryCheckGates(ctx context.Context, id domain.Capsu
 	}
 	return t.tx.DeleteDeliveryCheckGates(ctx, id)
 }
+
+// Scheduled Project Threads (ADR 0057). A schedule is a child of its
+// Project and a fire a child of its schedule; both carry the owner, and the
+// store's triggers keep it equal to the parent's.
+
+func (r *scopedReader) schedule(ctx context.Context, id domain.ScheduleID) (domain.Schedule, error) {
+	item, err := r.inner.GetSchedule(ctx, id)
+	if err != nil {
+		return domain.Schedule{}, err
+	}
+	if err := r.owned("schedule", string(id), item.OwnerUserID); err != nil {
+		return domain.Schedule{}, err
+	}
+	return item, nil
+}
+
+func (r *scopedReader) GetSchedule(ctx context.Context, id domain.ScheduleID) (domain.Schedule, error) {
+	return r.schedule(ctx, id)
+}
+
+func (r *scopedReader) ListSchedules(ctx context.Context, id domain.ProjectID) ([]domain.Schedule, error) {
+	if err := r.project(ctx, id); err != nil {
+		return nil, err
+	}
+	return r.inner.ListSchedules(ctx, id)
+}
+
+func (r *scopedReader) ListDueSchedules(ctx context.Context, now time.Time, limit int) ([]domain.Schedule, error) {
+	items, err := r.inner.ListDueSchedules(ctx, now, limit)
+	if err != nil {
+		return nil, err
+	}
+	return filter(r, items, func(item domain.Schedule) error { return r.scope.check(item.OwnerUserID) })
+}
+
+func (r *scopedReader) GetScheduleFire(ctx context.Context, id domain.ScheduleFireID) (domain.ScheduleFire, error) {
+	item, err := r.inner.GetScheduleFire(ctx, id)
+	if err != nil {
+		return domain.ScheduleFire{}, err
+	}
+	if err := r.owned("schedule_fire", string(id), item.OwnerUserID); err != nil {
+		return domain.ScheduleFire{}, err
+	}
+	return item, nil
+}
+
+func (r *scopedReader) GetScheduleFireAt(ctx context.Context, id domain.ScheduleID, at time.Time) (domain.ScheduleFire, error) {
+	if _, err := r.schedule(ctx, id); err != nil {
+		return domain.ScheduleFire{}, err
+	}
+	return r.inner.GetScheduleFireAt(ctx, id, at)
+}
+
+func (r *scopedReader) ListScheduleFires(ctx context.Context, id domain.ScheduleID, page ports.Page) ([]domain.ScheduleFire, bool, error) {
+	if _, err := r.schedule(ctx, id); err != nil {
+		return nil, false, err
+	}
+	return r.inner.ListScheduleFires(ctx, id, page)
+}
+
+func (r *scopedReader) ListActiveScheduleFires(ctx context.Context, limit int) ([]domain.ScheduleFire, error) {
+	items, err := r.inner.ListActiveScheduleFires(ctx, limit)
+	if err != nil {
+		return nil, err
+	}
+	return filter(r, items, func(item domain.ScheduleFire) error { return r.scope.check(item.OwnerUserID) })
+}
+
+func (r *scopedReader) ActiveScheduleFire(ctx context.Context, id domain.ScheduleID) (domain.ScheduleFire, error) {
+	if _, err := r.schedule(ctx, id); err != nil {
+		return domain.ScheduleFire{}, err
+	}
+	return r.inner.ActiveScheduleFire(ctx, id)
+}
+
+func (r *scopedReader) CountKeptScheduleCapsules(ctx context.Context, id domain.ScheduleID) (int, error) {
+	if _, err := r.schedule(ctx, id); err != nil {
+		return 0, err
+	}
+	return r.inner.CountKeptScheduleCapsules(ctx, id)
+}
+
+func (r *scopedReader) ScheduleFiresByCapsule(ctx context.Context, ids []domain.CapsuleID) (map[domain.CapsuleID]domain.ScheduleFire, error) {
+	items, err := r.inner.ScheduleFiresByCapsule(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	for id, item := range items {
+		if !r.scope.allows(item.OwnerUserID) {
+			delete(items, id)
+		}
+	}
+	return items, nil
+}
+
+func (t *scopedTx) InsertSchedule(ctx context.Context, item domain.Schedule) error {
+	project, err := t.GetProject(ctx, item.ProjectID)
+	if err != nil {
+		return err
+	}
+	if item.OwnerUserID != project.OwnerUserID {
+		return domain.ErrNotFound
+	}
+	return t.tx.InsertSchedule(ctx, item)
+}
+
+func (t *scopedTx) UpdateSchedule(ctx context.Context, item domain.Schedule, expected domain.ResourceVersion) error {
+	current, err := t.schedule(ctx, item.ID)
+	if err != nil {
+		return err
+	}
+	if item.OwnerUserID != current.OwnerUserID || item.ProjectID != current.ProjectID {
+		return domain.ErrNotFound
+	}
+	return t.tx.UpdateSchedule(ctx, item, expected)
+}
+
+func (t *scopedTx) DeleteSchedule(ctx context.Context, id domain.ScheduleID) error {
+	if _, err := t.schedule(ctx, id); err != nil {
+		return err
+	}
+	return t.tx.DeleteSchedule(ctx, id)
+}
+
+func (t *scopedTx) InsertScheduleFire(ctx context.Context, item domain.ScheduleFire) error {
+	schedule, err := t.schedule(ctx, item.ScheduleID)
+	if err != nil {
+		return err
+	}
+	if item.OwnerUserID != schedule.OwnerUserID || item.ProjectID != schedule.ProjectID {
+		return domain.ErrNotFound
+	}
+	return t.tx.InsertScheduleFire(ctx, item)
+}
+
+func (t *scopedTx) UpdateScheduleFire(ctx context.Context, item domain.ScheduleFire, expected domain.ResourceVersion) error {
+	current, err := t.GetScheduleFire(ctx, item.ID)
+	if err != nil {
+		return err
+	}
+	if item.OwnerUserID != current.OwnerUserID || item.ScheduleID != current.ScheduleID {
+		return domain.ErrNotFound
+	}
+	return t.tx.UpdateScheduleFire(ctx, item, expected)
+}

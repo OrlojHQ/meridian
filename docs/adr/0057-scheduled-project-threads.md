@@ -1,6 +1,6 @@
 # ADR 0057: Start Project Threads on a schedule
 
-- Status: Proposed
+- Status: Proposed; implemented on branch `claude/scheduled-threads`
 - Date: 2026-11-18
 - Amends: ADR 0001 (product boundary), ADR 0016 (where a prompt may come from)
 - Extends: ADR 0019 (idle pause and setup reuse), ADR 0020 (delivery binds the
@@ -56,8 +56,9 @@ fields:
 
 - `name`, limited to `[a-z0-9-]{1,48}` and unique within the Project;
 - `prompt`, at most 32 KiB, encrypted with the installation key. The AAD binds
-  the schedule id, owner, Project, and resource version, so a ciphertext
-  cannot be moved to another row;
+  the schedule id and Project, so a ciphertext cannot be moved to another
+  row. It leaves the owner out so a departed-member transfer can hand the
+  prompt to the new owner;
 - `harness`, which must be a structured harness on the Project's allowlist.
   Native PTY harnesses are refused, for the reason ADR 0052 gives: there is no
   structured channel to send the prompt or see a turn end;
@@ -80,8 +81,10 @@ The API is `GET` and `POST /projects/{projectId}/schedules`, `GET`, `PATCH`,
 and `DELETE /schedules/{scheduleId}`, `POST /schedules/{scheduleId}/run` to
 fire it now, and `GET /schedules/{scheduleId}/fires`. Optimistic concurrency
 uses the schedule's resource version. The CLI gains `meridian schedule` with
-the same verbs and `--json`. These are added to `api/openapi.yaml` when this
-is implemented, not before.
+the same verbs and `--json`. `GET
+/projects/{projectId}/harnesses/{harness}/reported-models` returns the model
+and effort options the most recent session of that harness in the Project
+reported, for the schedule form to offer.
 
 Only the owner's authenticated API can create or change a schedule. A
 Capsule has no way to do it: `meridian.coord.v1` does not get a schedule
@@ -138,7 +141,8 @@ so it is audited as the operator.
 The daemon has to be running for a schedule to fire. Meridian does not wake a
 sleeping host. When `meridiand` starts, or the host wakes, each schedule fires
 at most once for missed times, and only if the most recent missed time is
-inside `catchUpWindow`. Every other missed time is recorded as `missed`. A
+inside `catchUpWindow`. Every other missed time is recorded as `missed`, up
+to the 24 most recent for one gap. A
 week-long shutdown does not start a week of runs.
 
 ### The run
@@ -163,17 +167,15 @@ When a fire's Thread goes idle, Meridian records a content-free outcome
 for the fire: `proposed` (a delivery proposal exists), `changed`,
 `no_changes`, `waiting` (on the operator), `timed_out`, or `failed`.
 
-`no_changes` is decided once, by `meridiand`, when the Thread first goes
-idle with nothing waiting on the operator and the last check suite, if any,
-is not running. All of these must hold, read through `capsuled` with hooks
-disabled:
+`no_changes` is decided once, by `meridiand`, after the Thread has stayed
+idle for 20 seconds with nothing waiting on the operator and no check suite
+running. The wait lets Project checks that start after a turn ends be seen
+first. All of these must hold:
 
-- HEAD is the base commit the Capsule was cloned at, and no other local
-  branch or tag was created;
-- `git status --porcelain --ignored=no` is empty, so there are no tracked
-  changes and no untracked files outside `.gitignore`;
-- there is no delivery proposal and no outstanding permission or input
-  request.
+- the Capsule has no Delivery that is proposed, queued, or done;
+- Delivery inspection, the same hardened `capsuled` read that Ship uses,
+  reports no worktree changes (untracked files outside `.gitignore`
+  included) and no commits ahead of the default branch.
 
 This read does not count as Capsule activity (ADR 0019). If any condition
 fails, or the read itself fails, the outcome is `changed`. Doubt keeps the
@@ -221,13 +223,12 @@ A fire row keeps the scheduled time, the actual time, the outcome or skip
 reason, and the Thread id. Events, metrics, traces, and audit records carry
 identifiers, cadence, and outcome codes. They never carry the prompt. The
 audit log records schedule create, change, enable, disable, delete, and
-run-now as the operator, and each clock fire as `schedule:<id>` acting for
-the owner.
+run-now as the operator, and each clock fire as the system principal with
+the schedule as its object.
 
 ## Threat model changes
 
-When this is implemented, `docs/threat-model.md` gains a "Scheduled Threads"
-section that covers:
+`docs/threat-model.md` has a "Scheduled Threads" section that covers:
 
 - **Unattended spend.** A schedule spends compute and model calls with nobody
   watching. Bounds: at least 15 minutes between fires, no overlap, one

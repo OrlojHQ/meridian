@@ -1130,6 +1130,267 @@
   }
 }
 
+/* Scheduled Project Threads (ADR 0057). */
+.project-schedules-section {
+  margin-top: 1.6rem;
+}
+
+.project-schedules-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.project-schedules-head h2 {
+  margin: 0;
+}
+
+.schedule-list {
+  list-style: none;
+  margin: 0.8rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.schedule-card {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.schedule-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.schedule-name.mono {
+  color: var(--text);
+  font-size: var(--text-md);
+  font-weight: 650;
+}
+
+.schedule-when {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.schedule-meta,
+.schedule-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.9rem;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.schedule-status .launch-hint {
+  margin: 0;
+}
+
+.schedule-agent {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--text);
+}
+
+.schedule-prompt {
+  margin: 0;
+  padding: 0.5rem 0.7rem;
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+  color: var(--text);
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.schedule-kept {
+  margin-left: auto;
+}
+
+.schedule-kept.full {
+  color: var(--warning);
+  font-weight: 620;
+}
+
+.schedule-backlog {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-md);
+  background: var(--warning-soft);
+  color: var(--warning);
+  font-size: var(--text-sm);
+}
+
+.schedule-actions,
+.schedule-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.schedule-fire-link {
+  font-size: var(--text-sm);
+}
+
+.schedule-fires {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  border-top: 1px solid var(--border);
+}
+
+.schedule-fire {
+  display: grid;
+  grid-template-columns: minmax(12rem, auto) 5.5rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--text-sm);
+}
+
+.schedule-fire .ui-badge {
+  justify-self: start;
+}
+
+.schedule-fire-trigger {
+  color: var(--muted);
+}
+
+.schedule-empty {
+  margin: 0.8rem 0 0;
+  padding: 1rem;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  color: var(--muted);
+  text-align: center;
+}
+
+.schedule-form {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.8rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+}
+
+.schedule-card .schedule-form {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.schedule-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem 0.8rem;
+}
+
+.schedule-field {
+  display: grid;
+  gap: 0.3rem;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.schedule-field .launch-hint {
+  margin: 0;
+  font-size: var(--text-xs);
+}
+
+.schedule-when-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.schedule-when-fields legend {
+  margin-bottom: 0.3rem;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.schedule-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.schedule-when-fields > .ui-select,
+.schedule-when-fields > .ui-input,
+.schedule-inline .ui-input {
+  width: auto;
+  flex: 0 0 auto;
+}
+
+.schedule-inline input[type="time"] {
+  min-width: 8.5rem;
+}
+
+.schedule-inline input[inputmode="numeric"] {
+  width: 4.5rem;
+}
+
+.schedule-when-fields > .ui-input[aria-label="Time zone"],
+.schedule-when-fields > .ui-input[aria-label="Cron expression"] {
+  flex: 1 1 12rem;
+  min-width: 10rem;
+}
+
+.schedule-form > .launch-hint {
+  margin: 0;
+}
+
+.schedule-limits summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.schedule-limits .schedule-form-grid {
+  margin-top: 0.6rem;
+}
+
+@media (max-width: 720px) {
+  .schedule-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .schedule-when {
+    margin-left: 0;
+  }
+
+  .schedule-fire {
+    grid-template-columns: 1fr auto;
+  }
+}
+
 .project-settings .agent-picker {
   margin-top: 1.2rem;
 }

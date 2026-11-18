@@ -7,6 +7,17 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Schedules start a fresh Capsule and Thread with a fixed prompt on a cron
+  clock (ADR 0057). Pick the harness, model, effort, prompt, and time zone on
+  the Project page or with `meridian schedule`. A run with no changes deletes
+  its Capsule and keeps the transcript. A run with changes, a question, a
+  failure, or a timeout is kept and shows under Needs you. Runs never
+  overlap, stop at a time limit, catch up once after downtime, and skip while
+  too many results wait for you. A schedule never ships: Delivery still
+  needs your approval. `--max-live-capsules` now also skips scheduled fires.
+
 ## [0.12.0] - 2026-11-18
 
 ### Added

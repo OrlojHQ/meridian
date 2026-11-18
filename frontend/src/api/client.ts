@@ -4,6 +4,8 @@ import {
   getProjectChecks, updateProjectChecks, suggestProjectChecks,
   listCapsuleCheckRuns, createCapsuleCheckRun, getCheckRun, cancelCheckRun, setCapsuleCheckAutoRework,
   getCapsuleRemoteCi,
+  listProjectSchedules, createProjectSchedule, getSchedule, updateSchedule, deleteSchedule,
+  runSchedule, listScheduleFires, getReportedModels,
   getProjectHarnessSetup, setProjectHarnessSetup,
   listProviderConnections, createProviderConnection, updateProviderConnection, deleteProviderConnection, listEndpointModels, getProjectProviderConnection, grantProjectProviderConnection,
   startChatGptSignIn, getChatGptSignIn, completeChatGptSignIn,
@@ -104,6 +106,8 @@ import type { Profile, UpdateProfileRequest, ProfileDiagnostic, EndpointModelLis
 import type {
   CheckAutoReworkRequest, CheckRun, CheckRunPage, CheckRunRequest, CheckSuggestion,
   ProjectChecks, ProjectChecksUpdate, RemoteCi,
+  Schedule, ScheduleList, ScheduleFire, ScheduleFirePage, CreateScheduleRequest, UpdateScheduleRequest,
+  ReportedModels,
   GitHubConnection, HostGitHubLogin, GitHubDevice, GitHubDeviceStatus, GitHubRepoPage,
 } from "./generated/types.gen";
 import type { HarnessSetupUpload, HarnessSetupPreview, ImportHarnessSetupRequest, EnvironmentMutation, ProjectEnvironment,
@@ -529,6 +533,14 @@ export const api = {
   cancelCheckRun: (checkRunId: string, expectedResourceVersion: number) => call<CheckRun>(cancelCheckRun({...generatedOptions(), path: {checkRunId}, body: {expectedResourceVersion}})),
   setCheckAutoRework: (capsuleId: string, body: CheckAutoReworkRequest) => call<CheckAutoReworkRequest>(setCapsuleCheckAutoRework({...generatedOptions(), path: {capsuleId}, body})),
   remoteCI: (capsuleId: string, signal?: AbortSignal) => call<RemoteCi>(getCapsuleRemoteCi({...generatedOptions(signal), path: {capsuleId}})),
+  schedules: (projectId: string, signal?: AbortSignal) => call<ScheduleList>(listProjectSchedules({...generatedOptions(signal), path: {projectId}})),
+  createSchedule: (projectId: string, body: CreateScheduleRequest) => call<Schedule>(createProjectSchedule({...generatedOptions(), path: {projectId}, headers: idempotencyHeaders(), body})),
+  schedule: (scheduleId: string, signal?: AbortSignal) => call<Schedule>(getSchedule({...generatedOptions(signal), path: {scheduleId}})),
+  updateSchedule: (scheduleId: string, body: UpdateScheduleRequest) => call<Schedule>(updateSchedule({...generatedOptions(), path: {scheduleId}, headers: idempotencyHeaders(), body})),
+  deleteSchedule: (scheduleId: string, expectedResourceVersion: number) => call<unknown>(deleteSchedule({...generatedOptions(), path: {scheduleId}, headers: idempotencyHeaders(), body: {expectedResourceVersion}})),
+  runSchedule: (scheduleId: string) => call<ScheduleFire>(runSchedule({...generatedOptions(), path: {scheduleId}, headers: idempotencyHeaders()})),
+  scheduleFires: (scheduleId: string, signal?: AbortSignal) => call<ScheduleFirePage>(listScheduleFires({...generatedOptions(signal), path: {scheduleId}, query: {limit: 20}})),
+  reportedModels: (projectId: string, harness: string, signal?: AbortSignal) => call<ReportedModels>(getReportedModels({...generatedOptions(signal), path: {projectId, harness}})),
   projectThreadIntent: (intentId: string, signal?: AbortSignal) => call<ProjectThreadIntent>(getProjectThreadIntent({...generatedOptions(signal), path: {intentId}})),
   capsule: (capsuleId: string, signal?: AbortSignal) =>
     call<Capsule>(

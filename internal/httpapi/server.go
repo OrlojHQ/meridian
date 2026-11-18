@@ -294,6 +294,14 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /projects/{projectId}/checks", s.projectChecks)
 	s.mux.HandleFunc("PUT /projects/{projectId}/checks", s.projectChecks)
 	s.mux.HandleFunc("GET /projects/{projectId}/checks/suggestion", s.suggestProjectChecks)
+	s.mux.HandleFunc("GET /projects/{projectId}/schedules", s.projectSchedules)
+	s.mux.HandleFunc("POST /projects/{projectId}/schedules", s.projectSchedules)
+	s.mux.HandleFunc("GET /projects/{projectId}/harnesses/{harness}/reported-models", s.reportedModels)
+	s.mux.HandleFunc("GET /schedules/{scheduleId}", s.schedule)
+	s.mux.HandleFunc("PATCH /schedules/{scheduleId}", s.schedule)
+	s.mux.HandleFunc("POST /schedules/{scheduleId}/delete", s.deleteSchedule)
+	s.mux.HandleFunc("POST /schedules/{scheduleId}/run", s.runSchedule)
+	s.mux.HandleFunc("GET /schedules/{scheduleId}/fires", s.scheduleFires)
 	s.mux.HandleFunc("GET /capsules/{capsuleId}/check-runs", s.capsuleCheckRuns)
 	s.mux.HandleFunc("GET /capsules/{capsuleId}/remote-ci", s.capsuleRemoteCI)
 	s.mux.HandleFunc("POST /capsules/{capsuleId}/check-runs", s.capsuleCheckRuns)
@@ -2103,12 +2111,20 @@ func (s *Server) capsulesJSON(ctx context.Context, capsules []domain.Capsule) ([
 	if err != nil {
 		return nil, err
 	}
+	schedules, err := s.service.CapsuleSchedules(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
 	items := make([]capsuleJSON, len(capsules))
 	for i, capsule := range capsules {
 		items[i] = capsuleResponse(capsule, pins[capsule.ID])
 		if summary, ok := summaries[capsule.ID]; ok {
 			copied := summary
 			items[i].Checks = &copied
+		}
+		if note, ok := schedules[capsule.ID]; ok {
+			copied := note
+			items[i].Schedule = &copied
 		}
 	}
 	return items, nil
@@ -2509,6 +2525,7 @@ type capsuleJSON struct {
 	PromotedAt          string                      `json:"promotedAt,omitempty"`
 	PinnedHarnessSetups []pinnedHarnessSetupJSON    `json:"pinnedHarnessSetups,omitempty"`
 	Checks              *app.ChecksSummaryView      `json:"checks,omitempty"`
+	Schedule            *app.CapsuleScheduleView    `json:"schedule,omitempty"`
 	CreatedAt           string                      `json:"createdAt"`
 	UpdatedAt           string                      `json:"updatedAt"`
 	ResourceVersion     int64                       `json:"resourceVersion"`

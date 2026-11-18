@@ -1302,10 +1302,12 @@ type Capsule struct {
 	PromotedAt OptDateTime `json:"promotedAt"`
 	// Content-free check summary. Absent when the Project has no checks. This is not a Capsule lifecycle
 	// state.
-	Checks          OptChecksSummary `json:"checks"`
-	CreatedAt       time.Time        `json:"createdAt"`
-	UpdatedAt       time.Time        `json:"updatedAt"`
-	ResourceVersion int64            `json:"resourceVersion"`
+	Checks OptChecksSummary `json:"checks"`
+	// Present on a Capsule a schedule started (ADR 0057).
+	Schedule        OptCapsuleSchedule `json:"schedule"`
+	CreatedAt       time.Time          `json:"createdAt"`
+	UpdatedAt       time.Time          `json:"updatedAt"`
+	ResourceVersion int64              `json:"resourceVersion"`
 }
 
 // GetPreparation returns the value of Preparation.
@@ -1411,6 +1413,11 @@ func (s *Capsule) GetPromotedAt() OptDateTime {
 // GetChecks returns the value of Checks.
 func (s *Capsule) GetChecks() OptChecksSummary {
 	return s.Checks
+}
+
+// GetSchedule returns the value of Schedule.
+func (s *Capsule) GetSchedule() OptCapsuleSchedule {
+	return s.Schedule
 }
 
 // GetCreatedAt returns the value of CreatedAt.
@@ -1531,6 +1538,11 @@ func (s *Capsule) SetPromotedAt(val OptDateTime) {
 // SetChecks sets the value of Checks.
 func (s *Capsule) SetChecks(val OptChecksSummary) {
 	s.Checks = val
+}
+
+// SetSchedule sets the value of Schedule.
+func (s *Capsule) SetSchedule(val OptCapsuleSchedule) {
+	s.Schedule = val
 }
 
 // SetCreatedAt sets the value of CreatedAt.
@@ -1793,6 +1805,66 @@ func (s *CapsuleRole) UnmarshalText(data []byte) error {
 	default:
 		return errors.Errorf("invalid value: %q", data)
 	}
+}
+
+// Content-free note on a Capsule a schedule started.
+// Ref: #/components/schemas/CapsuleSchedule
+type CapsuleSchedule struct {
+	ScheduleId   string             `json:"scheduleId"`
+	ScheduleName string             `json:"scheduleName"`
+	FireId       string             `json:"fireId"`
+	State        ScheduleFireState  `json:"state"`
+	Outcome      OptScheduleOutcome `json:"outcome"`
+}
+
+// GetScheduleId returns the value of ScheduleId.
+func (s *CapsuleSchedule) GetScheduleId() string {
+	return s.ScheduleId
+}
+
+// GetScheduleName returns the value of ScheduleName.
+func (s *CapsuleSchedule) GetScheduleName() string {
+	return s.ScheduleName
+}
+
+// GetFireId returns the value of FireId.
+func (s *CapsuleSchedule) GetFireId() string {
+	return s.FireId
+}
+
+// GetState returns the value of State.
+func (s *CapsuleSchedule) GetState() ScheduleFireState {
+	return s.State
+}
+
+// GetOutcome returns the value of Outcome.
+func (s *CapsuleSchedule) GetOutcome() OptScheduleOutcome {
+	return s.Outcome
+}
+
+// SetScheduleId sets the value of ScheduleId.
+func (s *CapsuleSchedule) SetScheduleId(val string) {
+	s.ScheduleId = val
+}
+
+// SetScheduleName sets the value of ScheduleName.
+func (s *CapsuleSchedule) SetScheduleName(val string) {
+	s.ScheduleName = val
+}
+
+// SetFireId sets the value of FireId.
+func (s *CapsuleSchedule) SetFireId(val string) {
+	s.FireId = val
+}
+
+// SetState sets the value of State.
+func (s *CapsuleSchedule) SetState(val ScheduleFireState) {
+	s.State = val
+}
+
+// SetOutcome sets the value of Outcome.
+func (s *CapsuleSchedule) SetOutcome(val OptScheduleOutcome) {
+	s.Outcome = val
 }
 
 // Bounded startup progress. phases is the ordered set this provider reports for the current start.
@@ -4978,6 +5050,18 @@ func (s *CreateProjectRequest) SetRequiredIsolation(val OptIsolationClass) {
 	s.RequiredIsolation = val
 }
 
+type CreateProjectScheduleBadRequest ErrorEnvelope
+
+func (*CreateProjectScheduleBadRequest) createProjectScheduleRes() {}
+
+type CreateProjectScheduleConflict ErrorEnvelope
+
+func (*CreateProjectScheduleConflict) createProjectScheduleRes() {}
+
+type CreateProjectScheduleNotFound ErrorEnvelope
+
+func (*CreateProjectScheduleNotFound) createProjectScheduleRes() {}
+
 type CreateProjectThreadBadRequest ErrorEnvelope
 
 func (*CreateProjectThreadBadRequest) createProjectThreadRes() {}
@@ -5049,6 +5133,131 @@ func (*CreateProjectThreadUnprocessableEntity) createProjectThreadRes() {}
 type CreateProjectUnprocessableEntity ErrorEnvelope
 
 func (*CreateProjectUnprocessableEntity) createProjectRes() {}
+
+// Ref: #/components/schemas/CreateScheduleRequest
+type CreateScheduleRequest struct {
+	Name           string    `json:"name"`
+	Harness        string    `json:"harness"`
+	Model          OptString `json:"model"`
+	Effort         OptString `json:"effort"`
+	Prompt         string    `json:"prompt"`
+	Cadence        string    `json:"cadence"`
+	TimeZone       string    `json:"timeZone"`
+	MaxRunSeconds  OptInt    `json:"maxRunSeconds"`
+	CatchUpSeconds OptInt    `json:"catchUpSeconds"`
+	MaxKept        OptInt    `json:"maxKept"`
+	Enabled        OptBool   `json:"enabled"`
+}
+
+// GetName returns the value of Name.
+func (s *CreateScheduleRequest) GetName() string {
+	return s.Name
+}
+
+// GetHarness returns the value of Harness.
+func (s *CreateScheduleRequest) GetHarness() string {
+	return s.Harness
+}
+
+// GetModel returns the value of Model.
+func (s *CreateScheduleRequest) GetModel() OptString {
+	return s.Model
+}
+
+// GetEffort returns the value of Effort.
+func (s *CreateScheduleRequest) GetEffort() OptString {
+	return s.Effort
+}
+
+// GetPrompt returns the value of Prompt.
+func (s *CreateScheduleRequest) GetPrompt() string {
+	return s.Prompt
+}
+
+// GetCadence returns the value of Cadence.
+func (s *CreateScheduleRequest) GetCadence() string {
+	return s.Cadence
+}
+
+// GetTimeZone returns the value of TimeZone.
+func (s *CreateScheduleRequest) GetTimeZone() string {
+	return s.TimeZone
+}
+
+// GetMaxRunSeconds returns the value of MaxRunSeconds.
+func (s *CreateScheduleRequest) GetMaxRunSeconds() OptInt {
+	return s.MaxRunSeconds
+}
+
+// GetCatchUpSeconds returns the value of CatchUpSeconds.
+func (s *CreateScheduleRequest) GetCatchUpSeconds() OptInt {
+	return s.CatchUpSeconds
+}
+
+// GetMaxKept returns the value of MaxKept.
+func (s *CreateScheduleRequest) GetMaxKept() OptInt {
+	return s.MaxKept
+}
+
+// GetEnabled returns the value of Enabled.
+func (s *CreateScheduleRequest) GetEnabled() OptBool {
+	return s.Enabled
+}
+
+// SetName sets the value of Name.
+func (s *CreateScheduleRequest) SetName(val string) {
+	s.Name = val
+}
+
+// SetHarness sets the value of Harness.
+func (s *CreateScheduleRequest) SetHarness(val string) {
+	s.Harness = val
+}
+
+// SetModel sets the value of Model.
+func (s *CreateScheduleRequest) SetModel(val OptString) {
+	s.Model = val
+}
+
+// SetEffort sets the value of Effort.
+func (s *CreateScheduleRequest) SetEffort(val OptString) {
+	s.Effort = val
+}
+
+// SetPrompt sets the value of Prompt.
+func (s *CreateScheduleRequest) SetPrompt(val string) {
+	s.Prompt = val
+}
+
+// SetCadence sets the value of Cadence.
+func (s *CreateScheduleRequest) SetCadence(val string) {
+	s.Cadence = val
+}
+
+// SetTimeZone sets the value of TimeZone.
+func (s *CreateScheduleRequest) SetTimeZone(val string) {
+	s.TimeZone = val
+}
+
+// SetMaxRunSeconds sets the value of MaxRunSeconds.
+func (s *CreateScheduleRequest) SetMaxRunSeconds(val OptInt) {
+	s.MaxRunSeconds = val
+}
+
+// SetCatchUpSeconds sets the value of CatchUpSeconds.
+func (s *CreateScheduleRequest) SetCatchUpSeconds(val OptInt) {
+	s.CatchUpSeconds = val
+}
+
+// SetMaxKept sets the value of MaxKept.
+func (s *CreateScheduleRequest) SetMaxKept(val OptInt) {
+	s.MaxKept = val
+}
+
+// SetEnabled sets the value of Enabled.
+func (s *CreateScheduleRequest) SetEnabled(val OptBool) {
+	s.Enabled = val
+}
 
 type CreateShardBadRequest ErrorEnvelope
 
@@ -5265,6 +5474,23 @@ func (*DeleteProjectUnprocessableEntity) deleteProjectRes() {}
 
 // DeleteProviderConnectionNoContent is response for DeleteProviderConnection operation.
 type DeleteProviderConnectionNoContent struct{}
+
+type DeleteScheduleBadRequest ErrorEnvelope
+
+func (*DeleteScheduleBadRequest) deleteScheduleRes() {}
+
+type DeleteScheduleConflict ErrorEnvelope
+
+func (*DeleteScheduleConflict) deleteScheduleRes() {}
+
+// DeleteScheduleNoContent is response for DeleteSchedule operation.
+type DeleteScheduleNoContent struct{}
+
+func (*DeleteScheduleNoContent) deleteScheduleRes() {}
+
+type DeleteScheduleNotFound ErrorEnvelope
+
+func (*DeleteScheduleNotFound) deleteScheduleRes() {}
 
 type DeleteSecretBadRequest ErrorEnvelope
 
@@ -6462,7 +6688,9 @@ func (*ErrorEnvelope) getDeliveryRes()                 {}
 func (*ErrorEnvelope) getMomentRes()                   {}
 func (*ErrorEnvelope) getProjectRes()                  {}
 func (*ErrorEnvelope) getProjectThreadIntentRes()      {}
+func (*ErrorEnvelope) getReportedModelsRes()           {}
 func (*ErrorEnvelope) getRunRes()                      {}
+func (*ErrorEnvelope) getScheduleRes()                 {}
 func (*ErrorEnvelope) getThreadLinkRes()               {}
 func (*ErrorEnvelope) getThreadRes()                   {}
 func (*ErrorEnvelope) getTimelineRes()                 {}
@@ -6471,7 +6699,9 @@ func (*ErrorEnvelope) listCapsuleDeliveriesRes()       {}
 func (*ErrorEnvelope) listCoordinationRequestsRes()    {}
 func (*ErrorEnvelope) listMembersRes()                 {}
 func (*ErrorEnvelope) listMomentsRes()                 {}
+func (*ErrorEnvelope) listProjectSchedulesRes()        {}
 func (*ErrorEnvelope) listProjectsRes()                {}
+func (*ErrorEnvelope) listScheduleFiresRes()           {}
 func (*ErrorEnvelope) listSecretsRes()                 {}
 func (*ErrorEnvelope) listThreadLinksRes()             {}
 func (*ErrorEnvelope) listThreadsRes()                 {}
@@ -9571,6 +9801,52 @@ func (o OptCapsuleRole) Or(d CapsuleRole) CapsuleRole {
 	return d
 }
 
+// NewOptCapsuleSchedule returns new OptCapsuleSchedule with value set to v.
+func NewOptCapsuleSchedule(v CapsuleSchedule) OptCapsuleSchedule {
+	return OptCapsuleSchedule{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptCapsuleSchedule is optional CapsuleSchedule.
+type OptCapsuleSchedule struct {
+	Value CapsuleSchedule
+	Set   bool
+}
+
+// IsSet returns true if OptCapsuleSchedule was set.
+func (o OptCapsuleSchedule) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptCapsuleSchedule) Reset() {
+	var v CapsuleSchedule
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptCapsuleSchedule) SetTo(v CapsuleSchedule) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptCapsuleSchedule) Get() (v CapsuleSchedule, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptCapsuleSchedule) Or(d CapsuleSchedule) CapsuleSchedule {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptCapsuleStartup returns new OptCapsuleStartup with value set to v.
 func NewOptCapsuleStartup(v CapsuleStartup) OptCapsuleStartup {
 	return OptCapsuleStartup{
@@ -10991,6 +11267,98 @@ func (o OptRunState) Get() (v RunState, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptRunState) Or(d RunState) RunState {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptScheduleFire returns new OptScheduleFire with value set to v.
+func NewOptScheduleFire(v ScheduleFire) OptScheduleFire {
+	return OptScheduleFire{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptScheduleFire is optional ScheduleFire.
+type OptScheduleFire struct {
+	Value ScheduleFire
+	Set   bool
+}
+
+// IsSet returns true if OptScheduleFire was set.
+func (o OptScheduleFire) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptScheduleFire) Reset() {
+	var v ScheduleFire
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptScheduleFire) SetTo(v ScheduleFire) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptScheduleFire) Get() (v ScheduleFire, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptScheduleFire) Or(d ScheduleFire) ScheduleFire {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptScheduleOutcome returns new OptScheduleOutcome with value set to v.
+func NewOptScheduleOutcome(v ScheduleOutcome) OptScheduleOutcome {
+	return OptScheduleOutcome{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptScheduleOutcome is optional ScheduleOutcome.
+type OptScheduleOutcome struct {
+	Value ScheduleOutcome
+	Set   bool
+}
+
+// IsSet returns true if OptScheduleOutcome was set.
+func (o OptScheduleOutcome) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptScheduleOutcome) Reset() {
+	var v ScheduleOutcome
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptScheduleOutcome) SetTo(v ScheduleOutcome) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptScheduleOutcome) Get() (v ScheduleOutcome, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptScheduleOutcome) Or(d ScheduleOutcome) ScheduleOutcome {
 	if v, ok := o.Get(); ok {
 		return v
 	}
@@ -15085,6 +15453,104 @@ type RenameCapsuleUnprocessableEntity ErrorEnvelope
 
 func (*RenameCapsuleUnprocessableEntity) renameCapsuleRes() {}
 
+// Ref: #/components/schemas/ReportedModelOption
+type ReportedModelOption struct {
+	ID          string    `json:"id"`
+	Label       string    `json:"label"`
+	Description OptString `json:"description"`
+}
+
+// GetID returns the value of ID.
+func (s *ReportedModelOption) GetID() string {
+	return s.ID
+}
+
+// GetLabel returns the value of Label.
+func (s *ReportedModelOption) GetLabel() string {
+	return s.Label
+}
+
+// GetDescription returns the value of Description.
+func (s *ReportedModelOption) GetDescription() OptString {
+	return s.Description
+}
+
+// SetID sets the value of ID.
+func (s *ReportedModelOption) SetID(val string) {
+	s.ID = val
+}
+
+// SetLabel sets the value of Label.
+func (s *ReportedModelOption) SetLabel(val string) {
+	s.Label = val
+}
+
+// SetDescription sets the value of Description.
+func (s *ReportedModelOption) SetDescription(val OptString) {
+	s.Description = val
+}
+
+// Ref: #/components/schemas/ReportedModels
+type ReportedModels struct {
+	Models        []ReportedModelOption `json:"models"`
+	Current       OptString             `json:"current"`
+	Efforts       []ReportedModelOption `json:"efforts"`
+	CurrentEffort OptString             `json:"currentEffort"`
+	ThreadId      OptString             `json:"threadId"`
+}
+
+// GetModels returns the value of Models.
+func (s *ReportedModels) GetModels() []ReportedModelOption {
+	return s.Models
+}
+
+// GetCurrent returns the value of Current.
+func (s *ReportedModels) GetCurrent() OptString {
+	return s.Current
+}
+
+// GetEfforts returns the value of Efforts.
+func (s *ReportedModels) GetEfforts() []ReportedModelOption {
+	return s.Efforts
+}
+
+// GetCurrentEffort returns the value of CurrentEffort.
+func (s *ReportedModels) GetCurrentEffort() OptString {
+	return s.CurrentEffort
+}
+
+// GetThreadId returns the value of ThreadId.
+func (s *ReportedModels) GetThreadId() OptString {
+	return s.ThreadId
+}
+
+// SetModels sets the value of Models.
+func (s *ReportedModels) SetModels(val []ReportedModelOption) {
+	s.Models = val
+}
+
+// SetCurrent sets the value of Current.
+func (s *ReportedModels) SetCurrent(val OptString) {
+	s.Current = val
+}
+
+// SetEfforts sets the value of Efforts.
+func (s *ReportedModels) SetEfforts(val []ReportedModelOption) {
+	s.Efforts = val
+}
+
+// SetCurrentEffort sets the value of CurrentEffort.
+func (s *ReportedModels) SetCurrentEffort(val OptString) {
+	s.CurrentEffort = val
+}
+
+// SetThreadId sets the value of ThreadId.
+func (s *ReportedModels) SetThreadId(val OptString) {
+	s.ThreadId = val
+}
+
+func (*ReportedModels) getReportedModelsRes() {}
+
 type RespondThreadBadRequest ErrorEnvelope
 
 func (*RespondThreadBadRequest) respondThreadRes() {}
@@ -15531,6 +15997,18 @@ func (s *RunPage) SetNextCursor(val OptString) {
 
 func (*RunPage) listRunsRes() {}
 
+type RunScheduleBadRequest ErrorEnvelope
+
+func (*RunScheduleBadRequest) runScheduleRes() {}
+
+type RunScheduleConflict ErrorEnvelope
+
+func (*RunScheduleConflict) runScheduleRes() {}
+
+type RunScheduleNotFound ErrorEnvelope
+
+func (*RunScheduleNotFound) runScheduleRes() {}
+
 // Ref: #/components/schemas/RunState
 type RunState string
 
@@ -15602,6 +16080,655 @@ func (s *RunState) UnmarshalText(data []byte) error {
 		return nil
 	case RunStateCancelled:
 		*s = RunStateCancelled
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Ref: #/components/schemas/Schedule
+type Schedule struct {
+	ID        string `json:"id"`
+	ProjectId string `json:"projectId"`
+	Name      string `json:"name"`
+	Harness   string `json:"harness"`
+	// Model option ID the harness reports. Absent means the harness default.
+	Model OptString `json:"model"`
+	// Reasoning effort option ID. Absent means the harness default.
+	Effort OptString `json:"effort"`
+	Prompt string    `json:"prompt"`
+	// Five-field cron expression (minute hour day month weekday) or a macro such as @daily.
+	Cadence string `json:"cadence"`
+	// IANA time zone name.
+	TimeZone       string `json:"timeZone"`
+	MaxRunSeconds  int    `json:"maxRunSeconds"`
+	CatchUpSeconds int    `json:"catchUpSeconds"`
+	MaxKept        int    `json:"maxKept"`
+	Enabled        bool   `json:"enabled"`
+	// Why Meridian turned the schedule off, such as start_failures or transferred.
+	DisabledReason OptString   `json:"disabledReason"`
+	NextFireAt     OptDateTime `json:"nextFireAt"`
+	LastFireAt     OptDateTime `json:"lastFireAt"`
+	// Capsules this schedule kept that nobody has deleted yet.
+	KeptCapsules    int             `json:"keptCapsules"`
+	Active          OptScheduleFire `json:"active"`
+	LastFire        OptScheduleFire `json:"lastFire"`
+	ResourceVersion int64           `json:"resourceVersion"`
+	CreatedAt       time.Time       `json:"createdAt"`
+	UpdatedAt       time.Time       `json:"updatedAt"`
+}
+
+// GetID returns the value of ID.
+func (s *Schedule) GetID() string {
+	return s.ID
+}
+
+// GetProjectId returns the value of ProjectId.
+func (s *Schedule) GetProjectId() string {
+	return s.ProjectId
+}
+
+// GetName returns the value of Name.
+func (s *Schedule) GetName() string {
+	return s.Name
+}
+
+// GetHarness returns the value of Harness.
+func (s *Schedule) GetHarness() string {
+	return s.Harness
+}
+
+// GetModel returns the value of Model.
+func (s *Schedule) GetModel() OptString {
+	return s.Model
+}
+
+// GetEffort returns the value of Effort.
+func (s *Schedule) GetEffort() OptString {
+	return s.Effort
+}
+
+// GetPrompt returns the value of Prompt.
+func (s *Schedule) GetPrompt() string {
+	return s.Prompt
+}
+
+// GetCadence returns the value of Cadence.
+func (s *Schedule) GetCadence() string {
+	return s.Cadence
+}
+
+// GetTimeZone returns the value of TimeZone.
+func (s *Schedule) GetTimeZone() string {
+	return s.TimeZone
+}
+
+// GetMaxRunSeconds returns the value of MaxRunSeconds.
+func (s *Schedule) GetMaxRunSeconds() int {
+	return s.MaxRunSeconds
+}
+
+// GetCatchUpSeconds returns the value of CatchUpSeconds.
+func (s *Schedule) GetCatchUpSeconds() int {
+	return s.CatchUpSeconds
+}
+
+// GetMaxKept returns the value of MaxKept.
+func (s *Schedule) GetMaxKept() int {
+	return s.MaxKept
+}
+
+// GetEnabled returns the value of Enabled.
+func (s *Schedule) GetEnabled() bool {
+	return s.Enabled
+}
+
+// GetDisabledReason returns the value of DisabledReason.
+func (s *Schedule) GetDisabledReason() OptString {
+	return s.DisabledReason
+}
+
+// GetNextFireAt returns the value of NextFireAt.
+func (s *Schedule) GetNextFireAt() OptDateTime {
+	return s.NextFireAt
+}
+
+// GetLastFireAt returns the value of LastFireAt.
+func (s *Schedule) GetLastFireAt() OptDateTime {
+	return s.LastFireAt
+}
+
+// GetKeptCapsules returns the value of KeptCapsules.
+func (s *Schedule) GetKeptCapsules() int {
+	return s.KeptCapsules
+}
+
+// GetActive returns the value of Active.
+func (s *Schedule) GetActive() OptScheduleFire {
+	return s.Active
+}
+
+// GetLastFire returns the value of LastFire.
+func (s *Schedule) GetLastFire() OptScheduleFire {
+	return s.LastFire
+}
+
+// GetResourceVersion returns the value of ResourceVersion.
+func (s *Schedule) GetResourceVersion() int64 {
+	return s.ResourceVersion
+}
+
+// GetCreatedAt returns the value of CreatedAt.
+func (s *Schedule) GetCreatedAt() time.Time {
+	return s.CreatedAt
+}
+
+// GetUpdatedAt returns the value of UpdatedAt.
+func (s *Schedule) GetUpdatedAt() time.Time {
+	return s.UpdatedAt
+}
+
+// SetID sets the value of ID.
+func (s *Schedule) SetID(val string) {
+	s.ID = val
+}
+
+// SetProjectId sets the value of ProjectId.
+func (s *Schedule) SetProjectId(val string) {
+	s.ProjectId = val
+}
+
+// SetName sets the value of Name.
+func (s *Schedule) SetName(val string) {
+	s.Name = val
+}
+
+// SetHarness sets the value of Harness.
+func (s *Schedule) SetHarness(val string) {
+	s.Harness = val
+}
+
+// SetModel sets the value of Model.
+func (s *Schedule) SetModel(val OptString) {
+	s.Model = val
+}
+
+// SetEffort sets the value of Effort.
+func (s *Schedule) SetEffort(val OptString) {
+	s.Effort = val
+}
+
+// SetPrompt sets the value of Prompt.
+func (s *Schedule) SetPrompt(val string) {
+	s.Prompt = val
+}
+
+// SetCadence sets the value of Cadence.
+func (s *Schedule) SetCadence(val string) {
+	s.Cadence = val
+}
+
+// SetTimeZone sets the value of TimeZone.
+func (s *Schedule) SetTimeZone(val string) {
+	s.TimeZone = val
+}
+
+// SetMaxRunSeconds sets the value of MaxRunSeconds.
+func (s *Schedule) SetMaxRunSeconds(val int) {
+	s.MaxRunSeconds = val
+}
+
+// SetCatchUpSeconds sets the value of CatchUpSeconds.
+func (s *Schedule) SetCatchUpSeconds(val int) {
+	s.CatchUpSeconds = val
+}
+
+// SetMaxKept sets the value of MaxKept.
+func (s *Schedule) SetMaxKept(val int) {
+	s.MaxKept = val
+}
+
+// SetEnabled sets the value of Enabled.
+func (s *Schedule) SetEnabled(val bool) {
+	s.Enabled = val
+}
+
+// SetDisabledReason sets the value of DisabledReason.
+func (s *Schedule) SetDisabledReason(val OptString) {
+	s.DisabledReason = val
+}
+
+// SetNextFireAt sets the value of NextFireAt.
+func (s *Schedule) SetNextFireAt(val OptDateTime) {
+	s.NextFireAt = val
+}
+
+// SetLastFireAt sets the value of LastFireAt.
+func (s *Schedule) SetLastFireAt(val OptDateTime) {
+	s.LastFireAt = val
+}
+
+// SetKeptCapsules sets the value of KeptCapsules.
+func (s *Schedule) SetKeptCapsules(val int) {
+	s.KeptCapsules = val
+}
+
+// SetActive sets the value of Active.
+func (s *Schedule) SetActive(val OptScheduleFire) {
+	s.Active = val
+}
+
+// SetLastFire sets the value of LastFire.
+func (s *Schedule) SetLastFire(val OptScheduleFire) {
+	s.LastFire = val
+}
+
+// SetResourceVersion sets the value of ResourceVersion.
+func (s *Schedule) SetResourceVersion(val int64) {
+	s.ResourceVersion = val
+}
+
+// SetCreatedAt sets the value of CreatedAt.
+func (s *Schedule) SetCreatedAt(val time.Time) {
+	s.CreatedAt = val
+}
+
+// SetUpdatedAt sets the value of UpdatedAt.
+func (s *Schedule) SetUpdatedAt(val time.Time) {
+	s.UpdatedAt = val
+}
+
+func (*Schedule) createProjectScheduleRes() {}
+func (*Schedule) getScheduleRes()           {}
+func (*Schedule) updateScheduleRes()        {}
+
+// One tick of a schedule's clock. It carries codes, never prompt text.
+// Ref: #/components/schemas/ScheduleFire
+type ScheduleFire struct {
+	ID           string              `json:"id"`
+	ScheduleId   string              `json:"scheduleId"`
+	Trigger      ScheduleFireTrigger `json:"trigger"`
+	ScheduledFor time.Time           `json:"scheduledFor"`
+	State        ScheduleFireState   `json:"state"`
+	Outcome      OptScheduleOutcome  `json:"outcome"`
+	// Skip or failure code, such as overlap, backlog, capacity, or model_unavailable.
+	Reason         OptString   `json:"reason"`
+	CapsuleId      OptString   `json:"capsuleId"`
+	ThreadId       OptString   `json:"threadId"`
+	CapsuleDeleted bool        `json:"capsuleDeleted"`
+	StartedAt      OptDateTime `json:"startedAt"`
+	FinishedAt     OptDateTime `json:"finishedAt"`
+	CreatedAt      time.Time   `json:"createdAt"`
+}
+
+// GetID returns the value of ID.
+func (s *ScheduleFire) GetID() string {
+	return s.ID
+}
+
+// GetScheduleId returns the value of ScheduleId.
+func (s *ScheduleFire) GetScheduleId() string {
+	return s.ScheduleId
+}
+
+// GetTrigger returns the value of Trigger.
+func (s *ScheduleFire) GetTrigger() ScheduleFireTrigger {
+	return s.Trigger
+}
+
+// GetScheduledFor returns the value of ScheduledFor.
+func (s *ScheduleFire) GetScheduledFor() time.Time {
+	return s.ScheduledFor
+}
+
+// GetState returns the value of State.
+func (s *ScheduleFire) GetState() ScheduleFireState {
+	return s.State
+}
+
+// GetOutcome returns the value of Outcome.
+func (s *ScheduleFire) GetOutcome() OptScheduleOutcome {
+	return s.Outcome
+}
+
+// GetReason returns the value of Reason.
+func (s *ScheduleFire) GetReason() OptString {
+	return s.Reason
+}
+
+// GetCapsuleId returns the value of CapsuleId.
+func (s *ScheduleFire) GetCapsuleId() OptString {
+	return s.CapsuleId
+}
+
+// GetThreadId returns the value of ThreadId.
+func (s *ScheduleFire) GetThreadId() OptString {
+	return s.ThreadId
+}
+
+// GetCapsuleDeleted returns the value of CapsuleDeleted.
+func (s *ScheduleFire) GetCapsuleDeleted() bool {
+	return s.CapsuleDeleted
+}
+
+// GetStartedAt returns the value of StartedAt.
+func (s *ScheduleFire) GetStartedAt() OptDateTime {
+	return s.StartedAt
+}
+
+// GetFinishedAt returns the value of FinishedAt.
+func (s *ScheduleFire) GetFinishedAt() OptDateTime {
+	return s.FinishedAt
+}
+
+// GetCreatedAt returns the value of CreatedAt.
+func (s *ScheduleFire) GetCreatedAt() time.Time {
+	return s.CreatedAt
+}
+
+// SetID sets the value of ID.
+func (s *ScheduleFire) SetID(val string) {
+	s.ID = val
+}
+
+// SetScheduleId sets the value of ScheduleId.
+func (s *ScheduleFire) SetScheduleId(val string) {
+	s.ScheduleId = val
+}
+
+// SetTrigger sets the value of Trigger.
+func (s *ScheduleFire) SetTrigger(val ScheduleFireTrigger) {
+	s.Trigger = val
+}
+
+// SetScheduledFor sets the value of ScheduledFor.
+func (s *ScheduleFire) SetScheduledFor(val time.Time) {
+	s.ScheduledFor = val
+}
+
+// SetState sets the value of State.
+func (s *ScheduleFire) SetState(val ScheduleFireState) {
+	s.State = val
+}
+
+// SetOutcome sets the value of Outcome.
+func (s *ScheduleFire) SetOutcome(val OptScheduleOutcome) {
+	s.Outcome = val
+}
+
+// SetReason sets the value of Reason.
+func (s *ScheduleFire) SetReason(val OptString) {
+	s.Reason = val
+}
+
+// SetCapsuleId sets the value of CapsuleId.
+func (s *ScheduleFire) SetCapsuleId(val OptString) {
+	s.CapsuleId = val
+}
+
+// SetThreadId sets the value of ThreadId.
+func (s *ScheduleFire) SetThreadId(val OptString) {
+	s.ThreadId = val
+}
+
+// SetCapsuleDeleted sets the value of CapsuleDeleted.
+func (s *ScheduleFire) SetCapsuleDeleted(val bool) {
+	s.CapsuleDeleted = val
+}
+
+// SetStartedAt sets the value of StartedAt.
+func (s *ScheduleFire) SetStartedAt(val OptDateTime) {
+	s.StartedAt = val
+}
+
+// SetFinishedAt sets the value of FinishedAt.
+func (s *ScheduleFire) SetFinishedAt(val OptDateTime) {
+	s.FinishedAt = val
+}
+
+// SetCreatedAt sets the value of CreatedAt.
+func (s *ScheduleFire) SetCreatedAt(val time.Time) {
+	s.CreatedAt = val
+}
+
+func (*ScheduleFire) runScheduleRes() {}
+
+// Ref: #/components/schemas/ScheduleFirePage
+type ScheduleFirePage struct {
+	Items      []ScheduleFire `json:"items"`
+	NextCursor OptString      `json:"nextCursor"`
+}
+
+// GetItems returns the value of Items.
+func (s *ScheduleFirePage) GetItems() []ScheduleFire {
+	return s.Items
+}
+
+// GetNextCursor returns the value of NextCursor.
+func (s *ScheduleFirePage) GetNextCursor() OptString {
+	return s.NextCursor
+}
+
+// SetItems sets the value of Items.
+func (s *ScheduleFirePage) SetItems(val []ScheduleFire) {
+	s.Items = val
+}
+
+// SetNextCursor sets the value of NextCursor.
+func (s *ScheduleFirePage) SetNextCursor(val OptString) {
+	s.NextCursor = val
+}
+
+func (*ScheduleFirePage) listScheduleFiresRes() {}
+
+// Ref: #/components/schemas/ScheduleFireState
+type ScheduleFireState string
+
+const (
+	ScheduleFireStateSkipped   ScheduleFireState = "skipped"
+	ScheduleFireStateMissed    ScheduleFireState = "missed"
+	ScheduleFireStateStarting  ScheduleFireState = "starting"
+	ScheduleFireStateSelecting ScheduleFireState = "selecting"
+	ScheduleFireStateRunning   ScheduleFireState = "running"
+	ScheduleFireStateCleaning  ScheduleFireState = "cleaning"
+	ScheduleFireStateFinished  ScheduleFireState = "finished"
+)
+
+// AllValues returns all ScheduleFireState values.
+func (ScheduleFireState) AllValues() []ScheduleFireState {
+	return []ScheduleFireState{
+		ScheduleFireStateSkipped,
+		ScheduleFireStateMissed,
+		ScheduleFireStateStarting,
+		ScheduleFireStateSelecting,
+		ScheduleFireStateRunning,
+		ScheduleFireStateCleaning,
+		ScheduleFireStateFinished,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s ScheduleFireState) MarshalText() ([]byte, error) {
+	switch s {
+	case ScheduleFireStateSkipped:
+		return []byte(s), nil
+	case ScheduleFireStateMissed:
+		return []byte(s), nil
+	case ScheduleFireStateStarting:
+		return []byte(s), nil
+	case ScheduleFireStateSelecting:
+		return []byte(s), nil
+	case ScheduleFireStateRunning:
+		return []byte(s), nil
+	case ScheduleFireStateCleaning:
+		return []byte(s), nil
+	case ScheduleFireStateFinished:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *ScheduleFireState) UnmarshalText(data []byte) error {
+	switch ScheduleFireState(data) {
+	case ScheduleFireStateSkipped:
+		*s = ScheduleFireStateSkipped
+		return nil
+	case ScheduleFireStateMissed:
+		*s = ScheduleFireStateMissed
+		return nil
+	case ScheduleFireStateStarting:
+		*s = ScheduleFireStateStarting
+		return nil
+	case ScheduleFireStateSelecting:
+		*s = ScheduleFireStateSelecting
+		return nil
+	case ScheduleFireStateRunning:
+		*s = ScheduleFireStateRunning
+		return nil
+	case ScheduleFireStateCleaning:
+		*s = ScheduleFireStateCleaning
+		return nil
+	case ScheduleFireStateFinished:
+		*s = ScheduleFireStateFinished
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Ref: #/components/schemas/ScheduleFireTrigger
+type ScheduleFireTrigger string
+
+const (
+	ScheduleFireTriggerClock   ScheduleFireTrigger = "clock"
+	ScheduleFireTriggerCatchUp ScheduleFireTrigger = "catch_up"
+	ScheduleFireTriggerManual  ScheduleFireTrigger = "manual"
+)
+
+// AllValues returns all ScheduleFireTrigger values.
+func (ScheduleFireTrigger) AllValues() []ScheduleFireTrigger {
+	return []ScheduleFireTrigger{
+		ScheduleFireTriggerClock,
+		ScheduleFireTriggerCatchUp,
+		ScheduleFireTriggerManual,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s ScheduleFireTrigger) MarshalText() ([]byte, error) {
+	switch s {
+	case ScheduleFireTriggerClock:
+		return []byte(s), nil
+	case ScheduleFireTriggerCatchUp:
+		return []byte(s), nil
+	case ScheduleFireTriggerManual:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *ScheduleFireTrigger) UnmarshalText(data []byte) error {
+	switch ScheduleFireTrigger(data) {
+	case ScheduleFireTriggerClock:
+		*s = ScheduleFireTriggerClock
+		return nil
+	case ScheduleFireTriggerCatchUp:
+		*s = ScheduleFireTriggerCatchUp
+		return nil
+	case ScheduleFireTriggerManual:
+		*s = ScheduleFireTriggerManual
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Ref: #/components/schemas/ScheduleList
+type ScheduleList struct {
+	Items []Schedule `json:"items"`
+}
+
+// GetItems returns the value of Items.
+func (s *ScheduleList) GetItems() []Schedule {
+	return s.Items
+}
+
+// SetItems sets the value of Items.
+func (s *ScheduleList) SetItems(val []Schedule) {
+	s.Items = val
+}
+
+func (*ScheduleList) listProjectSchedulesRes() {}
+
+// Content-free result. no_changes deletes the Capsule; the others keep it and ask for the operator.
+// Ref: #/components/schemas/ScheduleOutcome
+type ScheduleOutcome string
+
+const (
+	ScheduleOutcomeProposed  ScheduleOutcome = "proposed"
+	ScheduleOutcomeChanged   ScheduleOutcome = "changed"
+	ScheduleOutcomeNoChanges ScheduleOutcome = "no_changes"
+	ScheduleOutcomeWaiting   ScheduleOutcome = "waiting"
+	ScheduleOutcomeTimedOut  ScheduleOutcome = "timed_out"
+	ScheduleOutcomeFailed    ScheduleOutcome = "failed"
+)
+
+// AllValues returns all ScheduleOutcome values.
+func (ScheduleOutcome) AllValues() []ScheduleOutcome {
+	return []ScheduleOutcome{
+		ScheduleOutcomeProposed,
+		ScheduleOutcomeChanged,
+		ScheduleOutcomeNoChanges,
+		ScheduleOutcomeWaiting,
+		ScheduleOutcomeTimedOut,
+		ScheduleOutcomeFailed,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s ScheduleOutcome) MarshalText() ([]byte, error) {
+	switch s {
+	case ScheduleOutcomeProposed:
+		return []byte(s), nil
+	case ScheduleOutcomeChanged:
+		return []byte(s), nil
+	case ScheduleOutcomeNoChanges:
+		return []byte(s), nil
+	case ScheduleOutcomeWaiting:
+		return []byte(s), nil
+	case ScheduleOutcomeTimedOut:
+		return []byte(s), nil
+	case ScheduleOutcomeFailed:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *ScheduleOutcome) UnmarshalText(data []byte) error {
+	switch ScheduleOutcome(data) {
+	case ScheduleOutcomeProposed:
+		*s = ScheduleOutcomeProposed
+		return nil
+	case ScheduleOutcomeChanged:
+		*s = ScheduleOutcomeChanged
+		return nil
+	case ScheduleOutcomeNoChanges:
+		*s = ScheduleOutcomeNoChanges
+		return nil
+	case ScheduleOutcomeWaiting:
+		*s = ScheduleOutcomeWaiting
+		return nil
+	case ScheduleOutcomeTimedOut:
+		*s = ScheduleOutcomeTimedOut
+		return nil
+	case ScheduleOutcomeFailed:
+		*s = ScheduleOutcomeFailed
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)
@@ -18793,8 +19920,8 @@ func (s *ThreadMutationResultHeaders) SetResponse(val ThreadMutationResult) {
 
 func (*ThreadMutationResultHeaders) createThreadRes() {}
 
-// Marks a user-role message Meridian wrote for coordination rather than the operator: from_lead on a
-// subagent, from_subagents on a lead.
+// Marks a user-role message Meridian wrote rather than the operator typing it now: from_lead on a
+// subagent, from_subagents on a lead, and from_schedule for the prompt a schedule saved (ADR 0057).
 // Ref: #/components/schemas/ThreadOrigin
 type ThreadOrigin struct {
 	Source  ThreadOriginSource `json:"source"`
@@ -18837,6 +19964,7 @@ type ThreadOriginKind string
 const (
 	ThreadOriginKindFromLead      ThreadOriginKind = "from_lead"
 	ThreadOriginKindFromSubagents ThreadOriginKind = "from_subagents"
+	ThreadOriginKindFromSchedule  ThreadOriginKind = "from_schedule"
 )
 
 // AllValues returns all ThreadOriginKind values.
@@ -18844,6 +19972,7 @@ func (ThreadOriginKind) AllValues() []ThreadOriginKind {
 	return []ThreadOriginKind{
 		ThreadOriginKindFromLead,
 		ThreadOriginKindFromSubagents,
+		ThreadOriginKindFromSchedule,
 	}
 }
 
@@ -18853,6 +19982,8 @@ func (s ThreadOriginKind) MarshalText() ([]byte, error) {
 	case ThreadOriginKindFromLead:
 		return []byte(s), nil
 	case ThreadOriginKindFromSubagents:
+		return []byte(s), nil
+	case ThreadOriginKindFromSchedule:
 		return []byte(s), nil
 	default:
 		return nil, errors.Errorf("invalid value: %q", s)
@@ -18868,6 +19999,9 @@ func (s *ThreadOriginKind) UnmarshalText(data []byte) error {
 	case ThreadOriginKindFromSubagents:
 		*s = ThreadOriginKindFromSubagents
 		return nil
+	case ThreadOriginKindFromSchedule:
+		*s = ThreadOriginKindFromSchedule
+		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)
 	}
@@ -18877,12 +20011,14 @@ type ThreadOriginSource string
 
 const (
 	ThreadOriginSourceCoordination ThreadOriginSource = "coordination"
+	ThreadOriginSourceSchedule     ThreadOriginSource = "schedule"
 )
 
 // AllValues returns all ThreadOriginSource values.
 func (ThreadOriginSource) AllValues() []ThreadOriginSource {
 	return []ThreadOriginSource{
 		ThreadOriginSourceCoordination,
+		ThreadOriginSourceSchedule,
 	}
 }
 
@@ -18890,6 +20026,8 @@ func (ThreadOriginSource) AllValues() []ThreadOriginSource {
 func (s ThreadOriginSource) MarshalText() ([]byte, error) {
 	switch s {
 	case ThreadOriginSourceCoordination:
+		return []byte(s), nil
+	case ThreadOriginSourceSchedule:
 		return []byte(s), nil
 	default:
 		return nil, errors.Errorf("invalid value: %q", s)
@@ -18901,6 +20039,9 @@ func (s *ThreadOriginSource) UnmarshalText(data []byte) error {
 	switch ThreadOriginSource(data) {
 	case ThreadOriginSourceCoordination:
 		*s = ThreadOriginSourceCoordination
+		return nil
+	case ThreadOriginSourceSchedule:
+		*s = ThreadOriginSourceSchedule
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)
@@ -19777,6 +20918,156 @@ func (s *UpdateProfileRequestDefaultConnections) init() UpdateProfileRequestDefa
 type UpdateProfileUnprocessableEntity ErrorEnvelope
 
 func (*UpdateProfileUnprocessableEntity) updateProfileRes() {}
+
+type UpdateScheduleBadRequest ErrorEnvelope
+
+func (*UpdateScheduleBadRequest) updateScheduleRes() {}
+
+type UpdateScheduleConflict ErrorEnvelope
+
+func (*UpdateScheduleConflict) updateScheduleRes() {}
+
+type UpdateScheduleNotFound ErrorEnvelope
+
+func (*UpdateScheduleNotFound) updateScheduleRes() {}
+
+// Ref: #/components/schemas/UpdateScheduleRequest
+type UpdateScheduleRequest struct {
+	Name    OptString `json:"name"`
+	Harness OptString `json:"harness"`
+	// Empty uses the harness default.
+	Model OptString `json:"model"`
+	// Empty uses the harness default.
+	Effort                  OptString `json:"effort"`
+	Prompt                  OptString `json:"prompt"`
+	Cadence                 OptString `json:"cadence"`
+	TimeZone                OptString `json:"timeZone"`
+	MaxRunSeconds           OptInt    `json:"maxRunSeconds"`
+	CatchUpSeconds          OptInt    `json:"catchUpSeconds"`
+	MaxKept                 OptInt    `json:"maxKept"`
+	Enabled                 OptBool   `json:"enabled"`
+	ExpectedResourceVersion int64     `json:"expectedResourceVersion"`
+}
+
+// GetName returns the value of Name.
+func (s *UpdateScheduleRequest) GetName() OptString {
+	return s.Name
+}
+
+// GetHarness returns the value of Harness.
+func (s *UpdateScheduleRequest) GetHarness() OptString {
+	return s.Harness
+}
+
+// GetModel returns the value of Model.
+func (s *UpdateScheduleRequest) GetModel() OptString {
+	return s.Model
+}
+
+// GetEffort returns the value of Effort.
+func (s *UpdateScheduleRequest) GetEffort() OptString {
+	return s.Effort
+}
+
+// GetPrompt returns the value of Prompt.
+func (s *UpdateScheduleRequest) GetPrompt() OptString {
+	return s.Prompt
+}
+
+// GetCadence returns the value of Cadence.
+func (s *UpdateScheduleRequest) GetCadence() OptString {
+	return s.Cadence
+}
+
+// GetTimeZone returns the value of TimeZone.
+func (s *UpdateScheduleRequest) GetTimeZone() OptString {
+	return s.TimeZone
+}
+
+// GetMaxRunSeconds returns the value of MaxRunSeconds.
+func (s *UpdateScheduleRequest) GetMaxRunSeconds() OptInt {
+	return s.MaxRunSeconds
+}
+
+// GetCatchUpSeconds returns the value of CatchUpSeconds.
+func (s *UpdateScheduleRequest) GetCatchUpSeconds() OptInt {
+	return s.CatchUpSeconds
+}
+
+// GetMaxKept returns the value of MaxKept.
+func (s *UpdateScheduleRequest) GetMaxKept() OptInt {
+	return s.MaxKept
+}
+
+// GetEnabled returns the value of Enabled.
+func (s *UpdateScheduleRequest) GetEnabled() OptBool {
+	return s.Enabled
+}
+
+// GetExpectedResourceVersion returns the value of ExpectedResourceVersion.
+func (s *UpdateScheduleRequest) GetExpectedResourceVersion() int64 {
+	return s.ExpectedResourceVersion
+}
+
+// SetName sets the value of Name.
+func (s *UpdateScheduleRequest) SetName(val OptString) {
+	s.Name = val
+}
+
+// SetHarness sets the value of Harness.
+func (s *UpdateScheduleRequest) SetHarness(val OptString) {
+	s.Harness = val
+}
+
+// SetModel sets the value of Model.
+func (s *UpdateScheduleRequest) SetModel(val OptString) {
+	s.Model = val
+}
+
+// SetEffort sets the value of Effort.
+func (s *UpdateScheduleRequest) SetEffort(val OptString) {
+	s.Effort = val
+}
+
+// SetPrompt sets the value of Prompt.
+func (s *UpdateScheduleRequest) SetPrompt(val OptString) {
+	s.Prompt = val
+}
+
+// SetCadence sets the value of Cadence.
+func (s *UpdateScheduleRequest) SetCadence(val OptString) {
+	s.Cadence = val
+}
+
+// SetTimeZone sets the value of TimeZone.
+func (s *UpdateScheduleRequest) SetTimeZone(val OptString) {
+	s.TimeZone = val
+}
+
+// SetMaxRunSeconds sets the value of MaxRunSeconds.
+func (s *UpdateScheduleRequest) SetMaxRunSeconds(val OptInt) {
+	s.MaxRunSeconds = val
+}
+
+// SetCatchUpSeconds sets the value of CatchUpSeconds.
+func (s *UpdateScheduleRequest) SetCatchUpSeconds(val OptInt) {
+	s.CatchUpSeconds = val
+}
+
+// SetMaxKept sets the value of MaxKept.
+func (s *UpdateScheduleRequest) SetMaxKept(val OptInt) {
+	s.MaxKept = val
+}
+
+// SetEnabled sets the value of Enabled.
+func (s *UpdateScheduleRequest) SetEnabled(val OptBool) {
+	s.Enabled = val
+}
+
+// SetExpectedResourceVersion sets the value of ExpectedResourceVersion.
+func (s *UpdateScheduleRequest) SetExpectedResourceVersion(val int64) {
+	s.ExpectedResourceVersion = val
+}
 
 type UseHostGitHubLoginBadRequest ErrorEnvelope
 

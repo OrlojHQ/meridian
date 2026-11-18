@@ -140,6 +140,17 @@ type Reader interface {
 	ListRemoteCIChecks(context.Context, domain.RemoteCIWatchID) ([]domain.RemoteCICheck, error)
 	ListDueRemoteCI(context.Context, time.Time, int) ([]domain.RemoteCIWatch, error)
 	CountRemoteCIFailures(context.Context, domain.CapsuleID, int64) (int, error)
+	// Scheduled Project Threads (ADR 0057).
+	GetSchedule(context.Context, domain.ScheduleID) (domain.Schedule, error)
+	ListSchedules(context.Context, domain.ProjectID) ([]domain.Schedule, error)
+	ListDueSchedules(context.Context, time.Time, int) ([]domain.Schedule, error)
+	GetScheduleFire(context.Context, domain.ScheduleFireID) (domain.ScheduleFire, error)
+	GetScheduleFireAt(context.Context, domain.ScheduleID, time.Time) (domain.ScheduleFire, error)
+	ListScheduleFires(context.Context, domain.ScheduleID, Page) ([]domain.ScheduleFire, bool, error)
+	ListActiveScheduleFires(context.Context, int) ([]domain.ScheduleFire, error)
+	ActiveScheduleFire(context.Context, domain.ScheduleID) (domain.ScheduleFire, error)
+	CountKeptScheduleCapsules(context.Context, domain.ScheduleID) (int, error)
+	ScheduleFiresByCapsule(context.Context, []domain.CapsuleID) (map[domain.CapsuleID]domain.ScheduleFire, error)
 }
 
 type Transaction interface {
@@ -265,6 +276,11 @@ type Transaction interface {
 	UpdateRemoteCI(context.Context, domain.RemoteCIWatch, domain.ResourceVersion) error
 	ReplaceRemoteCIChecks(context.Context, domain.RemoteCIWatchID, []domain.RemoteCICheck) error
 	SupersedeRemoteCI(context.Context, domain.CapsuleID, string) error
+	InsertSchedule(context.Context, domain.Schedule) error
+	UpdateSchedule(context.Context, domain.Schedule, domain.ResourceVersion) error
+	DeleteSchedule(context.Context, domain.ScheduleID) error
+	InsertScheduleFire(context.Context, domain.ScheduleFire) error
+	UpdateScheduleFire(context.Context, domain.ScheduleFire, domain.ResourceVersion) error
 }
 
 type Store interface {

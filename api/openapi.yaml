@@ -2094,6 +2094,179 @@ paths:
               schema: { $ref: "#/components/schemas/CheckSuggestion" }
         default:
           $ref: "#/components/responses/DefaultError"
+  /projects/{projectId}/schedules:
+    get:
+      operationId: listProjectSchedules
+      summary: List the Project's schedules
+      description: >
+        Each schedule starts one fresh Project Thread per fire (ADR 0057). The
+        owner sees the prompt; fires and Capsule notes never carry it.
+      tags: [schedules]
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: Schedules, by name
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScheduleList" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default:
+          $ref: "#/components/responses/DefaultError"
+    post:
+      operationId: createProjectSchedule
+      summary: Save a schedule on the Project
+      description: >
+        The harness must be a structured harness on the Project allowlist.
+        Fires must be at least 15 minutes apart. A schedule never ships:
+        Delivery still needs the operator.
+      tags: [schedules]
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateScheduleRequest" }
+      responses:
+        "201":
+          description: Saved schedule
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Schedule" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /projects/{projectId}/harnesses/{harness}/reported-models:
+    get:
+      operationId: getReportedModels
+      summary: Read the models a harness last reported in this Project
+      description: >
+        The model and effort options the most recent session of this harness
+        in the Project reported, for a schedule form to offer. Empty when no
+        session has reported any.
+      tags: [schedules]
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - name: harness
+          in: path
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        "200":
+          description: Reported models, which may be empty
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReportedModels" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /schedules/{scheduleId}:
+    get:
+      operationId: getSchedule
+      summary: Get a schedule
+      tags: [schedules]
+      parameters:
+        - $ref: "#/components/parameters/ScheduleId"
+      responses:
+        "200":
+          description: Schedule
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Schedule" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default:
+          $ref: "#/components/responses/DefaultError"
+    patch:
+      operationId: updateSchedule
+      summary: Change a schedule
+      description: >
+        Changes only the named fields. Turning a schedule on clears the reason
+        Meridian turned it off. A run in progress keeps its settings.
+      tags: [schedules]
+      parameters:
+        - $ref: "#/components/parameters/ScheduleId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateScheduleRequest" }
+      responses:
+        "200":
+          description: Updated schedule
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Schedule" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /schedules/{scheduleId}/delete:
+    post:
+      operationId: deleteSchedule
+      summary: Delete a schedule and its fire history
+      description: >
+        Capsules the schedule kept are ordinary Capsules and stay until the
+        operator deletes them.
+      tags: [schedules]
+      parameters:
+        - $ref: "#/components/parameters/ScheduleId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        $ref: "#/components/requestBodies/LifecycleMutation"
+      responses:
+        "204":
+          description: Deleted
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /schedules/{scheduleId}/run:
+    post:
+      operationId: runSchedule
+      summary: Fire a schedule now
+      description: >
+        Follows the clock's rules: an overlapping run, a full backlog, or the
+        live-Capsule cap records a skipped fire instead.
+      tags: [schedules]
+      parameters:
+        - $ref: "#/components/parameters/ScheduleId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "202":
+          description: Fire recorded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScheduleFire" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /schedules/{scheduleId}/fires:
+    get:
+      operationId: listScheduleFires
+      summary: List a schedule's fires
+      tags: [schedules]
+      parameters:
+        - $ref: "#/components/parameters/ScheduleId"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Fires, newest first
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScheduleFirePage" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default:
+          $ref: "#/components/responses/DefaultError"
   /capsules/{capsuleId}/remote-ci:
     get:
       operationId: getCapsuleRemoteCI
@@ -3735,6 +3908,14 @@ components:
       schema:
         type: string
         minLength: 1
+    ScheduleId:
+      name: scheduleId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
     GrantId:
       name: grantId
       in: path
@@ -4574,6 +4755,156 @@ components:
         runId: { type: string }
         remoteCI:
           $ref: "#/components/schemas/RemoteCISummary"
+    ScheduleFireTrigger:
+      type: string
+      enum: [clock, catch_up, manual]
+    ScheduleFireState:
+      type: string
+      enum: [skipped, missed, starting, selecting, running, cleaning, finished]
+    ScheduleOutcome:
+      type: string
+      description: >
+        Content-free result. no_changes deletes the Capsule; the others keep
+        it and ask for the operator.
+      enum: [proposed, changed, no_changes, waiting, timed_out, failed]
+    ScheduleFire:
+      type: object
+      required: [id, scheduleId, trigger, scheduledFor, state, capsuleDeleted, createdAt]
+      description: One tick of a schedule's clock. It carries codes, never prompt text.
+      properties:
+        id: { type: string }
+        scheduleId: { type: string }
+        trigger: { $ref: "#/components/schemas/ScheduleFireTrigger" }
+        scheduledFor: { type: string, format: date-time }
+        state: { $ref: "#/components/schemas/ScheduleFireState" }
+        outcome: { $ref: "#/components/schemas/ScheduleOutcome" }
+        reason:
+          type: string
+          maxLength: 64
+          description: Skip or failure code, such as overlap, backlog, capacity, or model_unavailable.
+        capsuleId: { type: string }
+        threadId: { type: string }
+        capsuleDeleted: { type: boolean }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+    ScheduleFirePage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ScheduleFire" }
+        nextCursor: { type: string }
+    Schedule:
+      type: object
+      required:
+        [id, projectId, name, harness, prompt, cadence, timeZone, maxRunSeconds, catchUpSeconds,
+         maxKept, enabled, keptCapsules, resourceVersion, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        projectId: { type: string }
+        name: { type: string, pattern: "^[a-z0-9-]{1,48}$" }
+        harness: { type: string }
+        model:
+          type: string
+          description: Model option ID the harness reports. Absent means the harness default.
+        effort:
+          type: string
+          description: Reasoning effort option ID. Absent means the harness default.
+        prompt: { type: string, maxLength: 32768 }
+        cadence:
+          type: string
+          description: Five-field cron expression (minute hour day month weekday) or a macro such as @daily.
+        timeZone: { type: string, description: IANA time zone name. }
+        maxRunSeconds: { type: integer, minimum: 300, maximum: 86400 }
+        catchUpSeconds: { type: integer, minimum: 0, maximum: 86400 }
+        maxKept: { type: integer, minimum: 1, maximum: 20 }
+        enabled: { type: boolean }
+        disabledReason:
+          type: string
+          description: Why Meridian turned the schedule off, such as start_failures or transferred.
+        nextFireAt: { type: string, format: date-time }
+        lastFireAt: { type: string, format: date-time }
+        keptCapsules:
+          type: integer
+          minimum: 0
+          description: Capsules this schedule kept that nobody has deleted yet.
+        active: { $ref: "#/components/schemas/ScheduleFire" }
+        lastFire: { $ref: "#/components/schemas/ScheduleFire" }
+        resourceVersion: { type: integer, format: int64, minimum: 1 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ScheduleList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Schedule" }
+    CreateScheduleRequest:
+      type: object
+      required: [name, harness, prompt, cadence, timeZone]
+      properties:
+        name: { type: string, pattern: "^[a-z0-9-]{1,48}$" }
+        harness: { type: string, minLength: 1, maxLength: 128 }
+        model: { type: string, maxLength: 256 }
+        effort: { type: string, maxLength: 256 }
+        prompt: { type: string, minLength: 1, maxLength: 32768 }
+        cadence: { type: string, minLength: 1, maxLength: 128 }
+        timeZone: { type: string, minLength: 1, maxLength: 64 }
+        maxRunSeconds: { type: integer, minimum: 300, maximum: 86400, default: 7200 }
+        catchUpSeconds: { type: integer, minimum: 0, maximum: 86400, default: 3600 }
+        maxKept: { type: integer, minimum: 1, maximum: 20, default: 5 }
+        enabled: { type: boolean, default: true }
+    UpdateScheduleRequest:
+      type: object
+      required: [expectedResourceVersion]
+      properties:
+        name: { type: string, pattern: "^[a-z0-9-]{1,48}$" }
+        harness: { type: string, minLength: 1, maxLength: 128 }
+        model: { type: string, maxLength: 256, description: Empty uses the harness default. }
+        effort: { type: string, maxLength: 256, description: Empty uses the harness default. }
+        prompt: { type: string, minLength: 1, maxLength: 32768 }
+        cadence: { type: string, minLength: 1, maxLength: 128 }
+        timeZone: { type: string, minLength: 1, maxLength: 64 }
+        maxRunSeconds: { type: integer, minimum: 300, maximum: 86400 }
+        catchUpSeconds: { type: integer, minimum: 0, maximum: 86400 }
+        maxKept: { type: integer, minimum: 1, maximum: 20 }
+        enabled: { type: boolean }
+        expectedResourceVersion: { type: integer, format: int64, minimum: 1 }
+    ReportedModelOption:
+      type: object
+      required: [id, label]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        description: { type: string }
+    ReportedModels:
+      type: object
+      required: [models, efforts]
+      properties:
+        models:
+          type: array
+          maxItems: 128
+          items: { $ref: "#/components/schemas/ReportedModelOption" }
+        current: { type: string }
+        efforts:
+          type: array
+          maxItems: 16
+          items: { $ref: "#/components/schemas/ReportedModelOption" }
+        currentEffort: { type: string }
+        threadId: { type: string }
+    CapsuleSchedule:
+      type: object
+      required: [scheduleId, scheduleName, fireId, state]
+      description: Content-free note on a Capsule a schedule started.
+      properties:
+        scheduleId: { type: string }
+        scheduleName: { type: string }
+        fireId: { type: string }
+        state: { $ref: "#/components/schemas/ScheduleFireState" }
+        outcome: { $ref: "#/components/schemas/ScheduleOutcome" }
     RemoteCISummary:
       type: object
       required: [state, label]
@@ -4703,6 +5034,9 @@ components:
           description: >
             Content-free check summary. Absent when the Project has no checks.
             This is not a Capsule lifecycle state.
+        schedule:
+          $ref: "#/components/schemas/CapsuleSchedule"
+          description: Present on a Capsule a schedule started (ADR 0057).
         createdAt:
           type: string
           format: date-time
@@ -5687,12 +6021,13 @@ components:
     ThreadOrigin:
       type: object
       description: >
-        Marks a user-role message Meridian wrote for coordination rather than
-        the operator: from_lead on a subagent, from_subagents on a lead.
+        Marks a user-role message Meridian wrote rather than the operator
+        typing it now: from_lead on a subagent, from_subagents on a lead, and
+        from_schedule for the prompt a schedule saved (ADR 0057).
       required: [source, kind]
       properties:
-        source: { type: string, enum: [coordination] }
-        kind: { type: string, enum: [from_lead, from_subagents] }
+        source: { type: string, enum: [coordination, schedule] }
+        kind: { type: string, enum: [from_lead, from_subagents, from_schedule] }
         linkIds:
           type: array
           maxItems: 16
@@ -6739,3 +7074,5 @@ tags:
     description: Bounded workspace browsing and authenticated portable export.
   - name: deliveries
     description: Explicitly approved exact-object commit, push, and GitHub pull request delivery.
+  - name: schedules
+    description: Operator-written clocks that start a fresh Project Thread per fire.

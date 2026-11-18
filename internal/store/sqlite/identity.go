@@ -306,6 +306,7 @@ var transferredTables = []string{
 	"capsules", "timelines", "moments", "project_thread_intents", "setup_moment_cache",
 	"project_preparation_policy", "coordination_grants", "runs", "threads", "deliveries",
 	"project_checks", "check_runs", "capsule_check_controls", "delivery_check_gates", "remote_ci_watches",
+	"schedules", "schedule_fires",
 	"capsule_preparations", "capsule_startup", "thread_messages", "thread_blocks",
 	"thread_deliveries", "thread_links", "coordination_requests", "harness_setup_revisions",
 }
@@ -332,6 +333,15 @@ func (r *repository) TransferOwnership(ctx context.Context, from, to domain.User
 			'$.default', json('false'),
 			'$.resourceVersion', json_extract(metadata, '$.resourceVersion') + 1)
 		WHERE owner_user_id = ? AND json_extract(metadata, '$.default') = 1`, from); err != nil {
+		return mapError(err)
+	}
+	// Moved schedules arrive turned off. The recipient reads each prompt and
+	// turns it back on (ADR 0057); a clock never fires for someone who has
+	// not seen what it sends.
+	if _, err := r.q.ExecContext(ctx, `
+		UPDATE schedules
+		SET enabled = 0, disabled_reason = ?, next_fire_at = '', resource_version = resource_version + 1
+		WHERE owner_user_id = ? AND enabled = 1`, domain.ScheduleDisabledTransferred, from); err != nil {
 		return mapError(err)
 	}
 	for _, table := range transferredTables {

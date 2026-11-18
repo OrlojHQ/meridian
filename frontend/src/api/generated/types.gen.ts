@@ -483,6 +483,150 @@ export type ChecksSummary = {
     remoteCI?: RemoteCiSummary;
 };
 
+export type ScheduleFireTrigger = 'clock' | 'catch_up' | 'manual';
+
+export type ScheduleFireState = 'skipped' | 'missed' | 'starting' | 'selecting' | 'running' | 'cleaning' | 'finished';
+
+/**
+ * Content-free result. no_changes deletes the Capsule; the others keep it and ask for the operator.
+ *
+ */
+export type ScheduleOutcome = 'proposed' | 'changed' | 'no_changes' | 'waiting' | 'timed_out' | 'failed';
+
+/**
+ * One tick of a schedule's clock. It carries codes, never prompt text.
+ */
+export type ScheduleFire = {
+    id: string;
+    scheduleId: string;
+    trigger: ScheduleFireTrigger;
+    scheduledFor: string;
+    state: ScheduleFireState;
+    outcome?: ScheduleOutcome;
+    /**
+     * Skip or failure code, such as overlap, backlog, capacity, or model_unavailable.
+     */
+    reason?: string;
+    capsuleId?: string;
+    threadId?: string;
+    capsuleDeleted: boolean;
+    startedAt?: string;
+    finishedAt?: string;
+    createdAt: string;
+};
+
+export type ScheduleFirePage = {
+    items: Array<ScheduleFire>;
+    nextCursor?: string;
+};
+
+export type Schedule = {
+    id: string;
+    projectId: string;
+    name: string;
+    harness: string;
+    /**
+     * Model option ID the harness reports. Absent means the harness default.
+     */
+    model?: string;
+    /**
+     * Reasoning effort option ID. Absent means the harness default.
+     */
+    effort?: string;
+    prompt: string;
+    /**
+     * Five-field cron expression (minute hour day month weekday) or a macro such as @daily.
+     */
+    cadence: string;
+    /**
+     * IANA time zone name.
+     */
+    timeZone: string;
+    maxRunSeconds: number;
+    catchUpSeconds: number;
+    maxKept: number;
+    enabled: boolean;
+    /**
+     * Why Meridian turned the schedule off, such as start_failures or transferred.
+     */
+    disabledReason?: string;
+    nextFireAt?: string;
+    lastFireAt?: string;
+    /**
+     * Capsules this schedule kept that nobody has deleted yet.
+     */
+    keptCapsules: number;
+    active?: ScheduleFire;
+    lastFire?: ScheduleFire;
+    resourceVersion: number;
+    createdAt: string;
+    updatedAt: string;
+};
+
+export type ScheduleList = {
+    items: Array<Schedule>;
+};
+
+export type CreateScheduleRequest = {
+    name: string;
+    harness: string;
+    model?: string;
+    effort?: string;
+    prompt: string;
+    cadence: string;
+    timeZone: string;
+    maxRunSeconds?: number;
+    catchUpSeconds?: number;
+    maxKept?: number;
+    enabled?: boolean;
+};
+
+export type UpdateScheduleRequest = {
+    name?: string;
+    harness?: string;
+    /**
+     * Empty uses the harness default.
+     */
+    model?: string;
+    /**
+     * Empty uses the harness default.
+     */
+    effort?: string;
+    prompt?: string;
+    cadence?: string;
+    timeZone?: string;
+    maxRunSeconds?: number;
+    catchUpSeconds?: number;
+    maxKept?: number;
+    enabled?: boolean;
+    expectedResourceVersion: number;
+};
+
+export type ReportedModelOption = {
+    id: string;
+    label: string;
+    description?: string;
+};
+
+export type ReportedModels = {
+    models: Array<ReportedModelOption>;
+    current?: string;
+    efforts: Array<ReportedModelOption>;
+    currentEffort?: string;
+    threadId?: string;
+};
+
+/**
+ * Content-free note on a Capsule a schedule started.
+ */
+export type CapsuleSchedule = {
+    scheduleId: string;
+    scheduleName: string;
+    fireId: string;
+    state: ScheduleFireState;
+    outcome?: ScheduleOutcome;
+};
+
 /**
  * Content-free GitHub CI line for the pushed commit. It has no log tail.
  */
@@ -581,6 +725,10 @@ export type Capsule = {
      *
      */
     checks?: ChecksSummary;
+    /**
+     * Present on a Capsule a schedule started (ADR 0057).
+     */
+    schedule?: CapsuleSchedule;
     createdAt: string;
     updatedAt: string;
     resourceVersion: number;
@@ -1255,12 +1403,12 @@ export type CoordinationCapability = {
 };
 
 /**
- * Marks a user-role message Meridian wrote for coordination rather than the operator: from_lead on a subagent, from_subagents on a lead.
+ * Marks a user-role message Meridian wrote rather than the operator typing it now: from_lead on a subagent, from_subagents on a lead, and from_schedule for the prompt a schedule saved (ADR 0057).
  *
  */
 export type ThreadOrigin = {
-    source: 'coordination';
-    kind: 'from_lead' | 'from_subagents';
+    source: 'coordination' | 'schedule';
+    kind: 'from_lead' | 'from_subagents' | 'from_schedule';
     linkIds?: Array<string>;
 };
 
@@ -2198,6 +2346,8 @@ export type ThreadId = string;
 export type ProjectThreadIntentId = string;
 
 export type LinkId = string;
+
+export type ScheduleId = string;
 
 export type GrantId = string;
 
@@ -5314,6 +5464,302 @@ export type SuggestProjectChecksResponses = {
 };
 
 export type SuggestProjectChecksResponse = SuggestProjectChecksResponses[keyof SuggestProjectChecksResponses];
+
+export type ListProjectSchedulesData = {
+    body?: never;
+    path: {
+        projectId: string;
+    };
+    query?: never;
+    url: '/projects/{projectId}/schedules';
+};
+
+export type ListProjectSchedulesErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ListProjectSchedulesError = ListProjectSchedulesErrors[keyof ListProjectSchedulesErrors];
+
+export type ListProjectSchedulesResponses = {
+    /**
+     * Schedules, by name
+     */
+    200: ScheduleList;
+};
+
+export type ListProjectSchedulesResponse = ListProjectSchedulesResponses[keyof ListProjectSchedulesResponses];
+
+export type CreateProjectScheduleData = {
+    body: CreateScheduleRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        projectId: string;
+    };
+    query?: never;
+    url: '/projects/{projectId}/schedules';
+};
+
+export type CreateProjectScheduleErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type CreateProjectScheduleError = CreateProjectScheduleErrors[keyof CreateProjectScheduleErrors];
+
+export type CreateProjectScheduleResponses = {
+    /**
+     * Saved schedule
+     */
+    201: Schedule;
+};
+
+export type CreateProjectScheduleResponse = CreateProjectScheduleResponses[keyof CreateProjectScheduleResponses];
+
+export type GetReportedModelsData = {
+    body?: never;
+    path: {
+        projectId: string;
+        harness: string;
+    };
+    query?: never;
+    url: '/projects/{projectId}/harnesses/{harness}/reported-models';
+};
+
+export type GetReportedModelsErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type GetReportedModelsError = GetReportedModelsErrors[keyof GetReportedModelsErrors];
+
+export type GetReportedModelsResponses = {
+    /**
+     * Reported models, which may be empty
+     */
+    200: ReportedModels;
+};
+
+export type GetReportedModelsResponse = GetReportedModelsResponses[keyof GetReportedModelsResponses];
+
+export type GetScheduleData = {
+    body?: never;
+    path: {
+        scheduleId: string;
+    };
+    query?: never;
+    url: '/schedules/{scheduleId}';
+};
+
+export type GetScheduleErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type GetScheduleError = GetScheduleErrors[keyof GetScheduleErrors];
+
+export type GetScheduleResponses = {
+    /**
+     * Schedule
+     */
+    200: Schedule;
+};
+
+export type GetScheduleResponse = GetScheduleResponses[keyof GetScheduleResponses];
+
+export type UpdateScheduleData = {
+    body: UpdateScheduleRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        scheduleId: string;
+    };
+    query?: never;
+    url: '/schedules/{scheduleId}';
+};
+
+export type UpdateScheduleErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type UpdateScheduleError = UpdateScheduleErrors[keyof UpdateScheduleErrors];
+
+export type UpdateScheduleResponses = {
+    /**
+     * Updated schedule
+     */
+    200: Schedule;
+};
+
+export type UpdateScheduleResponse = UpdateScheduleResponses[keyof UpdateScheduleResponses];
+
+export type DeleteScheduleData = {
+    body: LifecycleMutation;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        scheduleId: string;
+    };
+    query?: never;
+    url: '/schedules/{scheduleId}/delete';
+};
+
+export type DeleteScheduleErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type DeleteScheduleError = DeleteScheduleErrors[keyof DeleteScheduleErrors];
+
+export type DeleteScheduleResponses = {
+    /**
+     * Deleted
+     */
+    204: void;
+};
+
+export type DeleteScheduleResponse = DeleteScheduleResponses[keyof DeleteScheduleResponses];
+
+export type RunScheduleData = {
+    body?: never;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        scheduleId: string;
+    };
+    query?: never;
+    url: '/schedules/{scheduleId}/run';
+};
+
+export type RunScheduleErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type RunScheduleError = RunScheduleErrors[keyof RunScheduleErrors];
+
+export type RunScheduleResponses = {
+    /**
+     * Fire recorded
+     */
+    202: ScheduleFire;
+};
+
+export type RunScheduleResponse = RunScheduleResponses[keyof RunScheduleResponses];
+
+export type ListScheduleFiresData = {
+    body?: never;
+    path: {
+        scheduleId: string;
+    };
+    query?: {
+        cursor?: string;
+        limit?: number;
+    };
+    url: '/schedules/{scheduleId}/fires';
+};
+
+export type ListScheduleFiresErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ListScheduleFiresError = ListScheduleFiresErrors[keyof ListScheduleFiresErrors];
+
+export type ListScheduleFiresResponses = {
+    /**
+     * Fires, newest first
+     */
+    200: ScheduleFirePage;
+};
+
+export type ListScheduleFiresResponse = ListScheduleFiresResponses[keyof ListScheduleFiresResponses];
 
 export type GetCapsuleRemoteCiData = {
     body?: never;
