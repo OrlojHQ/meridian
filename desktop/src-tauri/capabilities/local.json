@@ -8,7 +8,9 @@
     "core:default",
     "allow-gateway-state",
     "allow-gateway-connect",
-    "allow-gateway-forget",
+    "allow-gateway-rename",
+    "allow-gateway-remove",
+    "allow-gateway-status",
     "allow-setup-check-state",
     "allow-setup-check-set"
   ]

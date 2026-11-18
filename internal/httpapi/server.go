@@ -692,13 +692,18 @@ func (s *Server) threadSessionLifecycle(
 
 func (s *Server) sendThreadMessage(writer http.ResponseWriter, request *http.Request) {
 	var input sendThreadMessageRequest
-	if !decode(writer, request, &input) {
+	if !decodeMessage(writer, request, &input) {
 		return
 	}
-	result, err := s.service.SendThreadMessage(
+	attachments, err := decodeAttachmentData(input.Attachments)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	result, err := s.service.SendThreadMessageWithAttachments(
 		request.Context(), domain.ThreadID(request.PathValue("threadId")),
 		domain.ResourceVersion(input.ExpectedResourceVersion), input.Content,
-		request.Header.Get("Idempotency-Key"), input.Delivery)
+		request.Header.Get("Idempotency-Key"), input.Delivery, attachments)
 	if err != nil {
 		writeError(writer, err)
 		return
@@ -2120,6 +2125,50 @@ func (s *Server) capsuleJSON(ctx context.Context, capsule domain.Capsule) (capsu
 func decode(writer http.ResponseWriter, request *http.Request, output any) bool {
 	return decodeLimit(writer, request, output, 1<<20)
 }
+
+// decodeMessage allows a message plus its attachments. Eight files at the
+// 4 MiB cap expand under base64, so this route's body limit is larger than
+// the default and a truncated body is reported as a size error.
+func decodeMessage(writer http.ResponseWriter, request *http.Request, output any) bool {
+	const limit = 12 << 20
+	request.Body = http.MaxBytesReader(writer, request.Body, limit)
+	decoder := json.NewDecoder(request.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(output); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			writeError(writer, app.InvalidInput("These attachments are too large."))
+			return false
+		}
+		writeError(writer, fmt.Errorf("%w: invalid JSON body", domain.ErrInvalid))
+		return false
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		writeError(writer, fmt.Errorf("%w: request body must contain one JSON value", domain.ErrInvalid))
+		return false
+	}
+	return true
+}
+
+func decodeAttachmentData(items []threadAttachmentRequest) ([]app.ThreadAttachmentInput, error) {
+	if len(items) == 0 {
+		return nil, nil
+	}
+	out := make([]app.ThreadAttachmentInput, 0, len(items))
+	for _, item := range items {
+		if item.Data == "" {
+			return nil, app.InvalidInput("This file is empty.")
+		}
+		decoded, err := base64.StdEncoding.DecodeString(item.Data)
+		if err != nil {
+			return nil, app.InvalidInput("This attachment could not be read.")
+		}
+		out = append(out, app.ThreadAttachmentInput{
+			Name: item.Name, MediaType: item.MediaType, Data: decoded,
+		})
+	}
+	return out, nil
+}
 func decodeLimit(writer http.ResponseWriter, request *http.Request, output any, limit int64) bool {
 	request.Body = http.MaxBytesReader(writer, request.Body, limit)
 	decoder := json.NewDecoder(request.Body)
@@ -2373,9 +2422,16 @@ type deleteThreadRequest struct {
 }
 
 type sendThreadMessageRequest struct {
-	ExpectedResourceVersion int64  `json:"expectedResourceVersion"`
-	Content                 string `json:"content"`
-	Delivery                string `json:"delivery,omitempty"`
+	ExpectedResourceVersion int64                     `json:"expectedResourceVersion"`
+	Content                 string                    `json:"content"`
+	Delivery                string                    `json:"delivery,omitempty"`
+	Attachments             []threadAttachmentRequest `json:"attachments,omitempty"`
+}
+
+type threadAttachmentRequest struct {
+	Name      string `json:"name"`
+	MediaType string `json:"mediaType"`
+	Data      string `json:"data"`
 }
 
 type threadResponseRequest struct {

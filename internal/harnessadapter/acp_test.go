@@ -2,8 +2,13 @@ package harnessadapter
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"image"
+	"image/color"
+	"image/png"
 	"net"
 	"os"
 	"path/filepath"
@@ -40,7 +45,7 @@ func runACPFixture(
 	t.Cleanup(func() { _ = controller.Close() })
 	done := make(chan error, 1)
 	go func() { done <- RunACP(context.Background(), adapter, adapter, config) }()
-	decoder, encoder := negotiateTestAdapterWith(t, controller, initial, resume, mode == "models")
+	decoder, encoder := negotiateTestAdapterWith(t, controller, initial, resume, mode == "models" || mode == "images" || mode == "no-images")
 	return decoder, encoder, log, done
 }
 
@@ -619,6 +624,97 @@ func TestACPRejectsInvalidConfiguration(t *testing.T) {
 	}
 }
 
+func TestACPImageBlocksFollowPromptCapabilities(t *testing.T) {
+	// The adapter accepts only a working directory inside the Capsule workspace,
+	// which TestMain already entered. The image is written there.
+	relative := ".meridian/attachments/0123456789abcdef/1-shot.png"
+	if err := os.MkdirAll(filepath.Dir(relative), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	img := image.NewNRGBA(image.Rect(0, 0, 1, 1))
+	img.Set(0, 0, color.RGBA{R: 255, A: 255})
+	var encoded bytes.Buffer
+	if err := png.Encode(&encoded, img); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(relative, encoded.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(".meridian") })
+	metadata, err := json.Marshal(map[string]any{
+		"attachments": []map[string]string{{
+			"path": relative, "mediaType": "image/png", "kind": "image", "name": "shot.png",
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sendImage := func(t *testing.T, encoder *adapterproto.Encoder) {
+		t.Helper()
+		writeTestFrame(t, encoder, adapterproto.Frame{
+			Protocol: adapterproto.Version, Type: adapterproto.KindUserMessage,
+			ID: "message-image", SessionID: "session-1", Role: adapterproto.RoleUser,
+			Content: "look", Metadata: metadata,
+		})
+	}
+
+	t.Run("supported", func(t *testing.T) {
+		decoder, encoder, log, _ := runACPFixture(t, "images", ACPConfig{}, adapterproto.KindStart, "")
+		_ = readStatus(t, decoder, adapterproto.StatusStarting)
+		if models := readKind(t, decoder, adapterproto.KindModels).Models; models == nil || !models.Images {
+			t.Fatalf("models = %#v", models)
+		}
+		_ = readStatus(t, decoder, adapterproto.StatusIdle)
+		sendImage(t, encoder)
+		_ = readStatus(t, decoder, adapterproto.StatusRunning)
+		_ = readStatus(t, decoder, adapterproto.StatusIdle)
+		logged, err := os.ReadFile(log)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Contains(logged, []byte(`"type":"image"`)) ||
+			!bytes.Contains(logged, []byte(base64.StdEncoding.EncodeToString(encoded.Bytes()))) {
+			t.Fatalf("prompt did not carry the image block: %s", logged)
+		}
+	})
+
+	t.Run("harness in a subdirectory", func(t *testing.T) {
+		// A profile's workingDirectory can be a subdirectory. The attachment
+		// path is still relative to the workspace root.
+		nested := filepath.Join(capsuleWorkspace, "packages", "app")
+		if err := os.MkdirAll(nested, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.RemoveAll(filepath.Join(capsuleWorkspace, "packages")) })
+		t.Chdir(nested)
+		data, media, err := readWorkspaceImage(relative)
+		if err != nil || media != "image/png" || !bytes.Equal(data, encoded.Bytes()) {
+			t.Fatalf("read from a subdirectory = %q, %v", media, err)
+		}
+	})
+
+	t.Run("unsupported", func(t *testing.T) {
+		decoder, encoder, log, _ := runACPFixture(t, "no-images", ACPConfig{}, adapterproto.KindStart, "")
+		_ = readStatus(t, decoder, adapterproto.StatusStarting)
+		if models := readKind(t, decoder, adapterproto.KindModels).Models; models == nil || models.Images {
+			t.Fatalf("models = %#v", models)
+		}
+		_ = readStatus(t, decoder, adapterproto.StatusIdle)
+		sendImage(t, encoder)
+		if failure := readKind(t, decoder, adapterproto.KindError); failure.Code != "acp_attachment_invalid" {
+			t.Fatalf("image without support = %#v", failure)
+		}
+		_ = readStatus(t, decoder, adapterproto.StatusIdle)
+		logged, err := os.ReadFile(log)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if bytes.Contains(logged, []byte(`"type":"image"`)) {
+			t.Fatal("image block was sent without prompt capability")
+		}
+	})
+}
+
 func TestACPAgentHelper(t *testing.T) {
 	mode := os.Getenv("MERIDIAN_ACP_HELPER")
 	if mode == "" {
@@ -670,6 +766,12 @@ func TestACPAgentHelper(t *testing.T) {
 			if mode == "resume" || mode == "missing" {
 				capabilities["sessionCapabilities"] = map[string]any{"resume": map[string]any{}}
 			}
+			if mode == "images" {
+				capabilities["promptCapabilities"] = map[string]any{"image": true}
+			}
+			if mode == "no-images" {
+				capabilities["promptCapabilities"] = map[string]any{"image": false}
+			}
 			version := 1
 			switch mode {
 			case "version":
@@ -694,6 +796,13 @@ func TestACPAgentHelper(t *testing.T) {
 					"code": -32603, "message": "Internal error: No models are available",
 					"data": map[string]any{"errorName": "CatalogNotReady"},
 				}})
+				continue
+			}
+			if mode == "images" || mode == "no-images" {
+				send(map[string]any{"id": record.ID, "result": map[string]any{"sessionId": "sess-1", "configOptions": []any{
+					map[string]any{"id": "model", "category": "model", "type": "select", "currentValue": "vision",
+						"options": []any{map[string]any{"value": "vision", "name": "Vision"}}},
+				}}})
 				continue
 			}
 			if mode == "models" {
@@ -812,6 +921,10 @@ func TestACPAgentHelper(t *testing.T) {
 			case "refuse":
 				end("refusal")
 			case "slow":
+			default:
+				if mode == "images" || mode == "no-images" {
+					end("end_turn")
+				}
 			}
 		case "session/set_config_option":
 			var params struct {

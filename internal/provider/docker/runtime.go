@@ -323,6 +323,17 @@ func (p *Provider) ReadWorkspaceFile(
 	}, nil
 }
 
+func (p *Provider) WriteWorkspaceFile(
+	ctx context.Context, resourceID, filePath string, content []byte,
+) error {
+	supervisor, err := p.runtimeClient(ctx, resourceID)
+	if err != nil {
+		return err
+	}
+	err = supervisor.BrowseWrite(ctx, capsuleproto.BrowseWriteRequest{Path: filePath, Content: content})
+	return mapRuntimeError(err)
+}
+
 func (p *Provider) InspectDelivery(
 	ctx context.Context, resourceID string,
 ) (ports.DeliveryInspection, error) {

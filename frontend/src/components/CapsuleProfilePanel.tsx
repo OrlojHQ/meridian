@@ -59,6 +59,17 @@ function HarnessRow({ row }: { row: HarnessProfileDiagnostic }) {
   );
 }
 
+function matchSentence(diagnostic: ProfileDiagnostic) {
+  const leftOut = diagnostic.harnesses.some((row) => row.exclusions.length > 0);
+  const warned = diagnostic.harnesses.some((row) => row.warnings.length > 0);
+  if (leftOut && warned) {
+    return "This Capsule matches your current profile; some files were left out when it was imported, and some were kept with a warning.";
+  }
+  if (leftOut) return "This Capsule matches your current profile; some files were left out when it was imported.";
+  if (warned) return "This Capsule matches your current profile; some files were kept with a warning when it was imported.";
+  return "This Capsule matches your current profile, with nothing left out.";
+}
+
 export function ProfileDiagnosticView({ diagnostic }: { diagnostic: ProfileDiagnostic }) {
   const author = diagnostic.commitAuthor;
   return (
@@ -66,7 +77,7 @@ export function ProfileDiagnosticView({ diagnostic }: { diagnostic: ProfileDiagn
       {diagnostic.nothingPinned ? (
         <p>This Capsule took nothing from your profile. It was created clean, or before you saved a profile.</p>
       ) : diagnostic.matchesProfile ? (
-        <p className="is-ready">This Capsule matches your current profile, with nothing left out.</p>
+        <p className="is-ready">{matchSentence(diagnostic)}</p>
       ) : (
         <p>This Capsule differs from your current profile:</p>
       )}

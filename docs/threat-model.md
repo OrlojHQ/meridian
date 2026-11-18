@@ -704,6 +704,21 @@ acknowledged replay does not resend. Supervisor deduplication is additional
 protection around the send/acknowledgement crash boundary. Startup recovery
 never auto-sends a transcript message.
 
+Composer attachments (ADR 0056) are not a second store of transcript bytes.
+The request is size- and type-limited. The Station writes the file into the
+Capsule through a `capsuled` RPC that can create files only under
+`.meridian/attachments/` and records `capsule.workspace_write` with the
+Capsule id and no file name or bytes. The encrypted block keeps the name,
+media type, size, and path. Image bytes are not written to SQLite, logs,
+events, or the adapter frame. An image content block is built inside the
+Capsule, and only when the harness advertised image support. A reload shows
+a chip rather than a thumbnail, because the picture is not retained beside
+the encrypted transcript. Attachments must not leave the Capsule through a
+delivery: the attachment tree carries its own `.gitignore`, and delivery
+staging resets `.meridian/attachments` to HEAD so a repository's ignore
+rules or tracked files cannot push an operator's screenshot to the source
+host.
+
 A prompt crosses the Capsule boundary only from an explicit client mutation
 or from a coordination request accepted under an active grant (ADR 0029). The
 daemon also sends a lead one coalesced wake prompt when subagent reports are
@@ -746,10 +761,15 @@ it did not start is left running. A remote Station must be HTTPS unless it is
 loopback. In single-user mode it uses the existing browser session. In team
 mode the member signs in through the system browser and the shell hands the
 result to its webview (ADR 0047); the webview never loads the identity
-provider. The shell remembers up to five recent Station origins for one-click switching
-(ADR 0048): origins only, re-validated on read, and never exposed to a Station
-page. The window title and status bar name the active Station so work is not
-created on the wrong installation. The system webview is not an additional
+provider. The shell remembers every saved Station (ADR 0055): a display name and an
+origin, re-validated on read, with no installation token or session. A host
+and port is stored as HTTPS. Plain HTTP is still only accepted for loopback.
+A Station page never receives those names, origins, or their online status,
+because a Station may be run by someone else. It can ask the shell to switch
+to saved Station 1–9 by slot number only, or to open the shell's picker. It
+cannot add, rename, or remove a Station, or name an address. Switching
+reloads the window. The window title and status bar use the Station's name so
+work is not created on the wrong installation. The system webview is not an additional
 isolation boundary and says nothing about Capsule isolation.
 
 The desktop app is distributed unsigned until Apple signing secrets exist.
@@ -1397,8 +1417,9 @@ Threats and required controls:
 - **Diagnostic leakage or false comfort.** The diagnostic is computed only
   from control-plane records, never from Capsule reports. It is owner-only
   and `no-store`, and it carries no file contents or credential values. It
-  says "matches your profile" only when nothing is outstanding. It never
-  claims the Capsule matches the laptop.
+  says the pins and identity match the profile even when an import left
+  files out or kept them with a warning. Those notes stay listed and are not
+  a reason to re-pin. It never claims the Capsule matches the laptop.
 - **Forged import reports.** The report comes from the importing client.
   It is bounded, shape-checked, stored sealed, and rendered only as text.
   Home-directory paths in its entries, such as the project directory in a
@@ -1433,8 +1454,8 @@ Threats and required controls:
   shows that origin and the account from `/auth/me`. Switching Station
   closes it without uploading, and after a sign-out the Station refuses its
   Save. The upload uses only the main
-  window's session for that one origin, so another Station in the recent
-  list never receives it.
+  window's session for that one origin, so another saved Station never
+  receives it.
 - **Session handling in the desktop importer.** The shell reads the session
   cookie for the bound origin through the webview cookie API and passes it
   to the hidden `meridiand desktop-import` mode once, on stdin. It is never

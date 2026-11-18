@@ -16,6 +16,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/OrlojHQ/meridian/internal/adapterproto"
 )
 
 const (
@@ -789,6 +791,9 @@ func stageDeliveryWorkspace(
 	// status and add, but a project .gitignore takes precedence over it, so a
 	// negation such as "!/.meridian-*" would stage them again. Resetting those
 	// paths to HEAD afterwards keeps them out whatever the ignore rules say.
+	// Composer attachments (ADR 0056) are the operator's files, not project
+	// changes. Their tree ignores itself, but a repository could track a file
+	// there, so that tree is reset to HEAD the same way.
 	if err := ensurePrivateWorktreeExcludes(workspace); err != nil {
 		return err
 	}
@@ -796,6 +801,7 @@ func stageDeliveryWorkspace(
 		return err
 	}
 	arguments := append([]string{"reset", "-q", "--"}, privateWorktreePathspecs()...)
+	arguments = append(arguments, ":(top,literal)"+strings.TrimSuffix(adapterproto.AttachmentPrefix, "/"))
 	_, err := deliveryGit(ctx, workspace, environment, arguments...)
 	return err
 }

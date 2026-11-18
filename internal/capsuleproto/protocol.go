@@ -216,6 +216,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("PUT "+RestorePath, s.authenticate(http.HandlerFunc(s.restoreWorkspace)))
 	mux.Handle("POST "+BrowseListPath, s.authenticate(http.HandlerFunc(s.browseList)))
 	mux.Handle("POST "+BrowseReadPath, s.authenticate(http.HandlerFunc(s.browseRead)))
+	mux.Handle("POST "+BrowseWritePath, s.authenticate(http.HandlerFunc(s.browseWrite)))
 	mux.Handle("GET "+DeliveryPath+"/state", s.authenticate(http.HandlerFunc(s.deliveryState)))
 	mux.Handle("POST "+DeliveryPath+"/commit", s.authenticate(http.HandlerFunc(s.deliveryCommit)))
 	mux.Handle("POST "+DeliveryPath+"/push", s.authenticate(http.HandlerFunc(s.deliveryPush)))
