@@ -1,25 +1,41 @@
 import { hasComposerDraft } from "./composerDraft";
-import { desktopBridge, type DesktopStation } from "./desktop";
+import { desktopBridge, type DesktopBridge } from "./desktop";
 
-let handler: (id: string) => void = () => {};
+// Leaving this page for another Station. The page never sees the saved
+// list (ADR 0055): a ⌘1–9 slot is resolved by the desktop app, and the
+// picker where Stations are listed, added, and renamed is the app's own
+// window, which a Station page cannot read.
+export type StationAction = { kind: "slot"; slot: number } | { kind: "picker" } | { kind: "add" };
 
-export function requestStationSwitch(id: string) {
-  handler(id);
+export function runStationAction(action: StationAction) {
+  const bridge = desktopBridge();
+  if (action.kind === "slot") void bridge?.switchStation?.(action.slot);
+  else if (action.kind === "add") void bridge?.openAddStation?.();
+  else void bridge?.openGatewaySettings?.();
 }
 
-export function bindStationSwitch(next: (id: string) => void) {
+// The shell binds a handler that asks before an unsent draft is lost.
+// Until then an action runs directly.
+let handler: (action: StationAction) => void = runStationAction;
+
+export function requestStationAction(action: StationAction) {
+  handler(action);
+}
+
+export function bindStationActions(next: (action: StationAction) => void) {
   handler = next;
   return () => {
-    if (handler === next) handler = () => {};
+    if (handler === next) handler = runStationAction;
   };
-}
-
-export function switchStationNow(id: string) {
-  void desktopBridge()?.switchStation?.(id);
 }
 
 export function stationNeedsDraftWarning() {
   return hasComposerDraft();
+}
+
+// The desktop app offers the switcher. A browser has no saved Stations.
+export function hasStationSwitcher(bridge: DesktopBridge | undefined) {
+  return Boolean(bridge?.switchStation && bridge.openGatewaySettings);
 }
 
 // ⌘/Ctrl+1–9. Digit plus that modifier does not overlap ⌘K, ⌘N, or the
@@ -32,31 +48,4 @@ export function isStationShortcut(
   if (event.altKey || event.shiftKey || !/^[1-9]$/.test(event.key)) return false;
   if (apple) return event.metaKey && !event.ctrlKey;
   return event.ctrlKey && !event.metaKey && !inTerminal;
-}
-
-// The desktop shell's own limits (gateway.rs): a name is at most 60 Unicode
-// scalar values, counted the same way here rather than in UTF-16 units, and
-// a saved origin is at most 300 bytes.
-const MAX_STATION_NAME_CHARS = 60;
-const MAX_STATION_ID_LENGTH = 300;
-const MAX_STATIONS = 513;
-
-function parseStation(item: unknown): DesktopStation | undefined {
-  if (!item || typeof item !== "object") return undefined;
-  const { id, name, host, local, current } = item as Record<string, unknown>;
-  if (typeof id !== "string" || id.length === 0 || id.length > MAX_STATION_ID_LENGTH) return undefined;
-  if (typeof name !== "string" || name.trim() === "" || [...name].length > MAX_STATION_NAME_CHARS) return undefined;
-  if (typeof host !== "string" || host.length > MAX_STATION_ID_LENGTH) return undefined;
-  if (typeof local !== "boolean" || typeof current !== "boolean") return undefined;
-  return { id, name, host, local, current };
-}
-
-// One entry the page cannot show is skipped. It does not hide the switcher
-// or the other Stations.
-export function parseStations(value: unknown): DesktopStation[] | undefined {
-  if (!Array.isArray(value) || value.length > MAX_STATIONS) return undefined;
-  return value.flatMap((item) => {
-    const station = parseStation(item);
-    return station ? [station] : [];
-  });
 }

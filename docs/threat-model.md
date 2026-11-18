@@ -749,9 +749,10 @@ result to its webview (ADR 0047); the webview never loads the identity
 provider. The shell remembers every saved Station (ADR 0055): a display name and an
 origin, re-validated on read, with no installation token or session. A host
 and port is stored as HTTPS. Plain HTTP is still only accepted for loopback.
-The active Station page can list those names and origins and ask the shell to
-switch to one that is already saved. It cannot add, rename, or remove a
-Station, and a switch to an address the page invented is refused. Switching
+A Station page never receives those names, origins, or their online status,
+because a Station may be run by someone else. It can ask the shell to switch
+to saved Station 1–9 by slot number only, or to open the shell's picker. It
+cannot add, rename, or remove a Station, or name an address. Switching
 reloads the window. The window title and status bar use the Station's name so
 work is not created on the wrong installation. The system webview is not an additional
 isolation boundary and says nothing about Capsule isolation.

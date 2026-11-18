@@ -16,29 +16,14 @@ export type DesktopGateway = {
   local: boolean;
 };
 
-// A Station the operator saved in the desktop app. `id` is "local" or the
-// origin. Nothing else about that Station is included.
-export type DesktopStation = {
-  id: string;
-  name: string;
-  host: string;
-  local: boolean;
-  current: boolean;
-};
-
-export type DesktopStationStatus = {
-  id: string;
-  online: boolean;
-};
-
 export type DesktopBridge = {
   notify: (title: string, body: string) => void;
   setAttention: (count: number) => void;
   openGatewaySettings?: () => void;
   gateway?: () => Promise<DesktopGateway>;
-  stations?: () => Promise<DesktopStation[]>;
-  switchStation?: (id: string) => Promise<void>;
-  stationStatus?: () => Promise<DesktopStationStatus[]>;
+  // Switches to saved Station 1–9 (1 is this computer). The desktop app
+  // resolves the slot; the page never receives the saved list.
+  switchStation?: (slot: number) => Promise<void>;
   openAddStation?: () => Promise<void>;
   setupCheck?: () => Promise<boolean>;
   setSetupCheck?: (enabled: boolean) => Promise<void>;

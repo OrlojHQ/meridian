@@ -30,7 +30,7 @@ use url::Url;
 
 use gateway::{
     encode_saved, is_shell_url, load_stations, origin_label, probe_local, probe_stations,
-    remove_remote, rename_station, shell_index_url, station_name, upsert_remote,
+    remove_remote, rename_station, shell_index_url, slot_choice, station_name, upsert_remote,
     validate_gateway_url, GatewayProbe, LoadedStations, SavedGateway, StationBook, LOCAL_ID,
     LOCAL_ORIGIN,
 };
@@ -304,9 +304,7 @@ pub fn run() {
                     desktop_set_attention,
                     desktop_open_gateway,
                     desktop_gateway,
-                    desktop_stations,
                     desktop_switch_station,
-                    desktop_station_status,
                     desktop_setup_check,
                     desktop_setup_check_set,
                     desktop_update_check,
@@ -513,53 +511,29 @@ fn desktop_open_gateway(app: AppHandle, add: Option<bool>) -> Result<(), String>
     open_gateway(&app, add.unwrap_or(false))
 }
 
-/// Saved Stations for the in-app switcher. Names and origins only.
+/// Switches to the saved Station in `slot`, for ⌘1–9 in the page: 1 is the
+/// Station on this computer, then saved Stations in the picker's order. The
+/// page never receives names, addresses, or status. An empty slot, a slot
+/// past nine, or the Station already open does nothing.
 #[tauri::command]
-fn desktop_stations(state: tauri::State<'_, AppState>) -> Result<Vec<StationRow>, String> {
-    let inner = lock(&state);
-    if inner.active.is_none() {
-        return Err("No Station is open.".into());
-    }
-    Ok(station_rows(inner.saved.as_ref(), &inner.book))
-}
-
-/// Switches to a Station already in the saved list. The page cannot supply a new address.
-#[tauri::command]
-async fn desktop_switch_station(app: AppHandle, id: String) -> Result<(), String> {
+async fn desktop_switch_station(app: AppHandle, slot: u32) -> Result<(), String> {
     let choice = {
         let state = app.state::<AppState>();
         let inner = lock(&state);
-        if inner.active.is_none() {
+        let Some(active) = inner.active.as_ref() else {
             return Err("No Station is open.".into());
+        };
+        let Some(choice) = slot_choice(&inner.book, slot) else {
+            return Ok(());
+        };
+        if inner.saved.as_ref() == Some(&choice) && choice.origin() == active.origin {
+            return Ok(());
         }
-        if id == LOCAL_ID {
-            SavedGateway::Local
-        } else {
-            let origin = inner
-                .book
-                .remotes
-                .iter()
-                .find(|station| station.origin == id)
-                .map(|station| station.origin.clone())
-                .ok_or_else(|| "That Station is not saved.".to_string())?;
-            SavedGateway::Remote { origin }
-        }
+        choice
     };
     tauri::async_runtime::spawn_blocking(move || connect(&app, choice))
         .await
         .map_err(|_| "Could not open the Station.".to_string())?
-}
-
-#[tauri::command]
-async fn desktop_station_status(app: AppHandle) -> Result<Vec<StationStatus>, String> {
-    if lock(&app.state::<AppState>()).active.is_none() {
-        return Err("No Station is open.".into());
-    }
-    Ok(
-        tauri::async_runtime::spawn_blocking(move || station_statuses(&app))
-            .await
-            .unwrap_or_default(),
-    )
 }
 
 #[tauri::command]

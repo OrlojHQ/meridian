@@ -18,14 +18,14 @@ use url::Url;
 pub const WINDOW: &str = "main";
 
 /// Commands a gateway page may call through `window.__MERIDIAN_DESKTOP__`.
-pub const COMMANDS: [&str; 12] = [
+pub const COMMANDS: [&str; 10] = [
     "desktop_notify",
     "desktop_set_attention",
     "desktop_open_gateway",
     "desktop_gateway",
-    "desktop_stations",
+    // Takes a slot number for ⌘1–9 and returns nothing about the Station.
+    // A Station page never receives the saved list or its status (ADR 0055).
     "desktop_switch_station",
-    "desktop_station_status",
     "desktop_setup_check",
     "desktop_setup_check_set",
     "desktop_update_check",
@@ -37,14 +37,12 @@ pub const COMMANDS: [&str; 12] = [
 
 /// The app permissions that allow [`COMMANDS`]. The picker's own permissions
 /// (`capabilities/local.json`) are never granted to a gateway origin.
-pub const PERMISSIONS: [&str; 12] = [
+pub const PERMISSIONS: [&str; 10] = [
     "allow-desktop-notify",
     "allow-desktop-set-attention",
     "allow-desktop-open-gateway",
     "allow-desktop-gateway",
-    "allow-desktop-stations",
     "allow-desktop-switch-station",
-    "allow-desktop-station-status",
     "allow-desktop-setup-check",
     "allow-desktop-setup-check-set",
     "allow-desktop-update-check",
@@ -311,7 +309,10 @@ mod tests {
         // can list and switch among Stations the operator already saved.
         assert!(!is_bridge_command("gateway_rename"));
         assert!(!is_bridge_command("gateway_remove"));
-        assert!(is_bridge_command("desktop_stations"));
+        // A Station page cannot read the saved list or probe other Stations.
+        assert!(!is_bridge_command("desktop_stations"));
+        assert!(!is_bridge_command("desktop_station_status"));
+        assert!(!is_bridge_command("gateway_status"));
         assert!(is_bridge_command("desktop_switch_station"));
     }
 

@@ -282,6 +282,21 @@ pub fn remove_remote(book: &mut StationBook, id: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// The Station a page shortcut names: slot 1 is this computer, then saved
+/// remote Stations in the order the picker lists them. Only slots 1–9 exist.
+pub fn slot_choice(book: &StationBook, slot: u32) -> Option<SavedGateway> {
+    match slot {
+        1 => Some(SavedGateway::Local),
+        2..=9 => book
+            .remotes
+            .get(slot as usize - 2)
+            .map(|station| SavedGateway::Remote {
+                origin: station.origin.clone(),
+            }),
+        _ => None,
+    }
+}
+
 pub fn station_name(book: &StationBook, choice: &SavedGateway) -> String {
     match choice {
         SavedGateway::Local => book.local_name.clone(),
@@ -752,6 +767,30 @@ mod tests {
         let text = String::from_utf8(bytes).unwrap();
         assert!(!text.contains("token"));
         assert!(!text.contains("recent"));
+    }
+
+    #[test]
+    fn page_shortcuts_reach_only_the_first_nine_saved_stations() {
+        let mut book = StationBook::default();
+        for index in 0..10 {
+            upsert_remote(&mut book, None, &format!("s{index}.example:8443")).unwrap();
+        }
+        assert_eq!(slot_choice(&book, 1), Some(SavedGateway::Local));
+        assert_eq!(
+            slot_choice(&book, 2),
+            Some(SavedGateway::Remote {
+                origin: "https://s0.example:8443".into()
+            })
+        );
+        assert_eq!(
+            slot_choice(&book, 9),
+            Some(SavedGateway::Remote {
+                origin: "https://s7.example:8443".into()
+            })
+        );
+        assert_eq!(slot_choice(&book, 0), None);
+        assert_eq!(slot_choice(&book, 10), None);
+        assert_eq!(slot_choice(&StationBook::default(), 2), None);
     }
 
     #[test]

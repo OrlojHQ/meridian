@@ -25,7 +25,7 @@ import {
 } from "../components/Authentication";
 import { DeleteProjectDialog } from "../components/DeleteProjectDialog";
 import { GitHubReconnectBanner } from "../components/GitHubConnect";
-import { GatewayIndicator } from "./GatewayIndicator";
+import { GatewayIndicator, useDesktopGateway } from "./GatewayIndicator";
 import { NewProjectDialog } from "../components/NewProjectDialog";
 import { NewSessionDialog } from "../components/NewSessionDialog";
 import { NewWorkspaceDialog } from "../components/NewWorkspaceDialog";
@@ -65,11 +65,12 @@ import { CommandPalette, KeyboardShortcutsDialog } from "./CommandPalette";
 import { desktopBridge } from "./desktop";
 import { StationSwitcher } from "./StationSwitcher";
 import {
-  bindStationSwitch,
+  bindStationActions,
+  hasStationSwitcher,
   isStationShortcut,
-  parseStations,
+  runStationAction,
   stationNeedsDraftWarning,
-  switchStationNow,
+  type StationAction,
 } from "./stationSwitch";
 import { DesktopUpdateNotice } from "./DesktopUpdateNotice";
 import {
@@ -228,7 +229,7 @@ function notificationPermission(): NotificationPermission | "unsupported" {
 function GatewaySettingsButton() {
   const bridge = desktopBridge();
   const open = bridge?.openGatewaySettings;
-  if (!open || bridge?.stations) return null;
+  if (!open || hasStationSwitcher(bridge)) return null;
   return (
     <button type="button" onClick={() => open()}>
       <GatewayIcon />
@@ -408,31 +409,33 @@ export function AppShell() {
   const [launchProject, setLaunchProject] = useState<Project>();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  const [pendingSwitch, setPendingSwitch] = useState<string | null>(null);
-  const savedStations = useQuery({
-    queryKey: ["desktop-stations"],
-    queryFn: async () => parseStations(await desktopBridge()?.stations?.()) ?? [],
-    enabled: Boolean(desktopBridge()?.stations),
-    staleTime: 15_000,
-    retry: false,
-  });
-  const requestSwitch = useCallback((id: string) => {
-    if (stationNeedsDraftWarning()) setPendingSwitch(id);
-    else switchStationNow(id);
-  }, []);
-  useEffect(() => bindStationSwitch(requestSwitch), [requestSwitch]);
+  const [pendingStation, setPendingStation] = useState<StationAction | null>(null);
+  const stationSwitcher = hasStationSwitcher(desktopBridge());
+  const openGateway = useDesktopGateway();
+  const onLocalStation = openGateway.data?.local === true;
+  // Leaving this page for another Station loses an unsent draft, so ask
+  // first. Slot 1 is this computer; the desktop app ignores it when that
+  // Station is already open, so there is nothing to ask.
+  const requestStation = useCallback(
+    (action: StationAction) => {
+      if (action.kind === "slot" && action.slot === 1 && onLocalStation) return;
+      if (stationNeedsDraftWarning()) setPendingStation(action);
+      else runStationAction(action);
+    },
+    [onLocalStation],
+  );
+  useEffect(() => bindStationActions(requestStation), [requestStation]);
   useEffect(() => {
+    if (!stationSwitcher) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (!stationShortcut(event)) return;
-      const station = savedStations.data?.[Number(event.key) - 1];
-      if (!station) return;
       event.preventDefault();
       event.stopPropagation();
-      requestSwitch(station.id);
+      requestStation({ kind: "slot", slot: Number(event.key) });
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [requestSwitch, savedStations.data]);
+  }, [requestStation, stationSwitcher]);
   // Recent palette commands live only in page memory.
   const [recentCommands, setRecentCommands] = useState<string[]>([]);
   const [now, setNow] = useState(() => Date.now());
@@ -617,12 +620,6 @@ export function AppShell() {
             projects: projectItems,
             capsuleId,
             capabilities: capabilities.data,
-            stations: (savedStations.data ?? []).map((station) => ({
-              id: station.id,
-              name: station.name,
-              host: station.host,
-              current: station.current,
-            })),
             actions: {
               navigate,
               requestCapsuleAction,
@@ -635,17 +632,11 @@ export function AppShell() {
               openLauncher: setLaunchProject,
               openDeleteProject: setDeleteProject,
               openShortcuts: () => setShortcutsOpen(true),
-              switchStation: requestSwitch,
-              openAddStation: desktopBridge()?.openAddStation
-                ? () => {
-                    void desktopBridge()?.openAddStation?.();
-                  }
-                : undefined,
-              manageStations: desktopBridge()?.openGatewaySettings
-                ? () => {
-                    void desktopBridge()?.openGatewaySettings?.();
-                  }
-                : undefined,
+              openAddStation:
+                stationSwitcher && desktopBridge()?.openAddStation
+                  ? () => requestStation({ kind: "add" })
+                  : undefined,
+              manageStations: stationSwitcher ? () => requestStation({ kind: "picker" }) : undefined,
             },
           })
         : [],
@@ -657,8 +648,8 @@ export function AppShell() {
       capabilities.data,
       navigate,
       requestCapsuleAction,
-      savedStations.data,
-      requestSwitch,
+      stationSwitcher,
+      requestStation,
     ],
   );
   const runPaletteCommand = (command: PaletteCommand) => {
@@ -824,7 +815,7 @@ export function AppShell() {
         onKeyDown={onSidebarKeyDown}
       >
         <header className="sidebar-header">
-          {desktopBridge()?.stations ? (
+          {stationSwitcher ? (
             <StationSwitcher />
           ) : (
             <Link className="brand" to="/ui/" aria-label="Meridian home">
@@ -1038,9 +1029,20 @@ export function AppShell() {
         project={launchProject}
         onClose={() => setLaunchProject(undefined)}
       />
-      {pendingSwitch && (
+      {pendingStation && (
         <div className="dialog-backdrop" role="presentation">
-          <section className="launch-dialog" role="dialog" aria-labelledby="switch-station-title" aria-modal="true">
+          <section
+            className="launch-dialog"
+            role="dialog"
+            aria-labelledby="switch-station-title"
+            aria-modal="true"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.stopPropagation();
+                setPendingStation(null);
+              }
+            }}
+          >
             <header className="dialog-header">
               <h1 id="switch-station-title">Switch Station?</h1>
             </header>
@@ -1049,16 +1051,21 @@ export function AppShell() {
                 This Thread has an unsent message. Switching reloads the window and leaves that draft behind.
               </p>
               <div className="dialog-actions">
-                <button type="button" className="secondary" onClick={() => setPendingSwitch(null)}>
+                <button
+                  type="button"
+                  className="secondary"
+                  autoFocus
+                  onClick={() => setPendingStation(null)}
+                >
                   Stay
                 </button>
                 <button
                   type="button"
                   className="primary-button"
                   onClick={() => {
-                    const id = pendingSwitch;
-                    setPendingSwitch(null);
-                    switchStationNow(id);
+                    const action = pendingStation;
+                    setPendingStation(null);
+                    runStationAction(action);
                   }}
                 >
                   Switch

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -10,7 +10,7 @@ import { SetupChangeCheck } from "../components/WorkstationProfile";
 import { AppShell } from "../shell/AppShell";
 import { clearComposerDrafts, trackComposerDraft } from "../shell/composerDraft";
 import { buildPaletteCommands, type PaletteActions } from "../shell/paletteCommands";
-import { isStationShortcut, parseStations } from "../shell/stationSwitch";
+import { isStationShortcut } from "../shell/stationSwitch";
 
 const project: Project = {
   id: "project-1",
@@ -37,12 +37,6 @@ const capabilities: Capabilities = {
   resourceMetrics: false,
   harnessImages: [],
 };
-
-const stations = [
-  { id: "local", name: "This Mac", host: "This computer", local: true, current: false },
-  { id: "https://spark.local:8080", name: "Spark", host: "spark.local:8080", local: false, current: true },
-  { id: "https://10.0.0.5:8080", name: "Work", host: "10.0.0.5:8080", local: false, current: false },
-];
 
 afterEach(() => {
   cleanup();
@@ -77,7 +71,7 @@ describe("saved Stations", () => {
     expect(screen.queryByRole("button", { name: /Spark/ })).not.toBeInTheDocument();
   });
 
-  it("lists saved Stations, switches, and warns about an unsent draft", async () => {
+  it("names the open Station and sends switching to the desktop picker", async () => {
     const switchStation = vi.fn().mockResolvedValue(undefined);
     const openAddStation = vi.fn().mockResolvedValue(undefined);
     const openGatewaySettings = vi.fn();
@@ -86,67 +80,62 @@ describe("saved Stations", () => {
       setAttention: vi.fn(),
       openGatewaySettings,
       openAddStation,
-      stations: vi.fn().mockResolvedValue(stations),
       switchStation,
-      stationStatus: vi.fn().mockResolvedValue([
-        { id: "local", online: true },
-        { id: "https://spark.local:8080", online: true },
-        { id: "https://10.0.0.5:8080", online: false },
-      ]),
+      gateway: vi.fn().mockResolvedValue({ label: "Spark", local: false }),
     };
     renderShell();
-    const opener = await screen.findByRole("button", { name: /Spark/ });
+    const opener = await screen.findByRole("button", { name: "Station: Spark" });
     await userEvent.click(opener);
     const menu = screen.getByRole("menu", { name: "Stations" });
-    expect(menu).toHaveTextContent("This Mac");
-    expect(menu).toHaveTextContent("spark.local:8080");
-    expect(menu).toHaveTextContent("Offline");
-    await userEvent.click(screen.getByRole("menuitem", { name: /Work/ }));
-    await waitFor(() => expect(switchStation).toHaveBeenCalledWith("https://10.0.0.5:8080"));
+    // The page never receives the saved list, so the menu cannot show it.
+    expect(menu).not.toHaveTextContent("This Mac");
+    await userEvent.click(screen.getByRole("menuitem", { name: /Switch or manage Stations/ }));
+    expect(openGatewaySettings).toHaveBeenCalledTimes(1);
+    await userEvent.click(opener);
+    await userEvent.click(screen.getByRole("menuitem", { name: /Add Station/ }));
+    expect(openAddStation).toHaveBeenCalledTimes(1);
 
+    // ⌘/Ctrl+digit sends only the slot number.
+    const apple = /Mac|iPhone|iPad/.test(navigator.platform);
+    fireEvent.keyDown(window, { key: "3", metaKey: apple, ctrlKey: !apple });
+    expect(switchStation).toHaveBeenCalledWith(3);
+
+    // An unsent draft asks first, and Escape keeps the page.
     const token = Symbol("draft");
     trackComposerDraft(token, true);
-    await userEvent.click(await screen.findByRole("button", { name: /Spark/ }));
-    await userEvent.click(screen.getByRole("menuitem", { name: /This Mac/ }));
-    expect(screen.getByRole("dialog", { name: "Switch Station?" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Stay" }));
+    fireEvent.keyDown(window, { key: "2", metaKey: apple, ctrlKey: !apple });
+    const dialog = screen.getByRole("dialog", { name: "Switch Station?" });
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Switch Station?" })).not.toBeInTheDocument();
     expect(switchStation).toHaveBeenCalledTimes(1);
-    await userEvent.click(await screen.findByRole("button", { name: /Spark/ }));
-    await userEvent.click(screen.getByRole("menuitem", { name: /This Mac/ }));
+    await userEvent.click(opener);
+    await userEvent.click(screen.getByRole("menuitem", { name: /Switch or manage Stations/ }));
+    expect(openGatewaySettings).toHaveBeenCalledTimes(1);
     await userEvent.click(screen.getByRole("button", { name: "Switch" }));
-    expect(switchStation).toHaveBeenCalledWith("local");
+    expect(openGatewaySettings).toHaveBeenCalledTimes(2);
 
     await userEvent.click(screen.getByRole("button", { name: /Commands/ }));
-    await userEvent.type(screen.getByRole("combobox"), "switch");
-    expect(screen.getByRole("option", { name: /Switch to Spark/ })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: /Switch to Work/ })).toHaveTextContent("10.0.0.5:8080");
+    await userEvent.type(screen.getByRole("combobox"), "station");
+    expect(screen.getByRole("option", { name: /Switch or manage Stations/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /Add Station/ })).toBeInTheDocument();
   });
 
-  it("rejects a station list that is not names and origins", () => {
-    expect(parseStations([{ id: "local", name: "This Mac", host: "This computer", local: true, current: true }])).toHaveLength(1);
-    expect(parseStations([{ id: "x", name: "", host: "h", local: true, current: false }])).toEqual([]);
-    // The shell allows 60 characters, counted as Unicode scalar values. Emoji
-    // are two UTF-16 units each and must not push a valid name over.
-    const emoji = "🛰️".replace("\uFE0F", "").repeat(60);
-    expect(parseStations([{ id: "local", name: emoji, host: "This computer", local: true, current: true }])).toHaveLength(1);
-    expect(
-      parseStations([{ id: "local", name: `${emoji}x`, host: "This computer", local: true, current: true }]),
-    ).toEqual([]);
-    // An address at the shell's 300-byte limit is accepted.
-    const longOrigin = `https://${"a".repeat(292)}`;
-    expect(longOrigin).toHaveLength(300);
-    expect(
-      parseStations([{ id: longOrigin, name: "Long", host: longOrigin.slice(8), local: false, current: false }]),
-    ).toHaveLength(1);
-    // One bad entry is skipped without hiding the rest.
-    expect(
-      parseStations([
-        { id: "local", name: "This Mac", host: "This computer", local: true, current: true },
-        { id: "bad", name: 7, host: "h", local: false, current: false },
-        { id: "https://spark.local:8080", name: "Spark", host: "spark.local:8080", local: false, current: false },
-      ])?.map((station) => station.id),
-    ).toEqual(["local", "https://spark.local:8080"]);
-    expect(parseStations("nope")).toBeUndefined();
+  it("does not ask about a draft for ⌘1 on the Station on this computer", async () => {
+    const switchStation = vi.fn().mockResolvedValue(undefined);
+    window.__MERIDIAN_DESKTOP__ = {
+      notify: vi.fn(),
+      setAttention: vi.fn(),
+      openGatewaySettings: vi.fn(),
+      switchStation,
+      gateway: vi.fn().mockResolvedValue({ label: "This Mac", local: true }),
+    };
+    renderShell();
+    await screen.findByRole("button", { name: "Station: This Mac" });
+    trackComposerDraft(Symbol("draft"), true);
+    const apple = /Mac|iPhone|iPad/.test(navigator.platform);
+    fireEvent.keyDown(window, { key: "1", metaKey: apple, ctrlKey: !apple });
+    expect(screen.queryByRole("dialog", { name: "Switch Station?" })).not.toBeInTheDocument();
+    expect(switchStation).not.toHaveBeenCalled();
   });
 
   it("uses ⌘/Ctrl+1–9 and leaves the other shortcuts alone", () => {
@@ -165,25 +154,12 @@ describe("saved Stations", () => {
       openLauncher: () => undefined,
       openDeleteProject: () => undefined,
       openShortcuts: () => undefined,
-      switchStation: () => undefined,
       openAddStation: () => undefined,
       manageStations: () => undefined,
     } satisfies PaletteActions;
-    const commands = buildPaletteCommands({
-      items: [],
-      projects: [],
-      capsuleId: "",
-      actions,
-      stations: stations.map((station) => ({
-        id: station.id,
-        name: station.name,
-        host: station.host,
-        current: station.current,
-      })),
-    });
-    expect(commands.find((command) => command.label === "Switch to Spark")?.shortcut?.[1]).toBe("2");
-    expect(commands.find((command) => command.label === "Switch to Spark")?.detail).toContain("Current");
-    expect(commands.some((command) => command.label === "Add Station…")).toBe(true);
+    const commands = buildPaletteCommands({ items: [], projects: [], capsuleId: "", actions });
+    const stationCommands = commands.filter((command) => command.group === "Stations").map((command) => command.label);
+    expect(stationCommands).toEqual(["Switch or manage Stations…", "Add Station…"]);
   });
 
   it("puts the setup-change check in Settings and leaves it on", async () => {

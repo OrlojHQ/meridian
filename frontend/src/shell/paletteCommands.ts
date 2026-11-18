@@ -54,13 +54,6 @@ export function isApplePlatform() {
 
 export const paletteShortcut = () => (isApplePlatform() ? ["⌘", "K"] : ["Ctrl", "K"]);
 
-export type PaletteStation = {
-  id: string;
-  name: string;
-  host: string;
-  current: boolean;
-};
-
 export type PaletteActions = {
   navigate: (path: string) => void;
   requestCapsuleAction: (capsuleId: string, action: CapsuleActionRequest) => void;
@@ -69,7 +62,8 @@ export type PaletteActions = {
   openLauncher: (project: Project) => void;
   openDeleteProject: (project: Project) => void;
   openShortcuts: () => void;
-  switchStation?: (id: string) => void;
+  // Both open the desktop app's own picker. A Station page never receives
+  // the saved list, so the palette has no entry per Station.
   openAddStation?: () => void;
   manageStations?: () => void;
 };
@@ -80,28 +74,23 @@ export function buildPaletteCommands({
   capsuleId,
   capabilities,
   actions,
-  stations = [],
 }: {
   items: WorkingSetItem[];
   projects: Project[];
   capsuleId: string;
   capabilities?: Capabilities;
   actions: PaletteActions;
-  stations?: PaletteStation[];
 }): PaletteCommand[] {
   const commands: PaletteCommand[] = [];
-  const modifier = isApplePlatform() ? "⌘" : "Ctrl";
-  stations.slice(0, 9).forEach((station, index) => {
+  if (actions.manageStations) {
     commands.push({
-      id: `station:${station.id}`,
+      id: "station:manage",
       group: "Stations",
-      label: `Switch to ${station.name}`,
-      detail: station.current ? `${station.host} · Current` : station.host,
-      keywords: "station switch",
-      shortcut: [modifier, String(index + 1)],
-      run: () => actions.switchStation?.(station.id),
+      label: "Switch or manage Stations…",
+      keywords: "station switch rename remove",
+      run: () => actions.manageStations?.(),
     });
-  });
+  }
   if (actions.openAddStation) {
     commands.push({
       id: "station:add",
@@ -109,15 +98,6 @@ export function buildPaletteCommands({
       label: "Add Station…",
       keywords: "station remote",
       run: () => actions.openAddStation?.(),
-    });
-  }
-  if (actions.manageStations) {
-    commands.push({
-      id: "station:manage",
-      group: "Stations",
-      label: "Manage Stations…",
-      keywords: "station rename remove",
-      run: () => actions.manageStations?.(),
     });
   }
   const projectName = new Map(projects.map((project) => [project.id, project.name]));

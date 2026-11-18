@@ -18,14 +18,9 @@
       gateway: function () {
         return internals.invoke("desktop_gateway");
       },
-      stations: function () {
-        return internals.invoke("desktop_stations");
-      },
-      switchStation: function (id) {
-        return internals.invoke("desktop_switch_station", { id: id });
-      },
-      stationStatus: function () {
-        return internals.invoke("desktop_station_status");
+      // ⌘1–9: the shell resolves the slot. The page gets no list.
+      switchStation: function (slot) {
+        return internals.invoke("desktop_switch_station", { slot: slot });
       },
       openAddStation: function () {
         return internals.invoke("desktop_open_gateway", { add: true });
