@@ -711,6 +711,7 @@ function route(pathname: string): unknown {
                 { id: "strong", label: "meridian/Strong 4.8 (EU)" },
                 { id: "alpha", label: "Work proxy/Alpha" },
                 { id: "beta", label: "Work proxy · Beta" },
+                { id: "quant", label: "Local Q (4bit/8bit)" },
               ],
               ...(shot === "effort"
                 ? {

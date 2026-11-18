@@ -532,6 +532,37 @@ describe("Model picker", () => {
     ]);
   });
 
+  it("keeps a slash that belongs to the model's own name", async () => {
+    const t = transcript();
+    t.models({
+      current: "quant",
+      options: [
+        { id: "quant", label: "Model X (4bit/8bit)" },
+        { id: "spaced", label: "Fast / cheap" },
+        { id: "lone", label: "Acme/Solo 1" },
+        { id: "fast-us", label: "meridian/Fast 4.5 (US)" },
+        { id: "work/alpha", label: "Work proxy/Alpha" },
+        { id: "work/beta", label: "Work proxy/Beta" },
+      ],
+    });
+    const user = userEvent.setup();
+    renderThread(t.blocks);
+    await user.click(await screen.findByRole("button", { name: "Model: Model X (4bit/8bit)" }));
+    const menu = screen.getByRole("menu", { name: "Models" });
+    // No group is made from text before a slash inside the name, beside a
+    // space, or from a provider only one option names.
+    expect(within(menu).queryByRole("group", { name: /Model X|Fast|Acme/ })).not.toBeInTheDocument();
+    expect(within(menu).getByRole("group", { name: "Work proxy" })).toBeInTheDocument();
+    expect(within(menu).getAllByRole("menuitemradio").map((item) => item.textContent)).toEqual([
+      "Model X (4bit/8bit)",
+      "Fast / cheap",
+      "Acme/Solo 1",
+      "Fast 4.5 (US)",
+      "Alpha",
+      "Beta",
+    ]);
+  });
+
   it("keeps another provider's prefix on the selected model", async () => {
     const t = transcript();
     t.models({
