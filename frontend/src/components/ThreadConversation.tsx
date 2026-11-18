@@ -15,6 +15,7 @@ import {
 } from "react";
 
 import { api, normalizeAPIError, type SendMessageOptions } from "../api/client";
+import { trackComposerDraft } from "../shell/composerDraft";
 import type { HarnessProfile, Thread, ThreadBlock, ThreadLink } from "../api/generated/types.gen";
 import { queries } from "../api/queries";
 import { plainAgentText } from "./agentText";
@@ -574,6 +575,7 @@ function ThreadComposer({
   const [message, setMessage] = useState("");
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState<string>();
+  const draftToken = useRef(Symbol("composer-draft"));
   const [queue, setQueue] = useState<QueuedFollowUp[]>([]);
   const [active, setActive] = useState(0);
   const [dismissed, setDismissed] = useState<string>();
@@ -585,6 +587,15 @@ function ThreadComposer({
   const nextQueueId = useRef(1);
   const queueRef = useRef(queue);
   queueRef.current = queue;
+  useEffect(() => {
+    // Attached files are part of the draft: a reload loses them too.
+    const pending =
+      message.trim() !== "" ||
+      attachments.length > 0 ||
+      queue.some((item) => item.text.trim() !== "" || item.attachments.length > 0);
+    trackComposerDraft(draftToken.current, pending);
+    return () => trackComposerDraft(draftToken.current, false);
+  }, [message, attachments, queue]);
   const runningRef = useRef(false);
   const flushingRef = useRef(false);
   const menuId = useId();

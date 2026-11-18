@@ -13,6 +13,7 @@ import type { WorkingSetItem } from "./useWorkingSet";
 
 export type PaletteGroup =
   | "Recent"
+  | "Stations"
   | "Current Capsule"
   | "Capsules"
   | "Sessions"
@@ -61,6 +62,10 @@ export type PaletteActions = {
   openLauncher: (project: Project) => void;
   openDeleteProject: (project: Project) => void;
   openShortcuts: () => void;
+  // Both open the desktop app's own picker. A Station page never receives
+  // the saved list, so the palette has no entry per Station.
+  openAddStation?: () => void;
+  manageStations?: () => void;
 };
 
 export function buildPaletteCommands({
@@ -77,6 +82,24 @@ export function buildPaletteCommands({
   actions: PaletteActions;
 }): PaletteCommand[] {
   const commands: PaletteCommand[] = [];
+  if (actions.manageStations) {
+    commands.push({
+      id: "station:manage",
+      group: "Stations",
+      label: "Switch or manage Stations…",
+      keywords: "station switch rename remove",
+      run: () => actions.manageStations?.(),
+    });
+  }
+  if (actions.openAddStation) {
+    commands.push({
+      id: "station:add",
+      group: "Stations",
+      label: "Add Station…",
+      keywords: "station remote",
+      run: () => actions.openAddStation?.(),
+    });
+  }
   const projectName = new Map(projects.map((project) => [project.id, project.name]));
   const current = items.find((item) => item.capsule.id === capsuleId)?.capsule;
 
@@ -279,6 +302,7 @@ export function fuzzyScore(query: string, command: PaletteCommand): number | und
 }
 
 const groupOrder: PaletteGroup[] = [
+  "Stations",
   "Current Capsule",
   "Capsules",
   "Sessions",
@@ -333,6 +357,10 @@ export type ShortcutHelp = { keys: string[][]; description: string };
 
 export const keyboardShortcuts = (): ShortcutHelp[] => [
   { keys: [paletteShortcut()], description: "Open the command palette" },
+  {
+    keys: [[isApplePlatform() ? "⌘1–⌘9" : "Ctrl+1–9"]],
+    description: "Switch to one of the first nine saved Stations",
+  },
   { keys: [["G", "N"]], description: "Next item needing me" },
   { keys: [["N"]], description: "New project" },
   { keys: [isApplePlatform() ? ["⌘", "N"] : ["Ctrl", "N"]], description: "New Capsule" },

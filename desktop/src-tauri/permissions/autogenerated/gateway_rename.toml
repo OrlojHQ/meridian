@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-gateway-rename"
+description = "Enables the gateway_rename command without any pre-configured scope."
+commands.allow = ["gateway_rename"]
+
+[[permission]]
+identifier = "deny-gateway-rename"
+description = "Denies the gateway_rename command without any pre-configured scope."
+commands.deny = ["gateway_rename"]

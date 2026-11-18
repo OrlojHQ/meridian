@@ -25,7 +25,7 @@ import {
 } from "../components/Authentication";
 import { DeleteProjectDialog } from "../components/DeleteProjectDialog";
 import { GitHubReconnectBanner } from "../components/GitHubConnect";
-import { GatewayIndicator } from "./GatewayIndicator";
+import { GatewayIndicator, useDesktopGateway } from "./GatewayIndicator";
 import { NewProjectDialog } from "../components/NewProjectDialog";
 import { NewSessionDialog } from "../components/NewSessionDialog";
 import { NewWorkspaceDialog } from "../components/NewWorkspaceDialog";
@@ -63,6 +63,15 @@ import {
 } from "./capsuleActivity";
 import { CommandPalette, KeyboardShortcutsDialog } from "./CommandPalette";
 import { desktopBridge } from "./desktop";
+import { StationSwitcher } from "./StationSwitcher";
+import {
+  bindStationActions,
+  hasStationSwitcher,
+  isStationShortcut,
+  runStationAction,
+  stationNeedsDraftWarning,
+  type StationAction,
+} from "./stationSwitch";
 import { DesktopUpdateNotice } from "./DesktopUpdateNotice";
 import {
   GO_PREFIX_MS,
@@ -112,6 +121,13 @@ const isNewCapsuleShortcut = (event: KeyboardEvent) => {
   if (isApplePlatform()) return event.metaKey && !event.ctrlKey;
   return event.ctrlKey && !event.metaKey && !inTerminal(event.target);
 };
+
+const stationShortcut = (event: KeyboardEvent) =>
+  isStationShortcut(
+    event,
+    isApplePlatform(),
+    !isApplePlatform() && inTerminal(event.target),
+  );
 
 const MAX_RECENT = 5;
 
@@ -211,8 +227,9 @@ function notificationPermission(): NotificationPermission | "unsupported" {
 }
 
 function GatewaySettingsButton() {
-  const open = desktopBridge()?.openGatewaySettings;
-  if (!open) return null;
+  const bridge = desktopBridge();
+  const open = bridge?.openGatewaySettings;
+  if (!open || hasStationSwitcher(bridge)) return null;
   return (
     <button type="button" onClick={() => open()}>
       <GatewayIcon />
@@ -392,6 +409,33 @@ export function AppShell() {
   const [launchProject, setLaunchProject] = useState<Project>();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [pendingStation, setPendingStation] = useState<StationAction | null>(null);
+  const stationSwitcher = hasStationSwitcher(desktopBridge());
+  const openGateway = useDesktopGateway();
+  const onLocalStation = openGateway.data?.local === true;
+  // Leaving this page for another Station loses an unsent draft, so ask
+  // first. Slot 1 is this computer; the desktop app ignores it when that
+  // Station is already open, so there is nothing to ask.
+  const requestStation = useCallback(
+    (action: StationAction) => {
+      if (action.kind === "slot" && action.slot === 1 && onLocalStation) return;
+      if (stationNeedsDraftWarning()) setPendingStation(action);
+      else runStationAction(action);
+    },
+    [onLocalStation],
+  );
+  useEffect(() => bindStationActions(requestStation), [requestStation]);
+  useEffect(() => {
+    if (!stationSwitcher) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!stationShortcut(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      requestStation({ kind: "slot", slot: Number(event.key) });
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [requestStation, stationSwitcher]);
   // Recent palette commands live only in page memory.
   const [recentCommands, setRecentCommands] = useState<string[]>([]);
   const [now, setNow] = useState(() => Date.now());
@@ -588,6 +632,11 @@ export function AppShell() {
               openLauncher: setLaunchProject,
               openDeleteProject: setDeleteProject,
               openShortcuts: () => setShortcutsOpen(true),
+              openAddStation:
+                stationSwitcher && desktopBridge()?.openAddStation
+                  ? () => requestStation({ kind: "add" })
+                  : undefined,
+              manageStations: stationSwitcher ? () => requestStation({ kind: "picker" }) : undefined,
             },
           })
         : [],
@@ -599,6 +648,8 @@ export function AppShell() {
       capabilities.data,
       navigate,
       requestCapsuleAction,
+      stationSwitcher,
+      requestStation,
     ],
   );
   const runPaletteCommand = (command: PaletteCommand) => {
@@ -764,12 +815,16 @@ export function AppShell() {
         onKeyDown={onSidebarKeyDown}
       >
         <header className="sidebar-header">
-          <Link className="brand" to="/ui/" aria-label="Meridian home">
-            <span className="brand-mark">
-              <MeridianMark />
-            </span>
-            <span>Meridian</span>
-          </Link>
+          {stationSwitcher ? (
+            <StationSwitcher />
+          ) : (
+            <Link className="brand" to="/ui/" aria-label="Meridian home">
+              <span className="brand-mark">
+                <MeridianMark />
+              </span>
+              <span>Meridian</span>
+            </Link>
+          )}
         </header>
         <button
           type="button"
@@ -974,6 +1029,52 @@ export function AppShell() {
         project={launchProject}
         onClose={() => setLaunchProject(undefined)}
       />
+      {pendingStation && (
+        <div className="dialog-backdrop" role="presentation">
+          <section
+            className="launch-dialog"
+            role="dialog"
+            aria-labelledby="switch-station-title"
+            aria-modal="true"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.stopPropagation();
+                setPendingStation(null);
+              }
+            }}
+          >
+            <header className="dialog-header">
+              <h1 id="switch-station-title">Switch Station?</h1>
+            </header>
+            <div className="dialog-body">
+              <p>
+                This Thread has an unsent message. Switching reloads the window and leaves that draft behind.
+              </p>
+              <div className="dialog-actions">
+                <button
+                  type="button"
+                  className="secondary"
+                  autoFocus
+                  onClick={() => setPendingStation(null)}
+                >
+                  Stay
+                </button>
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={() => {
+                    const action = pendingStation;
+                    setPendingStation(null);
+                    runStationAction(action);
+                  }}
+                >
+                  Switch
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
       {paletteOpen && (
         <CommandPalette
           commands={paletteCommands}

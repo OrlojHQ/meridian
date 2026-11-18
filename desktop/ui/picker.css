@@ -9,21 +9,29 @@
   --accent-text: #ffffff;
   --danger: #9b332d;
   --danger-bg: #f8e6e4;
+  --selected: #e3f2ea;
+  --faint: #55635c;
+  --online: #2f7a52;
+  --raised: #ffffff;
   font-family: Inter, "Noto Sans", ui-sans-serif, system-ui, sans-serif;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;
-    --bg: #121614;
-    --card: #1b221e;
-    --text: #e7eee9;
-    --muted: #a8b6ae;
+    --bg: #101512;
+    --card: #1c2420;
+    --text: #eef3f0;
+    --muted: #c5d1cb;
     --line: #2c3832;
-    --accent: #7fb7a2;
-    --accent-text: #14281f;
-    --danger: #f0b2ac;
-    --danger-bg: #3a2422;
+    --accent: #3e7d68;
+    --accent-text: #ffffff;
+    --danger: #f0a8a2;
+    --danger-bg: #3f2422;
+    --selected: #1b3830;
+    --faint: #9eb0a7;
+    --online: #7dceab;
+    --raised: #1c2420;
   }
 }
 
@@ -223,3 +231,167 @@ body.import details ul { margin-top: 0.25rem; }
 body.import .actions { flex-wrap: wrap; }
 body.import .actions button { width: auto; flex: 1 1 auto; white-space: nowrap; }
 body.import ul li:has(> details) { list-style: none; margin-left: -1.2rem; }
+
+/* Station picker */
+body:not(.import)::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse 520px 320px at 50% 42%, color-mix(in srgb, var(--accent) 28%, transparent), transparent 70%);
+}
+
+body:not(.import) main {
+  position: relative;
+  z-index: 1;
+  width: min(34rem, calc(100vw - 2rem));
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: center;
+}
+
+.logo-wrap { position: relative; width: 104px; height: 104px; margin: 0 auto 1.1rem; }
+.logo-wrap.small { width: 64px; height: 64px; margin-bottom: 0.7rem; }
+.logo-wrap::before {
+  content: "";
+  position: absolute;
+  inset: -34px;
+  background: radial-gradient(circle, color-mix(in srgb, var(--online) 45%, transparent), transparent 68%);
+}
+.logo-wrap img {
+  position: relative;
+  width: 100%;
+  height: auto;
+  border-radius: 22%;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--online) 35%, transparent), 0 18px 48px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.welcome { width: min(24rem, 100%); margin-inline: auto; }
+.picker-list { width: 100%; }
+.welcome h1, .picker-list h1 { font-size: 2rem; letter-spacing: -0.03em; }
+.picker-list h1 { font-size: 1.55rem; }
+.tagline, .picker-list > p { color: var(--muted); margin: 0.35rem 0 1rem; }
+
+.text-link, .add-station {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.85rem;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 0.84rem;
+  font-weight: 640;
+  width: auto;
+}
+@media (prefers-color-scheme: dark) {
+  .text-link, .add-station { color: #b7e6d4; }
+}
+
+.remote-panel, .sheet, .confirm {
+  width: 100%;
+  margin-top: 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  padding: 0.95rem 1rem 1rem;
+  text-align: left;
+  background: var(--raised);
+  box-shadow: 0 10px 28px rgb(0 0 0 / 18%);
+}
+.remote-panel header, .sheet header, .confirm header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.7rem;
+}
+.field { display: grid; gap: 0.32rem; }
+.field + .field { margin-top: 0.7rem; }
+.field > span { display: flex; justify-content: space-between; color: var(--muted); font-size: 0.75rem; font-weight: 640; }
+.field em { color: var(--faint); font-style: normal; font-weight: 500; }
+.field input, .rename-input {
+  width: 100%;
+  height: 2.45rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  padding: 0 0.75rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+.field input.mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
+.hint { margin: 0.55rem 0 0; color: var(--muted); font-size: 0.75rem; line-height: 1.45; }
+.icon-button {
+  width: auto;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1rem;
+  padding: 0.2rem 0.4rem;
+}
+
+.station-card {
+  border: 1px solid var(--line);
+  border-radius: 1.25rem;
+  padding: 0.4rem;
+  background: var(--card);
+  text-align: left;
+}
+.station-card ul { list-style: none; margin: 0; padding: 0; }
+.station {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: center;
+  min-height: 3.55rem;
+  border-radius: 0.75rem;
+  padding: 0.55rem 0.7rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  width: 100%;
+  margin: 0;
+  text-align: left;
+  font-weight: 450;
+}
+.station.selected { background: var(--selected); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 50%, var(--line)); }
+.station-copy { display: grid; min-width: 0; }
+.station-name { display: flex; align-items: center; gap: 0.45rem; font-weight: 640; }
+.station-host { display: flex; gap: 0.4rem; color: var(--faint); font-size: 0.75rem; }
+.station-host .mono { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 0.72rem; }
+.badge { border-radius: 999px; padding: 0.05rem 0.4rem; background: color-mix(in srgb, var(--muted) 18%, transparent); color: var(--muted); font-size: 0.62rem; font-weight: 700; letter-spacing: 0.04em; }
+.dot { width: 0.48rem; height: 0.48rem; border-radius: 50%; background: var(--faint); }
+.dot.online { background: var(--online); box-shadow: 0 0 0 3px color-mix(in srgb, var(--online) 22%, transparent); }
+.dot.offline { background: transparent; border: 1.5px solid var(--danger); }
+.offline-label { color: var(--danger); font-weight: 650; }
+.row-actions { display: flex; gap: 0.15rem; }
+.quiet {
+  width: auto;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: var(--faint);
+  font-size: 0.72rem;
+  font-weight: 640;
+  padding: 0.28rem 0.45rem;
+}
+.quiet.remove { color: var(--danger); }
+.confirm p { margin: 0 0 0.8rem; color: var(--muted); }
+.confirm .row { display: flex; justify-content: flex-end; gap: 0.5rem; }
+.confirm .row button, .sheet .row button { width: auto; margin: 0; }
+.sheet .row button.secondary, .confirm .row button.secondary {
+  background: transparent;
+  color: inherit;
+  border: 1px solid var(--line);
+}
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgb(6 10 8 / 58%);
+}
+.backdrop .sheet, .backdrop .confirm { width: min(28rem, 100%); margin: 0; }

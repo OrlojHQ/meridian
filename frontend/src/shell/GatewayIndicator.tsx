@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { queries } from "../api/queries";
 import { GatewayIcon } from "../components/ui/Icons";
 import { desktopBridge, type DesktopGateway } from "./desktop";
+import { requestStationAction } from "./stationSwitch";
 
 function validGateway(value: unknown): DesktopGateway | undefined {
   if (!value || typeof value !== "object") return undefined;
@@ -15,16 +16,23 @@ function validGateway(value: unknown): DesktopGateway | undefined {
 // signed in, so work is not created on the wrong installation. Clicking it
 // opens the shell's gateway picker. In a browser the address bar already
 // says where the page is, and there is no picker, so this renders nothing.
-export function GatewayIndicator() {
-  const bridge = desktopBridge();
-  const read = bridge?.gateway;
-  const gateway = useQuery({
+// The open Station's own name and whether it is this computer. That is all
+// the desktop app tells a page about Stations.
+export function useDesktopGateway() {
+  const read = desktopBridge()?.gateway;
+  return useQuery({
     queryKey: ["desktop-gateway"],
     queryFn: async () => validGateway(await read?.()) ?? null,
     enabled: Boolean(read),
     staleTime: Infinity,
     retry: false,
   });
+}
+
+export function GatewayIndicator() {
+  const bridge = desktopBridge();
+  const read = bridge?.gateway;
+  const gateway = useDesktopGateway();
   const mode = useQuery({ ...queries.authenticationMode(), enabled: Boolean(read) });
   const team = mode.data?.mode === "team";
   const member = useQuery({ ...queries.currentMember(), enabled: Boolean(read) && team, retry: false });
@@ -48,7 +56,7 @@ export function GatewayIndicator() {
       className="status-gateway"
       title={`${title}. Switch Station`}
       aria-label={`${title}. Switch Station`}
-      onClick={() => open()}
+      onClick={() => requestStationAction({ kind: "picker" })}
     >
       <GatewayIcon aria-hidden="true" />
       <span className="status-gateway-label">{text}</span>

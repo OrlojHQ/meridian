@@ -1945,3 +1945,82 @@
     display: none;
   }
 }
+
+.station-switch { position: relative; width: 100%; }
+button.station-switch-button,
+.station-popover .popover-actions button {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text);
+}
+button.station-switch-button {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  min-height: 2.35rem;
+  border-radius: var(--radius-md);
+  padding: 0.2rem 0.4rem;
+  text-align: left;
+}
+button.station-switch-button.open,
+button.station-switch-button:hover { background: var(--surface-hover); }
+button.station-switch-button.open { background: var(--surface-selected); }
+button.station-switch-button strong {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.9rem;
+  font-weight: 720;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+button.station-switch-button .chev { width: 0.85rem; height: 0.85rem; color: var(--faint); transform: rotate(90deg); }
+button.station-switch-button.open .chev { transform: rotate(-90deg); color: var(--text); }
+.station-popover {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 0.2rem);
+  left: 0;
+  width: min(18rem, calc(100vw - 2rem));
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  padding: 0.4rem;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-dialog);
+}
+.station-popover .popover-actions {
+  display: grid;
+}
+.station-popover .popover-actions button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 0;
+  border-radius: var(--radius-md);
+  padding: 0.48rem 0.5rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-align: left;
+}
+.station-popover .popover-actions button:hover { background: var(--surface-hover); }
+.station-popover .popover-actions svg { width: 0.9rem; height: 0.9rem; color: var(--muted); }
+.station-popover-hint {
+  margin: 0.25rem 0 0;
+  border-top: 1px solid var(--border);
+  padding: 0.4rem 0.5rem 0.2rem;
+  color: var(--faint);
+  font-size: 0.7rem;
+}
+.setup-change-check {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  margin: 0.2rem 0 1rem;
+  color: var(--text);
+}
+.setup-change-check strong, .setup-change-check small { display: block; }
+.setup-change-check small { margin-top: 0.15rem; color: var(--muted); font-size: 0.8rem; line-height: 1.45; }
+.setup-change-check input { margin-top: 0.2rem; }
