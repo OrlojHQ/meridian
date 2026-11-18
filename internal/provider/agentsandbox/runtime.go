@@ -551,9 +551,11 @@ func (p *Provider) InspectDelivery(
 	}
 	defer session.Close()
 	result, err := client.DeliveryState(ctx)
+	ahead, unpushed, deliverable := result.NormalizedCounts()
 	return ports.DeliveryInspection{
 		HEAD: result.HEAD, Branch: result.Branch, Dirty: result.Dirty,
 		OriginURL: result.OriginURL, DefaultBranch: result.DefaultBranch, Tree: result.Tree,
+		AheadCount: ahead, UnpushedCount: unpushed, HasDeliverableChanges: deliverable,
 	}, mapRuntimeError(err)
 }
 

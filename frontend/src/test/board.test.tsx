@@ -287,6 +287,9 @@ describe("Board", () => {
       branch: "feature/local",
       defaultBranch: "main",
       dirty: true,
+      aheadCount: 1,
+      unpushedCount: 1,
+      hasDeliverableChanges: true,
     });
     const approve = vi.spyOn(api, "approveDelivery").mockResolvedValue({
       id: "delivery-proposed",

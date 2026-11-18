@@ -83,6 +83,12 @@ func (s *Server) finishPreparation(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// The setup marker sits in the worktree. Exclude it before it is written
+	// so a finished setup is not a deliverable change.
+	if err := ensurePrivateWorktreeExcludes(s.config.Workspace); err != nil {
+		writeProtocolError(w, http.StatusUnprocessableEntity, "setup_marker_failed")
+		return
+	}
 	// Rooted writes reject Capsule-controlled links outside the workspace.
 	if err := root.WriteFile(".meridian-setup-complete", []byte(input.Key), 0600); err != nil {
 		writeProtocolError(w, http.StatusUnprocessableEntity, "setup_marker_failed")

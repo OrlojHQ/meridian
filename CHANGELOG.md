@@ -14,6 +14,15 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   that job never started and its annotation says it was not acquired. A job
   that received a runner and then failed stays failed, and the desktop
   manifest job runs again with the retried build.
+- The Capsule header shows Create PR only when a delivery would publish
+  something: commits ahead of the default branch's remote head, or
+  uncommitted project files. A clean checkout, a branch with no commits of
+  its own, and files the supervisor writes into the worktree no longer show
+  the button. Push update stays only when an existing pull request has
+  commits or file changes that are not on the remote branch yet. Inspection
+  reports `aheadCount`, `unpushedCount`, and `hasDeliverableChanges`, and
+  the header reads them again while a turn is writing and once the turn
+  finishes.
 
 ## [0.11.5] - 2026-11-18
 

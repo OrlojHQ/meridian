@@ -74,7 +74,7 @@ import {
   relativeTime,
   TERMINAL_SESSION,
 } from "./shell/capsuleActivity";
-import { deliveryHasChanges } from "./shell/deliveryDraft";
+import { agentMayEditWorkspace, deliveryHasChanges } from "./shell/deliveryDraft";
 import {
   displayThreadTitle,
   firstUserText,
@@ -718,13 +718,25 @@ export function CapsuleDetail() {
     ...queries.deliveries(capsuleId),
     enabled: Boolean(capsuleId) && capabilities.data?.delivery === true,
   });
+  const editing = agentMayEditWorkspace({
+    threads: threads.data?.items,
+    runs: runs.data?.items,
+  });
+  const wasEditing = useRef(false);
+  useEffect(() => {
+    if (wasEditing.current && !editing) {
+      void queryClient.invalidateQueries({ queryKey: ["delivery-inspection", capsuleId] });
+    }
+    wasEditing.current = editing;
+  }, [editing, capsuleId, queryClient]);
   const inspection = useQuery({
     ...queries.deliveryInspection(capsuleId),
     enabled:
       capabilities.data?.delivery === true &&
       capabilities.data?.git === true &&
       capsule.data?.state === "Ready",
-    staleTime: 30_000,
+    staleTime: editing ? 0 : 30_000,
+    refetchInterval: editing ? 4_000 : false,
     refetchOnWindowFocus: false,
   });
   const requestedSession = searchParams.get("session") ?? "";
@@ -794,7 +806,7 @@ export function CapsuleDetail() {
   const firstMessage = firstUserText(titleBlocks.data?.items);
   const title = displayThreadTitle(value.name, firstMessage);
   const canDeliver = capabilities.data?.delivery === true && value.state === "Ready";
-  const hasChanges = deliveryHasChanges(inspection.data);
+  const hasChanges = deliveryHasChanges(inspection.data, pullRequest ? "update" : "create");
   const suggestion = {
     title: pullRequestTitleFromMessage(firstMessage, title),
     body: pullRequestBodyFromMessage(firstMessage),

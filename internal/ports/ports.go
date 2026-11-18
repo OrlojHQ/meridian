@@ -463,6 +463,13 @@ type DeliveryInspection struct {
 	OriginURL              string
 	DefaultBranch          string
 	Tree                   string
+	// AheadCount is commits on HEAD that are not on the default branch's
+	// remote head. UnpushedCount is commits not on the same-named remote
+	// branch. HasDeliverableChanges is true when a new delivery would publish
+	// commits or worktree changes, excluding files the supervisor writes.
+	AheadCount            int
+	UnpushedCount         int
+	HasDeliverableChanges bool
 }
 
 type DeliveryCommitRequest struct {

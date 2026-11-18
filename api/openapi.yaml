@@ -5196,7 +5196,7 @@ components:
         executable: { type: boolean }
     DeliveryInspection:
       type: object
-      required: [capsuleResourceVersion, head, dirty, tree]
+      required: [capsuleResourceVersion, head, dirty, tree, aheadCount, unpushedCount, hasDeliverableChanges]
       properties:
         capsuleResourceVersion: { type: integer, format: int64, minimum: 1 }
         head: { type: string, pattern: "^[0-9a-f]{40}([0-9a-f]{24})?$" }
@@ -5205,6 +5205,19 @@ components:
         originUrl: { type: string, maxLength: 4096 }
         defaultBranch: { type: string, maxLength: 255 }
         tree: { type: string, pattern: "^[0-9a-f]{40}([0-9a-f]{24})?$" }
+        aheadCount:
+          type: integer
+          minimum: 0
+          maximum: 1000000
+          description: Commits on HEAD that are not on the default branch's remote head. Zero when that remote head is absent or HEAD is not ahead of it.
+        unpushedCount:
+          type: integer
+          minimum: 0
+          maximum: 1000000
+          description: Commits on HEAD that are not on the remote branch of the same name. Matches aheadCount when that remote branch does not exist.
+        hasDeliverableChanges:
+          type: boolean
+          description: True when aheadCount is greater than zero or the worktree has changes a delivery would commit. Files the supervisor writes into the worktree are excluded.
     CreateDeliveryRequest:
       type: object
       required:

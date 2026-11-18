@@ -86,11 +86,7 @@ export function ShipPanel({
 
   const opening = mode === "create" && !pushOnly;
   const dirty = inspection.data?.dirty === true;
-  const ahead = Boolean(
-    inspection.data?.branch &&
-      inspection.data.defaultBranch &&
-      inspection.data.branch !== inspection.data.defaultBranch,
-  );
+  const ahead = (inspection.data?.aheadCount ?? 0) > 0;
   const files = diff.data ? parseUnifiedDiff(diff.data.content) : undefined;
   const stats = files ? diffStats(files) : undefined;
   const summary = changeSummary({

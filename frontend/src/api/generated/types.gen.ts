@@ -882,6 +882,18 @@ export type DeliveryInspection = {
     originUrl?: string;
     defaultBranch?: string;
     tree: string;
+    /**
+     * Commits on HEAD that are not on the default branch's remote head. Zero when that remote head is absent or HEAD is not ahead of it.
+     */
+    aheadCount: number;
+    /**
+     * Commits on HEAD that are not on the remote branch of the same name. Matches aheadCount when that remote branch does not exist.
+     */
+    unpushedCount: number;
+    /**
+     * True when aheadCount is greater than zero or the worktree has changes a delivery would commit. Files the supervisor writes into the worktree are excluded.
+     */
+    hasDeliverableChanges: boolean;
 };
 
 export type CreateDeliveryRequest = {
