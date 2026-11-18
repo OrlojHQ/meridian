@@ -14,6 +14,7 @@ import {
 } from "react";
 
 import { api, normalizeAPIError } from "../api/client";
+import { trackComposerDraft } from "../shell/composerDraft";
 import type { HarnessProfile, Thread, ThreadBlock, ThreadLink } from "../api/generated/types.gen";
 import { queries } from "../api/queries";
 import { plainAgentText } from "./agentText";
@@ -541,6 +542,7 @@ function ThreadComposer({
   models?: ThreadModels;
 }) {
   const [message, setMessage] = useState("");
+  const draftToken = useRef(Symbol("composer-draft"));
   const [queue, setQueue] = useState<QueuedFollowUp[]>([]);
   const [active, setActive] = useState(0);
   const [dismissed, setDismissed] = useState<string>();
@@ -548,6 +550,11 @@ function ThreadComposer({
   const nextQueueId = useRef(1);
   const queueRef = useRef(queue);
   queueRef.current = queue;
+  useEffect(() => {
+    const pending = message.trim() !== "" || queue.some((item) => item.text.trim() !== "");
+    trackComposerDraft(draftToken.current, pending);
+    return () => trackComposerDraft(draftToken.current, false);
+  }, [message, queue]);
   const runningRef = useRef(false);
   const flushingRef = useRef(false);
   const menuId = useId();
