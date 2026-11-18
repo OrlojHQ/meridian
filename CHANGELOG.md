@@ -19,7 +19,10 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   uncommitted project files. A clean checkout, a branch with no commits of
   its own, and files the supervisor writes into the worktree no longer show
   the button. Push update stays only when an existing pull request has
-  commits or file changes that are not on the remote branch yet. Inspection
+  commits or file changes that are not on the remote branch yet, and a
+  delivery push records the pushed commit so the button clears once the
+  push succeeds. A project `.gitignore` cannot pull supervisor files back
+  into a delivery commit. Inspection
   reports `aheadCount`, `unpushedCount`, and `hasDeliverableChanges`, and
   the header reads them again while a turn is writing and once the turn
   finishes.

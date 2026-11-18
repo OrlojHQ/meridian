@@ -3,6 +3,7 @@ package capsuleproto
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"io"
@@ -43,11 +44,13 @@ type DeliveryStateResponse struct {
 // omits the counts (an older supervisor) falls back to the dirty flag and
 // does not treat a different branch name as a change.
 func (s DeliveryStateResponse) NormalizedCounts() (ahead, unpushed int, deliverable bool) {
+	// The supervisor runs beside the agent, so its counts are bounded to the
+	// API's range before they reach a client.
 	if s.AheadCount != nil && *s.AheadCount > 0 {
-		ahead = *s.AheadCount
+		ahead = min(*s.AheadCount, maxReportedAhead)
 	}
 	if s.UnpushedCount != nil && *s.UnpushedCount > 0 {
-		unpushed = *s.UnpushedCount
+		unpushed = min(*s.UnpushedCount, maxReportedAhead)
 	}
 	deliverable = s.Dirty || ahead > 0
 	if s.HasDeliverableChanges != nil {
@@ -266,6 +269,7 @@ func (s *Server) deliveryPush(writer http.ResponseWriter, request *http.Request)
 		// commit and is already complete. Any other unexpected existing ref
 		// conflicts rather than opportunistically updating a remote branch.
 		if *input.ExpectedOldRef == "" && old == input.SourceCommit {
+			recordPushedBranch(ctx, s.config.Workspace, input.DestinationRef, input.SourceCommit)
 			writeJSON(writer, http.StatusOK, DeliveryPushResponse{
 				Commit: input.SourceCommit, DestinationRef: input.DestinationRef,
 			})
@@ -283,6 +287,7 @@ func (s *Server) deliveryPush(writer http.ResponseWriter, request *http.Request)
 		writeProtocolError(writer, http.StatusUnprocessableEntity, "push_failed")
 		return
 	}
+	recordPushedBranch(ctx, s.config.Workspace, input.DestinationRef, input.SourceCommit)
 	writeJSON(writer, http.StatusOK, DeliveryPushResponse{
 		Commit: input.SourceCommit, DestinationRef: input.DestinationRef,
 	})
@@ -320,9 +325,23 @@ func (s *Server) deliveryPushThroughGateway(ctx context.Context, writer http.Res
 		writeProtocolError(writer, http.StatusUnprocessableEntity, "push_failed")
 		return
 	}
+	recordPushedBranch(ctx, s.config.Workspace, input.DestinationRef, input.SourceCommit)
 	writeJSON(writer, http.StatusOK, DeliveryPushResponse{
 		Commit: input.SourceCommit, DestinationRef: input.DestinationRef,
 	})
+}
+
+// recordPushedBranch moves origin's remote-tracking ref for a branch a
+// delivery just pushed. Pushes name a URL, not the origin remote, so git does
+// not update that ref itself, and inspection would keep counting the pushed
+// commits as unpushed. The push already succeeded, so a failure here only
+// leaves the count stale until the next fetch.
+func recordPushedBranch(ctx context.Context, workspace, destinationRef, commit string) {
+	name, ok := strings.CutPrefix(destinationRef, "refs/heads/")
+	if !ok || !validDeliveryBranch(name) || !validObjectID(commit) {
+		return
+	}
+	_, _ = deliveryGit(ctx, workspace, nil, "update-ref", "refs/remotes/origin/"+name, commit)
 }
 
 func writeGatewayCA(pemText string) (string, error) {
@@ -479,43 +498,58 @@ func privateExcludeBlock() string {
 }
 
 // ensurePrivateWorktreeExcludes records supervisor worktree paths in
-// .git/info/exclude. A missing repository is left alone. A symlink in place
-// of the exclude file is refused so the write cannot leave the git directory.
+// .git/info/exclude. A missing repository is left alone. Every step runs
+// inside an os.Root opened on .git, so a link the Capsule swaps in, even
+// after a check, cannot move the write outside the git directory.
 func ensurePrivateWorktreeExcludes(workspace string) error {
-	gitDirectory := filepath.Join(workspace, ".git")
-	gitInfo, err := os.Lstat(gitDirectory)
+	workspaceRoot, err := os.OpenRoot(workspace)
+	if err != nil {
+		return nil
+	}
+	defer workspaceRoot.Close()
 	// Only a real git directory can hold info/exclude. A missing, linked, or
 	// non-directory .git is left untouched; callers that require a repository
 	// reject it themselves.
-	if err != nil || !gitInfo.IsDir() || gitInfo.Mode()&os.ModeSymlink != 0 {
+	gitInfo, err := workspaceRoot.Lstat(".git")
+	if err != nil || !gitInfo.IsDir() {
 		return nil
 	}
-	infoDirectory := filepath.Join(gitDirectory, "info")
-	if _, err := os.Lstat(infoDirectory); errors.Is(err, os.ErrNotExist) {
-		if err := os.Mkdir(infoDirectory, 0o755); err != nil {
-			return err
-		}
+	gitRoot, err := workspaceRoot.OpenRoot(".git")
+	if err != nil {
+		return err
 	}
-	infoStat, err := os.Lstat(infoDirectory)
-	if err != nil || !infoStat.IsDir() || infoStat.Mode()&os.ModeSymlink != 0 {
+	defer gitRoot.Close()
+	if err := gitRoot.Mkdir("info", 0o755); err != nil && !errors.Is(err, os.ErrExist) {
+		return err
+	}
+	infoStat, err := gitRoot.Lstat("info")
+	if err != nil || !infoStat.IsDir() {
 		return errors.New("unsafe git info directory")
 	}
-	excludePath := filepath.Join(infoDirectory, "exclude")
-	existing, err := os.Lstat(excludePath)
+	const excludePath = "info/exclude"
+	existing, err := gitRoot.Lstat(excludePath)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 	var current []byte
 	if err == nil {
-		if existing.Mode()&os.ModeSymlink != 0 || !existing.Mode().IsRegular() {
+		if !existing.Mode().IsRegular() {
 			return errors.New("unsafe git exclude file")
 		}
 		if existing.Size() > maxExcludeFileBytes {
 			return errors.New("git exclude file is too large")
 		}
-		current, err = os.ReadFile(excludePath)
+		file, err := gitRoot.OpenFile(excludePath, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
 		if err != nil {
 			return err
+		}
+		current, err = io.ReadAll(io.LimitReader(file, maxExcludeFileBytes+1))
+		_ = file.Close()
+		if err != nil {
+			return err
+		}
+		if len(current) > maxExcludeFileBytes {
+			return errors.New("git exclude file is too large")
 		}
 	}
 	block := []byte(privateExcludeBlock())
@@ -526,16 +560,16 @@ func ensurePrivateWorktreeExcludes(workspace string) error {
 		current = append(current, '\n')
 	}
 	updated := append(append([]byte{}, current...), block...)
-	temp, err := os.CreateTemp(infoDirectory, ".exclude-*")
+	var suffix [8]byte
+	if _, err := rand.Read(suffix[:]); err != nil {
+		return err
+	}
+	tempName := "info/.exclude-" + hex.EncodeToString(suffix[:])
+	temp, err := gitRoot.OpenFile(tempName, os.O_WRONLY|os.O_CREATE|os.O_EXCL|syscall.O_NOFOLLOW, 0o644)
 	if err != nil {
 		return err
 	}
-	tempName := temp.Name()
-	defer os.Remove(tempName)
-	if err := temp.Chmod(0o644); err != nil {
-		_ = temp.Close()
-		return err
-	}
+	defer func() { _ = gitRoot.Remove(tempName) }()
 	if _, err := temp.Write(updated); err != nil {
 		_ = temp.Close()
 		return err
@@ -543,7 +577,23 @@ func ensurePrivateWorktreeExcludes(workspace string) error {
 	if err := temp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tempName, excludePath)
+	return gitRoot.Rename(tempName, excludePath)
+}
+
+// privateWorktreePathspecs name the same supervisor paths as git pathspecs,
+// anchored at the worktree root. A glob does not cross a slash, so each
+// pattern also names what is under a directory of that name.
+func privateWorktreePathspecs() []string {
+	specs := make([]string, 0, len(privateWorktreePatterns)*2)
+	for _, pattern := range privateWorktreePatterns {
+		name := strings.TrimPrefix(pattern, "/")
+		if strings.Contains(name, "*") {
+			specs = append(specs, ":(top,glob)"+name, ":(top,glob)"+name+"/**")
+		} else {
+			specs = append(specs, ":(top,literal)"+name)
+		}
+	}
+	return specs
 }
 
 // deliveryDivergence counts commits a delivery could publish.
@@ -734,12 +784,19 @@ func deliveryWorktreeTree(ctx context.Context, workspace string) (string, error)
 func stageDeliveryWorkspace(
 	ctx context.Context, workspace string, environment []string,
 ) error {
-	// Ignored paths must not also be named in the pathspec: naming an ignored
-	// file makes add fail. info/exclude is what keeps supervisor files out.
+	// Ignored paths must not also be named in the add pathspec: naming an
+	// ignored file makes add fail. info/exclude keeps supervisor files out of
+	// status and add, but a project .gitignore takes precedence over it, so a
+	// negation such as "!/.meridian-*" would stage them again. Resetting those
+	// paths to HEAD afterwards keeps them out whatever the ignore rules say.
 	if err := ensurePrivateWorktreeExcludes(workspace); err != nil {
 		return err
 	}
-	_, err := deliveryGit(ctx, workspace, environment, "add", "-A", "--", ".")
+	if _, err := deliveryGit(ctx, workspace, environment, "add", "-A", "--", "."); err != nil {
+		return err
+	}
+	arguments := append([]string{"reset", "-q", "--"}, privateWorktreePathspecs()...)
+	_, err := deliveryGit(ctx, workspace, environment, arguments...)
 	return err
 }
 

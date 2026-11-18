@@ -26,6 +26,68 @@ func TestDeliveryStateNormalizesMissingDeliverableFields(t *testing.T) {
 	if ahead != 0 || unpushed != 0 || deliverable {
 		t.Fatalf("explicit false was replaced: %d %d %v", ahead, unpushed, deliverable)
 	}
+	huge := maxReportedAhead * 3
+	ahead, unpushed, _ = (DeliveryStateResponse{AheadCount: &huge, UnpushedCount: &huge}).NormalizedCounts()
+	if ahead != maxReportedAhead || unpushed != maxReportedAhead {
+		t.Fatalf("counts were not bounded: %d %d", ahead, unpushed)
+	}
+}
+
+// A project .gitignore takes precedence over info/exclude. A negation must
+// not put a supervisor file into a delivery commit or make it look dirty.
+func TestDeliveryKeepsSupervisorFilesOutDespiteGitignoreNegation(t *testing.T) {
+	workspace, _ := cloneDeliveryFixture(t, "master")
+	if err := os.WriteFile(filepath.Join(workspace, ".gitignore"), []byte("!/.meridian-*\n!/.meridian-*/**\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, workspace, "add", "--", ".gitignore")
+	gitRun(t, workspace, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "--no-gpg-sign", "-m", "negate")
+	gitRun(t, workspace, "push", "origin", "master")
+	for _, name := range []string{".meridian-prepared", ".meridian-setup-complete", ".meridian-capture-cache"} {
+		if err := os.WriteFile(filepath.Join(workspace, name), []byte("supervisor\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Mkdir(filepath.Join(workspace, ".meridian-restore-x"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, ".meridian-restore-x", "part"), []byte("supervisor\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	state := mustInspect(t, workspace)
+	if state.Dirty || flag(state.HasDeliverableChanges) {
+		t.Fatalf("negated supervisor files counted as changes = %#v", state)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "notes.txt"), []byte("project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := stageDeliveryWorkspace(context.Background(), workspace, nil); err != nil {
+		t.Fatal(err)
+	}
+	staged := gitOutput(t, workspace, "diff", "--cached", "--name-only")
+	if staged != "notes.txt" {
+		t.Fatalf("staged = %q, want only notes.txt", staged)
+	}
+}
+
+// The exclude file is written through a root on .git. A link in place of
+// info cannot carry the write out of the git directory.
+func TestPrivateExcludesStayInsideTheGitDirectory(t *testing.T) {
+	workspace, _ := cloneDeliveryFixture(t, "master")
+	outside := t.TempDir()
+	if err := os.RemoveAll(filepath.Join(workspace, ".git", "info")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(workspace, ".git", "info")); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensurePrivateWorktreeExcludes(workspace); err == nil {
+		t.Fatal("a linked info directory was accepted")
+	}
+	entries, err := os.ReadDir(outside)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("wrote outside .git: %v %v", entries, err)
+	}
 }
 
 func TestDeliveryInspectionReportsDeliverableChanges(t *testing.T) {
@@ -117,6 +179,30 @@ func TestDeliveryInspectionReportsDeliverableChanges(t *testing.T) {
 		state = mustInspect(t, workspace)
 		if !state.Dirty || !flag(state.HasDeliverableChanges) {
 			t.Fatalf("nested project file = %#v", state)
+		}
+	})
+
+	t.Run("delivery push to a URL clears unpushed", func(t *testing.T) {
+		workspace, remote := cloneDeliveryFixture(t, "master")
+		gitRun(t, workspace, "checkout", "-b", "feature")
+		commitDeliveryFile(t, workspace, "first.txt", "one\n", "first")
+		head := gitOutput(t, workspace, "rev-parse", "HEAD")
+		// A delivery pushes to a URL with an explicit refspec, which leaves
+		// refs/remotes/origin/feature alone.
+		gitRun(t, workspace, "push", remote, head+":refs/heads/feature")
+		state := mustInspect(t, workspace)
+		if count(state.UnpushedCount) != 1 {
+			t.Fatalf("before recording the push = %#v", state)
+		}
+		recordPushedBranch(context.Background(), workspace, "refs/heads/feature", head)
+		state = mustInspect(t, workspace)
+		if count(state.AheadCount) != 1 || count(state.UnpushedCount) != 0 || !flag(state.HasDeliverableChanges) {
+			t.Fatalf("after recording the push = %#v", state)
+		}
+		recordPushedBranch(context.Background(), workspace, "refs/tags/v1", head)
+		recordPushedBranch(context.Background(), workspace, "refs/heads/-bad", head)
+		if refs := gitOutput(t, workspace, "for-each-ref", "--format=%(refname)", "refs/remotes/origin/"); strings.Contains(refs, "v1") || strings.Contains(refs, "-bad") {
+			t.Fatalf("recorded an invalid destination: %s", refs)
 		}
 	})
 
