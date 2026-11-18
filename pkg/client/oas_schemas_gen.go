@@ -12667,7 +12667,8 @@ type ProfileDiagnostic struct {
 	CapsuleId string `json:"capsuleId"`
 	// The Capsule took nothing from a profile.
 	NothingPinned bool `json:"nothingPinned"`
-	// True only when every pin is current and nothing is outstanding. It never claims the Capsule matches
+	// True when every harness is pinned to what a new Capsule would pin and the commit identity matches
+	// the profile. Import exclusions and warnings do not affect it. It never claims the Capsule matches
 	// the laptop.
 	MatchesProfile bool                       `json:"matchesProfile"`
 	Harnesses      []HarnessProfileDiagnostic `json:"harnesses"`

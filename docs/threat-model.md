@@ -1397,8 +1397,9 @@ Threats and required controls:
 - **Diagnostic leakage or false comfort.** The diagnostic is computed only
   from control-plane records, never from Capsule reports. It is owner-only
   and `no-store`, and it carries no file contents or credential values. It
-  says "matches your profile" only when nothing is outstanding. It never
-  claims the Capsule matches the laptop.
+  says the pins and identity match the profile even when an import left
+  files out or kept them with a warning. Those notes stay listed and are not
+  a reason to re-pin. It never claims the Capsule matches the laptop.
 - **Forged import reports.** The report comes from the importing client.
   It is bounded, shape-checked, stored sealed, and rendered only as text.
   Home-directory paths in its entries, such as the project directory in a

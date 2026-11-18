@@ -153,7 +153,7 @@ func TestProfileEndpoints(t *testing.T) {
 	if err := json.Unmarshal(diagnostic.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	if body.MatchesProfile || len(body.Harnesses) != 1 || len(body.Harnesses[0].Exclusions) != 1 ||
+	if !body.MatchesProfile || len(body.Harnesses) != 1 || len(body.Harnesses[0].Exclusions) != 1 ||
 		body.Harnesses[0].Connection.Granted || body.CommitAuthor.Source != "capsule" || body.CommitAuthor.Name != "Ada" {
 		t.Fatalf("diagnostic body = %s", diagnostic.Body.String())
 	}
