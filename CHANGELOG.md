@@ -7,6 +7,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.5] - 2026-11-18
+
 ### Security
 
 - Listing a saved connection's models sends its saved key only to its saved
@@ -41,6 +43,16 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - `make opencode-binary` explains that the pinned OpenCode build is
   Linux-only, and checks the archive with `shasum` when `sha256sum` is
   missing.
+- OpenCode Capsules start again. Generated model variants are written as the
+  list OpenCode 2.2.6 expects, and a saved connection with the old variants
+  map is converted when it is imported. Before, OpenCode dropped the whole
+  provider and every new session failed with "No models are available".
+- When the harness cannot start a session, its message is saved on the run
+  and shown in the thread instead of a generic adapter error.
+- Resuming a thread whose first session never finished starting opens a new
+  session instead of failing with "Thread has no adapter resume state".
+- Harness marks in the New Capsule picker stay crisp and readable in dark
+  mode. The selected-item check no longer restyles the last icon in the row.
 
 ## [0.11.4] - 2026-11-17
 
@@ -1477,7 +1489,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - Docker and Agent Sandbox are not claimed as hostile multi-tenant isolation
   boundaries; hardened runtime deployment and external review remain required.
 
-[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.11.4...HEAD
+[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.11.5...HEAD
+[0.11.5]: https://github.com/OrlojHQ/meridian/compare/v0.11.4...v0.11.5
 [0.11.4]: https://github.com/OrlojHQ/meridian/compare/v0.11.3...v0.11.4
 [0.11.3]: https://github.com/OrlojHQ/meridian/compare/v0.11.2...v0.11.3
 [0.11.2]: https://github.com/OrlojHQ/meridian/compare/v0.11.1...v0.11.2
