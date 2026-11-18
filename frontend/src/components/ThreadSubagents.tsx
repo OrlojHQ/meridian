@@ -8,6 +8,7 @@ import { queries } from "../api/queries";
 import { harnessName } from "../shell/capsuleActivity";
 import { PromoteSubagent } from "./PromoteSubagent";
 import { SpawnDecision } from "./SpawnApprovals";
+import { useSubagentTabs } from "./subagentTabs";
 import { subagentDiffstat, subagentHref, subagentPhaseLabels, subagentReportStatusLabel } from "./subagentReportModel";
 import { safeInline } from "./threadText";
 import { HarnessMark } from "./ui/HarnessMark";
@@ -33,8 +34,21 @@ export function removeNotice(link: Pick<ThreadLink, "name" | "filesChanged">) {
   return `Stop ${link.name} and delete its Capsule?${work} The lead can still start new subagents.`;
 }
 
+function CapsulePageIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M9.5 2.75h3.75v3.75M13.25 2.75 7.5 8.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M11.5 9.5v3a.75.75 0 0 1-.75.75h-7.5a.75.75 0 0 1-.75-.75v-7.5a.75.75 0 0 1 .75-.75h3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function SubagentRow({ link, request }: { link: ThreadLink; request?: CoordinationRequest }) {
   const queryClient = useQueryClient();
+  // On the lead Capsule's page the name opens the subagent as a tab there;
+  // a separate link still opens the subagent's own Capsule page.
+  const tabs = useSubagentTabs();
+  const asTab = tabs !== null && link.parentCapsuleId === tabs.capsuleId;
   const [confirm, setConfirm] = useState(false);
   const remove = useMutation({
     mutationFn: () => api.removeSubagent(link),
@@ -65,7 +79,28 @@ function SubagentRow({ link, request }: { link: ThreadLink; request?: Coordinati
       <HarnessMark harness={link.harness} size="md" />
       <div className="subagent-main">
         <div className="subagent-title">
-          <Link to={subagentHref(link)} className="subagent-name">{link.name}</Link>
+          {asTab ? (
+            <>
+              <Link
+                to={tabs.openHref(link.childThreadId)}
+                replace
+                className="subagent-name"
+                title="Open as a tab on this page"
+              >
+                {link.name}
+              </Link>
+              <Link
+                to={subagentHref(link)}
+                className="subagent-capsule-link"
+                aria-label={`Open ${link.name}'s Capsule page`}
+                title="Open its Capsule page"
+              >
+                <CapsulePageIcon />
+              </Link>
+            </>
+          ) : (
+            <Link to={subagentHref(link)} className="subagent-name">{link.name}</Link>
+          )}
           {link.promotedAt && (
             <span className="subagent-tag">{link.closeReason === "detached" ? "Promoted, detached" : "Promoted"}</span>
           )}
@@ -235,6 +270,10 @@ export function SubagentsButton({ thread }: { thread: Thread }) {
 }
 
 function SubagentOf({ thread }: { thread: Thread }) {
+  // Shown as a tab on the lead Capsule's page, the page header and its pull
+  // request controls stay the lead's, so this notice says whose they are.
+  const tabs = useSubagentTabs();
+  const asTab = tabs !== null && tabs.capsuleId !== thread.capsuleId;
   const lead = useQuery(queries.thread(thread.parentThreadId ?? ""));
   const capsule = useQuery(queries.capsule(thread.capsuleId));
   const leadCapsule = useQuery({
@@ -242,11 +281,13 @@ function SubagentOf({ thread }: { thread: Thread }) {
     enabled: Boolean(lead.data?.capsuleId),
   });
   const leadHref = lead.data
-    ? `/ui/capsules/${encodeURIComponent(lead.data.capsuleId)}?session=${encodeURIComponent(lead.data.id)}`
+    ? asTab && lead.data.capsuleId === tabs.capsuleId
+      ? tabs.sessionHref(lead.data.id)
+      : `/ui/capsules/${encodeURIComponent(lead.data.capsuleId)}?session=${encodeURIComponent(lead.data.id)}`
     : undefined;
   const leadName = leadCapsule.data ? safeInline(leadCapsule.data.name) || "Lead" : "Lead";
   const leadLink = leadHref ? (
-    <Link to={leadHref} aria-label="Open the lead">
+    <Link to={leadHref} replace={asTab} aria-label="Open the lead">
       {leadName}
     </Link>
   ) : null;
@@ -268,6 +309,15 @@ function SubagentOf({ thread }: { thread: Thread }) {
           : "Permission and input requests come to you, not the lead."}{" "}
         {promoted ? leadLink : null}
       </p>
+      {asTab && (
+        <p className="subagent-tab-scope">
+          It runs in its own Capsule. The page header and pull request controls are the lead
+          Capsule&apos;s; Changes, Preview and Files show this subagent&apos;s.{" "}
+          <Link to={subagentHref({ childCapsuleId: thread.capsuleId, childThreadId: thread.id })}>
+            Open its Capsule page
+          </Link>
+        </p>
+      )}
       {capsule.data && <PromoteSubagent capsule={capsule.data} />}
     </div>
   );

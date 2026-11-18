@@ -2017,6 +2017,8 @@ button.station-switch-button.open .chev { transform: rotate(-90deg); color: var(
 .station-popover .popover-actions button {
   display: flex;
   align-items: center;
+  /* The shared button style centers its content; menu rows start at the icon. */
+  justify-content: flex-start;
   gap: 0.5rem;
   width: 100%;
   min-height: 0;

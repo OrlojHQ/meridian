@@ -4584,3 +4584,97 @@ button.tool-line:hover {
   margin: 0.75rem 0 0.25rem;
   font-size: 0.95rem;
 }
+
+/* Subagent tabs: a lead's subagents opened on the lead Capsule's page. They
+   sit after the Capsule's own sessions and are marked as subagents. */
+.session-tab-subagent {
+  display: inline-flex;
+  flex: none;
+  align-items: stretch;
+}
+
+.session-tabs .session-tab-subagent:first-of-type {
+  margin-left: 0.35rem;
+  border-left: 1px solid var(--border);
+  padding-left: 0.35rem;
+}
+
+.session-tab-subagent [role="tab"] {
+  padding-right: 0.3rem;
+}
+
+.session-tabs .session-tab-subagent .session-tab-kind {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0 0.3rem;
+  color: var(--muted);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.session-tab-close {
+  display: inline-grid;
+  place-items: center;
+  align-self: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  margin-right: 0.25rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: 0;
+  color: var(--faint);
+  background: transparent;
+}
+
+.session-tab-close:hover,
+.session-tab-close:focus-visible {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.session-tab-close svg {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+.subagent-capsule-link {
+  display: inline-grid;
+  place-items: center;
+  width: 1.3rem;
+  height: 1.3rem;
+  border-radius: var(--radius-sm);
+  color: var(--faint);
+}
+
+.subagent-capsule-link:hover,
+.subagent-capsule-link:focus-visible {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.subagent-capsule-link svg {
+  width: 0.8rem;
+  height: 0.8rem;
+}
+
+.subagent-of .subagent-tab-scope {
+  margin-top: 0.35rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.context-panel.has-scope {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.context-scope {
+  margin: 0;
+  border-bottom: 1px solid var(--border);
+  padding: 0.35rem 0.75rem;
+  color: var(--muted);
+  background: var(--surface-subtle);
+  font-size: 0.74rem;
+  font-weight: 600;
+}

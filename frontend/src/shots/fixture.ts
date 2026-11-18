@@ -73,7 +73,35 @@ const setups = capsule("cap-setups", "harness setups", "pi", "Ready", ago(3 * ho
 const paused = capsule("cap-pause", "k8s pause", "claude", "Paused", ago(day), billing.id);
 const sealed = capsule("cap-sealed", "thread encryption", undefined, "Sealed", ago(3 * day));
 const header = capsule("cap-header", "thread-ad942540f1e7", "opencode", "Ready", ago(2 * minute));
-const capsules = [notes, tests, tokens, preview, inbox, setups, paused, sealed, header];
+// A lead with two subagents, each in its own Capsule. Open the lead with
+// ?shots at /ui/capsules/cap-lead to try subagent tabs.
+const leadCap = capsule("cap-lead", "docs overhaul", "claude", "Ready", ago(3 * minute));
+const subDocs = {
+  ...capsule("cap-sub-docs", "api reference", "claude", "Ready", ago(2 * minute)),
+  role: "sub",
+  leadThreadId: "thread-lead",
+  linkId: "link-docs",
+};
+const subExamples = {
+  ...capsule("cap-sub-examples", "examples", "codex", "Ready", ago(5 * minute)),
+  role: "sub",
+  leadThreadId: "thread-lead",
+  linkId: "link-examples",
+};
+const capsules = [
+  notes,
+  tests,
+  tokens,
+  preview,
+  inbox,
+  setups,
+  paused,
+  sealed,
+  header,
+  leadCap,
+  subDocs,
+  subExamples,
+];
 
 function run(id: string, capsuleId: string, harness: string, state: string, startedAt: string) {
   return {
@@ -96,6 +124,9 @@ const runs: Record<string, ReturnType<typeof run>[]> = {
   [inbox.id]: [run("run-inbox", inbox.id, "claude", "Succeeded", ago(2 * hour))],
   [setups.id]: [run("run-setups", setups.id, "pi", "Running", ago(3 * hour))],
   [header.id]: [run("run-header", header.id, "opencode", "Running", ago(2 * minute))],
+  [leadCap.id]: [run("run-lead", leadCap.id, "claude", "Running", ago(3 * minute))],
+  [subDocs.id]: [run("run-sub-docs", subDocs.id, "claude", "Running", ago(2 * minute))],
+  [subExamples.id]: [run("run-sub-examples", subExamples.id, "codex", "Running", ago(5 * minute))],
 };
 
 function thread(
@@ -183,6 +214,92 @@ const threads = [
     kind: "input",
     since: ago(minute),
   }, "idle"),
+  {
+    ...thread("thread-lead", leadCap.id, "claude", "run-lead", ago(3 * minute), undefined, "idle"),
+    coordinationGrantId: "grant-lead",
+    rootThreadId: "thread-lead",
+    depth: 0,
+  },
+  {
+    ...thread("thread-sub-docs", subDocs.id, "claude", "run-sub-docs", ago(2 * minute)),
+    coordinationGrantId: "grant-lead",
+    parentThreadId: "thread-lead",
+    rootThreadId: "thread-lead",
+    depth: 1,
+  },
+  {
+    ...thread("thread-sub-examples", subExamples.id, "codex", "run-sub-examples", ago(5 * minute), undefined, "idle"),
+    coordinationGrantId: "grant-lead",
+    parentThreadId: "thread-lead",
+    rootThreadId: "thread-lead",
+    depth: 1,
+  },
+];
+
+const leadGrant = {
+  id: "grant-lead",
+  projectId: project.id,
+  rootThreadId: "thread-lead",
+  rootCapsuleId: leadCap.id,
+  state: "active",
+  spawnApproval: "auto",
+  maxDepth: 1,
+  maxChildren: 4,
+  maxDescendants: 4,
+  maxLiveCapsules: 4,
+  maxMessagesPerLink: 50,
+  allowedHarnesses: ["claude", "codex"],
+  deadlineAt: new Date(Date.now() + 6 * hour).toISOString(),
+  onDeadline: "cancel_and_pause",
+  archiveAfterSeconds: 3600,
+  descendantsCreated: 2,
+  createdAt: ago(3 * minute),
+  updatedAt: ago(3 * minute),
+  resourceVersion: 2,
+};
+
+function leadLink(
+  id: string,
+  child: { id: string; harness?: string },
+  childThreadId: string,
+  name: string,
+  phase: string,
+  diff: { files: number; insertions: number; deletions: number },
+) {
+  return {
+    id,
+    grantId: leadGrant.id,
+    parentThreadId: "thread-lead",
+    parentCapsuleId: leadCap.id,
+    childThreadId,
+    childCapsuleId: child.id,
+    childIntentId: `intent-${id}`,
+    depth: 1,
+    name,
+    harness: child.harness ?? "claude",
+    state: "active",
+    phase,
+    reportSeq: phase === "idle" ? 1 : 0,
+    reportDeliveredSeq: phase === "idle" ? 1 : 0,
+    lastReportStatus: phase === "idle" ? "done" : undefined,
+    messagesForwarded: 1,
+    operatorMessages: 0,
+    filesChanged: diff.files,
+    insertions: diff.insertions,
+    deletions: diff.deletions,
+    createdAt: ago(3 * minute),
+    updatedAt: ago(minute),
+    resourceVersion: 3,
+  };
+}
+
+const leadLinks = [
+  leadLink("link-docs", subDocs, "thread-sub-docs", "api-reference", "working", { files: 3, insertions: 48, deletions: 6 }),
+  leadLink("link-examples", subExamples, "thread-sub-examples", "examples", "idle", {
+    files: 2,
+    insertions: 31,
+    deletions: 0,
+  }),
 ];
 
 function block(
@@ -229,6 +346,30 @@ const blocks: Record<string, unknown[]> = {
   "thread-header": [
     block("b-header-user", "m-header-user", 1, "user", "text", {
       content: "Fix the header so it stays on one line.",
+    }),
+  ],
+  "thread-lead": [
+    block("b-lead-user", "m-lead-user", 1, "user", "text", {
+      content: "Overhaul the docs. Split the API reference and the examples between two subagents.",
+    }),
+    block("b-lead-agent", "m-lead-agent", 2, "assistant", "text", {
+      content: "I started api-reference and examples. I'll merge their reports into one pass over the guide.",
+    }),
+  ],
+  "thread-sub-docs": [
+    block("b-sub-docs-user", "m-sub-docs-user", 1, "user", "text", {
+      content: "Rewrite the API reference for the Capsule endpoints. Report back when the pages build.",
+    }),
+    block("b-sub-docs-agent", "m-sub-docs-agent", 2, "assistant", "text", {
+      content: "Reading api/openapi.yaml and the current reference pages.",
+    }),
+  ],
+  "thread-sub-examples": [
+    block("b-sub-examples-user", "m-sub-examples-user", 1, "user", "text", {
+      content: "Add runnable examples for starting a Thread and sending a message.",
+    }),
+    block("b-sub-examples-agent", "m-sub-examples-agent", 2, "assistant", "text", {
+      content: "Done. Two examples under docs/examples, both checked against the mock harness.",
     }),
   ],
   "thread-tokens": [
@@ -341,6 +482,9 @@ const boardStatus: Record<string, BoardStatus> = {
   [paused.id]: "paused",
   [sealed.id]: "sealed",
   [header.id]: "needs_you",
+  [leadCap.id]: "working",
+  [subDocs.id]: "working",
+  [subExamples.id]: "ready_for_review",
 };
 
 function board() {
@@ -819,6 +963,8 @@ function route(pathname: string): unknown {
     }
     return { items: blocks[blockMatch[1]] ?? [], nextCursor: 4, more: false };
   }
+  if (pathname === "/threads/thread-lead/links") return { items: leadLinks };
+  if (pathname === `/coordination-grants/${leadGrant.id}`) return leadGrant;
   if (pathname.endsWith("/links")) return emptyPage;
   if (pathname.includes("/events")) return { items: [], nextCursor: 0, more: false };
   if (pathname.endsWith("/attach-ticket")) {
