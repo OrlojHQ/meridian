@@ -1,5 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
+  type DragEvent,
   type KeyboardEvent,
   lazy,
   type ReactNode,
@@ -13,10 +14,18 @@ import {
   useState,
 } from "react";
 
-import { api, normalizeAPIError } from "../api/client";
+import { api, normalizeAPIError, type SendMessageOptions } from "../api/client";
 import type { HarnessProfile, Thread, ThreadBlock, ThreadLink } from "../api/generated/types.gen";
 import { queries } from "../api/queries";
 import { plainAgentText } from "./agentText";
+import {
+  attachmentAccept,
+  attachmentPayload,
+  filesFromList,
+  type PendingAttachment,
+  revokeAttachments,
+  takeAttachments,
+} from "./attachments";
 import {
   adapterCanSteer,
   composerBusyHint,
@@ -51,6 +60,7 @@ import {
   ChevronIcon,
   CloseIcon,
   FileIcon,
+  PlusIcon,
   SearchIcon,
   SendIcon,
   StopIcon,
@@ -309,7 +319,25 @@ function ChatEntry({
               {item.origin === "from_lead" ? "From the lead" : "From subagents"}
             </span>
           )}
-          <div className="chat-bubble">{item.text}</div>
+          <div className="chat-bubble">
+            {item.attachments && item.attachments.length > 0 && (
+              <ul className="chat-attachments" aria-label="Attachments">
+                {item.attachments.map((file) => (
+                  <li
+                    key={file.path}
+                    className={
+                      file.kind === "image" ? "chat-attachment chat-attachment-image" : "chat-attachment"
+                    }
+                    title={file.path}
+                  >
+                    <FileIcon />
+                    <span>{file.name}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {item.text}
+          </div>
         </li>
       );
     case "subagent_reports":
@@ -509,7 +537,7 @@ function SlashMenu({
   );
 }
 
-type QueuedFollowUp = { id: number; text: string };
+type QueuedFollowUp = { id: number; text: string; attachments: PendingAttachment[] };
 
 function ThreadComposer({
   thread,
@@ -524,6 +552,7 @@ function ThreadComposer({
   onConflict,
   toolbar,
   models,
+  attachRef,
 }: {
   thread: Thread;
   activity: ChatActivity;
@@ -539,12 +568,20 @@ function ThreadComposer({
   toolbar?: ReactNode;
   // The harness's latest reported models; absent when it reports none.
   models?: ThreadModels;
+  // The thread drop target calls this with files dropped outside the composer.
+  attachRef?: (add: (files: File[]) => void) => void;
 }) {
   const [message, setMessage] = useState("");
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const [attachmentError, setAttachmentError] = useState<string>();
   const [queue, setQueue] = useState<QueuedFollowUp[]>([]);
   const [active, setActive] = useState(0);
   const [dismissed, setDismissed] = useState<string>();
   const textarea = useRef<HTMLTextAreaElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const images = models?.images === true;
+  const attachmentsRef = useRef(attachments);
+  attachmentsRef.current = attachments;
   const nextQueueId = useRef(1);
   const queueRef = useRef(queue);
   queueRef.current = queue;
@@ -552,12 +589,23 @@ function ThreadComposer({
   const flushingRef = useRef(false);
   const menuId = useId();
   const mutation = useMutation({
-    mutationFn: (delivery?: "steer") =>
-      delivery === "steer"
-        ? api.sendThreadMessage(thread.id, thread.resourceVersion, message, delivery)
-        : api.sendThreadMessage(thread.id, thread.resourceVersion, message),
-    onSuccess: () => {
+    mutationFn: (input: { text: string; attachments: PendingAttachment[]; delivery?: "steer" }) => {
+      const payload = attachmentPayload(input.attachments);
+      if (payload.length === 0) {
+        return input.delivery
+          ? api.sendThreadMessage(thread.id, thread.resourceVersion, input.text, input.delivery)
+          : api.sendThreadMessage(thread.id, thread.resourceVersion, input.text);
+      }
+      const options: SendMessageOptions = {
+        attachments: payload,
+        ...(input.delivery ? { delivery: input.delivery } : {}),
+      };
+      return api.sendThreadMessage(thread.id, thread.resourceVersion, input.text, options);
+    },
+    onSuccess: (_result, input) => {
       setMessage("");
+      revokeAttachments(input.attachments);
+      setAttachments((current) => current.filter((item) => !input.attachments.includes(item)));
       onSent();
     },
     onError: async (error) => {
@@ -610,31 +658,50 @@ function ThreadComposer({
     [commands, controls, query],
   );
   const selected = Math.min(active, Math.max(entries.length - 1, 0));
-  const enqueue = (text: string) => {
+  const addFiles = useCallback(
+    (files: File[]) => {
+      void takeAttachments(attachmentsRef.current, files, images).then((result) => {
+        setAttachments(result.items);
+        setAttachmentError(result.error);
+      });
+    },
+    [images],
+  );
+  useEffect(() => {
+    attachRef?.(addFiles);
+  }, [addFiles, attachRef]);
+  const enqueue = (text: string, queued: PendingAttachment[]) => {
     const trimmed = text.trim();
-    if (!trimmed) return;
-    setQueue((current) => [...current, { id: nextQueueId.current++, text: trimmed }]);
+    if (!trimmed && queued.length === 0) return;
+    setQueue((current) => [
+      ...current,
+      { id: nextQueueId.current++, text: trimmed, attachments: queued },
+    ]);
   };
   const takeBack = (item: QueuedFollowUp) => {
     setQueue((current) => current.filter((entry) => entry.id !== item.id));
     setMessage((current) => (current.trim() ? `${current.replace(/\s+$/, "")}\n${item.text}` : item.text));
+    setAttachments((current) => [...current, ...item.attachments].slice(0, 8));
     textarea.current?.focus();
   };
   const removeQueued = (item: QueuedFollowUp) => {
     setQueue((current) => current.filter((entry) => entry.id !== item.id));
   };
+  const canSend = (message.trim().length > 0 || attachments.length > 0) && !mutation.isPending && !ended;
   const submit = () => {
-    if (!message.trim() || mutation.isPending || ended) return;
+    if (!canSend) return;
     if (turnRunning) {
-      enqueue(message);
+      enqueue(message, attachments);
       setMessage("");
+      setAttachments([]);
+      setAttachmentError(undefined);
       return;
     }
-    mutation.mutate(undefined);
+    mutation.mutate({ text: message, attachments });
   };
   const steer = () => {
-    if (!message.trim() || mutation.isPending || ended || !canSteer) return;
-    mutation.mutate("steer");
+    if (!canSend || !canSteer) return;
+    mutation.mutate({ text: message, attachments, delivery: "steer" });
   };
   useEffect(() => {
     const wasRunning = runningRef.current;
@@ -643,9 +710,15 @@ function ThreadComposer({
     const head = queueRef.current[0];
     if (!head) return;
     flushingRef.current = true;
-    api
-      .sendThreadMessage(thread.id, thread.resourceVersion, head.text)
+    const send =
+      head.attachments.length > 0
+        ? api.sendThreadMessage(thread.id, thread.resourceVersion, head.text, {
+            attachments: attachmentPayload(head.attachments),
+          })
+        : api.sendThreadMessage(thread.id, thread.resourceVersion, head.text);
+    send
       .then(() => {
+        revokeAttachments(head.attachments);
         setQueue((current) => current.filter((item) => item.id !== head.id));
         onSent();
       })
@@ -716,7 +789,11 @@ function ThreadComposer({
             {queue.map((item) => (
               <li key={item.id} className="composer-queue-item">
                 <p className="composer-queue-when">After this turn</p>
-                <p className="composer-queue-text">{safeInline(item.text)}</p>
+                <p className="composer-queue-text">
+                  {safeInline(item.text)}
+                  {item.attachments.length > 0 &&
+                    ` (${item.attachments.map((file) => file.name).join(", ")})`}
+                </p>
                 <div className="composer-queue-actions">
                   <button type="button" className="secondary" onClick={() => takeBack(item)}>
                     Edit
@@ -747,6 +824,37 @@ function ThreadComposer({
           />
         )}
         {toolbar && <div className="composer-toolbar">{toolbar}</div>}
+        {attachments.length > 0 && (
+          <ul className="composer-attachments" aria-label="Attachments">
+            {attachments.map((item) => (
+              <li
+                key={item.id}
+                className={
+                  item.kind === "image" ? "composer-attachment composer-attachment-image" : "composer-attachment"
+                }
+              >
+                {item.preview ? <img src={item.preview} alt="" /> : <FileIcon />}
+                <span>{item.name}</span>
+                <button
+                  type="button"
+                  className="composer-attachment-remove"
+                  aria-label={`Remove ${item.name}`}
+                  onClick={() => {
+                    if (item.preview) URL.revokeObjectURL(item.preview);
+                    setAttachments((current) => current.filter((entry) => entry.id !== item.id));
+                  }}
+                >
+                  <CloseIcon />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {attachmentError && (
+          <p className="composer-attachment-error" role="alert">
+            {attachmentError}
+          </p>
+        )}
         <form
           className="composer-box"
           onSubmit={(event) => {
@@ -754,6 +862,28 @@ function ThreadComposer({
             submit();
           }}
         >
+          <button
+            type="button"
+            className="composer-attach"
+            aria-label="Attach files"
+            title="Attach files"
+            disabled={ended}
+            onClick={() => fileInput.current?.click()}
+          >
+            <PlusIcon />
+          </button>
+          <input
+            ref={fileInput}
+            className="sr-only"
+            type="file"
+            multiple
+            accept={attachmentAccept(images)}
+            aria-label="Choose files"
+            onChange={(event) => {
+              addFiles(filesFromList(event.target.files));
+              event.target.value = "";
+            }}
+          />
           <label className="sr-only" htmlFor="thread-message">
             Message
           </label>
@@ -776,6 +906,12 @@ function ThreadComposer({
               setActive(0);
             }}
             onKeyDown={onKeyDown}
+            onPaste={(event) => {
+              const files = filesFromList(event.clipboardData.files);
+              if (files.length === 0) return;
+              event.preventDefault();
+              addFiles(files);
+            }}
             onBlur={() => setDismissed(message)}
             onFocus={() => setDismissed(undefined)}
             placeholder={placeholder}
@@ -808,7 +944,7 @@ function ThreadComposer({
                 <button
                   type="submit"
                   className="composer-queue-send"
-                  disabled={!message.trim() || mutation.isPending || ended}
+                  disabled={!canSend}
                 >
                   Queue
                 </button>
@@ -817,7 +953,7 @@ function ThreadComposer({
                     type="button"
                     className="composer-steer"
                     title="Deliver at the next tool boundary"
-                    disabled={!message.trim() || mutation.isPending || ended}
+                    disabled={!canSend}
                     onClick={steer}
                   >
                     Steer
@@ -830,7 +966,7 @@ function ThreadComposer({
                 className="composer-send"
                 aria-label="Send"
                 title="Send"
-                disabled={!message.trim() || mutation.isPending || ended}
+                disabled={!canSend}
               >
                 <SendIcon />
               </button>
@@ -896,8 +1032,28 @@ export function ThreadConversation({
   );
   const label = activityLabels[chat.activity];
   const toolbar = isLead ? <SubagentsButton thread={thread} /> : undefined;
+  const addFilesRef = useRef<(files: File[]) => void>(() => undefined);
+  const [dropOver, setDropOver] = useState(false);
+  const onDragOver = (event: DragEvent) => {
+    if (!event.dataTransfer.types?.includes("Files")) return;
+    event.preventDefault();
+    setDropOver(true);
+  };
   return (
-    <>
+    <div
+      className={dropOver ? "thread-conversation drop-target" : "thread-conversation"}
+      onDragOver={onDragOver}
+      onDragLeave={(event) => {
+        if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+        setDropOver(false);
+      }}
+      onDrop={(event) => {
+        if (!event.dataTransfer.types?.includes("Files")) return;
+        event.preventDefault();
+        setDropOver(false);
+        addFilesRef.current(filesFromList(event.dataTransfer.files));
+      }}
+    >
       <div className="thread-scroll-frame">
         <div className="thread-scroll" ref={scroll.ref} onScroll={scroll.onScroll}>
           <div className="thread-scroll-content">
@@ -965,8 +1121,11 @@ export function ThreadConversation({
             void onRefresh();
           }}
           onConflict={onRefresh}
+          attachRef={(add) => {
+            addFilesRef.current = add;
+          }}
         />
       )}
-    </>
+    </div>
   );
 }

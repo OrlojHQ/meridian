@@ -68,7 +68,7 @@ func RunPiRPC(
 	if err := stream.Handshake(adapterproto.Capabilities{
 		Resume: true, ToolEvents: true, Permissions: true,
 		InputRequests: true, Heartbeat: false, OpaqueMetadata: true,
-		Commands: true, Models: true, Effort: true,
+		Commands: true, Models: true, Effort: true, Images: true,
 	}); err != nil {
 		return err
 	}

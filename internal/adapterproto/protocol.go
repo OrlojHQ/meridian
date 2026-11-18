@@ -113,12 +113,14 @@ type ModelOption struct {
 // Resolved, when both peers negotiated it, names the model the current option
 // runs, for an option that is an alias such as a harness's "default".
 // Effort, when both peers negotiated it, is the reasoning effort the current
-// model offers.
+// model offers. Images, when both peers negotiated it, is true when the
+// harness accepts image content.
 type ModelSet struct {
 	Current  string        `json:"current,omitempty"`
 	Resolved string        `json:"resolved,omitempty"`
 	Options  []ModelOption `json:"options"`
 	Effort   *EffortSet    `json:"effort,omitempty"`
+	Images   bool          `json:"images,omitempty"`
 }
 
 // EffortSet is the current model's reasoning effort and the levels it
@@ -170,6 +172,9 @@ type Capabilities struct {
 	// ResolvedModel says the peer understands a models frame's resolved
 	// model name. It requires Models.
 	ResolvedModel bool `json:"resolvedModel,omitempty"`
+	// Images says the peer understands a models frame's images flag: whether
+	// the harness accepts image content. It requires Models.
+	Images bool `json:"images,omitempty"`
 }
 
 type Permission struct {

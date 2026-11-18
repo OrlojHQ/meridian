@@ -11,17 +11,22 @@ import (
 	"unicode/utf8"
 
 	"golang.org/x/sys/unix"
+
+	"github.com/OrlojHQ/meridian/internal/adapterproto"
 )
 
 const (
-	BrowseListPath       = "/v1/workspace/files/list"
-	BrowseReadPath       = "/v1/workspace/files/read"
-	maxBrowsePathBytes   = 4096
-	maxBrowseNameBytes   = 255
-	maxBrowseEntries     = 512
-	maxBrowseDirEntries  = 4096
-	defaultBrowseEntries = 128
-	maxBrowseFileBytes   = 1 << 20
+	BrowseListPath  = "/v1/workspace/files/list"
+	BrowseReadPath  = "/v1/workspace/files/read"
+	BrowseWritePath = "/v1/workspace/files/write"
+	// attachmentWriteBodyLimit covers one 4 MiB file after base64 expansion.
+	attachmentWriteBodyLimit = int64(6 << 20)
+	maxBrowsePathBytes       = 4096
+	maxBrowseNameBytes       = 255
+	maxBrowseEntries         = 512
+	maxBrowseDirEntries      = 4096
+	defaultBrowseEntries     = 128
+	maxBrowseFileBytes       = 1 << 20
 )
 
 type BrowseListRequest struct {
@@ -52,6 +57,13 @@ type BrowseReadResponse struct {
 	Content    []byte `json:"content"`
 	Size       int64  `json:"size"`
 	Executable bool   `json:"executable,omitempty"`
+}
+
+// BrowseWriteRequest creates or replaces one composer attachment. Path is
+// restricted to the attachment tree; content is the file bytes.
+type BrowseWriteRequest struct {
+	Path    string `json:"path"`
+	Content []byte `json:"content"`
 }
 
 func (s *Server) browseList(writer http.ResponseWriter, request *http.Request) {
@@ -274,4 +286,89 @@ func browseStatus(err error) int {
 		return http.StatusNotFound
 	}
 	return http.StatusUnprocessableEntity
+}
+
+func (s *Server) browseWrite(writer http.ResponseWriter, request *http.Request) {
+	var input BrowseWriteRequest
+	if !decodeRequest(writer, request, attachmentWriteBodyLimit, &input) {
+		return
+	}
+	defer func() {
+		for i := range input.Content {
+			input.Content[i] = 0
+		}
+	}()
+	if !adapterproto.ValidAttachmentPath(input.Path) || len(input.Content) == 0 {
+		writeProtocolError(writer, http.StatusBadRequest, "invalid_request")
+		return
+	}
+	if len(input.Content) > adapterproto.MaxAttachmentBytes {
+		writeProtocolError(writer, http.StatusRequestEntityTooLarge, "file_too_large")
+		return
+	}
+	if err := writeAttachment(s.config.Workspace, input.Path, input.Content); err != nil {
+		writeProtocolError(writer, http.StatusUnprocessableEntity, "attachment_unavailable")
+		return
+	}
+	writeJSON(writer, http.StatusOK, struct{}{})
+}
+
+// writeAttachment creates or replaces one regular file under the attachment
+// tree. Directories are created along that tree only. Symlinks are not followed.
+func writeAttachment(workspace, relative string, content []byte) error {
+	parts := strings.Split(relative, "/")
+	if len(parts) != 4 {
+		return errors.New("invalid attachment path")
+	}
+	root, err := unix.Open(workspace, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
+	if err != nil {
+		return err
+	}
+	defer unix.Close(root)
+	dir := root
+	for _, name := range parts[:3] {
+		next, openErr := ensureWorkspaceDir(dir, name)
+		if dir != root {
+			_ = unix.Close(dir)
+		}
+		if openErr != nil {
+			return openErr
+		}
+		dir = next
+	}
+	if dir != root {
+		defer unix.Close(dir)
+	}
+	fd, err := unix.Openat(
+		dir, parts[3],
+		unix.O_WRONLY|unix.O_CREAT|unix.O_TRUNC|unix.O_CLOEXEC|unix.O_NOFOLLOW,
+		0o600,
+	)
+	if err != nil {
+		return err
+	}
+	file := os.NewFile(uintptr(fd), "attachment")
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		return errors.New("attachment target is not a regular file")
+	}
+	if _, err := file.Write(content); err != nil {
+		return err
+	}
+	return file.Sync()
+}
+
+func ensureWorkspaceDir(parent int, name string) (int, error) {
+	fd, err := unix.Openat(parent, name, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
+	if err == nil {
+		return fd, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return -1, err
+	}
+	if err := unix.Mkdirat(parent, name, 0o700); err != nil && !errors.Is(err, os.ErrExist) {
+		return -1, err
+	}
+	return unix.Openat(parent, name, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
 }

@@ -121,7 +121,7 @@ func RunClaudeStream(
 	if err := stream.Handshake(adapterproto.Capabilities{
 		Resume: true, ToolEvents: true, Permissions: config.Permissions,
 		InputRequests: config.Permissions, Heartbeat: false, OpaqueMetadata: true,
-		Commands: true, Models: true, Effort: true, ResolvedModel: true,
+		Commands: true, Models: true, Effort: true, ResolvedModel: true, Images: true,
 	}); err != nil {
 		return err
 	}

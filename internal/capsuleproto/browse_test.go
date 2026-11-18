@@ -178,6 +178,46 @@ func TestBrowseReadResistsSymlinkSwap(t *testing.T) {
 	swap.Wait()
 }
 
+func TestBrowseWriteKeepsAttachmentsInsideTheirTree(t *testing.T) {
+	workspace := t.TempDir()
+	if err := os.Mkdir(filepath.Join(workspace, "src"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(workspace, filepath.Join(workspace, "escape")); err != nil {
+		t.Fatal(err)
+	}
+	client, closeServer := browseTestClient(t, workspace)
+	defer closeServer()
+	path := ".meridian/attachments/0123456789abcdef/1-notes.txt"
+	if err := client.BrowseWrite(context.Background(), BrowseWriteRequest{
+		Path: path, Content: []byte("notes"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(filepath.Join(workspace, path))
+	if err != nil || string(got) != "notes" {
+		t.Fatalf("written = %q, %v", got, err)
+	}
+	info, err := os.Stat(filepath.Join(workspace, path))
+	if err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("mode = %v, %v", info, err)
+	}
+	for _, bad := range []string{
+		"src/notes.txt",
+		".meridian/attachments/../src/notes.txt",
+		"escape/outside.txt",
+		".meridian/attachments/0123456789abcdef/../notes.txt",
+	} {
+		err := client.BrowseWrite(context.Background(), BrowseWriteRequest{Path: bad, Content: []byte("x")})
+		if err == nil {
+			t.Fatalf("write %s succeeded", bad)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(workspace, "src", "notes.txt")); !os.IsNotExist(err) {
+		t.Fatal("attachment write escaped the attachment tree")
+	}
+}
+
 func browseTestClient(t *testing.T, workspace string) (*Client, func()) {
 	t.Helper()
 	server, err := NewServer(ServerConfig{Token: testToken, Workspace: workspace})

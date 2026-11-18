@@ -461,7 +461,7 @@ func (s *structuredSession) execute() {
 		ID: "capsuled-hello", Capabilities: &adapterproto.Capabilities{
 			Resume: true, ToolEvents: true, Permissions: true,
 			InputRequests: true, Heartbeat: true, OpaqueMetadata: true,
-			Commands: true, Models: true, Effort: true, ResolvedModel: true,
+			Commands: true, Models: true, Effort: true, ResolvedModel: true, Images: true,
 		},
 	}
 	handshakeContext, handshakeCancel := context.WithTimeout(ctx, structuredHandshakeTimeout)

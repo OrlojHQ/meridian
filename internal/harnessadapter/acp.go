@@ -10,10 +10,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -110,10 +112,11 @@ type acpSession struct {
 	config ACPConfig
 	cwd    string
 
-	resume    string
-	sessionID string
-	ready     bool
-	loading   bool
+	resume       string
+	sessionID    string
+	ready        bool
+	loading      bool
+	promptImages bool
 
 	request  int
 	pending  map[int]string
@@ -172,7 +175,7 @@ func RunACP(ctx context.Context, input io.Reader, output io.Writer, config ACPCo
 	if err := stream.Handshake(adapterproto.Capabilities{
 		Resume: true, ToolEvents: true, Permissions: config.Permissions,
 		InputRequests: config.Permissions, Heartbeat: false, OpaqueMetadata: true, Commands: true,
-		Models: true, Effort: true,
+		Models: true, Effort: true, Images: true,
 	}); err != nil {
 		return err
 	}
@@ -471,6 +474,16 @@ func (s *acpSession) controller(frame adapterproto.Frame) (bool, error) {
 }
 
 func (s *acpSession) startTurn(frame adapterproto.Frame) error {
+	blocks, err := s.promptBlocks(frame)
+	if err != nil {
+		if writeErr := s.write(adapterproto.Frame{
+			Type: adapterproto.KindError, Code: "acp_attachment_invalid",
+			Summary: "The attached image could not be sent.",
+		}); writeErr != nil {
+			return writeErr
+		}
+		return s.idle()
+	}
 	s.turn++
 	s.segment = 0
 	s.message = nil
@@ -479,12 +492,92 @@ func (s *acpSession) startTurn(frame adapterproto.Frame) error {
 	}
 	if err := s.call("session/prompt", map[string]any{
 		"sessionId": s.sessionID,
-		"prompt":    []map[string]any{{"type": "text", "text": frame.Content}},
+		"prompt":    blocks,
 	}); err != nil {
 		return s.fail("acp_write_failed", err)
 	}
 	s.promptID = s.request
 	return nil
+}
+
+// promptBlocks is the ACP prompt: the text the station composed, plus an
+// image block for each image the agent agreed to accept. The bytes are read
+// from the Capsule workspace and are not copied anywhere else.
+func (s *acpSession) promptBlocks(frame adapterproto.Frame) ([]map[string]any, error) {
+	blocks := []map[string]any{{"type": "text", "text": frame.Content}}
+	images, err := imageAttachments(frame.Metadata)
+	if err != nil {
+		return nil, err
+	}
+	for _, image := range images {
+		if !s.promptImages {
+			return nil, errors.New("the agent does not accept images")
+		}
+		data, media, readErr := readWorkspaceImage(image.Path)
+		if readErr != nil {
+			return nil, readErr
+		}
+		blocks = append(blocks, map[string]any{
+			"type": "image", "mimeType": media, "data": base64.StdEncoding.EncodeToString(data),
+		})
+		for i := range data {
+			data[i] = 0
+		}
+	}
+	return blocks, nil
+}
+
+type imageAttachment struct {
+	Path      string `json:"path"`
+	MediaType string `json:"mediaType"`
+	Kind      string `json:"kind"`
+}
+
+func imageAttachments(raw json.RawMessage) ([]imageAttachment, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	var value struct {
+		Attachments []imageAttachment `json:"attachments"`
+	}
+	if json.Unmarshal(raw, &value) != nil {
+		return nil, errors.New("attachment metadata is malformed")
+	}
+	var images []imageAttachment
+	for _, item := range value.Attachments {
+		if item.Kind != "image" {
+			continue
+		}
+		if !adapterproto.ValidAttachmentPath(item.Path) {
+			return nil, errors.New("attachment path is not in the workspace")
+		}
+		images = append(images, item)
+	}
+	return images, nil
+}
+
+func readWorkspaceImage(relative string) ([]byte, string, error) {
+	if !adapterproto.ValidAttachmentPath(relative) || filepath.IsAbs(relative) {
+		return nil, "", errors.New("attachment path is not in the workspace")
+	}
+	file, err := os.OpenFile(relative, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return nil, "", errors.New("attachment could not be read")
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > adapterproto.MaxAttachmentBytes {
+		return nil, "", errors.New("attachment could not be read")
+	}
+	data, err := io.ReadAll(io.LimitReader(file, adapterproto.MaxAttachmentBytes+1))
+	if err != nil || len(data) == 0 || len(data) > adapterproto.MaxAttachmentBytes {
+		return nil, "", errors.New("attachment could not be read")
+	}
+	media, ok := adapterproto.SniffImage(data)
+	if !ok {
+		return nil, "", errors.New("attachment is not an image")
+	}
+	return data, media, nil
 }
 
 func (s *acpSession) upstream(record map[string]json.RawMessage) (bool, error) {
@@ -609,13 +702,17 @@ func (s *acpSession) initialized(record map[string]json.RawMessage, failed bool)
 	// Capabilities are advisory; a malformed capability object means none.
 	var capabilities struct {
 		AgentCapabilities struct {
-			LoadSession         bool `json:"loadSession"`
+			LoadSession        bool `json:"loadSession"`
+			PromptCapabilities struct {
+				Image bool `json:"image"`
+			} `json:"promptCapabilities"`
 			SessionCapabilities struct {
 				Resume json.RawMessage `json:"resume"`
 			} `json:"sessionCapabilities"`
 		} `json:"agentCapabilities"`
 	}
 	_ = json.Unmarshal(record["result"], &capabilities)
+	s.promptImages = capabilities.AgentCapabilities.PromptCapabilities.Image
 	agent := capabilities.AgentCapabilities
 	if s.resume == "" {
 		return s.call("session/new", map[string]any{"cwd": s.cwd, "mcpServers": s.mcpServers()})
@@ -1403,6 +1500,7 @@ func (s *acpSession) reportModels() error {
 		return nil
 	}
 	s.models.effort = s.efforts
+	s.models.images = s.promptImages
 	return s.stream.ReportModels(s.models)
 }
 

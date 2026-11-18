@@ -316,6 +316,13 @@ func (c *Client) BrowseList(
 	return response, err
 }
 
+func (c *Client) BrowseWrite(ctx context.Context, request BrowseWriteRequest) error {
+	var response struct{}
+	return c.callLimit(
+		ctx, http.MethodPost, BrowseWritePath, request, &response, true, 4096,
+	)
+}
+
 func (c *Client) BrowseRead(
 	ctx context.Context,
 	request BrowseReadRequest,

@@ -7,6 +7,16 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- The Thread composer can attach files and images. A **+** button, drag and
+  drop, and pasting an image add chips above the message. Images are sent as
+  image content when the harness says it can take them. Other files are
+  copied into the Capsule workspace and named by path. Size and type limits
+  fail with a short explanation, and image attach stays hidden when the
+  harness cannot take images. The transcript keeps the file's name and path,
+  not its bytes, and shows a chip after reload.
+
 ### Fixed
 
 - A release whose macOS desktop job is cancelled before a runner accepts it

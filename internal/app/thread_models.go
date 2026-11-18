@@ -17,6 +17,8 @@ import (
 type ThreadModelSummary struct {
 	Model  string
 	Effort string
+	// Images is true when the harness accepts image content.
+	Images bool
 }
 
 // summarizeThreadModels picks the labels of the current model and effort.
@@ -24,7 +26,7 @@ type ThreadModelSummary struct {
 // option's own label; a current model the harness does not list is named by
 // its ID.
 func summarizeThreadModels(set *adapterproto.ModelSet) ThreadModelSummary {
-	summary := ThreadModelSummary{Model: optionLabel(set.Current, set.Options)}
+	summary := ThreadModelSummary{Model: optionLabel(set.Current, set.Options), Images: set.Images}
 	if resolved := boundedLabel(set.Resolved); resolved != "" && summary.Model != "" {
 		summary.Model = resolved
 	}
@@ -32,6 +34,24 @@ func summarizeThreadModels(set *adapterproto.ModelSet) ThreadModelSummary {
 		summary.Effort = optionLabel(set.Effort.Current, set.Effort.Options)
 	}
 	return summary
+}
+
+// threadAcceptsImages reports whether the live session's latest models event
+// said the harness accepts image content. A session that has not said so does not.
+func (s *Service) threadAcceptsImages(ctx context.Context, thread domain.Thread) bool {
+	s.modelsMu.Lock()
+	summary, ok := s.models[thread.ID]
+	s.modelsMu.Unlock()
+	if ok {
+		return summary.Images
+	}
+	if _, err := s.ThreadAttention(ctx, thread); err != nil {
+		return false
+	}
+	s.attentionMu.Lock()
+	cached, found := s.attention[thread.ID]
+	s.attentionMu.Unlock()
+	return found && cached.models != nil && cached.models.Images
 }
 
 func optionLabel(current string, options []adapterproto.ModelOption) string {

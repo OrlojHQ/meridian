@@ -22,6 +22,8 @@ type modelSet struct {
 	// resolved names the model the current option runs when that option is
 	// an alias, reported only when the controller negotiated it.
 	resolved string
+	// images is true when the harness accepts image content.
+	images bool
 }
 
 func newModelSet() *modelSet {
@@ -85,6 +87,7 @@ func (m *modelSet) set() *adapterproto.ModelSet {
 	set := &adapterproto.ModelSet{
 		Current: m.current, Options: options,
 		Resolved: commandLine(m.resolved, adapterproto.MaxModelLabelBytes),
+		Images:   m.images,
 	}
 	if m.effort != nil && len(m.effort.options) != 0 {
 		efforts := m.effort.options[:min(len(m.effort.options), adapterproto.MaxEfforts)]
@@ -131,6 +134,9 @@ func (s *Stream) ReportModels(models *modelSet) error {
 	}
 	if !s.resolved {
 		set.Resolved = ""
+	}
+	if !s.images {
+		set.Images = false
 	}
 	return s.Write(adapterproto.Frame{
 		Protocol: adapterproto.Version, Type: adapterproto.KindModels,
