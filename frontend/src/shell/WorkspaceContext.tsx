@@ -391,6 +391,7 @@ export function WorkspaceContext({
   session = "",
   capabilities,
   initialTab,
+  scope,
 }: {
   capsuleId: string;
   pathname: string;
@@ -398,6 +399,8 @@ export function WorkspaceContext({
   capabilities?: Capabilities;
   /** Tab to open on mount, such as the one chosen from the collapsed rail. */
   initialTab?: ContextTab;
+  /** Names whose Capsule the tools show when it is not the page's own. */
+  scope?: string;
 }) {
   // A route change picks the tab for that route. Adjusting state during
   // render, rather than in an effect, keeps initialTab on the first render.
@@ -462,7 +465,8 @@ export function WorkspaceContext({
       : undefined;
 
   return (
-    <aside className="context-panel" aria-label="Capsule tools">
+    <aside className={`context-panel${scope ? " has-scope" : ""}`} aria-label="Capsule tools">
+      {scope && <p className="context-scope">{scope}</p>}
       <div className="context-tabs" role="tablist" aria-label="Capsule tools">
         {tabs.map(({ id, label, icon: TabIcon }) => {
           const counts = id === "changes" ? changes : undefined;

@@ -24,6 +24,8 @@ import {
   TEAM_SIGN_IN_PATH,
 } from "../components/Authentication";
 import { DeleteProjectDialog } from "../components/DeleteProjectDialog";
+import { openSubagentIds, useLinkedSubagents } from "../components/subagentTabs";
+import { safeInline } from "../components/threadText";
 import { GitHubReconnectBanner } from "../components/GitHubConnect";
 import { GatewayIndicator, useDesktopGateway } from "./GatewayIndicator";
 import { NewProjectDialog } from "../components/NewProjectDialog";
@@ -476,6 +478,26 @@ export function AppShell() {
     moment.data?.capsuleId ||
     timeline.data?.timeline.capsuleId ||
     "";
+  // A lead Capsule's page can show a subagent's Thread as a tab. The tools
+  // then follow that subagent's Capsule, and say so, so Changes and Files
+  // match the conversation in view.
+  const subagentTab =
+    Boolean(directCapsuleId) &&
+    openSubagentIds(new URLSearchParams(location.search)).includes(sessionId);
+  const tabThreads = useQuery({ ...queries.threads(directCapsuleId), enabled: subagentTab });
+  const tabLink = useLinkedSubagents(
+    directCapsuleId,
+    subagentTab ? tabThreads.data?.items : undefined,
+    subagentTab ? [sessionId] : [],
+  ).tabs[0];
+  const onSubagentTab = Boolean(tabLink);
+  const tabName = tabLink ? safeInline(tabLink.name) || "Subagent" : "";
+  const toolsCapsuleId = tabLink && !tabLink.capsuleRemoved ? tabLink.childCapsuleId : capsuleId;
+  const toolsScope = tabLink
+    ? tabLink.capsuleRemoved
+      ? `Lead Capsule. ${tabName}'s Capsule was removed.`
+      : `Subagent ${tabName}'s Capsule`
+    : undefined;
 
   const visibleItems = useMemo(() => {
     const query = filter.trim().toLowerCase();
@@ -500,12 +522,12 @@ export function AppShell() {
   const cliSession = useMemo(() => {
     if (!location.pathname.includes("/capsules/")) return false;
     const current = items.find((item) => item.capsule.id === capsuleId);
-    if (!current) return false;
+    if (!current || onSubagentTab) return false;
     const selected =
       current.sessions.find((session) => session.id === sessionId) ??
       defaultSession(current.sessions);
     return selected?.kind === "terminal";
-  }, [items, capsuleId, sessionId, location.pathname]);
+  }, [items, capsuleId, sessionId, location.pathname, onSubagentTab]);
   const toolsDecision = useRef("");
 
   // Navigating closes the phone sidebar. This must not depend on the working
@@ -999,7 +1021,9 @@ export function AppShell() {
           )}
           {contextOpen && (
             <WorkspaceContext
-              capsuleId={capsuleId}
+              key={toolsCapsuleId}
+              capsuleId={toolsCapsuleId}
+              scope={toolsScope}
               pathname={`${location.pathname}${location.hash}`}
               session={sessionId}
               capabilities={capabilities.data}

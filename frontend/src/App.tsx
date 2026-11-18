@@ -35,6 +35,7 @@ import type {
   RunEvent,
   RunPage,
   Thread,
+  ThreadLink,
   TimelineView,
 } from "./api/generated/types.gen";
 import { queries } from "./api/queries";
@@ -47,6 +48,14 @@ import { CapsuleProfilePanel, SetupChangedNote } from "./components/CapsuleProfi
 import { ShipPanel } from "./components/CreatePullRequest";
 import { DeliveryDecision } from "./components/DeliveryDecision";
 import { isRepositoryAccessFailure, isStarting } from "./components/startup";
+import {
+  capsuleSearch,
+  openSubagentIds,
+  SubagentTabsContext,
+  useLinkedSubagents,
+  type SubagentTabs,
+} from "./components/subagentTabs";
+import { safeInline } from "./components/threadText";
 import { WorkspaceSkeleton } from "./components/ui/loading";
 import {
   ThreadCreate,
@@ -57,7 +66,7 @@ import { PendingReviewNotice } from "./components/ReviewComments";
 import { Dialog } from "./components/ui/Dialog";
 import { Menu as ActionsMenu, type MenuItem as ActionsMenuItem } from "./components/ui/Menu";
 import { HarnessMark } from "./components/ui/HarnessMark";
-import { PlusIcon, ThreadIcon } from "./components/ui/Icons";
+import { CloseIcon, PlusIcon, ThreadIcon } from "./components/ui/Icons";
 import { StateBadge } from "./components/ui/StateBadge";
 import {
   ActivityDot,
@@ -66,6 +75,7 @@ import {
 } from "./shell/AppShell";
 import {
   capsuleSessions,
+  type ActivityGroup,
   defaultSession,
   destinationAfterCapsuleDelete,
   harnessName,
@@ -687,6 +697,75 @@ function PinnedSetupLine({
   return line ? <p className="capsule-setup-pin">{line}</p> : null;
 }
 
+const subagentActivity: Record<ThreadLink["phase"], ActivityGroup> = {
+  provisioning: "working",
+  working: "working",
+  idle: "idle",
+  awaiting_operator: "attention",
+  ended: "finished",
+  failed: "finished",
+};
+
+// A subagent opened from the lead's Subagents panel. It is marked as a
+// subagent so it is not mistaken for one of this Capsule's own sessions, and
+// its close button only hides the tab: the subagent keeps running.
+function SubagentTab({
+  link,
+  selected,
+  onSelect,
+  onClose,
+}: {
+  link: ThreadLink;
+  selected: boolean;
+  onSelect: () => void;
+  onClose: () => void;
+}) {
+  const name = safeInline(link.name) || "Subagent";
+  const closeLabel = `Close ${name} tab; the subagent keeps running`;
+  const tab = useRef<HTMLButtonElement>(null);
+  // A tab opened from the panel may land past the strip's scrolled edge.
+  useEffect(() => {
+    if (selected) tab.current?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  }, [selected]);
+  return (
+    <span className="session-tab-subagent" role="presentation">
+      <button
+        ref={tab}
+        type="button"
+        role="tab"
+        id={`session-tab-${link.childThreadId}`}
+        aria-selected={selected}
+        aria-controls="session-panel"
+        aria-label={`${name}, subagent`}
+        aria-keyshortcuts="Delete"
+        title={`Subagent ${name}. It runs in its own Capsule.`}
+        className={link.capsuleRemoved || link.archivedAt ? "archived" : undefined}
+        onClick={onSelect}
+        onKeyDown={(event) => {
+          if (event.key === "Delete") {
+            event.preventDefault();
+            onClose();
+          }
+        }}
+      >
+        <ActivityDot group={link.capsuleRemoved ? "finished" : subagentActivity[link.phase]} />
+        <HarnessMark harness={link.harness} />
+        <span>{name}</span>
+        <small className="session-tab-kind">Subagent</small>
+      </button>
+      <button
+        type="button"
+        className="session-tab-close"
+        aria-label={closeLabel}
+        title={closeLabel}
+        onClick={onClose}
+      >
+        <CloseIcon />
+      </button>
+    </span>
+  );
+}
+
 export function CapsuleDetail() {
   const { capsuleId = "" } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -740,6 +819,8 @@ export function CapsuleDetail() {
     refetchOnWindowFocus: false,
   });
   const requestedSession = searchParams.get("session") ?? "";
+  const requestedTabs = openSubagentIds(searchParams);
+  const subagents = useLinkedSubagents(capsuleId, threads.data?.items, requestedTabs);
   const titleThread =
     threads.data?.items.find((item) => item.id === requestedSession && item.state !== "deleted") ??
     threads.data?.items.find((item) => item.state !== "deleted" && item.state !== "archived");
@@ -774,16 +855,45 @@ export function CapsuleDetail() {
     requested !== "" &&
     requested !== NEW_SESSION &&
     requested !== TERMINAL_SESSION &&
+    !requestedTabs.includes(requested) &&
     !sessions.some((session) => session.id === requested || session.kind === "thread") &&
     (value.state === "Ready" || isStarting(value));
-  const selected =
-    (requested === NEW_SESSION && canCreateThread
-      ? NEW_SESSION
-      : sessions.find((session) => session.id === requested)?.id) ??
-    defaultSession(sessions)?.id ??
-    (canCreateThread && !awaitingThread ? NEW_SESSION : "");
+  // Subagent tabs show a linked subagent's Thread from its own Capsule. Until
+  // the lead's links load, a requested tab is neither shown nor dropped.
+  const subagentTabs = subagents.tabs;
+  const openTabs = subagents.pending ? requestedTabs : subagentTabs.map((link) => link.childThreadId);
+  const selectedSubagent = subagentTabs.find((link) => link.childThreadId === requested);
+  const awaitingSubagent = !selectedSubagent && subagents.pending && requestedTabs.includes(requested);
+  const selected = selectedSubagent
+    ? selectedSubagent.childThreadId
+    : awaitingSubagent
+      ? ""
+      : (requested === NEW_SESSION && canCreateThread
+          ? NEW_SESSION
+          : sessions.find((session) => session.id === requested)?.id) ??
+        defaultSession(sessions)?.id ??
+        (canCreateThread && !awaitingThread ? NEW_SESSION : "");
   const selectSession = (id: string) =>
-    setSearchParams({ session: id }, { replace: true });
+    setSearchParams(capsuleSearch(id, openTabs), { replace: true });
+  const capsulePath = `/ui/capsules/${encodeURIComponent(value.id)}`;
+  const tabsContext: SubagentTabs = {
+    capsuleId: value.id,
+    openHref: (child) =>
+      `${capsulePath}${capsuleSearch(child, openTabs.includes(child) ? openTabs : [...openTabs, child])}`,
+    sessionHref: (id) => `${capsulePath}${capsuleSearch(id, openTabs)}`,
+  };
+  // Closing a tab only hides it here; the subagent keeps running. The lead's
+  // session takes over when the closed tab was the one in view.
+  const closeSubagent = (link: ThreadLink) => {
+    const rest = openTabs.filter((id) => id !== link.childThreadId);
+    const lead = sessions.find((session) => session.id === link.parentThreadId)?.id ?? "";
+    const next = selected === link.childThreadId ? lead : requested;
+    setSearchParams(capsuleSearch(next, rest), { replace: true });
+    const focus = (next && next !== link.childThreadId ? next : "") || defaultSession(sessions)?.id;
+    if (focus) {
+      window.requestAnimationFrame(() => document.getElementById(`session-tab-${focus}`)?.focus());
+    }
+  };
   const projectName = projects.data?.items.find(
     (project) => project.id === value.projectId,
   )?.name;
@@ -795,7 +905,7 @@ export function CapsuleDetail() {
     capabilities.data?.harnessImages ?? [],
   );
   const chatSelected =
-    selected !== "" && selected !== TERMINAL_SESSION && selected !== NEW_SESSION;
+    (selected !== "" || awaitingSubagent) && selected !== TERMINAL_SESSION && selected !== NEW_SESSION;
   const cliSelected = selected === TERMINAL_SESSION;
   const selectedSession = sessions.find((session) => session.id === selected);
   const attention = headerAttention(value.state, selectedSession);
@@ -973,7 +1083,7 @@ export function CapsuleDetail() {
         document.body,
       )}
       <CapsuleChecks capsule={value} tree={inspection.data?.tree} />
-      {(sessions.length > 0 || canCreateThread) && (
+      {(sessions.length > 0 || canCreateThread || subagentTabs.length > 0) && (
         <div className="session-tabs" role="tablist" aria-label="Sessions">
           {sessions.map((session) => (
             <button
@@ -1007,6 +1117,15 @@ export function CapsuleDetail() {
               <PlusIcon />
             </button>
           )}
+          {subagentTabs.map((link) => (
+            <SubagentTab
+              key={link.childThreadId}
+              link={link}
+              selected={selected === link.childThreadId}
+              onSelect={() => selectSession(link.childThreadId)}
+              onClose={() => closeSubagent(link)}
+            />
+          ))}
         </div>
       )}
       <section
@@ -1033,7 +1152,11 @@ export function CapsuleDetail() {
             />
           </div>
         ) : selected ? (
-          <ThreadDetail key={selected} threadId={selected} />
+          <SubagentTabsContext.Provider value={tabsContext}>
+            <ThreadDetail key={selected} threadId={selected} />
+          </SubagentTabsContext.Provider>
+        ) : awaitingSubagent ? (
+          <WorkspaceSkeleton label="Loading subagent…" />
         ) : threads.isPending && structured ? (
           <WorkspaceSkeleton label="Loading sessions…" />
         ) : threads.isError ? (
