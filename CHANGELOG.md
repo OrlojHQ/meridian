@@ -9,6 +9,12 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Subagents can open as tabs on the lead Capsule's page. Open tabs survive
+  reload and stay open when you switch sessions. Closing a tab leaves the
+  subagent running. Changes, Preview, and Files follow the selected
+  subagent's Capsule and name whose tools they show; the page header and
+  pull request controls stay with the lead. Each subagent still links to
+  its own Capsule page.
 - Saved Stations keep a name and an address, with no cap. The launch screen
   and the tray switch by those names. The sidebar names the open Station and
   opens that picker; ⌘1–⌘9 (Ctrl+1–9 elsewhere) switch to the first nine. A
