@@ -326,7 +326,7 @@ func writeAttachment(workspace, relative string, content []byte) error {
 	}
 	defer unix.Close(root)
 	dir := root
-	for _, name := range parts[:3] {
+	for index, name := range parts[:3] {
 		next, openErr := ensureWorkspaceDir(dir, name)
 		if dir != root {
 			_ = unix.Close(dir)
@@ -335,6 +335,14 @@ func writeAttachment(workspace, relative string, content []byte) error {
 			return openErr
 		}
 		dir = next
+		// dir is now .meridian/attachments. Attachments are the operator's
+		// files, not project changes, so git ignores the whole tree.
+		if index == 1 {
+			if err := writeAttachmentIgnore(dir); err != nil {
+				_ = unix.Close(dir)
+				return err
+			}
+		}
 	}
 	if dir != root {
 		defer unix.Close(dir)
@@ -357,6 +365,31 @@ func writeAttachment(workspace, relative string, content []byte) error {
 		return err
 	}
 	return file.Sync()
+}
+
+// attachmentIgnore makes git skip every attachment, and this file itself, so
+// an attachment never shows as a worktree change. A deeper .gitignore takes
+// precedence over a project's own rules. Delivery also unstages the tree, so
+// a repository that tracks a file here cannot defeat it.
+const attachmentIgnore = "# Written by Meridian. Composer attachments are not project files.\n*\n"
+
+func writeAttachmentIgnore(directory int) error {
+	fd, err := unix.Openat(
+		directory, ".gitignore",
+		unix.O_WRONLY|unix.O_CREAT|unix.O_TRUNC|unix.O_CLOEXEC|unix.O_NOFOLLOW,
+		0o644,
+	)
+	if err != nil {
+		return err
+	}
+	file := os.NewFile(uintptr(fd), "attachment-ignore")
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		return errors.New("attachment ignore file is not a regular file")
+	}
+	_, err = file.WriteString(attachmentIgnore)
+	return err
 }
 
 func ensureWorkspaceDir(parent int, name string) (int, error) {

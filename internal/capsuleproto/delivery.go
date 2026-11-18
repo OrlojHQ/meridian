@@ -14,6 +14,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/OrlojHQ/meridian/internal/adapterproto"
 )
 
 const (
@@ -537,9 +539,19 @@ func deliveryWorktreeTree(ctx context.Context, workspace string) (string, error)
 func stageDeliveryWorkspace(
 	ctx context.Context, workspace string, environment []string,
 ) error {
-	_, err := deliveryGit(
+	if _, err := deliveryGit(
 		ctx, workspace, environment,
 		"add", "-A", "--", ".", ":(exclude).meridian-prepared",
+	); err != nil {
+		return err
+	}
+	// Composer attachments (ADR 0056) are the operator's files, not project
+	// changes. Their tree ignores itself, but a repository could track a file
+	// there, so the tree is reset to HEAD whatever the ignore rules say.
+	// Naming an ignored path in the add pathspec would make add fail.
+	_, err := deliveryGit(
+		ctx, workspace, environment,
+		"reset", "-q", "--", ":(top,literal)"+strings.TrimSuffix(adapterproto.AttachmentPrefix, "/"),
 	)
 	return err
 }

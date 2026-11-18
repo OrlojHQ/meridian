@@ -15,7 +15,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   copied into the Capsule workspace and named by path. Size and type limits
   fail with a short explanation, and image attach stays hidden when the
   harness cannot take images. The transcript keeps the file's name and path,
-  not its bytes, and shows a chip after reload.
+  not its bytes, and shows a chip after reload. Attachments stay out of
+  `git status` and are never included in a delivery commit.
 
 ### Fixed
 

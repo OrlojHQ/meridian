@@ -245,7 +245,7 @@ func harnessPrompt(text string, prepared []preparedAttachment) (string, error) {
 		b.WriteString("Files in the workspace:\n")
 		for _, file := range files {
 			b.WriteString("- ")
-			b.WriteString(file.Path)
+			b.WriteString(path.Join(adapterproto.AttachmentWorkspace, file.Path))
 			b.WriteByte('\n')
 		}
 		prompt = strings.TrimRight(b.String(), "\n")

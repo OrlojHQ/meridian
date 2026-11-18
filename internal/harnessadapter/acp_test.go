@@ -678,6 +678,21 @@ func TestACPImageBlocksFollowPromptCapabilities(t *testing.T) {
 		}
 	})
 
+	t.Run("harness in a subdirectory", func(t *testing.T) {
+		// A profile's workingDirectory can be a subdirectory. The attachment
+		// path is still relative to the workspace root.
+		nested := filepath.Join(capsuleWorkspace, "packages", "app")
+		if err := os.MkdirAll(nested, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.RemoveAll(filepath.Join(capsuleWorkspace, "packages")) })
+		t.Chdir(nested)
+		data, media, err := readWorkspaceImage(relative)
+		if err != nil || media != "image/png" || !bytes.Equal(data, encoded.Bytes()) {
+			t.Fatalf("read from a subdirectory = %q, %v", media, err)
+		}
+	})
+
 	t.Run("unsupported", func(t *testing.T) {
 		decoder, encoder, log, _ := runACPFixture(t, "no-images", ACPConfig{}, adapterproto.KindStart, "")
 		_ = readStatus(t, decoder, adapterproto.StatusStarting)

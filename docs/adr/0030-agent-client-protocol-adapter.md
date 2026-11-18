@@ -4,7 +4,7 @@
 - Date: 2026-11-07
 - Extends: ADRs 0013, 0026, and 0028
 - Supersedes: the `opencode-server` driver
-- Amended by: ADR 0032 (form-mode elicitation reaches the operator), ADR 0055 (image content blocks when the agent advertises them)
+- Amended by: ADR 0032 (form-mode elicitation reaches the operator), ADR 0056 (image content blocks when the agent advertises them)
 
 ## Context
 
@@ -48,7 +48,7 @@ group, and maps ACP v1 onto `meridian.adapter.v1`:
   agent offers it, else `session/load` with the replayed history dropped, else
   fails with `acp_resume_unsupported`.
 - Each user message is one `session/prompt` with one text block, plus an image
-  block for each image the agent advertised in `promptCapabilities` (ADR 0055).
+  block for each image the agent advertised in `promptCapabilities` (ADR 0056).
   Messages sent during a turn queue, up to 32.
 - Message chunks become deltas and one final message per ACP message ID; tool
   calls and updates become `tool_start` and `tool_result`; plans become a

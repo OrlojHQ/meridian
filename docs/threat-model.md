@@ -704,7 +704,7 @@ acknowledged replay does not resend. Supervisor deduplication is additional
 protection around the send/acknowledgement crash boundary. Startup recovery
 never auto-sends a transcript message.
 
-Composer attachments (ADR 0055) are not a second store of transcript bytes.
+Composer attachments (ADR 0056) are not a second store of transcript bytes.
 The request is size- and type-limited. The Station writes the file into the
 Capsule through a `capsuled` RPC that can create files only under
 `.meridian/attachments/` and records `capsule.workspace_write` with the
@@ -713,7 +713,11 @@ media type, size, and path. Image bytes are not written to SQLite, logs,
 events, or the adapter frame. An image content block is built inside the
 Capsule, and only when the harness advertised image support. A reload shows
 a chip rather than a thumbnail, because the picture is not retained beside
-the encrypted transcript.
+the encrypted transcript. Attachments must not leave the Capsule through a
+delivery: the attachment tree carries its own `.gitignore`, and delivery
+staging resets `.meridian/attachments` to HEAD so a repository's ignore
+rules or tracked files cannot push an operator's screenshot to the source
+host.
 
 A prompt crosses the Capsule boundary only from an explicit client mutation
 or from a coordination request accepted under an active grant (ADR 0029). The

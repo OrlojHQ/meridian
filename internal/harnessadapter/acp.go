@@ -560,7 +560,15 @@ func readWorkspaceImage(relative string) ([]byte, string, error) {
 	if !adapterproto.ValidAttachmentPath(relative) || filepath.IsAbs(relative) {
 		return nil, "", errors.New("attachment path is not in the workspace")
 	}
-	file, err := os.OpenFile(relative, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	// The path is relative to the workspace root, not to this process's
+	// directory: a profile's workingDirectory may be a subdirectory. The root
+	// keeps a link from carrying the read outside the workspace.
+	root, err := os.OpenRoot(capsuleWorkspace)
+	if err != nil {
+		return nil, "", errors.New("attachment could not be read")
+	}
+	defer root.Close()
+	file, err := root.OpenFile(relative, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
 	if err != nil {
 		return nil, "", errors.New("attachment could not be read")
 	}

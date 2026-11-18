@@ -15,6 +15,10 @@ const (
 	MaxAttachmentTotalBytes = 8 << 20
 	// AttachmentPrefix is the only workspace tree a composer attachment may occupy.
 	AttachmentPrefix = ".meridian/attachments/"
+	// AttachmentWorkspace is the Capsule workspace root that attachment paths
+	// are relative to. A harness may run in a subdirectory of it, so the
+	// prompt names attachments by absolute path.
+	AttachmentWorkspace = "/workspace"
 )
 
 // attachmentPath matches a station-chosen relative path: a 16-hex directory

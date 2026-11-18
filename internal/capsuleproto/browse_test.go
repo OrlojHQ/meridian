@@ -218,6 +218,59 @@ func TestBrowseWriteKeepsAttachmentsInsideTheirTree(t *testing.T) {
 	}
 }
 
+// An attachment is the operator's file, not a project change. It must not
+// make the worktree dirty or reach a delivery commit, even when the project
+// .gitignore tries to un-ignore it or the repository tracks a file there.
+func TestAttachmentsStayOutOfGitAndDelivery(t *testing.T) {
+	workspace := deliveryRepository(t)
+	if err := os.WriteFile(filepath.Join(workspace, ".gitignore"), []byte("!.meridian/\n!.meridian/**\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, workspace, "add", "--", ".gitignore")
+	gitRun(t, workspace, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
+		"commit", "--no-gpg-sign", "-m", "negate")
+	gitRun(t, workspace, "update-ref", "refs/remotes/origin/main", "HEAD")
+	client, closeServer := browseTestClient(t, workspace)
+	defer closeServer()
+	for _, path := range []string{
+		".meridian/attachments/0123456789abcdef/1-screen.png",
+		".meridian/attachments/0123456789abcdef/2-notes.txt",
+	} {
+		if err := client.BrowseWrite(context.Background(), BrowseWriteRequest{
+			Path: path, Content: []byte("private bytes"),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if status := gitOutput(t, workspace, "status", "--porcelain", "--untracked-files=all"); status != "" {
+		t.Fatalf("attachments show in git status:\n%s", status)
+	}
+	state, err := inspectDeliveryState(context.Background(), workspace)
+	if err != nil || state.Dirty {
+		t.Fatalf("attachments made the worktree dirty: %#v, %v", state, err)
+	}
+
+	// Even with a tracked file in the tree, staging leaves the tree as HEAD has it.
+	if err := os.WriteFile(filepath.Join(workspace, ".meridian", "attachments", "tracked.txt"), []byte("v1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, workspace, "add", "-f", "--", ".meridian/attachments/tracked.txt")
+	gitRun(t, workspace, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
+		"commit", "--no-gpg-sign", "-m", "tracked")
+	if err := os.WriteFile(filepath.Join(workspace, ".meridian", "attachments", ".gitignore"), []byte("!*\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "src.txt"), []byte("project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := stageDeliveryWorkspace(context.Background(), workspace, nil); err != nil {
+		t.Fatal(err)
+	}
+	if staged := gitOutput(t, workspace, "diff", "--cached", "--name-only"); staged != "src.txt" {
+		t.Fatalf("staged = %q, want only src.txt", staged)
+	}
+}
+
 func browseTestClient(t *testing.T, workspace string) (*Client, func()) {
 	t.Helper()
 	server, err := NewServer(ServerConfig{Token: testToken, Workspace: workspace})

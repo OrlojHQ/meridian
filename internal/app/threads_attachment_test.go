@@ -77,7 +77,7 @@ func TestThreadAttachmentsCopyFilesAndKeepBytesOutOfTheTranscript(t *testing.T) 
 	runtime.mu.Lock()
 	frame := runtime.frames[string(sent.MessageID)]
 	runtime.mu.Unlock()
-	if !strings.Contains(frame.Content, "see the notes") || !strings.Contains(frame.Content, "Files in the workspace:\n- .meridian/attachments/") {
+	if !strings.Contains(frame.Content, "see the notes") || !strings.Contains(frame.Content, "Files in the workspace:\n- /workspace/.meridian/attachments/") {
 		t.Fatalf("harness prompt = %q", frame.Content)
 	}
 	if bytes.Contains(frame.Metadata, notes) || bytes.Contains([]byte(frame.Content), notes) {
