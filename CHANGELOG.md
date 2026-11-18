@@ -56,6 +56,11 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   reports `aheadCount`, `unpushedCount`, and `hasDeliverableChanges`, and
   the header reads them again while a turn is writing and once the turn
   finishes.
+- The model picker hides a `meridian/` provider prefix on a reported model
+  label, the same way it hides `meridian · `. Other providers keep their
+  prefix, and a list from several providers still groups by provider. A
+  slash inside a model's own name, such as `Model X (4bit/8bit)`, does not
+  make a group. Search still matches the full id and label.
 
 ## [0.11.5] - 2026-11-18
 

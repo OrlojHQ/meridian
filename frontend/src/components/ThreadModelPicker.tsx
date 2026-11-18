@@ -47,32 +47,78 @@ function pendingLabel(set: ThreadOptionSet | undefined, requested: string | unde
   return set.options.find((option) => option.id === requested)?.label ?? requested;
 }
 
-// Groups keep the provider name the harness reported. A gateway id is not a
-// provider the operator chose, so it is not shown as its own group.
-function visibleModelLabel(label: string) {
-  const split = label.indexOf(" · ");
-  if (split <= 0) return label;
-  const group = label.slice(0, split);
-  if (group.toLowerCase() === "meridian") return label.slice(split + 3);
-  return label;
+// A reported label may name its provider as "provider · model" or
+// "provider/model". The gateway id Meridian writes is not a provider the
+// operator chose, so that prefix is hidden. Other providers stay, as the
+// group title and on the selected-model button. Search still uses the
+// reported label.
+type ReportedModelLabel = { provider: string; name: string; separator: "dot" | "slash" };
+
+// A slash is a provider separator only at the start of the label. One inside
+// brackets, or with a space beside it, belongs to the model's own name, as in
+// "Model X (4bit/8bit)" or "Fast / cheap".
+function providerSlash(label: string) {
+  const slash = label.indexOf("/");
+  if (slash <= 0 || slash === label.length - 1) return -1;
+  if (/[([{]/.test(label.slice(0, slash))) return -1;
+  if (/\s/.test(label[slash - 1] ?? "") || /\s/.test(label[slash + 1] ?? "")) return -1;
+  return slash;
 }
 
-function modelGroups(options: ThreadModelOption[]) {
+function splitReportedModelLabel(label: string): ReportedModelLabel | undefined {
+  const dot = label.indexOf(" · ");
+  const slash = providerSlash(label);
+  if (dot > 0 && (slash < 0 || dot < slash)) {
+    const name = label.slice(dot + " · ".length);
+    return name ? { provider: label.slice(0, dot), name, separator: "dot" } : undefined;
+  }
+  if (slash > 0) {
+    return { provider: label.slice(0, slash), name: label.slice(slash + 1), separator: "slash" };
+  }
+  return undefined;
+}
+
+function isMeridianProvider(provider: string) {
+  return provider.toLowerCase() === "meridian";
+}
+
+function visibleModelLabel(label: string) {
+  const split = splitReportedModelLabel(label);
+  if (!split || !isMeridianProvider(split.provider)) return label;
+  return split.name;
+}
+
+// "provider · model" always names a provider. "provider/model" groups only
+// when another option names the same provider, so a lone label with a slash
+// in its own name is shown whole rather than under a made-up group. Providers
+// are counted over every reported option, so a search that leaves one match
+// does not change how it is shown.
+function modelGroups(options: ThreadModelOption[], all: ThreadModelOption[] = options) {
+  const splits = options.map((option) => splitReportedModelLabel(option.label));
+  const providers = new Map<string, number>();
+  for (const option of all) {
+    const split = splitReportedModelLabel(option.label);
+    if (split) providers.set(split.provider, (providers.get(split.provider) ?? 0) + 1);
+  }
   const groups: { title: string; options: ThreadModelOption[] }[] = [];
-  for (const option of options) {
-    const split = option.label.indexOf(" · ");
+  options.forEach((option, index) => {
+    const split = splits[index];
     let title = "";
     let label = option.label;
-    if (split > 0) {
-      title = option.label.slice(0, split);
-      label = option.label.slice(split + 3);
-      if (title.toLowerCase() === "meridian") title = "";
+    const grouped =
+      split &&
+      (split.separator === "dot" ||
+        isMeridianProvider(split.provider) ||
+        (providers.get(split.provider) ?? 0) > 1);
+    if (split && grouped) {
+      title = isMeridianProvider(split.provider) ? "" : split.provider;
+      label = split.name;
     }
     const shown = { ...option, label };
     const current = groups[groups.length - 1];
     if (current && current.title === title) current.options.push(shown);
     else groups.push({ title, options: [shown] });
-  }
+  });
   return groups;
 }
 
@@ -290,7 +336,7 @@ export function ThreadModelPicker({
           <div className="composer-model-scroll">
             {models.options.length > 0 &&
               (shownModels.length > 0 ? (
-                modelGroups(shownModels).map((group) => (
+                modelGroups(shownModels, models.options).map((group) => (
                   <OptionGroup
                     key={group.title || "models"}
                     title={group.title || "Model · applies from the next turn"}
