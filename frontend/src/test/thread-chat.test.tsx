@@ -364,6 +364,93 @@ describe("Thread chat view", () => {
   });
 });
 
+describe("Thread transcript scroll", () => {
+  const shellCss = readFileSync(`${styleDirectory}/../styles/shell.css`, "utf8");
+
+  function declarations(css: string, selector: string) {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(
+      `(?:^|[\\s,{])${escaped}(?![\\w-])\\s*(?:,[^{]*)?\\{([^}]*)\\}`,
+      "gm",
+    );
+    const bodies = [...css.matchAll(re)].map((match) => match[1]);
+    expect(bodies.length, selector).toBeGreaterThan(0);
+    return bodies.join("\n");
+  }
+
+  it("scrolls only the transcript and keeps a long tool line inside the column", async () => {
+    const code = `const s = await tools.lookup(${"x".repeat(240)})`;
+    const summary = `{"code":"${code}"}`;
+    const t = transcript();
+    t.user("run it");
+    t.final("a1", "Shown in a block.\n\n```\n" + code + "\n```");
+    t.tool("call-1", "execute", summary);
+    t.result("call-1", "ok");
+    t.status("idle");
+    renderThread(t.blocks);
+    installComposerCss();
+
+    const line = await screen.findByText(summary);
+    expect(line).toHaveClass("tool-summary");
+    const summaryStyle = getComputedStyle(line);
+    expect(summaryStyle.overflow).toBe("hidden");
+    expect(summaryStyle.textOverflow).toBe("ellipsis");
+    expect(summaryStyle.whiteSpace).toBe("nowrap");
+    expect(summaryStyle.minWidth).toBe("0px");
+
+    const scroll = line.closest(".thread-scroll");
+    expect(scroll).not.toBeNull();
+    const scrollStyle = getComputedStyle(scroll!);
+    expect(scrollStyle.overflowX).toBe("hidden");
+    expect(scrollStyle.overflowY).toBe("auto");
+    const frame = line.closest(".thread-scroll-frame");
+    expect(getComputedStyle(frame!).overflow).toBe("hidden");
+    const column = line.closest(".thread-workspace");
+    expect(getComputedStyle(column!).overflow).toBe("hidden");
+    expect(getComputedStyle(column!).overflowY).not.toBe("auto");
+
+    const pre = await waitFor(() => {
+      const block = document.querySelector(".markdown pre");
+      expect(block).not.toBeNull();
+      return block!;
+    });
+    const preStyle = getComputedStyle(pre);
+    expect(preStyle.overflowX).toBe("auto");
+    expect(preStyle.maxWidth).toBe("100%");
+
+    const transcriptRule = declarations(composerCss, ".thread-scroll");
+    expect(transcriptRule).toMatch(/overflow-x:\s*hidden/);
+    expect(transcriptRule).toMatch(/overflow-y:\s*auto/);
+    expect(transcriptRule).not.toMatch(/overflow:\s*auto/);
+    expect(declarations(composerCss, ".thread-scroll-frame")).toMatch(/overflow:\s*hidden/);
+    expect(declarations(composerCss, ".thread-scroll-frame")).toMatch(/min-height:\s*0/);
+    expect(declarations(composerCss, ".thread-scroll-frame")).toMatch(/min-width:\s*0/);
+    expect(declarations(composerCss, ".thread-workspace.thread-chat")).toMatch(/overflow:\s*hidden/);
+    expect(declarations(composerCss, ".thread-workspace.thread-chat")).toMatch(/min-width:\s*0/);
+    expect(declarations(composerCss, ".thread-workspace.thread-chat")).toMatch(/min-height:\s*0/);
+    expect(declarations(composerCss, ".capsule-workspace.chat-session")).toMatch(/overflow:\s*hidden/);
+    expect(declarations(composerCss, ".capsule-workspace.cli-session")).toMatch(/overflow:\s*hidden/);
+    expect(declarations(composerCss, ".session-panel")).toMatch(/overflow:\s*hidden/);
+    expect(declarations(composerCss, ".session-panel")).not.toMatch(/overflow:\s*auto/);
+    expect(declarations(composerCss, ".tool-line")).toMatch(/min-width:\s*0/);
+    expect(declarations(composerCss, ".tool-line")).toMatch(/overflow:\s*hidden/);
+    expect(declarations(composerCss, ".markdown pre")).toMatch(/overflow-x:\s*auto/);
+    expect(declarations(composerCss, ".markdown pre")).toMatch(/max-width:\s*100%/);
+
+    const outer = declarations(shellCss, ".workspace-main:has(> .capsule-workspace.chat-session)");
+    expect(outer).toMatch(/overflow:\s*hidden/);
+    expect(outer).not.toMatch(/overflow:\s*auto/);
+    expect(declarations(shellCss, ".workspace-main:has(> .capsule-workspace.cli-session)")).toMatch(
+      /overflow:\s*hidden/,
+    );
+    expect(declarations(shellCss, ".workspace-main:has(> .thread-workspace.thread-chat)")).toMatch(
+      /overflow:\s*hidden/,
+    );
+    // Document pages keep the page scroller.
+    expect(declarations(shellCss, ".workspace-main")).toMatch(/overflow:\s*auto/);
+  });
+});
+
 const reportedCommands = [
   { name: "compact", description: "Summarize the conversation", argumentHint: "<instructions>", kind: "prompt" as const },
   { name: "review", description: "Review a pull request", kind: "prompt" as const },
