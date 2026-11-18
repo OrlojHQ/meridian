@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http/httptest"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -72,6 +73,9 @@ func TestWorkspaceShellStartsAnswersAndOmitsSecrets(t *testing.T) {
 	}
 }
 
+// terminalControl matches ANSI CSI and OSC sequences.
+var terminalControl = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)`)
+
 func TestWorkspaceShellKeepsBurstOutputForASlowViewer(t *testing.T) {
 	workspace := filepath.Join(t.TempDir(), "workspace")
 	server, err := NewServer(ServerConfig{Token: testToken, Workspace: workspace})
@@ -93,7 +97,9 @@ func TestWorkspaceShellKeepsBurstOutputForASlowViewer(t *testing.T) {
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "")
 	const lines = 20000
-	command := "stty -echo; seq 1 " + strconv.Itoa(lines) + "; echo BURST-$((1+1))\n"
+	// The markers are computed by the shell so the echoed command line does
+	// not contain them; only real output does.
+	command := "stty -echo; echo BEGIN-$((0+1)); seq 1 " + strconv.Itoa(lines) + "; echo BURST-$((1+1))\n"
 	if err := conn.Write(ctx, websocket.MessageBinary, []byte(command)); err != nil {
 		t.Fatal(err)
 	}
@@ -109,8 +115,17 @@ func TestWorkspaceShellKeepsBurstOutputForASlowViewer(t *testing.T) {
 			output.Write(payload)
 		}
 	}
+	// Interactive bash on Linux writes terminal control sequences (such as
+	// bracketed-paste mode) around command output, so only the text between
+	// the markers is counted, with escape sequences removed.
+	text := output.String()
+	start := strings.Index(text, "BEGIN-1")
+	end := strings.Index(text, "BURST-2")
+	if start < 0 || end < start {
+		t.Fatalf("markers missing from %d bytes of output", len(text))
+	}
 	seen := map[int]bool{}
-	for _, line := range strings.Split(output.String(), "\n") {
+	for _, line := range strings.Split(terminalControl.ReplaceAllString(text[start+len("BEGIN-1"):end], ""), "\n") {
 		if value, err := strconv.Atoi(strings.TrimSpace(line)); err == nil {
 			seen[value] = true
 		}
