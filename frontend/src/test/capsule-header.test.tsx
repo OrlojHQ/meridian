@@ -86,6 +86,45 @@ function show(session = "thread-1") {
   );
 }
 
+const savedAt = "2026-11-10T09:00:00Z";
+const pin = {
+  setupId: "setup-1",
+  setupName: "Saved setup",
+  revision: "rev-1",
+  savedAt,
+};
+
+function profile(partial: Partial<ProfileDiagnostic> & Pick<ProfileDiagnostic, "matchesProfile">): ProfileDiagnostic {
+  return {
+    ...behind,
+    harnesses: [],
+    commitAuthor: {
+      source: "capsule",
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      profileName: "Ada Lovelace",
+      profileEmail: "ada@example.com",
+    },
+    ...partial,
+  };
+}
+
+function harness(partial: Partial<ProfileDiagnostic["harnesses"][number]>) {
+  return {
+    harness: capsule.harness ?? "saved",
+    pinned: pin,
+    current: pin,
+    projectOverride: "",
+    filesAdded: [],
+    filesRemoved: [],
+    hasReport: true,
+    exclusions: [],
+    warnings: [],
+    connection: { granted: false, revoked: false, needsSignIn: false },
+    ...partial,
+  };
+}
+
 function ready(options?: {
   name?: string;
   turn?: Thread["turn"];
@@ -96,6 +135,7 @@ function ready(options?: {
   branch?: string;
   pullRequest?: boolean;
   matches?: boolean;
+  diagnostic?: ProfileDiagnostic;
 }) {
   vi.spyOn(api, "capsule").mockResolvedValue({ ...capsule, name: options?.name ?? capsule.name });
   vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
@@ -160,10 +200,12 @@ function ready(options?: {
         }]
       : [],
   });
-  vi.spyOn(api, "capsuleProfileDiagnostic").mockResolvedValue({
-    ...behind,
-    matchesProfile: options?.matches ?? false,
-  });
+  vi.spyOn(api, "capsuleProfileDiagnostic").mockResolvedValue(
+    options?.diagnostic ?? {
+      ...behind,
+      matchesProfile: options?.matches ?? false,
+    },
+  );
 }
 
 afterEach(() => {
@@ -215,6 +257,61 @@ describe("Capsule header", () => {
     show();
     await screen.findByRole("heading", { name: "Fix the header so the title can be read" });
     expect(screen.queryByText("Your setup changed.")).not.toBeInTheDocument();
+  });
+
+  it("hides the update note when pins match and the import report has warnings", async () => {
+    ready({
+      delivery: false,
+      diagnostic: profile({
+        matchesProfile: true,
+        harnesses: [harness({ warnings: [{ path: "settings/local.json", reason: "Absolute path kept" }] })],
+      }),
+    });
+    show();
+    await screen.findByRole("heading", { name: "Fix the header so the title can be read" });
+    expect(screen.queryByText("Your setup changed.")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Capsule actions" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Setup details" }));
+    const dialog = await screen.findByRole("dialog", { name: "Setup details" });
+    expect(dialog).toHaveTextContent("This Capsule matches your current profile; some files were kept with a warning when it was imported.");
+    expect(dialog).toHaveTextContent("settings/local.json");
+    expect(dialog).not.toHaveTextContent("This Capsule differs from your current profile:");
+    expect(screen.queryByRole("button", { name: "Update this Capsule to my current profile" })).not.toBeInTheDocument();
+  });
+
+  it("shows the update note when a pinned revision differs", async () => {
+    ready({
+      delivery: false,
+      diagnostic: profile({
+        matchesProfile: false,
+        harnesses: [harness({
+          current: { ...pin, revision: "rev-2", savedAt: "2026-11-12T09:00:00Z" },
+          warnings: [{ path: "settings/local.json", reason: "Absolute path kept" }],
+        })],
+      }),
+    });
+    show();
+    expect(await screen.findByText("Your setup changed.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Update?" })).toBeInTheDocument();
+  });
+
+  it("shows the update note when the commit identity differs", async () => {
+    ready({
+      delivery: false,
+      diagnostic: profile({
+        matchesProfile: false,
+        commitAuthor: {
+          source: "capsule",
+          name: "Ada Lovelace",
+          email: "ada@example.com",
+          profileName: "Ada King",
+          profileEmail: "ada@example.com",
+        },
+      }),
+    });
+    show();
+    expect(await screen.findByText("Your setup changed.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Update?" })).toBeInTheDocument();
   });
 
   it("hides Create PR when delivery is unsupported or there is nothing to send", async () => {

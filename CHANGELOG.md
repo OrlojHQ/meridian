@@ -14,6 +14,10 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   that job never started and its annotation says it was not acquired. A job
   that received a runner and then failed stays failed, and the desktop
   manifest job runs again with the retried build.
+- The Capsule header no longer asks to update a setup when the pinned
+  revision and commit identity already match the profile. Files an import
+  left out, or kept with a warning, stay listed in Setup details and no
+  longer keep that banner up.
 
 ## [0.11.5] - 2026-11-18
 

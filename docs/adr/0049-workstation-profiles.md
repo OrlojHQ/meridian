@@ -391,10 +391,12 @@ whose reports are hostile. It returns typed rows:
 
 The response carries no file contents and no credential values. It is
 owner-only and `no-store`, because the report contains config key paths and
-laptop paths. The response says "matches your profile" only when the pin is
-current and no warning or exclusion is outstanding. It never says the
-Capsule matches the laptop, since the control plane has not seen the laptop
-since the last import.
+laptop paths. The response says the Capsule matches the profile when every pin is what a
+new Capsule would pin and the commit identity matches. Exclusions and
+warnings from the import stay on the harness rows; they do not by themselves
+mean the Capsule differs, because updating would pin the same revision. It
+never says the Capsule matches the laptop, since the control plane has not
+seen the laptop since the last import.
 
 Repository files such as `AGENTS.md`, `CLAUDE.md`, and `.mcp.json` remain the
 clone's business. Meridian does not merge them with the profile. The
