@@ -1,0 +1,138 @@
+name: release-retry
+
+# The release workflow's macOS desktop job is sometimes cancelled before a
+# hosted runner accepts it: no runner name, no steps, and an annotation that
+# the job was not acquired. The run then fails, and "Publish desktop update
+# manifest and checksums" is skipped because that job needs the macOS job.
+#
+# This reruns the failed jobs in that case only. Rerunning failed jobs also
+# reruns jobs that depend on them, and jobs that already succeeded keep their
+# outputs for the new attempt:
+# https://docs.github.com/en/actions/how-tos/manage-workflow-runs/re-run-workflows-and-jobs
+# A job that received a runner and then failed is not rerun.
+#
+# workflow_run uses the file on the default branch, so this does nothing
+# until that branch has it. A completed re-run fires this workflow again.
+# The requested activity does not fire for a re-run. Attempts at the cap
+# are left for a person.
+
+on:
+  workflow_run:
+    workflows: ["release"]
+    types: [completed]
+
+# actions: write reruns failed jobs. checks: read loads the job annotation.
+# contents: read checks out the decision script from the default branch.
+permissions:
+  actions: write
+  checks: read
+  contents: read
+
+jobs:
+  retry-unacquired-macos:
+    name: Retry unacquired macOS release job
+    if: ${{ github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'cancelled' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # github.sha for workflow_run is the default branch, not the release tag.
+      - name: Checkout the decision script
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Rerun when the macOS job never received a runner
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_PROMPT_DISABLED: "1"
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          WORKFLOW_PATH: ${{ github.event.workflow_run.path }}
+          WORKFLOW_EVENT: ${{ github.event.workflow_run.event }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          MAX_ATTEMPTS: "3"
+          MACOS_JOB_NAME: "Publish macOS desktop app"
+        run: |
+          set -euo pipefail
+          echo "Release run ${RUN_ID} attempt ${RUN_ATTEMPT} (${WORKFLOW_EVENT} ${WORKFLOW_PATH})"
+          echo "URL: ${RUN_URL}"
+
+          if [[ "${WORKFLOW_PATH}" != ".github/workflows/release.yml" ]]; then
+            echo "Skip: triggering workflow is ${WORKFLOW_PATH}."
+            exit 0
+          fi
+          if [[ "${WORKFLOW_EVENT}" != "push" ]]; then
+            echo "Skip: release run was started by ${WORKFLOW_EVENT}, not a tag push."
+            exit 0
+          fi
+          if [[ ! "${RUN_ID}" =~ ^[0-9]+$ ]]; then
+            echo "Run id is not numeric." >&2
+            exit 1
+          fi
+          if [[ ! "${RUN_ATTEMPT}" =~ ^[0-9]+$ ]]; then
+            echo "Run attempt is not numeric." >&2
+            exit 1
+          fi
+          if [[ ! "${GH_REPO}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+            echo "Repository name is unexpected." >&2
+            exit 1
+          fi
+
+          live_status=$(gh api "/repos/${GH_REPO}/actions/runs/${RUN_ID}" --jq '.status')
+          live_attempt=$(gh api "/repos/${GH_REPO}/actions/runs/${RUN_ID}" --jq '.run_attempt')
+          if [[ "${live_status}" != "completed" || "${live_attempt}" != "${RUN_ATTEMPT}" ]]; then
+            echo "Skip: run ${RUN_ID} is attempt ${live_attempt} (${live_status}); this event is attempt ${RUN_ATTEMPT}."
+            exit 0
+          fi
+
+          workdir=$(mktemp -d)
+          trap 'rm -rf "$workdir"' EXIT
+
+          gh api --paginate \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/${GH_REPO}/actions/runs/${RUN_ID}/attempts/${RUN_ATTEMPT}/jobs?per_page=100" \
+            --jq '.jobs[]' | jq -s '.' >"${workdir}/jobs.json"
+
+          prefix="https://api.github.com/repos/${GH_REPO}/check-runs/"
+          check_url=$(jq -r --arg name "${MACOS_JOB_NAME}" '
+            [ .[] | select(.name == $name) | .check_run_url // empty ]
+            | if length == 1 then .[0] else "" end
+          ' "${workdir}/jobs.json")
+          if [[ -n "${check_url}" ]]; then
+            rest="${check_url#"${prefix}"}"
+            if [[ "${check_url}" != "${prefix}"* || ! "${rest}" =~ ^[0-9]+$ ]]; then
+              echo "Refusing unexpected check run URL." >&2
+              exit 1
+            fi
+            gh api --paginate \
+              -H "Accept: application/vnd.github+json" \
+              "/repos/${GH_REPO}/check-runs/${rest}/annotations?per_page=100" \
+              --jq '.[]' | jq -s '.' >"${workdir}/annotations.json"
+          else
+            echo '[]' >"${workdir}/annotations.json"
+          fi
+
+          decision=$(scripts/retry-unacquired-release-job.sh "${workdir}/jobs.json" "${workdir}/annotations.json")
+          echo "Decision: ${decision}"
+          case "${decision}" in
+            rerun)
+              echo "Requesting rerun of failed jobs for run ${RUN_ID}."
+              echo "Jobs that depend on the macOS desktop job are included."
+              echo "Publish desktop update manifest and checksums was skipped and runs again."
+              echo "Jobs that already succeeded are not run again, and their artifacts stay on this run."
+              gh run rerun "${RUN_ID}" --failed --repo "${GH_REPO}"
+              echo "Rerun requested. The next attempt is $((RUN_ATTEMPT + 1))."
+              ;;
+            skip)
+              echo "Left the release run as it is."
+              ;;
+            cap)
+              echo "::warning title=Release retry cap::The macOS desktop job had no runner on attempt ${RUN_ATTEMPT}. Automatic retries stop at ${MAX_ATTEMPTS} attempts."
+              ;;
+            *)
+              echo "Unexpected decision: ${decision}" >&2
+              exit 1
+              ;;
+          esac

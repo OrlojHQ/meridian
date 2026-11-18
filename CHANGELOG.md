@@ -7,6 +7,14 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- A release whose macOS desktop job is cancelled before a runner accepts it
+  is retried automatically, up to three attempts. The retry runs only when
+  that job never started and its annotation says it was not acquired. A job
+  that received a runner and then failed stays failed, and the desktop
+  manifest job runs again with the retried build.
+
 ## [0.11.5] - 2026-11-18
 
 ### Security

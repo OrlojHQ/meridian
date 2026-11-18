@@ -48,6 +48,15 @@ jobs:
           sh -n scripts/install-desktop-test.sh
           shellcheck -s sh scripts/install-desktop.sh scripts/install-desktop-test.sh
           scripts/install-desktop-test.sh
+          # This job already checks the other release shell scripts.
+          if ! command -v jq >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y jq
+          fi
+          bash -n scripts/retry-unacquired-release-job.sh
+          bash -n scripts/retry-unacquired-release-job-test.sh
+          shellcheck -s bash scripts/retry-unacquired-release-job.sh scripts/retry-unacquired-release-job-test.sh
+          scripts/retry-unacquired-release-job-test.sh
 
       - name: Setup Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
