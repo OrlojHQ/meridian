@@ -705,9 +705,11 @@ function route(pathname: string): unknown {
           event: {
             type: "models",
             models: {
-              current: "alpha",
+              current: "fast",
               options: [
-                { id: "alpha", label: "Work proxy · Alpha" },
+                { id: "fast", label: "meridian/Fast 4.5 (US)" },
+                { id: "strong", label: "meridian/Strong 4.8 (EU)" },
+                { id: "alpha", label: "Work proxy/Alpha" },
                 { id: "beta", label: "Work proxy · Beta" },
               ],
               ...(shot === "effort"
@@ -845,6 +847,15 @@ class IdleSocket extends EventTarget {
 }
 
 export function installShotFixture() {
+  // A screenshot URL can pin the theme (?theme=dark) before the app reads it.
+  const theme = new URLSearchParams(window.location.search).get("theme");
+  if (theme === "dark" || theme === "light") {
+    try {
+      localStorage.setItem("meridian.theme", theme);
+    } catch {
+      // The view still follows the stored or system theme.
+    }
+  }
   const nativeFetch = window.fetch.bind(window);
   const NativeSocket = window.WebSocket;
   // Everything except the dev server's own files is answered here, so a

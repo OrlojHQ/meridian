@@ -47,26 +47,49 @@ function pendingLabel(set: ThreadOptionSet | undefined, requested: string | unde
   return set.options.find((option) => option.id === requested)?.label ?? requested;
 }
 
-// Groups keep the provider name the harness reported. A gateway id is not a
-// provider the operator chose, so it is not shown as its own group.
+// A reported label may name its provider as "provider · model" or
+// "provider/model". The gateway id Meridian writes is not a provider the
+// operator chose, so that prefix is hidden. Other providers stay, as the
+// group title and on the selected-model button. Search still uses the
+// reported label.
+function splitReportedModelLabel(label: string): { provider: string; name: string } | undefined {
+  const dot = label.indexOf(" · ");
+  const slash = label.indexOf("/");
+  let index = -1;
+  let width = 0;
+  if (dot > 0 && (slash <= 0 || dot < slash)) {
+    index = dot;
+    width = " · ".length;
+  } else if (slash > 0) {
+    index = slash;
+    width = 1;
+  }
+  if (index <= 0) return undefined;
+  const provider = label.slice(0, index);
+  const name = label.slice(index + width);
+  if (!provider || !name) return undefined;
+  return { provider, name };
+}
+
+function isMeridianProvider(provider: string) {
+  return provider.toLowerCase() === "meridian";
+}
+
 function visibleModelLabel(label: string) {
-  const split = label.indexOf(" · ");
-  if (split <= 0) return label;
-  const group = label.slice(0, split);
-  if (group.toLowerCase() === "meridian") return label.slice(split + 3);
-  return label;
+  const split = splitReportedModelLabel(label);
+  if (!split || !isMeridianProvider(split.provider)) return label;
+  return split.name;
 }
 
 function modelGroups(options: ThreadModelOption[]) {
   const groups: { title: string; options: ThreadModelOption[] }[] = [];
   for (const option of options) {
-    const split = option.label.indexOf(" · ");
+    const split = splitReportedModelLabel(option.label);
     let title = "";
     let label = option.label;
-    if (split > 0) {
-      title = option.label.slice(0, split);
-      label = option.label.slice(split + 3);
-      if (title.toLowerCase() === "meridian") title = "";
+    if (split) {
+      title = isMeridianProvider(split.provider) ? "" : split.provider;
+      label = split.name;
     }
     const shown = { ...option, label };
     const current = groups[groups.length - 1];

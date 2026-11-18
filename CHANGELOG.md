@@ -14,6 +14,10 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   that job never started and its annotation says it was not acquired. A job
   that received a runner and then failed stays failed, and the desktop
   manifest job runs again with the retried build.
+- The model picker hides a `meridian/` provider prefix on a reported model
+  label, the same way it hides `meridian · `. Other providers keep their
+  prefix, and a list from several providers still groups by provider. Search
+  still matches the full id and label.
 
 ## [0.11.5] - 2026-11-18
 

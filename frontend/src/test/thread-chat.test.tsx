@@ -486,6 +486,77 @@ describe("Model picker", () => {
     ]);
   });
 
+  it("hides a meridian provider prefix in both label forms and keeps other providers", async () => {
+    const t = transcript();
+    const options = [
+      { id: "fast-us", label: "meridian/Fast 4.5 (US)", description: "Quick" },
+      { id: "strong-eu", label: "MERIDIAN/Strong 4.8 (EU)" },
+      { id: "raw", label: "meridian · raw-id" },
+      { id: "work/alpha", label: "Work proxy/Alpha", description: "Routed" },
+      { id: "work/beta", label: "Work proxy · Beta" },
+      ...Array.from({ length: 4 }, (_, index) => ({ id: `extra-${index}`, label: `Extra ${index}` })),
+    ];
+    t.models({ current: "fast-us", options });
+    const user = userEvent.setup();
+    renderThread(t.blocks);
+    await user.click(await screen.findByRole("button", { name: "Model: Fast 4.5 (US)" }));
+    const menu = screen.getByRole("menu", { name: "Models" });
+    expect(within(menu).queryByRole("group", { name: /meridian/i })).not.toBeInTheDocument();
+    expect(within(menu).getByRole("group", { name: "Work proxy" })).toBeInTheDocument();
+    expect(within(menu).getAllByRole("menuitemradio").map((item) => item.textContent)).toEqual([
+      "Fast 4.5 (US)Quick",
+      "Strong 4.8 (EU)",
+      "raw-id",
+      "AlphaRouted",
+      "Beta",
+      "Extra 0",
+      "Extra 1",
+      "Extra 2",
+      "Extra 3",
+    ]);
+    // The menu hides the prefix, but search still sees the reported label and id.
+    const search = screen.getByRole("searchbox", { name: "Search models" });
+    await user.type(search, "meridian/strong");
+    expect(within(menu).getAllByRole("menuitemradio").map((item) => item.textContent)).toEqual([
+      "Strong 4.8 (EU)",
+    ]);
+    await user.clear(search);
+    await user.type(search, "work proxy/alpha");
+    expect(within(menu).getAllByRole("menuitemradio").map((item) => item.textContent)).toEqual([
+      "AlphaRouted",
+    ]);
+    await user.clear(search);
+    await user.type(search, "fast-us");
+    expect(within(menu).getAllByRole("menuitemradio").map((item) => item.textContent)).toEqual([
+      "Fast 4.5 (US)Quick",
+    ]);
+  });
+
+  it("keeps another provider's prefix on the selected model", async () => {
+    const t = transcript();
+    t.models({
+      current: "work/alpha",
+      options: [
+        { id: "fast-us", label: "meridian/Fast 4.5 (US)" },
+        { id: "work/alpha", label: "Work proxy/Alpha" },
+        { id: "work/beta", label: "Work proxy/Beta" },
+      ],
+    });
+    const user = userEvent.setup();
+    renderThread(t.blocks);
+    const button = await screen.findByRole("button", { name: "Model: Work proxy/Alpha" });
+    expect(button).toHaveTextContent("Work proxy/Alpha");
+    await user.click(button);
+    const menu = screen.getByRole("menu", { name: "Models" });
+    expect(within(menu).getByRole("group", { name: "Work proxy" })).toBeInTheDocument();
+    expect(within(menu).queryByRole("group", { name: /meridian/i })).not.toBeInTheDocument();
+    expect(within(menu).getAllByRole("menuitemradio").map((item) => item.textContent)).toEqual([
+      "Fast 4.5 (US)",
+      "Alpha",
+      "Beta",
+    ]);
+  });
+
   it("shows the harness session error, not only its code", () => {
     const t = transcript();
     t.sessionError("acp_session_failed", "Internal error: No models are available");
