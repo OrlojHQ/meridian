@@ -314,7 +314,8 @@ function renderConfirm() {
     confirmRemove = null;
     render();
   });
-  const remove = el("button", null, "Remove");
+  // Removing is destructive, so it does not get the accent of a primary action.
+  const remove = el("button", "danger", "Remove");
   remove.type = "button";
   remove.addEventListener("click", async () => {
     try {
