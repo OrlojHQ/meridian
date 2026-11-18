@@ -16,7 +16,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"slices"
+	"sort"
 	"strings"
 )
 
@@ -137,11 +137,14 @@ func (s *Server) prepareProviderConnection(ctx context.Context, connection *harn
 		if _, e := root.Stat(".config/opencode/opencode.jsonc"); e == nil {
 			p = ".config/opencode/opencode.jsonc"
 		}
-		// OpenCode reads providers (package + settings). A legacy provider
-		// entry (npm + options) is migrated, and a native entry for the same
-		// id replaces it entirely. Imported providers whose key cannot be
-		// supplied are folded onto this connection when the endpoint matches,
-		// and dropped otherwise.
+		// OpenCode 2.2.6 reads providers (package + settings). A legacy
+		// provider entry (npm + options) is migrated, and a native entry for
+		// the same id replaces it entirely. Model variants are an array of
+		// {id, settings}; a variants object fails the provider schema and
+		// OpenCode drops the provider, so the catalog has no connection
+		// models. Imported providers whose key cannot be supplied are folded
+		// onto this connection when the endpoint matches, and dropped
+		// otherwise.
 		gateway := connection.URL + "/v1"
 		id := connection.Provider
 		if custom {
@@ -486,7 +489,7 @@ func rewriteOpenCodeProviders(config map[string]any, rw *openCodeRewrite) map[st
 				}
 				for _, model := range info.Models {
 					if _, exists := models[model.ID]; !exists {
-						models[model.ID] = model.Entry
+						models[model.ID] = openCodeModelEntry(model.Entry)
 					}
 				}
 				delete(providers, id)
@@ -525,39 +528,7 @@ func rewriteOpenCodeProviders(config map[string]any, rw *openCodeRewrite) map[st
 			entry = map[string]any{"name": rw.Model}
 			models[rw.Model] = entry
 		}
-		if len(rw.Efforts) != 0 {
-			caps, _ := entry["capabilities"].(map[string]any)
-			if caps == nil {
-				caps = map[string]any{}
-			}
-			caps["reasoning"] = map[string]any{"supported": true, "effort": rw.Efforts}
-			entry["capabilities"] = caps
-			variants, _ := entry["variants"].(map[string]any)
-			if variants == nil {
-				variants = map[string]any{}
-			}
-			for _, level := range rw.Efforts {
-				current, _ := variants[level].(map[string]any)
-				if current == nil {
-					current = map[string]any{}
-				}
-				if _, set := current["reasoningEffort"]; !set {
-					current["reasoningEffort"] = level
-				}
-				variants[level] = current
-			}
-			entry["variants"] = variants
-			if slices.Contains(rw.Efforts, "medium") {
-				options, _ := entry["options"].(map[string]any)
-				if options == nil {
-					options = map[string]any{}
-				}
-				if _, set := options["reasoningEffort"]; !set {
-					options["reasoningEffort"] = "medium"
-				}
-				entry["options"] = options
-			}
-		}
+		applyOpenCodeEfforts(entry, rw.Efforts)
 	}
 	if len(models) == 0 && rw.Model != "" {
 		models[rw.Model] = map[string]any{"name": rw.Model}
@@ -586,6 +557,158 @@ func rewriteOpenCodeProviders(config map[string]any, rw *openCodeRewrite) map[st
 		config["model"] = gatewayID + "/" + rw.Model
 	}
 	return owned
+}
+
+// openCodeModelEntry copies an imported model into the shape OpenCode 2.2.6
+// accepts. variants must be an array of {id, settings}. A map is the legacy
+// shape; leaving it in place makes the provider schema fail, and OpenCode
+// then drops the provider and every model on it.
+func openCodeModelEntry(entry map[string]any) map[string]any {
+	if entry == nil {
+		return map[string]any{}
+	}
+	raw, err := json.Marshal(entry)
+	if err != nil {
+		return map[string]any{}
+	}
+	var copy map[string]any
+	if json.Unmarshal(raw, &copy) != nil || copy == nil {
+		return map[string]any{}
+	}
+	if variants, ok := copy["variants"]; ok {
+		normalized := openCodeVariantList(variants)
+		if len(normalized) == 0 {
+			delete(copy, "variants")
+		} else {
+			copy["variants"] = normalized
+		}
+	}
+	if caps, ok := copy["capabilities"].(map[string]any); ok {
+		if enabled, ok := caps["reasoning"].(bool); ok {
+			caps["reasoning"] = map[string]any{"supported": enabled}
+		}
+	}
+	return copy
+}
+
+// applyOpenCodeEfforts declares the connection's effort levels. OpenCode
+// turns capabilities.reasoning.effort into the session effort option and
+// sends variants[].settings.reasoningEffort as reasoning_effort.
+func applyOpenCodeEfforts(entry map[string]any, efforts []string) {
+	if len(efforts) == 0 || entry == nil {
+		return
+	}
+	caps, _ := entry["capabilities"].(map[string]any)
+	if caps == nil {
+		caps = map[string]any{}
+		entry["capabilities"] = caps
+	}
+	caps["reasoning"] = map[string]any{"supported": true, "effort": append([]string(nil), efforts...)}
+	variants := openCodeVariantList(entry["variants"])
+	index := map[string]int{}
+	for i, item := range variants {
+		obj, _ := item.(map[string]any)
+		id, _ := obj["id"].(string)
+		if id != "" {
+			index[id] = i
+		}
+	}
+	for _, level := range efforts {
+		if i, ok := index[level]; ok {
+			obj := variants[i].(map[string]any)
+			settings, _ := obj["settings"].(map[string]any)
+			if settings == nil {
+				settings = map[string]any{}
+				obj["settings"] = settings
+			}
+			if _, set := settings["reasoningEffort"]; !set {
+				settings["reasoningEffort"] = level
+			}
+			continue
+		}
+		variants = append(variants, map[string]any{
+			"id": level, "settings": map[string]any{"reasoningEffort": level},
+		})
+	}
+	entry["variants"] = variants
+}
+
+func openCodeVariantList(value any) []any {
+	switch variants := value.(type) {
+	case []any:
+		out := make([]any, 0, len(variants))
+		for _, item := range variants {
+			obj, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			id, _ := obj["id"].(string)
+			if !validOpenCodeVariantID(id) {
+				continue
+			}
+			next := map[string]any{"id": id}
+			if settings, ok := obj["settings"].(map[string]any); ok && len(settings) > 0 {
+				next["settings"] = settings
+			}
+			out = append(out, next)
+		}
+		return out
+	case map[string]any:
+		ids := make([]string, 0, len(variants))
+		for id := range variants {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+		out := make([]any, 0, len(ids))
+		for _, id := range ids {
+			if !validOpenCodeVariantID(id) {
+				continue
+			}
+			next := map[string]any{"id": id}
+			body, _ := variants[id].(map[string]any)
+			settings := map[string]any{}
+			if nested, ok := body["settings"].(map[string]any); ok {
+				for key, item := range nested {
+					settings[key] = item
+				}
+			}
+			for _, key := range []string{"reasoningEffort", "reasoning_effort"} {
+				if text, ok := body[key].(string); ok && text != "" {
+					if _, set := settings["reasoningEffort"]; !set {
+						settings["reasoningEffort"] = text
+					}
+				}
+			}
+			for key, item := range body {
+				if key == "disabled" || key == "settings" || key == "headers" || key == "body" || key == "id" || key == "reasoningEffort" || key == "reasoning_effort" {
+					continue
+				}
+				if _, nested := item.(map[string]any); nested {
+					continue
+				}
+				if _, list := item.([]any); list {
+					continue
+				}
+				if _, set := settings[key]; !set {
+					settings[key] = item
+				}
+			}
+			if len(settings) > 0 {
+				next["settings"] = settings
+			}
+			out = append(out, next)
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func validOpenCodeVariantID(id string) bool {
+	if id == "" || len(id) > 64 || strings.ContainsAny(id, "#/ \t\r\n") {
+		return false
+	}
+	return true
 }
 
 func safeProviderSettings(entry map[string]any) map[string]any {

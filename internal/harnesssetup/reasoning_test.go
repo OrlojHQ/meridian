@@ -19,6 +19,11 @@ func TestModelReasoningReadsVariantsAndOptions(t *testing.T) {
 		t.Fatalf("option = %q", got)
 	}
 	if got := ModelReasoning(map[string]any{
+		"variants": []any{map[string]any{"id": "high", "settings": map[string]any{"reasoningEffort": "high"}}},
+	}); got != "yes" {
+		t.Fatalf("array variant = %q", got)
+	}
+	if got := ModelReasoning(map[string]any{
 		"capabilities": map[string]any{"reasoning": map[string]any{"supported": false}},
 	}); got != "no" {
 		t.Fatalf("unsupported = %q", got)

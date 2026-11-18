@@ -23,7 +23,7 @@ PACK_IMAGES := $(PACKS:%=capsule-%-image)
 	capsule-integration-image docker-integration helm-tool helm-test \
 	agentsandbox-integration agentsandbox-kata-validation clean release-check release-snapshot release-smoke \
 	meridiand-image release-docker-validate meridiand-up meridiand-down \
-	meridiand-ready tui try list-packs $(PACKS:%=try-%)
+	meridiand-ready tui try list-packs opencode-binary $(PACKS:%=try-%)
 
 bootstrap:
 	go mod download
@@ -39,6 +39,11 @@ build:
 
 test:
 	go test ./... -count=1
+
+# The OpenCode binary pinned by images/capsule-opencode/pack.env. CI caches
+# the result and points MERIDIAN_OPENCODE_BINARY at it for the schema test.
+opencode-binary:
+	sh scripts/fetch-opencode.sh .cache/opencode
 
 tui-test:
 	go test ./internal/tui ./internal/ptyattach ./cmd/meridian -count=1

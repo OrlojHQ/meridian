@@ -15,6 +15,10 @@ import (
 	"github.com/OrlojHQ/meridian/internal/transcripts"
 )
 
+// errNoHarnessSession means the thread never received adapter resume state,
+// which happens when the harness fails before its session is open.
+var errNoHarnessSession = errors.New("thread has no harness session")
+
 type ThreadPage struct {
 	Items      []domain.Thread
 	NextOffset int
@@ -1474,12 +1478,18 @@ func (s *Service) startStructuredRuntime(
 	}
 	if resume {
 		state, sessionID, err := s.latestResumeState(ctx, thread)
-		if err != nil {
+		switch {
+		case err == nil:
+			frame.Type, frame.ResumeState = adapterproto.KindResume, state
+			if sessionID != "" {
+				frame.SessionID = sessionID
+			}
+		case errors.Is(err, errNoHarnessSession):
+			// The run failed before the harness reached idle, so there is
+			// no session to restore. Open a new one instead of reporting
+			// that resume state is missing.
+		default:
 			return run, err
-		}
-		frame.Type, frame.ResumeState = adapterproto.KindResume, state
-		if sessionID != "" {
-			frame.SessionID = sessionID
 		}
 	}
 	setup, err := s.runtimeHarnessSetup(ctx, capsule.ID, thread.AdapterID)
@@ -1759,7 +1769,7 @@ func (s *Service) latestResumeState(
 		}
 	}
 	if state == "" {
-		return "", "", fmt.Errorf("%w: Thread has no adapter resume state", domain.ErrUnsupported)
+		return "", "", errNoHarnessSession
 	}
 	return state, sessionID, nil
 }

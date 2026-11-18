@@ -126,6 +126,46 @@ function thread(
   };
 }
 
+const sessionFailedCapsule = capsule(
+  "cap-session-failed",
+  "opencode catalog",
+  "opencode",
+  "Ready",
+  ago(2 * minute),
+);
+const sessionFailedRun = {
+  ...run("run-session-failed", sessionFailedCapsule.id, "opencode", "Failed", ago(minute)),
+  finishedAt: ago(minute),
+  failure: "Internal error: No models are available",
+};
+const sessionFailedThread = {
+  ...thread(
+    "thread-session-failed",
+    sessionFailedCapsule.id,
+    "opencode",
+    "run-session-failed",
+    ago(minute),
+    undefined,
+    "idle",
+  ),
+  currentRunState: "Failed",
+};
+const sessionFailedBlocks = [
+  block("b-failed-user", "m-failed-user", 1, "user", "text", {
+    content: "Summarize the change in this Capsule.",
+  }),
+  block("b-failed-error", "m-failed-error", 2, "system", "error", {
+    event: {
+      type: "error",
+      code: "acp_session_failed",
+      summary: "Internal error: No models are available",
+    },
+  }),
+  block("b-failed-end", "m-failed-end", 3, "system", "json", {
+    event: { type: "end", status: "failed" },
+  }),
+];
+
 const threads = [
   thread("thread-notes", notes.id, "claude", "run-notes", ago(4 * minute), {
     kind: "permission",
@@ -550,6 +590,12 @@ function route(pathname: string): unknown {
   }
   const capsuleMatch = pathname.match(/^\/capsules\/([^/]+)$/);
   if (capsuleMatch) {
+    if (
+      capsuleMatch[1] === sessionFailedCapsule.id &&
+      new URLSearchParams(window.location.search).get("shot") === "session-failed"
+    ) {
+      return sessionFailedCapsule;
+    }
     return withCI(withAccessFailure(capsules.find((item) => item.id === capsuleMatch[1]))) ?? jsonMissing();
   }
   if (pathname.endsWith("/remote-ci") && ciShot()) {
@@ -619,11 +665,38 @@ function route(pathname: string): unknown {
     return { truncated: false, content: releaseDiff };
   }
   if (pathname.endsWith("/git/status")) return { content: "", truncated: false };
+  const viewShot = new URLSearchParams(window.location.search).get("shot");
+  if (viewShot === "session-failed") {
+    if (pathname === "/threads/thread-session-failed") return sessionFailedThread;
+    if (pathname === "/threads/thread-session-failed/blocks") {
+      return { items: sessionFailedBlocks, nextCursor: sessionFailedBlocks.length, more: false };
+    }
+    if (pathname === "/runs/run-session-failed") return sessionFailedRun;
+    if (pathname === "/capsules/cap-session-failed") return sessionFailedCapsule;
+  }
   const threadMatch = pathname.match(/^\/threads\/([^/]+)$/);
-  if (threadMatch) return threads.find((item) => item.id === threadMatch[1]) ?? emptyPage;
+  if (threadMatch) {
+    const found = threads.find((item) => item.id === threadMatch[1]);
+    if (viewShot === "reply" && found?.id === "thread-header") {
+      return { ...found, awaiting: undefined, turn: "idle" };
+    }
+    return found ?? emptyPage;
+  }
   const blockMatch = pathname.match(/^\/threads\/([^/]+)\/blocks$/);
   if (blockMatch) {
     const shot = new URLSearchParams(window.location.search).get("shot");
+    if (shot === "reply" && blockMatch[1] === "thread-header") {
+      return {
+        items: [
+          ...(blocks[blockMatch[1]] ?? []),
+          block("b-header-agent", "m-header-agent", 2, "assistant", "text", {
+            content: "The header stays on one line. I wrapped the title and kept the actions beside it.",
+          }),
+        ],
+        nextCursor: 2,
+        more: false,
+      };
+    }
     if ((shot === "picker" || shot === "error" || shot === "effort") && blockMatch[1] === "thread-tokens") {
       const items = [...(blocks[blockMatch[1]] ?? [])];
       items.push(
@@ -872,6 +945,22 @@ function driveShot(shot: string) {
       );
       if (!alert) return;
       alert.scrollIntoView({ block: "center" });
+      document.documentElement.dataset.shotReady = "1";
+      return;
+    }
+    if (shot === "session-failed") {
+      const reason = document.querySelector(".session-ended-reason");
+      if (!reason?.textContent?.includes("No models are available")) return;
+      reason.scrollIntoView({ block: "center" });
+      document.documentElement.dataset.shotReady = "1";
+      return;
+    }
+    if (shot === "reply") {
+      const reply = [...document.querySelectorAll(".chat-assistant")].find((item) =>
+        item.textContent?.includes("stays on one line"),
+      );
+      if (!reply) return;
+      reply.scrollIntoView({ block: "center" });
       document.documentElement.dataset.shotReady = "1";
       return;
     }

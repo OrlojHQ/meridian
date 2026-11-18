@@ -486,6 +486,21 @@ describe("Model picker", () => {
     ]);
   });
 
+  it("shows the harness session error, not only its code", () => {
+    const t = transcript();
+    t.sessionError("acp_session_failed", "Internal error: No models are available");
+    t.status("failed");
+    expect(buildThreadChat(t.blocks, "Failed").items).toEqual([
+      {
+        kind: "error",
+        key: "block-1",
+        text: "Internal error: No models are available",
+        code: "acp_session_failed",
+      },
+      { kind: "error", key: "block-2", text: "The session failed." },
+    ]);
+  });
+
   it("says which provider has no key, without the error code", () => {
     const t = transcript();
     t.error(

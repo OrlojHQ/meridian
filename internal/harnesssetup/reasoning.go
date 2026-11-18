@@ -36,6 +36,18 @@ func ModelReasoning(model map[string]any) string {
 			}
 		}
 	}
+	if variants, ok := model["variants"].([]any); ok {
+		for _, raw := range variants {
+			item, _ := raw.(map[string]any)
+			if id, _ := item["id"].(string); slices.Contains(EffortLevels, id) {
+				yes = true
+			}
+			settings, _ := item["settings"].(map[string]any)
+			if effortText(settings, "reasoningEffort") || effortText(item, "reasoningEffort") || effortText(item, "reasoning_effort") {
+				yes = true
+			}
+		}
+	}
 	if yes {
 		return "yes"
 	}

@@ -337,6 +337,23 @@ func (s *acpSession) fail(code string, err error) error {
 	return err
 }
 
+// failMessage records the harness's own error text. Stream.Fail uses a fixed
+// summary, which hides the reason a session could not be opened.
+func (s *acpSession) failMessage(code, summary string, cause error) error {
+	summary = publicACPError(summary, "The session could not be opened.")
+	if err := s.write(adapterproto.Frame{
+		Type: adapterproto.KindError, Code: code, Summary: summary,
+	}); err != nil {
+		return err
+	}
+	if err := s.write(adapterproto.Frame{
+		Type: adapterproto.KindEnd, Status: adapterproto.StatusFailed,
+	}); err != nil {
+		return err
+	}
+	return cause
+}
+
 func (s *acpSession) call(method string, params any) error {
 	s.request++
 	s.pending[s.request] = method
@@ -515,7 +532,7 @@ func (s *acpSession) response(rawID json.RawMessage, record map[string]json.RawM
 			case method != "session/new":
 				code = "acp_resume_failed"
 			}
-			return false, s.fail(code, errors.New("ACP agent could not open its session"))
+			return false, s.failMessage(code, failure.Message, errors.New("ACP agent could not open its session"))
 		}
 		if method == "session/new" {
 			var result struct {
@@ -1119,6 +1136,16 @@ func acpJSON(raw json.RawMessage) string {
 		return ""
 	}
 	return compact
+}
+
+// publicACPError is one bounded line of harness text, with a credential-shaped
+// URL replaced by the fallback so a session failure can be shown as-is.
+func publicACPError(message, fallback string) string {
+	text := acpLine(message, 300)
+	if text == "" || (strings.Contains(text, "://") && strings.Contains(text, "@")) {
+		return fallback
+	}
+	return text
 }
 
 // acpText makes agent text safe for a frame: valid UTF-8 without NUL,
