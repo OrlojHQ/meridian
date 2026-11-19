@@ -38,6 +38,15 @@ const TerminalView = lazy(() =>
 
 export type ContextTab = "changes" | "preview" | "files" | "terminal" | "activity";
 
+// A location that asks for a Capsule tool. Opening a Thread or a Capsule
+// does not: tools stay closed until the operator opens them, or follows
+// one of these.
+export function requestedTool(pathname: string, hash: string): ContextTab | undefined {
+  if (hash === "#terminal") return "terminal";
+  if (pathname.endsWith("/diff")) return "changes";
+  return undefined;
+}
+
 const tabFromPath = (pathname: string): ContextTab => {
   if (pathname.endsWith("/diff")) return "changes";
   if (pathname.endsWith("#terminal")) return "terminal";

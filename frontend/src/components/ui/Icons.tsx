@@ -110,8 +110,8 @@ export function FilesIcon(props: IconProps) {
 export function TerminalIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <rect x="2.5" y="3.5" width="15" height="13" rx="2" />
-      <path d="m6 8 2 2-2 2M10.5 12h3.5" />
+      <path d="M4 6.5 8.5 10.5 4 14.5" />
+      <path d="M10.5 14.5H16" />
     </Icon>
   );
 }
