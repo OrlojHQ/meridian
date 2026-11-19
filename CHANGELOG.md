@@ -7,6 +7,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-19
+
 ### Added
 
 - Routines start a fresh Capsule and Thread with a fixed prompt on a cron
@@ -1586,7 +1588,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - Docker and Agent Sandbox are not claimed as hostile multi-tenant isolation
   boundaries; hardened runtime deployment and external review remain required.
 
-[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/OrlojHQ/meridian/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/OrlojHQ/meridian/compare/v0.11.5...v0.12.0
 [0.11.5]: https://github.com/OrlojHQ/meridian/compare/v0.11.4...v0.11.5
 [0.11.4]: https://github.com/OrlojHQ/meridian/compare/v0.11.3...v0.11.4

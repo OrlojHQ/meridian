@@ -1,6 +1,6 @@
 # ADR 0057: Routines start Project Threads on a schedule
 
-- Status: Proposed; implemented on branch `claude/scheduled-threads`
+- Status: Accepted; implemented in v0.13.0
 - Date: 2026-11-18
 - Amends: ADR 0001 (product boundary), ADR 0016 (where a prompt may come from)
 - Extends: ADR 0019 (idle pause and setup reuse), ADR 0020 (delivery binds the
