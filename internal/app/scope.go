@@ -1790,3 +1790,155 @@ func (t *scopedTx) DeleteDeliveryCheckGates(ctx context.Context, id domain.Capsu
 	}
 	return t.tx.DeleteDeliveryCheckGates(ctx, id)
 }
+
+// Routines (ADR 0057). A routine is a child of its
+// Project and a fire a child of its routine; both carry the owner, and the
+// store's triggers keep it equal to the parent's.
+
+func (r *scopedReader) routine(ctx context.Context, id domain.RoutineID) (domain.Routine, error) {
+	item, err := r.inner.GetRoutine(ctx, id)
+	if err != nil {
+		return domain.Routine{}, err
+	}
+	if err := r.owned("routine", string(id), item.OwnerUserID); err != nil {
+		return domain.Routine{}, err
+	}
+	return item, nil
+}
+
+func (r *scopedReader) GetRoutine(ctx context.Context, id domain.RoutineID) (domain.Routine, error) {
+	return r.routine(ctx, id)
+}
+
+func (r *scopedReader) ListRoutines(ctx context.Context, id domain.ProjectID) ([]domain.Routine, error) {
+	if err := r.project(ctx, id); err != nil {
+		return nil, err
+	}
+	return r.inner.ListRoutines(ctx, id)
+}
+
+func (r *scopedReader) ListOwnedRoutines(ctx context.Context, owner domain.UserID) ([]domain.Routine, error) {
+	if err := r.keyOwner(owner); err != nil {
+		return nil, nil
+	}
+	return r.inner.ListOwnedRoutines(ctx, owner)
+}
+
+func (r *scopedReader) ListDueRoutines(ctx context.Context, now time.Time, limit int) ([]domain.Routine, error) {
+	items, err := r.inner.ListDueRoutines(ctx, now, limit)
+	if err != nil {
+		return nil, err
+	}
+	return filter(r, items, func(item domain.Routine) error { return r.scope.check(item.OwnerUserID) })
+}
+
+func (r *scopedReader) GetRoutineFire(ctx context.Context, id domain.RoutineFireID) (domain.RoutineFire, error) {
+	item, err := r.inner.GetRoutineFire(ctx, id)
+	if err != nil {
+		return domain.RoutineFire{}, err
+	}
+	if err := r.owned("routine_fire", string(id), item.OwnerUserID); err != nil {
+		return domain.RoutineFire{}, err
+	}
+	return item, nil
+}
+
+func (r *scopedReader) GetRoutineFireAt(ctx context.Context, id domain.RoutineID, at time.Time) (domain.RoutineFire, error) {
+	if _, err := r.routine(ctx, id); err != nil {
+		return domain.RoutineFire{}, err
+	}
+	return r.inner.GetRoutineFireAt(ctx, id, at)
+}
+
+func (r *scopedReader) ListRoutineFires(ctx context.Context, id domain.RoutineID, page ports.Page) ([]domain.RoutineFire, bool, error) {
+	if _, err := r.routine(ctx, id); err != nil {
+		return nil, false, err
+	}
+	return r.inner.ListRoutineFires(ctx, id, page)
+}
+
+func (r *scopedReader) ListActiveRoutineFires(ctx context.Context, limit int) ([]domain.RoutineFire, error) {
+	items, err := r.inner.ListActiveRoutineFires(ctx, limit)
+	if err != nil {
+		return nil, err
+	}
+	return filter(r, items, func(item domain.RoutineFire) error { return r.scope.check(item.OwnerUserID) })
+}
+
+func (r *scopedReader) ActiveRoutineFire(ctx context.Context, id domain.RoutineID) (domain.RoutineFire, error) {
+	if _, err := r.routine(ctx, id); err != nil {
+		return domain.RoutineFire{}, err
+	}
+	return r.inner.ActiveRoutineFire(ctx, id)
+}
+
+func (r *scopedReader) CountKeptRoutineCapsules(ctx context.Context, id domain.RoutineID) (int, error) {
+	if _, err := r.routine(ctx, id); err != nil {
+		return 0, err
+	}
+	return r.inner.CountKeptRoutineCapsules(ctx, id)
+}
+
+func (r *scopedReader) RoutineFiresByCapsule(ctx context.Context, ids []domain.CapsuleID) (map[domain.CapsuleID]domain.RoutineFire, error) {
+	items, err := r.inner.RoutineFiresByCapsule(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	for id, item := range items {
+		if !r.scope.allows(item.OwnerUserID) {
+			delete(items, id)
+		}
+	}
+	return items, nil
+}
+
+func (t *scopedTx) InsertRoutine(ctx context.Context, item domain.Routine) error {
+	project, err := t.GetProject(ctx, item.ProjectID)
+	if err != nil {
+		return err
+	}
+	if item.OwnerUserID != project.OwnerUserID {
+		return domain.ErrNotFound
+	}
+	return t.tx.InsertRoutine(ctx, item)
+}
+
+func (t *scopedTx) UpdateRoutine(ctx context.Context, item domain.Routine, expected domain.ResourceVersion) error {
+	current, err := t.routine(ctx, item.ID)
+	if err != nil {
+		return err
+	}
+	if item.OwnerUserID != current.OwnerUserID || item.ProjectID != current.ProjectID {
+		return domain.ErrNotFound
+	}
+	return t.tx.UpdateRoutine(ctx, item, expected)
+}
+
+func (t *scopedTx) DeleteRoutine(ctx context.Context, id domain.RoutineID) error {
+	if _, err := t.routine(ctx, id); err != nil {
+		return err
+	}
+	return t.tx.DeleteRoutine(ctx, id)
+}
+
+func (t *scopedTx) InsertRoutineFire(ctx context.Context, item domain.RoutineFire) error {
+	routine, err := t.routine(ctx, item.RoutineID)
+	if err != nil {
+		return err
+	}
+	if item.OwnerUserID != routine.OwnerUserID || item.ProjectID != routine.ProjectID {
+		return domain.ErrNotFound
+	}
+	return t.tx.InsertRoutineFire(ctx, item)
+}
+
+func (t *scopedTx) UpdateRoutineFire(ctx context.Context, item domain.RoutineFire, expected domain.ResourceVersion) error {
+	current, err := t.GetRoutineFire(ctx, item.ID)
+	if err != nil {
+		return err
+	}
+	if item.OwnerUserID != current.OwnerUserID || item.RoutineID != current.RoutineID {
+		return domain.ErrNotFound
+	}
+	return t.tx.UpdateRoutineFire(ctx, item, expected)
+}

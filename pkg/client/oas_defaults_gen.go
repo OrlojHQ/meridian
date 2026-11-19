@@ -43,6 +43,26 @@ func (s *CoordinationPolicy) setDefaults() {
 }
 
 // setDefaults set default value of fields.
+func (s *CreateRoutineRequest) setDefaults() {
+	{
+		val := int(7200)
+		s.MaxRunSeconds.SetTo(val)
+	}
+	{
+		val := int(3600)
+		s.CatchUpSeconds.SetTo(val)
+	}
+	{
+		val := int(5)
+		s.MaxKept.SetTo(val)
+	}
+	{
+		val := bool(true)
+		s.Enabled.SetTo(val)
+	}
+}
+
+// setDefaults set default value of fields.
 func (s *CreateThreadRequest) setDefaults() {
 	{
 		val := bool(false)

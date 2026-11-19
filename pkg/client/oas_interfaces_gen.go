@@ -81,6 +81,10 @@ type CreateProjectRes interface {
 	createProjectRes()
 }
 
+type CreateProjectRoutineRes interface {
+	createProjectRoutineRes()
+}
+
 type CreateProjectThreadRes interface {
 	createProjectThreadRes()
 }
@@ -111,6 +115,10 @@ type DeleteMemberObjectsRes interface {
 
 type DeleteProjectRes interface {
 	deleteProjectRes()
+}
+
+type DeleteRoutineRes interface {
+	deleteRoutineRes()
 }
 
 type DeleteSecretRes interface {
@@ -205,6 +213,14 @@ type GetReadinessRes interface {
 	getReadinessRes()
 }
 
+type GetReportedModelsRes interface {
+	getReportedModelsRes()
+}
+
+type GetRoutineRes interface {
+	getRoutineRes()
+}
+
 type GetRunRes interface {
 	getRunRes()
 }
@@ -269,8 +285,20 @@ type ListPersonalAccessTokensRes interface {
 	listPersonalAccessTokensRes()
 }
 
+type ListProjectRoutinesRes interface {
+	listProjectRoutinesRes()
+}
+
 type ListProjectsRes interface {
 	listProjectsRes()
+}
+
+type ListRoutineFiresRes interface {
+	listRoutineFiresRes()
+}
+
+type ListRoutinesRes interface {
+	listRoutinesRes()
 }
 
 type ListRunEventsRes interface {
@@ -389,6 +417,10 @@ type RewindCapsuleRes interface {
 	rewindCapsuleRes()
 }
 
+type RunRoutineRes interface {
+	runRoutineRes()
+}
+
 type SealCapsuleRes interface {
 	sealCapsuleRes()
 }
@@ -447,6 +479,10 @@ type UpdateCoordinationGrantRes interface {
 
 type UpdateProfileRes interface {
 	updateProfileRes()
+}
+
+type UpdateRoutineRes interface {
+	updateRoutineRes()
 }
 
 type UseHostGitHubLoginRes interface {

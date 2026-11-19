@@ -172,6 +172,17 @@ export function SettingsIcon(props: IconProps) {
   );
 }
 
+// A routine: a clock that comes back around.
+export function RoutineIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M16.2 8.6A6.4 6.4 0 1 0 15 13.4" />
+      <path d="M16.5 4.8v3.9h-3.9" />
+      <path d="M10 6.8V10l2.1 1.4" />
+    </Icon>
+  );
+}
+
 // The signed-in person: Account settings.
 export function AccountIcon(props: IconProps) {
   return (

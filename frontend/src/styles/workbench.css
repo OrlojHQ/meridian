@@ -1130,6 +1130,267 @@
   }
 }
 
+/* Routines (ADR 0057). */
+.project-routines-section {
+  margin-top: 1.6rem;
+}
+
+.project-routines-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.project-routines-head h2 {
+  margin: 0;
+}
+
+.routine-list {
+  list-style: none;
+  margin: 0.8rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.routine-card {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.routine-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.routine-name.mono {
+  color: var(--text);
+  font-size: var(--text-md);
+  font-weight: 650;
+}
+
+.routine-when {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.routine-meta,
+.routine-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.9rem;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.routine-status .launch-hint {
+  margin: 0;
+}
+
+.routine-agent {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--text);
+}
+
+.routine-prompt {
+  margin: 0;
+  padding: 0.5rem 0.7rem;
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+  color: var(--text);
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.routine-kept {
+  margin-left: auto;
+}
+
+.routine-kept.full {
+  color: var(--warning);
+  font-weight: 620;
+}
+
+.routine-backlog {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-md);
+  background: var(--warning-soft);
+  color: var(--warning);
+  font-size: var(--text-sm);
+}
+
+.routine-actions,
+.routine-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.routine-fire-link {
+  font-size: var(--text-sm);
+}
+
+.routine-fires {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  border-top: 1px solid var(--border);
+}
+
+.routine-fire {
+  display: grid;
+  grid-template-columns: minmax(12rem, auto) 5.5rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--text-sm);
+}
+
+.routine-fire .ui-badge {
+  justify-self: start;
+}
+
+.routine-fire-trigger {
+  color: var(--muted);
+}
+
+.routine-empty {
+  margin: 0.8rem 0 0;
+  padding: 1rem;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  color: var(--muted);
+  text-align: center;
+}
+
+.routine-form {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.8rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+}
+
+.routine-card .routine-form {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.routine-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem 0.8rem;
+}
+
+.routine-field {
+  display: grid;
+  gap: 0.3rem;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.routine-field .launch-hint {
+  margin: 0;
+  font-size: var(--text-xs);
+}
+
+.routine-when-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.routine-when-fields legend {
+  margin-bottom: 0.3rem;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.routine-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.routine-when-fields > .ui-select,
+.routine-when-fields > .ui-input,
+.routine-inline .ui-input {
+  width: auto;
+  flex: 0 0 auto;
+}
+
+.routine-inline input[type="time"] {
+  min-width: 8.5rem;
+}
+
+.routine-inline input[inputmode="numeric"] {
+  width: 4.5rem;
+}
+
+.routine-when-fields > .ui-input[aria-label="Time zone"],
+.routine-when-fields > .ui-input[aria-label="Cron expression"] {
+  flex: 1 1 12rem;
+  min-width: 10rem;
+}
+
+.routine-form > .launch-hint {
+  margin: 0;
+}
+
+.routine-limits summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.routine-limits .routine-form-grid {
+  margin-top: 0.6rem;
+}
+
+@media (max-width: 720px) {
+  .routine-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .routine-when {
+    margin-left: 0;
+  }
+
+  .routine-fire {
+    grid-template-columns: 1fr auto;
+  }
+}
+
 .project-settings .agent-picker {
   margin-top: 1.2rem;
 }
@@ -1280,4 +1541,92 @@
   z-index: 1;
   padding-block: 0.6rem;
   background: var(--surface);
+}
+
+/* The Routines page: every routine you own, grouped by Project. */
+.routines-page {
+  padding-bottom: 2rem;
+}
+
+.routines-page .workspace-view-header .view-description {
+  max-width: 44rem;
+}
+
+.routines-page .workspace-view-header .ui-button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.routines-page .workspace-view-header .ui-button svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.routines-page > :not(.workspace-view-header) {
+  max-width: 52rem;
+  margin-inline: 1.25rem;
+}
+
+.routines-page > [role="status"],
+.routines-page > [role="alert"],
+.routines-page > .launch-hint {
+  margin-top: 1rem;
+}
+
+.routines-filter {
+  margin-top: 0.9rem;
+  margin-bottom: 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.routine-group {
+  margin-top: 1.4rem;
+}
+
+.routine-group h2 {
+  margin: 0;
+  font-size: var(--text-md);
+}
+
+.routine-group h2 a {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.routine-group h2 a:hover {
+  text-decoration: underline;
+}
+
+.routine-new {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+}
+
+.routine-new .routine-form {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.routine-project-field {
+  max-width: 22rem;
+}
+
+.routines-page > .routine-empty {
+  margin-top: 1.4rem;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.routines-page > .routine-empty p {
+  margin: 0;
 }
