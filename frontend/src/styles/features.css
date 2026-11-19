@@ -2958,6 +2958,10 @@ button.tool-line:hover {
   z-index: 3;
   top: 0;
   display: flex;
+  /* The header stays in the column. A sticky top offset is the scrollport's
+     top, not a guessed height, so the tab row below is never covered when
+     it is shown or hidden. */
+  flex: none;
   flex-wrap: nowrap;
   align-items: center;
   justify-content: space-between;
@@ -3177,6 +3181,12 @@ button.tool-line:hover {
 
 .session-tabs {
   display: flex;
+  /* Sideways scrolling makes the automatic minimum height 0. In the fixed
+     Thread column (one transcript scroller) a short window then crushes this
+     row under the Thread details bar. Keep the row's own height; the
+     transcript is what shrinks. No sticky offset: the row is in normal flow,
+     so it takes no space when it is hidden. */
+  flex: none;
   align-items: stretch;
   gap: 0.15rem;
   min-width: 0;

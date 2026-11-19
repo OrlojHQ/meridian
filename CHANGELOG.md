@@ -7,6 +7,12 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- The session tab row stays fully visible between the thread header and
+  Thread details. A short window no longer tucks that row under the details
+  bar. The transcript is still the only vertical scroller.
+
 ## [0.12.0] - 2026-11-18
 
 ### Added

@@ -452,6 +452,23 @@ describe("Thread transcript scroll", () => {
     // Document pages keep the page scroller.
     expect(declarations(shellCss, ".workspace-main")).toMatch(/overflow:\s*auto/);
   });
+
+  it("keeps the session tab row from sliding under Thread details", () => {
+    // The row scrolls sideways, which would otherwise let a short window
+    // shrink it to nothing under the details bar. Its height comes from
+    // layout, not a sticky top that assumes the row is shown.
+    const tabs = declarations(composerCss, ".session-tabs");
+    expect(tabs).toMatch(/flex:\s*none/);
+    expect(tabs).not.toMatch(/position:\s*sticky/);
+    expect(tabs).not.toMatch(/top:\s*/);
+    const bar = declarations(composerCss, ".capsule-bar");
+    expect(bar).toMatch(/flex:\s*none/);
+    expect(bar).not.toMatch(/top:\s*(?!0)\d/);
+    expect(declarations(composerCss, ".thread-toolbar")).toMatch(/flex:\s*none/);
+    expect(declarations(composerCss, ".thread-toolbar")).not.toMatch(/position:\s*sticky/);
+    expect(declarations(composerCss, ".thread-scroll")).toMatch(/overflow-y:\s*auto/);
+    expect(declarations(composerCss, ".capsule-workspace.chat-session")).toMatch(/overflow:\s*hidden/);
+  });
 });
 
 const reportedCommands = [
