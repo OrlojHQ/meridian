@@ -2522,6 +2522,49 @@ button.tool-line:hover {
   text-decoration: none;
 }
 
+.context-tool:has(> .context-terminal) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.context-terminal {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  height: auto;
+  min-height: 0;
+}
+
+.context-terminal .terminal-view {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.context-terminal .tool-pane-actions,
+.context-terminal .terminal-toolbar {
+  flex: none;
+  gap: 0.5rem;
+  min-height: 2rem;
+  padding: 0.25rem 0.6rem;
+  font-size: var(--text-xs);
+  line-height: var(--leading-tight);
+}
+
+.context-terminal .tool-pane-actions button,
+.context-terminal .terminal-toolbar button {
+  min-height: 1.5rem;
+  padding: 0 0.5rem;
+  border-radius: 8px;
+  box-shadow: none;
+  font-size: var(--text-xs);
+  font-weight: 620;
+  line-height: var(--leading-tight);
+}
+
 .context-terminal .terminal-toolbar {
   border: 0;
   border-bottom: 1px solid #303631;
@@ -2529,7 +2572,9 @@ button.tool-line:hover {
 }
 
 .context-terminal .terminal-host {
-  height: calc(100dvh - 8.5rem);
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
 }
 
 .context-terminal .sensitive-note {

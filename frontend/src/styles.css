@@ -555,13 +555,28 @@ pre {
 }
 
 .terminal-host {
+  position: relative;
   height: min(68vh, 44rem);
-  padding: 0.5rem;
+  overflow: hidden;
   background: #111315;
+}
+
+/* Fit measures the frame. The inset is the padding, so columns and rows
+   stay inside it instead of drawing under the host edge. */
+.terminal-frame {
+  position: absolute;
+  inset: 8px;
+  overflow: hidden;
 }
 
 .terminal-host .xterm {
   height: 100%;
+}
+
+/* The viewport's own rule paints black. The unused partial row should match
+   the terminal surface instead of showing a black strip. */
+.terminal-host .xterm .xterm-viewport {
+  background-color: var(--terminal);
 }
 
 .sensitive-note {

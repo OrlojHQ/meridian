@@ -18,6 +18,12 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   too many results wait for you. A routine never ships: Delivery still
   needs your approval. `--max-live-capsules` now also skips routine runs.
 
+### Changed
+
+- The Shell panel terminal is compact: 13px monospace, tighter line height,
+  and shorter Shell and Connected rows. Harness output is a small button.
+  An 8px inset stays outside the fitted columns and rows, in dark and light.
+
 ### Fixed
 
 - The session tab row stays fully visible between the thread header and
