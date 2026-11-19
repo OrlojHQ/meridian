@@ -1,4 +1,4 @@
-# ADR 0057: Start Project Threads on a schedule
+# ADR 0057: Routines start Project Threads on a schedule
 
 - Status: Proposed; implemented on branch `claude/scheduled-threads`
 - Date: 2026-11-18
@@ -36,11 +36,11 @@ spend while nobody is watching.
 ### Boundary
 
 Amend ADR 0001: Meridian may start a Project Thread on a schedule the
-operator wrote. A schedule is a clock, a fixed prompt, and limits. It is not
+operator wrote. A routine is a clock, a fixed prompt, and limits. It is not
 a workflow:
 
-- one schedule starts one Thread per fire, and nothing else;
-- the prompt is operator text stored when the schedule is saved. It has no
+- one routine starts one Thread per fire, and nothing else;
+- the prompt is operator text stored when the routine is saved. It has no
   template variables and takes no input from a previous run, the repository,
   or an outside system;
 - there are no event triggers, conditions, chains, or fan-out. A scheduled
@@ -49,14 +49,14 @@ a workflow:
 
 Event triggers (GitHub, chat, webhooks, error trackers) need a separate ADR.
 
-### The schedule resource
+### The routine resource
 
-A schedule belongs to one Project and has the Project's owner (ADR 0046). Its
+A routine belongs to one Project and has the Project's owner (ADR 0046). Its
 fields:
 
 - `name`, limited to `[a-z0-9-]{1,48}` and unique within the Project;
 - `prompt`, at most 32 KiB, encrypted with the installation key. The AAD binds
-  the schedule id and Project, so a ciphertext cannot be moved to another
+  the routine id and Project, so a ciphertext cannot be moved to another
   row. It leaves the owner out so a departed-member transfer can hand the
   prompt to the new owner;
 - `harness`, which must be a structured harness on the Project's allowlist.
@@ -66,7 +66,7 @@ fields:
   harness reports them (ADRs 0031 and 0033). Leaving one empty uses the
   harness's default, the same as a Thread started by hand. Model names stay
   out of plaintext records, as ADR 0031 requires, so both are stored in the
-  same encrypted envelope as the prompt. The schedule form offers the list
+  same encrypted envelope as the prompt. The routine form offers the list
   that the most recent session of that harness in this Project reported, and
   also accepts a typed ID;
 - `cadence`, a five-field cron expression evaluated in an explicit IANA time
@@ -77,36 +77,42 @@ fields:
 - `catchUpWindow`, from 0 to 24 hours, default 1 hour (see below);
 - `enabled`, plus a content-free `disabledReason` when Meridian turned it off.
 
-The API is `GET` and `POST /projects/{projectId}/schedules`, `GET`, `PATCH`,
-and `DELETE /schedules/{scheduleId}`, `POST /schedules/{scheduleId}/run` to
-fire it now, and `GET /schedules/{scheduleId}/fires`. Optimistic concurrency
-uses the schedule's resource version. The CLI gains `meridian schedule` with
+The API is `GET` and `POST /projects/{projectId}/routines`, `GET /routines`
+for every routine the caller owns across Projects, `GET` and `PATCH
+/routines/{routineId}`, `POST /routines/{routineId}/delete`, `POST
+/routines/{routineId}/run` to fire it now, and `GET
+/routines/{routineId}/fires`. Optimistic concurrency
+uses the routine's resource version. The CLI gains `meridian routine` with
 the same verbs and `--json`. `GET
 /projects/{projectId}/harnesses/{harness}/reported-models` returns the model
 and effort options the most recent session of that harness in the Project
-reported, for the schedule form to offer.
+reported, for the routine form to offer.
 
-Only the owner's authenticated API can create or change a schedule. A
-Capsule has no way to do it: `meridian.coord.v1` does not get a schedule
-verb, and no repository file defines or suggests a schedule.
+The web UI and desktop shell show routines on their own Routines page,
+beside Harness settings and Account, grouped by Project. A Project's settings
+page links to that page filtered to the Project.
+
+Only the owner's authenticated API can create or change a routine. A
+Capsule has no way to do it: `meridian.coord.v1` does not get a routine
+verb, and no repository file defines or suggests a routine.
 
 ### Firing
 
-`meridiand` keeps `nextFireAt` for each enabled schedule. When it is due, the
+`meridiand` keeps `nextFireAt` for each enabled routine. When it is due, the
 daemon creates a Thread through the same service path as `POST
 /projects/{id}/threads`, attributed to the owner, with an idempotency key of
-`schedule:<id>:<scheduled time in RFC 3339 UTC>`. A daemon that restarts in
+`routine:<id>:<scheduled time in RFC 3339 UTC>`. A daemon that restarts in
 the middle of a fire uses the same key and gets back the same Thread. It does
 not start a second one.
 
 Amend ADR 0016's list of places a prompt may come from: an explicit client
 mutation, a coordination request accepted under an active grant (ADR 0029),
-and now the fire of an enabled schedule. The Thread's first message carries
-encrypted `from_schedule` provenance with the schedule id. The UI labels it
-as the schedule's prompt, not as something the operator typed just now.
+and now the fire of an enabled routine. The Thread's first message carries
+encrypted `from_routine` provenance with the routine id. The UI labels it
+as the routine's prompt, not as something the operator typed just now.
 Startup recovery still never invents a send.
 
-When a schedule names a model or effort, the prompt is held back until the
+When a routine names a model or effort, the prompt is held back until the
 session reports its models. The daemon then sends `set_model` and, if
 needed, `set_effort` through the ADR 0031 path, and delivers the prompt only
 after the harness reports the chosen values as current. A harness that did
@@ -124,22 +130,22 @@ the previous fire.
 A fire is skipped, and the skip is recorded, when:
 
 - the previous fire's Thread is still creating, preparing, or working. Runs of
-  one schedule never overlap;
+  one routine never overlap;
 - the installation's `--max-live-capsules` cap is reached. ADR 0029 applies
   that cap to coordinated spawns only; this ADR applies it to scheduled fires
   too. It still does not limit Capsules the operator starts;
-- the schedule already holds its maximum number of kept Capsules (see
+- the routine already holds its maximum number of kept Capsules (see
   below);
 - the owner is disabled or has departed (team mode), or the Project is being
   deleted.
 
-`POST /schedules/{id}/run` follows the same rules. It is an operator action,
+`POST /routines/{id}/run` follows the same rules. It is an operator action,
 so it is audited as the operator.
 
 ### Missed fires
 
-The daemon has to be running for a schedule to fire. Meridian does not wake a
-sleeping host. When `meridiand` starts, or the host wakes, each schedule fires
+The daemon has to be running for a routine to fire. Meridian does not wake a
+sleeping host. When `meridiand` starts, or the host wakes, each routine fires
 at most once for missed times, and only if the most recent missed time is
 inside `catchUpWindow`. Every other missed time is recorded as `missed`, up
 to the 24 most recent for one gap. A
@@ -150,7 +156,7 @@ week-long shutdown does not start a week of runs.
 A scheduled Thread has exactly the authority an operator-started Thread in
 that Project has: the same image allowlist, isolation class (ADR 0050),
 egress policy, provider connection and gateway lease, checks, and harness
-permission settings. A schedule cannot turn on a more permissive harness
+permission settings. A routine cannot turn on a more permissive harness
 mode, add trusted MCP tools, or widen egress.
 
 A permission or input request waits for the operator as usual and raises
@@ -161,7 +167,7 @@ does not delete anything.
 
 Project checks and remote CI rework run as configured for the Project, with
 the same attempt budget. The agent may propose a Delivery. Only the operator
-can approve it, for one exact tree (ADR 0020). A schedule never ships.
+can approve it, for one exact tree (ADR 0020). A routine never ships.
 
 When a fire's Thread goes idle, Meridian records a content-free outcome
 for the fire: `proposed` (a delivery proposal exists), `changed`,
@@ -196,44 +202,44 @@ and `failed` raise attention too, and stay paused so the operator can see
 what went wrong. The operator deletes these Capsules when they are done
 with them, the same as any other Capsule.
 
-A schedule holds at most 5 kept Capsules at once (configurable from 1 to
+A routine holds at most 5 kept Capsules at once (configurable from 1 to
 20). Once it holds that many, the next fire is skipped with reason
 `backlog` and attention is raised once. Fires start again as soon as the
 operator deletes one. Unreviewed results cannot pile up on disk while
 nobody is looking.
 
-### Turning a schedule off
+### Turning a routine off
 
-Meridian disables a schedule, and says why, after three fires in a row that
+Meridian disables a routine, and says why, after three fires in a row that
 fail before the agent's first turn (provisioning, clone, setup, credential,
 or model selection errors). It also disables it when the provider connection it needs
 is `needs_reconnect`, or when the Project no longer allows its harness. A
-disabled schedule raises attention once and fires again only after the owner
+disabled routine raises attention once and fires again only after the owner
 turns it back on.
 
 In team mode, an admin transfer of a departed member's Project (ADR 0046)
-moves its schedules but leaves them disabled. The new owner reads the prompt
+moves its routines but leaves them disabled. The new owner reads the prompt
 and turns each one on. Admins cannot read prompts. Deleting a Project (ADR
-0039) deletes its schedules and fire history.
+0039) deletes its routines and fire history.
 
 ### Records
 
-Schedules and fires are stored with `owner_user_id` like other child rows.
+Routines and fires are stored with `owner_user_id` like other child rows.
 A fire row keeps the scheduled time, the actual time, the outcome or skip
 reason, and the Thread id. Events, metrics, traces, and audit records carry
 identifiers, cadence, and outcome codes. They never carry the prompt. The
-audit log records schedule create, change, enable, disable, delete, and
+audit log records routine create, change, enable, disable, delete, and
 run-now as the operator, and each clock fire as the system principal with
-the schedule as its object.
+the routine as its object.
 
 ## Threat model changes
 
-`docs/threat-model.md` has a "Scheduled Threads" section that covers:
+`docs/threat-model.md` has a "Routines" section that covers:
 
-- **Unattended spend.** A schedule spends compute and model calls with nobody
+- **Unattended spend.** A routine spends compute and model calls with nobody
   watching. Bounds: at least 15 minutes between fires, no overlap, one
   catch-up, `maxRunDuration`, the installation live-Capsule cap, and
-  auto-disable after repeated start failures. A schedule with a slow cadence
+  auto-disable after repeated start failures. A routine with a slow cadence
   and a long duration can still use up a provider quota or plan allowance
   before the operator looks.
 - **No standing foothold.** A fresh Capsule per fire means a process left
@@ -248,7 +254,7 @@ the schedule as its object.
   watching for up to `maxRunDuration`. This is a new residual risk.
 - **Credentials used while the owner is away.** A fire uses the owner's
   provider connection and GitHub connection without the owner being present.
-  No new credential is stored, and the schedule holds no token. Revoking the
+  No new credential is stored, and the routine holds no token. Revoking the
   connection or disabling the member stops future fires. Every fire is
   audited.
 - **Deleting empty runs.** A `no_changes` Capsule is deleted, so any
@@ -260,20 +266,20 @@ the schedule as its object.
   attention and counts toward the kept-Capsule limit. Both directions fail
   toward the operator seeing it. A failed state read counts as `changed`.
 - **Only the owner sets the clock.** Capsules, repository files, and outside
-  systems cannot create, change, or trigger a schedule.
+  systems cannot create, change, or trigger a routine.
 
 ## Consequences
 
 The operator writes a prompt and a cadence once and reviews results as they
 arrive. Runs with nothing to show do not ask for attention and do not leave
 a Capsule behind. Runs that do have something to show stay until the
-operator is done with them, and a schedule stops firing while its backlog is
+operator is done with them, and a routine stops firing while its backlog is
 full. Meridian stays
 the thing that runs the environment, not the thing that decides what to do:
 the harness does the work and the operator ships it.
 
 The daemon gains a durable clock loop, two tables, and a new prompt source
-to reason about. A laptop Station only runs schedules while it is awake, and
+to reason about. A laptop Station only runs routines while it is awake, and
 the catch-up rule means a nightly job on a closed laptop runs once at the next
 wake or not at all. Unattended runs use the owner's model and GitHub
 quotas.
@@ -301,7 +307,7 @@ The external-crontab approach keeps working for anyone who wants it.
   approval.
 - **Keep empty runs paused, or archive them, instead of deleting.** Rejected.
   A paused Capsule holds a workspace, and with Docker a stopped container,
-  until someone deletes it by hand. A nightly schedule would leave hundreds
+  until someone deletes it by hand. A nightly routine would leave hundreds
   of them. The transcript is kept, and that is what an operator actually
   needs from an empty run.
 - **Delete the Capsules of shipped runs automatically.** Deferred. A pushed
@@ -309,7 +315,7 @@ The external-crontab approach keeps working for anyone who wants it.
   fix in the same Capsule. A later decision can delete after the pull request
   closes.
 - **A permissive harness mode for scheduled runs**, so they do not stop on
-  permission prompts. Rejected. A schedule should not be a way to get more
+  permission prompts. Rejected. A routine should not be a way to get more
   authority than starting the same Thread by hand. Projects that want fewer
   prompts use the existing harness settings and trusted MCP tools (ADR 0045),
   which apply to every Thread.

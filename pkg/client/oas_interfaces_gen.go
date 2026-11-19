@@ -81,8 +81,8 @@ type CreateProjectRes interface {
 	createProjectRes()
 }
 
-type CreateProjectScheduleRes interface {
-	createProjectScheduleRes()
+type CreateProjectRoutineRes interface {
+	createProjectRoutineRes()
 }
 
 type CreateProjectThreadRes interface {
@@ -117,8 +117,8 @@ type DeleteProjectRes interface {
 	deleteProjectRes()
 }
 
-type DeleteScheduleRes interface {
-	deleteScheduleRes()
+type DeleteRoutineRes interface {
+	deleteRoutineRes()
 }
 
 type DeleteSecretRes interface {
@@ -217,12 +217,12 @@ type GetReportedModelsRes interface {
 	getReportedModelsRes()
 }
 
-type GetRunRes interface {
-	getRunRes()
+type GetRoutineRes interface {
+	getRoutineRes()
 }
 
-type GetScheduleRes interface {
-	getScheduleRes()
+type GetRunRes interface {
+	getRunRes()
 }
 
 type GetThreadLinkRes interface {
@@ -285,12 +285,20 @@ type ListPersonalAccessTokensRes interface {
 	listPersonalAccessTokensRes()
 }
 
-type ListProjectSchedulesRes interface {
-	listProjectSchedulesRes()
+type ListProjectRoutinesRes interface {
+	listProjectRoutinesRes()
 }
 
 type ListProjectsRes interface {
 	listProjectsRes()
+}
+
+type ListRoutineFiresRes interface {
+	listRoutineFiresRes()
+}
+
+type ListRoutinesRes interface {
+	listRoutinesRes()
 }
 
 type ListRunEventsRes interface {
@@ -299,10 +307,6 @@ type ListRunEventsRes interface {
 
 type ListRunsRes interface {
 	listRunsRes()
-}
-
-type ListScheduleFiresRes interface {
-	listScheduleFiresRes()
 }
 
 type ListSecretsRes interface {
@@ -413,8 +417,8 @@ type RewindCapsuleRes interface {
 	rewindCapsuleRes()
 }
 
-type RunScheduleRes interface {
-	runScheduleRes()
+type RunRoutineRes interface {
+	runRoutineRes()
 }
 
 type SealCapsuleRes interface {
@@ -477,8 +481,8 @@ type UpdateProfileRes interface {
 	updateProfileRes()
 }
 
-type UpdateScheduleRes interface {
-	updateScheduleRes()
+type UpdateRoutineRes interface {
+	updateRoutineRes()
 }
 
 type UseHostGitHubLoginRes interface {

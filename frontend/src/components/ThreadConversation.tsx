@@ -201,7 +201,7 @@ function answerText(request: ChatRequest) {
 const originLabels = {
   from_lead: "From the lead",
   from_subagents: "From subagents",
-  from_schedule: "Scheduled prompt",
+  from_routine: "Routine prompt",
 } as const;
 
 function originLabel(origin: keyof typeof originLabels) {

@@ -135,8 +135,8 @@ type Service struct {
 	remoteCI        githubci.Reader
 	ciImmediate     bool
 	ciWake          chan struct{}
-	scheduleWake    chan struct{}
-	scheduleMaxLive int
+	routineWake     chan struct{}
+	routineMaxLive  int
 	claudeMu        sync.Mutex
 	claudeRefresh   sync.Mutex
 	claudePending   map[string]*claudeCeremony
@@ -243,13 +243,13 @@ func NewService(
 ) *Service {
 	service := &Service{
 		store: newScopedStore(store, clock), clock: clock, ids: ids, queue: queue,
-		attention:    make(map[domain.ThreadID]cachedThreadAttention),
-		models:       make(map[domain.ThreadID]ThreadModelSummary),
-		checkCancel:  make(map[domain.CheckRunID]context.CancelFunc),
-		checkOwners:  make(map[domain.CheckRunID]domain.CapsuleID),
-		checkWake:    make(chan struct{}, 1),
-		ciWake:       make(chan struct{}, 1),
-		scheduleWake: make(chan struct{}, 1),
+		attention:   make(map[domain.ThreadID]cachedThreadAttention),
+		models:      make(map[domain.ThreadID]ThreadModelSummary),
+		checkCancel: make(map[domain.CheckRunID]context.CancelFunc),
+		checkOwners: make(map[domain.CheckRunID]domain.CapsuleID),
+		checkWake:   make(chan struct{}, 1),
+		ciWake:      make(chan struct{}, 1),
+		routineWake: make(chan struct{}, 1),
 	}
 	if len(runtime) > 0 {
 		service.runtime = runtime[0]

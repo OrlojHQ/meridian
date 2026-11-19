@@ -11,18 +11,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Scheduled Project Threads (ADR 0057).
+// Routines (ADR 0057).
 
-type scheduleFlags struct {
+type routineFlags struct {
 	name, harness, model, effort, prompt, promptFile, cadence, timeZone string
 	maxRun, catchUp                                                     time.Duration
 	maxKept                                                             int
 	enabled                                                             bool
 }
 
-func (f *scheduleFlags) bind(command *cobra.Command, create bool) {
+func (f *routineFlags) bind(command *cobra.Command, create bool) {
 	flags := command.Flags()
-	flags.StringVar(&f.name, "name", "", "schedule name: lowercase letters, digits, and dashes")
+	flags.StringVar(&f.name, "name", "", "routine name: lowercase letters, digits, and dashes")
 	flags.StringVar(&f.harness, "harness", "", "structured harness on the Project allowlist")
 	flags.StringVar(&f.model, "model", "", "model option ID the harness reports (empty uses its default)")
 	flags.StringVar(&f.effort, "effort", "", "reasoning effort option ID (empty uses the default)")
@@ -41,7 +41,7 @@ func (f *scheduleFlags) bind(command *cobra.Command, create bool) {
 	}
 }
 
-func (f *scheduleFlags) readPrompt(stdin io.Reader) (string, error) {
+func (f *routineFlags) readPrompt(stdin io.Reader) (string, error) {
 	if f.promptFile == "" {
 		return f.prompt, nil
 	}
@@ -76,36 +76,47 @@ func localTimeZone() string {
 	return "UTC"
 }
 
-func newScheduleCommand(config *cliConfig) *cobra.Command {
-	schedule := &cobra.Command{
-		Use:   "schedule",
+func newRoutineCommand(config *cliConfig) *cobra.Command {
+	routine := &cobra.Command{
+		Use:   "routine",
 		Short: "Start Project Threads on a schedule",
-		Long: "A schedule starts one fresh Capsule and Thread with a fixed prompt on a cron clock.\n" +
+		Long: "A routine starts one fresh Capsule and Thread with a fixed prompt on a cron clock.\n" +
 			"A run with no changes deletes its Capsule. A run with changes, a question, or a\n" +
-			"failure is kept for you. A schedule never ships: Delivery still needs your approval.",
+			"failure is kept for you. A routine never ships: Delivery still needs your approval.",
 	}
 	list := &cobra.Command{
-		Use:   "list PROJECT_ID",
-		Short: "List a Project's schedules",
-		Args:  cobra.ExactArgs(1),
+		Use:   "list [PROJECT_ID]",
+		Short: "List your routines, or one Project's",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(command *cobra.Command, args []string) error {
 			api, err := newAPI(config)
 			if err != nil {
 				return err
 			}
-			result, err := api.ListProjectSchedules(command.Context(), client.ListProjectSchedulesParams{ProjectId: args[0]})
-			if err != nil {
-				return apiCallError(err)
-			}
-			page, ok := result.(*client.ScheduleList)
-			if !ok {
-				return responseError(result)
+			var page *client.RoutineList
+			var ok bool
+			if len(args) == 0 {
+				result, err := api.ListRoutines(command.Context())
+				if err != nil {
+					return apiCallError(err)
+				}
+				if page, ok = result.(*client.RoutineList); !ok {
+					return responseError(result)
+				}
+			} else {
+				result, err := api.ListProjectRoutines(command.Context(), client.ListProjectRoutinesParams{ProjectId: args[0]})
+				if err != nil {
+					return apiCallError(err)
+				}
+				if page, ok = result.(*client.RoutineList); !ok {
+					return responseError(result)
+				}
 			}
 			if config.json {
 				return writeJSON(config.stdout, page)
 			}
 			for _, item := range page.Items {
-				if err := writeScheduleLine(config.stdout, item); err != nil {
+				if err := writeRoutineLine(config.stdout, item); err != nil {
 					return err
 				}
 			}
@@ -113,29 +124,29 @@ func newScheduleCommand(config *cliConfig) *cobra.Command {
 		},
 	}
 	get := &cobra.Command{
-		Use:   "get SCHEDULE_ID",
-		Short: "Show a schedule, prompt included",
+		Use:   "get ROUTINE_ID",
+		Short: "Show a routine, prompt included",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(command *cobra.Command, args []string) error {
 			api, err := newAPI(config)
 			if err != nil {
 				return err
 			}
-			result, err := api.GetSchedule(command.Context(), client.GetScheduleParams{ScheduleId: args[0]})
+			result, err := api.GetRoutine(command.Context(), client.GetRoutineParams{RoutineId: args[0]})
 			if err != nil {
 				return apiCallError(err)
 			}
-			item, ok := result.(*client.Schedule)
+			item, ok := result.(*client.Routine)
 			if !ok {
 				return responseError(result)
 			}
-			return writeSchedule(config, item)
+			return writeRoutine(config, item)
 		},
 	}
-	var createFlags scheduleFlags
+	var createFlags routineFlags
 	create := &cobra.Command{
 		Use:   "create PROJECT_ID",
-		Short: "Save a schedule on a Project",
+		Short: "Save a routine on a Project",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(command *cobra.Command, args []string) error {
 			prompt, err := createFlags.readPrompt(config.stdin)
@@ -154,7 +165,7 @@ func newScheduleCommand(config *cliConfig) *cobra.Command {
 			if zone == "" {
 				zone = localTimeZone()
 			}
-			request := &client.CreateScheduleRequest{
+			request := &client.CreateRoutineRequest{
 				Name: createFlags.name, Harness: createFlags.harness, Prompt: prompt,
 				Cadence: createFlags.cadence, TimeZone: zone,
 				MaxRunSeconds:  client.NewOptInt(int(createFlags.maxRun / time.Second)),
@@ -168,26 +179,26 @@ func newScheduleCommand(config *cliConfig) *cobra.Command {
 			if createFlags.effort != "" {
 				request.Effort = client.NewOptString(createFlags.effort)
 			}
-			result, err := api.CreateProjectSchedule(command.Context(), request,
-				client.CreateProjectScheduleParams{ProjectId: args[0], IdempotencyKey: key})
+			result, err := api.CreateProjectRoutine(command.Context(), request,
+				client.CreateProjectRoutineParams{ProjectId: args[0], IdempotencyKey: key})
 			if err != nil {
 				return apiCallError(err)
 			}
-			item, ok := result.(*client.Schedule)
+			item, ok := result.(*client.Routine)
 			if !ok {
 				return responseError(result)
 			}
-			return writeSchedule(config, item)
+			return writeRoutine(config, item)
 		},
 	}
 	createFlags.bind(create, true)
-	var updateFlags scheduleFlags
+	var updateFlags routineFlags
 	update := &cobra.Command{
-		Use:   "update SCHEDULE_ID",
-		Short: "Change a schedule; only the flags you pass change",
+		Use:   "update ROUTINE_ID",
+		Short: "Change a routine; only the flags you pass change",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(command *cobra.Command, args []string) error {
-			return changeSchedule(command, config, args[0], func(request *client.UpdateScheduleRequest) error {
+			return changeRoutine(command, config, args[0], func(request *client.UpdateRoutineRequest) error {
 				flags := command.Flags()
 				setString := func(name string, value string, dst *client.OptString) {
 					if flags.Changed(name) {
@@ -226,9 +237,9 @@ func newScheduleCommand(config *cliConfig) *cobra.Command {
 	updateFlags.bind(update, false)
 	toggle := func(use, short string, enabled bool) *cobra.Command {
 		return &cobra.Command{
-			Use: use + " SCHEDULE_ID", Short: short, Args: cobra.ExactArgs(1),
+			Use: use + " ROUTINE_ID", Short: short, Args: cobra.ExactArgs(1),
 			RunE: func(command *cobra.Command, args []string) error {
-				return changeSchedule(command, config, args[0], func(request *client.UpdateScheduleRequest) error {
+				return changeRoutine(command, config, args[0], func(request *client.UpdateRoutineRequest) error {
 					request.Enabled = client.NewOptBool(enabled)
 					return nil
 				})
@@ -236,8 +247,8 @@ func newScheduleCommand(config *cliConfig) *cobra.Command {
 		}
 	}
 	run := &cobra.Command{
-		Use:   "run SCHEDULE_ID",
-		Short: "Fire a schedule now",
+		Use:   "run ROUTINE_ID",
+		Short: "Fire a routine now",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(command *cobra.Command, args []string) error {
 			api, err := newAPI(config)
@@ -248,11 +259,11 @@ func newScheduleCommand(config *cliConfig) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			result, err := api.RunSchedule(command.Context(), client.RunScheduleParams{ScheduleId: args[0], IdempotencyKey: key})
+			result, err := api.RunRoutine(command.Context(), client.RunRoutineParams{RoutineId: args[0], IdempotencyKey: key})
 			if err != nil {
 				return apiCallError(err)
 			}
-			fire, ok := result.(*client.ScheduleFire)
+			fire, ok := result.(*client.RoutineFire)
 			if !ok {
 				return responseError(result)
 			}
@@ -263,19 +274,19 @@ func newScheduleCommand(config *cliConfig) *cobra.Command {
 		},
 	}
 	fires := &cobra.Command{
-		Use:   "fires SCHEDULE_ID",
-		Short: "List a schedule's recent fires",
+		Use:   "fires ROUTINE_ID",
+		Short: "List a routine's recent fires",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(command *cobra.Command, args []string) error {
 			api, err := newAPI(config)
 			if err != nil {
 				return err
 			}
-			result, err := api.ListScheduleFires(command.Context(), client.ListScheduleFiresParams{ScheduleId: args[0]})
+			result, err := api.ListRoutineFires(command.Context(), client.ListRoutineFiresParams{RoutineId: args[0]})
 			if err != nil {
 				return apiCallError(err)
 			}
-			page, ok := result.(*client.ScheduleFirePage)
+			page, ok := result.(*client.RoutineFirePage)
 			if !ok {
 				return responseError(result)
 			}
@@ -291,15 +302,15 @@ func newScheduleCommand(config *cliConfig) *cobra.Command {
 		},
 	}
 	deleteCommand := &cobra.Command{
-		Use:   "delete SCHEDULE_ID",
-		Short: "Delete a schedule and its fire history; kept Capsules stay",
+		Use:   "delete ROUTINE_ID",
+		Short: "Delete a routine and its fire history; kept Capsules stay",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(command *cobra.Command, args []string) error {
 			api, err := newAPI(config)
 			if err != nil {
 				return err
 			}
-			current, err := getSchedule(command, api, args[0])
+			current, err := getRoutine(command, api, args[0])
 			if err != nil {
 				return err
 			}
@@ -307,13 +318,13 @@ func newScheduleCommand(config *cliConfig) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			result, err := api.DeleteSchedule(command.Context(),
+			result, err := api.DeleteRoutine(command.Context(),
 				&client.LifecycleMutationRequest{ExpectedResourceVersion: current.ResourceVersion},
-				client.DeleteScheduleParams{ScheduleId: args[0], IdempotencyKey: key})
+				client.DeleteRoutineParams{RoutineId: args[0], IdempotencyKey: key})
 			if err != nil {
 				return apiCallError(err)
 			}
-			if _, ok := result.(*client.DeleteScheduleNoContent); !ok {
+			if _, ok := result.(*client.DeleteRoutineNoContent); !ok {
 				return responseError(result)
 			}
 			if config.json {
@@ -324,36 +335,36 @@ func newScheduleCommand(config *cliConfig) *cobra.Command {
 			return err
 		},
 	}
-	schedule.AddCommand(list, get, create, update,
-		toggle("enable", "Turn a schedule on", true), toggle("disable", "Turn a schedule off", false),
+	routine.AddCommand(list, get, create, update,
+		toggle("enable", "Turn a routine on", true), toggle("disable", "Turn a routine off", false),
 		run, fires, deleteCommand)
-	return schedule
+	return routine
 }
 
-func getSchedule(command *cobra.Command, api *client.Client, id string) (*client.Schedule, error) {
-	result, err := api.GetSchedule(command.Context(), client.GetScheduleParams{ScheduleId: id})
+func getRoutine(command *cobra.Command, api *client.Client, id string) (*client.Routine, error) {
+	result, err := api.GetRoutine(command.Context(), client.GetRoutineParams{RoutineId: id})
 	if err != nil {
 		return nil, apiCallError(err)
 	}
-	item, ok := result.(*client.Schedule)
+	item, ok := result.(*client.Routine)
 	if !ok {
 		return nil, responseError(result)
 	}
 	return item, nil
 }
 
-func changeSchedule(
-	command *cobra.Command, config *cliConfig, id string, change func(*client.UpdateScheduleRequest) error,
+func changeRoutine(
+	command *cobra.Command, config *cliConfig, id string, change func(*client.UpdateRoutineRequest) error,
 ) error {
 	api, err := newAPI(config)
 	if err != nil {
 		return err
 	}
-	current, err := getSchedule(command, api, id)
+	current, err := getRoutine(command, api, id)
 	if err != nil {
 		return err
 	}
-	request := &client.UpdateScheduleRequest{ExpectedResourceVersion: current.ResourceVersion}
+	request := &client.UpdateRoutineRequest{ExpectedResourceVersion: current.ResourceVersion}
 	if err := change(request); err != nil {
 		return err
 	}
@@ -361,30 +372,30 @@ func changeSchedule(
 	if err != nil {
 		return err
 	}
-	result, err := api.UpdateSchedule(command.Context(), request,
-		client.UpdateScheduleParams{ScheduleId: id, IdempotencyKey: key})
+	result, err := api.UpdateRoutine(command.Context(), request,
+		client.UpdateRoutineParams{RoutineId: id, IdempotencyKey: key})
 	if err != nil {
 		return apiCallError(err)
 	}
-	item, ok := result.(*client.Schedule)
+	item, ok := result.(*client.Routine)
 	if !ok {
 		return responseError(result)
 	}
-	return writeSchedule(config, item)
+	return writeRoutine(config, item)
 }
 
-func writeSchedule(config *cliConfig, item *client.Schedule) error {
+func writeRoutine(config *cliConfig, item *client.Routine) error {
 	if config.json {
 		return writeJSON(config.stdout, item)
 	}
-	if err := writeScheduleLine(config.stdout, *item); err != nil {
+	if err := writeRoutineLine(config.stdout, *item); err != nil {
 		return err
 	}
 	_, err := fmt.Fprintf(config.stdout, "prompt:\n%s\n", item.Prompt)
 	return err
 }
 
-func writeScheduleLine(out io.Writer, item client.Schedule) error {
+func writeRoutineLine(out io.Writer, item client.Routine) error {
 	state := "on"
 	if !item.Enabled {
 		state = "off"
@@ -406,7 +417,7 @@ func writeScheduleLine(out io.Writer, item client.Schedule) error {
 	return err
 }
 
-func writeFireLine(out io.Writer, fire client.ScheduleFire) error {
+func writeFireLine(out io.Writer, fire client.RoutineFire) error {
 	result := string(fire.State)
 	if outcome, ok := fire.Outcome.Get(); ok && outcome != "" {
 		result += "/" + string(outcome)

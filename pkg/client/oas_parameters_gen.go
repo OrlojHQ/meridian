@@ -115,8 +115,8 @@ type CreateProjectParams struct {
 	IdempotencyKey string
 }
 
-// CreateProjectScheduleParams is parameters of createProjectSchedule operation.
-type CreateProjectScheduleParams struct {
+// CreateProjectRoutineParams is parameters of createProjectRoutine operation.
+type CreateProjectRoutineParams struct {
 	ProjectId      string
 	IdempotencyKey string
 }
@@ -174,9 +174,9 @@ type DeleteProviderConnectionParams struct {
 	ConnectionId string
 }
 
-// DeleteScheduleParams is parameters of deleteSchedule operation.
-type DeleteScheduleParams struct {
-	ScheduleId     string
+// DeleteRoutineParams is parameters of deleteRoutine operation.
+type DeleteRoutineParams struct {
+	RoutineId      string
 	IdempotencyKey string
 }
 
@@ -325,14 +325,14 @@ type GetReportedModelsParams struct {
 	Harness   string
 }
 
+// GetRoutineParams is parameters of getRoutine operation.
+type GetRoutineParams struct {
+	RoutineId string
+}
+
 // GetRunParams is parameters of getRun operation.
 type GetRunParams struct {
 	RunId string
-}
-
-// GetScheduleParams is parameters of getSchedule operation.
-type GetScheduleParams struct {
-	ScheduleId string
 }
 
 // GetThreadParams is parameters of getThread operation.
@@ -436,8 +436,8 @@ type ListMomentsParams struct {
 	Limit     OptInt    `json:",omitempty,omitzero"`
 }
 
-// ListProjectSchedulesParams is parameters of listProjectSchedules operation.
-type ListProjectSchedulesParams struct {
+// ListProjectRoutinesParams is parameters of listProjectRoutines operation.
+type ListProjectRoutinesParams struct {
 	ProjectId string
 }
 
@@ -445,6 +445,13 @@ type ListProjectSchedulesParams struct {
 type ListProjectsParams struct {
 	Cursor OptString `json:",omitempty,omitzero"`
 	Limit  OptInt    `json:",omitempty,omitzero"`
+}
+
+// ListRoutineFiresParams is parameters of listRoutineFires operation.
+type ListRoutineFiresParams struct {
+	RoutineId string
+	Cursor    OptString `json:",omitempty,omitzero"`
+	Limit     OptInt    `json:",omitempty,omitzero"`
 }
 
 // ListRunEventsParams is parameters of listRunEvents operation.
@@ -459,13 +466,6 @@ type ListRunsParams struct {
 	CapsuleId string
 	Cursor    OptString `json:",omitempty,omitzero"`
 	Limit     OptInt    `json:",omitempty,omitzero"`
-}
-
-// ListScheduleFiresParams is parameters of listScheduleFires operation.
-type ListScheduleFiresParams struct {
-	ScheduleId string
-	Cursor     OptString `json:",omitempty,omitzero"`
-	Limit      OptInt    `json:",omitempty,omitzero"`
 }
 
 // ListSecretsParams is parameters of listSecrets operation.
@@ -607,9 +607,9 @@ type RewindCapsuleParams struct {
 	IdempotencyKey string
 }
 
-// RunScheduleParams is parameters of runSchedule operation.
-type RunScheduleParams struct {
-	ScheduleId     string
+// RunRoutineParams is parameters of runRoutine operation.
+type RunRoutineParams struct {
+	RoutineId      string
 	IdempotencyKey string
 }
 
@@ -739,9 +739,9 @@ type UpdateProviderConnectionParams struct {
 	ConnectionId string
 }
 
-// UpdateScheduleParams is parameters of updateSchedule operation.
-type UpdateScheduleParams struct {
-	ScheduleId     string
+// UpdateRoutineParams is parameters of updateRoutine operation.
+type UpdateRoutineParams struct {
+	RoutineId      string
 	IdempotencyKey string
 }
 

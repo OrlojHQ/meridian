@@ -483,26 +483,26 @@ export type ChecksSummary = {
     remoteCI?: RemoteCiSummary;
 };
 
-export type ScheduleFireTrigger = 'clock' | 'catch_up' | 'manual';
+export type RoutineFireTrigger = 'clock' | 'catch_up' | 'manual';
 
-export type ScheduleFireState = 'skipped' | 'missed' | 'starting' | 'selecting' | 'running' | 'cleaning' | 'finished';
+export type RoutineFireState = 'skipped' | 'missed' | 'starting' | 'selecting' | 'running' | 'cleaning' | 'finished';
 
 /**
  * Content-free result. no_changes deletes the Capsule; the others keep it and ask for the operator.
  *
  */
-export type ScheduleOutcome = 'proposed' | 'changed' | 'no_changes' | 'waiting' | 'timed_out' | 'failed';
+export type RoutineOutcome = 'proposed' | 'changed' | 'no_changes' | 'waiting' | 'timed_out' | 'failed';
 
 /**
- * One tick of a schedule's clock. It carries codes, never prompt text.
+ * One tick of a routine's clock. It carries codes, never prompt text.
  */
-export type ScheduleFire = {
+export type RoutineFire = {
     id: string;
-    scheduleId: string;
-    trigger: ScheduleFireTrigger;
+    routineId: string;
+    trigger: RoutineFireTrigger;
     scheduledFor: string;
-    state: ScheduleFireState;
-    outcome?: ScheduleOutcome;
+    state: RoutineFireState;
+    outcome?: RoutineOutcome;
     /**
      * Skip or failure code, such as overlap, backlog, capacity, or model_unavailable.
      */
@@ -515,12 +515,12 @@ export type ScheduleFire = {
     createdAt: string;
 };
 
-export type ScheduleFirePage = {
-    items: Array<ScheduleFire>;
+export type RoutineFirePage = {
+    items: Array<RoutineFire>;
     nextCursor?: string;
 };
 
-export type Schedule = {
+export type Routine = {
     id: string;
     projectId: string;
     name: string;
@@ -547,27 +547,27 @@ export type Schedule = {
     maxKept: number;
     enabled: boolean;
     /**
-     * Why Meridian turned the schedule off, such as start_failures or transferred.
+     * Why Meridian turned the routine off, such as start_failures or transferred.
      */
     disabledReason?: string;
     nextFireAt?: string;
     lastFireAt?: string;
     /**
-     * Capsules this schedule kept that nobody has deleted yet.
+     * Capsules this routine kept that nobody has deleted yet.
      */
     keptCapsules: number;
-    active?: ScheduleFire;
-    lastFire?: ScheduleFire;
+    active?: RoutineFire;
+    lastFire?: RoutineFire;
     resourceVersion: number;
     createdAt: string;
     updatedAt: string;
 };
 
-export type ScheduleList = {
-    items: Array<Schedule>;
+export type RoutineList = {
+    items: Array<Routine>;
 };
 
-export type CreateScheduleRequest = {
+export type CreateRoutineRequest = {
     name: string;
     harness: string;
     model?: string;
@@ -581,7 +581,7 @@ export type CreateScheduleRequest = {
     enabled?: boolean;
 };
 
-export type UpdateScheduleRequest = {
+export type UpdateRoutineRequest = {
     name?: string;
     harness?: string;
     /**
@@ -617,14 +617,14 @@ export type ReportedModels = {
 };
 
 /**
- * Content-free note on a Capsule a schedule started.
+ * Content-free note on a Capsule a routine started.
  */
-export type CapsuleSchedule = {
-    scheduleId: string;
-    scheduleName: string;
+export type CapsuleRoutine = {
+    routineId: string;
+    routineName: string;
     fireId: string;
-    state: ScheduleFireState;
-    outcome?: ScheduleOutcome;
+    state: RoutineFireState;
+    outcome?: RoutineOutcome;
 };
 
 /**
@@ -726,9 +726,9 @@ export type Capsule = {
      */
     checks?: ChecksSummary;
     /**
-     * Present on a Capsule a schedule started (ADR 0057).
+     * Present on a Capsule a routine started (ADR 0057).
      */
-    schedule?: CapsuleSchedule;
+    routine?: CapsuleRoutine;
     createdAt: string;
     updatedAt: string;
     resourceVersion: number;
@@ -1403,12 +1403,12 @@ export type CoordinationCapability = {
 };
 
 /**
- * Marks a user-role message Meridian wrote rather than the operator typing it now: from_lead on a subagent, from_subagents on a lead, and from_schedule for the prompt a schedule saved (ADR 0057).
+ * Marks a user-role message Meridian wrote rather than the operator typing it now: from_lead on a subagent, from_subagents on a lead, and from_routine for the prompt a routine saved (ADR 0057).
  *
  */
 export type ThreadOrigin = {
-    source: 'coordination' | 'schedule';
-    kind: 'from_lead' | 'from_subagents' | 'from_schedule';
+    source: 'coordination' | 'routine';
+    kind: 'from_lead' | 'from_subagents' | 'from_routine';
     linkIds?: Array<string>;
 };
 
@@ -2347,7 +2347,7 @@ export type ProjectThreadIntentId = string;
 
 export type LinkId = string;
 
-export type ScheduleId = string;
+export type RoutineId = string;
 
 export type GrantId = string;
 
@@ -5465,16 +5465,16 @@ export type SuggestProjectChecksResponses = {
 
 export type SuggestProjectChecksResponse = SuggestProjectChecksResponses[keyof SuggestProjectChecksResponses];
 
-export type ListProjectSchedulesData = {
+export type ListProjectRoutinesData = {
     body?: never;
     path: {
         projectId: string;
     };
     query?: never;
-    url: '/projects/{projectId}/schedules';
+    url: '/projects/{projectId}/routines';
 };
 
-export type ListProjectSchedulesErrors = {
+export type ListProjectRoutinesErrors = {
     /**
      * Resource not found
      */
@@ -5485,19 +5485,19 @@ export type ListProjectSchedulesErrors = {
     default: ErrorEnvelope;
 };
 
-export type ListProjectSchedulesError = ListProjectSchedulesErrors[keyof ListProjectSchedulesErrors];
+export type ListProjectRoutinesError = ListProjectRoutinesErrors[keyof ListProjectRoutinesErrors];
 
-export type ListProjectSchedulesResponses = {
+export type ListProjectRoutinesResponses = {
     /**
-     * Schedules, by name
+     * Routines, by name
      */
-    200: ScheduleList;
+    200: RoutineList;
 };
 
-export type ListProjectSchedulesResponse = ListProjectSchedulesResponses[keyof ListProjectSchedulesResponses];
+export type ListProjectRoutinesResponse = ListProjectRoutinesResponses[keyof ListProjectRoutinesResponses];
 
-export type CreateProjectScheduleData = {
-    body: CreateScheduleRequest;
+export type CreateProjectRoutineData = {
+    body: CreateRoutineRequest;
     headers: {
         'Idempotency-Key': string;
     };
@@ -5505,10 +5505,10 @@ export type CreateProjectScheduleData = {
         projectId: string;
     };
     query?: never;
-    url: '/projects/{projectId}/schedules';
+    url: '/projects/{projectId}/routines';
 };
 
-export type CreateProjectScheduleErrors = {
+export type CreateProjectRoutineErrors = {
     /**
      * Invalid request
      */
@@ -5527,16 +5527,16 @@ export type CreateProjectScheduleErrors = {
     default: ErrorEnvelope;
 };
 
-export type CreateProjectScheduleError = CreateProjectScheduleErrors[keyof CreateProjectScheduleErrors];
+export type CreateProjectRoutineError = CreateProjectRoutineErrors[keyof CreateProjectRoutineErrors];
 
-export type CreateProjectScheduleResponses = {
+export type CreateProjectRoutineResponses = {
     /**
-     * Saved schedule
+     * Saved routine
      */
-    201: Schedule;
+    201: Routine;
 };
 
-export type CreateProjectScheduleResponse = CreateProjectScheduleResponses[keyof CreateProjectScheduleResponses];
+export type CreateProjectRoutineResponse = CreateProjectRoutineResponses[keyof CreateProjectRoutineResponses];
 
 export type GetReportedModelsData = {
     body?: never;
@@ -5570,16 +5570,45 @@ export type GetReportedModelsResponses = {
 
 export type GetReportedModelsResponse = GetReportedModelsResponses[keyof GetReportedModelsResponses];
 
-export type GetScheduleData = {
+export type ListRoutinesData = {
     body?: never;
-    path: {
-        scheduleId: string;
-    };
+    path?: never;
     query?: never;
-    url: '/schedules/{scheduleId}';
+    url: '/routines';
 };
 
-export type GetScheduleErrors = {
+export type ListRoutinesErrors = {
+    /**
+     * Missing or invalid installation authentication
+     */
+    401: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ListRoutinesError = ListRoutinesErrors[keyof ListRoutinesErrors];
+
+export type ListRoutinesResponses = {
+    /**
+     * Routines, by Project then name
+     */
+    200: RoutineList;
+};
+
+export type ListRoutinesResponse = ListRoutinesResponses[keyof ListRoutinesResponses];
+
+export type GetRoutineData = {
+    body?: never;
+    path: {
+        routineId: string;
+    };
+    query?: never;
+    url: '/routines/{routineId}';
+};
+
+export type GetRoutineErrors = {
     /**
      * Resource not found
      */
@@ -5590,30 +5619,30 @@ export type GetScheduleErrors = {
     default: ErrorEnvelope;
 };
 
-export type GetScheduleError = GetScheduleErrors[keyof GetScheduleErrors];
+export type GetRoutineError = GetRoutineErrors[keyof GetRoutineErrors];
 
-export type GetScheduleResponses = {
+export type GetRoutineResponses = {
     /**
-     * Schedule
+     * Routine
      */
-    200: Schedule;
+    200: Routine;
 };
 
-export type GetScheduleResponse = GetScheduleResponses[keyof GetScheduleResponses];
+export type GetRoutineResponse = GetRoutineResponses[keyof GetRoutineResponses];
 
-export type UpdateScheduleData = {
-    body: UpdateScheduleRequest;
+export type UpdateRoutineData = {
+    body: UpdateRoutineRequest;
     headers: {
         'Idempotency-Key': string;
     };
     path: {
-        scheduleId: string;
+        routineId: string;
     };
     query?: never;
-    url: '/schedules/{scheduleId}';
+    url: '/routines/{routineId}';
 };
 
-export type UpdateScheduleErrors = {
+export type UpdateRoutineErrors = {
     /**
      * Invalid request
      */
@@ -5632,30 +5661,30 @@ export type UpdateScheduleErrors = {
     default: ErrorEnvelope;
 };
 
-export type UpdateScheduleError = UpdateScheduleErrors[keyof UpdateScheduleErrors];
+export type UpdateRoutineError = UpdateRoutineErrors[keyof UpdateRoutineErrors];
 
-export type UpdateScheduleResponses = {
+export type UpdateRoutineResponses = {
     /**
-     * Updated schedule
+     * Updated routine
      */
-    200: Schedule;
+    200: Routine;
 };
 
-export type UpdateScheduleResponse = UpdateScheduleResponses[keyof UpdateScheduleResponses];
+export type UpdateRoutineResponse = UpdateRoutineResponses[keyof UpdateRoutineResponses];
 
-export type DeleteScheduleData = {
+export type DeleteRoutineData = {
     body: LifecycleMutation;
     headers: {
         'Idempotency-Key': string;
     };
     path: {
-        scheduleId: string;
+        routineId: string;
     };
     query?: never;
-    url: '/schedules/{scheduleId}/delete';
+    url: '/routines/{routineId}/delete';
 };
 
-export type DeleteScheduleErrors = {
+export type DeleteRoutineErrors = {
     /**
      * Invalid request
      */
@@ -5674,30 +5703,30 @@ export type DeleteScheduleErrors = {
     default: ErrorEnvelope;
 };
 
-export type DeleteScheduleError = DeleteScheduleErrors[keyof DeleteScheduleErrors];
+export type DeleteRoutineError = DeleteRoutineErrors[keyof DeleteRoutineErrors];
 
-export type DeleteScheduleResponses = {
+export type DeleteRoutineResponses = {
     /**
      * Deleted
      */
     204: void;
 };
 
-export type DeleteScheduleResponse = DeleteScheduleResponses[keyof DeleteScheduleResponses];
+export type DeleteRoutineResponse = DeleteRoutineResponses[keyof DeleteRoutineResponses];
 
-export type RunScheduleData = {
+export type RunRoutineData = {
     body?: never;
     headers: {
         'Idempotency-Key': string;
     };
     path: {
-        scheduleId: string;
+        routineId: string;
     };
     query?: never;
-    url: '/schedules/{scheduleId}/run';
+    url: '/routines/{routineId}/run';
 };
 
-export type RunScheduleErrors = {
+export type RunRoutineErrors = {
     /**
      * Invalid request
      */
@@ -5716,30 +5745,30 @@ export type RunScheduleErrors = {
     default: ErrorEnvelope;
 };
 
-export type RunScheduleError = RunScheduleErrors[keyof RunScheduleErrors];
+export type RunRoutineError = RunRoutineErrors[keyof RunRoutineErrors];
 
-export type RunScheduleResponses = {
+export type RunRoutineResponses = {
     /**
      * Fire recorded
      */
-    202: ScheduleFire;
+    202: RoutineFire;
 };
 
-export type RunScheduleResponse = RunScheduleResponses[keyof RunScheduleResponses];
+export type RunRoutineResponse = RunRoutineResponses[keyof RunRoutineResponses];
 
-export type ListScheduleFiresData = {
+export type ListRoutineFiresData = {
     body?: never;
     path: {
-        scheduleId: string;
+        routineId: string;
     };
     query?: {
         cursor?: string;
         limit?: number;
     };
-    url: '/schedules/{scheduleId}/fires';
+    url: '/routines/{routineId}/fires';
 };
 
-export type ListScheduleFiresErrors = {
+export type ListRoutineFiresErrors = {
     /**
      * Resource not found
      */
@@ -5750,16 +5779,16 @@ export type ListScheduleFiresErrors = {
     default: ErrorEnvelope;
 };
 
-export type ListScheduleFiresError = ListScheduleFiresErrors[keyof ListScheduleFiresErrors];
+export type ListRoutineFiresError = ListRoutineFiresErrors[keyof ListRoutineFiresErrors];
 
-export type ListScheduleFiresResponses = {
+export type ListRoutineFiresResponses = {
     /**
      * Fires, newest first
      */
-    200: ScheduleFirePage;
+    200: RoutineFirePage;
 };
 
-export type ListScheduleFiresResponse = ListScheduleFiresResponses[keyof ListScheduleFiresResponses];
+export type ListRoutineFiresResponse = ListRoutineFiresResponses[keyof ListRoutineFiresResponses];
 
 export type GetCapsuleRemoteCiData = {
     body?: never;

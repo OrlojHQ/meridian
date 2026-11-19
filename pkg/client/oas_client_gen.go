@@ -222,13 +222,13 @@ type Invoker interface {
 	//
 	// POST /projects
 	CreateProject(ctx context.Context, request *CreateProjectRequest, params CreateProjectParams) (CreateProjectRes, error)
-	// CreateProjectSchedule invokes createProjectSchedule operation.
+	// CreateProjectRoutine invokes createProjectRoutine operation.
 	//
 	// The harness must be a structured harness on the Project allowlist. Fires must be at least 15 minutes
-	// apart. A schedule never ships: Delivery still needs the operator.
+	// apart. A routine never ships: Delivery still needs the operator.
 	//
-	// POST /projects/{projectId}/schedules
-	CreateProjectSchedule(ctx context.Context, request *CreateScheduleRequest, params CreateProjectScheduleParams) (CreateProjectScheduleRes, error)
+	// POST /projects/{projectId}/routines
+	CreateProjectRoutine(ctx context.Context, request *CreateRoutineRequest, params CreateProjectRoutineParams) (CreateProjectRoutineRes, error)
 	// CreateProjectThread invokes createProjectThread operation.
 	//
 	// Persists a durable encrypted session intent before asynchronously provisioning a new Capsule.
@@ -307,12 +307,12 @@ type Invoker interface {
 	//
 	// DELETE /provider-connections/{connectionId}
 	DeleteProviderConnection(ctx context.Context, params DeleteProviderConnectionParams) error
-	// DeleteSchedule invokes deleteSchedule operation.
+	// DeleteRoutine invokes deleteRoutine operation.
 	//
-	// Capsules the schedule kept are ordinary Capsules and stay until the operator deletes them.
+	// Capsules the routine kept are ordinary Capsules and stay until the operator deletes them.
 	//
-	// POST /schedules/{scheduleId}/delete
-	DeleteSchedule(ctx context.Context, request *LifecycleMutationRequest, params DeleteScheduleParams) (DeleteScheduleRes, error)
+	// POST /routines/{routineId}/delete
+	DeleteRoutine(ctx context.Context, request *LifecycleMutationRequest, params DeleteRoutineParams) (DeleteRoutineRes, error)
 	// DeleteSecret invokes deleteSecret operation.
 	//
 	// Crypto-shred a named secret by deleting its envelope.
@@ -537,22 +537,22 @@ type Invoker interface {
 	// GetReportedModels invokes getReportedModels operation.
 	//
 	// The model and effort options the most recent session of this harness in the Project reported, for a
-	// schedule form to offer. Empty when no session has reported any.
+	// routine form to offer. Empty when no session has reported any.
 	//
 	// GET /projects/{projectId}/harnesses/{harness}/reported-models
 	GetReportedModels(ctx context.Context, params GetReportedModelsParams) (GetReportedModelsRes, error)
+	// GetRoutine invokes getRoutine operation.
+	//
+	// Get a routine.
+	//
+	// GET /routines/{routineId}
+	GetRoutine(ctx context.Context, params GetRoutineParams) (GetRoutineRes, error)
 	// GetRun invokes getRun operation.
 	//
 	// Get a Run.
 	//
 	// GET /runs/{runId}
 	GetRun(ctx context.Context, params GetRunParams) (GetRunRes, error)
-	// GetSchedule invokes getSchedule operation.
-	//
-	// Get a schedule.
-	//
-	// GET /schedules/{scheduleId}
-	GetSchedule(ctx context.Context, params GetScheduleParams) (GetScheduleRes, error)
 	// GetThread invokes getThread operation.
 	//
 	// Get Thread lifecycle and current session status.
@@ -688,13 +688,13 @@ type Invoker interface {
 	//
 	// GET /auth/tokens
 	ListPersonalAccessTokens(ctx context.Context) (ListPersonalAccessTokensRes, error)
-	// ListProjectSchedules invokes listProjectSchedules operation.
+	// ListProjectRoutines invokes listProjectRoutines operation.
 	//
-	// Each schedule starts one fresh Project Thread per fire (ADR 0057). The owner sees the prompt; fires
+	// Each routine starts one fresh Project Thread per fire (ADR 0057). The owner sees the prompt; fires
 	// and Capsule notes never carry it.
 	//
-	// GET /projects/{projectId}/schedules
-	ListProjectSchedules(ctx context.Context, params ListProjectSchedulesParams) (ListProjectSchedulesRes, error)
+	// GET /projects/{projectId}/routines
+	ListProjectRoutines(ctx context.Context, params ListProjectRoutinesParams) (ListProjectRoutinesRes, error)
 	// ListProjects invokes listProjects operation.
 	//
 	// List projects.
@@ -707,6 +707,18 @@ type Invoker interface {
 	//
 	// GET /provider-connections
 	ListProviderConnections(ctx context.Context) (*ProviderConnectionPage, error)
+	// ListRoutineFires invokes listRoutineFires operation.
+	//
+	// List a routine's fires.
+	//
+	// GET /routines/{routineId}/fires
+	ListRoutineFires(ctx context.Context, params ListRoutineFiresParams) (ListRoutineFiresRes, error)
+	// ListRoutines invokes listRoutines operation.
+	//
+	// Routines across all of your Projects, ordered by Project and name, for the Routines page (ADR 0057).
+	//
+	// GET /routines
+	ListRoutines(ctx context.Context) (ListRoutinesRes, error)
 	// ListRunEvents invokes listRunEvents operation.
 	//
 	// Replay ordered, content-free Run events after a stable cursor.
@@ -719,12 +731,6 @@ type Invoker interface {
 	//
 	// GET /capsules/{capsuleId}/runs
 	ListRuns(ctx context.Context, params ListRunsParams) (ListRunsRes, error)
-	// ListScheduleFires invokes listScheduleFires operation.
-	//
-	// List a schedule's fires.
-	//
-	// GET /schedules/{scheduleId}/fires
-	ListScheduleFires(ctx context.Context, params ListScheduleFiresParams) (ListScheduleFiresRes, error)
 	// ListSecrets invokes listSecrets operation.
 	//
 	// List named secret metadata.
@@ -928,13 +934,13 @@ type Invoker interface {
 	//
 	// POST /capsules/{capsuleId}/rewind
 	RewindCapsule(ctx context.Context, request *RewindRequest, params RewindCapsuleParams) (RewindCapsuleRes, error)
-	// RunSchedule invokes runSchedule operation.
+	// RunRoutine invokes runRoutine operation.
 	//
 	// Follows the clock's rules: an overlapping run, a full backlog, or the live-Capsule cap records a
 	// skipped fire instead.
 	//
-	// POST /schedules/{scheduleId}/run
-	RunSchedule(ctx context.Context, params RunScheduleParams) (RunScheduleRes, error)
+	// POST /routines/{routineId}/run
+	RunRoutine(ctx context.Context, params RunRoutineParams) (RunRoutineRes, error)
 	// SealCapsule invokes sealCapsule operation.
 	//
 	// Active Runs and Thread sessions block capture/seal. Sealing retains encrypted Thread history and
@@ -1094,13 +1100,13 @@ type Invoker interface {
 	//
 	// PUT /provider-connections/{connectionId}
 	UpdateProviderConnection(ctx context.Context, request *ProviderConnectionRequest, params UpdateProviderConnectionParams) (*ProviderConnection, error)
-	// UpdateSchedule invokes updateSchedule operation.
+	// UpdateRoutine invokes updateRoutine operation.
 	//
-	// Changes only the named fields. Turning a schedule on clears the reason Meridian turned it off. A run
+	// Changes only the named fields. Turning a routine on clears the reason Meridian turned it off. A run
 	// in progress keeps its settings.
 	//
-	// PATCH /schedules/{scheduleId}
-	UpdateSchedule(ctx context.Context, request *UpdateScheduleRequest, params UpdateScheduleParams) (UpdateScheduleRes, error)
+	// PATCH /routines/{routineId}
+	UpdateRoutine(ctx context.Context, request *UpdateRoutineRequest, params UpdateRoutineParams) (UpdateRoutineRes, error)
 	// UseHostGitHubLogin invokes useHostGitHubLogin operation.
 	//
 	// Reads gh auth token only for this request, and only on a loopback single-user Station. The token is
@@ -4721,22 +4727,22 @@ func (c *Client) sendCreateProject(ctx context.Context, request *CreateProjectRe
 	return result, nil
 }
 
-// CreateProjectSchedule invokes createProjectSchedule operation.
+// CreateProjectRoutine invokes createProjectRoutine operation.
 //
 // The harness must be a structured harness on the Project allowlist. Fires must be at least 15 minutes
-// apart. A schedule never ships: Delivery still needs the operator.
+// apart. A routine never ships: Delivery still needs the operator.
 //
-// POST /projects/{projectId}/schedules
-func (c *Client) CreateProjectSchedule(ctx context.Context, request *CreateScheduleRequest, params CreateProjectScheduleParams) (CreateProjectScheduleRes, error) {
-	res, err := c.sendCreateProjectSchedule(ctx, request, params)
+// POST /projects/{projectId}/routines
+func (c *Client) CreateProjectRoutine(ctx context.Context, request *CreateRoutineRequest, params CreateProjectRoutineParams) (CreateProjectRoutineRes, error) {
+	res, err := c.sendCreateProjectRoutine(ctx, request, params)
 	return res, err
 }
 
-func (c *Client) sendCreateProjectSchedule(ctx context.Context, request *CreateScheduleRequest, params CreateProjectScheduleParams) (res CreateProjectScheduleRes, err error) {
+func (c *Client) sendCreateProjectRoutine(ctx context.Context, request *CreateRoutineRequest, params CreateProjectRoutineParams) (res CreateProjectRoutineRes, err error) {
 	otelAttrs := []attribute.KeyValue{
-		otelogen.OperationID("createProjectSchedule"),
+		otelogen.OperationID("createProjectRoutine"),
 		semconv.HTTPRequestMethodKey.String("POST"),
-		semconv.URLTemplateKey.String("/projects/{projectId}/schedules"),
+		semconv.URLTemplateKey.String("/projects/{projectId}/routines"),
 	}
 	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
 
@@ -4752,7 +4758,7 @@ func (c *Client) sendCreateProjectSchedule(ctx context.Context, request *CreateS
 	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
 
 	// Start a span for this request.
-	ctx, span := c.cfg.Tracer.Start(ctx, CreateProjectScheduleOperation,
+	ctx, span := c.cfg.Tracer.Start(ctx, CreateProjectRoutineOperation,
 		trace.WithAttributes(otelAttrs...),
 		clientSpanKind,
 	)
@@ -4789,7 +4795,7 @@ func (c *Client) sendCreateProjectSchedule(ctx context.Context, request *CreateS
 		}
 		pathParts[1] = encoded
 	}
-	pathParts[2] = "/schedules"
+	pathParts[2] = "/routines"
 	uri.AddPathParts(u, pathParts[:]...)
 
 	stage = "EncodeRequest"
@@ -4797,7 +4803,7 @@ func (c *Client) sendCreateProjectSchedule(ctx context.Context, request *CreateS
 	if err != nil {
 		return res, errors.Wrap(err, "create request")
 	}
-	if err := encodeCreateProjectScheduleRequest(request, r); err != nil {
+	if err := encodeCreateProjectRoutineRequest(request, r); err != nil {
 		return res, errors.Wrap(err, "encode request")
 	}
 
@@ -4820,7 +4826,7 @@ func (c *Client) sendCreateProjectSchedule(ctx context.Context, request *CreateS
 		var satisfied bitset
 		{
 			stage = "Security:BearerAuth"
-			switch err := c.securityBearerAuth(ctx, CreateProjectScheduleOperation, r); {
+			switch err := c.securityBearerAuth(ctx, CreateProjectRoutineOperation, r); {
 			case err == nil: // if NO error
 				satisfied[0] |= 1 << 0
 			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
@@ -4863,7 +4869,7 @@ func (c *Client) sendCreateProjectSchedule(ctx context.Context, request *CreateS
 	}()
 
 	stage = "DecodeResponse"
-	result, err := decodeCreateProjectScheduleResponse(resp)
+	result, err := decodeCreateProjectRoutineResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -6336,21 +6342,21 @@ func (c *Client) sendDeleteProviderConnection(ctx context.Context, params Delete
 	return result, nil
 }
 
-// DeleteSchedule invokes deleteSchedule operation.
+// DeleteRoutine invokes deleteRoutine operation.
 //
-// Capsules the schedule kept are ordinary Capsules and stay until the operator deletes them.
+// Capsules the routine kept are ordinary Capsules and stay until the operator deletes them.
 //
-// POST /schedules/{scheduleId}/delete
-func (c *Client) DeleteSchedule(ctx context.Context, request *LifecycleMutationRequest, params DeleteScheduleParams) (DeleteScheduleRes, error) {
-	res, err := c.sendDeleteSchedule(ctx, request, params)
+// POST /routines/{routineId}/delete
+func (c *Client) DeleteRoutine(ctx context.Context, request *LifecycleMutationRequest, params DeleteRoutineParams) (DeleteRoutineRes, error) {
+	res, err := c.sendDeleteRoutine(ctx, request, params)
 	return res, err
 }
 
-func (c *Client) sendDeleteSchedule(ctx context.Context, request *LifecycleMutationRequest, params DeleteScheduleParams) (res DeleteScheduleRes, err error) {
+func (c *Client) sendDeleteRoutine(ctx context.Context, request *LifecycleMutationRequest, params DeleteRoutineParams) (res DeleteRoutineRes, err error) {
 	otelAttrs := []attribute.KeyValue{
-		otelogen.OperationID("deleteSchedule"),
+		otelogen.OperationID("deleteRoutine"),
 		semconv.HTTPRequestMethodKey.String("POST"),
-		semconv.URLTemplateKey.String("/schedules/{scheduleId}/delete"),
+		semconv.URLTemplateKey.String("/routines/{routineId}/delete"),
 	}
 	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
 
@@ -6366,7 +6372,7 @@ func (c *Client) sendDeleteSchedule(ctx context.Context, request *LifecycleMutat
 	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
 
 	// Start a span for this request.
-	ctx, span := c.cfg.Tracer.Start(ctx, DeleteScheduleOperation,
+	ctx, span := c.cfg.Tracer.Start(ctx, DeleteRoutineOperation,
 		trace.WithAttributes(otelAttrs...),
 		clientSpanKind,
 	)
@@ -6384,16 +6390,16 @@ func (c *Client) sendDeleteSchedule(ctx context.Context, request *LifecycleMutat
 	stage = "BuildURL"
 	u := uri.Clone(c.requestURL(ctx))
 	var pathParts [3]string
-	pathParts[0] = "/schedules/"
+	pathParts[0] = "/routines/"
 	{
-		// Encode "scheduleId" parameter.
+		// Encode "routineId" parameter.
 		e := uri.NewPathEncoder(uri.PathEncoderConfig{
-			Param:   "scheduleId",
+			Param:   "routineId",
 			Style:   uri.PathStyleSimple,
 			Explode: false,
 		})
 		if err := func() error {
-			return e.EncodeValue(conv.StringToString(params.ScheduleId))
+			return e.EncodeValue(conv.StringToString(params.RoutineId))
 		}(); err != nil {
 			return res, errors.Wrap(err, "encode path")
 		}
@@ -6411,7 +6417,7 @@ func (c *Client) sendDeleteSchedule(ctx context.Context, request *LifecycleMutat
 	if err != nil {
 		return res, errors.Wrap(err, "create request")
 	}
-	if err := encodeDeleteScheduleRequest(request, r); err != nil {
+	if err := encodeDeleteRoutineRequest(request, r); err != nil {
 		return res, errors.Wrap(err, "encode request")
 	}
 
@@ -6434,7 +6440,7 @@ func (c *Client) sendDeleteSchedule(ctx context.Context, request *LifecycleMutat
 		var satisfied bitset
 		{
 			stage = "Security:BearerAuth"
-			switch err := c.securityBearerAuth(ctx, DeleteScheduleOperation, r); {
+			switch err := c.securityBearerAuth(ctx, DeleteRoutineOperation, r); {
 			case err == nil: // if NO error
 				satisfied[0] |= 1 << 0
 			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
@@ -6477,7 +6483,7 @@ func (c *Client) sendDeleteSchedule(ctx context.Context, request *LifecycleMutat
 	}()
 
 	stage = "DecodeResponse"
-	result, err := decodeDeleteScheduleResponse(resp)
+	result, err := decodeDeleteRoutineResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -10838,7 +10844,7 @@ func (c *Client) sendGetReadiness(ctx context.Context) (res GetReadinessRes, err
 // GetReportedModels invokes getReportedModels operation.
 //
 // The model and effort options the most recent session of this harness in the Project reported, for a
-// schedule form to offer. Empty when no session has reported any.
+// routine form to offer. Empty when no session has reported any.
 //
 // GET /projects/{projectId}/harnesses/{harness}/reported-models
 func (c *Client) GetReportedModels(ctx context.Context, params GetReportedModelsParams) (GetReportedModelsRes, error) {
@@ -10987,6 +10993,137 @@ func (c *Client) sendGetReportedModels(ctx context.Context, params GetReportedMo
 	return result, nil
 }
 
+// GetRoutine invokes getRoutine operation.
+//
+// Get a routine.
+//
+// GET /routines/{routineId}
+func (c *Client) GetRoutine(ctx context.Context, params GetRoutineParams) (GetRoutineRes, error) {
+	res, err := c.sendGetRoutine(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendGetRoutine(ctx context.Context, params GetRoutineParams) (res GetRoutineRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getRoutine"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/routines/{routineId}"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetRoutineOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [2]string
+	pathParts[0] = "/routines/"
+	{
+		// Encode "routineId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "routineId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.RoutineId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, GetRoutineOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeGetRoutineResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // GetRun invokes getRun operation.
 //
 // Get a Run.
@@ -11111,137 +11248,6 @@ func (c *Client) sendGetRun(ctx context.Context, params GetRunParams) (res GetRu
 
 	stage = "DecodeResponse"
 	result, err := decodeGetRunResponse(resp)
-	if err != nil {
-		return res, errors.Wrap(err, "decode response")
-	}
-
-	return result, nil
-}
-
-// GetSchedule invokes getSchedule operation.
-//
-// Get a schedule.
-//
-// GET /schedules/{scheduleId}
-func (c *Client) GetSchedule(ctx context.Context, params GetScheduleParams) (GetScheduleRes, error) {
-	res, err := c.sendGetSchedule(ctx, params)
-	return res, err
-}
-
-func (c *Client) sendGetSchedule(ctx context.Context, params GetScheduleParams) (res GetScheduleRes, err error) {
-	otelAttrs := []attribute.KeyValue{
-		otelogen.OperationID("getSchedule"),
-		semconv.HTTPRequestMethodKey.String("GET"),
-		semconv.URLTemplateKey.String("/schedules/{scheduleId}"),
-	}
-	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
-
-	// Run stopwatch.
-	startTime := time.Now()
-	defer func() {
-		// Use floating point division here for higher precision (instead of Millisecond method).
-		elapsedDuration := time.Since(startTime)
-		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
-	}()
-
-	// Increment request counter.
-	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
-
-	// Start a span for this request.
-	ctx, span := c.cfg.Tracer.Start(ctx, GetScheduleOperation,
-		trace.WithAttributes(otelAttrs...),
-		clientSpanKind,
-	)
-	// Track stage for error reporting.
-	var stage string
-	defer func() {
-		if err != nil {
-			span.RecordError(err)
-			span.SetStatus(codes.Error, stage)
-			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
-		}
-		span.End()
-	}()
-
-	stage = "BuildURL"
-	u := uri.Clone(c.requestURL(ctx))
-	var pathParts [2]string
-	pathParts[0] = "/schedules/"
-	{
-		// Encode "scheduleId" parameter.
-		e := uri.NewPathEncoder(uri.PathEncoderConfig{
-			Param:   "scheduleId",
-			Style:   uri.PathStyleSimple,
-			Explode: false,
-		})
-		if err := func() error {
-			return e.EncodeValue(conv.StringToString(params.ScheduleId))
-		}(); err != nil {
-			return res, errors.Wrap(err, "encode path")
-		}
-		encoded, err := e.Result()
-		if err != nil {
-			return res, errors.Wrap(err, "encode path")
-		}
-		pathParts[1] = encoded
-	}
-	uri.AddPathParts(u, pathParts[:]...)
-
-	stage = "EncodeRequest"
-	r, err := ht.NewRequest(ctx, "GET", u)
-	if err != nil {
-		return res, errors.Wrap(err, "create request")
-	}
-
-	{
-		type bitset = [1]uint8
-		var satisfied bitset
-		{
-			stage = "Security:BearerAuth"
-			switch err := c.securityBearerAuth(ctx, GetScheduleOperation, r); {
-			case err == nil: // if NO error
-				satisfied[0] |= 1 << 0
-			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
-				// Skip this security.
-			default:
-				return res, errors.Wrap(err, "security \"BearerAuth\"")
-			}
-		}
-
-		if ok := func() bool {
-		nextRequirement:
-			for _, requirement := range []bitset{
-				{0b00000001},
-			} {
-				for i, mask := range requirement {
-					if satisfied[i]&mask != mask {
-						continue nextRequirement
-					}
-				}
-				return true
-			}
-			return false
-		}(); !ok {
-			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
-		}
-	}
-
-	stage = "SendRequest"
-	resp, err := c.cfg.Client.Do(r)
-	if err != nil {
-		return res, errors.Wrap(err, "do request")
-	}
-	body := resp.Body
-	defer func() {
-		// Drain the body to EOF before closing, so the underlying
-		// connection can be reused by the Transport regardless of the
-		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
-		_, _ = io.Copy(io.Discard, body)
-		_ = body.Close()
-	}()
-
-	stage = "DecodeResponse"
-	result, err := decodeGetScheduleResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -14217,22 +14223,22 @@ func (c *Client) sendListPersonalAccessTokens(ctx context.Context) (res ListPers
 	return result, nil
 }
 
-// ListProjectSchedules invokes listProjectSchedules operation.
+// ListProjectRoutines invokes listProjectRoutines operation.
 //
-// Each schedule starts one fresh Project Thread per fire (ADR 0057). The owner sees the prompt; fires
+// Each routine starts one fresh Project Thread per fire (ADR 0057). The owner sees the prompt; fires
 // and Capsule notes never carry it.
 //
-// GET /projects/{projectId}/schedules
-func (c *Client) ListProjectSchedules(ctx context.Context, params ListProjectSchedulesParams) (ListProjectSchedulesRes, error) {
-	res, err := c.sendListProjectSchedules(ctx, params)
+// GET /projects/{projectId}/routines
+func (c *Client) ListProjectRoutines(ctx context.Context, params ListProjectRoutinesParams) (ListProjectRoutinesRes, error) {
+	res, err := c.sendListProjectRoutines(ctx, params)
 	return res, err
 }
 
-func (c *Client) sendListProjectSchedules(ctx context.Context, params ListProjectSchedulesParams) (res ListProjectSchedulesRes, err error) {
+func (c *Client) sendListProjectRoutines(ctx context.Context, params ListProjectRoutinesParams) (res ListProjectRoutinesRes, err error) {
 	otelAttrs := []attribute.KeyValue{
-		otelogen.OperationID("listProjectSchedules"),
+		otelogen.OperationID("listProjectRoutines"),
 		semconv.HTTPRequestMethodKey.String("GET"),
-		semconv.URLTemplateKey.String("/projects/{projectId}/schedules"),
+		semconv.URLTemplateKey.String("/projects/{projectId}/routines"),
 	}
 	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
 
@@ -14248,7 +14254,7 @@ func (c *Client) sendListProjectSchedules(ctx context.Context, params ListProjec
 	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
 
 	// Start a span for this request.
-	ctx, span := c.cfg.Tracer.Start(ctx, ListProjectSchedulesOperation,
+	ctx, span := c.cfg.Tracer.Start(ctx, ListProjectRoutinesOperation,
 		trace.WithAttributes(otelAttrs...),
 		clientSpanKind,
 	)
@@ -14285,7 +14291,7 @@ func (c *Client) sendListProjectSchedules(ctx context.Context, params ListProjec
 		}
 		pathParts[1] = encoded
 	}
-	pathParts[2] = "/schedules"
+	pathParts[2] = "/routines"
 	uri.AddPathParts(u, pathParts[:]...)
 
 	stage = "EncodeRequest"
@@ -14299,7 +14305,7 @@ func (c *Client) sendListProjectSchedules(ctx context.Context, params ListProjec
 		var satisfied bitset
 		{
 			stage = "Security:BearerAuth"
-			switch err := c.securityBearerAuth(ctx, ListProjectSchedulesOperation, r); {
+			switch err := c.securityBearerAuth(ctx, ListProjectRoutinesOperation, r); {
 			case err == nil: // if NO error
 				satisfied[0] |= 1 << 0
 			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
@@ -14342,7 +14348,7 @@ func (c *Client) sendListProjectSchedules(ctx context.Context, params ListProjec
 	}()
 
 	stage = "DecodeResponse"
-	result, err := decodeListProjectSchedulesResponse(resp)
+	result, err := decodeListProjectRoutinesResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -14607,6 +14613,289 @@ func (c *Client) sendListProviderConnections(ctx context.Context) (res *Provider
 
 	stage = "DecodeResponse"
 	result, err := decodeListProviderConnectionsResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// ListRoutineFires invokes listRoutineFires operation.
+//
+// List a routine's fires.
+//
+// GET /routines/{routineId}/fires
+func (c *Client) ListRoutineFires(ctx context.Context, params ListRoutineFiresParams) (ListRoutineFiresRes, error) {
+	res, err := c.sendListRoutineFires(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendListRoutineFires(ctx context.Context, params ListRoutineFiresParams) (res ListRoutineFiresRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("listRoutineFires"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/routines/{routineId}/fires"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, ListRoutineFiresOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/routines/"
+	{
+		// Encode "routineId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "routineId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.RoutineId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/fires"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeQueryParams"
+	q := uri.NewQueryEncoder()
+	{
+		// Encode "cursor" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "cursor",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.Cursor.Get(); ok {
+				return e.EncodeValue(conv.StringToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	{
+		// Encode "limit" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "limit",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.Limit.Get(); ok {
+				return e.EncodeValue(conv.IntToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	u.RawQuery = q.Values().Encode()
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, ListRoutineFiresOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeListRoutineFiresResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// ListRoutines invokes listRoutines operation.
+//
+// Routines across all of your Projects, ordered by Project and name, for the Routines page (ADR 0057).
+//
+// GET /routines
+func (c *Client) ListRoutines(ctx context.Context) (ListRoutinesRes, error) {
+	res, err := c.sendListRoutines(ctx)
+	return res, err
+}
+
+func (c *Client) sendListRoutines(ctx context.Context) (res ListRoutinesRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("listRoutines"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/routines"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, ListRoutinesOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/routines"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, ListRoutinesOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeListRoutinesResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -14947,176 +15236,6 @@ func (c *Client) sendListRuns(ctx context.Context, params ListRunsParams) (res L
 
 	stage = "DecodeResponse"
 	result, err := decodeListRunsResponse(resp)
-	if err != nil {
-		return res, errors.Wrap(err, "decode response")
-	}
-
-	return result, nil
-}
-
-// ListScheduleFires invokes listScheduleFires operation.
-//
-// List a schedule's fires.
-//
-// GET /schedules/{scheduleId}/fires
-func (c *Client) ListScheduleFires(ctx context.Context, params ListScheduleFiresParams) (ListScheduleFiresRes, error) {
-	res, err := c.sendListScheduleFires(ctx, params)
-	return res, err
-}
-
-func (c *Client) sendListScheduleFires(ctx context.Context, params ListScheduleFiresParams) (res ListScheduleFiresRes, err error) {
-	otelAttrs := []attribute.KeyValue{
-		otelogen.OperationID("listScheduleFires"),
-		semconv.HTTPRequestMethodKey.String("GET"),
-		semconv.URLTemplateKey.String("/schedules/{scheduleId}/fires"),
-	}
-	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
-
-	// Run stopwatch.
-	startTime := time.Now()
-	defer func() {
-		// Use floating point division here for higher precision (instead of Millisecond method).
-		elapsedDuration := time.Since(startTime)
-		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
-	}()
-
-	// Increment request counter.
-	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
-
-	// Start a span for this request.
-	ctx, span := c.cfg.Tracer.Start(ctx, ListScheduleFiresOperation,
-		trace.WithAttributes(otelAttrs...),
-		clientSpanKind,
-	)
-	// Track stage for error reporting.
-	var stage string
-	defer func() {
-		if err != nil {
-			span.RecordError(err)
-			span.SetStatus(codes.Error, stage)
-			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
-		}
-		span.End()
-	}()
-
-	stage = "BuildURL"
-	u := uri.Clone(c.requestURL(ctx))
-	var pathParts [3]string
-	pathParts[0] = "/schedules/"
-	{
-		// Encode "scheduleId" parameter.
-		e := uri.NewPathEncoder(uri.PathEncoderConfig{
-			Param:   "scheduleId",
-			Style:   uri.PathStyleSimple,
-			Explode: false,
-		})
-		if err := func() error {
-			return e.EncodeValue(conv.StringToString(params.ScheduleId))
-		}(); err != nil {
-			return res, errors.Wrap(err, "encode path")
-		}
-		encoded, err := e.Result()
-		if err != nil {
-			return res, errors.Wrap(err, "encode path")
-		}
-		pathParts[1] = encoded
-	}
-	pathParts[2] = "/fires"
-	uri.AddPathParts(u, pathParts[:]...)
-
-	stage = "EncodeQueryParams"
-	q := uri.NewQueryEncoder()
-	{
-		// Encode "cursor" parameter.
-		cfg := uri.QueryParameterEncodingConfig{
-			Name:    "cursor",
-			Style:   uri.QueryStyleForm,
-			Explode: true,
-		}
-
-		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
-			if val, ok := params.Cursor.Get(); ok {
-				return e.EncodeValue(conv.StringToString(val))
-			}
-			return nil
-		}); err != nil {
-			return res, errors.Wrap(err, "encode query")
-		}
-	}
-	{
-		// Encode "limit" parameter.
-		cfg := uri.QueryParameterEncodingConfig{
-			Name:    "limit",
-			Style:   uri.QueryStyleForm,
-			Explode: true,
-		}
-
-		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
-			if val, ok := params.Limit.Get(); ok {
-				return e.EncodeValue(conv.IntToString(val))
-			}
-			return nil
-		}); err != nil {
-			return res, errors.Wrap(err, "encode query")
-		}
-	}
-	u.RawQuery = q.Values().Encode()
-
-	stage = "EncodeRequest"
-	r, err := ht.NewRequest(ctx, "GET", u)
-	if err != nil {
-		return res, errors.Wrap(err, "create request")
-	}
-
-	{
-		type bitset = [1]uint8
-		var satisfied bitset
-		{
-			stage = "Security:BearerAuth"
-			switch err := c.securityBearerAuth(ctx, ListScheduleFiresOperation, r); {
-			case err == nil: // if NO error
-				satisfied[0] |= 1 << 0
-			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
-				// Skip this security.
-			default:
-				return res, errors.Wrap(err, "security \"BearerAuth\"")
-			}
-		}
-
-		if ok := func() bool {
-		nextRequirement:
-			for _, requirement := range []bitset{
-				{0b00000001},
-			} {
-				for i, mask := range requirement {
-					if satisfied[i]&mask != mask {
-						continue nextRequirement
-					}
-				}
-				return true
-			}
-			return false
-		}(); !ok {
-			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
-		}
-	}
-
-	stage = "SendRequest"
-	resp, err := c.cfg.Client.Do(r)
-	if err != nil {
-		return res, errors.Wrap(err, "do request")
-	}
-	body := resp.Body
-	defer func() {
-		// Drain the body to EOF before closing, so the underlying
-		// connection can be reused by the Transport regardless of the
-		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
-		_, _ = io.Copy(io.Discard, body)
-		_ = body.Close()
-	}()
-
-	stage = "DecodeResponse"
-	result, err := decodeListScheduleFiresResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -19166,22 +19285,22 @@ func (c *Client) sendRewindCapsule(ctx context.Context, request *RewindRequest, 
 	return result, nil
 }
 
-// RunSchedule invokes runSchedule operation.
+// RunRoutine invokes runRoutine operation.
 //
 // Follows the clock's rules: an overlapping run, a full backlog, or the live-Capsule cap records a
 // skipped fire instead.
 //
-// POST /schedules/{scheduleId}/run
-func (c *Client) RunSchedule(ctx context.Context, params RunScheduleParams) (RunScheduleRes, error) {
-	res, err := c.sendRunSchedule(ctx, params)
+// POST /routines/{routineId}/run
+func (c *Client) RunRoutine(ctx context.Context, params RunRoutineParams) (RunRoutineRes, error) {
+	res, err := c.sendRunRoutine(ctx, params)
 	return res, err
 }
 
-func (c *Client) sendRunSchedule(ctx context.Context, params RunScheduleParams) (res RunScheduleRes, err error) {
+func (c *Client) sendRunRoutine(ctx context.Context, params RunRoutineParams) (res RunRoutineRes, err error) {
 	otelAttrs := []attribute.KeyValue{
-		otelogen.OperationID("runSchedule"),
+		otelogen.OperationID("runRoutine"),
 		semconv.HTTPRequestMethodKey.String("POST"),
-		semconv.URLTemplateKey.String("/schedules/{scheduleId}/run"),
+		semconv.URLTemplateKey.String("/routines/{routineId}/run"),
 	}
 	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
 
@@ -19197,7 +19316,7 @@ func (c *Client) sendRunSchedule(ctx context.Context, params RunScheduleParams) 
 	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
 
 	// Start a span for this request.
-	ctx, span := c.cfg.Tracer.Start(ctx, RunScheduleOperation,
+	ctx, span := c.cfg.Tracer.Start(ctx, RunRoutineOperation,
 		trace.WithAttributes(otelAttrs...),
 		clientSpanKind,
 	)
@@ -19215,16 +19334,16 @@ func (c *Client) sendRunSchedule(ctx context.Context, params RunScheduleParams) 
 	stage = "BuildURL"
 	u := uri.Clone(c.requestURL(ctx))
 	var pathParts [3]string
-	pathParts[0] = "/schedules/"
+	pathParts[0] = "/routines/"
 	{
-		// Encode "scheduleId" parameter.
+		// Encode "routineId" parameter.
 		e := uri.NewPathEncoder(uri.PathEncoderConfig{
-			Param:   "scheduleId",
+			Param:   "routineId",
 			Style:   uri.PathStyleSimple,
 			Explode: false,
 		})
 		if err := func() error {
-			return e.EncodeValue(conv.StringToString(params.ScheduleId))
+			return e.EncodeValue(conv.StringToString(params.RoutineId))
 		}(); err != nil {
 			return res, errors.Wrap(err, "encode path")
 		}
@@ -19262,7 +19381,7 @@ func (c *Client) sendRunSchedule(ctx context.Context, params RunScheduleParams) 
 		var satisfied bitset
 		{
 			stage = "Security:BearerAuth"
-			switch err := c.securityBearerAuth(ctx, RunScheduleOperation, r); {
+			switch err := c.securityBearerAuth(ctx, RunRoutineOperation, r); {
 			case err == nil: // if NO error
 				satisfied[0] |= 1 << 0
 			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
@@ -19305,7 +19424,7 @@ func (c *Client) sendRunSchedule(ctx context.Context, params RunScheduleParams) 
 	}()
 
 	stage = "DecodeResponse"
-	result, err := decodeRunScheduleResponse(resp)
+	result, err := decodeRunRoutineResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -22634,22 +22753,22 @@ func (c *Client) sendUpdateProviderConnection(ctx context.Context, request *Prov
 	return result, nil
 }
 
-// UpdateSchedule invokes updateSchedule operation.
+// UpdateRoutine invokes updateRoutine operation.
 //
-// Changes only the named fields. Turning a schedule on clears the reason Meridian turned it off. A run
+// Changes only the named fields. Turning a routine on clears the reason Meridian turned it off. A run
 // in progress keeps its settings.
 //
-// PATCH /schedules/{scheduleId}
-func (c *Client) UpdateSchedule(ctx context.Context, request *UpdateScheduleRequest, params UpdateScheduleParams) (UpdateScheduleRes, error) {
-	res, err := c.sendUpdateSchedule(ctx, request, params)
+// PATCH /routines/{routineId}
+func (c *Client) UpdateRoutine(ctx context.Context, request *UpdateRoutineRequest, params UpdateRoutineParams) (UpdateRoutineRes, error) {
+	res, err := c.sendUpdateRoutine(ctx, request, params)
 	return res, err
 }
 
-func (c *Client) sendUpdateSchedule(ctx context.Context, request *UpdateScheduleRequest, params UpdateScheduleParams) (res UpdateScheduleRes, err error) {
+func (c *Client) sendUpdateRoutine(ctx context.Context, request *UpdateRoutineRequest, params UpdateRoutineParams) (res UpdateRoutineRes, err error) {
 	otelAttrs := []attribute.KeyValue{
-		otelogen.OperationID("updateSchedule"),
+		otelogen.OperationID("updateRoutine"),
 		semconv.HTTPRequestMethodKey.String("PATCH"),
-		semconv.URLTemplateKey.String("/schedules/{scheduleId}"),
+		semconv.URLTemplateKey.String("/routines/{routineId}"),
 	}
 	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
 
@@ -22665,7 +22784,7 @@ func (c *Client) sendUpdateSchedule(ctx context.Context, request *UpdateSchedule
 	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
 
 	// Start a span for this request.
-	ctx, span := c.cfg.Tracer.Start(ctx, UpdateScheduleOperation,
+	ctx, span := c.cfg.Tracer.Start(ctx, UpdateRoutineOperation,
 		trace.WithAttributes(otelAttrs...),
 		clientSpanKind,
 	)
@@ -22683,16 +22802,16 @@ func (c *Client) sendUpdateSchedule(ctx context.Context, request *UpdateSchedule
 	stage = "BuildURL"
 	u := uri.Clone(c.requestURL(ctx))
 	var pathParts [2]string
-	pathParts[0] = "/schedules/"
+	pathParts[0] = "/routines/"
 	{
-		// Encode "scheduleId" parameter.
+		// Encode "routineId" parameter.
 		e := uri.NewPathEncoder(uri.PathEncoderConfig{
-			Param:   "scheduleId",
+			Param:   "routineId",
 			Style:   uri.PathStyleSimple,
 			Explode: false,
 		})
 		if err := func() error {
-			return e.EncodeValue(conv.StringToString(params.ScheduleId))
+			return e.EncodeValue(conv.StringToString(params.RoutineId))
 		}(); err != nil {
 			return res, errors.Wrap(err, "encode path")
 		}
@@ -22709,7 +22828,7 @@ func (c *Client) sendUpdateSchedule(ctx context.Context, request *UpdateSchedule
 	if err != nil {
 		return res, errors.Wrap(err, "create request")
 	}
-	if err := encodeUpdateScheduleRequest(request, r); err != nil {
+	if err := encodeUpdateRoutineRequest(request, r); err != nil {
 		return res, errors.Wrap(err, "encode request")
 	}
 
@@ -22732,7 +22851,7 @@ func (c *Client) sendUpdateSchedule(ctx context.Context, request *UpdateSchedule
 		var satisfied bitset
 		{
 			stage = "Security:BearerAuth"
-			switch err := c.securityBearerAuth(ctx, UpdateScheduleOperation, r); {
+			switch err := c.securityBearerAuth(ctx, UpdateRoutineOperation, r); {
 			case err == nil: // if NO error
 				satisfied[0] |= 1 << 0
 			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
@@ -22775,7 +22894,7 @@ func (c *Client) sendUpdateSchedule(ctx context.Context, request *UpdateSchedule
 	}()
 
 	stage = "DecodeResponse"
-	result, err := decodeUpdateScheduleResponse(resp)
+	result, err := decodeUpdateRoutineResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}

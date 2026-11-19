@@ -4986,7 +4986,7 @@ func decodeCreateProjectResponse(resp *http.Response) (res CreateProjectRes, _ e
 	return res, errors.Wrap(defRes, "error")
 }
 
-func decodeCreateProjectScheduleResponse(resp *http.Response) (res CreateProjectScheduleRes, _ error) {
+func decodeCreateProjectRoutineResponse(resp *http.Response) (res CreateProjectRoutineRes, _ error) {
 	switch resp.StatusCode {
 	case 201:
 		// Code 201.
@@ -5002,7 +5002,7 @@ func decodeCreateProjectScheduleResponse(resp *http.Response) (res CreateProject
 			}
 			d := jx.DecodeBytes(buf)
 
-			var response Schedule
+			var response Routine
 			if err := func() error {
 				if err := response.Decode(d); err != nil {
 					return err
@@ -5046,7 +5046,7 @@ func decodeCreateProjectScheduleResponse(resp *http.Response) (res CreateProject
 			}
 			d := jx.DecodeBytes(buf)
 
-			var response CreateProjectScheduleBadRequest
+			var response CreateProjectRoutineBadRequest
 			if err := func() error {
 				if err := response.Decode(d); err != nil {
 					return err
@@ -5081,7 +5081,7 @@ func decodeCreateProjectScheduleResponse(resp *http.Response) (res CreateProject
 			}
 			d := jx.DecodeBytes(buf)
 
-			var response CreateProjectScheduleNotFound
+			var response CreateProjectRoutineNotFound
 			if err := func() error {
 				if err := response.Decode(d); err != nil {
 					return err
@@ -5116,7 +5116,7 @@ func decodeCreateProjectScheduleResponse(resp *http.Response) (res CreateProject
 			}
 			d := jx.DecodeBytes(buf)
 
-			var response CreateProjectScheduleConflict
+			var response CreateProjectRoutineConflict
 			if err := func() error {
 				if err := response.Decode(d); err != nil {
 					return err
@@ -7780,11 +7780,11 @@ func decodeDeleteProviderConnectionResponse(resp *http.Response) (res *DeletePro
 	return res, errors.Wrap(defRes, "error")
 }
 
-func decodeDeleteScheduleResponse(resp *http.Response) (res DeleteScheduleRes, _ error) {
+func decodeDeleteRoutineResponse(resp *http.Response) (res DeleteRoutineRes, _ error) {
 	switch resp.StatusCode {
 	case 204:
 		// Code 204.
-		return &DeleteScheduleNoContent{}, nil
+		return &DeleteRoutineNoContent{}, nil
 	case 400:
 		// Code 400.
 		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
@@ -7799,7 +7799,7 @@ func decodeDeleteScheduleResponse(resp *http.Response) (res DeleteScheduleRes, _
 			}
 			d := jx.DecodeBytes(buf)
 
-			var response DeleteScheduleBadRequest
+			var response DeleteRoutineBadRequest
 			if err := func() error {
 				if err := response.Decode(d); err != nil {
 					return err
@@ -7834,7 +7834,7 @@ func decodeDeleteScheduleResponse(resp *http.Response) (res DeleteScheduleRes, _
 			}
 			d := jx.DecodeBytes(buf)
 
-			var response DeleteScheduleNotFound
+			var response DeleteRoutineNotFound
 			if err := func() error {
 				if err := response.Decode(d); err != nil {
 					return err
@@ -7869,7 +7869,7 @@ func decodeDeleteScheduleResponse(resp *http.Response) (res DeleteScheduleRes, _
 			}
 			d := jx.DecodeBytes(buf)
 
-			var response DeleteScheduleConflict
+			var response DeleteRoutineConflict
 			if err := func() error {
 				if err := response.Decode(d); err != nil {
 					return err
@@ -14036,7 +14036,7 @@ func decodeGetReportedModelsResponse(resp *http.Response) (res GetReportedModels
 	return res, errors.Wrap(defRes, "error")
 }
 
-func decodeGetRunResponse(resp *http.Response) (res GetRunRes, _ error) {
+func decodeGetRoutineResponse(resp *http.Response) (res GetRoutineRes, _ error) {
 	switch resp.StatusCode {
 	case 200:
 		// Code 200.
@@ -14052,7 +14052,7 @@ func decodeGetRunResponse(resp *http.Response) (res GetRunRes, _ error) {
 			}
 			d := jx.DecodeBytes(buf)
 
-			var response Run
+			var response Routine
 			if err := func() error {
 				if err := response.Decode(d); err != nil {
 					return err
@@ -14078,47 +14078,7 @@ func decodeGetRunResponse(resp *http.Response) (res GetRunRes, _ error) {
 			}(); err != nil {
 				return res, errors.Wrap(err, "validate")
 			}
-			var wrapper RunHeaders
-			wrapper.Response = response
-			h := uri.NewHeaderDecoder(resp.Header)
-			// Parse "ETag" header.
-			{
-				cfg := uri.HeaderParameterDecodingConfig{
-					Name:    "ETag",
-					Explode: false,
-				}
-				if err := func() error {
-					if err := h.HasParam(cfg); err == nil {
-						if err := h.DecodeParam(cfg, func(d uri.Decoder) error {
-							var wrapperDotETagVal string
-							if err := func() error {
-								val, err := d.DecodeValue()
-								if err != nil {
-									return err
-								}
-
-								c, err := conv.ToString(val)
-								if err != nil {
-									return err
-								}
-
-								wrapperDotETagVal = c
-								return nil
-							}(); err != nil {
-								return err
-							}
-							wrapper.ETag.SetTo(wrapperDotETagVal)
-							return nil
-						}); err != nil {
-							return err
-						}
-					}
-					return nil
-				}(); err != nil {
-					return res, errors.Wrap(err, "parse ETag header")
-				}
-			}
-			return &wrapper, nil
+			return &response, nil
 		default:
 			return res, validate.InvalidContentType(ct)
 		}
@@ -14203,7 +14163,7 @@ func decodeGetRunResponse(resp *http.Response) (res GetRunRes, _ error) {
 	return res, errors.Wrap(defRes, "error")
 }
 
-func decodeGetScheduleResponse(resp *http.Response) (res GetScheduleRes, _ error) {
+func decodeGetRunResponse(resp *http.Response) (res GetRunRes, _ error) {
 	switch resp.StatusCode {
 	case 200:
 		// Code 200.
@@ -14219,7 +14179,7 @@ func decodeGetScheduleResponse(resp *http.Response) (res GetScheduleRes, _ error
 			}
 			d := jx.DecodeBytes(buf)
 
-			var response Schedule
+			var response Run
 			if err := func() error {
 				if err := response.Decode(d); err != nil {
 					return err
@@ -14245,7 +14205,47 @@ func decodeGetScheduleResponse(resp *http.Response) (res GetScheduleRes, _ error
 			}(); err != nil {
 				return res, errors.Wrap(err, "validate")
 			}
-			return &response, nil
+			var wrapper RunHeaders
+			wrapper.Response = response
+			h := uri.NewHeaderDecoder(resp.Header)
+			// Parse "ETag" header.
+			{
+				cfg := uri.HeaderParameterDecodingConfig{
+					Name:    "ETag",
+					Explode: false,
+				}
+				if err := func() error {
+					if err := h.HasParam(cfg); err == nil {
+						if err := h.DecodeParam(cfg, func(d uri.Decoder) error {
+							var wrapperDotETagVal string
+							if err := func() error {
+								val, err := d.DecodeValue()
+								if err != nil {
+									return err
+								}
+
+								c, err := conv.ToString(val)
+								if err != nil {
+									return err
+								}
+
+								wrapperDotETagVal = c
+								return nil
+							}(); err != nil {
+								return err
+							}
+							wrapper.ETag.SetTo(wrapperDotETagVal)
+							return nil
+						}); err != nil {
+							return err
+						}
+					}
+					return nil
+				}(); err != nil {
+					return res, errors.Wrap(err, "parse ETag header")
+				}
+			}
+			return &wrapper, nil
 		default:
 			return res, validate.InvalidContentType(ct)
 		}
@@ -17544,7 +17544,7 @@ func decodeListPersonalAccessTokensResponse(resp *http.Response) (res ListPerson
 	return res, errors.Wrap(defRes, "error")
 }
 
-func decodeListProjectSchedulesResponse(resp *http.Response) (res ListProjectSchedulesRes, _ error) {
+func decodeListProjectRoutinesResponse(resp *http.Response) (res ListProjectRoutinesRes, _ error) {
 	switch resp.StatusCode {
 	case 200:
 		// Code 200.
@@ -17560,7 +17560,7 @@ func decodeListProjectSchedulesResponse(resp *http.Response) (res ListProjectSch
 			}
 			d := jx.DecodeBytes(buf)
 
-			var response ScheduleList
+			var response RoutineList
 			if err := func() error {
 				if err := response.Decode(d); err != nil {
 					return err
@@ -17990,6 +17990,300 @@ func decodeListProviderConnectionsResponse(resp *http.Response) (res *ProviderCo
 	return res, errors.Wrap(defRes, "error")
 }
 
+func decodeListRoutineFiresResponse(resp *http.Response) (res ListRoutineFiresRes, _ error) {
+	switch resp.StatusCode {
+	case 200:
+		// Code 200.
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "application/json":
+			buf, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return res, err
+			}
+			d := jx.DecodeBytes(buf)
+
+			var response RoutineFirePage
+			if err := func() error {
+				if err := response.Decode(d); err != nil {
+					return err
+				}
+				if err := d.Skip(); err != io.EOF {
+					return errors.New("unexpected trailing data")
+				}
+				return nil
+			}(); err != nil {
+				err = &ogenerrors.DecodeBodyError{
+					ContentType: ct,
+					Body:        buf,
+					Err:         err,
+				}
+				return res, err
+			}
+			// Validate response.
+			if err := func() error {
+				if err := response.Validate(); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return res, errors.Wrap(err, "validate")
+			}
+			return &response, nil
+		default:
+			return res, validate.InvalidContentType(ct)
+		}
+	case 404:
+		// Code 404.
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "application/json":
+			buf, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return res, err
+			}
+			d := jx.DecodeBytes(buf)
+
+			var response ErrorEnvelope
+			if err := func() error {
+				if err := response.Decode(d); err != nil {
+					return err
+				}
+				if err := d.Skip(); err != io.EOF {
+					return errors.New("unexpected trailing data")
+				}
+				return nil
+			}(); err != nil {
+				err = &ogenerrors.DecodeBodyError{
+					ContentType: ct,
+					Body:        buf,
+					Err:         err,
+				}
+				return res, err
+			}
+			return &response, nil
+		default:
+			return res, validate.InvalidContentType(ct)
+		}
+	}
+	// Convenient error response.
+	defRes, err := func() (res *DefaultErrorStatusCode, err error) {
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "application/json":
+			buf, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return res, err
+			}
+			d := jx.DecodeBytes(buf)
+
+			var response ErrorEnvelope
+			if err := func() error {
+				if err := response.Decode(d); err != nil {
+					return err
+				}
+				if err := d.Skip(); err != io.EOF {
+					return errors.New("unexpected trailing data")
+				}
+				return nil
+			}(); err != nil {
+				err = &ogenerrors.DecodeBodyError{
+					ContentType: ct,
+					Body:        buf,
+					Err:         err,
+				}
+				return res, err
+			}
+			return &DefaultErrorStatusCode{
+				StatusCode: resp.StatusCode,
+				Response:   response,
+			}, nil
+		default:
+			return res, validate.InvalidContentType(ct)
+		}
+	}()
+	if err != nil {
+		return res, errors.Wrapf(err, "default (code %d)", resp.StatusCode)
+	}
+	return res, errors.Wrap(defRes, "error")
+}
+
+func decodeListRoutinesResponse(resp *http.Response) (res ListRoutinesRes, _ error) {
+	switch resp.StatusCode {
+	case 200:
+		// Code 200.
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "application/json":
+			buf, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return res, err
+			}
+			d := jx.DecodeBytes(buf)
+
+			var response RoutineList
+			if err := func() error {
+				if err := response.Decode(d); err != nil {
+					return err
+				}
+				if err := d.Skip(); err != io.EOF {
+					return errors.New("unexpected trailing data")
+				}
+				return nil
+			}(); err != nil {
+				err = &ogenerrors.DecodeBodyError{
+					ContentType: ct,
+					Body:        buf,
+					Err:         err,
+				}
+				return res, err
+			}
+			// Validate response.
+			if err := func() error {
+				if err := response.Validate(); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return res, errors.Wrap(err, "validate")
+			}
+			return &response, nil
+		default:
+			return res, validate.InvalidContentType(ct)
+		}
+	case 401:
+		// Code 401.
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "application/json":
+			buf, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return res, err
+			}
+			d := jx.DecodeBytes(buf)
+
+			var response ErrorEnvelope
+			if err := func() error {
+				if err := response.Decode(d); err != nil {
+					return err
+				}
+				if err := d.Skip(); err != io.EOF {
+					return errors.New("unexpected trailing data")
+				}
+				return nil
+			}(); err != nil {
+				err = &ogenerrors.DecodeBodyError{
+					ContentType: ct,
+					Body:        buf,
+					Err:         err,
+				}
+				return res, err
+			}
+			var wrapper UnauthorizedHeaders
+			wrapper.Response = response
+			h := uri.NewHeaderDecoder(resp.Header)
+			// Parse "WWW-Authenticate" header.
+			{
+				cfg := uri.HeaderParameterDecodingConfig{
+					Name:    "WWW-Authenticate",
+					Explode: false,
+				}
+				if err := func() error {
+					if err := h.HasParam(cfg); err == nil {
+						if err := h.DecodeParam(cfg, func(d uri.Decoder) error {
+							var wrapperDotWWWAuthenticateVal string
+							if err := func() error {
+								val, err := d.DecodeValue()
+								if err != nil {
+									return err
+								}
+
+								c, err := conv.ToString(val)
+								if err != nil {
+									return err
+								}
+
+								wrapperDotWWWAuthenticateVal = c
+								return nil
+							}(); err != nil {
+								return err
+							}
+							wrapper.WWWAuthenticate.SetTo(wrapperDotWWWAuthenticateVal)
+							return nil
+						}); err != nil {
+							return err
+						}
+					}
+					return nil
+				}(); err != nil {
+					return res, errors.Wrap(err, "parse WWW-Authenticate header")
+				}
+			}
+			return &wrapper, nil
+		default:
+			return res, validate.InvalidContentType(ct)
+		}
+	}
+	// Convenient error response.
+	defRes, err := func() (res *DefaultErrorStatusCode, err error) {
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "application/json":
+			buf, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return res, err
+			}
+			d := jx.DecodeBytes(buf)
+
+			var response ErrorEnvelope
+			if err := func() error {
+				if err := response.Decode(d); err != nil {
+					return err
+				}
+				if err := d.Skip(); err != io.EOF {
+					return errors.New("unexpected trailing data")
+				}
+				return nil
+			}(); err != nil {
+				err = &ogenerrors.DecodeBodyError{
+					ContentType: ct,
+					Body:        buf,
+					Err:         err,
+				}
+				return res, err
+			}
+			return &DefaultErrorStatusCode{
+				StatusCode: resp.StatusCode,
+				Response:   response,
+			}, nil
+		default:
+			return res, validate.InvalidContentType(ct)
+		}
+	}()
+	if err != nil {
+		return res, errors.Wrapf(err, "default (code %d)", resp.StatusCode)
+	}
+	return res, errors.Wrap(defRes, "error")
+}
+
 func decodeListRunEventsResponse(resp *http.Response) (res ListRunEventsRes, _ error) {
 	switch resp.StatusCode {
 	case 200:
@@ -18248,133 +18542,6 @@ func decodeListRunsResponse(resp *http.Response) (res ListRunsRes, _ error) {
 			d := jx.DecodeBytes(buf)
 
 			var response ListRunsNotFound
-			if err := func() error {
-				if err := response.Decode(d); err != nil {
-					return err
-				}
-				if err := d.Skip(); err != io.EOF {
-					return errors.New("unexpected trailing data")
-				}
-				return nil
-			}(); err != nil {
-				err = &ogenerrors.DecodeBodyError{
-					ContentType: ct,
-					Body:        buf,
-					Err:         err,
-				}
-				return res, err
-			}
-			return &response, nil
-		default:
-			return res, validate.InvalidContentType(ct)
-		}
-	}
-	// Convenient error response.
-	defRes, err := func() (res *DefaultErrorStatusCode, err error) {
-		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
-		if err != nil {
-			return res, errors.Wrap(err, "parse media type")
-		}
-		switch {
-		case ct == "application/json":
-			buf, err := io.ReadAll(resp.Body)
-			if err != nil {
-				return res, err
-			}
-			d := jx.DecodeBytes(buf)
-
-			var response ErrorEnvelope
-			if err := func() error {
-				if err := response.Decode(d); err != nil {
-					return err
-				}
-				if err := d.Skip(); err != io.EOF {
-					return errors.New("unexpected trailing data")
-				}
-				return nil
-			}(); err != nil {
-				err = &ogenerrors.DecodeBodyError{
-					ContentType: ct,
-					Body:        buf,
-					Err:         err,
-				}
-				return res, err
-			}
-			return &DefaultErrorStatusCode{
-				StatusCode: resp.StatusCode,
-				Response:   response,
-			}, nil
-		default:
-			return res, validate.InvalidContentType(ct)
-		}
-	}()
-	if err != nil {
-		return res, errors.Wrapf(err, "default (code %d)", resp.StatusCode)
-	}
-	return res, errors.Wrap(defRes, "error")
-}
-
-func decodeListScheduleFiresResponse(resp *http.Response) (res ListScheduleFiresRes, _ error) {
-	switch resp.StatusCode {
-	case 200:
-		// Code 200.
-		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
-		if err != nil {
-			return res, errors.Wrap(err, "parse media type")
-		}
-		switch {
-		case ct == "application/json":
-			buf, err := io.ReadAll(resp.Body)
-			if err != nil {
-				return res, err
-			}
-			d := jx.DecodeBytes(buf)
-
-			var response ScheduleFirePage
-			if err := func() error {
-				if err := response.Decode(d); err != nil {
-					return err
-				}
-				if err := d.Skip(); err != io.EOF {
-					return errors.New("unexpected trailing data")
-				}
-				return nil
-			}(); err != nil {
-				err = &ogenerrors.DecodeBodyError{
-					ContentType: ct,
-					Body:        buf,
-					Err:         err,
-				}
-				return res, err
-			}
-			// Validate response.
-			if err := func() error {
-				if err := response.Validate(); err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return res, errors.Wrap(err, "validate")
-			}
-			return &response, nil
-		default:
-			return res, validate.InvalidContentType(ct)
-		}
-	case 404:
-		// Code 404.
-		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
-		if err != nil {
-			return res, errors.Wrap(err, "parse media type")
-		}
-		switch {
-		case ct == "application/json":
-			buf, err := io.ReadAll(resp.Body)
-			if err != nil {
-				return res, err
-			}
-			d := jx.DecodeBytes(buf)
-
-			var response ErrorEnvelope
 			if err := func() error {
 				if err := response.Decode(d); err != nil {
 					return err
@@ -25213,7 +25380,7 @@ func decodeRewindCapsuleResponse(resp *http.Response) (res RewindCapsuleRes, _ e
 	return res, errors.Wrap(defRes, "error")
 }
 
-func decodeRunScheduleResponse(resp *http.Response) (res RunScheduleRes, _ error) {
+func decodeRunRoutineResponse(resp *http.Response) (res RunRoutineRes, _ error) {
 	switch resp.StatusCode {
 	case 202:
 		// Code 202.
@@ -25229,7 +25396,7 @@ func decodeRunScheduleResponse(resp *http.Response) (res RunScheduleRes, _ error
 			}
 			d := jx.DecodeBytes(buf)
 
-			var response ScheduleFire
+			var response RoutineFire
 			if err := func() error {
 				if err := response.Decode(d); err != nil {
 					return err
@@ -25273,7 +25440,7 @@ func decodeRunScheduleResponse(resp *http.Response) (res RunScheduleRes, _ error
 			}
 			d := jx.DecodeBytes(buf)
 
-			var response RunScheduleBadRequest
+			var response RunRoutineBadRequest
 			if err := func() error {
 				if err := response.Decode(d); err != nil {
 					return err
@@ -25308,7 +25475,7 @@ func decodeRunScheduleResponse(resp *http.Response) (res RunScheduleRes, _ error
 			}
 			d := jx.DecodeBytes(buf)
 
-			var response RunScheduleNotFound
+			var response RunRoutineNotFound
 			if err := func() error {
 				if err := response.Decode(d); err != nil {
 					return err
@@ -25343,7 +25510,7 @@ func decodeRunScheduleResponse(resp *http.Response) (res RunScheduleRes, _ error
 			}
 			d := jx.DecodeBytes(buf)
 
-			var response RunScheduleConflict
+			var response RunRoutineConflict
 			if err := func() error {
 				if err := response.Decode(d); err != nil {
 					return err
@@ -29473,7 +29640,7 @@ func decodeUpdateProviderConnectionResponse(resp *http.Response) (res *ProviderC
 	return res, errors.Wrap(defRes, "error")
 }
 
-func decodeUpdateScheduleResponse(resp *http.Response) (res UpdateScheduleRes, _ error) {
+func decodeUpdateRoutineResponse(resp *http.Response) (res UpdateRoutineRes, _ error) {
 	switch resp.StatusCode {
 	case 200:
 		// Code 200.
@@ -29489,7 +29656,7 @@ func decodeUpdateScheduleResponse(resp *http.Response) (res UpdateScheduleRes, _
 			}
 			d := jx.DecodeBytes(buf)
 
-			var response Schedule
+			var response Routine
 			if err := func() error {
 				if err := response.Decode(d); err != nil {
 					return err
@@ -29533,7 +29700,7 @@ func decodeUpdateScheduleResponse(resp *http.Response) (res UpdateScheduleRes, _
 			}
 			d := jx.DecodeBytes(buf)
 
-			var response UpdateScheduleBadRequest
+			var response UpdateRoutineBadRequest
 			if err := func() error {
 				if err := response.Decode(d); err != nil {
 					return err
@@ -29568,7 +29735,7 @@ func decodeUpdateScheduleResponse(resp *http.Response) (res UpdateScheduleRes, _
 			}
 			d := jx.DecodeBytes(buf)
 
-			var response UpdateScheduleNotFound
+			var response UpdateRoutineNotFound
 			if err := func() error {
 				if err := response.Decode(d); err != nil {
 					return err
@@ -29603,7 +29770,7 @@ func decodeUpdateScheduleResponse(resp *http.Response) (res UpdateScheduleRes, _
 			}
 			d := jx.DecodeBytes(buf)
 
-			var response UpdateScheduleConflict
+			var response UpdateRoutineConflict
 			if err := func() error {
 				if err := response.Decode(d); err != nil {
 					return err

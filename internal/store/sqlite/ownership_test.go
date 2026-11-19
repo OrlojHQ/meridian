@@ -24,7 +24,7 @@ var ownedTables = []string{
 	"capsules", "timelines", "moments", "project_thread_intents", "setup_moment_cache",
 	"project_preparation_policy", "coordination_grants", "runs", "threads", "deliveries",
 	"project_checks", "check_runs", "capsule_check_controls", "delivery_check_gates",
-	"remote_ci_watches", "schedules", "schedule_fires",
+	"remote_ci_watches", "routines", "routine_fires",
 	"capsule_preparations", "capsule_startup", "thread_messages", "thread_blocks",
 	"thread_deliveries", "thread_links", "coordination_requests", "harness_setup_revisions",
 	"user_profiles", "user_profile_connections", "github_connections",

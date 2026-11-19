@@ -43,7 +43,7 @@ func (s *CoordinationPolicy) setDefaults() {
 }
 
 // setDefaults set default value of fields.
-func (s *CreateScheduleRequest) setDefaults() {
+func (s *CreateRoutineRequest) setDefaults() {
 	{
 		val := int(7200)
 		s.MaxRunSeconds.SetTo(val)

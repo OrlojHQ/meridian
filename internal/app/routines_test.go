@@ -15,6 +15,7 @@ import (
 	"github.com/OrlojHQ/meridian/internal/app"
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/ports"
+	"github.com/OrlojHQ/meridian/internal/principal"
 	"github.com/OrlojHQ/meridian/internal/secrets"
 	"github.com/OrlojHQ/meridian/internal/store/sqlite"
 	"github.com/OrlojHQ/meridian/internal/transcripts"
@@ -41,7 +42,7 @@ func (*inspectStub) PushDelivery(context.Context, ports.DeliveryPushRequest) (po
 	return ports.DeliveryPushResult{}, errLeaked
 }
 
-type scheduleHarness struct {
+type routineHarness struct {
 	ctx     context.Context
 	system  context.Context
 	store   *sqlite.Store
@@ -52,9 +53,9 @@ type scheduleHarness struct {
 	cursor  uint64
 }
 
-const scheduleProject = domain.ProjectID("project-sched")
+const routineProject = domain.ProjectID("project-sched")
 
-func newScheduleHarness(t *testing.T) *scheduleHarness {
+func newRoutineHarness(t *testing.T) *routineHarness {
 	t.Helper()
 	ctx := operatorContext()
 	store, err := sqlite.Open(ctx, t.TempDir())
@@ -66,13 +67,13 @@ func newScheduleHarness(t *testing.T) *scheduleHarness {
 	clock := &testClock{now: time.Date(2026, 11, 18, 10, 0, 0, 0, time.UTC)}
 	if err := store.Transact(ctx, func(tx ports.Transaction) error {
 		return tx.InsertProject(ctx, domain.Project{
-			OwnerUserID: domain.BootstrapOwnerID, ID: scheduleProject, Name: "project",
+			OwnerUserID: domain.BootstrapOwnerID, ID: routineProject, Name: "project",
 			CreatedAt: clock.now, UpdatedAt: clock.now, ResourceVersion: 1,
 		})
 	}); err != nil {
 		t.Fatal(err)
 	}
-	transcript, err := transcripts.NewInstallationKey("schedule-test", 1)
+	transcript, err := transcripts.NewInstallationKey("routine-test", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,32 +89,32 @@ func newScheduleHarness(t *testing.T) *scheduleHarness {
 	service.ConfigureThreads(runtime, transcript)
 	service.ConfigureSecrets(secretKey)
 	service.ConfigureDelivery(inspect, nil)
-	return &scheduleHarness{
+	return &routineHarness{
 		ctx: ctx, system: asSystem(ctx), store: store, service: service,
 		runtime: runtime, clock: clock, inspect: inspect,
 	}
 }
 
-func (h *scheduleHarness) set(at time.Time) {
+func (h *routineHarness) set(at time.Time) {
 	h.clock.mu.Lock()
 	h.clock.now = at
 	h.clock.mu.Unlock()
 }
 
-func (h *scheduleHarness) advance(by time.Duration) {
+func (h *routineHarness) advance(by time.Duration) {
 	h.clock.mu.Lock()
 	h.clock.now = h.clock.now.Add(by)
 	h.clock.mu.Unlock()
 }
 
-func (h *scheduleHarness) tick(t *testing.T) {
+func (h *routineHarness) tick(t *testing.T) {
 	t.Helper()
-	if err := h.service.TickSchedules(h.system); err != nil {
+	if err := h.service.TickRoutines(h.system); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func (h *scheduleHarness) create(t *testing.T, input app.ScheduleInput) app.ScheduleView {
+func (h *routineHarness) create(t *testing.T, input app.RoutineInput) app.RoutineView {
 	t.Helper()
 	if input.Harness == "" {
 		input.Harness = "mock"
@@ -121,23 +122,23 @@ func (h *scheduleHarness) create(t *testing.T, input app.ScheduleInput) app.Sche
 	if input.TimeZone == "" {
 		input.TimeZone = "UTC"
 	}
-	view, err := h.service.CreateSchedule(h.ctx, scheduleProject, input, "create-"+input.Name)
+	view, err := h.service.CreateRoutine(h.ctx, routineProject, input, "create-"+input.Name)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return view
 }
 
-func (h *scheduleHarness) fires(t *testing.T, id string) []app.ScheduleFireView {
+func (h *routineHarness) fires(t *testing.T, id string) []app.RoutineFireView {
 	t.Helper()
-	items, _, err := h.service.ListScheduleFires(h.ctx, domain.ScheduleID(id), ports.Page{Limit: 100})
+	items, _, err := h.service.ListRoutineFires(h.ctx, domain.RoutineID(id), ports.Page{Limit: 100})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return items
 }
 
-func (h *scheduleHarness) latest(t *testing.T, id string) app.ScheduleFireView {
+func (h *routineHarness) latest(t *testing.T, id string) app.RoutineFireView {
 	t.Helper()
 	items := h.fires(t, id)
 	if len(items) == 0 {
@@ -147,7 +148,7 @@ func (h *scheduleHarness) latest(t *testing.T, id string) app.ScheduleFireView {
 }
 
 // ready makes the fire's Capsule Ready, which starts its idle session.
-func (h *scheduleHarness) ready(t *testing.T, fire app.ScheduleFireView) {
+func (h *routineHarness) ready(t *testing.T, fire app.RoutineFireView) {
 	t.Helper()
 	capsule := setProjectThreadCapsuleState(t, h.ctx, h.store, domain.CapsuleID(fire.CapsuleID), domain.CapsuleReady)
 	if err := h.service.ReconcileProjectThreadCapsule(h.system, capsule); err != nil {
@@ -156,7 +157,7 @@ func (h *scheduleHarness) ready(t *testing.T, fire app.ScheduleFireView) {
 }
 
 // emit delivers adapter frames to the Thread, as a live session would.
-func (h *scheduleHarness) emit(t *testing.T, thread string, frames ...adapterproto.Frame) {
+func (h *routineHarness) emit(t *testing.T, thread string, frames ...adapterproto.Frame) {
 	t.Helper()
 	items := make([]ports.RuntimeStructuredEvent, 0, len(frames))
 	for _, frame := range frames {
@@ -172,7 +173,7 @@ func (h *scheduleHarness) emit(t *testing.T, thread string, frames ...adapterpro
 	}
 }
 
-func (h *scheduleHarness) sentContaining(text string) int {
+func (h *routineHarness) sentContaining(text string) int {
 	h.runtime.mu.Lock()
 	defer h.runtime.mu.Unlock()
 	count := 0
@@ -184,7 +185,7 @@ func (h *scheduleHarness) sentContaining(text string) int {
 	return count
 }
 
-func (h *scheduleHarness) negotiateModels(threadRun domain.RunID) {
+func (h *routineHarness) negotiateModels(threadRun domain.RunID) {
 	h.runtime.mu.Lock()
 	defer h.runtime.mu.Unlock()
 	run := h.runtime.runs[threadRun]
@@ -192,36 +193,36 @@ func (h *scheduleHarness) negotiateModels(threadRun domain.RunID) {
 	h.runtime.runs[threadRun] = run
 }
 
-// runToIdle fires the schedule, starts the session, sends the prompt, ends
+// runToIdle fires the routine, starts the session, sends the prompt, ends
 // the agent's turn, and waits out the settle time.
-func (h *scheduleHarness) runToIdle(t *testing.T, schedule app.ScheduleView) app.ScheduleFireView {
+func (h *routineHarness) runToIdle(t *testing.T, routine app.RoutineView) app.RoutineFireView {
 	t.Helper()
 	h.tick(t)
-	fire := h.latest(t, schedule.ID)
-	if fire.State != string(domain.ScheduleFireStarting) || fire.ThreadID == "" {
+	fire := h.latest(t, routine.ID)
+	if fire.State != string(domain.RoutineFireStarting) || fire.ThreadID == "" {
 		t.Fatalf("fire after first tick = %#v", fire)
 	}
 	h.ready(t, fire)
 	h.tick(t) // starting -> selecting
 	h.tick(t) // selecting -> running: prompt sent
-	fire = h.latest(t, schedule.ID)
-	if fire.State != string(domain.ScheduleFireRunning) {
+	fire = h.latest(t, routine.ID)
+	if fire.State != string(domain.RoutineFireRunning) {
 		t.Fatalf("fire after prompt = %#v", fire)
 	}
 	h.emit(t, fire.ThreadID, adapterproto.Frame{Type: adapterproto.KindEnd})
 	h.tick(t) // idle noticed
-	h.advance(domain.ScheduleIdleSettle + time.Second)
+	h.advance(domain.RoutineIdleSettle + time.Second)
 	h.tick(t) // outcome decided
-	return h.latest(t, schedule.ID)
+	return h.latest(t, routine.ID)
 }
 
-func TestScheduleRunsOnTimeAndDeletesAnEmptyCapsule(t *testing.T) {
-	h := newScheduleHarness(t)
+func TestRoutineRunsOnTimeAndDeletesAnEmptyCapsule(t *testing.T) {
+	h := newRoutineHarness(t)
 	prompt := "update dependencies sentinel-7f3a"
-	schedule := h.create(t, app.ScheduleInput{Name: "deps-weekly", Prompt: prompt, Cadence: "0 6 * * 1"})
+	routine := h.create(t, app.RoutineInput{Name: "deps-weekly", Prompt: prompt, Cadence: "0 6 * * 1"})
 	monday := time.Date(2026, 11, 23, 6, 0, 0, 0, time.UTC)
-	if schedule.NextFireAt == nil || !schedule.NextFireAt.Equal(monday) {
-		t.Fatalf("next fire = %v", schedule.NextFireAt)
+	if routine.NextFireAt == nil || !routine.NextFireAt.Equal(monday) {
+		t.Fatalf("next fire = %v", routine.NextFireAt)
 	}
 	for _, path := range []string{h.store.Path(), h.store.Path() + "-wal"} {
 		raw, err := os.ReadFile(path)
@@ -233,12 +234,12 @@ func TestScheduleRunsOnTimeAndDeletesAnEmptyCapsule(t *testing.T) {
 		}
 	}
 	h.tick(t)
-	if len(h.fires(t, schedule.ID)) != 0 {
+	if len(h.fires(t, routine.ID)) != 0 {
 		t.Fatal("fired before its time")
 	}
 
 	h.set(monday.Add(10 * time.Second))
-	fire := h.runToIdle(t, schedule)
+	fire := h.runToIdle(t, routine)
 	if h.sentContaining("sentinel-7f3a") != 1 {
 		t.Fatalf("prompt sends = %d", h.sentContaining("sentinel-7f3a"))
 	}
@@ -248,7 +249,7 @@ func TestScheduleRunsOnTimeAndDeletesAnEmptyCapsule(t *testing.T) {
 	for range 4 {
 		h.tick(t)
 	}
-	fire = h.latest(t, schedule.ID)
+	fire = h.latest(t, routine.ID)
 	if fire.State != "finished" || !fire.CapsuleDeleted {
 		t.Fatalf("fire after cleaning = %#v", fire)
 	}
@@ -266,30 +267,30 @@ func TestScheduleRunsOnTimeAndDeletesAnEmptyCapsule(t *testing.T) {
 	if thread.State != domain.ThreadArchived {
 		t.Fatalf("thread state = %s", thread.State)
 	}
-	view, err := h.service.GetSchedule(h.ctx, domain.ScheduleID(schedule.ID))
+	view, err := h.service.GetRoutine(h.ctx, domain.RoutineID(routine.ID))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if view.KeptCapsules != 0 || view.NextFireAt == nil || !view.NextFireAt.Equal(monday.AddDate(0, 0, 7)) {
-		t.Fatalf("schedule after run = %#v", view)
+		t.Fatalf("routine after run = %#v", view)
 	}
-	notes, err := h.service.CapsuleSchedules(h.ctx, []domain.CapsuleID{capsule.ID})
+	notes, err := h.service.CapsuleRoutines(h.ctx, []domain.CapsuleID{capsule.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if note := notes[capsule.ID]; note.ScheduleName != "deps-weekly" || note.Outcome != "no_changes" {
+	if note := notes[capsule.ID]; note.RoutineName != "deps-weekly" || note.Outcome != "no_changes" {
 		t.Fatalf("capsule note = %#v", note)
 	}
 }
 
-func TestScheduleKeepsChangesAndStopsAtTheBacklog(t *testing.T) {
-	h := newScheduleHarness(t)
+func TestRoutineKeepsChangesAndStopsAtTheBacklog(t *testing.T) {
+	h := newRoutineHarness(t)
 	h.inspect.inspection = ports.DeliveryInspection{Dirty: true, HasDeliverableChanges: true}
-	schedule := h.create(t, app.ScheduleInput{
+	routine := h.create(t, app.RoutineInput{
 		Name: "lint", Prompt: "fix lint", Cadence: "0 * * * *", MaxKept: 1,
 	})
-	h.set(*schedule.NextFireAt)
-	fire := h.runToIdle(t, schedule)
+	h.set(*routine.NextFireAt)
+	fire := h.runToIdle(t, routine)
 	if fire.State != "finished" || fire.Outcome != "changed" || fire.CapsuleDeleted {
 		t.Fatalf("fire = %#v", fire)
 	}
@@ -301,52 +302,52 @@ func TestScheduleKeepsChangesAndStopsAtTheBacklog(t *testing.T) {
 		t.Fatal("a Capsule with changes was deleted")
 	}
 
-	h.set(schedule.NextFireAt.Add(time.Hour))
+	h.set(routine.NextFireAt.Add(time.Hour))
 	h.tick(t)
-	skipped := h.latest(t, schedule.ID)
-	if skipped.State != "skipped" || skipped.Reason != domain.ScheduleReasonBacklog {
+	skipped := h.latest(t, routine.ID)
+	if skipped.State != "skipped" || skipped.Reason != domain.RoutineReasonBacklog {
 		t.Fatalf("second fire = %#v", skipped)
 	}
 }
 
-func TestScheduleSkipsAnOverlappingRun(t *testing.T) {
-	h := newScheduleHarness(t)
-	schedule := h.create(t, app.ScheduleInput{Name: "slow", Prompt: "work", Cadence: "*/15 * * * *"})
-	h.set(*schedule.NextFireAt)
+func TestRoutineSkipsAnOverlappingRun(t *testing.T) {
+	h := newRoutineHarness(t)
+	routine := h.create(t, app.RoutineInput{Name: "slow", Prompt: "work", Cadence: "*/15 * * * *"})
+	h.set(*routine.NextFireAt)
 	h.tick(t)
-	first := h.latest(t, schedule.ID)
+	first := h.latest(t, routine.ID)
 	if first.State != "starting" {
 		t.Fatalf("first = %#v", first)
 	}
-	h.set(schedule.NextFireAt.Add(15 * time.Minute))
+	h.set(routine.NextFireAt.Add(15 * time.Minute))
 	h.tick(t)
-	second := h.latest(t, schedule.ID)
-	if second.State != "skipped" || second.Reason != domain.ScheduleReasonOverlap {
+	second := h.latest(t, routine.ID)
+	if second.State != "skipped" || second.Reason != domain.RoutineReasonOverlap {
 		t.Fatalf("second = %#v", second)
 	}
-	manual, err := h.service.RunSchedule(h.ctx, domain.ScheduleID(schedule.ID), "run-now")
+	manual, err := h.service.RunRoutine(h.ctx, domain.RoutineID(routine.ID), "run-now")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if manual.State != "skipped" || manual.Reason != domain.ScheduleReasonOverlap || manual.Trigger != "manual" {
+	if manual.State != "skipped" || manual.Reason != domain.RoutineReasonOverlap || manual.Trigger != "manual" {
 		t.Fatalf("manual = %#v", manual)
 	}
 }
 
-func TestScheduleTimesOutAndPauses(t *testing.T) {
-	h := newScheduleHarness(t)
-	schedule := h.create(t, app.ScheduleInput{
+func TestRoutineTimesOutAndPauses(t *testing.T) {
+	h := newRoutineHarness(t)
+	routine := h.create(t, app.RoutineInput{
 		Name: "long", Prompt: "work", Cadence: "0 6 * * *", MaxRunSeconds: 300,
 	})
-	h.set(*schedule.NextFireAt)
+	h.set(*routine.NextFireAt)
 	h.tick(t)
-	fire := h.latest(t, schedule.ID)
+	fire := h.latest(t, routine.ID)
 	h.ready(t, fire)
 	h.tick(t)
 	h.tick(t)
 	h.advance(6 * time.Minute)
 	h.tick(t)
-	fire = h.latest(t, schedule.ID)
+	fire = h.latest(t, routine.ID)
 	if fire.State != "finished" || fire.Outcome != "timed_out" || fire.CapsuleDeleted {
 		t.Fatalf("fire = %#v", fire)
 	}
@@ -359,14 +360,14 @@ func TestScheduleTimesOutAndPauses(t *testing.T) {
 	}
 }
 
-func TestScheduleAppliesTheModelBeforeThePrompt(t *testing.T) {
-	h := newScheduleHarness(t)
-	schedule := h.create(t, app.ScheduleInput{
+func TestRoutineAppliesTheModelBeforeThePrompt(t *testing.T) {
+	h := newRoutineHarness(t)
+	routine := h.create(t, app.RoutineInput{
 		Name: "model", Prompt: "prompt-after-model", Cadence: "0 6 * * *", Model: "opus", Effort: "high",
 	})
-	h.set(*schedule.NextFireAt)
+	h.set(*routine.NextFireAt)
 	h.tick(t)
-	fire := h.latest(t, schedule.ID)
+	fire := h.latest(t, routine.ID)
 	h.ready(t, fire)
 	thread, err := h.service.GetThread(h.ctx, domain.ThreadID(fire.ThreadID))
 	if err != nil {
@@ -408,12 +409,12 @@ func TestScheduleAppliesTheModelBeforeThePrompt(t *testing.T) {
 	if h.sentContaining("prompt-after-model") != 1 {
 		t.Fatalf("prompt sends = %d", h.sentContaining("prompt-after-model"))
 	}
-	if fire := h.latest(t, schedule.ID); fire.State != "running" {
+	if fire := h.latest(t, routine.ID); fire.State != "running" {
 		t.Fatalf("fire = %#v", fire)
 	}
 }
 
-func (h *scheduleHarness) sentFrame(kind adapterproto.Kind, value string) bool {
+func (h *routineHarness) sentFrame(kind adapterproto.Kind, value string) bool {
 	h.runtime.mu.Lock()
 	defer h.runtime.mu.Unlock()
 	for _, frame := range h.runtime.frames {
@@ -424,16 +425,16 @@ func (h *scheduleHarness) sentFrame(kind adapterproto.Kind, value string) bool {
 	return false
 }
 
-func TestScheduleFailsOnAnUnavailableModelAndTurnsOffAfterThree(t *testing.T) {
-	h := newScheduleHarness(t)
-	schedule := h.create(t, app.ScheduleInput{
+func TestRoutineFailsOnAnUnavailableModelAndTurnsOffAfterThree(t *testing.T) {
+	h := newRoutineHarness(t)
+	routine := h.create(t, app.RoutineInput{
 		Name: "missing", Prompt: "never-sent", Cadence: "0 * * * *", Model: "nope", MaxKept: 20,
 	})
-	at := *schedule.NextFireAt
+	at := *routine.NextFireAt
 	for i := range 3 {
 		h.set(at.Add(time.Duration(i) * time.Hour))
 		h.tick(t)
-		fire := h.latest(t, schedule.ID)
+		fire := h.latest(t, routine.ID)
 		h.ready(t, fire)
 		thread, err := h.service.GetThread(h.ctx, domain.ThreadID(fire.ThreadID))
 		if err != nil {
@@ -445,23 +446,23 @@ func TestScheduleFailsOnAnUnavailableModelAndTurnsOffAfterThree(t *testing.T) {
 			Current: "default", Options: []adapterproto.ModelOption{{ID: "default", Label: "Default"}},
 		}})
 		h.tick(t)
-		fire = h.latest(t, schedule.ID)
-		if fire.Outcome != "failed" || fire.Reason != domain.ScheduleReasonModelAbsent {
+		fire = h.latest(t, routine.ID)
+		if fire.Outcome != "failed" || fire.Reason != domain.RoutineReasonModelAbsent {
 			t.Fatalf("fire %d = %#v", i, fire)
 		}
 	}
 	if h.sentContaining("never-sent") != 0 {
 		t.Fatal("prompt sent on a model the operator did not pick")
 	}
-	view, err := h.service.GetSchedule(h.ctx, domain.ScheduleID(schedule.ID))
+	view, err := h.service.GetRoutine(h.ctx, domain.RoutineID(routine.ID))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if view.Enabled || view.DisabledReason != domain.ScheduleDisabledStartFailures || view.NextFireAt != nil {
-		t.Fatalf("schedule = %#v", view)
+	if view.Enabled || view.DisabledReason != domain.RoutineDisabledStartFailures || view.NextFireAt != nil {
+		t.Fatalf("routine = %#v", view)
 	}
 	enabled := true
-	view, err = h.service.UpdateSchedule(h.ctx, domain.ScheduleID(schedule.ID), app.ScheduleUpdate{
+	view, err = h.service.UpdateRoutine(h.ctx, domain.RoutineID(routine.ID), app.RoutineUpdate{
 		Enabled: &enabled, ExpectedResourceVersion: view.ResourceVersion,
 	}, "turn-on")
 	if err != nil {
@@ -472,14 +473,14 @@ func TestScheduleFailsOnAnUnavailableModelAndTurnsOffAfterThree(t *testing.T) {
 	}
 }
 
-func TestScheduleCatchUpAndMissedFires(t *testing.T) {
-	h := newScheduleHarness(t)
-	schedule := h.create(t, app.ScheduleInput{Name: "hourly", Prompt: "work", Cadence: "0 * * * *"})
-	first := *schedule.NextFireAt
+func TestRoutineCatchUpAndMissedFires(t *testing.T) {
+	h := newRoutineHarness(t)
+	routine := h.create(t, app.RoutineInput{Name: "hourly", Prompt: "work", Cadence: "0 * * * *"})
+	first := *routine.NextFireAt
 	// Asleep for four and a half hours: four missed, the latest caught up.
 	h.set(first.Add(4*time.Hour + 30*time.Minute))
 	h.tick(t)
-	fires := h.fires(t, schedule.ID)
+	fires := h.fires(t, routine.ID)
 	var missed, caught int
 	for _, fire := range fires {
 		switch {
@@ -495,7 +496,7 @@ func TestScheduleCatchUpAndMissedFires(t *testing.T) {
 	if missed != 4 || caught != 1 {
 		t.Fatalf("missed=%d caught=%d: %#v", missed, caught, fires)
 	}
-	view, err := h.service.GetSchedule(h.ctx, domain.ScheduleID(schedule.ID))
+	view, err := h.service.GetRoutine(h.ctx, domain.RoutineID(routine.ID))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -505,7 +506,7 @@ func TestScheduleCatchUpAndMissedFires(t *testing.T) {
 
 	// A catch-up window of zero misses everything late.
 	zero := 0
-	late := h.create(t, app.ScheduleInput{Name: "strict", Prompt: "work", Cadence: "30 * * * *", CatchUpSeconds: &zero})
+	late := h.create(t, app.RoutineInput{Name: "strict", Prompt: "work", Cadence: "30 * * * *", CatchUpSeconds: &zero})
 	h.set(late.NextFireAt.Add(10 * time.Minute))
 	h.tick(t)
 	if fire := h.latest(t, late.ID); fire.State != "missed" {
@@ -513,33 +514,33 @@ func TestScheduleCatchUpAndMissedFires(t *testing.T) {
 	}
 }
 
-func TestScheduleValidation(t *testing.T) {
-	h := newScheduleHarness(t)
-	for name, input := range map[string]app.ScheduleInput{
+func TestRoutineValidation(t *testing.T) {
+	h := newRoutineHarness(t)
+	for name, input := range map[string]app.RoutineInput{
 		"too often":     {Name: "often", Prompt: "p", Cadence: "*/10 * * * *", Harness: "mock", TimeZone: "UTC"},
 		"no prompt":     {Name: "empty", Prompt: "  ", Cadence: "0 6 * * *", Harness: "mock", TimeZone: "UTC"},
 		"bad name":      {Name: "Bad Name", Prompt: "p", Cadence: "0 6 * * *", Harness: "mock", TimeZone: "UTC"},
 		"bad zone":      {Name: "zone", Prompt: "p", Cadence: "0 6 * * *", Harness: "mock", TimeZone: "Nowhere/Here"},
 		"run too short": {Name: "short", Prompt: "p", Cadence: "0 6 * * *", Harness: "mock", TimeZone: "UTC", MaxRunSeconds: 60},
 	} {
-		if _, err := h.service.CreateSchedule(h.ctx, scheduleProject, input, "bad-"+input.Name); !errors.Is(err, domain.ErrInvalid) {
+		if _, err := h.service.CreateRoutine(h.ctx, routineProject, input, "bad-"+input.Name); !errors.Is(err, domain.ErrInvalid) {
 			t.Errorf("%s: err = %v", name, err)
 		}
 	}
-	h.create(t, app.ScheduleInput{Name: "taken", Prompt: "p", Cadence: "0 6 * * *"})
-	if _, err := h.service.CreateSchedule(h.ctx, scheduleProject, app.ScheduleInput{
+	h.create(t, app.RoutineInput{Name: "taken", Prompt: "p", Cadence: "0 6 * * *"})
+	if _, err := h.service.CreateRoutine(h.ctx, routineProject, app.RoutineInput{
 		Name: "taken", Prompt: "p", Cadence: "0 7 * * *", Harness: "mock", TimeZone: "UTC",
 	}, "dup"); !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("duplicate name err = %v", err)
 	}
 }
 
-func TestScheduleUpdateAndDelete(t *testing.T) {
-	h := newScheduleHarness(t)
-	schedule := h.create(t, app.ScheduleInput{Name: "edit-me", Prompt: "old prompt", Cadence: "0 6 * * *"})
+func TestRoutineUpdateAndDelete(t *testing.T) {
+	h := newRoutineHarness(t)
+	routine := h.create(t, app.RoutineInput{Name: "edit-me", Prompt: "old prompt", Cadence: "0 6 * * *"})
 	prompt, cadence, enabled := "new prompt", "0 9 * * 1-5", false
-	updated, err := h.service.UpdateSchedule(h.ctx, domain.ScheduleID(schedule.ID), app.ScheduleUpdate{
-		Prompt: &prompt, Cadence: &cadence, Enabled: &enabled, ExpectedResourceVersion: schedule.ResourceVersion,
+	updated, err := h.service.UpdateRoutine(h.ctx, domain.RoutineID(routine.ID), app.RoutineUpdate{
+		Prompt: &prompt, Cadence: &cadence, Enabled: &enabled, ExpectedResourceVersion: routine.ResourceVersion,
 	}, "edit")
 	if err != nil {
 		t.Fatal(err)
@@ -547,15 +548,38 @@ func TestScheduleUpdateAndDelete(t *testing.T) {
 	if updated.Prompt != "new prompt" || updated.Cadence != cadence || updated.Enabled || updated.NextFireAt != nil {
 		t.Fatalf("updated = %#v", updated)
 	}
-	if _, err := h.service.UpdateSchedule(h.ctx, domain.ScheduleID(schedule.ID), app.ScheduleUpdate{
-		Prompt: &prompt, ExpectedResourceVersion: schedule.ResourceVersion,
+	if _, err := h.service.UpdateRoutine(h.ctx, domain.RoutineID(routine.ID), app.RoutineUpdate{
+		Prompt: &prompt, ExpectedResourceVersion: routine.ResourceVersion,
 	}, "stale"); !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("stale update err = %v", err)
 	}
-	if err := h.service.DeleteSchedule(h.ctx, domain.ScheduleID(schedule.ID), updated.ResourceVersion, "delete"); err != nil {
+	if err := h.service.DeleteRoutine(h.ctx, domain.RoutineID(routine.ID), updated.ResourceVersion, "delete"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := h.service.GetSchedule(h.ctx, domain.ScheduleID(schedule.ID)); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := h.service.GetRoutine(h.ctx, domain.RoutineID(routine.ID)); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("after delete err = %v", err)
+	}
+}
+
+func TestRoutineListOwnedCoversOnlyTheCaller(t *testing.T) {
+	h := newRoutineHarness(t)
+	h.create(t, app.RoutineInput{Name: "nightly", Prompt: "triage", Cadence: "0 3 * * *"})
+	mine, err := h.service.ListOwnedRoutines(h.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(mine) != 1 || mine[0].Name != "nightly" || mine[0].ProjectID != string(routineProject) {
+		t.Fatalf("owned = %#v", mine)
+	}
+	bob, ok := principal.User("usr_bob")
+	if !ok {
+		t.Fatal("principal.User refused usr_bob")
+	}
+	theirs, err := h.service.ListOwnedRoutines(principal.With(context.Background(), bob))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(theirs) != 0 {
+		t.Fatalf("another user listed %d routines", len(theirs))
 	}
 }

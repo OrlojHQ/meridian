@@ -1689,24 +1689,24 @@ for that commit.
 - **A failure does not push.** The agent may be sent the tail. Updating
   the pull request still requires a reviewed Delivery of the new commit.
 
-## Scheduled Threads
+## Routines
 
-ADR 0057 is proposed and implemented. A schedule starts a fresh Project
+ADR 0057 is proposed and implemented. A routine starts a fresh Project
 Thread with a fixed operator prompt on a cron clock.
 
-- **Only the owner sets the clock.** Schedules are created and changed only
+- **Only the owner sets the clock.** Routines are created and changed only
   through the owner's authenticated API. Capsules, repository files, and
   outside systems cannot create, change, or fire one. `meridian.coord.v1`
-  has no schedule verb, and a scheduled Thread holds no Coordination Grant.
+  has no routine verb, and a scheduled Thread holds no Coordination Grant.
 - **The prompt is sealed.** Prompt, model, and effort are one blob encrypted
-  with the installation key, bound to the schedule id and Project. Fires,
+  with the installation key, bound to the routine id and Project. Fires,
   events, audit records, and Capsule notes carry codes, never the prompt.
 - **Unattended spend is bounded.** Fires are at least 15 minutes apart and
   never overlap. A gap catches up at most once, inside the catch-up window.
   Each run stops at its maximum run time; the session is cancelled and the
-  Capsule paused. Fires skip while the schedule holds its maximum of kept
+  Capsule paused. Fires skip while the routine holds its maximum of kept
   Capsules or the installation is at `--max-live-capsules`. Three failed
-  starts in a row turn the schedule off. A slow cadence with a long run time
+  starts in a row turn the routine off. A slow cadence with a long run time
   can still use up a provider quota or plan allowance before anyone looks.
 - **No standing foothold.** Each fire gets a fresh Capsule. A process a
   hostile dependency left behind does not reach the next run except through
@@ -1719,13 +1719,13 @@ Thread with a fixed operator prompt on a cron clock.
   still needs approval of the exact tree. Anything the harness does without
   asking happens with nobody watching for up to the maximum run time. This
   is a residual risk.
-- **No fallback model.** A schedule that names a model or effort fails the
+- **No fallback model.** A routine that names a model or effort fails the
   run when the harness does not offer or confirm it. The prompt is never sent
   on a model the operator did not pick.
 - **Credentials used while the owner is away.** A fire uses the owner's
   provider and GitHub connections. No new credential is stored. Disabling the
   member or revoking the connection stops future fires. A departed-member
-  transfer moves schedules turned off, and the new owner turns each one on.
+  transfer moves routines turned off, and the new owner turns each one on.
 - **Deleting empty runs.** The no-changes decision fails toward keeping the
   Capsule: an unreadable workspace counts as changed. An agent that reverts
   its work only gets its Capsule deleted sooner, and the encrypted transcript

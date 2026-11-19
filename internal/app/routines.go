@@ -14,24 +14,24 @@ import (
 	"github.com/OrlojHQ/meridian/internal/transcripts"
 )
 
-// Scheduled Project Threads (ADR 0057). A schedule is a clock, a fixed
+// Routines (ADR 0057). A routine is a clock, a fixed
 // prompt, and limits. Each fire starts one fresh Project Thread through the
 // same path as POST /projects/{id}/threads, attributed to the Project's
-// owner. A schedule never ships: Delivery still needs the operator.
+// owner. A routine never ships: Delivery still needs the operator.
 
 const (
-	OriginSchedule     = "schedule"
-	OriginFromSchedule = "from_schedule"
-	// scheduleOnTime is how late a clock fire may start and still count as
+	OriginRoutine     = "routine"
+	OriginFromRoutine = "from_routine"
+	// routineOnTime is how late a clock fire may start and still count as
 	// on time rather than a catch-up.
-	scheduleOnTime = 2 * time.Minute
-	// scheduleSpacingSamples is how many upcoming fires a save checks for
+	routineOnTime = 2 * time.Minute
+	// routineSpacingSamples is how many upcoming fires a save checks for
 	// the minimum spacing.
-	scheduleSpacingSamples = 500
+	routineSpacingSamples = 500
 )
 
-// ScheduleView is one schedule as its owner sees it, prompt included.
-type ScheduleView struct {
+// RoutineView is one routine as its owner sees it, prompt included.
+type RoutineView struct {
 	ID              string                 `json:"id"`
 	ProjectID       string                 `json:"projectId"`
 	Name            string                 `json:"name"`
@@ -49,17 +49,17 @@ type ScheduleView struct {
 	NextFireAt      *time.Time             `json:"nextFireAt,omitempty"`
 	LastFireAt      *time.Time             `json:"lastFireAt,omitempty"`
 	KeptCapsules    int                    `json:"keptCapsules"`
-	Active          *ScheduleFireView      `json:"active,omitempty"`
-	LastFire        *ScheduleFireView      `json:"lastFire,omitempty"`
+	Active          *RoutineFireView       `json:"active,omitempty"`
+	LastFire        *RoutineFireView       `json:"lastFire,omitempty"`
 	ResourceVersion domain.ResourceVersion `json:"resourceVersion"`
 	CreatedAt       time.Time              `json:"createdAt"`
 	UpdatedAt       time.Time              `json:"updatedAt"`
 }
 
-// ScheduleFireView is one fire. It carries codes, never prompt text.
-type ScheduleFireView struct {
+// RoutineFireView is one fire. It carries codes, never prompt text.
+type RoutineFireView struct {
 	ID             string     `json:"id"`
-	ScheduleID     string     `json:"scheduleId"`
+	RoutineID      string     `json:"routineId"`
 	Trigger        string     `json:"trigger"`
 	ScheduledFor   time.Time  `json:"scheduledFor"`
 	State          string     `json:"state"`
@@ -73,18 +73,18 @@ type ScheduleFireView struct {
 	CreatedAt      time.Time  `json:"createdAt"`
 }
 
-// CapsuleScheduleView is the content-free note on a Capsule a fire started.
-type CapsuleScheduleView struct {
-	ScheduleID   string `json:"scheduleId"`
-	ScheduleName string `json:"scheduleName"`
-	FireID       string `json:"fireId"`
-	State        string `json:"state"`
-	Outcome      string `json:"outcome,omitempty"`
+// CapsuleRoutineView is the content-free note on a Capsule a fire started.
+type CapsuleRoutineView struct {
+	RoutineID   string `json:"routineId"`
+	RoutineName string `json:"routineName"`
+	FireID      string `json:"fireId"`
+	State       string `json:"state"`
+	Outcome     string `json:"outcome,omitempty"`
 }
 
-// ScheduleInput creates a schedule. Zero limits take their defaults; a nil
+// RoutineInput creates a routine. Zero limits take their defaults; a nil
 // Enabled means enabled.
-type ScheduleInput struct {
+type RoutineInput struct {
 	Name           string `json:"name"`
 	Harness        string `json:"harness"`
 	Model          string `json:"model"`
@@ -98,8 +98,8 @@ type ScheduleInput struct {
 	Enabled        *bool  `json:"enabled"`
 }
 
-// ScheduleUpdate changes the named fields of a schedule.
-type ScheduleUpdate struct {
+// RoutineUpdate changes the named fields of a routine.
+type RoutineUpdate struct {
 	Name                    *string                `json:"name"`
 	Harness                 *string                `json:"harness"`
 	Model                   *string                `json:"model"`
@@ -115,7 +115,7 @@ type ScheduleUpdate struct {
 }
 
 // ReportedModelsView is the model list the most recent session of one
-// harness in a Project reported, for the schedule form to offer.
+// harness in a Project reported, for the routine form to offer.
 type ReportedModelsView struct {
 	Models        []adapterproto.ModelOption `json:"models"`
 	Current       string                     `json:"current,omitempty"`
@@ -124,29 +124,29 @@ type ReportedModelsView struct {
 	ThreadID      string                     `json:"threadId,omitempty"`
 }
 
-// scheduleContent is the sealed part of a schedule.
-type scheduleContent struct {
+// routineContent is the sealed part of a routine.
+type routineContent struct {
 	Prompt string `json:"prompt"`
 	Model  string `json:"model,omitempty"`
 	Effort string `json:"effort,omitempty"`
 }
 
-type scheduleReplay struct {
-	ID domain.ScheduleID `json:"id"`
+type routineReplay struct {
+	ID domain.RoutineID `json:"id"`
 }
 
-type scheduleFireReplay struct {
-	ID domain.ScheduleFireID `json:"id"`
+type routineFireReplay struct {
+	ID domain.RoutineFireID `json:"id"`
 }
 
-// ConfigureSchedules sets the installation live-Capsule cap that scheduled
+// ConfigureRoutines sets the installation live-Capsule cap that scheduled
 // fires respect. Zero means no cap.
-func (s *Service) ConfigureSchedules(maxLive int) {
-	s.scheduleMaxLive = maxLive
+func (s *Service) ConfigureRoutines(maxLive int) {
+	s.routineMaxLive = maxLive
 }
 
-// StartSchedules runs the schedule clock until ctx is cancelled.
-func (s *Service) StartSchedules(ctx context.Context) {
+// StartRoutines runs the routine clock until ctx is cancelled.
+func (s *Service) StartRoutines(ctx context.Context) {
 	go func() {
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
@@ -155,44 +155,44 @@ func (s *Service) StartSchedules(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				_ = s.TickSchedules(ctx)
-			case <-s.scheduleWake:
-				_ = s.TickSchedules(ctx)
+				_ = s.TickRoutines(ctx)
+			case <-s.routineWake:
+				_ = s.TickRoutines(ctx)
 			}
 		}
 	}()
 }
 
-func (s *Service) wakeSchedules() {
-	if s.scheduleWake == nil {
+func (s *Service) wakeRoutines() {
+	if s.routineWake == nil {
 		return
 	}
 	select {
-	case s.scheduleWake <- struct{}{}:
+	case s.routineWake <- struct{}{}:
 	default:
 	}
 }
 
-func (s *Service) schedulesSupported() error {
+func (s *Service) routinesSupported() error {
 	if s.structured == nil || s.transcriptKey == nil || s.secretKey == nil {
 		return fmt.Errorf("%w: scheduled Threads need structured sessions", domain.ErrUnsupported)
 	}
 	return nil
 }
 
-// ListSchedules lists a Project's schedules.
-func (s *Service) ListSchedules(ctx context.Context, id domain.ProjectID) ([]ScheduleView, error) {
+// ListRoutines lists a Project's routines.
+func (s *Service) ListRoutines(ctx context.Context, id domain.ProjectID) ([]RoutineView, error) {
 	if err := requirePrincipal(ctx); err != nil {
 		return nil, err
 	}
-	views := []ScheduleView{}
+	views := []RoutineView{}
 	err := s.store.View(ctx, func(reader ports.Reader) error {
-		items, err := reader.ListSchedules(ctx, id)
+		items, err := reader.ListRoutines(ctx, id)
 		if err != nil {
 			return err
 		}
 		for _, item := range items {
-			view, err := s.scheduleView(ctx, reader, item)
+			view, err := s.routineView(ctx, reader, item)
 			if err != nil {
 				return err
 			}
@@ -203,47 +203,75 @@ func (s *Service) ListSchedules(ctx context.Context, id domain.ProjectID) ([]Sch
 	return views, err
 }
 
-// GetSchedule returns one schedule.
-func (s *Service) GetSchedule(ctx context.Context, id domain.ScheduleID) (ScheduleView, error) {
+// ListOwnedRoutines lists every routine the caller owns, across Projects,
+// for the Routines page.
+func (s *Service) ListOwnedRoutines(ctx context.Context) ([]RoutineView, error) {
 	if err := requirePrincipal(ctx); err != nil {
-		return ScheduleView{}, err
+		return nil, err
 	}
-	var view ScheduleView
-	err := s.store.View(ctx, func(reader ports.Reader) error {
-		item, err := reader.GetSchedule(ctx, id)
+	scope, err := scopeOf(ctx)
+	if err != nil {
+		return nil, err
+	}
+	views := []RoutineView{}
+	err = s.store.View(ctx, func(reader ports.Reader) error {
+		items, err := reader.ListOwnedRoutines(ctx, scope.keyOwner())
 		if err != nil {
 			return err
 		}
-		view, err = s.scheduleView(ctx, reader, item)
+		for _, item := range items {
+			view, err := s.routineView(ctx, reader, item)
+			if err != nil {
+				return err
+			}
+			views = append(views, view)
+		}
+		return nil
+	})
+	return views, err
+}
+
+// GetRoutine returns one routine.
+func (s *Service) GetRoutine(ctx context.Context, id domain.RoutineID) (RoutineView, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return RoutineView{}, err
+	}
+	var view RoutineView
+	err := s.store.View(ctx, func(reader ports.Reader) error {
+		item, err := reader.GetRoutine(ctx, id)
+		if err != nil {
+			return err
+		}
+		view, err = s.routineView(ctx, reader, item)
 		return err
 	})
 	return view, err
 }
 
-// CreateSchedule saves a new schedule on a Project.
-func (s *Service) CreateSchedule(
-	ctx context.Context, projectID domain.ProjectID, input ScheduleInput, key string,
-) (ScheduleView, error) {
+// CreateRoutine saves a new routine on a Project.
+func (s *Service) CreateRoutine(
+	ctx context.Context, projectID domain.ProjectID, input RoutineInput, key string,
+) (RoutineView, error) {
 	if err := requirePrincipal(ctx); err != nil {
-		return ScheduleView{}, err
+		return RoutineView{}, err
 	}
-	if err := s.schedulesSupported(); err != nil {
-		return ScheduleView{}, err
+	if err := s.routinesSupported(); err != nil {
+		return RoutineView{}, err
 	}
 	if err := requireIdempotency(key); err != nil {
-		return ScheduleView{}, err
+		return RoutineView{}, err
 	}
-	scope := "project:" + string(projectID) + ":schedule-create"
-	var view ScheduleView
+	scope := "project:" + string(projectID) + ":routine-create"
+	var view RoutineView
 	err := s.store.Transact(ctx, func(tx ports.Transaction) error {
-		if replay, ok, err := getReplay[scheduleReplay](ctx, tx, scope, key); err != nil {
+		if replay, ok, err := getReplay[routineReplay](ctx, tx, scope, key); err != nil {
 			return err
 		} else if ok {
-			item, err := tx.GetSchedule(ctx, replay.ID)
+			item, err := tx.GetRoutine(ctx, replay.ID)
 			if err != nil {
 				return err
 			}
-			view, err = s.scheduleView(ctx, tx, item)
+			view, err = s.routineView(ctx, tx, item)
 			return err
 		}
 		project, err := tx.GetProject(ctx, projectID)
@@ -254,92 +282,92 @@ func (s *Service) CreateSchedule(
 			return err
 		}
 		now := s.clock.Now().UTC()
-		schedule := domain.Schedule{
-			ID: domain.ScheduleID(s.ids.NewID()), ProjectID: project.ID, OwnerUserID: project.OwnerUserID,
+		routine := domain.Routine{
+			ID: domain.RoutineID(s.ids.NewID()), ProjectID: project.ID, OwnerUserID: project.OwnerUserID,
 			Name: strings.TrimSpace(input.Name), Harness: strings.TrimSpace(input.Harness),
 			Cadence: strings.TrimSpace(input.Cadence), TimeZone: strings.TrimSpace(input.TimeZone),
-			MaxRun: domain.ScheduleDefaultRun, CatchUp: domain.ScheduleDefaultCatchUp,
-			MaxKept: domain.ScheduleDefaultKept, Enabled: input.Enabled == nil || *input.Enabled,
+			MaxRun: domain.RoutineDefaultRun, CatchUp: domain.RoutineDefaultCatchUp,
+			MaxKept: domain.RoutineDefaultKept, Enabled: input.Enabled == nil || *input.Enabled,
 			ResourceVersion: 1, CreatedAt: now, UpdatedAt: now,
 		}
 		if input.MaxRunSeconds != 0 {
-			schedule.MaxRun = time.Duration(input.MaxRunSeconds) * time.Second
+			routine.MaxRun = time.Duration(input.MaxRunSeconds) * time.Second
 		}
 		if input.CatchUpSeconds != nil {
-			schedule.CatchUp = time.Duration(*input.CatchUpSeconds) * time.Second
+			routine.CatchUp = time.Duration(*input.CatchUpSeconds) * time.Second
 		}
 		if input.MaxKept != 0 {
-			schedule.MaxKept = input.MaxKept
+			routine.MaxKept = input.MaxKept
 		}
-		content := scheduleContent{
+		content := routineContent{
 			Prompt: input.Prompt, Model: strings.TrimSpace(input.Model), Effort: strings.TrimSpace(input.Effort),
 		}
-		if err := s.prepareSchedule(ctx, tx, project, &schedule, content, now); err != nil {
+		if err := s.prepareRoutine(ctx, tx, project, &routine, content, now); err != nil {
 			return err
 		}
-		if err := tx.InsertSchedule(ctx, schedule); err != nil {
+		if err := tx.InsertRoutine(ctx, routine); err != nil {
 			return err
 		}
-		if err := s.audit(ctx, tx, domain.AuditScheduleCreate, "schedule", string(schedule.ID)); err != nil {
+		if err := s.audit(ctx, tx, domain.AuditRoutineCreate, "routine", string(routine.ID)); err != nil {
 			return err
 		}
-		if err := putReplay(ctx, tx, scope, key, scheduleReplay{ID: schedule.ID}, now); err != nil {
+		if err := putReplay(ctx, tx, scope, key, routineReplay{ID: routine.ID}, now); err != nil {
 			return err
 		}
-		view, err = s.scheduleView(ctx, tx, schedule)
+		view, err = s.routineView(ctx, tx, routine)
 		return err
 	})
 	if err == nil {
-		s.wakeSchedules()
+		s.wakeRoutines()
 	}
 	return view, err
 }
 
-// UpdateSchedule changes a schedule. Turning a schedule on clears the reason
+// UpdateRoutine changes a routine. Turning a routine on clears the reason
 // Meridian turned it off and the start failure count.
-func (s *Service) UpdateSchedule(
-	ctx context.Context, id domain.ScheduleID, input ScheduleUpdate, key string,
-) (ScheduleView, error) {
+func (s *Service) UpdateRoutine(
+	ctx context.Context, id domain.RoutineID, input RoutineUpdate, key string,
+) (RoutineView, error) {
 	if err := requirePrincipal(ctx); err != nil {
-		return ScheduleView{}, err
+		return RoutineView{}, err
 	}
-	if err := s.schedulesSupported(); err != nil {
-		return ScheduleView{}, err
+	if err := s.routinesSupported(); err != nil {
+		return RoutineView{}, err
 	}
 	if err := requireIdempotency(key); err != nil {
-		return ScheduleView{}, err
+		return RoutineView{}, err
 	}
 	if input.ExpectedResourceVersion <= 0 {
-		return ScheduleView{}, fmt.Errorf("%w: expected resource version is required", domain.ErrInvalid)
+		return RoutineView{}, fmt.Errorf("%w: expected resource version is required", domain.ErrInvalid)
 	}
-	scope := "schedule:" + string(id) + ":update"
-	var view ScheduleView
+	scope := "routine:" + string(id) + ":update"
+	var view RoutineView
 	err := s.store.Transact(ctx, func(tx ports.Transaction) error {
-		if _, ok, err := getReplay[scheduleReplay](ctx, tx, scope, key); err != nil {
+		if _, ok, err := getReplay[routineReplay](ctx, tx, scope, key); err != nil {
 			return err
 		} else if ok {
-			item, err := tx.GetSchedule(ctx, id)
+			item, err := tx.GetRoutine(ctx, id)
 			if err != nil {
 				return err
 			}
-			view, err = s.scheduleView(ctx, tx, item)
+			view, err = s.routineView(ctx, tx, item)
 			return err
 		}
-		schedule, err := tx.GetSchedule(ctx, id)
+		routine, err := tx.GetRoutine(ctx, id)
 		if err != nil {
 			return err
 		}
-		if schedule.ResourceVersion != input.ExpectedResourceVersion {
+		if routine.ResourceVersion != input.ExpectedResourceVersion {
 			return domain.ErrConflict
 		}
-		project, err := tx.GetProject(ctx, schedule.ProjectID)
+		project, err := tx.GetProject(ctx, routine.ProjectID)
 		if err != nil {
 			return err
 		}
 		if err := projectAcceptsWork(project); err != nil {
 			return err
 		}
-		content, err := s.openScheduleContent(schedule)
+		content, err := s.openRoutineContent(routine)
 		if err != nil {
 			return err
 		}
@@ -348,61 +376,61 @@ func (s *Service) UpdateSchedule(
 				*dst = strings.TrimSpace(*value)
 			}
 		}
-		setString(&schedule.Name, input.Name)
-		setString(&schedule.Harness, input.Harness)
-		setString(&schedule.Cadence, input.Cadence)
-		setString(&schedule.TimeZone, input.TimeZone)
+		setString(&routine.Name, input.Name)
+		setString(&routine.Harness, input.Harness)
+		setString(&routine.Cadence, input.Cadence)
+		setString(&routine.TimeZone, input.TimeZone)
 		setString(&content.Model, input.Model)
 		setString(&content.Effort, input.Effort)
 		if input.Prompt != nil {
 			content.Prompt = *input.Prompt
 		}
 		if input.MaxRunSeconds != nil {
-			schedule.MaxRun = time.Duration(*input.MaxRunSeconds) * time.Second
+			routine.MaxRun = time.Duration(*input.MaxRunSeconds) * time.Second
 		}
 		if input.CatchUpSeconds != nil {
-			schedule.CatchUp = time.Duration(*input.CatchUpSeconds) * time.Second
+			routine.CatchUp = time.Duration(*input.CatchUpSeconds) * time.Second
 		}
 		if input.MaxKept != nil {
-			schedule.MaxKept = *input.MaxKept
+			routine.MaxKept = *input.MaxKept
 		}
 		if input.Enabled != nil {
-			if *input.Enabled && !schedule.Enabled {
-				schedule.DisabledReason = ""
-				schedule.StartFailures = 0
+			if *input.Enabled && !routine.Enabled {
+				routine.DisabledReason = ""
+				routine.StartFailures = 0
 			}
-			schedule.Enabled = *input.Enabled
+			routine.Enabled = *input.Enabled
 		}
 		now := s.clock.Now().UTC()
-		previous := schedule.ResourceVersion
-		schedule.ResourceVersion++
-		schedule.UpdatedAt = now
-		if err := s.prepareSchedule(ctx, tx, project, &schedule, content, now); err != nil {
+		previous := routine.ResourceVersion
+		routine.ResourceVersion++
+		routine.UpdatedAt = now
+		if err := s.prepareRoutine(ctx, tx, project, &routine, content, now); err != nil {
 			return err
 		}
-		if err := tx.UpdateSchedule(ctx, schedule, previous); err != nil {
+		if err := tx.UpdateRoutine(ctx, routine, previous); err != nil {
 			return err
 		}
-		if err := s.audit(ctx, tx, domain.AuditScheduleUpdate, "schedule", string(schedule.ID)); err != nil {
+		if err := s.audit(ctx, tx, domain.AuditRoutineUpdate, "routine", string(routine.ID)); err != nil {
 			return err
 		}
-		if err := putReplay(ctx, tx, scope, key, scheduleReplay{ID: schedule.ID}, now); err != nil {
+		if err := putReplay(ctx, tx, scope, key, routineReplay{ID: routine.ID}, now); err != nil {
 			return err
 		}
-		view, err = s.scheduleView(ctx, tx, schedule)
+		view, err = s.routineView(ctx, tx, routine)
 		return err
 	})
 	if err == nil {
-		s.wakeSchedules()
+		s.wakeRoutines()
 	}
 	return view, err
 }
 
-// DeleteSchedule removes a schedule and its fire history. A run in progress
+// DeleteRoutine removes a routine and its fire history. A run in progress
 // keeps going as an ordinary Thread; Capsules it kept stay until the
 // operator deletes them.
-func (s *Service) DeleteSchedule(
-	ctx context.Context, id domain.ScheduleID, expected domain.ResourceVersion, key string,
+func (s *Service) DeleteRoutine(
+	ctx context.Context, id domain.RoutineID, expected domain.ResourceVersion, key string,
 ) error {
 	if err := requirePrincipal(ctx); err != nil {
 		return err
@@ -413,123 +441,123 @@ func (s *Service) DeleteSchedule(
 	if expected <= 0 {
 		return fmt.Errorf("%w: expected resource version is required", domain.ErrInvalid)
 	}
-	scope := "schedule:" + string(id) + ":delete"
+	scope := "routine:" + string(id) + ":delete"
 	return s.store.Transact(ctx, func(tx ports.Transaction) error {
-		if _, ok, err := getReplay[scheduleReplay](ctx, tx, scope, key); err != nil || ok {
+		if _, ok, err := getReplay[routineReplay](ctx, tx, scope, key); err != nil || ok {
 			return err
 		}
-		schedule, err := tx.GetSchedule(ctx, id)
+		routine, err := tx.GetRoutine(ctx, id)
 		if err != nil {
 			return err
 		}
-		if schedule.ResourceVersion != expected {
+		if routine.ResourceVersion != expected {
 			return domain.ErrConflict
 		}
-		if err := tx.DeleteSchedule(ctx, id); err != nil {
+		if err := tx.DeleteRoutine(ctx, id); err != nil {
 			return err
 		}
-		if err := s.audit(ctx, tx, domain.AuditScheduleDelete, "schedule", string(id)); err != nil {
+		if err := s.audit(ctx, tx, domain.AuditRoutineDelete, "routine", string(id)); err != nil {
 			return err
 		}
-		return putReplay(ctx, tx, scope, key, scheduleReplay{ID: id}, s.clock.Now().UTC())
+		return putReplay(ctx, tx, scope, key, routineReplay{ID: id}, s.clock.Now().UTC())
 	})
 }
 
-// RunSchedule fires a schedule now. The same rules apply as for a clock
+// RunRoutine fires a routine now. The same rules apply as for a clock
 // fire: an overlapping run, a full backlog, or the live-Capsule cap records
-// a skip instead. It works on a turned-off schedule too.
-func (s *Service) RunSchedule(ctx context.Context, id domain.ScheduleID, key string) (ScheduleFireView, error) {
+// a skip instead. It works on a turned-off routine too.
+func (s *Service) RunRoutine(ctx context.Context, id domain.RoutineID, key string) (RoutineFireView, error) {
 	if err := requirePrincipal(ctx); err != nil {
-		return ScheduleFireView{}, err
+		return RoutineFireView{}, err
 	}
-	if err := s.schedulesSupported(); err != nil {
-		return ScheduleFireView{}, err
+	if err := s.routinesSupported(); err != nil {
+		return RoutineFireView{}, err
 	}
 	if err := requireIdempotency(key); err != nil {
-		return ScheduleFireView{}, err
+		return RoutineFireView{}, err
 	}
-	scope := "schedule:" + string(id) + ":run"
-	var fire domain.ScheduleFire
+	scope := "routine:" + string(id) + ":run"
+	var fire domain.RoutineFire
 	err := s.store.Transact(ctx, func(tx ports.Transaction) error {
-		if replay, ok, err := getReplay[scheduleFireReplay](ctx, tx, scope, key); err != nil {
+		if replay, ok, err := getReplay[routineFireReplay](ctx, tx, scope, key); err != nil {
 			return err
 		} else if ok {
-			fire, err = tx.GetScheduleFire(ctx, replay.ID)
+			fire, err = tx.GetRoutineFire(ctx, replay.ID)
 			return err
 		}
-		schedule, err := tx.GetSchedule(ctx, id)
+		routine, err := tx.GetRoutine(ctx, id)
 		if err != nil {
 			return err
 		}
 		now := s.clock.Now().UTC()
-		fire, err = s.gateFire(ctx, tx, &schedule, domain.ScheduleTriggerManual, now, now)
+		fire, err = s.gateFire(ctx, tx, &routine, domain.RoutineTriggerManual, now, now)
 		if err != nil {
 			return err
 		}
-		if err := s.audit(ctx, tx, domain.AuditScheduleRun, "schedule", string(id)); err != nil {
+		if err := s.audit(ctx, tx, domain.AuditRoutineRun, "routine", string(id)); err != nil {
 			return err
 		}
-		return putReplay(ctx, tx, scope, key, scheduleFireReplay{ID: fire.ID}, now)
+		return putReplay(ctx, tx, scope, key, routineFireReplay{ID: fire.ID}, now)
 	})
 	if err != nil {
-		return ScheduleFireView{}, err
+		return RoutineFireView{}, err
 	}
-	s.wakeSchedules()
-	return scheduleFireView(fire), nil
+	s.wakeRoutines()
+	return routineFireView(fire), nil
 }
 
-// ListScheduleFires lists a schedule's fires, newest first.
-func (s *Service) ListScheduleFires(
-	ctx context.Context, id domain.ScheduleID, page ports.Page,
-) ([]ScheduleFireView, bool, error) {
+// ListRoutineFires lists a routine's fires, newest first.
+func (s *Service) ListRoutineFires(
+	ctx context.Context, id domain.RoutineID, page ports.Page,
+) ([]RoutineFireView, bool, error) {
 	if err := requirePrincipal(ctx); err != nil {
 		return nil, false, err
 	}
-	views := []ScheduleFireView{}
+	views := []RoutineFireView{}
 	var more bool
 	err := s.store.View(ctx, func(reader ports.Reader) error {
-		items, hasMore, err := reader.ListScheduleFires(ctx, id, page)
+		items, hasMore, err := reader.ListRoutineFires(ctx, id, page)
 		if err != nil {
 			return err
 		}
 		more = hasMore
 		for _, item := range items {
-			views = append(views, scheduleFireView(item))
+			views = append(views, routineFireView(item))
 		}
 		return nil
 	})
 	return views, more, err
 }
 
-// CapsuleSchedules returns the schedule note for each Capsule a fire started.
-func (s *Service) CapsuleSchedules(
+// CapsuleRoutines returns the routine note for each Capsule a fire started.
+func (s *Service) CapsuleRoutines(
 	ctx context.Context, ids []domain.CapsuleID,
-) (map[domain.CapsuleID]CapsuleScheduleView, error) {
+) (map[domain.CapsuleID]CapsuleRoutineView, error) {
 	if err := requirePrincipal(ctx); err != nil {
 		return nil, err
 	}
-	result := map[domain.CapsuleID]CapsuleScheduleView{}
+	result := map[domain.CapsuleID]CapsuleRoutineView{}
 	err := s.store.View(ctx, func(reader ports.Reader) error {
-		fires, err := reader.ScheduleFiresByCapsule(ctx, ids)
+		fires, err := reader.RoutineFiresByCapsule(ctx, ids)
 		if err != nil {
 			return err
 		}
-		names := map[domain.ScheduleID]string{}
+		names := map[domain.RoutineID]string{}
 		for id, fire := range fires {
-			name, ok := names[fire.ScheduleID]
+			name, ok := names[fire.RoutineID]
 			if !ok {
-				schedule, err := reader.GetSchedule(ctx, fire.ScheduleID)
+				routine, err := reader.GetRoutine(ctx, fire.RoutineID)
 				if errors.Is(err, domain.ErrNotFound) {
 					continue
 				}
 				if err != nil {
 					return err
 				}
-				name = schedule.Name
-				names[fire.ScheduleID] = name
+				name = routine.Name
+				names[fire.RoutineID] = name
 			}
-			result[id] = CapsuleScheduleView{
-				ScheduleID: string(fire.ScheduleID), ScheduleName: name, FireID: string(fire.ID),
+			result[id] = CapsuleRoutineView{
+				RoutineID: string(fire.RoutineID), RoutineName: name, FireID: string(fire.ID),
 				State: string(fire.State), Outcome: string(fire.Outcome),
 			}
 		}
@@ -594,22 +622,22 @@ func (s *Service) ReportedModels(ctx context.Context, id domain.ProjectID, harne
 	return view, nil
 }
 
-// prepareSchedule validates schedule and content together, seals the
+// prepareRoutine validates routine and content together, seals the
 // content, and sets the next fire.
-func (s *Service) prepareSchedule(
+func (s *Service) prepareRoutine(
 	ctx context.Context, tx ports.Transaction, project domain.Project,
-	schedule *domain.Schedule, content scheduleContent, now time.Time,
+	routine *domain.Routine, content routineContent, now time.Time,
 ) error {
-	if !domain.ValidScheduleName(schedule.Name) {
+	if !domain.ValidRoutineName(routine.Name) {
 		return fmt.Errorf("%w: name must be 1 to 48 lowercase letters, digits, or dashes", domain.ErrInvalid)
 	}
-	if _, err := s.structuredHarnessImage(project, schedule.Harness); err != nil {
+	if _, err := s.structuredHarnessImage(project, routine.Harness); err != nil {
 		return err
 	}
 	if strings.TrimSpace(content.Prompt) == "" {
-		return fmt.Errorf("%w: a schedule needs a prompt", domain.ErrInvalid)
+		return fmt.Errorf("%w: a routine needs a prompt", domain.ErrInvalid)
 	}
-	if len(content.Prompt) > domain.ScheduleMaxPromptBytes {
+	if len(content.Prompt) > domain.RoutineMaxPromptBytes {
 		return fmt.Errorf("%w: prompt is longer than 32 KiB", domain.ErrResourceExhausted)
 	}
 	if content.Model != "" && !adapterproto.ValidModelID(content.Model) {
@@ -618,29 +646,29 @@ func (s *Service) prepareSchedule(
 	if content.Effort != "" && !adapterproto.ValidModelID(content.Effort) {
 		return fmt.Errorf("%w: effort must be a bounded identifier", domain.ErrInvalid)
 	}
-	if schedule.MaxRun < domain.ScheduleMinRun || schedule.MaxRun > domain.ScheduleMaxRun {
+	if routine.MaxRun < domain.RoutineMinRun || routine.MaxRun > domain.RoutineMaxRun {
 		return fmt.Errorf("%w: maximum run time must be from 5 minutes to 24 hours", domain.ErrInvalid)
 	}
-	if schedule.CatchUp < 0 || schedule.CatchUp > domain.ScheduleMaxCatchUp {
+	if routine.CatchUp < 0 || routine.CatchUp > domain.RoutineMaxCatchUp {
 		return fmt.Errorf("%w: catch-up window must be from 0 to 24 hours", domain.ErrInvalid)
 	}
-	if schedule.MaxKept < 1 || schedule.MaxKept > domain.ScheduleMaxKept {
+	if routine.MaxKept < 1 || routine.MaxKept > domain.RoutineMaxKept {
 		return fmt.Errorf("%w: kept Capsules must be from 1 to 20", domain.ErrInvalid)
 	}
-	cadence, err := domain.ParseCadence(schedule.Cadence, schedule.TimeZone)
+	cadence, err := domain.ParseCadence(routine.Cadence, routine.TimeZone)
 	if err != nil {
 		return err
 	}
-	if err := cadence.CheckSpacing(now, scheduleSpacingSamples); err != nil {
+	if err := cadence.CheckSpacing(now, routineSpacingSamples); err != nil {
 		return err
 	}
-	others, err := tx.ListSchedules(ctx, project.ID)
+	others, err := tx.ListRoutines(ctx, project.ID)
 	if err != nil {
 		return err
 	}
 	for _, other := range others {
-		if other.ID != schedule.ID && other.Name == schedule.Name {
-			return fmt.Errorf("%w: this Project already has a schedule named %s", domain.ErrConflict, schedule.Name)
+		if other.ID != routine.ID && other.Name == routine.Name {
+			return fmt.Errorf("%w: this Project already has a routine named %s", domain.ErrConflict, routine.Name)
 		}
 	}
 	plain, err := json.Marshal(content)
@@ -648,79 +676,79 @@ func (s *Service) prepareSchedule(
 		return err
 	}
 	defer wipe(plain)
-	schedule.ContentNonce, schedule.ContentCiphertext, err = s.secretKey.SealBlob(scheduleContentLabel(*schedule), plain)
+	routine.ContentNonce, routine.ContentCiphertext, err = s.secretKey.SealBlob(routineContentLabel(*routine), plain)
 	if err != nil {
 		return err
 	}
-	if schedule.Enabled {
-		schedule.NextFireAt = cadence.Next(now)
+	if routine.Enabled {
+		routine.NextFireAt = cadence.Next(now)
 	} else {
-		schedule.NextFireAt = time.Time{}
+		routine.NextFireAt = time.Time{}
 	}
 	return nil
 }
 
-// scheduleContentLabel binds the sealed content to its schedule and Project,
+// routineContentLabel binds the sealed content to its routine and Project,
 // so a ciphertext cannot be moved to another row. It leaves the owner out so
 // a departed-member transfer can hand the prompt to the new owner.
-func scheduleContentLabel(schedule domain.Schedule) string {
-	return "schedule\x00" + string(schedule.ID) + "\x00" + string(schedule.ProjectID)
+func routineContentLabel(routine domain.Routine) string {
+	return "routine\x00" + string(routine.ID) + "\x00" + string(routine.ProjectID)
 }
 
-func (s *Service) openScheduleContent(schedule domain.Schedule) (scheduleContent, error) {
+func (s *Service) openRoutineContent(routine domain.Routine) (routineContent, error) {
 	if s.secretKey == nil {
-		return scheduleContent{}, domain.ErrUnsupported
+		return routineContent{}, domain.ErrUnsupported
 	}
-	plain, err := s.secretKey.OpenBlob(scheduleContentLabel(schedule), schedule.ContentNonce, schedule.ContentCiphertext)
+	plain, err := s.secretKey.OpenBlob(routineContentLabel(routine), routine.ContentNonce, routine.ContentCiphertext)
 	if err != nil {
-		return scheduleContent{}, err
+		return routineContent{}, err
 	}
 	defer wipe(plain)
-	var content scheduleContent
+	var content routineContent
 	if err := json.Unmarshal(plain, &content); err != nil {
-		return scheduleContent{}, domain.ErrCorrupt
+		return routineContent{}, domain.ErrCorrupt
 	}
 	return content, nil
 }
 
-func (s *Service) scheduleView(ctx context.Context, reader ports.Reader, schedule domain.Schedule) (ScheduleView, error) {
-	content, err := s.openScheduleContent(schedule)
+func (s *Service) routineView(ctx context.Context, reader ports.Reader, routine domain.Routine) (RoutineView, error) {
+	content, err := s.openRoutineContent(routine)
 	if err != nil {
-		return ScheduleView{}, err
+		return RoutineView{}, err
 	}
-	view := ScheduleView{
-		ID: string(schedule.ID), ProjectID: string(schedule.ProjectID), Name: schedule.Name,
-		Harness: schedule.Harness, Model: content.Model, Effort: content.Effort, Prompt: content.Prompt,
-		Cadence: schedule.Cadence, TimeZone: schedule.TimeZone,
-		MaxRunSeconds: int(schedule.MaxRun / time.Second), CatchUpSeconds: int(schedule.CatchUp / time.Second),
-		MaxKept: schedule.MaxKept, Enabled: schedule.Enabled, DisabledReason: schedule.DisabledReason,
-		NextFireAt: optionalTimeView(schedule.NextFireAt), LastFireAt: optionalTimeView(schedule.LastFireAt),
-		ResourceVersion: schedule.ResourceVersion, CreatedAt: schedule.CreatedAt, UpdatedAt: schedule.UpdatedAt,
+	view := RoutineView{
+		ID: string(routine.ID), ProjectID: string(routine.ProjectID), Name: routine.Name,
+		Harness: routine.Harness, Model: content.Model, Effort: content.Effort, Prompt: content.Prompt,
+		Cadence: routine.Cadence, TimeZone: routine.TimeZone,
+		MaxRunSeconds: int(routine.MaxRun / time.Second), CatchUpSeconds: int(routine.CatchUp / time.Second),
+		MaxKept: routine.MaxKept, Enabled: routine.Enabled, DisabledReason: routine.DisabledReason,
+		NextFireAt: optionalTimeView(routine.NextFireAt), LastFireAt: optionalTimeView(routine.LastFireAt),
+		ResourceVersion: routine.ResourceVersion, CreatedAt: routine.CreatedAt, UpdatedAt: routine.UpdatedAt,
 	}
-	view.KeptCapsules, err = reader.CountKeptScheduleCapsules(ctx, schedule.ID)
+	view.KeptCapsules, err = reader.CountKeptRoutineCapsules(ctx, routine.ID)
 	if err != nil {
-		return ScheduleView{}, err
+		return RoutineView{}, err
 	}
-	if active, err := reader.ActiveScheduleFire(ctx, schedule.ID); err == nil {
-		item := scheduleFireView(active)
+	if active, err := reader.ActiveRoutineFire(ctx, routine.ID); err == nil {
+		item := routineFireView(active)
 		view.Active = &item
 	} else if !errors.Is(err, domain.ErrNotFound) {
-		return ScheduleView{}, err
+		return RoutineView{}, err
 	}
-	fires, _, err := reader.ListScheduleFires(ctx, schedule.ID, ports.Page{Limit: 1})
+	fires, _, err := reader.ListRoutineFires(ctx, routine.ID, ports.Page{Limit: 1})
 	if err != nil {
-		return ScheduleView{}, err
+		return RoutineView{}, err
 	}
 	if len(fires) > 0 {
-		item := scheduleFireView(fires[0])
+		item := routineFireView(fires[0])
 		view.LastFire = &item
 	}
 	return view, nil
 }
 
-func scheduleFireView(fire domain.ScheduleFire) ScheduleFireView {
-	return ScheduleFireView{
-		ID: string(fire.ID), ScheduleID: string(fire.ScheduleID), Trigger: string(fire.Trigger),
+func routineFireView(fire domain.RoutineFire) RoutineFireView {
+	return RoutineFireView{
+		ID: string(fire.ID), RoutineID: string(fire.RoutineID), Trigger: string(fire.Trigger),
 		ScheduledFor: fire.ScheduledFor, State: string(fire.State), Outcome: string(fire.Outcome),
 		Reason: fire.Reason, CapsuleID: string(fire.CapsuleID), ThreadID: string(fire.ThreadID),
 		CapsuleDeleted: fire.CapsuleDeleted, StartedAt: optionalTimeView(fire.StartedAt),
@@ -736,32 +764,32 @@ func optionalTimeView(value time.Time) *time.Time {
 	return &copied
 }
 
-// TickSchedules fires due schedules and advances fires in progress. It is
+// TickRoutines fires due routines and advances fires in progress. It is
 // safe to call from tests.
-func (s *Service) TickSchedules(ctx context.Context) error {
+func (s *Service) TickRoutines(ctx context.Context) error {
 	if err := requirePrincipal(ctx); err != nil {
 		return err
 	}
-	if s.schedulesSupported() != nil {
+	if s.routinesSupported() != nil {
 		return nil
 	}
 	now := s.clock.Now().UTC()
-	var due []domain.Schedule
-	var active []domain.ScheduleFire
+	var due []domain.Routine
+	var active []domain.RoutineFire
 	err := s.store.View(ctx, func(reader ports.Reader) error {
 		var err error
-		if due, err = reader.ListDueSchedules(ctx, now, 20); err != nil {
+		if due, err = reader.ListDueRoutines(ctx, now, 20); err != nil {
 			return err
 		}
-		active, err = reader.ListActiveScheduleFires(ctx, 50)
+		active, err = reader.ListActiveRoutineFires(ctx, 50)
 		return err
 	})
 	if err != nil {
 		return err
 	}
 	var errs []error
-	for _, schedule := range due {
-		if err := s.fireDue(ctx, schedule.ID); err != nil && !errors.Is(err, domain.ErrConflict) {
+	for _, routine := range due {
+		if err := s.fireDue(ctx, routine.ID); err != nil && !errors.Is(err, domain.ErrConflict) {
 			errs = append(errs, err)
 		}
 	}
@@ -769,7 +797,7 @@ func (s *Service) TickSchedules(ctx context.Context) error {
 	if len(due) > 0 {
 		if err := s.store.View(ctx, func(reader ports.Reader) error {
 			var err error
-			active, err = reader.ListActiveScheduleFires(ctx, 50)
+			active, err = reader.ListActiveRoutineFires(ctx, 50)
 			return err
 		}); err != nil {
 			return err
@@ -779,74 +807,74 @@ func (s *Service) TickSchedules(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		if err := s.advanceFire(ctx, fire.ID); err != nil && !scheduleRetryable(err) {
+		if err := s.advanceFire(ctx, fire.ID); err != nil && !routineRetryable(err) {
 			errs = append(errs, err)
 		}
 	}
 	return errors.Join(errs...)
 }
 
-// scheduleRetryable reports errors that a later tick resolves on its own.
-func scheduleRetryable(err error) bool {
+// routineRetryable reports errors that a later tick resolves on its own.
+func routineRetryable(err error) bool {
 	return errors.Is(err, domain.ErrConflict) || errors.Is(err, domain.ErrIllegalTransition)
 }
 
-// fireDue handles one schedule whose next fire time has passed: it records
+// fireDue handles one routine whose next fire time has passed: it records
 // missed times, fires at most once, and moves the clock on.
-func (s *Service) fireDue(ctx context.Context, id domain.ScheduleID) error {
+func (s *Service) fireDue(ctx context.Context, id domain.RoutineID) error {
 	return s.store.Transact(ctx, func(tx ports.Transaction) error {
-		schedule, err := tx.GetSchedule(ctx, id)
+		routine, err := tx.GetRoutine(ctx, id)
 		if err != nil {
 			return err
 		}
 		now := s.clock.Now().UTC()
-		if !schedule.Enabled || schedule.NextFireAt.IsZero() || schedule.NextFireAt.After(now) {
+		if !routine.Enabled || routine.NextFireAt.IsZero() || routine.NextFireAt.After(now) {
 			return nil
 		}
-		cadence, err := domain.ParseCadence(schedule.Cadence, schedule.TimeZone)
+		cadence, err := domain.ParseCadence(routine.Cadence, routine.TimeZone)
 		if err != nil {
 			return err
 		}
-		times, older := dueTimes(cadence, schedule.NextFireAt, now)
+		times, older := dueTimes(cadence, routine.NextFireAt, now)
 		var fire *time.Time
-		var trigger domain.ScheduleFireTrigger
+		var trigger domain.RoutineFireTrigger
 		if len(times) > 0 {
 			latest := times[len(times)-1]
 			switch late := now.Sub(latest); {
-			case late <= scheduleOnTime:
-				fire, trigger = &latest, domain.ScheduleTriggerClock
-			case late <= schedule.CatchUp:
-				fire, trigger = &latest, domain.ScheduleTriggerCatchUp
+			case late <= routineOnTime:
+				fire, trigger = &latest, domain.RoutineTriggerClock
+			case late <= routine.CatchUp:
+				fire, trigger = &latest, domain.RoutineTriggerCatchUp
 			}
 			if fire != nil {
 				times = times[:len(times)-1]
 			}
 		}
 		if older {
-			times = append([]time.Time{schedule.NextFireAt}, times...)
+			times = append([]time.Time{routine.NextFireAt}, times...)
 		}
-		if len(times) > domain.ScheduleMissedRecords {
-			times = times[len(times)-domain.ScheduleMissedRecords:]
+		if len(times) > domain.RoutineMissedRecords {
+			times = times[len(times)-domain.RoutineMissedRecords:]
 		}
 		for _, at := range times {
-			if err := s.recordMissed(ctx, tx, schedule, at, now); err != nil {
+			if err := s.recordMissed(ctx, tx, routine, at, now); err != nil {
 				return err
 			}
 		}
 		if fire != nil {
-			if _, err := tx.GetScheduleFireAt(ctx, schedule.ID, *fire); errors.Is(err, domain.ErrNotFound) {
-				if _, err := s.gateFire(ctx, tx, &schedule, trigger, *fire, now); err != nil {
+			if _, err := tx.GetRoutineFireAt(ctx, routine.ID, *fire); errors.Is(err, domain.ErrNotFound) {
+				if _, err := s.gateFire(ctx, tx, &routine, trigger, *fire, now); err != nil {
 					return err
 				}
-				if err := s.audit(ctx, tx, domain.AuditScheduleFire, "schedule", string(schedule.ID)); err != nil {
+				if err := s.audit(ctx, tx, domain.AuditRoutineFire, "routine", string(routine.ID)); err != nil {
 					return err
 				}
 			} else if err != nil {
 				return err
 			}
 		}
-		// gateFire may have turned the schedule off; read what it wrote.
-		current, err := tx.GetSchedule(ctx, id)
+		// gateFire may have turned the routine off; read what it wrote.
+		current, err := tx.GetRoutine(ctx, id)
 		if err != nil {
 			return err
 		}
@@ -860,7 +888,7 @@ func (s *Service) fireDue(ctx context.Context, id domain.ScheduleID) error {
 		}
 		current.ResourceVersion++
 		current.UpdatedAt = now
-		return tx.UpdateSchedule(ctx, current, before)
+		return tx.UpdateRoutine(ctx, current, before)
 	})
 }
 
@@ -868,7 +896,7 @@ func (s *Service) fireDue(ctx context.Context, id domain.ScheduleID) error {
 // can never be caught up, so they are not listed one by one: older reports
 // that some exist.
 func dueTimes(cadence domain.Cadence, next, now time.Time) ([]time.Time, bool) {
-	floor := now.Add(-domain.ScheduleMaxCatchUp - time.Hour)
+	floor := now.Add(-domain.RoutineMaxCatchUp - time.Hour)
 	older := next.Before(floor)
 	at := next
 	if older {
@@ -883,106 +911,106 @@ func dueTimes(cadence domain.Cadence, next, now time.Time) ([]time.Time, bool) {
 }
 
 func (s *Service) recordMissed(
-	ctx context.Context, tx ports.Transaction, schedule domain.Schedule, at, now time.Time,
+	ctx context.Context, tx ports.Transaction, routine domain.Routine, at, now time.Time,
 ) error {
-	if _, err := tx.GetScheduleFireAt(ctx, schedule.ID, at); err == nil {
+	if _, err := tx.GetRoutineFireAt(ctx, routine.ID, at); err == nil {
 		return nil
 	} else if !errors.Is(err, domain.ErrNotFound) {
 		return err
 	}
-	return tx.InsertScheduleFire(ctx, domain.ScheduleFire{
-		ID: domain.ScheduleFireID(s.ids.NewID()), ScheduleID: schedule.ID, ProjectID: schedule.ProjectID,
-		OwnerUserID: schedule.OwnerUserID, Trigger: domain.ScheduleTriggerClock, ScheduledFor: at,
-		State: domain.ScheduleFireMissed, Reason: domain.ScheduleReasonMissed, FinishedAt: now,
+	return tx.InsertRoutineFire(ctx, domain.RoutineFire{
+		ID: domain.RoutineFireID(s.ids.NewID()), RoutineID: routine.ID, ProjectID: routine.ProjectID,
+		OwnerUserID: routine.OwnerUserID, Trigger: domain.RoutineTriggerClock, ScheduledFor: at,
+		State: domain.RoutineFireMissed, Reason: domain.RoutineReasonMissed, FinishedAt: now,
 		ResourceVersion: 1, CreatedAt: now, UpdatedAt: now,
 	})
 }
 
 // gateFire records one fire: a skip with its reason, or a starting fire the
-// next tick turns into a Thread. It may turn the schedule off, which the
+// next tick turns into a Thread. It may turn the routine off, which the
 // caller persists.
 func (s *Service) gateFire(
-	ctx context.Context, tx ports.Transaction, schedule *domain.Schedule,
-	trigger domain.ScheduleFireTrigger, at, now time.Time,
-) (domain.ScheduleFire, error) {
-	fire := domain.ScheduleFire{
-		ID: domain.ScheduleFireID(s.ids.NewID()), ScheduleID: schedule.ID, ProjectID: schedule.ProjectID,
-		OwnerUserID: schedule.OwnerUserID, Trigger: trigger, ScheduledFor: at,
-		State: domain.ScheduleFireStarting, ResourceVersion: 1, CreatedAt: now, UpdatedAt: now,
+	ctx context.Context, tx ports.Transaction, routine *domain.Routine,
+	trigger domain.RoutineFireTrigger, at, now time.Time,
+) (domain.RoutineFire, error) {
+	fire := domain.RoutineFire{
+		ID: domain.RoutineFireID(s.ids.NewID()), RoutineID: routine.ID, ProjectID: routine.ProjectID,
+		OwnerUserID: routine.OwnerUserID, Trigger: trigger, ScheduledFor: at,
+		State: domain.RoutineFireStarting, ResourceVersion: 1, CreatedAt: now, UpdatedAt: now,
 	}
-	reason, err := s.fireBlocked(ctx, tx, schedule)
+	reason, err := s.fireBlocked(ctx, tx, routine)
 	if err != nil {
-		return domain.ScheduleFire{}, err
+		return domain.RoutineFire{}, err
 	}
 	if reason != "" {
-		fire.State, fire.Reason, fire.FinishedAt = domain.ScheduleFireSkipped, reason, now
+		fire.State, fire.Reason, fire.FinishedAt = domain.RoutineFireSkipped, reason, now
 	}
-	if reason == domain.ScheduleDisabledHarness {
-		previous := schedule.ResourceVersion
-		schedule.Enabled, schedule.DisabledReason, schedule.NextFireAt = false, reason, time.Time{}
-		schedule.ResourceVersion++
-		schedule.UpdatedAt = now
-		if err := tx.UpdateSchedule(ctx, *schedule, previous); err != nil {
-			return domain.ScheduleFire{}, err
+	if reason == domain.RoutineDisabledHarness {
+		previous := routine.ResourceVersion
+		routine.Enabled, routine.DisabledReason, routine.NextFireAt = false, reason, time.Time{}
+		routine.ResourceVersion++
+		routine.UpdatedAt = now
+		if err := tx.UpdateRoutine(ctx, *routine, previous); err != nil {
+			return domain.RoutineFire{}, err
 		}
 	}
-	return fire, tx.InsertScheduleFire(ctx, fire)
+	return fire, tx.InsertRoutineFire(ctx, fire)
 }
 
-func (s *Service) fireBlocked(ctx context.Context, tx ports.Transaction, schedule *domain.Schedule) (string, error) {
-	project, err := tx.GetProject(ctx, schedule.ProjectID)
+func (s *Service) fireBlocked(ctx context.Context, tx ports.Transaction, routine *domain.Routine) (string, error) {
+	project, err := tx.GetProject(ctx, routine.ProjectID)
 	if err != nil {
 		return "", err
 	}
 	if projectAcceptsWork(project) != nil {
-		return domain.ScheduleReasonProject, nil
+		return domain.RoutineReasonProject, nil
 	}
-	if _, err := s.structuredHarnessImage(project, schedule.Harness); err != nil {
-		return domain.ScheduleDisabledHarness, nil
+	if _, err := s.structuredHarnessImage(project, routine.Harness); err != nil {
+		return domain.RoutineDisabledHarness, nil
 	}
-	if schedule.OwnerUserID != "" {
-		user, err := tx.GetUser(ctx, schedule.OwnerUserID)
+	if routine.OwnerUserID != "" {
+		user, err := tx.GetUser(ctx, routine.OwnerUserID)
 		if errors.Is(err, domain.ErrNotFound) || (err == nil && !user.DisabledAt.IsZero()) {
-			return domain.ScheduleReasonOwner, nil
+			return domain.RoutineReasonOwner, nil
 		}
 		if err != nil {
 			return "", err
 		}
 	}
-	if _, err := tx.ActiveScheduleFire(ctx, schedule.ID); err == nil {
-		return domain.ScheduleReasonOverlap, nil
+	if _, err := tx.ActiveRoutineFire(ctx, routine.ID); err == nil {
+		return domain.RoutineReasonOverlap, nil
 	} else if !errors.Is(err, domain.ErrNotFound) {
 		return "", err
 	}
-	kept, err := tx.CountKeptScheduleCapsules(ctx, schedule.ID)
+	kept, err := tx.CountKeptRoutineCapsules(ctx, routine.ID)
 	if err != nil {
 		return "", err
 	}
-	if kept >= schedule.MaxKept {
-		return domain.ScheduleReasonBacklog, nil
+	if kept >= routine.MaxKept {
+		return domain.RoutineReasonBacklog, nil
 	}
-	if s.scheduleMaxLive > 0 {
+	if s.routineMaxLive > 0 {
 		live, err := tx.CountLiveCapsules(ctx)
 		if err != nil {
 			return "", err
 		}
-		if live >= s.scheduleMaxLive {
-			return domain.ScheduleReasonCapacity, nil
+		if live >= s.routineMaxLive {
+			return domain.RoutineReasonCapacity, nil
 		}
 	}
 	return "", nil
 }
 
 // advanceFire moves one fire in progress forward by at most one step.
-func (s *Service) advanceFire(ctx context.Context, id domain.ScheduleFireID) error {
-	var fire domain.ScheduleFire
-	var schedule domain.Schedule
+func (s *Service) advanceFire(ctx context.Context, id domain.RoutineFireID) error {
+	var fire domain.RoutineFire
+	var routine domain.Routine
 	err := s.store.View(ctx, func(reader ports.Reader) error {
 		var err error
-		if fire, err = reader.GetScheduleFire(ctx, id); err != nil {
+		if fire, err = reader.GetRoutineFire(ctx, id); err != nil {
 			return err
 		}
-		schedule, err = reader.GetSchedule(ctx, fire.ScheduleID)
+		routine, err = reader.GetRoutine(ctx, fire.RoutineID)
 		return err
 	})
 	if err != nil {
@@ -990,19 +1018,19 @@ func (s *Service) advanceFire(ctx context.Context, id domain.ScheduleFireID) err
 	}
 	now := s.clock.Now().UTC()
 	if fire.ThreadID == "" {
-		return s.startFire(ctx, fire, schedule)
+		return s.startFire(ctx, fire, routine)
 	}
-	if fire.State != domain.ScheduleFireCleaning && !fire.DeadlineAt.IsZero() && now.After(fire.DeadlineAt) {
-		return s.stopFire(ctx, fire, domain.ScheduleOutcomeTimedOut)
+	if fire.State != domain.RoutineFireCleaning && !fire.DeadlineAt.IsZero() && now.After(fire.DeadlineAt) {
+		return s.stopFire(ctx, fire, domain.RoutineOutcomeTimedOut)
 	}
 	switch fire.State {
-	case domain.ScheduleFireStarting:
-		return s.awaitSession(ctx, fire, schedule)
-	case domain.ScheduleFireSelecting:
-		return s.selectModel(ctx, fire, schedule)
-	case domain.ScheduleFireRunning:
+	case domain.RoutineFireStarting:
+		return s.awaitSession(ctx, fire, routine)
+	case domain.RoutineFireSelecting:
+		return s.selectModel(ctx, fire, routine)
+	case domain.RoutineFireRunning:
 		return s.watchRun(ctx, fire)
-	case domain.ScheduleFireCleaning:
+	case domain.RoutineFireCleaning:
 		return s.cleanFire(ctx, fire)
 	}
 	return nil
@@ -1011,31 +1039,31 @@ func (s *Service) advanceFire(ctx context.Context, id domain.ScheduleFireID) err
 // startFire creates the fire's Thread. The idempotency key is the fire, so
 // a daemon that stopped after creating the Thread and before recording it
 // gets the same Thread back.
-func (s *Service) startFire(ctx context.Context, fire domain.ScheduleFire, schedule domain.Schedule) error {
-	location, err := time.LoadLocation(schedule.TimeZone)
+func (s *Service) startFire(ctx context.Context, fire domain.RoutineFire, routine domain.Routine) error {
+	location, err := time.LoadLocation(routine.TimeZone)
 	if err != nil {
 		location = time.UTC
 	}
-	name := schedule.Name + " " + fire.ScheduledFor.In(location).Format("2006-01-02 15:04")
+	name := routine.Name + " " + fire.ScheduledFor.In(location).Format("2006-01-02 15:04")
 	result, err := s.CreateProjectThread(ctx, CreateProjectThreadInput{
-		ProjectID: schedule.ProjectID, Name: name, Harness: schedule.Harness,
-		IdempotencyKey: "schedule:" + string(fire.ID),
+		ProjectID: routine.ProjectID, Name: name, Harness: routine.Harness,
+		IdempotencyKey: "routine:" + string(fire.ID),
 	})
 	if err != nil {
-		if scheduleRetryable(err) {
+		if routineRetryable(err) {
 			return err
 		}
-		return s.failStart(ctx, fire, domain.ScheduleReasonStartFailed)
+		return s.failStart(ctx, fire, domain.RoutineReasonStartFailed)
 	}
-	return s.updateFire(ctx, fire, func(current *domain.ScheduleFire, now time.Time) {
+	return s.updateFire(ctx, fire, func(current *domain.RoutineFire, now time.Time) {
 		current.CapsuleID, current.ThreadID = result.Intent.CapsuleID, result.Intent.ThreadID
 		current.StartedAt = now
-		current.DeadlineAt = now.Add(schedule.MaxRun)
+		current.DeadlineAt = now.Add(routine.MaxRun)
 	})
 }
 
 // awaitSession waits for the Thread's structured session to start.
-func (s *Service) awaitSession(ctx context.Context, fire domain.ScheduleFire, schedule domain.Schedule) error {
+func (s *Service) awaitSession(ctx context.Context, fire domain.RoutineFire, routine domain.Routine) error {
 	var capsule domain.Capsule
 	var thread domain.Thread
 	var run domain.Run
@@ -1065,95 +1093,95 @@ func (s *Service) awaitSession(ctx context.Context, fire domain.ScheduleFire, sc
 	}
 	if intentFailed || capsule.State == domain.CapsuleFailed || capsule.DesiredState == domain.IntentDeleted ||
 		(run.ID != "" && run.State.Terminal()) {
-		return s.failStart(ctx, fire, domain.ScheduleReasonStartFailed)
+		return s.failStart(ctx, fire, domain.RoutineReasonStartFailed)
 	}
 	if thread.ID == "" || thread.State != domain.ThreadActive || run.ID == "" || run.State != domain.RunRunning {
 		return nil
 	}
-	return s.updateFire(ctx, fire, func(current *domain.ScheduleFire, now time.Time) {
-		current.State = domain.ScheduleFireSelecting
+	return s.updateFire(ctx, fire, func(current *domain.RoutineFire, now time.Time) {
+		current.State = domain.RoutineFireSelecting
 		current.SelectingSince = now
 	})
 }
 
-// selectModel applies the schedule's model and effort before the prompt is
+// selectModel applies the routine's model and effort before the prompt is
 // sent. Nothing falls back to the harness default (ADR 0057): a run on a
 // model the operator did not pick fails instead.
-func (s *Service) selectModel(ctx context.Context, fire domain.ScheduleFire, schedule domain.Schedule) error {
-	content, err := s.openScheduleContent(schedule)
+func (s *Service) selectModel(ctx context.Context, fire domain.RoutineFire, routine domain.Routine) error {
+	content, err := s.openRoutineContent(routine)
 	if err != nil {
 		return err
 	}
 	defer func() { content.Prompt = "" }()
 	if content.Model == "" && content.Effort == "" {
-		return s.sendSchedulePrompt(ctx, fire, content.Prompt)
+		return s.sendRoutinePrompt(ctx, fire, content.Prompt)
 	}
 	thread, capsule, err := s.fireThread(ctx, fire)
 	if err != nil {
 		return err
 	}
 	if thread.State != domain.ThreadActive || thread.CurrentRunID == "" {
-		return s.failStart(ctx, fire, domain.ScheduleReasonSessionEnded)
+		return s.failStart(ctx, fire, domain.RoutineReasonSessionEnded)
 	}
 	runtimeRun, err := s.structured.GetStructured(ctx, capsule.ProviderResourceID, thread.CurrentRunID)
 	if err != nil {
 		return err
 	}
 	if content.Model != "" && !runtimeRun.Models {
-		return s.failStart(ctx, fire, domain.ScheduleReasonModelNone)
+		return s.failStart(ctx, fire, domain.RoutineReasonModelNone)
 	}
 	if content.Effort != "" && !runtimeRun.Effort {
-		return s.failStart(ctx, fire, domain.ScheduleReasonEffortNone)
+		return s.failStart(ctx, fire, domain.RoutineReasonEffortNone)
 	}
 	now := s.clock.Now().UTC()
-	waited := now.Sub(fire.SelectingSince) > domain.ScheduleModelWait
+	waited := now.Sub(fire.SelectingSince) > domain.RoutineModelWait
 	set, err := s.latestModelSet(ctx, thread)
 	if err != nil {
 		return err
 	}
 	if set == nil {
 		if waited {
-			return s.failStart(ctx, fire, domain.ScheduleReasonModelMissing)
+			return s.failStart(ctx, fire, domain.RoutineReasonModelMissing)
 		}
 		return nil
 	}
 	if content.Model != "" && set.Current != content.Model {
 		if fire.ModelRequested {
 			if waited {
-				return s.failStart(ctx, fire, domain.ScheduleReasonModelRefused)
+				return s.failStart(ctx, fire, domain.RoutineReasonModelRefused)
 			}
 			return nil
 		}
 		if !hasModelOption(set.Options, content.Model) {
-			return s.failStart(ctx, fire, domain.ScheduleReasonModelAbsent)
+			return s.failStart(ctx, fire, domain.RoutineReasonModelAbsent)
 		}
 		if _, err := s.SetThreadModel(ctx, thread.ID, thread.ResourceVersion, content.Model,
-			"schedule-model-"+string(fire.ID)); err != nil {
+			"routine-model-"+string(fire.ID)); err != nil {
 			return err
 		}
-		return s.updateFire(ctx, fire, func(current *domain.ScheduleFire, now time.Time) {
+		return s.updateFire(ctx, fire, func(current *domain.RoutineFire, now time.Time) {
 			current.ModelRequested, current.SelectingSince = true, now
 		})
 	}
 	if content.Effort != "" && (set.Effort == nil || set.Effort.Current != content.Effort) {
 		if fire.EffortRequested {
 			if waited {
-				return s.failStart(ctx, fire, domain.ScheduleReasonEffortRefused)
+				return s.failStart(ctx, fire, domain.RoutineReasonEffortRefused)
 			}
 			return nil
 		}
 		if set.Effort == nil || !hasModelOption(set.Effort.Options, content.Effort) {
-			return s.failStart(ctx, fire, domain.ScheduleReasonEffortAbsent)
+			return s.failStart(ctx, fire, domain.RoutineReasonEffortAbsent)
 		}
 		if _, err := s.SetThreadEffort(ctx, thread.ID, thread.ResourceVersion, content.Effort,
-			"schedule-effort-"+string(fire.ID)); err != nil {
+			"routine-effort-"+string(fire.ID)); err != nil {
 			return err
 		}
-		return s.updateFire(ctx, fire, func(current *domain.ScheduleFire, now time.Time) {
+		return s.updateFire(ctx, fire, func(current *domain.RoutineFire, now time.Time) {
 			current.EffortRequested, current.SelectingSince = true, now
 		})
 	}
-	return s.sendSchedulePrompt(ctx, fire, content.Prompt)
+	return s.sendRoutinePrompt(ctx, fire, content.Prompt)
 }
 
 func hasModelOption(options []adapterproto.ModelOption, id string) bool {
@@ -1165,42 +1193,42 @@ func hasModelOption(options []adapterproto.ModelOption, id string) bool {
 	return false
 }
 
-// sendSchedulePrompt delivers the schedule's prompt as the Thread's first
-// user turn, labeled as coming from the schedule.
-func (s *Service) sendSchedulePrompt(ctx context.Context, fire domain.ScheduleFire, prompt string) error {
+// sendRoutinePrompt delivers the routine's prompt as the Thread's first
+// user turn, labeled as coming from the routine.
+func (s *Service) sendRoutinePrompt(ctx context.Context, fire domain.RoutineFire, prompt string) error {
 	frame := func(messageID domain.ThreadMessageID, thread domain.Thread, saved persistedThreadBlock) adapterproto.Frame {
 		return userMessageFrame(messageID, thread.ID, saved)
 	}
 	payload := persistedThreadBlock{
-		Content: prompt, Origin: &ThreadOrigin{Source: OriginSchedule, Kind: OriginFromSchedule},
+		Content: prompt, Origin: &ThreadOrigin{Source: OriginRoutine, Kind: OriginFromRoutine},
 	}
-	if _, err := s.appendAndSendHook(ctx, fire.ThreadID, 0, "schedule-prompt-"+string(fire.ID), "schedule",
+	if _, err := s.appendAndSendHook(ctx, fire.ThreadID, 0, "routine-prompt-"+string(fire.ID), "routine",
 		domain.ThreadRoleUser, domain.ThreadMessagePrompt, domain.ThreadBlockText, payload, frame, nil); err != nil {
 		return err
 	}
-	err := s.updateFire(ctx, fire, func(current *domain.ScheduleFire, _ time.Time) {
-		current.State = domain.ScheduleFireRunning
+	err := s.updateFire(ctx, fire, func(current *domain.RoutineFire, _ time.Time) {
+		current.State = domain.RoutineFireRunning
 	})
 	if err != nil {
 		return err
 	}
 	return s.store.Transact(ctx, func(tx ports.Transaction) error {
-		schedule, err := tx.GetSchedule(ctx, fire.ScheduleID)
-		if err != nil || schedule.StartFailures == 0 {
+		routine, err := tx.GetRoutine(ctx, fire.RoutineID)
+		if err != nil || routine.StartFailures == 0 {
 			return err
 		}
-		previous := schedule.ResourceVersion
-		schedule.StartFailures = 0
-		schedule.ResourceVersion++
-		schedule.UpdatedAt = s.clock.Now().UTC()
-		return tx.UpdateSchedule(ctx, schedule, previous)
+		previous := routine.ResourceVersion
+		routine.StartFailures = 0
+		routine.ResourceVersion++
+		routine.UpdatedAt = s.clock.Now().UTC()
+		return tx.UpdateRoutine(ctx, routine, previous)
 	})
 }
 
 // watchRun decides the outcome once the Thread has stayed idle, with
 // nothing waiting on the operator and no checks running, for
-// ScheduleIdleSettle.
-func (s *Service) watchRun(ctx context.Context, fire domain.ScheduleFire) error {
+// RoutineIdleSettle.
+func (s *Service) watchRun(ctx context.Context, fire domain.RoutineFire) error {
 	thread, capsule, err := s.fireThread(ctx, fire)
 	if err != nil {
 		return err
@@ -1220,27 +1248,27 @@ func (s *Service) watchRun(ctx context.Context, fire domain.ScheduleFire) error 
 			return err
 		}
 		if attention.Awaiting != nil {
-			if fire.Outcome == domain.ScheduleOutcomeWaiting && fire.IdleSince.IsZero() {
+			if fire.Outcome == domain.RoutineOutcomeWaiting && fire.IdleSince.IsZero() {
 				return nil
 			}
-			return s.updateFire(ctx, fire, func(current *domain.ScheduleFire, _ time.Time) {
-				current.Outcome, current.IdleSince = domain.ScheduleOutcomeWaiting, time.Time{}
+			return s.updateFire(ctx, fire, func(current *domain.RoutineFire, _ time.Time) {
+				current.Outcome, current.IdleSince = domain.RoutineOutcomeWaiting, time.Time{}
 			})
 		}
 		if attention.Turn != ThreadTurnIdle {
-			if fire.Outcome == domain.ScheduleOutcomeNone && fire.IdleSince.IsZero() {
+			if fire.Outcome == domain.RoutineOutcomeNone && fire.IdleSince.IsZero() {
 				return nil
 			}
-			return s.updateFire(ctx, fire, func(current *domain.ScheduleFire, _ time.Time) {
-				current.Outcome, current.IdleSince = domain.ScheduleOutcomeNone, time.Time{}
+			return s.updateFire(ctx, fire, func(current *domain.RoutineFire, _ time.Time) {
+				current.Outcome, current.IdleSince = domain.RoutineOutcomeNone, time.Time{}
 			})
 		}
 		if fire.IdleSince.IsZero() {
-			return s.updateFire(ctx, fire, func(current *domain.ScheduleFire, now time.Time) {
-				current.Outcome, current.IdleSince = domain.ScheduleOutcomeNone, now
+			return s.updateFire(ctx, fire, func(current *domain.RoutineFire, now time.Time) {
+				current.Outcome, current.IdleSince = domain.RoutineOutcomeNone, now
 			})
 		}
-		if now.Sub(fire.IdleSince) < domain.ScheduleIdleSettle {
+		if now.Sub(fire.IdleSince) < domain.RoutineIdleSettle {
 			return nil
 		}
 		checking := false
@@ -1265,19 +1293,19 @@ func (s *Service) watchRun(ctx context.Context, fire domain.ScheduleFire) error 
 	if err != nil {
 		return err
 	}
-	return s.updateFire(ctx, fire, func(current *domain.ScheduleFire, now time.Time) {
+	return s.updateFire(ctx, fire, func(current *domain.RoutineFire, now time.Time) {
 		current.Outcome, current.Reason = outcome, reason
-		if outcome == domain.ScheduleOutcomeNoChanges {
-			current.State = domain.ScheduleFireCleaning
+		if outcome == domain.RoutineOutcomeNoChanges {
+			current.State = domain.RoutineFireCleaning
 			return
 		}
-		current.State, current.FinishedAt = domain.ScheduleFireFinished, now
+		current.State, current.FinishedAt = domain.RoutineFireFinished, now
 	})
 }
 
 // fireOutcome is proposed, changed, or no_changes. Anything the daemon
 // cannot read for sure is changed: doubt keeps the Capsule.
-func (s *Service) fireOutcome(ctx context.Context, capsule domain.Capsule) (domain.ScheduleOutcome, string, error) {
+func (s *Service) fireOutcome(ctx context.Context, capsule domain.Capsule) (domain.RoutineOutcome, string, error) {
 	proposed := false
 	if err := s.store.View(ctx, func(reader ports.Reader) error {
 		deliveries, _, err := reader.ListDeliveries(ctx, capsule.ID, ports.Page{Limit: 50})
@@ -1294,25 +1322,25 @@ func (s *Service) fireOutcome(ctx context.Context, capsule domain.Capsule) (doma
 		return "", "", err
 	}
 	if proposed {
-		return domain.ScheduleOutcomeProposed, "", nil
+		return domain.RoutineOutcomeProposed, "", nil
 	}
 	if s.delivery == nil || capsule.State != domain.CapsuleReady || capsule.ProviderResourceID == "" {
-		return domain.ScheduleOutcomeChanged, domain.ScheduleReasonInspectFailed, nil
+		return domain.RoutineOutcomeChanged, domain.RoutineReasonInspectFailed, nil
 	}
 	inspection, err := s.delivery.InspectDelivery(ctx, capsule.ProviderResourceID)
 	if err != nil {
-		return domain.ScheduleOutcomeChanged, domain.ScheduleReasonInspectFailed, nil
+		return domain.RoutineOutcomeChanged, domain.RoutineReasonInspectFailed, nil
 	}
 	if inspection.Dirty || inspection.AheadCount > 0 || inspection.HasDeliverableChanges {
-		return domain.ScheduleOutcomeChanged, "", nil
+		return domain.RoutineOutcomeChanged, "", nil
 	}
-	return domain.ScheduleOutcomeNoChanges, "", nil
+	return domain.RoutineOutcomeNoChanges, "", nil
 }
 
 // cleanFire ends the session of an empty run, archives its Thread, and
 // deletes its Capsule. The encrypted transcript stays. Each step that
 // changes something returns, and the next tick takes the next step.
-func (s *Service) cleanFire(ctx context.Context, fire domain.ScheduleFire) error {
+func (s *Service) cleanFire(ctx context.Context, fire domain.RoutineFire) error {
 	thread, capsule, err := s.fireThread(ctx, fire)
 	if err != nil {
 		return err
@@ -1326,62 +1354,62 @@ func (s *Service) cleanFire(ctx context.Context, fire domain.ScheduleFire) error
 			if run.State == domain.RunCancelling {
 				return nil
 			}
-			_, err := s.CancelThread(ctx, thread.ID, thread.ResourceVersion, "schedule-cancel-"+string(fire.ID))
+			_, err := s.CancelThread(ctx, thread.ID, thread.ResourceVersion, "routine-cancel-"+string(fire.ID))
 			return err
 		}
 	}
 	if thread.State != domain.ThreadArchived && thread.State != domain.ThreadDeleted {
-		_, err := s.ArchiveThread(ctx, thread.ID, thread.ResourceVersion, "schedule-archive-"+string(fire.ID))
+		_, err := s.ArchiveThread(ctx, thread.ID, thread.ResourceVersion, "routine-archive-"+string(fire.ID))
 		return err
 	}
 	if capsule.State != domain.CapsuleDeleted && capsule.DesiredState != domain.IntentDeleted {
 		if _, err := s.DeleteCapsule(ctx, capsule.ID, capsule.ResourceVersion,
-			"schedule-delete-"+string(fire.ID)); err != nil {
+			"routine-delete-"+string(fire.ID)); err != nil {
 			return err
 		}
 	}
-	return s.updateFire(ctx, fire, func(current *domain.ScheduleFire, now time.Time) {
-		current.State, current.CapsuleDeleted, current.FinishedAt = domain.ScheduleFireFinished, true, now
+	return s.updateFire(ctx, fire, func(current *domain.RoutineFire, now time.Time) {
+		current.State, current.CapsuleDeleted, current.FinishedAt = domain.RoutineFireFinished, true, now
 	})
 }
 
 // stopFire ends a run that hit its time limit: it cancels the session and
 // pauses the Capsule. Nothing is deleted.
-func (s *Service) stopFire(ctx context.Context, fire domain.ScheduleFire, outcome domain.ScheduleOutcome) error {
+func (s *Service) stopFire(ctx context.Context, fire domain.RoutineFire, outcome domain.RoutineOutcome) error {
 	s.haltRun(ctx, fire)
-	return s.updateFire(ctx, fire, func(current *domain.ScheduleFire, now time.Time) {
-		current.State, current.Outcome, current.FinishedAt = domain.ScheduleFireFinished, outcome, now
+	return s.updateFire(ctx, fire, func(current *domain.RoutineFire, now time.Time) {
+		current.State, current.Outcome, current.FinishedAt = domain.RoutineFireFinished, outcome, now
 	})
 }
 
 // haltRun cancels the fire's session and pauses its Capsule, best effort:
 // idle pause still applies if either step cannot happen now.
-func (s *Service) haltRun(ctx context.Context, fire domain.ScheduleFire) {
+func (s *Service) haltRun(ctx context.Context, fire domain.RoutineFire) {
 	thread, capsule, err := s.fireThread(ctx, fire)
 	if err != nil {
 		return
 	}
 	if thread.State == domain.ThreadActive && thread.CurrentRunID != "" {
 		if run, err := s.GetRunStored(ctx, thread.CurrentRunID); err == nil && !run.State.Terminal() {
-			_, _ = s.CancelThread(ctx, thread.ID, thread.ResourceVersion, "schedule-stop-"+string(fire.ID))
+			_, _ = s.CancelThread(ctx, thread.ID, thread.ResourceVersion, "routine-stop-"+string(fire.ID))
 		}
 	}
 	if capsule.State == domain.CapsuleReady && capsule.DesiredState == domain.IntentReady {
 		if current, err := s.GetCapsule(ctx, capsule.ID); err == nil {
-			_, _ = s.PauseCapsule(ctx, current.ID, current.ResourceVersion, "schedule-pause-"+string(fire.ID))
+			_, _ = s.PauseCapsule(ctx, current.ID, current.ResourceVersion, "routine-pause-"+string(fire.ID))
 		}
 	}
 }
 
 // failStart ends a fire that failed before the agent's first turn. Its
 // Capsule, if any, is stopped and kept for the operator to look at. Three in
-// a row turn the schedule off.
-func (s *Service) failStart(ctx context.Context, fire domain.ScheduleFire, reason string) error {
+// a row turn the routine off.
+func (s *Service) failStart(ctx context.Context, fire domain.RoutineFire, reason string) error {
 	if fire.ThreadID != "" {
 		s.haltRun(ctx, fire)
 	}
 	return s.store.Transact(ctx, func(tx ports.Transaction) error {
-		current, err := tx.GetScheduleFire(ctx, fire.ID)
+		current, err := tx.GetRoutineFire(ctx, fire.ID)
 		if err != nil {
 			return err
 		}
@@ -1391,34 +1419,34 @@ func (s *Service) failStart(ctx context.Context, fire domain.ScheduleFire, reaso
 		now := s.clock.Now().UTC()
 		previous := current.ResourceVersion
 		current.State, current.Outcome, current.Reason, current.FinishedAt =
-			domain.ScheduleFireFinished, domain.ScheduleOutcomeFailed, reason, now
+			domain.RoutineFireFinished, domain.RoutineOutcomeFailed, reason, now
 		current.ResourceVersion++
 		current.UpdatedAt = now
-		if err := tx.UpdateScheduleFire(ctx, current, previous); err != nil {
+		if err := tx.UpdateRoutineFire(ctx, current, previous); err != nil {
 			return err
 		}
-		schedule, err := tx.GetSchedule(ctx, fire.ScheduleID)
+		routine, err := tx.GetRoutine(ctx, fire.RoutineID)
 		if err != nil {
 			return err
 		}
-		before := schedule.ResourceVersion
-		schedule.StartFailures++
-		if schedule.StartFailures >= domain.ScheduleStartFailureLimit && schedule.Enabled {
-			schedule.Enabled = false
-			schedule.DisabledReason = domain.ScheduleDisabledStartFailures
-			schedule.NextFireAt = time.Time{}
+		before := routine.ResourceVersion
+		routine.StartFailures++
+		if routine.StartFailures >= domain.RoutineStartFailureLimit && routine.Enabled {
+			routine.Enabled = false
+			routine.DisabledReason = domain.RoutineDisabledStartFailures
+			routine.NextFireAt = time.Time{}
 		}
-		schedule.ResourceVersion++
-		schedule.UpdatedAt = now
-		return tx.UpdateSchedule(ctx, schedule, before)
+		routine.ResourceVersion++
+		routine.UpdatedAt = now
+		return tx.UpdateRoutine(ctx, routine, before)
 	})
 }
 
 func (s *Service) updateFire(
-	ctx context.Context, fire domain.ScheduleFire, change func(*domain.ScheduleFire, time.Time),
+	ctx context.Context, fire domain.RoutineFire, change func(*domain.RoutineFire, time.Time),
 ) error {
 	return s.store.Transact(ctx, func(tx ports.Transaction) error {
-		current, err := tx.GetScheduleFire(ctx, fire.ID)
+		current, err := tx.GetRoutineFire(ctx, fire.ID)
 		if err != nil {
 			return err
 		}
@@ -1430,11 +1458,11 @@ func (s *Service) updateFire(
 		change(&current, now)
 		current.ResourceVersion++
 		current.UpdatedAt = now
-		return tx.UpdateScheduleFire(ctx, current, previous)
+		return tx.UpdateRoutineFire(ctx, current, previous)
 	})
 }
 
-func (s *Service) fireThread(ctx context.Context, fire domain.ScheduleFire) (domain.Thread, domain.Capsule, error) {
+func (s *Service) fireThread(ctx context.Context, fire domain.RoutineFire) (domain.Thread, domain.Capsule, error) {
 	var thread domain.Thread
 	var capsule domain.Capsule
 	err := s.store.View(ctx, func(reader ports.Reader) error {

@@ -248,8 +248,8 @@ func encodeCreateProjectRequest(
 	return nil
 }
 
-func encodeCreateProjectScheduleRequest(
-	req *CreateScheduleRequest,
+func encodeCreateProjectRoutineRequest(
+	req *CreateRoutineRequest,
 	r *http.Request,
 ) error {
 	const contentType = "application/json"
@@ -346,7 +346,7 @@ func encodeDeleteProjectRequest(
 	return nil
 }
 
-func encodeDeleteScheduleRequest(
+func encodeDeleteRoutineRequest(
 	req *LifecycleMutationRequest,
 	r *http.Request,
 ) error {
@@ -962,8 +962,8 @@ func encodeUpdateProviderConnectionRequest(
 	return nil
 }
 
-func encodeUpdateScheduleRequest(
-	req *UpdateScheduleRequest,
+func encodeUpdateRoutineRequest(
+	req *UpdateRoutineRequest,
 	r *http.Request,
 ) error {
 	const contentType = "application/json"

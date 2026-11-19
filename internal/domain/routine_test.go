@@ -105,13 +105,13 @@ func TestCadenceSpacing(t *testing.T) {
 	}
 }
 
-func TestValidScheduleName(t *testing.T) {
+func TestValidRoutineName(t *testing.T) {
 	for name, want := range map[string]bool{
 		"deps-weekly": true, "a": true, "": false, "Deps": false, "has space": false,
 		"x123456789012345678901234567890123456789012345678": false,
 	} {
-		if got := ValidScheduleName(name); got != want {
-			t.Errorf("ValidScheduleName(%q) = %v, want %v", name, got, want)
+		if got := ValidRoutineName(name); got != want {
+			t.Errorf("ValidRoutineName(%q) = %v, want %v", name, got, want)
 		}
 	}
 }

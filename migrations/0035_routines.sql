@@ -1,6 +1,6 @@
--- Scheduled Project Threads (ADR 0057).
+-- Routines (ADR 0057).
 --
--- A schedule is a clock, a fixed prompt, and limits. The prompt, model, and
+-- A routine is a clock, a fixed prompt, and limits. The prompt, model, and
 -- effort are one ciphertext sealed with the installation key; this migration
 -- stores none of them in plaintext. A fire is one tick of the clock: a skip,
 -- a missed time, or one fresh Capsule and Thread.
@@ -8,7 +8,7 @@
 -- Owners never change except by a departed-member transfer (ADR 0046):
 -- each owner trigger allows exactly the move that owner_transfers names.
 
-CREATE TABLE schedules (
+CREATE TABLE routines (
     id TEXT PRIMARY KEY,
     project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     owner_user_id TEXT NOT NULL DEFAULT '' REFERENCES users(id),
@@ -31,19 +31,19 @@ CREATE TABLE schedules (
     updated_at TEXT NOT NULL
 );
 
-CREATE UNIQUE INDEX schedules_project_name ON schedules(project_id, name);
-CREATE INDEX schedules_due ON schedules(enabled, next_fire_at);
+CREATE UNIQUE INDEX routines_project_name ON routines(project_id, name);
+CREATE INDEX routines_due ON routines(enabled, next_fire_at);
 
-CREATE TRIGGER schedules_owner_insert
-BEFORE INSERT ON schedules
+CREATE TRIGGER routines_owner_insert
+BEFORE INSERT ON routines
 WHEN EXISTS (SELECT 1 FROM projects WHERE id = NEW.project_id)
     AND NEW.owner_user_id IS NOT (SELECT owner_user_id FROM projects WHERE id = NEW.project_id)
 BEGIN
     SELECT RAISE(ABORT, 'owner violation');
 END;
 
-CREATE TRIGGER schedules_owner_immutable
-BEFORE UPDATE OF owner_user_id ON schedules
+CREATE TRIGGER routines_owner_immutable
+BEFORE UPDATE OF owner_user_id ON routines
 WHEN NEW.owner_user_id IS NOT OLD.owner_user_id
     AND NOT EXISTS (
         SELECT 1 FROM owner_transfers
@@ -55,9 +55,9 @@ END;
 
 -- capsule_id and thread_id are plain text: a fire outlives the Capsule it
 -- deleted, and its row says so.
-CREATE TABLE schedule_fires (
+CREATE TABLE routine_fires (
     id TEXT PRIMARY KEY,
-    schedule_id TEXT NOT NULL REFERENCES schedules(id) ON DELETE CASCADE,
+    routine_id TEXT NOT NULL REFERENCES routines(id) ON DELETE CASCADE,
     project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     owner_user_id TEXT NOT NULL DEFAULT '' REFERENCES users(id),
     trigger TEXT NOT NULL CHECK (trigger IN ('clock', 'catch_up', 'manual')),
@@ -86,23 +86,23 @@ CREATE TABLE schedule_fires (
 
 -- One clock or catch-up fire per scheduled time: a restarted daemon finds
 -- the row it already wrote instead of starting a second run.
-CREATE UNIQUE INDEX schedule_fires_time ON schedule_fires(schedule_id, scheduled_for)
+CREATE UNIQUE INDEX routine_fires_time ON routine_fires(routine_id, scheduled_for)
     WHERE trigger <> 'manual';
-CREATE INDEX schedule_fires_schedule ON schedule_fires(schedule_id, created_at DESC);
-CREATE INDEX schedule_fires_active ON schedule_fires(state)
+CREATE INDEX routine_fires_routine ON routine_fires(routine_id, created_at DESC);
+CREATE INDEX routine_fires_active ON routine_fires(state)
     WHERE state IN ('starting', 'selecting', 'running', 'cleaning');
-CREATE INDEX schedule_fires_capsule ON schedule_fires(capsule_id) WHERE capsule_id <> '';
+CREATE INDEX routine_fires_capsule ON routine_fires(capsule_id) WHERE capsule_id <> '';
 
-CREATE TRIGGER schedule_fires_owner_insert
-BEFORE INSERT ON schedule_fires
-WHEN EXISTS (SELECT 1 FROM schedules WHERE id = NEW.schedule_id)
-    AND NEW.owner_user_id IS NOT (SELECT owner_user_id FROM schedules WHERE id = NEW.schedule_id)
+CREATE TRIGGER routine_fires_owner_insert
+BEFORE INSERT ON routine_fires
+WHEN EXISTS (SELECT 1 FROM routines WHERE id = NEW.routine_id)
+    AND NEW.owner_user_id IS NOT (SELECT owner_user_id FROM routines WHERE id = NEW.routine_id)
 BEGIN
     SELECT RAISE(ABORT, 'owner violation');
 END;
 
-CREATE TRIGGER schedule_fires_owner_immutable
-BEFORE UPDATE OF owner_user_id ON schedule_fires
+CREATE TRIGGER routine_fires_owner_immutable
+BEFORE UPDATE OF owner_user_id ON routine_fires
 WHEN NEW.owner_user_id IS NOT OLD.owner_user_id
     AND NOT EXISTS (
         SELECT 1 FROM owner_transfers

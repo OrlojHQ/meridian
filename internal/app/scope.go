@@ -1791,89 +1791,96 @@ func (t *scopedTx) DeleteDeliveryCheckGates(ctx context.Context, id domain.Capsu
 	return t.tx.DeleteDeliveryCheckGates(ctx, id)
 }
 
-// Scheduled Project Threads (ADR 0057). A schedule is a child of its
-// Project and a fire a child of its schedule; both carry the owner, and the
+// Routines (ADR 0057). A routine is a child of its
+// Project and a fire a child of its routine; both carry the owner, and the
 // store's triggers keep it equal to the parent's.
 
-func (r *scopedReader) schedule(ctx context.Context, id domain.ScheduleID) (domain.Schedule, error) {
-	item, err := r.inner.GetSchedule(ctx, id)
+func (r *scopedReader) routine(ctx context.Context, id domain.RoutineID) (domain.Routine, error) {
+	item, err := r.inner.GetRoutine(ctx, id)
 	if err != nil {
-		return domain.Schedule{}, err
+		return domain.Routine{}, err
 	}
-	if err := r.owned("schedule", string(id), item.OwnerUserID); err != nil {
-		return domain.Schedule{}, err
+	if err := r.owned("routine", string(id), item.OwnerUserID); err != nil {
+		return domain.Routine{}, err
 	}
 	return item, nil
 }
 
-func (r *scopedReader) GetSchedule(ctx context.Context, id domain.ScheduleID) (domain.Schedule, error) {
-	return r.schedule(ctx, id)
+func (r *scopedReader) GetRoutine(ctx context.Context, id domain.RoutineID) (domain.Routine, error) {
+	return r.routine(ctx, id)
 }
 
-func (r *scopedReader) ListSchedules(ctx context.Context, id domain.ProjectID) ([]domain.Schedule, error) {
+func (r *scopedReader) ListRoutines(ctx context.Context, id domain.ProjectID) ([]domain.Routine, error) {
 	if err := r.project(ctx, id); err != nil {
 		return nil, err
 	}
-	return r.inner.ListSchedules(ctx, id)
+	return r.inner.ListRoutines(ctx, id)
 }
 
-func (r *scopedReader) ListDueSchedules(ctx context.Context, now time.Time, limit int) ([]domain.Schedule, error) {
-	items, err := r.inner.ListDueSchedules(ctx, now, limit)
+func (r *scopedReader) ListOwnedRoutines(ctx context.Context, owner domain.UserID) ([]domain.Routine, error) {
+	if err := r.keyOwner(owner); err != nil {
+		return nil, nil
+	}
+	return r.inner.ListOwnedRoutines(ctx, owner)
+}
+
+func (r *scopedReader) ListDueRoutines(ctx context.Context, now time.Time, limit int) ([]domain.Routine, error) {
+	items, err := r.inner.ListDueRoutines(ctx, now, limit)
 	if err != nil {
 		return nil, err
 	}
-	return filter(r, items, func(item domain.Schedule) error { return r.scope.check(item.OwnerUserID) })
+	return filter(r, items, func(item domain.Routine) error { return r.scope.check(item.OwnerUserID) })
 }
 
-func (r *scopedReader) GetScheduleFire(ctx context.Context, id domain.ScheduleFireID) (domain.ScheduleFire, error) {
-	item, err := r.inner.GetScheduleFire(ctx, id)
+func (r *scopedReader) GetRoutineFire(ctx context.Context, id domain.RoutineFireID) (domain.RoutineFire, error) {
+	item, err := r.inner.GetRoutineFire(ctx, id)
 	if err != nil {
-		return domain.ScheduleFire{}, err
+		return domain.RoutineFire{}, err
 	}
-	if err := r.owned("schedule_fire", string(id), item.OwnerUserID); err != nil {
-		return domain.ScheduleFire{}, err
+	if err := r.owned("routine_fire", string(id), item.OwnerUserID); err != nil {
+		return domain.RoutineFire{}, err
 	}
 	return item, nil
 }
 
-func (r *scopedReader) GetScheduleFireAt(ctx context.Context, id domain.ScheduleID, at time.Time) (domain.ScheduleFire, error) {
-	if _, err := r.schedule(ctx, id); err != nil {
-		return domain.ScheduleFire{}, err
+func (r *scopedReader) GetRoutineFireAt(ctx context.Context, id domain.RoutineID, at time.Time) (domain.RoutineFire, error) {
+	if _, err := r.routine(ctx, id); err != nil {
+		return domain.RoutineFire{}, err
 	}
-	return r.inner.GetScheduleFireAt(ctx, id, at)
+	return r.inner.GetRoutineFireAt(ctx, id, at)
 }
 
-func (r *scopedReader) ListScheduleFires(ctx context.Context, id domain.ScheduleID, page ports.Page) ([]domain.ScheduleFire, bool, error) {
-	if _, err := r.schedule(ctx, id); err != nil {
+func (r *scopedReader) ListRoutineFires(ctx context.Context, id domain.RoutineID, page ports.Page) ([]domain.RoutineFire, bool, error) {
+	if _, err := r.routine(ctx, id); err != nil {
 		return nil, false, err
 	}
-	return r.inner.ListScheduleFires(ctx, id, page)
+	return r.inner.ListRoutineFires(ctx, id, page)
 }
 
-func (r *scopedReader) ListActiveScheduleFires(ctx context.Context, limit int) ([]domain.ScheduleFire, error) {
-	items, err := r.inner.ListActiveScheduleFires(ctx, limit)
+func (r *scopedReader) ListActiveRoutineFires(ctx context.Context, limit int) ([]domain.RoutineFire, error) {
+	items, err := r.inner.ListActiveRoutineFires(ctx, limit)
 	if err != nil {
 		return nil, err
 	}
-	return filter(r, items, func(item domain.ScheduleFire) error { return r.scope.check(item.OwnerUserID) })
+	return filter(r, items, func(item domain.RoutineFire) error { return r.scope.check(item.OwnerUserID) })
 }
 
-func (r *scopedReader) ActiveScheduleFire(ctx context.Context, id domain.ScheduleID) (domain.ScheduleFire, error) {
-	if _, err := r.schedule(ctx, id); err != nil {
-		return domain.ScheduleFire{}, err
+func (r *scopedReader) ActiveRoutineFire(ctx context.Context, id domain.RoutineID) (domain.RoutineFire, error) {
+	if _, err := r.routine(ctx, id); err != nil {
+		return domain.RoutineFire{}, err
 	}
-	return r.inner.ActiveScheduleFire(ctx, id)
+	return r.inner.ActiveRoutineFire(ctx, id)
 }
 
-func (r *scopedReader) CountKeptScheduleCapsules(ctx context.Context, id domain.ScheduleID) (int, error) {
-	if _, err := r.schedule(ctx, id); err != nil {
+func (r *scopedReader) CountKeptRoutineCapsules(ctx context.Context, id domain.RoutineID) (int, error) {
+	if _, err := r.routine(ctx, id); err != nil {
 		return 0, err
 	}
-	return r.inner.CountKeptScheduleCapsules(ctx, id)
+	return r.inner.CountKeptRoutineCapsules(ctx, id)
 }
 
-func (r *scopedReader) ScheduleFiresByCapsule(ctx context.Context, ids []domain.CapsuleID) (map[domain.CapsuleID]domain.ScheduleFire, error) {
-	items, err := r.inner.ScheduleFiresByCapsule(ctx, ids)
+func (r *scopedReader) RoutineFiresByCapsule(ctx context.Context, ids []domain.CapsuleID) (map[domain.CapsuleID]domain.RoutineFire, error) {
+	items, err := r.inner.RoutineFiresByCapsule(ctx, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -1885,7 +1892,7 @@ func (r *scopedReader) ScheduleFiresByCapsule(ctx context.Context, ids []domain.
 	return items, nil
 }
 
-func (t *scopedTx) InsertSchedule(ctx context.Context, item domain.Schedule) error {
+func (t *scopedTx) InsertRoutine(ctx context.Context, item domain.Routine) error {
 	project, err := t.GetProject(ctx, item.ProjectID)
 	if err != nil {
 		return err
@@ -1893,45 +1900,45 @@ func (t *scopedTx) InsertSchedule(ctx context.Context, item domain.Schedule) err
 	if item.OwnerUserID != project.OwnerUserID {
 		return domain.ErrNotFound
 	}
-	return t.tx.InsertSchedule(ctx, item)
+	return t.tx.InsertRoutine(ctx, item)
 }
 
-func (t *scopedTx) UpdateSchedule(ctx context.Context, item domain.Schedule, expected domain.ResourceVersion) error {
-	current, err := t.schedule(ctx, item.ID)
+func (t *scopedTx) UpdateRoutine(ctx context.Context, item domain.Routine, expected domain.ResourceVersion) error {
+	current, err := t.routine(ctx, item.ID)
 	if err != nil {
 		return err
 	}
 	if item.OwnerUserID != current.OwnerUserID || item.ProjectID != current.ProjectID {
 		return domain.ErrNotFound
 	}
-	return t.tx.UpdateSchedule(ctx, item, expected)
+	return t.tx.UpdateRoutine(ctx, item, expected)
 }
 
-func (t *scopedTx) DeleteSchedule(ctx context.Context, id domain.ScheduleID) error {
-	if _, err := t.schedule(ctx, id); err != nil {
+func (t *scopedTx) DeleteRoutine(ctx context.Context, id domain.RoutineID) error {
+	if _, err := t.routine(ctx, id); err != nil {
 		return err
 	}
-	return t.tx.DeleteSchedule(ctx, id)
+	return t.tx.DeleteRoutine(ctx, id)
 }
 
-func (t *scopedTx) InsertScheduleFire(ctx context.Context, item domain.ScheduleFire) error {
-	schedule, err := t.schedule(ctx, item.ScheduleID)
+func (t *scopedTx) InsertRoutineFire(ctx context.Context, item domain.RoutineFire) error {
+	routine, err := t.routine(ctx, item.RoutineID)
 	if err != nil {
 		return err
 	}
-	if item.OwnerUserID != schedule.OwnerUserID || item.ProjectID != schedule.ProjectID {
+	if item.OwnerUserID != routine.OwnerUserID || item.ProjectID != routine.ProjectID {
 		return domain.ErrNotFound
 	}
-	return t.tx.InsertScheduleFire(ctx, item)
+	return t.tx.InsertRoutineFire(ctx, item)
 }
 
-func (t *scopedTx) UpdateScheduleFire(ctx context.Context, item domain.ScheduleFire, expected domain.ResourceVersion) error {
-	current, err := t.GetScheduleFire(ctx, item.ID)
+func (t *scopedTx) UpdateRoutineFire(ctx context.Context, item domain.RoutineFire, expected domain.ResourceVersion) error {
+	current, err := t.GetRoutineFire(ctx, item.ID)
 	if err != nil {
 		return err
 	}
-	if item.OwnerUserID != current.OwnerUserID || item.ScheduleID != current.ScheduleID {
+	if item.OwnerUserID != current.OwnerUserID || item.RoutineID != current.RoutineID {
 		return domain.ErrNotFound
 	}
-	return t.tx.UpdateScheduleFire(ctx, item, expected)
+	return t.tx.UpdateRoutineFire(ctx, item, expected)
 }

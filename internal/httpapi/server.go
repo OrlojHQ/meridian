@@ -294,14 +294,15 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /projects/{projectId}/checks", s.projectChecks)
 	s.mux.HandleFunc("PUT /projects/{projectId}/checks", s.projectChecks)
 	s.mux.HandleFunc("GET /projects/{projectId}/checks/suggestion", s.suggestProjectChecks)
-	s.mux.HandleFunc("GET /projects/{projectId}/schedules", s.projectSchedules)
-	s.mux.HandleFunc("POST /projects/{projectId}/schedules", s.projectSchedules)
+	s.mux.HandleFunc("GET /projects/{projectId}/routines", s.projectRoutines)
+	s.mux.HandleFunc("POST /projects/{projectId}/routines", s.projectRoutines)
 	s.mux.HandleFunc("GET /projects/{projectId}/harnesses/{harness}/reported-models", s.reportedModels)
-	s.mux.HandleFunc("GET /schedules/{scheduleId}", s.schedule)
-	s.mux.HandleFunc("PATCH /schedules/{scheduleId}", s.schedule)
-	s.mux.HandleFunc("POST /schedules/{scheduleId}/delete", s.deleteSchedule)
-	s.mux.HandleFunc("POST /schedules/{scheduleId}/run", s.runSchedule)
-	s.mux.HandleFunc("GET /schedules/{scheduleId}/fires", s.scheduleFires)
+	s.mux.HandleFunc("GET /routines", s.ownedRoutines)
+	s.mux.HandleFunc("GET /routines/{routineId}", s.routine)
+	s.mux.HandleFunc("PATCH /routines/{routineId}", s.routine)
+	s.mux.HandleFunc("POST /routines/{routineId}/delete", s.deleteRoutine)
+	s.mux.HandleFunc("POST /routines/{routineId}/run", s.runRoutine)
+	s.mux.HandleFunc("GET /routines/{routineId}/fires", s.routineFires)
 	s.mux.HandleFunc("GET /capsules/{capsuleId}/check-runs", s.capsuleCheckRuns)
 	s.mux.HandleFunc("GET /capsules/{capsuleId}/remote-ci", s.capsuleRemoteCI)
 	s.mux.HandleFunc("POST /capsules/{capsuleId}/check-runs", s.capsuleCheckRuns)
@@ -2111,7 +2112,7 @@ func (s *Server) capsulesJSON(ctx context.Context, capsules []domain.Capsule) ([
 	if err != nil {
 		return nil, err
 	}
-	schedules, err := s.service.CapsuleSchedules(ctx, ids)
+	routines, err := s.service.CapsuleRoutines(ctx, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -2122,9 +2123,9 @@ func (s *Server) capsulesJSON(ctx context.Context, capsules []domain.Capsule) ([
 			copied := summary
 			items[i].Checks = &copied
 		}
-		if note, ok := schedules[capsule.ID]; ok {
+		if note, ok := routines[capsule.ID]; ok {
 			copied := note
-			items[i].Schedule = &copied
+			items[i].Routine = &copied
 		}
 	}
 	return items, nil
@@ -2525,7 +2526,7 @@ type capsuleJSON struct {
 	PromotedAt          string                      `json:"promotedAt,omitempty"`
 	PinnedHarnessSetups []pinnedHarnessSetupJSON    `json:"pinnedHarnessSetups,omitempty"`
 	Checks              *app.ChecksSummaryView      `json:"checks,omitempty"`
-	Schedule            *app.CapsuleScheduleView    `json:"schedule,omitempty"`
+	Routine             *app.CapsuleRoutineView     `json:"routine,omitempty"`
 	CreatedAt           string                      `json:"createdAt"`
 	UpdatedAt           string                      `json:"updatedAt"`
 	ResourceVersion     int64                       `json:"resourceVersion"`

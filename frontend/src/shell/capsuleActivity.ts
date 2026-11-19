@@ -62,21 +62,21 @@ export function latestRun(runs: Run[] = []) {
   return latest;
 }
 
-const scheduledLabels: Record<string, string> = {
-  changed: "Scheduled run changed files",
-  proposed: "Scheduled run proposed a delivery",
-  timed_out: "Scheduled run hit its time limit",
-  failed: "Scheduled run failed",
+const routineLabels: Record<string, string> = {
+  changed: "Routine changed files",
+  proposed: "Routine proposed a delivery",
+  timed_out: "Routine hit its time limit",
+  failed: "Routine failed",
 };
 
 // A finished scheduled run that kept its Capsule waits for the operator
 // until the Capsule is deleted (ADR 0057). That is also what frees a slot
-// in the schedule's backlog. A run that is working or asking defers to the
+// in the routine's backlog. A run that is working or asking defers to the
 // ordinary labels below.
-function describeScheduledRun(capsule: Capsule, threads: Thread[]): string | undefined {
-  const note = capsule.schedule;
+function describeRoutineRun(capsule: Capsule, threads: Thread[]): string | undefined {
+  const note = capsule.routine;
   if (!note || note.state !== "finished" || !note.outcome) return undefined;
-  const label = scheduledLabels[note.outcome];
+  const label = routineLabels[note.outcome];
   if (!label) return undefined;
   if (capsule.state === "Paused" && capsule.desiredState === "Ready") return undefined;
   const live = threads.some((thread) => thread.state === "active" && (thread.awaiting || thread.turn === "working"));
@@ -124,7 +124,7 @@ export function describeCapsule(
       since: capsule.updatedAt,
     };
   }
-  const scheduled = describeScheduledRun(capsule, threads);
+  const scheduled = describeRoutineRun(capsule, threads);
   if (scheduled) {
     return { group: "attention", label: scheduled, agent, since: capsule.updatedAt };
   }

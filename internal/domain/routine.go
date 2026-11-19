@@ -6,53 +6,53 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	// The time zone database is embedded so a schedule's zone resolves the
+	// The time zone database is embedded so a routine's zone resolves the
 	// same way on a host without /usr/share/zoneinfo.
 	_ "time/tzdata"
 )
 
-// Scheduled Project Threads (ADR 0057). A schedule is a clock, a fixed
+// Routines (ADR 0057). A routine is a clock, a fixed
 // prompt, and limits. Each fire starts one fresh Project Thread.
 
 const (
-	ScheduleMinSpacing        = 15 * time.Minute
-	ScheduleMinRun            = 5 * time.Minute
-	ScheduleMaxRun            = 24 * time.Hour
-	ScheduleDefaultRun        = 2 * time.Hour
-	ScheduleMaxCatchUp        = 24 * time.Hour
-	ScheduleDefaultCatchUp    = time.Hour
-	ScheduleDefaultKept       = 5
-	ScheduleMaxKept           = 20
-	ScheduleMaxPromptBytes    = 32 << 10
-	ScheduleStartFailureLimit = 3
-	// ScheduleModelWait bounds how long a fire waits for the harness to
+	RoutineMinSpacing        = 15 * time.Minute
+	RoutineMinRun            = 5 * time.Minute
+	RoutineMaxRun            = 24 * time.Hour
+	RoutineDefaultRun        = 2 * time.Hour
+	RoutineMaxCatchUp        = 24 * time.Hour
+	RoutineDefaultCatchUp    = time.Hour
+	RoutineDefaultKept       = 5
+	RoutineMaxKept           = 20
+	RoutineMaxPromptBytes    = 32 << 10
+	RoutineStartFailureLimit = 3
+	// RoutineModelWait bounds how long a fire waits for the harness to
 	// report its models, and then to confirm a switch.
-	ScheduleModelWait = 2 * time.Minute
-	// ScheduleIdleSettle is how long a Thread must stay idle with nothing
+	RoutineModelWait = 2 * time.Minute
+	// RoutineIdleSettle is how long a Thread must stay idle with nothing
 	// waiting before its outcome is decided, so Project checks that start
 	// after a turn ends are seen first.
-	ScheduleIdleSettle = 20 * time.Second
-	// ScheduleMissedRecords caps the missed rows written for one gap.
-	ScheduleMissedRecords = 24
-	maxCadenceBytes       = 128
-	maxTimeZoneBytes      = 64
+	RoutineIdleSettle = 20 * time.Second
+	// RoutineMissedRecords caps the missed rows written for one gap.
+	RoutineMissedRecords = 24
+	maxCadenceBytes      = 128
+	maxTimeZoneBytes     = 64
 )
 
-var scheduleNamePattern = regexp.MustCompile(`^[a-z0-9-]{1,48}$`)
+var routineNamePattern = regexp.MustCompile(`^[a-z0-9-]{1,48}$`)
 
-type ScheduleID string
-type ScheduleFireID string
+type RoutineID string
+type RoutineFireID string
 
-// ValidScheduleName reports whether name is a schedule name.
-func ValidScheduleName(name string) bool {
-	return scheduleNamePattern.MatchString(name)
+// ValidRoutineName reports whether name is a routine name.
+func ValidRoutineName(name string) bool {
+	return routineNamePattern.MatchString(name)
 }
 
-// Schedule is one operator-authored clock on a Project. The prompt, model,
+// Routine is one operator-authored clock on a Project. The prompt, model,
 // and effort are sealed together in Content*; they never appear here in
 // plaintext.
-type Schedule struct {
-	ID                ScheduleID
+type Routine struct {
+	ID                RoutineID
 	ProjectID         ProjectID
 	OwnerUserID       UserID
 	Name              string
@@ -74,93 +74,93 @@ type Schedule struct {
 	UpdatedAt         time.Time
 }
 
-func (s Schedule) Validate() error {
-	if s.ID == "" || s.ProjectID == "" || !ValidScheduleName(s.Name) || !ValidHarnessName(s.Harness) ||
+func (s Routine) Validate() error {
+	if s.ID == "" || s.ProjectID == "" || !ValidRoutineName(s.Name) || !ValidHarnessName(s.Harness) ||
 		s.Cadence == "" || len(s.Cadence) > maxCadenceBytes ||
 		s.TimeZone == "" || len(s.TimeZone) > maxTimeZoneBytes ||
-		s.MaxRun < ScheduleMinRun || s.MaxRun > ScheduleMaxRun || s.MaxRun%time.Second != 0 ||
-		s.CatchUp < 0 || s.CatchUp > ScheduleMaxCatchUp || s.CatchUp%time.Second != 0 ||
-		s.MaxKept < 1 || s.MaxKept > ScheduleMaxKept || len(s.DisabledReason) > 64 ||
+		s.MaxRun < RoutineMinRun || s.MaxRun > RoutineMaxRun || s.MaxRun%time.Second != 0 ||
+		s.CatchUp < 0 || s.CatchUp > RoutineMaxCatchUp || s.CatchUp%time.Second != 0 ||
+		s.MaxKept < 1 || s.MaxKept > RoutineMaxKept || len(s.DisabledReason) > 64 ||
 		s.StartFailures < 0 || len(s.ContentNonce) == 0 || len(s.ContentCiphertext) == 0 ||
 		s.ResourceVersion <= 0 || s.CreatedAt.IsZero() || s.UpdatedAt.IsZero() {
-		return fmt.Errorf("%w: invalid schedule", ErrInvalid)
+		return fmt.Errorf("%w: invalid routine", ErrInvalid)
 	}
 	return nil
 }
 
-// ScheduleFireTrigger says what started a fire.
-type ScheduleFireTrigger string
+// RoutineFireTrigger says what started a fire.
+type RoutineFireTrigger string
 
 const (
-	ScheduleTriggerClock   ScheduleFireTrigger = "clock"
-	ScheduleTriggerCatchUp ScheduleFireTrigger = "catch_up"
-	ScheduleTriggerManual  ScheduleFireTrigger = "manual"
+	RoutineTriggerClock   RoutineFireTrigger = "clock"
+	RoutineTriggerCatchUp RoutineFireTrigger = "catch_up"
+	RoutineTriggerManual  RoutineFireTrigger = "manual"
 )
 
-func (t ScheduleFireTrigger) Valid() bool {
-	return t == ScheduleTriggerClock || t == ScheduleTriggerCatchUp || t == ScheduleTriggerManual
+func (t RoutineFireTrigger) Valid() bool {
+	return t == RoutineTriggerClock || t == RoutineTriggerCatchUp || t == RoutineTriggerManual
 }
 
-// ScheduleFireState is where a fire is. starting waits for the Thread's
+// RoutineFireState is where a fire is. starting waits for the Thread's
 // session, selecting applies the model and effort, running waits for the
 // outcome, and cleaning ends the session and deletes an empty Capsule.
-type ScheduleFireState string
+type RoutineFireState string
 
 const (
-	ScheduleFireSkipped   ScheduleFireState = "skipped"
-	ScheduleFireMissed    ScheduleFireState = "missed"
-	ScheduleFireStarting  ScheduleFireState = "starting"
-	ScheduleFireSelecting ScheduleFireState = "selecting"
-	ScheduleFireRunning   ScheduleFireState = "running"
-	ScheduleFireCleaning  ScheduleFireState = "cleaning"
-	ScheduleFireFinished  ScheduleFireState = "finished"
+	RoutineFireSkipped   RoutineFireState = "skipped"
+	RoutineFireMissed    RoutineFireState = "missed"
+	RoutineFireStarting  RoutineFireState = "starting"
+	RoutineFireSelecting RoutineFireState = "selecting"
+	RoutineFireRunning   RoutineFireState = "running"
+	RoutineFireCleaning  RoutineFireState = "cleaning"
+	RoutineFireFinished  RoutineFireState = "finished"
 )
 
-func (s ScheduleFireState) Valid() bool {
+func (s RoutineFireState) Valid() bool {
 	switch s {
-	case ScheduleFireSkipped, ScheduleFireMissed, ScheduleFireStarting, ScheduleFireSelecting,
-		ScheduleFireRunning, ScheduleFireCleaning, ScheduleFireFinished:
+	case RoutineFireSkipped, RoutineFireMissed, RoutineFireStarting, RoutineFireSelecting,
+		RoutineFireRunning, RoutineFireCleaning, RoutineFireFinished:
 		return true
 	}
 	return false
 }
 
 // Active reports whether the fire still holds a run in progress.
-func (s ScheduleFireState) Active() bool {
+func (s RoutineFireState) Active() bool {
 	switch s {
-	case ScheduleFireStarting, ScheduleFireSelecting, ScheduleFireRunning, ScheduleFireCleaning:
+	case RoutineFireStarting, RoutineFireSelecting, RoutineFireRunning, RoutineFireCleaning:
 		return true
 	}
 	return false
 }
 
-// ScheduleOutcome is the content-free result of a fire.
-type ScheduleOutcome string
+// RoutineOutcome is the content-free result of a fire.
+type RoutineOutcome string
 
 const (
-	ScheduleOutcomeNone      ScheduleOutcome = ""
-	ScheduleOutcomeProposed  ScheduleOutcome = "proposed"
-	ScheduleOutcomeChanged   ScheduleOutcome = "changed"
-	ScheduleOutcomeNoChanges ScheduleOutcome = "no_changes"
-	ScheduleOutcomeWaiting   ScheduleOutcome = "waiting"
-	ScheduleOutcomeTimedOut  ScheduleOutcome = "timed_out"
-	ScheduleOutcomeFailed    ScheduleOutcome = "failed"
+	RoutineOutcomeNone      RoutineOutcome = ""
+	RoutineOutcomeProposed  RoutineOutcome = "proposed"
+	RoutineOutcomeChanged   RoutineOutcome = "changed"
+	RoutineOutcomeNoChanges RoutineOutcome = "no_changes"
+	RoutineOutcomeWaiting   RoutineOutcome = "waiting"
+	RoutineOutcomeTimedOut  RoutineOutcome = "timed_out"
+	RoutineOutcomeFailed    RoutineOutcome = "failed"
 )
 
-func (o ScheduleOutcome) Valid() bool {
+func (o RoutineOutcome) Valid() bool {
 	switch o {
-	case ScheduleOutcomeNone, ScheduleOutcomeProposed, ScheduleOutcomeChanged, ScheduleOutcomeNoChanges,
-		ScheduleOutcomeWaiting, ScheduleOutcomeTimedOut, ScheduleOutcomeFailed:
+	case RoutineOutcomeNone, RoutineOutcomeProposed, RoutineOutcomeChanged, RoutineOutcomeNoChanges,
+		RoutineOutcomeWaiting, RoutineOutcomeTimedOut, RoutineOutcomeFailed:
 		return true
 	}
 	return false
 }
 
 // NeedsOperator reports whether the outcome raises attention.
-func (o ScheduleOutcome) NeedsOperator() bool {
+func (o RoutineOutcome) NeedsOperator() bool {
 	switch o {
-	case ScheduleOutcomeProposed, ScheduleOutcomeChanged, ScheduleOutcomeWaiting,
-		ScheduleOutcomeTimedOut, ScheduleOutcomeFailed:
+	case RoutineOutcomeProposed, RoutineOutcomeChanged, RoutineOutcomeWaiting,
+		RoutineOutcomeTimedOut, RoutineOutcomeFailed:
 		return true
 	}
 	return false
@@ -168,38 +168,38 @@ func (o ScheduleOutcome) NeedsOperator() bool {
 
 // Skip and failure reasons. They are codes, never message text.
 const (
-	ScheduleReasonOverlap       = "overlap"
-	ScheduleReasonCapacity      = "capacity"
-	ScheduleReasonBacklog       = "backlog"
-	ScheduleReasonOwner         = "owner_unavailable"
-	ScheduleReasonProject       = "project_unavailable"
-	ScheduleReasonMissed        = "missed"
-	ScheduleReasonStartFailed   = "start_failed"
-	ScheduleReasonModelMissing  = "model_unreported"
-	ScheduleReasonModelNone     = "model_unsupported"
-	ScheduleReasonModelAbsent   = "model_unavailable"
-	ScheduleReasonModelRefused  = "model_refused"
-	ScheduleReasonEffortNone    = "effort_unsupported"
-	ScheduleReasonEffortAbsent  = "effort_unavailable"
-	ScheduleReasonEffortRefused = "effort_refused"
-	ScheduleReasonSessionEnded  = "session_ended"
-	ScheduleReasonInspectFailed = "inspect_failed"
+	RoutineReasonOverlap       = "overlap"
+	RoutineReasonCapacity      = "capacity"
+	RoutineReasonBacklog       = "backlog"
+	RoutineReasonOwner         = "owner_unavailable"
+	RoutineReasonProject       = "project_unavailable"
+	RoutineReasonMissed        = "missed"
+	RoutineReasonStartFailed   = "start_failed"
+	RoutineReasonModelMissing  = "model_unreported"
+	RoutineReasonModelNone     = "model_unsupported"
+	RoutineReasonModelAbsent   = "model_unavailable"
+	RoutineReasonModelRefused  = "model_refused"
+	RoutineReasonEffortNone    = "effort_unsupported"
+	RoutineReasonEffortAbsent  = "effort_unavailable"
+	RoutineReasonEffortRefused = "effort_refused"
+	RoutineReasonSessionEnded  = "session_ended"
+	RoutineReasonInspectFailed = "inspect_failed"
 	// Disabled reasons.
-	ScheduleDisabledStartFailures = "start_failures"
-	ScheduleDisabledHarness       = "harness_not_allowed"
-	ScheduleDisabledTransferred   = "transferred"
+	RoutineDisabledStartFailures = "start_failures"
+	RoutineDisabledHarness       = "harness_not_allowed"
+	RoutineDisabledTransferred   = "transferred"
 )
 
-// ScheduleFire is one tick of a schedule's clock.
-type ScheduleFire struct {
-	ID              ScheduleFireID
-	ScheduleID      ScheduleID
+// RoutineFire is one tick of a routine's clock.
+type RoutineFire struct {
+	ID              RoutineFireID
+	RoutineID       RoutineID
 	ProjectID       ProjectID
 	OwnerUserID     UserID
-	Trigger         ScheduleFireTrigger
+	Trigger         RoutineFireTrigger
 	ScheduledFor    time.Time
-	State           ScheduleFireState
-	Outcome         ScheduleOutcome
+	State           RoutineFireState
+	Outcome         RoutineOutcome
 	Reason          string
 	CapsuleID       CapsuleID
 	ThreadID        ThreadID
@@ -216,11 +216,11 @@ type ScheduleFire struct {
 	UpdatedAt       time.Time
 }
 
-func (f ScheduleFire) Validate() error {
-	if f.ID == "" || f.ScheduleID == "" || f.ProjectID == "" || !f.Trigger.Valid() ||
+func (f RoutineFire) Validate() error {
+	if f.ID == "" || f.RoutineID == "" || f.ProjectID == "" || !f.Trigger.Valid() ||
 		f.ScheduledFor.IsZero() || !f.State.Valid() || !f.Outcome.Valid() || len(f.Reason) > 64 ||
 		f.ResourceVersion <= 0 || f.CreatedAt.IsZero() || f.UpdatedAt.IsZero() {
-		return fmt.Errorf("%w: invalid schedule fire", ErrInvalid)
+		return fmt.Errorf("%w: invalid routine fire", ErrInvalid)
 	}
 	return nil
 }
@@ -400,7 +400,7 @@ func (c Cadence) Next(after time.Time) time.Time {
 }
 
 // CheckSpacing returns an error when two fires within the next samples
-// fires starting at from are closer than ScheduleMinSpacing, or when the
+// fires starting at from are closer than RoutineMinSpacing, or when the
 // expression never fires.
 func (c Cadence) CheckSpacing(from time.Time, samples int) error {
 	previous := c.Next(from)
@@ -412,7 +412,7 @@ func (c Cadence) CheckSpacing(from time.Time, samples int) error {
 		if next.IsZero() {
 			return nil
 		}
-		if next.Sub(previous) < ScheduleMinSpacing {
+		if next.Sub(previous) < RoutineMinSpacing {
 			return fmt.Errorf("%w: fires must be at least 15 minutes apart", ErrInvalid)
 		}
 		previous = next

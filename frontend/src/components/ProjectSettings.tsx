@@ -7,7 +7,7 @@ import { Badge } from "./ui/Badge";
 import { ProjectChecks } from "./ProjectChecks";
 import { ProjectEnvironment } from "./ProjectEnvironment";
 import { ProjectHarnesses } from "./ProjectHarnesses";
-import { ProjectSchedules } from "./ProjectSchedules";
+import { ProjectRoutines } from "./Routines";
 
 // The server is the authority on isolation floors (ADR 0050); the label
 // only surfaces what the Project already requires.
@@ -67,7 +67,7 @@ export function ProjectSettings() {
       </dl>
       <ProjectHarnesses key={project.id} project={project} />
       <ProjectChecks projectId={project.id} />
-      <ProjectSchedules project={project} />
+      <ProjectRoutines project={project} />
       <ProjectEnvironment projectId={project.id} />
       <div className="project-settings-actions">
         <Link className="button-link" to="/ui/">

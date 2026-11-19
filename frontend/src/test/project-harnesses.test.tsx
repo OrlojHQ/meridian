@@ -81,7 +81,7 @@ beforeEach(() => {
   vi.spyOn(api, "projectHarnessSetup").mockResolvedValue({ setup: "" });
   vi.spyOn(api, "projectChecks").mockResolvedValue({ checks: [], autoRework: true, maxReworkAttempts: 3, resourceVersion: 1 });
   vi.spyOn(api, "suggestProjectChecks").mockResolvedValue({ checks: [] });
-  vi.spyOn(api, "schedules").mockResolvedValue({ items: [] });
+  vi.spyOn(api, "allRoutines").mockResolvedValue({ items: [] });
   vi.spyOn(api, "projectConnection").mockResolvedValue({ connectionId: "" });
 });
 

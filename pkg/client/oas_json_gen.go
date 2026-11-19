@@ -2956,9 +2956,9 @@ func (s *Capsule) encodeFields(e *jx.Encoder) {
 		}
 	}
 	{
-		if s.Schedule.Set {
-			e.FieldStart("schedule")
-			s.Schedule.Encode(e)
+		if s.Routine.Set {
+			e.FieldStart("routine")
+			s.Routine.Encode(e)
 		}
 	}
 	{
@@ -2997,7 +2997,7 @@ var jsonFieldsNameOfCapsule = [25]string{
 	18: "linkId",
 	19: "promotedAt",
 	20: "checks",
-	21: "schedule",
+	21: "routine",
 	22: "createdAt",
 	23: "updatedAt",
 	24: "resourceVersion",
@@ -3239,15 +3239,15 @@ func (s *Capsule) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"checks\"")
 			}
-		case "schedule":
+		case "routine":
 			if err := func() error {
-				s.Schedule.Reset()
-				if err := s.Schedule.Decode(d); err != nil {
+				s.Routine.Reset()
+				if err := s.Routine.Decode(d); err != nil {
 					return err
 				}
 				return nil
 			}(); err != nil {
-				return errors.Wrap(err, "decode field \"schedule\"")
+				return errors.Wrap(err, "decode field \"routine\"")
 			}
 		case "createdAt":
 			requiredBitSet[2] |= 1 << 6
@@ -3596,21 +3596,21 @@ func (s *CapsuleRole) UnmarshalJSON(data []byte) error {
 }
 
 // Encode implements json.Marshaler.
-func (s *CapsuleSchedule) Encode(e *jx.Encoder) {
+func (s *CapsuleRoutine) Encode(e *jx.Encoder) {
 	e.ObjStart()
 	s.encodeFields(e)
 	e.ObjEnd()
 }
 
 // encodeFields encodes fields.
-func (s *CapsuleSchedule) encodeFields(e *jx.Encoder) {
+func (s *CapsuleRoutine) encodeFields(e *jx.Encoder) {
 	{
-		e.FieldStart("scheduleId")
-		e.Str(s.ScheduleId)
+		e.FieldStart("routineId")
+		e.Str(s.RoutineId)
 	}
 	{
-		e.FieldStart("scheduleName")
-		e.Str(s.ScheduleName)
+		e.FieldStart("routineName")
+		e.Str(s.RoutineName)
 	}
 	{
 		e.FieldStart("fireId")
@@ -3628,46 +3628,46 @@ func (s *CapsuleSchedule) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfCapsuleSchedule = [5]string{
-	0: "scheduleId",
-	1: "scheduleName",
+var jsonFieldsNameOfCapsuleRoutine = [5]string{
+	0: "routineId",
+	1: "routineName",
 	2: "fireId",
 	3: "state",
 	4: "outcome",
 }
 
-// Decode decodes CapsuleSchedule from json.
-func (s *CapsuleSchedule) Decode(d *jx.Decoder) error {
+// Decode decodes CapsuleRoutine from json.
+func (s *CapsuleRoutine) Decode(d *jx.Decoder) error {
 	if s == nil {
-		return errors.New("invalid: unable to decode CapsuleSchedule to nil")
+		return errors.New("invalid: unable to decode CapsuleRoutine to nil")
 	}
 	var requiredBitSet [1]uint8
 
 	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
 		switch string(k) {
-		case "scheduleId":
+		case "routineId":
 			requiredBitSet[0] |= 1 << 0
 			if err := func() error {
 				v, err := d.Str()
-				s.ScheduleId = string(v)
+				s.RoutineId = string(v)
 				if err != nil {
 					return err
 				}
 				return nil
 			}(); err != nil {
-				return errors.Wrap(err, "decode field \"scheduleId\"")
+				return errors.Wrap(err, "decode field \"routineId\"")
 			}
-		case "scheduleName":
+		case "routineName":
 			requiredBitSet[0] |= 1 << 1
 			if err := func() error {
 				v, err := d.Str()
-				s.ScheduleName = string(v)
+				s.RoutineName = string(v)
 				if err != nil {
 					return err
 				}
 				return nil
 			}(); err != nil {
-				return errors.Wrap(err, "decode field \"scheduleName\"")
+				return errors.Wrap(err, "decode field \"routineName\"")
 			}
 		case "fireId":
 			requiredBitSet[0] |= 1 << 2
@@ -3706,7 +3706,7 @@ func (s *CapsuleSchedule) Decode(d *jx.Decoder) error {
 		}
 		return nil
 	}); err != nil {
-		return errors.Wrap(err, "decode CapsuleSchedule")
+		return errors.Wrap(err, "decode CapsuleRoutine")
 	}
 	// Validate required fields.
 	var failures []validate.FieldError
@@ -3723,8 +3723,8 @@ func (s *CapsuleSchedule) Decode(d *jx.Decoder) error {
 				bitIdx := bits.TrailingZeros8(result)
 				fieldIdx := i*8 + bitIdx
 				var name string
-				if fieldIdx < len(jsonFieldsNameOfCapsuleSchedule) {
-					name = jsonFieldsNameOfCapsuleSchedule[fieldIdx]
+				if fieldIdx < len(jsonFieldsNameOfCapsuleRoutine) {
+					name = jsonFieldsNameOfCapsuleRoutine[fieldIdx]
 				} else {
 					name = strconv.Itoa(fieldIdx)
 				}
@@ -3745,14 +3745,14 @@ func (s *CapsuleSchedule) Decode(d *jx.Decoder) error {
 }
 
 // MarshalJSON implements stdjson.Marshaler.
-func (s *CapsuleSchedule) MarshalJSON() ([]byte, error) {
+func (s *CapsuleRoutine) MarshalJSON() ([]byte, error) {
 	e := jx.Encoder{}
 	s.Encode(&e)
 	return e.Bytes(), nil
 }
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
-func (s *CapsuleSchedule) UnmarshalJSON(data []byte) error {
+func (s *CapsuleRoutine) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }
@@ -10652,17 +10652,17 @@ func (s *CreateProjectRequest) UnmarshalJSON(data []byte) error {
 	return s.Decode(d)
 }
 
-// Encode encodes CreateProjectScheduleBadRequest as json.
-func (s *CreateProjectScheduleBadRequest) Encode(e *jx.Encoder) {
+// Encode encodes CreateProjectRoutineBadRequest as json.
+func (s *CreateProjectRoutineBadRequest) Encode(e *jx.Encoder) {
 	unwrapped := (*ErrorEnvelope)(s)
 
 	unwrapped.Encode(e)
 }
 
-// Decode decodes CreateProjectScheduleBadRequest from json.
-func (s *CreateProjectScheduleBadRequest) Decode(d *jx.Decoder) error {
+// Decode decodes CreateProjectRoutineBadRequest from json.
+func (s *CreateProjectRoutineBadRequest) Decode(d *jx.Decoder) error {
 	if s == nil {
-		return errors.New("invalid: unable to decode CreateProjectScheduleBadRequest to nil")
+		return errors.New("invalid: unable to decode CreateProjectRoutineBadRequest to nil")
 	}
 	var unwrapped ErrorEnvelope
 	if err := func() error {
@@ -10673,34 +10673,34 @@ func (s *CreateProjectScheduleBadRequest) Decode(d *jx.Decoder) error {
 	}(); err != nil {
 		return errors.Wrap(err, "alias")
 	}
-	*s = CreateProjectScheduleBadRequest(unwrapped)
+	*s = CreateProjectRoutineBadRequest(unwrapped)
 	return nil
 }
 
 // MarshalJSON implements stdjson.Marshaler.
-func (s *CreateProjectScheduleBadRequest) MarshalJSON() ([]byte, error) {
+func (s *CreateProjectRoutineBadRequest) MarshalJSON() ([]byte, error) {
 	e := jx.Encoder{}
 	s.Encode(&e)
 	return e.Bytes(), nil
 }
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
-func (s *CreateProjectScheduleBadRequest) UnmarshalJSON(data []byte) error {
+func (s *CreateProjectRoutineBadRequest) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }
 
-// Encode encodes CreateProjectScheduleConflict as json.
-func (s *CreateProjectScheduleConflict) Encode(e *jx.Encoder) {
+// Encode encodes CreateProjectRoutineConflict as json.
+func (s *CreateProjectRoutineConflict) Encode(e *jx.Encoder) {
 	unwrapped := (*ErrorEnvelope)(s)
 
 	unwrapped.Encode(e)
 }
 
-// Decode decodes CreateProjectScheduleConflict from json.
-func (s *CreateProjectScheduleConflict) Decode(d *jx.Decoder) error {
+// Decode decodes CreateProjectRoutineConflict from json.
+func (s *CreateProjectRoutineConflict) Decode(d *jx.Decoder) error {
 	if s == nil {
-		return errors.New("invalid: unable to decode CreateProjectScheduleConflict to nil")
+		return errors.New("invalid: unable to decode CreateProjectRoutineConflict to nil")
 	}
 	var unwrapped ErrorEnvelope
 	if err := func() error {
@@ -10711,34 +10711,34 @@ func (s *CreateProjectScheduleConflict) Decode(d *jx.Decoder) error {
 	}(); err != nil {
 		return errors.Wrap(err, "alias")
 	}
-	*s = CreateProjectScheduleConflict(unwrapped)
+	*s = CreateProjectRoutineConflict(unwrapped)
 	return nil
 }
 
 // MarshalJSON implements stdjson.Marshaler.
-func (s *CreateProjectScheduleConflict) MarshalJSON() ([]byte, error) {
+func (s *CreateProjectRoutineConflict) MarshalJSON() ([]byte, error) {
 	e := jx.Encoder{}
 	s.Encode(&e)
 	return e.Bytes(), nil
 }
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
-func (s *CreateProjectScheduleConflict) UnmarshalJSON(data []byte) error {
+func (s *CreateProjectRoutineConflict) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }
 
-// Encode encodes CreateProjectScheduleNotFound as json.
-func (s *CreateProjectScheduleNotFound) Encode(e *jx.Encoder) {
+// Encode encodes CreateProjectRoutineNotFound as json.
+func (s *CreateProjectRoutineNotFound) Encode(e *jx.Encoder) {
 	unwrapped := (*ErrorEnvelope)(s)
 
 	unwrapped.Encode(e)
 }
 
-// Decode decodes CreateProjectScheduleNotFound from json.
-func (s *CreateProjectScheduleNotFound) Decode(d *jx.Decoder) error {
+// Decode decodes CreateProjectRoutineNotFound from json.
+func (s *CreateProjectRoutineNotFound) Decode(d *jx.Decoder) error {
 	if s == nil {
-		return errors.New("invalid: unable to decode CreateProjectScheduleNotFound to nil")
+		return errors.New("invalid: unable to decode CreateProjectRoutineNotFound to nil")
 	}
 	var unwrapped ErrorEnvelope
 	if err := func() error {
@@ -10749,19 +10749,19 @@ func (s *CreateProjectScheduleNotFound) Decode(d *jx.Decoder) error {
 	}(); err != nil {
 		return errors.Wrap(err, "alias")
 	}
-	*s = CreateProjectScheduleNotFound(unwrapped)
+	*s = CreateProjectRoutineNotFound(unwrapped)
 	return nil
 }
 
 // MarshalJSON implements stdjson.Marshaler.
-func (s *CreateProjectScheduleNotFound) MarshalJSON() ([]byte, error) {
+func (s *CreateProjectRoutineNotFound) MarshalJSON() ([]byte, error) {
 	e := jx.Encoder{}
 	s.Encode(&e)
 	return e.Bytes(), nil
 }
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
-func (s *CreateProjectScheduleNotFound) UnmarshalJSON(data []byte) error {
+func (s *CreateProjectRoutineNotFound) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }
@@ -11104,14 +11104,14 @@ func (s *CreateProjectUnprocessableEntity) UnmarshalJSON(data []byte) error {
 }
 
 // Encode implements json.Marshaler.
-func (s *CreateScheduleRequest) Encode(e *jx.Encoder) {
+func (s *CreateRoutineRequest) Encode(e *jx.Encoder) {
 	e.ObjStart()
 	s.encodeFields(e)
 	e.ObjEnd()
 }
 
 // encodeFields encodes fields.
-func (s *CreateScheduleRequest) encodeFields(e *jx.Encoder) {
+func (s *CreateRoutineRequest) encodeFields(e *jx.Encoder) {
 	{
 		e.FieldStart("name")
 		e.Str(s.Name)
@@ -11170,7 +11170,7 @@ func (s *CreateScheduleRequest) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfCreateScheduleRequest = [11]string{
+var jsonFieldsNameOfCreateRoutineRequest = [11]string{
 	0:  "name",
 	1:  "harness",
 	2:  "model",
@@ -11184,10 +11184,10 @@ var jsonFieldsNameOfCreateScheduleRequest = [11]string{
 	10: "enabled",
 }
 
-// Decode decodes CreateScheduleRequest from json.
-func (s *CreateScheduleRequest) Decode(d *jx.Decoder) error {
+// Decode decodes CreateRoutineRequest from json.
+func (s *CreateRoutineRequest) Decode(d *jx.Decoder) error {
 	if s == nil {
-		return errors.New("invalid: unable to decode CreateScheduleRequest to nil")
+		return errors.New("invalid: unable to decode CreateRoutineRequest to nil")
 	}
 	var requiredBitSet [2]uint8
 	s.setDefaults()
@@ -11319,7 +11319,7 @@ func (s *CreateScheduleRequest) Decode(d *jx.Decoder) error {
 		}
 		return nil
 	}); err != nil {
-		return errors.Wrap(err, "decode CreateScheduleRequest")
+		return errors.Wrap(err, "decode CreateRoutineRequest")
 	}
 	// Validate required fields.
 	var failures []validate.FieldError
@@ -11337,8 +11337,8 @@ func (s *CreateScheduleRequest) Decode(d *jx.Decoder) error {
 				bitIdx := bits.TrailingZeros8(result)
 				fieldIdx := i*8 + bitIdx
 				var name string
-				if fieldIdx < len(jsonFieldsNameOfCreateScheduleRequest) {
-					name = jsonFieldsNameOfCreateScheduleRequest[fieldIdx]
+				if fieldIdx < len(jsonFieldsNameOfCreateRoutineRequest) {
+					name = jsonFieldsNameOfCreateRoutineRequest[fieldIdx]
 				} else {
 					name = strconv.Itoa(fieldIdx)
 				}
@@ -11359,14 +11359,14 @@ func (s *CreateScheduleRequest) Decode(d *jx.Decoder) error {
 }
 
 // MarshalJSON implements stdjson.Marshaler.
-func (s *CreateScheduleRequest) MarshalJSON() ([]byte, error) {
+func (s *CreateRoutineRequest) MarshalJSON() ([]byte, error) {
 	e := jx.Encoder{}
 	s.Encode(&e)
 	return e.Bytes(), nil
 }
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
-func (s *CreateScheduleRequest) UnmarshalJSON(data []byte) error {
+func (s *CreateRoutineRequest) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }
@@ -12543,17 +12543,17 @@ func (s *DeleteProjectUnprocessableEntity) UnmarshalJSON(data []byte) error {
 	return s.Decode(d)
 }
 
-// Encode encodes DeleteScheduleBadRequest as json.
-func (s *DeleteScheduleBadRequest) Encode(e *jx.Encoder) {
+// Encode encodes DeleteRoutineBadRequest as json.
+func (s *DeleteRoutineBadRequest) Encode(e *jx.Encoder) {
 	unwrapped := (*ErrorEnvelope)(s)
 
 	unwrapped.Encode(e)
 }
 
-// Decode decodes DeleteScheduleBadRequest from json.
-func (s *DeleteScheduleBadRequest) Decode(d *jx.Decoder) error {
+// Decode decodes DeleteRoutineBadRequest from json.
+func (s *DeleteRoutineBadRequest) Decode(d *jx.Decoder) error {
 	if s == nil {
-		return errors.New("invalid: unable to decode DeleteScheduleBadRequest to nil")
+		return errors.New("invalid: unable to decode DeleteRoutineBadRequest to nil")
 	}
 	var unwrapped ErrorEnvelope
 	if err := func() error {
@@ -12564,34 +12564,34 @@ func (s *DeleteScheduleBadRequest) Decode(d *jx.Decoder) error {
 	}(); err != nil {
 		return errors.Wrap(err, "alias")
 	}
-	*s = DeleteScheduleBadRequest(unwrapped)
+	*s = DeleteRoutineBadRequest(unwrapped)
 	return nil
 }
 
 // MarshalJSON implements stdjson.Marshaler.
-func (s *DeleteScheduleBadRequest) MarshalJSON() ([]byte, error) {
+func (s *DeleteRoutineBadRequest) MarshalJSON() ([]byte, error) {
 	e := jx.Encoder{}
 	s.Encode(&e)
 	return e.Bytes(), nil
 }
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
-func (s *DeleteScheduleBadRequest) UnmarshalJSON(data []byte) error {
+func (s *DeleteRoutineBadRequest) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }
 
-// Encode encodes DeleteScheduleConflict as json.
-func (s *DeleteScheduleConflict) Encode(e *jx.Encoder) {
+// Encode encodes DeleteRoutineConflict as json.
+func (s *DeleteRoutineConflict) Encode(e *jx.Encoder) {
 	unwrapped := (*ErrorEnvelope)(s)
 
 	unwrapped.Encode(e)
 }
 
-// Decode decodes DeleteScheduleConflict from json.
-func (s *DeleteScheduleConflict) Decode(d *jx.Decoder) error {
+// Decode decodes DeleteRoutineConflict from json.
+func (s *DeleteRoutineConflict) Decode(d *jx.Decoder) error {
 	if s == nil {
-		return errors.New("invalid: unable to decode DeleteScheduleConflict to nil")
+		return errors.New("invalid: unable to decode DeleteRoutineConflict to nil")
 	}
 	var unwrapped ErrorEnvelope
 	if err := func() error {
@@ -12602,34 +12602,34 @@ func (s *DeleteScheduleConflict) Decode(d *jx.Decoder) error {
 	}(); err != nil {
 		return errors.Wrap(err, "alias")
 	}
-	*s = DeleteScheduleConflict(unwrapped)
+	*s = DeleteRoutineConflict(unwrapped)
 	return nil
 }
 
 // MarshalJSON implements stdjson.Marshaler.
-func (s *DeleteScheduleConflict) MarshalJSON() ([]byte, error) {
+func (s *DeleteRoutineConflict) MarshalJSON() ([]byte, error) {
 	e := jx.Encoder{}
 	s.Encode(&e)
 	return e.Bytes(), nil
 }
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
-func (s *DeleteScheduleConflict) UnmarshalJSON(data []byte) error {
+func (s *DeleteRoutineConflict) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }
 
-// Encode encodes DeleteScheduleNotFound as json.
-func (s *DeleteScheduleNotFound) Encode(e *jx.Encoder) {
+// Encode encodes DeleteRoutineNotFound as json.
+func (s *DeleteRoutineNotFound) Encode(e *jx.Encoder) {
 	unwrapped := (*ErrorEnvelope)(s)
 
 	unwrapped.Encode(e)
 }
 
-// Decode decodes DeleteScheduleNotFound from json.
-func (s *DeleteScheduleNotFound) Decode(d *jx.Decoder) error {
+// Decode decodes DeleteRoutineNotFound from json.
+func (s *DeleteRoutineNotFound) Decode(d *jx.Decoder) error {
 	if s == nil {
-		return errors.New("invalid: unable to decode DeleteScheduleNotFound to nil")
+		return errors.New("invalid: unable to decode DeleteRoutineNotFound to nil")
 	}
 	var unwrapped ErrorEnvelope
 	if err := func() error {
@@ -12640,19 +12640,19 @@ func (s *DeleteScheduleNotFound) Decode(d *jx.Decoder) error {
 	}(); err != nil {
 		return errors.Wrap(err, "alias")
 	}
-	*s = DeleteScheduleNotFound(unwrapped)
+	*s = DeleteRoutineNotFound(unwrapped)
 	return nil
 }
 
 // MarshalJSON implements stdjson.Marshaler.
-func (s *DeleteScheduleNotFound) MarshalJSON() ([]byte, error) {
+func (s *DeleteRoutineNotFound) MarshalJSON() ([]byte, error) {
 	e := jx.Encoder{}
 	s.Encode(&e)
 	return e.Bytes(), nil
 }
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
-func (s *DeleteScheduleNotFound) UnmarshalJSON(data []byte) error {
+func (s *DeleteRoutineNotFound) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }
@@ -23432,18 +23432,18 @@ func (s *OptCapsuleRole) UnmarshalJSON(data []byte) error {
 	return s.Decode(d)
 }
 
-// Encode encodes CapsuleSchedule as json.
-func (o OptCapsuleSchedule) Encode(e *jx.Encoder) {
+// Encode encodes CapsuleRoutine as json.
+func (o OptCapsuleRoutine) Encode(e *jx.Encoder) {
 	if !o.Set {
 		return
 	}
 	o.Value.Encode(e)
 }
 
-// Decode decodes CapsuleSchedule from json.
-func (o *OptCapsuleSchedule) Decode(d *jx.Decoder) error {
+// Decode decodes CapsuleRoutine from json.
+func (o *OptCapsuleRoutine) Decode(d *jx.Decoder) error {
 	if o == nil {
-		return errors.New("invalid: unable to decode OptCapsuleSchedule to nil")
+		return errors.New("invalid: unable to decode OptCapsuleRoutine to nil")
 	}
 	o.Set = true
 	if err := o.Value.Decode(d); err != nil {
@@ -23453,14 +23453,14 @@ func (o *OptCapsuleSchedule) Decode(d *jx.Decoder) error {
 }
 
 // MarshalJSON implements stdjson.Marshaler.
-func (s OptCapsuleSchedule) MarshalJSON() ([]byte, error) {
+func (s OptCapsuleRoutine) MarshalJSON() ([]byte, error) {
 	e := jx.Encoder{}
 	s.Encode(&e)
 	return e.Bytes(), nil
 }
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
-func (s *OptCapsuleSchedule) UnmarshalJSON(data []byte) error {
+func (s *OptCapsuleRoutine) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }
@@ -24329,6 +24329,72 @@ func (s *OptRemoteCISummary) UnmarshalJSON(data []byte) error {
 	return s.Decode(d)
 }
 
+// Encode encodes RoutineFire as json.
+func (o OptRoutineFire) Encode(e *jx.Encoder) {
+	if !o.Set {
+		return
+	}
+	o.Value.Encode(e)
+}
+
+// Decode decodes RoutineFire from json.
+func (o *OptRoutineFire) Decode(d *jx.Decoder) error {
+	if o == nil {
+		return errors.New("invalid: unable to decode OptRoutineFire to nil")
+	}
+	o.Set = true
+	if err := o.Value.Decode(d); err != nil {
+		return err
+	}
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s OptRoutineFire) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *OptRoutineFire) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes RoutineOutcome as json.
+func (o OptRoutineOutcome) Encode(e *jx.Encoder) {
+	if !o.Set {
+		return
+	}
+	e.Str(string(o.Value))
+}
+
+// Decode decodes RoutineOutcome from json.
+func (o *OptRoutineOutcome) Decode(d *jx.Decoder) error {
+	if o == nil {
+		return errors.New("invalid: unable to decode OptRoutineOutcome to nil")
+	}
+	o.Set = true
+	if err := o.Value.Decode(d); err != nil {
+		return err
+	}
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s OptRoutineOutcome) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *OptRoutineOutcome) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
 // Encode encodes Run as json.
 func (o OptRun) Encode(e *jx.Encoder) {
 	if !o.Set {
@@ -24425,72 +24491,6 @@ func (s OptRunState) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
 func (s *OptRunState) UnmarshalJSON(data []byte) error {
-	d := jx.DecodeBytes(data)
-	return s.Decode(d)
-}
-
-// Encode encodes ScheduleFire as json.
-func (o OptScheduleFire) Encode(e *jx.Encoder) {
-	if !o.Set {
-		return
-	}
-	o.Value.Encode(e)
-}
-
-// Decode decodes ScheduleFire from json.
-func (o *OptScheduleFire) Decode(d *jx.Decoder) error {
-	if o == nil {
-		return errors.New("invalid: unable to decode OptScheduleFire to nil")
-	}
-	o.Set = true
-	if err := o.Value.Decode(d); err != nil {
-		return err
-	}
-	return nil
-}
-
-// MarshalJSON implements stdjson.Marshaler.
-func (s OptScheduleFire) MarshalJSON() ([]byte, error) {
-	e := jx.Encoder{}
-	s.Encode(&e)
-	return e.Bytes(), nil
-}
-
-// UnmarshalJSON implements stdjson.Unmarshaler.
-func (s *OptScheduleFire) UnmarshalJSON(data []byte) error {
-	d := jx.DecodeBytes(data)
-	return s.Decode(d)
-}
-
-// Encode encodes ScheduleOutcome as json.
-func (o OptScheduleOutcome) Encode(e *jx.Encoder) {
-	if !o.Set {
-		return
-	}
-	e.Str(string(o.Value))
-}
-
-// Decode decodes ScheduleOutcome from json.
-func (o *OptScheduleOutcome) Decode(d *jx.Decoder) error {
-	if o == nil {
-		return errors.New("invalid: unable to decode OptScheduleOutcome to nil")
-	}
-	o.Set = true
-	if err := o.Value.Decode(d); err != nil {
-		return err
-	}
-	return nil
-}
-
-// MarshalJSON implements stdjson.Marshaler.
-func (s OptScheduleOutcome) MarshalJSON() ([]byte, error) {
-	e := jx.Encoder{}
-	s.Encode(&e)
-	return e.Bytes(), nil
-}
-
-// UnmarshalJSON implements stdjson.Unmarshaler.
-func (s *OptScheduleOutcome) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }
@@ -34558,6 +34558,1127 @@ func (s *RewindRequest) UnmarshalJSON(data []byte) error {
 }
 
 // Encode implements json.Marshaler.
+func (s *Routine) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *Routine) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("id")
+		e.Str(s.ID)
+	}
+	{
+		e.FieldStart("projectId")
+		e.Str(s.ProjectId)
+	}
+	{
+		e.FieldStart("name")
+		e.Str(s.Name)
+	}
+	{
+		e.FieldStart("harness")
+		e.Str(s.Harness)
+	}
+	{
+		if s.Model.Set {
+			e.FieldStart("model")
+			s.Model.Encode(e)
+		}
+	}
+	{
+		if s.Effort.Set {
+			e.FieldStart("effort")
+			s.Effort.Encode(e)
+		}
+	}
+	{
+		e.FieldStart("prompt")
+		e.Str(s.Prompt)
+	}
+	{
+		e.FieldStart("cadence")
+		e.Str(s.Cadence)
+	}
+	{
+		e.FieldStart("timeZone")
+		e.Str(s.TimeZone)
+	}
+	{
+		e.FieldStart("maxRunSeconds")
+		e.Int(s.MaxRunSeconds)
+	}
+	{
+		e.FieldStart("catchUpSeconds")
+		e.Int(s.CatchUpSeconds)
+	}
+	{
+		e.FieldStart("maxKept")
+		e.Int(s.MaxKept)
+	}
+	{
+		e.FieldStart("enabled")
+		e.Bool(s.Enabled)
+	}
+	{
+		if s.DisabledReason.Set {
+			e.FieldStart("disabledReason")
+			s.DisabledReason.Encode(e)
+		}
+	}
+	{
+		if s.NextFireAt.Set {
+			e.FieldStart("nextFireAt")
+			s.NextFireAt.Encode(e, json.EncodeDateTime)
+		}
+	}
+	{
+		if s.LastFireAt.Set {
+			e.FieldStart("lastFireAt")
+			s.LastFireAt.Encode(e, json.EncodeDateTime)
+		}
+	}
+	{
+		e.FieldStart("keptCapsules")
+		e.Int(s.KeptCapsules)
+	}
+	{
+		if s.Active.Set {
+			e.FieldStart("active")
+			s.Active.Encode(e)
+		}
+	}
+	{
+		if s.LastFire.Set {
+			e.FieldStart("lastFire")
+			s.LastFire.Encode(e)
+		}
+	}
+	{
+		e.FieldStart("resourceVersion")
+		e.Int64(s.ResourceVersion)
+	}
+	{
+		e.FieldStart("createdAt")
+		json.EncodeDateTime(e, s.CreatedAt)
+	}
+	{
+		e.FieldStart("updatedAt")
+		json.EncodeDateTime(e, s.UpdatedAt)
+	}
+}
+
+var jsonFieldsNameOfRoutine = [22]string{
+	0:  "id",
+	1:  "projectId",
+	2:  "name",
+	3:  "harness",
+	4:  "model",
+	5:  "effort",
+	6:  "prompt",
+	7:  "cadence",
+	8:  "timeZone",
+	9:  "maxRunSeconds",
+	10: "catchUpSeconds",
+	11: "maxKept",
+	12: "enabled",
+	13: "disabledReason",
+	14: "nextFireAt",
+	15: "lastFireAt",
+	16: "keptCapsules",
+	17: "active",
+	18: "lastFire",
+	19: "resourceVersion",
+	20: "createdAt",
+	21: "updatedAt",
+}
+
+// Decode decodes Routine from json.
+func (s *Routine) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode Routine to nil")
+	}
+	var requiredBitSet [3]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "id":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				v, err := d.Str()
+				s.ID = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"id\"")
+			}
+		case "projectId":
+			requiredBitSet[0] |= 1 << 1
+			if err := func() error {
+				v, err := d.Str()
+				s.ProjectId = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"projectId\"")
+			}
+		case "name":
+			requiredBitSet[0] |= 1 << 2
+			if err := func() error {
+				v, err := d.Str()
+				s.Name = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"name\"")
+			}
+		case "harness":
+			requiredBitSet[0] |= 1 << 3
+			if err := func() error {
+				v, err := d.Str()
+				s.Harness = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"harness\"")
+			}
+		case "model":
+			if err := func() error {
+				s.Model.Reset()
+				if err := s.Model.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"model\"")
+			}
+		case "effort":
+			if err := func() error {
+				s.Effort.Reset()
+				if err := s.Effort.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"effort\"")
+			}
+		case "prompt":
+			requiredBitSet[0] |= 1 << 6
+			if err := func() error {
+				v, err := d.Str()
+				s.Prompt = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"prompt\"")
+			}
+		case "cadence":
+			requiredBitSet[0] |= 1 << 7
+			if err := func() error {
+				v, err := d.Str()
+				s.Cadence = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"cadence\"")
+			}
+		case "timeZone":
+			requiredBitSet[1] |= 1 << 0
+			if err := func() error {
+				v, err := d.Str()
+				s.TimeZone = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"timeZone\"")
+			}
+		case "maxRunSeconds":
+			requiredBitSet[1] |= 1 << 1
+			if err := func() error {
+				v, err := d.Int()
+				s.MaxRunSeconds = int(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"maxRunSeconds\"")
+			}
+		case "catchUpSeconds":
+			requiredBitSet[1] |= 1 << 2
+			if err := func() error {
+				v, err := d.Int()
+				s.CatchUpSeconds = int(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"catchUpSeconds\"")
+			}
+		case "maxKept":
+			requiredBitSet[1] |= 1 << 3
+			if err := func() error {
+				v, err := d.Int()
+				s.MaxKept = int(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"maxKept\"")
+			}
+		case "enabled":
+			requiredBitSet[1] |= 1 << 4
+			if err := func() error {
+				v, err := d.Bool()
+				s.Enabled = bool(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"enabled\"")
+			}
+		case "disabledReason":
+			if err := func() error {
+				s.DisabledReason.Reset()
+				if err := s.DisabledReason.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"disabledReason\"")
+			}
+		case "nextFireAt":
+			if err := func() error {
+				s.NextFireAt.Reset()
+				if err := s.NextFireAt.Decode(d, json.DecodeDateTime); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"nextFireAt\"")
+			}
+		case "lastFireAt":
+			if err := func() error {
+				s.LastFireAt.Reset()
+				if err := s.LastFireAt.Decode(d, json.DecodeDateTime); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"lastFireAt\"")
+			}
+		case "keptCapsules":
+			requiredBitSet[2] |= 1 << 0
+			if err := func() error {
+				v, err := d.Int()
+				s.KeptCapsules = int(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"keptCapsules\"")
+			}
+		case "active":
+			if err := func() error {
+				s.Active.Reset()
+				if err := s.Active.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"active\"")
+			}
+		case "lastFire":
+			if err := func() error {
+				s.LastFire.Reset()
+				if err := s.LastFire.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"lastFire\"")
+			}
+		case "resourceVersion":
+			requiredBitSet[2] |= 1 << 3
+			if err := func() error {
+				v, err := d.Int64()
+				s.ResourceVersion = int64(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"resourceVersion\"")
+			}
+		case "createdAt":
+			requiredBitSet[2] |= 1 << 4
+			if err := func() error {
+				v, err := json.DecodeDateTime(d)
+				s.CreatedAt = v
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"createdAt\"")
+			}
+		case "updatedAt":
+			requiredBitSet[2] |= 1 << 5
+			if err := func() error {
+				v, err := json.DecodeDateTime(d)
+				s.UpdatedAt = v
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"updatedAt\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode Routine")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [3]uint8{
+		0b11001111,
+		0b00011111,
+		0b00111001,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfRoutine) {
+					name = jsonFieldsNameOfRoutine[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *Routine) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *Routine) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s *RoutineFire) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *RoutineFire) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("id")
+		e.Str(s.ID)
+	}
+	{
+		e.FieldStart("routineId")
+		e.Str(s.RoutineId)
+	}
+	{
+		e.FieldStart("trigger")
+		s.Trigger.Encode(e)
+	}
+	{
+		e.FieldStart("scheduledFor")
+		json.EncodeDateTime(e, s.ScheduledFor)
+	}
+	{
+		e.FieldStart("state")
+		s.State.Encode(e)
+	}
+	{
+		if s.Outcome.Set {
+			e.FieldStart("outcome")
+			s.Outcome.Encode(e)
+		}
+	}
+	{
+		if s.Reason.Set {
+			e.FieldStart("reason")
+			s.Reason.Encode(e)
+		}
+	}
+	{
+		if s.CapsuleId.Set {
+			e.FieldStart("capsuleId")
+			s.CapsuleId.Encode(e)
+		}
+	}
+	{
+		if s.ThreadId.Set {
+			e.FieldStart("threadId")
+			s.ThreadId.Encode(e)
+		}
+	}
+	{
+		e.FieldStart("capsuleDeleted")
+		e.Bool(s.CapsuleDeleted)
+	}
+	{
+		if s.StartedAt.Set {
+			e.FieldStart("startedAt")
+			s.StartedAt.Encode(e, json.EncodeDateTime)
+		}
+	}
+	{
+		if s.FinishedAt.Set {
+			e.FieldStart("finishedAt")
+			s.FinishedAt.Encode(e, json.EncodeDateTime)
+		}
+	}
+	{
+		e.FieldStart("createdAt")
+		json.EncodeDateTime(e, s.CreatedAt)
+	}
+}
+
+var jsonFieldsNameOfRoutineFire = [13]string{
+	0:  "id",
+	1:  "routineId",
+	2:  "trigger",
+	3:  "scheduledFor",
+	4:  "state",
+	5:  "outcome",
+	6:  "reason",
+	7:  "capsuleId",
+	8:  "threadId",
+	9:  "capsuleDeleted",
+	10: "startedAt",
+	11: "finishedAt",
+	12: "createdAt",
+}
+
+// Decode decodes RoutineFire from json.
+func (s *RoutineFire) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode RoutineFire to nil")
+	}
+	var requiredBitSet [2]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "id":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				v, err := d.Str()
+				s.ID = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"id\"")
+			}
+		case "routineId":
+			requiredBitSet[0] |= 1 << 1
+			if err := func() error {
+				v, err := d.Str()
+				s.RoutineId = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"routineId\"")
+			}
+		case "trigger":
+			requiredBitSet[0] |= 1 << 2
+			if err := func() error {
+				if err := s.Trigger.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"trigger\"")
+			}
+		case "scheduledFor":
+			requiredBitSet[0] |= 1 << 3
+			if err := func() error {
+				v, err := json.DecodeDateTime(d)
+				s.ScheduledFor = v
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"scheduledFor\"")
+			}
+		case "state":
+			requiredBitSet[0] |= 1 << 4
+			if err := func() error {
+				if err := s.State.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"state\"")
+			}
+		case "outcome":
+			if err := func() error {
+				s.Outcome.Reset()
+				if err := s.Outcome.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"outcome\"")
+			}
+		case "reason":
+			if err := func() error {
+				s.Reason.Reset()
+				if err := s.Reason.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"reason\"")
+			}
+		case "capsuleId":
+			if err := func() error {
+				s.CapsuleId.Reset()
+				if err := s.CapsuleId.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"capsuleId\"")
+			}
+		case "threadId":
+			if err := func() error {
+				s.ThreadId.Reset()
+				if err := s.ThreadId.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"threadId\"")
+			}
+		case "capsuleDeleted":
+			requiredBitSet[1] |= 1 << 1
+			if err := func() error {
+				v, err := d.Bool()
+				s.CapsuleDeleted = bool(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"capsuleDeleted\"")
+			}
+		case "startedAt":
+			if err := func() error {
+				s.StartedAt.Reset()
+				if err := s.StartedAt.Decode(d, json.DecodeDateTime); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"startedAt\"")
+			}
+		case "finishedAt":
+			if err := func() error {
+				s.FinishedAt.Reset()
+				if err := s.FinishedAt.Decode(d, json.DecodeDateTime); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"finishedAt\"")
+			}
+		case "createdAt":
+			requiredBitSet[1] |= 1 << 4
+			if err := func() error {
+				v, err := json.DecodeDateTime(d)
+				s.CreatedAt = v
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"createdAt\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode RoutineFire")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [2]uint8{
+		0b00011111,
+		0b00010010,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfRoutineFire) {
+					name = jsonFieldsNameOfRoutineFire[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *RoutineFire) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *RoutineFire) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s *RoutineFirePage) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *RoutineFirePage) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("items")
+		e.ArrStart()
+		for _, elem := range s.Items {
+			elem.Encode(e)
+		}
+		e.ArrEnd()
+	}
+	{
+		if s.NextCursor.Set {
+			e.FieldStart("nextCursor")
+			s.NextCursor.Encode(e)
+		}
+	}
+}
+
+var jsonFieldsNameOfRoutineFirePage = [2]string{
+	0: "items",
+	1: "nextCursor",
+}
+
+// Decode decodes RoutineFirePage from json.
+func (s *RoutineFirePage) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode RoutineFirePage to nil")
+	}
+	var requiredBitSet [1]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "items":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				s.Items = make([]RoutineFire, 0)
+				if err := d.Arr(func(d *jx.Decoder) error {
+					var elem RoutineFire
+					if err := elem.Decode(d); err != nil {
+						return err
+					}
+					s.Items = append(s.Items, elem)
+					return nil
+				}); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"items\"")
+			}
+		case "nextCursor":
+			if err := func() error {
+				s.NextCursor.Reset()
+				if err := s.NextCursor.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"nextCursor\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode RoutineFirePage")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [1]uint8{
+		0b00000001,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfRoutineFirePage) {
+					name = jsonFieldsNameOfRoutineFirePage[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *RoutineFirePage) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *RoutineFirePage) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes RoutineFireState as json.
+func (s RoutineFireState) Encode(e *jx.Encoder) {
+	e.Str(string(s))
+}
+
+// Decode decodes RoutineFireState from json.
+func (s *RoutineFireState) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode RoutineFireState to nil")
+	}
+	v, err := d.StrBytes()
+	if err != nil {
+		return err
+	}
+	// Try to use constant string.
+	switch RoutineFireState(v) {
+	case RoutineFireStateSkipped:
+		*s = RoutineFireStateSkipped
+	case RoutineFireStateMissed:
+		*s = RoutineFireStateMissed
+	case RoutineFireStateStarting:
+		*s = RoutineFireStateStarting
+	case RoutineFireStateSelecting:
+		*s = RoutineFireStateSelecting
+	case RoutineFireStateRunning:
+		*s = RoutineFireStateRunning
+	case RoutineFireStateCleaning:
+		*s = RoutineFireStateCleaning
+	case RoutineFireStateFinished:
+		*s = RoutineFireStateFinished
+	default:
+		*s = RoutineFireState(v)
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s RoutineFireState) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *RoutineFireState) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes RoutineFireTrigger as json.
+func (s RoutineFireTrigger) Encode(e *jx.Encoder) {
+	e.Str(string(s))
+}
+
+// Decode decodes RoutineFireTrigger from json.
+func (s *RoutineFireTrigger) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode RoutineFireTrigger to nil")
+	}
+	v, err := d.StrBytes()
+	if err != nil {
+		return err
+	}
+	// Try to use constant string.
+	switch RoutineFireTrigger(v) {
+	case RoutineFireTriggerClock:
+		*s = RoutineFireTriggerClock
+	case RoutineFireTriggerCatchUp:
+		*s = RoutineFireTriggerCatchUp
+	case RoutineFireTriggerManual:
+		*s = RoutineFireTriggerManual
+	default:
+		*s = RoutineFireTrigger(v)
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s RoutineFireTrigger) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *RoutineFireTrigger) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s *RoutineList) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *RoutineList) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("items")
+		e.ArrStart()
+		for _, elem := range s.Items {
+			elem.Encode(e)
+		}
+		e.ArrEnd()
+	}
+}
+
+var jsonFieldsNameOfRoutineList = [1]string{
+	0: "items",
+}
+
+// Decode decodes RoutineList from json.
+func (s *RoutineList) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode RoutineList to nil")
+	}
+	var requiredBitSet [1]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "items":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				s.Items = make([]Routine, 0)
+				if err := d.Arr(func(d *jx.Decoder) error {
+					var elem Routine
+					if err := elem.Decode(d); err != nil {
+						return err
+					}
+					s.Items = append(s.Items, elem)
+					return nil
+				}); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"items\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode RoutineList")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [1]uint8{
+		0b00000001,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfRoutineList) {
+					name = jsonFieldsNameOfRoutineList[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *RoutineList) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *RoutineList) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes RoutineOutcome as json.
+func (s RoutineOutcome) Encode(e *jx.Encoder) {
+	e.Str(string(s))
+}
+
+// Decode decodes RoutineOutcome from json.
+func (s *RoutineOutcome) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode RoutineOutcome to nil")
+	}
+	v, err := d.StrBytes()
+	if err != nil {
+		return err
+	}
+	// Try to use constant string.
+	switch RoutineOutcome(v) {
+	case RoutineOutcomeProposed:
+		*s = RoutineOutcomeProposed
+	case RoutineOutcomeChanged:
+		*s = RoutineOutcomeChanged
+	case RoutineOutcomeNoChanges:
+		*s = RoutineOutcomeNoChanges
+	case RoutineOutcomeWaiting:
+		*s = RoutineOutcomeWaiting
+	case RoutineOutcomeTimedOut:
+		*s = RoutineOutcomeTimedOut
+	case RoutineOutcomeFailed:
+		*s = RoutineOutcomeFailed
+	default:
+		*s = RoutineOutcome(v)
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s RoutineOutcome) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *RoutineOutcome) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
 func (s *Run) Encode(e *jx.Encoder) {
 	e.ObjStart()
 	s.encodeFields(e)
@@ -35290,17 +36411,17 @@ func (s *RunPage) UnmarshalJSON(data []byte) error {
 	return s.Decode(d)
 }
 
-// Encode encodes RunScheduleBadRequest as json.
-func (s *RunScheduleBadRequest) Encode(e *jx.Encoder) {
+// Encode encodes RunRoutineBadRequest as json.
+func (s *RunRoutineBadRequest) Encode(e *jx.Encoder) {
 	unwrapped := (*ErrorEnvelope)(s)
 
 	unwrapped.Encode(e)
 }
 
-// Decode decodes RunScheduleBadRequest from json.
-func (s *RunScheduleBadRequest) Decode(d *jx.Decoder) error {
+// Decode decodes RunRoutineBadRequest from json.
+func (s *RunRoutineBadRequest) Decode(d *jx.Decoder) error {
 	if s == nil {
-		return errors.New("invalid: unable to decode RunScheduleBadRequest to nil")
+		return errors.New("invalid: unable to decode RunRoutineBadRequest to nil")
 	}
 	var unwrapped ErrorEnvelope
 	if err := func() error {
@@ -35311,34 +36432,34 @@ func (s *RunScheduleBadRequest) Decode(d *jx.Decoder) error {
 	}(); err != nil {
 		return errors.Wrap(err, "alias")
 	}
-	*s = RunScheduleBadRequest(unwrapped)
+	*s = RunRoutineBadRequest(unwrapped)
 	return nil
 }
 
 // MarshalJSON implements stdjson.Marshaler.
-func (s *RunScheduleBadRequest) MarshalJSON() ([]byte, error) {
+func (s *RunRoutineBadRequest) MarshalJSON() ([]byte, error) {
 	e := jx.Encoder{}
 	s.Encode(&e)
 	return e.Bytes(), nil
 }
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
-func (s *RunScheduleBadRequest) UnmarshalJSON(data []byte) error {
+func (s *RunRoutineBadRequest) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }
 
-// Encode encodes RunScheduleConflict as json.
-func (s *RunScheduleConflict) Encode(e *jx.Encoder) {
+// Encode encodes RunRoutineConflict as json.
+func (s *RunRoutineConflict) Encode(e *jx.Encoder) {
 	unwrapped := (*ErrorEnvelope)(s)
 
 	unwrapped.Encode(e)
 }
 
-// Decode decodes RunScheduleConflict from json.
-func (s *RunScheduleConflict) Decode(d *jx.Decoder) error {
+// Decode decodes RunRoutineConflict from json.
+func (s *RunRoutineConflict) Decode(d *jx.Decoder) error {
 	if s == nil {
-		return errors.New("invalid: unable to decode RunScheduleConflict to nil")
+		return errors.New("invalid: unable to decode RunRoutineConflict to nil")
 	}
 	var unwrapped ErrorEnvelope
 	if err := func() error {
@@ -35349,34 +36470,34 @@ func (s *RunScheduleConflict) Decode(d *jx.Decoder) error {
 	}(); err != nil {
 		return errors.Wrap(err, "alias")
 	}
-	*s = RunScheduleConflict(unwrapped)
+	*s = RunRoutineConflict(unwrapped)
 	return nil
 }
 
 // MarshalJSON implements stdjson.Marshaler.
-func (s *RunScheduleConflict) MarshalJSON() ([]byte, error) {
+func (s *RunRoutineConflict) MarshalJSON() ([]byte, error) {
 	e := jx.Encoder{}
 	s.Encode(&e)
 	return e.Bytes(), nil
 }
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
-func (s *RunScheduleConflict) UnmarshalJSON(data []byte) error {
+func (s *RunRoutineConflict) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }
 
-// Encode encodes RunScheduleNotFound as json.
-func (s *RunScheduleNotFound) Encode(e *jx.Encoder) {
+// Encode encodes RunRoutineNotFound as json.
+func (s *RunRoutineNotFound) Encode(e *jx.Encoder) {
 	unwrapped := (*ErrorEnvelope)(s)
 
 	unwrapped.Encode(e)
 }
 
-// Decode decodes RunScheduleNotFound from json.
-func (s *RunScheduleNotFound) Decode(d *jx.Decoder) error {
+// Decode decodes RunRoutineNotFound from json.
+func (s *RunRoutineNotFound) Decode(d *jx.Decoder) error {
 	if s == nil {
-		return errors.New("invalid: unable to decode RunScheduleNotFound to nil")
+		return errors.New("invalid: unable to decode RunRoutineNotFound to nil")
 	}
 	var unwrapped ErrorEnvelope
 	if err := func() error {
@@ -35387,19 +36508,19 @@ func (s *RunScheduleNotFound) Decode(d *jx.Decoder) error {
 	}(); err != nil {
 		return errors.Wrap(err, "alias")
 	}
-	*s = RunScheduleNotFound(unwrapped)
+	*s = RunRoutineNotFound(unwrapped)
 	return nil
 }
 
 // MarshalJSON implements stdjson.Marshaler.
-func (s *RunScheduleNotFound) MarshalJSON() ([]byte, error) {
+func (s *RunRoutineNotFound) MarshalJSON() ([]byte, error) {
 	e := jx.Encoder{}
 	s.Encode(&e)
 	return e.Bytes(), nil
 }
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
-func (s *RunScheduleNotFound) UnmarshalJSON(data []byte) error {
+func (s *RunRoutineNotFound) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }
@@ -35450,1127 +36571,6 @@ func (s RunState) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
 func (s *RunState) UnmarshalJSON(data []byte) error {
-	d := jx.DecodeBytes(data)
-	return s.Decode(d)
-}
-
-// Encode implements json.Marshaler.
-func (s *Schedule) Encode(e *jx.Encoder) {
-	e.ObjStart()
-	s.encodeFields(e)
-	e.ObjEnd()
-}
-
-// encodeFields encodes fields.
-func (s *Schedule) encodeFields(e *jx.Encoder) {
-	{
-		e.FieldStart("id")
-		e.Str(s.ID)
-	}
-	{
-		e.FieldStart("projectId")
-		e.Str(s.ProjectId)
-	}
-	{
-		e.FieldStart("name")
-		e.Str(s.Name)
-	}
-	{
-		e.FieldStart("harness")
-		e.Str(s.Harness)
-	}
-	{
-		if s.Model.Set {
-			e.FieldStart("model")
-			s.Model.Encode(e)
-		}
-	}
-	{
-		if s.Effort.Set {
-			e.FieldStart("effort")
-			s.Effort.Encode(e)
-		}
-	}
-	{
-		e.FieldStart("prompt")
-		e.Str(s.Prompt)
-	}
-	{
-		e.FieldStart("cadence")
-		e.Str(s.Cadence)
-	}
-	{
-		e.FieldStart("timeZone")
-		e.Str(s.TimeZone)
-	}
-	{
-		e.FieldStart("maxRunSeconds")
-		e.Int(s.MaxRunSeconds)
-	}
-	{
-		e.FieldStart("catchUpSeconds")
-		e.Int(s.CatchUpSeconds)
-	}
-	{
-		e.FieldStart("maxKept")
-		e.Int(s.MaxKept)
-	}
-	{
-		e.FieldStart("enabled")
-		e.Bool(s.Enabled)
-	}
-	{
-		if s.DisabledReason.Set {
-			e.FieldStart("disabledReason")
-			s.DisabledReason.Encode(e)
-		}
-	}
-	{
-		if s.NextFireAt.Set {
-			e.FieldStart("nextFireAt")
-			s.NextFireAt.Encode(e, json.EncodeDateTime)
-		}
-	}
-	{
-		if s.LastFireAt.Set {
-			e.FieldStart("lastFireAt")
-			s.LastFireAt.Encode(e, json.EncodeDateTime)
-		}
-	}
-	{
-		e.FieldStart("keptCapsules")
-		e.Int(s.KeptCapsules)
-	}
-	{
-		if s.Active.Set {
-			e.FieldStart("active")
-			s.Active.Encode(e)
-		}
-	}
-	{
-		if s.LastFire.Set {
-			e.FieldStart("lastFire")
-			s.LastFire.Encode(e)
-		}
-	}
-	{
-		e.FieldStart("resourceVersion")
-		e.Int64(s.ResourceVersion)
-	}
-	{
-		e.FieldStart("createdAt")
-		json.EncodeDateTime(e, s.CreatedAt)
-	}
-	{
-		e.FieldStart("updatedAt")
-		json.EncodeDateTime(e, s.UpdatedAt)
-	}
-}
-
-var jsonFieldsNameOfSchedule = [22]string{
-	0:  "id",
-	1:  "projectId",
-	2:  "name",
-	3:  "harness",
-	4:  "model",
-	5:  "effort",
-	6:  "prompt",
-	7:  "cadence",
-	8:  "timeZone",
-	9:  "maxRunSeconds",
-	10: "catchUpSeconds",
-	11: "maxKept",
-	12: "enabled",
-	13: "disabledReason",
-	14: "nextFireAt",
-	15: "lastFireAt",
-	16: "keptCapsules",
-	17: "active",
-	18: "lastFire",
-	19: "resourceVersion",
-	20: "createdAt",
-	21: "updatedAt",
-}
-
-// Decode decodes Schedule from json.
-func (s *Schedule) Decode(d *jx.Decoder) error {
-	if s == nil {
-		return errors.New("invalid: unable to decode Schedule to nil")
-	}
-	var requiredBitSet [3]uint8
-
-	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
-		switch string(k) {
-		case "id":
-			requiredBitSet[0] |= 1 << 0
-			if err := func() error {
-				v, err := d.Str()
-				s.ID = string(v)
-				if err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"id\"")
-			}
-		case "projectId":
-			requiredBitSet[0] |= 1 << 1
-			if err := func() error {
-				v, err := d.Str()
-				s.ProjectId = string(v)
-				if err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"projectId\"")
-			}
-		case "name":
-			requiredBitSet[0] |= 1 << 2
-			if err := func() error {
-				v, err := d.Str()
-				s.Name = string(v)
-				if err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"name\"")
-			}
-		case "harness":
-			requiredBitSet[0] |= 1 << 3
-			if err := func() error {
-				v, err := d.Str()
-				s.Harness = string(v)
-				if err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"harness\"")
-			}
-		case "model":
-			if err := func() error {
-				s.Model.Reset()
-				if err := s.Model.Decode(d); err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"model\"")
-			}
-		case "effort":
-			if err := func() error {
-				s.Effort.Reset()
-				if err := s.Effort.Decode(d); err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"effort\"")
-			}
-		case "prompt":
-			requiredBitSet[0] |= 1 << 6
-			if err := func() error {
-				v, err := d.Str()
-				s.Prompt = string(v)
-				if err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"prompt\"")
-			}
-		case "cadence":
-			requiredBitSet[0] |= 1 << 7
-			if err := func() error {
-				v, err := d.Str()
-				s.Cadence = string(v)
-				if err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"cadence\"")
-			}
-		case "timeZone":
-			requiredBitSet[1] |= 1 << 0
-			if err := func() error {
-				v, err := d.Str()
-				s.TimeZone = string(v)
-				if err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"timeZone\"")
-			}
-		case "maxRunSeconds":
-			requiredBitSet[1] |= 1 << 1
-			if err := func() error {
-				v, err := d.Int()
-				s.MaxRunSeconds = int(v)
-				if err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"maxRunSeconds\"")
-			}
-		case "catchUpSeconds":
-			requiredBitSet[1] |= 1 << 2
-			if err := func() error {
-				v, err := d.Int()
-				s.CatchUpSeconds = int(v)
-				if err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"catchUpSeconds\"")
-			}
-		case "maxKept":
-			requiredBitSet[1] |= 1 << 3
-			if err := func() error {
-				v, err := d.Int()
-				s.MaxKept = int(v)
-				if err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"maxKept\"")
-			}
-		case "enabled":
-			requiredBitSet[1] |= 1 << 4
-			if err := func() error {
-				v, err := d.Bool()
-				s.Enabled = bool(v)
-				if err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"enabled\"")
-			}
-		case "disabledReason":
-			if err := func() error {
-				s.DisabledReason.Reset()
-				if err := s.DisabledReason.Decode(d); err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"disabledReason\"")
-			}
-		case "nextFireAt":
-			if err := func() error {
-				s.NextFireAt.Reset()
-				if err := s.NextFireAt.Decode(d, json.DecodeDateTime); err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"nextFireAt\"")
-			}
-		case "lastFireAt":
-			if err := func() error {
-				s.LastFireAt.Reset()
-				if err := s.LastFireAt.Decode(d, json.DecodeDateTime); err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"lastFireAt\"")
-			}
-		case "keptCapsules":
-			requiredBitSet[2] |= 1 << 0
-			if err := func() error {
-				v, err := d.Int()
-				s.KeptCapsules = int(v)
-				if err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"keptCapsules\"")
-			}
-		case "active":
-			if err := func() error {
-				s.Active.Reset()
-				if err := s.Active.Decode(d); err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"active\"")
-			}
-		case "lastFire":
-			if err := func() error {
-				s.LastFire.Reset()
-				if err := s.LastFire.Decode(d); err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"lastFire\"")
-			}
-		case "resourceVersion":
-			requiredBitSet[2] |= 1 << 3
-			if err := func() error {
-				v, err := d.Int64()
-				s.ResourceVersion = int64(v)
-				if err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"resourceVersion\"")
-			}
-		case "createdAt":
-			requiredBitSet[2] |= 1 << 4
-			if err := func() error {
-				v, err := json.DecodeDateTime(d)
-				s.CreatedAt = v
-				if err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"createdAt\"")
-			}
-		case "updatedAt":
-			requiredBitSet[2] |= 1 << 5
-			if err := func() error {
-				v, err := json.DecodeDateTime(d)
-				s.UpdatedAt = v
-				if err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"updatedAt\"")
-			}
-		default:
-			return d.Skip()
-		}
-		return nil
-	}); err != nil {
-		return errors.Wrap(err, "decode Schedule")
-	}
-	// Validate required fields.
-	var failures []validate.FieldError
-	for i, mask := range [3]uint8{
-		0b11001111,
-		0b00011111,
-		0b00111001,
-	} {
-		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
-			// Mask only required fields and check equality to mask using XOR.
-			//
-			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
-			// Bits of fields which would be set are actually bits of missed fields.
-			missed := bits.OnesCount8(result)
-			for bitN := 0; bitN < missed; bitN++ {
-				bitIdx := bits.TrailingZeros8(result)
-				fieldIdx := i*8 + bitIdx
-				var name string
-				if fieldIdx < len(jsonFieldsNameOfSchedule) {
-					name = jsonFieldsNameOfSchedule[fieldIdx]
-				} else {
-					name = strconv.Itoa(fieldIdx)
-				}
-				failures = append(failures, validate.FieldError{
-					Name:  name,
-					Error: validate.ErrFieldRequired,
-				})
-				// Reset bit.
-				result &^= 1 << bitIdx
-			}
-		}
-	}
-	if len(failures) > 0 {
-		return &validate.Error{Fields: failures}
-	}
-
-	return nil
-}
-
-// MarshalJSON implements stdjson.Marshaler.
-func (s *Schedule) MarshalJSON() ([]byte, error) {
-	e := jx.Encoder{}
-	s.Encode(&e)
-	return e.Bytes(), nil
-}
-
-// UnmarshalJSON implements stdjson.Unmarshaler.
-func (s *Schedule) UnmarshalJSON(data []byte) error {
-	d := jx.DecodeBytes(data)
-	return s.Decode(d)
-}
-
-// Encode implements json.Marshaler.
-func (s *ScheduleFire) Encode(e *jx.Encoder) {
-	e.ObjStart()
-	s.encodeFields(e)
-	e.ObjEnd()
-}
-
-// encodeFields encodes fields.
-func (s *ScheduleFire) encodeFields(e *jx.Encoder) {
-	{
-		e.FieldStart("id")
-		e.Str(s.ID)
-	}
-	{
-		e.FieldStart("scheduleId")
-		e.Str(s.ScheduleId)
-	}
-	{
-		e.FieldStart("trigger")
-		s.Trigger.Encode(e)
-	}
-	{
-		e.FieldStart("scheduledFor")
-		json.EncodeDateTime(e, s.ScheduledFor)
-	}
-	{
-		e.FieldStart("state")
-		s.State.Encode(e)
-	}
-	{
-		if s.Outcome.Set {
-			e.FieldStart("outcome")
-			s.Outcome.Encode(e)
-		}
-	}
-	{
-		if s.Reason.Set {
-			e.FieldStart("reason")
-			s.Reason.Encode(e)
-		}
-	}
-	{
-		if s.CapsuleId.Set {
-			e.FieldStart("capsuleId")
-			s.CapsuleId.Encode(e)
-		}
-	}
-	{
-		if s.ThreadId.Set {
-			e.FieldStart("threadId")
-			s.ThreadId.Encode(e)
-		}
-	}
-	{
-		e.FieldStart("capsuleDeleted")
-		e.Bool(s.CapsuleDeleted)
-	}
-	{
-		if s.StartedAt.Set {
-			e.FieldStart("startedAt")
-			s.StartedAt.Encode(e, json.EncodeDateTime)
-		}
-	}
-	{
-		if s.FinishedAt.Set {
-			e.FieldStart("finishedAt")
-			s.FinishedAt.Encode(e, json.EncodeDateTime)
-		}
-	}
-	{
-		e.FieldStart("createdAt")
-		json.EncodeDateTime(e, s.CreatedAt)
-	}
-}
-
-var jsonFieldsNameOfScheduleFire = [13]string{
-	0:  "id",
-	1:  "scheduleId",
-	2:  "trigger",
-	3:  "scheduledFor",
-	4:  "state",
-	5:  "outcome",
-	6:  "reason",
-	7:  "capsuleId",
-	8:  "threadId",
-	9:  "capsuleDeleted",
-	10: "startedAt",
-	11: "finishedAt",
-	12: "createdAt",
-}
-
-// Decode decodes ScheduleFire from json.
-func (s *ScheduleFire) Decode(d *jx.Decoder) error {
-	if s == nil {
-		return errors.New("invalid: unable to decode ScheduleFire to nil")
-	}
-	var requiredBitSet [2]uint8
-
-	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
-		switch string(k) {
-		case "id":
-			requiredBitSet[0] |= 1 << 0
-			if err := func() error {
-				v, err := d.Str()
-				s.ID = string(v)
-				if err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"id\"")
-			}
-		case "scheduleId":
-			requiredBitSet[0] |= 1 << 1
-			if err := func() error {
-				v, err := d.Str()
-				s.ScheduleId = string(v)
-				if err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"scheduleId\"")
-			}
-		case "trigger":
-			requiredBitSet[0] |= 1 << 2
-			if err := func() error {
-				if err := s.Trigger.Decode(d); err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"trigger\"")
-			}
-		case "scheduledFor":
-			requiredBitSet[0] |= 1 << 3
-			if err := func() error {
-				v, err := json.DecodeDateTime(d)
-				s.ScheduledFor = v
-				if err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"scheduledFor\"")
-			}
-		case "state":
-			requiredBitSet[0] |= 1 << 4
-			if err := func() error {
-				if err := s.State.Decode(d); err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"state\"")
-			}
-		case "outcome":
-			if err := func() error {
-				s.Outcome.Reset()
-				if err := s.Outcome.Decode(d); err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"outcome\"")
-			}
-		case "reason":
-			if err := func() error {
-				s.Reason.Reset()
-				if err := s.Reason.Decode(d); err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"reason\"")
-			}
-		case "capsuleId":
-			if err := func() error {
-				s.CapsuleId.Reset()
-				if err := s.CapsuleId.Decode(d); err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"capsuleId\"")
-			}
-		case "threadId":
-			if err := func() error {
-				s.ThreadId.Reset()
-				if err := s.ThreadId.Decode(d); err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"threadId\"")
-			}
-		case "capsuleDeleted":
-			requiredBitSet[1] |= 1 << 1
-			if err := func() error {
-				v, err := d.Bool()
-				s.CapsuleDeleted = bool(v)
-				if err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"capsuleDeleted\"")
-			}
-		case "startedAt":
-			if err := func() error {
-				s.StartedAt.Reset()
-				if err := s.StartedAt.Decode(d, json.DecodeDateTime); err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"startedAt\"")
-			}
-		case "finishedAt":
-			if err := func() error {
-				s.FinishedAt.Reset()
-				if err := s.FinishedAt.Decode(d, json.DecodeDateTime); err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"finishedAt\"")
-			}
-		case "createdAt":
-			requiredBitSet[1] |= 1 << 4
-			if err := func() error {
-				v, err := json.DecodeDateTime(d)
-				s.CreatedAt = v
-				if err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"createdAt\"")
-			}
-		default:
-			return d.Skip()
-		}
-		return nil
-	}); err != nil {
-		return errors.Wrap(err, "decode ScheduleFire")
-	}
-	// Validate required fields.
-	var failures []validate.FieldError
-	for i, mask := range [2]uint8{
-		0b00011111,
-		0b00010010,
-	} {
-		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
-			// Mask only required fields and check equality to mask using XOR.
-			//
-			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
-			// Bits of fields which would be set are actually bits of missed fields.
-			missed := bits.OnesCount8(result)
-			for bitN := 0; bitN < missed; bitN++ {
-				bitIdx := bits.TrailingZeros8(result)
-				fieldIdx := i*8 + bitIdx
-				var name string
-				if fieldIdx < len(jsonFieldsNameOfScheduleFire) {
-					name = jsonFieldsNameOfScheduleFire[fieldIdx]
-				} else {
-					name = strconv.Itoa(fieldIdx)
-				}
-				failures = append(failures, validate.FieldError{
-					Name:  name,
-					Error: validate.ErrFieldRequired,
-				})
-				// Reset bit.
-				result &^= 1 << bitIdx
-			}
-		}
-	}
-	if len(failures) > 0 {
-		return &validate.Error{Fields: failures}
-	}
-
-	return nil
-}
-
-// MarshalJSON implements stdjson.Marshaler.
-func (s *ScheduleFire) MarshalJSON() ([]byte, error) {
-	e := jx.Encoder{}
-	s.Encode(&e)
-	return e.Bytes(), nil
-}
-
-// UnmarshalJSON implements stdjson.Unmarshaler.
-func (s *ScheduleFire) UnmarshalJSON(data []byte) error {
-	d := jx.DecodeBytes(data)
-	return s.Decode(d)
-}
-
-// Encode implements json.Marshaler.
-func (s *ScheduleFirePage) Encode(e *jx.Encoder) {
-	e.ObjStart()
-	s.encodeFields(e)
-	e.ObjEnd()
-}
-
-// encodeFields encodes fields.
-func (s *ScheduleFirePage) encodeFields(e *jx.Encoder) {
-	{
-		e.FieldStart("items")
-		e.ArrStart()
-		for _, elem := range s.Items {
-			elem.Encode(e)
-		}
-		e.ArrEnd()
-	}
-	{
-		if s.NextCursor.Set {
-			e.FieldStart("nextCursor")
-			s.NextCursor.Encode(e)
-		}
-	}
-}
-
-var jsonFieldsNameOfScheduleFirePage = [2]string{
-	0: "items",
-	1: "nextCursor",
-}
-
-// Decode decodes ScheduleFirePage from json.
-func (s *ScheduleFirePage) Decode(d *jx.Decoder) error {
-	if s == nil {
-		return errors.New("invalid: unable to decode ScheduleFirePage to nil")
-	}
-	var requiredBitSet [1]uint8
-
-	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
-		switch string(k) {
-		case "items":
-			requiredBitSet[0] |= 1 << 0
-			if err := func() error {
-				s.Items = make([]ScheduleFire, 0)
-				if err := d.Arr(func(d *jx.Decoder) error {
-					var elem ScheduleFire
-					if err := elem.Decode(d); err != nil {
-						return err
-					}
-					s.Items = append(s.Items, elem)
-					return nil
-				}); err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"items\"")
-			}
-		case "nextCursor":
-			if err := func() error {
-				s.NextCursor.Reset()
-				if err := s.NextCursor.Decode(d); err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"nextCursor\"")
-			}
-		default:
-			return d.Skip()
-		}
-		return nil
-	}); err != nil {
-		return errors.Wrap(err, "decode ScheduleFirePage")
-	}
-	// Validate required fields.
-	var failures []validate.FieldError
-	for i, mask := range [1]uint8{
-		0b00000001,
-	} {
-		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
-			// Mask only required fields and check equality to mask using XOR.
-			//
-			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
-			// Bits of fields which would be set are actually bits of missed fields.
-			missed := bits.OnesCount8(result)
-			for bitN := 0; bitN < missed; bitN++ {
-				bitIdx := bits.TrailingZeros8(result)
-				fieldIdx := i*8 + bitIdx
-				var name string
-				if fieldIdx < len(jsonFieldsNameOfScheduleFirePage) {
-					name = jsonFieldsNameOfScheduleFirePage[fieldIdx]
-				} else {
-					name = strconv.Itoa(fieldIdx)
-				}
-				failures = append(failures, validate.FieldError{
-					Name:  name,
-					Error: validate.ErrFieldRequired,
-				})
-				// Reset bit.
-				result &^= 1 << bitIdx
-			}
-		}
-	}
-	if len(failures) > 0 {
-		return &validate.Error{Fields: failures}
-	}
-
-	return nil
-}
-
-// MarshalJSON implements stdjson.Marshaler.
-func (s *ScheduleFirePage) MarshalJSON() ([]byte, error) {
-	e := jx.Encoder{}
-	s.Encode(&e)
-	return e.Bytes(), nil
-}
-
-// UnmarshalJSON implements stdjson.Unmarshaler.
-func (s *ScheduleFirePage) UnmarshalJSON(data []byte) error {
-	d := jx.DecodeBytes(data)
-	return s.Decode(d)
-}
-
-// Encode encodes ScheduleFireState as json.
-func (s ScheduleFireState) Encode(e *jx.Encoder) {
-	e.Str(string(s))
-}
-
-// Decode decodes ScheduleFireState from json.
-func (s *ScheduleFireState) Decode(d *jx.Decoder) error {
-	if s == nil {
-		return errors.New("invalid: unable to decode ScheduleFireState to nil")
-	}
-	v, err := d.StrBytes()
-	if err != nil {
-		return err
-	}
-	// Try to use constant string.
-	switch ScheduleFireState(v) {
-	case ScheduleFireStateSkipped:
-		*s = ScheduleFireStateSkipped
-	case ScheduleFireStateMissed:
-		*s = ScheduleFireStateMissed
-	case ScheduleFireStateStarting:
-		*s = ScheduleFireStateStarting
-	case ScheduleFireStateSelecting:
-		*s = ScheduleFireStateSelecting
-	case ScheduleFireStateRunning:
-		*s = ScheduleFireStateRunning
-	case ScheduleFireStateCleaning:
-		*s = ScheduleFireStateCleaning
-	case ScheduleFireStateFinished:
-		*s = ScheduleFireStateFinished
-	default:
-		*s = ScheduleFireState(v)
-	}
-
-	return nil
-}
-
-// MarshalJSON implements stdjson.Marshaler.
-func (s ScheduleFireState) MarshalJSON() ([]byte, error) {
-	e := jx.Encoder{}
-	s.Encode(&e)
-	return e.Bytes(), nil
-}
-
-// UnmarshalJSON implements stdjson.Unmarshaler.
-func (s *ScheduleFireState) UnmarshalJSON(data []byte) error {
-	d := jx.DecodeBytes(data)
-	return s.Decode(d)
-}
-
-// Encode encodes ScheduleFireTrigger as json.
-func (s ScheduleFireTrigger) Encode(e *jx.Encoder) {
-	e.Str(string(s))
-}
-
-// Decode decodes ScheduleFireTrigger from json.
-func (s *ScheduleFireTrigger) Decode(d *jx.Decoder) error {
-	if s == nil {
-		return errors.New("invalid: unable to decode ScheduleFireTrigger to nil")
-	}
-	v, err := d.StrBytes()
-	if err != nil {
-		return err
-	}
-	// Try to use constant string.
-	switch ScheduleFireTrigger(v) {
-	case ScheduleFireTriggerClock:
-		*s = ScheduleFireTriggerClock
-	case ScheduleFireTriggerCatchUp:
-		*s = ScheduleFireTriggerCatchUp
-	case ScheduleFireTriggerManual:
-		*s = ScheduleFireTriggerManual
-	default:
-		*s = ScheduleFireTrigger(v)
-	}
-
-	return nil
-}
-
-// MarshalJSON implements stdjson.Marshaler.
-func (s ScheduleFireTrigger) MarshalJSON() ([]byte, error) {
-	e := jx.Encoder{}
-	s.Encode(&e)
-	return e.Bytes(), nil
-}
-
-// UnmarshalJSON implements stdjson.Unmarshaler.
-func (s *ScheduleFireTrigger) UnmarshalJSON(data []byte) error {
-	d := jx.DecodeBytes(data)
-	return s.Decode(d)
-}
-
-// Encode implements json.Marshaler.
-func (s *ScheduleList) Encode(e *jx.Encoder) {
-	e.ObjStart()
-	s.encodeFields(e)
-	e.ObjEnd()
-}
-
-// encodeFields encodes fields.
-func (s *ScheduleList) encodeFields(e *jx.Encoder) {
-	{
-		e.FieldStart("items")
-		e.ArrStart()
-		for _, elem := range s.Items {
-			elem.Encode(e)
-		}
-		e.ArrEnd()
-	}
-}
-
-var jsonFieldsNameOfScheduleList = [1]string{
-	0: "items",
-}
-
-// Decode decodes ScheduleList from json.
-func (s *ScheduleList) Decode(d *jx.Decoder) error {
-	if s == nil {
-		return errors.New("invalid: unable to decode ScheduleList to nil")
-	}
-	var requiredBitSet [1]uint8
-
-	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
-		switch string(k) {
-		case "items":
-			requiredBitSet[0] |= 1 << 0
-			if err := func() error {
-				s.Items = make([]Schedule, 0)
-				if err := d.Arr(func(d *jx.Decoder) error {
-					var elem Schedule
-					if err := elem.Decode(d); err != nil {
-						return err
-					}
-					s.Items = append(s.Items, elem)
-					return nil
-				}); err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"items\"")
-			}
-		default:
-			return d.Skip()
-		}
-		return nil
-	}); err != nil {
-		return errors.Wrap(err, "decode ScheduleList")
-	}
-	// Validate required fields.
-	var failures []validate.FieldError
-	for i, mask := range [1]uint8{
-		0b00000001,
-	} {
-		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
-			// Mask only required fields and check equality to mask using XOR.
-			//
-			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
-			// Bits of fields which would be set are actually bits of missed fields.
-			missed := bits.OnesCount8(result)
-			for bitN := 0; bitN < missed; bitN++ {
-				bitIdx := bits.TrailingZeros8(result)
-				fieldIdx := i*8 + bitIdx
-				var name string
-				if fieldIdx < len(jsonFieldsNameOfScheduleList) {
-					name = jsonFieldsNameOfScheduleList[fieldIdx]
-				} else {
-					name = strconv.Itoa(fieldIdx)
-				}
-				failures = append(failures, validate.FieldError{
-					Name:  name,
-					Error: validate.ErrFieldRequired,
-				})
-				// Reset bit.
-				result &^= 1 << bitIdx
-			}
-		}
-	}
-	if len(failures) > 0 {
-		return &validate.Error{Fields: failures}
-	}
-
-	return nil
-}
-
-// MarshalJSON implements stdjson.Marshaler.
-func (s *ScheduleList) MarshalJSON() ([]byte, error) {
-	e := jx.Encoder{}
-	s.Encode(&e)
-	return e.Bytes(), nil
-}
-
-// UnmarshalJSON implements stdjson.Unmarshaler.
-func (s *ScheduleList) UnmarshalJSON(data []byte) error {
-	d := jx.DecodeBytes(data)
-	return s.Decode(d)
-}
-
-// Encode encodes ScheduleOutcome as json.
-func (s ScheduleOutcome) Encode(e *jx.Encoder) {
-	e.Str(string(s))
-}
-
-// Decode decodes ScheduleOutcome from json.
-func (s *ScheduleOutcome) Decode(d *jx.Decoder) error {
-	if s == nil {
-		return errors.New("invalid: unable to decode ScheduleOutcome to nil")
-	}
-	v, err := d.StrBytes()
-	if err != nil {
-		return err
-	}
-	// Try to use constant string.
-	switch ScheduleOutcome(v) {
-	case ScheduleOutcomeProposed:
-		*s = ScheduleOutcomeProposed
-	case ScheduleOutcomeChanged:
-		*s = ScheduleOutcomeChanged
-	case ScheduleOutcomeNoChanges:
-		*s = ScheduleOutcomeNoChanges
-	case ScheduleOutcomeWaiting:
-		*s = ScheduleOutcomeWaiting
-	case ScheduleOutcomeTimedOut:
-		*s = ScheduleOutcomeTimedOut
-	case ScheduleOutcomeFailed:
-		*s = ScheduleOutcomeFailed
-	default:
-		*s = ScheduleOutcome(v)
-	}
-
-	return nil
-}
-
-// MarshalJSON implements stdjson.Marshaler.
-func (s ScheduleOutcome) MarshalJSON() ([]byte, error) {
-	e := jx.Encoder{}
-	s.Encode(&e)
-	return e.Bytes(), nil
-}
-
-// UnmarshalJSON implements stdjson.Unmarshaler.
-func (s *ScheduleOutcome) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }
@@ -43316,8 +43316,8 @@ func (s *ThreadOriginKind) Decode(d *jx.Decoder) error {
 		*s = ThreadOriginKindFromLead
 	case ThreadOriginKindFromSubagents:
 		*s = ThreadOriginKindFromSubagents
-	case ThreadOriginKindFromSchedule:
-		*s = ThreadOriginKindFromSchedule
+	case ThreadOriginKindFromRoutine:
+		*s = ThreadOriginKindFromRoutine
 	default:
 		*s = ThreadOriginKind(v)
 	}
@@ -43356,8 +43356,8 @@ func (s *ThreadOriginSource) Decode(d *jx.Decoder) error {
 	switch ThreadOriginSource(v) {
 	case ThreadOriginSourceCoordination:
 		*s = ThreadOriginSourceCoordination
-	case ThreadOriginSourceSchedule:
-		*s = ThreadOriginSourceSchedule
+	case ThreadOriginSourceRoutine:
+		*s = ThreadOriginSourceRoutine
 	default:
 		*s = ThreadOriginSource(v)
 	}
@@ -45370,17 +45370,17 @@ func (s *UpdateProfileUnprocessableEntity) UnmarshalJSON(data []byte) error {
 	return s.Decode(d)
 }
 
-// Encode encodes UpdateScheduleBadRequest as json.
-func (s *UpdateScheduleBadRequest) Encode(e *jx.Encoder) {
+// Encode encodes UpdateRoutineBadRequest as json.
+func (s *UpdateRoutineBadRequest) Encode(e *jx.Encoder) {
 	unwrapped := (*ErrorEnvelope)(s)
 
 	unwrapped.Encode(e)
 }
 
-// Decode decodes UpdateScheduleBadRequest from json.
-func (s *UpdateScheduleBadRequest) Decode(d *jx.Decoder) error {
+// Decode decodes UpdateRoutineBadRequest from json.
+func (s *UpdateRoutineBadRequest) Decode(d *jx.Decoder) error {
 	if s == nil {
-		return errors.New("invalid: unable to decode UpdateScheduleBadRequest to nil")
+		return errors.New("invalid: unable to decode UpdateRoutineBadRequest to nil")
 	}
 	var unwrapped ErrorEnvelope
 	if err := func() error {
@@ -45391,34 +45391,34 @@ func (s *UpdateScheduleBadRequest) Decode(d *jx.Decoder) error {
 	}(); err != nil {
 		return errors.Wrap(err, "alias")
 	}
-	*s = UpdateScheduleBadRequest(unwrapped)
+	*s = UpdateRoutineBadRequest(unwrapped)
 	return nil
 }
 
 // MarshalJSON implements stdjson.Marshaler.
-func (s *UpdateScheduleBadRequest) MarshalJSON() ([]byte, error) {
+func (s *UpdateRoutineBadRequest) MarshalJSON() ([]byte, error) {
 	e := jx.Encoder{}
 	s.Encode(&e)
 	return e.Bytes(), nil
 }
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
-func (s *UpdateScheduleBadRequest) UnmarshalJSON(data []byte) error {
+func (s *UpdateRoutineBadRequest) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }
 
-// Encode encodes UpdateScheduleConflict as json.
-func (s *UpdateScheduleConflict) Encode(e *jx.Encoder) {
+// Encode encodes UpdateRoutineConflict as json.
+func (s *UpdateRoutineConflict) Encode(e *jx.Encoder) {
 	unwrapped := (*ErrorEnvelope)(s)
 
 	unwrapped.Encode(e)
 }
 
-// Decode decodes UpdateScheduleConflict from json.
-func (s *UpdateScheduleConflict) Decode(d *jx.Decoder) error {
+// Decode decodes UpdateRoutineConflict from json.
+func (s *UpdateRoutineConflict) Decode(d *jx.Decoder) error {
 	if s == nil {
-		return errors.New("invalid: unable to decode UpdateScheduleConflict to nil")
+		return errors.New("invalid: unable to decode UpdateRoutineConflict to nil")
 	}
 	var unwrapped ErrorEnvelope
 	if err := func() error {
@@ -45429,34 +45429,34 @@ func (s *UpdateScheduleConflict) Decode(d *jx.Decoder) error {
 	}(); err != nil {
 		return errors.Wrap(err, "alias")
 	}
-	*s = UpdateScheduleConflict(unwrapped)
+	*s = UpdateRoutineConflict(unwrapped)
 	return nil
 }
 
 // MarshalJSON implements stdjson.Marshaler.
-func (s *UpdateScheduleConflict) MarshalJSON() ([]byte, error) {
+func (s *UpdateRoutineConflict) MarshalJSON() ([]byte, error) {
 	e := jx.Encoder{}
 	s.Encode(&e)
 	return e.Bytes(), nil
 }
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
-func (s *UpdateScheduleConflict) UnmarshalJSON(data []byte) error {
+func (s *UpdateRoutineConflict) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }
 
-// Encode encodes UpdateScheduleNotFound as json.
-func (s *UpdateScheduleNotFound) Encode(e *jx.Encoder) {
+// Encode encodes UpdateRoutineNotFound as json.
+func (s *UpdateRoutineNotFound) Encode(e *jx.Encoder) {
 	unwrapped := (*ErrorEnvelope)(s)
 
 	unwrapped.Encode(e)
 }
 
-// Decode decodes UpdateScheduleNotFound from json.
-func (s *UpdateScheduleNotFound) Decode(d *jx.Decoder) error {
+// Decode decodes UpdateRoutineNotFound from json.
+func (s *UpdateRoutineNotFound) Decode(d *jx.Decoder) error {
 	if s == nil {
-		return errors.New("invalid: unable to decode UpdateScheduleNotFound to nil")
+		return errors.New("invalid: unable to decode UpdateRoutineNotFound to nil")
 	}
 	var unwrapped ErrorEnvelope
 	if err := func() error {
@@ -45467,32 +45467,32 @@ func (s *UpdateScheduleNotFound) Decode(d *jx.Decoder) error {
 	}(); err != nil {
 		return errors.Wrap(err, "alias")
 	}
-	*s = UpdateScheduleNotFound(unwrapped)
+	*s = UpdateRoutineNotFound(unwrapped)
 	return nil
 }
 
 // MarshalJSON implements stdjson.Marshaler.
-func (s *UpdateScheduleNotFound) MarshalJSON() ([]byte, error) {
+func (s *UpdateRoutineNotFound) MarshalJSON() ([]byte, error) {
 	e := jx.Encoder{}
 	s.Encode(&e)
 	return e.Bytes(), nil
 }
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
-func (s *UpdateScheduleNotFound) UnmarshalJSON(data []byte) error {
+func (s *UpdateRoutineNotFound) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }
 
 // Encode implements json.Marshaler.
-func (s *UpdateScheduleRequest) Encode(e *jx.Encoder) {
+func (s *UpdateRoutineRequest) Encode(e *jx.Encoder) {
 	e.ObjStart()
 	s.encodeFields(e)
 	e.ObjEnd()
 }
 
 // encodeFields encodes fields.
-func (s *UpdateScheduleRequest) encodeFields(e *jx.Encoder) {
+func (s *UpdateRoutineRequest) encodeFields(e *jx.Encoder) {
 	{
 		if s.Name.Set {
 			e.FieldStart("name")
@@ -45565,7 +45565,7 @@ func (s *UpdateScheduleRequest) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfUpdateScheduleRequest = [12]string{
+var jsonFieldsNameOfUpdateRoutineRequest = [12]string{
 	0:  "name",
 	1:  "harness",
 	2:  "model",
@@ -45580,10 +45580,10 @@ var jsonFieldsNameOfUpdateScheduleRequest = [12]string{
 	11: "expectedResourceVersion",
 }
 
-// Decode decodes UpdateScheduleRequest from json.
-func (s *UpdateScheduleRequest) Decode(d *jx.Decoder) error {
+// Decode decodes UpdateRoutineRequest from json.
+func (s *UpdateRoutineRequest) Decode(d *jx.Decoder) error {
 	if s == nil {
-		return errors.New("invalid: unable to decode UpdateScheduleRequest to nil")
+		return errors.New("invalid: unable to decode UpdateRoutineRequest to nil")
 	}
 	var requiredBitSet [2]uint8
 
@@ -45716,7 +45716,7 @@ func (s *UpdateScheduleRequest) Decode(d *jx.Decoder) error {
 		}
 		return nil
 	}); err != nil {
-		return errors.Wrap(err, "decode UpdateScheduleRequest")
+		return errors.Wrap(err, "decode UpdateRoutineRequest")
 	}
 	// Validate required fields.
 	var failures []validate.FieldError
@@ -45734,8 +45734,8 @@ func (s *UpdateScheduleRequest) Decode(d *jx.Decoder) error {
 				bitIdx := bits.TrailingZeros8(result)
 				fieldIdx := i*8 + bitIdx
 				var name string
-				if fieldIdx < len(jsonFieldsNameOfUpdateScheduleRequest) {
-					name = jsonFieldsNameOfUpdateScheduleRequest[fieldIdx]
+				if fieldIdx < len(jsonFieldsNameOfUpdateRoutineRequest) {
+					name = jsonFieldsNameOfUpdateRoutineRequest[fieldIdx]
 				} else {
 					name = strconv.Itoa(fieldIdx)
 				}
@@ -45756,14 +45756,14 @@ func (s *UpdateScheduleRequest) Decode(d *jx.Decoder) error {
 }
 
 // MarshalJSON implements stdjson.Marshaler.
-func (s *UpdateScheduleRequest) MarshalJSON() ([]byte, error) {
+func (s *UpdateRoutineRequest) MarshalJSON() ([]byte, error) {
 	e := jx.Encoder{}
 	s.Encode(&e)
 	return e.Bytes(), nil
 }
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
-func (s *UpdateScheduleRequest) UnmarshalJSON(data []byte) error {
+func (s *UpdateRoutineRequest) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }

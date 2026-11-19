@@ -46,6 +46,7 @@ import {
   PlusIcon,
   PreviewIcon,
   SearchIcon,
+  RoutineIcon,
   SettingsIcon,
   ThemeIcon,
   TerminalIcon,
@@ -875,6 +876,10 @@ export function AppShell() {
           <NavLink to="/ui/settings/account">
             <AccountIcon />
             Account
+          </NavLink>
+          <NavLink to="/ui/routines">
+            <RoutineIcon />
+            Routines
           </NavLink>
           <GatewaySettingsButton />
         </nav>

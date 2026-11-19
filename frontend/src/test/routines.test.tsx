@@ -4,20 +4,20 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { Capsule, Project, Schedule, ScheduleFire, Thread } from "../api/generated/types.gen";
-import { ProjectSchedules } from "../components/ProjectSchedules";
+import type { Capsule, Project, Routine, RoutineFire, Thread } from "../api/generated/types.gen";
+import { ProjectRoutines, Routines } from "../components/Routines";
 import {
   buildCadence,
   describeCadence,
   fireKeptCapsule,
   fireSummary,
   parseCadence,
-} from "../components/scheduleText";
+} from "../components/routineText";
 import { describeCapsule } from "../shell/capsuleActivity";
 
-const fire = (overrides: Partial<ScheduleFire>): ScheduleFire => ({
+const fire = (overrides: Partial<RoutineFire>): RoutineFire => ({
   id: "fire-1",
-  scheduleId: "schedule-1",
+  routineId: "routine-1",
   trigger: "clock",
   scheduledFor: "2026-11-23T12:00:00Z",
   state: "finished",
@@ -26,7 +26,7 @@ const fire = (overrides: Partial<ScheduleFire>): ScheduleFire => ({
   ...overrides,
 });
 
-describe("schedule cadence text", () => {
+describe("routine cadence text", () => {
   it("round-trips the shapes the form writes", () => {
     for (const expression of ["15 * * * *", "0 6 * * *", "30 9 * * 1-5", "0 6 * * 1"]) {
       expect(buildCadence(parseCadence(expression))).toBe(expression);
@@ -51,7 +51,7 @@ describe("schedule cadence text", () => {
   });
 });
 
-describe("schedule fire text", () => {
+describe("routine fire text", () => {
   it("names outcomes and reasons without prompt text", () => {
     expect(fireSummary(fire({ outcome: "no_changes", capsuleDeleted: true })).label).toBe("No changes. Capsule deleted");
     expect(fireSummary(fire({ outcome: "changed" })).label).toBe("Changes to review");
@@ -69,7 +69,7 @@ describe("schedule fire text", () => {
   });
 });
 
-describe("scheduled Capsule activity", () => {
+describe("routine Capsule activity", () => {
   const capsule: Capsule = {
     id: "capsule-sched",
     projectId: "project-1",
@@ -82,23 +82,23 @@ describe("scheduled Capsule activity", () => {
     createdAt: "2026-11-23T12:00:00Z",
     updatedAt: "2026-11-23T12:30:00Z",
     resourceVersion: 4,
-    schedule: { scheduleId: "s", scheduleName: "deps-weekly", fireId: "f", state: "finished", outcome: "changed" },
+    routine: { routineId: "s", routineName: "deps-weekly", fireId: "f", state: "finished", outcome: "changed" },
   };
 
   it("asks for the operator when a run kept changes, even after idle pause", () => {
     const activity = describeCapsule(capsule);
     expect(activity.group).toBe("attention");
-    expect(activity.label).toBe("Scheduled run changed files");
+    expect(activity.label).toBe("Routine changed files");
   });
 
   it("defers to a live session", () => {
     const working = { id: "t", state: "active", turn: "working" } as unknown as Thread;
     expect(describeCapsule({ ...capsule, state: "Ready", desiredState: "Ready" }, [], [working]).label)
-      .not.toBe("Scheduled run changed files");
+      .not.toBe("Routine changed files");
   });
 
   it("stays quiet while a run is still going", () => {
-    const running = { ...capsule, schedule: { ...capsule.schedule!, state: "running" as const, outcome: undefined } };
+    const running = { ...capsule, routine: { ...capsule.routine!, state: "running" as const, outcome: undefined } };
     expect(describeCapsule(running).group).not.toBe("attention");
   });
 });
@@ -114,8 +114,10 @@ const project: Project = {
   resourceVersion: 1,
 };
 
-const schedule: Schedule = {
-  id: "schedule-1",
+const other: Project = { ...project, id: "project-2", name: "docs-site" };
+
+const routine: Routine = {
+  id: "routine-1",
   projectId: project.id,
   name: "deps-weekly",
   harness: "claude",
@@ -141,7 +143,11 @@ function respond(body: unknown, status = 200) {
   }));
 }
 
-function renderSchedules(requests: { method: string; path: string; body?: unknown }[]) {
+function renderRoutines(
+  requests: { method: string; path: string; body?: unknown }[],
+  page: "all" | "project" = "all",
+  entry = "/ui/routines",
+) {
   vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const request = input instanceof Request ? input : new Request(String(input), init);
     const url = new URL(request.url, window.location.origin);
@@ -149,16 +155,17 @@ function renderSchedules(requests: { method: string; path: string; body?: unknow
     return request.clone().text().then((text) => {
       requests.push({ method, path: url.pathname, body: text ? JSON.parse(text) : undefined });
       if (url.pathname === "/capabilities") return respond({ structured: true, harnessImages: [] });
-      if (url.pathname === `/projects/${project.id}/schedules` && method === "GET") {
-        return respond({ items: [schedule] });
+      if (url.pathname === "/projects") return respond({ items: [project, other] });
+      if (url.pathname === "/routines" && method === "GET") {
+        return respond({ items: [routine, { ...routine, id: "routine-3", projectId: other.id, name: "docs-links", cadence: "0 3 * * *", keptCapsules: 0, lastFire: undefined }] });
       }
       if (url.pathname.endsWith("/reported-models")) {
         return respond({ models: [{ id: "opus", label: "Opus" }], efforts: [] });
       }
-      if (url.pathname === `/projects/${project.id}/schedules` && method === "POST") {
-        return respond({ ...schedule, id: "schedule-2", name: "nightly" }, 201);
+      if (url.pathname === `/projects/${project.id}/routines` && method === "POST") {
+        return respond({ ...routine, id: "routine-2", name: "nightly" }, 201);
       }
-      if (url.pathname === `/schedules/${schedule.id}/run`) {
+      if (url.pathname === `/routines/${routine.id}/run`) {
         return respond(fire({ id: "fire-2", state: "starting", trigger: "manual" }), 202);
       }
       return respond({ error: { code: "not_found", message: "missing" } }, 404);
@@ -167,21 +174,21 @@ function renderSchedules(requests: { method: string; path: string; body?: unknow
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
-      <MemoryRouter>
-        <ProjectSchedules project={project} />
+      <MemoryRouter initialEntries={[entry]}>
+        {page === "all" ? <Routines /> : <ProjectRoutines project={project} />}
       </MemoryRouter>
     </QueryClientProvider>,
   );
 }
 
-describe("ProjectSchedules", () => {
+describe("Routines page", () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
   });
 
-  it("lists a schedule with its last run and kept Capsule", async () => {
-    renderSchedules([]);
+  it("lists a routine with its last run and kept Capsule", async () => {
+    renderRoutines([]);
     expect(await screen.findByText("deps-weekly")).toBeInTheDocument();
     expect(screen.getByText("Mondays at 06:00 · America/Chicago")).toBeInTheDocument();
     expect(screen.getByText("Changes to review")).toBeInTheDocument();
@@ -189,29 +196,50 @@ describe("ProjectSchedules", () => {
     expect(screen.getByText("1 of 5 kept")).toBeInTheDocument();
   });
 
-  it("creates a schedule with a model from the reported list", async () => {
+  it("creates a routine with a model from the reported list", async () => {
     const requests: { method: string; path: string; body?: unknown }[] = [];
-    renderSchedules(requests);
+    renderRoutines(requests);
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "New schedule" }));
+    await user.click(await screen.findByRole("button", { name: "New routine" }));
     await user.type(screen.getByPlaceholderText("deps-weekly"), "nightly");
     await waitFor(() => expect(screen.getByRole("option", { name: "Opus" })).toBeInTheDocument());
     await user.selectOptions(screen.getByLabelText("Model"), "opus");
     await user.type(screen.getByLabelText("Prompt"), "Triage flaky tests");
     await user.selectOptions(screen.getByLabelText("Repeat"), "daily");
-    await user.click(screen.getByRole("button", { name: "Create schedule" }));
-    await waitFor(() => expect(requests.some((item) => item.method === "POST" && item.path.endsWith("/schedules"))).toBe(true));
-    const created = requests.find((item) => item.method === "POST" && item.path.endsWith("/schedules"));
+    await user.click(screen.getByRole("button", { name: "Create routine" }));
+    await waitFor(() => expect(requests.some((item) => item.method === "POST" && item.path.endsWith("/routines"))).toBe(true));
+    const created = requests.find((item) => item.method === "POST" && item.path.endsWith("/routines"));
     expect(created?.body).toMatchObject({
       name: "nightly", harness: "claude", model: "opus", prompt: "Triage flaky tests", cadence: "0 6 * * *",
     });
   });
 
-  it("fires a schedule now", async () => {
+  it("groups routines by Project", async () => {
+    renderRoutines([]);
+    expect(await screen.findByRole("heading", { name: "meridian" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "docs-site" })).toBeInTheDocument();
+    expect(screen.getByText("docs-links")).toBeInTheDocument();
+  });
+
+  it("filters to one Project from a Project link", async () => {
+    renderRoutines([], "all", `/ui/routines?project=${other.id}`);
+    expect(await screen.findByText("docs-links")).toBeInTheDocument();
+    expect(screen.queryByText("deps-weekly")).not.toBeInTheDocument();
+    expect(screen.getByText(/Showing routines for/)).toBeInTheDocument();
+  });
+
+  it("points a Project page at its routines", async () => {
+    renderRoutines([], "project");
+    expect(await screen.findByText("1 routine on this Project.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Manage routines" }))
+      .toHaveAttribute("href", `/ui/routines?project=${project.id}`);
+  });
+
+  it("fires a routine now", async () => {
     const requests: { method: string; path: string }[] = [];
-    renderSchedules(requests);
+    renderRoutines(requests);
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Run now" }));
-    await waitFor(() => expect(requests.some((item) => item.path === `/schedules/${schedule.id}/run`)).toBe(true));
+    await user.click((await screen.findAllByRole("button", { name: "Run now" }))[0]);
+    await waitFor(() => expect(requests.some((item) => item.path === `/routines/${routine.id}/run`)).toBe(true));
   });
 });

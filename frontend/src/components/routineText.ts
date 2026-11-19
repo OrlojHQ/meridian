@@ -1,6 +1,6 @@
-import type { Schedule, ScheduleFire } from "../api/generated/types.gen";
+import type { Routine, RoutineFire } from "../api/generated/types.gen";
 
-// Plain-language text for schedules (ADR 0057). Everything here is derived
+// Plain-language text for routines (ADR 0057). Everything here is derived
 // from content-free fields: cadence, codes, and times. No prompt text.
 
 export type CadenceMode = "hourly" | "daily" | "weekdays" | "weekly" | "custom";
@@ -62,7 +62,7 @@ export function parseCadence(expression: string): CadenceParts {
   return { ...custom, mode: "weekly", minute, hour, weekday: weekday % 7 };
 }
 
-/** describeCadence is the one-line "when" for a schedule card. */
+/** describeCadence is the one-line "when" for a routine card. */
 export function describeCadence(expression: string): string {
   const parts = parseCadence(expression);
   const at = clockTime(parts.hour, parts.minute);
@@ -92,9 +92,9 @@ const disabledReasons: Record<string, string> = {
   transferred: "Turned off when it moved to you. Read the prompt, then turn it on.",
 };
 
-export function disabledText(schedule: Schedule): string {
-  if (schedule.enabled) return "";
-  return disabledReasons[schedule.disabledReason ?? ""] ?? "Off";
+export function disabledText(routine: Routine): string {
+  if (routine.enabled) return "";
+  return disabledReasons[routine.disabledReason ?? ""] ?? "Off";
 }
 
 const skipReasons: Record<string, string> = {
@@ -121,7 +121,7 @@ const failureReasons: Record<string, string> = {
 export type FireTone = "ready" | "paused" | "failed" | "ended" | "running";
 
 /** fireSummary is a label and a badge tone for one fire. */
-export function fireSummary(fire: ScheduleFire): { label: string; tone: FireTone } {
+export function fireSummary(fire: RoutineFire): { label: string; tone: FireTone } {
   switch (fire.state) {
     case "skipped":
       return { label: skipReasons[fire.reason ?? ""] ?? "Skipped", tone: "ended" };
@@ -157,7 +157,7 @@ export function fireSummary(fire: ScheduleFire): { label: string; tone: FireTone
 }
 
 /** fireKeptCapsule reports whether the fire left a Capsule to open. */
-export function fireKeptCapsule(fire: ScheduleFire): boolean {
+export function fireKeptCapsule(fire: RoutineFire): boolean {
   return Boolean(fire.capsuleId) && !fire.capsuleDeleted && fire.state !== "cleaning";
 }
 
