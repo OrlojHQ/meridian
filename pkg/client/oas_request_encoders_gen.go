@@ -248,6 +248,20 @@ func encodeCreateProjectRequest(
 	return nil
 }
 
+func encodeCreateProjectRoutineRequest(
+	req *CreateRoutineRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodeCreateProjectThreadRequest(
 	req *CreateProjectThreadRequest,
 	r *http.Request,
@@ -319,6 +333,20 @@ func encodeDeleteCapsuleRequest(
 }
 
 func encodeDeleteProjectRequest(
+	req *LifecycleMutationRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeDeleteRoutineRequest(
 	req *LifecycleMutationRequest,
 	r *http.Request,
 ) error {
@@ -922,6 +950,20 @@ func encodeUpdateProjectEnvironmentRequest(
 
 func encodeUpdateProviderConnectionRequest(
 	req *ProviderConnectionRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeUpdateRoutineRequest(
+	req *UpdateRoutineRequest,
 	r *http.Request,
 ) error {
 	const contentType = "application/json"

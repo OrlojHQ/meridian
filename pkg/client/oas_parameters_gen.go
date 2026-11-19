@@ -115,6 +115,12 @@ type CreateProjectParams struct {
 	IdempotencyKey string
 }
 
+// CreateProjectRoutineParams is parameters of createProjectRoutine operation.
+type CreateProjectRoutineParams struct {
+	ProjectId      string
+	IdempotencyKey string
+}
+
 // CreateProjectThreadParams is parameters of createProjectThread operation.
 type CreateProjectThreadParams struct {
 	ProjectId      string
@@ -166,6 +172,12 @@ type DeleteProjectParams struct {
 // DeleteProviderConnectionParams is parameters of deleteProviderConnection operation.
 type DeleteProviderConnectionParams struct {
 	ConnectionId string
+}
+
+// DeleteRoutineParams is parameters of deleteRoutine operation.
+type DeleteRoutineParams struct {
+	RoutineId      string
+	IdempotencyKey string
 }
 
 // DeleteSecretParams is parameters of deleteSecret operation.
@@ -307,6 +319,17 @@ type GetProjectThreadIntentParams struct {
 	IntentId string
 }
 
+// GetReportedModelsParams is parameters of getReportedModels operation.
+type GetReportedModelsParams struct {
+	ProjectId string
+	Harness   string
+}
+
+// GetRoutineParams is parameters of getRoutine operation.
+type GetRoutineParams struct {
+	RoutineId string
+}
+
 // GetRunParams is parameters of getRun operation.
 type GetRunParams struct {
 	RunId string
@@ -413,10 +436,22 @@ type ListMomentsParams struct {
 	Limit     OptInt    `json:",omitempty,omitzero"`
 }
 
+// ListProjectRoutinesParams is parameters of listProjectRoutines operation.
+type ListProjectRoutinesParams struct {
+	ProjectId string
+}
+
 // ListProjectsParams is parameters of listProjects operation.
 type ListProjectsParams struct {
 	Cursor OptString `json:",omitempty,omitzero"`
 	Limit  OptInt    `json:",omitempty,omitzero"`
+}
+
+// ListRoutineFiresParams is parameters of listRoutineFires operation.
+type ListRoutineFiresParams struct {
+	RoutineId string
+	Cursor    OptString `json:",omitempty,omitzero"`
+	Limit     OptInt    `json:",omitempty,omitzero"`
 }
 
 // ListRunEventsParams is parameters of listRunEvents operation.
@@ -572,6 +607,12 @@ type RewindCapsuleParams struct {
 	IdempotencyKey string
 }
 
+// RunRoutineParams is parameters of runRoutine operation.
+type RunRoutineParams struct {
+	RoutineId      string
+	IdempotencyKey string
+}
+
 // SealCapsuleParams is parameters of sealCapsule operation.
 type SealCapsuleParams struct {
 	CapsuleId      string
@@ -696,6 +737,12 @@ type UpdateProjectEnvironmentParams struct {
 // UpdateProviderConnectionParams is parameters of updateProviderConnection operation.
 type UpdateProviderConnectionParams struct {
 	ConnectionId string
+}
+
+// UpdateRoutineParams is parameters of updateRoutine operation.
+type UpdateRoutineParams struct {
+	RoutineId      string
+	IdempotencyKey string
 }
 
 // UseHostGitHubLoginParams is parameters of useHostGitHubLogin operation.

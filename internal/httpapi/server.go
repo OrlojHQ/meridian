@@ -294,6 +294,15 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /projects/{projectId}/checks", s.projectChecks)
 	s.mux.HandleFunc("PUT /projects/{projectId}/checks", s.projectChecks)
 	s.mux.HandleFunc("GET /projects/{projectId}/checks/suggestion", s.suggestProjectChecks)
+	s.mux.HandleFunc("GET /projects/{projectId}/routines", s.projectRoutines)
+	s.mux.HandleFunc("POST /projects/{projectId}/routines", s.projectRoutines)
+	s.mux.HandleFunc("GET /projects/{projectId}/harnesses/{harness}/reported-models", s.reportedModels)
+	s.mux.HandleFunc("GET /routines", s.ownedRoutines)
+	s.mux.HandleFunc("GET /routines/{routineId}", s.routine)
+	s.mux.HandleFunc("PATCH /routines/{routineId}", s.routine)
+	s.mux.HandleFunc("POST /routines/{routineId}/delete", s.deleteRoutine)
+	s.mux.HandleFunc("POST /routines/{routineId}/run", s.runRoutine)
+	s.mux.HandleFunc("GET /routines/{routineId}/fires", s.routineFires)
 	s.mux.HandleFunc("GET /capsules/{capsuleId}/check-runs", s.capsuleCheckRuns)
 	s.mux.HandleFunc("GET /capsules/{capsuleId}/remote-ci", s.capsuleRemoteCI)
 	s.mux.HandleFunc("POST /capsules/{capsuleId}/check-runs", s.capsuleCheckRuns)
@@ -2103,12 +2112,20 @@ func (s *Server) capsulesJSON(ctx context.Context, capsules []domain.Capsule) ([
 	if err != nil {
 		return nil, err
 	}
+	routines, err := s.service.CapsuleRoutines(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
 	items := make([]capsuleJSON, len(capsules))
 	for i, capsule := range capsules {
 		items[i] = capsuleResponse(capsule, pins[capsule.ID])
 		if summary, ok := summaries[capsule.ID]; ok {
 			copied := summary
 			items[i].Checks = &copied
+		}
+		if note, ok := routines[capsule.ID]; ok {
+			copied := note
+			items[i].Routine = &copied
 		}
 	}
 	return items, nil
@@ -2509,6 +2526,7 @@ type capsuleJSON struct {
 	PromotedAt          string                      `json:"promotedAt,omitempty"`
 	PinnedHarnessSetups []pinnedHarnessSetupJSON    `json:"pinnedHarnessSetups,omitempty"`
 	Checks              *app.ChecksSummaryView      `json:"checks,omitempty"`
+	Routine             *app.CapsuleRoutineView     `json:"routine,omitempty"`
 	CreatedAt           string                      `json:"createdAt"`
 	UpdatedAt           string                      `json:"updatedAt"`
 	ResourceVersion     int64                       `json:"resourceVersion"`

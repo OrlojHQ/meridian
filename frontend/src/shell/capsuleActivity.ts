@@ -62,6 +62,27 @@ export function latestRun(runs: Run[] = []) {
   return latest;
 }
 
+const routineLabels: Record<string, string> = {
+  changed: "Routine changed files",
+  proposed: "Routine proposed a delivery",
+  timed_out: "Routine hit its time limit",
+  failed: "Routine failed",
+};
+
+// A finished scheduled run that kept its Capsule waits for the operator
+// until the Capsule is deleted (ADR 0057). That is also what frees a slot
+// in the routine's backlog. A run that is working or asking defers to the
+// ordinary labels below.
+function describeRoutineRun(capsule: Capsule, threads: Thread[]): string | undefined {
+  const note = capsule.routine;
+  if (!note || note.state !== "finished" || !note.outcome) return undefined;
+  const label = routineLabels[note.outcome];
+  if (!label) return undefined;
+  if (capsule.state === "Paused" && capsule.desiredState === "Ready") return undefined;
+  const live = threads.some((thread) => thread.state === "active" && (thread.awaiting || thread.turn === "working"));
+  return live ? undefined : label;
+}
+
 export function describeCapsule(
   capsule: Capsule,
   runs: Run[] = [],
@@ -102,6 +123,10 @@ export function describeCapsule(
       agent,
       since: capsule.updatedAt,
     };
+  }
+  const scheduled = describeRoutineRun(capsule, threads);
+  if (scheduled) {
+    return { group: "attention", label: scheduled, agent, since: capsule.updatedAt };
   }
   if (capsule.state === "Paused") {
     return {

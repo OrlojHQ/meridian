@@ -625,6 +625,10 @@ func run(ctx context.Context, config Config) error {
 	service.ConfigureRemoteCI(githubci.New(nil))
 	service.StartChecks(systemCtx)
 	service.StartRemoteCI(systemCtx)
+	// Routines respect the same live-Capsule cap as coordinated
+	// spawns (ADR 0057).
+	service.ConfigureRoutines(config.MaxLiveCapsules)
+	service.StartRoutines(systemCtx)
 	recoveryStarted = time.Now()
 	if err := reconciler.Recover(systemCtx); err != nil {
 		metrics.StartupRecovery("capsules", "error", time.Since(recoveryStarted))

@@ -483,6 +483,150 @@ export type ChecksSummary = {
     remoteCI?: RemoteCiSummary;
 };
 
+export type RoutineFireTrigger = 'clock' | 'catch_up' | 'manual';
+
+export type RoutineFireState = 'skipped' | 'missed' | 'starting' | 'selecting' | 'running' | 'cleaning' | 'finished';
+
+/**
+ * Content-free result. no_changes deletes the Capsule; the others keep it and ask for the operator.
+ *
+ */
+export type RoutineOutcome = 'proposed' | 'changed' | 'no_changes' | 'waiting' | 'timed_out' | 'failed';
+
+/**
+ * One tick of a routine's clock. It carries codes, never prompt text.
+ */
+export type RoutineFire = {
+    id: string;
+    routineId: string;
+    trigger: RoutineFireTrigger;
+    scheduledFor: string;
+    state: RoutineFireState;
+    outcome?: RoutineOutcome;
+    /**
+     * Skip or failure code, such as overlap, backlog, capacity, or model_unavailable.
+     */
+    reason?: string;
+    capsuleId?: string;
+    threadId?: string;
+    capsuleDeleted: boolean;
+    startedAt?: string;
+    finishedAt?: string;
+    createdAt: string;
+};
+
+export type RoutineFirePage = {
+    items: Array<RoutineFire>;
+    nextCursor?: string;
+};
+
+export type Routine = {
+    id: string;
+    projectId: string;
+    name: string;
+    harness: string;
+    /**
+     * Model option ID the harness reports. Absent means the harness default.
+     */
+    model?: string;
+    /**
+     * Reasoning effort option ID. Absent means the harness default.
+     */
+    effort?: string;
+    prompt: string;
+    /**
+     * Five-field cron expression (minute hour day month weekday) or a macro such as @daily.
+     */
+    cadence: string;
+    /**
+     * IANA time zone name.
+     */
+    timeZone: string;
+    maxRunSeconds: number;
+    catchUpSeconds: number;
+    maxKept: number;
+    enabled: boolean;
+    /**
+     * Why Meridian turned the routine off, such as start_failures or transferred.
+     */
+    disabledReason?: string;
+    nextFireAt?: string;
+    lastFireAt?: string;
+    /**
+     * Capsules this routine kept that nobody has deleted yet.
+     */
+    keptCapsules: number;
+    active?: RoutineFire;
+    lastFire?: RoutineFire;
+    resourceVersion: number;
+    createdAt: string;
+    updatedAt: string;
+};
+
+export type RoutineList = {
+    items: Array<Routine>;
+};
+
+export type CreateRoutineRequest = {
+    name: string;
+    harness: string;
+    model?: string;
+    effort?: string;
+    prompt: string;
+    cadence: string;
+    timeZone: string;
+    maxRunSeconds?: number;
+    catchUpSeconds?: number;
+    maxKept?: number;
+    enabled?: boolean;
+};
+
+export type UpdateRoutineRequest = {
+    name?: string;
+    harness?: string;
+    /**
+     * Empty uses the harness default.
+     */
+    model?: string;
+    /**
+     * Empty uses the harness default.
+     */
+    effort?: string;
+    prompt?: string;
+    cadence?: string;
+    timeZone?: string;
+    maxRunSeconds?: number;
+    catchUpSeconds?: number;
+    maxKept?: number;
+    enabled?: boolean;
+    expectedResourceVersion: number;
+};
+
+export type ReportedModelOption = {
+    id: string;
+    label: string;
+    description?: string;
+};
+
+export type ReportedModels = {
+    models: Array<ReportedModelOption>;
+    current?: string;
+    efforts: Array<ReportedModelOption>;
+    currentEffort?: string;
+    threadId?: string;
+};
+
+/**
+ * Content-free note on a Capsule a routine started.
+ */
+export type CapsuleRoutine = {
+    routineId: string;
+    routineName: string;
+    fireId: string;
+    state: RoutineFireState;
+    outcome?: RoutineOutcome;
+};
+
 /**
  * Content-free GitHub CI line for the pushed commit. It has no log tail.
  */
@@ -581,6 +725,10 @@ export type Capsule = {
      *
      */
     checks?: ChecksSummary;
+    /**
+     * Present on a Capsule a routine started (ADR 0057).
+     */
+    routine?: CapsuleRoutine;
     createdAt: string;
     updatedAt: string;
     resourceVersion: number;
@@ -1255,12 +1403,12 @@ export type CoordinationCapability = {
 };
 
 /**
- * Marks a user-role message Meridian wrote for coordination rather than the operator: from_lead on a subagent, from_subagents on a lead.
+ * Marks a user-role message Meridian wrote rather than the operator typing it now: from_lead on a subagent, from_subagents on a lead, and from_routine for the prompt a routine saved (ADR 0057).
  *
  */
 export type ThreadOrigin = {
-    source: 'coordination';
-    kind: 'from_lead' | 'from_subagents';
+    source: 'coordination' | 'routine';
+    kind: 'from_lead' | 'from_subagents' | 'from_routine';
     linkIds?: Array<string>;
 };
 
@@ -2198,6 +2346,8 @@ export type ThreadId = string;
 export type ProjectThreadIntentId = string;
 
 export type LinkId = string;
+
+export type RoutineId = string;
 
 export type GrantId = string;
 
@@ -5314,6 +5464,331 @@ export type SuggestProjectChecksResponses = {
 };
 
 export type SuggestProjectChecksResponse = SuggestProjectChecksResponses[keyof SuggestProjectChecksResponses];
+
+export type ListProjectRoutinesData = {
+    body?: never;
+    path: {
+        projectId: string;
+    };
+    query?: never;
+    url: '/projects/{projectId}/routines';
+};
+
+export type ListProjectRoutinesErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ListProjectRoutinesError = ListProjectRoutinesErrors[keyof ListProjectRoutinesErrors];
+
+export type ListProjectRoutinesResponses = {
+    /**
+     * Routines, by name
+     */
+    200: RoutineList;
+};
+
+export type ListProjectRoutinesResponse = ListProjectRoutinesResponses[keyof ListProjectRoutinesResponses];
+
+export type CreateProjectRoutineData = {
+    body: CreateRoutineRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        projectId: string;
+    };
+    query?: never;
+    url: '/projects/{projectId}/routines';
+};
+
+export type CreateProjectRoutineErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type CreateProjectRoutineError = CreateProjectRoutineErrors[keyof CreateProjectRoutineErrors];
+
+export type CreateProjectRoutineResponses = {
+    /**
+     * Saved routine
+     */
+    201: Routine;
+};
+
+export type CreateProjectRoutineResponse = CreateProjectRoutineResponses[keyof CreateProjectRoutineResponses];
+
+export type GetReportedModelsData = {
+    body?: never;
+    path: {
+        projectId: string;
+        harness: string;
+    };
+    query?: never;
+    url: '/projects/{projectId}/harnesses/{harness}/reported-models';
+};
+
+export type GetReportedModelsErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type GetReportedModelsError = GetReportedModelsErrors[keyof GetReportedModelsErrors];
+
+export type GetReportedModelsResponses = {
+    /**
+     * Reported models, which may be empty
+     */
+    200: ReportedModels;
+};
+
+export type GetReportedModelsResponse = GetReportedModelsResponses[keyof GetReportedModelsResponses];
+
+export type ListRoutinesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/routines';
+};
+
+export type ListRoutinesErrors = {
+    /**
+     * Missing or invalid installation authentication
+     */
+    401: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ListRoutinesError = ListRoutinesErrors[keyof ListRoutinesErrors];
+
+export type ListRoutinesResponses = {
+    /**
+     * Routines, by Project then name
+     */
+    200: RoutineList;
+};
+
+export type ListRoutinesResponse = ListRoutinesResponses[keyof ListRoutinesResponses];
+
+export type GetRoutineData = {
+    body?: never;
+    path: {
+        routineId: string;
+    };
+    query?: never;
+    url: '/routines/{routineId}';
+};
+
+export type GetRoutineErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type GetRoutineError = GetRoutineErrors[keyof GetRoutineErrors];
+
+export type GetRoutineResponses = {
+    /**
+     * Routine
+     */
+    200: Routine;
+};
+
+export type GetRoutineResponse = GetRoutineResponses[keyof GetRoutineResponses];
+
+export type UpdateRoutineData = {
+    body: UpdateRoutineRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        routineId: string;
+    };
+    query?: never;
+    url: '/routines/{routineId}';
+};
+
+export type UpdateRoutineErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type UpdateRoutineError = UpdateRoutineErrors[keyof UpdateRoutineErrors];
+
+export type UpdateRoutineResponses = {
+    /**
+     * Updated routine
+     */
+    200: Routine;
+};
+
+export type UpdateRoutineResponse = UpdateRoutineResponses[keyof UpdateRoutineResponses];
+
+export type DeleteRoutineData = {
+    body: LifecycleMutation;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        routineId: string;
+    };
+    query?: never;
+    url: '/routines/{routineId}/delete';
+};
+
+export type DeleteRoutineErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type DeleteRoutineError = DeleteRoutineErrors[keyof DeleteRoutineErrors];
+
+export type DeleteRoutineResponses = {
+    /**
+     * Deleted
+     */
+    204: void;
+};
+
+export type DeleteRoutineResponse = DeleteRoutineResponses[keyof DeleteRoutineResponses];
+
+export type RunRoutineData = {
+    body?: never;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        routineId: string;
+    };
+    query?: never;
+    url: '/routines/{routineId}/run';
+};
+
+export type RunRoutineErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type RunRoutineError = RunRoutineErrors[keyof RunRoutineErrors];
+
+export type RunRoutineResponses = {
+    /**
+     * Fire recorded
+     */
+    202: RoutineFire;
+};
+
+export type RunRoutineResponse = RunRoutineResponses[keyof RunRoutineResponses];
+
+export type ListRoutineFiresData = {
+    body?: never;
+    path: {
+        routineId: string;
+    };
+    query?: {
+        cursor?: string;
+        limit?: number;
+    };
+    url: '/routines/{routineId}/fires';
+};
+
+export type ListRoutineFiresErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ListRoutineFiresError = ListRoutineFiresErrors[keyof ListRoutineFiresErrors];
+
+export type ListRoutineFiresResponses = {
+    /**
+     * Fires, newest first
+     */
+    200: RoutineFirePage;
+};
+
+export type ListRoutineFiresResponse = ListRoutineFiresResponses[keyof ListRoutineFiresResponses];
 
 export type GetCapsuleRemoteCiData = {
     body?: never;

@@ -135,6 +135,8 @@ type Service struct {
 	remoteCI        githubci.Reader
 	ciImmediate     bool
 	ciWake          chan struct{}
+	routineWake     chan struct{}
+	routineMaxLive  int
 	claudeMu        sync.Mutex
 	claudeRefresh   sync.Mutex
 	claudePending   map[string]*claudeCeremony
@@ -247,6 +249,7 @@ func NewService(
 		checkOwners: make(map[domain.CheckRunID]domain.CapsuleID),
 		checkWake:   make(chan struct{}, 1),
 		ciWake:      make(chan struct{}, 1),
+		routineWake: make(chan struct{}, 1),
 	}
 	if len(runtime) > 0 {
 		service.runtime = runtime[0]

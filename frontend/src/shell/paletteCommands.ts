@@ -240,6 +240,7 @@ export function buildPaletteCommands({
   go("threads", "Threads", "/ui/threads", "sessions structured");
   go("harnesses", "Harness settings", "/ui/settings/harnesses", "providers setups");
   go("account", "Account", "/ui/settings/account", "sign in sign out sessions team mode claim");
+  go("routines", "Routines", "/ui/routines", "schedule cron automation recurring nightly weekly");
 
   commands.push({
     id: "help:shortcuts",

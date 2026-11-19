@@ -1,6 +1,6 @@
 # ADR 0055: Named Stations
 
-- Status: Accepted
+- Status: Accepted; implemented in v0.12.0
 - Date: 2026-11-18
 - Amends: ADR 0048 (desktop gateway indicator and recent gateways)
 

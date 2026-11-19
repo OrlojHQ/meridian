@@ -64,6 +64,8 @@ var principalExempt = map[string]string{
 	"ConfigureRemoteCI":              "startup wiring",
 	"SetRemoteCIImmediatePoll":       "startup wiring",
 	"StartRemoteCI":                  "daemon loop",
+	"ConfigureRoutines":              "startup wiring",
+	"StartRoutines":                  "daemon loop",
 	"SetClaudeTokenURL":              "startup wiring",
 	"ConfigureGitGateway":            "startup wiring",
 	"ConfigureDeliveryPushInCapsule": "startup wiring",

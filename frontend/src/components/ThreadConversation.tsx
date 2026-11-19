@@ -198,6 +198,16 @@ function answerText(request: ChatRequest) {
   return choice && choice !== "answered" ? `Chose ${permissionOptionLabel(choice)}` : "Answered";
 }
 
+const originLabels = {
+  from_lead: "From the lead",
+  from_subagents: "From subagents",
+  from_routine: "Routine prompt",
+} as const;
+
+function originLabel(origin: keyof typeof originLabels) {
+  return originLabels[origin];
+}
+
 export function RequestCard({
   thread,
   request,
@@ -317,7 +327,7 @@ function ChatEntry({
         <li className={`chat-user${item.origin ? " chat-coordination" : ""}`}>
           {item.origin && (
             <span className="chat-origin">
-              {item.origin === "from_lead" ? "From the lead" : "From subagents"}
+              {originLabel(item.origin)}
             </span>
           )}
           <div className="chat-bubble">

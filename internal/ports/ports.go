@@ -140,6 +140,18 @@ type Reader interface {
 	ListRemoteCIChecks(context.Context, domain.RemoteCIWatchID) ([]domain.RemoteCICheck, error)
 	ListDueRemoteCI(context.Context, time.Time, int) ([]domain.RemoteCIWatch, error)
 	CountRemoteCIFailures(context.Context, domain.CapsuleID, int64) (int, error)
+	// Routines (ADR 0057).
+	GetRoutine(context.Context, domain.RoutineID) (domain.Routine, error)
+	ListRoutines(context.Context, domain.ProjectID) ([]domain.Routine, error)
+	ListOwnedRoutines(context.Context, domain.UserID) ([]domain.Routine, error)
+	ListDueRoutines(context.Context, time.Time, int) ([]domain.Routine, error)
+	GetRoutineFire(context.Context, domain.RoutineFireID) (domain.RoutineFire, error)
+	GetRoutineFireAt(context.Context, domain.RoutineID, time.Time) (domain.RoutineFire, error)
+	ListRoutineFires(context.Context, domain.RoutineID, Page) ([]domain.RoutineFire, bool, error)
+	ListActiveRoutineFires(context.Context, int) ([]domain.RoutineFire, error)
+	ActiveRoutineFire(context.Context, domain.RoutineID) (domain.RoutineFire, error)
+	CountKeptRoutineCapsules(context.Context, domain.RoutineID) (int, error)
+	RoutineFiresByCapsule(context.Context, []domain.CapsuleID) (map[domain.CapsuleID]domain.RoutineFire, error)
 }
 
 type Transaction interface {
@@ -265,6 +277,11 @@ type Transaction interface {
 	UpdateRemoteCI(context.Context, domain.RemoteCIWatch, domain.ResourceVersion) error
 	ReplaceRemoteCIChecks(context.Context, domain.RemoteCIWatchID, []domain.RemoteCICheck) error
 	SupersedeRemoteCI(context.Context, domain.CapsuleID, string) error
+	InsertRoutine(context.Context, domain.Routine) error
+	UpdateRoutine(context.Context, domain.Routine, domain.ResourceVersion) error
+	DeleteRoutine(context.Context, domain.RoutineID) error
+	InsertRoutineFire(context.Context, domain.RoutineFire) error
+	UpdateRoutineFire(context.Context, domain.RoutineFire, domain.ResourceVersion) error
 }
 
 type Store interface {

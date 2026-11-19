@@ -1,5 +1,6 @@
 import { HarnessSetups } from "./components/HarnessSetups";
 import { Account } from "./components/Account";
+import { Routines } from "./components/Routines";
 import { AuthenticationState } from "./components/Authentication";
 import {
   useMutation,
@@ -1436,6 +1437,7 @@ export function App() {
         <Route index element={<Home />} />
         <Route path="settings/harnesses" element={<HarnessSetups />} />
         <Route path="settings/account" element={<Account />} />
+        <Route path="routines" element={<Routines />} />
         <Route path="capsules/:capsuleId" element={<CapsuleDetail />} />
         <Route path="capsules/:capsuleId/diff" element={<DiffPage />} />
         <Route path="projects/:projectId" element={<ProjectSettings />} />

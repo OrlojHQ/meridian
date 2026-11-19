@@ -9,6 +9,31 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Routines start a fresh Capsule and Thread with a fixed prompt on a cron
+  clock (ADR 0057). Pick the harness, model, effort, prompt, and time zone on
+  the new Routines page or with `meridian routine`. A run with no changes deletes
+  its Capsule and keeps the transcript. A run with changes, a question, a
+  failure, or a timeout is kept and shows under Needs you. Runs never
+  overlap, stop at a time limit, catch up once after downtime, and skip while
+  too many results wait for you. A routine never ships: Delivery still
+  needs your approval. `--max-live-capsules` now also skips routine runs.
+
+### Changed
+
+- The Shell panel terminal is compact: 13px monospace, tighter line height,
+  and shorter Shell and Connected rows. Harness output is a small button.
+  An 8px inset stays outside the fitted columns and rows, in dark and light.
+
+### Fixed
+
+- The session tab row stays fully visible between the thread header and
+  Thread details. A short window no longer tucks that row under the details
+  bar. The transcript is still the only vertical scroller.
+
+## [0.12.0] - 2026-11-18
+
+### Added
+
 - Subagents can open as tabs on the lead Capsule's page. Open tabs survive
   reload and stay open when you switch sessions. Closing a tab leaves the
   subagent running. Changes, Preview, and Files follow the selected
@@ -34,9 +59,11 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- The Shell panel terminal is compact: 13px monospace, tighter line height,
-  and shorter Shell and Connected rows. Harness output is a small button.
-  An 8px inset stays outside the fitted columns and rows, in dark and light.
+- The Thread composer focus state is a slightly lighter 1px border, in dark
+  and light. The thick offset ring and outer glow are gone, and the message
+  field does not draw a second outline. Text fields that used that ring,
+  including the command palette, the activity filter, and settings inputs,
+  use the same border.
 - Stations you used before are kept and named by their host, instead of
   remembering only the last five addresses.
 - "Check this computer for setup changes" is in Harness settings. It stays
@@ -1559,7 +1586,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - Docker and Agent Sandbox are not claimed as hostile multi-tenant isolation
   boundaries; hardened runtime deployment and external review remain required.
 
-[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.11.5...HEAD
+[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/OrlojHQ/meridian/compare/v0.11.5...v0.12.0
 [0.11.5]: https://github.com/OrlojHQ/meridian/compare/v0.11.4...v0.11.5
 [0.11.4]: https://github.com/OrlojHQ/meridian/compare/v0.11.3...v0.11.4
 [0.11.3]: https://github.com/OrlojHQ/meridian/compare/v0.11.2...v0.11.3
