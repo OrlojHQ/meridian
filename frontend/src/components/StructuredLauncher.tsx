@@ -163,9 +163,11 @@ export function StructuredLauncher({
               Lead agent with subagents
             </label>
             <p className="muted-copy">
-              The agent can start subagent Threads, each in its own Capsule,
-              and collect their results. Subagents run {harnessName(harness)}{" "}
-              and ask you, not the lead, for permissions.
+              Ask the agent to start a capsule and it starts one in its own Capsule,
+              up to four at a time, running {harnessName(harness)}. It shows up as a
+              subagent tab. Use the option above to approve each one or change the
+              limits. A capsule cannot start further capsules, and it asks you, not
+              the lead, for permissions.
             </p>
             {lead && (
               <div className="lead-limits">

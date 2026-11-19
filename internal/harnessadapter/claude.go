@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/OrlojHQ/meridian/internal/adapterproto"
+	"github.com/OrlojHQ/meridian/internal/coordtool"
 )
 
 const (
@@ -1007,6 +1008,12 @@ func claudeCommand(config ClaudeConfig, resumeID string) ([]string, error) {
 			return nil, err
 		}
 		command = append(command, "--mcp-config", string(encoded))
+	}
+	// The profile MCP server is how the session starts a capsule. Say so in
+	// the harness prompt as well, because a model will otherwise use its own
+	// in-process subagent tool and nothing shows up in Meridian.
+	if trustedMCPServer(config.MCPServers, "meridian-coord") {
+		command = append(command, "--append-system-prompt", coordtool.CapsuleInstruction)
 	}
 	return command, nil
 }

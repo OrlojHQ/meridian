@@ -556,7 +556,6 @@ func (s *Service) promoteProjectThread(
 	if err != nil || result.Intent.ID == "" {
 		return result, err
 	}
-	s.configureLeadMailbox(ctx, capsuleID, result.Thread.ID)
 	run, startErr := s.startStructuredRuntime(ctx, *result.Thread, *result.Run, false)
 	result.Run = &run
 	if startErr != nil || !deliver || !withPrompt {

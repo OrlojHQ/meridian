@@ -1033,3 +1033,73 @@ func TestLeadProposesDeliveryForOperator(t *testing.T) {
 		t.Fatalf("second propose = %+v", response)
 	}
 }
+
+func TestSessionStartsACapsuleWithoutAnExplicitLead(t *testing.T) {
+	f := newCoordFixture(t)
+	created, err := f.service.CreateProjectThread(f.ctx, app.CreateProjectThreadInput{
+		ProjectID: "project-coord", Harness: "mock", Prompt: "hello", IdempotencyKey: "plain",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := f.service.ThreadCoordinationOf(f.ctx, created.Intent.ThreadID)
+	if err != nil || before.GrantID != "" {
+		t.Fatalf("grant before the session = %#v, %v", before, err)
+	}
+	capsule := f.ready(t, created.Intent.CapsuleID)
+	f.service.CoordinationTick(asSystem(f.ctx))
+	position, err := f.service.ThreadCoordinationOf(f.ctx, created.Intent.ThreadID)
+	if err != nil || position.GrantID == "" || position.Depth != 0 {
+		t.Fatalf("session grant = %#v, %v", position, err)
+	}
+	grant, err := f.service.GetCoordinationGrant(f.ctx, position.GrantID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if grant.MaxDepth != 1 || grant.MaxChildren != domain.CoordinationDefaultChildren ||
+		grant.SpawnApproval != domain.SpawnAuto || grant.MaxLiveCapsules != domain.CoordinationDefaultLiveCapsules {
+		t.Fatalf("default limits = %#v", grant)
+	}
+	if !slices.Contains(grant.AllowedHarnesses, "mock") || !slices.Contains(grant.AllowedHarnesses, "other") {
+		t.Fatalf("allowed harnesses = %v", grant.AllowedHarnesses)
+	}
+	mailbox := f.runtime.mailbox(capsule.ProviderResourceID)
+	whoami := tool(t, mailbox, coordproto.Request{Type: coordproto.KindWhoAmI})
+	if !whoami.OK || whoami.Self == nil || whoami.Self.Role != "lead" {
+		t.Fatalf("whoami = %+v", whoami)
+	}
+	prompt := "tell me a joke"
+	spawned := tool(t, mailbox, coordproto.Request{Type: coordproto.KindSpawn, Key: "joke", Prompt: prompt})
+	if !spawned.OK || spawned.Link == nil || spawned.Link.Name != coordproto.DefaultCapsuleName(prompt) ||
+		spawned.Link.Harness != "mock" {
+		t.Fatalf("spawn = %+v", spawned)
+	}
+	link, err := f.service.GetThreadLink(f.ctx, domain.ThreadLinkID(spawned.Link.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	child := f.ready(t, link.ChildCapsuleID)
+	if child.Role != domain.CapsuleSub || child.LeadThreadID != created.Intent.ThreadID {
+		t.Fatalf("child = %#v", child)
+	}
+	f.service.CoordinationTick(asSystem(f.ctx))
+	childMail := f.runtime.mailbox(child.ProviderResourceID)
+	if response := tool(t, childMail, coordproto.Request{
+		Type: coordproto.KindSpawn, Key: "nested", Prompt: "another joke",
+	}); code(response) != coordproto.CodeCoordinationDisabled {
+		t.Fatalf("nested spawn = %+v", response)
+	}
+	for index := 1; index < domain.CoordinationDefaultChildren; index++ {
+		name := "more-" + strings.Repeat("a", index)
+		if response := tool(t, mailbox, coordproto.Request{
+			Type: coordproto.KindSpawn, Key: name, Name: name, Harness: "mock", Prompt: "task",
+		}); !response.OK {
+			t.Fatalf("spawn %d = %+v", index, response)
+		}
+	}
+	if response := tool(t, mailbox, coordproto.Request{
+		Type: coordproto.KindSpawn, Key: "over", Name: "over-the-limit", Harness: "mock", Prompt: "task",
+	}); code(response) != coordproto.CodeLimitExceeded {
+		t.Fatalf("over fan-out = %+v", response)
+	}
+}

@@ -57,6 +57,7 @@ func newRootCommand() *cobra.Command {
 		return nil
 	}
 	command.AddCommand(
+		newStartCapsuleCommand(resolve),
 		newSpawnCommand(run),
 		newSendCommand(run),
 		newWaitCommand(run),
@@ -105,6 +106,44 @@ func readPrompt(command *cobra.Command, flag string) (string, error) {
 		return "", fmt.Errorf("prompt exceeds %d bytes", coordproto.MaxPromptBytes)
 	}
 	return string(data), nil
+}
+
+func newStartCapsuleCommand(resolve func() string) *cobra.Command {
+	var name, model, prompt string
+	var timeout time.Duration
+	command := &cobra.Command{
+		Use:   "start-capsule [--name NAME] [--model MODEL] [--prompt TEXT]",
+		Short: "Start a Meridian Capsule and wait for its answer (prompt from --prompt or stdin)",
+		Args:  cobra.NoArgs,
+		RunE: func(command *cobra.Command, _ []string) error {
+			text, err := readPrompt(command, prompt)
+			if err != nil {
+				return err
+			}
+			seconds := int(timeout / time.Second)
+			if seconds < 1 || seconds > coordproto.MaxWaitSeconds {
+				return fmt.Errorf("--timeout must be between 1s and %ds", coordproto.MaxWaitSeconds)
+			}
+			response, err := coordtool.StartCapsule(command.Context(), resolve(), text, name, model, seconds)
+			if err != nil {
+				return err
+			}
+			encoder := json.NewEncoder(command.OutOrStdout())
+			encoder.SetIndent("", "  ")
+			if err := encoder.Encode(response); err != nil {
+				return err
+			}
+			if !response.OK {
+				return errRejected
+			}
+			return nil
+		},
+	}
+	command.Flags().StringVar(&name, "name", "", "unique capsule name ([a-z0-9-]{1,48}); default derives from the task")
+	command.Flags().StringVar(&model, "model", "", "harness to run, or a model name to prefer")
+	command.Flags().StringVar(&prompt, "prompt", "", "task for the capsule (default: read stdin)")
+	command.Flags().DurationVar(&timeout, "timeout", coordproto.DefaultWaitSeconds*time.Second, "how long to wait for the answer")
+	return command
 }
 
 func newSpawnCommand(run runner) *cobra.Command {

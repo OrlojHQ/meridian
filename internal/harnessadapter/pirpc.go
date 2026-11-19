@@ -54,6 +54,21 @@ type piPendingUI struct {
 	method string
 }
 
+// piCommand is the Pi process the adapter starts. Profile arguments, including
+// a skill path, are kept; Pi has no MCP client, so that skill is how it learns
+// to start a capsule.
+func piCommand(config PiConfig) []string {
+	command := append([]string(nil), config.Command...)
+	command = append(command, "--mode", "rpc")
+	if config.SessionName != "" {
+		command = append(command, "--name", config.SessionName)
+	}
+	if config.SessionDir != "" {
+		command = append(command, "--session-dir", config.SessionDir)
+	}
+	return command
+}
+
 // RunPiRPC maps Pi's strict LF-delimited RPC protocol to Meridian frames.
 func RunPiRPC(
 	ctx context.Context,
@@ -80,14 +95,7 @@ func RunPiRPC(
 		return errors.New("Pi adapter requires start or resume")
 	}
 
-	command := append([]string(nil), config.Command...)
-	command = append(command, "--mode", "rpc")
-	if config.SessionName != "" {
-		command = append(command, "--name", config.SessionName)
-	}
-	if config.SessionDir != "" {
-		command = append(command, "--session-dir", config.SessionDir)
-	}
+	command := piCommand(config)
 	child, err := startProcess(processConfig{Command: command})
 	if err != nil {
 		return err

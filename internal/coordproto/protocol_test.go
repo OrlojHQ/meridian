@@ -12,6 +12,7 @@ func record(body string) []byte { return []byte(body + "\n") }
 func TestDecodeRequestAcceptsClosedFieldSets(t *testing.T) {
 	valid := []string{
 		`{"protocol":"meridian.coord.v1","type":"spawn","key":"spawn-a","name":"subagent-1","harness":"claude","prompt":"do it"}`,
+		`{"protocol":"meridian.coord.v1","type":"spawn","key":"k","prompt":"tell a joke"}`,
 		`{"protocol":"meridian.coord.v1","type":"send","key":"k","link":"link-1","prompt":"more"}`,
 		`{"protocol":"meridian.coord.v1","type":"cancel","key":"k","link":"link-1"}`,
 		`{"protocol":"meridian.coord.v1","type":"wait","links":["a","b"],"all":true,"timeoutSeconds":30}`,

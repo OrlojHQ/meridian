@@ -456,6 +456,10 @@ export function NewSessionDialog({
         )}
         {activeMode === "thread" && coordinationSupported && harnessId && (
           <fieldset className="lead-options">
+            <p className="muted-copy">
+              Ask the agent to start a capsule and it starts one in its own Capsule.
+              It shows up as a subagent tab. A capsule cannot start further capsules.
+            </p>
             <label className="checkbox-label" htmlFor="new-session-lead">
               <input
                 id="new-session-lead"
@@ -469,9 +473,8 @@ export function NewSessionDialog({
             {lead && (
               <>
                 <p className="muted-copy">
-                  Ask it to split the work and it starts subagent Threads, each in its own
-                  Capsule, and collects their results. Subagents ask you, not the lead, for
-                  permissions.
+                  Require a click before each capsule starts. Capsules still ask you, not
+                  the lead, for permissions.
                 </p>
                 <label className="checkbox-label" htmlFor="new-session-approval">
                   <input

@@ -154,8 +154,15 @@ power-user workflows.
 
 ### Leads and subagents
 
-`--lead` gives the new Thread a Coordination Grant, so its agent can start
-subagent Threads in their own Capsules and read their reports (ADR 0029):
+A structured session can start capsules once it is running, even without
+`--lead`. Meridian gives it the default grant (depth 1, four children,
+`spawnApproval=auto`) when the session starts (ADR 0029). The agent starts
+one with `start_capsule`, or from a shell with `meridian-coord start-capsule`.
+The capsule is a subagent Thread and shows up on that session. It cannot
+start further capsules.
+
+`--lead` sets the grant up front. Use it to change the limits or to require
+approval before each capsule starts:
 
 ```console
 printf '%s' 'split the review across subagents' | meridian thread spawn PROJECT_ID \

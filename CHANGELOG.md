@@ -7,6 +7,17 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Asking an agent to start a capsule starts a real Capsule. Every structured
+  session can call `start_capsule` (and list, status, and get-result) through
+  the coordination tools it already has. The call waits for the capsule's
+  answer. The capsule shows up as a subagent of that thread, with the same
+  depth and concurrency limits as a lead: one level deep, and four at a time
+  unless you set a tighter grant. A capsule cannot start another capsule.
+  Turn on "Lead agent with subagents" when you want to approve each one or
+  change those limits.
+
 ## [0.12.0] - 2026-11-18
 
 ### Added

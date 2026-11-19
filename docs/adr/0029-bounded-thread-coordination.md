@@ -399,3 +399,35 @@ Main Capsules the operator starts are unchanged and keep idle pause.
   already destroy. Promoted and failed subagents, and subagents that need the
   operator or have a Delivery in flight, are never archived and so never
   cleaned up.
+
+## Amendment: every structured session can start a capsule
+
+Asking a harness to start a capsule or a subagent was a no-op unless the
+operator had already made that Thread a lead. The harness then used whatever
+in-process subagent tool it has, and nothing appeared in the Agents list.
+
+- When a main structured session starts and coordination is supported, and
+  the Thread has no grant, the daemon creates the default grant: depth 1,
+  fan-out 4, the Project's structured harnesses, spawn approval `auto`, and
+  the usual deadline. The mailbox is configured before the harness process
+  starts, so `start_capsule` is listed on the first turn. A grant the
+  operator already created, including one they revoked, is left as it is.
+- `meridian-coord` adds `start_capsule` (prompt, optional name and model),
+  `list_capsules`, `capsule_status`, and `get_capsule_result`. `start_capsule`
+  spawns and then waits, and returns the capsule's report. An omitted name is
+  derived from the prompt, so a retry hits the same capsule. `model` selects
+  an allowed harness, or is passed through as a model preference. The older
+  `meridian_spawn` tools stay.
+- The same short instruction is the MCP server's `instructions` text. The
+  claude adapter also appends it to the harness prompt when `meridian-coord`
+  is registered. The pi pack has no MCP client; its skill tells the agent to
+  run `meridian-coord start-capsule`. The codex adapter and the ACP adapters
+  (opencode and dsh) register the same MCP server and rely on that server's
+  instructions and tool descriptions.
+- Subagent sessions still receive only report, propose-delivery, and whoami.
+  A capsule cannot start another capsule. The existing fan-out, live-Capsule,
+  descendant, message, and deadline limits apply to the session grant.
+- In-process subagents a harness starts with its own tool are not Threads and
+  do not appear in the Agents list. Showing those is left for later. The
+  instruction tells the harness to use `start_capsule` instead when the
+  operator asks for a capsule, a subagent, or isolated work.

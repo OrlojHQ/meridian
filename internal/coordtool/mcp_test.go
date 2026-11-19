@@ -18,6 +18,7 @@ import (
 type fakeMailbox struct {
 	mu       sync.Mutex
 	role     string
+	disabled bool
 	requests []coordproto.Request
 }
 
@@ -54,17 +55,30 @@ func (f *fakeMailbox) serve(t *testing.T) string {
 				}
 				f.mu.Lock()
 				f.requests = append(f.requests, request)
+				disabled := f.disabled
+				role := f.role
 				f.mu.Unlock()
 				response := coordproto.OK()
-				switch request.Type {
-				case coordproto.KindWhoAmI:
-					role := f.role
+				switch {
+				case disabled && request.Type == coordproto.KindWhoAmI:
+					response = coordproto.Fail(coordproto.CodeCoordinationDisabled, "this Thread has no coordination grant")
+				case request.Type == coordproto.KindWhoAmI:
 					if role == "" {
 						role = "lead"
 					}
-					response.Self = &coordproto.Self{Role: role, GrantID: "grant", Depth: 1}
-				case coordproto.KindSpawn:
+					response.Self = &coordproto.Self{
+						Role: role, GrantID: "grant", Depth: 1, AllowedHarnesses: []string{"mock"},
+					}
+				case request.Type == coordproto.KindSpawn:
 					response.Link = &coordproto.Link{ID: "link-" + request.Name, Name: request.Name, State: "active"}
+				case request.Type == coordproto.KindWait:
+					link := ""
+					if len(request.Links) > 0 {
+						link = request.Links[0]
+					}
+					response.Reports = []coordproto.Report{{
+						Link: link, Name: "joke", Status: coordproto.ReportDone, Summary: "a joke",
+					}}
 				default:
 					response = coordproto.Fail(coordproto.CodeNotFound, "no such link")
 				}
@@ -138,8 +152,11 @@ func TestMCPServerExposesToolsOnlyToLeads(t *testing.T) {
 		t.Fatalf("initialize = %v", initialize)
 	}
 	tools := byID(responses, 2)["result"].(map[string]any)["tools"].([]any)
-	if len(tools) != 10 {
+	if len(tools) != 14 {
 		t.Fatalf("tools = %d", len(tools))
+	}
+	if tools[0].(map[string]any)["name"] != "start_capsule" {
+		t.Fatalf("first tool = %v", tools[0])
 	}
 	spawn := byID(responses, 3)["result"].(map[string]any)
 	if spawn["isError"] != false || !strings.Contains(spawn["content"].([]any)[0].(map[string]any)["text"].(string), "link-subagent-1") {
@@ -164,6 +181,73 @@ func TestMCPServerExposesToolsOnlyToLeads(t *testing.T) {
 	}
 }
 
+func TestStartCapsuleWaitsAndNamesItself(t *testing.T) {
+	mailbox := &fakeMailbox{}
+	socket := mailbox.serve(t)
+	prompt := "tell me a joke"
+	responses := exchange(t, socket,
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"start_capsule","arguments":{"prompt":"`+prompt+`"}}}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"start_capsule","arguments":{"prompt":"`+prompt+`","model":"haiku"}}}`,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"start_capsule","arguments":{"prompt":"`+prompt+`","model":"mock"}}}`,
+	)
+	first := byID(responses, 1)["result"].(map[string]any)
+	if first["isError"] != false || !strings.Contains(first["content"].([]any)[0].(map[string]any)["text"].(string), "a joke") {
+		t.Fatalf("start_capsule = %v", first)
+	}
+	second := byID(responses, 2)["result"].(map[string]any)
+	if second["isError"] != false {
+		t.Fatalf("model preference = %v", second)
+	}
+	third := byID(responses, 3)["result"].(map[string]any)
+	if third["isError"] != false {
+		t.Fatalf("harness model = %v", third)
+	}
+	mailbox.mu.Lock()
+	defer mailbox.mu.Unlock()
+	var spawns []coordproto.Request
+	for _, request := range mailbox.requests {
+		if request.Type == coordproto.KindSpawn {
+			spawns = append(spawns, request)
+		}
+	}
+	var plain, prefer, harnessed *coordproto.Request
+	for index := range spawns {
+		spawn := &spawns[index]
+		switch {
+		case strings.Contains(spawn.Prompt, "Prefer this model if you can select it: haiku"):
+			prefer = spawn
+		case spawn.Harness == "mock":
+			harnessed = spawn
+		case spawn.Harness == "" && spawn.Prompt == prompt:
+			plain = spawn
+		}
+	}
+	if plain == nil || plain.Name != coordproto.DefaultCapsuleName("\n"+prompt) || plain.Key != "spawn-"+plain.Name {
+		t.Fatalf("plain spawn = %+v", plain)
+	}
+	if prefer == nil || prefer.Harness != "" || prefer.Name != coordproto.DefaultCapsuleName("\n"+prefer.Prompt) {
+		t.Fatalf("preference spawn = %+v", prefer)
+	}
+	if harnessed == nil || harnessed.Name != coordproto.DefaultCapsuleName("mock\n"+prompt) ||
+		strings.Contains(harnessed.Prompt, "Prefer this model") {
+		t.Fatalf("harness spawn = %+v", harnessed)
+	}
+}
+
+func TestMCPServerListsCapsuleToolsWhenTheGrantIsNotConfigured(t *testing.T) {
+	mailbox := &fakeMailbox{disabled: true}
+	socket := mailbox.serve(t)
+	responses := exchange(t, socket, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
+	tools := responses[0]["result"].(map[string]any)["tools"].([]any)
+	names := map[string]bool{}
+	for _, item := range tools {
+		names[item.(map[string]any)["name"].(string)] = true
+	}
+	if !names["start_capsule"] || !names["list_capsules"] || !names["capsule_status"] || !names["get_capsule_result"] {
+		t.Fatalf("tools = %v", names)
+	}
+}
+
 func TestMCPServerListsReportToolsForSubagents(t *testing.T) {
 	mailbox := &fakeMailbox{role: "sub"}
 	socket := mailbox.serve(t)
@@ -177,7 +261,7 @@ func TestMCPServerListsReportToolsForSubagents(t *testing.T) {
 		names[item.(map[string]any)["name"].(string)] = true
 	}
 	if !names["meridian_report"] || !names["meridian_whoami"] || !names["meridian_propose_delivery"] ||
-		names["meridian_spawn"] {
+		names["meridian_spawn"] || names["start_capsule"] {
 		t.Fatalf("subagent tools = %v", names)
 	}
 }

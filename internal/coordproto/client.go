@@ -28,6 +28,11 @@ func SocketPathForHome(home string) string {
 	return filepath.Join(home, ".meridian", "coord.sock")
 }
 
+// MailboxUnavailable is the error text when no mailbox socket exists. A
+// configured mailbox that has no grant uses a different message, so callers
+// can tell "not a Capsule" from "this session has no grant yet".
+const MailboxUnavailable = "coordination mailbox is not available in this Capsule"
+
 // Do sends one request and reads its response. Transport failures map to
 // mailbox_lost so callers can retry with the same key.
 func Do(ctx context.Context, socketPath string, request Request) (Response, error) {
@@ -43,7 +48,7 @@ func Do(ctx context.Context, socketPath string, request Request) (Response, erro
 	conn, err := dialer.DialContext(ctx, "unix", socketPath)
 	if err != nil {
 		if mailboxAbsent(socketPath, err) {
-			return Fail(CodeCoordinationDisabled, "coordination mailbox is not available in this Capsule"), nil
+			return Fail(CodeCoordinationDisabled, MailboxUnavailable), nil
 		}
 		return Fail(CodeMailboxLost, "coordination mailbox is unreachable"), nil
 	}

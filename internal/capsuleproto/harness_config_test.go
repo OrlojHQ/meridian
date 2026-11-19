@@ -280,9 +280,10 @@ func TestOfficialPackSkillsDescribeTheRealCLI(t *testing.T) {
 	}
 	text := string(data)
 	for _, command := range []string{
-		"meridian-coord whoami", "meridian-coord spawn --name", "meridian-coord wait --all",
-		"meridian-coord result", "meridian-coord status", "meridian-coord list",
-		"meridian-coord send", "meridian-coord cancel", "coordination_disabled", "allowedHarnesses",
+		"meridian-coord whoami", "meridian-coord start-capsule", "meridian-coord spawn --name",
+		"meridian-coord wait --all", "meridian-coord result", "meridian-coord status",
+		"meridian-coord list", "meridian-coord send", "meridian-coord cancel",
+		"coordination_disabled", "allowedHarnesses", "A capsule is a Meridian Capsule",
 	} {
 		if !strings.Contains(text, command) {
 			t.Errorf("skill does not mention %q", command)

@@ -83,19 +83,34 @@ Each official pack installs a structured profile under its name, and all but
 | `pi` | `pi-rpc` | `pi-rpc --session-dir /home/capsule/.pi-sessions -- /usr/local/bin/pi --skill /usr/local/share/meridian/pi/skills/meridian-coord` |
 | `dsh` | `acp` | `acp --mcp-server meridian-coord=/usr/local/bin/meridian-coord,mcp -- /usr/local/bin/dsh --profile acp` |
 
-A lead Thread reaches the in-Capsule `meridian-coord` tool (ADR 0029) through
-its structured profile. Claude Code and Codex register it as a stdio MCP
-server with `--mcp-server` (shown in the profile files). OpenCode and `dsh`
-receive it in the `mcpServers` list of ACP `session/new` and of the resume
-call, so the registration is per session and Meridian writes no OpenCode or
-DeepSeek Harness configuration into the workspace; OpenCode names the tools `meridian-coord_meridian_spawn`
-and so on. Pi has no MCP client, so the Pi pack ships a `meridian-coord`
-skill that teaches the agent the CLI through its bash tool, and the profile
-loads it with `--skill` (Pi loads explicit `--skill` paths even when skill
-discovery is off). A subagent Capsule lists `meridian_report`,
-`meridian_propose_delivery`, and `meridian_whoami`. In a Capsule that is
-neither a lead nor a subagent,
-the MCP server lists no tools and the CLI answers `coordination_disabled`.
+A structured session reaches the in-Capsule `meridian-coord` tool (ADR 0029)
+through its profile. The daemon gives every main session a default
+Coordination Grant before the harness starts, so the session can start a
+capsule without a separate lead option. The grant is the usual default:
+depth 1, four children at a time, spawn approval `auto`. A capsule's own
+session is a subagent and cannot start another capsule. An operator-created
+grant, including one that was revoked, is left as it is. "Lead agent with
+subagents" still sets a custom grant, including approve-each-spawn.
+
+The claude, codex, opencode, and dsh profiles register `meridian-coord` as a
+stdio MCP server with `--mcp-server` (shown in the profile files). opencode
+and dsh receive it in the `mcpServers` list of ACP `session/new` and of the
+resume call, so the registration is per session and Meridian writes no
+harness configuration into the workspace. The server lists `start_capsule`
+(prompt, optional name and model; it waits for the answer), `list_capsules`,
+`capsule_status`, and `get_capsule_result`, plus the older `meridian_spawn`
+tools. Its `instructions` text tells the harness that a capsule is a Meridian
+Capsule and to call `start_capsule` instead of a built-in subagent tool. The
+claude adapter also appends that text to the harness prompt when the server
+is registered. The pi pack has no MCP client, so it ships a `meridian-coord`
+skill that teaches `meridian-coord start-capsule` through the bash tool, and
+the profile loads it with `--skill` (Pi loads explicit `--skill` paths even
+when skill discovery is off). A subagent Capsule lists `meridian_report`,
+`meridian_propose_delivery`, and `meridian_whoami`. If the mailbox is not
+configured, the CLI answers `coordination_disabled`.
+
+A harness-native in-process subagent is not a Thread and does not appear in
+the Agents list. Surfacing those is left for later.
 
 The terminal launcher picks the native profile, and Threads pick the
 structured one. Because the image owns every mode of its names and a repository

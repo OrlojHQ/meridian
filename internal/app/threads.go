@@ -1537,6 +1537,9 @@ func (s *Service) startStructuredRuntime(
 		capsule.Maintenance != "" {
 		return run, fmt.Errorf("%w: Capsule must be Ready", domain.ErrIllegalTransition)
 	}
+	// Configure the capsule tools before the harness process starts, including
+	// the default grant for a main session that was not created as a lead.
+	s.configureLeadMailbox(ctx, thread.CapsuleID, thread.ID)
 	frame := adapterproto.Frame{
 		Protocol: adapterproto.Version, Type: adapterproto.KindStart,
 		ID: "start-" + string(thread.ID), SessionID: string(thread.ID),

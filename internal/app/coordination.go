@@ -521,6 +521,12 @@ func (s *Service) coordSpawn(
 	capsule domain.Capsule,
 	request coordproto.Request,
 ) coordproto.Response {
+	if request.Name == "" {
+		request.Name = coordproto.DefaultCapsuleName(request.Prompt)
+	}
+	if request.Harness == "" {
+		request.Harness = parent.AdapterID
+	}
 	if record, failure := s.existingCoordinationRequest(ctx, capsule, request); failure != nil {
 		return *failure
 	} else if record.ID != "" {
@@ -1269,9 +1275,32 @@ func (s *Service) configureCoordinationMailbox(ctx context.Context, capsuleID do
 	if s.coordination == nil {
 		return
 	}
+	grant, capsule, err := s.coordinationGrantForSession(ctx, capsuleID, threadID)
+	if errors.Is(err, domain.ErrNotFound) && capsule.ID != "" &&
+		capsule.Role != domain.CapsuleSub && capsule.LinkID == "" {
+		if s.ensureSessionGrant(ctx, capsule, threadID) == nil {
+			grant, capsule, err = s.coordinationGrantForSession(ctx, capsuleID, threadID)
+		}
+	}
+	if err != nil || grant.State != domain.GrantActive {
+		return
+	}
+	role := domain.CapsuleMain
+	if grant.RootCapsuleID != capsule.ID {
+		role = domain.CapsuleSub
+	}
+	_ = s.coordination.ConfigureCoordination(ctx, capsule.ProviderResourceID, coordinationConfigFor(grant, role))
+}
+
+// coordinationGrantForSession returns the grant a Capsule session should use.
+// A lead is the grant root. A subagent uses its parent's grant. A main Capsule
+// with no grant returns ErrNotFound so the caller can create the session grant.
+func (s *Service) coordinationGrantForSession(
+	ctx context.Context, capsuleID domain.CapsuleID, threadID domain.ThreadID,
+) (domain.CoordinationGrant, domain.Capsule, error) {
 	var grant domain.CoordinationGrant
 	var capsule domain.Capsule
-	if err := s.store.View(ctx, func(reader ports.Reader) error {
+	err := s.store.View(ctx, func(reader ports.Reader) error {
 		var err error
 		capsule, err = reader.GetCapsule(ctx, capsuleID)
 		if err != nil {
@@ -1293,14 +1322,61 @@ func (s *Service) configureCoordinationMailbox(ctx context.Context, capsuleID do
 		}
 		grant, err = reader.GetCoordinationGrant(ctx, link.GrantID)
 		return err
-	}); err != nil || grant.State != domain.GrantActive {
-		return
+	})
+	return grant, capsule, err
+}
+
+// ensureSessionGrant gives a main structured session the default Coordination
+// Grant so its harness can start capsules without a separate opt-in. A grant
+// that already exists, including one the operator revoked, is left alone.
+// Subagents are not roots, so depth stays 1.
+func (s *Service) ensureSessionGrant(
+	ctx context.Context, capsule domain.Capsule, threadID domain.ThreadID,
+) error {
+	return s.store.Transact(ctx, func(tx ports.Transaction) error {
+		if _, err := tx.GetCoordinationGrantByRootThread(ctx, threadID); err == nil {
+			return nil
+		} else if !errors.Is(err, domain.ErrNotFound) {
+			return err
+		}
+		thread, err := tx.GetThread(ctx, threadID)
+		if err != nil {
+			return err
+		}
+		if thread.CapsuleID != capsule.ID || thread.State != domain.ThreadActive {
+			return domain.ErrNotFound
+		}
+		project, err := tx.GetProject(ctx, capsule.ProjectID)
+		if err != nil {
+			return err
+		}
+		policy, err := s.validateCoordinationPolicy(ctx, tx, capsule.ProjectID, thread.AdapterID, domain.CoordinationPolicy{
+			AllowedHarnesses: s.sessionGrantHarnesses(project, thread.AdapterID),
+			SpawnApproval:    domain.SpawnAuto,
+		})
+		if err != nil {
+			return err
+		}
+		return s.insertCoordinationGrantTx(ctx, tx, domain.ProjectThreadIntent{
+			ProjectID: capsule.ProjectID, ThreadID: threadID, CapsuleID: capsule.ID,
+		}, policy)
+	})
+}
+
+// sessionGrantHarnesses is every structured harness the Project allowlists.
+// The lead's own harness is always included so an omitted model stays local.
+func (s *Service) sessionGrantHarnesses(project domain.Project, lead string) []string {
+	names := project.HarnessNames()
+	allowed := make([]string, 0, len(names)+1)
+	for _, name := range names {
+		if _, err := s.structuredHarnessImage(project, name); err == nil && !slices.Contains(allowed, name) {
+			allowed = append(allowed, name)
+		}
 	}
-	role := domain.CapsuleMain
-	if grant.RootCapsuleID != capsule.ID {
-		role = domain.CapsuleSub
+	if lead != "" && !slices.Contains(allowed, lead) {
+		allowed = append(allowed, lead)
 	}
-	_ = s.coordination.ConfigureCoordination(ctx, capsule.ProviderResourceID, coordinationConfigFor(grant, role))
+	return allowed
 }
 
 // lastAssistantMessage returns the sequence of the newest assistant response

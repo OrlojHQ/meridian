@@ -475,8 +475,11 @@ logging them. Bounded in-memory replay is availability control, not redaction.
 Repository content, issues, web pages, logs, and tool output can instruct an agent to misuse available authority. The control plane must not treat model or Capsule output as authorization. Sensitive delivery actions—credential grants, network exceptions, branch pushes, pull requests, destructive lifecycle operations, or policy changes—require independently verified permissions and explicit approval according to policy. Tool APIs should expose narrow operations rather than ambient administrator tokens.
 
 Model and Capsule output can cause bounded lifecycle effects, namely spawning,
-messaging, and cancelling subagent Threads, but only under an operator-created
-Coordination Grant on that lead (ADR 0029). Delivery approval, credential, network, and
+messaging, and cancelling subagent Threads, but only under a Coordination
+Grant on that lead (ADR 0029). The operator creates one with the Thread, or
+the daemon creates the default grant when a main structured session starts.
+A revoked or expired grant is not replaced. Subagent sessions do not receive
+a grant, so a capsule cannot start another capsule. Delivery approval, credential, network, and
 policy actions are unchanged: an agent may propose a Delivery and cannot
 approve one. A subagent's permission and input requests go to
 the operator, never to its lead, so a hostile lead cannot approve its subagents'
@@ -502,8 +505,10 @@ A subagent mailbox relays `report`, `propose-delivery`, and `whoami`.
 Authority is the intersection of the grant, the Project policy, the
 requester's links, and the grant's remaining counters. Each mailbox request
 acts as its Capsule under the lead owner's authority (ADR 0046): a grant, its
-subagents, and everything they use belong to that one owner. A grant is created only
-by an operator API call together with its lead Thread. The operator may later
+subagents, and everything they use belong to that one owner. A grant is created by an operator API call together with its lead Thread, or
+by the daemon when a main structured session starts and the Thread has none
+(ADR 0029). The session grant uses the default limits and `spawnApproval=auto`.
+The operator may later
 loosen or tighten its limits, including `spawnApproval`. Capsules cannot
 change a grant. It bounds harnesses (a subset of the Project's structured
 allowlist), depth (1), fan-out, total and live subagent Capsules, messages per

@@ -166,10 +166,12 @@ func (r Request) Validate() error {
 	if allowed.key && !validToken(r.Key, MaxKeyBytes) {
 		return fmt.Errorf("%w: key must be 1-%d printable characters", ErrInvalidRecord, MaxKeyBytes)
 	}
-	if allowed.name && !ValidName(r.Name) {
+	// Spawn may omit name and harness. The daemon fills a stable name from the
+	// prompt and the lead's own harness.
+	if r.Name != "" && !ValidName(r.Name) {
 		return fmt.Errorf("%w: name must match [a-z0-9-]{1,48}", ErrInvalidRecord)
 	}
-	if allowed.harness && !validToken(r.Harness, MaxHarnessBytes) {
+	if r.Harness != "" && !validToken(r.Harness, MaxHarnessBytes) {
 		return fmt.Errorf("%w: invalid harness", ErrInvalidRecord)
 	}
 	if allowed.prompt && !validText(r.Prompt, MaxPromptBytes) {
@@ -233,6 +235,14 @@ func ValidBranch(value string) bool {
 		}
 	}
 	return true
+}
+
+// DefaultCapsuleName is a stable subagent name for a prompt when the caller
+// did not choose one. The same prompt returns the same name, so a retry of
+// start_capsule addresses the capsule already started.
+func DefaultCapsuleName(prompt string) string {
+	sum := sha256.Sum256([]byte(prompt))
+	return "capsule-" + hex.EncodeToString(sum[:4])
 }
 
 func ValidName(name string) bool {
