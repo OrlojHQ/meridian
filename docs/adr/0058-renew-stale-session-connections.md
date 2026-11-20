@@ -1,6 +1,6 @@
 # ADR 0058: Renew a structured session's provider connection before a prompt
 
-- Status: Accepted
+- Status: Accepted; implemented in v0.14.0
 - Date: 2026-11-19
 - Amends: ADR 0037 (local provider gateway)
 - Extends: ADRs 0024 and 0027 (provider connections), ADR 0025 (Thread

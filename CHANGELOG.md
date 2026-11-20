@@ -7,6 +7,18 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-19
+
+### Added
+
+- Lead Threads delegate on their own. When a session starts or resumes,
+  Meridian tells the harness whether it is a lead or a subagent, through each
+  harness's own system-prompt channel. A lead hands independent or
+  long-running work to subagents by default, then tells you and ends its turn
+  instead of blocking; a subagent works on its own and finishes with a report.
+  "Lead agent with subagents" is now checked by default when you start a
+  Thread, and unchecking it still starts a plain Thread.
+
 ### Changed
 
 - A Thread started without a name is named from its first message, so the
@@ -1630,7 +1642,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - Docker and Agent Sandbox are not claimed as hostile multi-tenant isolation
   boundaries; hardened runtime deployment and external review remain required.
 
-[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/OrlojHQ/meridian/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/OrlojHQ/meridian/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/OrlojHQ/meridian/compare/v0.11.5...v0.12.0
 [0.11.5]: https://github.com/OrlojHQ/meridian/compare/v0.11.4...v0.11.5
