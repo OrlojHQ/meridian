@@ -30,6 +30,7 @@ type coordRuntime struct {
 	runs      map[domain.RunID]ports.RuntimeRun
 	events    map[domain.RunID][]ports.RuntimeStructuredEvent
 	sent      map[domain.RunID][]adapterproto.Frame
+	starts    map[domain.RunID]adapterproto.Frame
 	cancels   map[domain.RunID]int
 	mailboxes map[string]*capsuleproto.Mailbox
 	patches   map[string]ports.GitPatchResult
@@ -45,6 +46,7 @@ func newCoordRuntime() *coordRuntime {
 		runs:      make(map[domain.RunID]ports.RuntimeRun),
 		events:    make(map[domain.RunID][]ports.RuntimeStructuredEvent),
 		sent:      make(map[domain.RunID][]adapterproto.Frame),
+		starts:    make(map[domain.RunID]adapterproto.Frame),
 		cancels:   make(map[domain.RunID]int),
 		mailboxes: make(map[string]*capsuleproto.Mailbox),
 	}
@@ -95,6 +97,7 @@ func (r *coordRuntime) StartStructured(_ context.Context, request ports.RuntimeS
 	defer r.mu.Unlock()
 	run := ports.RuntimeRun{State: domain.RunRunning, Structured: true}
 	r.runs[request.RunID] = run
+	r.starts[request.RunID] = request.Frame
 	return run, nil
 }
 
@@ -477,6 +480,50 @@ func TestLeadSpawnsWaitsAndReceivesChildReport(t *testing.T) {
 	f.runtime.mu.Unlock()
 	if leadSends != 1 {
 		t.Fatalf("lead received %d messages, want only its first prompt", leadSends)
+	}
+}
+
+func TestStartFramesTellAdaptersTheCoordinationRole(t *testing.T) {
+	f := newCoordFixture(t)
+	lead, mailbox := f.spawnLead(t, domain.CoordinationPolicy{MaxChildren: 2})
+	startRole := func(run domain.RunID) string {
+		f.runtime.mu.Lock()
+		defer f.runtime.mu.Unlock()
+		frame, ok := f.runtime.starts[run]
+		if !ok {
+			t.Fatalf("run %s never started", run)
+		}
+		return adapterproto.CoordinationRole(frame.Metadata)
+	}
+	if role := startRole(lead.Intent.RunID); role != adapterproto.CoordinationLead {
+		t.Fatalf("lead start role = %q", role)
+	}
+	spawned := tool(t, mailbox, coordproto.Request{Type: coordproto.KindSpawn, Key: "s", Name: "one", Harness: "mock", Prompt: "task"})
+	if !spawned.OK {
+		t.Fatalf("spawn = %+v", spawned)
+	}
+	link, err := f.service.GetThreadLink(f.ctx, domain.ThreadLinkID(spawned.Link.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.ready(t, link.ChildCapsuleID)
+	child, err := f.service.GetThread(f.ctx, link.ChildThreadID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if role := startRole(child.CurrentRunID); role != adapterproto.CoordinationSubagent {
+		t.Fatalf("subagent start role = %q", role)
+	}
+
+	plain, err := f.service.CreateProjectThread(f.ctx, app.CreateProjectThreadInput{
+		ProjectID: "project-coord", Harness: "mock", IdempotencyKey: "plain", Prompt: "hello",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.ready(t, plain.Intent.CapsuleID)
+	if role := startRole(plain.Intent.RunID); role != "" {
+		t.Fatalf("plain Thread start role = %q", role)
 	}
 }
 

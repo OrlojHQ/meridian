@@ -642,3 +642,43 @@ func (e *Encoder) Encode(frame Frame) error {
 	}
 	return err
 }
+
+// CoordinationMetadataKey is the Start and Resume metadata field in which
+// meridiand tells an adapter the Thread's coordination role, so the adapter
+// can brief the harness through its own system-prompt channel. The role is
+// presentation only: the coordination mailbox still enforces the grant.
+const CoordinationMetadataKey = "coordination"
+
+const (
+	CoordinationLead     = "lead"
+	CoordinationSubagent = "subagent"
+)
+
+// CoordinationMetadata encodes a Start or Resume metadata object carrying
+// role, or nil when role is empty.
+func CoordinationMetadata(role string) json.RawMessage {
+	if role == "" {
+		return nil
+	}
+	encoded, _ := json.Marshal(map[string]string{CoordinationMetadataKey: role})
+	return encoded
+}
+
+// CoordinationRole reads the role CoordinationMetadata wrote. Unknown values
+// read as no role.
+func CoordinationRole(metadata json.RawMessage) string {
+	var value map[string]json.RawMessage
+	if len(metadata) == 0 || json.Unmarshal(metadata, &value) != nil {
+		return ""
+	}
+	var role string
+	if json.Unmarshal(value[CoordinationMetadataKey], &role) != nil {
+		return ""
+	}
+	switch role {
+	case CoordinationLead, CoordinationSubagent:
+		return role
+	default:
+		return ""
+	}
+}

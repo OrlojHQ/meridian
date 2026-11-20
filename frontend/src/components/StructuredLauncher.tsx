@@ -36,7 +36,8 @@ export function StructuredLauncher({
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [result, setResult] = useState<ProjectThreadIntent>();
-  const [lead, setLead] = useState(false);
+  // New Threads lead by default: the agent decides when to delegate.
+  const [lead, setLead] = useState(true);
   const [operatorApproval, setOperatorApproval] = useState(false);
   const capabilities = useQuery(queries.capabilities());
   const coordinationSupported = Boolean(
@@ -167,8 +168,9 @@ export function StructuredLauncher({
               Lead agent with subagents
             </label>
             <p className="muted-copy">
-              The agent can start subagent Threads, each in its own Capsule,
-              and collect their results. Subagents run {harnessName(harness)}{" "}
+              The agent hands independent or long-running work to subagent
+              Threads on its own, each in its own Capsule, and collects their
+              results. Subagents run {harnessName(harness)}{" "}
               and ask you, not the lead, for permissions.
             </p>
             {lead && (

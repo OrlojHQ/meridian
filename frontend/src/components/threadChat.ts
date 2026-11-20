@@ -194,6 +194,7 @@ export function buildThreadChat(
   const effortLabels = new Map<string, string>();
   const tools = new Map<string, ToolCall>();
   const turnOf = new Map<ToolCall, number>();
+  const retryNotices = new Set<string>();
   let turn = 0;
   let busy = false;
 
@@ -327,6 +328,20 @@ export function buildThreadChat(
               safeInline(event.summary || event.reason || "").slice(0, 300) ||
               "This provider has no key in this Capsule. Connect it in Settings.",
           });
+          break;
+        }
+        if (event.code === "provider_retry") {
+          // The harness is retrying a model request on its own. Successive
+          // attempts update one notice instead of stacking errors.
+          const notice: ChatItem = {
+            kind: "notice",
+            key: block.id,
+            text: safeInline(event.summary ?? "").slice(0, 300) || "Model request failed. Retrying.",
+          };
+          const last = items.at(-1);
+          if (last && retryNotices.has(last.key)) items[items.length - 1] = notice;
+          else items.push(notice);
+          retryNotices.add(block.id);
           break;
         }
         items.push({

@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { MeridianAPIError, api } from "../api/client";
@@ -74,6 +74,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   document.title = "";
+  window.localStorage.clear();
   delete window.__MERIDIAN_DESKTOP__;
 });
 
@@ -720,19 +721,9 @@ describe("application shell", () => {
     expect(screen.getByLabelText("2 sessions")).toBeInTheDocument();
   });
 
-  it.each([
-    { layout: "phone", phone: true },
-    { layout: "desktop", phone: false },
-  ])("opens a Thread on its conversation with tools matching the $layout layout", async ({ phone }) => {
-    const queries: string[] = [];
-    vi.spyOn(window, "matchMedia").mockImplementation((query) => {
-      queries.push(query);
-      return {
-        matches: phone && query === "(max-width: 720px)",
-        addEventListener: () => undefined,
-        removeEventListener: () => undefined,
-      } as unknown as MediaQueryList;
-    });
+  it("starts a Thread with Capsule tools closed and opens them from the toggle", async () => {
+    window.localStorage.setItem("meridian.contextPanel.open", "true");
+    window.localStorage.setItem("meridian.contextPanel.width", "700");
     vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
     vi.spyOn(api, "capsules").mockResolvedValue({ items: [capsule] });
     vi.spyOn(api, "capsule").mockResolvedValue(capsule);
@@ -751,6 +742,7 @@ describe("application shell", () => {
       updatedAt: "2026-08-26T00:03:00Z",
       resourceVersion: 1,
     });
+    const user = userEvent.setup();
 
     wrapper(
       <Routes>
@@ -762,16 +754,152 @@ describe("application shell", () => {
     );
 
     expect(screen.getByText("Conversation")).toBeInTheDocument();
-    expect(queries).toContain("(max-width: 720px)");
-    if (phone) {
-      const toggle = await screen.findByRole("button", { name: "Show Capsule tools" });
-      expect(screen.queryByRole("complementary", { name: "Capsule tools" })).not.toBeInTheDocument();
-      await userEvent.click(toggle);
-      expect(await screen.findByRole("complementary", { name: "Capsule tools" })).toBeInTheDocument();
-    } else {
-      expect(await screen.findByRole("button", { name: "Hide Capsule tools" })).toBeInTheDocument();
-      expect(await screen.findByRole("complementary", { name: "Capsule tools" })).toBeInTheDocument();
+    const rail = await screen.findByRole("navigation", { name: "Capsule tools" });
+    expect(screen.queryByRole("complementary", { name: "Capsule tools" })).not.toBeInTheDocument();
+    for (const name of ["Changes", "Files", "Preview", "Terminal"]) {
+      expect(within(rail).getByRole("button", { name }).querySelector("svg")).not.toBeNull();
     }
+    await user.click(within(rail).getByRole("button", { name: "Show Capsule tools" }));
+    const tabs = await screen.findByRole("tablist", { name: "Capsule tools" });
+    for (const name of ["Changes", "Preview", "Files", "Terminal", "Activity"]) {
+      expect(within(tabs).getByRole("tab", { name }).querySelector("svg")).not.toBeNull();
+    }
+    expect(within(tabs).getByRole("tab", { name: "Terminal" }).querySelector("path")).toHaveAttribute(
+      "d",
+      "M4 6.5 8.5 10.5 4 14.5",
+    );
+    await user.click(screen.getByRole("button", { name: "Hide Capsule tools" }));
+    expect(screen.queryByRole("complementary", { name: "Capsule tools" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Show Capsule tools" })).toBeInTheDocument();
+    window.localStorage.removeItem("meridian.contextPanel.open");
+    window.localStorage.removeItem("meridian.contextPanel.width");
+  });
+
+  it("closes Capsule tools again on the next Thread", async () => {
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
+    vi.spyOn(api, "capsules").mockResolvedValue({ items: [capsule] });
+    vi.spyOn(api, "capsule").mockResolvedValue(capsule);
+    vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "threads").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "capabilities").mockResolvedValue(capabilities);
+    vi.spyOn(api, "thread").mockImplementation(async (id: string) => ({
+      id,
+      capsuleId: capsule.id,
+      state: "active" as const,
+      harness: "opencode",
+      encryptedAtRest: true,
+      messageCount: 1,
+      encryptedBytes: 64,
+      createdAt: "2026-08-26T00:02:00Z",
+      updatedAt: "2026-08-26T00:03:00Z",
+      resourceVersion: 1,
+    }));
+    function Conversation() {
+      const navigate = useNavigate();
+      return (
+        <button type="button" onClick={() => navigate("/ui/threads/thread-2")}>
+          Next thread
+        </button>
+      );
+    }
+    const user = userEvent.setup();
+    wrapper(
+      <Routes>
+        <Route path="/ui" element={<AppShell />}>
+          <Route path="threads/:threadId" element={<Conversation />} />
+        </Route>
+      </Routes>,
+      "/ui/threads/thread-1",
+    );
+
+    await user.click(await screen.findByRole("button", { name: "Show Capsule tools" }));
+    expect(await screen.findByRole("complementary", { name: "Capsule tools" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Next thread" }));
+    expect(await screen.findByRole("button", { name: "Show Capsule tools" })).toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: "Capsule tools" })).not.toBeInTheDocument();
+  });
+
+  it("opens the tool a route asks for", async () => {
+    const thread = {
+      id: "thread-1",
+      capsuleId: capsule.id,
+      state: "active" as const,
+      harness: "opencode",
+      encryptedAtRest: true as const,
+      messageCount: 1,
+      encryptedBytes: 64,
+      createdAt: "2026-08-26T00:02:00Z",
+      updatedAt: "2026-08-26T00:03:00Z",
+      resourceVersion: 1,
+    };
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
+    vi.spyOn(api, "capsules").mockResolvedValue({ items: [capsule] });
+    vi.spyOn(api, "capsule").mockResolvedValue(capsule);
+    vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "threads").mockResolvedValue({ items: [thread] });
+    vi.spyOn(api, "capabilities").mockResolvedValue({ ...capabilities, structured: true, attach: true });
+    vi.spyOn(api, "harnessProfiles").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "thread").mockResolvedValue(thread);
+    vi.spyOn(api, "gitDiff").mockResolvedValue({ content: "", truncated: false });
+
+    wrapper(
+      <Routes>
+        <Route path="/ui" element={<AppShell />}>
+          <Route path="capsules/:capsuleId" element={<p>Capsule workspace</p>} />
+          <Route path="capsules/:capsuleId/diff" element={<p>Full review</p>} />
+        </Route>
+      </Routes>,
+      `/ui/capsules/${capsule.id}?session=thread-1#terminal`,
+    );
+
+    expect(await screen.findByRole("tab", { name: "Terminal" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("Capsule workspace")).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Capsule tools" })).not.toBeInTheDocument();
+  });
+
+  it("leaves the side terminal closed when the page is already the terminal", async () => {
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
+    vi.spyOn(api, "capsules").mockResolvedValue({ items: [capsule] });
+    vi.spyOn(api, "capsule").mockResolvedValue(capsule);
+    vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "threads").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "capabilities").mockResolvedValue(capabilities);
+
+    wrapper(
+      <Routes>
+        <Route path="/ui" element={<AppShell />}>
+          <Route path="capsules/:capsuleId" element={<p>Terminal page</p>} />
+        </Route>
+      </Routes>,
+      `/ui/capsules/${capsule.id}#terminal`,
+    );
+
+    expect(await screen.findByRole("link", { name: /Review the launcher/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show Capsule tools" })).toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: "Capsule tools" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Terminal" })).not.toBeInTheDocument();
+  });
+
+  it("opens Changes for a full review", async () => {
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
+    vi.spyOn(api, "capsules").mockResolvedValue({ items: [capsule] });
+    vi.spyOn(api, "capsule").mockResolvedValue(capsule);
+    vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "threads").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "capabilities").mockResolvedValue(capabilities);
+    vi.spyOn(api, "gitDiff").mockResolvedValue({ content: "", truncated: false });
+
+    wrapper(
+      <Routes>
+        <Route path="/ui" element={<AppShell />}>
+          <Route path="capsules/:capsuleId/diff" element={<p>Full review</p>} />
+        </Route>
+      </Routes>,
+      `/ui/capsules/${capsule.id}/diff`,
+    );
+
+    expect(await screen.findByRole("tab", { name: "Changes" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("Full review")).toBeInTheDocument();
   });
 
   it("lists Moments in the Activity tool", async () => {
@@ -874,6 +1002,7 @@ describe("application shell", () => {
     vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
     vi.spyOn(api, "threads").mockResolvedValue({ items: [] });
     vi.spyOn(api, "capabilities").mockResolvedValue(capabilities);
+    vi.spyOn(api, "harnessProfiles").mockResolvedValue({ items: [] });
     vi.spyOn(api, "thread").mockResolvedValue({
       id: "thread-1",
       capsuleId: capsule.id,
@@ -906,6 +1035,11 @@ describe("application shell", () => {
     const reopened = await screen.findByRole("navigation", { name: "Capsule tools" });
     await user.click(within(reopened).getByRole("button", { name: "Preview" }));
     expect(await screen.findByRole("tab", { name: "Preview" })).toHaveAttribute("aria-selected", "true");
+
+    await user.click(screen.getByRole("button", { name: "Hide Capsule tools" }));
+    const withTerminal = await screen.findByRole("navigation", { name: "Capsule tools" });
+    await user.click(within(withTerminal).getByRole("button", { name: "Terminal" }));
+    expect(await screen.findByRole("tab", { name: "Terminal" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("offers import, a provider, and a new Project when nothing exists yet", async () => {

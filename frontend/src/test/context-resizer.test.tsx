@@ -119,9 +119,14 @@ describe("Capsule tools resizing", () => {
     document.documentElement.classList.remove("resizing-context");
   });
 
+  async function showTools(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(await screen.findByRole("button", { name: "Show Capsule tools" }));
+  }
+
   it("resizes with the keyboard, remembers the width, and resets on double-click", async () => {
     const user = userEvent.setup();
     const { container } = renderShell();
+    await showTools(user);
     const handle = await screen.findByRole("separator", { name: "Resize Capsule tools" });
     expect(handle).toHaveAttribute("aria-valuenow", "672");
     expect(handle).toHaveAttribute("aria-valuemin", "384");
@@ -151,6 +156,7 @@ describe("Capsule tools resizing", () => {
     window.localStorage.setItem(WIDTH_KEY, "700");
     const user = userEvent.setup();
     const { container } = renderShell();
+    await showTools(user);
     const handle = await screen.findByRole("separator", { name: "Resize Capsule tools" });
     expect(handle).toHaveAttribute("aria-valuenow", "700");
     expect(shellWidth(container)).toContain("700px");
@@ -167,6 +173,7 @@ describe("Capsule tools resizing", () => {
   it("ignores a saved width that is not a number and clamps one out of range", async () => {
     window.localStorage.setItem(WIDTH_KEY, "wide");
     const first = renderShell();
+    await showTools(userEvent.setup());
     expect(await screen.findByRole("separator", { name: "Resize Capsule tools" })).toHaveAttribute(
       "aria-valuenow",
       "672",
@@ -176,6 +183,7 @@ describe("Capsule tools resizing", () => {
 
     window.localStorage.setItem(WIDTH_KEY, "5000");
     renderShell();
+    await showTools(userEvent.setup());
     expect(await screen.findByRole("separator", { name: "Resize Capsule tools" })).toHaveAttribute(
       "aria-valuenow",
       "912",
@@ -184,6 +192,7 @@ describe("Capsule tools resizing", () => {
 
   it("resizes by dragging the panel edge", async () => {
     renderShell();
+    await showTools(userEvent.setup());
     const handle = await screen.findByRole("separator", { name: "Resize Capsule tools" });
     fireEvent.pointerDown(handle, { button: 0, pointerId: 1, clientX: 928 });
     expect(document.documentElement).toHaveClass("resizing-context");

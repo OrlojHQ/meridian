@@ -44,11 +44,19 @@ export { sanitizeThreadText } from "./threadChat";
 
 const MAX_BLOCKS = 400;
 
-const streamLabels: Record<ThreadStreamStatus, string> = {
-  connecting: "Connecting…",
-  live: "Live",
-  reconnecting: "Reconnecting…",
-  closed: "Closed",
+// The badge reports only trouble with the browser's event stream, when the
+// transcript on screen may be out of date. A connected stream shows nothing:
+// the agent's own state is the header chip and the transcript's activity. The
+// first connect follows a fresh replay, so it shows nothing either.
+const streamProblems: Partial<Record<ThreadStreamStatus, { label: string; title: string }>> = {
+  reconnecting: {
+    label: "Reconnecting…",
+    title: "Live updates dropped. New output appears once they reconnect.",
+  },
+  closed: {
+    label: "Disconnected",
+    title: "Live updates stopped. Reload to see new output.",
+  },
 };
 
 export function mergeThreadBlocks(
@@ -627,13 +635,21 @@ export function ThreadDetail({
         >
           Thread details
         </button>
-        <span
-          className={`connection ${ended ? "closed ended" : status}`}
-          role="status"
-          title={`Cursor ${blocks.at(-1)?.messageSequence ?? replay.data.nextCursor}`}
-        >
-          {ended ? "Session ended" : streamLabels[status]}
-        </span>
+        {ended ? (
+          <span className="connection closed ended" role="status">
+            Session ended
+          </span>
+        ) : (
+          streamProblems[status] && (
+            <span
+              className={`connection ${status}`}
+              role="status"
+              title={streamProblems[status].title}
+            >
+              {streamProblems[status].label}
+            </span>
+          )
+        )}
         <label className="thread-raw-toggle">
           <input
             type="checkbox"

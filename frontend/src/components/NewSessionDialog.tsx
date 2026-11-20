@@ -281,7 +281,8 @@ export function NewSessionDialog({
   const [harness, setHarness] = useState("");
   const [mode, setMode] = useState<"thread" | "cli">("thread");
   const [connection, setConnection] = useState<string>();
-  const [lead, setLead] = useState(false);
+  // New Threads lead by default: the agent decides when to delegate.
+  const [lead, setLead] = useState(true);
   const [approveSpawns, setApproveSpawns] = useState(false);
   const [error, setError] = useState("");
 
@@ -469,8 +470,8 @@ export function NewSessionDialog({
             {lead && (
               <>
                 <p className="muted-copy">
-                  Ask it to split the work and it starts subagent Threads, each in its own
-                  Capsule, and collects their results. Subagents ask you, not the lead, for
+                  It hands independent or long-running work to subagent Threads on its own,
+                  each in its own Capsule, and collects their results. Subagents ask you, not the lead, for
                   permissions.
                 </p>
                 <label className="checkbox-label" htmlFor="new-session-approval">

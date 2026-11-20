@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -393,7 +393,9 @@ describe("Thread detail transcript and controls", () => {
     expect(header).not.toHaveTextContent(capsule.id);
     expect(header).not.toHaveTextContent(thread.id);
     expect(view.container).not.toHaveTextContent(/Structured Thread|Retained encrypted/);
-    expect(screen.getByText("Live")).toHaveAttribute("title", "Cursor 0");
+    // A connected stream is the normal state and shows no badge.
+    expect(screen.queryByText("Live")).not.toBeInTheDocument();
+    expect(view.container.querySelector(".connection")).toBeNull();
     expect(screen.queryByRole("region", { name: "Session ended" })).not.toBeInTheDocument();
     expect(screen.getByLabelText("Message")).toBeEnabled();
     expect(run).not.toHaveBeenCalled();
@@ -437,6 +439,38 @@ describe("Thread detail transcript and controls", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: "Thread actions" }));
     expect(screen.getByRole("menuitem", { name: "Crypto-shred" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Open terminal" })).not.toBeInTheDocument();
+  });
+
+  it("shows the stream badge only when live updates are not arriving", async () => {
+    vi.spyOn(api, "thread").mockResolvedValue(thread);
+    vi.spyOn(api, "capsule").mockResolvedValue(capsule);
+    vi.spyOn(api, "threadBlocks").mockResolvedValue({ items: [], nextCursor: 0, more: false });
+    let report: (status: threadEvents.ThreadStreamStatus) => void = () => {};
+    vi.spyOn(threadEvents, "followThreadBlocks").mockImplementation(
+      async (_id, _cursor, signal, _onBlock, onStatus) => {
+        report = onStatus;
+        onStatus("connecting");
+        await new Promise<void>((resolve) =>
+          signal.addEventListener("abort", () => resolve(), { once: true }),
+        );
+      },
+    );
+    const view = wrapper(
+      <Routes>
+        <Route path="/ui/threads/:threadId" element={<ThreadDetail />} />
+      </Routes>,
+    );
+
+    expect(await screen.findByLabelText("Message")).toBeEnabled();
+    expect(view.container.querySelector(".connection")).toBeNull();
+    act(() => report("reconnecting"));
+    expect(view.container.querySelector(".connection")).toHaveTextContent("Reconnecting…");
+    act(() => report("live"));
+    expect(view.container.querySelector(".connection")).toBeNull();
+    act(() => report("closed"));
+    const closed = view.container.querySelector(".connection");
+    expect(closed).toHaveTextContent("Disconnected");
+    expect(closed).toHaveAttribute("title", "Live updates stopped. Reload to see new output.");
   });
 
   it("ends a failed session honestly, with a bounded reason and a restart path", async () => {

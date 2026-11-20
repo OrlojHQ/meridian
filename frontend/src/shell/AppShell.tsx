@@ -90,7 +90,7 @@ import {
 } from "./paletteCommands";
 import { useNeedsYouAlerts } from "./useNeedsYouAlerts";
 import { useWorkingSet, type WorkingSetItem } from "./useWorkingSet";
-import { WorkspaceContext, type ContextTab } from "./WorkspaceContext";
+import { requestedTool, WorkspaceContext, type ContextTab } from "./WorkspaceContext";
 import { ContextResizer, contextWidthStyle, readContextWidth } from "./ContextResizer";
 
 const pathID = (pathname: string, resource: string) => {
@@ -135,11 +135,15 @@ const stationShortcut = (event: KeyboardEvent) =>
 
 const MAX_RECENT = 5;
 
-// Matches the phone layout in shell.css, where the Capsule tools pane covers
-// the whole workspace. There it starts closed so a Thread opens on its
-// conversation.
-const PHONE_LAYOUT = "(max-width: 720px)";
-const toolsOpenByDefault = () => !window.matchMedia?.(PHONE_LAYOUT).matches;
+// Tools start closed on every layout. Open and closed are not stored, so a
+// reload or a new Thread uses the full width until the operator opens a tool.
+// A route that names a tool still opens it. The primary terminal does not
+// also open the side terminal.
+function shouldOpenTools(tab: ContextTab | undefined, cliSession: boolean) {
+  if (!tab) return false;
+  if (tab === "terminal" && cliSession) return false;
+  return true;
+}
 
 export type ShellOutletContext = {
   openNewProject: () => void;
@@ -399,15 +403,16 @@ export function AppShell() {
   const [sessionProject, setSessionProject] = useState("");
   const [newSessionOpen, setNewSessionOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [contextOpen, setContextOpen] = useState(toolsOpenByDefault);
+  // Closed until the operator opens a tool. A review route can open on the
+  // first paint; the terminal tool waits until we know it is not the primary
+  // surface.
+  const [contextOpen, setContextOpen] = useState(
+    () => requestedTool(location.pathname, location.hash) === "changes",
+  );
   // The tab a collapsed-rail button asked for. Undefined lets the route pick.
   const [contextTab, setContextTab] = useState<ContextTab>();
   // The operator's chosen panel width in pixels. Undefined uses the default.
   const [contextWidth, setContextWidth] = useState(readContextWidth);
-  const openContext = (tab?: ContextTab) => {
-    setContextTab(tab);
-    setContextOpen(true);
-  };
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [deleteProject, setDeleteProject] = useState<Project>();
   const queryClient = useQueryClient();
@@ -455,7 +460,7 @@ export function AppShell() {
     setNewSessionOpen(false);
   }, [location.key]);
 
-  const { projects, projectItems, items, ready } = useWorkingSet();
+  const { projects, projectItems, items, ready, sessionsReady } = useWorkingSet();
 
   const threadId = pathID(location.pathname, "threads");
   const runId = pathID(location.pathname, "runs");
@@ -531,7 +536,20 @@ export function AppShell() {
       defaultSession(current.sessions);
     return selected?.kind === "terminal";
   }, [items, capsuleId, sessionId, location.pathname, onSubagentTab]);
-  const toolsDecision = useRef("");
+  const toolsRoute = useRef("");
+  // Set when the operator opens or closes tools on this route, so a late
+  // working-set update cannot override that choice.
+  const toolsChoice = useRef<{ route: string; open: boolean } | null>(null);
+  const toolsRouteKey = `${location.pathname}?${sessionId}${location.hash}`;
+  const openContext = (tab?: ContextTab) => {
+    toolsChoice.current = { route: toolsRouteKey, open: true };
+    setContextTab(tab);
+    setContextOpen(true);
+  };
+  const hideContext = () => {
+    toolsChoice.current = { route: toolsRouteKey, open: false };
+    setContextOpen(false);
+  };
 
   // Navigating closes the phone sidebar. This must not depend on the working
   // set, which is rebuilt on every render and would close it as it opens.
@@ -540,13 +558,25 @@ export function AppShell() {
   }, [location.pathname, sessionId]);
 
   useEffect(() => {
-    const key = `${location.pathname}?${sessionId}`;
-    if (toolsDecision.current === key) return;
-    if (capsuleId && !items.some((item) => item.capsule.id === capsuleId)) return;
-    toolsDecision.current = key;
-    setContextTab(undefined);
-    setContextOpen(cliSession ? false : toolsOpenByDefault());
-  }, [location.pathname, sessionId, capsuleId, items, cliSession]);
+    if (toolsChoice.current?.route === toolsRouteKey) return;
+    if (toolsRoute.current === toolsRouteKey) return;
+    const requested = requestedTool(location.pathname, location.hash);
+    const waiting =
+      Boolean(capsuleId) &&
+      (!sessionsReady || !items.some((item) => item.capsule.id === capsuleId));
+    // Close immediately on a route that does not ask for a tool, before the
+    // working set catches up, so an open panel does not linger on a new Thread.
+    if (waiting) {
+      if (!requested) {
+        setContextTab(undefined);
+        setContextOpen(false);
+      }
+      return;
+    }
+    toolsRoute.current = toolsRouteKey;
+    setContextTab(requested);
+    setContextOpen(shouldOpenTools(requested, cliSession));
+  }, [toolsRouteKey, location.pathname, location.hash, capsuleId, items, cliSession, sessionsReady]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -1009,6 +1039,12 @@ export function AppShell() {
             <PreviewIcon />
             Preview
           </button>
+          {!cliSession && (
+            <button type="button" onClick={() => openContext("terminal")}>
+              <TerminalIcon />
+              Terminal
+            </button>
+          )}
         </nav>
       )}
       {hasContext && (
@@ -1018,7 +1054,7 @@ export function AppShell() {
             type="button"
             className="context-toggle open"
             aria-label="Hide Capsule tools"
-            onClick={() => setContextOpen(false)}
+            onClick={hideContext}
           >
             <ChevronIcon />
           </button>

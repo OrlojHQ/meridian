@@ -1196,6 +1196,13 @@ context. A project/harness grant is required to issue a Capsule gateway lease.
 Every gateway request rechecks the connection, grant, Capsule ownership and
 Ready state. Tokens are held only in memory and injected into the child
 process environment; they expire in 24 hours. Revocation cancels active streams.
+A harness keeps the token it started with, so before a prompt reaches an idle
+structured session whose lease is expiring, expired, revoked, or from an
+earlier daemon process, `meridiand` stops and resumes that harness with a new
+lease (ADR 0058). Renewal re-runs the full lease checks of a session start,
+never extends an existing lease, and keeps only a token digest per Run in
+memory. A harness's request retries reach the Thread as fixed-category
+notices without provider response text.
 The gateway fixes upstream hosts and operation paths, strips caller credentials
 and cookies, rejects redirects and query strings, bounds requests/responses,
 and imposes request deadlines. It does not log inference payloads. With

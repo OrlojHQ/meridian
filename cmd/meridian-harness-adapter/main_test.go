@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"github.com/OrlojHQ/meridian/internal/harnessadapter"
 )
 
 func TestRootHelpAndVersion(t *testing.T) {
@@ -18,6 +20,21 @@ func TestRootHelpAndVersion(t *testing.T) {
 		}
 		if !strings.Contains(output.String(), "meridian-harness-adapter") {
 			t.Fatalf("%v output = %q", arguments, output.String())
+		}
+	}
+}
+
+// A driver that does not brief its harness leaves leads unaware that they can
+// delegate. Every driver must say how it delivers the brief, or why it has none.
+func TestEveryDriverDeclaresItsCoordinationBriefChannel(t *testing.T) {
+	for _, driver := range newRootCommand().Commands() {
+		name := driver.Name()
+		if name == "help" || name == "completion" {
+			continue
+		}
+		if harnessadapter.CoordinationBriefChannels[name] == "" {
+			t.Errorf("driver %q has no entry in harnessadapter.CoordinationBriefChannels; "+
+				"see docs/harness-adapters.md, Coordination brief", name)
 		}
 	}
 }

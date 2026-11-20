@@ -156,8 +156,8 @@ describe("New Capsule dialog", () => {
     renderDialog();
 
     const lead = await screen.findByRole("checkbox", { name: "Lead agent with subagents" });
-    expect(screen.queryByRole("checkbox", { name: "Approve each subagent spawn" })).not.toBeInTheDocument();
-    await userEvent.click(lead);
+    // New Threads lead by default.
+    expect(lead).toBeChecked();
     // No numbers to guess: the daemon keeps its own limits.
     expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("checkbox", { name: "Approve each subagent spawn" }));

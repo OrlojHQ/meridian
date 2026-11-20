@@ -112,8 +112,12 @@ type acpSession struct {
 	config ACPConfig
 	cwd    string
 
-	resume       string
-	sessionID    string
+	resume    string
+	sessionID string
+	// brief is the Meridian coordination brief still to send. ACP has no
+	// system-prompt field, so it rides as a trailing text block on the first
+	// prompt of a new session and stays in the agent's own history after.
+	brief        string
 	ready        bool
 	loading      bool
 	promptImages bool
@@ -197,6 +201,8 @@ func RunACP(ctx context.Context, input io.Reader, output io.Writer, config ACPCo
 			stream.Fail("acp_resume_invalid")
 			return err
 		}
+	} else {
+		session.brief = coordinationBrief(initial.Metadata, coordinationMCP)
 	}
 	session.cwd, err = sessionWorkingDirectory()
 	if err != nil {
@@ -497,6 +503,7 @@ func (s *acpSession) startTurn(frame adapterproto.Frame) error {
 		return s.fail("acp_write_failed", err)
 	}
 	s.promptID = s.request
+	s.brief = ""
 	return nil
 }
 
@@ -523,6 +530,15 @@ func (s *acpSession) promptBlocks(frame adapterproto.Frame) ([]map[string]any, e
 		for i := range data {
 			data[i] = 0
 		}
+	}
+	if s.brief != "" {
+		// Trailing, so a leading slash command in the operator's text
+		// still expands.
+		blocks = append(blocks, map[string]any{
+			"type": "text",
+			"text": "<meridian-context>\nThis block is from Meridian, not from the operator.\n\n" +
+				s.brief + "\n</meridian-context>",
+		})
 	}
 	return blocks, nil
 }

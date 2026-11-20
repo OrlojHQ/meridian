@@ -173,6 +173,28 @@ describe("Thread chat model", () => {
     expect(new Set(items.map((item) => item.key)).size).toBe(items.length);
   });
 
+  it("shows a harness's request retries as one notice that keeps the turn working", () => {
+    const t = transcript();
+    t.user("tell me a joke");
+    t.status("running");
+    t.sessionError("provider_retry", "Model request failed: the model provider could not be reached. Retrying, attempt 1 of 10.");
+    t.sessionError("provider_retry", "Model request failed: the model provider could not be reached. Retrying, attempt 2 of 10.");
+    const retrying = buildThreadChat(t.blocks, "Running");
+    expect(retrying.activity).toBe("working");
+    expect(retrying.items).toMatchObject([
+      { kind: "user" },
+      { kind: "notice", text: "Model request failed: the model provider could not be reached. Retrying, attempt 2 of 10." },
+    ]);
+    t.final("assistant-1", "A joke.");
+    t.sessionError("provider_retry", "Model request failed: the provider is overloaded (HTTP 529). Retrying, attempt 1 of 10.");
+    expect(buildThreadChat(t.blocks, "Running").items.map((item) => item.kind)).toEqual([
+      "user",
+      "notice",
+      "assistant",
+      "notice",
+    ]);
+  });
+
   it("matches responses to requests by responseTo, not by order", () => {
     const t = transcript();
     t.permission("perm-1", "First?");

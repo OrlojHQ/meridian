@@ -97,6 +97,36 @@ discovery is off). A subagent Capsule lists `meridian_report`,
 neither a lead nor a subagent,
 the MCP server lists no tools and the CLI answers `coordination_disabled`.
 
+### Coordination brief
+
+Registering the tools is not enough: an agent that does not know it is a lead
+uses them only when the operator asks. So when a structured session starts or
+resumes, meridiand puts the Thread's role in the Start or Resume frame's
+`metadata` as `{"coordination":"lead"}` or `{"coordination":"subagent"}`
+(`adapterproto.CoordinationMetadata`). A plain Thread carries no role. The
+driver reads it with `adapterproto.CoordinationRole` and adds the lead or
+subagent brief from `internal/harnessadapter/coordination_brief.go` to the
+harness's own system prompt. The lead brief says to delegate by default, to
+write self-contained tasks, and to end the turn after spawning instead of
+blocking on `wait`. The brief is trusted adapter text, never repository
+content, and grants nothing; the mailbox still enforces the grant.
+
+| Driver | Channel |
+| --- | --- |
+| `claude-stream` | `--append-system-prompt` |
+| `codex-app-server` | `developerInstructions` on `thread/start` and `thread/resume` |
+| `pi-rpc` | `--append-system-prompt`, worded for the `meridian-coord` CLI |
+| `acp` | a trailing `<meridian-context>` text block on the first prompt of a new session, since ACP has no system-prompt field |
+| `generic` | none; forwards the metadata to the child adapter |
+
+**Adding a harness.** A new ACP harness gets the brief from the `acp` driver
+with no extra work. A new driver must deliver the brief itself: prefer a
+system-prompt flag or session parameter that is re-sent on resume, fall back
+to a block on the first prompt, and use CLI wording if the harness has no MCP
+client. Then record the channel in `harnessadapter.CoordinationBriefChannels`;
+`TestEveryDriverDeclaresItsCoordinationBriefChannel` fails for any driver
+missing from it.
+
 The terminal launcher picks the native profile, and Threads pick the
 structured one. Because the image owns every mode of its names and a repository
 cannot define profiles under them, the daemon knows a pack's modes before any
@@ -484,6 +514,9 @@ archive, or an npm lockfile with the `npm` layout. Launching through `npx`,
 `bunx`, or any download at Capsule start is not supported. If the agent has
 no terminal UI, omit the native profile and declare only the structured mode
 in the catalog, as `dsh` does.
+Register `meridian-coord` with `--mcp-server` in the profile so leads get the
+coordination tools; the `acp` driver already delivers the coordination brief
+(see [Coordination brief](#coordination-brief)).
 
 The `acp` driver maps ACP onto `meridian.adapter.v1` like this:
 
