@@ -62,9 +62,19 @@ func newServeCommand() *cobra.Command {
 				fmt.Fprintln(os.Stderr, "capsuled: spawn contextFiles disabled: notes directory is inside the workspace")
 				coordinationNotes = ""
 			}
+			// Project notes and working notes are written under the home,
+			// never into the workspace a Delivery or a Moment captures.
+			notesBase := capsuleproto.NotesBaseDir(coordinationSocket)
+			if notesBase != "" && (!capsuleproto.OutsideWorkspace(workspace, notesBase) ||
+				!capsuleproto.OutsideWorkspace(workspace, filepath.Join(notesBase, coordproto.ProjectNotesDirName)) ||
+				!capsuleproto.OutsideWorkspace(workspace, filepath.Join(notesBase, coordproto.WorkingNotesDirName))) {
+				fmt.Fprintln(os.Stderr, "capsuled: notes delivery disabled: directory is inside the workspace")
+				notesBase = ""
+			}
 			server, err := capsuleproto.NewServer(capsuleproto.ServerConfig{
 				Token: token, Workspace: workspace, SetupTimeout: setupTimeout,
 				CoordinationFiles: coordinationFiles, CoordinationNotes: coordinationNotes,
+				NotesBase: notesBase,
 			})
 			if err != nil {
 				return err

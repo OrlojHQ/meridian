@@ -423,6 +423,10 @@ func (s *Service) handleCoordinationRequest(
 		s.auditRejection(ctx, domain.CoordinationGrant{}, request.Type, response)
 		return response
 	}
+	switch request.Type {
+	case coordproto.KindWriteNote, coordproto.KindSyncNotes, coordproto.KindProposeNote:
+		return s.handleNoteRequest(ctx, capsule, request)
+	}
 	grant, thread, failure := s.coordinationAuthority(ctx, capsule, request.Mutating())
 	if failure != nil {
 		s.auditRejection(ctx, grant, request.Type, *failure)
@@ -1383,7 +1387,9 @@ func (s *Service) configureCoordinationMailbox(ctx context.Context, capsuleID do
 	if grant.RootCapsuleID != capsule.ID {
 		role = domain.CapsuleSub
 	}
-	_ = s.coordination.ConfigureCoordination(ctx, capsule.ProviderResourceID, coordinationConfigFor(grant, role))
+	config := coordinationConfigFor(grant, role)
+	config.Self.NoteProposals = s.noteProposalRefs(ctx, threadID)
+	_ = s.coordination.ConfigureCoordination(ctx, capsule.ProviderResourceID, config)
 }
 
 // lastAssistantMessage returns the sequence of the newest assistant response

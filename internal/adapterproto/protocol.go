@@ -209,6 +209,10 @@ type Capabilities struct {
 	// ContextUsage says the peer understands context_usage frames. An
 	// adapter reports usage only when both hellos set it.
 	ContextUsage bool `json:"contextUsage,omitempty"`
+	// Notes says the peer understands the notes index in Start and Resume
+	// metadata (ADR 0060). capsuled removes the index when the adapter did
+	// not offer it; the note files are delivered either way.
+	Notes bool `json:"notes,omitempty"`
 }
 
 type Permission struct {
@@ -700,10 +704,138 @@ const (
 // CoordinationMetadata encodes a Start or Resume metadata object carrying
 // role, or nil when role is empty.
 func CoordinationMetadata(role string) json.RawMessage {
-	if role == "" {
+	return StartMetadata(role, nil)
+}
+
+// StartMetadata encodes a Start or Resume metadata object carrying the
+// coordination role and the notes index, or nil when it has neither.
+func StartMetadata(role string, notes *NotesIndex) json.RawMessage {
+	value := map[string]any{}
+	if role != "" {
+		value[CoordinationMetadataKey] = role
+	}
+	if notes != nil {
+		value[NotesMetadataKey] = notes
+	}
+	if len(value) == 0 {
 		return nil
 	}
-	encoded, _ := json.Marshal(map[string]string{CoordinationMetadataKey: role})
+	encoded, _ := json.Marshal(value)
+	return encoded
+}
+
+// NotesMetadataKey is the Start and Resume metadata field carrying the
+// notes index (ADR 0060): names and numbers only, never content. The
+// adapter renders it with a fixed template in the harness's system-prompt
+// channel.
+const NotesMetadataKey = "notes"
+
+// MaxNotesIndexBytes bounds the encoded index.
+const MaxNotesIndexBytes = 8 << 10
+
+const (
+	NotesTierProject = "project"
+	NotesTierWorking = "working"
+)
+
+// NotesIndex says which note sets a session received and where. A tier
+// whose directory is empty was not delivered to this session.
+type NotesIndex struct {
+	ProjectDir string       `json:"projectDir,omitempty"`
+	WorkingDir string       `json:"workingDir,omitempty"`
+	Notes      []NotesEntry `json:"notes"`
+}
+
+// NotesEntry is one delivered note.
+type NotesEntry struct {
+	Tier     string `json:"tier"`
+	Name     string `json:"name"`
+	Size     int    `json:"size"`
+	Revision int64  `json:"revision"`
+	// Changed says the note differs from what this Thread's previous
+	// session received.
+	Changed bool `json:"changed,omitempty"`
+}
+
+// Valid checks the index grammar, so a template can render it verbatim.
+func (n NotesIndex) Valid() bool {
+	if len(n.Notes) > 64 || !validNotesDir(n.ProjectDir) || !validNotesDir(n.WorkingDir) {
+		return false
+	}
+	for _, entry := range n.Notes {
+		if (entry.Tier != NotesTierProject && entry.Tier != NotesTierWorking) || !validNoteName(entry.Name) ||
+			entry.Size < 0 || entry.Size > 32<<10 || entry.Revision < 1 {
+			return false
+		}
+	}
+	encoded, err := json.Marshal(n)
+	return err == nil && len(encoded) <= MaxNotesIndexBytes
+}
+
+func validNotesDir(dir string) bool {
+	if dir == "" {
+		return true
+	}
+	if len(dir) > 255 || dir[0] != '/' {
+		return false
+	}
+	for _, r := range dir {
+		if r < 0x20 || r == 0x7f || r == '`' {
+			return false
+		}
+	}
+	return utf8.ValidString(dir)
+}
+
+func validNoteName(name string) bool {
+	if name == "" || len(name) > 48 || name[0] == '-' {
+		return false
+	}
+	for _, r := range name {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '-' {
+			return false
+		}
+	}
+	return true
+}
+
+// ReadNotesIndex reads the index StartMetadata wrote. An index that does
+// not match the grammar reads as none.
+func ReadNotesIndex(metadata json.RawMessage) *NotesIndex {
+	var value map[string]json.RawMessage
+	if len(metadata) == 0 || json.Unmarshal(metadata, &value) != nil || len(value[NotesMetadataKey]) == 0 {
+		return nil
+	}
+	var index NotesIndex
+	if json.Unmarshal(value[NotesMetadataKey], &index) != nil || !index.Valid() {
+		return nil
+	}
+	return &index
+}
+
+// WithNotesIndex replaces the notes index in a metadata object, or removes
+// it when index is nil. Other fields are kept.
+func WithNotesIndex(metadata json.RawMessage, index *NotesIndex) json.RawMessage {
+	value := map[string]json.RawMessage{}
+	if len(metadata) > 0 && json.Unmarshal(metadata, &value) != nil {
+		return metadata
+	}
+	if index == nil {
+		delete(value, NotesMetadataKey)
+	} else {
+		encoded, err := json.Marshal(index)
+		if err != nil {
+			return metadata
+		}
+		value[NotesMetadataKey] = encoded
+	}
+	if len(value) == 0 {
+		return nil
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return metadata
+	}
 	return encoded
 }
 

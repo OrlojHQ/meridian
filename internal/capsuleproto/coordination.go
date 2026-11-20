@@ -61,6 +61,8 @@ type Mailbox struct {
 	// notes is the directory a spawn's contextFiles are read from; empty
 	// when the Capsule has none.
 	notes string
+	// noteDirs writes working notes; nil when the Capsule has none.
+	noteDirs *noteDirs
 }
 
 type mailboxEntry struct {
@@ -161,6 +163,11 @@ func (m *Mailbox) Handle(ctx context.Context, request coordproto.Request) coordp
 		return m.relay(ctx, request)
 	case coordproto.KindProposeDelivery:
 		return m.relay(ctx, request)
+	case coordproto.KindWriteNote, coordproto.KindSyncNotes, coordproto.KindProposeNote:
+		if role != "lead" && role != "sub" {
+			return coordproto.Fail(coordproto.CodeCoordinationDisabled, "this Thread has no coordination grant")
+		}
+		return m.noteRequest(ctx, request)
 	}
 	if role != "lead" {
 		return coordproto.Fail(coordproto.CodeCoordinationDisabled, "this Thread has no lead coordination grant")

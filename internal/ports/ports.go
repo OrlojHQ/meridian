@@ -153,6 +153,26 @@ type Reader interface {
 	ActiveRoutineFire(context.Context, domain.RoutineID) (domain.RoutineFire, error)
 	CountKeptRoutineCapsules(context.Context, domain.RoutineID) (int, error)
 	RoutineFiresByCapsule(context.Context, []domain.CapsuleID) (map[domain.CapsuleID]domain.RoutineFire, error)
+	// Working notes and Project notes (ADR 0060). A Project's scope has the
+	// empty grant.
+	GetNoteScope(context.Context, domain.ProjectID, domain.CoordinationGrantID) (domain.NoteScope, error)
+	GetNoteScopeByID(context.Context, domain.NoteScopeID) (domain.NoteScope, error)
+	ListOwnedNoteScopes(context.Context, domain.UserID) ([]domain.NoteScope, error)
+	GetNote(context.Context, domain.NoteScopeID, string) (domain.Note, error)
+	GetNoteByID(context.Context, domain.NoteID) (domain.Note, error)
+	ListNotes(context.Context, domain.NoteScopeID) ([]domain.Note, error)
+	GetNoteRevision(context.Context, domain.NoteID, int64) (domain.NoteRevision, error)
+	ListNoteRevisions(context.Context, domain.NoteID, int) ([]domain.NoteRevision, error)
+	ListScopeRevisionsSince(context.Context, domain.NoteScopeID, int64, int) ([]domain.NoteRevision, error)
+	// CountNoteWrites counts a scope's agent revisions since a time: the
+	// whole tree's, then one Capsule's.
+	CountNoteWrites(context.Context, domain.NoteScopeID, domain.CapsuleID, time.Time) (int, int, error)
+	GetNoteProposal(context.Context, domain.NoteProposalID) (domain.NoteProposal, error)
+	GetNoteProposalByKey(context.Context, domain.CapsuleID, string) (domain.NoteProposal, error)
+	ListNoteProposals(context.Context, domain.ProjectID, bool, int) ([]domain.NoteProposal, error)
+	ListThreadNoteProposals(context.Context, domain.ThreadID, int) ([]domain.NoteProposal, error)
+	ListExpiredNoteProposals(context.Context, time.Time, int) ([]domain.NoteProposal, error)
+	GetThreadNotes(context.Context, domain.ThreadID) (domain.ThreadNotes, error)
 }
 
 type Transaction interface {
@@ -283,6 +303,17 @@ type Transaction interface {
 	DeleteRoutine(context.Context, domain.RoutineID) error
 	InsertRoutineFire(context.Context, domain.RoutineFire) error
 	UpdateRoutineFire(context.Context, domain.RoutineFire, domain.ResourceVersion) error
+	// PutNoteScope inserts a scope when expected is zero.
+	PutNoteScope(context.Context, domain.NoteScope, domain.ResourceVersion) error
+	InsertNote(context.Context, domain.Note) error
+	UpdateNote(context.Context, domain.Note, domain.ResourceVersion) error
+	InsertNoteRevision(context.Context, domain.NoteRevision) error
+	PruneNoteRevisions(context.Context, domain.NoteID, int) error
+	DropNoteContent(context.Context, domain.NoteID) error
+	ShredNoteScope(context.Context, domain.NoteScope, time.Time) error
+	InsertNoteProposal(context.Context, domain.NoteProposal) error
+	UpdateNoteProposal(context.Context, domain.NoteProposal, domain.ResourceVersion) error
+	PutThreadNotes(context.Context, domain.ThreadNotes) error
 }
 
 type Store interface {
@@ -373,12 +404,16 @@ type RuntimeRun struct {
 	Models bool
 	// Effort says it also negotiated reasoning effort.
 	Effort bool
+	// Notes says the adapter negotiated the notes index.
+	Notes bool
 }
 
 type RuntimeStructuredStartRequest struct {
 	Connection *harnesssetup.Connection   `json:"connection,omitempty"`
 	Setup      *harnesssetup.RuntimeSetup `json:"setup,omitempty"`
 	Git        *harnesssetup.GitIdentity  `json:"git,omitempty"`
+	// Notes are written as files before the harness starts (ADR 0060).
+	Notes *coordproto.NotesDelivery `json:"notes,omitempty"`
 	RunID      domain.RunID
 	ResourceID string
 	Harness    string

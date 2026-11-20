@@ -36,7 +36,7 @@ func (r *repository) ListDueRemoteCI(ctx context.Context, now time.Time, limit i
 				state IN ('waiting', 'connect', 'reconnect', 'unreadable')
 				OR (state = 'failing' AND error_code = 'rework_due')
 			)
-		ORDER BY next_poll_at LIMIT ?`, formatTime(now), limit)
+		ORDER BY next_poll_at LIMIT ?`, pollTime(now), limit)
 	if err != nil {
 		return nil, mapError(err)
 	}
@@ -76,7 +76,7 @@ func (r *repository) InsertRemoteCI(ctx context.Context, watch domain.RemoteCIWa
 		watch.RepositoryOwner, watch.RepositoryName, watch.PullNumber, watch.PullURL,
 		watch.GitHead, watch.GitTree, watch.State, watch.Epoch, watch.Attempt,
 		boolInt(watch.Counted), watch.Passed, watch.Failed, watch.Pending, watch.PollCount,
-		formatTime(watch.NextPollAt), boolInt(watch.ReworkSent), boolInt(watch.PushReview),
+		pollTime(watch.NextPollAt), boolInt(watch.ReworkSent), boolInt(watch.PushReview),
 		boolInt(watch.Superseded), watch.ErrorCode, watch.ResourceVersion,
 		formatTime(watch.CreatedAt), formatTime(watch.UpdatedAt), formatTime(watch.FinishedAt),
 	)
@@ -94,7 +94,7 @@ func (r *repository) UpdateRemoteCI(ctx context.Context, watch domain.RemoteCIWa
 			superseded = ?, error_code = ?, resource_version = ?, updated_at = ?, finished_at = ?
 		WHERE id = ? AND resource_version = ?`,
 		watch.State, watch.Epoch, watch.Attempt, boolInt(watch.Counted), watch.Passed, watch.Failed,
-		watch.Pending, watch.PollCount, formatTime(watch.NextPollAt), boolInt(watch.ReworkSent),
+		watch.Pending, watch.PollCount, pollTime(watch.NextPollAt), boolInt(watch.ReworkSent),
 		boolInt(watch.PushReview), boolInt(watch.Superseded), watch.ErrorCode, watch.ResourceVersion,
 		formatTime(watch.UpdatedAt), formatTime(watch.FinishedAt), watch.ID, expected,
 	)
@@ -204,4 +204,15 @@ func scanRemoteCI(row checkScanner) (domain.RemoteCIWatch, error) {
 		*item.dst = at
 	}
 	return watch, nil
+}
+
+// pollTime writes a poll time that sorts as text: RFC3339Nano drops
+// trailing zeros, so "...:05.1Z" would sort after "...:05.101Z" and a watch
+// due now could read as not yet due. The zero time keeps its old form, so
+// it still sorts before every real time.
+func pollTime(value time.Time) string {
+	if value.IsZero() {
+		return formatTime(value)
+	}
+	return sortableTime(value)
 }

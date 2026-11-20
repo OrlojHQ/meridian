@@ -69,9 +69,12 @@ type Routine struct {
 	LastFireAt        time.Time
 	ContentNonce      []byte
 	ContentCiphertext []byte
-	ResourceVersion   ResourceVersion
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
+	// IncludeNotes delivers the Project's notes to each scheduled Thread
+	// (ADR 0060). It defaults to false: a scheduled run has no witness.
+	IncludeNotes    bool
+	ResourceVersion ResourceVersion
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 func (s Routine) Validate() error {

@@ -15,7 +15,7 @@ import (
 const routineSelect = `
 	SELECT id, project_id, owner_user_id, name, harness, cadence, time_zone, max_run_seconds,
 		catch_up_seconds, max_kept, enabled, disabled_reason, start_failures, next_fire_at,
-		last_fire_at, content_nonce, content_ciphertext, resource_version, created_at, updated_at
+		last_fire_at, content_nonce, content_ciphertext, include_notes, resource_version, created_at, updated_at
 	FROM routines`
 
 const routineFireSelect = `
@@ -115,14 +115,15 @@ func (r *repository) InsertRoutine(ctx context.Context, routine domain.Routine) 
 		INSERT INTO routines(
 			id, project_id, owner_user_id, name, harness, cadence, time_zone, max_run_seconds,
 			catch_up_seconds, max_kept, enabled, disabled_reason, start_failures, next_fire_at,
-			last_fire_at, content_nonce, content_ciphertext, resource_version, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			last_fire_at, content_nonce, content_ciphertext, include_notes, resource_version, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		routine.ID, routine.ProjectID, routine.OwnerUserID, routine.Name, routine.Harness,
 		routine.Cadence, routine.TimeZone, int64(routine.MaxRun/time.Second),
 		int64(routine.CatchUp/time.Second), routine.MaxKept, boolInt(routine.Enabled),
 		routine.DisabledReason, routine.StartFailures, sortableTime(routine.NextFireAt),
 		optionalTime(routine.LastFireAt), routine.ContentNonce, routine.ContentCiphertext,
-		routine.ResourceVersion, formatTime(routine.CreatedAt), formatTime(routine.UpdatedAt),
+		boolInt(routine.IncludeNotes), routine.ResourceVersion, formatTime(routine.CreatedAt),
+		formatTime(routine.UpdatedAt),
 	)
 	return mapError(err)
 }
@@ -136,14 +137,14 @@ func (r *repository) UpdateRoutine(ctx context.Context, routine domain.Routine, 
 			name = ?, harness = ?, cadence = ?, time_zone = ?, max_run_seconds = ?,
 			catch_up_seconds = ?, max_kept = ?, enabled = ?, disabled_reason = ?, start_failures = ?,
 			next_fire_at = ?, last_fire_at = ?, content_nonce = ?, content_ciphertext = ?,
-			resource_version = ?, updated_at = ?
+			include_notes = ?, resource_version = ?, updated_at = ?
 		WHERE id = ? AND resource_version = ?`,
 		routine.Name, routine.Harness, routine.Cadence, routine.TimeZone,
 		int64(routine.MaxRun/time.Second), int64(routine.CatchUp/time.Second), routine.MaxKept,
 		boolInt(routine.Enabled), routine.DisabledReason, routine.StartFailures,
 		sortableTime(routine.NextFireAt), optionalTime(routine.LastFireAt),
-		routine.ContentNonce, routine.ContentCiphertext, routine.ResourceVersion,
-		formatTime(routine.UpdatedAt), routine.ID, expected,
+		routine.ContentNonce, routine.ContentCiphertext, boolInt(routine.IncludeNotes),
+		routine.ResourceVersion, formatTime(routine.UpdatedAt), routine.ID, expected,
 	)
 	return expectOneRow(result, err)
 }
@@ -320,13 +321,13 @@ func expectOneRow(result interface{ RowsAffected() (int64, error) }, err error) 
 func scanRoutine(row scanner) (domain.Routine, error) {
 	var routine domain.Routine
 	var maxRun, catchUp int64
-	var enabled int
+	var enabled, includeNotes int
 	var next, last, created, updated string
 	err := row.Scan(
 		&routine.ID, &routine.ProjectID, &routine.OwnerUserID, &routine.Name, &routine.Harness,
 		&routine.Cadence, &routine.TimeZone, &maxRun, &catchUp, &routine.MaxKept, &enabled,
 		&routine.DisabledReason, &routine.StartFailures, &next, &last, &routine.ContentNonce,
-		&routine.ContentCiphertext, &routine.ResourceVersion, &created, &updated,
+		&routine.ContentCiphertext, &includeNotes, &routine.ResourceVersion, &created, &updated,
 	)
 	if err != nil {
 		return domain.Routine{}, mapError(err)
@@ -334,6 +335,7 @@ func scanRoutine(row scanner) (domain.Routine, error) {
 	routine.MaxRun = time.Duration(maxRun) * time.Second
 	routine.CatchUp = time.Duration(catchUp) * time.Second
 	routine.Enabled = enabled == 1
+	routine.IncludeNotes = includeNotes == 1
 	for _, item := range []struct {
 		raw string
 		dst *time.Time

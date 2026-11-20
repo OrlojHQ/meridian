@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/OrlojHQ/meridian/internal/adapterproto"
+	"github.com/OrlojHQ/meridian/internal/coordproto"
 	"github.com/OrlojHQ/meridian/internal/harness"
 )
 
@@ -34,10 +35,13 @@ type StructuredStartRequest struct {
 	Connection *harnesssetup.Connection   `json:"connection,omitempty"`
 	Setup      *harnesssetup.RuntimeSetup `json:"setup,omitempty"`
 	Git        *harnesssetup.GitIdentity  `json:"git,omitempty"`
-	RunID      string                     `json:"runId"`
-	Harness    string                     `json:"harness"`
-	Frame      adapterproto.Frame         `json:"frame"`
-	Secrets    map[string]string          `json:"secrets,omitempty"`
+	// Notes are the note sets this session receives as files (ADR 0060).
+	// Nil leaves the directories as they are.
+	Notes   *NotesDelivery     `json:"notes,omitempty"`
+	RunID   string             `json:"runId"`
+	Harness string             `json:"harness"`
+	Frame   adapterproto.Frame `json:"frame"`
+	Secrets map[string]string  `json:"secrets,omitempty"`
 }
 
 type StructuredStatusResponse struct {
@@ -186,7 +190,7 @@ type structuredSession struct {
 
 func (s *Server) startStructured(writer http.ResponseWriter, request *http.Request) {
 	var input StructuredStartRequest
-	if !decodeRequest(writer, request, structuredHTTPBodyLimit+2<<20, &input) {
+	if !decodeRequest(writer, request, structuredHTTPBodyLimit+4<<20, &input) {
 		return
 	}
 	if !validRunIdentity(input.RunID, input.Harness) ||
@@ -207,6 +211,16 @@ func (s *Server) startStructured(writer http.ResponseWriter, request *http.Reque
 	if code != "" {
 		writeProtocolError(writer, status, code)
 		return
+	}
+
+	// Notes are written before the harness starts and never while a turn
+	// runs. The index names only the sets that are in place.
+	if input.Notes != nil {
+		project, working := s.notes.deliver(input.Notes)
+		input.Frame.Metadata = adapterproto.WithNotesIndex(input.Frame.Metadata,
+			deliveredIndex(adapterproto.ReadNotesIndex(input.Frame.Metadata), s.notes, project, working))
+	} else {
+		input.Frame.Metadata = adapterproto.WithNotesIndex(input.Frame.Metadata, nil)
 	}
 
 	setupEnv, err := s.prepareHarnessSetup(request.Context(), input.Setup, input.Harness)
@@ -266,6 +280,31 @@ func (s *Server) startStructured(writer http.ResponseWriter, request *http.Reque
 	run.addEvent("run.starting", nil, map[string]any{"structured": true})
 	go session.execute()
 	writeJSON(writer, http.StatusAccepted, session.status())
+}
+
+// deliveredIndex keeps the index entries of the sets capsuled wrote and
+// names their directories. It returns nil when nothing was delivered.
+func deliveredIndex(index *adapterproto.NotesIndex, dirs *noteDirs, project, working bool) *adapterproto.NotesIndex {
+	if index == nil || (!project && !working) {
+		return nil
+	}
+	result := &adapterproto.NotesIndex{Notes: []adapterproto.NotesEntry{}}
+	if project {
+		result.ProjectDir = dirs.dir(coordproto.ProjectNotesDirName)
+	}
+	if working {
+		result.WorkingDir = dirs.dir(coordproto.WorkingNotesDirName)
+	}
+	for _, entry := range index.Notes {
+		if (entry.Tier == adapterproto.NotesTierProject && project) ||
+			(entry.Tier == adapterproto.NotesTierWorking && working) {
+			result.Notes = append(result.Notes, entry)
+		}
+	}
+	if !result.Valid() {
+		return nil
+	}
+	return result
 }
 
 func validRunIdentity(runID, profile string) bool {
@@ -462,7 +501,7 @@ func (s *structuredSession) execute() {
 			Resume: true, ToolEvents: true, Permissions: true,
 			InputRequests: true, Heartbeat: true, OpaqueMetadata: true,
 			Commands: true, Models: true, Effort: true, ResolvedModel: true, Images: true,
-			ContextUsage: true,
+			ContextUsage: true, Notes: true,
 		},
 	}
 	handshakeContext, handshakeCancel := context.WithTimeout(ctx, structuredHandshakeTimeout)
@@ -504,6 +543,11 @@ func (s *structuredSession) execute() {
 	s.mu.Lock()
 	s.capabilities = &capabilities
 	s.mu.Unlock()
+	if !capabilities.Notes {
+		// The files are in place either way; an adapter that cannot render
+		// the index is not told about them.
+		s.initial.Metadata = adapterproto.WithNotesIndex(s.initial.Metadata, nil)
+	}
 	s.addEvent(peerHello)
 	writeContext, writeCancel := context.WithTimeout(ctx, structuredWriteTimeout)
 	err = s.writeFrame(writeContext, s.initial)
