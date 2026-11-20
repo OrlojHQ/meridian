@@ -106,8 +106,8 @@ Meridian assumes the following may be malicious or compromised:
   lead, bounded git patch series a lead fetches from a subagent Capsule, and
   the files under `$HOME/.meridian/coord` that hold them on request;
 - working notes written by any member of a lead tree, Project note
-  proposals from a lead or subagent Capsule, and Project notes that began as
-  one or were auto-approved (ADR 0060, proposed);
+  proposals from a lead or subagent Capsule, and approved Project notes that
+  began as one (ADR 0060, proposed);
 - external services reached over the network and credentials returned by integrations;
 - in team mode, another authenticated teammate who must not reach your
   objects, and OIDC callback parameters, ID tokens, and claims; and
@@ -1848,8 +1848,8 @@ ADR 0060 is proposed and not implemented. It adds two tiers of notes, both
 stored by meridiand, encrypted, and delivered to Capsules as files.
 **Working notes** are shared by one lead and its subagents with no review.
 **Project notes** reach every Thread in the Project; the owner writes them,
-agents propose changes, and the owner reviews them, except where one lead is
-allowed to auto-approve.
+agents propose changes, and the owner reviews every change. There is no
+auto-approve.
 
 - **Working notes are an unreviewed carrier, scoped to one tree.** Any
   process in the lead Capsule or in a subagent Capsule with an open link can
@@ -1864,20 +1864,22 @@ allowed to auto-approve.
   links. A detached, cancelled, removed or denied subagent leaves the tree.
   Other leads, plain Threads, routines and later trees never receive them,
   and a revoked or ended grant's notes are readable only by the operator.
-  Text leaves the tree only through an operator-reviewed promotion, an
-  auto-approved proposal from the lead itself (below), the lead quoting it
-  into a Delivery the operator approves, or the operator copying it.
+  Text leaves the tree only through an operator-reviewed promotion or
+  proposal, the lead quoting it into a Delivery the operator approves, or
+  the operator copying it. Trusting one lead, or being wrong to, therefore
+  affects only that lead's tree until the operator reviews something it
+  wrote.
 - **A deliberate carrier across fresh Capsules.** Project notes are the one
   way text from one Capsule reaches later Capsules in other trees without a
-  repository commit. That narrows "no standing foothold" (ADR 0057). Plain
-  Threads and routines receive only operator-written or operator-reviewed
-  revisions. Every revision records its kind, the user who wrote, approved
+  repository commit. That narrows "no standing foothold" (ADR 0057). Every
+  revision is written or approved by the operator, so every Thread that
+  receives Project notes receives only reviewed text. Every revision records its kind, the user who wrote, approved
   or reviewed it, and for agent text the proposing or writing Thread,
   Capsule, link and lead. History, restore, delete with history and
   crypto-shred undo a mistake for later sessions. Copies already delivered
   stay in their Capsules until replaced or deleted, and quotes an agent made
   stay in transcripts, reports and commits.
-- **Only the owner writes, approves or reviews Project notes.** These are
+- **Only the owner writes or approves Project notes.** These are
   user-principal APIs. The break-glass admin, the system and every Capsule
   see notes as not found. `propose-note` stores a pending proposal and
   returns only its ID and state. There is no bulk approve. Approval binds
@@ -1892,7 +1894,7 @@ allowed to auto-approve.
   flaky tests", "run this bootstrap script first", "the token is in
   `.env.example`") steers every later Thread in the Project. Controls: the
   review page shows a source diff with control, bidirectional and zero-width
-  characters escaped, against the last reviewed revision; one change is
+  characters escaped, against the note's current revision; one change is
   approved at a time; notes whose latest revision came from an agent are
   labelled; credential-shaped content is flagged; the delivered index says
   notes grant no permission and change no setting; and routines receive
@@ -1900,21 +1902,13 @@ allowed to auto-approve.
   permission settings, egress, trusted MCP tools, a grant, or Delivery
   approval, so it can steer only what an agent could already do without
   asking. Approving a poisoned note is a residual risk.
-- **Auto-approve.** A grant's `autoApproveProjectNotes` lets proposals from
-  that lead's own Capsule apply without review. Trusting a lead means
-  trusting everything it reads: subagent reports, working notes, repository
-  files, dependency output and web pages. A subagent can poison a working
-  note, the lead can copy it into a proposal, and the change lands without
-  review in every lead tree in the Project, including other leads the
-  operator never pointed at it. Bounds: off by default for every lead,
-  including one made from an existing Thread; set only by the operator
-  through the grant API; never for subagents' proposals; refused while the
-  grant is lapsed, so it stops when the operator has been away for the
-  unattended limit; never over a revision the operator wrote, approved or
-  reviewed; at most 20 revisions per grant per rolling 24 hours; cleared on
-  owner transfer; and never delivered to plain Threads or routines until
-  the operator marks the revision reviewed. This is a residual risk the
-  operator accepts per lead.
+- **No auto-approve.** Letting a lead's proposals apply without review was
+  considered and left out. Delivered to every lead tree, an unreviewed
+  revision would let one compromised lead, or a subagent that poisoned it,
+  reach every other lead in the Project. Confined to the proposing tree
+  until reviewed, it would reach no further than a working note and need
+  the same review to leave it. Review stays the only way agent text becomes
+  a Project note.
 - **Social engineering.** Note and proposal text never appears in
   notifications, Inbox lines or titles, which name only the Project, the
   note and the Thread. A proposal has no free-text reason field. Text is
@@ -1933,24 +1927,20 @@ allowed to auto-approve.
   the Capsule user can change its own copy, which affects only that Capsule
   until the next delivery. Project notes are a snapshot per session, never a
   live view. Note text is never put into the system prompt; that channel
-  carries only a fixed index of names, sizes, revisions and the unreviewed
-  flag, at most 8 KiB.
+  carries only a fixed index of names, sizes and revisions, at most 8 KiB.
 - **Size and cost.** 32 KiB per note; 32 notes and 128 KiB per Project and
   per tree; working-note writes limited to 30 per Capsule and 120 per tree
   per rolling hour; 16 pending proposals per Project and 4 per proposing
-  Thread, with 7-day expiry; 20 auto-approved revisions per grant per day;
-  50 retained revisions per note; and the mailbox's existing rate and size
+  Thread, with 7-day expiry; 50 retained revisions per note; and the mailbox's existing rate and size
   limits. Limits refuse; nothing is cut.
 - **What a compromised Capsule can do.** Write its tree's working notes
   within the bounds, poisoning what the rest of the tree reads; propose
-  Project-note changes, which in the lead of an auto-approving grant apply
-  within that grant's bounds; read and exfiltrate the notes delivered to it
+  Project-note changes, which wait for review; read and exfiltrate the notes delivered to it
   within its egress; change its own copies; and read the states of its own
-  proposals. It cannot write, approve or review a Project note outside
-  auto-approve, read other proposals, change who receives notes or whether
-  auto-approve is on, reach another tree's working notes or another
-  Capsule's copies, deliver unreviewed text to a plain Thread or routine,
-  raise attention, or plant a note through the repository.
+  proposals. It cannot write or approve a Project note, read other
+  proposals, change who receives notes, reach another tree's working notes
+  or another Capsule's copies, deliver unreviewed text to any Thread outside
+  its tree, raise attention, or plant a note through the repository.
 - **Encryption at rest.** Revision and proposal content is AES-256-GCM under
   a per-Project or per-grant notes DEK, wrapped with the installation
   transcript KEK. The wrap AAD binds the Project, the grant for working
@@ -1970,6 +1960,6 @@ allowed to auto-approve.
   named secrets.
 - **Team mode.** Notes are private to the Project's owner, like every other
   object. A departed-member transfer re-wraps every notes DEK for the new
-  owner, rejects pending proposals, clears auto-approve, and turns delivery
+  owner, rejects pending proposals, and turns delivery
   off until the new owner turns it on. The admin who transfers cannot read
   notes.

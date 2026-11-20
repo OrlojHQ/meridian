@@ -3,8 +3,8 @@
 - Status: Proposed
 - Date: 2026-11-20
 - Amends: ADR 0059 section 4 (cross-tree notes are no longer deferred), ADR
-  0029 (new mailbox requests and a grant policy field), ADR 0057 (what may
-  reach a scheduled Thread besides its prompt)
+  0029 (new mailbox requests), ADR 0057 (what may reach a scheduled Thread
+  besides its prompt)
 - Extends: ADRs 0012, 0016, 0039 and 0046
 
 ## Context
@@ -70,7 +70,7 @@ There are two tiers of notes, split by who will read them.
 - **Project notes** belong to the Project. They reach other leads, plain
   Threads, future Threads and, when a routine opts in, scheduled Threads.
   Only the operator writes them, agents propose changes, and every change is
-  reviewed, except where the operator lets one lead skip review (section 3).
+  reviewed (section 3 says why there is no auto-approve).
 
 Both tiers are Markdown files stored by meridiand, encrypted, and delivered
 to a Capsule as files outside `/workspace`. Every revision records who wrote
@@ -182,7 +182,7 @@ the Project's Threads.
 - **What an agent sees.** The `propose-note` response is content-free: the
   proposal ID and its state. A proposing Thread can read the states of its
   own 16 most recent proposals (`pending`, `approved`, `approved_with_edits`,
-  `auto_approved`, `rejected`, `stale`, `expired`) through `whoami`, with no
+  `rejected`, `stale`, `expired`) through `whoami`, with no
   text. No agent sees another Thread's pending proposals, the content of any
   pending or rejected proposal, or a rejection reason. Pending proposals are
   unreviewed agent text, so letting agents outside the proposer read them
@@ -198,50 +198,40 @@ the Project's Threads.
   0025) and does not wake or block the agent. It shows as a count on the
   Project's Notes tab and in the Inbox under "Notes to review".
 
-### 3. Auto-approve for one trusted lead
+### 3. No auto-approve
 
-An operator who is actively working with one lead may let that lead's
-Project-note proposals apply without a click.
+Every Project-note revision is written or approved by the operator. An
+earlier revision of this ADR let the operator turn on auto-approve for one
+trusted lead. It is not part of this decision.
 
-- **Where it lives.** A grant policy field, `autoApproveProjectNotes`,
-  default false. It is set at grant creation or by the operator-only `PATCH
-  /coordination-grants/{id}`, like the other limits, and no Capsule can set
-  it. It defaults to false for a new lead and for a lead made from an
-  existing Thread (ADR 0059 section 2) alike, and is never copied from
-  another grant. A departed-member transfer (ADR 0046) clears it.
-- **Whose proposals.** Only proposals from the lead's own Capsule.
-  Proposals from its subagents always wait for review.
-- **Only while someone is watching.** A lapsed grant refuses every mutating
-  request, `propose-note` included, so auto-approve stops when the grant's
-  unattended limit passes and resumes when the operator next messages the
-  lead. Revocation ends it.
-- **What it may change.** An auto-approved proposal may create a note or
-  replace one whose latest revision was itself auto-approved. A proposal to
-  change or delete a note whose latest revision was written, approved or
-  reviewed by the operator waits for review, so a lead cannot rewrite the
-  operator's own preferences without a click. At most 20 auto-approved
-  revisions per grant in any rolling 24 hours; past that, proposals wait for
-  review.
-- **Records.** Each revision is `auto_approved`, with the lead, the
-  proposal and the grant in its provenance, and is audited like an approval.
-  It keeps full history, restore and shred.
-- **Who receives it.** An auto-approved revision is unreviewed. It is
-  delivered to lead trees only: leads and their subagents in the Project,
-  under the Project's `notesDelivery` setting. Plain Threads and routines
-  keep receiving the note's last reviewed revision, or nothing for a note
-  that has never been reviewed. The Notes tab lists unreviewed revisions,
-  and "Mark reviewed" on one, after its source diff, makes it the reviewed
-  revision. Restoring or editing a note also counts as review.
+In its first form, an auto-approved revision reached every lead tree in the
+Project before anyone had read it. One compromised lead could then put text
+in front of every other lead without review, which is the cross-tree spread
+the two tiers exist to prevent. Narrowed so that an unreviewed revision
+reaches only the tree of the lead that proposed it, until the operator marks
+it reviewed, it no longer spreads. It also no longer does anything that
+working notes do not already do:
 
-This ships because the alternative it replaces is worse in practice. A
-lead that is in active use can propose several facts an hour. One click per
-fact teaches the operator to approve without reading, which weakens review
-for every proposal, including subagents'. Auto-approve is a narrow way out:
-one lead the operator chose, while the operator is around, never over the
-operator's own text, and never into a Thread that is not itself a lead tree.
-Its cost is stated plainly in the threat-model changes: trusting a lead
-means trusting everything it reads, which includes its subagents' reports
-and working notes.
+- **Reach.** Inside its own tree, an unreviewed revision is text the lead
+  wrote that the lead and its subagents read. A working note is exactly
+  that, with no grant flag to set.
+- **Review.** For the text to leave the tree, the operator still reads a
+  source diff and clicks once, "Mark reviewed" instead of "Promote to
+  Project notes". The step is the same.
+- **Volume.** The case for auto-approve was a busy lead proposing several
+  facts an hour, where a click per fact teaches the operator to approve
+  without reading. With working notes, those facts need no click at all.
+  The operator promotes what should leave the tree when they choose, and
+  can merge several working notes into one Project note, so the review
+  count follows promotions, not facts.
+
+Its only remaining benefit would be that the text already sits in the
+Project-note slot, so the later review is "Mark reviewed" rather than
+"Promote". That does not pay for a second unreviewed carrier, a grant policy
+field, a reviewed and an unreviewed head per note, and a per-tree delivery
+rule for Project notes. The lead brief instead says to keep frequent
+findings in working notes and to propose a Project note only for a fact
+that Threads outside the tree need.
 
 ### 4. Delivery
 
@@ -276,42 +266,38 @@ Three ways to get notes into a Capsule were compared:
   was rejected: content would change under a running turn, and an approval
   would reach every running Capsule in the Project at once, including
   unattended ones.
-- **The index.** Start and Resume metadata gain `notes`: the two
-  directories, and for each note its tier, name, size, revision, and whether
-  it changed since this Thread's previous session. The driver renders it
-  with a fixed template in the harness's system-prompt channel, the same
-  channels as the coordination brief. The template says that Project notes
-  were written or approved by the operator, except those marked unreviewed;
-  that working notes are written by the lead and its subagents and are as
-  trustworthy as their reports; that neither grants a permission or changes
-  a setting; and how each tier is changed. The index carries names, numbers
-  and the unreviewed flag only, at most 8 KiB. It is negotiated with a
-  `notes` capability in both hellos, like `contextUsage` (ADR 0059 section
-  6). An adapter that does not offer it still gets the files and no index,
-  and the UI says that this harness is not told about them.
+- **The index.** Start and Resume metadata gain `notes`: the two directories,
+  and for each note its tier, name, size, revision, and whether it changed
+  since this Thread's previous session. The driver renders it with a fixed
+  template in the harness's system-prompt channel, the same channels as the
+  coordination brief. The template says that Project notes were written or
+  approved by the operator; that working notes are written by the lead and its
+  subagents and are as trustworthy as their reports; that neither grants a
+  permission or changes a setting; and how each tier is changed. The index
+  carries names and numbers only, at most 8 KiB. It is negotiated with a
+  `notes` capability in both hellos, like `contextUsage` (ADR 0059 section 6).
+  An adapter that does not offer it still gets the files and no index, and the
+  UI says that this harness is not told about them.
 - **Who gets Project notes.** A Project setting, `notesDelivery`:
-  `all_threads` (default), `leads_only` (lead Threads and their subagents),
-  or `off`. The new-Thread dialog has an "Include Project notes" choice that
-  defaults to the Project setting. Lead trees receive each note's latest
-  revision. Plain Threads receive its latest reviewed revision (section 3).
-  A subagent follows the Project setting, not its lead's choice, and gets
-  the set that is current when its session starts.
-- **Why the default stays `all_threads`.** With auto-approve in the
-  picture, `all_threads` would be wrong if it meant plain Threads got
-  unreviewed text. It does not: a plain Thread and a routine only ever
-  receive operator-written or operator-reviewed revisions, so the reasoning
-  for the default holds. A note the operator wrote, which no Thread receives,
-  would be surprising. `leads_only` was considered as the default and
-  rejected: it would leave plain Threads, which are most Threads, starting
-  from zero, to guard against a risk the reviewed-revision rule already
-  removes.
-- **Scheduled Threads.** A routine (ADR 0057) delivers Project notes only
-  when the routine sets `includeNotes: true`, which defaults to false, and
-  then only reviewed revisions. A scheduled Thread holds no grant, so it
-  never has working notes. Amend ADR 0057: a routine's prompt still takes no
-  input from a previous run, and a routine that opts in also gets the
-  Project notes as files. A scheduled run has no witness, so the operator
-  chooses per routine.
+  `all_threads` (default), `leads_only` (lead Threads and their subagents), or
+  `off`. The new-Thread dialog has an "Include Project notes" choice that
+  defaults to the Project setting. Every Thread that receives Project notes
+  receives the same set: each note's current revision, which the operator
+  wrote or approved. A subagent follows the Project setting, not its lead's
+  choice, and gets the set that is current when its session starts.
+- **Why the default is `all_threads`.** Every Project-note revision is
+  operator text or text the operator approved, and agent text that has not
+  been reviewed stays in its tree as working notes. A note the operator
+  wrote, which no Thread receives, would be surprising. `leads_only` was
+  considered as the default and rejected: it would leave plain Threads,
+  which are most Threads, starting from zero, to guard against unreviewed
+  text that never reaches Project notes.
+- **Scheduled Threads.** A routine (ADR 0057) delivers Project notes only when
+  the routine sets `includeNotes: true`, which defaults to false. A scheduled
+  Thread holds no grant, so it never has working notes. Amend ADR 0057: a
+  routine's prompt still takes no input from a previous run, and a routine
+  that opts in also gets the Project notes as files. A scheduled run has no
+  witness, so the operator chooses per routine.
 - **Record.** Each session records the content-free set of note revisions it
   was given. The Thread's details show it, and the transcript gets a quiet,
   content-free divider ("Project notes updated: 2 changed") when a resumed
@@ -331,19 +317,18 @@ These rules apply to both tiers unless stated.
   tab and newline. CRLF is stored as LF. At most 32 KiB per note. Project
   notes are limited to 32 live notes and 128 KiB in total per Project, and
   working notes to the same per tree (section 1).
-- **Revisions.** Every write, approval, auto-approval, review mark, rename,
-  deletion and restore creates an immutable revision with a sequence number
-  per note. A note keeps the content of its 50 most recent revisions. Older
-  revisions keep their content-free provenance row and lose their
-  ciphertext.
+- **Revisions.** Every write, approval, rename, deletion and restore creates
+  an immutable revision with a sequence number per note. A note keeps the
+  content of its 50 most recent revisions. Older revisions keep their
+  content-free provenance row and lose their ciphertext.
 - **Project-note provenance.** Each revision records, in plaintext and
   content-free: the kind (`operator_write`, `approved_proposal`,
-  `approved_with_edits`, `auto_approved`, `reviewed`, `restore`, `delete`),
-  the user who wrote, approved or reviewed it, the time, the content digest
+  `approved_with_edits`, `restore`, `delete`), the user who wrote or
+  approved it, the time, the content digest
   and size, and for a proposal or promotion its ID, the proposing or writing
   Thread, Capsule, link and lead, and the working-note revision it came
   from. A note whose latest revision came from an agent is labelled
-  agent-proposed in the note list, and an auto-approved one as unreviewed.
+  agent-proposed in the note list.
 - **Encryption.** Each Project has one Project-notes data key (DEK) and each
   grant one working-notes DEK, 256 random bits, created with the first note.
   Revision and proposal content is encrypted with AES-256-GCM and a fresh
@@ -366,8 +351,8 @@ These rules apply to both tiers unless stated.
 - **Never in plaintext records.** Note and proposal content stays out of
   SQLite plaintext, events, audit records, metrics, traces, logs,
   notifications and error messages. Responses that carry content are
-  `Cache-Control: no-store`. Writes, approvals, auto-approvals, rejections,
-  review marks, restores, deletions and shreds are audited with identifiers
+  `Cache-Control: no-store`. Writes, approvals, rejections, restores,
+  deletions and shreds are audited with identifiers
   and sizes only (ADR 0046).
 
 ### 6. The repository alternative
@@ -409,10 +394,10 @@ define a routine (ADR 0057).
 ### 7. UI
 
 - **Notes tab on the Project.** It lists Project notes by name with size,
-  last change, who made it, and an agent-proposed or unreviewed label. It
+  last change, who made it, and an agent-proposed label. It
   shows the total against the 128 KiB limit with a rough token count for an
   agent that reads every note, the `notesDelivery` setting, and the pending
-  proposals and unreviewed revisions.
+  proposals.
 - **Notes tab in the lead's Agents panel.** It lists the tree's working
   notes with size, last change and which member wrote it, with history,
   edit, delete and "Promote to Project notes". A revoked lead's tab is
@@ -421,14 +406,14 @@ define a routine (ADR 0057).
   a rendered preview. Saving takes the note's current revision, so two tabs
   cannot overwrite each other. The preview renders no raw HTML, loads no
   remote images, and does not follow links on its own.
-- **Review.** A proposal, a promotion and an unreviewed revision all open
-  to a source diff against the note's last reviewed revision, not a
+- **Review.** A proposal and a promotion both open to a source diff
+  against the note's current revision, not a
   rendered preview, with the preview as a second tab. Control characters,
   bidirectional overrides and zero-width characters are shown as visible
   escapes, and long lines wrap, so text cannot hide inside the diff. The
   page shows which Thread proposed or wrote it, links to that Thread, and
   flags content that the credential-shaped checks of ADR 0024 match. Approve,
-  Edit, Reject and Mark reviewed act on one change at a time. There is no
+  Edit and Reject act on one change at a time. There is no
   "approve all". Inbox lines and notifications name the Project, the note
   and the Thread only. They never quote note or proposal text, so agent text
   cannot reach the operator before a page frames it as agent text.
@@ -439,11 +424,11 @@ define a routine (ADR 0057).
   opens the editor with the selected text. Nothing is saved until the
   operator saves it, and the revision records the source Thread.
 - **CLI and API.** `meridian notes list|show|edit|history|restore|delete`,
-  `meridian notes proposals|approve|reject|review`, and `meridian grant
+  `meridian notes proposals|approve|reject`, and `meridian grant
   notes GRANT_ID` for working notes, all with `--json`. The API is
   `GET /projects/{projectId}/notes`, `GET` and `PUT
   /projects/{projectId}/notes/{name}`, `POST .../notes/{name}/delete`,
-  `.../restore` and `.../review`, `GET .../notes/{name}/revisions`,
+  and `.../restore`, `GET .../notes/{name}/revisions`,
   `GET /projects/{projectId}/note-proposals`, `POST
   /note-proposals/{id}/approve` and `/reject`, `POST
   /projects/{projectId}/notes/shred`, and the same read, write, delete,
@@ -483,7 +468,7 @@ define a routine (ADR 0057).
 - **Owner transfer in team mode.** The break-glass transfer of a departed
   member's Project (ADR 0046) re-wraps every notes DEK with the new owner in
   the AAD in the same transaction, rejects pending proposals as
-  `owner_changed`, clears `autoApproveProjectNotes` on every grant, and sets
+  `owner_changed`, and sets
   `notesDelivery` to `off`. The new owner reads the notes and turns delivery
   back on, as they turn on transferred routines (ADR 0057). The admin who
   transfers cannot read notes.
@@ -521,7 +506,9 @@ define a routine (ADR 0057).
 - Live delivery of Project notes into a running session.
 - Working notes for plain Threads, and proposals from them, which would need
   a mailbox outside a grant.
-- Auto-approve for subagents, or for every lead in a Project.
+- Auto-approve of Project-note proposals, for any lead. Confined to the
+  proposing lead's tree it duplicates working notes, and allowed past that
+  tree it spreads unreviewed text to other leads (section 3).
 - Semantic retrieval or summarization of notes by Meridian.
 
 ## Threat model changes
@@ -535,64 +522,59 @@ covers:
   lives. Members already exchange hostile prompts and reports, so working
   notes add persistence, not reach. Only the lead, its open-link subagents,
   and the operator can read them. Nothing outside the tree receives them
-  except through an operator-reviewed promotion, an auto-approved proposal
-  from the lead itself (below), or a Delivery the operator approves.
+  except through an operator-reviewed promotion or proposal, or a Delivery
+  the operator approves. Trusting one lead therefore affects only that
+  lead's tree until the operator reviews something it wrote.
 - **A deliberate carrier across fresh Capsules.** Project notes are the one
   way text from one Capsule reaches later Capsules without a repository
-  commit, which narrows "no standing foothold" (ADR 0057). Plain Threads and
-  routines receive only operator-written or operator-reviewed text. History,
-  restore and shred undo a mistake for later sessions.
+  commit, which narrows "no standing foothold" (ADR 0057). Every revision is
+  operator-written or operator-approved. History, restore and shred undo a
+  mistake for later sessions.
 - **The operator approves a poisoned diff.** A plausible change ("skip the
   flaky tests", "run this bootstrap script first", "the token is in
   `.env.example`") steers every later Thread. Controls: a source diff with
-  hidden characters escaped, one change at a time, labels on agent-proposed
-  and unreviewed notes, the index saying notes grant nothing, and
-  per-routine opt-in. A note cannot change harness permission settings,
-  egress, trusted MCP tools, a grant, or Delivery approval. This is a
-  residual risk.
-- **Auto-approve.** Trusting a lead means trusting everything it reads,
-  including subagent reports, working notes, repository files and web
-  pages. A subagent can poison a working note, the lead can copy it into a
-  proposal, and the change lands without review in every lead tree in the
-  Project. Bounds: off by default, set only by the operator on one lead,
-  never for subagents, stopped by the unattended limit, never over the
-  operator's own revisions, 20 revisions a day, and never delivered to plain
-  Threads or routines until reviewed. This is a residual risk the operator
-  takes on per lead.
+  hidden characters escaped, one change at a time, a label on agent-proposed
+  notes, the index saying notes grant nothing, and per-routine opt-in. A note
+  cannot change harness permission settings, egress, trusted MCP tools, a
+  grant, or Delivery approval. This is a residual risk.
+- **No auto-approve.** An unreviewed Project-note revision delivered to
+  every lead tree would let one compromised lead reach every other lead.
+  Confined to its own tree, it would add nothing over working notes. Neither
+  form ships (section 3).
 - **Social engineering.** Note and proposal text never appears in
   notifications, Inbox lines or titles. There is no free-text reason field.
   Text is shown only on pages that label it as agent text from a named
   Thread. Proposals and note writes raise no attention.
 - **Size and cost.** Per-note, per-tree and per-Project limits, write rates,
   proposal limits and expiry, retained revisions, and an 8 KiB index.
-- **What a compromised Capsule can do**, by tier, and what it cannot: write
-  or approve a Project note, see pending proposals, change delivery or
-  auto-approve, reach another tree's working notes or another Capsule's
-  copies, raise attention, or plant notes through the repository.
+- **What a compromised Capsule can do**, by tier, and what it cannot: write or
+  approve a Project note, see pending proposals, change delivery, reach
+  another tree's working notes or another Capsule's copies, raise attention,
+  or plant notes through the repository.
 - **Secrets in notes.** Every process in every Capsule that receives notes
   can read them. Review pages flag credential-shaped content. Credentials
   belong in named secrets.
 
 ## Consequences
 
-A lead and its subagents share what they learn without a click, and a
-finished subagent's findings outlive its Capsule. An operator with several
-leads in one Project writes or approves a fact once, and every later session
-in that Project has it as a file. One trusted lead can skip that click while
-the operator is around. The costs are a review step for anything that
-leaves a tree, an unreviewed carrier inside each tree for as long as its
-grant lives, and a channel that a careless approval, or an auto-approving
-lead, can poison until the operator restores or shreds it.
+A lead and its subagents share what they learn without a click, and a finished
+subagent's findings outlive its Capsule. An operator with several leads in one
+Project writes or approves a fact once, and every later session in that
+Project has it as a file. The operator reviews only what leaves a tree, when
+they choose to promote it. The costs are a review step for anything that
+leaves a tree, an unreviewed carrier inside each tree for as long as its grant
+lives, and a channel that a careless approval can poison until the operator
+restores or shreds it.
 
 The store gains Project-note, working-note, revision and proposal tables, a
-per-Project and per-grant wrapped DEK, and a grant policy field.
-`meridian.coord.v1` gains `write-note`, `sync-notes`, `propose-note` and
-proposal states in `whoami`. `capsuled` gains notes delivery. Start and
-Resume metadata gain `notes`, the adapter hellos gain a capability for it,
-and every structured driver renders the index in its system-prompt channel.
-A new structured harness driver must do the same, as it must deliver the
-coordination brief. Transcript key rotation, backup verification, Thread
-crypto-shred, Project deletion and owner transfer each cover notes.
+per-Project and per-grant wrapped DEK. `meridian.coord.v1` gains `write-note`,
+`sync-notes`, `propose-note` and proposal states in `whoami`. `capsuled` gains
+notes delivery. Start and Resume metadata gain `notes`, the adapter hellos
+gain a capability for it, and every structured driver renders the index in its
+system-prompt channel. A new structured harness driver must do the same, as it
+must deliver the coordination brief. Transcript key rotation, backup
+verification, Thread crypto-shred, Project deletion and owner transfer each
+cover notes.
 
 ## Alternatives considered
 
@@ -615,11 +597,16 @@ crypto-shred, Project deletion and owner transfer each cover notes.
   the operator could not read them without starting it.
 - **Working notes replace the private notes directory.** Rejected in
   section 1: scratch changes too often to send through the mailbox.
-- **No auto-approve.** Considered seriously, since review is the whole
-  defense for the Project tier. Rejected because a busy lead makes review a
-  rubber stamp, and section 3's limits keep unreviewed text out of plain
-  Threads and routines. An operator who disagrees leaves it off, which is
-  the default.
+- **Auto-approve for one trusted lead, delivered to every lead tree.** The
+  previous revision of this ADR. Rejected. An unreviewed revision would put
+  one lead's text in front of every other lead in the Project, so a
+  subagent that poisoned its lead's working notes, or a lead steered by a
+  hostile repository, would reach trees the operator never pointed at it.
+  That is the cross-tree spread the two tiers exist to prevent.
+- **Auto-approve confined to the proposing lead's tree until reviewed.**
+  Rejected in section 3. It reaches no further than a working note and
+  needs the same review click to leave the tree. Its only gain, skipping a
+  promotion step, does not pay for a second unreviewed carrier.
 - **`leads_only` as the delivery default.** Rejected in section 4.
 - **Repository only.** Rejected as the only answer, and recommended for
   everything in the first list of section 6. It makes every preference a
