@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -747,9 +748,17 @@ type piModels struct {
 
 // attachEffort puts the current model's thinking levels on the list.
 func (m *piModels) attachEffort() {
-	if m.list != nil {
-		m.list.effort = effortLevels(m.levels, m.thinking)
+	if m.list == nil {
+		return
 	}
+	// A thinking level the new model does not offer is clamped to one it
+	// does, so the report names the level the model can run.
+	if len(m.levels) > 0 && m.thinking != "" && !slices.Contains(m.levels, m.thinking) {
+		if kept := clampEffortID(m.levels, m.thinking, ""); kept != "" {
+			m.thinking = kept
+		}
+	}
+	m.list.effort = effortLevels(m.levels, m.thinking)
 }
 
 // askLevels requests the thinking levels of the current model.

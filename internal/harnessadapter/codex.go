@@ -803,6 +803,9 @@ func (s *codexSession) refreshEffort() {
 	if !efforts.has(want) {
 		want = entry.fallback
 	}
+	if !efforts.has(want) {
+		want = clampEffortID(effortIDs(efforts.options), defaultString(s.nextEffort, s.threadEffort), entry.fallback)
+	}
 	efforts.setCurrent(want)
 	s.models.effort = efforts
 	s.nextEffort = ""

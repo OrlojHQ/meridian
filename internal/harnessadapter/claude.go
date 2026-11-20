@@ -81,10 +81,12 @@ type claudeSession struct {
 	modelSequence int
 
 	// efforts holds each listed model's effort levels, and effort the level
-	// an apply_flag_settings request set; empty means Claude Code's own
-	// default.
-	efforts map[string][]string
-	effort  string
+	// an apply_flag_settings request set; empty means the harness's own
+	// default. confirmSettings asks for the level in effect after a model
+	// switch clamped the operator's level.
+	efforts         map[string][]string
+	effort          string
+	confirmSettings bool
 
 	// resolvedModels maps each listed model's value to the canonical model
 	// it runs; applied is the model and effort Claude Code last said are in
@@ -566,8 +568,11 @@ func (s *claudeSession) settingsReported(raw json.RawMessage, ok bool) error {
 	if !ok || s.models == nil || len(raw) == 0 || json.Unmarshal(raw, &value) != nil || value.Applied == nil {
 		return nil
 	}
-	applied := claudeApplied{Model: value.Applied.Model}
-	if value.Applied.Effort != nil {
+	// An omitted or empty effort keeps the level already in effect. A report
+	// that names one replaces it; reflectModels clamps it to a level the
+	// current model offers.
+	applied := claudeApplied{Model: value.Applied.Model, Effort: defaultString(s.effort, s.applied.Effort)}
+	if value.Applied.Effort != nil && *value.Applied.Effort != "" {
 		applied.Effort = *value.Applied.Effort
 	}
 	return s.apply(applied)
@@ -580,9 +585,16 @@ func (s *claudeSession) turnApplied(record map[string]json.RawMessage) error {
 	if s.models == nil {
 		return nil
 	}
-	applied := claudeApplied{Model: stringField(record, "model"), Effort: stringField(record, "effort")}
-	if applied.Model == "" {
+	model := stringField(record, "model")
+	if model == "" {
 		return nil
+	}
+	// A turn that names the model and omits the effort keeps the level the
+	// session is already running. Replacing it with empty is what made the
+	// composer fall back to a blank effort label after the first message.
+	applied := claudeApplied{Model: model, Effort: defaultString(s.effort, s.applied.Effort)}
+	if effort := stringField(record, "effort"); effort != "" {
+		applied.Effort = effort
 	}
 	return s.apply(applied)
 }
@@ -658,6 +670,7 @@ func (s *claudeSession) effortChanged(record map[string]json.RawMessage, request
 	effort := s.modelRequests[requestID]
 	delete(s.modelRequests, requestID)
 	if !ok || effort == "" {
+		s.confirmSettings = false
 		var failure struct {
 			Error string `json:"error"`
 		}
@@ -666,8 +679,16 @@ func (s *claudeSession) effortChanged(record map[string]json.RawMessage, request
 			defaultString(failure.Error, "Claude Code did not change its effort"), adapterproto.MaxToolSummaryBytes))
 	}
 	s.effort = effort
+	s.applied.Effort = effort
 	s.reflectModels()
-	return s.stream.ReportModels(s.models)
+	if err := s.stream.ReportModels(s.models); err != nil {
+		return err
+	}
+	if s.confirmSettings {
+		s.confirmSettings = false
+		return s.requestSettings()
+	}
+	return nil
 }
 
 // modelSwitched reports the outcome of a set_model control request.
@@ -683,11 +704,29 @@ func (s *claudeSession) modelSwitched(record map[string]json.RawMessage, request
 			defaultString(failure.Error, "Claude Code did not switch models"), adapterproto.MaxToolSummaryBytes))
 	}
 	s.models.setCurrent(model)
-	// The new model may start on another effort; ask again.
-	s.applied = claudeApplied{}
+	// Keep the effort the session was running, clamped to a level this
+	// model offers, and ask again for the level the harness settles on.
+	// Clearing it here is what left the composer on a blank effort label
+	// after a switch, including to a model that does not offer the old level.
+	previous := defaultString(s.effort, s.applied.Effort)
+	kept := clampEffortID(s.efforts[model], previous, "")
+	operator := s.effort
+	if operator != "" {
+		s.effort = kept
+	}
+	s.applied = claudeApplied{Effort: kept}
 	s.reflectModels()
 	if err := s.stream.ReportModels(s.models); err != nil {
 		return err
+	}
+	if operator != "" && kept != "" && kept != operator {
+		s.modelSequence++
+		id := "claude-effort-" + strconv.Itoa(s.modelSequence)
+		s.modelRequests[id] = kept
+		s.confirmSettings = true
+		return s.control(id, map[string]any{
+			"subtype": "apply_flag_settings", "settings": map[string]any{"effortLevel": kept},
+		})
 	}
 	return s.requestSettings()
 }

@@ -210,9 +210,10 @@ func TestPiRPCReportsAndSwitchesModels(t *testing.T) {
 	if switched := readKind(t, decoder, adapterproto.KindModels).Models; switched.Current != "openrouter/meta/llama-5" {
 		t.Fatalf("switched = %#v", switched)
 	}
-	// The new model has its own levels; "high" is not among them.
+	// The new model has its own levels; "high" is not among them, so the
+	// level in effect is clamped to the one this model offers.
 	if levels := readKind(t, decoder, adapterproto.KindModels).Models.Effort; levels == nil ||
-		len(levels.Options) != 1 || levels.Current != "" {
+		len(levels.Options) != 1 || levels.Current != "off" {
 		t.Fatalf("levels after switch = %#v", levels)
 	}
 	sendSetModel(t, encoder, "switch-3", "openrouter/locked")

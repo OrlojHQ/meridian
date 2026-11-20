@@ -7,6 +7,13 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- The Thread composer's effort button keeps the level the session is running
+  with after the first message and after a model switch. A level the new
+  model does not offer is clamped to one it does. When no level is known at
+  all, the button says Default instead of Effort.
+
 ## [0.14.0] - 2026-11-19
 
 ### Added
