@@ -14,8 +14,9 @@ The UI uses a full-height, Capsule-centered workspace:
   Code working", "Waiting for permission", or "Capsule failed") without
   requiring a dashboard round trip. The selected Capsule lists its sessions
   beneath it when it has more than one;
-- the primary surface presents the Capsule's sessions as tabs (its native PTY
-  and each structured Thread) under a one-line header whose actions menu holds
+- the primary surface presents the Capsule's session as a tab (the native PTY
+  of a CLI Capsule, or the current Thread of a Thread Capsule) under a
+  one-line header whose actions menu holds
   Pause, Resume, Seal, and Delete, or a resource inspector. meridiand refuses
   to delete a Capsule with an active Run, so the Delete confirmation lists
   running sessions with Stop buttons and enables Delete once they end; a
@@ -338,6 +339,32 @@ when none remains. Every mutation uses
 the current Thread resource version and refreshes authoritative state after a
 conflict.
 
+A Capsule stays the kind chosen in the New Capsule dialog. A CLI Capsule runs
+its harness's terminal and never offers a Thread. A Thread Capsule runs one
+Thread session at a time, so its page shows one Thread tab: the active Thread,
+or else the most recent one kept. Neither offers a tab to start another
+session beside it. Earlier Threads of
+the same Capsule appear above its transcript as folded "Show earlier session"
+rows, each with its date, harness, message count, and an Open link to its own
+Thread page, where its actions (archive, crypto-shred) stay. An earlier
+transcript is read only when it is unfolded, and nothing in it can be answered.
+A divider before the current transcript says when its session started and that
+the agent starts without the conversation above. A link to an earlier Thread
+opens the Capsule on the current one with that session unfolded.
+
+Start fresh replaces the current session with a new Thread in the same Thread
+Capsule,
+with the same harness, keeping the files and changes. It is in the Thread
+actions menu, the session-ended banner, the composer's `/` menu, and next to
+Resume on a paused Thread. A live session is stopped first, after a
+confirmation; Meridian waits for it to pause, archives a Thread that never
+started a session, then creates and starts the new Thread. Each step is an
+ordinary Thread API call, so a failure part way leaves a stopped Thread to
+resume or start fresh from again. A lead and its subagents do not offer Start
+fresh, so coordination is never ended by it, and neither does a Thread in a CLI
+Capsule. The start-a-session form appears only in a Thread Capsule with no
+Thread left.
+
 When an active Thread's current Run is terminal (failed, stopped, or exited),
 the Thread says so instead of looking live: the toolbar reads "Session ended",
 the page badge reads "failed" or "ended", and a banner after the transcript
@@ -347,7 +374,7 @@ views render it as one plain-text line capped at 280 characters, with control
 characters and bidirectional overrides removed; adapter stderr is never shown.
 The banner offers Restart session (a new Run in the same Thread), Copy last
 prompt (the operator's own latest message, written to the clipboard only on
-click; subagent reports are never offered), and New session. The composer stays
+click; subagent reports are never offered), and Start fresh. The composer stays
 disabled until a new session starts, because the daemon rejects messages to a
 Thread without an active session. The block stream stops reconnecting once the
 daemon has closed it for the ended session and follows again when a new

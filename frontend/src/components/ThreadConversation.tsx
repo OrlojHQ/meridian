@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   type DragEvent,
   type KeyboardEvent,
@@ -16,6 +16,8 @@ import {
 
 import { api, normalizeAPIError, type SendMessageOptions } from "../api/client";
 import { trackComposerDraft } from "../shell/composerDraft";
+import { nameThreadFromFirstMessage } from "../shell/nameThread";
+import { awaitingFirstMessage } from "../shell/threadTitle";
 import type { HarnessProfile, Thread, ThreadBlock, ThreadLink } from "../api/generated/types.gen";
 import { queries } from "../api/queries";
 import { plainAgentText } from "./agentText";
@@ -308,7 +310,7 @@ const activityLabels: Partial<Record<ChatActivity, string>> = {
   stopping: "Stopping…",
 };
 
-function ChatEntry({
+export function ChatEntry({
   item,
   thread,
   links,
@@ -561,6 +563,7 @@ function ThreadComposer({
   onNewSession,
   onSent,
   onConflict,
+  firstMessage,
   toolbar,
   models,
   attachRef,
@@ -575,6 +578,9 @@ function ThreadComposer({
   onNewSession?: () => void;
   onSent: () => void;
   onConflict: () => Promise<void>;
+  // No operator message is in the transcript yet, so the next one sent can
+  // name an unnamed Capsule.
+  firstMessage: boolean;
   // Controls above the message box, such as the lead's Agents button.
   toolbar?: ReactNode;
   // The harness's latest reported models; absent when it reports none.
@@ -609,6 +615,7 @@ function ThreadComposer({
   const runningRef = useRef(false);
   const flushingRef = useRef(false);
   const menuId = useId();
+  const queryClient = useQueryClient();
   const mutation = useMutation({
     mutationFn: (input: { text: string; attachments: PendingAttachment[]; delivery?: "steer" }) => {
       const payload = attachmentPayload(input.attachments);
@@ -624,6 +631,13 @@ function ThreadComposer({
       return api.sendThreadMessage(thread.id, thread.resourceVersion, input.text, options);
     },
     onSuccess: (_result, input) => {
+      if (firstMessage && input.text.trim()) {
+        // Naming is cosmetic. The header already shows the same title, so a
+        // failed rename leaves nothing wrong on the page.
+        void nameThreadFromFirstMessage(queryClient, thread.capsuleId, input.text).catch(
+          () => undefined,
+        );
+      }
       setMessage("");
       revokeAttachments(input.attachments);
       setAttachments((current) => current.filter((item) => !input.attachments.includes(item)));
@@ -666,8 +680,8 @@ function ThreadComposer({
     if (onNewSession) {
       available.push({
         id: "new-session",
-        label: "New session",
-        description: "Start a fresh conversation in this Capsule",
+        label: "Start fresh",
+        description: "End this session and start a new one here. The agent won't see the conversation so far",
       });
     }
     return available;
@@ -1008,6 +1022,7 @@ export function ThreadConversation({
   blocks,
   raw,
   banners,
+  earlier,
   endedNotice,
   canCompose,
   stopPending,
@@ -1019,6 +1034,8 @@ export function ThreadConversation({
   blocks: ThreadBlock[];
   raw: boolean;
   banners?: ReactNode;
+  // Earlier sessions of this Capsule, shown above this transcript.
+  earlier?: ReactNode;
   // Present once the session has ended; it follows the transcript and the
   // composer stays disabled until a new session starts.
   endedNotice?: ReactNode;
@@ -1029,6 +1046,7 @@ export function ThreadConversation({
   onRefresh: () => Promise<void>;
 }) {
   const commands = useMemo(() => latestThreadCommands(blocks), [blocks]);
+  const firstMessage = useMemo(() => awaitingFirstMessage(blocks), [blocks]);
   const models = useMemo(() => latestThreadModels(blocks), [blocks]);
   const isLead = Boolean(thread.coordinationGrantId && !thread.parentThreadId);
   const profiles = useQuery(queries.harnessProfiles(thread.capsuleId));
@@ -1079,6 +1097,7 @@ export function ThreadConversation({
         <div className="thread-scroll" ref={scroll.ref} onScroll={scroll.onScroll}>
           <div className="thread-scroll-content">
             {banners}
+            {!raw && earlier}
             {raw ? (
               <RawEvents blocks={blocks} />
             ) : chat.items.length === 0 && !label ? (
@@ -1142,6 +1161,7 @@ export function ThreadConversation({
             void onRefresh();
           }}
           onConflict={onRefresh}
+          firstMessage={firstMessage}
           attachRef={(add) => {
             addFilesRef.current = add;
           }}

@@ -142,6 +142,10 @@ printf '%s' 'inspect this project' | meridian thread spawn PROJECT_ID \
   --follow
 ```
 
+Without `--name`, the Capsule is named from the start of the prompt, as the
+web UI names a Thread from its first message. That name is plaintext metadata,
+unlike the encrypted transcript; pass `--name` to choose another.
+
 Each accepted mutation reserves stable intent, Capsule, Thread, Run, and
 message IDs, then provisions a fresh Capsule and Timeline. `--follow` polls the
 durable intent, attaches to the encrypted Thread after promotion, and exits when

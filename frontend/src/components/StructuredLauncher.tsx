@@ -11,6 +11,7 @@ import type {
 
 import { queries } from "../api/queries";
 import { harnessName, sessionPath } from "../shell/capsuleActivity";
+import { capsuleNameFromMessage } from "../shell/threadTitle";
 import { PreparationProgress } from "./PreparationProgress";
 import { RepositoryAccessNotice } from "./RepositoryAccess";
 import { isRepositoryAccessFailure } from "./startup";
@@ -99,11 +100,14 @@ export function StructuredLauncher({
     // With one level of subagents the tree total is the child total, so it
     // follows the field instead of silently capping it at its default.
     const maxChildren = Number(data.get("maxChildren") ?? 4);
+    const prompt = String(data.get("prompt") ?? "");
     mutation.mutate({
       projectId: project.id,
       harness,
-      prompt: String(data.get("prompt") ?? ""),
-      name: String(data.get("name") ?? "") || undefined,
+      prompt,
+      // Without a name, the Capsule is named from the task, as the composer
+      // names a Thread from its first message.
+      name: String(data.get("name") ?? "").trim() || capsuleNameFromMessage(prompt) || undefined,
       coordination:
         coordinationSupported && lead
           ? {

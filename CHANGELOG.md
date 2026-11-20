@@ -9,6 +9,22 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- A Thread started without a name is named from its first message, so the
+  sidebar, Needs you, Recent, and notifications show the same title as its
+  header instead of `thread-<id>`. The web UI renames the Capsule once, only
+  while it still has a generated name; `meridian thread spawn` without
+  `--name` does the same from the prompt. The name is plaintext metadata,
+  unlike the encrypted transcript.
+- Session tabs and sidebar rows say what a session is, Terminal or Thread,
+  with the harness as the icon, instead of repeating the harness name.
+- A Capsule stays the kind you chose when you made it. A CLI Capsule shows
+  its terminal and no longer offers a Thread; a Thread Capsule shows one
+  Thread. The **+** session tab is gone.
+- A Thread Capsule runs one Thread session at a time. Earlier sessions sit
+  above the current transcript, folded until you open them, with a divider
+  saying the agent starts without them. Start fresh replaces New session: it
+  stops a live session after asking, then starts a new Thread in the same
+  Capsule with the same harness.
 - The Thread toolbar no longer shows **Live** while updates are arriving. Its
   badge appears only when the transcript may be out of date: **Reconnecting…**
   while the stream retries, and **Disconnected** (formerly Closed) once it

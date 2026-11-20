@@ -374,16 +374,47 @@ export function threadSession(thread: Thread): CapsuleSession {
   return { ...base, group: "idle", label: "Idle" };
 }
 
+// A Capsule runs one Thread session at a time: the daemon refuses a second
+// active Thread. The current Thread is the active one, or else the most recent
+// one kept; every Thread before it is history shown above its transcript.
+export function currentThread<T extends Pick<Thread, "state" | "createdAt">>(
+  threads: T[] = [],
+): T | undefined {
+  const retained = threads
+    .filter((thread) => thread.state !== "deleted")
+    .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+  return retained.find((thread) => thread.state === "active") ?? retained.at(-1);
+}
+
+// The Threads that came before the current one, oldest first.
+export function earlierThreads<T extends Pick<Thread, "id" | "state" | "createdAt">>(
+  threads: T[] = [],
+  current: Pick<Thread, "id" | "createdAt">,
+): T[] {
+  return threads
+    .filter(
+      (thread) =>
+        thread.id !== current.id &&
+        thread.state !== "deleted" &&
+        Date.parse(thread.createdAt) <= Date.parse(current.createdAt),
+    )
+    .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+}
+
 export function capsuleSessions(
   capsule: Capsule,
   runs: Run[] = [],
   threads: Thread[] = [],
 ): CapsuleSession[] {
-  const sessions = threads
-    .filter((thread) => thread.state !== "deleted")
-    .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
-    .map(threadSession);
+  const current = currentThread(threads);
+  const sessions = current ? [threadSession(current)] : [];
   return capsule.harness ? [terminalSession(capsule.harness, runs), ...sessions] : sessions;
+}
+
+// What a session tab or row is called. The harness already shows as an icon,
+// so the name says what kind of session it is.
+export function sessionName(session: Pick<CapsuleSession, "kind">) {
+  return session.kind === "terminal" ? "Terminal" : "Thread";
 }
 
 export type HeaderAttention = {

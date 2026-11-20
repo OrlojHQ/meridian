@@ -17,6 +17,7 @@ import {
   capsuleSessions,
   defaultSession,
   harnessName,
+  sessionName,
   sessionPath,
 } from "../shell/capsuleActivity";
 import type { DiffFile } from "./DiffViewer";
@@ -309,8 +310,7 @@ function ReviewComposer({
           >
             {sessions.map((session) => (
               <option key={session.id} value={session.id}>
-                {harnessName(session.harness)} · {session.label} ·{" "}
-                {session.id.slice(0, 8)}
+                {sessionName(session)} · {harnessName(session.harness)} · {session.label}
               </option>
             ))}
           </select>

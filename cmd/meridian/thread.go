@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/OrlojHQ/meridian/internal/apiauth"
+	"github.com/OrlojHQ/meridian/internal/threadtitle"
 	"github.com/OrlojHQ/meridian/pkg/client"
 	"github.com/spf13/cobra"
 )
@@ -68,6 +69,11 @@ func newThreadSpawnCommand(config *cliConfig) *cobra.Command {
 			}
 			input := &client.CreateProjectThreadRequest{
 				Harness: harness, Prompt: client.NewOptString(content), Coordination: coordination,
+			}
+			// Without --name, name the Capsule from the prompt, as the web UI
+			// does, rather than leaving a generated thread-<id>.
+			if name = strings.TrimSpace(name); name == "" {
+				name = threadtitle.CapsuleName(content)
 			}
 			if name != "" {
 				input.Name = client.NewOptString(name)
@@ -133,7 +139,7 @@ func newThreadSpawnCommand(config *cliConfig) *cobra.Command {
 	command.Flags().StringVar(&harness, "harness", "", "structured harness profile name")
 	command.Flags().StringVar(&prompt, "prompt", "", "first prompt (may be retained in shell history; prefer --prompt-stdin)")
 	command.Flags().BoolVar(&promptStdin, "prompt-stdin", false, "read the first prompt from stdin")
-	command.Flags().StringVar(&name, "name", "", "optional fresh Capsule name")
+	command.Flags().StringVar(&name, "name", "", "fresh Capsule name (default: a short title from the prompt)")
 	command.Flags().BoolVar(&follow, "follow", false,
 		"wait for provisioning and follow the Thread until its first turn goes idle or the session ends")
 	command.Flags().StringVar(&key, "idempotency-key", "", "mutation replay key (generated if omitted)")

@@ -3273,11 +3273,6 @@ button.tool-line:hover {
   opacity: 0.65;
 }
 
-.session-tabs .session-tab-new svg {
-  width: 0.9rem;
-  height: 0.9rem;
-}
-
 .session-panel {
   display: flex;
   min-width: 0;
@@ -4728,4 +4723,82 @@ button.tool-line:hover {
   background: var(--surface-subtle);
   font-size: 0.74rem;
   font-weight: 600;
+}
+
+/* Earlier sessions of the same Capsule, above the current transcript. */
+.earlier-sessions {
+  width: 100%;
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 1.1rem 1.25rem 0;
+}
+
+.earlier-session + .earlier-session {
+  margin-top: 0.5rem;
+}
+
+.earlier-session-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.75rem;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.earlier-session-header button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.earlier-session-meta {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.earlier-session-header a {
+  margin-left: auto;
+}
+
+.chat-transcript.earlier {
+  padding: 1rem 0 0.5rem;
+  opacity: 0.82;
+}
+
+.earlier-session-note {
+  margin: 0.6rem 0 0;
+  font-size: var(--text-sm);
+  color: var(--faint);
+}
+
+.session-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1.1rem 0 0;
+  font-size: var(--text-xs);
+  color: var(--muted);
+  text-align: center;
+}
+
+.session-divider::before,
+.session-divider::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--border);
+}
+
+.session-divider span {
+  max-width: 30rem;
+}
+
+@media (max-width: 720px) {
+  .earlier-sessions {
+    padding-inline: 0.75rem;
+  }
 }

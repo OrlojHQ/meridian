@@ -688,11 +688,13 @@ describe("application shell", () => {
     vi.spyOn(api, "capabilities").mockResolvedValue({ ...capabilities, structured: true });
     vi.spyOn(api, "threads").mockImplementation(async (capsuleId) => ({
       items: [
-        { ...thread, id: `${capsuleId}-a`, capsuleId },
+        // An earlier session, paused, shows as history in the Thread.
+        { ...thread, id: `${capsuleId}-a`, capsuleId, state: "paused", createdAt: "2026-08-25T00:00:00Z" },
         {
           ...thread,
           id: `${capsuleId}-b`,
           capsuleId,
+          createdAt: "2026-08-26T00:00:00Z",
           awaiting: { kind: "permission", since: "2026-08-26T00:04:00Z" },
         },
       ],
@@ -708,15 +710,15 @@ describe("application shell", () => {
     );
 
     const sessions = await screen.findByRole("list", { name: "Sessions" });
-    await waitFor(() => expect(sessions.querySelectorAll("li")).toHaveLength(3));
+    await waitFor(() => expect(sessions.querySelectorAll("li")).toHaveLength(2));
     expect(sessions).toHaveTextContent("Waiting for permission");
-    const waiting = screen.getByRole("link", { name: /Claude Code\s*Waiting for permission/ });
+    const waiting = screen.getByRole("link", { name: /^Thread\s*Waiting for permission/ });
     expect(waiting).toHaveAttribute("aria-current", "page");
     expect(waiting).toHaveAttribute(
       "href",
       `/ui/capsules/${capsule.id}?session=${capsule.id}-b`,
     );
-    expect(screen.getByLabelText("3 sessions")).toBeInTheDocument();
+    expect(screen.getByLabelText("2 sessions")).toBeInTheDocument();
   });
 
   it("starts a Thread with Capsule tools closed and opens them from the toggle", async () => {

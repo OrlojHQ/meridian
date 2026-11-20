@@ -434,7 +434,7 @@ grants no authority: the controller sends `/name args` as an ordinary user
 message, and the adapter maps a name to a harness protocol call (Codex
 compaction, review, and skills, Pi compaction) only when it
 advertised that name as an action itself. Those calls run with the same harness
-permissions as a prompt. Meridian's own controls (stop, new session) are API
+permissions as a prompt. Meridian's own controls (stop, start fresh) are API
 calls the UI makes and are never sent to the harness. A reported command
 cannot switch models through Meridian; only the operator's model mutation
 sends `set_model`.
@@ -691,6 +691,16 @@ outside SQLite and excluded from backup. Ciphertext rows are immutable, inserts
 are strictly ordered and bounded, and authentication failures collapse to
 content-free corruption errors. A host or daemon compromise that can read both
 SQLite and the KEK defeats at-rest confidentiality.
+
+A Capsule name is plaintext metadata, not transcript. The daemon never derives
+one from a transcript. A client may: when a Thread starts without a name, the
+web UI and `meridian thread spawn` submit up to 48 characters of the
+operator's first message as the Capsule name, and the web UI does so through
+the ordinary rename only while the name is still a generated `thread-<id>`.
+That opening phrase is then readable from SQLite, backups, the event stream,
+and every list view without the KEK. An operator who does not want it there
+names the Thread when starting it, or renames it afterwards; an earlier name
+is not kept.
 
 The local daemon and trusted user are intentionally inside the decryption
 boundary: explicit Thread APIs return plaintext. Harness adapters own upstream

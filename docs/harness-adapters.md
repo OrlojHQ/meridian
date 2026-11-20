@@ -446,7 +446,7 @@ Frames hold at most 128 commands. Names match
 with no control characters. Adapters fold, truncate, and drop entries to fit,
 and report the list again when it changes.
 
-Stop and New session are Meridian controls in the same menu. They call the
+Stop and Start fresh are Meridian controls in the same menu. They call the
 Thread API and are never sent to the harness.
 
 ## Models

@@ -60,6 +60,7 @@ import {
   harnessName,
   relativeTime,
   rollupSummary,
+  sessionName,
   sessionPath,
   type ActivityGroup,
   type CapsuleSession,
@@ -200,11 +201,12 @@ function SessionList({
             to={sessionPath(capsuleId, session.id)}
             className={session.id === selected ? "selected" : undefined}
             aria-current={session.id === selected ? "page" : undefined}
+            title={`${sessionName(session)} · ${harnessName(session.harness)}`}
           >
             <ActivityDot group={session.group} />
             <HarnessMark harness={session.harness} />
             <span className="session-list-label">
-              {harnessName(session.harness)}
+              {sessionName(session)}
               <small>{session.label}</small>
             </span>
             <time dateTime={session.since}>{relativeTime(session.since, now)}</time>

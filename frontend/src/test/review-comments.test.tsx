@@ -261,7 +261,7 @@ describe("diff review comments", () => {
       updatedAt: "2026-09-01T00:02:00Z",
     };
     vi.spyOn(api, "threads").mockResolvedValue({
-      items: [thread, other, { ...thread, id: "thread-3", state: "archived" }],
+      items: [{ ...thread, state: "paused" }, other, { ...thread, id: "thread-3", state: "archived" }],
     });
     const send = vi
       .spyOn(api, "sendThreadMessage")
@@ -275,10 +275,11 @@ describe("diff review comments", () => {
     expect(preview).toHaveTextContent("+<script>steal()</script>");
     expect(container.querySelector("script")).toBeNull();
 
-    // The working session is the default; archived Threads are not offered.
+    // A Capsule runs one Thread at a time: the live one is the target, and
+    // earlier paused or archived Threads are not offered.
     const target = await screen.findByLabelText("Send to");
     expect(target).toHaveValue("thread-2");
-    expect(within(target).getAllByRole("option")).toHaveLength(2);
+    expect(within(target).getAllByRole("option")).toHaveLength(1);
 
     await userEvent.click(screen.getByRole("button", { name: "Send to agent" }));
     await waitFor(() =>
