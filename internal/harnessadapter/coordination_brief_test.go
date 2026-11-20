@@ -18,12 +18,12 @@ func TestCoordinationBriefFollowsRole(t *testing.T) {
 		!strings.Contains(cli, "`meridian-coord propose-delivery`") || strings.Contains(cli, "meridian_") {
 		t.Fatalf("CLI lead brief = %q", cli)
 	}
-	for vocabulary, toFile := range map[coordinationVocabulary]string{
-		coordinationMCP: "`toFile: true`", coordinationCLI: "`--to-file`",
+	for vocabulary, options := range map[coordinationVocabulary][2]string{
+		coordinationMCP: {"`toFile: true`", "`contextFiles`"}, coordinationCLI: {"`--to-file`", "`--context-file`"},
 	} {
 		brief := coordinationBrief(adapterproto.CoordinationMetadata(adapterproto.CoordinationLead), vocabulary)
 		for _, want := range []string{
-			toFile, "headlines", vocabulary.call("result"), vocabulary.call("status"),
+			options[0], options[1], "instead of retyping", "headlines", vocabulary.call("result"), vocabulary.call("status"),
 			"`$HOME/.meridian/coord/`", "`tail`", "reviewer subagent", "`$HOME/.meridian/notes/`",
 		} {
 			if !strings.Contains(brief, want) {

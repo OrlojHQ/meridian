@@ -58,6 +58,9 @@ type Mailbox struct {
 	// files holds toFile output; nil when the Capsule has no private
 	// directory for it.
 	files *coordFiles
+	// notes is the directory a spawn's contextFiles are read from; empty
+	// when the Capsule has none.
+	notes string
 }
 
 type mailboxEntry struct {
@@ -101,6 +104,14 @@ func (m *Mailbox) SetFileDirectory(dir string) {
 		return
 	}
 	m.files = &coordFiles{dir: dir, quota: coordproto.MaxFileBytes}
+}
+
+// SetNotesDirectory enables contextFiles on spawn, read from dir. An empty
+// dir disables them.
+func (m *Mailbox) SetNotesDirectory(dir string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.notes = dir
 }
 
 func (m *Mailbox) broadcastLocked() {
@@ -154,6 +165,33 @@ func (m *Mailbox) Handle(ctx context.Context, request coordproto.Request) coordp
 	if role != "lead" {
 		return coordproto.Fail(coordproto.CodeCoordinationDisabled, "this Thread has no lead coordination grant")
 	}
+	if request.Type == coordproto.KindSpawn {
+		return m.spawn(ctx, request)
+	}
+	return m.relay(ctx, request)
+}
+
+// spawn appends the notes a spawn names in contextFiles to its prompt and
+// relays it without the field, so meridiand sees an ordinary prompt. The
+// files are read again on every retry; a retry with the same key after a
+// note changed is a different request and conflicts.
+func (m *Mailbox) spawn(ctx context.Context, request coordproto.Request) coordproto.Response {
+	if len(request.ContextFiles) == 0 {
+		request.ContextFiles = nil
+		return m.relay(ctx, request)
+	}
+	m.mu.Lock()
+	notes := m.notes
+	m.mu.Unlock()
+	prompt, err := attachNotes(notes, request.Prompt, request.ContextFiles)
+	if err != nil {
+		var refusal *notesError
+		if errors.As(err, &refusal) {
+			return coordproto.Fail(refusal.code, refusal.message)
+		}
+		return coordproto.Fail(coordproto.CodeInternal, "could not attach contextFiles")
+	}
+	request.Prompt, request.ContextFiles = prompt, nil
 	return m.relay(ctx, request)
 }
 

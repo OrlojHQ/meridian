@@ -549,6 +549,27 @@ removed first. Any process in the lead Capsule can read, change, or fill
 these files, as it could the same bytes inline; they are the same hostile
 subagent output and repository content, and a lead must treat them as data.
 
+Notes in spawn prompts (ADR 0059). A `spawn` may name up to 8
+`contextFiles`, paths relative to `$HOME/.meridian/notes/` in the lead
+Capsule. The lead Capsule's own `capsuled` reads them and appends each to the
+prompt as a fenced, labelled block (a backtick fence longer than any run in
+the note, so a note cannot close it early), then removes the field before
+relaying; meridiand refuses a spawn that still names them. The result is an
+ordinary prompt: it is bounded by the 128 KiB prompt limit (a spawn that does
+not fit is refused as `context_too_large`, never cut), encrypted with the
+rest of the prompt, and delivered under `from_lead` provenance. Notes are
+lead-authored text with the same trust as the rest of a `from_lead` prompt;
+a compromised lead could already write anything into a spawn prompt, and a
+note copied from hostile repository or subagent output is as hostile as the
+same text typed inline. The grammar refuses absolute paths, `..`, empty
+elements, backslashes, and control characters; reads go through an `os.Root`
+on the notes directory, so a symlink cannot reach outside it; the directory
+itself must not be a symlink and must lie outside `/workspace`, so a
+repository cannot plant notes; and only regular UTF-8 files are read, opened
+non-blocking so a FIFO cannot stall the mailbox. Meridian stores nothing new.
+Notes are never shared between separate lead trees or carried into later
+Threads, which would carry prompt injection forward.
+
 Revocation, lapse, and cancellation are daemon-side state changes that
 take effect on the next request. Revoking or cancelling cancels the subagent's
 run and then pauses its Capsule through the provider without Capsule

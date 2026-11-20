@@ -489,6 +489,34 @@ slowly.
   spawn a reviewer subagent rather than reading a large diff, and keep a
   running notes file in `$HOME/.meridian/notes/`.
 
+## Amendment: notes attached to a spawn
+
+ADR 0059 section 4 lets a lead attach its own notes to a spawn instead of
+retyping shared conventions and findings into every prompt.
+
+- **`contextFiles`.** `spawn` accepts `contextFiles` in `meridian.coord.v1`
+  and `meridian_spawn`, and repeatable `--context-file` on the CLI: 1 to 8
+  distinct slash-separated paths of at most 255 bytes, relative to
+  `$HOME/.meridian/notes/` in the lead Capsule, with no empty, `.` or `..`
+  element, backslash, or control character. No other request accepts it.
+- **Resolution.** The lead Capsule's own mailbox reads each file through an
+  `os.Root` on the notes directory (which must be a real directory outside
+  `/workspace`, not a symlink), accepts only regular UTF-8 files without NUL,
+  and appends each to the prompt under a `## Notes attached by the lead`
+  heading as `### <path> (<n> bytes)` followed by a backtick fence one longer
+  than the longest backtick run in the note (at least three). It then removes
+  the field and relays an ordinary spawn. meridiand refuses a spawn that
+  still names `contextFiles`.
+- **Limits.** The combined prompt must fit the existing 128 KiB limit. A
+  spawn that does not fit is refused as `context_too_large`, never cut. A
+  missing file or notes directory is `not_found`; any other unreadable path
+  is `invalid_request`. Messages name the path, never the content.
+- **Provenance and storage.** The combined prompt is encrypted and delivered
+  under `from_lead` provenance like any prompt. Meridian stores nothing new.
+- **Idempotency.** The mailbox reads the files again on each retry and the
+  key's digest covers the combined prompt, so a retry with the same key after
+  a note changed is a `conflict`, not a second spawn.
+
 ## Amendment: existing Threads become leads
 
 ADR 0059 section 2 lets the operator give an existing plain Thread a grant,

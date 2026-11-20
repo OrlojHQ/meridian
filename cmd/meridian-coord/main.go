@@ -109,20 +109,31 @@ func readPrompt(command *cobra.Command, flag string) (string, error) {
 
 func newSpawnCommand(run runner) *cobra.Command {
 	var name, harness, prompt, key string
+	var contextFiles []string
 	command := &cobra.Command{
-		Use:   "spawn --name NAME --harness HARNESS [--prompt TEXT]",
+		Use:   "spawn --name NAME --harness HARNESS [--prompt TEXT] [--context-file PATH...]",
 		Short: "Start a subagent Thread in its own Capsule (prompt from --prompt or stdin)",
-		Args:  cobra.NoArgs,
+		Long: "Start a subagent Thread in its own Capsule (prompt from --prompt or stdin).\n\n" +
+			"Each --context-file names a note relative to $HOME/.meridian/notes/ in this Capsule. The\n" +
+			"mailbox appends each one to the prompt as a fenced block, so shared conventions and\n" +
+			"findings need not be retyped. At most 8 files; the prompt with them must fit 128 KiB.",
+		Args: cobra.NoArgs,
 		RunE: func(command *cobra.Command, _ []string) error {
 			text, err := readPrompt(command, prompt)
 			if err != nil {
 				return err
 			}
-			return run(command, coordproto.Request{
+			request := coordproto.Request{
 				Type: coordproto.KindSpawn, Name: name, Harness: harness, Prompt: text, Key: key,
-			})
+			}
+			if len(contextFiles) > 0 {
+				request.ContextFiles = contextFiles
+			}
+			return run(command, request)
 		},
 	}
+	command.Flags().StringArrayVar(&contextFiles, "context-file", nil,
+		"note to attach, relative to $HOME/.meridian/notes/ (repeatable, at most 8)")
 	command.Flags().StringVar(&name, "name", "", "unique subagent name ([a-z0-9-]{1,48})")
 	command.Flags().StringVar(&harness, "harness", "", "structured harness for the subagent")
 	command.Flags().StringVar(&prompt, "prompt", "", "task for the subagent (default: read stdin)")

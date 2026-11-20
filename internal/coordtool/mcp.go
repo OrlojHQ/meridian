@@ -97,6 +97,12 @@ func coordinationTools() []tool {
 				"harness": map[string]any{"type": "string", "description": "Structured harness for the subagent; see meridian_whoami."},
 				"prompt":  promptProperty,
 				"key":     keyProperty,
+				"contextFiles": map[string]any{
+					"type": "array", "maxItems": coordproto.MaxContextFiles, "uniqueItems": true,
+					"items": map[string]any{"type": "string", "minLength": 1, "maxLength": coordproto.MaxContextPathBytes},
+					"description": "Notes to attach, as paths relative to $HOME/.meridian/notes/ (for example " +
+						"\"conventions.md\"). Each file is appended to the prompt, which must still fit its limit.",
+				},
 			}, "name", "harness", "prompt"),
 		},
 		{
@@ -213,6 +219,7 @@ type toolArguments struct {
 	Body           string   `json:"body,omitempty"`
 	Branch         string   `json:"branch,omitempty"`
 	ToFile         bool     `json:"toFile,omitempty"`
+	ContextFiles   []string `json:"contextFiles,omitempty"`
 }
 
 var toolKinds = map[string]coordproto.Kind{
@@ -375,6 +382,9 @@ func (s *MCPServer) callTool(ctx context.Context, kind coordproto.Kind, raw json
 		TimeoutSeconds: arguments.TimeoutSeconds, Status: arguments.Status, Summary: arguments.Summary,
 		MaxBytes: arguments.MaxBytes, Title: arguments.Title, Body: arguments.Body, Branch: arguments.Branch,
 		ToFile: arguments.ToFile,
+	}
+	if len(arguments.ContextFiles) > 0 {
+		request.ContextFiles = arguments.ContextFiles
 	}
 	response, err := Call(ctx, s.Socket, request)
 	if err != nil {

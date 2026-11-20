@@ -199,6 +199,35 @@ toward the 128 KiB prompt limit and is encrypted with the prompt under
 `from_lead` provenance. Meridian stores nothing new: notes live in the lead's
 Capsule, and the copy a subagent gets is part of its prompt.
 
+Choices made in implementing this:
+
+- **Path grammar.** 1 to 8 distinct slash-separated relative paths of at most
+  255 bytes, with no empty, `.` or `..` element, backslash, or control
+  character, checked by `meridian.coord.v1` itself. Subdirectories of the
+  notes directory are allowed. Symlinks inside it are followed only as far
+  as an `os.Root` on it allows, so none reaches outside. The notes directory
+  itself must be a real directory, not a symlink, and `capsuled` disables
+  `contextFiles` when it would lie inside `/workspace`, as for `toFile`.
+  Only regular UTF-8 files without NUL are read, opened non-blocking so a
+  FIFO cannot stall the mailbox. Nothing creates the directory; the brief
+  tells the lead to.
+- **Block format.** After the prompt, a `## Notes attached by the lead`
+  heading and one line saying the fences are not part of the files, then
+  per file `### <path> (<n> bytes)` and a `text` fence of backticks one
+  longer than the longest backtick run in the file (at least three). Under
+  CommonMark a closing fence must be at least as long as the opening one, so
+  no line of a note can close its block early.
+- **Refusals.** A spawn whose combined prompt exceeds 128 KiB is refused with
+  the new code `context_too_large`; nothing is cut. A missing file or notes
+  directory is `not_found`, any other unreadable path is `invalid_request`,
+  and a Capsule without a notes directory answers `unavailable`. Messages
+  name the path and the limit, never content. meridiand refuses a spawn that
+  still carries `contextFiles` as `invalid_request`.
+- **Retries.** The mailbox reads the notes again on every retry and the
+  idempotency digest covers the combined prompt, so retrying with the same
+  key after a note changed is a `conflict` rather than a second, different
+  spawn.
+
 Notes shared across separate lead trees or future Threads (Cursor's synced
 Project files) are not part of this decision. Content an agent writes that
 later Threads read automatically is a new way to carry prompt injection

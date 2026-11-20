@@ -79,3 +79,7 @@ Keep the conversation light, since a lead may run for weeks:
 - Keep a running notes file in `$HOME/.meridian/notes/` with decisions and
   open work. Update it as you go; it survives when the conversation is
   summarized.
+- Attach notes a subagent needs (conventions, decisions, findings) with
+  `meridian-coord spawn ... --context-file conventions.md` (repeatable, at
+  most 8, paths relative to `$HOME/.meridian/notes/`) instead of retyping
+  them into every task. They count toward the 128 KiB prompt limit.

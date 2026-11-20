@@ -31,6 +31,14 @@ func (v coordinationVocabulary) toFile() string {
 	return "`toFile: true`"
 }
 
+// contextFiles names the spawn option that attaches notes.
+func (v coordinationVocabulary) contextFiles() string {
+	if v == coordinationCLI {
+		return "`--context-file`"
+	}
+	return "`contextFiles`"
+}
+
 // CoordinationBriefChannels records, for every structured driver, how it
 // delivers coordinationBrief to its harness. Without the brief a lead never
 // learns it is a lead and delegates only when the operator says so, so a new
@@ -120,6 +128,9 @@ func leadBrief(v coordinationVocabulary) string {
 		"- Keep a running notes file in `$HOME/.meridian/notes/` with decisions and open " +
 			"work. Update it as you go and reread it when you lose track; it survives when " +
 			"this conversation is summarized.",
+		"- Attach notes a subagent needs (conventions, decisions, findings) to " + v.call("spawn") +
+			" with " + v.contextFiles() + " (paths relative to `$HOME/.meridian/notes/`) " +
+			"instead of retyping them into every task.",
 		"",
 		"If your harness has its own built-in subagent or task tool, use it only for quick " +
 			"read-only lookups inside this Capsule. Use " + v.call("spawn") + " for anything " +

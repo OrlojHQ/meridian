@@ -102,6 +102,10 @@ type ServerConfig struct {
 	// CoordinationFiles is the private directory for toFile patches and
 	// reports, outside the workspace. Empty disables toFile.
 	CoordinationFiles string
+	// CoordinationNotes is the lead's notes directory, outside the
+	// workspace, that a spawn's contextFiles are read from. Empty disables
+	// contextFiles.
+	CoordinationNotes string
 }
 
 type Server struct {
@@ -141,6 +145,15 @@ func NewServer(config ServerConfig) (*Server, error) {
 		}
 		if !OutsideWorkspace(config.Workspace, dir) {
 			return nil, errors.New("coordination file directory must be outside the workspace")
+		}
+	}
+	if config.CoordinationNotes != "" {
+		dir := config.CoordinationNotes
+		if !filepath.IsAbs(dir) || filepath.Clean(dir) != dir {
+			return nil, errors.New("coordination notes directory must be an absolute clean path")
+		}
+		if !OutsideWorkspace(config.Workspace, dir) {
+			return nil, errors.New("coordination notes directory must be outside the workspace")
 		}
 	}
 	if config.SetupTimeout <= 0 {
@@ -184,6 +197,7 @@ func NewServer(config ServerConfig) (*Server, error) {
 		stopped:    make(chan struct{}),
 	}
 	server.coord.SetFileDirectory(config.CoordinationFiles)
+	server.coord.SetNotesDirectory(config.CoordinationNotes)
 	if err := ensureWorkspace(config.Workspace); err != nil {
 		return nil, err
 	}
