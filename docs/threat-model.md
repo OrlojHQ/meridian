@@ -105,6 +105,8 @@ Meridian assumes the following may be malicious or compromised:
   agent-authored subagent names and prompts, subagent reports returned to a
   lead, bounded git patch series a lead fetches from a subagent Capsule, and
   the files under `$HOME/.meridian/coord` that hold them on request;
+- Project note proposals from a lead or subagent Capsule (ADR 0060,
+  proposed), and approved notes that began as one;
 - external services reached over the network and credentials returned by integrations;
 - in team mode, another authenticated teammate who must not reach your
   objects, and OIDC callback parameters, ID tokens, and claims; and
@@ -568,7 +570,9 @@ itself must not be a symlink and must lie outside `/workspace`, so a
 repository cannot plant notes; and only regular UTF-8 files are read, opened
 non-blocking so a FIFO cannot stall the mailbox. Meridian stores nothing new.
 Notes are never shared between separate lead trees or carried into later
-Threads, which would carry prompt injection forward.
+Threads, which would carry prompt injection forward. ADR 0060 (proposed)
+would add operator-approved Project notes for that purpose; see "Project
+notes" below.
 
 Revocation, lapse, and cancellation are daemon-side state changes that
 take effect on the next request. Revoking or cancelling cancels the subagent's
@@ -1835,3 +1839,86 @@ Residual risks specific to team mode are listed under Residual risks: host,
 data-directory, KEK, and daemon compromise; shared-KEK backups; the identity
 provider in the trust base; and container providers sharing a kernel between
 teammates until the microVM provider (#86) reports `microvm`.
+
+## Project notes
+
+ADR 0060 is proposed and not implemented. Project notes are Markdown files
+that the Project's owner writes, that a lead or subagent may propose changes
+to, and that Meridian copies into each new session of the Project's Threads.
+
+- **A deliberate carrier across fresh Capsules.** Notes are the one way text
+  from one Capsule reaches later Capsules without a repository commit. That
+  narrows "no standing foothold" (ADR 0057). Only operator-written or
+  operator-approved text crosses. Every revision records its kind, the user
+  who wrote or approved it, and for a proposal the proposing Thread, Capsule,
+  link and lead. History, restore, delete with history, and crypto-shred undo
+  a mistake for later sessions. Copies already delivered stay in their
+  Capsules until replaced or deleted, and quotes an agent made stay in
+  transcripts, reports and commits.
+- **Only the owner writes or approves.** Writes, approvals, rejections,
+  restores and shreds are user-principal APIs. The break-glass admin, the
+  system and every Capsule see notes as not found. `propose-note` stores a
+  pending proposal and returns only its ID and state. No auto-approve, no
+  bulk approve, and approval binds the proposal's content digest and the
+  note's current revision, so a stale proposal cannot be approved as it is.
+  A repository file cannot create, change or suggest a note.
+- **A poisoned diff the operator approves.** A plausible change ("skip the
+  flaky tests", "run this bootstrap script first", "the token is in
+  `.env.example`") steers every later Thread in the Project. Controls: the
+  review page shows a source diff with control, bidirectional and zero-width
+  characters escaped; one proposal is approved at a time; the note list
+  labels a note whose latest revision came from a proposal; the delivered
+  index says notes grant no permission and change no setting; and routines
+  receive notes only when the routine opts in. A note cannot change harness
+  permission settings, egress, trusted MCP tools, a grant, or Delivery
+  approval, so it can steer only what an agent could already do without
+  asking. Approving a poisoned note is a residual risk.
+- **Social engineering in proposals.** Proposal text never appears in
+  notifications, Inbox lines, or titles, which name only the Project, the
+  note and the proposing Thread. A proposal has no free-text reason field.
+  The only place its text is shown is the review page, which labels it as
+  agent text from a named Thread. Proposals raise no Thread attention.
+- **Pending text stays unread by agents.** No agent sees another Thread's
+  proposals, the content of any pending or rejected proposal, or a rejection
+  reason. A proposing Thread reads only the states of its own most recent
+  proposals. Approved changes reach agents only by delivery at a session
+  start.
+- **Delivery stays inside each Capsule.** `capsuled` writes the approved set
+  to `$HOME/.meridian/project-notes/` through an `os.Root`, renames it into
+  place, refuses a symlinked target or one inside `/workspace`, and never
+  reads the directory back. It is outside the workspace and written after
+  setup, so Deliveries, local sync, workspace Moments and setup Moments
+  never capture it. File modes are a hint, not a control: the Capsule user
+  can change its own copy, which affects only that Capsule until the next
+  delivery. Notes are not delivered as a live view, and are never put into
+  the system prompt. The system-prompt channel carries only a fixed index
+  of names, sizes and revisions, at most 4 KiB.
+- **Size and cost.** 32 KiB per note, 32 notes and 128 KiB per Project, 16
+  pending proposals per Project and 4 per proposing Thread, 7-day proposal
+  expiry, 50 retained revisions per note, and the mailbox's existing rate
+  and size limits. Limits refuse; nothing is cut.
+- **What a compromised Capsule can do.** Propose changes within those
+  bounds; read the notes delivered to it and exfiltrate them within its
+  egress; change its own copy; and read the states of its own proposals. It
+  cannot write or approve a note, read other proposals, change who receives
+  notes, reach another Capsule's copy, raise attention, or plant a note
+  through the repository.
+- **Encryption at rest.** Revision and proposal content is AES-256-GCM
+  under a per-Project notes DEK, wrapped with the installation transcript
+  KEK. The wrap AAD binds the Project, the owner and the KEK identity, and
+  each envelope's AAD binds the Project and the note or proposal identity,
+  so ciphertext cannot be moved between rows, Projects or owners. Content
+  stays out of SQLite plaintext, events, audit records, logs, metrics,
+  traces, notifications and errors. Note names are grammar-bounded
+  plaintext, like subagent and routine names. Backups hold the ciphertext
+  and wrapped DEK and list the KEK they need, as for Threads; a backup taken
+  before a shred still holds readable notes for anyone with it and the KEK.
+- **Secrets in notes.** Every process in every Capsule that receives notes
+  can read them. Proposals are scanned with ADR 0024's credential-shaped
+  checks and matches are flagged on the review page. That is defense in
+  depth, not proof that a note holds no secret. Credentials belong in named
+  secrets.
+- **Team mode.** Notes are private to the Project's owner, like every other
+  object. A departed-member transfer re-wraps the DEK for the new owner,
+  rejects pending proposals, and turns delivery off until the new owner
+  turns it on. The admin who transfers cannot read notes.
