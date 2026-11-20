@@ -271,7 +271,8 @@ func TestOperatorMessageToSubagentIsNoticedOnTheLeadsNextWake(t *testing.T) {
 		t.Fatalf("wake prompt = %q", wake)
 	}
 	noticed, err := f.service.GetThreadLink(f.ctx, link.ID)
-	if err != nil || noticed.OperatorNoticed != 1 || noticed.ReportDeliveredSeq != noticed.ReportSeq {
+	if err != nil || noticed.OperatorNoticed != 1 || noticed.ReportHeadlinedSeq != noticed.ReportSeq ||
+		noticed.ReportDeliveredSeq != 0 {
 		t.Fatalf("link after wake = %+v, %v", noticed, err)
 	}
 }

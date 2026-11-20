@@ -228,7 +228,12 @@ client, so the Pi pack loads a skill that teaches it the CLI form:
 `wait LINK... | --all`, `result`, `patch`, `status`, `list`, `cancel`, and
 `whoami`. A subagent uses `meridian-coord report --status done|blocked|failed`
 (summary on stdin). Reports and patches are untrusted data. It talks only to
-the Capsule's local mailbox; it holds no credential.
+the Capsule's local mailbox; it holds no credential. A lead is woken with
+report headlines (the first 2 KiB of each) and reads a full report with
+`result`. `result --to-file` and `patch --to-file` write the report or patch
+to a private file under `$HOME/.meridian/coord/` in the lead Capsule, outside
+`/workspace`, and print its path instead (16 MiB kept per Capsule, oldest
+removed first).
 
 ## Sessions and Capsules
 

@@ -120,8 +120,10 @@ Three ways to carry a request out of the Capsule were considered:
 > **Amended by ADR 0059.** The absolute grant deadline described here and in
 > the amendments below was replaced by an unattended limit, and the total
 > children limit now counts a rolling 24-hour window. See "Amendment:
-> unattended limit replaces the deadline" at the end of this ADR. The text
-> above is kept as decided at the time.
+> unattended limit replaces the deadline" at the end of this ADR. Wakes now
+> carry report headlines instead of full reports, and `patch` and `result`
+> can write to a file in the lead Capsule; see "Amendment: headline wakes and
+> coordination files". The text above is kept as decided at the time.
 
 ## Consequences
 
@@ -453,3 +455,36 @@ time plus a rolling spawn window.
   grant lapses as of its last configuration. The lead's Agents panel shows
   spawns in the current window and "pauses after N without you", lets the
   operator change the limit, and shows a lapsed lead as Paused.
+
+## Amendment: headline wakes and coordination files
+
+ADR 0059 section 3 keeps large coordination output out of a lead's
+transcript, so a lead conversation that lasts weeks fills its context more
+slowly.
+
+- **Headline wakes.** A wake lists each new report's subagent name, link,
+  status, reason, content-free diffstat, and the first 2 KiB of its summary,
+  at most 16 reports and 16 KiB in all (formerly 8 full reports and 64 KiB).
+  It tells the lead to read full reports with `result`. Reports that do not
+  fit are counted and come in the next wake.
+- **Delivery.** A report is marked delivered only when `wait` or `result`
+  returns it, never by a wake. Migration 0037 adds a content-free
+  `report_headlined_seq` that a wake moves in the same transaction as its
+  message. A report that was headlined and not yet read does not wake the
+  lead again; the next wake for something new lists it as still unread.
+  Operator notices are unchanged and still never wake a lead on their own.
+- **`toFile`.** `patch` and `result` accept `toFile: true` in
+  `meridian.coord.v1`, `meridian_patch` and `meridian_result`, and
+  `--to-file` on the CLI. The lead Capsule's own mailbox handles it: it strips
+  the field before relaying a patch request, so meridiand never sees it, writes
+  the bytes to `$HOME/.meridian/coord/<link>/<seq>.patch` or `<seq>.md`
+  (directories 0700, files 0600; `seq` is the link's latest report sequence,
+  and a later fetch at the same sequence replaces the file), and returns
+  `file`, `fileBytes`, HEAD, base commit and the diffstat instead of the
+  content. An empty patch writes no file. Files are capped at 16 MiB per
+  Capsule, oldest removed first. A report written to a file counts as read.
+  Patch bytes are still never written to SQLite.
+- **Lead brief.** The lead brief and the Pi skill tell the lead to read
+  diffstats before patches, use `toFile` and the shell for large output,
+  spawn a reviewer subagent rather than reading a large diff, and keep a
+  running notes file in `$HOME/.meridian/notes/`.

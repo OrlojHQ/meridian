@@ -99,6 +99,9 @@ type ServerConfig struct {
 	PreviewBodyLimit     int64
 	PreviewPortDiscovery func() ([]uint16, error)
 	ArchiveLimits        ArchiveLimits
+	// CoordinationFiles is the private directory for toFile patches and
+	// reports, outside the workspace. Empty disables toFile.
+	CoordinationFiles string
 }
 
 type Server struct {
@@ -130,6 +133,15 @@ func NewServer(config ServerConfig) (*Server, error) {
 	if !filepath.IsAbs(config.TrustedHarnessDirectory) ||
 		filepath.Clean(config.TrustedHarnessDirectory) != config.TrustedHarnessDirectory {
 		return nil, errors.New("trusted harness directory must be an absolute clean path")
+	}
+	if config.CoordinationFiles != "" {
+		dir := config.CoordinationFiles
+		if !filepath.IsAbs(dir) || filepath.Clean(dir) != dir {
+			return nil, errors.New("coordination file directory must be an absolute clean path")
+		}
+		if !OutsideWorkspace(config.Workspace, dir) {
+			return nil, errors.New("coordination file directory must be outside the workspace")
+		}
 	}
 	if config.SetupTimeout <= 0 {
 		config.SetupTimeout = 10 * time.Minute
@@ -171,6 +183,7 @@ func NewServer(config ServerConfig) (*Server, error) {
 		coord:      NewMailbox(),
 		stopped:    make(chan struct{}),
 	}
+	server.coord.SetFileDirectory(config.CoordinationFiles)
 	if err := ensureWorkspace(config.Workspace); err != nil {
 		return nil, err
 	}

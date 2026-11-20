@@ -45,6 +45,12 @@ const (
 	MaxPatchBytes         = 4 << 20
 	MaxResponseBytes      = MaxPatchBytes + 64<<10
 
+	// MaxFileBytes caps the patch and report files a lead Capsule's mailbox
+	// keeps under FilesDirName for toFile requests. The oldest are removed
+	// first.
+	MaxFileBytes = 16 << 20
+	FilesDirName = "coord"
+
 	// Mailbox bounds. A full mailbox answers busy.
 	MaxPendingRequests = 64
 	MaxPendingBytes    = 2 << 20
@@ -97,6 +103,10 @@ type Request struct {
 	Title          string   `json:"title,omitempty"`
 	Body           string   `json:"body,omitempty"`
 	Branch         string   `json:"branch,omitempty"`
+	// ToFile asks the lead Capsule's mailbox to write a patch or full report
+	// to a private file under $HOME/.meridian/coord and return its path
+	// instead of the content. It never leaves the Capsule.
+	ToFile bool `json:"toFile,omitempty"`
 }
 
 // Mutating requests carry an idempotency key and are recorded by meridiand.
@@ -123,7 +133,7 @@ func (r Request) Validate() error {
 		return fmt.Errorf("%w: unsupported protocol", ErrInvalidRecord)
 	}
 	type fields struct {
-		key, name, harness, prompt, link, links, all, timeout, status, summary, maxBytes, title, body, branch bool
+		key, name, harness, prompt, link, links, all, timeout, status, summary, maxBytes, title, body, branch, toFile bool
 	}
 	var allowed fields
 	switch r.Type {
@@ -133,10 +143,12 @@ func (r Request) Validate() error {
 		allowed = fields{key: true, link: true, prompt: true}
 	case KindCancel:
 		allowed = fields{key: true, link: true}
-	case KindStatus, KindResult:
+	case KindStatus:
 		allowed = fields{link: true}
+	case KindResult:
+		allowed = fields{link: true, toFile: true}
 	case KindPatch:
-		allowed = fields{link: true, maxBytes: true}
+		allowed = fields{link: true, maxBytes: true, toFile: true}
 	case KindReport:
 		allowed = fields{key: true, status: true, summary: true}
 	case KindProposeDelivery:
@@ -152,7 +164,7 @@ func (r Request) Validate() error {
 		prompt: r.Prompt != "", link: r.Link != "", links: r.Links != nil,
 		all: r.All, timeout: r.TimeoutSeconds != 0, status: r.Status != "",
 		summary: r.Summary != "", maxBytes: r.MaxBytes != 0,
-		title: r.Title != "", body: r.Body != "", branch: r.Branch != "",
+		title: r.Title != "", body: r.Body != "", branch: r.Branch != "", toFile: r.ToFile,
 	}
 	if (present.key && !allowed.key) || (present.name && !allowed.name) ||
 		(present.harness && !allowed.harness) || (present.prompt && !allowed.prompt) ||
@@ -160,7 +172,8 @@ func (r Request) Validate() error {
 		(present.all && !allowed.all) || (present.timeout && !allowed.timeout) ||
 		(present.status && !allowed.status) || (present.summary && !allowed.summary) ||
 		(present.maxBytes && !allowed.maxBytes) || (present.title && !allowed.title) ||
-		(present.body && !allowed.body) || (present.branch && !allowed.branch) {
+		(present.body && !allowed.body) || (present.branch && !allowed.branch) ||
+		(present.toFile && !allowed.toFile) {
 		return fmt.Errorf("%w: field not allowed for %s", ErrInvalidRecord, r.Type)
 	}
 	if allowed.key && !validToken(r.Key, MaxKeyBytes) {
@@ -324,6 +337,10 @@ type Response struct {
 	Insertions   int           `json:"insertions,omitempty"`
 	Deletions    int           `json:"deletions,omitempty"`
 	Delivery     *DeliveryView `json:"delivery,omitempty"`
+	// File and FileBytes answer a toFile request: the absolute path of the
+	// private file in the lead Capsule and its size. Content stays in the file.
+	File      string `json:"file,omitempty"`
+	FileBytes int    `json:"fileBytes,omitempty"`
 }
 
 // DeliveryView is a content-free proposed Delivery. Title and body stay on
@@ -382,7 +399,7 @@ type Report struct {
 	Seq       int    `json:"seq"`
 	Status    string `json:"status"`
 	Reason    string `json:"reason,omitempty"`
-	Summary   string `json:"summary"`
+	Summary   string `json:"summary,omitempty"`
 	Truncated bool   `json:"truncated,omitempty"`
 }
 
