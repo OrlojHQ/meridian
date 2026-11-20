@@ -153,11 +153,11 @@ describe("Lead launcher", () => {
     resourceVersion: 1,
   };
 
-  it("sends a bounded coordination policy only when the operator opts in", async () => {
+  it("starts a lead with a bounded coordination policy by default", async () => {
     vi.spyOn(api, "capabilities").mockResolvedValue(capabilities(true));
     const spawn = vi.spyOn(api, "createProjectThread").mockResolvedValue(intent);
     wrapper(<StructuredLauncher project={project} harness="mock" />);
-    await userEvent.click(await screen.findByLabelText("Lead agent with subagents"));
+    expect(await screen.findByLabelText("Lead agent with subagents")).toBeChecked();
     const subagents = screen.getByLabelText("Subagents");
     await userEvent.clear(subagents);
     await userEvent.type(subagents, "2");
@@ -171,6 +171,18 @@ describe("Lead launcher", () => {
         deadlineSeconds: 24 * 3600,
         spawnApproval: "operator",
       }),
+    );
+  });
+
+  it("starts a plain Thread when the operator opts out of leading", async () => {
+    vi.spyOn(api, "capabilities").mockResolvedValue(capabilities(true));
+    const spawn = vi.spyOn(api, "createProjectThread").mockResolvedValue(intent);
+    wrapper(<StructuredLauncher project={project} harness="mock" />);
+    await userEvent.click(await screen.findByLabelText("Lead agent with subagents"));
+    await userEvent.type(screen.getByLabelText("Task"), "just this");
+    await userEvent.click(screen.getByRole("button", { name: "Start task" }));
+    await waitFor(() =>
+      expect(spawn).toHaveBeenCalledWith(project.id, "mock", "just this", undefined, undefined),
     );
   });
 
@@ -223,7 +235,7 @@ describe("Subagents panel", () => {
     wrapper(<SubagentsPanel thread={leadThread} grantId={grant.id} />);
     const panel = await screen.findByRole("region", { name: "Subagents" });
     expect(await within(panel).findByText("No subagents yet")).toBeInTheDocument();
-    expect(within(panel).getByText(/Ask the lead to split the work/)).toBeInTheDocument();
+    expect(within(panel).getByText(/The lead starts subagents when work splits up/)).toBeInTheDocument();
     expect(within(panel).getByText("Active")).toHaveClass("subagents-state", "state-active");
     expect(within(panel).queryByRole("switch", { name: /Approve each spawn/ })).not.toBeInTheDocument();
     const toggle = within(panel).getByRole("button", { name: "Subagent settings" });

@@ -140,7 +140,7 @@ func RunClaudeStream(
 			return err
 		}
 	}
-	command, err := claudeCommand(config, resumeID)
+	command, err := claudeCommand(config, resumeID, coordinationBrief(initial.Metadata, coordinationMCP))
 	if err != nil {
 		return err
 	}
@@ -1024,7 +1024,7 @@ func (s *claudeSession) result(record map[string]json.RawMessage) error {
 	return s.idle()
 }
 
-func claudeCommand(config ClaudeConfig, resumeID string) ([]string, error) {
+func claudeCommand(config ClaudeConfig, resumeID, brief string) ([]string, error) {
 	command := append([]string(nil), config.Command...)
 	command = append(command,
 		"--print", "--input-format", "stream-json", "--output-format", "stream-json",
@@ -1037,6 +1037,9 @@ func claudeCommand(config ClaudeConfig, resumeID string) ([]string, error) {
 	}
 	if resumeID != "" {
 		command = append(command, "--resume", resumeID)
+	}
+	if brief != "" {
+		command = append(command, "--append-system-prompt", brief)
 	}
 	if len(config.MCPServers) != 0 {
 		servers := map[string]any{}

@@ -1572,6 +1572,11 @@ func (s *Service) startStructuredRuntime(
 			return run, err
 		}
 	}
+	role, err := s.coordinationBriefRole(ctx, thread, capsule)
+	if err != nil {
+		return run, err
+	}
+	frame.Metadata = adapterproto.CoordinationMetadata(role)
 	setup, err := s.runtimeHarnessSetup(ctx, capsule.ID, thread.AdapterID)
 	var connection *harnesssetup.Connection
 	if err == nil {

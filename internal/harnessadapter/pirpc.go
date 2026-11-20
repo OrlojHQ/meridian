@@ -80,14 +80,7 @@ func RunPiRPC(
 		return errors.New("Pi adapter requires start or resume")
 	}
 
-	command := append([]string(nil), config.Command...)
-	command = append(command, "--mode", "rpc")
-	if config.SessionName != "" {
-		command = append(command, "--name", config.SessionName)
-	}
-	if config.SessionDir != "" {
-		command = append(command, "--session-dir", config.SessionDir)
-	}
+	command := piCommand(config, coordinationBrief(initial.Metadata, coordinationCLI))
 	child, err := startProcess(processConfig{Command: command})
 	if err != nil {
 		return err
@@ -535,6 +528,21 @@ func piCompactFinished(stream *Stream, record piRecord) error {
 		Protocol: adapterproto.Version, Type: adapterproto.KindToolResult,
 		Role: adapterproto.RoleTool, ToolCallID: safeID(record.ID, "pi-compact"), Result: result,
 	})
+}
+
+func piCommand(config PiConfig, brief string) []string {
+	command := append([]string(nil), config.Command...)
+	command = append(command, "--mode", "rpc")
+	if config.SessionName != "" {
+		command = append(command, "--name", config.SessionName)
+	}
+	if config.SessionDir != "" {
+		command = append(command, "--session-dir", config.SessionDir)
+	}
+	if brief != "" {
+		command = append(command, "--append-system-prompt", brief)
+	}
+	return command
 }
 
 func validatePiConfig(config PiConfig) error {
