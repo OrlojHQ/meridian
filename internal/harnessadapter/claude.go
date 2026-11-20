@@ -409,17 +409,60 @@ func (s *claudeSession) upstream(record map[string]json.RawMessage) (bool, error
 	case "result":
 		return false, s.result(record)
 	case "system":
-		if stringField(record, "subtype") == "init" {
+		switch stringField(record, "subtype") {
+		case "init":
 			if err := s.turnApplied(record); err != nil {
 				return false, err
 			}
 			return false, s.terminalCommands(record)
+		case "api_retry":
+			return false, s.apiRetry(record)
 		}
 	default:
 		// system, keep_alive, tool_progress, rate-limit, hook, and later
 		// presentation records have no lossless Meridian v1 equivalent.
 	}
 	return false, nil
+}
+
+// apiRetry reports that Claude Code is retrying a failed model request. It
+// otherwise retries silently for minutes, and the Thread shows only that a
+// turn is working. Only Claude Code's fixed error category, the HTTP status,
+// and the attempt counts are forwarded, never provider response text.
+func (s *claudeSession) apiRetry(record map[string]json.RawMessage) error {
+	var attempt, maxRetries, status int
+	_ = json.Unmarshal(record["attempt"], &attempt)
+	_ = json.Unmarshal(record["max_retries"], &maxRetries)
+	_ = json.Unmarshal(record["error_status"], &status)
+	return s.write(adapterproto.Frame{
+		Type: adapterproto.KindError, Code: "provider_retry", Retryable: true,
+		Summary: claudeRetrySummary(stringField(record, "error"), status, attempt, maxRetries),
+	})
+}
+
+func claudeRetrySummary(category string, status, attempt, maxRetries int) string {
+	reason := "the model provider could not be reached"
+	switch category {
+	case "rate_limit":
+		reason = "the provider is rate limiting requests"
+	case "overloaded":
+		reason = "the provider is overloaded"
+	case "authentication_failed":
+		reason = "the provider rejected the credentials"
+	case "server_error":
+		reason = "the provider returned an error"
+	}
+	if status >= 100 && status <= 599 {
+		reason += " (HTTP " + strconv.Itoa(status) + ")"
+	}
+	retry := "Retrying"
+	switch {
+	case attempt > 0 && maxRetries >= attempt:
+		retry = fmt.Sprintf("Retrying, attempt %d of %d", attempt, maxRetries)
+	case attempt > 0:
+		retry = fmt.Sprintf("Retrying, attempt %d", attempt)
+	}
+	return "Model request failed: " + reason + ". " + retry + "."
 }
 
 func (s *claudeSession) controlResponse(record map[string]json.RawMessage) (bool, error) {
