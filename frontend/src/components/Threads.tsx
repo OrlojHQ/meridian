@@ -17,9 +17,12 @@ import {
 import {
   harnessName,
   relativeTime,
+  sessionPath,
   threadSession,
   type CapsuleSession,
 } from "../shell/capsuleActivity";
+import { startFresh } from "../shell/startFresh";
+import { EarlierSessions } from "./EarlierSessions";
 import { RepositoryAccessNotice } from "./RepositoryAccess";
 import { SessionEnded } from "./SessionEnded";
 import { isRepositoryAccessFailure } from "./startup";
@@ -353,7 +356,12 @@ export function ThreadCreate({
 // inside a Capsule workspace when embedded with an explicit threadId.
 export function ThreadDetail({
   threadId: embeddedThreadId,
-}: { threadId?: string } = {}) {
+  unfold,
+}: {
+  threadId?: string;
+  // An earlier session of this Capsule to show unfolded above the transcript.
+  unfold?: string;
+} = {}) {
   const params = useParams();
   const threadId = embeddedThreadId ?? params.threadId ?? "";
   const embedded = embeddedThreadId !== undefined;
@@ -385,7 +393,7 @@ export function ThreadDetail({
   const [gap, setGap] = useState<{ expected: number; received: number }>();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmation, setConfirmation] = useState("");
-  const [confirmAction, setConfirmAction] = useState<"cancel" | "archive">();
+  const [confirmAction, setConfirmAction] = useState<"cancel" | "archive" | "fresh">();
   const [showDetails, setShowDetails] = useState(false);
   const [rawEvents, setRawEvents] = useState(false);
   const ended = threadQuery.data ? endedSessionState(threadQuery.data) : undefined;
@@ -476,6 +484,20 @@ export function ThreadDetail({
       if (normalizeAPIError(error).code === "conflict") await refresh();
     },
   });
+  const capsuleThreads = useQuery(queries.threads(threadQuery.data?.capsuleId ?? ""));
+  // Shared with the Capsule page; says whether this is a CLI Capsule.
+  const home = useQuery(queries.capsule(threadQuery.data?.capsuleId ?? ""));
+  const fresh = useMutation({
+    mutationFn: () => {
+      if (!threadQuery.data) throw new Error("Thread is not loaded");
+      return startFresh(threadQuery.data);
+    },
+    onSuccess: async (next) => {
+      await queryClient.invalidateQueries({ queryKey: ["threads", next.capsuleId] });
+      navigate(sessionPath(next.capsuleId, next.id));
+    },
+    onError: refresh,
+  });
   const archive = useMutation({
     mutationFn: () =>
       api.archiveThread(threadId, threadQuery.data?.resourceVersion ?? 0),
@@ -511,10 +533,26 @@ export function ThreadDetail({
   const profile = named.find((item) => item.structured) ?? named[0];
   const activeSession = isActiveRunState(thread.currentRunState);
   const canCompose = thread.state === "active" && thread.structuredSupported !== false;
-  const newSession = profiles.data?.items.some((item) => item.structured)
-    ? () => navigate(`/ui/capsules/${encodeURIComponent(thread.capsuleId)}?session=new`)
-    : undefined;
+  // Start fresh replaces this Thread's session with a new Thread in the same
+  // Thread Capsule. A CLI Capsule runs its terminal and never starts a Thread.
+  // A lead and its subagents keep their coordination, so they do not offer it.
+  const coordinated = Boolean(thread.coordinationGrantId || thread.parentThreadId);
+  const threadCapsule = home.data !== undefined && !home.data.harness;
+  const newSession =
+    !coordinated &&
+    threadCapsule &&
+    thread.state !== "deleted" &&
+    thread.state !== "archived" &&
+    profiles.data?.items.some((item) => item.structured)
+      ? () =>
+          activeSession
+            ? setConfirmAction("fresh")
+            : fresh.mutate()
+      : undefined;
   const menu: ActionsMenuItem[] = [];
+  if (newSession) {
+    menu.push({ label: "Start fresh", disabled: fresh.isPending, onSelect: newSession });
+  }
   if (activeSession) {
     menu.push({
       label: "Cancel session",
@@ -614,6 +652,11 @@ export function ThreadDetail({
             Resume session
           </button>
         )}
+        {thread.state === "paused" && newSession && (
+          <button disabled={fresh.isPending} onClick={newSession}>
+            Start fresh
+          </button>
+        )}
         <ActionsMenu label="Thread actions" items={menu} />
       </div>
       {showDetails && (
@@ -633,9 +676,10 @@ export function ThreadDetail({
           instead.
         </p>
       )}
-      {(session.isError || archive.isError) && (
-        <ThreadError error={session.error ?? archive.error} />
+      {(session.isError || archive.isError || fresh.isError) && (
+        <ThreadError error={session.error ?? archive.error ?? fresh.error} />
       )}
+      {fresh.isPending && <p className="notice" role="status">Starting a fresh session…</p>}
       {confirmAction && (
         <section
           className="danger-zone"
@@ -645,25 +689,34 @@ export function ThreadDetail({
           <h2 id="thread-action-title">
             {confirmAction === "cancel"
               ? "Cancel the running session?"
-              : "Archive this Thread?"}
+              : confirmAction === "fresh"
+                ? "Stop this session and start fresh?"
+                : "Archive this Thread?"}
           </h2>
           <p>
             {confirmAction === "cancel"
               ? "The agent will be asked to stop."
-              : "The transcript remains encrypted and readable, but new messages are disabled."}
+              : confirmAction === "fresh"
+                ? "The agent is asked to stop, then a new session starts in this Capsule. Files and changes stay. The conversation so far stays readable above, but the new session starts without it."
+                : "The transcript remains encrypted and readable, but new messages are disabled."}
           </p>
           <div className="actions">
             <button
-              className={confirmAction === "cancel" ? "danger" : undefined}
-              disabled={session.isPending || archive.isPending}
+              className={confirmAction === "archive" ? undefined : "danger"}
+              disabled={session.isPending || archive.isPending || fresh.isPending}
               onClick={() => {
                 const action = confirmAction;
                 setConfirmAction(undefined);
                 if (action === "cancel") session.mutate("cancel");
+                else if (action === "fresh") fresh.mutate();
                 else archive.mutate();
               }}
             >
-              {confirmAction === "cancel" ? "Confirm cancel" : "Confirm archive"}
+              {confirmAction === "cancel"
+                ? "Confirm cancel"
+                : confirmAction === "fresh"
+                  ? "Stop and start fresh"
+                  : "Confirm archive"}
             </button>
             <button type="button" onClick={() => setConfirmAction(undefined)}>
               Keep Thread
@@ -705,6 +758,13 @@ export function ThreadDetail({
         onStop={activeSession ? () => session.mutate("cancel") : undefined}
         onNewSession={newSession}
         onRefresh={refresh}
+        earlier={
+          <EarlierSessions
+            thread={thread}
+            threads={capsuleThreads.data?.items ?? []}
+            unfold={unfold}
+          />
+        }
         endedNotice={
           ended && (
             <SessionEnded

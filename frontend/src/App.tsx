@@ -67,7 +67,7 @@ import { PendingReviewNotice } from "./components/ReviewComments";
 import { Dialog } from "./components/ui/Dialog";
 import { Menu as ActionsMenu, type MenuItem as ActionsMenuItem } from "./components/ui/Menu";
 import { HarnessMark } from "./components/ui/HarnessMark";
-import { CloseIcon, PlusIcon, ThreadIcon } from "./components/ui/Icons";
+import { CloseIcon, ThreadIcon } from "./components/ui/Icons";
 import { StateBadge } from "./components/ui/StateBadge";
 import {
   ActivityDot,
@@ -76,7 +76,8 @@ import {
 } from "./shell/AppShell";
 import {
   capsuleSessions,
-  sessionNames,
+  currentThread,
+  sessionName,
   type ActivityGroup,
   defaultSession,
   destinationAfterCapsuleDelete,
@@ -845,12 +846,26 @@ export function CapsuleDetail() {
   if (capsule.isError) return <ErrorState error={capsule.error} />;
   const value = capsule.data;
   const sessions = capsuleSessions(value, runs.data?.items, threads.data?.items);
-  const tabNames = sessionNames(sessions);
+  const current = currentThread(threads.data?.items);
+  // A Capsule is the kind chosen when it was made: a CLI Capsule (it has a
+  // launcher harness) runs its terminal, and a Thread Capsule runs one Thread.
+  // A CLI Capsule never offers a Thread. A Thread Capsule replaces its session
+  // with Start fresh; the empty form shows only when it has no Thread left.
+  const cliCapsule = Boolean(value.harness);
   const canCreateThread =
     structured &&
+    !cliCapsule &&
     value.state === "Ready" &&
+    current === undefined &&
     profiles.data?.items.some((profile) => profile.structured) === true;
-  const requested = searchParams.get("session") ?? "";
+  // A link to an earlier Thread opens the current one, with that earlier
+  // session unfolded above it.
+  const linked = searchParams.get("session") ?? "";
+  const earlierLinked =
+    current !== undefined &&
+    linked !== current.id &&
+    threads.data?.items.some((item) => item.id === linked) === true;
+  const requested = earlierLinked && current ? current.id : linked;
   // A Thread started from the New Capsule dialog exists only once its
   // Capsule is Ready, so the page can ask for it before it is listed. Wait
   // for it rather than offering a second way to start one.
@@ -1003,11 +1018,11 @@ export function CapsuleDetail() {
             setups={setups.data?.items}
             known={setups.isSuccess}
           />
-          {cliSelected && (canCreateThread || threadTarget) && (
+          {cliSelected && threadTarget && (
             <button
               type="button"
               className="to-thread"
-              onClick={() => selectSession(threadTarget?.id ?? NEW_SESSION)}
+              onClick={() => selectSession(threadTarget.id)}
             >
               <ThreadIcon />
               Thread
@@ -1086,14 +1101,14 @@ export function CapsuleDetail() {
         document.body,
       )}
       <CapsuleChecks capsule={value} tree={inspection.data?.tree} />
-      {(sessions.length > 0 || canCreateThread || subagentTabs.length > 0) && (
+      {(sessions.length > 0 || subagentTabs.length > 0) && (
         <div className="session-tabs" role="tablist" aria-label="Sessions">
           {sessions.map((session) => (
             <button
               key={session.id}
               type="button"
               role="tab"
-              title={`${tabNames.get(session.id)} · ${harnessName(session.harness)}`}
+              title={`${sessionName(session)} · ${harnessName(session.harness)}`}
               id={`session-tab-${session.id}`}
               aria-selected={selected === session.id}
               aria-controls="session-panel"
@@ -1102,25 +1117,10 @@ export function CapsuleDetail() {
             >
               <ActivityDot group={session.group} />
               <HarnessMark harness={session.harness} />
-              <span>{tabNames.get(session.id)}</span>
+              <span>{sessionName(session)}</span>
               <small>{session.label}</small>
             </button>
           ))}
-          {canCreateThread && (
-            <button
-              type="button"
-              role="tab"
-              id={`session-tab-${NEW_SESSION}`}
-              aria-selected={selected === NEW_SESSION}
-              aria-controls="session-panel"
-              aria-label="New session"
-              title="New session"
-              className="session-tab-new"
-              onClick={() => selectSession(NEW_SESSION)}
-            >
-              <PlusIcon />
-            </button>
-          )}
           {subagentTabs.map((link) => (
             <SubagentTab
               key={link.childThreadId}
@@ -1157,7 +1157,11 @@ export function CapsuleDetail() {
           </div>
         ) : selected ? (
           <SubagentTabsContext.Provider value={tabsContext}>
-            <ThreadDetail key={selected} threadId={selected} />
+            <ThreadDetail
+              key={selected}
+              threadId={selected}
+              unfold={earlierLinked ? linked : undefined}
+            />
           </SubagentTabsContext.Provider>
         ) : awaitingSubagent ? (
           <WorkspaceSkeleton label="Loading subagent…" />

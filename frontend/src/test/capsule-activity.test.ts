@@ -14,6 +14,7 @@ import {
   relativeTime,
   revisionStamp,
   sessionPath,
+  threadSession,
 } from "../shell/capsuleActivity";
 
 const capsule: Capsule = {
@@ -203,13 +204,14 @@ describe("Capsule activity", () => {
         }),
       ],
     );
+    // One Thread at a time: the active one is current and the archived one is
+    // history above it.
     expect(sessions.map((session) => [session.id, session.group, session.label])).toEqual([
       ["terminal", "working", "Working"],
-      ["archived", "sealed", "Archived"],
       ["waiting", "attention", "Waiting for input"],
     ]);
     expect(defaultSession(sessions)?.id).toBe("waiting");
-    expect(defaultSession(sessions.slice(0, 2))?.id).toBe("terminal");
+    expect(defaultSession(sessions.slice(0, 1))?.id).toBe("terminal");
     expect(capsuleSessions({ ...capsule, harness: undefined })).toEqual([]);
   });
 
@@ -227,12 +229,14 @@ describe("Capsule activity", () => {
       updatedAt: "2026-08-23T01:00:00Z",
       resourceVersion: 1,
     };
-    const labels = capsuleSessions({ ...capsule, harness: undefined }, [], [
-      { ...base, id: "failed", currentRunState: "Failed" },
-      { ...base, id: "stopped", currentRunState: "Cancelled" },
-      { ...base, id: "exited", currentRunState: "Succeeded" },
-      { ...base, id: "paused", state: "paused", currentRunState: "Cancelled" },
-    ]).map((session) => [session.id, session.group, session.label]);
+    const labels = [
+      { ...base, id: "failed", currentRunState: "Failed" as const },
+      { ...base, id: "stopped", currentRunState: "Cancelled" as const },
+      { ...base, id: "exited", currentRunState: "Succeeded" as const },
+      { ...base, id: "paused", state: "paused" as const, currentRunState: "Cancelled" as const },
+    ]
+      .map(threadSession)
+      .map((session) => [session.id, session.group, session.label]);
     expect(labels).toEqual([
       ["failed", "attention", "Failed"],
       ["stopped", "idle", "Stopped"],

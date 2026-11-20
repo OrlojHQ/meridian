@@ -583,11 +583,10 @@ describe("Capsule detail states", () => {
       </Routes>,
       "/ui/capsules/capsule-1",
     );
+    // A Thread Capsule with no Thread left shows the form itself, with no
+    // extra tab to start another session beside one.
     expect(await screen.findByRole("heading", { name: "Start a session" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "New session" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    expect(screen.queryByRole("tab", { name: "New session" })).not.toBeInTheDocument();
     expect(screen.getByText(/Project · updated/)).toBeInTheDocument();
     expect(screen.queryByText(/Edits in Settings apply to the next Capsule/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Pause" })).not.toBeInTheDocument();
@@ -739,6 +738,33 @@ describe("Capsule detail states", () => {
     expect(pill).toHaveAttribute("title", expect.stringContaining("New Codex Capsules use v0.4.1"));
     expect(pill).toHaveTextContent("new Codex Capsules use v0.4.1");
     expect(screen.queryByRole("button", { name: /upgrade/i })).toBeNull();
+  });
+
+  it("keeps a CLI Capsule to its terminal even when the harness can run Threads", async () => {
+    vi.spyOn(api, "capsule").mockResolvedValue({ ...capsule, harness: "claude" });
+    vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "threads").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
+    const profiles = vi.spyOn(api, "harnessProfiles").mockResolvedValue({
+      items: [{ name: "claude", structured: true, pty: true }],
+    });
+    vi.spyOn(api, "capabilities").mockResolvedValue({
+      providerVersion: "docker/v2", isolation: "container" as const,
+      attach: false, run: false, structured: true, git: false, pause: false,
+      snapshot: false, clone: false, browse: false, delivery: false, preview: false,
+      resourceMetrics: false,
+    });
+    wrapper(
+      <Routes>
+        <Route path="/ui/capsules/:capsuleId" element={<CapsuleDetail />} />
+      </Routes>,
+      "/ui/capsules/capsule-1?session=new",
+    );
+    expect(await screen.findByRole("tab", { name: /Terminal/ })).toHaveAttribute("aria-selected", "true");
+    await waitFor(() => expect(profiles).toHaveBeenCalled());
+    expect(screen.getAllByRole("tab")).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "Thread" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Start a session" })).not.toBeInTheDocument();
   });
 
   it("offers no new session when the Capsule's harness is terminal-only", async () => {

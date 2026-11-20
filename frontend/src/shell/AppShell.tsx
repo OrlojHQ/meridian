@@ -60,7 +60,7 @@ import {
   harnessName,
   relativeTime,
   rollupSummary,
-  sessionNames,
+  sessionName,
   sessionPath,
   type ActivityGroup,
   type CapsuleSession,
@@ -189,7 +189,6 @@ function SessionList({
   selected: string;
   now: number;
 }) {
-  const names = sessionNames(sessions);
   return (
     <ul className="session-list" aria-label="Sessions">
       {sessions.map((session) => (
@@ -198,12 +197,12 @@ function SessionList({
             to={sessionPath(capsuleId, session.id)}
             className={session.id === selected ? "selected" : undefined}
             aria-current={session.id === selected ? "page" : undefined}
-            title={`${names.get(session.id)} · ${harnessName(session.harness)}`}
+            title={`${sessionName(session)} · ${harnessName(session.harness)}`}
           >
             <ActivityDot group={session.group} />
             <HarnessMark harness={session.harness} />
             <span className="session-list-label">
-              {names.get(session.id)}
+              {sessionName(session)}
               <small>{session.label}</small>
             </span>
             <time dateTime={session.since}>{relativeTime(session.since, now)}</time>

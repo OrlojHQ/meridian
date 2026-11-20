@@ -434,7 +434,7 @@ grants no authority: the controller sends `/name args` as an ordinary user
 message, and the adapter maps a name to a harness protocol call (Codex
 compaction, review, and skills, Pi compaction) only when it
 advertised that name as an action itself. Those calls run with the same harness
-permissions as a prompt. Meridian's own controls (stop, new session) are API
+permissions as a prompt. Meridian's own controls (stop, start fresh) are API
 calls the UI makes and are never sent to the harness. A reported command
 cannot switch models through Meridian; only the operator's model mutation
 sends `set_model`.

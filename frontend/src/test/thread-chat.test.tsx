@@ -59,6 +59,19 @@ function installComposerCss() {
 
 function renderThread(blocks: ThreadBlock[], value: Thread = thread) {
   vi.spyOn(api, "thread").mockResolvedValue(value);
+  // A Thread Capsule: no launcher harness, so Start fresh is offered.
+  vi.spyOn(api, "capsule").mockResolvedValue({
+    id: value.capsuleId,
+    projectId: "project-1",
+    timelineId: "timeline-1",
+    name: "Workspace",
+    state: "Ready",
+    desiredState: "Ready",
+    restoreComplete: true,
+    createdAt: "2026-08-23T00:00:00Z",
+    updatedAt: "2026-08-23T00:00:00Z",
+    resourceVersion: 1,
+  });
   vi.spyOn(api, "threadBlocks").mockResolvedValue({
     items: blocks,
     nextCursor: blocks.at(-1)?.messageSequence ?? 0,
@@ -996,7 +1009,7 @@ describe("Slash command menu", () => {
       "/usageShow plan usagePrompt",
       "/ship targetShip the current branch (project)Prompt",
       "StopStop the current turn",
-      "New sessionStart a fresh conversation in this Capsule",
+      "Start freshEnd this session and start a new one here. The agent won't see the conversation so far",
     ]);
     await user.type(composer, "sh");
     expect(within(menu).getAllByRole("option")[0]).toHaveAttribute("aria-selected", "true");
@@ -1070,7 +1083,7 @@ describe("Slash command menu", () => {
     const menu = screen.getByRole("listbox");
     expect(menu).toHaveTextContent("mock has not reported commands for this session.");
     expect(within(menu).getAllByRole("option").map((option) => option.textContent)).toEqual([
-      "New sessionStart a fresh conversation in this Capsule",
+      "Start freshEnd this session and start a new one here. The agent won't see the conversation so far",
     ]);
   });
 });

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { api, MeridianAPIError } from "../api/client";
 import type { Capsule } from "../api/generated/types.gen";
-import { capsuleSessions, sessionNames } from "../shell/capsuleActivity";
+import { capsuleSessions, currentThread, earlierThreads, sessionName } from "../shell/capsuleActivity";
 import { nameThreadFromFirstMessage } from "../shell/nameThread";
 import { awaitingFirstMessage, capsuleNameFromMessage } from "../shell/threadTitle";
 
@@ -79,21 +79,24 @@ describe("awaiting the first message", () => {
   });
 });
 
-describe("session names", () => {
-  const thread = (id: string, createdAt: string) =>
-    ({ id, capsuleId: "cap-1", state: "active", harness: "claude", createdAt }) as never;
+describe("one Thread per Capsule", () => {
+  const thread = (id: string, createdAt: string, state = "paused") =>
+    ({ id, capsuleId: "cap-1", state, harness: "claude", createdAt }) as never;
 
-  it("names a Terminal and numbers Threads only when there are several", () => {
-    const one = capsuleSessions(
-      { ...capsule("x"), harness: "claude" } as Capsule,
-      [],
-      [thread("t1", "2026-11-19T00:00:00Z")],
-    );
-    expect([...sessionNames(one).values()]).toEqual(["Terminal", "Thread"]);
-    const two = capsuleSessions(capsule("x"), [], [
-      thread("t2", "2026-11-19T00:02:00Z"),
-      thread("t1", "2026-11-19T00:01:00Z"),
+  it("shows the active Thread, or else the newest, with earlier ones as history", () => {
+    const first = thread("t1", "2026-11-19T00:01:00Z");
+    const live = thread("t2", "2026-11-19T00:02:00Z", "active");
+    const later = thread("t3", "2026-11-19T00:03:00Z", "archived");
+    const gone = thread("t0", "2026-11-19T00:00:00Z", "deleted");
+    expect(currentThread([later, first, live, gone])).toBe(live);
+    expect(currentThread([first, later])).toBe(later);
+    expect(currentThread([gone])).toBeUndefined();
+    expect(earlierThreads([later, first, live, gone], live)).toEqual([first]);
+
+    const sessions = capsuleSessions({ ...capsule("x"), harness: "claude" } as Capsule, [], [first, live]);
+    expect(sessions.map((session) => [session.id, sessionName(session)])).toEqual([
+      ["terminal", "Terminal"],
+      ["t2", "Thread"],
     ]);
-    expect(sessionNames(two)).toEqual(new Map([["t1", "Thread 1"], ["t2", "Thread 2"]]));
   });
 });

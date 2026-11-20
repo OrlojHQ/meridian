@@ -310,7 +310,7 @@ const activityLabels: Partial<Record<ChatActivity, string>> = {
   stopping: "Stopping…",
 };
 
-function ChatEntry({
+export function ChatEntry({
   item,
   thread,
   links,
@@ -680,8 +680,8 @@ function ThreadComposer({
     if (onNewSession) {
       available.push({
         id: "new-session",
-        label: "New session",
-        description: "Start a fresh conversation in this Capsule",
+        label: "Start fresh",
+        description: "End this session and start a new one here. The agent won't see the conversation so far",
       });
     }
     return available;
@@ -1022,6 +1022,7 @@ export function ThreadConversation({
   blocks,
   raw,
   banners,
+  earlier,
   endedNotice,
   canCompose,
   stopPending,
@@ -1033,6 +1034,8 @@ export function ThreadConversation({
   blocks: ThreadBlock[];
   raw: boolean;
   banners?: ReactNode;
+  // Earlier sessions of this Capsule, shown above this transcript.
+  earlier?: ReactNode;
   // Present once the session has ended; it follows the transcript and the
   // composer stays disabled until a new session starts.
   endedNotice?: ReactNode;
@@ -1094,6 +1097,7 @@ export function ThreadConversation({
         <div className="thread-scroll" ref={scroll.ref} onScroll={scroll.onScroll}>
           <div className="thread-scroll-content">
             {banners}
+            {!raw && earlier}
             {raw ? (
               <RawEvents blocks={blocks} />
             ) : chat.items.length === 0 && !label ? (

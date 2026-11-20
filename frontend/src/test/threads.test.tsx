@@ -540,6 +540,61 @@ describe("Thread detail transcript and controls", () => {
     expect(screen.getByRole("heading", { level: 1, name: "mock" })).toBeInTheDocument();
   });
 
+  it("starts fresh from a paused Thread and opens the new one", async () => {
+    vi.spyOn(api, "capsule").mockResolvedValue(capsule);
+    const paused = { ...thread, state: "paused" as const, currentRunState: "Cancelled" as const };
+    const next = { ...thread, id: "thread-next", resourceVersion: 1 };
+    vi.spyOn(api, "thread").mockResolvedValue(paused);
+    vi.spyOn(api, "threadBlocks").mockResolvedValue({ items: [], nextCursor: 0, more: false });
+    vi.spyOn(threadEvents, "followThreadBlocks").mockResolvedValue();
+    const create = vi.spyOn(api, "createThread").mockResolvedValue({ thread: next });
+    const session = vi.spyOn(api, "threadSession").mockResolvedValue({ thread: next });
+    const user = userEvent.setup();
+    wrapper(
+      <Routes>
+        <Route path="/ui/threads/:threadId" element={<ThreadDetail />} />
+        <Route path="/ui/capsules/:capsuleId" element={<p>Capsule page</p>} />
+      </Routes>,
+    );
+    await user.click(await screen.findByRole("button", { name: "Start fresh" }));
+    await waitFor(() => expect(create).toHaveBeenCalledWith(thread.capsuleId, thread.harness));
+    expect(session).toHaveBeenCalledWith("start", next.id, 1);
+    expect(await screen.findByText("Capsule page")).toBeInTheDocument();
+  });
+
+  it("asks before stopping a live session to start fresh", async () => {
+    vi.spyOn(api, "capsule").mockResolvedValue(capsule);
+    vi.spyOn(api, "thread").mockResolvedValue(thread);
+    vi.spyOn(api, "threadBlocks").mockResolvedValue({ items: [], nextCursor: 0, more: false });
+    vi.spyOn(threadEvents, "followThreadBlocks").mockResolvedValue();
+    const session = vi.spyOn(api, "threadSession");
+    const user = userEvent.setup();
+    wrapper(
+      <Routes>
+        <Route path="/ui/threads/:threadId" element={<ThreadDetail />} />
+      </Routes>,
+    );
+    await user.click(await screen.findByRole("button", { name: "Thread actions" }));
+    await user.click(screen.getByRole("menuitem", { name: "Start fresh" }));
+    expect(screen.getByRole("alertdialog")).toHaveTextContent("Stop this session and start fresh?");
+    expect(session).not.toHaveBeenCalled();
+  });
+
+  it("offers no Start fresh in a CLI Capsule", async () => {
+    vi.spyOn(api, "capsule").mockResolvedValue({ ...capsule, harness: "mock" });
+    vi.spyOn(api, "thread").mockResolvedValue({ ...thread, state: "paused" as const });
+    vi.spyOn(api, "threadBlocks").mockResolvedValue({ items: [], nextCursor: 0, more: false });
+    vi.spyOn(threadEvents, "followThreadBlocks").mockResolvedValue();
+    wrapper(
+      <Routes>
+        <Route path="/ui/threads/:threadId" element={<ThreadDetail />} />
+      </Routes>,
+    );
+    expect(await screen.findByRole("button", { name: "Resume session" })).toBeInTheDocument();
+    await waitFor(() => expect(api.capsule).toHaveBeenCalled());
+    expect(screen.queryByRole("button", { name: "Start fresh" })).not.toBeInTheDocument();
+  });
+
   it("resumes a paused retained Thread", async () => {
     const paused = {
       ...thread,
@@ -567,13 +622,10 @@ describe("Thread detail transcript and controls", () => {
     );
   });
 
-  it("opens Capsule sessions as tabs with the Thread embedded", async () => {
-    const second = {
-      ...thread,
-      id: "thread-2",
-      currentRunState: undefined,
-      createdAt: "2026-08-23T00:02:00Z",
-    };
+  it("shows one Thread tab with the earlier session folded above it", async () => {
+    // The first session ended and paused; the second is the live one.
+    const earlier: Thread = { ...thread, state: "paused", currentRunState: "Cancelled" };
+    const second = { ...thread, id: "thread-2", createdAt: "2026-08-23T00:02:00Z" };
     vi.spyOn(api, "capsule").mockResolvedValue(capsule);
     vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
     vi.spyOn(api, "projects").mockResolvedValue({ items: [] });
@@ -591,9 +643,9 @@ describe("Thread detail transcript and controls", () => {
       preview: false,
       resourceMetrics: false,
     });
-    vi.spyOn(api, "threads").mockResolvedValue({ items: [thread, second] });
+    vi.spyOn(api, "threads").mockResolvedValue({ items: [earlier, second] });
     vi.spyOn(api, "thread").mockImplementation(async (id) =>
-      id === second.id ? second : thread,
+      id === second.id ? second : earlier,
     );
     const blocks = vi.spyOn(api, "threadBlocks").mockResolvedValue({
       items: [],
@@ -609,18 +661,22 @@ describe("Thread detail transcript and controls", () => {
       `/ui/capsules/${capsule.id}`,
     );
 
-    const working = await screen.findByRole("tab", { name: /Thread \d\s*Working/ });
-    expect(working).toHaveAttribute("aria-selected", "true");
-    await waitFor(() => expect(blocks.mock.calls.map((call) => call[0])).toContain(thread.id));
-    expect(await screen.findByText("No messages yet.")).toBeInTheDocument();
+    const tabs = await screen.findAllByRole("tab");
+    expect(tabs).toHaveLength(1);
+    expect(tabs[0]).toHaveTextContent(/Thread\s*Working/);
+    expect(tabs[0]).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByRole("tab", { name: "New session" })).not.toBeInTheDocument();
+    await waitFor(() => expect(blocks.mock.calls.map((call) => call[0])).toContain(second.id));
     expect(screen.queryByText("Structured Thread")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("tab", { name: /Thread \d\s*Idle/ }));
-    await waitFor(() => expect(blocks.mock.calls.map((call) => call[0])).toContain(second.id));
-    expect(screen.getByRole("tab", { name: /Thread \d\s*Idle/ })).toHaveAttribute(
-      "aria-selected",
-      "true",
+    // The earlier transcript is not read until asked for.
+    expect(blocks.mock.calls.map((call) => call[0])).not.toContain(thread.id);
+    expect(screen.getByRole("separator")).toHaveTextContent(
+      "The agent starts without the conversation above.",
     );
+    await user.click(screen.getByRole("button", { name: "Show earlier session" }));
+    await waitFor(() => expect(blocks.mock.calls.map((call) => call[0])).toContain(thread.id));
+    expect(screen.getByRole("link", { name: "Open" })).toHaveAttribute("href", `/ui/threads/${thread.id}`);
   });
 
   it("answers a secret input request without exposing the value", async () => {

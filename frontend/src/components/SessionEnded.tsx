@@ -92,7 +92,7 @@ export function SessionEnded({
         )}
         {onNewSession && (
           <button type="button" className="secondary" onClick={onNewSession}>
-            New session
+            Start fresh
           </button>
         )}
       </div>

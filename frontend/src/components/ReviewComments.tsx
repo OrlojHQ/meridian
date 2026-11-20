@@ -17,7 +17,7 @@ import {
   capsuleSessions,
   defaultSession,
   harnessName,
-  sessionNames,
+  sessionName,
   sessionPath,
 } from "../shell/capsuleActivity";
 import type { DiffFile } from "./DiffViewer";
@@ -237,12 +237,6 @@ function ReviewComposer({
       ),
     [capsule, eligible],
   );
-  // Name sessions from every Thread, so "Thread 2" here is the same tab as
-  // "Thread 2" on the Capsule page even when some cannot take a review.
-  const names = useMemo(
-    () => sessionNames(capsuleSessions(capsule, [], threads.data?.items ?? [])),
-    [capsule, threads.data],
-  );
   const [chosen, setChosen] = useState("");
   const target =
     sessions.find((session) => session.id === chosen)?.id ??
@@ -316,7 +310,7 @@ function ReviewComposer({
           >
             {sessions.map((session) => (
               <option key={session.id} value={session.id}>
-                {names.get(session.id)} · {harnessName(session.harness)} · {session.label}
+                {sessionName(session)} · {harnessName(session.harness)} · {session.label}
               </option>
             ))}
           </select>
