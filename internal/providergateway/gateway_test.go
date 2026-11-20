@@ -615,3 +615,26 @@ func TestGatewayAttachesClaudeLoginAndLeavesCodexAlone(t *testing.T) {
 		t.Fatalf("oauth kind on a custom endpoint: %d", got.Code)
 	}
 }
+
+func TestLeaseRemainingEndsWithRevocationAndTheProcess(t *testing.T) {
+	g := New(func(context.Context, Lease) (Upstream, error) { return Upstream{}, nil }, Options{})
+	token, err := g.Issue(Lease{Connection: "c", Project: "p", Harness: "codex", Provider: OpenAI})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if remaining := g.LeaseRemaining(LeaseID(token)); remaining <= LeaseLifetime-time.Minute || remaining > LeaseLifetime {
+		t.Fatalf("fresh lease remaining = %s", remaining)
+	}
+	// Another process never issued it.
+	if remaining := New(nil, Options{}).LeaseRemaining(LeaseID(token)); remaining != 0 {
+		t.Fatalf("unknown lease remaining = %s", remaining)
+	}
+	var nilGateway *Gateway
+	if nilGateway.LeaseRemaining(LeaseID(token)) != 0 {
+		t.Fatal("nil gateway reported a lease")
+	}
+	g.Revoke("c", "", "")
+	if remaining := g.LeaseRemaining(LeaseID(token)); remaining != 0 {
+		t.Fatalf("revoked lease remaining = %s", remaining)
+	}
+}

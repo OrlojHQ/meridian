@@ -694,6 +694,9 @@ func (s *Service) transitionRun(
 		result = current
 		return nil
 	})
+	if err == nil && changed && state.Terminal() {
+		s.forgetSessionLease(id)
+	}
 	if err == nil && changed && s.observer != nil {
 		s.observer.RunTransition(string(previousState), string(state))
 	}

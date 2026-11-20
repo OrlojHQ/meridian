@@ -111,6 +111,8 @@ type Service struct {
 	deliverySync          [64]sync.Mutex
 	attentionMu           sync.Mutex
 	attention             map[domain.ThreadID]cachedThreadAttention
+	sessionLeasesMu       sync.Mutex
+	sessionLeases         map[domain.RunID]sessionLease
 	modelsMu              sync.Mutex
 	models                map[domain.ThreadID]ThreadModelSummary
 	endpointReasoningMu   sync.Mutex

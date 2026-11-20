@@ -9,6 +9,14 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- The Thread toolbar no longer shows **Live** while updates are arriving. Its
+  badge appears only when the transcript may be out of date: **Reconnecting…**
+  while the stream retries, and **Disconnected** (formerly Closed) once it
+  gives up. **Session ended** is unchanged.
+- Claude Code's request retries show in the Thread as one notice that updates
+  with each attempt, such as "Model request failed: the model provider could
+  not be reached. Retrying, attempt 3 of 10." This needs a Capsule built from
+  the new image.
 - Capsule tools start closed, so a Thread or Capsule opens on the conversation
   at full width. The tools toggle and the Changes, Preview, Files, and
   Terminal buttons still open them. Full review and Open terminal still open
@@ -17,6 +25,11 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- A Thread you come back to after a day, or after Meridian restarts, takes
+  your next prompt instead of sitting on Working. Before delivering it,
+  Meridian resumes the idle harness's session with a fresh provider gateway
+  lease, certificate, and address (ADR 0058). You no longer have to stop and
+  resume the session, or start a new Capsule.
 - The Terminal tool uses a prompt icon, in the tool tabs and on the collapsed
   tool rail, at the same size and weight as Changes, Preview, and Files.
 

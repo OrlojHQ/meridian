@@ -268,6 +268,27 @@ func (g *Gateway) Issue(lease Lease) (string, error) {
 	g.leases[sha256.Sum256([]byte(token))] = entry{lease: lease, ctx: ctx, cancel: cancel, slots: make(chan struct{}, 4)}
 	return token, nil
 }
+
+// LeaseID is the digest a lease token is held under. Callers that track a
+// lease keep this, not the token.
+func LeaseID(token string) [32]byte { return sha256.Sum256([]byte(token)) }
+
+// LeaseRemaining reports how long the lease held under id stays valid. It is
+// zero for a lease that expired, was revoked, or was issued by an earlier
+// daemon process, since leases live only in memory.
+func (g *Gateway) LeaseRemaining(id [32]byte) time.Duration {
+	if g == nil {
+		return 0
+	}
+	g.mu.Lock()
+	item, ok := g.leases[id]
+	g.mu.Unlock()
+	if !ok || item.ctx.Err() != nil {
+		return 0
+	}
+	return max(time.Until(item.lease.Expires), 0)
+}
+
 func (g *Gateway) Revoke(connection, project, harness string) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
