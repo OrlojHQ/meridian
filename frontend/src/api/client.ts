@@ -15,6 +15,8 @@ import {
   connectGitHubToken, beginGitHubDevice, pollGitHubDevice, cancelGitHubDevice,
   disconnectGitHub, searchGitHubRepos,
   archiveThread,
+  pinThread,
+  unpinThread,
   beginClaudeLogin,
   completeClaudeLogin,
   getClaudeLogin,
@@ -724,6 +726,32 @@ export const api = {
   ) =>
     call<Thread>(
       archiveThread({
+        ...generatedOptions(signal),
+        path: { threadId },
+        headers: idempotencyHeaders(),
+        body: { expectedResourceVersion },
+      }),
+    ),
+  pinThread: (
+    threadId: string,
+    expectedResourceVersion: number,
+    signal?: AbortSignal,
+  ) =>
+    call<Thread>(
+      pinThread({
+        ...generatedOptions(signal),
+        path: { threadId },
+        headers: idempotencyHeaders(),
+        body: { expectedResourceVersion },
+      }),
+    ),
+  unpinThread: (
+    threadId: string,
+    expectedResourceVersion: number,
+    signal?: AbortSignal,
+  ) =>
+    call<Thread>(
+      unpinThread({
         ...generatedOptions(signal),
         path: { threadId },
         headers: idempotencyHeaders(),

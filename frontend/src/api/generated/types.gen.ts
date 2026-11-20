@@ -1590,6 +1590,10 @@ export type Thread = {
     createdAt: string;
     updatedAt: string;
     deletedAt?: string;
+    /**
+     * Present while the operator has pinned this Thread (ADR 0059). Presentation only; it grants nothing.
+     */
+    pinnedAt?: string;
     resourceVersion: number;
 };
 
@@ -4847,6 +4851,86 @@ export type ArchiveThreadResponses = {
 };
 
 export type ArchiveThreadResponse = ArchiveThreadResponses[keyof ArchiveThreadResponses];
+
+export type PinThreadData = {
+    body: LifecycleMutation;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        threadId: string;
+    };
+    query?: never;
+    url: '/threads/{threadId}/pin';
+};
+
+export type PinThreadErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type PinThreadError = PinThreadErrors[keyof PinThreadErrors];
+
+export type PinThreadResponses = {
+    /**
+     * Thread lifecycle mutation completed
+     */
+    200: Thread;
+};
+
+export type PinThreadResponse = PinThreadResponses[keyof PinThreadResponses];
+
+export type UnpinThreadData = {
+    body: LifecycleMutation;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        threadId: string;
+    };
+    query?: never;
+    url: '/threads/{threadId}/unpin';
+};
+
+export type UnpinThreadErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type UnpinThreadError = UnpinThreadErrors[keyof UnpinThreadErrors];
+
+export type UnpinThreadResponses = {
+    /**
+     * Thread lifecycle mutation completed
+     */
+    200: Thread;
+};
+
+export type UnpinThreadResponse = UnpinThreadResponses[keyof UnpinThreadResponses];
 
 export type DeleteThreadData = {
     body: DeleteThreadRequest;

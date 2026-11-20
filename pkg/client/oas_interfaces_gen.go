@@ -341,6 +341,10 @@ type PauseCapsuleRes interface {
 	pauseCapsuleRes()
 }
 
+type PinThreadRes interface {
+	pinThreadRes()
+}
+
 type PollDeviceLoginRes interface {
 	pollDeviceLoginRes()
 }
@@ -467,6 +471,10 @@ type StreamThreadBlocksRes interface {
 
 type TransferMemberObjectsRes interface {
 	transferMemberObjectsRes()
+}
+
+type UnpinThreadRes interface {
+	unpinThreadRes()
 }
 
 type UpdateCapsuleProfileRes interface {

@@ -510,6 +510,12 @@ type PauseCapsuleParams struct {
 	IdempotencyKey string
 }
 
+// PinThreadParams is parameters of pinThread operation.
+type PinThreadParams struct {
+	ThreadId       string
+	IdempotencyKey string
+}
+
 // PromoteCapsuleParams is parameters of promoteCapsule operation.
 type PromoteCapsuleParams struct {
 	CapsuleId      string
@@ -703,6 +709,12 @@ type SuggestProjectChecksParams struct {
 // TransferMemberObjectsParams is parameters of transferMemberObjects operation.
 type TransferMemberObjectsParams struct {
 	UserId string
+}
+
+// UnpinThreadParams is parameters of unpinThread operation.
+type UnpinThreadParams struct {
+	ThreadId       string
+	IdempotencyKey string
 }
 
 // UpdateCapsuleProfileParams is parameters of updateCapsuleProfile operation.

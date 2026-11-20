@@ -9,6 +9,19 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Pin the Threads you come back to. A pinned Thread, usually a lead you keep
+  for one part of a large repository, sits above the Project's other Threads
+  in the sidebar, ordered by name rather than recency, and keeps its
+  subagent rollup. Pin as many as you like, from the pin on the sidebar row
+  or the Thread's actions menu. The Project's task form offers "Send to" a
+  pinned Thread next to starting a new one, and starts a new Thread unless
+  you pick one. Sending is an ordinary message to that Thread, so it resumes
+  a paused lead's grant. Plain Threads can be pinned too; subagents cannot
+  until promoted. A pin is presentation only and grants nothing. Archiving
+  or crypto-shredding the Thread, or deleting its Project, removes it. The
+  API gains `POST /threads/{threadId}/pin` and `/unpin` and a `pinnedAt`
+  field, and the CLI gains `meridian thread pin` and `meridian thread unpin`
+  (ADR 0059).
 - Plain Threads show how full the agent's context window is. Once it is half
   full, the Thread toolbar shows a small meter ("62% of 200k"), so you can
   compact with the harness's own command in the `/` menu or start fresh.

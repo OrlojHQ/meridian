@@ -204,6 +204,15 @@ link, now or later. Promotion is permanent and gives the subagent no
 coordination authority. `thread links` marks promoted and archived subagents,
 and `grant show` prints the archive period.
 
+`meridian thread pin THREAD_ID` pins a Thread you keep coming back to, such as
+a lead for one part of a large repository, so the web sidebar lists it above
+the Project's other Threads, by name (ADR 0059). `meridian thread unpin
+THREAD_ID` clears it. Both read the current version unless you pass
+`--expected-version`, take `--idempotency-key`, and print the Thread
+(`pinned` in text output, `pinnedAt` with `--json`). Any live Thread of a main
+Capsule can be pinned; a subagent cannot until it is promoted. A pin grants
+nothing, and archiving or crypto-shredding the Thread clears it.
+
 ### Board
 
 `meridian board` lists every Capsule across Projects by status: needs you

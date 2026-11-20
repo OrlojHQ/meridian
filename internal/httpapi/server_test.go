@@ -468,6 +468,43 @@ func TestGeneratedClientLifecycle(t *testing.T) {
 	if _, ok := cancelThread.(*client.ThreadSessionMutationHeaders); !ok {
 		t.Fatalf("cancel Thread response = %T", cancelThread)
 	}
+	// A paused Thread can be pinned, with a version and a replay key like
+	// any operator mutation.
+	pausedResult, err := api.GetThread(ctx, client.GetThreadParams{ThreadId: currentThread.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pausedThread := pausedResult.(*client.ThreadHeaders).Response
+	stalePin, err := api.PinThread(ctx,
+		&client.LifecycleMutationRequest{ExpectedResourceVersion: pausedThread.ResourceVersion + 5},
+		client.PinThreadParams{ThreadId: pausedThread.ID, IdempotencyKey: "pin-stale"})
+	if _, ok := stalePin.(*client.PinThreadConflict); err != nil || !ok {
+		t.Fatalf("stale pin = %T, %v", stalePin, err)
+	}
+	for range 2 {
+		pinResult, err := api.PinThread(ctx,
+			&client.LifecycleMutationRequest{ExpectedResourceVersion: pausedThread.ResourceVersion},
+			client.PinThreadParams{ThreadId: pausedThread.ID, IdempotencyKey: "pin-key"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		pinned, ok := pinResult.(*client.ThreadMutationHeaders)
+		if !ok || !pinned.Response.PinnedAt.IsSet() ||
+			pinned.Response.ResourceVersion != pausedThread.ResourceVersion+1 {
+			t.Fatalf("pin (or its replay) = %#v", pinResult)
+		}
+	}
+	unpinResult, err := api.UnpinThread(ctx,
+		&client.LifecycleMutationRequest{ExpectedResourceVersion: pausedThread.ResourceVersion + 1},
+		client.UnpinThreadParams{ThreadId: pausedThread.ID, IdempotencyKey: "unpin-key"})
+	if unpinned, ok := unpinResult.(*client.ThreadMutationHeaders); err != nil || !ok || unpinned.Response.PinnedAt.IsSet() {
+		t.Fatalf("unpin = %#v, %v", unpinResult, err)
+	}
+	if _, err := api.PinThread(ctx,
+		&client.LifecycleMutationRequest{ExpectedResourceVersion: pausedThread.ResourceVersion + 2},
+		client.PinThreadParams{ThreadId: pausedThread.ID, IdempotencyKey: "pin-before-delete"}); err != nil {
+		t.Fatal(err)
+	}
 	deletedCurrent, err := api.GetThread(ctx, client.GetThreadParams{ThreadId: currentThread.ID})
 	if err != nil {
 		t.Fatal(err)
@@ -490,7 +527,8 @@ func TestGeneratedClientLifecycle(t *testing.T) {
 	}
 	explicitDeleted, err := api.GetThread(ctx, client.GetThreadParams{ThreadId: currentThread.ID})
 	if err != nil ||
-		explicitDeleted.(*client.ThreadHeaders).Response.State != client.ThreadStateDeleted {
+		explicitDeleted.(*client.ThreadHeaders).Response.State != client.ThreadStateDeleted ||
+		explicitDeleted.(*client.ThreadHeaders).Response.PinnedAt.IsSet() {
 		t.Fatalf("explicit HTTP deleted Thread = %#v, %v", explicitDeleted, err)
 	}
 

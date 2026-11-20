@@ -404,6 +404,58 @@ describe("application shell", () => {
     expect(threads.mock.calls.map(([id]) => id).sort()).toEqual([blocked.id, lead.id]);
   });
 
+  it("keeps pinned leads above newer Threads, with their rollup, and pins from the row", async () => {
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
+    const thread = (id: string, capsuleId: string, extra: Partial<Thread> = {}): Thread => ({
+      id, capsuleId, state: "active", harness: "opencode", encryptedAtRest: true, messageCount: 1,
+      encryptedBytes: 64, createdAt: "2026-08-26T00:00:00Z", updatedAt: "2026-08-26T00:00:00Z",
+      resourceVersion: 3, ...extra,
+    });
+    const lead: Capsule = { ...capsule, id: "capsule-lead", name: "Migration lead", role: "main", harness: undefined,
+      updatedAt: "2026-08-20T00:00:00Z" };
+    const fresh: Capsule = { ...capsule, id: "capsule-fresh", name: "Quick fix", role: "main", harness: undefined,
+      updatedAt: "2026-08-26T00:05:00Z" };
+    const threads: Record<string, Thread[]> = {
+      [lead.id]: [thread("thread-lead", lead.id, { pinnedAt: "2026-08-21T00:00:00Z", coordinationGrantId: "grant",
+        updatedAt: "2026-08-20T00:00:00Z" })],
+      [fresh.id]: [thread("thread-fresh", fresh.id, { updatedAt: "2026-08-26T00:05:00Z" })],
+    };
+    vi.spyOn(api, "capsules").mockResolvedValue({ items: [fresh, lead] });
+    const board = vi.spyOn(api, "board").mockResolvedValue({
+      truncated: false,
+      items: [{
+        capsule: lead, status: "idle", since: "2026-08-20T00:00:00Z", surfaced: false,
+        childRollup: { total: 2, working: 0, idle: 2, done: 0, needsYou: 0, failed: 0, archived: 0 },
+      }],
+    });
+    vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "threads").mockImplementation(async (capsuleId) => ({ items: threads[capsuleId] ?? [] }));
+    vi.spyOn(api, "capabilities").mockResolvedValue({ ...capabilities, structured: true });
+    const pin = vi.spyOn(api, "pinThread").mockResolvedValue(threads[fresh.id][0]);
+    const unpin = vi.spyOn(api, "unpinThread").mockResolvedValue(threads[lead.id][0]);
+
+    wrapper(
+      <Routes>
+        <Route path="/ui" element={<AppShell />}>
+          <Route index element={<p>Activity home</p>} />
+        </Route>
+      </Routes>,
+    );
+
+    const list = await screen.findByRole("list", { name: "Meridian Capsules" });
+    await waitFor(() => expect(within(list).getByRole("link", { name: /Migration lead/ })).toHaveTextContent("Pinned"));
+    const rows = within(list).getAllByRole("link").map((row) => row.querySelector("strong")?.textContent);
+    expect(rows).toEqual(["Migration lead", "Quick fix"]);
+    expect(within(list).getByRole("link", { name: /Migration lead/ })).toHaveTextContent("2 subagents");
+    // Rollups still come from the one board read.
+    expect(board.mock.calls.every(([filter]) => filter === "attention")).toBe(true);
+
+    await userEvent.click(screen.getByRole("button", { name: "Pin Quick fix" }));
+    expect(pin).toHaveBeenCalledWith("thread-fresh", 3);
+    await userEvent.click(screen.getByRole("button", { name: "Unpin Migration lead" }));
+    expect(unpin).toHaveBeenCalledWith("thread-lead", 3);
+  });
+
   it("places Inbox, Threads, and Harness settings at the top of the sidebar", async () => {
     vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
     vi.spyOn(api, "capsules").mockResolvedValue({

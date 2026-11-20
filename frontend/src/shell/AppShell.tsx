@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useCallback,
   useEffect,
@@ -16,7 +16,7 @@ import {
 } from "react-router-dom";
 
 import { normalizeAPIError } from "../api/client";
-import type { Project } from "../api/generated/types.gen";
+import type { Project, Thread } from "../api/generated/types.gen";
 import { queries } from "../api/queries";
 import {
   AuthenticationState,
@@ -43,6 +43,7 @@ import {
   FilesIcon,
   GatewayIcon,
   MenuIcon,
+  PinIcon,
   PlusIcon,
   PreviewIcon,
   SearchIcon,
@@ -90,6 +91,7 @@ import {
 } from "./paletteCommands";
 import { useNeedsYouAlerts } from "./useNeedsYouAlerts";
 import { useWorkingSet, type WorkingSetItem } from "./useWorkingSet";
+import { pinnableThread, pinnedLeads, setThreadPinned } from "./pins";
 import { requestedTool, WorkspaceContext, type ContextTab } from "./WorkspaceContext";
 import { ContextResizer, contextWidthStyle, readContextWidth } from "./ContextResizer";
 
@@ -667,6 +669,18 @@ export function AppShell() {
     },
     [directCapsuleId, location.search, navigate],
   );
+  // Pinning is presentation only (ADR 0059). It reloads the Capsule's
+  // Threads, which the working set already polls, so no new request repeats.
+  const pin = useMutation({
+    mutationFn: ({ thread, pinned }: { thread: Thread; pinned: boolean }) =>
+      setThreadPinned(thread, pinned),
+    onSettled: async (_result, _error, { thread }) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["threads", thread.capsuleId] }),
+        queryClient.invalidateQueries({ queryKey: ["thread", thread.id] }),
+      ]);
+    },
+  });
   const paletteCommands = useMemo(
     () =>
       paletteOpen
@@ -766,10 +780,11 @@ export function AppShell() {
   ]);
   const startCapsuleIn = (project: Project) => openNewSession(project.id);
   const renderItem = (
-    { capsule, activity, sessions, rollup }: WorkingSetItem,
+    { capsule, activity, sessions, rollup, threads, pinned }: WorkingSetItem,
     { showProject = true, subagents = [] }: { showProject?: boolean; subagents?: WorkingSetItem[] } = {},
   ) => {
     const selected = capsule.id === capsuleId;
+    const pinTarget = pinnableThread({ capsule, threads });
     const live = sessions.filter((session) => !session.archived);
     const harness = capsule.harness || live[0]?.harness;
     const kind = live.some((session) => session.kind === "thread") ? "thread" : "cli";
@@ -789,6 +804,12 @@ export function AppShell() {
               {kind === "thread" ? <ThreadIcon /> : <TerminalIcon />}
               <span className="sr-only">{kind === "thread" ? "Thread" : "CLI"}</span>
               <strong>{capsule.name}</strong>
+              {pinned && (
+                <span className="capsule-row-pinned" title="Pinned">
+                  <PinIcon />
+                  <span className="sr-only">Pinned</span>
+                </span>
+              )}
               <time dateTime={activity.since}>{relativeTime(activity.since, now)}</time>
             </span>
             <span className="capsule-row-sub">
@@ -807,6 +828,19 @@ export function AppShell() {
             {rollup && <small className="activity-item-rollup">{rollupSummary(rollup)}</small>}
           </span>
         </NavLink>
+        {pinTarget && (
+          <button
+            type="button"
+            className={`icon-button capsule-row-pin${deletable ? "" : " alone"}`}
+            aria-label={`${pinned ? "Unpin" : "Pin"} ${capsule.name}`}
+            aria-pressed={Boolean(pinned)}
+            title={pinned ? "Unpin" : "Pin to the top of the Project"}
+            disabled={pin.isPending}
+            onClick={() => pin.mutate({ thread: pinTarget, pinned: !pinned })}
+          >
+            <PinIcon />
+          </button>
+        )}
         {deletable && (
           <button
             type="button"
@@ -958,6 +992,11 @@ export function AppShell() {
                 onNewCapsule={startCapsuleIn}
                 onDeleteProject={setDeleteProject}
               />
+              {pin.isError && (
+                <p className="sidebar-status" role="alert">
+                  The pin was not changed: {normalizeAPIError(pin.error).message}
+                </p>
+              )}
             </>
           )}
         </nav>
@@ -1094,6 +1133,7 @@ export function AppShell() {
       <NewWorkspaceDialog
         open={Boolean(launchProject)}
         project={launchProject}
+        pinned={launchProject ? pinnedLeads(items, launchProject.id) : []}
         onClose={() => setLaunchProject(undefined)}
       />
       {pendingStation && (

@@ -12646,6 +12646,18 @@ func (s *PersonalAccessTokenPage) SetItems(val []PersonalAccessToken) {
 
 func (*PersonalAccessTokenPage) listPersonalAccessTokensRes() {}
 
+type PinThreadConflict ErrorEnvelope
+
+func (*PinThreadConflict) pinThreadRes() {}
+
+type PinThreadNotFound ErrorEnvelope
+
+func (*PinThreadNotFound) pinThreadRes() {}
+
+type PinThreadUnprocessableEntity ErrorEnvelope
+
+func (*PinThreadUnprocessableEntity) pinThreadRes() {}
+
 // One harness setup revision pinned to a Capsule at creation.
 // Ref: #/components/schemas/PinnedHarnessSetup
 type PinnedHarnessSetup struct {
@@ -17596,6 +17608,8 @@ type Thread struct {
 	CreatedAt       time.Time   `json:"createdAt"`
 	UpdatedAt       time.Time   `json:"updatedAt"`
 	DeletedAt       OptDateTime `json:"deletedAt"`
+	// Present while the operator has pinned this Thread (ADR 0059). Presentation only; it grants nothing.
+	PinnedAt        OptDateTime `json:"pinnedAt"`
 	ResourceVersion int64       `json:"resourceVersion"`
 }
 
@@ -17707,6 +17721,11 @@ func (s *Thread) GetUpdatedAt() time.Time {
 // GetDeletedAt returns the value of DeletedAt.
 func (s *Thread) GetDeletedAt() OptDateTime {
 	return s.DeletedAt
+}
+
+// GetPinnedAt returns the value of PinnedAt.
+func (s *Thread) GetPinnedAt() OptDateTime {
+	return s.PinnedAt
 }
 
 // GetResourceVersion returns the value of ResourceVersion.
@@ -17822,6 +17841,11 @@ func (s *Thread) SetUpdatedAt(val time.Time) {
 // SetDeletedAt sets the value of DeletedAt.
 func (s *Thread) SetDeletedAt(val OptDateTime) {
 	s.DeletedAt = val
+}
+
+// SetPinnedAt sets the value of PinnedAt.
+func (s *Thread) SetPinnedAt(val OptDateTime) {
+	s.PinnedAt = val
 }
 
 // SetResourceVersion sets the value of ResourceVersion.
@@ -20022,6 +20046,8 @@ func (s *ThreadMutationHeaders) SetResponse(val Thread) {
 
 func (*ThreadMutationHeaders) archiveThreadRes() {}
 func (*ThreadMutationHeaders) deleteThreadRes()  {}
+func (*ThreadMutationHeaders) pinThreadRes()     {}
+func (*ThreadMutationHeaders) unpinThreadRes()   {}
 
 // Ref: #/components/schemas/ThreadMutationResult
 type ThreadMutationResult struct {
@@ -20805,6 +20831,14 @@ func (*UnauthorizedHeaders) revokeSessionRes()                {}
 func (*UnauthorizedHeaders) setMemberRoleRes()                {}
 func (*UnauthorizedHeaders) signOutRes()                      {}
 func (*UnauthorizedHeaders) transferMemberObjectsRes()        {}
+
+type UnpinThreadConflict ErrorEnvelope
+
+func (*UnpinThreadConflict) unpinThreadRes() {}
+
+type UnpinThreadNotFound ErrorEnvelope
+
+func (*UnpinThreadNotFound) unpinThreadRes() {}
 
 type UpdateCapsuleProfileConflict ErrorEnvelope
 

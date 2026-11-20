@@ -14,6 +14,8 @@ const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve,
 // stopped Thread the operator can resume or start fresh from again.
 export async function startFresh(thread: Pick<Thread, "id" | "capsuleId" | "harness">) {
   let current = await api.thread(thread.id);
+  // A pinned Capsule stays pinned: the pin moves to the new Thread.
+  const pinned = Boolean(current.pinnedAt);
   if (current.state === "active" && isActiveRunState(current.currentRunState)) {
     current = (await api.threadSession("cancel", current.id, current.resourceVersion)).thread;
   }
@@ -33,7 +35,15 @@ export async function startFresh(thread: Pick<Thread, "id" | "capsuleId" | "harn
       current = await api.archiveThread(current.id, current.resourceVersion);
     }
   }
+  // Archiving cleared the pin; a paused Thread still holds it.
+  if (current.pinnedAt) {
+    current = await api.unpinThread(current.id, current.resourceVersion);
+  }
   const created = await api.createThread(thread.capsuleId, thread.harness);
-  await api.threadSession("start", created.thread.id, created.thread.resourceVersion);
+  const started = await api.threadSession("start", created.thread.id, created.thread.resourceVersion);
+  if (pinned) {
+    // Cosmetic: a failure leaves an unpinned Thread the operator can pin.
+    await api.pinThread(started.thread.id, started.thread.resourceVersion).catch(() => undefined);
+  }
   return created.thread;
 }

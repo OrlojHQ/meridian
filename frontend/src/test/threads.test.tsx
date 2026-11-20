@@ -441,6 +441,47 @@ describe("Thread detail transcript and controls", () => {
     expect(screen.queryByRole("menuitem", { name: "Open terminal" })).not.toBeInTheDocument();
   });
 
+  it("pins and unpins the Capsule's current Thread from its actions menu", async () => {
+    let current: Thread = { ...thread };
+    vi.spyOn(api, "thread").mockImplementation(async () => current);
+    vi.spyOn(api, "threads").mockImplementation(async () => ({ items: [current] }));
+    vi.spyOn(api, "capsule").mockResolvedValue({ ...capsule, role: "main" });
+    vi.spyOn(api, "threadBlocks").mockResolvedValue({ items: [], nextCursor: 0, more: false });
+    vi.spyOn(threadEvents, "followThreadBlocks").mockImplementation(
+      async (_id, _cursor, signal, _onBlock, onStatus) => {
+        onStatus("live");
+        await new Promise<void>((resolve) =>
+          signal.addEventListener("abort", () => resolve(), { once: true }),
+        );
+      },
+    );
+    const pin = vi.spyOn(api, "pinThread").mockImplementation(async () => {
+      current = { ...current, pinnedAt: "2026-08-23T00:02:00Z", resourceVersion: 6 };
+      return current;
+    });
+    const unpin = vi.spyOn(api, "unpinThread").mockImplementation(async () => {
+      current = { ...current, pinnedAt: undefined, resourceVersion: 7 };
+      return current;
+    });
+    wrapper(
+      <Routes>
+        <Route path="/ui/threads/:threadId" element={<ThreadDetail />} />
+      </Routes>,
+    );
+    const user = userEvent.setup();
+    expect(await screen.findByLabelText("Message")).toBeEnabled();
+    await waitFor(() => expect(api.threads).toHaveBeenCalled());
+    await user.click(screen.getByRole("button", { name: "Thread actions" }));
+    const reads = vi.mocked(api.thread).mock.calls.length;
+    await user.click(await screen.findByRole("menuitem", { name: "Pin" }));
+    expect(pin).toHaveBeenCalledWith("thread-1", 5);
+    // The pin reloads the Thread, which then offers Unpin.
+    await waitFor(() => expect(vi.mocked(api.thread).mock.calls.length).toBeGreaterThan(reads));
+    await user.click(screen.getByRole("button", { name: "Thread actions" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Unpin" }));
+    expect(unpin).toHaveBeenCalledWith("thread-1", 6);
+  });
+
   it("shows the stream badge only when live updates are not arriving", async () => {
     vi.spyOn(api, "thread").mockResolvedValue(thread);
     vi.spyOn(api, "capsule").mockResolvedValue(capsule);
