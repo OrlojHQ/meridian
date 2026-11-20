@@ -7,6 +7,13 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- The Routines editor picks a time zone from a searchable list. Each zone
+  shows its current offset and local time, your zone is listed first, and
+  the schedule line shows the next run in the routine's zone and in yours
+  when they differ.
+
 ## [0.14.0] - 2026-11-19
 
 ### Added
