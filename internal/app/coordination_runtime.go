@@ -103,40 +103,79 @@ func mailboxOpen(grant domain.CoordinationGrant) bool {
 		(grant.State == domain.GrantExpired && grant.OnDeadline == domain.DeadlineStopNewWork)
 }
 
-// enforceGrantLifecycle expires grants past their deadline and revokes
-// grants whose lead Thread or Capsule ended.
+// enforceGrantLifecycle revokes grants whose lead Thread or Capsule ended
+// and lapses grants left unattended past their limit. Idle pause of the lead
+// ends nothing; a lapse is not revocation and the operator's next message to
+// the lead reopens it (ADR 0059).
 func (s *Service) enforceGrantLifecycle(ctx context.Context, grant domain.CoordinationGrant) domain.CoordinationGrant {
 	if grant.State != domain.GrantActive {
 		return grant
 	}
-	state, reason := domain.CoordinationGrantState(""), domain.GrantRevokeReason("")
-	if !s.clock.Now().Before(grant.DeadlineAt) {
-		state, reason = domain.GrantExpired, domain.RevokeDeadline
-	} else if s.leadEnded(ctx, grant) {
-		state, reason = domain.GrantRevoked, domain.RevokeLeadEnded
+	if s.leadEnded(ctx, grant) {
+		var ended domain.CoordinationGrant
+		err := s.store.Transact(ctx, func(tx ports.Transaction) error {
+			current, err := tx.GetCoordinationGrant(ctx, grant.ID)
+			if err != nil {
+				return err
+			}
+			if current.State != domain.GrantActive {
+				ended = current
+				return nil
+			}
+			ended, err = s.endGrantTx(ctx, tx, current, domain.GrantRevoked, domain.RevokeLeadEnded, true)
+			return err
+		})
+		if err != nil {
+			return grant
+		}
+		s.afterGrantEnded(ctx, ended)
+		return ended
 	}
-	if state == "" {
+	if !grant.LapsedAt.IsZero() || s.clock.Now().Before(grant.LapsesAt()) {
 		return grant
 	}
-	closeLinks := reason != domain.RevokeDeadline || grant.OnDeadline == domain.DeadlineCancelAndPause
-	var ended domain.CoordinationGrant
+	lapsed := grant
 	err := s.store.Transact(ctx, func(tx ports.Transaction) error {
 		current, err := tx.GetCoordinationGrant(ctx, grant.ID)
 		if err != nil {
 			return err
 		}
-		if current.State != domain.GrantActive {
-			ended = current
+		lapsed = current
+		now := s.clock.Now().UTC()
+		// The operator may have come back since the grant was listed.
+		if current.State != domain.GrantActive || !current.LapsedAt.IsZero() || now.Before(current.LapsesAt()) {
 			return nil
 		}
-		ended, err = s.endGrantTx(ctx, tx, current, state, reason, closeLinks)
+		lapsed, err = s.lapseGrantTx(ctx, tx, current, now)
 		return err
 	})
 	if err != nil {
 		return grant
 	}
-	s.afterGrantEnded(ctx, ended)
-	return ended
+	s.invalidateCoordinationPush(lapsed.RootThreadID)
+	return lapsed
+}
+
+// lapseGrantTx marks an unattended grant lapsed and applies its onDeadline
+// action: cancel_and_pause closes every open link as revoked, so the sweep
+// cancels and pauses those subagents; stop_new_work leaves running subagents
+// alone. Spawns still waiting for approval close either way. The grant stays
+// active in the store.
+func (s *Service) lapseGrantTx(
+	ctx context.Context, tx ports.Transaction, grant domain.CoordinationGrant, now time.Time,
+) (domain.CoordinationGrant, error) {
+	previous := grant.ResourceVersion
+	grant.LapsedAt = now
+	grant.UpdatedAt = now
+	grant.ResourceVersion++
+	if err := tx.UpdateCoordinationGrant(ctx, grant, previous); err != nil {
+		return grant, err
+	}
+	if err := s.closeGrantLinksTx(ctx, tx, grant, grant.OnDeadline == domain.DeadlineCancelAndPause, now); err != nil {
+		return grant, err
+	}
+	return grant, s.appendEvent(ctx, tx, "coordination_grant", string(grant.ID),
+		"coordination_grant.lapsed", grant.ResourceVersion, nil)
 }
 
 func (s *Service) leadEnded(ctx context.Context, grant domain.CoordinationGrant) bool {
@@ -459,7 +498,9 @@ func (s *Service) pushCoordinationState(ctx context.Context, grant domain.Coordi
 // is idle and not waiting on the operator. Reports the lead already read
 // through wait or result count as delivered.
 func (s *Service) wakeLead(ctx context.Context, grant domain.CoordinationGrant) {
-	if !mailboxOpen(grant) {
+	// A lapsed lead is not woken: waking it would spend unattended time.
+	// Its reports wait until the operator's next message reopens the grant.
+	if !mailboxOpen(grant) || !grant.Usable(s.clock.Now()) {
 		return
 	}
 	var links []domain.ThreadLink

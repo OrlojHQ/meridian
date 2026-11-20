@@ -506,13 +506,13 @@ subagents, and everything they use belong to that one owner. A grant is created 
 by an operator API call together with its lead Thread. The operator may later
 loosen or tighten its limits, including `spawnApproval`. Capsules cannot
 change a grant. It bounds harnesses (a subset of the Project's structured
-allowlist), depth (1), fan-out, total and live subagent Capsules, messages per
-link, an absolute deadline, and whether each spawn needs a further operator
-click. A request can never name an image, Project, secret, provider
+allowlist), depth (1), fan-out and total spawns per rolling 24-hour window,
+live subagent Capsules, messages per link, an unattended limit (ADR 0059), and
+whether each spawn needs a further operator click. A request can never name an image, Project, secret, provider
 connection, or Capsule; address a Thread or link it did not create; approve a
 spawn, permission, or Delivery; change a grant; start a native Run, PTY,
 preview, sync, or browse session; act while its lead is paused, not Ready, in
-maintenance, or revoked; or start new work after the deadline. Subagents
+maintenance, or revoked; or start new work once the grant has lapsed. Subagents
 receive no spawn, send, wait, cancel, or patch authority; they may only
 report a bounded summary to their lead. When `spawnApproval` is `operator`, an
 accepted spawn stays `pending_approval` with its prompt encrypted under the
@@ -533,7 +533,7 @@ child transcript; patch bytes are produced on demand by `capsuled` with Git
 hooks disabled and are never stored. Link rows may hold a content-free
 diffstat and SHAs. The board still never polls Git.
 
-Revocation, the deadline, and cancellation are daemon-side state changes that
+Revocation, lapse, and cancellation are daemon-side state changes that
 take effect on the next request. Revoking or cancelling cancels the subagent's
 run and then pauses its Capsule through the provider without Capsule
 cooperation. Closing a link never deletes a subagent Capsule or transcript.
@@ -593,8 +593,8 @@ and deny are installation-bearer operator APIs; a Capsule cannot approve its
 own spawn. Grant PATCH is the same principal as grant create. Tightening a
 limit does not cancel work already started; loosening does not start queued
 spawns. Denied children stay on disk until the operator deletes them and still
-count toward descendants, so a lead cannot free budget by issuing and
-withdrawing hostile names.
+count toward the spawn window, as do cancelled and removed ones, so a lead
+cannot free budget by issuing and withdrawing hostile names.
 
 Proposed Deliveries add no Capsule authority. `propose-delivery` persists an
 unapproved Delivery for the requester's own Capsule only; it never binds
@@ -967,12 +967,31 @@ credentials.
 
 A compromised lead can spend its grant: subagent Capsules, compute, and model
 calls up to the grant's fan-out, total, and live limits, and its messages per
-link. The grant deadline is a separate clock from idle pause and Capsule TTL;
-when it passes, the default action cancels subagents and pauses them. The
-default deadline is 24 hours, so a compromised lead left unattended can spend
-its grant for longer before the deadline stops it than under the earlier
-8-hour default; the hard bounds (16 children, 32 total, 16 live, 72 hours) are
-unchanged and enforced by the daemon and the schema. The web UI lets the
+link. Since ADR 0059 a grant has no fixed end. It lapses once the operator has
+been away longer than its unattended limit (default 24 hours, 5 minutes to 72
+hours): mutating coordination requests are refused as `coordination_lapsed`,
+the grant's `onDeadline` action applies to running subagents (the default
+cancels and pauses them), and the lead is no longer woken with reports. A
+lapse is not revocation, and the operator's next message to the lead reopens
+the grant. The unattended clock is separate from idle pause and Capsule TTL;
+idle pause of the lead never ends or lapses a grant.
+
+- **Longer-lived authority.** A grant now lasts as long as the operator keeps
+  talking to the lead. While nobody is watching, a lead can spend at most one
+  unattended limit of time and one 24-hour window of spawns (`maxChildren`
+  and `maxDescendants`, at most 16 and 32), the same order as the earlier
+  72-hour, 32-spawn lifetime grant. A lead in active use can spawn more than
+  32 over its lifetime; that is intended, and each window is still bounded.
+  The hard bounds (16 per window per lead, 32 per window, 16 live, 72 hours
+  unattended) are enforced by the daemon and the schema.
+- **Operator presence is the renewal signal.** Only operator API calls reset
+  `lastOperatorAt`: a message to the lead Thread, a spawn approval, or a grant
+  update, each from a user or break-glass principal. Coordination requests,
+  reports, wakes, routines, and other system work never count, and a Capsule
+  has no API that reaches them, so a lead cannot renew its own authority. The
+  store refuses moving `lastOperatorAt` backwards and any change to the
+  attendance fields of an ended grant. Revocation and `lead_ended` stay
+  terminal. The web UI lets the
 operator change the live limit within those bounds; no Capsule can. The
 optional `--max-live-capsules` installation cap refuses coordinated spawns
 when that many Capsules already hold compute; it does not limit

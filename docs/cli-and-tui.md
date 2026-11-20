@@ -163,13 +163,18 @@ subagent Threads in their own Capsules and read their reports (ADR 0029):
 
 ```console
 printf '%s' 'split the review across subagents' | meridian thread spawn PROJECT_ID \
-  --harness claude --prompt-stdin --lead --max-children 3 --lead-deadline 2h
+  --harness claude --prompt-stdin --lead --max-children 3 --unattended-limit 4h
 ```
 
-`--max-children` (default 4, at most 16), `--max-descendants`,
-`--max-live-capsules`, `--max-messages-per-link`, repeatable
-`--allow-harness` (default: the lead's harness), `--on-deadline`
-(`cancel_and_pause` or `stop_new_work`), and `--spawn-approval`
+`--max-children` (default 4, at most 16) and `--max-descendants` (default 8,
+at most 32) count spawns in any 24 hours, not over the lead's lifetime.
+`--unattended-limit` (default 24h, 5m to 72h) is how long the lead keeps
+coordinating after your last message, spawn approval, or grant update; past
+it the lead pauses (its grant lapses) until you message it again.
+`--lead-deadline` is a deprecated alias. `--max-live-capsules`,
+`--max-messages-per-link`, repeatable `--allow-harness` (default: the lead's
+harness), `--on-deadline` (what a pause does to running subagents:
+`cancel_and_pause` or `stop_new_work`), and `--spawn-approval`
 (`auto`, the default, or `operator`) bound the grant. With `operator`, each
 spawn waits until you approve it (`meridian approvals list` /
 `approve` / `deny`). `meridian thread links THREAD_ID` lists a lead's

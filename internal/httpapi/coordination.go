@@ -4,8 +4,23 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/OrlojHQ/meridian/internal/app"
 	"github.com/OrlojHQ/meridian/internal/domain"
 )
+
+// errDeadlineReplaced answers clients that still send the absolute grant
+// deadline, which ADR 0059 replaced with an unattended limit.
+var errDeadlineReplaced = app.InvalidInput(
+	"deadlineSeconds was replaced by unattendedLimitSeconds: a grant now pauses after that long without the operator")
+
+// unattendedLimit maps seconds onto a duration; out-of-range values become
+// negative so the domain rejects them instead of overflowing.
+func unattendedLimit(seconds int64) time.Duration {
+	if seconds < 0 || seconds > int64(domain.CoordinationMaxUnattended/time.Second) {
+		return -1
+	}
+	return time.Duration(seconds) * time.Second
+}
 
 type coordinationPolicyJSON struct {
 	MaxDepth           int      `json:"maxDepth,omitempty"`
@@ -14,16 +29,23 @@ type coordinationPolicyJSON struct {
 	MaxLiveCapsules    int      `json:"maxLiveCapsules,omitempty"`
 	MaxMessagesPerLink int      `json:"maxMessagesPerLink,omitempty"`
 	AllowedHarnesses   []string `json:"allowedHarnesses,omitempty"`
-	DeadlineSeconds    int64    `json:"deadlineSeconds,omitempty"`
+	// UnattendedLimitSeconds is how long the grant keeps spending after the
+	// operator's last message, approval or grant change.
+	UnattendedLimitSeconds int64 `json:"unattendedLimitSeconds,omitempty"`
+	// DeadlineSeconds is accepted only to refuse it clearly.
+	DeadlineSeconds *int64 `json:"deadlineSeconds,omitempty"`
 	// ArchiveAfterSeconds is a pointer because 0 disables auto-archive.
 	ArchiveAfterSeconds *int64 `json:"archiveAfterSeconds,omitempty"`
 	OnDeadline          string `json:"onDeadline,omitempty"`
 	SpawnApproval       string `json:"spawnApproval,omitempty"`
 }
 
-func (p *coordinationPolicyJSON) policy() *domain.CoordinationPolicy {
+func (p *coordinationPolicyJSON) policy() (*domain.CoordinationPolicy, error) {
 	if p == nil {
-		return nil
+		return nil, nil
+	}
+	if p.DeadlineSeconds != nil {
+		return nil, errDeadlineReplaced
 	}
 	var archiveAfter *time.Duration
 	if p.ArchiveAfterSeconds != nil {
@@ -40,9 +62,9 @@ func (p *coordinationPolicyJSON) policy() *domain.CoordinationPolicy {
 		ArchiveAfter: archiveAfter,
 		MaxDepth:     p.MaxDepth, MaxChildren: p.MaxChildren, MaxDescendants: p.MaxDescendants,
 		MaxLiveCapsules: p.MaxLiveCapsules, MaxMessagesPerLink: p.MaxMessagesPerLink,
-		AllowedHarnesses: p.AllowedHarnesses, Deadline: time.Duration(p.DeadlineSeconds) * time.Second,
+		AllowedHarnesses: p.AllowedHarnesses, UnattendedLimit: unattendedLimit(p.UnattendedLimitSeconds),
 		OnDeadline: domain.OnDeadline(p.OnDeadline), SpawnApproval: domain.SpawnApproval(p.SpawnApproval),
-	}
+	}, nil
 }
 
 type coordinationCapabilityJSON struct {
@@ -52,27 +74,35 @@ type coordinationCapabilityJSON struct {
 }
 
 type coordinationGrantJSON struct {
-	ID                  string   `json:"id"`
-	ProjectID           string   `json:"projectId"`
-	RootThreadID        string   `json:"rootThreadId"`
-	RootCapsuleID       string   `json:"rootCapsuleId"`
-	State               string   `json:"state"`
-	SpawnApproval       string   `json:"spawnApproval"`
-	MaxDepth            int      `json:"maxDepth"`
-	MaxChildren         int      `json:"maxChildren"`
-	MaxDescendants      int      `json:"maxDescendants"`
-	MaxLiveCapsules     int      `json:"maxLiveCapsules"`
-	MaxMessagesPerLink  int      `json:"maxMessagesPerLink"`
-	AllowedHarnesses    []string `json:"allowedHarnesses"`
-	DeadlineAt          string   `json:"deadlineAt"`
-	OnDeadline          string   `json:"onDeadline"`
-	ArchiveAfterSeconds int64    `json:"archiveAfterSeconds"`
-	DescendantsCreated  int      `json:"descendantsCreated"`
-	RevokedAt           string   `json:"revokedAt,omitempty"`
-	RevokeReason        string   `json:"revokeReason,omitempty"`
-	CreatedAt           string   `json:"createdAt"`
-	UpdatedAt           string   `json:"updatedAt"`
-	ResourceVersion     int64    `json:"resourceVersion"`
+	ID                 string   `json:"id"`
+	ProjectID          string   `json:"projectId"`
+	RootThreadID       string   `json:"rootThreadId"`
+	RootCapsuleID      string   `json:"rootCapsuleId"`
+	State              string   `json:"state"`
+	SpawnApproval      string   `json:"spawnApproval"`
+	MaxDepth           int      `json:"maxDepth"`
+	MaxChildren        int      `json:"maxChildren"`
+	MaxDescendants     int      `json:"maxDescendants"`
+	MaxLiveCapsules    int      `json:"maxLiveCapsules"`
+	MaxMessagesPerLink int      `json:"maxMessagesPerLink"`
+	AllowedHarnesses   []string `json:"allowedHarnesses"`
+	// LastOperatorAt and UnattendedLimitSeconds bound unattended spending;
+	// LapsesAt is their sum. State is lapsed once it passes (ADR 0059).
+	LastOperatorAt         string `json:"lastOperatorAt"`
+	UnattendedLimitSeconds int64  `json:"unattendedLimitSeconds"`
+	LapsesAt               string `json:"lapsesAt"`
+	LapsedAt               string `json:"lapsedAt,omitempty"`
+	OnDeadline             string `json:"onDeadline"`
+	ArchiveAfterSeconds    int64  `json:"archiveAfterSeconds"`
+	DescendantsCreated     int    `json:"descendantsCreated"`
+	// SpawnsInWindow counts spawns in the last 24 hours, which is what
+	// maxChildren and maxDescendants limit.
+	SpawnsInWindow  int    `json:"spawnsInWindow"`
+	RevokedAt       string `json:"revokedAt,omitempty"`
+	RevokeReason    string `json:"revokeReason,omitempty"`
+	CreatedAt       string `json:"createdAt"`
+	UpdatedAt       string `json:"updatedAt"`
+	ResourceVersion int64  `json:"resourceVersion"`
 }
 
 type threadLinkJSON struct {
@@ -133,12 +163,17 @@ type updateCoordinationGrantRequest struct {
 	MaxLiveCapsules         *int      `json:"maxLiveCapsules"`
 	MaxMessagesPerLink      *int      `json:"maxMessagesPerLink"`
 	AllowedHarnesses        *[]string `json:"allowedHarnesses"`
-	DeadlineSeconds         *int64    `json:"deadlineSeconds"`
-	OnDeadline              *string   `json:"onDeadline"`
-	ArchiveAfterSeconds     *int64    `json:"archiveAfterSeconds"`
+	UnattendedLimitSeconds  *int64    `json:"unattendedLimitSeconds"`
+	// DeadlineSeconds is accepted only to refuse it clearly.
+	DeadlineSeconds     *int64  `json:"deadlineSeconds,omitempty"`
+	OnDeadline          *string `json:"onDeadline"`
+	ArchiveAfterSeconds *int64  `json:"archiveAfterSeconds"`
 }
 
-func (p updateCoordinationGrantRequest) patch() domain.CoordinationGrantPatch {
+func (p updateCoordinationGrantRequest) patch() (domain.CoordinationGrantPatch, error) {
+	if p.DeadlineSeconds != nil {
+		return domain.CoordinationGrantPatch{}, errDeadlineReplaced
+	}
 	patch := domain.CoordinationGrantPatch{
 		MaxChildren: p.MaxChildren, MaxDescendants: p.MaxDescendants,
 		MaxLiveCapsules: p.MaxLiveCapsules, MaxMessagesPerLink: p.MaxMessagesPerLink,
@@ -152,13 +187,9 @@ func (p updateCoordinationGrantRequest) patch() domain.CoordinationGrantPatch {
 		value := domain.OnDeadline(*p.OnDeadline)
 		patch.OnDeadline = &value
 	}
-	if p.DeadlineSeconds != nil {
-		value := time.Duration(-1)
-		if seconds := *p.DeadlineSeconds; seconds >= 0 &&
-			seconds <= int64(domain.CoordinationMaxDeadline/time.Second) {
-			value = time.Duration(seconds) * time.Second
-		}
-		patch.Deadline = &value
+	if p.UnattendedLimitSeconds != nil {
+		value := unattendedLimit(*p.UnattendedLimitSeconds)
+		patch.UnattendedLimit = &value
 	}
 	if p.ArchiveAfterSeconds != nil {
 		value := time.Duration(-1)
@@ -168,7 +199,7 @@ func (p updateCoordinationGrantRequest) patch() domain.CoordinationGrantPatch {
 		}
 		patch.ArchiveAfter = &value
 	}
-	return patch
+	return patch, nil
 }
 
 type decideCoordinationRequest struct {
@@ -208,21 +239,35 @@ func formatOptionalTime(value time.Time) string {
 	return value.UTC().Format(time.RFC3339Nano)
 }
 
-func grantResponse(grant domain.CoordinationGrant) coordinationGrantJSON {
+// grantView renders a grant with its derived state and current spawn window.
+func (s *Server) grantView(request *http.Request, grant domain.CoordinationGrant) coordinationGrantJSON {
+	// A failed count only understates the display; spawns count again.
+	window, now, err := s.service.CoordinationGrantWindow(request.Context(), grant)
+	if err != nil {
+		now = time.Now()
+	}
+	return grantResponse(grant, window, now)
+}
+
+func grantResponse(grant domain.CoordinationGrant, spawnsInWindow int, now time.Time) coordinationGrantJSON {
 	harnesses := grant.AllowedHarnesses
 	if harnesses == nil {
 		harnesses = []string{}
 	}
 	return coordinationGrantJSON{
 		ID: string(grant.ID), ProjectID: string(grant.ProjectID), RootThreadID: string(grant.RootThreadID),
-		RootCapsuleID: string(grant.RootCapsuleID), State: string(grant.State),
+		RootCapsuleID: string(grant.RootCapsuleID), State: string(grant.StateAt(now)),
 		SpawnApproval: string(grant.SpawnApproval), MaxDepth: grant.MaxDepth,
 		MaxChildren: grant.MaxChildren, MaxDescendants: grant.MaxDescendants,
 		MaxLiveCapsules: grant.MaxLiveCapsules, MaxMessagesPerLink: grant.MaxMessagesPerLink,
-		AllowedHarnesses: harnesses, DeadlineAt: grant.DeadlineAt.UTC().Format(time.RFC3339Nano),
-		OnDeadline: string(grant.OnDeadline), ArchiveAfterSeconds: int64(grant.ArchiveAfter / time.Second),
-		DescendantsCreated: grant.DescendantsCreated,
-		RevokedAt:          formatOptionalTime(grant.RevokedAt), RevokeReason: string(grant.RevokeReason),
+		AllowedHarnesses:       harnesses,
+		LastOperatorAt:         grant.LastOperatorAt.UTC().Format(time.RFC3339Nano),
+		UnattendedLimitSeconds: int64(grant.UnattendedLimit / time.Second),
+		LapsesAt:               grant.LapsesAt().UTC().Format(time.RFC3339Nano),
+		LapsedAt:               formatOptionalTime(grant.LapsedAt),
+		OnDeadline:             string(grant.OnDeadline), ArchiveAfterSeconds: int64(grant.ArchiveAfter / time.Second),
+		DescendantsCreated: grant.DescendantsCreated, SpawnsInWindow: spawnsInWindow,
+		RevokedAt: formatOptionalTime(grant.RevokedAt), RevokeReason: string(grant.RevokeReason),
 		CreatedAt:       grant.CreatedAt.UTC().Format(time.RFC3339Nano),
 		UpdatedAt:       grant.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		ResourceVersion: int64(grant.ResourceVersion),
@@ -271,7 +316,7 @@ func (s *Server) getCoordinationGrant(writer http.ResponseWriter, request *http.
 		return
 	}
 	writer.Header().Set("ETag", etag(grant.ResourceVersion))
-	writeJSON(writer, http.StatusOK, grantResponse(grant))
+	writeJSON(writer, http.StatusOK, s.grantView(request, grant))
 }
 
 func (s *Server) updateCoordinationGrant(writer http.ResponseWriter, request *http.Request) {
@@ -279,9 +324,14 @@ func (s *Server) updateCoordinationGrant(writer http.ResponseWriter, request *ht
 	if !decode(writer, request, &input) {
 		return
 	}
+	patch, err := input.patch()
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
 	grant, err := s.service.UpdateCoordinationGrant(
 		request.Context(), domain.CoordinationGrantID(request.PathValue("grantId")),
-		domain.ResourceVersion(input.ExpectedResourceVersion), input.patch(),
+		domain.ResourceVersion(input.ExpectedResourceVersion), patch,
 		request.Header.Get("Idempotency-Key"),
 	)
 	if err != nil {
@@ -289,7 +339,7 @@ func (s *Server) updateCoordinationGrant(writer http.ResponseWriter, request *ht
 		return
 	}
 	writer.Header().Set("ETag", etag(grant.ResourceVersion))
-	writeJSON(writer, http.StatusOK, grantResponse(grant))
+	writeJSON(writer, http.StatusOK, s.grantView(request, grant))
 }
 
 func (s *Server) listCoordinationRequests(writer http.ResponseWriter, request *http.Request) {
@@ -353,7 +403,7 @@ func (s *Server) revokeCoordinationGrant(writer http.ResponseWriter, request *ht
 		return
 	}
 	writer.Header().Set("ETag", etag(grant.ResourceVersion))
-	writeJSON(writer, http.StatusOK, grantResponse(grant))
+	writeJSON(writer, http.StatusOK, s.grantView(request, grant))
 }
 
 // removeSubagent stops one subagent and deletes its Capsule without touching

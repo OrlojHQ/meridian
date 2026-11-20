@@ -3702,27 +3702,36 @@ func (s *CoordinationCapability) SetMaxDescendants(val int) {
 
 // Ref: #/components/schemas/CoordinationGrant
 type CoordinationGrant struct {
-	ID                  string                           `json:"id"`
-	ProjectId           string                           `json:"projectId"`
-	RootThreadId        string                           `json:"rootThreadId"`
-	RootCapsuleId       string                           `json:"rootCapsuleId"`
-	State               CoordinationGrantState           `json:"state"`
-	SpawnApproval       CoordinationGrantSpawnApproval   `json:"spawnApproval"`
-	MaxDepth            int                              `json:"maxDepth"`
-	MaxChildren         int                              `json:"maxChildren"`
-	MaxDescendants      int                              `json:"maxDescendants"`
-	MaxLiveCapsules     int                              `json:"maxLiveCapsules"`
-	MaxMessagesPerLink  int                              `json:"maxMessagesPerLink"`
-	AllowedHarnesses    []string                         `json:"allowedHarnesses"`
-	DeadlineAt          time.Time                        `json:"deadlineAt"`
-	OnDeadline          CoordinationGrantOnDeadline      `json:"onDeadline"`
-	ArchiveAfterSeconds int                              `json:"archiveAfterSeconds"`
-	DescendantsCreated  int                              `json:"descendantsCreated"`
-	RevokedAt           OptDateTime                      `json:"revokedAt"`
-	RevokeReason        OptCoordinationGrantRevokeReason `json:"revokeReason"`
-	CreatedAt           time.Time                        `json:"createdAt"`
-	UpdatedAt           time.Time                        `json:"updatedAt"`
-	ResourceVersion     int64                            `json:"resourceVersion"`
+	ID                 string                         `json:"id"`
+	ProjectId          string                         `json:"projectId"`
+	RootThreadId       string                         `json:"rootThreadId"`
+	RootCapsuleId      string                         `json:"rootCapsuleId"`
+	State              CoordinationGrantState         `json:"state"`
+	SpawnApproval      CoordinationGrantSpawnApproval `json:"spawnApproval"`
+	MaxDepth           int                            `json:"maxDepth"`
+	MaxChildren        int                            `json:"maxChildren"`
+	MaxDescendants     int                            `json:"maxDescendants"`
+	MaxLiveCapsules    int                            `json:"maxLiveCapsules"`
+	MaxMessagesPerLink int                            `json:"maxMessagesPerLink"`
+	AllowedHarnesses   []string                       `json:"allowedHarnesses"`
+	// Last operator message to the lead, spawn approval, or grant update.
+	LastOperatorAt         time.Time `json:"lastOperatorAt"`
+	UnattendedLimitSeconds int       `json:"unattendedLimitSeconds"`
+	// LastOperatorAt plus the unattended limit.
+	LapsesAt time.Time `json:"lapsesAt"`
+	// When the lapse was applied to running subagents; absent while open.
+	LapsedAt            OptDateTime                 `json:"lapsedAt"`
+	OnDeadline          CoordinationGrantOnDeadline `json:"onDeadline"`
+	ArchiveAfterSeconds int                         `json:"archiveAfterSeconds"`
+	// Spawns over the grant's lifetime, for display only.
+	DescendantsCreated int `json:"descendantsCreated"`
+	// Spawns in the last 24 hours, which maxChildren and maxDescendants limit.
+	SpawnsInWindow  int                              `json:"spawnsInWindow"`
+	RevokedAt       OptDateTime                      `json:"revokedAt"`
+	RevokeReason    OptCoordinationGrantRevokeReason `json:"revokeReason"`
+	CreatedAt       time.Time                        `json:"createdAt"`
+	UpdatedAt       time.Time                        `json:"updatedAt"`
+	ResourceVersion int64                            `json:"resourceVersion"`
 }
 
 // GetID returns the value of ID.
@@ -3785,9 +3794,24 @@ func (s *CoordinationGrant) GetAllowedHarnesses() []string {
 	return s.AllowedHarnesses
 }
 
-// GetDeadlineAt returns the value of DeadlineAt.
-func (s *CoordinationGrant) GetDeadlineAt() time.Time {
-	return s.DeadlineAt
+// GetLastOperatorAt returns the value of LastOperatorAt.
+func (s *CoordinationGrant) GetLastOperatorAt() time.Time {
+	return s.LastOperatorAt
+}
+
+// GetUnattendedLimitSeconds returns the value of UnattendedLimitSeconds.
+func (s *CoordinationGrant) GetUnattendedLimitSeconds() int {
+	return s.UnattendedLimitSeconds
+}
+
+// GetLapsesAt returns the value of LapsesAt.
+func (s *CoordinationGrant) GetLapsesAt() time.Time {
+	return s.LapsesAt
+}
+
+// GetLapsedAt returns the value of LapsedAt.
+func (s *CoordinationGrant) GetLapsedAt() OptDateTime {
+	return s.LapsedAt
 }
 
 // GetOnDeadline returns the value of OnDeadline.
@@ -3803,6 +3827,11 @@ func (s *CoordinationGrant) GetArchiveAfterSeconds() int {
 // GetDescendantsCreated returns the value of DescendantsCreated.
 func (s *CoordinationGrant) GetDescendantsCreated() int {
 	return s.DescendantsCreated
+}
+
+// GetSpawnsInWindow returns the value of SpawnsInWindow.
+func (s *CoordinationGrant) GetSpawnsInWindow() int {
+	return s.SpawnsInWindow
 }
 
 // GetRevokedAt returns the value of RevokedAt.
@@ -3890,9 +3919,24 @@ func (s *CoordinationGrant) SetAllowedHarnesses(val []string) {
 	s.AllowedHarnesses = val
 }
 
-// SetDeadlineAt sets the value of DeadlineAt.
-func (s *CoordinationGrant) SetDeadlineAt(val time.Time) {
-	s.DeadlineAt = val
+// SetLastOperatorAt sets the value of LastOperatorAt.
+func (s *CoordinationGrant) SetLastOperatorAt(val time.Time) {
+	s.LastOperatorAt = val
+}
+
+// SetUnattendedLimitSeconds sets the value of UnattendedLimitSeconds.
+func (s *CoordinationGrant) SetUnattendedLimitSeconds(val int) {
+	s.UnattendedLimitSeconds = val
+}
+
+// SetLapsesAt sets the value of LapsesAt.
+func (s *CoordinationGrant) SetLapsesAt(val time.Time) {
+	s.LapsesAt = val
+}
+
+// SetLapsedAt sets the value of LapsedAt.
+func (s *CoordinationGrant) SetLapsedAt(val OptDateTime) {
+	s.LapsedAt = val
 }
 
 // SetOnDeadline sets the value of OnDeadline.
@@ -3908,6 +3952,11 @@ func (s *CoordinationGrant) SetArchiveAfterSeconds(val int) {
 // SetDescendantsCreated sets the value of DescendantsCreated.
 func (s *CoordinationGrant) SetDescendantsCreated(val int) {
 	s.DescendantsCreated = val
+}
+
+// SetSpawnsInWindow sets the value of SpawnsInWindow.
+func (s *CoordinationGrant) SetSpawnsInWindow(val int) {
+	s.SpawnsInWindow = val
 }
 
 // SetRevokedAt sets the value of RevokedAt.
@@ -4095,11 +4144,15 @@ func (s *CoordinationGrantSpawnApproval) UnmarshalText(data []byte) error {
 	}
 }
 
+// Lapsed is an active grant left unattended past its limit; the operator's next message to the lead
+// reopens it. revoked is terminal. expired is terminal and only appears on grants that passed an
+// absolute deadline before unattended limits replaced it.
 // Ref: #/components/schemas/CoordinationGrantState
 type CoordinationGrantState string
 
 const (
 	CoordinationGrantStateActive  CoordinationGrantState = "active"
+	CoordinationGrantStateLapsed  CoordinationGrantState = "lapsed"
 	CoordinationGrantStateRevoked CoordinationGrantState = "revoked"
 	CoordinationGrantStateExpired CoordinationGrantState = "expired"
 )
@@ -4108,6 +4161,7 @@ const (
 func (CoordinationGrantState) AllValues() []CoordinationGrantState {
 	return []CoordinationGrantState{
 		CoordinationGrantStateActive,
+		CoordinationGrantStateLapsed,
 		CoordinationGrantStateRevoked,
 		CoordinationGrantStateExpired,
 	}
@@ -4117,6 +4171,8 @@ func (CoordinationGrantState) AllValues() []CoordinationGrantState {
 func (s CoordinationGrantState) MarshalText() ([]byte, error) {
 	switch s {
 	case CoordinationGrantStateActive:
+		return []byte(s), nil
+	case CoordinationGrantStateLapsed:
 		return []byte(s), nil
 	case CoordinationGrantStateRevoked:
 		return []byte(s), nil
@@ -4133,6 +4189,9 @@ func (s *CoordinationGrantState) UnmarshalText(data []byte) error {
 	case CoordinationGrantStateActive:
 		*s = CoordinationGrantStateActive
 		return nil
+	case CoordinationGrantStateLapsed:
+		*s = CoordinationGrantStateLapsed
+		return nil
 	case CoordinationGrantStateRevoked:
 		*s = CoordinationGrantStateRevoked
 		return nil
@@ -4146,7 +4205,9 @@ func (s *CoordinationGrantState) UnmarshalText(data []byte) error {
 
 // Makes the new Thread a lead that may spawn subagent Threads in their own sub-Capsules. Omitted
 // limits take their defaults. Subagents answer to the operator: the lead never approves permissions or
-// answers input.
+// answers input. maxChildren and maxDescendants count spawns in a rolling 24-hour window, not over the
+// grant's lifetime. The grant has no fixed end; it lapses after unattendedLimitSeconds without the
+// operator.
 // Ref: #/components/schemas/CoordinationPolicy
 type CoordinationPolicy struct {
 	MaxDepth           OptInt `json:"maxDepth"`
@@ -4157,13 +4218,20 @@ type CoordinationPolicy struct {
 	// Structured harnesses subagents may use; each must be on the Project allowlist. Defaults to the
 	// lead's harness.
 	AllowedHarnesses []string `json:"allowedHarnesses"`
-	DeadlineSeconds  OptInt   `json:"deadlineSeconds"`
+	// How long the grant keeps spending after the operator's last message to the lead, spawn approval, or
+	// grant update. Past it the grant lapses: mutating coordination requests are refused as
+	// coordination_lapsed, onDeadline applies to running subagents, and the operator's next message to the
+	// lead reopens it. Coordination requests, reports, wakes and routines never reset it. Replaces
+	// deadlineSeconds, which is refused.
+	UnattendedLimitSeconds OptInt `json:"unattendedLimitSeconds"`
 	// How long a finished subagent stays idle before its session is ended and its Thread paused. Its
 	// Capsule is then deleted if its workspace holds nothing unsaved (the last report changed no files, or
 	// a Delivery of it succeeded); otherwise the Capsule is kept. 0 disables auto-archive and this
 	// cleanup; otherwise at least 60. Transcripts are always kept.
-	ArchiveAfterSeconds OptInt                          `json:"archiveAfterSeconds"`
-	OnDeadline          OptCoordinationPolicyOnDeadline `json:"onDeadline"`
+	ArchiveAfterSeconds OptInt `json:"archiveAfterSeconds"`
+	// What happens to running subagents when the grant lapses. cancel_and_pause closes their links and
+	// pauses them; stop_new_work lets them finish. Spawns waiting for approval are refused either way.
+	OnDeadline OptCoordinationPolicyOnDeadline `json:"onDeadline"`
 	// Auto starts each accepted spawn. operator queues it until the operator approves or denies it. The
 	// grant itself is still the bound on how many may be requested.
 	SpawnApproval OptCoordinationPolicySpawnApproval `json:"spawnApproval"`
@@ -4199,9 +4267,9 @@ func (s *CoordinationPolicy) GetAllowedHarnesses() []string {
 	return s.AllowedHarnesses
 }
 
-// GetDeadlineSeconds returns the value of DeadlineSeconds.
-func (s *CoordinationPolicy) GetDeadlineSeconds() OptInt {
-	return s.DeadlineSeconds
+// GetUnattendedLimitSeconds returns the value of UnattendedLimitSeconds.
+func (s *CoordinationPolicy) GetUnattendedLimitSeconds() OptInt {
+	return s.UnattendedLimitSeconds
 }
 
 // GetArchiveAfterSeconds returns the value of ArchiveAfterSeconds.
@@ -4249,9 +4317,9 @@ func (s *CoordinationPolicy) SetAllowedHarnesses(val []string) {
 	s.AllowedHarnesses = val
 }
 
-// SetDeadlineSeconds sets the value of DeadlineSeconds.
-func (s *CoordinationPolicy) SetDeadlineSeconds(val OptInt) {
-	s.DeadlineSeconds = val
+// SetUnattendedLimitSeconds sets the value of UnattendedLimitSeconds.
+func (s *CoordinationPolicy) SetUnattendedLimitSeconds(val OptInt) {
+	s.UnattendedLimitSeconds = val
 }
 
 // SetArchiveAfterSeconds sets the value of ArchiveAfterSeconds.
@@ -4269,6 +4337,8 @@ func (s *CoordinationPolicy) SetSpawnApproval(val OptCoordinationPolicySpawnAppr
 	s.SpawnApproval = val
 }
 
+// What happens to running subagents when the grant lapses. cancel_and_pause closes their links and
+// pauses them; stop_new_work lets them finish. Spawns waiting for approval are refused either way.
 type CoordinationPolicyOnDeadline string
 
 const (
@@ -20649,7 +20719,8 @@ type UpdateCoordinationGrantNotFound ErrorEnvelope
 func (*UpdateCoordinationGrantNotFound) updateCoordinationGrantRes() {}
 
 // Operator update to an active grant. Omitted fields stay unchanged. allowedHarnesses, when present,
-// replaces the allowlist and must not be empty. deadlineSeconds is remaining time from now.
+// replaces the allowlist and must not be empty. Any update resets lastOperatorAt and reopens a lapsed
+// grant.
 // Ref: #/components/schemas/UpdateCoordinationGrantRequest
 type UpdateCoordinationGrantRequest struct {
 	ExpectedResourceVersion int64                                          `json:"expectedResourceVersion"`
@@ -20659,7 +20730,7 @@ type UpdateCoordinationGrantRequest struct {
 	MaxLiveCapsules         OptInt                                         `json:"maxLiveCapsules"`
 	MaxMessagesPerLink      OptInt                                         `json:"maxMessagesPerLink"`
 	AllowedHarnesses        []string                                       `json:"allowedHarnesses"`
-	DeadlineSeconds         OptInt                                         `json:"deadlineSeconds"`
+	UnattendedLimitSeconds  OptInt                                         `json:"unattendedLimitSeconds"`
 	OnDeadline              OptUpdateCoordinationGrantRequestOnDeadline    `json:"onDeadline"`
 	ArchiveAfterSeconds     OptInt                                         `json:"archiveAfterSeconds"`
 }
@@ -20699,9 +20770,9 @@ func (s *UpdateCoordinationGrantRequest) GetAllowedHarnesses() []string {
 	return s.AllowedHarnesses
 }
 
-// GetDeadlineSeconds returns the value of DeadlineSeconds.
-func (s *UpdateCoordinationGrantRequest) GetDeadlineSeconds() OptInt {
-	return s.DeadlineSeconds
+// GetUnattendedLimitSeconds returns the value of UnattendedLimitSeconds.
+func (s *UpdateCoordinationGrantRequest) GetUnattendedLimitSeconds() OptInt {
+	return s.UnattendedLimitSeconds
 }
 
 // GetOnDeadline returns the value of OnDeadline.
@@ -20749,9 +20820,9 @@ func (s *UpdateCoordinationGrantRequest) SetAllowedHarnesses(val []string) {
 	s.AllowedHarnesses = val
 }
 
-// SetDeadlineSeconds sets the value of DeadlineSeconds.
-func (s *UpdateCoordinationGrantRequest) SetDeadlineSeconds(val OptInt) {
-	s.DeadlineSeconds = val
+// SetUnattendedLimitSeconds sets the value of UnattendedLimitSeconds.
+func (s *UpdateCoordinationGrantRequest) SetUnattendedLimitSeconds(val OptInt) {
+	s.UnattendedLimitSeconds = val
 }
 
 // SetOnDeadline sets the value of OnDeadline.

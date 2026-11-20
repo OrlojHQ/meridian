@@ -845,6 +845,15 @@ func (r *scopedReader) ListThreadLinksByParent(ctx context.Context, id domain.Th
 	return r.inner.ListThreadLinksByParent(ctx, id)
 }
 
+func (r *scopedReader) CountThreadLinksByGrantSince(
+	ctx context.Context, id domain.CoordinationGrantID, since time.Time,
+) (int, error) {
+	if err := r.grant(ctx, id); err != nil {
+		return 0, err
+	}
+	return r.inner.CountThreadLinksByGrantSince(ctx, id, since)
+}
+
 func (r *scopedReader) ListThreadLinksByGrant(ctx context.Context, id domain.CoordinationGrantID) ([]domain.ThreadLink, error) {
 	if err := r.grant(ctx, id); err != nil {
 		return nil, err

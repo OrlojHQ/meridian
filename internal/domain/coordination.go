@@ -28,7 +28,13 @@ type CoordinationGrantState string
 const (
 	GrantActive  CoordinationGrantState = "active"
 	GrantRevoked CoordinationGrantState = "revoked"
+	// GrantExpired is a legacy terminal state: grants that passed their
+	// absolute deadline before ADR 0059. New grants lapse instead.
 	GrantExpired CoordinationGrantState = "expired"
+	// GrantLapsed is presented, never stored. A stored active grant is lapsed
+	// once the operator has been away longer than its unattended limit; the
+	// next operator message to the lead reopens it (ADR 0059).
+	GrantLapsed CoordinationGrantState = "lapsed"
 )
 
 type SpawnApproval string
@@ -41,6 +47,8 @@ const (
 	SpawnOperator SpawnApproval = "operator"
 )
 
+// OnDeadline is what happens to running subagents when a grant lapses. The
+// name predates ADR 0059, when the trigger was an absolute deadline.
 type OnDeadline string
 
 const (
@@ -51,12 +59,15 @@ const (
 type GrantRevokeReason string
 
 const (
-	RevokeOperator  GrantRevokeReason = "operator"
+	RevokeOperator GrantRevokeReason = "operator"
+	// RevokeDeadline is the legacy reason of GrantExpired grants.
 	RevokeDeadline  GrantRevokeReason = "deadline"
 	RevokeLeadEnded GrantRevokeReason = "lead_ended"
 )
 
 // Coordination limits. Depth is fixed at one until nested leads ship.
+// Fan-out and descendants count spawns in the rolling CoordinationSpawnWindow,
+// not over the grant's lifetime (ADR 0059).
 const (
 	CoordinationMaxDepth              = 1
 	CoordinationDefaultChildren       = 4
@@ -67,9 +78,10 @@ const (
 	CoordinationMaxLiveCapsules       = 16
 	CoordinationDefaultMessagesPerLnk = 50
 	CoordinationMaxMessagesPerLink    = 500
-	CoordinationDefaultDeadline       = 24 * time.Hour
-	CoordinationMaxDeadline           = 72 * time.Hour
-	CoordinationMinDeadline           = 5 * time.Minute
+	CoordinationSpawnWindow           = 24 * time.Hour
+	CoordinationDefaultUnattended     = 24 * time.Hour
+	CoordinationMaxUnattended         = 72 * time.Hour
+	CoordinationMinUnattended         = 5 * time.Minute
 	CoordinationMaxAllowedHarnesses   = MaxHarnessImages
 	CoordinationDefaultArchiveAfter   = time.Hour
 	CoordinationMinArchiveAfter       = time.Minute
@@ -85,9 +97,11 @@ type CoordinationPolicy struct {
 	MaxLiveCapsules    int
 	MaxMessagesPerLink int
 	AllowedHarnesses   []string
-	Deadline           time.Duration
-	OnDeadline         OnDeadline
-	SpawnApproval      SpawnApproval
+	// UnattendedLimit is how long the grant keeps spending after the
+	// operator's last message, approval or grant change.
+	UnattendedLimit time.Duration
+	OnDeadline      OnDeadline
+	SpawnApproval   SpawnApproval
 	// ArchiveAfter is how long a finished subagent stays idle before it is
 	// archived. Nil takes the default; zero disables auto-archive.
 	ArchiveAfter *time.Duration
@@ -133,10 +147,10 @@ func (p CoordinationPolicy) Normalize() (CoordinationPolicy, error) {
 		return p, fmt.Errorf("%w: coordination maxDescendants must be at least maxChildren", ErrInvalid)
 	}
 	switch {
-	case p.Deadline == 0:
-		p.Deadline = CoordinationDefaultDeadline
-	case p.Deadline < CoordinationMinDeadline || p.Deadline > CoordinationMaxDeadline:
-		return p, fmt.Errorf("%w: coordination deadline must be between 5m and 72h", ErrInvalid)
+	case p.UnattendedLimit == 0:
+		p.UnattendedLimit = CoordinationDefaultUnattended
+	case !validUnattendedLimit(p.UnattendedLimit):
+		return p, errUnattendedLimit
 	}
 	switch p.OnDeadline {
 	case "":
@@ -178,6 +192,13 @@ func (p CoordinationPolicy) Normalize() (CoordinationPolicy, error) {
 	return p, nil
 }
 
+var errUnattendedLimit = fmt.Errorf(
+	"%w: coordination unattendedLimit must be whole seconds between 5m and 72h", ErrInvalid)
+
+func validUnattendedLimit(limit time.Duration) bool {
+	return limit >= CoordinationMinUnattended && limit <= CoordinationMaxUnattended && limit%time.Second == 0
+}
+
 type CoordinationGrant struct {
 	ID                 CoordinationGrantID
 	ProjectID          ProjectID
@@ -191,10 +212,19 @@ type CoordinationGrant struct {
 	MaxLiveCapsules    int
 	MaxMessagesPerLink int
 	AllowedHarnesses   []string
-	DeadlineAt         time.Time
-	OnDeadline         OnDeadline
+	// LastOperatorAt changes only on operator API actions: a message to the
+	// lead Thread, a spawn approval, or a grant update. Coordination
+	// requests, reports, wakes and routines never move it.
+	LastOperatorAt  time.Time
+	UnattendedLimit time.Duration
+	// LapsedAt is set once the lapse was applied to running subagents and
+	// cleared when the operator returns. It is zero while the grant is open.
+	LapsedAt   time.Time
+	OnDeadline OnDeadline
 	// ArchiveAfter is zero when auto-archive is disabled.
-	ArchiveAfter       time.Duration
+	ArchiveAfter time.Duration
+	// DescendantsCreated is the lifetime spawn count, kept for display.
+	// Limits use the rolling window instead.
 	DescendantsCreated int
 	RevokedAt          time.Time
 	RevokeReason       GrantRevokeReason
@@ -212,15 +242,53 @@ func (g CoordinationGrant) Policy() CoordinationPolicy {
 		MaxLiveCapsules:    g.MaxLiveCapsules,
 		MaxMessagesPerLink: g.MaxMessagesPerLink,
 		AllowedHarnesses:   slices.Clone(g.AllowedHarnesses),
+		UnattendedLimit:    g.UnattendedLimit,
 		OnDeadline:         g.OnDeadline,
 		SpawnApproval:      g.SpawnApproval,
 		ArchiveAfter:       &archiveAfter,
 	}
 }
 
+// LapsesAt is when the grant stops spending if the operator stays away.
+func (g CoordinationGrant) LapsesAt() time.Time {
+	return g.LastOperatorAt.Add(g.UnattendedLimit)
+}
+
+// Lapsed reports whether an active grant has gone unattended past its limit,
+// whether or not the coordination loop has applied the lapse yet.
+func (g CoordinationGrant) Lapsed(now time.Time) bool {
+	return g.State == GrantActive && (!g.LapsedAt.IsZero() || !now.Before(g.LapsesAt()))
+}
+
 // Usable reports whether the grant authorizes new coordination work at now.
 func (g CoordinationGrant) Usable(now time.Time) bool {
-	return g.State == GrantActive && now.Before(g.DeadlineAt)
+	return g.State == GrantActive && !g.Lapsed(now)
+}
+
+// StateAt is the state an operator sees: lapsed is derived from an active
+// grant and is never stored.
+func (g CoordinationGrant) StateAt(now time.Time) CoordinationGrantState {
+	if g.Lapsed(now) {
+		return GrantLapsed
+	}
+	return g.State
+}
+
+// Attended records operator presence at now and reopens a lapsed grant. It
+// never moves LastOperatorAt backwards. Callers must only call it for an
+// operator API action; a Capsule can never reach it.
+func (g CoordinationGrant) Attended(now time.Time) CoordinationGrant {
+	if now.After(g.LastOperatorAt) {
+		g.LastOperatorAt = now.UTC()
+	}
+	g.LapsedAt = time.Time{}
+	return g
+}
+
+// SpawnWindowStart is the earliest spawn time that still counts toward the
+// fan-out and descendant limits at now.
+func SpawnWindowStart(now time.Time) time.Time {
+	return now.Add(-CoordinationSpawnWindow)
 }
 
 type ThreadLinkState string
@@ -367,7 +435,7 @@ type CoordinationGrantPatch struct {
 	MaxLiveCapsules    *int
 	MaxMessagesPerLink *int
 	AllowedHarnesses   *[]string
-	Deadline           *time.Duration
+	UnattendedLimit    *time.Duration
 	OnDeadline         *OnDeadline
 	ArchiveAfter       *time.Duration
 }
@@ -375,17 +443,17 @@ type CoordinationGrantPatch struct {
 func (p CoordinationGrantPatch) empty() bool {
 	return p.SpawnApproval == nil && p.MaxChildren == nil && p.MaxDescendants == nil &&
 		p.MaxLiveCapsules == nil && p.MaxMessagesPerLink == nil && p.AllowedHarnesses == nil &&
-		p.Deadline == nil && p.OnDeadline == nil && p.ArchiveAfter == nil
+		p.UnattendedLimit == nil && p.OnDeadline == nil && p.ArchiveAfter == nil
 }
 
 func (p CoordinationGrantPatch) Empty() bool {
 	return p.empty()
 }
 
-// Apply returns a copy of g with the patch applied. Deadline is remaining
-// time from now, capped at createdAt plus 72 hours. Identity fields are
-// unchanged. The grant's resource version is not bumped here.
-func (g CoordinationGrant) Apply(patch CoordinationGrantPatch, now time.Time) (CoordinationGrant, error) {
+// Apply returns a copy of g with the patch applied. Identity fields are
+// unchanged. The grant's resource version is not bumped here, and operator
+// presence is recorded separately with Attended.
+func (g CoordinationGrant) Apply(patch CoordinationGrantPatch) (CoordinationGrant, error) {
 	if patch.empty() {
 		return g, fmt.Errorf("%w: coordination grant update requires a change", ErrInvalid)
 	}
@@ -452,20 +520,11 @@ func (g CoordinationGrant) Apply(patch CoordinationGrantPatch, now time.Time) (C
 			g.ArchiveAfter = *patch.ArchiveAfter
 		}
 	}
-	if patch.Deadline != nil {
-		remaining := *patch.Deadline
-		if remaining < CoordinationMinDeadline || remaining > CoordinationMaxDeadline {
-			return g, fmt.Errorf("%w: coordination deadline must be between 5m and 72h", ErrInvalid)
+	if patch.UnattendedLimit != nil {
+		if !validUnattendedLimit(*patch.UnattendedLimit) {
+			return g, errUnattendedLimit
 		}
-		at := now.UTC().Add(remaining)
-		capAt := g.CreatedAt.Add(CoordinationMaxDeadline)
-		if at.After(capAt) {
-			if capAt.Sub(now.UTC()) < CoordinationMinDeadline {
-				return g, fmt.Errorf("%w: coordination deadline cannot extend past createdAt+72h", ErrInvalid)
-			}
-			at = capAt
-		}
-		g.DeadlineAt = at
+		g.UnattendedLimit = *patch.UnattendedLimit
 	}
 	return g, nil
 }

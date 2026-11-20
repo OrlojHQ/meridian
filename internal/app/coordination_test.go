@@ -357,7 +357,8 @@ func TestCoordinationGrantIsCreatedWithTheLeadAndReplayIsExact(t *testing.T) {
 		grant.MaxLiveCapsules != 2 || grant.MaxMessagesPerLink != 50 ||
 		len(grant.AllowedHarnesses) != 1 || grant.AllowedHarnesses[0] != "mock" ||
 		grant.OnDeadline != domain.DeadlineCancelAndPause || grant.SpawnApproval != domain.SpawnAuto ||
-		grant.DeadlineAt.Sub(grant.CreatedAt) != 24*time.Hour {
+		grant.UnattendedLimit != 24*time.Hour || !grant.LastOperatorAt.Equal(grant.CreatedAt) ||
+		!grant.LapsesAt().Equal(grant.CreatedAt.Add(24*time.Hour)) {
 		t.Fatalf("defaults = %#v", grant)
 	}
 	if replay, err := f.service.CreateProjectThread(f.ctx, input); err != nil || replay.Intent.ID != created.Intent.ID {
@@ -381,8 +382,9 @@ func TestCoordinationPolicyIsBounded(t *testing.T) {
 		"depth":          {MaxDepth: 2},
 		"children":       {MaxChildren: 17},
 		"descendants":    {MaxDescendants: 33},
-		"short deadline": {Deadline: time.Minute},
-		"long deadline":  {Deadline: 73 * time.Hour},
+		"short limit":    {UnattendedLimit: time.Minute},
+		"long limit":     {UnattendedLimit: 73 * time.Hour},
+		"partial second": {UnattendedLimit: 10*time.Minute + time.Millisecond},
 		"unlisted":       {AllowedHarnesses: []string{"pi"}},
 	} {
 		_, err := f.service.CreateProjectThread(f.ctx, app.CreateProjectThreadInput{
@@ -795,11 +797,17 @@ func TestRevokeAndDeadlineEndTheGrant(t *testing.T) {
 	}
 
 	g := newCoordFixture(t)
-	_, expiring := g.spawnLead(t, domain.CoordinationPolicy{Deadline: 10 * time.Minute})
+	_, lapsing := g.spawnLead(t, domain.CoordinationPolicy{UnattendedLimit: 10 * time.Minute})
 	g.advance(11 * time.Minute)
 	g.service.CoordinationTick(asSystem(g.ctx))
-	if response := tool(t, expiring, coordproto.Request{Type: coordproto.KindWhoAmI}); code(response) != coordproto.CodeCoordinationDisabled {
-		t.Fatalf("mailbox after deadline = %+v", response)
+	// A lapse is not revocation: reads still work, spending does not.
+	if response := tool(t, lapsing, coordproto.Request{Type: coordproto.KindWhoAmI}); !response.OK {
+		t.Fatalf("whoami after lapse = %+v", response)
+	}
+	if response := tool(t, lapsing, coordproto.Request{
+		Type: coordproto.KindSpawn, Key: "late", Name: "late", Harness: "mock", Prompt: "task",
+	}); code(response) != coordproto.CodeCoordinationLapsed {
+		t.Fatalf("spawn after lapse = %+v", response)
 	}
 }
 

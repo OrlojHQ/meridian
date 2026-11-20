@@ -17,7 +17,7 @@ type leadFlags struct {
 	maxLiveCapsules    int
 	maxMessagesPerLink int
 	allowHarnesses     []string
-	deadline           time.Duration
+	unattended         time.Duration
 	onDeadline         string
 	archiveAfter       time.Duration
 	spawnApproval      string
@@ -27,15 +27,16 @@ func (f *leadFlags) register(command *cobra.Command) {
 	flags := command.Flags()
 	flags.BoolVar(&f.lead, "lead", false,
 		"let the Thread start subagent Threads in their own Capsules (bounded by the flags below)")
-	flags.IntVar(&f.maxChildren, "max-children", 0, "subagents the lead may start (default 4, at most 16)")
-	flags.IntVar(&f.maxDescendants, "max-descendants", 0, "subagents started over the grant's lifetime (at most 32)")
+	flags.IntVar(&f.maxChildren, "max-children", 0, "subagents the lead may start in 24 hours (default 4, at most 16)")
+	flags.IntVar(&f.maxDescendants, "max-descendants", 0, "spawns allowed in any 24 hours (default 8, at most 32)")
 	flags.IntVar(&f.maxLiveCapsules, "max-live-capsules", 0, "subagent Capsules running at once (at most 16)")
 	flags.IntVar(&f.maxMessagesPerLink, "max-messages-per-link", 0, "lead messages per subagent (default 50)")
 	flags.StringArrayVar(&f.allowHarnesses, "allow-harness", nil,
 		"structured harness subagents may use; repeatable (default: the lead's harness)")
-	flags.DurationVar(&f.deadline, "lead-deadline", 0, "how long the lead may coordinate (default 24h, 5m to 72h)")
+	registerUnattendedFlags(command, &f.unattended,
+		"how long the lead keeps coordinating after your last message (default 24h, 5m to 72h)")
 	flags.StringVar(&f.onDeadline, "on-deadline", "",
-		"at the deadline: cancel_and_pause (default) or stop_new_work")
+		"when the lead pauses without you: cancel_and_pause (default) or stop_new_work")
 	flags.DurationVar(&f.archiveAfter, "archive-after", 0,
 		"idle time before a finished subagent is archived and, if nothing is unsaved, its Capsule deleted (default 1h, 1m to 720h; 0 disables)")
 	flags.StringVar(&f.spawnApproval, "spawn-approval", "",
@@ -46,7 +47,7 @@ func (f *leadFlags) policy(command *cobra.Command) (client.OptCoordinationPolicy
 	if !f.lead {
 		for _, name := range []string{
 			"max-children", "max-descendants", "max-live-capsules", "max-messages-per-link",
-			"allow-harness", "lead-deadline", "on-deadline", "archive-after", "spawn-approval",
+			"allow-harness", "unattended-limit", "lead-deadline", "on-deadline", "archive-after", "spawn-approval",
 		} {
 			if command.Flags().Changed(name) {
 				return client.OptCoordinationPolicy{}, fmt.Errorf("--%s requires --lead", name)
@@ -65,11 +66,10 @@ func (f *leadFlags) policy(command *cobra.Command) (client.OptCoordinationPolicy
 	policy.MaxDescendants = optional(f.maxDescendants)
 	policy.MaxLiveCapsules = optional(f.maxLiveCapsules)
 	policy.MaxMessagesPerLink = optional(f.maxMessagesPerLink)
-	if f.deadline != 0 {
-		if f.deadline%time.Second != 0 {
-			return client.OptCoordinationPolicy{}, errors.New("--lead-deadline must be whole seconds")
-		}
-		policy.DeadlineSeconds = client.NewOptInt(int(f.deadline / time.Second))
+	if seconds, set, err := unattendedSeconds(command); err != nil {
+		return client.OptCoordinationPolicy{}, err
+	} else if set {
+		policy.UnattendedLimitSeconds = client.NewOptInt(seconds)
 	}
 	if command.Flags().Changed("archive-after") {
 		if f.archiveAfter < 0 || f.archiveAfter%time.Second != 0 {
@@ -92,6 +92,40 @@ func (f *leadFlags) policy(command *cobra.Command) (client.OptCoordinationPolicy
 		return client.OptCoordinationPolicy{}, errors.New("--spawn-approval must be auto or operator")
 	}
 	return client.NewOptCoordinationPolicy(policy), nil
+}
+
+// registerUnattendedFlags adds --unattended-limit and the hidden, deprecated
+// --lead-deadline alias it replaced (ADR 0059). For a new lead and for an
+// update, "lapse this long from now" is what the old deadline meant too.
+func registerUnattendedFlags(command *cobra.Command, target *time.Duration, usage string) {
+	flags := command.Flags()
+	flags.DurationVar(target, "unattended-limit", 0, usage)
+	flags.DurationVar(target, "lead-deadline", 0, usage)
+	_ = flags.MarkDeprecated("lead-deadline",
+		"use --unattended-limit; a lead now pauses after that long without you instead of ending")
+}
+
+func unattendedSeconds(command *cobra.Command) (int, bool, error) {
+	flags := command.Flags()
+	limit, alias := flags.Changed("unattended-limit"), flags.Changed("lead-deadline")
+	if limit && alias {
+		return 0, false, errors.New("use --unattended-limit or --lead-deadline, not both")
+	}
+	if !limit && !alias {
+		return 0, false, nil
+	}
+	name := "unattended-limit"
+	if alias {
+		name = "lead-deadline"
+	}
+	value, err := flags.GetDuration(name)
+	if err != nil {
+		return 0, false, err
+	}
+	if value <= 0 || value%time.Second != 0 {
+		return 0, false, fmt.Errorf("--%s must be whole seconds between 5m and 72h", name)
+	}
+	return int(value / time.Second), true, nil
 }
 
 func newThreadLinksCommand(config *cliConfig) *cobra.Command {
@@ -296,12 +330,13 @@ func newGrantUpdateCommand(config *cliConfig) *cobra.Command {
 	var key, spawnApproval, onDeadline string
 	var maxChildren, maxDescendants, maxLive, maxMessages int
 	var allowHarnesses []string
-	var deadline, archiveAfter time.Duration
+	var unattended, archiveAfter time.Duration
 	command := &cobra.Command{
 		Use: "update GRANT_ID", Short: "Change an active grant's limits or spawn approval",
-		Long: "Change an active grant's limits, harnesses, deadline, or spawn approval.\n" +
+		Long: "Change an active grant's limits, harnesses, unattended limit, or spawn approval.\n" +
 			"You may loosen or tighten limits. Switching to auto does not start spawns\n" +
-			"already waiting for approval. --lead-deadline is remaining time from now.",
+			"already waiting for approval. Any update counts as you being present: it\n" +
+			"restarts the unattended limit and resumes a paused (lapsed) lead.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(command *cobra.Command, args []string) error {
 			if expected <= 0 {
@@ -346,11 +381,10 @@ func newGrantUpdateCommand(config *cliConfig) *cobra.Command {
 				body.AllowedHarnesses = allowHarnesses
 				changed = true
 			}
-			if command.Flags().Changed("lead-deadline") {
-				if deadline%time.Second != 0 {
-					return errors.New("--lead-deadline must be whole seconds")
-				}
-				body.DeadlineSeconds = client.NewOptInt(int(deadline / time.Second))
+			if seconds, set, err := unattendedSeconds(command); err != nil {
+				return err
+			} else if set {
+				body.UnattendedLimitSeconds = client.NewOptInt(seconds)
 				changed = true
 			}
 			if command.Flags().Changed("archive-after") {
@@ -396,12 +430,12 @@ func newGrantUpdateCommand(config *cliConfig) *cobra.Command {
 	}
 	command.Flags().Int64Var(&expected, "expected-version", 0, "current grant resource version")
 	command.Flags().StringVar(&spawnApproval, "spawn-approval", "", "auto or operator")
-	command.Flags().IntVar(&maxChildren, "max-children", 0, "subagents the lead may start")
-	command.Flags().IntVar(&maxDescendants, "max-descendants", 0, "subagents started over the grant's lifetime")
+	command.Flags().IntVar(&maxChildren, "max-children", 0, "subagents the lead may start in 24 hours")
+	command.Flags().IntVar(&maxDescendants, "max-descendants", 0, "spawns allowed in any 24 hours")
 	command.Flags().IntVar(&maxLive, "max-live-capsules", 0, "subagent Capsules running at once")
 	command.Flags().IntVar(&maxMessages, "max-messages-per-link", 0, "lead messages per subagent")
 	command.Flags().StringArrayVar(&allowHarnesses, "allow-harness", nil, "replace the allowed harness list")
-	command.Flags().DurationVar(&deadline, "lead-deadline", 0, "remaining time the lead may coordinate")
+	registerUnattendedFlags(command, &unattended, "how long the lead keeps coordinating without you (5m to 72h)")
 	command.Flags().StringVar(&onDeadline, "on-deadline", "", "cancel_and_pause or stop_new_work")
 	command.Flags().DurationVar(&archiveAfter, "archive-after", 0, "idle time before a finished subagent is archived")
 	command.Flags().StringVar(&key, "idempotency-key", "", "mutation replay key (generated if omitted)")
@@ -501,10 +535,11 @@ func (c *cliConfig) writeCoordinationGrant(grant client.CoordinationGrant) error
 		return writeJSON(c.stdout, &grant)
 	}
 	_, err := fmt.Fprintf(c.stdout,
-		"%s\tstate=%s\tlead=%s\tapproval=%s\tsubagents=%d/%d\tchildren=%d\tlive=%d\tharnesses=%s\tdeadline=%s\tarchive-after=%s\tversion=%d\n",
-		grant.ID, grant.State, grant.RootThreadId, grant.SpawnApproval, grant.DescendantsCreated, grant.MaxDescendants,
+		"%s\tstate=%s\tlead=%s\tapproval=%s\tspawns-24h=%d/%d\tchildren=%d\tlive=%d\tharnesses=%s\tunattended=%s\tlapses=%s\tarchive-after=%s\tversion=%d\n",
+		grant.ID, grant.State, grant.RootThreadId, grant.SpawnApproval, grant.SpawnsInWindow, grant.MaxDescendants,
 		grant.MaxChildren, grant.MaxLiveCapsules, strings.Join(grant.AllowedHarnesses, ","),
-		grant.DeadlineAt.Format(time.RFC3339), archiveAfterText(grant.ArchiveAfterSeconds), grant.ResourceVersion,
+		time.Duration(grant.UnattendedLimitSeconds)*time.Second, grant.LapsesAt.Format(time.RFC3339),
+		archiveAfterText(grant.ArchiveAfterSeconds), grant.ResourceVersion,
 	)
 	return err
 }

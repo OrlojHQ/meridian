@@ -329,7 +329,7 @@ type Invoker interface {
 	// DenyCoordinationRequest invokes denyCoordinationRequest operation.
 	//
 	// Refuses a subagent the lead spawned under spawnApproval=operator. The child Capsule is not deleted
-	// and still counts toward the grant's descendantsCreated.
+	// and the spawn still counts toward the grant's rolling 24-hour spawn window.
 	//
 	// POST /coordination-requests/{requestId}/deny
 	DenyCoordinationRequest(ctx context.Context, request *DecideCoordinationRequest, params DenyCoordinationRequestParams) (DenyCoordinationRequestRes, error)
@@ -1068,10 +1068,10 @@ type Invoker interface {
 	UpdateCapsuleProfile(ctx context.Context, params UpdateCapsuleProfileParams) (UpdateCapsuleProfileRes, error)
 	// UpdateCoordinationGrant invokes updateCoordinationGrant operation.
 	//
-	// Changes spawn approval, limits, harnesses, deadline, deadline action, or archiveAfter on an active
-	// grant. The operator may loosen or tighten limits. Switching spawnApproval to auto does not start
-	// spawns already waiting for approval. Deadline is remaining time from now, between 5 minutes and 72
-	// hours, and cannot pass createdAt+72h.
+	// Changes spawn approval, limits, harnesses, unattended limit, lapse action, or archiveAfter on an
+	// active grant, including a lapsed one. The operator may loosen or tighten limits. Switching
+	// spawnApproval to auto does not start spawns already waiting for approval. Every update counts as the
+	// operator being present: it resets lastOperatorAt and reopens a lapsed grant.
 	//
 	// PATCH /coordination-grants/{grantId}
 	UpdateCoordinationGrant(ctx context.Context, request *UpdateCoordinationGrantRequest, params UpdateCoordinationGrantParams) (UpdateCoordinationGrantRes, error)
@@ -6792,7 +6792,7 @@ func (c *Client) sendDeleteThread(ctx context.Context, request *DeleteThreadRequ
 // DenyCoordinationRequest invokes denyCoordinationRequest operation.
 //
 // Refuses a subagent the lead spawned under spawnApproval=operator. The child Capsule is not deleted
-// and still counts toward the grant's descendantsCreated.
+// and the spawn still counts toward the grant's rolling 24-hour spawn window.
 //
 // POST /coordination-requests/{requestId}/deny
 func (c *Client) DenyCoordinationRequest(ctx context.Context, request *DecideCoordinationRequest, params DenyCoordinationRequestParams) (DenyCoordinationRequestRes, error) {
@@ -22041,10 +22041,10 @@ func (c *Client) sendUpdateCapsuleProfile(ctx context.Context, params UpdateCaps
 
 // UpdateCoordinationGrant invokes updateCoordinationGrant operation.
 //
-// Changes spawn approval, limits, harnesses, deadline, deadline action, or archiveAfter on an active
-// grant. The operator may loosen or tighten limits. Switching spawnApproval to auto does not start
-// spawns already waiting for approval. Deadline is remaining time from now, between 5 minutes and 72
-// hours, and cannot pass createdAt+72h.
+// Changes spawn approval, limits, harnesses, unattended limit, lapse action, or archiveAfter on an
+// active grant, including a lapsed one. The operator may loosen or tighten limits. Switching
+// spawnApproval to auto does not start spawns already waiting for approval. Every update counts as the
+// operator being present: it resets lastOperatorAt and reopens a lapsed grant.
 //
 // PATCH /coordination-grants/{grantId}
 func (c *Client) UpdateCoordinationGrant(ctx context.Context, request *UpdateCoordinationGrantRequest, params UpdateCoordinationGrantParams) (UpdateCoordinationGrantRes, error) {

@@ -277,10 +277,14 @@ const (
 	CodeLimitExceeded        = "limit_exceeded"
 	CodeCapacityExhausted    = "capacity_exhausted"
 	CodeGrantInactive        = "grant_inactive"
-	CodeUnavailable          = "unavailable"
-	CodeConflict             = "conflict"
-	CodeLinkClosed           = "link_closed"
-	CodeInternal             = "internal"
+	// CodeCoordinationLapsed refuses mutating requests while the operator
+	// has been away longer than the grant's unattended limit. It clears
+	// when the operator next messages the lead; retrying sooner cannot help.
+	CodeCoordinationLapsed = "coordination_lapsed"
+	CodeUnavailable        = "unavailable"
+	CodeConflict           = "conflict"
+	CodeLinkClosed         = "link_closed"
+	CodeInternal           = "internal"
 )
 
 type Error struct {
@@ -383,15 +387,17 @@ type Report struct {
 }
 
 type Self struct {
-	Role               string    `json:"role"`
-	Depth              int       `json:"depth"`
-	GrantID            string    `json:"grantId"`
-	MaxChildren        int       `json:"maxChildren"`
-	MaxDescendants     int       `json:"maxDescendants"`
-	MaxLiveCapsules    int       `json:"maxLiveCapsules"`
-	MaxMessagesPerLink int       `json:"maxMessagesPerLink"`
-	AllowedHarnesses   []string  `json:"allowedHarnesses"`
-	DeadlineAt         time.Time `json:"deadlineAt"`
+	Role               string   `json:"role"`
+	Depth              int      `json:"depth"`
+	GrantID            string   `json:"grantId"`
+	MaxChildren        int      `json:"maxChildren"`
+	MaxDescendants     int      `json:"maxDescendants"`
+	MaxLiveCapsules    int      `json:"maxLiveCapsules"`
+	MaxMessagesPerLink int      `json:"maxMessagesPerLink"`
+	AllowedHarnesses   []string `json:"allowedHarnesses"`
+	// DeadlineAt is when the grant lapses if the operator stays away, as of
+	// the last configuration. The operator's next message moves it later.
+	DeadlineAt time.Time `json:"deadlineAt"`
 }
 
 // Config is pushed by meridiand. Disabled mailboxes answer every request with

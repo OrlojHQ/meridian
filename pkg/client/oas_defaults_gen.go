@@ -26,7 +26,7 @@ func (s *CoordinationPolicy) setDefaults() {
 	}
 	{
 		val := int(86400)
-		s.DeadlineSeconds.SetTo(val)
+		s.UnattendedLimitSeconds.SetTo(val)
 	}
 	{
 		val := int(3600)

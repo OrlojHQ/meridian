@@ -1221,7 +1221,7 @@ export type CreateProjectThreadRequest = {
 };
 
 /**
- * Makes the new Thread a lead that may spawn subagent Threads in their own sub-Capsules. Omitted limits take their defaults. Subagents answer to the operator: the lead never approves permissions or answers input.
+ * Makes the new Thread a lead that may spawn subagent Threads in their own sub-Capsules. Omitted limits take their defaults. Subagents answer to the operator: the lead never approves permissions or answers input. maxChildren and maxDescendants count spawns in a rolling 24-hour window, not over the grant's lifetime. The grant has no fixed end; it lapses after unattendedLimitSeconds without the operator.
  *
  */
 export type CoordinationPolicy = {
@@ -1234,12 +1234,20 @@ export type CoordinationPolicy = {
      * Structured harnesses subagents may use; each must be on the Project allowlist. Defaults to the lead's harness.
      */
     allowedHarnesses?: Array<string>;
-    deadlineSeconds?: number;
+    /**
+     * How long the grant keeps spending after the operator's last message to the lead, spawn approval, or grant update. Past it the grant lapses: mutating coordination requests are refused as coordination_lapsed, onDeadline applies to running subagents, and the operator's next message to the lead reopens it. Coordination requests, reports, wakes and routines never reset it. Replaces deadlineSeconds, which is refused.
+     *
+     */
+    unattendedLimitSeconds?: number;
     /**
      * How long a finished subagent stays idle before its session is ended and its Thread paused. Its Capsule is then deleted if its workspace holds nothing unsaved (the last report changed no files, or a Delivery of it succeeded); otherwise the Capsule is kept. 0 disables auto-archive and this cleanup; otherwise at least 60. Transcripts are always kept.
      *
      */
     archiveAfterSeconds?: number;
+    /**
+     * What happens to running subagents when the grant lapses. cancel_and_pause closes their links and pauses them; stop_new_work lets them finish. Spawns waiting for approval are refused either way.
+     *
+     */
     onDeadline?: 'cancel_and_pause' | 'stop_new_work';
     /**
      * auto starts each accepted spawn. operator queues it until the operator approves or denies it. The grant itself is still the bound on how many may be requested.
@@ -1248,7 +1256,11 @@ export type CoordinationPolicy = {
     spawnApproval?: 'auto' | 'operator';
 };
 
-export type CoordinationGrantState = 'active' | 'revoked' | 'expired';
+/**
+ * lapsed is an active grant left unattended past its limit; the operator's next message to the lead reopens it. revoked is terminal. expired is terminal and only appears on grants that passed an absolute deadline before unattended limits replaced it.
+ *
+ */
+export type CoordinationGrantState = 'active' | 'lapsed' | 'revoked' | 'expired';
 
 export type CoordinationGrant = {
     id: string;
@@ -1263,10 +1275,29 @@ export type CoordinationGrant = {
     maxLiveCapsules: number;
     maxMessagesPerLink: number;
     allowedHarnesses: Array<string>;
-    deadlineAt: string;
+    /**
+     * Last operator message to the lead, spawn approval, or grant update.
+     */
+    lastOperatorAt: string;
+    unattendedLimitSeconds: number;
+    /**
+     * lastOperatorAt plus the unattended limit.
+     */
+    lapsesAt: string;
+    /**
+     * When the lapse was applied to running subagents; absent while open.
+     */
+    lapsedAt?: string;
     onDeadline: 'cancel_and_pause' | 'stop_new_work';
     archiveAfterSeconds: number;
+    /**
+     * Spawns over the grant's lifetime, for display only.
+     */
     descendantsCreated: number;
+    /**
+     * Spawns in the last 24 hours, which maxChildren and maxDescendants limit.
+     */
+    spawnsInWindow: number;
     revokedAt?: string;
     revokeReason?: 'operator' | 'deadline' | 'lead_ended';
     createdAt: string;
@@ -1280,7 +1311,7 @@ export type RevokeCoordinationGrantRequest = {
 };
 
 /**
- * Operator update to an active grant. Omitted fields stay unchanged. allowedHarnesses, when present, replaces the allowlist and must not be empty. deadlineSeconds is remaining time from now.
+ * Operator update to an active grant. Omitted fields stay unchanged. allowedHarnesses, when present, replaces the allowlist and must not be empty. Any update resets lastOperatorAt and reopens a lapsed grant.
  *
  */
 export type UpdateCoordinationGrantRequest = {
@@ -1291,7 +1322,7 @@ export type UpdateCoordinationGrantRequest = {
     maxLiveCapsules?: number;
     maxMessagesPerLink?: number;
     allowedHarnesses?: Array<string>;
-    deadlineSeconds?: number;
+    unattendedLimitSeconds?: number;
     onDeadline?: 'cancel_and_pause' | 'stop_new_work';
     archiveAfterSeconds?: number;
 };

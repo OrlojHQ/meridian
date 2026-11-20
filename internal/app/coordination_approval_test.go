@@ -188,20 +188,31 @@ func TestGrantUpdateLoosensAndTightens(t *testing.T) {
 	}
 }
 
-func TestGrantDeadlinePatchIsCapped(t *testing.T) {
+func TestGrantUnattendedLimitPatchIsBounded(t *testing.T) {
 	f := newCoordFixture(t)
 	lead, _ := f.spawnLead(t, domain.CoordinationPolicy{})
 	position, _ := f.service.ThreadCoordinationOf(f.ctx, lead.Intent.ThreadID)
 	grant, _ := f.service.GetCoordinationGrant(f.ctx, position.GrantID)
-	remaining := 72 * time.Hour
+	// The old absolute cap was createdAt+72h; an unattended limit has none.
+	f.advance(70 * time.Hour)
+	before := f.clock.Now()
+	limit := 72 * time.Hour
 	updated, err := f.service.UpdateCoordinationGrant(f.ctx, grant.ID, grant.ResourceVersion, domain.CoordinationGrantPatch{
-		Deadline: &remaining,
-	}, "deadline")
+		UnattendedLimit: &limit,
+	}, "limit")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !updated.DeadlineAt.Equal(grant.CreatedAt.Add(domain.CoordinationMaxDeadline)) {
-		t.Fatalf("capped deadline = %s, created = %s", updated.DeadlineAt, grant.CreatedAt)
+	if updated.UnattendedLimit != limit || updated.LastOperatorAt.Before(before) ||
+		!updated.LapsesAt().Equal(updated.LastOperatorAt.Add(limit)) {
+		t.Fatalf("limit patch = %+v", updated)
+	}
+	for _, bad := range []time.Duration{time.Minute, 73 * time.Hour, 10*time.Minute + time.Millisecond} {
+		if _, err := f.service.UpdateCoordinationGrant(f.ctx, updated.ID, updated.ResourceVersion, domain.CoordinationGrantPatch{
+			UnattendedLimit: &bad,
+		}, "bad-"+bad.String()); !errors.Is(err, domain.ErrInvalid) {
+			t.Errorf("limit %s = %v", bad, err)
+		}
 	}
 	if _, err := f.service.UpdateCoordinationGrant(f.ctx, updated.ID, updated.ResourceVersion, domain.CoordinationGrantPatch{}, "empty"); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("empty patch = %v", err)
@@ -251,9 +262,9 @@ func TestCoordinationGrantPatchRequiresChange(t *testing.T) {
 	grant := domain.CoordinationGrant{
 		MaxChildren: 4, MaxDescendants: 8, MaxLiveCapsules: 4, MaxMessagesPerLink: 50,
 		SpawnApproval: domain.SpawnAuto, CreatedAt: time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC),
-		DeadlineAt: time.Date(2026, 11, 1, 8, 0, 0, 0, time.UTC),
+		LastOperatorAt: time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), UnattendedLimit: 8 * time.Hour,
 	}
-	if _, err := grant.Apply(patch, grant.CreatedAt.Add(time.Hour)); !errors.Is(err, domain.ErrInvalid) {
+	if _, err := grant.Apply(patch); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("apply empty = %v", err)
 	}
 }

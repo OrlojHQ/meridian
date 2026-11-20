@@ -18,11 +18,12 @@ import { ThreadConversation } from "../components/ThreadConversation";
 import {
   grantLimits,
   cleanupChoices,
+  durationLabel,
+  unattendedChoices,
   removeNotice,
   SubagentsButton,
   SubagentsPanel,
   ThreadSubagents,
-  untilDeadline,
 } from "../components/ThreadSubagents";
 import { buildThreadChat } from "../components/threadChat";
 import {
@@ -86,10 +87,13 @@ const grant: CoordinationGrant = {
   maxLiveCapsules: 4,
   maxMessagesPerLink: 50,
   allowedHarnesses: ["mock"],
-  deadlineAt: "2026-11-01T08:00:00Z",
+  lastOperatorAt: "2026-11-01T00:00:00Z",
+  unattendedLimitSeconds: 86400,
+  lapsesAt: "2026-11-02T00:00:00Z",
   onDeadline: "cancel_and_pause",
   archiveAfterSeconds: 86400,
-  descendantsCreated: 2,
+  descendantsCreated: 5,
+  spawnsInWindow: 2,
   createdAt: "2026-11-01T00:00:00Z",
   updatedAt: "2026-11-01T00:00:00Z",
   resourceVersion: 3,
@@ -168,7 +172,7 @@ describe("Lead launcher", () => {
       expect(spawn).toHaveBeenCalledWith(project.id, "mock", "split the work", "split the work", {
         maxChildren: 2,
         maxDescendants: 2,
-        deadlineSeconds: 24 * 3600,
+        unattendedLimitSeconds: 24 * 3600,
         spawnApproval: "operator",
       }),
     );
@@ -219,7 +223,7 @@ describe("Subagents panel", () => {
     expect(within(panel).getByText("Sonnet")).toBeInTheDocument();
     expect(within(panel).queryByText(/of 4 started/)).not.toBeInTheDocument();
     await userEvent.click(within(panel).getByRole("button", { name: "Subagent settings" }));
-    expect(within(panel).getByText(/^2 of 4 started/)).toBeInTheDocument();
+    expect(within(panel).getByText(/^2 of 4 started in 24 hours · pauses after 1 day without you$/)).toBeInTheDocument();
     await userEvent.click(within(panel).getByRole("button", { name: "Stop subagents" }));
     await userEvent.click(within(panel).getByRole("button", { name: "Confirm stop" }));
     await waitFor(() => expect(revoke).toHaveBeenCalledWith(grant));
@@ -296,19 +300,45 @@ describe("Subagents panel", () => {
     expect(plain.container).toBeEmptyDOMElement();
   });
 
-  it("words the grant limits and its deadline relative to now", () => {
-    const now = Date.parse("2026-11-01T00:08:00Z");
-    expect(grantLimits(grant, true, now)).toBe("2 of 4 started · up to 4 at a time · ends in 7h 52m");
-    expect(grantLimits({ ...grant, maxChildren: 16 }, false, now)).toBe(
-      "2 of 8 started · up to 4 at a time",
+  it("words the spawn window and the unattended limit", () => {
+    expect(grantLimits(grant, true)).toBe(
+      "2 of 4 started in 24 hours · up to 4 at a time · pauses after 1 day without you",
     );
-    expect(grantLimits(grant, true, now, { live: false })).toBe("2 of 4 started · ends in 7h 52m");
-    expect(grantLimits({ ...grant, spawnApproval: "operator" }, true, now)).toBe(
-      "2 of 4 started · up to 4 at a time · ends in 7h 52m · approve each spawn",
+    expect(grantLimits({ ...grant, maxChildren: 16 }, false)).toBe(
+      "2 of 8 started in 24 hours · up to 4 at a time",
     );
-    expect(untilDeadline("2026-11-03T02:00:00Z", now)).toBe("ends in 2d 1h");
-    expect(untilDeadline("2026-11-01T00:30:00Z", now)).toBe("ends in 22m");
-    expect(untilDeadline("2026-11-01T00:00:00Z", now)).toBe("deadline passed");
+    expect(grantLimits(grant, true, { live: false })).toBe(
+      "2 of 4 started in 24 hours · pauses after 1 day without you",
+    );
+    expect(grantLimits({ ...grant, spawnApproval: "operator", unattendedLimitSeconds: 4 * 3600 }, true)).toBe(
+      "2 of 4 started in 24 hours · up to 4 at a time · pauses after 4 hours without you · approve each spawn",
+    );
+    expect(grantLimits({ ...grant, state: "lapsed" }, true, { live: false })).toBe(
+      "2 of 4 started in 24 hours · paused until you message the lead",
+    );
+    expect(durationLabel(3 * 86400)).toBe("3 days");
+    expect(durationLabel(3600)).toBe("1 hour");
+    expect(durationLabel(300)).toBe("5 minutes");
+    expect(unattendedChoices(86400).map((choice) => choice.label)).toEqual(["1 hour", "4 hours", "1 day", "3 days"]);
+    expect(unattendedChoices(300).map((choice) => choice.label)[0]).toBe("5 minutes");
+  });
+
+  it("shows a lapsed lead as paused and lets the operator change the limit", async () => {
+    vi.spyOn(api, "coordinationGrant").mockResolvedValue({ ...grant, state: "lapsed" });
+    vi.spyOn(api, "coordinationRequests").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "threadLinks").mockResolvedValue({ items: [] });
+    const update = vi.spyOn(api, "updateCoordinationGrant").mockResolvedValue(grant);
+    wrapper(<SubagentsPanel thread={leadThread} grantId={grant.id} />);
+    const panel = await screen.findByRole("region", { name: "Subagents" });
+    expect(await within(panel).findByText("Paused")).toHaveClass("subagents-state", "state-lapsed");
+    expect(within(panel).getByText(/Send the lead a message/)).toBeInTheDocument();
+    await userEvent.click(within(panel).getByRole("button", { name: "Subagent settings" }));
+    const limit = within(panel).getByRole("combobox", { name: /Pause without you/ });
+    expect(limit).toHaveValue("86400");
+    await userEvent.selectOptions(limit, "3 days");
+    await waitFor(() =>
+      expect(update).toHaveBeenCalledWith({ ...grant, state: "lapsed" }, { unattendedLimitSeconds: 3 * 86400 }),
+    );
   });
 
   it("folds archived subagents and marks promoted ones", async () => {

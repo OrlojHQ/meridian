@@ -2,6 +2,7 @@ package httpapi_test
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -122,10 +123,29 @@ func TestCoordinationRoutes(t *testing.T) {
 		}
 	}
 
+	// The absolute deadline was replaced; old clients get a clear refusal.
+	for name, body := range map[string]string{
+		"/projects/" + projectID + "/threads": `{"harness":"mock","prompt":"lead","coordination":{"deadlineSeconds":3600}}`,
+	} {
+		request, _ := http.NewRequestWithContext(ctx, http.MethodPost, server.URL+name, strings.NewReader(body))
+		request.Header.Set("Authorization", "Bearer "+tokenValue)
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("Idempotency-Key", "old-deadline")
+		response, err := http.DefaultClient.Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, _ := io.ReadAll(response.Body)
+		_ = response.Body.Close()
+		if response.StatusCode != http.StatusBadRequest || !strings.Contains(string(raw), "unattendedLimitSeconds") {
+			t.Fatalf("deadlineSeconds = %d %s", response.StatusCode, raw)
+		}
+	}
+
 	created, err := api.CreateProjectThread(ctx, &client.CreateProjectThreadRequest{
 		Harness: "mock", Prompt: client.NewOptString("lead"),
 		Coordination: client.NewOptCoordinationPolicy(client.CoordinationPolicy{
-			MaxChildren: client.NewOptInt(3), DeadlineSeconds: client.NewOptInt(3600),
+			MaxChildren: client.NewOptInt(3), UnattendedLimitSeconds: client.NewOptInt(3600),
 			ArchiveAfterSeconds: client.NewOptInt(120),
 		}),
 	}, client.CreateProjectThreadParams{ProjectId: projectID, IdempotencyKey: "lead"})
@@ -178,7 +198,8 @@ func TestCoordinationRoutes(t *testing.T) {
 	}
 	grant := grantResult.(*client.CoordinationGrantHeaders).Response
 	if grant.State != client.CoordinationGrantStateActive || grant.MaxChildren != 3 ||
-		grant.RootThreadId != thread.ID || grant.DeadlineAt.Sub(grant.CreatedAt) != time.Hour ||
+		grant.RootThreadId != thread.ID || grant.UnattendedLimitSeconds != 3600 ||
+		grant.LapsesAt.Sub(grant.LastOperatorAt) != time.Hour || grant.SpawnsInWindow != 0 ||
 		grant.ArchiveAfterSeconds != 120 || grant.SpawnApproval != client.CoordinationGrantSpawnApprovalAuto {
 		t.Fatalf("grant = %#v", grant)
 	}

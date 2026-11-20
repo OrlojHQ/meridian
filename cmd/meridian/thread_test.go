@@ -400,6 +400,28 @@ func TestLeadArchiveAfterAndCapsulePromote(t *testing.T) {
 	if !strings.Contains(received, `"archiveAfterSeconds":0`) {
 		t.Fatalf("spawn request = %s", received)
 	}
+	for _, flag := range []string{"--unattended-limit", "--lead-deadline"} {
+		command = threadTestRoot(config)
+		command.SetErr(io.Discard)
+		command.SetArgs([]string{"thread", "spawn", "project-1", "--harness", "mock", "--prompt", "x", "--lead", flag, "2h"})
+		if err := command.Execute(); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(received, `"unattendedLimitSeconds":7200`) || strings.Contains(received, "deadline") {
+			t.Fatalf("%s request = %s", flag, received)
+		}
+	}
+	for args, want := range map[string]string{
+		"--unattended-limit 2h --lead-deadline 2h": "not both",
+		"--unattended-limit 90s500ms":              "whole seconds",
+	} {
+		command = threadTestRoot(config)
+		command.SetArgs(append([]string{"thread", "spawn", "project-1", "--harness", "mock", "--prompt", "x", "--lead"},
+			strings.Fields(args)...))
+		if err := command.Execute(); err == nil || !strings.Contains(err.Error(), want) {
+			t.Fatalf("%s = %v", args, err)
+		}
+	}
 	command = threadTestRoot(config)
 	command.SetArgs([]string{"thread", "spawn", "project-1", "--harness", "mock", "--prompt", "x", "--archive-after", "1h"})
 	if err := command.Execute(); err == nil || !strings.Contains(err.Error(), "--archive-after requires --lead") {

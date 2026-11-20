@@ -117,6 +117,12 @@ Three ways to carry a request out of the Capsule were considered:
   unchanged: an agent may propose a Delivery, and only the operator can approve
   it.
 
+> **Amended by ADR 0059.** The absolute grant deadline described here and in
+> the amendments below was replaced by an unattended limit, and the total
+> children limit now counts a rolling 24-hour window. See "Amendment:
+> unattended limit replaces the deadline" at the end of this ADR. The text
+> above is kept as decided at the time.
+
 ## Consequences
 
 Users can hand a goal to one lead and supervise the resulting tree, with the
@@ -399,3 +405,51 @@ Main Capsules the operator starts are unchanged and keep idle pause.
   already destroy. Promoted and failed subagents, and subagents that need the
   operator or have a Delivery in flight, are never archived and so never
   cleaned up.
+
+## Amendment: unattended limit replaces the deadline
+
+ADR 0059 section 1 replaces the absolute deadline so a lead conversation can
+last weeks. The bound on a runaway lead moves from grant age to unattended
+time plus a rolling spawn window.
+
+- **Unattended limit.** A grant records `lastOperatorAt` and
+  `unattendedLimit` (default 24 hours, 5 minutes to 72 hours, whole seconds),
+  which replace `deadlineSeconds` and `deadlineAt`. Only operator API calls
+  move `lastOperatorAt`: a message to the lead Thread, approving a spawn, and
+  `PATCH /coordination-grants/{id}`. Wakes, reports, routines, and every
+  coordination request leave it alone.
+- **Lapse.** Once `now - lastOperatorAt` passes the limit, the grant is
+  lapsed: mutating mailbox requests are refused as `coordination_lapsed`,
+  reads still answer, the lead is not woken with reports, and the
+  coordination loop applies `onDeadline` once (`cancel_and_pause` closes open
+  links as revoked so the sweep cancels and pauses subagents;
+  `stop_new_work` leaves them running; queued spawns close either way). The
+  store keeps the grant `active` with `lapsed_at` set, and the API presents
+  it as `lapsed`. The next operator message to the lead, or a grant update,
+  clears `lapsed_at` and reopens it. Revocation and `lead_ended` stay
+  terminal; idle pause of the lead ends nothing. `expired` remains only on
+  grants that passed a deadline before this amendment.
+- **Rolling window.** `maxDescendants` (default 8, at most 32) counts spawns
+  created in the last 24 hours instead of over the grant's lifetime. With
+  depth fixed at one every spawn is the lead's own child, so the fan-out
+  check (`maxChildren`) counts the same window; counting every sibling ever
+  would have kept a lifetime cap of at most 16. Denied, cancelled, and
+  removed spawns still count while they are in the window.
+  `descendantsCreated` stays as a lifetime count for display, and grant views
+  add `spawnsInWindow`. Live Capsules, depth, and messages per link are
+  unchanged.
+- **Migration.** Migration 0036 adds the attendance columns and drops
+  `deadline_at`. Active grants take their remaining deadline, capped at 72
+  hours and at least 5 minutes, as the limit, with `lastOperatorAt` set so
+  they still stop when their deadline would have passed. Triggers refuse a
+  `lastOperatorAt` that moves backwards, an unparsable one, and any change to
+  an ended grant's attendance fields.
+- **Interfaces.** `meridian thread spawn --lead` and `meridian grant update`
+  take `--unattended-limit`; `--lead-deadline` is a deprecated alias with the
+  same meaning ("lapse this long from now"). The API refuses
+  `deadlineSeconds` with a message naming `unattendedLimitSeconds`. The
+  `meridian.coord.v1` `whoami` field `deadlineAt` keeps its name, because
+  Capsule mailboxes decode configuration strictly, and now carries when the
+  grant lapses as of its last configuration. The lead's Agents panel shows
+  spawns in the current window and "pauses after N without you", lets the
+  operator change the limit, and shows a lapsed lead as Paused.
