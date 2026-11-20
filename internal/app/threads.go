@@ -37,6 +37,9 @@ type CreateThreadInput struct {
 	FirstMessage   string
 	Start          bool
 	IdempotencyKey string
+	// NoteChoice is the "Include Project notes" choice (ADR 0060). Empty
+	// follows the Project's notesDelivery.
+	NoteChoice domain.NoteChoice
 }
 
 type ThreadBlockView struct {
@@ -242,6 +245,19 @@ func (s *Service) CreateThread(ctx context.Context, input CreateThreadInput) (Th
 		}
 		if err := tx.InsertThread(ctx, result.Thread); err != nil {
 			return err
+		}
+		if input.NoteChoice != domain.NoteChoiceDefault {
+			capsule, err := tx.GetCapsule(ctx, input.CapsuleID)
+			if err != nil {
+				return err
+			}
+			project, err := tx.GetProject(ctx, capsule.ProjectID)
+			if err != nil {
+				return err
+			}
+			if err := s.setThreadNoteChoiceTx(ctx, tx, project, threadID, input.NoteChoice, now); err != nil {
+				return err
+			}
 		}
 		if input.FirstMessage != "" {
 			messageID := domain.ThreadMessageID(s.ids.NewID())
