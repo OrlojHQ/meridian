@@ -7,6 +7,25 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- The Thread toolbar no longer shows **Live** while updates are arriving. Its
+  badge appears only when the transcript may be out of date: **Reconnecting…**
+  while the stream retries, and **Disconnected** (formerly Closed) once it
+  gives up. **Session ended** is unchanged.
+- Claude Code's request retries show in the Thread as one notice that updates
+  with each attempt, such as "Model request failed: the model provider could
+  not be reached. Retrying, attempt 3 of 10." This needs a Capsule built from
+  the new image.
+
+### Fixed
+
+- A Thread you come back to after a day, or after Meridian restarts, takes
+  your next prompt instead of sitting on Working. Before delivering it,
+  Meridian resumes the idle harness's session with a fresh provider gateway
+  lease, certificate, and address (ADR 0058). You no longer have to stop and
+  resume the session, or start a new Capsule.
+
 ## [0.13.0] - 2026-11-19
 
 ### Added
