@@ -605,11 +605,7 @@ button.blocker-peek-toggle {
   content: "";
 }
 
-.thread-toolbar .connection.live::before {
-  background: var(--status-working);
-}
-
-.thread-toolbar .connection.closed::before {
+.thread-toolbar .connection.ended::before {
   background: var(--faint);
 }
 
