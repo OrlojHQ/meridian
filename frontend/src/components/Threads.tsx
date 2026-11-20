@@ -36,6 +36,8 @@ import {
 import { ThreadConversation } from "./ThreadConversation";
 import { ThreadSubagents } from "./ThreadSubagents";
 import { ThreadError } from "./ThreadError";
+import { ContextMeter } from "./ContextMeter";
+import { contextDetail, contextMeterUsage, contextUsage } from "./contextUsage";
 import { Menu as ActionsMenu, type MenuItem as ActionsMenuItem } from "./ui/Menu";
 import { ListSkeleton } from "./ui/loading";
 import { HarnessMark } from "./ui/HarnessMark";
@@ -540,6 +542,10 @@ export function ThreadDetail({
   const named = profiles.data?.items.filter((item) => item.name === thread.harness) ?? [];
   const profile = named.find((item) => item.structured) ?? named[0];
   const activeSession = isActiveRunState(thread.currentRunState);
+  // Context fill: a meter on plain Threads from half full, and always in the
+  // details when the harness reports it.
+  const contextMeter = contextMeterUsage(thread);
+  const contextFill = contextUsage(thread);
   const canCompose = thread.state === "active" && thread.structuredSupported !== false;
   // Start fresh replaces this Thread's session with a new Thread in the same
   // Thread Capsule. A CLI Capsule runs its terminal and never starts a Thread.
@@ -635,6 +641,7 @@ export function ThreadDetail({
         >
           Thread details
         </button>
+        {contextMeter && <ContextMeter usage={contextMeter} harness={thread.harness} />}
         {ended ? (
           <span className="connection closed ended" role="status">
             Session ended
@@ -682,6 +689,7 @@ export function ThreadDetail({
           <div><dt>Protocol</dt><dd>{safeInline(thread.protocol ?? "Unsupported")}</dd></div>
           <div><dt>Session</dt><dd>{safeInline(thread.currentRunState ?? "Idle")}</dd></div>
           <div><dt>Messages</dt><dd>{thread.messageCount}</dd></div>
+          {contextFill && <div><dt>Context</dt><dd>{contextDetail(contextFill)}</dd></div>}
           <div><dt>Encryption</dt><dd>{thread.encryptedAtRest ? "Encrypted at rest" : "Unavailable"}</dd></div>
           <div><dt>Thread ID</dt><dd className="mono">{safeInline(thread.id)}</dd></div>
         </dl>

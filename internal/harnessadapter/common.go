@@ -36,6 +36,7 @@ type Stream struct {
 	effort   bool
 	resolved bool
 	images   bool
+	usage    bool
 }
 
 func NewStream(input io.Reader, output io.Writer) *Stream {
@@ -84,6 +85,8 @@ func (s *Stream) Handshake(capabilities adapterproto.Capabilities) error {
 	capabilities.ResolvedModel = s.resolved
 	s.images = s.models && capabilities.Images && frame.Capabilities.Images
 	capabilities.Images = s.images
+	s.usage = capabilities.ContextUsage && frame.Capabilities.ContextUsage
+	capabilities.ContextUsage = s.usage
 	return s.Write(adapterproto.Frame{
 		Protocol:     adapterproto.Version,
 		Type:         adapterproto.KindHello,
@@ -102,6 +105,26 @@ func (s *Stream) ReportCommands(commands *commandSet) error {
 		Protocol: adapterproto.Version, Type: adapterproto.KindCommands,
 		Commands: commands.list(),
 	})
+}
+
+// ReportContextUsage sends how full the harness's context window is when the
+// controller negotiated context_usage frames, and drops it otherwise. A
+// report that would not validate is dropped too: usage is presentation, and
+// a harness's odd count must not end the session.
+func (s *Stream) ReportContextUsage(usage adapterproto.ContextUsage) error {
+	if !s.usage || !usage.Valid() {
+		return nil
+	}
+	return s.Write(adapterproto.Frame{
+		Protocol: adapterproto.Version, Type: adapterproto.KindContextUsage,
+		ContextUsage: &usage,
+	})
+}
+
+// ContextUsageNegotiated reports whether context_usage frames are wanted, so
+// a driver can skip asking its harness for counts nobody will read.
+func (s *Stream) ContextUsageNegotiated() bool {
+	return s.usage
 }
 
 func (s *Stream) Fail(code string) {

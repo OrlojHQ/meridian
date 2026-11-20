@@ -74,6 +74,10 @@ type ThreadAdapterEvent struct {
 	Models          *adapterproto.ModelSet   `json:"models,omitempty"`
 	Model           string                   `json:"model,omitempty"`
 	Effort          string                   `json:"effort,omitempty"`
+	// Compacted marks where the harness compacted the conversation. A
+	// context_usage event is persisted only for a compaction, and carries
+	// no token counts.
+	Compacted bool `json:"compacted,omitempty"`
 }
 
 type ThreadBlockPage struct {
@@ -1283,8 +1287,10 @@ func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
 	}
 	var endStatus adapterproto.Status
 	var reportedModels *adapterproto.ModelSet
+	var reportedUsage *adapterproto.ContextUsage
 	err = s.store.Transact(ctx, func(tx ports.Transaction) error {
 		reportedModels = nil
+		reportedUsage = nil
 		currentThread, err := tx.GetThread(ctx, id)
 		if err != nil {
 			return err
@@ -1362,6 +1368,9 @@ func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
 			if event.Frame.Type == adapterproto.KindModels && event.Frame.Models != nil {
 				reportedModels = event.Frame.Models
 			}
+			if event.Frame.Type == adapterproto.KindContextUsage && event.Frame.ContextUsage != nil {
+				reportedUsage = event.Frame.ContextUsage
+			}
 			cursor = event.Sequence
 		}
 		if events.NextCursor > cursor {
@@ -1393,6 +1402,9 @@ func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
 	}
 	if reportedModels != nil {
 		s.rememberThreadModels(id, reportedModels)
+	}
+	if reportedUsage != nil {
+		s.rememberContextUsage(id, run.ID, *reportedUsage)
 	}
 	if endStatus != "" {
 		status := domain.RunFailed
@@ -1899,6 +1911,17 @@ func mapStructuredEvent(event ports.RuntimeStructuredEvent) (
 		adapterproto.KindInputRequest, adapterproto.KindEnd, adapterproto.KindCommands,
 		adapterproto.KindModels:
 		return domain.ThreadRoleSystem, domain.ThreadMessageStatus, domain.ThreadBlockJSON, payload, true
+	case adapterproto.KindContextUsage:
+		// Fill changes with every model call and stays in memory only. A
+		// compaction is a point in the conversation, so it is kept as a
+		// content-free marker: the event type and the flag, no counts.
+		if frame.ContextUsage == nil || !frame.ContextUsage.Compacted {
+			return "", "", "", persistedThreadBlock{}, false
+		}
+		marker := persistedThreadBlock{Event: &ThreadAdapterEvent{
+			Type: frame.Type, RuntimeSequence: event.Sequence, Compacted: true,
+		}}
+		return domain.ThreadRoleSystem, domain.ThreadMessageStatus, domain.ThreadBlockJSON, marker, true
 	default:
 		return "", "", "", persistedThreadBlock{}, false
 	}

@@ -115,6 +115,8 @@ type Service struct {
 	sessionLeases         map[domain.RunID]sessionLease
 	modelsMu              sync.Mutex
 	models                map[domain.ThreadID]ThreadModelSummary
+	contextMu             sync.Mutex
+	contextUsage          map[domain.ThreadID]threadContextEntry
 	endpointReasoningMu   sync.Mutex
 	endpointReasoning     map[string]endpointReasoningCache
 	coordination          ports.CoordinationRuntime
@@ -245,13 +247,14 @@ func NewService(
 ) *Service {
 	service := &Service{
 		store: newScopedStore(store, clock), clock: clock, ids: ids, queue: queue,
-		attention:   make(map[domain.ThreadID]cachedThreadAttention),
-		models:      make(map[domain.ThreadID]ThreadModelSummary),
-		checkCancel: make(map[domain.CheckRunID]context.CancelFunc),
-		checkOwners: make(map[domain.CheckRunID]domain.CapsuleID),
-		checkWake:   make(chan struct{}, 1),
-		ciWake:      make(chan struct{}, 1),
-		routineWake: make(chan struct{}, 1),
+		attention:    make(map[domain.ThreadID]cachedThreadAttention),
+		models:       make(map[domain.ThreadID]ThreadModelSummary),
+		contextUsage: make(map[domain.ThreadID]threadContextEntry),
+		checkCancel:  make(map[domain.CheckRunID]context.CancelFunc),
+		checkOwners:  make(map[domain.CheckRunID]domain.CapsuleID),
+		checkWake:    make(chan struct{}, 1),
+		ciWake:       make(chan struct{}, 1),
+		routineWake:  make(chan struct{}, 1),
 	}
 	if len(runtime) > 0 {
 		service.runtime = runtime[0]

@@ -69,6 +69,8 @@ export type ChatItem =
   | { kind: "request"; key: string; request: ChatRequest; actionable: boolean }
   | { kind: "error"; key: string; text: string; code?: string }
   | { kind: "notice"; key: string; text: string }
+  // Where the harness compacted (summarized) the conversation.
+  | { kind: "compaction"; key: string }
   | { kind: "meridian"; key: string; text: string };
 
 export type ChatActivity = "idle" | "starting" | "working" | "waiting" | "stopping";
@@ -401,6 +403,10 @@ export function buildThreadChat(
         break;
       case "gap":
         items.push({ kind: "notice", key: block.id, text: "Some earlier events are unavailable." });
+        break;
+      case "context_usage":
+        // Only compactions are kept in the transcript; fill is live state.
+        if (event.compacted) items.push({ kind: "compaction", key: block.id });
         break;
       default:
         items.push({

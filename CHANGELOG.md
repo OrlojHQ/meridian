@@ -7,6 +7,24 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Plain Threads show how full the agent's context window is. Once it is half
+  full, the Thread toolbar shows a small meter ("62% of 200k"), so you can
+  compact with the harness's own command in the `/` menu or start fresh.
+  Leads show no meter, so a long lead conversation reads as one continuous
+  conversation. The figure is in Thread details for both. Where the harness
+  compacted the conversation, the transcript shows a quiet divider ("Earlier
+  conversation was summarized by Claude Code"), so an agent that forgets
+  something earlier has a visible reason. Claude Code, Codex, OpenCode,
+  DeepSeek Harness and Pi report the numbers. Claude Code, Codex and Pi also
+  report compactions. A harness that reports nothing shows no meter. The
+  figure is the input size of the agent's most recent model call, not what
+  the session has spent in total. Meridian keeps only the latest figure, in
+  memory, and does not compact anything itself. Adapters gain a negotiated
+  `context_usage` frame, and the Thread API gains `contextUsage` and a
+  `context_usage` transcript event for compactions (ADR 0059).
+
 ### Changed
 
 - A lead no longer stops coordinating 72 hours after it started. Its grant

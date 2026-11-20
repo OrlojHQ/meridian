@@ -769,7 +769,17 @@ That label is harness-reported text, not content, but it comes from the
 transcript, so it is kept the same way: in memory, taken from the frames the
 daemon ingests or from the same bounded transcript tail after a restart,
 bounded to one 128-byte line, served only to the authenticated operator API,
-and never persisted, logged, or sent to the lead (ADR 0031). Background runtime
+and never persisted, logged, or sent to the lead (ADR 0031). Thread responses
+may also include `contextUsage`, the token count and window the live session's
+harness last reported in a `context_usage` frame (ADR 0059). These are counts
+with no model name or text. The adapter bounds them, `adapterproto` rejects
+negative or oversized values and frames from adapters that did not negotiate
+them, and the daemon keeps only the latest value per Thread in memory, never
+persisting, logging, or emitting it. Only a compaction is written, as a
+transcript block inside the existing ciphertext that holds the event type and a
+`compacted` flag and no counts. A hostile adapter can misreport fill and make
+the meter read wrong, which misleads only the operator's choice to compact
+or start fresh. Background runtime
 refresh ingests frames for Threads nobody is watching into the same encrypted
 store; it never sends, resends, or resumes a session (ADR 0025). The browser's
 Inbox peek reads one Thread's transcript tail through the same
@@ -1085,8 +1095,8 @@ they are not a statement that every planned path is already implemented.
 - Run prompts, raw PTY bytes, full diffs, setup output, and secret values are
   omitted from normal durable records and logs. Only explicit structured
   Threads persist prompt/tool content, always as authenticated ciphertext.
-- Thread attention (`awaiting`, `turn`) is derived in memory, content-free, and never
-  persisted; background runtime refresh never sends, resumes, or wakes work.
+- Thread attention (`awaiting`, `turn`) and context fill (`contextUsage`) are
+  held in memory, content-free, and never persisted; background runtime refresh never sends, resumes, or wakes work.
   When it finds a stopped runtime it fails the lost Run and queues the
   Capsule for the reconciler; it does not start the runtime itself.
 - Capsule containers have no engine restart policy. Only the reconciler

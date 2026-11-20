@@ -24799,6 +24799,39 @@ func (s *OptThreadAwaiting) UnmarshalJSON(data []byte) error {
 	return s.Decode(d)
 }
 
+// Encode encodes ThreadContextUsage as json.
+func (o OptThreadContextUsage) Encode(e *jx.Encoder) {
+	if !o.Set {
+		return
+	}
+	o.Value.Encode(e)
+}
+
+// Decode decodes ThreadContextUsage from json.
+func (o *OptThreadContextUsage) Decode(d *jx.Decoder) error {
+	if o == nil {
+		return errors.New("invalid: unable to decode OptThreadContextUsage to nil")
+	}
+	o.Set = true
+	if err := o.Value.Decode(d); err != nil {
+		return err
+	}
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s OptThreadContextUsage) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *OptThreadContextUsage) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
 // Encode encodes ThreadEffort as json.
 func (o OptThreadEffort) Encode(e *jx.Encoder) {
 	if !o.Set {
@@ -39126,6 +39159,12 @@ func (s *Thread) encodeFields(e *jx.Encoder) {
 		}
 	}
 	{
+		if s.ContextUsage.Set {
+			e.FieldStart("contextUsage")
+			s.ContextUsage.Encode(e)
+		}
+	}
+	{
 		if s.Protocol.Set {
 			e.FieldStart("protocol")
 			s.Protocol.Encode(e)
@@ -39199,7 +39238,7 @@ func (s *Thread) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfThread = [22]string{
+var jsonFieldsNameOfThread = [23]string{
 	0:  "id",
 	1:  "capsuleId",
 	2:  "state",
@@ -39208,20 +39247,21 @@ var jsonFieldsNameOfThread = [22]string{
 	5:  "currentRunState",
 	6:  "awaiting",
 	7:  "turn",
-	8:  "protocol",
-	9:  "structuredSupported",
-	10: "coordinationGrantId",
-	11: "parentThreadId",
-	12: "rootThreadId",
-	13: "linkId",
-	14: "depth",
-	15: "encryptedAtRest",
-	16: "messageCount",
-	17: "encryptedBytes",
-	18: "createdAt",
-	19: "updatedAt",
-	20: "deletedAt",
-	21: "resourceVersion",
+	8:  "contextUsage",
+	9:  "protocol",
+	10: "structuredSupported",
+	11: "coordinationGrantId",
+	12: "parentThreadId",
+	13: "rootThreadId",
+	14: "linkId",
+	15: "depth",
+	16: "encryptedAtRest",
+	17: "messageCount",
+	18: "encryptedBytes",
+	19: "createdAt",
+	20: "updatedAt",
+	21: "deletedAt",
+	22: "resourceVersion",
 }
 
 // Decode decodes Thread from json.
@@ -39319,6 +39359,16 @@ func (s *Thread) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"turn\"")
 			}
+		case "contextUsage":
+			if err := func() error {
+				s.ContextUsage.Reset()
+				if err := s.ContextUsage.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"contextUsage\"")
+			}
 		case "protocol":
 			if err := func() error {
 				s.Protocol.Reset()
@@ -39390,7 +39440,7 @@ func (s *Thread) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"depth\"")
 			}
 		case "encryptedAtRest":
-			requiredBitSet[1] |= 1 << 7
+			requiredBitSet[2] |= 1 << 0
 			if err := func() error {
 				v, err := d.Bool()
 				s.EncryptedAtRest = bool(v)
@@ -39402,7 +39452,7 @@ func (s *Thread) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"encryptedAtRest\"")
 			}
 		case "messageCount":
-			requiredBitSet[2] |= 1 << 0
+			requiredBitSet[2] |= 1 << 1
 			if err := func() error {
 				v, err := d.Int64()
 				s.MessageCount = int64(v)
@@ -39414,7 +39464,7 @@ func (s *Thread) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"messageCount\"")
 			}
 		case "encryptedBytes":
-			requiredBitSet[2] |= 1 << 1
+			requiredBitSet[2] |= 1 << 2
 			if err := func() error {
 				v, err := d.Int64()
 				s.EncryptedBytes = int64(v)
@@ -39426,7 +39476,7 @@ func (s *Thread) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"encryptedBytes\"")
 			}
 		case "createdAt":
-			requiredBitSet[2] |= 1 << 2
+			requiredBitSet[2] |= 1 << 3
 			if err := func() error {
 				v, err := json.DecodeDateTime(d)
 				s.CreatedAt = v
@@ -39438,7 +39488,7 @@ func (s *Thread) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"createdAt\"")
 			}
 		case "updatedAt":
-			requiredBitSet[2] |= 1 << 3
+			requiredBitSet[2] |= 1 << 4
 			if err := func() error {
 				v, err := json.DecodeDateTime(d)
 				s.UpdatedAt = v
@@ -39460,7 +39510,7 @@ func (s *Thread) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"deletedAt\"")
 			}
 		case "resourceVersion":
-			requiredBitSet[2] |= 1 << 5
+			requiredBitSet[2] |= 1 << 6
 			if err := func() error {
 				v, err := d.Int64()
 				s.ResourceVersion = int64(v)
@@ -39482,8 +39532,8 @@ func (s *Thread) Decode(d *jx.Decoder) error {
 	var failures []validate.FieldError
 	for i, mask := range [3]uint8{
 		0b00001111,
-		0b10000000,
-		0b00101111,
+		0b00000000,
+		0b01011111,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.
@@ -39660,9 +39710,15 @@ func (s *ThreadAdapterEvent) encodeFields(e *jx.Encoder) {
 			s.Effort.Encode(e)
 		}
 	}
+	{
+		if s.Compacted.Set {
+			e.FieldStart("compacted")
+			s.Compacted.Encode(e)
+		}
+	}
 }
 
-var jsonFieldsNameOfThreadAdapterEvent = [20]string{
+var jsonFieldsNameOfThreadAdapterEvent = [21]string{
 	0:  "type",
 	1:  "runtimeSequence",
 	2:  "messageId",
@@ -39683,6 +39739,7 @@ var jsonFieldsNameOfThreadAdapterEvent = [20]string{
 	17: "models",
 	18: "model",
 	19: "effort",
+	20: "compacted",
 }
 
 // Decode decodes ThreadAdapterEvent from json.
@@ -39901,6 +39958,16 @@ func (s *ThreadAdapterEvent) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"effort\"")
 			}
+		case "compacted":
+			if err := func() error {
+				s.Compacted.Reset()
+				if err := s.Compacted.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"compacted\"")
+			}
 		default:
 			return d.Skip()
 		}
@@ -40059,6 +40126,8 @@ func (s *ThreadAdapterEventType) Decode(d *jx.Decoder) error {
 		*s = ThreadAdapterEventTypeSetModel
 	case ThreadAdapterEventTypeSetEffort:
 		*s = ThreadAdapterEventTypeSetEffort
+	case ThreadAdapterEventTypeContextUsage:
+		*s = ThreadAdapterEventTypeContextUsage
 	default:
 		*s = ThreadAdapterEventType(v)
 	}
@@ -41265,6 +41334,119 @@ func (s ThreadCommandKind) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
 func (s *ThreadCommandKind) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s *ThreadContextUsage) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *ThreadContextUsage) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("tokens")
+		e.Int64(s.Tokens)
+	}
+	{
+		e.FieldStart("window")
+		e.Int64(s.Window)
+	}
+}
+
+var jsonFieldsNameOfThreadContextUsage = [2]string{
+	0: "tokens",
+	1: "window",
+}
+
+// Decode decodes ThreadContextUsage from json.
+func (s *ThreadContextUsage) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode ThreadContextUsage to nil")
+	}
+	var requiredBitSet [1]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "tokens":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				v, err := d.Int64()
+				s.Tokens = int64(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"tokens\"")
+			}
+		case "window":
+			requiredBitSet[0] |= 1 << 1
+			if err := func() error {
+				v, err := d.Int64()
+				s.Window = int64(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"window\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode ThreadContextUsage")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [1]uint8{
+		0b00000011,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfThreadContextUsage) {
+					name = jsonFieldsNameOfThreadContextUsage[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *ThreadContextUsage) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *ThreadContextUsage) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }

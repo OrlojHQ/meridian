@@ -2624,6 +2624,7 @@ type threadJSON struct {
 	CurrentRunState     string              `json:"currentRunState,omitempty"`
 	Awaiting            *threadAwaitingJSON `json:"awaiting,omitempty"`
 	Turn                string              `json:"turn,omitempty"`
+	ContextUsage        *threadContextJSON  `json:"contextUsage,omitempty"`
 	Protocol            string              `json:"protocol,omitempty"`
 	StructuredSupported bool                `json:"structuredSupported"`
 	CoordinationGrantID string              `json:"coordinationGrantId,omitempty"`
@@ -2638,6 +2639,13 @@ type threadJSON struct {
 	UpdatedAt           string              `json:"updatedAt"`
 	DeletedAt           string              `json:"deletedAt,omitempty"`
 	ResourceVersion     int64               `json:"resourceVersion"`
+}
+
+// threadContextJSON is the context fill the live session last reported:
+// counts only, held in memory and never persisted.
+type threadContextJSON struct {
+	Tokens int64 `json:"tokens"`
+	Window int64 `json:"window"`
 }
 
 type threadAwaitingJSON struct {
@@ -2970,6 +2978,9 @@ func (s *Server) threadResponse(ctx context.Context, thread domain.Thread) threa
 					Since: awaiting.Since.UTC().Format(time.RFC3339Nano),
 				}
 			}
+		}
+		if usage, ok := s.service.ThreadContextUsage(ctx, thread); ok {
+			result.ContextUsage = &threadContextJSON{Tokens: usage.Tokens, Window: usage.Window}
 		}
 	}
 	return result

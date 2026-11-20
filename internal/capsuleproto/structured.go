@@ -462,6 +462,7 @@ func (s *structuredSession) execute() {
 			Resume: true, ToolEvents: true, Permissions: true,
 			InputRequests: true, Heartbeat: true, OpaqueMetadata: true,
 			Commands: true, Models: true, Effort: true, ResolvedModel: true, Images: true,
+			ContextUsage: true,
 		},
 	}
 	handshakeContext, handshakeCancel := context.WithTimeout(ctx, structuredHandshakeTimeout)
@@ -666,7 +667,8 @@ func (s *structuredSession) readerLoop(
 			(frame.Type == adapterproto.KindCommands && !capabilities.Commands) ||
 			(frame.Type == adapterproto.KindModels && !capabilities.Models) ||
 			(frame.Type == adapterproto.KindModels && frame.Models.Effort != nil && !capabilities.Effort) ||
-			(frame.Type == adapterproto.KindModels && frame.Models.Resolved != "" && !capabilities.ResolvedModel) {
+			(frame.Type == adapterproto.KindModels && frame.Models.Resolved != "" && !capabilities.ResolvedModel) ||
+			(frame.Type == adapterproto.KindContextUsage && !capabilities.ContextUsage) {
 			return adapterproto.ErrInvalidFrame
 		}
 		s.addEvent(frame)
@@ -691,7 +693,7 @@ func adapterFrame(kind adapterproto.Kind) bool {
 		adapterproto.KindStatus, adapterproto.KindError,
 		adapterproto.KindPermissionRequest, adapterproto.KindInputRequest,
 		adapterproto.KindHeartbeat, adapterproto.KindAck, adapterproto.KindEnd,
-		adapterproto.KindCommands, adapterproto.KindModels:
+		adapterproto.KindCommands, adapterproto.KindModels, adapterproto.KindContextUsage:
 		return true
 	default:
 		return false

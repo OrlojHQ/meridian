@@ -11757,6 +11757,52 @@ func (o OptThreadAwaiting) Or(d ThreadAwaiting) ThreadAwaiting {
 	return d
 }
 
+// NewOptThreadContextUsage returns new OptThreadContextUsage with value set to v.
+func NewOptThreadContextUsage(v ThreadContextUsage) OptThreadContextUsage {
+	return OptThreadContextUsage{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptThreadContextUsage is optional ThreadContextUsage.
+type OptThreadContextUsage struct {
+	Value ThreadContextUsage
+	Set   bool
+}
+
+// IsSet returns true if OptThreadContextUsage was set.
+func (o OptThreadContextUsage) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptThreadContextUsage) Reset() {
+	var v ThreadContextUsage
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptThreadContextUsage) SetTo(v ThreadContextUsage) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptThreadContextUsage) Get() (v ThreadContextUsage, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptThreadContextUsage) Or(d ThreadContextUsage) ThreadContextUsage {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptThreadEffort returns new OptThreadEffort with value set to v.
 func NewOptThreadEffort(v ThreadEffort) OptThreadEffort {
 	return OptThreadEffort{
@@ -17530,9 +17576,10 @@ type Thread struct {
 	// Present while the structured session is live: whether the agent is working on a turn or idle between
 	// turns. Derived in memory from the encrypted transcript like awaiting, never persisted, and
 	// content-free.
-	Turn                OptThreadTurn     `json:"turn"`
-	Protocol            OptThreadProtocol `json:"protocol"`
-	StructuredSupported OptBool           `json:"structuredSupported"`
+	Turn                OptThreadTurn         `json:"turn"`
+	ContextUsage        OptThreadContextUsage `json:"contextUsage"`
+	Protocol            OptThreadProtocol     `json:"protocol"`
+	StructuredSupported OptBool               `json:"structuredSupported"`
 	// The Coordination Grant over this Thread's tree, on the lead and on each subagent.
 	CoordinationGrantId OptString `json:"coordinationGrantId"`
 	// Present on a subagent Thread; the lead that spawned it.
@@ -17590,6 +17637,11 @@ func (s *Thread) GetAwaiting() OptThreadAwaiting {
 // GetTurn returns the value of Turn.
 func (s *Thread) GetTurn() OptThreadTurn {
 	return s.Turn
+}
+
+// GetContextUsage returns the value of ContextUsage.
+func (s *Thread) GetContextUsage() OptThreadContextUsage {
+	return s.ContextUsage
 }
 
 // GetProtocol returns the value of Protocol.
@@ -17702,6 +17754,11 @@ func (s *Thread) SetTurn(val OptThreadTurn) {
 	s.Turn = val
 }
 
+// SetContextUsage sets the value of ContextUsage.
+func (s *Thread) SetContextUsage(val OptThreadContextUsage) {
+	s.ContextUsage = val
+}
+
 // SetProtocol sets the value of Protocol.
 func (s *Thread) SetProtocol(val OptThreadProtocol) {
 	s.Protocol = val
@@ -17799,6 +17856,9 @@ type ThreadAdapterEvent struct {
 	Model OptString `json:"model"`
 	// On set_effort events, the effort level the operator asked for.
 	Effort OptString `json:"effort"`
+	// On context_usage events, true: the harness compacted (summarized) the conversation at this point.
+	// Only compactions are kept in the transcript, and they carry no token counts.
+	Compacted OptBool `json:"compacted"`
 }
 
 // GetType returns the value of Type.
@@ -17901,6 +17961,11 @@ func (s *ThreadAdapterEvent) GetEffort() OptString {
 	return s.Effort
 }
 
+// GetCompacted returns the value of Compacted.
+func (s *ThreadAdapterEvent) GetCompacted() OptBool {
+	return s.Compacted
+}
+
 // SetType sets the value of Type.
 func (s *ThreadAdapterEvent) SetType(val ThreadAdapterEventType) {
 	s.Type = val
@@ -17999,6 +18064,11 @@ func (s *ThreadAdapterEvent) SetModel(val OptString) {
 // SetEffort sets the value of Effort.
 func (s *ThreadAdapterEvent) SetEffort(val OptString) {
 	s.Effort = val
+}
+
+// SetCompacted sets the value of Compacted.
+func (s *ThreadAdapterEvent) SetCompacted(val OptBool) {
+	s.Compacted = val
 }
 
 type ThreadAdapterEventStatus string
@@ -18103,6 +18173,7 @@ const (
 	ThreadAdapterEventTypeModels             ThreadAdapterEventType = "models"
 	ThreadAdapterEventTypeSetModel           ThreadAdapterEventType = "set_model"
 	ThreadAdapterEventTypeSetEffort          ThreadAdapterEventType = "set_effort"
+	ThreadAdapterEventTypeContextUsage       ThreadAdapterEventType = "context_usage"
 )
 
 // AllValues returns all ThreadAdapterEventType values.
@@ -18124,6 +18195,7 @@ func (ThreadAdapterEventType) AllValues() []ThreadAdapterEventType {
 		ThreadAdapterEventTypeModels,
 		ThreadAdapterEventTypeSetModel,
 		ThreadAdapterEventTypeSetEffort,
+		ThreadAdapterEventTypeContextUsage,
 	}
 }
 
@@ -18161,6 +18233,8 @@ func (s ThreadAdapterEventType) MarshalText() ([]byte, error) {
 	case ThreadAdapterEventTypeSetModel:
 		return []byte(s), nil
 	case ThreadAdapterEventTypeSetEffort:
+		return []byte(s), nil
+	case ThreadAdapterEventTypeContextUsage:
 		return []byte(s), nil
 	default:
 		return nil, errors.Errorf("invalid value: %q", s)
@@ -18217,6 +18291,9 @@ func (s *ThreadAdapterEventType) UnmarshalText(data []byte) error {
 		return nil
 	case ThreadAdapterEventTypeSetEffort:
 		*s = ThreadAdapterEventTypeSetEffort
+		return nil
+	case ThreadAdapterEventTypeContextUsage:
+		*s = ThreadAdapterEventTypeContextUsage
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)
@@ -18788,6 +18865,37 @@ func (s *ThreadCommandKind) UnmarshalText(data []byte) error {
 	default:
 		return errors.Errorf("invalid value: %q", data)
 	}
+}
+
+// Present while the structured session is live and its harness has reported how full its context
+// window is (ADR 0059). tokens is the input size of the most recent model call, not the session's
+// total spend, and window is the model's context window. Held in memory only, never persisted, and
+// carries no model name. Absent when the harness reports nothing, after a daemon restart until it
+// reports again, and right after a compaction whose new size is not yet known.
+// Ref: #/components/schemas/ThreadContextUsage
+type ThreadContextUsage struct {
+	Tokens int64 `json:"tokens"`
+	Window int64 `json:"window"`
+}
+
+// GetTokens returns the value of Tokens.
+func (s *ThreadContextUsage) GetTokens() int64 {
+	return s.Tokens
+}
+
+// GetWindow returns the value of Window.
+func (s *ThreadContextUsage) GetWindow() int64 {
+	return s.Window
+}
+
+// SetTokens sets the value of Tokens.
+func (s *ThreadContextUsage) SetTokens(val int64) {
+	s.Tokens = val
+}
+
+// SetWindow sets the value of Window.
+func (s *ThreadContextUsage) SetWindow(val int64) {
+	s.Window = val
 }
 
 // The reasoning effort levels the current model offers. current is the level in effect, including the

@@ -44,6 +44,10 @@ const (
 	// Reasoning effort levels are a short list per model, with the same
 	// ID, label, and description bounds as models.
 	MaxEfforts = 16
+
+	// MaxContextTokens bounds context_usage counts. It is far above any
+	// model's window and keeps the values exact in JSON numbers.
+	MaxContextTokens = 1 << 40
 )
 
 var (
@@ -80,6 +84,7 @@ const (
 	KindModels             Kind = "models"
 	KindSetModel           Kind = "set_model"
 	KindSetEffort          Kind = "set_effort"
+	KindContextUsage       Kind = "context_usage"
 )
 
 // CommandKind says how an adapter runs a reported command. A prompt command
@@ -132,6 +137,32 @@ type EffortSet struct {
 	Options []ModelOption `json:"options"`
 }
 
+// ContextUsage is how full the harness's context window is, as the harness
+// reported it: Tokens is the input size of the most recent model call, not
+// the session's total spend, and Window is the model's context window. Both
+// are counts with no model name. Compacted says the harness compacted the
+// conversation just before this report. A compacted report may carry zero
+// Tokens or Window when the harness does not yet know the new size.
+type ContextUsage struct {
+	Tokens    int64 `json:"tokens"`
+	Window    int64 `json:"window"`
+	Compacted bool  `json:"compacted,omitempty"`
+}
+
+// Valid reports whether the counts are in range. A report that is not a
+// compaction must carry both a token count and a window.
+func (u ContextUsage) Valid() bool {
+	if u.Tokens < 0 || u.Window < 0 || u.Tokens > MaxContextTokens || u.Window > MaxContextTokens {
+		return false
+	}
+	return u.Compacted || (u.Tokens > 0 && u.Window > 0)
+}
+
+// Known reports whether the report says how full the window is.
+func (u ContextUsage) Known() bool {
+	return u.Tokens > 0 && u.Window > 0
+}
+
 type Role string
 
 const (
@@ -175,6 +206,9 @@ type Capabilities struct {
 	// Images says the peer understands a models frame's images flag: whether
 	// the harness accepts image content. It requires Models.
 	Images bool `json:"images,omitempty"`
+	// ContextUsage says the peer understands context_usage frames. An
+	// adapter reports usage only when both hellos set it.
+	ContextUsage bool `json:"contextUsage,omitempty"`
 }
 
 type Permission struct {
@@ -224,6 +258,7 @@ type Frame struct {
 	Models       *ModelSet       `json:"models,omitempty"`
 	Model        string          `json:"model,omitempty"`
 	Effort       string          `json:"effort,omitempty"`
+	ContextUsage *ContextUsage   `json:"contextUsage,omitempty"`
 	Cursor       uint64          `json:"cursor,omitempty"`
 	Gap          *Gap            `json:"gap,omitempty"`
 }
@@ -387,6 +422,10 @@ func validateShape(f Frame) error {
 		if err := requireID(); err != nil || !ValidModelID(f.Effort) {
 			return invalid("set effort")
 		}
+	case KindContextUsage:
+		if f.ContextUsage == nil || !f.ContextUsage.Valid() {
+			return invalid("context usage")
+		}
 	}
 	if f.Type != KindCommands && f.Commands != nil {
 		return invalid("commands")
@@ -399,6 +438,9 @@ func validateShape(f Frame) error {
 	}
 	if f.Type != KindSetEffort && f.Effort != "" {
 		return invalid("effort")
+	}
+	if f.Type != KindContextUsage && f.ContextUsage != nil {
+		return invalid("context usage")
 	}
 	return nil
 }
@@ -513,7 +555,8 @@ func knownKind(kind Kind) bool {
 		KindAssistantMessage, KindToolStart, KindToolResult, KindStatus, KindError,
 		KindPermissionRequest, KindPermissionResponse, KindInputRequest,
 		KindInputResponse, KindHeartbeat, KindCancel, KindAck, KindCursor,
-		KindGap, KindEnd, KindCommands, KindModels, KindSetModel, KindSetEffort:
+		KindGap, KindEnd, KindCommands, KindModels, KindSetModel, KindSetEffort,
+		KindContextUsage:
 		return true
 	default:
 		return false
