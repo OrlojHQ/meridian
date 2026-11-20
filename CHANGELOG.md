@@ -7,6 +7,19 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Capsule tools start closed, so a Thread or Capsule opens on the conversation
+  at full width. The tools toggle and the Changes, Preview, Files, and
+  Terminal buttons still open them. Full review and Open terminal still open
+  the tool they name. A reload or a new Thread starts closed again. A panel
+  width you dragged is still remembered.
+
+### Fixed
+
+- The Terminal tool uses a prompt icon, in the tool tabs and on the collapsed
+  tool rail, at the same size and weight as Changes, Preview, and Files.
+
 ## [0.13.0] - 2026-11-19
 
 ### Added

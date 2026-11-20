@@ -93,7 +93,17 @@ export function useWorkingSet() {
     capsuleResults.every((result) => !result.isPending) &&
     runResults.every((result) => !result.isPending) &&
     threadResults.every((result) => !result.isPending);
-  return { projects, projectItems, capsuleResults, items, ready };
+  // Thread queries stay pending while structured sessions are off, because
+  // they are disabled. Sessions are still known then: a harness Capsule has
+  // its terminal, and there are no Thread sessions to wait for.
+  const sessionsReady =
+    !projects.isPending &&
+    !capabilities.isPending &&
+    capsuleResults.every((result) => !result.isPending) &&
+    runResults.every((result) => !result.isPending) &&
+    (capabilities.data?.structured !== true ||
+      threadResults.every((result) => !result.isPending));
+  return { projects, projectItems, capsuleResults, items, ready, sessionsReady };
 }
 
 // Subagent Capsules render under their lead so a coordinated tree reads as one
