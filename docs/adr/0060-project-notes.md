@@ -1,10 +1,11 @@
-# ADR 0060: Project notes outlive a lead
+# ADR 0060: Working notes and Project notes outlive a lead
 
 - Status: Proposed
 - Date: 2026-11-20
 - Amends: ADR 0059 section 4 (cross-tree notes are no longer deferred), ADR
-  0057 (what may reach a scheduled Thread besides its prompt)
-- Extends: ADRs 0012, 0016, 0029, 0039 and 0046
+  0029 (new mailbox requests and a grant policy field), ADR 0057 (what may
+  reach a scheduled Thread besides its prompt)
+- Extends: ADRs 0012, 0016, 0039 and 0046
 
 ## Context
 
@@ -13,28 +14,30 @@ leads in one Project, for example one for the API and one for the frontend.
 What those leads learn stays in each lead's own conversation and in its
 private `$HOME/.meridian/notes/` directory. Three things are lost as a result:
 
+- **Subagents are deleted.** A finished subagent's Capsule is removed about
+  an hour after it last did anything (ADR 0029, cleanup amendment). What it
+  wrote in its own home goes with it. Only its report reaches the lead, and
+  the next subagent the lead starts learns it again unless the lead retypes
+  it.
 - **Leads relearn the same facts.** The API lead and the frontend lead each
   find out, separately, how the Project's tests are run, which branch naming
   the operator wants, and that the staging database is read-only. The
   operator often has to say it twice.
 - **New Threads start from zero.** A plain Thread started this morning knows
   nothing a lead found last week, unless the operator pastes it in.
-- **Subagents are deleted.** A finished subagent's Capsule is removed about
-  an hour after it last did anything (ADR 0029, cleanup amendment). What it
-  wrote in its own home goes with it. Only its report reaches the lead.
 
 ADR 0059's context describes how two other products handle this. In Cursor
 Projects, a set of Project files, written by agents and the user, syncs to
-every machine an agent uses and carries what was learned between agents. A
-Grok Bot is a persistent agent with its own memory. ADR 0059 records nothing
-more than that about either product: not whether an agent's write to those
-files is reviewed, how a Bot's memory is selected for a turn, or how either
-handles text that a hostile page planted. This ADR does not assume an
-answer. Third-party analysis of Cursor Projects argues that those files,
-not the coordinator's summarized conversation, are the memory that lasts,
-because a summary loses detail. ADR 0059 drew the same conclusion for a
-single conversation: anything large or durable should live in files the
-agent reads when it needs them.
+every machine an agent uses and carries what was learned between agents.
+Third-party descriptions say agents write those files directly, with no
+review step. Cursor has not documented one either way, and this ADR relies
+only on that description. A Grok Bot is a persistent agent with its own
+memory. ADR 0059 records nothing about how a Bot's memory is written or
+selected for a turn, and this ADR assumes nothing. Third-party analysis of
+Cursor Projects argues that those files, not the coordinator's summarized
+conversation, are the memory that lasts, because a summary loses detail.
+ADR 0059 drew the same conclusion for one conversation: anything large or
+durable should live in files the agent reads when it needs them.
 
 ADR 0059 section 4 kept notes private to one lead tree on purpose. Text that
 an agent writes and that later Threads read automatically is a way for prompt
@@ -42,8 +45,14 @@ injection to outlive the Capsule it arrived in. Meridian's other defenses
 lean on fresh Capsules (ADR 0016): a hostile dependency that steers one
 Thread is gone when that Capsule is deleted, except for what the repository
 and the setup Moment carry. ADR 0057 calls this "no standing foothold".
-Shared agent-written notes would add a third carrier, and one that no
-repository review sees.
+
+Not every carrier is equally dangerous. Inside one lead tree, hostile text
+already moves freely: the lead writes subagents' prompts, and subagents'
+reports and patches go straight into the lead (ADR 0029). A note that only
+that tree's members read adds persistence inside the tree, but no reach.
+Text that crosses into a Thread that never saw where it came from is
+different: a plain Thread started next week has no reason to doubt it, and
+one poisoned change reaches every later Thread in the Project.
 
 The repository is the obvious place for durable knowledge, and for much of
 it the right one. It is not the right place for all of it. Some facts are
@@ -53,110 +62,303 @@ Project is private to one member, and a commit is visible to the whole team.
 
 ## Decision
 
-A Project has a set of **Project notes**: Markdown files that only the
-operator writes, that agents may propose changes to, and that Meridian copies
-into each new session of the Project's Threads. Every change that reaches a
-Capsule has been written or approved by the operator, and every change
-records who wrote it, who approved it, and which Thread proposed it.
+There are two tiers of notes, split by who will read them.
 
-### 1. Who writes
+- **Working notes** belong to one lead tree: the lead and its subagents.
+  Every member reads and writes them freely, with no review. They never
+  reach anything outside that tree.
+- **Project notes** belong to the Project. They reach other leads, plain
+  Threads, future Threads and, when a routine opts in, scheduled Threads.
+  Only the operator writes them, agents propose changes, and every change is
+  reviewed, except where the operator lets one lead skip review (section 3).
+
+Both tiers are Markdown files stored by meridiand, encrypted, and delivered
+to a Capsule as files outside `/workspace`. Every revision records who wrote
+it and from which Thread.
+
+### 1. Working notes
+
+Working notes are the tree's shared memory. A subagent records what it
+found, the next subagent reads it, and the lead reads it without asking for
+another report.
+
+- **Scope.** A grant's working notes are readable and writable by the
+  grant's lead Thread and by each subagent whose link is open, including a
+  promoted subagent that kept its link. A detached, cancelled, removed or
+  denied subagent leaves the tree and receives nothing more. Other leads,
+  plain Threads, routines and later lead trees never receive them, even in
+  the same Project.
+- **Storage.** meridiand stores them, not the lead Capsule. A subagent's
+  findings then outlive its cleanup, the lead's notes survive a lead Capsule
+  restart or deletion, subagents can write while the lead is idle-paused,
+  and the operator can read them without starting any Capsule. Storing them
+  in the lead Capsule was rejected for those reasons (see Alternatives).
+- **Writing.** `meridian.coord.v1` gains `write-note {name, baseRevision,
+  content | fromFile | delete}`, relayed by lead and subagent mailboxes. A
+  write replaces the whole note. `baseRevision` is the revision the writer
+  last read, 0 to create. A write against an older revision is refused as
+  `conflict` with the current revision number and the writer's link name, no
+  content. The mailbox then refreshes that note's local file, so the agent
+  can read the current text and write again. `fromFile` reads a path under
+  the Capsule's own `$HOME/.meridian/notes/` with the rules ADR 0059 section
+  4 gives `contextFiles`. A successful write updates the writer's local file
+  and returns the new revision.
+- **Reading.** Notes are delivered as files (section 4) when each session in
+  the tree starts or resumes. A new request, `sync-notes`, refreshes the
+  directory during a session: the Capsule's mailbox asks meridiand for the
+  current set, rewrites the files, and returns names, revisions and which
+  changed, never content. `sync-notes` is a read, so it still answers when
+  the grant has lapsed. The lead's next report wake lists, by name, the
+  working notes that changed since the last wake and which link wrote them.
+  A note write alone never wakes the lead.
+- **The operator.** The operator can read, edit, delete and restore working
+  notes from the lead's Agents panel, which gains a Notes tab. An operator
+  edit is a revision like any other, recorded as the operator's. It does not
+  count as operator presence for the grant, as a pin does not (ADR 0059
+  section 5).
+- **Bounds.** The note name and content rules in section 5 apply. A tree
+  holds at most 32 live working notes and 128 KiB in total. Writes are
+  limited to 30 per Capsule and 120 per tree in any rolling hour, on top of
+  the mailbox's existing request rate. Each note keeps its 50 most recent
+  revisions' content and every revision's provenance row. A write that would
+  pass a limit is refused, never cut.
+- **Provenance.** Each revision records the writer kind (`agent` or
+  `operator`), the writing Capsule, Thread and link (or the lead itself),
+  the base revision, the time, and the content digest and size.
+- **Lapse and revocation.** While the grant is lapsed (ADR 0059 section 1),
+  `write-note` is refused as `coordination_lapsed` like every other
+  mutating request, and reads still answer. When the grant is revoked or
+  ends with the lead, the notes become read-only: no Capsule can read or
+  write them, and the operator can still read them and promote them
+  (section 2). They are kept until the lead Thread is crypto-shredded or
+  deleted, the Project is deleted, or the operator deletes them from the
+  Agents panel.
+- **Relation to private notes.** The private `$HOME/.meridian/notes/`
+  directory stays as each Capsule's scratch space, and `contextFiles` stays
+  unchanged. Scratch notes change on most turns, and sending every change
+  through the mailbox would spend the write budget, crowd the history, and
+  wake the lead's change list with noise. Keeping them local costs nothing
+  and shares nothing. Working notes are the shared surface: the lead brief
+  says to keep running notes in the private directory, to put what other
+  members of the tree need into working notes, and to use `contextFiles` for
+  material that only one spawn needs. `write-note --from-file` turns a
+  private note into a working note without retyping it.
+
+### 2. Project notes
+
+Project notes are Markdown files that only the operator writes, that agents
+may propose changes to, and that Meridian copies into each new session of
+the Project's Threads.
 
 - **The operator writes.** Only a user principal who owns the Project can
-  create, edit, rename, delete or restore a note, through the API, CLI or web
-  UI. The break-glass admin, the system, and every Capsule see the notes as
-  not found, as they do for pins (ADR 0059 section 5).
-- **Agents propose.** A lead or subagent may propose a change with a new
-  `meridian.coord.v1` request, `propose-note`. A proposal names one note and
-  gives its full new content, a new note, or a deletion, together with the
-  revision it was written against. It is stored as a pending proposal, and
-  nothing is delivered anywhere until the operator approves it. This is the
-  same shape as `propose-delivery` (ADR 0029): the agent proposes, only the
-  operator approves, and there is no auto-approve.
-- **Where proposals can come from.** Only from a Capsule whose mailbox the
-  daemon has configured, which today means a lead or a subagent under an
-  active, not lapsed, grant. Both mailboxes relay `propose-note`, as both
-  relay `propose-delivery`. A plain Thread has no mailbox and cannot
-  propose. The operator can still copy text from any Thread's transcript into
-  the note editor and save it (section 5); that is an operator write.
-- **Content of a proposal.** The agent sends either `content` (at most
-  32 KiB) or `fromFile`, a path under its own `$HOME/.meridian/notes/` that
-  the lead Capsule's mailbox reads with the same rules as `contextFiles`
-  (ADR 0059 section 4) and replaces with its content before relaying. A lead
-  can therefore propose one of its private notes without retyping it. There
-  is no separate "reason" field. The diff is the whole proposal, and an
-  operator who wants the reasoning reads the proposing Thread.
+  create, edit, rename, delete or restore a Project note, through the API,
+  CLI or web UI. The break-glass admin, the system and every Capsule see the
+  notes as not found, as they do for pins.
+- **Agents propose.** A lead or subagent may propose a change with
+  `propose-note`, relayed by both mailboxes as both relay `propose-delivery`.
+  A proposal names one note and gives its full new content, a new note, or a
+  deletion, together with the Project-note revision it was written against.
+  The content is `content` (at most 32 KiB), `fromFile` (a private note, as
+  for `write-note`), or `fromWorkingNote` (a working note of the proposer's
+  own tree, so the proposal records which working-note revision it came
+  from). It is stored as a pending proposal, and nothing is delivered until
+  it is approved. There is no separate "reason" field. The diff is the whole
+  proposal, and an operator who wants the reasoning reads the proposing
+  Thread. A plain Thread has no mailbox and cannot propose.
+- **Promote from a working note.** A working note in the lead's Notes tab
+  has "Promote to Project notes". It opens the same review page as an agent
+  proposal, with the working note's current revision as the proposed content
+  against the Project note of the same name, or as a new note. Approving it
+  is an operator write that records the working-note revision and the
+  Capsule that wrote it as its source. An agent can ask for the same thing
+  with `propose-note --from-working-note`. Either way the text is reviewed
+  before it leaves the tree.
 - **Approval binds one exact change.** `approve` takes the proposal's
-  content digest and the note's current revision. If the note has changed
-  since the proposal's base revision, the proposal is `stale` and cannot be
-  approved as it is. The operator can open it in the editor, merge it by
-  hand, and save, which is an operator write that records the proposal as its
-  source. The operator may also edit any proposal before approving it, and
-  the revision records that it was approved with edits.
+  content digest and the Project note's current revision. If the note has
+  changed since the proposal's base revision, the proposal is `stale` and
+  cannot be approved as it is. The operator can open it in the editor,
+  merge it by hand, and save. The operator may edit any proposal before
+  approving it, and the revision records that.
 - **What an agent sees.** The `propose-note` response is content-free: the
   proposal ID and its state. A proposing Thread can read the states of its
-  own proposals (`pending`, `approved`, `approved_with_edits`, `rejected`,
-  `stale`, `expired`) through `whoami`, at most its 16 most recent, with no
-  text. No agent sees another
-  Thread's pending proposals, the content of any pending proposal, or a
-  rejected one, including its own after it is rejected. An approved change
-  reaches agents only through delivery (section 3), at a new session.
-  Pending proposals are unreviewed agent text, so letting other agents read
-  them would recreate the unreviewed channel this decision exists to avoid.
-  A rejection carries no reason text into the Capsule. An operator who wants
-  to explain it sends the Thread a message.
+  own 16 most recent proposals (`pending`, `approved`, `approved_with_edits`,
+  `auto_approved`, `rejected`, `stale`, `expired`) through `whoami`, with no
+  text. No agent sees another Thread's pending proposals, the content of any
+  pending or rejected proposal, or a rejection reason. Pending proposals are
+  unreviewed agent text, so letting agents outside the proposer read them
+  would recreate the unreviewed channel this tier exists to avoid. An
+  operator who wants to explain a rejection sends the Thread a message.
 - **Bounds.** At most 16 pending proposals per Project and 4 per proposing
   Thread. A proposal that is pending for 7 days becomes `expired`. Each
-  proposal counts against the mailbox's existing rate and size limits, and
-  is idempotent under its Capsule-scoped key like other mutating requests.
-  meridiand stores the proposal, so it outlives the proposing Capsule:
-  subagent cleanup does not wait for review, and the proposing Thread's
-  encrypted transcript stays readable for context.
-- **Audit.** Writes, approvals, rejections, restores, deletions and shreds
-  are audited as the operator, and each proposal as its Capsule, with
-  identifiers and sizes only (ADR 0046).
+  proposal counts against the mailbox's rate and size limits and is
+  idempotent under its Capsule-scoped key. meridiand stores the proposal, so
+  it outlives the proposing Capsule: subagent cleanup does not wait for
+  review, and the proposing Thread's transcript stays readable for context.
 - **No attention.** A pending proposal does not raise Thread attention (ADR
   0025) and does not wake or block the agent. It shows as a count on the
-  Project's Notes tab and in the Inbox under "Notes to review". A proposing
-  agent cannot use proposals to fill the operator's Needs you list.
+  Project's Notes tab and in the Inbox under "Notes to review".
 
-### 2. What a note is
+### 3. Auto-approve for one trusted lead
+
+An operator who is actively working with one lead may let that lead's
+Project-note proposals apply without a click.
+
+- **Where it lives.** A grant policy field, `autoApproveProjectNotes`,
+  default false. It is set at grant creation or by the operator-only `PATCH
+  /coordination-grants/{id}`, like the other limits, and no Capsule can set
+  it. It defaults to false for a new lead and for a lead made from an
+  existing Thread (ADR 0059 section 2) alike, and is never copied from
+  another grant. A departed-member transfer (ADR 0046) clears it.
+- **Whose proposals.** Only proposals from the lead's own Capsule.
+  Proposals from its subagents always wait for review.
+- **Only while someone is watching.** A lapsed grant refuses every mutating
+  request, `propose-note` included, so auto-approve stops when the grant's
+  unattended limit passes and resumes when the operator next messages the
+  lead. Revocation ends it.
+- **What it may change.** An auto-approved proposal may create a note or
+  replace one whose latest revision was itself auto-approved. A proposal to
+  change or delete a note whose latest revision was written, approved or
+  reviewed by the operator waits for review, so a lead cannot rewrite the
+  operator's own preferences without a click. At most 20 auto-approved
+  revisions per grant in any rolling 24 hours; past that, proposals wait for
+  review.
+- **Records.** Each revision is `auto_approved`, with the lead, the
+  proposal and the grant in its provenance, and is audited like an approval.
+  It keeps full history, restore and shred.
+- **Who receives it.** An auto-approved revision is unreviewed. It is
+  delivered to lead trees only: leads and their subagents in the Project,
+  under the Project's `notesDelivery` setting. Plain Threads and routines
+  keep receiving the note's last reviewed revision, or nothing for a note
+  that has never been reviewed. The Notes tab lists unreviewed revisions,
+  and "Mark reviewed" on one, after its source diff, makes it the reviewed
+  revision. Restoring or editing a note also counts as review.
+
+This ships because the alternative it replaces is worse in practice. A
+lead that is in active use can propose several facts an hour. One click per
+fact teaches the operator to approve without reading, which weakens review
+for every proposal, including subagents'. Auto-approve is a narrow way out:
+one lead the operator chose, while the operator is around, never over the
+operator's own text, and never into a Thread that is not itself a lead tree.
+Its cost is stated plainly in the threat-model changes: trusting a lead
+means trusting everything it reads, which includes its subagents' reports
+and working notes.
+
+### 4. Delivery
+
+Three ways to get notes into a Capsule were compared:
+
+| Option | Verdict |
+| --- | --- |
+| Read-only mount of a notes volume | Rejected. Docker would need a host path or a daemon-written volume, and ADR 0024 forbids host mounts. On Agent Sandbox it would put note plaintext into Kubernetes objects. A mount shared by live Capsules is the shared mutable state ADR 0016 rules out, and "read-only" only holds until the Capsule user changes a copy it owns anyway. |
+| A block in the system prompt or first prompt | Rejected for content. Every note would be in every turn, whether used or not, and compaction would summarize it, losing exactly the detail notes are for. The system-prompt channel carries trusted adapter text, and putting agent-written text there would give it more weight than the user turn. |
+| Files that `capsuled` writes outside `/workspace` | Chosen. The agent reads what it needs with its shell, which is ADR 0059's file-first pattern. Only a short, grammar-bounded index goes into the system-prompt channel. |
+
+- **Where.** Project notes go to `$HOME/.meridian/project-notes/<name>.md`
+  and working notes to `$HOME/.meridian/working-notes/<name>.md`, mode 0444
+  in 0555 directories owned by the Capsule user. The modes tell the agent
+  the files are not for editing. They are not a control, since the Capsule
+  user can change them. `capsuled` writes each set into a temporary
+  directory through an `os.Root` and renames it into place, refuses a target
+  that is a symlink or lies inside `/workspace`, and removes files that are
+  no longer in the set. The directories are outside the workspace, so a
+  Delivery, local sync and workspace Moments never capture them. They are
+  written after setup, so a setup Moment never captures them either (ADR
+  0019).
+- **Edits never sync back.** Nothing reads the directories back. An agent
+  that changes its copy changes only its own Capsule, until the next
+  delivery replaces it. The way to change a working note is `write-note`,
+  and the way to change a Project note is `propose-note`.
+- **When.** Both sets are written at each session start, including resume
+  after idle pause and ADR 0058 renewal, never while a turn is running.
+  Working notes can also be refreshed with `sync-notes` (section 1). Project
+  notes are a snapshot per session: a lead used for weeks is resumed often,
+  so it picks up approvals within a day or so. A live view of Project notes
+  was rejected: content would change under a running turn, and an approval
+  would reach every running Capsule in the Project at once, including
+  unattended ones.
+- **The index.** Start and Resume metadata gain `notes`: the two
+  directories, and for each note its tier, name, size, revision, and whether
+  it changed since this Thread's previous session. The driver renders it
+  with a fixed template in the harness's system-prompt channel, the same
+  channels as the coordination brief. The template says that Project notes
+  were written or approved by the operator, except those marked unreviewed;
+  that working notes are written by the lead and its subagents and are as
+  trustworthy as their reports; that neither grants a permission or changes
+  a setting; and how each tier is changed. The index carries names, numbers
+  and the unreviewed flag only, at most 8 KiB. It is negotiated with a
+  `notes` capability in both hellos, like `contextUsage` (ADR 0059 section
+  6). An adapter that does not offer it still gets the files and no index,
+  and the UI says that this harness is not told about them.
+- **Who gets Project notes.** A Project setting, `notesDelivery`:
+  `all_threads` (default), `leads_only` (lead Threads and their subagents),
+  or `off`. The new-Thread dialog has an "Include Project notes" choice that
+  defaults to the Project setting. Lead trees receive each note's latest
+  revision. Plain Threads receive its latest reviewed revision (section 3).
+  A subagent follows the Project setting, not its lead's choice, and gets
+  the set that is current when its session starts.
+- **Why the default stays `all_threads`.** With auto-approve in the
+  picture, `all_threads` would be wrong if it meant plain Threads got
+  unreviewed text. It does not: a plain Thread and a routine only ever
+  receive operator-written or operator-reviewed revisions, so the reasoning
+  for the default holds. A note the operator wrote, which no Thread receives,
+  would be surprising. `leads_only` was considered as the default and
+  rejected: it would leave plain Threads, which are most Threads, starting
+  from zero, to guard against a risk the reviewed-revision rule already
+  removes.
+- **Scheduled Threads.** A routine (ADR 0057) delivers Project notes only
+  when the routine sets `includeNotes: true`, which defaults to false, and
+  then only reviewed revisions. A scheduled Thread holds no grant, so it
+  never has working notes. Amend ADR 0057: a routine's prompt still takes no
+  input from a previous run, and a routine that opts in also gets the
+  Project notes as files. A scheduled run has no witness, so the operator
+  chooses per routine.
+- **Record.** Each session records the content-free set of note revisions it
+  was given. The Thread's details show it, and the transcript gets a quiet,
+  content-free divider ("Project notes updated: 2 changed") when a resumed
+  session receives a different Project-note set. That divider is stored like
+  the compaction marker in ADR 0059 section 6. Working-note refreshes add no
+  divider, since they change often and the lead's wake already lists them.
+
+### 5. What a note is
+
+These rules apply to both tiers unless stated.
 
 - **Names.** `[a-z0-9][a-z0-9-]{0,47}` plus a fixed `.md` suffix, unique
-  within the Project. There are no directories. The name is stored in
-  plaintext, like subagent and routine names, so it is bounded by the same
-  grammar. Names that an agent proposes become plaintext only once a pending
-  proposal is stored, and a rejected or expired proposal's row is removed
-  after 7 days.
+  within the Project's notes or within one tree's working notes. There are
+  no directories. The name is stored in plaintext, like subagent and routine
+  names, so it is bounded by the same grammar.
 - **Content.** UTF-8 Markdown without NUL or control characters other than
-  tab and newline. CRLF is stored as LF. At most 32 KiB per note, 32 live
-  notes, and 128 KiB in total per Project. Writes and approvals that would
-  pass a limit are refused, never cut.
-- **Revisions.** Every write, approval, rename, deletion and restore creates
-  an immutable revision with a sequence number per note. A note keeps the
-  content of its 50 most recent revisions. Older revisions keep their
-  content-free provenance row and lose their ciphertext.
-- **Provenance.** Each revision records, in plaintext and content-free: the
-  kind (`operator_write`, `approved_proposal`, `approved_with_edits`,
-  `restore`, `delete`), the user who wrote or approved it, the time, the
-  content digest and size, and, for a proposal, its ID and the proposing
-  Thread, Capsule, link, and lead Thread. A note whose latest revision came
-  from a proposal, with or without edits, is labelled as agent-proposed in
-  the note list. Every revision's source is shown in the note's history
-  (section 5).
-- **Encryption.** Each Project has one notes data key (DEK), 256 random
-  bits, created with its first note. Revision content and proposal content
-  are encrypted with AES-256-GCM and a fresh 96-bit random nonce under that
-  DEK. The DEK is wrapped with the installation transcript KEK, using ADR
-  0012's construction. The revision AAD binds the Project, note ID, revision
-  sequence, kind, proposal ID, and creation time. The proposal AAD binds the
-  Project, proposal ID, base revision, and proposing Thread. The wrap AAD
-  binds the Project, the owner, and the KEK's identity and version, so a
-  wrapped key moved to another Project or owner fails to open. This follows
-  ADR 0046's owner binding for envelopes. It is not a per-user key: ADR 0046
-  keeps one KEK per installation and defers per-user data keys, and this ADR
-  does not change that.
+  tab and newline. CRLF is stored as LF. At most 32 KiB per note. Project
+  notes are limited to 32 live notes and 128 KiB in total per Project, and
+  working notes to the same per tree (section 1).
+- **Revisions.** Every write, approval, auto-approval, review mark, rename,
+  deletion and restore creates an immutable revision with a sequence number
+  per note. A note keeps the content of its 50 most recent revisions. Older
+  revisions keep their content-free provenance row and lose their
+  ciphertext.
+- **Project-note provenance.** Each revision records, in plaintext and
+  content-free: the kind (`operator_write`, `approved_proposal`,
+  `approved_with_edits`, `auto_approved`, `reviewed`, `restore`, `delete`),
+  the user who wrote, approved or reviewed it, the time, the content digest
+  and size, and for a proposal or promotion its ID, the proposing or writing
+  Thread, Capsule, link and lead, and the working-note revision it came
+  from. A note whose latest revision came from an agent is labelled
+  agent-proposed in the note list, and an auto-approved one as unreviewed.
+- **Encryption.** Each Project has one Project-notes data key (DEK) and each
+  grant one working-notes DEK, 256 random bits, created with the first note.
+  Revision and proposal content is encrypted with AES-256-GCM and a fresh
+  96-bit random nonce under its DEK. Each DEK is wrapped with the
+  installation transcript KEK, using ADR 0012's construction. Revision AAD
+  binds the Project, the grant for a working note, the note ID, revision
+  sequence, kind, and the proposal or writing Capsule. Proposal AAD binds the
+  Project, proposal ID, base revision and proposing Thread. Wrap AAD binds
+  the Project, the grant for working notes, the owner, and the KEK's
+  identity and version, so a wrapped key moved to another Project, tree or
+  owner fails to open. This follows ADR 0046's owner binding for envelopes.
+  It is not a per-user key: ADR 0046 keeps one KEK per installation and
+  defers per-user data keys, and this ADR does not change that.
 - **Why the transcript KEK.** Notes are conversation content, not
-  credentials. Crypto-shred (section 6) needs a data key to drop, which
+  credentials. Crypto-shred (section 7) needs a data key to drop, which
   transcripts already have and the credential key's blob seal used for
   routine prompts does not. Backup custody and restore checks for the
   transcript KEK already exist. `meridian admin transcript-key rotate`
@@ -164,73 +366,11 @@ records who wrote it, who approved it, and which Thread proposed it.
 - **Never in plaintext records.** Note and proposal content stays out of
   SQLite plaintext, events, audit records, metrics, traces, logs,
   notifications and error messages. Responses that carry content are
-  `Cache-Control: no-store`.
+  `Cache-Control: no-store`. Writes, approvals, auto-approvals, rejections,
+  review marks, restores, deletions and shreds are audited with identifiers
+  and sizes only (ADR 0046).
 
-### 3. Delivery
-
-Three ways to get approved notes into a Capsule were compared:
-
-| Option | Verdict |
-| --- | --- |
-| Read-only mount of a notes volume | Rejected. Docker would need a host path or a daemon-written volume, and ADR 0024 forbids host mounts. On Agent Sandbox it would put note plaintext into Kubernetes objects. A mount shared by live Capsules is the shared mutable state ADR 0016 rules out, and "read-only" only holds until the Capsule user changes a copy it owns anyway. |
-| A block in the system prompt or first prompt | Rejected for content. Every note would be in every turn, whether used or not, and compaction would summarize it, losing exactly the detail notes are for. The system-prompt channel carries trusted adapter text, and putting proposed text there would give it more weight than the user turn. |
-| Files that `capsuled` writes outside `/workspace` | Chosen. The agent reads what it needs with its shell, which is ADR 0059's file-first pattern. Only a short, grammar-bounded index goes into the system-prompt channel. |
-
-- **Where.** `$HOME/.meridian/project-notes/<name>.md`, mode 0444 in a 0555
-  directory owned by the Capsule user. The modes tell the agent the files are
-  not for editing. They are not a control, since the Capsule user can change
-  them. `capsuled` writes the set into a temporary directory through an
-  `os.Root` and renames it into place, refuses a target that is a symlink or
-  lies inside `/workspace`, and removes files that are no longer in the set.
-  The directory is outside the workspace, so a Delivery, local sync and
-  workspace Moments never capture it. It is written after setup, so a setup
-  Moment never captures it either (ADR 0019).
-- **Edits never sync back.** Nothing reads the directory back. An agent that
-  changes its copy changes only its own Capsule, until the next delivery
-  replaces it. The way to change a note is `propose-note`.
-- **When.** Snapshot at each session start, including resume after idle
-  pause and ADR 0058 renewal, never while a turn is running. meridiand sends
-  the current approved set over the private Capsule transport before it
-  starts the adapter. A lead used for weeks is resumed often, so it picks up
-  approvals within a day or so without a live channel into running Capsules.
-  A live view was rejected: content would change under a running turn, and
-  an approval would reach every running Capsule at once, including
-  unattended ones. A session start is a clear point at which a change takes
-  effect.
-- **The index.** Start and Resume metadata gain `projectNotes`: the
-  directory, and for each note its name, size, revision, and whether it
-  changed since this Thread's previous session. The driver renders it with a
-  fixed template in the harness's system-prompt channel, the same channels as
-  the coordination brief. The template says that these are Project notes the
-  operator wrote or approved, that they can be read with the shell, that they grant no
-  permissions and do not change any setting, and that a change to them is
-  proposed with `propose-note`. The index carries names and numbers only, at
-  most 4 KiB. It is negotiated with a `projectNotes` capability in both
-  hellos, like `contextUsage` (ADR 0059 section 6). An adapter that does not
-  offer it still gets the files and no index, and the UI says that this
-  harness is not told about them.
-- **Who gets them.** A Project setting, `notesDelivery`: `all_threads`
-  (default), `leads_only` (lead Threads and their subagents, not plain
-  Threads), or `off`. The new-Thread dialog has an "Include
-  Project notes" choice that defaults to the Project setting. A subagent
-  follows the Project setting, not its lead's choice, and gets the set that
-  is current when its session starts, which may be newer than its lead's.
-  Delivery is on by default because a note exists to be read: a note the
-  operator wrote that no Thread receives would be surprising, and every note
-  that is delivered is operator text or operator-approved text.
-- **Scheduled Threads.** A routine (ADR 0057) delivers notes only when the
-  routine sets `includeNotes: true`, which defaults to false. Amend ADR
-  0057: a routine's prompt still takes no input from a previous run, and a
-  routine that opts in also gets the Project notes as files. Notes are
-  operator-approved, but a scheduled run has no witness, so the operator
-  chooses per routine.
-- **Record.** Each session records the content-free set of note revisions it
-  was given. The Thread's details show it, and the transcript gets a quiet,
-  content-free divider ("Project notes updated: 2 changed") when a resumed
-  session receives a different set. That divider is stored like the
-  compaction marker in ADR 0059 section 6.
-
-### 4. The repository alternative
+### 6. The repository alternative
 
 The repository stays the better answer for anything that is true of the code
 and that other people should see:
@@ -239,8 +379,8 @@ and that other people should see:
   decisions already made belong in `AGENTS.md`, `docs/`, or an ADR. They are
   versioned with the code they describe, reviewed through a Delivery, seen by
   teammates and CI, and read by every harness on any machine;
-- anything a teammate's Threads should know. In team mode Project notes are
-  private to one owner, as everything else is (ADR 0046).
+- anything a teammate's Threads should know. In team mode notes are private
+  to one owner, as everything else is (ADR 0046).
 
 Project notes are for what does not belong in a commit:
 
@@ -254,181 +394,235 @@ Project notes are for what does not belong in a commit:
 - **how the leads divide the work**: "the API lead owns `pkg/api`; the
   frontend lead owns `frontend/`; ask before touching the other's tree".
 
+Working notes are for the current piece of work: what a subagent found, what
+was tried and failed, which files matter, what is left.
+
 A "promote to repository" action is not part of this decision. Meridian
 never writes to a workspace or creates a commit outside a Capsule and a
 reviewed Delivery, and a promote action would need one or the other. The
-existing path is short: the note page has "Copy as Markdown", and the
-operator asks a lead to add the text to the repository, which arrives as an
-ordinary Delivery for review. The reverse never happens automatically. A
-repository file cannot create or change a note, for the same reason a
-repository cannot define a routine (ADR 0057).
+existing path is short: a note has "Copy as Markdown", and the operator asks
+a lead to add the text to the repository, which arrives as an ordinary
+Delivery for review. The reverse never happens automatically. A repository
+file cannot create or change a note, for the same reason a repository cannot
+define a routine (ADR 0057).
 
-### 5. UI
+### 7. UI
 
-- **Notes tab.** Each Project page gets a Notes tab beside its Threads. It
-  lists notes by name with size, last change, who made it, and a label when
-  the live text came from an agent proposal. It shows the Project's total
-  against the 128 KiB limit, with a rough token count for an agent that reads
-  every note. The `notesDelivery` setting is on this tab.
+- **Notes tab on the Project.** It lists Project notes by name with size,
+  last change, who made it, and an agent-proposed or unreviewed label. It
+  shows the total against the 128 KiB limit with a rough token count for an
+  agent that reads every note, the `notesDelivery` setting, and the pending
+  proposals and unreviewed revisions.
+- **Notes tab in the lead's Agents panel.** It lists the tree's working
+  notes with size, last change and which member wrote it, with history,
+  edit, delete and "Promote to Project notes". A revoked lead's tab is
+  read-only and still offers promotion.
 - **Editor.** Notes are edited as Markdown source in a plain text editor with
   a rendered preview. Saving takes the note's current revision, so two tabs
   cannot overwrite each other. The preview renders no raw HTML, loads no
   remote images, and does not follow links on its own.
-- **Proposals.** A pending proposal opens to a source diff against its base
-  revision, not a rendered preview, with the preview as a second tab.
-  Control characters, bidirectional overrides, and zero-width characters are
-  shown as visible escapes, and long lines wrap, so text cannot hide inside
-  the diff. The page shows which Thread proposed it and links to that
-  Thread. Approve, Edit, and Reject act on one proposal at a time. There is
-  no "approve all". Inbox lines and notifications name the Project, the note
-  and the proposing Thread only. They never quote proposal text, so a
-  proposal cannot put a message in front of the operator before the diff
-  page frames it as agent text.
+- **Review.** A proposal, a promotion and an unreviewed revision all open
+  to a source diff against the note's last reviewed revision, not a
+  rendered preview, with the preview as a second tab. Control characters,
+  bidirectional overrides and zero-width characters are shown as visible
+  escapes, and long lines wrap, so text cannot hide inside the diff. The
+  page shows which Thread proposed or wrote it, links to that Thread, and
+  flags content that the credential-shaped checks of ADR 0024 match. Approve,
+  Edit, Reject and Mark reviewed act on one change at a time. There is no
+  "approve all". Inbox lines and notifications name the Project, the note
+  and the Thread only. They never quote note or proposal text, so agent text
+  cannot reach the operator before a page frames it as agent text.
 - **History.** Each note has a history of its revisions with provenance and
   a diff between any two retained revisions. Restore creates a new revision.
-  Deleted notes stay in the history until purged (section 6).
+  Deleted notes stay in the history until purged (section 8).
 - **From a transcript.** A message's menu has "Add to Project notes", which
   opens the editor with the selected text. Nothing is saved until the
   operator saves it, and the revision records the source Thread.
-- **CLI and API.** `meridian notes list|show|edit|history|restore|delete`
-  and `meridian notes proposals|approve|reject`, all with `--json`. The API
-  is `GET /projects/{projectId}/notes`, `GET` and `PUT
+- **CLI and API.** `meridian notes list|show|edit|history|restore|delete`,
+  `meridian notes proposals|approve|reject|review`, and `meridian grant
+  notes GRANT_ID` for working notes, all with `--json`. The API is
+  `GET /projects/{projectId}/notes`, `GET` and `PUT
   /projects/{projectId}/notes/{name}`, `POST .../notes/{name}/delete`,
-  `GET .../notes/{name}/revisions`, `POST .../notes/{name}/restore`,
+  `.../restore` and `.../review`, `GET .../notes/{name}/revisions`,
   `GET /projects/{projectId}/note-proposals`, `POST
-  /note-proposals/{id}/approve` and `/reject`, and `POST
-  /projects/{projectId}/notes/shred`. Mutations take an expected revision or
+  /note-proposals/{id}/approve` and `/reject`, `POST
+  /projects/{projectId}/notes/shred`, and the same read, write, delete,
+  restore and revision endpoints under `/coordination-grants/{grantId}/notes`
+  plus `POST /coordination-grants/{grantId}/notes/{name}/promote`, which
+  creates the proposal for review. Mutations take an expected revision or
   resource version and an `Idempotency-Key`.
 
-### 6. Lifecycle
+### 8. Lifecycle
 
 - **Delete a note.** Creates a `delete` revision and stops delivering the
-  note at the next session start. Its history stays, so it can be restored.
-  "Delete with history" also removes every revision's ciphertext and its
-  pending proposals. That is a row delete, not media erasure.
+  note at the next session start, or the next `sync-notes` for a working
+  note. Its history stays, so it can be restored. "Delete with history" also
+  removes every revision's ciphertext and, for a Project note, its pending
+  proposals. That is a row delete, not media erasure.
 - **Crypto-shred.** `POST /projects/{projectId}/notes/shred` clears the
-  Project's wrapped notes DEK. Every revision and proposal becomes unreadable
-  ciphertext, the live set is empty, and a new DEK is created with the next
-  note. Content-free provenance rows stay. Use it when the operator finds a
-  poisoned note and wants no copy left that Meridian can read.
-- **Copies elsewhere.** A note delivered to a Capsule is plaintext in that
-  Capsule's home until the Capsule is deleted or the next delivery replaces
-  it. An agent that read a note may have quoted it into its transcript, a
-  report, a spawn prompt, or a commit. Shredding notes does not reach those
+  Project-notes DEK. Every revision and proposal becomes unreadable, the
+  live set is empty, and a new DEK is created with the next note.
+  Content-free provenance rows stay. Use it when the operator finds a
+  poisoned note and wants no copy left that Meridian can read. Working notes
+  are shredded with their lead: crypto-shredding the lead Thread (ADR 0012)
+  also clears its grant's working-notes DEK, and the Agents panel offers the
+  same shred on its own.
+- **When the lead ends.** Revocation or the lead ending makes working notes
+  read-only (section 1). Deleting the lead's Capsule keeps them, as it keeps
+  the lead's transcript. Crypto-shredding the lead Thread or deleting the
+  Project removes them.
+- **Copies elsewhere.** A delivered note is plaintext in that Capsule's home
+  until the Capsule is deleted or the next delivery replaces it. An agent
+  that read a note may have quoted it into its transcript, a report, a spawn
+  prompt, a proposal, or a commit. Shredding notes does not reach those
   copies, as shredding a subagent does not reach reports its lead already
   holds (ADR 0029).
-- **Project deletion.** ADR 0039's cascade also removes notes, revisions,
-  proposals and the wrapped DEK. Capsules are deleted first, which removes
-  their copies.
+- **Project deletion.** ADR 0039's cascade also removes both tiers, their
+  revisions, proposals and wrapped DEKs. Capsules are deleted first, which
+  removes their copies.
 - **Owner transfer in team mode.** The break-glass transfer of a departed
-  member's Project (ADR 0046) re-wraps the notes DEK with the new owner in
+  member's Project (ADR 0046) re-wraps every notes DEK with the new owner in
   the AAD in the same transaction, rejects pending proposals as
-  `owner_changed`, and sets `notesDelivery` to `off`. The new owner reads the
-  notes and turns delivery back on, as they turn on transferred routines
-  (ADR 0057). The admin who transfers cannot read notes.
+  `owner_changed`, clears `autoApproveProjectNotes` on every grant, and sets
+  `notesDelivery` to `off`. The new owner reads the notes and turns delivery
+  back on, as they turn on transferred routines (ADR 0057). The admin who
+  transfers cannot read notes.
 - **Backups.** Backups hold notes ciphertext and wrapped DEKs and list the
   transcript KEK they need, exactly as for Threads (ADR 0012). Deep
   verification authenticates notes envelopes too. A backup taken before a
   shred or deletion still holds readable notes for anyone with that backup
   and the KEK.
 
-### 7. Interaction with ADR 0059
+### 9. Interaction with ADR 0059
 
-- **Private notes stay.** A lead's `$HOME/.meridian/notes/` is still its
-  scratch space for running notes, decisions and open work. It is not shared
-  and never delivered elsewhere except through `contextFiles` into one
-  spawn's prompt. Project notes live in a separate directory, so an agent
-  cannot confuse the two and an edit to private notes changes nothing shared.
-- **From private to shared.** `propose-note` with `fromFile` turns a private
-  note into a proposal. The lead brief gains one line: when you learn a
-  durable fact about the Project or the operator's preferences that other
-  Threads need, propose it as a Project note, and never put a credential in
-  one.
-- **`contextFiles`.** Unchanged, and still limited to the private notes
-  directory. A subagent gets Project notes on its own when delivery is on,
-  so the lead does not need to attach them. A lead that wants a subagent to
-  have a Project note when delivery is off attaches its own copy, which is
-  then a `from_lead` prompt with the trust ADR 0059 already gives one.
+- **Private notes and `contextFiles`** stay as ADR 0059 section 4 has them:
+  per-Capsule scratch, attached to one spawn's prompt when the lead asks.
+  Section 1 says why working notes do not replace them.
+- **The lead brief** gains three lines: keep shared findings in working
+  notes with `write-note` and run `sync-notes` before relying on them;
+  propose a Project note when a fact will matter to Threads outside this
+  tree; never put a credential in either. The subagent brief gains the first
+  and last.
+- **Fewer retyped prompts.** A subagent receives its tree's working notes on
+  its own, so the lead no longer attaches shared conventions to every spawn.
+  `contextFiles` stays for material only that spawn needs.
 - **Context budget.** Files cost nothing until read. The index is at most
-  4 KiB in the system-prompt channel. An agent that reads every note reads at
-  most 128 KiB, about the size of one spawn prompt. The context meter (ADR
-  0059 section 6) counts the index and whatever the agent actually reads, as
-  it counts any file.
-  The limits are set so that a Project's notes are a reference shelf, not a
-  second transcript.
+  8 KiB in the system-prompt channel. An agent that reads every note of both
+  tiers reads at most 256 KiB, about two spawn prompts. The context meter
+  (ADR 0059 section 6) counts the index and whatever the agent actually
+  reads, as it counts any file. The limits keep notes a reference shelf, not
+  a second transcript.
 
 ## Not in this decision
 
 - Sharing notes with another member, or across Projects. ADR 0046 has no
   sharing, and this does not add any.
-- A promote-to-repository action (section 4).
-- Live delivery into a running session.
-- Proposals from plain Threads, which would need a mailbox outside a grant.
+- A promote-to-repository action (section 6).
+- Live delivery of Project notes into a running session.
+- Working notes for plain Threads, and proposals from them, which would need
+  a mailbox outside a grant.
+- Auto-approve for subagents, or for every lead in a Project.
 - Semantic retrieval or summarization of notes by Meridian.
 
 ## Threat model changes
 
-`docs/threat-model.md` gains a "Project notes" section that covers:
+`docs/threat-model.md` gains a "Project notes and working notes" section that
+covers:
 
-- **A deliberate carrier across fresh Capsules.** Notes are the one channel
-  by which text from one Capsule reaches later ones without a repository
-  commit, which narrows "no standing foothold" (ADR 0057). Only operator
-  text and operator-approved text crosses, each revision records where it
-  came from, and history, restore, and shred undo a mistake.
-- **The operator approves a poisoned diff.** A plausible change ("the test
-  suite is flaky; skip it", "run `scripts/bootstrap.sh` first", "the
-  staging token is in `.env.example`") steers every later Thread. Controls:
-  diffs shown as source with hidden characters escaped, one proposal at a
-  time, the agent-proposed label on the note, the index saying notes grant
-  nothing, and per-routine opt-in. A note cannot change harness permission
-  settings, egress, trusted MCP tools, a grant, or Delivery approval, so it
-  can steer only what an agent could already do without asking. This is a
+- **Working notes are an unreviewed carrier, scoped to one tree.** Any
+  process in any member Capsule can write text that every other member reads,
+  and that text outlives the Capsule that wrote it for as long as the grant
+  lives. Members already exchange hostile prompts and reports, so working
+  notes add persistence, not reach. Only the lead, its open-link subagents,
+  and the operator can read them. Nothing outside the tree receives them
+  except through an operator-reviewed promotion, an auto-approved proposal
+  from the lead itself (below), or a Delivery the operator approves.
+- **A deliberate carrier across fresh Capsules.** Project notes are the one
+  way text from one Capsule reaches later Capsules without a repository
+  commit, which narrows "no standing foothold" (ADR 0057). Plain Threads and
+  routines receive only operator-written or operator-reviewed text. History,
+  restore and shred undo a mistake for later sessions.
+- **The operator approves a poisoned diff.** A plausible change ("skip the
+  flaky tests", "run this bootstrap script first", "the token is in
+  `.env.example`") steers every later Thread. Controls: a source diff with
+  hidden characters escaped, one change at a time, labels on agent-proposed
+  and unreviewed notes, the index saying notes grant nothing, and
+  per-routine opt-in. A note cannot change harness permission settings,
+  egress, trusted MCP tools, a grant, or Delivery approval. This is a
   residual risk.
-- **Social engineering in proposals.** Proposal text never appears in
-  notifications or Inbox lines, there is no free-text reason field, and the
-  only place it is shown is a page that labels it as agent text from a named
-  Thread.
-- **Size and cost.** 32 KiB per note, 32 notes, 128 KiB per Project, 16
-  pending proposals per Project and 4 per Thread, 7-day expiry, 50 retained
-  revisions per note, and a 4 KiB index.
-- **What a compromised Capsule can do.** It can propose changes within the
-  bounds above, read and exfiltrate the notes delivered to it within its
-  egress, change its own copy, and read the states of its own proposals. It
-  cannot write or approve a note, read pending proposals or another Thread's
-  proposals, change delivery, reach another Capsule's copy, raise attention,
-  or plant notes through the repository.
+- **Auto-approve.** Trusting a lead means trusting everything it reads,
+  including subagent reports, working notes, repository files and web
+  pages. A subagent can poison a working note, the lead can copy it into a
+  proposal, and the change lands without review in every lead tree in the
+  Project. Bounds: off by default, set only by the operator on one lead,
+  never for subagents, stopped by the unattended limit, never over the
+  operator's own revisions, 20 revisions a day, and never delivered to plain
+  Threads or routines until reviewed. This is a residual risk the operator
+  takes on per lead.
+- **Social engineering.** Note and proposal text never appears in
+  notifications, Inbox lines or titles. There is no free-text reason field.
+  Text is shown only on pages that label it as agent text from a named
+  Thread. Proposals and note writes raise no attention.
+- **Size and cost.** Per-note, per-tree and per-Project limits, write rates,
+  proposal limits and expiry, retained revisions, and an 8 KiB index.
+- **What a compromised Capsule can do**, by tier, and what it cannot: write
+  or approve a Project note, see pending proposals, change delivery or
+  auto-approve, reach another tree's working notes or another Capsule's
+  copies, raise attention, or plant notes through the repository.
 - **Secrets in notes.** Every process in every Capsule that receives notes
-  can read them. Proposals are scanned with the credential-shaped checks ADR
-  0024 uses, and matches are flagged on the review page. That is defense in
-  depth. Credentials belong in named secrets.
+  can read them. Review pages flag credential-shaped content. Credentials
+  belong in named secrets.
 
 ## Consequences
 
-An operator with several leads in one Project writes a fact once, or approves
-it once, and every later session of every Thread in that Project has it as a
-file. A finished subagent's finding can outlive its Capsule if the operator
-approves it. The cost is a review step for every agent-proposed change, and a
-new channel that a careless approval can poison for every later Thread until
-the operator restores or shreds it.
+A lead and its subagents share what they learn without a click, and a
+finished subagent's findings outlive its Capsule. An operator with several
+leads in one Project writes or approves a fact once, and every later session
+in that Project has it as a file. One trusted lead can skip that click while
+the operator is around. The costs are a review step for anything that
+leaves a tree, an unreviewed carrier inside each tree for as long as its
+grant lives, and a channel that a careless approval, or an auto-approving
+lead, can poison until the operator restores or shreds it.
 
-The store gains notes, revision, and proposal tables and a per-Project
-wrapped DEK. `meridian.coord.v1` gains `propose-note` and proposal states in
-`whoami`. `capsuled` gains a notes delivery request. Start and Resume
-metadata gain `projectNotes`, the adapter hellos gain a capability for it,
+The store gains Project-note, working-note, revision and proposal tables, a
+per-Project and per-grant wrapped DEK, and a grant policy field.
+`meridian.coord.v1` gains `write-note`, `sync-notes`, `propose-note` and
+proposal states in `whoami`. `capsuled` gains notes delivery. Start and
+Resume metadata gain `notes`, the adapter hellos gain a capability for it,
 and every structured driver renders the index in its system-prompt channel.
 A new structured harness driver must do the same, as it must deliver the
-coordination brief. Transcript key rotation, backup verification, Project
-deletion and owner transfer each cover notes.
+coordination brief. Transcript key rotation, backup verification, Thread
+crypto-shred, Project deletion and owner transfer each cover notes.
 
 ## Alternatives considered
 
-- **Agent-writable notes without review**, as ADR 0059 describes Cursor's
-  Project files, which agents and the user both write. Rejected. One
-  successful injection in any Thread would reach every later Thread in the
-  Project, with nothing in between. This is the risk ADR 0059 section 4
-  deferred, and ADR 0057's fresh Capsule per run exists to avoid it.
+- **One reviewed tier only**, the first draft of this ADR. Every change,
+  including a subagent's finding meant for its sibling, waited for an
+  operator click. Rejected. Inside a tree, review guards a boundary that
+  hostile text already crosses through prompts and reports, so it buys
+  little there. It would cost a click per finding, which pushes agents back
+  to retyping in prompts and pushes the operator toward approving without
+  reading, which weakens review where it matters.
+- **Cursor's model, as described**: Project files that agents and the user
+  both write, and that reach every agent, with no review step according to
+  third-party descriptions. Adopted inside one lead tree, where it adds no
+  reach. Rejected for the Project as a whole. One successful injection in
+  any Thread would reach every later Thread, which is the risk ADR 0059
+  section 4 deferred and ADR 0057's fresh Capsule per run exists to avoid.
+- **Working notes stored in the lead Capsule.** Rejected. Subagents could
+  not read or write while the lead is idle-paused, which is most of a
+  weeks-long lead's life. The notes would be lost with the lead Capsule, and
+  the operator could not read them without starting it.
+- **Working notes replace the private notes directory.** Rejected in
+  section 1: scratch changes too often to send through the mailbox.
+- **No auto-approve.** Considered seriously, since review is the whole
+  defense for the Project tier. Rejected because a busy lead makes review a
+  rubber stamp, and section 3's limits keep unreviewed text out of plain
+  Threads and routines. An operator who disagrees leaves it off, which is
+  the default.
+- **`leads_only` as the delivery default.** Rejected in section 4.
 - **Repository only.** Rejected as the only answer, and recommended for
-  everything in the first list of section 4. It makes every preference a
+  everything in the first list of section 6. It makes every preference a
   commit and a Delivery, puts Station facts and half-made decisions into a
   team's history, and is visible to teammates who should not see a member's
   private Project.
@@ -436,18 +630,18 @@ deletion and owner transfer each cover notes.
   relevant passages for each turn. Rejected. Retrieval would decide what the
   agent sees on each turn, so the operator could no longer review what is
   delivered. Embedding text needs a model call from the daemon, or a local
-  model, which adds egress, cost, and a new component. Poisoned text can be
+  model, which adds egress, cost and a new component. Poisoned text can be
   written to rank well. Meridian does not run the agent loop (ADRs 0001 and
   0013), and a harness that wants retrieval can grep a small set of files.
 - **Per-lead notes only**, as ADR 0059 leaves it. Rejected. It is the
-  problem in the context: leads relearn, new Threads start from zero, and a
-  subagent's findings go with its Capsule.
-- **Notes in the system prompt.** Rejected in section 3: cost on every turn,
-  loss to compaction, and proposed text in a trusted channel.
+  problem in the context: subagents' findings go with their Capsules, leads
+  relearn, and new Threads start from zero.
+- **Notes in the system prompt.** Rejected in section 4: cost on every turn,
+  loss to compaction, and agent-written text in a trusted channel.
 - **Write into each harness's own memory file** (`~/.claude/CLAUDE.md`,
   `~/.codex/AGENTS.md`). Rejected. Those files belong to the personal
-  harness setup that `capsuled` installs (ADR 0024), the format and the
-  loading rules differ per harness, and the harness would load the text as
-  trusted instructions with no index saying where it came from.
+  harness setup that `capsuled` installs (ADR 0024), the format and loading
+  rules differ per harness, and the harness would load the text as trusted
+  instructions with no index saying where it came from.
 - **One shared, live directory for every Capsule in the Project.** Rejected
   under ADR 0016. Any Capsule could change what every other Capsule reads.
