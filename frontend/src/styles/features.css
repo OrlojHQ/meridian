@@ -947,12 +947,18 @@ button.tool-line:hover {
 }
 
 .spinner {
+  display: block;
+  flex: none;
   width: 0.75rem;
   height: 0.75rem;
   border: 1.5px solid var(--border-strong);
   border-top-color: var(--muted);
   border-radius: 50%;
   animation: chat-spin 0.8s linear infinite;
+}
+
+.spinner.is-reduced {
+  animation: none;
 }
 
 @keyframes chat-spin {
@@ -1210,6 +1216,10 @@ button.tool-line:hover {
   .shimmer {
     color: var(--muted);
     background: none;
+  }
+
+  .spinner {
+    animation: none;
   }
 }
 

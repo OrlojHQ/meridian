@@ -1,8 +1,17 @@
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 
 import { CheckIcon, CloseIcon, UpdateIcon } from "../components/ui/Icons";
+import { Spinner } from "../components/ui/loading";
 import { desktopBridge, type DesktopUpdateStatus } from "./desktop";
-import { UPDATE_LATER_KEY, laterRecord, updateIsSnoozed } from "./desktopUpdate";
+import {
+  UPDATE_LATER_KEY,
+  UPDATE_PROGRESS_EVENT,
+  applyUpdateProgress,
+  laterRecord,
+  updateBusyLabel,
+  updateIsSnoozed,
+  type UpdateProgress,
+} from "./desktopUpdate";
 
 const CHECK_EVERY_MS = 4 * 60 * 60 * 1000;
 
@@ -33,6 +42,8 @@ function offerFromStatus(status: DesktopUpdateStatus, manual: boolean): Offer | 
 
 export function DesktopUpdateNotice() {
   const [offer, setOffer] = useState<Offer | null>(null);
+  const [progress, setProgress] = useState<UpdateProgress | undefined>(undefined);
+  const busyRef = useRef(false);
 
   const check = useCallback((manual: boolean) => {
     const bridge = desktopBridge();
@@ -50,16 +61,26 @@ export function DesktopUpdateNotice() {
     check(false);
     const timer = window.setInterval(() => check(false), CHECK_EVERY_MS);
     const onManual = () => check(true);
+    const onProgress = (event: Event) => {
+      if (!busyRef.current) return;
+      const detail = event instanceof CustomEvent ? event.detail : undefined;
+      setProgress((current) => applyUpdateProgress(current, detail));
+    };
     window.addEventListener("meridian-check-updates", onManual);
+    window.addEventListener(UPDATE_PROGRESS_EVENT, onProgress);
     return () => {
       window.clearInterval(timer);
       window.removeEventListener("meridian-check-updates", onManual);
+      window.removeEventListener(UPDATE_PROGRESS_EVENT, onProgress);
     };
   }, [check]);
 
   if (!offer) return null;
 
-  const dismiss = () => setOffer(null);
+  const dismiss = () => {
+    busyRef.current = false;
+    setOffer(null);
+  };
   const later = (version: string) => {
     window.localStorage.setItem(UPDATE_LATER_KEY, JSON.stringify(laterRecord(version, Date.now())));
     dismiss();
@@ -91,18 +112,27 @@ export function DesktopUpdateNotice() {
     const bridge = desktopBridge();
     if (!bridge?.installUpdate) return;
     const version = offer.version;
+    busyRef.current = true;
+    setProgress(undefined);
     setOffer({ kind: "install", version, busy: true, error: "" });
     void bridge.installUpdate().then(
       () => undefined,
-      () =>
+      () => {
+        busyRef.current = false;
+        setProgress(undefined);
         setOffer({
           kind: "install",
           version,
           busy: false,
           error: "The update could not be installed.",
-        }),
+        });
+      },
     );
   };
+
+  const busy = offer.kind === "install" && offer.busy;
+  const busyLabel = updateBusyLabel(progress);
+  const actionLabel = busy ? busyLabel : "Update & restart";
 
   return (
     <section className="update-card" role="status" aria-label="Update available">
@@ -141,10 +171,24 @@ export function DesktopUpdateNotice() {
         <button
           type="button"
           className="update-card-action"
-          disabled={offer.busy}
+          disabled={busy}
+          aria-busy={busy || undefined}
+          aria-label={actionLabel}
           onClick={install}
         >
-          {offer.busy ? "Downloading…" : "Update & restart"}
+          <span className="update-card-action-faces">
+            <span className={busy ? "is-offstage" : undefined} aria-hidden={busy || undefined}>
+              Update & restart
+            </span>
+            <span className={busy ? undefined : "is-offstage"} aria-hidden={busy ? undefined : true}>
+              <Spinner />
+              {busyLabel}
+            </span>
+            <span className="is-offstage" aria-hidden="true">
+              <Spinner />
+              Downloading… 100%
+            </span>
+          </span>
         </button>
       ) : null}
     </section>

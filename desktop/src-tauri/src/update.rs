@@ -64,6 +64,61 @@ pub fn cask_installed(caskrooms: &[&str]) -> bool {
     caskrooms.iter().any(|path| Path::new(path).is_dir())
 }
 
+/// Download progress reported to the page. The updater hands over each chunk's
+/// length, not a running total, and the content length when it knows one.
+pub struct DownloadProgress {
+    received: u64,
+    last: Option<u8>,
+}
+
+impl DownloadProgress {
+    pub fn new() -> Self {
+        Self {
+            received: 0,
+            last: None,
+        }
+    }
+
+    /// Records one chunk. Returns a percent only the first time that integer
+    /// is reached, so the page is not updated for every packet.
+    pub fn observe(&mut self, chunk: usize, total: Option<u64>) -> Option<u8> {
+        let chunk = u64::try_from(chunk).unwrap_or(u64::MAX);
+        self.received = self.received.saturating_add(chunk);
+        let percent = download_percent(self.received, total)?;
+        if self.last == Some(percent) {
+            return None;
+        }
+        self.last = Some(percent);
+        Some(percent)
+    }
+}
+
+pub fn download_percent(received: u64, total: Option<u64>) -> Option<u8> {
+    let total = total.filter(|value| *value > 0)?;
+    let percent = received.saturating_mul(100) / total;
+    Some(percent.min(100) as u8)
+}
+
+/// Page event for update progress. `phase` is only `download` or `install`,
+/// and `percent` is an integer from 0 to 100 or absent. Anything else is
+/// refused so the script cannot carry text the page did not already know.
+pub fn update_progress_script(phase: &str, percent: Option<u8>) -> Option<String> {
+    match phase {
+        "download" | "install" => {}
+        _ => return None,
+    }
+    if percent.is_some_and(|value| value > 100) {
+        return None;
+    }
+    let percent = match percent {
+        Some(value) => value.to_string(),
+        None => "null".to_string(),
+    };
+    Some(format!(
+        "window.dispatchEvent(new CustomEvent('meridian-update-progress',{{detail:{{phase:'{phase}',percent:{percent}}}}}))"
+    ))
+}
+
 pub fn install_source_from_exe(exe: &Path) -> InstallSource {
     let canonical = exe.canonicalize().unwrap_or_else(|_| exe.to_path_buf());
     let os = std::env::consts::OS;
@@ -151,5 +206,54 @@ mod tests {
         assert!(cask_installed(&[&absent, &present]));
         assert!(!cask_installed(&[&absent]));
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn download_percent_is_monotonic_and_capped() {
+        assert_eq!(download_percent(0, Some(100)), Some(0));
+        assert_eq!(download_percent(42, Some(100)), Some(42));
+        assert_eq!(download_percent(1, Some(3)), Some(33));
+        assert_eq!(download_percent(200, Some(100)), Some(100));
+        assert_eq!(download_percent(50, None), None);
+        assert_eq!(download_percent(50, Some(0)), None);
+        assert_eq!(download_percent(u64::MAX, Some(1)), Some(100));
+    }
+
+    #[test]
+    fn progress_emits_each_percent_once() {
+        let mut progress = DownloadProgress::new();
+        assert_eq!(progress.observe(0, Some(100)), Some(0));
+        assert_eq!(progress.observe(0, Some(100)), None);
+        assert_eq!(progress.observe(42, Some(100)), Some(42));
+        assert_eq!(progress.observe(1, Some(100)), Some(43));
+        assert_eq!(progress.observe(10, None), None);
+        assert_eq!(progress.observe(0, Some(0)), None);
+
+        let mut unknown = DownloadProgress::new();
+        assert_eq!(unknown.observe(50, None), None);
+        assert_eq!(unknown.observe(0, Some(100)), Some(50));
+
+        let mut full = DownloadProgress::new();
+        assert_eq!(full.observe(usize::MAX, Some(1)), Some(100));
+        assert_eq!(full.observe(usize::MAX, Some(1)), None);
+    }
+
+    #[test]
+    fn progress_script_is_a_fixed_event() {
+        assert_eq!(
+            update_progress_script("download", Some(42)).as_deref(),
+            Some(
+                "window.dispatchEvent(new CustomEvent('meridian-update-progress',{detail:{phase:'download',percent:42}}))"
+            )
+        );
+        assert_eq!(
+            update_progress_script("install", None).as_deref(),
+            Some(
+                "window.dispatchEvent(new CustomEvent('meridian-update-progress',{detail:{phase:'install',percent:null}}))"
+            )
+        );
+        assert!(update_progress_script("download", Some(101)).is_none());
+        assert!(update_progress_script("restart", Some(1)).is_none());
+        assert!(update_progress_script("download';alert(1)//", Some(1)).is_none());
     }
 }

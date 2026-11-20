@@ -16,6 +16,17 @@ export function usePrefersReducedMotion() {
   return reduced;
 }
 
+export function Spinner() {
+  const reduced = usePrefersReducedMotion();
+  return (
+    <span
+      className={`spinner${reduced ? " is-reduced" : ""}`}
+      data-reduced-motion={reduced ? "true" : "false"}
+      aria-hidden="true"
+    />
+  );
+}
+
 export function ActivityDot({
   tone = "active",
 }: {
