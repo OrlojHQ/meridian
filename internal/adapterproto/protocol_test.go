@@ -284,3 +284,22 @@ type shortWriter struct{}
 func (shortWriter) Write(value []byte) (int, error) {
 	return len(value) - 1, nil
 }
+
+func TestCoordinationMetadataRoundTrip(t *testing.T) {
+	if CoordinationMetadata("") != nil {
+		t.Fatal("empty role encoded metadata")
+	}
+	for _, role := range []string{CoordinationLead, CoordinationSubagent} {
+		metadata := CoordinationMetadata(role)
+		frame := Frame{Protocol: Version, Type: KindStart, ID: "start-1", SessionID: "thread-1", Metadata: metadata}
+		if err := frame.Validate(); err != nil {
+			t.Fatalf("%s start frame: %v", role, err)
+		}
+		if got := CoordinationRole(metadata); got != role {
+			t.Fatalf("role = %q, want %q", got, role)
+		}
+	}
+	if got := CoordinationRole([]byte(`{"coordination":"root"}`)); got != "" {
+		t.Fatalf("unknown role read as %q", got)
+	}
+}

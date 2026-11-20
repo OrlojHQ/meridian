@@ -1326,3 +1326,33 @@ func (s *Service) lastAssistantMessage(ctx context.Context, thread domain.Thread
 	}
 	return 0, nil
 }
+
+// coordinationBriefRole is the role meridiand tells a structured adapter at
+// session start, so it can brief the harness: lead for a Thread holding an
+// active grant, subagent for an unpromoted sub-Capsule. It is presentation
+// only; the coordination mailbox enforces the grant on every request.
+func (s *Service) coordinationBriefRole(
+	ctx context.Context, thread domain.Thread, capsule domain.Capsule,
+) (string, error) {
+	if s.coordination == nil {
+		return "", nil
+	}
+	if capsule.Role == domain.CapsuleSub {
+		return adapterproto.CoordinationSubagent, nil
+	}
+	var role string
+	err := s.store.View(ctx, func(reader ports.Reader) error {
+		grant, err := reader.GetCoordinationGrantByRootThread(ctx, thread.ID)
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if grant.State == domain.GrantActive {
+			role = adapterproto.CoordinationLead
+		}
+		return nil
+	})
+	return role, err
+}

@@ -74,6 +74,7 @@ type codexSession struct {
 	config   CodexConfig
 	threadID string
 	resume   string
+	brief    string
 	request  int
 	sequence int
 
@@ -166,7 +167,8 @@ func RunCodexAppServer(
 
 	session := &codexSession{
 		stream: stream, rpc: NewJSONLinesLimit(child.stdout, child.stdin, codexRecordLimit),
-		config: config, resume: resumeID, pending: map[string]string{},
+		config: config, resume: resumeID, brief: coordinationBrief(initial.Metadata, coordinationMCP),
+		pending: map[string]string{},
 		started: map[string]bool{}, prompts: map[string]*codexPrompt{}, byFrame: map[string]string{},
 		retired: retiredPrompts{}, skills: map[string]string{},
 	}
@@ -268,6 +270,9 @@ func (s *codexSession) threadParams() map[string]any {
 	}
 	if s.config.Sandbox != "" {
 		params["sandbox"] = s.config.Sandbox
+	}
+	if s.brief != "" {
+		params["developerInstructions"] = s.brief
 	}
 	return params
 }

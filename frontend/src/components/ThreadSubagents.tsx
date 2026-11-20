@@ -538,7 +538,7 @@ export function SubagentsPanel({ thread, grantId }: { thread: Thread; grantId: s
               <p className="subagents-empty-title">No subagents yet</p>
               <p>
                 {active
-                  ? "Ask the lead to split the work. Each subagent it starts runs in its own Capsule and shows up here."
+                  ? "The lead starts subagents when work splits up, or when you ask it to. Each runs in its own Capsule and shows up here."
                   : "This lead did not start any subagents."}
               </p>
             </>
