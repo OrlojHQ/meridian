@@ -124,6 +124,41 @@ func TestClaudeStreamReportsAndChangesEffort(t *testing.T) {
 	_ = readKind(t, decoder, adapterproto.KindError)
 }
 
+func TestClaudeStreamReportsRequestRetries(t *testing.T) {
+	decoder, encoder, _, _ := runClaudeFixture(t, ClaudeConfig{Permissions: true}, adapterproto.KindStart, "")
+	_ = readStatus(t, decoder, adapterproto.StatusStarting)
+	sendTestMessage(t, encoder, "message-1", "retry")
+	_ = readStatus(t, decoder, adapterproto.StatusRunning)
+	for _, want := range []string{
+		"Model request failed: the model provider could not be reached. Retrying, attempt 1 of 10.",
+		"Model request failed: the provider is overloaded (HTTP 529). Retrying, attempt 2 of 10.",
+	} {
+		retry := readKind(t, decoder, adapterproto.KindError)
+		if retry.Code != "provider_retry" || !retry.Retryable || retry.Summary != want {
+			t.Fatalf("retry = %#v, want summary %q", retry, want)
+		}
+	}
+	// A retry does not end the turn.
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+}
+
+func TestClaudeRetrySummary(t *testing.T) {
+	for _, tc := range []struct {
+		category                 string
+		status, attempt, retries int
+		want                     string
+	}{
+		{"rate_limit", 429, 3, 10, "Model request failed: the provider is rate limiting requests (HTTP 429). Retrying, attempt 3 of 10."},
+		{"authentication_failed", 401, 1, 0, "Model request failed: the provider rejected the credentials (HTTP 401). Retrying, attempt 1."},
+		{"server_error", 503, 0, 0, "Model request failed: the provider returned an error (HTTP 503). Retrying."},
+		{"<script>", 7000, 1, 10, "Model request failed: the model provider could not be reached. Retrying, attempt 1 of 10."},
+	} {
+		if got := claudeRetrySummary(tc.category, tc.status, tc.attempt, tc.retries); got != tc.want {
+			t.Errorf("claudeRetrySummary(%q, %d, %d, %d) = %q, want %q", tc.category, tc.status, tc.attempt, tc.retries, got, tc.want)
+		}
+	}
+}
+
 func TestClaudeModelName(t *testing.T) {
 	for id, want := range map[string]string{
 		"claude-opus-5-5":              "Opus 5.5",
@@ -623,6 +658,18 @@ func TestClaudeStreamHelper(t *testing.T) {
 				assistant("msg_fixture_1", text("hello"))
 				emit(map[string]any{"type": "stream_event", "event": map[string]any{"type": "message_stop"}})
 				result("hello", false)
+			case "retry":
+				// Claude Code's records while it retries a failed request:
+				// a refused connection has no status, an overload does.
+				emit(map[string]any{
+					"type": "system", "subtype": "api_retry", "attempt": 1, "max_retries": 10,
+					"retry_delay_ms": 520, "error_status": nil, "error": "unknown",
+				})
+				emit(map[string]any{
+					"type": "system", "subtype": "api_retry", "attempt": 2, "max_retries": 10,
+					"retry_delay_ms": 1040, "error_status": 529, "error": "overloaded",
+				})
+				result("recovered", false)
 			case "typed-model":
 				// Claude Code switched models itself, as a typed /model does.
 				emit(map[string]any{

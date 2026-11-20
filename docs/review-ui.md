@@ -92,12 +92,15 @@ the primary workspace. Run inspectors and historical terminal routes remain dire
 addressable from that list. Every Run inspector and focused terminal provides a
 direct return to its owning Capsule workspace.
 
-Desktop layouts show all three surfaces. On narrower viewports the Activity
-sidebar becomes a drawer and Capsule tools become an independently dismissible
+Capsule tools start closed on every width, so opening a Thread or Capsule
+shows the conversation at full width. The tools toggle and the tool buttons
+open them. A control that asks for a tool, such as Full review or Open
+terminal, opens that tool. Open and closed are not stored, so a reload or a
+new Thread starts closed again. On narrower viewports the Activity sidebar
+becomes a drawer and Capsule tools become an independently dismissible
 full-screen surface above the status bar. On phone widths (720px and below)
-Capsule tools start closed, so opening a Thread or Capsule shows the
-conversation first. Each pane owns its scrolling; the browser document does
-not become an unbounded stack of Capsule panels.
+the tool labels collapse to icons. Each pane owns its scrolling; the browser
+document does not become an unbounded stack of Capsule panels.
 
 The Changes tool parses the bounded unified diff into collapsible file sections,
 old/new line-number gutters, hunk headers, and semantic addition/deletion rows.

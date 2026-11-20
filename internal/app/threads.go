@@ -919,6 +919,13 @@ func (s *Service) appendAndSendHook(
 		return ThreadMutationResult{}, err
 	}
 	scope := "thread:" + string(id) + ":" + operation
+	if makeFrame != nil {
+		renewed, err := s.renewStaleSession(ctx, id, expected, scope, key)
+		if err != nil {
+			return ThreadMutationResult{}, err
+		}
+		expected = renewed
+	}
 	var result ThreadMutationResult
 	err := s.store.Transact(ctx, func(tx ports.Transaction) error {
 		replay, ok, err := getReplay[threadOutcome](ctx, tx, scope, key)
@@ -1600,6 +1607,7 @@ func (s *Service) startStructuredRuntime(
 		}
 		return failed, err
 	}
+	s.recordSessionLease(run.ID, connection)
 	run, err = s.applyRuntimeState(ctx, run.ID, runtimeRun)
 	if err != nil {
 		return run, err

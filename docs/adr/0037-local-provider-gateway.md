@@ -138,3 +138,12 @@ explicit `--provider-gateway-url`, changes neither variable.
 - This does not make container isolation a multi-tenant boundary. A
   compromised Capsule can still spend against its own leased connection,
   exactly as before.
+
+## Amendment: running harnesses keep their connection (ADR 0058)
+
+"A new port after a restart changes nothing for Capsules" assumed the
+harness would be restarted with a new connection. Nothing did that: a
+structured session's harness kept the old URL, token, and trust bundle until
+an operator stopped and resumed it. ADR 0058 renews a stale session before
+its next prompt, by resuming the harness with a fresh lease. The in-memory
+CA, in-memory leases, and random port are unchanged.
