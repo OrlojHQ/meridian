@@ -72,6 +72,7 @@ func RunGeneric(
 	childHello.Capabilities.Effort = effort
 	usage := childHello.Capabilities.ContextUsage && controllerHello.Capabilities.ContextUsage
 	childHello.Capabilities.ContextUsage = usage
+	childHello.Capabilities.Notes = childHello.Capabilities.Notes && controllerHello.Capabilities.Notes
 	if err := parent.Write(childHello); err != nil {
 		return err
 	}

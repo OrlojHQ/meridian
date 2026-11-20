@@ -87,6 +87,7 @@ func (s *Stream) Handshake(capabilities adapterproto.Capabilities) error {
 	capabilities.Images = s.images
 	s.usage = capabilities.ContextUsage && frame.Capabilities.ContextUsage
 	capabilities.ContextUsage = s.usage
+	capabilities.Notes = capabilities.Notes && frame.Capabilities.Notes
 	return s.Write(adapterproto.Frame{
 		Protocol:     adapterproto.Version,
 		Type:         adapterproto.KindHello,

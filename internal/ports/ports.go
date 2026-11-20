@@ -413,7 +413,7 @@ type RuntimeStructuredStartRequest struct {
 	Setup      *harnesssetup.RuntimeSetup `json:"setup,omitempty"`
 	Git        *harnesssetup.GitIdentity  `json:"git,omitempty"`
 	// Notes are written as files before the harness starts (ADR 0060).
-	Notes *coordproto.NotesDelivery `json:"notes,omitempty"`
+	Notes      *coordproto.NotesDelivery `json:"notes,omitempty"`
 	RunID      domain.RunID
 	ResourceID string
 	Harness    string

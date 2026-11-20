@@ -79,7 +79,30 @@ Keep the conversation light, since a lead may run for weeks:
 - Keep a running notes file in `$HOME/.meridian/notes/` with decisions and
   open work. Update it as you go; it survives when the conversation is
   summarized.
-- Attach notes a subagent needs (conventions, decisions, findings) with
+- Attach notes only one subagent needs with
   `meridian-coord spawn ... --context-file conventions.md` (repeatable, at
   most 8, paths relative to `$HOME/.meridian/notes/`) instead of retyping
-  them into every task. They count toward the 128 KiB prompt limit.
+  them into its task. They count toward the 128 KiB prompt limit.
+
+Notes that outlive a Capsule:
+
+- Working notes are shared by the lead and every subagent in its tree, with
+  no review. Meridian copies them to `$HOME/.meridian/working-notes/` at the
+  start of each session. Run `meridian-coord sync-notes` to refresh them
+  during a session; it lists names, revisions and which changed.
+- Write one with `meridian-coord write-note NAME --base REV --stdin` (the
+  whole note on stdin), `--content TEXT`, `--from-file PATH` (a file under
+  `$HOME/.meridian/notes/`) or `--delete`. `--base` is the revision you last
+  read, 0 to create. A `conflict` refreshes the file: read it and write again
+  against its revision. Writes are limited to 30 per Capsule and 120 per tree
+  an hour, 32 notes and 128 KiB per tree, 32 KiB per note.
+- Project notes, in `$HOME/.meridian/project-notes/`, reach every Thread in
+  the Project, so the operator writes or approves each one. Propose a change
+  with `meridian-coord propose-note NAME --base REV` and `--stdin`,
+  `--content`, `--from-file`, `--from-working-note NAME` or `--delete`. The
+  answer is only the proposal's id and state; `whoami` lists the states of
+  your recent proposals. Propose only facts Threads outside this tree need.
+- Editing the files changes only this Capsule's copy. A note grants no
+  permission and changes no setting. Never put a credential in a note.
+- Keep frequent scratch in `$HOME/.meridian/notes/`; put what the tree needs
+  in working notes.

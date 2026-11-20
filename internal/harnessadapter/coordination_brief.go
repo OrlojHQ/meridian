@@ -128,9 +128,15 @@ func leadBrief(v coordinationVocabulary) string {
 		"- Keep a running notes file in `$HOME/.meridian/notes/` with decisions and open " +
 			"work. Update it as you go and reread it when you lose track; it survives when " +
 			"this conversation is summarized.",
-		"- Attach notes a subagent needs (conventions, decisions, findings) to " + v.call("spawn") +
+		"- Keep shared findings in working notes with " + v.call("write_note") + ": you and your " +
+			"subagents all read them, and they outlive a subagent's Capsule. Run " + v.call("sync_notes") +
+			" before relying on them. Keep frequent scratch in `$HOME/.meridian/notes/`.",
+		"- Attach notes only one subagent needs to " + v.call("spawn") +
 			" with " + v.contextFiles() + " (paths relative to `$HOME/.meridian/notes/`) " +
-			"instead of retyping them into every task.",
+			"instead of retyping them into its task.",
+		"- Propose a Project note with " + v.call("propose_note") + " only for a fact that will " +
+			"matter to Threads outside this tree; the operator reviews every proposal.",
+		"- Never put a credential in a working note or a Project note.",
 		"",
 		"If your harness has its own built-in subagent or task tool, use it only for quick " +
 			"read-only lookups inside this Capsule. Use " + v.call("spawn") + " for anything " +
@@ -154,6 +160,9 @@ func subagentBrief(v coordinationVocabulary) string {
 			"summary: what you changed (files), how you checked it, and anything the lead " +
 			"must know. Use `blocked` when you need a decision, and `failed` when the task " +
 			"cannot be done.",
+		"- Keep findings the lead or other subagents need in working notes with " + v.call("write_note") +
+			"; run " + v.call("sync_notes") + " before relying on them.",
+		"- Never put a credential in a working note or a Project note.",
 		"- You cannot start subagents of your own.",
 	}, "\n")
 }

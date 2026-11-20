@@ -191,7 +191,7 @@ func RunACP(ctx context.Context, input io.Reader, output io.Writer, config ACPCo
 	if err := stream.Handshake(adapterproto.Capabilities{
 		Resume: true, ToolEvents: true, Permissions: config.Permissions,
 		InputRequests: config.Permissions, Heartbeat: false, OpaqueMetadata: true, Commands: true,
-		Models: true, Effort: true, Images: true, ContextUsage: true,
+		Models: true, Effort: true, Images: true, ContextUsage: true, Notes: true,
 	}); err != nil {
 		return err
 	}
@@ -217,6 +217,14 @@ func RunACP(ctx context.Context, input io.Reader, output io.Writer, config ACPCo
 	session.role = adapterproto.CoordinationRole(initial.Metadata)
 	if session.role != session.briefed {
 		session.brief = coordinationBrief(initial.Metadata, coordinationMCP)
+	}
+	// The notes index changes from session to session, so it is sent on
+	// the first prompt of every session that has one (ADR 0060).
+	if notes := notesBrief(initial.Metadata, coordinationMCP); notes != "" {
+		if session.brief != "" {
+			session.brief += "\n\n"
+		}
+		session.brief += notes
 	}
 	session.cwd, err = sessionWorkingDirectory()
 	if err != nil {
