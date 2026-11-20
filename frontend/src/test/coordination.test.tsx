@@ -165,7 +165,7 @@ describe("Lead launcher", () => {
     await userEvent.click(screen.getByLabelText("Approve each subagent spawn"));
     await userEvent.click(screen.getByRole("button", { name: "Start task" }));
     await waitFor(() =>
-      expect(spawn).toHaveBeenCalledWith(project.id, "mock", "split the work", undefined, {
+      expect(spawn).toHaveBeenCalledWith(project.id, "mock", "split the work", "split the work", {
         maxChildren: 2,
         maxDescendants: 2,
         deadlineSeconds: 24 * 3600,

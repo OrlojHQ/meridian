@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   type DragEvent,
   type KeyboardEvent,
@@ -16,6 +16,8 @@ import {
 
 import { api, normalizeAPIError, type SendMessageOptions } from "../api/client";
 import { trackComposerDraft } from "../shell/composerDraft";
+import { nameThreadFromFirstMessage } from "../shell/nameThread";
+import { awaitingFirstMessage } from "../shell/threadTitle";
 import type { HarnessProfile, Thread, ThreadBlock, ThreadLink } from "../api/generated/types.gen";
 import { queries } from "../api/queries";
 import { plainAgentText } from "./agentText";
@@ -561,6 +563,7 @@ function ThreadComposer({
   onNewSession,
   onSent,
   onConflict,
+  firstMessage,
   toolbar,
   models,
   attachRef,
@@ -575,6 +578,9 @@ function ThreadComposer({
   onNewSession?: () => void;
   onSent: () => void;
   onConflict: () => Promise<void>;
+  // No operator message is in the transcript yet, so the next one sent can
+  // name an unnamed Capsule.
+  firstMessage: boolean;
   // Controls above the message box, such as the lead's Agents button.
   toolbar?: ReactNode;
   // The harness's latest reported models; absent when it reports none.
@@ -609,6 +615,7 @@ function ThreadComposer({
   const runningRef = useRef(false);
   const flushingRef = useRef(false);
   const menuId = useId();
+  const queryClient = useQueryClient();
   const mutation = useMutation({
     mutationFn: (input: { text: string; attachments: PendingAttachment[]; delivery?: "steer" }) => {
       const payload = attachmentPayload(input.attachments);
@@ -624,6 +631,13 @@ function ThreadComposer({
       return api.sendThreadMessage(thread.id, thread.resourceVersion, input.text, options);
     },
     onSuccess: (_result, input) => {
+      if (firstMessage && input.text.trim()) {
+        // Naming is cosmetic. The header already shows the same title, so a
+        // failed rename leaves nothing wrong on the page.
+        void nameThreadFromFirstMessage(queryClient, thread.capsuleId, input.text).catch(
+          () => undefined,
+        );
+      }
       setMessage("");
       revokeAttachments(input.attachments);
       setAttachments((current) => current.filter((item) => !input.attachments.includes(item)));
@@ -1029,6 +1043,7 @@ export function ThreadConversation({
   onRefresh: () => Promise<void>;
 }) {
   const commands = useMemo(() => latestThreadCommands(blocks), [blocks]);
+  const firstMessage = useMemo(() => awaitingFirstMessage(blocks), [blocks]);
   const models = useMemo(() => latestThreadModels(blocks), [blocks]);
   const isLead = Boolean(thread.coordinationGrantId && !thread.parentThreadId);
   const profiles = useQuery(queries.harnessProfiles(thread.capsuleId));
@@ -1142,6 +1157,7 @@ export function ThreadConversation({
             void onRefresh();
           }}
           onConflict={onRefresh}
+          firstMessage={firstMessage}
           attachRef={(add) => {
             addFilesRef.current = add;
           }}

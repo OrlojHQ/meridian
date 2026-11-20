@@ -709,7 +709,7 @@ describe("application shell", () => {
     const sessions = await screen.findByRole("list", { name: "Sessions" });
     await waitFor(() => expect(sessions.querySelectorAll("li")).toHaveLength(3));
     expect(sessions).toHaveTextContent("Waiting for permission");
-    const waiting = screen.getByRole("link", { name: /Claude Code\s*Waiting for permission/ });
+    const waiting = screen.getByRole("link", { name: /Thread \d\s*Waiting for permission/ });
     expect(waiting).toHaveAttribute("aria-current", "page");
     expect(waiting).toHaveAttribute(
       "href",

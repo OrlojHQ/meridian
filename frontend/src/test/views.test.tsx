@@ -419,7 +419,7 @@ describe("Native harness launcher", () => {
         "project-start-task",
         "mock",
         "inspect",
-        undefined,
+        "inspect",
         undefined,
       ),
     );
@@ -769,7 +769,7 @@ describe("Capsule detail states", () => {
       </Routes>,
       "/ui/capsules/capsule-1?session=new",
     );
-    expect(await screen.findByRole("tab", { name: /Claude Code/ })).toHaveAttribute(
+    expect(await screen.findByRole("tab", { name: /Terminal/ })).toHaveAttribute(
       "aria-selected",
       "true",
     );

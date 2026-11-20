@@ -609,15 +609,15 @@ describe("Thread detail transcript and controls", () => {
       `/ui/capsules/${capsule.id}`,
     );
 
-    const working = await screen.findByRole("tab", { name: /mock\s*Working/ });
+    const working = await screen.findByRole("tab", { name: /Thread \d\s*Working/ });
     expect(working).toHaveAttribute("aria-selected", "true");
     await waitFor(() => expect(blocks.mock.calls.map((call) => call[0])).toContain(thread.id));
     expect(await screen.findByText("No messages yet.")).toBeInTheDocument();
     expect(screen.queryByText("Structured Thread")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("tab", { name: /mock\s*Idle/ }));
+    await user.click(screen.getByRole("tab", { name: /Thread \d\s*Idle/ }));
     await waitFor(() => expect(blocks.mock.calls.map((call) => call[0])).toContain(second.id));
-    expect(screen.getByRole("tab", { name: /mock\s*Idle/ })).toHaveAttribute(
+    expect(screen.getByRole("tab", { name: /Thread \d\s*Idle/ })).toHaveAttribute(
       "aria-selected",
       "true",
     );
@@ -723,6 +723,64 @@ describe("Thread detail transcript and controls", () => {
     await waitFor(() =>
       expect(deletion).toHaveBeenCalledWith(thread.id, thread.resourceVersion),
     );
+  });
+
+  it("names an unnamed Capsule from the first message, and only the first", async () => {
+    vi.spyOn(api, "thread").mockResolvedValue(thread);
+    vi.spyOn(api, "capsule").mockResolvedValue({ ...capsule, name: "thread-ad942540f1e7" });
+    vi.spyOn(api, "threadBlocks").mockResolvedValue({
+      items: [],
+      nextCursor: 0,
+      more: false,
+    });
+    vi.spyOn(threadEvents, "followThreadBlocks").mockResolvedValue();
+    vi.spyOn(api, "sendThreadMessage").mockResolvedValue({ thread });
+    const rename = vi
+      .spyOn(api, "renameCapsule")
+      .mockResolvedValue({ ...capsule, name: "Fix the header" });
+    const user = userEvent.setup();
+    wrapper(
+      <Routes>
+        <Route path="/ui/threads/:threadId" element={<ThreadDetail />} />
+      </Routes>,
+    );
+
+    await user.type(await screen.findByLabelText("Message"), "Fix the header. Then stop.{Enter}");
+    await waitFor(() =>
+      expect(rename).toHaveBeenCalledWith(capsule.id, "Fix the header", capsule.resourceVersion),
+    );
+
+  });
+
+  it("leaves the Capsule name alone after the first message", async () => {
+    vi.spyOn(api, "thread").mockResolvedValue(thread);
+    vi.spyOn(api, "capsule").mockResolvedValue({ ...capsule, name: "thread-ad942540f1e7" });
+    vi.spyOn(api, "threadBlocks").mockResolvedValue({
+      items: [
+        { ...block("ask", "m-ask", 1, "Fix the header"), role: "user", messageKind: "prompt" },
+        block("done", "m-done", 2, "Done."),
+        {
+          ...block("idle", "m-idle", 3, "", "status"),
+          event: { type: "status", messageId: "m-idle", status: "idle" },
+        },
+      ],
+      nextCursor: 3,
+      more: false,
+    });
+    vi.spyOn(threadEvents, "followThreadBlocks").mockResolvedValue();
+    const send = vi.spyOn(api, "sendThreadMessage").mockResolvedValue({ thread });
+    const rename = vi.spyOn(api, "renameCapsule");
+    const user = userEvent.setup();
+    wrapper(
+      <Routes>
+        <Route path="/ui/threads/:threadId" element={<ThreadDetail />} />
+      </Routes>,
+    );
+
+    await screen.findByText("Fix the header");
+    await user.type(screen.getByLabelText("Message"), "And the footer{Enter}");
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+    expect(rename).not.toHaveBeenCalled();
   });
 
   it("refreshes authoritative Thread state after a send conflict", async () => {

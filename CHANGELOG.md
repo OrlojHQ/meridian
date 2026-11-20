@@ -7,6 +7,18 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- A Thread started without a name is named from its first message, so the
+  sidebar, Needs you, Recent, and notifications show the same title as its
+  header instead of `thread-<id>`. The web UI renames the Capsule once, only
+  while it still has a generated name; `meridian thread spawn` without
+  `--name` does the same from the prompt. The name is plaintext metadata,
+  unlike the encrypted transcript.
+- Session tabs and sidebar rows say what a session is, Terminal or Thread
+  (numbered when there are several), with the harness as the icon, instead
+  of repeating the harness name.
+
 ## [0.13.0] - 2026-11-19
 
 ### Added

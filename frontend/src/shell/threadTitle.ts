@@ -27,6 +27,22 @@ export function threadTitleFromMessage(content: string, limit = TITLE_LIMIT) {
   return word.replace(/[.,:;!-]+$/g, "").trim();
 }
 
+// The Capsule API takes at most 128 bytes and refuses format characters.
+const CAPSULE_NAME_BYTES = 128;
+const FORMAT_CHARS = /\p{Cf}/gu;
+
+// A Capsule name from the operator's first message: the same short title the
+// header shows, kept within what the rename API accepts. Empty when the
+// message has no usable text, such as an attachment with no words.
+export function capsuleNameFromMessage(content: string) {
+  let name = threadTitleFromMessage(content).replace(FORMAT_CHARS, "").trim();
+  const encoder = new TextEncoder();
+  while (name && encoder.encode(name).length > CAPSULE_NAME_BYTES) {
+    name = Array.from(name).slice(0, -1).join("").trimEnd();
+  }
+  return name;
+}
+
 export function displayThreadTitle(capsuleName: string, firstMessage = "") {
   if (isGeneratedThreadName(capsuleName)) {
     const title = threadTitleFromMessage(firstMessage);
@@ -42,6 +58,17 @@ export function pullRequestTitleFromMessage(content: string, fallback: string) {
 
 export function pullRequestBodyFromMessage(content: string) {
   return sanitizeThreadText(content).replace(/\u0000/g, "").trim().slice(0, 4000);
+}
+
+// True only when the loaded transcript starts at its first message and holds
+// no operator text yet. A view that keeps only the newest blocks cannot tell
+// whether an older operator message scrolled out, so it says false.
+export function awaitingFirstMessage(
+  blocks: { role?: string; kind?: string; content?: string; messageSequence?: number }[] = [],
+) {
+  if (firstUserText(blocks) !== "") return false;
+  return blocks.every((block) => block.messageSequence === undefined) ||
+    blocks.some((block) => (block.messageSequence ?? Infinity) <= 1);
 }
 
 export function firstUserText(

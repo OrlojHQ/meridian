@@ -14,10 +14,10 @@ type renameOutcome struct {
 }
 
 // RenameCapsule saves the name shown for a Capsule. The text is whatever the
-// operator submits. A transcript is not copied in unless they send it: the
-// Capsule name is plaintext metadata, so Meridian never derives it from an
-// encrypted transcript on its own. The Capsule page may show a title from
-// the first message, which it reads through the Thread API and does not save.
+// client submits. The Capsule name is plaintext metadata, so the daemon never
+// derives it from an encrypted transcript on its own. A client may submit a
+// title from the operator's own first message: the web UI does so once, over
+// a generated thread-<id> name (see the threat model).
 func (s *Service) RenameCapsule(
 	ctx context.Context,
 	id domain.CapsuleID,

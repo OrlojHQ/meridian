@@ -15,6 +15,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/OrlojHQ/meridian/internal/localrepo"
+	"github.com/OrlojHQ/meridian/internal/threadtitle"
 	"github.com/OrlojHQ/meridian/pkg/client"
 )
 
@@ -2421,11 +2422,14 @@ func (m Model) formRequest() (ActionRequest, error) {
 			request.Harness = strings.TrimSpace(m.overlay.fields[2].value)
 			request.Content = m.overlay.fields[3].value
 		}
-		if request.Name == "" {
-			return ActionRequest{}, errors.New("Capsule name is required")
-		}
 		if request.Content == "" {
 			return ActionRequest{}, errors.New("First prompt is required")
+		}
+		if request.Name == "" {
+			request.Name = threadtitle.CapsuleName(request.Content)
+		}
+		if request.Name == "" {
+			return ActionRequest{}, errors.New("Capsule name is required")
 		}
 	case ActionThreadSend:
 		request.Content = m.overlay.fields[0].value

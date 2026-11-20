@@ -386,6 +386,24 @@ export function capsuleSessions(
   return capsule.harness ? [terminalSession(capsule.harness, runs), ...sessions] : sessions;
 }
 
+// What a session tab or row is called. The harness already shows as an icon,
+// so the name says what kind of session it is: one Terminal and one or more
+// Threads, numbered in the order they started when there is more than one.
+// Only one of them runs at a time; the daemon refuses a second active Thread.
+export function sessionNames(sessions: CapsuleSession[]): Map<string, string> {
+  const threads = sessions.filter((session) => session.kind === "thread");
+  return new Map(
+    sessions.map((session) => [
+      session.id,
+      session.kind === "terminal"
+        ? "Terminal"
+        : threads.length > 1
+          ? `Thread ${threads.indexOf(session) + 1}`
+          : "Thread",
+    ]),
+  );
+}
+
 export type HeaderAttention = {
   tone: "working" | "attention";
   label: "Working" | "Needs input" | "Failed";

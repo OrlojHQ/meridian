@@ -76,6 +76,7 @@ import {
 } from "./shell/AppShell";
 import {
   capsuleSessions,
+  sessionNames,
   type ActivityGroup,
   defaultSession,
   destinationAfterCapsuleDelete,
@@ -844,6 +845,7 @@ export function CapsuleDetail() {
   if (capsule.isError) return <ErrorState error={capsule.error} />;
   const value = capsule.data;
   const sessions = capsuleSessions(value, runs.data?.items, threads.data?.items);
+  const tabNames = sessionNames(sessions);
   const canCreateThread =
     structured &&
     value.state === "Ready" &&
@@ -1091,6 +1093,7 @@ export function CapsuleDetail() {
               key={session.id}
               type="button"
               role="tab"
+              title={`${tabNames.get(session.id)} · ${harnessName(session.harness)}`}
               id={`session-tab-${session.id}`}
               aria-selected={selected === session.id}
               aria-controls="session-panel"
@@ -1099,8 +1102,8 @@ export function CapsuleDetail() {
             >
               <ActivityDot group={session.group} />
               <HarnessMark harness={session.harness} />
-              <span>{harnessName(session.harness)}</span>
-              <small>{session.kind === "terminal" ? "Terminal" : session.label}</small>
+              <span>{tabNames.get(session.id)}</span>
+              <small>{session.label}</small>
             </button>
           ))}
           {canCreateThread && (
