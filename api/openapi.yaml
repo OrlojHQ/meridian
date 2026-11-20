@@ -1780,6 +1780,49 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
         default: { $ref: "#/components/responses/DefaultError" }
+  /threads/{threadId}/coordination-grant:
+    post:
+      operationId: makeThreadLead
+      summary: Make an existing plain Thread a lead
+      description: >-
+        Creates a Coordination Grant for an active Thread of a main Capsule
+        that has no grant, so a conversation that built up useful context can
+        start subagents (ADR 0059). It takes the same policy as creating a
+        lead Thread and gives the same authority. Only the operator can call
+        it: the break-glass admin, a Capsule, and the system see the Thread as
+        not found, and no coordination request reaches it. It refuses
+        subagents, promoted subagents still linked to their lead, harnesses
+        the Project does not allow as structured, and Threads or Capsules that
+        already hold a grant, including a revoked or lapsed one; a revoked
+        grant is not replaced. Creating the grant counts as the operator being
+        present. A harness learns its role when its session starts, so when
+        the Thread is idle, waiting on nothing, and its harness reported
+        resume state, the daemon stops and resumes the session as a lead now
+        (restarted is true). Otherwise the next prompt, or the next resume,
+        restarts it first. A running turn is never interrupted.
+      tags: [threads]
+      parameters:
+        - $ref: "#/components/parameters/ThreadId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MakeThreadLeadRequest" }
+      responses:
+        "201":
+          description: Grant created
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MakeThreadLeadResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        default: { $ref: "#/components/responses/DefaultError" }
   /threads/{threadId}/delete:
     post:
       operationId: deleteThread
@@ -5844,8 +5887,8 @@ components:
     CoordinationPolicy:
       type: object
       description: >
-        Makes the new Thread a lead that may spawn subagent Threads in their own
-        sub-Capsules. Omitted limits take their defaults. Subagents answer to the
+        Makes the Thread a lead that may spawn subagent Threads in their own
+        sub-Capsules: a new Thread, or an existing one through makeThreadLead. Omitted limits take their defaults. Subagents answer to the
         operator: the lead never approves permissions or answers input.
         maxChildren and maxDescendants count spawns in a rolling 24-hour
         window, not over the grant's lifetime. The grant has no fixed end; it
@@ -5962,6 +6005,29 @@ components:
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
         resourceVersion: { type: integer, format: int64, minimum: 1 }
+    MakeThreadLeadRequest:
+      type: object
+      required: [expectedResourceVersion]
+      properties:
+        expectedResourceVersion:
+          type: integer
+          format: int64
+          minimum: 1
+          description: The Thread's current resource version.
+        coordination:
+          $ref: "#/components/schemas/CoordinationPolicy"
+    MakeThreadLeadResponse:
+      type: object
+      required: [grant, thread, restarted]
+      properties:
+        grant: { $ref: "#/components/schemas/CoordinationGrant" }
+        thread: { $ref: "#/components/schemas/Thread" }
+        restarted:
+          type: boolean
+          description: >
+            True when the session was stopped and resumed as a lead now. False
+            when the Thread was busy, waiting on the operator, or had no
+            resume state; the next prompt or resume then delivers the role.
     RevokeCoordinationGrantRequest:
       type: object
       required: [expectedResourceVersion]

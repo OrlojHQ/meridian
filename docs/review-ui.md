@@ -190,6 +190,17 @@ A lead left that long without a message from you is shown as Paused: it can
 no longer start or message subagents until you send it a message. A lead also starts idle and is
 told to split the work in its first message.
 
+A plain Thread that turned out to be worth splitting up can become a lead
+later: **Make this a lead** in the Thread's actions menu offers the same
+choice as starting a lead (approve each spawn, with the same limits) and
+says that the agent restarts its session to pick up the role. The daemon
+restarts it at once when the Thread is idle and waiting on nothing, and
+otherwise before the next message; the dialog says which happened. The
+Thread's Agents button appears as soon as the grant exists. The action is
+offered only on an active Thread of a main Capsule that has no grant, when
+the provider supports coordination; nothing makes a Thread a lead unless
+the operator asks (ADR 0059).
+
 The per-Project launcher (from the board, the command palette, and Project
 settings) is scoped to its Project and does not ask for one. It starts with an agent
 picker over the Project's applied packs; it can add another installation-known

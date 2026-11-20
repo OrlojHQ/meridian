@@ -119,6 +119,7 @@ var operationRolesBearerAuth = map[string][]string{
 	ListThreadBlocksOperation:               []string{},
 	ListThreadLinksOperation:                []string{},
 	ListThreadsOperation:                    []string{},
+	MakeThreadLeadOperation:                 []string{},
 	MintPersonalAccessTokenOperation:        []string{},
 	MutateHarnessSetupOperation:             []string{},
 	PatchProjectOperation:                   []string{},

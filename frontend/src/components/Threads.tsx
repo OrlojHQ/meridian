@@ -38,6 +38,7 @@ import { ThreadSubagents } from "./ThreadSubagents";
 import { ThreadError } from "./ThreadError";
 import { pinnableThread, setThreadPinned } from "../shell/pins";
 import { ContextMeter } from "./ContextMeter";
+import { MakeLeadDialog } from "./MakeLeadDialog";
 import { contextDetail, contextMeterUsage, contextUsage } from "./contextUsage";
 import { Menu as ActionsMenu, type MenuItem as ActionsMenuItem } from "./ui/Menu";
 import { ListSkeleton } from "./ui/loading";
@@ -406,6 +407,7 @@ export function ThreadDetail({
   const [confirmation, setConfirmation] = useState("");
   const [confirmAction, setConfirmAction] = useState<"cancel" | "archive" | "fresh">();
   const [showDetails, setShowDetails] = useState(false);
+  const [makingLead, setMakingLead] = useState(false);
   const [rawEvents, setRawEvents] = useState(false);
   const ended = threadQuery.data ? endedSessionState(threadQuery.data) : undefined;
   const endedRef = useRef(ended !== undefined);
@@ -498,6 +500,7 @@ export function ThreadDetail({
   const capsuleThreads = useQuery(queries.threads(threadQuery.data?.capsuleId ?? ""));
   // Shared with the Capsule page; says whether this is a CLI Capsule.
   const home = useQuery(queries.capsule(threadQuery.data?.capsuleId ?? ""));
+  const capabilities = useQuery(queries.capabilities());
   const fresh = useMutation({
     mutationFn: () => {
       if (!threadQuery.data) throw new Error("Thread is not loaded");
@@ -594,6 +597,18 @@ export function ThreadDetail({
       disabled: pin.isPending,
       onSelect: () => pin.mutate(),
     });
+  }
+  // A plain Thread of a main Capsule can become a lead, but only when the
+  // operator asks (ADR 0059). The daemon refuses everything else too.
+  if (
+    !coordinated &&
+    thread.state === "active" &&
+    thread.structuredSupported !== false &&
+    capabilities.data?.coordination?.supported === true &&
+    home.data?.role !== "sub" &&
+    !home.data?.linkId
+  ) {
+    menu.push({ label: "Make this a lead", onSelect: () => setMakingLead(true) });
   }
   if (thread.state !== "archived" && thread.state !== "deleted") {
     menu.push({
@@ -792,6 +807,9 @@ export function ThreadDetail({
           </div>
           {deletion.isError && <ThreadError error={deletion.error} />}
         </section>
+      )}
+      {makingLead && (
+        <MakeLeadDialog thread={thread} onClose={() => setMakingLead(false)} onDone={refresh} />
       )}
       <ThreadSubagents thread={thread} />
       <ThreadConversation

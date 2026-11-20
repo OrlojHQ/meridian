@@ -1619,7 +1619,7 @@ func (s *Service) startStructuredRuntime(
 		}
 		return failed, err
 	}
-	s.recordSessionLease(run.ID, connection)
+	s.recordSessionLease(run.ID, connection, role)
 	run, err = s.applyRuntimeState(ctx, run.ID, runtimeRun)
 	if err != nil {
 		return run, err

@@ -1221,7 +1221,7 @@ export type CreateProjectThreadRequest = {
 };
 
 /**
- * Makes the new Thread a lead that may spawn subagent Threads in their own sub-Capsules. Omitted limits take their defaults. Subagents answer to the operator: the lead never approves permissions or answers input. maxChildren and maxDescendants count spawns in a rolling 24-hour window, not over the grant's lifetime. The grant has no fixed end; it lapses after unattendedLimitSeconds without the operator.
+ * Makes the Thread a lead that may spawn subagent Threads in their own sub-Capsules: a new Thread, or an existing one through makeThreadLead. Omitted limits take their defaults. Subagents answer to the operator: the lead never approves permissions or answers input. maxChildren and maxDescendants count spawns in a rolling 24-hour window, not over the grant's lifetime. The grant has no fixed end; it lapses after unattendedLimitSeconds without the operator.
  *
  */
 export type CoordinationPolicy = {
@@ -1303,6 +1303,24 @@ export type CoordinationGrant = {
     createdAt: string;
     updatedAt: string;
     resourceVersion: number;
+};
+
+export type MakeThreadLeadRequest = {
+    /**
+     * The Thread's current resource version.
+     */
+    expectedResourceVersion: number;
+    coordination?: CoordinationPolicy;
+};
+
+export type MakeThreadLeadResponse = {
+    grant: CoordinationGrant;
+    thread: Thread;
+    /**
+     * True when the session was stopped and resumed as a lead now. False when the Thread was busy, waiting on the operator, or had no resume state; the next prompt or resume then delivers the role.
+     *
+     */
+    restarted: boolean;
 };
 
 export type RevokeCoordinationGrantRequest = {
@@ -4931,6 +4949,56 @@ export type UnpinThreadResponses = {
 };
 
 export type UnpinThreadResponse = UnpinThreadResponses[keyof UnpinThreadResponses];
+
+export type MakeThreadLeadData = {
+    body: MakeThreadLeadRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        threadId: string;
+    };
+    query?: never;
+    url: '/threads/{threadId}/coordination-grant';
+};
+
+export type MakeThreadLeadErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Request rate limit exceeded
+     */
+    429: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type MakeThreadLeadError = MakeThreadLeadErrors[keyof MakeThreadLeadErrors];
+
+export type MakeThreadLeadResponses = {
+    /**
+     * Grant created
+     */
+    201: MakeThreadLeadResponse;
+};
+
+export type MakeThreadLeadResponse2 = MakeThreadLeadResponses[keyof MakeThreadLeadResponses];
 
 export type DeleteThreadData = {
     body: DeleteThreadRequest;

@@ -329,6 +329,10 @@ type ListThreadsRes interface {
 	listThreadsRes()
 }
 
+type MakeThreadLeadRes interface {
+	makeThreadLeadRes()
+}
+
 type MintPersonalAccessTokenRes interface {
 	mintPersonalAccessTokenRes()
 }

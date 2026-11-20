@@ -599,6 +599,61 @@ func TestACPResume(t *testing.T) {
 	}
 }
 
+// A resumed session is briefed when its role differs from the one already
+// in its history, as when the operator makes a plain Thread a lead, and the
+// adapter's resume state records the role it briefed (ADR 0059).
+func TestACPBriefsAResumedSessionWhoseRoleChanged(t *testing.T) {
+	testInitialMetadata = adapterproto.CoordinationMetadata(adapterproto.CoordinationLead)
+	t.Cleanup(func() { testInitialMetadata = nil })
+	briefed := func(log string) bool {
+		t.Helper()
+		prompt := findACP(t, readACPLog(t, log), func(r acpRecord) bool { return r.Method == "session/prompt" })
+		return strings.Contains(string(prompt.Params), "meridian-context")
+	}
+	for _, test := range []struct {
+		name, state string
+		brief       bool
+	}{
+		{name: "plain to lead", state: `{"driver":"acp","sessionId":"sess-1"}`, brief: true},
+		{name: "still a lead", state: `{"driver":"acp","role":"lead","sessionId":"sess-1"}`, brief: false},
+		{name: "subagent to lead", state: `{"driver":"acp","role":"subagent","sessionId":"sess-1"}`, brief: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			decoder, encoder, log, _ := runACPFixture(t, "resume", ACPConfig{}, adapterproto.KindResume, test.state)
+			_ = readStatus(t, decoder, adapterproto.StatusStarting)
+			// Until a prompt carries the brief, the state keeps the role
+			// already briefed, so a later resume still briefs it.
+			if idle := readStatus(t, decoder, adapterproto.StatusIdle); idle.ResumeState != test.state {
+				t.Fatalf("resume state before the first prompt = %q", idle.ResumeState)
+			}
+			sendTestMessage(t, encoder, "message-1", "hello")
+			_ = readUntil(t, decoder, adapterproto.KindAssistantMessage)
+			idle := readStatus(t, decoder, adapterproto.StatusIdle)
+			if want := `{"driver":"acp","role":"lead","sessionId":"sess-1"}`; idle.ResumeState != want {
+				t.Fatalf("resume state after the first prompt = %q, want %q", idle.ResumeState, want)
+			}
+			if got := briefed(log); got != test.brief {
+				t.Fatalf("first prompt briefed = %v, want %v", got, test.brief)
+			}
+		})
+	}
+}
+
+func TestACPResumeStateRejectsUnknownRoles(t *testing.T) {
+	for _, state := range []string{
+		`{"driver":"acp","sessionId":"sess-1","role":"admin"}`,
+		`{"driver":"acp","sessionId":"sess-1","role":1}`,
+	} {
+		if _, _, err := acpResumeState(state); err == nil {
+			t.Fatalf("accepted %s", state)
+		}
+	}
+	id, role, err := acpResumeState(`{"driver":"acp","sessionId":"sess-1","role":"subagent"}`)
+	if err != nil || id != "sess-1" || role != adapterproto.CoordinationSubagent {
+		t.Fatalf("state = %q, %q, %v", id, role, err)
+	}
+}
+
 func TestACPFailsClosed(t *testing.T) {
 	for _, test := range []struct {
 		mode, code, resume, summary string

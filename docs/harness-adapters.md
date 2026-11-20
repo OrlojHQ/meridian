@@ -116,12 +116,26 @@ reviewer subagent for large diffs; and keep running notes in
 `$HOME/.meridian/notes/`. The brief is trusted adapter text, never repository
 content, and grants nothing; the mailbox still enforces the grant.
 
+A Thread's role can change between sessions: the operator can make a plain
+Thread a lead (ADR 0059), and the daemon then stops the session and resumes
+it with `{"coordination":"lead"}`. So a channel must deliver the brief on
+resume too. `claude-stream`, `codex-app-server`, and `pi-rpc` already do,
+because their system-prompt channel is set for every process or
+`thread/resume`. The `acp` driver records the role it has briefed in its own
+resume state (`{"driver":"acp","sessionId":...,"role":"lead"}`, set once a
+prompt carries the brief) and sends the block again on the first prompt after
+a resume whose role differs. Resume state written before this has no role, so
+an existing ACP lead or subagent is briefed once more on its next resume. The
+recorded role comes only from the adapter, never from the repository; at
+worst a hostile Capsule process that rewrote it could suppress or repeat a
+brief, which grants nothing.
+
 | Driver | Channel |
 | --- | --- |
 | `claude-stream` | `--append-system-prompt` |
 | `codex-app-server` | `developerInstructions` on `thread/start` and `thread/resume` |
 | `pi-rpc` | `--append-system-prompt`, worded for the `meridian-coord` CLI |
-| `acp` | a trailing `<meridian-context>` text block on the first prompt of a new session, since ACP has no system-prompt field |
+| `acp` | a trailing `<meridian-context>` text block on the first prompt of a new session, and on the first prompt after a resume whose role differs from the one already briefed, since ACP has no system-prompt field |
 | `generic` | none; forwards the metadata to the child adapter |
 
 **Adding a harness.** A new ACP harness gets the brief from the `acp` driver

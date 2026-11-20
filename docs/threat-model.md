@@ -1021,9 +1021,22 @@ idle pause of the lead never ends or lapses a grant.
   has no API that reaches them, so a lead cannot renew its own authority. The
   store refuses moving `lastOperatorAt` backwards and any change to the
   attendance fields of an ended grant. Revocation and `lead_ended` stay
-  terminal. The web UI lets the
-operator change the live limit within those bounds; no Capsule can. The
-optional `--max-live-capsules` installation cap refuses coordinated spawns
+  terminal.
+- **Upgrading a Thread with history.** The operator can make an existing
+  plain Thread a lead (ADR 0059). That gives coordination authority to a
+  conversation that may already hold hostile repository or tool output,
+  which can now steer spawns and subagent prompts. The operator chooses this
+  explicitly, per Thread: only a user principal's call to
+  `POST /threads/{threadId}/coordination-grant` does it, no coordination
+  verb, Capsule, routine, or break-glass call can, and nothing upgrades a
+  Thread on its own. The resulting grant has exactly a new lead's limits
+  and unattended bound, and a revoked grant is never replaced. Delivering
+  the role restarts the harness through ADR 0058's renewal, which never
+  interrupts a turn, never answers for the operator, and sends no prompt.
+
+The web UI lets the operator change the live limit within those bounds; no
+Capsule can. The optional `--max-live-capsules` installation cap refuses
+coordinated spawns
 when that many Capsules already hold compute; it does not limit
 operator-started Capsules. Mailbox polling is a reconciliation poll: it never
 wakes a paused Capsule or counts as activity.

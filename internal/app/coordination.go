@@ -57,16 +57,22 @@ func (s *Service) validateCoordinationPolicy(
 	return policy, nil
 }
 
+// insertCoordinationGrantTx records a new grant for a lead Thread. Creating
+// it counts as operator presence, so lastOperatorAt starts at now. data is
+// the content-free payload of the created event.
 func (s *Service) insertCoordinationGrantTx(
 	ctx context.Context,
 	tx ports.Transaction,
-	intent domain.ProjectThreadIntent,
+	projectID domain.ProjectID,
+	threadID domain.ThreadID,
+	capsuleID domain.CapsuleID,
 	policy domain.CoordinationPolicy,
-) error {
+	data []byte,
+) (domain.CoordinationGrant, error) {
 	now := s.clock.Now().UTC()
 	grant := domain.CoordinationGrant{
-		ID: domain.CoordinationGrantID(s.ids.NewID()), ProjectID: intent.ProjectID,
-		RootThreadID: intent.ThreadID, RootCapsuleID: intent.CapsuleID,
+		ID: domain.CoordinationGrantID(s.ids.NewID()), ProjectID: projectID,
+		RootThreadID: threadID, RootCapsuleID: capsuleID,
 		State: domain.GrantActive, SpawnApproval: policy.SpawnApproval,
 		MaxDepth: policy.MaxDepth, MaxChildren: policy.MaxChildren,
 		MaxDescendants: policy.MaxDescendants, MaxLiveCapsules: policy.MaxLiveCapsules,
@@ -75,9 +81,9 @@ func (s *Service) insertCoordinationGrantTx(
 		ArchiveAfter: *policy.ArchiveAfter, CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
 	}
 	if err := tx.InsertCoordinationGrant(ctx, grant); err != nil {
-		return err
+		return grant, err
 	}
-	return s.appendEvent(ctx, tx, "coordination_grant", string(grant.ID), "coordination_grant.created", 1, nil)
+	return grant, s.appendEvent(ctx, tx, "coordination_grant", string(grant.ID), "coordination_grant.created", 1, data)
 }
 
 func (s *Service) matchCoordinationReplay(
