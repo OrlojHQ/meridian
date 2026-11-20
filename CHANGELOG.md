@@ -17,6 +17,11 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   with each attempt, such as "Model request failed: the model provider could
   not be reached. Retrying, attempt 3 of 10." This needs a Capsule built from
   the new image.
+- Capsule tools start closed, so a Thread or Capsule opens on the conversation
+  at full width. The tools toggle and the Changes, Preview, Files, and
+  Terminal buttons still open them. Full review and Open terminal still open
+  the tool they name. A reload or a new Thread starts closed again. A panel
+  width you dragged is still remembered.
 
 ### Fixed
 
@@ -25,6 +30,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   Meridian resumes the idle harness's session with a fresh provider gateway
   lease, certificate, and address (ADR 0058). You no longer have to stop and
   resume the session, or start a new Capsule.
+- The Terminal tool uses a prompt icon, in the tool tabs and on the collapsed
+  tool rail, at the same size and weight as Changes, Preview, and Files.
 
 ## [0.13.0] - 2026-11-19
 
