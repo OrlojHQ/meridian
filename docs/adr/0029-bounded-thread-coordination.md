@@ -117,6 +117,14 @@ Three ways to carry a request out of the Capsule were considered:
   unchanged: an agent may propose a Delivery, and only the operator can approve
   it.
 
+> **Amended by ADR 0059.** The absolute grant deadline described here and in
+> the amendments below was replaced by an unattended limit, and the total
+> children limit now counts a rolling 24-hour window. See "Amendment:
+> unattended limit replaces the deadline" at the end of this ADR. Wakes now
+> carry report headlines instead of full reports, and `patch` and `result`
+> can write to a file in the lead Capsule; see "Amendment: headline wakes and
+> coordination files". The text above is kept as decided at the time.
+
 ## Consequences
 
 Users can hand a goal to one lead and supervise the resulting tree, with the
@@ -399,3 +407,130 @@ Main Capsules the operator starts are unchanged and keep idle pause.
   already destroy. Promoted and failed subagents, and subagents that need the
   operator or have a Delivery in flight, are never archived and so never
   cleaned up.
+
+## Amendment: unattended limit replaces the deadline
+
+ADR 0059 section 1 replaces the absolute deadline so a lead conversation can
+last weeks. The bound on a runaway lead moves from grant age to unattended
+time plus a rolling spawn window.
+
+- **Unattended limit.** A grant records `lastOperatorAt` and
+  `unattendedLimit` (default 24 hours, 5 minutes to 72 hours, whole seconds),
+  which replace `deadlineSeconds` and `deadlineAt`. Only operator API calls
+  move `lastOperatorAt`: a message to the lead Thread, approving a spawn, and
+  `PATCH /coordination-grants/{id}`. Wakes, reports, routines, and every
+  coordination request leave it alone.
+- **Lapse.** Once `now - lastOperatorAt` passes the limit, the grant is
+  lapsed: mutating mailbox requests are refused as `coordination_lapsed`,
+  reads still answer, the lead is not woken with reports, and the
+  coordination loop applies `onDeadline` once (`cancel_and_pause` closes open
+  links as revoked so the sweep cancels and pauses subagents;
+  `stop_new_work` leaves them running; queued spawns close either way). The
+  store keeps the grant `active` with `lapsed_at` set, and the API presents
+  it as `lapsed`. The next operator message to the lead, or a grant update,
+  clears `lapsed_at` and reopens it. Revocation and `lead_ended` stay
+  terminal; idle pause of the lead ends nothing. `expired` remains only on
+  grants that passed a deadline before this amendment.
+- **Rolling window.** `maxDescendants` (default 8, at most 32) counts spawns
+  created in the last 24 hours instead of over the grant's lifetime. With
+  depth fixed at one every spawn is the lead's own child, so the fan-out
+  check (`maxChildren`) counts the same window; counting every sibling ever
+  would have kept a lifetime cap of at most 16. Denied, cancelled, and
+  removed spawns still count while they are in the window.
+  `descendantsCreated` stays as a lifetime count for display, and grant views
+  add `spawnsInWindow`. Live Capsules, depth, and messages per link are
+  unchanged.
+- **Migration.** Migration 0036 adds the attendance columns and drops
+  `deadline_at`. Active grants take their remaining deadline, capped at 72
+  hours and at least 5 minutes, as the limit, with `lastOperatorAt` set so
+  they still stop when their deadline would have passed. Triggers refuse a
+  `lastOperatorAt` that moves backwards, an unparsable one, and any change to
+  an ended grant's attendance fields.
+- **Interfaces.** `meridian thread spawn --lead` and `meridian grant update`
+  take `--unattended-limit`; `--lead-deadline` is a deprecated alias with the
+  same meaning ("lapse this long from now"). The API refuses
+  `deadlineSeconds` with a message naming `unattendedLimitSeconds`. The
+  `meridian.coord.v1` `whoami` field `deadlineAt` keeps its name, because
+  Capsule mailboxes decode configuration strictly, and now carries when the
+  grant lapses as of its last configuration. The lead's Agents panel shows
+  spawns in the current window and "pauses after N without you", lets the
+  operator change the limit, and shows a lapsed lead as Paused.
+
+## Amendment: headline wakes and coordination files
+
+ADR 0059 section 3 keeps large coordination output out of a lead's
+transcript, so a lead conversation that lasts weeks fills its context more
+slowly.
+
+- **Headline wakes.** A wake lists each new report's subagent name, link,
+  status, reason, content-free diffstat, and the first 2 KiB of its summary,
+  at most 16 reports and 16 KiB in all (formerly 8 full reports and 64 KiB).
+  It tells the lead to read full reports with `result`. Reports that do not
+  fit are counted and come in the next wake.
+- **Delivery.** A report is marked delivered only when `wait` or `result`
+  returns it, never by a wake. Migration 0037 adds a content-free
+  `report_headlined_seq` that a wake moves in the same transaction as its
+  message. A report that was headlined and not yet read does not wake the
+  lead again; the next wake for something new lists it as still unread.
+  Operator notices are unchanged and still never wake a lead on their own.
+- **`toFile`.** `patch` and `result` accept `toFile: true` in
+  `meridian.coord.v1`, `meridian_patch` and `meridian_result`, and
+  `--to-file` on the CLI. The lead Capsule's own mailbox handles it: it strips
+  the field before relaying a patch request, so meridiand never sees it, writes
+  the bytes to `$HOME/.meridian/coord/<link>/<seq>.patch` or `<seq>.md`
+  (directories 0700, files 0600; `seq` is the link's latest report sequence,
+  and a later fetch at the same sequence replaces the file), and returns
+  `file`, `fileBytes`, HEAD, base commit and the diffstat instead of the
+  content. An empty patch writes no file. Files are capped at 16 MiB per
+  Capsule, oldest removed first. A report written to a file counts as read.
+  Patch bytes are still never written to SQLite.
+- **Lead brief.** The lead brief and the Pi skill tell the lead to read
+  diffstats before patches, use `toFile` and the shell for large output,
+  spawn a reviewer subagent rather than reading a large diff, and keep a
+  running notes file in `$HOME/.meridian/notes/`.
+
+## Amendment: notes attached to a spawn
+
+ADR 0059 section 4 lets a lead attach its own notes to a spawn instead of
+retyping shared conventions and findings into every prompt.
+
+- **`contextFiles`.** `spawn` accepts `contextFiles` in `meridian.coord.v1`
+  and `meridian_spawn`, and repeatable `--context-file` on the CLI: 1 to 8
+  distinct slash-separated paths of at most 255 bytes, relative to
+  `$HOME/.meridian/notes/` in the lead Capsule, with no empty, `.` or `..`
+  element, backslash, or control character. No other request accepts it.
+- **Resolution.** The lead Capsule's own mailbox reads each file through an
+  `os.Root` on the notes directory (which must be a real directory outside
+  `/workspace`, not a symlink), accepts only regular UTF-8 files without NUL,
+  and appends each to the prompt under a `## Notes attached by the lead`
+  heading as `### <path> (<n> bytes)` followed by a backtick fence one longer
+  than the longest backtick run in the note (at least three). It then removes
+  the field and relays an ordinary spawn. meridiand refuses a spawn that
+  still names `contextFiles`.
+- **Limits.** The combined prompt must fit the existing 128 KiB limit. A
+  spawn that does not fit is refused as `context_too_large`, never cut. A
+  missing file or notes directory is `not_found`; any other unreadable path
+  is `invalid_request`. Messages name the path, never the content.
+- **Provenance and storage.** The combined prompt is encrypted and delivered
+  under `from_lead` provenance like any prompt. Meridian stores nothing new.
+- **Idempotency.** The mailbox reads the files again on each retry and the
+  key's digest covers the combined prompt, so a retry with the same key after
+  a note changed is a `conflict`, not a second spawn.
+
+## Amendment: existing Threads become leads
+
+ADR 0059 section 2 lets the operator give an existing plain Thread a grant,
+so "created in the same transaction as that Thread" no longer holds for
+every grant.
+
+- **`POST /threads/{threadId}/coordination-grant`.** An operator-only API
+  (a user principal; the break-glass admin, a Capsule, and the system see the
+  Thread as not found) with `expectedResourceVersion` and an
+  `Idempotency-Key`. It takes the same policy as a new lead and gives the
+  same authority. No `meridian.coord.v1` verb reaches it.
+- **Refusals.** The Thread must be active, in a main Capsule with no lead or
+  link, with a structured harness on the Project's allowlist. A Thread or
+  Capsule that holds any grant, including a revoked one, is refused, so
+  revocation stays terminal and a Capsule has at most one grant.
+- **Role delivery.** The daemon stops and resumes the session with the lead
+  role under ADR 0058's renewal conditions, now or before the next prompt.

@@ -163,13 +163,18 @@ subagent Threads in their own Capsules and read their reports (ADR 0029):
 
 ```console
 printf '%s' 'split the review across subagents' | meridian thread spawn PROJECT_ID \
-  --harness claude --prompt-stdin --lead --max-children 3 --lead-deadline 2h
+  --harness claude --prompt-stdin --lead --max-children 3 --unattended-limit 4h
 ```
 
-`--max-children` (default 4, at most 16), `--max-descendants`,
-`--max-live-capsules`, `--max-messages-per-link`, repeatable
-`--allow-harness` (default: the lead's harness), `--on-deadline`
-(`cancel_and_pause` or `stop_new_work`), and `--spawn-approval`
+`--max-children` (default 4, at most 16) and `--max-descendants` (default 8,
+at most 32) count spawns in any 24 hours, not over the lead's lifetime.
+`--unattended-limit` (default 24h, 5m to 72h) is how long the lead keeps
+coordinating after your last message, spawn approval, or grant update; past
+it the lead pauses (its grant lapses) until you message it again.
+`--lead-deadline` is a deprecated alias. `--max-live-capsules`,
+`--max-messages-per-link`, repeatable `--allow-harness` (default: the lead's
+harness), `--on-deadline` (what a pause does to running subagents:
+`cancel_and_pause` or `stop_new_work`), and `--spawn-approval`
 (`auto`, the default, or `operator`) bound the grant. With `operator`, each
 spawn waits until you approve it (`meridian approvals list` /
 `approve` / `deny`). `meridian thread links THREAD_ID` lists a lead's
@@ -199,6 +204,79 @@ link, now or later. Promotion is permanent and gives the subagent no
 coordination authority. `thread links` marks promoted and archived subagents,
 and `grant show` prints the archive period.
 
+`meridian thread lead THREAD_ID` makes an existing plain Thread a lead, for a
+conversation that turned out to be worth keeping and splitting up (ADR 0059).
+It takes the same limit flags as `thread spawn --lead`, without `--lead`,
+reads the current version unless you pass `--expected-version`, takes
+`--idempotency-key`, and prints the Thread (with `--json`, the grant, the
+Thread, and `restarted`). The agent learns its role only when its session
+starts, so Meridian restarts the session: now, if the Thread is idle and
+waiting on nothing, otherwise before your next message. A running turn is
+never interrupted, and the harness resumes its own conversation. The Thread
+must be active and belong to a main Capsule that holds no grant; subagents,
+promoted subagents that kept their link, and Threads whose grant was revoked
+are refused. The conversation keeps everything it already read, including
+repository and tool output, and gains the same authority as a new lead.
+
+`meridian thread pin THREAD_ID` pins a Thread you keep coming back to, such as
+a lead for one part of a large repository, so the web sidebar lists it above
+the Project's other Threads, by name (ADR 0059). `meridian thread unpin
+THREAD_ID` clears it. Both read the current version unless you pass
+`--expected-version`, take `--idempotency-key`, and print the Thread
+(`pinned` in text output, `pinnedAt` with `--json`). Any live Thread of a main
+Capsule can be pinned; a subagent cannot until it is promoted. A pin grants
+nothing, and archiving or crypto-shredding the Thread clears it.
+
+### Notes
+
+Project notes are Markdown files that reach every Thread of a Project as
+files under `$HOME/.meridian/project-notes/` (ADR 0060). Only you write
+them; agents propose changes, which you review one at a time.
+
+```console
+meridian notes list PROJECT_ID
+meridian notes show PROJECT_ID tests [--revision N]
+meridian notes edit PROJECT_ID tests [--file note.md|-]
+meridian notes history PROJECT_ID tests
+meridian notes restore PROJECT_ID tests 3
+meridian notes delete PROJECT_ID tests [--with-history]
+meridian notes delivery PROJECT_ID all_threads|leads_only|off
+meridian notes shred PROJECT_ID --yes
+```
+
+`edit` opens `$EDITOR` without `--file` and is refused if the note changed
+since it was read. A note is at most 32 KiB; a Project holds at most 32 live
+notes and 128 KiB. `delivery` sets which Threads receive them: all Threads
+(the default), lead Threads and their subagents, or none. `thread spawn` and
+`capsule thread` take no flag for the per-Thread choice yet; the web dialog
+has it.
+
+```console
+meridian notes proposals [PROJECT_ID] [--all]
+meridian notes proposal PROPOSAL_ID
+meridian notes approve PROPOSAL_ID --digest DIGEST [--file edited.md]
+meridian notes reject PROPOSAL_ID
+```
+
+`proposal` prints the note's current text and the proposed text with
+control, bidirectional and zero-width characters shown as escapes, a warning
+for credential-shaped content, and the proposal's digest. `approve` takes
+that digest, so it approves exactly the text you read, and the note's current
+revision; a proposal whose note changed since is stale and cannot be
+approved. `--file` approves your edited text instead. There is no approve-all
+and no reason field. A pending proposal expires after 7 days.
+
+`meridian grant notes GRANT_ID` lists a lead tree's working notes, and
+`meridian grant notes GRANT_ID NAME` prints one. `meridian routine create`
+and `update` take `--include-notes` to give scheduled Threads the Project's
+notes (off by default). Every command takes `--json`.
+
+Inside a Capsule, a lead or subagent uses `meridian-coord write-note NAME
+--base REV (--stdin | --content TEXT | --from-file PATH | --delete)`,
+`meridian-coord sync-notes`, and `meridian-coord propose-note NAME --base REV`
+(also `--from-working-note NAME`). `whoami` lists the states of the Thread's
+recent proposals, never their text.
+
 ### Board
 
 `meridian board` lists every Capsule across Projects by status: needs you
@@ -221,9 +299,17 @@ register as an MCP server for Claude Code, Codex, and OpenCode. Pi has no MCP
 client, so the Pi pack loads a skill that teaches it the CLI form:
 `meridian-coord spawn --name NAME --harness H` (prompt on stdin), `send`,
 `wait LINK... | --all`, `result`, `patch`, `status`, `list`, `cancel`, and
-`whoami`. A subagent uses `meridian-coord report --status done|blocked|failed`
+`whoami`. `LINK` is the link ID `spawn` returned or the subagent's name. A subagent uses `meridian-coord report --status done|blocked|failed`
 (summary on stdin). Reports and patches are untrusted data. It talks only to
-the Capsule's local mailbox; it holds no credential.
+the Capsule's local mailbox; it holds no credential. A lead is woken with
+report headlines (the first 2 KiB of each) and reads a full report with
+`result`. `result --to-file` and `patch --to-file` write the report or patch
+to a private file under `$HOME/.meridian/coord/` in the lead Capsule, outside
+`/workspace`, and print its path instead (16 MiB kept per Capsule, oldest
+removed first). `spawn --context-file PATH` (repeatable, at most 8)
+attaches a note from `$HOME/.meridian/notes/` in the lead Capsule: the mailbox
+appends each file to the prompt as a fenced block, and the prompt with its
+notes must still fit 128 KiB or the spawn is refused as `context_too_large`.
 
 ## Sessions and Capsules
 

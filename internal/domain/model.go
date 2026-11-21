@@ -795,6 +795,10 @@ type Thread struct {
 	UpdatedAt       time.Time
 	DeletedAt       time.Time
 	ResourceVersion ResourceVersion
+	// PinnedAt is set while the operator has pinned this Thread (ADR 0059).
+	// It is presentation only: it grants nothing and no authorization check
+	// reads it. Only a live Thread of a main Capsule carries one.
+	PinnedAt time.Time
 }
 
 type ThreadMessageRole string
@@ -1072,6 +1076,12 @@ func (k ThreadBlockKind) Valid() bool {
 	}
 }
 
+// Pinnable reports whether a Thread in this state may carry a pin. Archiving
+// or deleting a Thread clears its pin (ADR 0059).
+func (s ThreadState) Pinnable() bool {
+	return s == ThreadActive || s == ThreadPaused
+}
+
 func CanTransitionThread(from, to ThreadState) bool {
 	if from == to {
 		return true
@@ -1098,6 +1108,9 @@ func (t *Thread) Transition(to ThreadState, now time.Time) error {
 	t.State = to
 	t.UpdatedAt = now.UTC()
 	t.ResourceVersion++
+	if !to.Pinnable() {
+		t.PinnedAt = time.Time{}
+	}
 	if to == ThreadDeleted {
 		t.DeletedAt = now.UTC()
 		t.WrappedDEK = nil
@@ -1112,6 +1125,9 @@ func (t Thread) Validate() error {
 		t.ResourceVersion <= 0 || t.MessageCount < 0 || t.EncryptedBytes < 0 ||
 		t.CreatedAt.IsZero() || t.UpdatedAt.IsZero() {
 		return fmt.Errorf("%w: invalid Thread", ErrInvalid)
+	}
+	if !t.PinnedAt.IsZero() && !t.State.Pinnable() {
+		return fmt.Errorf("%w: only a live Thread can be pinned", ErrInvalid)
 	}
 	if t.State == ThreadDeleted {
 		if len(t.WrappedDEK) != 0 || t.DeletedAt.IsZero() {

@@ -9,6 +9,10 @@ type ApproveDeliveryRes interface {
 	approveDeliveryRes()
 }
 
+type ApproveNoteProposalRes interface {
+	approveNoteProposalRes()
+}
+
 type ArchiveThreadRes interface {
 	archiveThreadRes()
 }
@@ -113,6 +117,10 @@ type DeleteMemberObjectsRes interface {
 	deleteMemberObjectsRes()
 }
 
+type DeleteProjectNoteRes interface {
+	deleteProjectNoteRes()
+}
+
 type DeleteProjectRes interface {
 	deleteProjectRes()
 }
@@ -127,6 +135,10 @@ type DeleteSecretRes interface {
 
 type DeleteThreadRes interface {
 	deleteThreadRes()
+}
+
+type DeleteWorkingNoteRes interface {
+	deleteWorkingNoteRes()
 }
 
 type DenyCoordinationRequestRes interface {
@@ -197,8 +209,16 @@ type GetMomentRes interface {
 	getMomentRes()
 }
 
+type GetNoteProposalRes interface {
+	getNoteProposalRes()
+}
+
 type GetProfileRes interface {
 	getProfileRes()
+}
+
+type GetProjectNoteRes interface {
+	getProjectNoteRes()
 }
 
 type GetProjectRes interface {
@@ -229,12 +249,20 @@ type GetThreadLinkRes interface {
 	getThreadLinkRes()
 }
 
+type GetThreadNotesRes interface {
+	getThreadNotesRes()
+}
+
 type GetThreadRes interface {
 	getThreadRes()
 }
 
 type GetTimelineRes interface {
 	getTimelineRes()
+}
+
+type GetWorkingNoteRes interface {
+	getWorkingNoteRes()
 }
 
 type ImportProfileRes interface {
@@ -281,8 +309,24 @@ type ListMomentsRes interface {
 	listMomentsRes()
 }
 
+type ListPendingNoteProposalsRes interface {
+	listPendingNoteProposalsRes()
+}
+
 type ListPersonalAccessTokensRes interface {
 	listPersonalAccessTokensRes()
+}
+
+type ListProjectNoteProposalsRes interface {
+	listProjectNoteProposalsRes()
+}
+
+type ListProjectNoteRevisionsRes interface {
+	listProjectNoteRevisionsRes()
+}
+
+type ListProjectNotesRes interface {
+	listProjectNotesRes()
 }
 
 type ListProjectRoutinesRes interface {
@@ -329,6 +373,18 @@ type ListThreadsRes interface {
 	listThreadsRes()
 }
 
+type ListWorkingNoteRevisionsRes interface {
+	listWorkingNoteRevisionsRes()
+}
+
+type ListWorkingNotesRes interface {
+	listWorkingNotesRes()
+}
+
+type MakeThreadLeadRes interface {
+	makeThreadLeadRes()
+}
+
 type MintPersonalAccessTokenRes interface {
 	mintPersonalAccessTokenRes()
 }
@@ -339,6 +395,10 @@ type PatchProjectRes interface {
 
 type PauseCapsuleRes interface {
 	pauseCapsuleRes()
+}
+
+type PinThreadRes interface {
+	pinThreadRes()
 }
 
 type PollDeviceLoginRes interface {
@@ -353,12 +413,24 @@ type PromoteCapsuleRes interface {
 	promoteCapsuleRes()
 }
 
+type PromoteWorkingNoteRes interface {
+	promoteWorkingNoteRes()
+}
+
 type ProxyProviderInferenceRes interface {
 	proxyProviderInferenceRes()
 }
 
+type PutProjectNoteRes interface {
+	putProjectNoteRes()
+}
+
 type PutSecretRes interface {
 	putSecretRes()
+}
+
+type PutWorkingNoteRes interface {
+	putWorkingNoteRes()
 }
 
 type ReadCapsuleFileRes interface {
@@ -373,6 +445,10 @@ type RejectDeliveryRes interface {
 	rejectDeliveryRes()
 }
 
+type RejectNoteProposalRes interface {
+	rejectNoteProposalRes()
+}
+
 type RemoveSubagentRes interface {
 	removeSubagentRes()
 }
@@ -383,6 +459,14 @@ type RenameCapsuleRes interface {
 
 type RespondThreadRes interface {
 	respondThreadRes()
+}
+
+type RestoreProjectNoteRes interface {
+	restoreProjectNoteRes()
+}
+
+type RestoreWorkingNoteRes interface {
+	restoreWorkingNoteRes()
 }
 
 type ResumeCapsuleRes interface {
@@ -437,12 +521,24 @@ type SetMemberRoleRes interface {
 	setMemberRoleRes()
 }
 
+type SetProjectNotesDeliveryRes interface {
+	setProjectNotesDeliveryRes()
+}
+
 type SetThreadEffortRes interface {
 	setThreadEffortRes()
 }
 
 type SetThreadModelRes interface {
 	setThreadModelRes()
+}
+
+type ShredProjectNotesRes interface {
+	shredProjectNotesRes()
+}
+
+type ShredWorkingNotesRes interface {
+	shredWorkingNotesRes()
 }
 
 type SignOutRes interface {
@@ -467,6 +563,10 @@ type StreamThreadBlocksRes interface {
 
 type TransferMemberObjectsRes interface {
 	transferMemberObjectsRes()
+}
+
+type UnpinThreadRes interface {
+	unpinThreadRes()
 }
 
 type UpdateCapsuleProfileRes interface {

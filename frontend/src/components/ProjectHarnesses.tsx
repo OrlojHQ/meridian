@@ -1,85 +1,44 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
 
 import { api, normalizeAPIError } from "../api/client";
 import type { HarnessImage, Project, ProjectPage } from "../api/generated/types.gen";
 import { queries } from "../api/queries";
 import { harnessName } from "../shell/capsuleActivity";
 import { HarnessMark } from "./ui/HarnessMark";
-import { PlusIcon } from "./ui/Icons";
 
-export function ProjectHarnesses({
-  project,
-  selection,
-  onApplied,
-}: {
-  project: Project;
-  selection?: { value: string; onChange: (harness: string) => void };
-  onApplied?: (project: Project, harness: string) => void;
-}) {
+export function ProjectHarnesses({ project }: { project: Project }) {
   const queryClient = useQueryClient();
   const capabilities = useQuery(queries.capabilities());
-  const [adding, setAdding] = useState(false);
   const packs = project.harnessImages ?? [];
   const available = (capabilities.data?.harnessImages ?? []).filter(
     (item) => !packs.some((pack) => pack.name === item.name),
   );
   const apply = useMutation({
     mutationFn: (pack: HarnessImage) => api.applyProjectHarness(project.id, pack),
-    onSuccess: async (updated, pack) => {
-      setAdding(false);
+    onSuccess: async (updated) => {
       queryClient.setQueryData<ProjectPage>(["projects"], (current) =>
         current && {
           ...current,
           items: current.items.map((item) => item.id === updated.id ? updated : item),
         },
       );
-      onApplied?.(updated, pack.name);
       await queryClient.invalidateQueries({ queryKey: ["projects"] });
     },
   });
-  const showCatalog = !selection || packs.length === 0 || adding;
 
   return (
     <fieldset className="agent-picker">
-      <legend>{selection ? "Agent" : "Harness packs"}</legend>
+      <legend>Harness packs</legend>
       {packs.length > 0 && (
         <div className="agent-options">
-          {packs.map((pack) => selection ? (
-            <label
-              key={pack.name}
-              className={`agent-option ${selection.value === pack.name ? "selected" : ""}`}
-            >
-              <input
-                type="radio"
-                name="agent"
-                value={pack.name}
-                checked={selection.value === pack.name}
-                onChange={() => selection.onChange(pack.name)}
-              />
-              <HarnessMark harness={pack.name} size="md" />
-              <span>{harnessName(pack.name)}</span>
-            </label>
-          ) : (
+          {packs.map((pack) => (
             <span key={pack.name} className="project-harness">
               <HarnessMark harness={pack.name} size="md" />
               {harnessName(pack.name)}
             </span>
           ))}
-          {selection && (
-            <button
-              type="button"
-              className="agent-add"
-              aria-expanded={adding}
-              onClick={() => setAdding((current) => !current)}
-            >
-              <PlusIcon />
-              Add agent
-            </button>
-          )}
         </div>
       )}
-      {showCatalog && (
         <div className="agent-catalog">
           <p>
             {packs.length === 0
@@ -127,7 +86,6 @@ export function ProjectHarnesses({
             </p>
           )}
         </div>
-      )}
     </fieldset>
   );
 }

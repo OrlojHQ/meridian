@@ -33,6 +33,17 @@ func runClaudeFixtureWith(
 	models bool,
 ) (*adapterproto.Decoder, *adapterproto.Encoder, string, chan error) {
 	t.Helper()
+	return runClaudeFixtureCaps(t, config, initial, resume, testCapabilities(models, false))
+}
+
+func runClaudeFixtureCaps(
+	t *testing.T,
+	config ClaudeConfig,
+	initial adapterproto.Kind,
+	resume string,
+	capabilities adapterproto.Capabilities,
+) (*adapterproto.Decoder, *adapterproto.Encoder, string, chan error) {
+	t.Helper()
 	arguments := filepath.Join(t.TempDir(), "arguments.json")
 	t.Setenv("MERIDIAN_CLAUDE_HELPER", "1")
 	t.Setenv("MERIDIAN_CLAUDE_HELPER_ARGUMENTS", arguments)
@@ -43,8 +54,51 @@ func runClaudeFixtureWith(
 	go func() {
 		done <- RunClaudeStream(context.Background(), adapter, adapter, config)
 	}()
-	decoder, encoder := negotiateTestAdapterWith(t, controller, initial, resume, models)
+	decoder, encoder := negotiateTestAdapterCaps(t, controller, initial, resume, capabilities)
 	return decoder, encoder, arguments, done
+}
+
+func TestClaudeStreamReportsContextUsage(t *testing.T) {
+	decoder, encoder, _, _ := runClaudeFixtureCaps(t, ClaudeConfig{Permissions: true},
+		adapterproto.KindStart, "", testCapabilities(false, true))
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+	// The window is known only from the first result, so the first turn
+	// reports once, at its end, with the latest main-loop call's input. The
+	// subagent's call and the helper model's window are not counted.
+	sendTestMessage(t, encoder, "message-1", "context")
+	if usage := readContextUntilIdle(t, decoder); len(usage) != 1 ||
+		usage[0] != (adapterproto.ContextUsage{Tokens: 25006, Window: 1000000}) {
+		t.Fatalf("first turn usage = %#v", usage)
+	}
+	// Later calls report as they happen, once per change.
+	sendTestMessage(t, encoder, "message-2", "context-again")
+	if usage := readContextUntilIdle(t, decoder); len(usage) != 1 ||
+		usage[0] != (adapterproto.ContextUsage{Tokens: 31406, Window: 1000000}) {
+		t.Fatalf("second turn usage = %#v", usage)
+	}
+	// compact_boundary reports the compaction with its post_tokens.
+	sendTestMessage(t, encoder, "message-3", "/compact")
+	if usage := readContextUntilIdle(t, decoder); len(usage) != 1 ||
+		usage[0] != (adapterproto.ContextUsage{Tokens: 4100, Window: 1000000, Compacted: true}) {
+		t.Fatalf("compaction usage = %#v", usage)
+	}
+	// An automatic compaction without post_tokens leaves the size unknown
+	// until the next call.
+	sendTestMessage(t, encoder, "message-4", "auto-compact")
+	usage := readContextUntilIdle(t, decoder)
+	if len(usage) != 2 || usage[0] != (adapterproto.ContextUsage{Window: 1000000, Compacted: true}) ||
+		usage[1] != (adapterproto.ContextUsage{Tokens: 9000, Window: 1000000}) {
+		t.Fatalf("automatic compaction usage = %#v", usage)
+	}
+}
+
+func TestClaudeStreamSendsNoContextUsageUnlessNegotiated(t *testing.T) {
+	decoder, encoder, _, _ := runClaudeFixture(t, ClaudeConfig{Permissions: true}, adapterproto.KindStart, "")
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+	sendTestMessage(t, encoder, "message-1", "context")
+	if usage := readContextUntilIdle(t, decoder); len(usage) != 0 {
+		t.Fatalf("un-negotiated usage = %#v", usage)
+	}
 }
 
 func TestClaudeStreamReportsAndSwitchesModels(t *testing.T) {
@@ -71,7 +125,9 @@ func TestClaudeStreamReportsAndSwitchesModels(t *testing.T) {
 	}
 	sendSetModel(t, encoder, "switch-2", "sonnet")
 	switched := readKind(t, decoder, adapterproto.KindModels).Models
-	if switched.Current != "sonnet" || switched.Resolved != "Sonnet 5.5" || switched.Effort.Current != "" {
+	// The level already in effect stays visible while settings are read again.
+	// Sonnet offers high, so the switch does not clamp it.
+	if switched.Current != "sonnet" || switched.Resolved != "Sonnet 5.5" || switched.Effort.Current != "high" {
 		t.Fatalf("switched = %#v / %#v", switched, switched.Effort)
 	}
 	if settled := readKind(t, decoder, adapterproto.KindModels).Models; settled.Effort.Current != "low" {
@@ -122,6 +178,68 @@ func TestClaudeStreamReportsAndChangesEffort(t *testing.T) {
 	}
 	sendSetModel(t, encoder, "switch-2", "opus-locked")
 	_ = readKind(t, decoder, adapterproto.KindError)
+}
+
+func TestClaudeStreamKeepsEffortWhenATurnOmitsIt(t *testing.T) {
+	decoder, encoder, _, _ := runClaudeFixtureWith(t, ClaudeConfig{Permissions: true}, adapterproto.KindStart, "", true)
+	_ = readStatus(t, decoder, adapterproto.StatusStarting)
+	if settled := readKind(t, decoder, adapterproto.KindModels).Models; settled.Effort == nil || settled.Effort.Current != "" {
+		t.Fatalf("initial effort = %#v", settled.Effort)
+	}
+	if settled := readKind(t, decoder, adapterproto.KindModels).Models.Effort; settled.Current != "high" {
+		t.Fatalf("starting effort = %#v", settled)
+	}
+	// A turn names the model that ran and does not repeat the effort. The
+	// level already in effect stays the current one.
+	sendTestMessage(t, encoder, "message-1", "keep-effort")
+	kept := readKind(t, decoder, adapterproto.KindModels).Models
+	if kept.Resolved != "Haiku 5.5" || kept.Effort == nil || kept.Effort.Current != "high" {
+		t.Fatalf("turn without effort = %#v / %#v", kept, kept.Effort)
+	}
+}
+
+func TestClaudeStreamAppliesTheClampedEffortTheOperatorChose(t *testing.T) {
+	t.Setenv("MERIDIAN_CLAUDE_HELPER_HAIKU", "1")
+	decoder, encoder, _, _ := runClaudeFixtureWith(t, ClaudeConfig{Permissions: true}, adapterproto.KindStart, "", true)
+	_ = readStatus(t, decoder, adapterproto.StatusStarting)
+	_ = readKind(t, decoder, adapterproto.KindModels)
+	_ = readKind(t, decoder, adapterproto.KindModels)
+	sendSetEffort(t, encoder, "effort-1", "high")
+	if changed := readKind(t, decoder, adapterproto.KindModels).Models.Effort; changed.Current != "high" {
+		t.Fatalf("chosen = %#v", changed)
+	}
+	sendSetModel(t, encoder, "switch-1", "haiku")
+	switched := readKind(t, decoder, adapterproto.KindModels).Models
+	if switched.Effort == nil || switched.Effort.Current != "medium" {
+		t.Fatalf("clamped = %#v", switched.Effort)
+	}
+	// The harness is told to run at the clamped level, so the level it
+	// reports next is medium rather than its own default.
+	confirmed := readKind(t, decoder, adapterproto.KindModels).Models
+	if confirmed.Effort == nil || confirmed.Effort.Current != "medium" || confirmed.Resolved != "Haiku 5.5" {
+		t.Fatalf("applied = %#v / %#v", confirmed, confirmed.Effort)
+	}
+}
+
+func TestClaudeStreamClampsEffortWhenTheModelDoesNotOfferIt(t *testing.T) {
+	t.Setenv("MERIDIAN_CLAUDE_HELPER_HAIKU", "1")
+	decoder, encoder, _, _ := runClaudeFixtureWith(t, ClaudeConfig{Permissions: true}, adapterproto.KindStart, "", true)
+	_ = readStatus(t, decoder, adapterproto.StatusStarting)
+	_ = readKind(t, decoder, adapterproto.KindModels)
+	if settled := readKind(t, decoder, adapterproto.KindModels).Models.Effort; settled.Current != "high" {
+		t.Fatalf("starting effort = %#v", settled)
+	}
+	sendSetModel(t, encoder, "switch-1", "haiku")
+	switched := readKind(t, decoder, adapterproto.KindModels).Models
+	// high is not offered; the highest offered level that does not exceed it is medium.
+	if switched.Current != "haiku" || switched.Resolved != "Haiku 5.5" || switched.Effort == nil ||
+		switched.Effort.Current != "medium" || len(switched.Effort.Options) != 2 {
+		t.Fatalf("clamped = %#v / %#v", switched, switched.Effort)
+	}
+	if confirmed := readKind(t, decoder, adapterproto.KindModels).Models; confirmed.Effort == nil ||
+		confirmed.Effort.Current != "low" || confirmed.Resolved != "Haiku 5.5" {
+		t.Fatalf("confirmed = %#v / %#v", confirmed, confirmed.Effort)
+	}
 }
 
 func TestClaudeStreamReportsRequestRetries(t *testing.T) {
@@ -534,7 +652,7 @@ func TestClaudeStreamHelper(t *testing.T) {
 	var pendingTool, pendingAsk, pendingCoord string
 	// The fixture's model and effort in effect, as get_settings reports them.
 	appliedModel, appliedEffort := "claude-opus-5-5", ""
-	modelEffort := map[string]string{"claude-opus-5-5": "high", "claude-sonnet-5-5": "low"}
+	modelEffort := map[string]string{"claude-opus-5-5": "high", "claude-sonnet-5-5": "low", "claude-haiku-5-5": "low"}
 	var askInput map[string]any
 	for scanner.Scan() {
 		var record map[string]any
@@ -550,14 +668,21 @@ func TestClaudeStreamHelper(t *testing.T) {
 			}
 			body := map[string]any{}
 			if request["subtype"] == "initialize" {
-				body = map[string]any{"commands": claudeFixtureCommands, "models": []any{
+				models := []any{
 					map[string]any{"value": "default", "resolvedModel": "claude-opus-5-5",
 						"displayName": "Default (recommended)", "description": "Opus",
 						"supportsEffort": true, "supportedEffortLevels": []any{"low", "high", "max"}},
 					map[string]any{"value": "sonnet", "resolvedModel": "claude-sonnet-5-5", "displayName": "Sonnet",
 						"supportsEffort": true, "supportedEffortLevels": []any{"low", "high"}},
 					map[string]any{"value": "opus-locked", "displayName": "Opus", "description": "Locked for\nthis account"},
-				}}
+				}
+				if os.Getenv("MERIDIAN_CLAUDE_HELPER_HAIKU") == "1" {
+					models = append(models, map[string]any{
+						"value": "haiku", "resolvedModel": "claude-haiku-5-5", "displayName": "Haiku",
+						"supportsEffort": true, "supportedEffortLevels": []any{"low", "medium"},
+					})
+				}
+				body = map[string]any{"commands": claudeFixtureCommands, "models": models}
 			}
 			if settings, _ := request["settings"].(map[string]any); request["subtype"] == "apply_flag_settings" &&
 				settings["effortLevel"] == "max" {
@@ -575,9 +700,12 @@ func TestClaudeStreamHelper(t *testing.T) {
 			}
 			switch request["subtype"] {
 			case "set_model":
-				if request["model"] == "sonnet" {
+				switch request["model"] {
+				case "sonnet":
 					appliedModel = "claude-sonnet-5-5"
-				} else {
+				case "haiku":
+					appliedModel = "claude-haiku-5-5"
+				default:
 					appliedModel = "claude-opus-5-5"
 				}
 			case "apply_flag_settings":
@@ -670,6 +798,61 @@ func TestClaudeStreamHelper(t *testing.T) {
 					"retry_delay_ms": 1040, "error_status": 529, "error": "overloaded",
 				})
 				result("recovered", false)
+			case "keep-effort":
+				// A turn names the model and leaves the effort unstated.
+				emit(map[string]any{
+					"type": "system", "subtype": "init", "model": "claude-haiku-5-5",
+				})
+				result("kept", false)
+			case "context", "context-again":
+				// Recorded shapes from Claude Code 2.1.319: every block
+				// record of a message repeats its usage, and result's
+				// modelUsage is keyed by model with each one's window.
+				emit(map[string]any{"type": "system", "subtype": "init", "model": "claude-opus-5-5[1m]"})
+				usage := map[string]any{
+					"input_tokens": 6, "cache_creation_input_tokens": 1200, "cache_read_input_tokens": 23800,
+					"output_tokens": 412, "service_tier": "standard",
+				}
+				if prompt == "context-again" {
+					usage["cache_read_input_tokens"] = 30200
+				}
+				for _, block := range []any{
+					map[string]any{"type": "tool_use", "id": "toolu_ctx_" + prompt, "name": "Read", "input": map[string]any{}},
+					text("read it"),
+				} {
+					emit(map[string]any{"type": "assistant", "message": map[string]any{
+						"id": "msg_ctx_" + prompt, "type": "message", "role": "assistant",
+						"model": "claude-opus-5-5", "content": []any{block}, "usage": usage,
+					}})
+				}
+				emit(map[string]any{"type": "assistant", "parent_tool_use_id": "toolu_task", "message": map[string]any{
+					"id": "msg_ctx_sub", "role": "assistant", "content": []any{text("sub")},
+					"usage": map[string]any{"input_tokens": 90000},
+				}})
+				emit(map[string]any{
+					"type": "result", "subtype": "success", "is_error": false, "result": "read it",
+					"usage": map[string]any{"input_tokens": 12, "cache_read_input_tokens": 47600},
+					"modelUsage": map[string]any{
+						"claude-opus-5-5[1m]": map[string]any{"inputTokens": 12, "outputTokens": 824,
+							"cacheReadInputTokens": 47600, "cacheCreationInputTokens": 2400,
+							"webSearchRequests": 0, "costUSD": 0.12, "contextWindow": 1000000, "maxOutputTokens": 64000},
+						"claude-haiku-5-5": map[string]any{"inputTokens": 320, "outputTokens": 20,
+							"cacheReadInputTokens": 0, "cacheCreationInputTokens": 0,
+							"webSearchRequests": 0, "costUSD": 0.001, "contextWindow": 200000, "maxOutputTokens": 32000},
+					},
+				})
+			case "/compact":
+				emit(map[string]any{"type": "system", "subtype": "compact_boundary", "uuid": "c1",
+					"compact_metadata": map[string]any{"trigger": "manual", "pre_tokens": 31406, "post_tokens": 4100}})
+				result("", false)
+			case "auto-compact":
+				emit(map[string]any{"type": "system", "subtype": "compact_boundary", "uuid": "c2",
+					"compact_metadata": map[string]any{"trigger": "auto", "pre_tokens": 980000}})
+				emit(map[string]any{"type": "assistant", "message": map[string]any{
+					"id": "msg_after_compact", "role": "assistant", "content": []any{text("continuing")},
+					"usage": map[string]any{"input_tokens": 9000},
+				}})
+				result("continuing", false)
 			case "typed-model":
 				// Claude Code switched models itself, as a typed /model does.
 				emit(map[string]any{

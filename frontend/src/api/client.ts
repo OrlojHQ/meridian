@@ -15,6 +15,9 @@ import {
   connectGitHubToken, beginGitHubDevice, pollGitHubDevice, cancelGitHubDevice,
   disconnectGitHub, searchGitHubRepos,
   archiveThread,
+  pinThread,
+  unpinThread,
+  makeThreadLead,
   beginClaudeLogin,
   completeClaudeLogin,
   getClaudeLogin,
@@ -95,6 +98,12 @@ import {
   getBoard,
   promoteCapsule,
   renameCapsule,
+  listProjectNotes, getProjectNote, putProjectNote, deleteProjectNote, restoreProjectNote,
+  listProjectNoteRevisions, shredProjectNotes,
+  listWorkingNotes, getWorkingNote, putWorkingNote, deleteWorkingNote, restoreWorkingNote,
+  listWorkingNoteRevisions, shredWorkingNotes, promoteWorkingNote,
+  setProjectNotesDelivery, listProjectNoteProposals, listPendingNoteProposals,
+  getNoteProposal, approveNoteProposal, rejectNoteProposal, getThreadNotes,
 } from "./generated/sdk.gen";
 import { projectHarnessImage } from "./harnessPacks";
 import type {
@@ -123,6 +132,7 @@ import type { HarnessSetupUpload, HarnessSetupPreview, ImportHarnessSetupRequest
   CapsulePage,
   CoordinationGrant,
   CoordinationPolicy,
+  MakeThreadLeadResponse,
   CreateProjectRequest,
   HarnessImage,
   ErrorEnvelope,
@@ -156,6 +166,11 @@ import type { HarnessSetupUpload, HarnessSetupPreview, ImportHarnessSetupRequest
   ThreadResponseRequest,
   WorkspaceFile,
   WorkspaceFilePage,
+} from "./generated/types.gen";
+import type {
+  ApproveNoteProposalRequest, DeleteNoteRequest, NoteContent, NoteHistory, NoteList,
+  NoteProposalList, NoteProposalReview, NoteProposalSummary, NotesDelivery, NotesDeliverySetting,
+  NoteSummary, RestoreNoteRequest, ThreadNotes, WriteNoteRequest,
 } from "./generated/types.gen";
 
 export type BoardExpand = "attention" | "all" | "none";
@@ -434,6 +449,9 @@ export const api = {
     name?: string,
     coordination?: CoordinationPolicy,
     signal?: AbortSignal,
+    // Sent only when the operator's choice differs from the Project's
+    // notesDelivery default (ADR 0060 section 4); absent follows the Project.
+    includeProjectNotes?: boolean,
   ) =>
     call<ProjectThreadIntent>(
       createProjectThread({
@@ -445,6 +463,7 @@ export const api = {
           ...(prompt ? { prompt } : {}),
           ...(name ? { name } : {}),
           ...(coordination ? { coordination } : {}),
+          ...(includeProjectNotes === undefined ? {} : { includeProjectNotes }),
         },
       }),
     ),
@@ -482,7 +501,12 @@ export const api = {
     ),
   updateCoordinationGrant: (
     grant: CoordinationGrant,
-    body: { spawnApproval?: "auto" | "operator"; maxLiveCapsules?: number; archiveAfterSeconds?: number },
+    body: {
+      spawnApproval?: "auto" | "operator";
+      maxLiveCapsules?: number;
+      archiveAfterSeconds?: number;
+      unattendedLimitSeconds?: number;
+    },
   ) =>
     call<CoordinationGrant>(
       updateCoordinationGrant({
@@ -725,6 +749,49 @@ export const api = {
         body: { expectedResourceVersion },
       }),
     ),
+  pinThread: (
+    threadId: string,
+    expectedResourceVersion: number,
+    signal?: AbortSignal,
+  ) =>
+    call<Thread>(
+      pinThread({
+        ...generatedOptions(signal),
+        path: { threadId },
+        headers: idempotencyHeaders(),
+        body: { expectedResourceVersion },
+      }),
+    ),
+  unpinThread: (
+    threadId: string,
+    expectedResourceVersion: number,
+    signal?: AbortSignal,
+  ) =>
+    call<Thread>(
+      unpinThread({
+        ...generatedOptions(signal),
+        path: { threadId },
+        headers: idempotencyHeaders(),
+        body: { expectedResourceVersion },
+      }),
+    ),
+  // Makes an existing plain Thread a lead (ADR 0059). restarted says whether
+  // the agent restarted its session now; otherwise it picks up the role
+  // before the next message.
+  makeThreadLead: (
+    threadId: string,
+    expectedResourceVersion: number,
+    coordination: CoordinationPolicy,
+    signal?: AbortSignal,
+  ) =>
+    call<MakeThreadLeadResponse>(
+      makeThreadLead({
+        ...generatedOptions(signal),
+        path: { threadId },
+        headers: idempotencyHeaders(),
+        body: { expectedResourceVersion, coordination },
+      }),
+    ),
   deleteThread: (
     threadId: string,
     expectedResourceVersion: number,
@@ -934,6 +1001,66 @@ export const api = {
         path: { capsuleId },
       }),
     ),
+  // Notes (ADR 0060). Project notes belong to the Project and only the
+  // operator writes them; working notes belong to one lead tree. Every
+  // mutation carries the revision the editor opened and an Idempotency-Key.
+  projectNotes: (projectId: string, signal?: AbortSignal) =>
+    call<NoteList>(listProjectNotes({ ...generatedOptions(signal), path: { projectId } })),
+  projectNote: (projectId: string, noteName: string, revision?: number, signal?: AbortSignal) =>
+    call<NoteContent>(getProjectNote({
+      ...generatedOptions(signal),
+      path: { projectId, noteName },
+      ...(revision === undefined ? {} : { query: { revision } }),
+    })),
+  putProjectNote: (projectId: string, noteName: string, body: WriteNoteRequest) =>
+    call<NoteSummary>(putProjectNote({ ...generatedOptions(), path: { projectId, noteName }, headers: idempotencyHeaders(), body })),
+  deleteProjectNote: (projectId: string, noteName: string, body: DeleteNoteRequest) =>
+    call<NoteSummary>(deleteProjectNote({ ...generatedOptions(), path: { projectId, noteName }, headers: idempotencyHeaders(), body })),
+  restoreProjectNote: (projectId: string, noteName: string, body: RestoreNoteRequest) =>
+    call<NoteSummary>(restoreProjectNote({ ...generatedOptions(), path: { projectId, noteName }, headers: idempotencyHeaders(), body })),
+  projectNoteRevisions: (projectId: string, noteName: string, signal?: AbortSignal) =>
+    call<NoteHistory>(listProjectNoteRevisions({ ...generatedOptions(signal), path: { projectId, noteName } })),
+  shredProjectNotes: (projectId: string) =>
+    call<void>(shredProjectNotes({ ...generatedOptions(), path: { projectId }, headers: idempotencyHeaders() })),
+  workingNotes: (grantId: string, signal?: AbortSignal) =>
+    call<NoteList>(listWorkingNotes({ ...generatedOptions(signal), path: { grantId } })),
+  workingNote: (grantId: string, noteName: string, revision?: number, signal?: AbortSignal) =>
+    call<NoteContent>(getWorkingNote({
+      ...generatedOptions(signal),
+      path: { grantId, noteName },
+      ...(revision === undefined ? {} : { query: { revision } }),
+    })),
+  putWorkingNote: (grantId: string, noteName: string, body: WriteNoteRequest) =>
+    call<NoteSummary>(putWorkingNote({ ...generatedOptions(), path: { grantId, noteName }, headers: idempotencyHeaders(), body })),
+  deleteWorkingNote: (grantId: string, noteName: string, body: DeleteNoteRequest) =>
+    call<NoteSummary>(deleteWorkingNote({ ...generatedOptions(), path: { grantId, noteName }, headers: idempotencyHeaders(), body })),
+  restoreWorkingNote: (grantId: string, noteName: string, body: RestoreNoteRequest) =>
+    call<NoteSummary>(restoreWorkingNote({ ...generatedOptions(), path: { grantId, noteName }, headers: idempotencyHeaders(), body })),
+  workingNoteRevisions: (grantId: string, noteName: string, signal?: AbortSignal) =>
+    call<NoteHistory>(listWorkingNoteRevisions({ ...generatedOptions(signal), path: { grantId, noteName } })),
+  shredWorkingNotes: (grantId: string) =>
+    call<void>(shredWorkingNotes({ ...generatedOptions(), path: { grantId }, headers: idempotencyHeaders() })),
+  promoteWorkingNote: (grantId: string, noteName: string) =>
+    call<NoteProposalSummary>(promoteWorkingNote({ ...generatedOptions(), path: { grantId, noteName }, headers: idempotencyHeaders() })),
+  setProjectNotesDelivery: (projectId: string, notesDelivery: NotesDelivery, expectedVersion: number) =>
+    call<NotesDeliverySetting>(setProjectNotesDelivery({
+      ...generatedOptions(),
+      path: { projectId },
+      headers: idempotencyHeaders(),
+      body: { notesDelivery, expectedVersion },
+    })),
+  projectNoteProposals: (projectId: string, pending = true, signal?: AbortSignal) =>
+    call<NoteProposalList>(listProjectNoteProposals({ ...generatedOptions(signal), path: { projectId }, query: { pending } })),
+  pendingNoteProposals: (signal?: AbortSignal) =>
+    call<NoteProposalList>(listPendingNoteProposals(generatedOptions(signal))),
+  noteProposal: (proposalId: string, signal?: AbortSignal) =>
+    call<NoteProposalReview>(getNoteProposal({ ...generatedOptions(signal), path: { proposalId } })),
+  approveNoteProposal: (proposalId: string, body: ApproveNoteProposalRequest) =>
+    call<NoteProposalSummary>(approveNoteProposal({ ...generatedOptions(), path: { proposalId }, headers: idempotencyHeaders(), body })),
+  rejectNoteProposal: (proposalId: string) =>
+    call<NoteProposalSummary>(rejectNoteProposal({ ...generatedOptions(), path: { proposalId }, headers: idempotencyHeaders() })),
+  threadNotes: (threadId: string, signal?: AbortSignal) =>
+    call<ThreadNotes>(getThreadNotes({ ...generatedOptions(signal), path: { threadId } })),
   previewTicket: (
     capsuleId: string,
     port: number,

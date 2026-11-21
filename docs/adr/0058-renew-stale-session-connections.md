@@ -130,3 +130,17 @@ retry notice.
   Thread is left stopped, as before.
 - A turn longer than the renewal margin can still outlive its lease. That
   turn's harness reports retries, and the next prompt renews the session.
+
+## Amendment: renewal also delivers a new lead role
+
+ADR 0059 section 2 lets the operator make a plain Thread a lead. A harness
+learns its coordination role only from Start or Resume metadata, so a session
+started without the lead role is renewed the same way as one with a stale
+lease, under the same conditions: before a prompt, only when the Thread is
+idle, nothing waits on the operator, and resume state exists. The operator's
+request that creates the grant also tries the renewal at once, outside any
+prompt. A session is stale in this sense when its Thread holds an active
+grant and the session was started without the lead role: known exactly for
+a session this daemon process started, and, for one an earlier process
+started, when its Run started before the grant was created. Revoking a grant
+restarts nothing.

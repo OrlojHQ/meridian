@@ -7,7 +7,9 @@ import type { CoordinationPolicy, Project } from "../api/generated/types.gen";
 import { packMayRunNative, packMayRunStructured } from "../api/harnessPacks";
 import { queries } from "../api/queries";
 import { harnessName, sessionPath, TERMINAL_SESSION } from "../shell/capsuleActivity";
+import { pinnedLeads, type PinnedLead } from "../shell/pins";
 import { useWorkingSet } from "../shell/useWorkingSet";
+import { includeNotesDefault, includeNotesRequest } from "./notesText";
 import {
   connectableHarnesses,
   connectionSupports,
@@ -19,11 +21,27 @@ import { HarnessMark } from "./ui/HarnessMark";
 import { CheckIcon, ChevronIcon, TerminalIcon, ThreadIcon } from "./ui/Icons";
 import type { HarnessImage } from "../api/generated/types.gen";
 
-// A lead started here gets the largest lifetime subagent total the daemon
-// allows. The limits that matter in use are the daemon's own: how many
-// subagent Capsules run at once and the grant deadline, both left at their
-// defaults, so the operator never has to guess a number up front.
-const LEAD_POLICY = { maxChildren: 16, maxDescendants: 16 } as const;
+// A lead started here may start 16 subagents in any 24 hours. The limits
+// that matter in use are the daemon's own: how many subagent Capsules run at
+// once and how long the lead keeps going without the operator, both left at
+// their defaults, so the operator never has to guess a number up front.
+export const LEAD_POLICY = { maxChildren: 16, maxDescendants: 16 } as const;
+
+// Sending to a pinned Thread is an ordinary operator message to it, so a
+// lead's grant counts it as the operator being back (ADR 0059 section 5). A
+// paused Thread is resumed first, as its Resume session button does.
+async function sendToPinned(target: PinnedLead, message: string) {
+  let thread = await api.thread(target.thread.id);
+  if (thread.state === "paused") {
+    thread = (await api.threadSession("resume", thread.id, thread.resourceVersion)).thread;
+  }
+  return (await api.sendThreadMessage(thread.id, thread.resourceVersion, message)).thread;
+}
+
+function pinnedLabel({ capsule, thread }: PinnedLead) {
+  const lead = Boolean(thread.coordinationGrantId) && !thread.parentThreadId;
+  return lead ? `${capsule.name} (lead)` : capsule.name;
+}
 
 function recentProjects(projects: Project[]) {
   return [...projects].sort(
@@ -262,7 +280,9 @@ function HarnessPicker({
 
 // NewSessionDialog starts a fresh Capsule in one Project. The Project is
 // chosen only when nothing is open yet. A Thread starts without a first
-// message, so the harness reports its models before the first turn.
+// message, so the harness reports its models before the first turn. When the
+// Project has pinned Threads, the dialog can send a message to one of them
+// instead; a new Thread stays the default.
 export function NewSessionDialog({
   projectId,
   onProjectChange,
@@ -276,7 +296,7 @@ export function NewSessionDialog({
   const queryClient = useQueryClient();
   const closeRef = useRef<HTMLButtonElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
-  const { projectItems, projects } = useWorkingSet();
+  const { projectItems, projects, items } = useWorkingSet();
   const capabilities = useQuery(queries.capabilities());
   const [harness, setHarness] = useState("");
   const [mode, setMode] = useState<"thread" | "cli">("thread");
@@ -284,9 +304,19 @@ export function NewSessionDialog({
   // New Threads lead by default: the agent decides when to delegate.
   const [lead, setLead] = useState(true);
   const [approveSpawns, setApproveSpawns] = useState(false);
+  // undefined follows the Project's notesDelivery (ADR 0060 section 4).
+  const [includeNotes, setIncludeNotes] = useState<boolean>();
   const [error, setError] = useState("");
+  // "" is a new Thread, the default; a pinned Thread is an explicit choice.
+  const [targetId, setTargetId] = useState("");
+  const [message, setMessage] = useState("");
 
   const chosenProject = projectItems.find((project) => project.id === projectId);
+  const pinned = useMemo(
+    () => (chosenProject ? pinnedLeads(items, chosenProject.id) : []),
+    [chosenProject, items],
+  );
+  const target = pinned.find((item) => item.thread.id === targetId);
   const packs = chosenProject?.harnessImages ?? [];
   const catalog = capabilities.data?.harnessImages ?? [];
   const pack = packs.find((item) => item.name === harness) ?? packs[0];
@@ -299,6 +329,13 @@ export function NewSessionDialog({
   const activeMode = structured && (!native || mode === "thread") ? "thread" : "cli";
   const coordinationSupported = capabilities.data?.coordination?.supported === true;
   const asLead = activeMode === "thread" && coordinationSupported && lead;
+  const projectNotes = useQuery({
+    ...queries.projectNotes(chosenProject?.id ?? ""),
+    refetchInterval: false,
+  });
+  const notesDelivery = projectNotes.data?.notesDelivery;
+  const notesDefault = includeNotesDefault(notesDelivery, asLead);
+  const includeNotesChecked = includeNotes ?? notesDefault ?? false;
 
   const connections = useQuery({
     queryKey: ["provider-connections"],
@@ -342,13 +379,19 @@ export function NewSessionDialog({
               ...(approveSpawns ? { spawnApproval: "operator" as const } : {}),
             }
           : undefined;
-        const intent = await api.createProjectThread(
-          chosenProject.id,
-          harnessId,
-          "",
-          undefined,
-          coordination,
-        );
+        // includeProjectNotes goes only when it differs from the default.
+        const includeProjectNotes = includeNotesRequest(notesDelivery, asLead, includeNotesChecked);
+        const intent = includeProjectNotes === undefined
+          ? await api.createProjectThread(chosenProject.id, harnessId, "", undefined, coordination)
+          : await api.createProjectThread(
+              chosenProject.id,
+              harnessId,
+              "",
+              undefined,
+              coordination,
+              undefined,
+              includeProjectNotes,
+            );
         return sessionPath(intent.capsuleId, intent.threadId);
       }
       const capsule = await api.createCapsule(
@@ -367,16 +410,32 @@ export function NewSessionDialog({
     onError: (cause) => setError(normalizeAPIError(cause).message),
   });
 
+  const send = useMutation({
+    mutationFn: ({ to, text }: { to: PinnedLead; text: string }) => sendToPinned(to, text),
+    onSuccess: async (thread) => {
+      setError("");
+      await queryClient.invalidateQueries({ queryKey: ["threads", thread.capsuleId] });
+      navigate(sessionPath(thread.capsuleId, thread.id));
+      onClose();
+    },
+    onError: (cause) => setError(normalizeAPIError(cause).message),
+  });
+  const busy = start.isPending || send.isPending;
+
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !start.isPending) onClose();
+      if (event.key === "Escape" && !busy) onClose();
     };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [onClose, start.isPending]);
+  }, [onClose, busy]);
 
   function submit(event: FormEvent) {
     event.preventDefault();
+    if (target) {
+      if (message.trim()) send.mutate({ to: target, text: message });
+      return;
+    }
     if (blocked || !chosenProject) return;
     start.mutate();
   }
@@ -391,7 +450,7 @@ export function NewSessionDialog({
       closeLabel="Close new Capsule"
       closeRef={closeRef}
       onClose={onClose}
-      busy={start.isPending}
+      busy={busy}
       className="new-session-dialog"
     >
       {projects.isPending ? (
@@ -412,6 +471,50 @@ export function NewSessionDialog({
           formRef.current?.requestSubmit();
         }}
       >
+        {pinned.length > 0 && (
+          <label htmlFor="new-session-target">
+            Send to
+            <select
+              id="new-session-target"
+              value={targetId}
+              disabled={busy}
+              onChange={(event) => {
+                setTargetId(event.target.value);
+                setError("");
+              }}
+            >
+              <option value="">New Thread</option>
+              {pinned.map((item) => (
+                <option key={item.thread.id} value={item.thread.id}>
+                  {pinnedLabel(item)}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {target ? (
+          <>
+            <label htmlFor="new-session-message">
+              Message
+              <textarea
+                id="new-session-message"
+                autoFocus
+                required
+                rows={5}
+                maxLength={131072}
+                value={message}
+                disabled={busy}
+                placeholder={`Tell ${target.capsule.name} what to do next…`}
+                onChange={(event) => setMessage(event.target.value)}
+              />
+            </label>
+            <p className="muted-copy">
+              This goes to {target.capsule.name} as your message in its Thread
+              {target.thread.state === "paused" ? ", after its session resumes" : ""}.
+            </p>
+          </>
+        ) : (
+        <>
         <HarnessPicker
           packs={packs}
           value={harnessId}
@@ -488,6 +591,26 @@ export function NewSessionDialog({
             )}
           </fieldset>
         )}
+        {activeMode === "thread" && harnessId && notesDefault !== undefined && (
+          <fieldset className="lead-options notes-option">
+            <label className="checkbox-label" htmlFor="new-session-notes">
+              <input
+                id="new-session-notes"
+                type="checkbox"
+                checked={includeNotesChecked}
+                disabled={start.isPending}
+                onChange={(event) => setIncludeNotes(event.currentTarget.checked)}
+              />
+              Include Project notes
+            </label>
+            <p className="muted-copy">
+              {notesDelivery === "leads_only"
+                ? "This Project gives its notes to lead Threads and their subagents."
+                : "This Project gives its notes to every Thread."}{" "}
+              They arrive as files the agent reads when it needs them.
+            </p>
+          </fieldset>
+        )}
         {blocked && (
           <p className="field-hint" id="new-session-provider-required">
             Thread mode needs a provider connection.{" "}
@@ -497,15 +620,22 @@ export function NewSessionDialog({
             {native && <> or switch to CLI to sign in inside {harnessName(harnessId)}</>}.
           </p>
         )}
+        </>
+        )}
         {error && (
           <p className="inline-error" role="alert">
             {error}
           </p>
         )}
         <div className="dialog-actions">
-          <Button variant="secondary" disabled={start.isPending} onClick={onClose}>
+          <Button variant="secondary" disabled={busy} onClick={onClose}>
             Cancel
           </Button>
+          {target ? (
+            <Button type="submit" variant="primary" disabled={busy || !message.trim()}>
+              {send.isPending ? "Sending…" : `Send to ${target.capsule.name}`}
+            </Button>
+          ) : (
           <Button
             type="submit"
             variant="primary"
@@ -520,6 +650,7 @@ export function NewSessionDialog({
           >
             {start.isPending ? "Starting…" : "Start"}
           </Button>
+          )}
         </div>
       </form>
       )}

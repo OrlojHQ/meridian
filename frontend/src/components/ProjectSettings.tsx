@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, Navigate, useOutletContext, useParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, Navigate, useOutletContext, useParams, useSearchParams } from "react-router-dom";
 
 import { queries } from "../api/queries";
 import type { ShellOutletContext } from "../shell/AppShell";
@@ -7,7 +8,9 @@ import { Badge } from "./ui/Badge";
 import { ProjectChecks } from "./ProjectChecks";
 import { ProjectEnvironment } from "./ProjectEnvironment";
 import { ProjectHarnesses } from "./ProjectHarnesses";
+import { ProjectNotes } from "./ProjectNotes";
 import { ProjectRoutines } from "./Routines";
+import { Tabs } from "./ui/Tabs";
 
 // The server is the authority on isolation floors (ADR 0050); the label
 // only surfaces what the Project already requires.
@@ -21,6 +24,15 @@ export function ProjectSettings() {
   const { projectId = "" } = useParams();
   const outlet = useOutletContext<ShellOutletContext | undefined>();
   const projects = useQuery(queries.projects());
+  // The Notes tab (ADR 0060) is addressable, so the review page can return
+  // to it.
+  const [search, setSearch] = useSearchParams();
+  const urlTab = search.get("tab") === "notes" ? "notes" : "settings";
+  // The router applies a search change as a transition, which kept the old
+  // tab selected while the Notes tab rendered. The choice is held here so
+  // the tab moves at once; the URL follows, and back and forward still win.
+  const [tab, setTab] = useState<"settings" | "notes">(urlTab);
+  useEffect(() => setTab(urlTab), [urlTab]);
   if (projects.isPending) return <p role="status">Loading project…</p>;
   if (projects.isError) return <Navigate to="/ui/" replace />;
   const project = projects.data.items.find((item) => item.id === projectId);
@@ -45,30 +57,48 @@ export function ProjectSettings() {
           </button>
         )}
       </header>
-      <dl>
-        <div>
-          <dt>Repository</dt>
-          <dd className="mono">{project.repositoryUrl || "None"}</dd>
-        </div>
-        {project.defaultBaseBranch && (
-          <div>
-            <dt>Base branch</dt>
-            <dd>{project.defaultBaseBranch}</dd>
-          </div>
-        )}
-        <div>
-          <dt>Git clone secret</dt>
-          <dd>{project.gitSecretName ? "Set" : "Not set"}</dd>
-        </div>
-        <div>
-          <dt>Git push secret</dt>
-          <dd>{project.gitPushSecretName ? "Set" : "Not set"}</dd>
-        </div>
-      </dl>
-      <ProjectHarnesses key={project.id} project={project} />
-      <ProjectChecks projectId={project.id} />
-      <ProjectRoutines project={project} />
-      <ProjectEnvironment projectId={project.id} />
+      <Tabs
+        label="Project sections"
+        value={tab}
+        onChange={(next) => {
+          setTab(next === "notes" ? "notes" : "settings");
+          setSearch(next === "notes" ? { tab: "notes" } : {}, { replace: true });
+        }}
+        tabs={[
+          { id: "settings", label: "Settings" },
+          { id: "notes", label: "Notes" },
+        ]}
+      />
+      {tab === "notes" ? (
+        <ProjectNotes key={project.id} project={project} />
+      ) : (
+        <>
+          <dl>
+            <div>
+              <dt>Repository</dt>
+              <dd className="mono">{project.repositoryUrl || "None"}</dd>
+            </div>
+            {project.defaultBaseBranch && (
+              <div>
+                <dt>Base branch</dt>
+                <dd>{project.defaultBaseBranch}</dd>
+              </div>
+            )}
+            <div>
+              <dt>Git clone secret</dt>
+              <dd>{project.gitSecretName ? "Set" : "Not set"}</dd>
+            </div>
+            <div>
+              <dt>Git push secret</dt>
+              <dd>{project.gitPushSecretName ? "Set" : "Not set"}</dd>
+            </div>
+          </dl>
+          <ProjectHarnesses key={project.id} project={project} />
+          <ProjectChecks projectId={project.id} />
+          <ProjectRoutines project={project} />
+          <ProjectEnvironment projectId={project.id} />
+        </>
+      )}
       <div className="project-settings-actions">
         <Link className="button-link" to="/ui/">
           Home

@@ -151,7 +151,6 @@ describe("saved Stations", () => {
       requestCapsuleAction: () => undefined,
       openNewProject: () => undefined,
       openNewSession: () => undefined,
-      openLauncher: () => undefined,
       openDeleteProject: () => undefined,
       openShortcuts: () => undefined,
       openAddStation: () => undefined,

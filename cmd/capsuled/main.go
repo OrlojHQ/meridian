@@ -48,8 +48,33 @@ func newServeCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// toFile output must stay outside the workspace; an image whose
+			// home is inside it gets no coordination files.
+			coordinationFiles := capsuleproto.CoordinationFilesDir(coordinationSocket)
+			if coordinationFiles != "" && !capsuleproto.OutsideWorkspace(workspace, coordinationFiles) {
+				fmt.Fprintln(os.Stderr, "capsuled: coordination files disabled: directory is inside the workspace")
+				coordinationFiles = ""
+			}
+			// Notes attached to a spawn are read from the lead's home, never
+			// from the workspace the repository controls.
+			coordinationNotes := capsuleproto.CoordinationNotesDir(coordinationSocket)
+			if coordinationNotes != "" && !capsuleproto.OutsideWorkspace(workspace, coordinationNotes) {
+				fmt.Fprintln(os.Stderr, "capsuled: spawn contextFiles disabled: notes directory is inside the workspace")
+				coordinationNotes = ""
+			}
+			// Project notes and working notes are written under the home,
+			// never into the workspace a Delivery or a Moment captures.
+			notesBase := capsuleproto.NotesBaseDir(coordinationSocket)
+			if notesBase != "" && (!capsuleproto.OutsideWorkspace(workspace, notesBase) ||
+				!capsuleproto.OutsideWorkspace(workspace, filepath.Join(notesBase, coordproto.ProjectNotesDirName)) ||
+				!capsuleproto.OutsideWorkspace(workspace, filepath.Join(notesBase, coordproto.WorkingNotesDirName))) {
+				fmt.Fprintln(os.Stderr, "capsuled: notes delivery disabled: directory is inside the workspace")
+				notesBase = ""
+			}
 			server, err := capsuleproto.NewServer(capsuleproto.ServerConfig{
 				Token: token, Workspace: workspace, SetupTimeout: setupTimeout,
+				CoordinationFiles: coordinationFiles, CoordinationNotes: coordinationNotes,
+				NotesBase: notesBase,
 			})
 			if err != nil {
 				return err

@@ -547,6 +547,10 @@ export type Routine = {
     maxKept: number;
     enabled: boolean;
     /**
+     * Scheduled Threads receive the Project's notes.
+     */
+    includeNotes: boolean;
+    /**
      * Why Meridian turned the routine off, such as start_failures or transferred.
      */
     disabledReason?: string;
@@ -579,6 +583,10 @@ export type CreateRoutineRequest = {
     catchUpSeconds?: number;
     maxKept?: number;
     enabled?: boolean;
+    /**
+     * Deliver the Project's notes to each scheduled Thread as files (ADR 0060).
+     */
+    includeNotes?: boolean;
 };
 
 export type UpdateRoutineRequest = {
@@ -599,6 +607,7 @@ export type UpdateRoutineRequest = {
     catchUpSeconds?: number;
     maxKept?: number;
     enabled?: boolean;
+    includeNotes?: boolean;
     expectedResourceVersion: number;
 };
 
@@ -614,6 +623,193 @@ export type ReportedModels = {
     efforts: Array<ReportedModelOption>;
     currentEffort?: string;
     threadId?: string;
+};
+
+export type NoteRevisionKind = 'operator_write' | 'agent_write' | 'approved_proposal' | 'approved_with_edits' | 'restore' | 'delete';
+
+export type NoteWriter = 'agent' | 'operator';
+
+/**
+ * Content-free provenance of agent text.
+ */
+export type NoteSource = {
+    threadId?: string;
+    capsuleId?: string;
+    linkId?: string;
+    linkName?: string;
+    leadThreadId?: string;
+    grantId?: string;
+    workingNoteName?: string;
+    workingNoteRevision?: number;
+    workingCapsuleId?: string;
+};
+
+export type NoteSummary = {
+    name: string;
+    revision: number;
+    live: boolean;
+    size: number;
+    digest: string;
+    kind: NoteRevisionKind;
+    writer: NoteWriter;
+    /**
+     * The subagent that wrote the head revision, if any.
+     */
+    linkName?: string;
+    /**
+     * The head revision is agent text, written by a member or approved from a proposal.
+     */
+    agentProposed: boolean;
+    createdAt: string;
+    updatedAt: string;
+};
+
+export type NoteList = {
+    items: Array<NoteSummary>;
+    liveCount: number;
+    totalBytes: number;
+    maxNotes: number;
+    maxBytes: number;
+    notesDelivery: NotesDelivery;
+    /**
+     * Pass as expectedVersion to change notesDelivery.
+     */
+    settingsVersion: number;
+    pendingProposals: number;
+};
+
+export type NoteRevision = {
+    revision: number;
+    name: string;
+    kind: NoteRevisionKind;
+    writer: NoteWriter;
+    writerUserId?: string;
+    source?: NoteSource;
+    proposalId?: string;
+    baseRevision: number;
+    restoredFrom?: number;
+    digest: string;
+    size: number;
+    retained: boolean;
+    createdAt: string;
+};
+
+export type NoteHistory = {
+    note: NoteSummary;
+    items: Array<NoteRevision>;
+};
+
+export type NoteContent = {
+    note: NoteSummary;
+    revision: NoteRevision;
+    content: string;
+    /**
+     * The content matches the credential-shaped checks of ADR 0024.
+     */
+    credentialShaped: boolean;
+};
+
+export type WriteNoteRequest = {
+    content: string;
+    expectedRevision: number;
+    /**
+     * Give the note a new name in the same revision.
+     */
+    rename?: string;
+    /**
+     * The Thread a transcript selection came from, recorded as provenance.
+     */
+    sourceThreadId?: string;
+};
+
+export type DeleteNoteRequest = {
+    expectedRevision: number;
+    withHistory?: boolean;
+};
+
+export type RestoreNoteRequest = {
+    revision: number;
+    expectedRevision: number;
+};
+
+export type NotesDelivery = 'all_threads' | 'leads_only' | 'off';
+
+export type NotesDeliveryRequest = {
+    notesDelivery: NotesDelivery;
+    expectedVersion: number;
+};
+
+export type NotesDeliverySetting = {
+    notesDelivery: NotesDelivery;
+    settingsVersion: number;
+};
+
+export type NoteProposalState = 'pending' | 'approved' | 'approved_with_edits' | 'rejected' | 'stale' | 'expired';
+
+/**
+ * Content-free.
+ */
+export type NoteProposalSummary = {
+    id: string;
+    projectId: string;
+    name: string;
+    delete: boolean;
+    baseRevision: number;
+    currentRevision: number;
+    state: NoteProposalState;
+    reason?: '' | 'operator' | 'owner_changed' | 'shredded' | 'purged';
+    origin: 'agent' | 'promotion';
+    source?: NoteSource;
+    digest: string;
+    size: number;
+    resolvedRevision?: number;
+    createdAt: string;
+    expiresAt: string;
+};
+
+export type NoteProposalList = {
+    items: Array<NoteProposalSummary>;
+};
+
+export type NoteProposalReview = {
+    proposal: NoteProposalSummary;
+    /**
+     * Proposed text. Untrusted agent text.
+     */
+    content: string;
+    currentContent: string;
+    currentLive: boolean;
+    credentialShaped: boolean;
+};
+
+export type ApproveNoteProposalRequest = {
+    digest: string;
+    expectedRevision: number;
+    /**
+     * The operator's edited text, when it differs from the proposal.
+     */
+    content?: string;
+};
+
+export type DeliveredNote = {
+    tier: 'project' | 'working';
+    name: string;
+    revision: number;
+    size: number;
+    digest: string;
+};
+
+export type ThreadNotes = {
+    /**
+     * The Thread's Include Project notes choice; empty follows the Project setting.
+     */
+    choice: '' | 'include' | 'exclude';
+    delivered: Array<DeliveredNote>;
+    deliveredAt?: string;
+    /**
+     * The harness negotiated the notes index. False means it got the files without being told.
+     */
+    indexed: boolean;
 };
 
 /**
@@ -1217,11 +1413,15 @@ export type CreateProjectThreadRequest = {
      *
      */
     prompt?: string;
+    /**
+     * Include Project notes in this Thread's sessions. Absent follows the Project's notesDelivery; a Project with notesDelivery off delivers to no Thread.
+     */
+    includeProjectNotes?: boolean;
     coordination?: CoordinationPolicy;
 };
 
 /**
- * Makes the new Thread a lead that may spawn subagent Threads in their own sub-Capsules. Omitted limits take their defaults. Subagents answer to the operator: the lead never approves permissions or answers input.
+ * Makes the Thread a lead that may spawn subagent Threads in their own sub-Capsules: a new Thread, or an existing one through makeThreadLead. Omitted limits take their defaults. Subagents answer to the operator: the lead never approves permissions or answers input. maxChildren and maxDescendants count spawns in a rolling 24-hour window, not over the grant's lifetime. The grant has no fixed end; it lapses after unattendedLimitSeconds without the operator.
  *
  */
 export type CoordinationPolicy = {
@@ -1234,12 +1434,20 @@ export type CoordinationPolicy = {
      * Structured harnesses subagents may use; each must be on the Project allowlist. Defaults to the lead's harness.
      */
     allowedHarnesses?: Array<string>;
-    deadlineSeconds?: number;
+    /**
+     * How long the grant keeps spending after the operator's last message to the lead, spawn approval, or grant update. Past it the grant lapses: mutating coordination requests are refused as coordination_lapsed, onDeadline applies to running subagents, and the operator's next message to the lead reopens it. Coordination requests, reports, wakes and routines never reset it. Replaces deadlineSeconds, which is refused.
+     *
+     */
+    unattendedLimitSeconds?: number;
     /**
      * How long a finished subagent stays idle before its session is ended and its Thread paused. Its Capsule is then deleted if its workspace holds nothing unsaved (the last report changed no files, or a Delivery of it succeeded); otherwise the Capsule is kept. 0 disables auto-archive and this cleanup; otherwise at least 60. Transcripts are always kept.
      *
      */
     archiveAfterSeconds?: number;
+    /**
+     * What happens to running subagents when the grant lapses. cancel_and_pause closes their links and pauses them; stop_new_work lets them finish. Spawns waiting for approval are refused either way.
+     *
+     */
     onDeadline?: 'cancel_and_pause' | 'stop_new_work';
     /**
      * auto starts each accepted spawn. operator queues it until the operator approves or denies it. The grant itself is still the bound on how many may be requested.
@@ -1248,7 +1456,11 @@ export type CoordinationPolicy = {
     spawnApproval?: 'auto' | 'operator';
 };
 
-export type CoordinationGrantState = 'active' | 'revoked' | 'expired';
+/**
+ * lapsed is an active grant left unattended past its limit; the operator's next message to the lead reopens it. revoked is terminal. expired is terminal and only appears on grants that passed an absolute deadline before unattended limits replaced it.
+ *
+ */
+export type CoordinationGrantState = 'active' | 'lapsed' | 'revoked' | 'expired';
 
 export type CoordinationGrant = {
     id: string;
@@ -1263,15 +1475,52 @@ export type CoordinationGrant = {
     maxLiveCapsules: number;
     maxMessagesPerLink: number;
     allowedHarnesses: Array<string>;
-    deadlineAt: string;
+    /**
+     * Last operator message to the lead, spawn approval, or grant update.
+     */
+    lastOperatorAt: string;
+    unattendedLimitSeconds: number;
+    /**
+     * lastOperatorAt plus the unattended limit.
+     */
+    lapsesAt: string;
+    /**
+     * When the lapse was applied to running subagents; absent while open.
+     */
+    lapsedAt?: string;
     onDeadline: 'cancel_and_pause' | 'stop_new_work';
     archiveAfterSeconds: number;
+    /**
+     * Spawns over the grant's lifetime, for display only.
+     */
     descendantsCreated: number;
+    /**
+     * Spawns in the last 24 hours, which maxChildren and maxDescendants limit.
+     */
+    spawnsInWindow: number;
     revokedAt?: string;
     revokeReason?: 'operator' | 'deadline' | 'lead_ended';
     createdAt: string;
     updatedAt: string;
     resourceVersion: number;
+};
+
+export type MakeThreadLeadRequest = {
+    /**
+     * The Thread's current resource version.
+     */
+    expectedResourceVersion: number;
+    coordination?: CoordinationPolicy;
+};
+
+export type MakeThreadLeadResponse = {
+    grant: CoordinationGrant;
+    thread: Thread;
+    /**
+     * True when the session was stopped and resumed as a lead now. False when the Thread was busy, waiting on the operator, or had no resume state; the next prompt or resume then delivers the role.
+     *
+     */
+    restarted: boolean;
 };
 
 export type RevokeCoordinationGrantRequest = {
@@ -1280,7 +1529,7 @@ export type RevokeCoordinationGrantRequest = {
 };
 
 /**
- * Operator update to an active grant. Omitted fields stay unchanged. allowedHarnesses, when present, replaces the allowlist and must not be empty. deadlineSeconds is remaining time from now.
+ * Operator update to an active grant. Omitted fields stay unchanged. allowedHarnesses, when present, replaces the allowlist and must not be empty. Any update resets lastOperatorAt and reopens a lapsed grant.
  *
  */
 export type UpdateCoordinationGrantRequest = {
@@ -1291,7 +1540,7 @@ export type UpdateCoordinationGrantRequest = {
     maxLiveCapsules?: number;
     maxMessagesPerLink?: number;
     allowedHarnesses?: Array<string>;
-    deadlineSeconds?: number;
+    unattendedLimitSeconds?: number;
     onDeadline?: 'cancel_and_pause' | 'stop_new_work';
     archiveAfterSeconds?: number;
 };
@@ -1449,6 +1698,10 @@ export type CreateThreadRequest = {
      * Requires firstMessage and atomically creates the initial Run intent before runtime side effects.
      */
     start?: boolean;
+    /**
+     * Include Project notes in this Thread's sessions. Absent follows the Project's notesDelivery; a Project with notesDelivery off delivers to no Thread.
+     */
+    includeProjectNotes?: boolean;
 };
 
 export type DeleteThreadRequest = {
@@ -1530,6 +1783,7 @@ export type Thread = {
      * Present while the structured session is live: whether the agent is working on a turn or idle between turns. Derived in memory from the encrypted transcript like awaiting, never persisted, and content-free.
      */
     turn?: 'working' | 'idle';
+    contextUsage?: ThreadContextUsage;
     protocol?: 'meridian.adapter.v1';
     structuredSupported?: boolean;
     /**
@@ -1558,7 +1812,19 @@ export type Thread = {
     createdAt: string;
     updatedAt: string;
     deletedAt?: string;
+    /**
+     * Present while the operator has pinned this Thread (ADR 0059). Presentation only; it grants nothing.
+     */
+    pinnedAt?: string;
     resourceVersion: number;
+};
+
+/**
+ * Present while the structured session is live and its harness has reported how full its context window is (ADR 0059). tokens is the input size of the most recent model call, not the session's total spend, and window is the model's context window. Held in memory only, never persisted, and carries no model name. Absent when the harness reports nothing, after a daemon restart until it reports again, and right after a compaction whose new size is not yet known.
+ */
+export type ThreadContextUsage = {
+    tokens: number;
+    window: number;
 };
 
 /**
@@ -1601,7 +1867,7 @@ export type ThreadInput = {
 };
 
 export type ThreadAdapterEvent = {
-    type: 'assistant_delta' | 'assistant_message' | 'tool_start' | 'tool_result' | 'status' | 'error' | 'permission_request' | 'permission_response' | 'input_request' | 'input_response' | 'gap' | 'end' | 'commands' | 'models' | 'set_model' | 'set_effort';
+    type: 'assistant_delta' | 'assistant_message' | 'tool_start' | 'tool_result' | 'status' | 'error' | 'permission_request' | 'permission_response' | 'input_request' | 'input_response' | 'gap' | 'end' | 'commands' | 'models' | 'set_model' | 'set_effort' | 'context_usage' | 'notes_updated';
     runtimeSequence?: number;
     messageId?: string;
     /**
@@ -1633,6 +1899,14 @@ export type ThreadAdapterEvent = {
      * On set_effort events, the effort level the operator asked for.
      */
     effort?: string;
+    /**
+     * On context_usage events, true: the harness compacted (summarized) the conversation at this point. Only compactions are kept in the transcript, and they carry no token counts.
+     */
+    compacted?: boolean;
+    /**
+     * On notes_updated events, how many Project notes a resumed session received that differ from the previous session's. It names no note and carries no content (ADR 0060).
+     */
+    notesChanged?: number;
 };
 
 /**
@@ -2350,6 +2624,13 @@ export type LinkId = string;
 export type RoutineId = string;
 
 export type GrantId = string;
+
+/**
+ * Note name without the .md suffix.
+ */
+export type NoteName = string;
+
+export type ProposalId = string;
 
 export type RequestId = string;
 
@@ -4803,6 +5084,1002 @@ export type ArchiveThreadResponses = {
 };
 
 export type ArchiveThreadResponse = ArchiveThreadResponses[keyof ArchiveThreadResponses];
+
+export type PinThreadData = {
+    body: LifecycleMutation;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        threadId: string;
+    };
+    query?: never;
+    url: '/threads/{threadId}/pin';
+};
+
+export type PinThreadErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type PinThreadError = PinThreadErrors[keyof PinThreadErrors];
+
+export type PinThreadResponses = {
+    /**
+     * Thread lifecycle mutation completed
+     */
+    200: Thread;
+};
+
+export type PinThreadResponse = PinThreadResponses[keyof PinThreadResponses];
+
+export type UnpinThreadData = {
+    body: LifecycleMutation;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        threadId: string;
+    };
+    query?: never;
+    url: '/threads/{threadId}/unpin';
+};
+
+export type UnpinThreadErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type UnpinThreadError = UnpinThreadErrors[keyof UnpinThreadErrors];
+
+export type UnpinThreadResponses = {
+    /**
+     * Thread lifecycle mutation completed
+     */
+    200: Thread;
+};
+
+export type UnpinThreadResponse = UnpinThreadResponses[keyof UnpinThreadResponses];
+
+export type MakeThreadLeadData = {
+    body: MakeThreadLeadRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        threadId: string;
+    };
+    query?: never;
+    url: '/threads/{threadId}/coordination-grant';
+};
+
+export type MakeThreadLeadErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Request rate limit exceeded
+     */
+    429: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type MakeThreadLeadError = MakeThreadLeadErrors[keyof MakeThreadLeadErrors];
+
+export type MakeThreadLeadResponses = {
+    /**
+     * Grant created
+     */
+    201: MakeThreadLeadResponse;
+};
+
+export type MakeThreadLeadResponse2 = MakeThreadLeadResponses[keyof MakeThreadLeadResponses];
+
+export type ListProjectNotesData = {
+    body?: never;
+    path: {
+        projectId: string;
+    };
+    query?: never;
+    url: '/projects/{projectId}/notes';
+};
+
+export type ListProjectNotesErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ListProjectNotesError = ListProjectNotesErrors[keyof ListProjectNotesErrors];
+
+export type ListProjectNotesResponses = {
+    /**
+     * Notes
+     */
+    200: NoteList;
+};
+
+export type ListProjectNotesResponse = ListProjectNotesResponses[keyof ListProjectNotesResponses];
+
+export type ShredProjectNotesData = {
+    body?: never;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        projectId: string;
+    };
+    query?: never;
+    url: '/projects/{projectId}/notes/shred';
+};
+
+export type ShredProjectNotesErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ShredProjectNotesError = ShredProjectNotesErrors[keyof ShredProjectNotesErrors];
+
+export type ShredProjectNotesResponses = {
+    /**
+     * Shredded
+     */
+    204: void;
+};
+
+export type ShredProjectNotesResponse = ShredProjectNotesResponses[keyof ShredProjectNotesResponses];
+
+export type GetProjectNoteData = {
+    body?: never;
+    path: {
+        projectId: string;
+        /**
+         * Note name without the .md suffix.
+         */
+        noteName: string;
+    };
+    query?: {
+        revision?: number;
+    };
+    url: '/projects/{projectId}/notes/{noteName}';
+};
+
+export type GetProjectNoteErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type GetProjectNoteError = GetProjectNoteErrors[keyof GetProjectNoteErrors];
+
+export type GetProjectNoteResponses = {
+    /**
+     * Note
+     */
+    200: NoteContent;
+};
+
+export type GetProjectNoteResponse = GetProjectNoteResponses[keyof GetProjectNoteResponses];
+
+export type PutProjectNoteData = {
+    body: WriteNoteRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        projectId: string;
+        /**
+         * Note name without the .md suffix.
+         */
+        noteName: string;
+    };
+    query?: never;
+    url: '/projects/{projectId}/notes/{noteName}';
+};
+
+export type PutProjectNoteErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Request rate limit exceeded
+     */
+    429: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type PutProjectNoteError = PutProjectNoteErrors[keyof PutProjectNoteErrors];
+
+export type PutProjectNoteResponses = {
+    /**
+     * Written
+     */
+    200: NoteSummary;
+};
+
+export type PutProjectNoteResponse = PutProjectNoteResponses[keyof PutProjectNoteResponses];
+
+export type DeleteProjectNoteData = {
+    body: DeleteNoteRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        projectId: string;
+        /**
+         * Note name without the .md suffix.
+         */
+        noteName: string;
+    };
+    query?: never;
+    url: '/projects/{projectId}/notes/{noteName}/delete';
+};
+
+export type DeleteProjectNoteErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type DeleteProjectNoteError = DeleteProjectNoteErrors[keyof DeleteProjectNoteErrors];
+
+export type DeleteProjectNoteResponses = {
+    /**
+     * Deleted
+     */
+    200: NoteSummary;
+};
+
+export type DeleteProjectNoteResponse = DeleteProjectNoteResponses[keyof DeleteProjectNoteResponses];
+
+export type RestoreProjectNoteData = {
+    body: RestoreNoteRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        projectId: string;
+        /**
+         * Note name without the .md suffix.
+         */
+        noteName: string;
+    };
+    query?: never;
+    url: '/projects/{projectId}/notes/{noteName}/restore';
+};
+
+export type RestoreProjectNoteErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type RestoreProjectNoteError = RestoreProjectNoteErrors[keyof RestoreProjectNoteErrors];
+
+export type RestoreProjectNoteResponses = {
+    /**
+     * Restored
+     */
+    200: NoteSummary;
+};
+
+export type RestoreProjectNoteResponse = RestoreProjectNoteResponses[keyof RestoreProjectNoteResponses];
+
+export type ListProjectNoteRevisionsData = {
+    body?: never;
+    path: {
+        projectId: string;
+        /**
+         * Note name without the .md suffix.
+         */
+        noteName: string;
+    };
+    query?: never;
+    url: '/projects/{projectId}/notes/{noteName}/revisions';
+};
+
+export type ListProjectNoteRevisionsErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ListProjectNoteRevisionsError = ListProjectNoteRevisionsErrors[keyof ListProjectNoteRevisionsErrors];
+
+export type ListProjectNoteRevisionsResponses = {
+    /**
+     * History
+     */
+    200: NoteHistory;
+};
+
+export type ListProjectNoteRevisionsResponse = ListProjectNoteRevisionsResponses[keyof ListProjectNoteRevisionsResponses];
+
+export type ListWorkingNotesData = {
+    body?: never;
+    path: {
+        grantId: string;
+    };
+    query?: never;
+    url: '/coordination-grants/{grantId}/notes';
+};
+
+export type ListWorkingNotesErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ListWorkingNotesError = ListWorkingNotesErrors[keyof ListWorkingNotesErrors];
+
+export type ListWorkingNotesResponses = {
+    /**
+     * Notes
+     */
+    200: NoteList;
+};
+
+export type ListWorkingNotesResponse = ListWorkingNotesResponses[keyof ListWorkingNotesResponses];
+
+export type ShredWorkingNotesData = {
+    body?: never;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        grantId: string;
+    };
+    query?: never;
+    url: '/coordination-grants/{grantId}/notes/shred';
+};
+
+export type ShredWorkingNotesErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ShredWorkingNotesError = ShredWorkingNotesErrors[keyof ShredWorkingNotesErrors];
+
+export type ShredWorkingNotesResponses = {
+    /**
+     * Shredded
+     */
+    204: void;
+};
+
+export type ShredWorkingNotesResponse = ShredWorkingNotesResponses[keyof ShredWorkingNotesResponses];
+
+export type GetWorkingNoteData = {
+    body?: never;
+    path: {
+        grantId: string;
+        /**
+         * Note name without the .md suffix.
+         */
+        noteName: string;
+    };
+    query?: {
+        revision?: number;
+    };
+    url: '/coordination-grants/{grantId}/notes/{noteName}';
+};
+
+export type GetWorkingNoteErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type GetWorkingNoteError = GetWorkingNoteErrors[keyof GetWorkingNoteErrors];
+
+export type GetWorkingNoteResponses = {
+    /**
+     * Note
+     */
+    200: NoteContent;
+};
+
+export type GetWorkingNoteResponse = GetWorkingNoteResponses[keyof GetWorkingNoteResponses];
+
+export type PutWorkingNoteData = {
+    body: WriteNoteRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        grantId: string;
+        /**
+         * Note name without the .md suffix.
+         */
+        noteName: string;
+    };
+    query?: never;
+    url: '/coordination-grants/{grantId}/notes/{noteName}';
+};
+
+export type PutWorkingNoteErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Request rate limit exceeded
+     */
+    429: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type PutWorkingNoteError = PutWorkingNoteErrors[keyof PutWorkingNoteErrors];
+
+export type PutWorkingNoteResponses = {
+    /**
+     * Written
+     */
+    200: NoteSummary;
+};
+
+export type PutWorkingNoteResponse = PutWorkingNoteResponses[keyof PutWorkingNoteResponses];
+
+export type DeleteWorkingNoteData = {
+    body: DeleteNoteRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        grantId: string;
+        /**
+         * Note name without the .md suffix.
+         */
+        noteName: string;
+    };
+    query?: never;
+    url: '/coordination-grants/{grantId}/notes/{noteName}/delete';
+};
+
+export type DeleteWorkingNoteErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type DeleteWorkingNoteError = DeleteWorkingNoteErrors[keyof DeleteWorkingNoteErrors];
+
+export type DeleteWorkingNoteResponses = {
+    /**
+     * Deleted
+     */
+    200: NoteSummary;
+};
+
+export type DeleteWorkingNoteResponse = DeleteWorkingNoteResponses[keyof DeleteWorkingNoteResponses];
+
+export type RestoreWorkingNoteData = {
+    body: RestoreNoteRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        grantId: string;
+        /**
+         * Note name without the .md suffix.
+         */
+        noteName: string;
+    };
+    query?: never;
+    url: '/coordination-grants/{grantId}/notes/{noteName}/restore';
+};
+
+export type RestoreWorkingNoteErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type RestoreWorkingNoteError = RestoreWorkingNoteErrors[keyof RestoreWorkingNoteErrors];
+
+export type RestoreWorkingNoteResponses = {
+    /**
+     * Restored
+     */
+    200: NoteSummary;
+};
+
+export type RestoreWorkingNoteResponse = RestoreWorkingNoteResponses[keyof RestoreWorkingNoteResponses];
+
+export type ListWorkingNoteRevisionsData = {
+    body?: never;
+    path: {
+        grantId: string;
+        /**
+         * Note name without the .md suffix.
+         */
+        noteName: string;
+    };
+    query?: never;
+    url: '/coordination-grants/{grantId}/notes/{noteName}/revisions';
+};
+
+export type ListWorkingNoteRevisionsErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ListWorkingNoteRevisionsError = ListWorkingNoteRevisionsErrors[keyof ListWorkingNoteRevisionsErrors];
+
+export type ListWorkingNoteRevisionsResponses = {
+    /**
+     * History
+     */
+    200: NoteHistory;
+};
+
+export type ListWorkingNoteRevisionsResponse = ListWorkingNoteRevisionsResponses[keyof ListWorkingNoteRevisionsResponses];
+
+export type PromoteWorkingNoteData = {
+    body?: never;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        grantId: string;
+        /**
+         * Note name without the .md suffix.
+         */
+        noteName: string;
+    };
+    query?: never;
+    url: '/coordination-grants/{grantId}/notes/{noteName}/promote';
+};
+
+export type PromoteWorkingNoteErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Request rate limit exceeded
+     */
+    429: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type PromoteWorkingNoteError = PromoteWorkingNoteErrors[keyof PromoteWorkingNoteErrors];
+
+export type PromoteWorkingNoteResponses = {
+    /**
+     * Proposal created
+     */
+    201: NoteProposalSummary;
+};
+
+export type PromoteWorkingNoteResponse = PromoteWorkingNoteResponses[keyof PromoteWorkingNoteResponses];
+
+export type SetProjectNotesDeliveryData = {
+    body: NotesDeliveryRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        projectId: string;
+    };
+    query?: never;
+    url: '/projects/{projectId}/notes-delivery';
+};
+
+export type SetProjectNotesDeliveryErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type SetProjectNotesDeliveryError = SetProjectNotesDeliveryErrors[keyof SetProjectNotesDeliveryErrors];
+
+export type SetProjectNotesDeliveryResponses = {
+    /**
+     * Updated
+     */
+    200: NotesDeliverySetting;
+};
+
+export type SetProjectNotesDeliveryResponse = SetProjectNotesDeliveryResponses[keyof SetProjectNotesDeliveryResponses];
+
+export type ListProjectNoteProposalsData = {
+    body?: never;
+    path: {
+        projectId: string;
+    };
+    query?: {
+        pending?: boolean;
+    };
+    url: '/projects/{projectId}/note-proposals';
+};
+
+export type ListProjectNoteProposalsErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ListProjectNoteProposalsError = ListProjectNoteProposalsErrors[keyof ListProjectNoteProposalsErrors];
+
+export type ListProjectNoteProposalsResponses = {
+    /**
+     * Proposals
+     */
+    200: NoteProposalList;
+};
+
+export type ListProjectNoteProposalsResponse = ListProjectNoteProposalsResponses[keyof ListProjectNoteProposalsResponses];
+
+export type ListPendingNoteProposalsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/note-proposals';
+};
+
+export type ListPendingNoteProposalsErrors = {
+    /**
+     * Missing or invalid installation authentication
+     */
+    401: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ListPendingNoteProposalsError = ListPendingNoteProposalsErrors[keyof ListPendingNoteProposalsErrors];
+
+export type ListPendingNoteProposalsResponses = {
+    /**
+     * Pending proposals
+     */
+    200: NoteProposalList;
+};
+
+export type ListPendingNoteProposalsResponse = ListPendingNoteProposalsResponses[keyof ListPendingNoteProposalsResponses];
+
+export type GetNoteProposalData = {
+    body?: never;
+    path: {
+        proposalId: string;
+    };
+    query?: never;
+    url: '/note-proposals/{proposalId}';
+};
+
+export type GetNoteProposalErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type GetNoteProposalError = GetNoteProposalErrors[keyof GetNoteProposalErrors];
+
+export type GetNoteProposalResponses = {
+    /**
+     * Proposal
+     */
+    200: NoteProposalReview;
+};
+
+export type GetNoteProposalResponse = GetNoteProposalResponses[keyof GetNoteProposalResponses];
+
+export type ApproveNoteProposalData = {
+    body: ApproveNoteProposalRequest;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        proposalId: string;
+    };
+    query?: never;
+    url: '/note-proposals/{proposalId}/approve';
+};
+
+export type ApproveNoteProposalErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type ApproveNoteProposalError = ApproveNoteProposalErrors[keyof ApproveNoteProposalErrors];
+
+export type ApproveNoteProposalResponses = {
+    /**
+     * Approved
+     */
+    200: NoteProposalSummary;
+};
+
+export type ApproveNoteProposalResponse = ApproveNoteProposalResponses[keyof ApproveNoteProposalResponses];
+
+export type RejectNoteProposalData = {
+    body?: never;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        proposalId: string;
+    };
+    query?: never;
+    url: '/note-proposals/{proposalId}/reject';
+};
+
+export type RejectNoteProposalErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type RejectNoteProposalError = RejectNoteProposalErrors[keyof RejectNoteProposalErrors];
+
+export type RejectNoteProposalResponses = {
+    /**
+     * Rejected
+     */
+    200: NoteProposalSummary;
+};
+
+export type RejectNoteProposalResponse = RejectNoteProposalResponses[keyof RejectNoteProposalResponses];
+
+export type GetThreadNotesData = {
+    body?: never;
+    path: {
+        threadId: string;
+    };
+    query?: never;
+    url: '/threads/{threadId}/notes';
+};
+
+export type GetThreadNotesErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type GetThreadNotesError = GetThreadNotesErrors[keyof GetThreadNotesErrors];
+
+export type GetThreadNotesResponses = {
+    /**
+     * Thread notes
+     */
+    200: ThreadNotes;
+};
+
+export type GetThreadNotesResponse = GetThreadNotesResponses[keyof GetThreadNotesResponses];
 
 export type DeleteThreadData = {
     body: DeleteThreadRequest;

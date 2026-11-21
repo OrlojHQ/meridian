@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -7,11 +7,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Capsule, Project, Routine, RoutineFire, Thread } from "../api/generated/types.gen";
 import { ProjectRoutines, Routines } from "../components/Routines";
 import {
+  browserTimeZone,
   buildCadence,
   describeCadence,
+  filterTimeZones,
   fireKeptCapsule,
   fireSummary,
+  nextCadenceFire,
+  nextRunHint,
   parseCadence,
+  timeZoneChoices,
 } from "../components/routineText";
 import { describeCapsule } from "../shell/capsuleActivity";
 
@@ -48,6 +53,75 @@ describe("routine cadence text", () => {
     expect(describeCadence("0 6 * * 1")).toBe("Mondays at 06:00");
     expect(describeCadence("0 */4 * * *")).toBe("Every 4 hours");
     expect(describeCadence("15 */2 * * *")).toBe("Every 2 hours at :15");
+  });
+});
+
+describe("time zones", () => {
+  const now = new Date("2026-11-20T18:00:00Z");
+
+  it("lists the browser zone first, with its offset and local time", () => {
+    const choices = timeZoneChoices(now);
+    expect(choices[0]?.id).toBe(browserTimeZone());
+    expect(choices[0]?.local).toBe(true);
+    expect(choices.filter((choice) => choice.local)).toHaveLength(1);
+    expect(choices.some((choice) => choice.id === "UTC")).toBe(true);
+    const chicago = choices.find((choice) => choice.id === "America/Chicago");
+    expect(chicago?.offset).toBe("UTC\u221206:00");
+    expect(chicago?.time).not.toBe("");
+  });
+
+  it("filters by city, region, and zone name", () => {
+    const choices = timeZoneChoices(now);
+    const ids = (query: string) => filterTimeZones(choices, query).map((choice) => choice.id);
+    expect(ids("chicago")).toContain("America/Chicago");
+    expect(ids("chicago")).not.toContain("Asia/Tokyo");
+    expect(ids("central")).toContain("America/Chicago");
+    expect(ids("tokyo")).toEqual(expect.arrayContaining(["Asia/Tokyo"]));
+    expect(ids("tokyo")).not.toContain("America/Chicago");
+    expect(ids("new york")).toContain("America/New_York");
+  });
+
+  it("keeps a saved zone that the runtime does not list", () => {
+    const choices = timeZoneChoices(now, "US/Central");
+    const saved = choices.find((choice) => choice.id === "US/Central");
+    expect(saved?.savedOnly).toBe(true);
+    expect(saved?.offset).toBe("UTC\u221206:00");
+    expect(choices.filter((choice) => choice.id === "US/Central")).toHaveLength(1);
+  });
+
+  it("falls back to a built-in list when zones cannot be listed", () => {
+    vi.spyOn(Intl, "supportedValuesOf").mockImplementation(() => {
+      throw new Error("unavailable");
+    });
+    const choices = timeZoneChoices(now);
+    expect(choices.map((choice) => choice.id)).toEqual(
+      expect.arrayContaining(["UTC", "America/Chicago", "Asia/Tokyo"]),
+    );
+    expect(choices.length).toBeLessThan(40);
+  });
+
+  it("finds the next fire in the routine's zone", () => {
+    // Wednesday 18 November 2026, 10:00 in Chicago.
+    const from = new Date("2026-11-18T16:00:00Z");
+    expect(nextCadenceFire("0 6 * * 1", "America/Chicago", from)?.toISOString()).toBe("2026-11-23T12:00:00.000Z");
+    expect(nextCadenceFire("*/30 9-10 * * *", "UTC", new Date("2026-01-01T09:10:00Z"))?.toISOString())
+      .toBe("2026-01-01T09:30:00.000Z");
+    expect(nextCadenceFire("0 0 29 2 *", "UTC", new Date("2026-03-01T00:00:00Z"))?.toISOString())
+      .toBe("2028-02-29T00:00:00.000Z");
+    // 02:30 does not exist in New York on 8 March 2026.
+    const spring = nextCadenceFire("30 2 * * *", "America/New_York", new Date("2026-03-07T17:00:00Z"));
+    expect(spring?.toISOString()).toBe("2026-03-09T06:30:00.000Z");
+  });
+
+  it("names the viewer's local time only when the zones differ", () => {
+    const from = new Date("2026-11-18T16:00:00Z");
+    const local = browserTimeZone();
+    expect(nextRunHint("0 6 * * 1", local, from)?.here).toBeUndefined();
+    const other = local === "Asia/Tokyo" ? "America/Chicago" : "Asia/Tokyo";
+    const hint = nextRunHint("0 6 * * 1", other, from);
+    expect(hint?.there).toBeTruthy();
+    expect(hint?.here).toBeTruthy();
+    expect(hint?.here).not.toBe(hint?.there);
   });
 });
 
@@ -129,6 +203,7 @@ const routine: Routine = {
   catchUpSeconds: 3600,
   maxKept: 5,
   enabled: true,
+  includeNotes: false,
   nextFireAt: "2026-11-23T12:00:00Z",
   keptCapsules: 1,
   lastFire: fire({ capsuleId: "capsule-kept", outcome: "changed" }),
@@ -214,6 +289,22 @@ describe("Routines page", () => {
     });
   });
 
+  it("opts a routine in to Project notes only when asked", async () => {
+    const requests: { method: string; path: string; body?: unknown }[] = [];
+    renderRoutines(requests);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "New routine" }));
+    const include = screen.getByRole("switch", { name: "Include Project notes" });
+    expect(include).not.toBeChecked();
+    await user.type(screen.getByPlaceholderText("deps-weekly"), "nightly");
+    await user.type(screen.getByLabelText("Prompt"), "Triage flaky tests");
+    await user.click(include);
+    await user.click(screen.getByRole("button", { name: "Create routine" }));
+    await waitFor(() => expect(requests.some((item) => item.method === "POST" && item.path.endsWith("/routines"))).toBe(true));
+    const created = requests.find((item) => item.method === "POST" && item.path.endsWith("/routines"));
+    expect(created?.body).toMatchObject({ includeNotes: true });
+  });
+
   it("groups routines by Project", async () => {
     renderRoutines([]);
     expect(await screen.findByRole("heading", { name: "meridian" })).toBeInTheDocument();
@@ -233,6 +324,95 @@ describe("Routines page", () => {
     expect(await screen.findByText("1 routine on this Project.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Manage routines" }))
       .toHaveAttribute("href", `/ui/routines?project=${project.id}`);
+  });
+
+  it("defaults a new routine to the browser time zone", async () => {
+    const original = Intl.DateTimeFormat.prototype.resolvedOptions;
+    vi.spyOn(Intl.DateTimeFormat.prototype, "resolvedOptions").mockImplementation(function mockZone(this: Intl.DateTimeFormat) {
+      return { ...original.call(this), timeZone: "Pacific/Auckland" };
+    });
+    const requests: { method: string; path: string; body?: unknown }[] = [];
+    renderRoutines(requests);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "New routine" }));
+    expect(screen.getByRole("combobox", { name: "Time zone" })).toHaveValue("Pacific/Auckland");
+    await user.type(screen.getByPlaceholderText("deps-weekly"), "nightly");
+    await user.type(screen.getByLabelText("Prompt"), "Triage flaky tests");
+    await user.click(screen.getByRole("button", { name: "Create routine" }));
+    await waitFor(() => expect(requests.some((item) => item.method === "POST" && item.path.endsWith("/routines"))).toBe(true));
+    const created = requests.find((item) => item.method === "POST" && item.path.endsWith("/routines"));
+    expect(created?.body).toMatchObject({ timeZone: "Pacific/Auckland" });
+  });
+
+  it("keeps a saved time zone, including one missing from the list", async () => {
+    renderRoutines([]);
+    const user = userEvent.setup();
+    await user.click((await screen.findAllByRole("button", { name: "Edit" }))[0]);
+    expect(screen.getByRole("combobox", { name: "Time zone" })).toHaveValue("America/Chicago");
+
+    cleanup();
+    const original = Intl.supportedValuesOf.bind(Intl);
+    vi.spyOn(Intl, "supportedValuesOf").mockImplementation((key) => {
+      if (key === "timeZone") return ["Europe/London", "Asia/Tokyo"];
+      return original(key);
+    });
+    renderRoutines([]);
+    await user.click((await screen.findAllByRole("button", { name: "Edit" }))[0]);
+    const zone = screen.getByRole("combobox", { name: "Time zone" });
+    expect(zone).toHaveValue("America/Chicago");
+    await user.click(zone);
+    expect(screen.getByRole("option", { name: /America\/Chicago/ })).toBeInTheDocument();
+  });
+
+  it("filters time zones and selects one from the keyboard", async () => {
+    renderRoutines([]);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "New routine" }));
+    const zone = screen.getByRole("combobox", { name: "Time zone" });
+    const local = browserTimeZone();
+    expect(zone).toHaveValue(local);
+    const hint = screen.getByText(/Runs must be at least 15 minutes apart/);
+    expect(hint).toHaveTextContent("Next:");
+    expect(hint).not.toHaveTextContent("your time");
+
+    await user.click(zone);
+    expect(zone).toHaveAttribute("aria-expanded", "true");
+    await user.type(zone, "chicago");
+    expect(screen.getByRole("option", { name: /America\/Chicago/ })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Asia\/Tokyo/ })).not.toBeInTheDocument();
+
+    await user.clear(zone);
+    await user.type(zone, "central");
+    expect(screen.getByRole("option", { name: /America\/Chicago/ })).toBeInTheDocument();
+
+    await user.clear(zone);
+    await user.type(zone, "chi");
+    const options = within(screen.getByRole("listbox", { name: "Time zones" })).getAllByRole("option");
+    expect(options.length).toBeGreaterThan(1);
+    await user.keyboard("{ArrowDown}");
+    expect(zone).toHaveAttribute("aria-activedescendant", options[1].id);
+    await user.keyboard("{Enter}");
+    const picked = options[1].getAttribute("data-zone") ?? "";
+    expect(picked).not.toBe("");
+    expect(zone).toHaveValue(picked);
+    expect(zone).toHaveAttribute("aria-expanded", "false");
+
+    await user.type(zone, "not-a-zone");
+    await user.keyboard("{Enter}");
+    expect(zone).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText(/No time zones match/)).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(zone).toHaveValue(picked);
+    expect(zone).toHaveAttribute("aria-expanded", "false");
+
+    const otherQuery = local === "Asia/Tokyo" ? "chicago" : "tokyo";
+    const otherZone = local === "Asia/Tokyo" ? "America/Chicago" : "Asia/Tokyo";
+    await user.click(zone);
+    await user.type(zone, otherQuery);
+    await user.keyboard("{Enter}");
+    expect(zone).toHaveValue(otherZone);
+    expect(hint).toHaveTextContent("your time");
+    expect(hint).toHaveTextContent(otherZone);
   });
 
   it("fires a routine now", async () => {

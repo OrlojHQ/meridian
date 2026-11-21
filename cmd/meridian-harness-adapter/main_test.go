@@ -36,6 +36,10 @@ func TestEveryDriverDeclaresItsCoordinationBriefChannel(t *testing.T) {
 			t.Errorf("driver %q has no entry in harnessadapter.CoordinationBriefChannels; "+
 				"see docs/harness-adapters.md, Coordination brief", name)
 		}
+		if harnessadapter.NotesIndexChannels[name] == "" {
+			t.Errorf("driver %q has no entry in harnessadapter.NotesIndexChannels; "+
+				"see docs/harness-adapters.md, Notes index", name)
+		}
 	}
 }
 

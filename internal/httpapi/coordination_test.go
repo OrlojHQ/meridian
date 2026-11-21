@@ -2,6 +2,7 @@ package httpapi_test
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -122,10 +123,29 @@ func TestCoordinationRoutes(t *testing.T) {
 		}
 	}
 
+	// The absolute deadline was replaced; old clients get a clear refusal.
+	for name, body := range map[string]string{
+		"/projects/" + projectID + "/threads": `{"harness":"mock","prompt":"lead","coordination":{"deadlineSeconds":3600}}`,
+	} {
+		request, _ := http.NewRequestWithContext(ctx, http.MethodPost, server.URL+name, strings.NewReader(body))
+		request.Header.Set("Authorization", "Bearer "+tokenValue)
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("Idempotency-Key", "old-deadline")
+		response, err := http.DefaultClient.Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, _ := io.ReadAll(response.Body)
+		_ = response.Body.Close()
+		if response.StatusCode != http.StatusBadRequest || !strings.Contains(string(raw), "unattendedLimitSeconds") {
+			t.Fatalf("deadlineSeconds = %d %s", response.StatusCode, raw)
+		}
+	}
+
 	created, err := api.CreateProjectThread(ctx, &client.CreateProjectThreadRequest{
 		Harness: "mock", Prompt: client.NewOptString("lead"),
 		Coordination: client.NewOptCoordinationPolicy(client.CoordinationPolicy{
-			MaxChildren: client.NewOptInt(3), DeadlineSeconds: client.NewOptInt(3600),
+			MaxChildren: client.NewOptInt(3), UnattendedLimitSeconds: client.NewOptInt(3600),
 			ArchiveAfterSeconds: client.NewOptInt(120),
 		}),
 	}, client.CreateProjectThreadParams{ProjectId: projectID, IdempotencyKey: "lead"})
@@ -178,7 +198,8 @@ func TestCoordinationRoutes(t *testing.T) {
 	}
 	grant := grantResult.(*client.CoordinationGrantHeaders).Response
 	if grant.State != client.CoordinationGrantStateActive || grant.MaxChildren != 3 ||
-		grant.RootThreadId != thread.ID || grant.DeadlineAt.Sub(grant.CreatedAt) != time.Hour ||
+		grant.RootThreadId != thread.ID || grant.UnattendedLimitSeconds != 3600 ||
+		grant.LapsesAt.Sub(grant.LastOperatorAt) != time.Hour || grant.SpawnsInWindow != 0 ||
 		grant.ArchiveAfterSeconds != 120 || grant.SpawnApproval != client.CoordinationGrantSpawnApprovalAuto {
 		t.Fatalf("grant = %#v", grant)
 	}
@@ -283,5 +304,132 @@ func TestCoordinationRoutes(t *testing.T) {
 	if revoked.State != client.CoordinationGrantStateRevoked ||
 		revoked.RevokeReason.Value != client.CoordinationGrantRevokeReasonOperator {
 		t.Fatalf("revoked grant = %#v", revoked)
+	}
+}
+
+// An existing plain Thread becomes a lead through its own route; its Thread
+// view then names the grant, which is what shows the lead's Agents panel.
+func TestMakeThreadLeadRoute(t *testing.T) {
+	ctx := principal.With(context.Background(), principal.Owner())
+	store, err := sqlite.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	runtime := &runtime{}
+	service := app.NewService(store, clock{}, &ids{}, idleQueue{}, runtime)
+	key, err := transcripts.NewInstallationKey("http-make-lead", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer key.Zero()
+	service.ConfigureThreads(runtime, key)
+	service.ConfigureCoordination(idleCoordination{}, 0)
+	tokenValue := "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+	token, err := apiauth.ParseToken(tokenValue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := httpapi.NewWithCapabilities(service, ports.ProviderCapabilities{
+		Run: true, Structured: true, Coordination: true, Isolation: domain.IsolationContainer,
+	}, token)
+	handler.SetReady(true)
+	server := httptest.NewServer(handler)
+	defer server.Close()
+	api, err := client.NewClient(server.URL, testSecuritySource{token: tokenValue})
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, err := api.CreateProject(ctx, &client.CreateProjectRequest{
+		Name:          "upgrade",
+		HarnessImages: []client.HarnessImage{{Name: "mock", ImageReference: "example@sha256:" + strings.Repeat("a", 64)}},
+	}, client.CreateProjectParams{IdempotencyKey: "project"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	projectID := project.(*client.ProjectHeaders).Response.ID
+	created, err := api.CreateProjectThread(ctx, &client.CreateProjectThreadRequest{
+		Harness: "mock", Prompt: client.NewOptString("plain work"),
+	}, client.CreateProjectThreadParams{ProjectId: projectID, IdempotencyKey: "plain"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	intent := created.(*client.ProjectThreadIntentHeaders).Response
+	if err := store.Transact(ctx, func(tx ports.Transaction) error {
+		capsule, err := tx.GetCapsule(ctx, domain.CapsuleID(intent.CapsuleId))
+		if err != nil {
+			return err
+		}
+		previous := capsule.ResourceVersion
+		capsule.State, capsule.ProviderResourceID = domain.CapsuleReady, "resource-plain"
+		capsule.ResourceVersion++
+		return tx.UpdateCapsule(ctx, capsule, previous)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	capsule, err := service.GetCapsule(ctx, domain.CapsuleID(intent.CapsuleId))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.ReconcileProjectThreadCapsule(principal.WithSystem(ctx), capsule); err != nil {
+		t.Fatal(err)
+	}
+	read := func() client.Thread {
+		t.Helper()
+		result, err := api.GetThread(ctx, client.GetThreadParams{ThreadId: intent.ThreadId})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return result.(*client.ThreadHeaders).Response
+	}
+	plain := read()
+	if plain.CoordinationGrantId.Set {
+		t.Fatalf("plain Thread has a grant: %#v", plain)
+	}
+
+	stale, err := api.MakeThreadLead(ctx, &client.MakeThreadLeadRequest{ExpectedResourceVersion: plain.ResourceVersion + 1},
+		client.MakeThreadLeadParams{ThreadId: plain.ID, IdempotencyKey: "stale"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := stale.(*client.MakeThreadLeadConflict); !ok {
+		t.Fatalf("stale upgrade = %#v", stale)
+	}
+	made, err := api.MakeThreadLead(ctx, &client.MakeThreadLeadRequest{
+		ExpectedResourceVersion: plain.ResourceVersion,
+		Coordination: client.NewOptCoordinationPolicy(client.CoordinationPolicy{
+			MaxLiveCapsules: client.NewOptInt(2), UnattendedLimitSeconds: client.NewOptInt(7200),
+			SpawnApproval: client.NewOptCoordinationPolicySpawnApproval(client.CoordinationPolicySpawnApprovalOperator),
+		}),
+	}, client.MakeThreadLeadParams{ThreadId: plain.ID, IdempotencyKey: "lead"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, ok := made.(*client.MakeThreadLeadResponseHeaders)
+	if !ok {
+		t.Fatalf("upgrade = %#v", made)
+	}
+	grant := response.Response.Grant
+	if grant.RootThreadId != plain.ID || grant.MaxLiveCapsules != 2 || grant.UnattendedLimitSeconds != 7200 ||
+		grant.SpawnApproval != client.CoordinationGrantSpawnApprovalOperator ||
+		grant.State != client.CoordinationGrantStateActive {
+		t.Fatalf("grant = %#v", grant)
+	}
+	// The first prompt is still running, so the session restarts later.
+	if response.Response.Restarted {
+		t.Fatal("a running turn was restarted")
+	}
+	lead := read()
+	if lead.CoordinationGrantId.Value != grant.ID || lead.ParentThreadId.Set || lead.ResourceVersion <= plain.ResourceVersion ||
+		response.Response.Thread.CoordinationGrantId.Value != grant.ID {
+		t.Fatalf("lead Thread = %#v", lead)
+	}
+	again, err := api.MakeThreadLead(ctx, &client.MakeThreadLeadRequest{ExpectedResourceVersion: lead.ResourceVersion},
+		client.MakeThreadLeadParams{ThreadId: lead.ID, IdempotencyKey: "again"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := again.(*client.MakeThreadLeadUnprocessableEntity); !ok {
+		t.Fatalf("second upgrade = %#v", again)
 	}
 }

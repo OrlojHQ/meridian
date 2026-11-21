@@ -26,7 +26,7 @@ func (s *CoordinationPolicy) setDefaults() {
 	}
 	{
 		val := int(86400)
-		s.DeadlineSeconds.SetTo(val)
+		s.UnattendedLimitSeconds.SetTo(val)
 	}
 	{
 		val := int(3600)
@@ -60,6 +60,10 @@ func (s *CreateRoutineRequest) setDefaults() {
 		val := bool(true)
 		s.Enabled.SetTo(val)
 	}
+	{
+		val := bool(false)
+		s.IncludeNotes.SetTo(val)
+	}
 }
 
 // setDefaults set default value of fields.
@@ -67,6 +71,14 @@ func (s *CreateThreadRequest) setDefaults() {
 	{
 		val := bool(false)
 		s.Start.SetTo(val)
+	}
+}
+
+// setDefaults set default value of fields.
+func (s *DeleteNoteRequest) setDefaults() {
+	{
+		val := bool(false)
+		s.WithHistory.SetTo(val)
 	}
 }
 

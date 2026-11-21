@@ -17,7 +17,7 @@ type routineFlags struct {
 	name, harness, model, effort, prompt, promptFile, cadence, timeZone string
 	maxRun, catchUp                                                     time.Duration
 	maxKept                                                             int
-	enabled                                                             bool
+	enabled, includeNotes                                               bool
 }
 
 func (f *routineFlags) bind(command *cobra.Command, create bool) {
@@ -34,6 +34,7 @@ func (f *routineFlags) bind(command *cobra.Command, create bool) {
 	flags.DurationVar(&f.catchUp, "catch-up", time.Hour, "after downtime, run a missed fire this late at most (0 to 24h)")
 	flags.IntVar(&f.maxKept, "max-kept", 5, "stop firing while this many runs with results wait for you (1 to 20)")
 	flags.BoolVar(&f.enabled, "enabled", true, "fire on the clock")
+	flags.BoolVar(&f.includeNotes, "include-notes", false, "give each scheduled Thread the Project's notes as files")
 	if create {
 		_ = command.MarkFlagRequired("name")
 		_ = command.MarkFlagRequired("harness")
@@ -172,6 +173,7 @@ func newRoutineCommand(config *cliConfig) *cobra.Command {
 				CatchUpSeconds: client.NewOptInt(int(createFlags.catchUp / time.Second)),
 				MaxKept:        client.NewOptInt(createFlags.maxKept),
 				Enabled:        client.NewOptBool(createFlags.enabled),
+				IncludeNotes:   client.NewOptBool(createFlags.includeNotes),
 			}
 			if createFlags.model != "" {
 				request.Model = client.NewOptString(createFlags.model)
@@ -229,6 +231,9 @@ func newRoutineCommand(config *cliConfig) *cobra.Command {
 				}
 				if flags.Changed("enabled") {
 					request.Enabled = client.NewOptBool(updateFlags.enabled)
+				}
+				if flags.Changed("include-notes") {
+					request.IncludeNotes = client.NewOptBool(updateFlags.includeNotes)
 				}
 				return nil
 			})

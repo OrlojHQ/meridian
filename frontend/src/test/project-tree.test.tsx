@@ -144,3 +144,28 @@ it("filters by Project or Capsule name and shows failed deletes on the row", () 
   expect(screen.queryByText("old-project")).toBeNull();
   expect(screen.getByRole("status")).toHaveTextContent("Deletion stopped: container in use");
 });
+
+it("lists pinned Threads first, by name, and the rest by recency", () => {
+  const pinned = (entry: WorkingSetItem, name: string): WorkingSetItem => ({
+    ...entry,
+    capsule: { ...entry.capsule, name },
+    pinned: { id: `thread-${entry.capsule.id}`, pinnedAt: "2026-11-01T00:00:00Z" } as WorkingSetItem["pinned"],
+  });
+  show({
+    items: [
+      item("fix-login", "busy", "2026-11-10T10:00:00Z"),
+      // Old activity, but pinned: it stays at the top.
+      pinned(item("lead-web", "busy", "2026-11-01T00:00:00Z"), "web lead"),
+      item("docs-pass", "busy", "2026-11-10T09:00:00Z"),
+      pinned(item("lead-api", "busy", "2026-11-09T00:00:00Z"), "API lead"),
+    ],
+    renderItem: (entry) => <li key={entry.capsule.id}>{entry.capsule.name}</li>,
+  });
+  const busy = screen.getByRole("list", { name: "busy-project Capsules" });
+  expect(within(busy).getAllByRole("listitem").map((row) => row.textContent)).toEqual([
+    "API lead",
+    "web lead",
+    "fix-login",
+    "docs-pass",
+  ]);
+});

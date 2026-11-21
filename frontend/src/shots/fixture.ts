@@ -249,10 +249,13 @@ const leadGrant = {
   maxLiveCapsules: 4,
   maxMessagesPerLink: 50,
   allowedHarnesses: ["claude", "codex"],
-  deadlineAt: new Date(Date.now() + 6 * hour).toISOString(),
+  lastOperatorAt: ago(3 * minute),
+  unattendedLimitSeconds: 24 * 3600,
+  lapsesAt: new Date(Date.now() + 24 * hour - 3 * minute).toISOString(),
   onDeadline: "cancel_and_pause",
   archiveAfterSeconds: 3600,
   descendantsCreated: 2,
+  spawnsInWindow: 2,
   createdAt: ago(3 * minute),
   updatedAt: ago(3 * minute),
   resourceVersion: 2,
@@ -977,6 +980,9 @@ function route(pathname: string): unknown {
   }
   if (pathname.endsWith("/files") || pathname.endsWith("/previews") || pathname.endsWith("/moments")) {
     return emptyPage;
+  }
+  if (pathname.endsWith("/reported-models")) {
+    return { models: [{ id: "opus", label: "Opus" }], efforts: [{ id: "medium", label: "Medium" }] };
   }
   return emptyPage;
 }

@@ -12,6 +12,7 @@ import { Button } from "./ui/Button";
 import { Input, Select, TextArea } from "./ui/Field";
 import { HarnessMark } from "./ui/HarnessMark";
 import { PlusIcon } from "./ui/Icons";
+import { TimeZonePicker } from "./TimeZonePicker";
 import {
   browserTimeZone,
   buildCadence,
@@ -22,6 +23,7 @@ import {
   fireKeptCapsule,
   fireSummary,
   formatWhen,
+  nextRunHint,
   parseCadence,
   triggerLabel,
   weekdayNames,
@@ -49,6 +51,9 @@ type FormState = {
   maxRunMinutes: string;
   catchUpMinutes: string;
   maxKept: string;
+  // Scheduled Threads get Project notes only when the routine opts in
+  // (ADR 0060 section 4).
+  includeNotes: boolean;
 };
 
 function formFrom(routine: Routine | undefined, harness: string): FormState {
@@ -57,6 +62,7 @@ function formFrom(routine: Routine | undefined, harness: string): FormState {
       name: "", harness, model: "", effort: "", prompt: "",
       mode: "weekly", time: "06:00", minute: "0", weekday: "1", custom: "0 6 * * 1",
       timeZone: browserTimeZone(), maxRunMinutes: "120", catchUpMinutes: "60", maxKept: "5",
+      includeNotes: false,
     };
   }
   const parts = parseCadence(routine.cadence);
@@ -68,7 +74,22 @@ function formFrom(routine: Routine | undefined, harness: string): FormState {
     maxRunMinutes: String(Math.round(routine.maxRunSeconds / 60)),
     catchUpMinutes: String(Math.round(routine.catchUpSeconds / 60)),
     maxKept: String(routine.maxKept),
+    includeNotes: routine.includeNotes === true,
   };
+}
+
+function ScheduleHint({ cadence, zone }: { cadence: string; zone: string }) {
+  const next = nextRunHint(cadence, zone);
+  const where = zone || "UTC";
+  const when = next
+    ? ` Next: ${next.there}${next.here ? ` (${next.here} your time)` : ""}.`
+    : "";
+  return (
+    <p className="launch-hint">
+      <span className="mono">{cadence}</span>
+      {` in ${where}.${when} Runs must be at least 15 minutes apart.`}
+    </p>
+  );
 }
 
 function cadenceOf(form: FormState) {
@@ -140,6 +161,7 @@ function RoutineForm({
         maxRunSeconds: (Number(form.maxRunMinutes) || 120) * 60,
         catchUpSeconds: (Number(form.catchUpMinutes) || 0) * 60,
         maxKept: Number(form.maxKept) || 5,
+        includeNotes: form.includeNotes,
       };
       if (routine) {
         return api.updateRoutine(routine.id, { ...body, expectedResourceVersion: routine.resourceVersion });
@@ -248,11 +270,25 @@ function RoutineForm({
             onChange={(event) => set({ custom: event.target.value })}
           />
         )}
-        <Input aria-label="Time zone" value={form.timeZone} onChange={(event) => set({ timeZone: event.target.value })} />
+        <TimeZonePicker value={form.timeZone} onChange={(timeZone) => set({ timeZone })} />
       </fieldset>
-      <p className="launch-hint">
-        <span className="mono">{cadence}</span> in {form.timeZone || "UTC"}. Runs must be at least 15 minutes apart.
-      </p>
+      <ScheduleHint cadence={cadence} zone={form.timeZone} />
+      <div className="routine-notes">
+        <label className="checkbox-label" htmlFor={`routine-notes-${routine?.id ?? "new"}`}>
+          <input
+            id={`routine-notes-${routine?.id ?? "new"}`}
+            type="checkbox"
+            role="switch"
+            aria-describedby={`routine-notes-hint-${routine?.id ?? "new"}`}
+            checked={form.includeNotes}
+            onChange={(event) => set({ includeNotes: event.currentTarget.checked })}
+          />
+          Include Project notes
+        </label>
+        <p className="launch-hint" id={`routine-notes-hint-${routine?.id ?? "new"}`}>
+          Each run gets the Project&apos;s notes as files. A run has no one watching, so this stays off unless you turn it on.
+        </p>
+      </div>
       <details className="routine-limits">
         <summary>Limits</summary>
         <div className="routine-form-grid">
@@ -363,6 +399,7 @@ function RoutineCard({
           {harnessName(routine.harness)}
           {routine.model ? ` · ${routine.model}` : " · default model"}
           {routine.effort ? ` · ${routine.effort} effort` : ""}
+          {routine.includeNotes ? " · gets Project notes" : ""}
         </span>
         <span>
           {routine.enabled && routine.nextFireAt ? `Next: ${formatWhen(routine.nextFireAt)}` : "Not scheduled"}

@@ -108,15 +108,35 @@ driver reads it with `adapterproto.CoordinationRole` and adds the lead or
 subagent brief from `internal/harnessadapter/coordination_brief.go` to the
 harness's own system prompt. The lead brief says to delegate by default, to
 write self-contained tasks, and to end the turn after spawning instead of
-blocking on `wait`. The brief is trusted adapter text, never repository
+blocking on `wait`. It also says how to keep a long lead conversation light
+(ADR 0059): wakes carry report headlines, so read full reports with `result`;
+read diffstats before patches; fetch large patches and reports with `toFile`
+(`--to-file` in CLI wording) and read the file with the shell; spawn a
+reviewer subagent for large diffs; keep running notes in
+`$HOME/.meridian/notes/`; and attach the notes a subagent needs to a spawn
+with `contextFiles` (`--context-file`) instead of retyping them. The brief is trusted adapter text, never repository
 content, and grants nothing; the mailbox still enforces the grant.
+
+A Thread's role can change between sessions: the operator can make a plain
+Thread a lead (ADR 0059), and the daemon then stops the session and resumes
+it with `{"coordination":"lead"}`. So a channel must deliver the brief on
+resume too. `claude-stream`, `codex-app-server`, and `pi-rpc` already do,
+because their system-prompt channel is set for every process or
+`thread/resume`. The `acp` driver records the role it has briefed in its own
+resume state (`{"driver":"acp","sessionId":...,"role":"lead"}`, set once a
+prompt carries the brief) and sends the block again on the first prompt after
+a resume whose role differs. Resume state written before this has no role, so
+an existing ACP lead or subagent is briefed once more on its next resume. The
+recorded role comes only from the adapter, never from the repository; at
+worst a hostile Capsule process that rewrote it could suppress or repeat a
+brief, which grants nothing.
 
 | Driver | Channel |
 | --- | --- |
 | `claude-stream` | `--append-system-prompt` |
 | `codex-app-server` | `developerInstructions` on `thread/start` and `thread/resume` |
 | `pi-rpc` | `--append-system-prompt`, worded for the `meridian-coord` CLI |
-| `acp` | a trailing `<meridian-context>` text block on the first prompt of a new session, since ACP has no system-prompt field |
+| `acp` | a trailing `<meridian-context>` text block on the first prompt of a new session, and on the first prompt after a resume whose role differs from the one already briefed, since ACP has no system-prompt field |
 | `generic` | none; forwards the metadata to the child adapter |
 
 **Adding a harness.** A new ACP harness gets the brief from the `acp` driver
@@ -126,6 +146,48 @@ to a block on the first prompt, and use CLI wording if the harness has no MCP
 client. Then record the channel in `harnessadapter.CoordinationBriefChannels`;
 `TestEveryDriverDeclaresItsCoordinationBriefChannel` fails for any driver
 missing from it.
+
+The lead brief also says to keep shared findings in working notes with
+`write_note` and to run `sync_notes` before relying on them, to propose a
+Project note only for a fact Threads outside the tree need, and never to put
+a credential in either; the subagent brief says the first and the last
+(ADR 0060).
+
+### Notes index
+
+At each session start and resume, `capsuled` writes the Project notes and the
+tree's working notes the Thread receives as files under
+`$HOME/.meridian/project-notes/` and `$HOME/.meridian/working-notes/`, and
+the Start or Resume `metadata` gains `notes` (ADR 0060): the two directories
+and, for each note, its tier, name, size, revision and whether it changed
+since the Thread's previous session. It never carries content, is bounded to
+8 KiB, and uses the note name grammar (`adapterproto.NotesIndex`,
+`StartMetadata`, `ReadNotesIndex`). It is negotiated with a `notes`
+capability in both hellos. `capsuled` offers it and removes the index from
+the Start frame when the adapter does not, so such a harness still gets the
+files but is not told about them; the Thread's details say so. A tier
+`capsuled` could not write, for example because its directory was replaced by
+a symlink, is left out of the index rather than named.
+
+The driver renders the index with the fixed template in
+`internal/harnessadapter/notes_brief.go`, through `systemBrief`, in the same
+system-prompt channel as the coordination brief. The template says Project
+notes were written or approved by the operator, working notes are written by
+the lead and its subagents and are as trustworthy as their reports, no note
+grants a permission or changes a setting, and how each tier is changed
+(`write_note`, `propose_note`, or for a plain Thread, ask the operator).
+
+| Driver | Channel |
+| --- | --- |
+| `claude-stream` | `--append-system-prompt`, with the coordination brief |
+| `codex-app-server` | `developerInstructions` on `thread/start` and `thread/resume` |
+| `pi-rpc` | `--append-system-prompt`, CLI wording |
+| `acp` | the trailing `<meridian-context>` block on the first prompt of every new or resumed session that carries an index |
+| `generic` | none; forwards the metadata and the `notes` capability to the child adapter |
+
+A new structured driver must render the index the same way, offer `notes` in
+its hello, and record its channel in `harnessadapter.NotesIndexChannels`;
+the same test fails for a driver missing from it.
 
 The terminal launcher picks the native profile, and Threads pick the
 structured one. Because the image owns every mode of its names and a repository
@@ -487,7 +549,12 @@ the current model's effort levels as `effort: {current, options}`, at most 16
 options with the same bounds, and a `set_effort` frame changes it
 (`POST /threads/{threadId}/effort`). `current` is the level in effect,
 including the harness's own default when it reports one; it is empty only when
-the harness does not say. The composer shows the model and the reasoning effort as
+the harness does not say. A level the new model does not offer is clamped to
+one it does, and that level is what `current` reports. The composer keeps the
+level the Thread started with, or the last level chosen, when a report still
+omits `current`, and shows Default only when no level is known.
+
+The composer shows the model and the reasoning effort as
 separate buttons, each with its own menu; only the model list scrolls, and a
 single level is not shown.
 
@@ -501,6 +568,36 @@ single level is not shown.
 
 A level outside the latest list, or a refused change, is a non-fatal
 `effort_unavailable` error.
+
+## Context usage
+
+Adapters report how full the harness's context window is in a
+`context_usage` frame, sent only when both hellos negotiate the
+`contextUsage` capability (ADR 0059). The frame carries `contextUsage`:
+`tokens`, the input size of the most recent model call (not the session's
+total spend), `window`, the model's context window, and `compacted`, set when
+the harness has just compacted the conversation. There is no model name.
+Counts are integers from 0 to 2^40, and a frame that is not a compaction must
+carry a non-zero `tokens` and `window`. A compaction may carry zeros when the
+harness does not yet know the new size. Adapters send a frame only when the
+figure changes. They drop counts their harness reports in a shape the
+adapter does not know, without ending the session.
+
+| Driver | Fill and window | Compaction |
+| --- | --- | --- |
+| `claude-stream` | each main-loop `assistant` record's `message.usage` (`input_tokens` + `cache_creation_input_tokens` + `cache_read_input_tokens`), and `contextWindow` of the main model's entry in `result`'s `modelUsage`. The model is the one `system/init` names, or the only entry. The first report comes at the end of the first turn. | `system/compact_boundary`, with `compact_metadata.post_tokens` as the new size when present |
+| `codex-app-server` | `thread/tokenUsage/updated` for the Thread's own thread: `tokenUsage.last.inputTokens` and `tokenUsage.modelContextWindow`. `total` is ignored. | a completed `contextCompaction` item, size unknown until the next update |
+| `acp` | the `usage_update` session update's `used` and `size` (OpenCode at each turn's end, DeepSeek Harness after each assistant message), outside `session/load` replay | none; ACP's `compaction_update` is unstable and opt-in, and the adapter does not opt in |
+| `pi-rpc` | `get_session_stats` `contextUsage` after each `agent_settled`, at startup, and after a compaction | `compaction_end` with a `result`, or a successful `compact` command, once |
+| `generic` | the child adapter | forwarded |
+
+`meridiand` keeps the latest report per Thread in memory, for the current Run
+only, and serves it as the Thread's `contextUsage`. A report that does not
+say how full the window is, such as a compaction of unknown size, clears it.
+Only compactions reach the encrypted transcript, as a `context_usage` status
+block with `compacted: true` and no counts. The browser shows a toolbar meter
+on plain Threads from half full, shows the figure in Thread details, and draws
+a divider at each compaction.
 
 ## Adding an ACP harness
 
@@ -534,8 +631,9 @@ The `acp` driver maps ACP onto `meridian.adapter.v1` like this:
 | stop reason `max_tokens`, `max_turn_requests`, `refusal` | `error` (`acp_max_tokens`, `acp_max_turn_requests`, `acp_refusal`), then `idle` |
 | controller `cancel` | answers open permission prompts with `cancelled` and open elicitations with `cancel`, sends `session/cancel`, and ends after the agent stops or 2 seconds |
 
-Thoughts, user-message replays, mode, model, usage, and session-info updates
-are dropped. The adapter advertises no `fs` or `terminal` client capability
+`usage_update` becomes `context_usage` (see [Context usage](#context-usage)).
+Thoughts, user-message replays, mode, model, session-info, and compaction
+updates are dropped. The adapter advertises no `fs` or `terminal` client capability
 and refuses every other agent-to-client request, so the agent edits files and
 runs commands with its own tools inside the Capsule, under its own permission
 prompts.
@@ -568,7 +666,8 @@ The Pi driver follows the authoritative `badlogic/pi-mono`
 `message_update`, authoritative `message_end`, tool execution events,
 `extension_ui_request`/`extension_ui_response`, `get_state`,
 `switch_session`, and `abort`. Command discovery and compaction follow the
-`get_commands` and `compact` commands of Pi 0.87.1. Resume state contains only the bounded Pi session
+`get_commands` and `compact` commands of Pi 0.87.1, and context usage follows its
+`get_session_stats` command and `compaction_end` event. Resume state contains only the bounded Pi session
 path/id/name. Unknown events, malformed records, correlation mismatches, and
 oversized records terminate the adapter.
 
@@ -577,8 +676,8 @@ The ACP driver follows the ACP v1 schema (`agentclientprotocol/agent-client-prot
 JSON-RPC 2.0, `initialize` with protocol version 1, `session/new`,
 `session/resume`, `session/load`, `session/prompt` and its stop reasons,
 `session/cancel`, `session/update` (`agent_message_chunk`, `tool_call`,
-`tool_call_update`, `plan`, `available_commands_update`, and the ignored
-kinds), `session/request_permission` with `allow_once`, `allow_always`,
+`tool_call_update`, `plan`, `available_commands_update`, `usage_update`, and
+the ignored kinds), `session/request_permission` with `allow_once`, `allow_always`,
 `reject_once`, and `reject_always` options, and `$/cancel_request`. It was
 recorded against `opencode acp` from OpenCode 1.18.32 and pinned in the
 official pack at OpenCode 2.2.6, which also runs `/name args` prompts as its
@@ -616,7 +715,8 @@ recorded from 2.1.283 on 2026-11-07 and still match): an `initialize`
 control request, `user` input records, `stream_event` partial messages whose
 text deltas share an ID with the authoritative per-block `assistant` records,
 `user` tool results, `result` turn ends (including `is_error` results such as
-"Not logged in"), `can_use_tool` control requests answered with `allow` plus
+"Not logged in") with their per-model `modelUsage`, `system/compact_boundary`,
+`can_use_tool` control requests answered with `allow` plus
 `updatedInput` or `deny`, `control_cancel_request`, and `interrupt`. Records
 from subagents (non-null `parent_tool_use_id`) are dropped. Commands come from
 the `initialize` response's `commands` and `system/init`'s
@@ -627,7 +727,8 @@ Codex 0.167.0, compared with the 0.157.1 schema the fixtures were recorded
 from on 2026-11-08: `initialize` and `initialized`, `thread/start`,
 `thread/resume`, `turn/start`, `turn/steer`, `turn/interrupt`, `turn/*` and
 `item/*` notifications, `item/agentMessage/delta`, `error` with `willRetry`,
-`serverRequest/resolved`, the v2 approval, user-input, and elicitation
+`serverRequest/resolved`, `thread/tokenUsage/updated`, the v2 approval,
+user-input, and elicitation
 server requests, `skills/list`, `thread/compact/start`, and `review/start` with
 its nested review turn. Resume state contains only the thread UUID. Correlation
 mismatches and malformed or oversized records end the adapter.
@@ -661,7 +762,8 @@ brittle external script:
   has a slash-command fixture covering discovery, bounds, actions, and unknown
   `/text`, and a models fixture covering the reported list, a switch, an
   unlisted ID, and a refused switch, plus the same for effort levels and how a
-  model switch changes them;
+  model switch changes them. Each driver also has a context-usage fixture in
+  its pinned harness's recorded shapes;
 - supervisor tests cover strict negotiation, malformed/oversized/deep JSON,
   LF framing (including U+2028/U+2029 content), concurrent writes, replay gaps,
   crash/hang/process-group cleanup, stale auth/version, and bounded consumers;

@@ -333,7 +333,8 @@
 }
 
 .workbench .project-actions .icon-button,
-.workbench .capsule-row-delete {
+.workbench .capsule-row-delete,
+.workbench .capsule-row-pin {
   display: inline-grid;
   width: 1.55rem;
   min-height: 1.55rem;
@@ -346,7 +347,8 @@
 }
 
 .workbench .project-actions .icon-button:hover,
-.workbench .capsule-row-delete:hover {
+.workbench .capsule-row-delete:hover,
+.workbench .capsule-row-pin:hover {
   background: var(--surface-raised);
   color: var(--text);
 }
@@ -357,7 +359,8 @@
 }
 
 .project-actions svg,
-.capsule-row-delete svg {
+.capsule-row-delete svg,
+.capsule-row-pin svg {
   width: 0.85rem;
   height: 0.85rem;
 }
@@ -402,9 +405,35 @@
 }
 
 .capsule-node:hover > .capsule-row-delete,
-.capsule-node:focus-within > .capsule-row-delete {
+.capsule-node:focus-within > .capsule-row-delete,
+.capsule-node:hover > .capsule-row-pin,
+.capsule-node:focus-within > .capsule-row-pin {
   opacity: 1;
 }
+
+/* Pin sits beside delete, or alone where a Capsule cannot be deleted. */
+.workbench .capsule-row-pin {
+  position: absolute;
+  top: 0.3rem;
+  right: 1.8rem;
+  opacity: 0;
+}
+
+.workbench .capsule-row-pin.alone {
+  right: 0.2rem;
+}
+
+.workbench .capsule-row-pin[aria-pressed="true"] {
+  color: var(--accent-text);
+}
+
+.capsule-row-pinned {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  color: var(--faint);
+}
+
 
 .capsule-node:hover > a.capsule-row time,
 .capsule-node:focus-within > a.capsule-row time {
@@ -413,7 +442,8 @@
 
 @media (hover: none) {
   .project-actions,
-  .workbench .capsule-row-delete {
+  .workbench .capsule-row-delete,
+  .workbench .capsule-row-pin {
     opacity: 1;
   }
 
@@ -1357,10 +1387,142 @@
   width: 4.5rem;
 }
 
-.routine-when-fields > .ui-input[aria-label="Time zone"],
-.routine-when-fields > .ui-input[aria-label="Cron expression"] {
+.routine-when-fields > .ui-input[aria-label="Cron expression"],
+.routine-when-fields > .tz-picker {
   flex: 1 1 12rem;
-  min-width: 10rem;
+  min-width: 12rem;
+}
+
+/* Searchable zone list. The closed field matches the selects beside it.
+   The menu matches the other searchable menus: raised surface, same radius. */
+.tz-picker {
+  position: relative;
+  min-width: 0;
+}
+
+.tz-picker-input {
+  width: 100%;
+  min-width: 0;
+  padding-right: 2.1rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23879690' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4.5 6.25 3.5 3.5 3.5-3.5'/%3E%3C/svg%3E");
+  background-position: right 0.65rem center;
+  background-repeat: no-repeat;
+  background-size: 0.95rem;
+  cursor: pointer;
+  text-overflow: ellipsis;
+}
+
+.tz-picker-input[aria-expanded="true"] {
+  cursor: text;
+}
+
+.tz-picker-input::placeholder {
+  color: var(--faint);
+  opacity: 1;
+}
+
+.tz-picker-menu {
+  position: fixed;
+  z-index: 24;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  padding: 0.3rem;
+  color: var(--text);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-lg);
+}
+
+.tz-picker-section + .tz-picker-section,
+.tz-picker-options + .tz-picker-section {
+  margin-top: 0.2rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.15rem;
+}
+
+.tz-picker-group {
+  margin: 0;
+  padding: 0.4rem 0.6rem 0.15rem;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.tz-picker-options {
+  display: grid;
+}
+
+.tz-picker-option {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  border-radius: var(--radius-md);
+  padding: 0.38rem 0.55rem;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.tz-picker-option.active,
+.tz-picker-option:hover {
+  background: color-mix(in srgb, var(--border) 55%, transparent);
+}
+
+.tz-picker-option-text {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  flex: 1;
+  column-gap: 0.75rem;
+  row-gap: 0.05rem;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.tz-picker-option-name {
+  overflow: hidden;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tz-picker-option-offset {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tz-picker-option-meta {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tz-picker-check {
+  display: flex;
+  width: 0.9rem;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.tz-picker-check svg {
+  width: 0.9rem;
+  height: 0.9rem;
+  color: var(--accent);
+}
+
+.tz-picker-empty {
+  margin: 0;
+  padding: 0.65rem 0.7rem;
+  color: var(--muted);
+  font-size: var(--text-sm);
 }
 
 .routine-form > .launch-hint {

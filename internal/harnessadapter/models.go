@@ -91,10 +91,9 @@ func (m *modelSet) set() *adapterproto.ModelSet {
 	}
 	if m.effort != nil && len(m.effort.options) != 0 {
 		efforts := m.effort.options[:min(len(m.effort.options), adapterproto.MaxEfforts)]
-		current := m.effort.current
-		if !slices.ContainsFunc(efforts, func(option adapterproto.ModelOption) bool { return option.ID == current }) {
-			current = ""
-		}
+		// A level this model does not offer is clamped to one it does, so
+		// the composer keeps a real level instead of an empty current.
+		current := clampEffortID(effortIDs(efforts), m.effort.current, "")
 		set.Effort = &adapterproto.EffortSet{Current: current, Options: append([]adapterproto.ModelOption{}, efforts...)}
 	}
 	return set
@@ -120,6 +119,80 @@ func effortLabel(level string) string {
 	}
 	first, size := utf8.DecodeRuneInString(level)
 	return string(unicode.ToUpper(first)) + level[size:]
+}
+
+// effortScale is the canonical reasoning-effort order. A level the current
+// model does not offer is clamped along it.
+var effortScale = []string{"off", "minimal", "low", "medium", "high", "xhigh", "max"}
+
+func effortRank(level string) (int, bool) {
+	for index, name := range effortScale {
+		if name == level {
+			return index, true
+		}
+	}
+	return 0, false
+}
+
+func effortIDs(options []adapterproto.ModelOption) []string {
+	ids := make([]string, len(options))
+	for index, option := range options {
+		ids[index] = option.ID
+	}
+	return ids
+}
+
+// clampEffortID is the level a session runs. want is the requested or last
+// reported level; fallback is the model's own default when the harness
+// named one. want wins when this model offers it. Otherwise fallback wins
+// when it is offered. A want this model does not offer, and no usable
+// fallback, is clamped to the highest offered level that does not exceed
+// it, or the lowest offered level when want sits below all of them. An
+// empty result means the level is unknown and the model did not name a
+// default.
+func clampEffortID(ids []string, want, fallback string) string {
+	if want != "" && slices.Contains(ids, want) {
+		return want
+	}
+	if fallback != "" && slices.Contains(ids, fallback) {
+		return fallback
+	}
+	if want == "" {
+		return ""
+	}
+	wantRank, ranked := effortRank(want)
+	if !ranked {
+		if len(ids) > 0 {
+			return ids[0]
+		}
+		return ""
+	}
+	best := ""
+	bestRank := -1
+	lowest := ""
+	lowestRank := 0
+	for _, id := range ids {
+		rank, ok := effortRank(id)
+		if !ok {
+			continue
+		}
+		if lowest == "" || rank < lowestRank {
+			lowest, lowestRank = id, rank
+		}
+		if rank <= wantRank && rank > bestRank {
+			best, bestRank = id, rank
+		}
+	}
+	if best != "" {
+		return best
+	}
+	if lowest != "" {
+		return lowest
+	}
+	if len(ids) > 0 {
+		return ids[0]
+	}
+	return ""
 }
 
 // ReportModels sends the harness's model list when the controller negotiated

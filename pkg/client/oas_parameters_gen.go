@@ -14,6 +14,12 @@ type ApproveDeliveryParams struct {
 	IdempotencyKey string
 }
 
+// ApproveNoteProposalParams is parameters of approveNoteProposal operation.
+type ApproveNoteProposalParams struct {
+	ProposalId     string
+	IdempotencyKey string
+}
+
 // ArchiveThreadParams is parameters of archiveThread operation.
 type ArchiveThreadParams struct {
 	ThreadId       string
@@ -169,6 +175,14 @@ type DeleteProjectParams struct {
 	IdempotencyKey string
 }
 
+// DeleteProjectNoteParams is parameters of deleteProjectNote operation.
+type DeleteProjectNoteParams struct {
+	ProjectId string
+	// Note name without the .md suffix.
+	NoteName       string
+	IdempotencyKey string
+}
+
 // DeleteProviderConnectionParams is parameters of deleteProviderConnection operation.
 type DeleteProviderConnectionParams struct {
 	ConnectionId string
@@ -189,6 +203,14 @@ type DeleteSecretParams struct {
 // DeleteThreadParams is parameters of deleteThread operation.
 type DeleteThreadParams struct {
 	ThreadId       string
+	IdempotencyKey string
+}
+
+// DeleteWorkingNoteParams is parameters of deleteWorkingNote operation.
+type DeleteWorkingNoteParams struct {
+	GrantId string
+	// Note name without the .md suffix.
+	NoteName       string
 	IdempotencyKey string
 }
 
@@ -287,6 +309,11 @@ type GetMomentParams struct {
 	MomentId string
 }
 
+// GetNoteProposalParams is parameters of getNoteProposal operation.
+type GetNoteProposalParams struct {
+	ProposalId string
+}
+
 // GetProjectParams is parameters of getProject operation.
 type GetProjectParams struct {
 	ProjectId string
@@ -306,6 +333,14 @@ type GetProjectEnvironmentParams struct {
 type GetProjectHarnessSetupParams struct {
 	ProjectId string
 	Harness   string
+}
+
+// GetProjectNoteParams is parameters of getProjectNote operation.
+type GetProjectNoteParams struct {
+	ProjectId string
+	// Note name without the .md suffix.
+	NoteName string
+	Revision OptInt64 `json:",omitempty,omitzero"`
 }
 
 // GetProjectProviderConnectionParams is parameters of getProjectProviderConnection operation.
@@ -345,9 +380,22 @@ type GetThreadLinkParams struct {
 	LinkId string
 }
 
+// GetThreadNotesParams is parameters of getThreadNotes operation.
+type GetThreadNotesParams struct {
+	ThreadId string
+}
+
 // GetTimelineParams is parameters of getTimeline operation.
 type GetTimelineParams struct {
 	TimelineId string
+}
+
+// GetWorkingNoteParams is parameters of getWorkingNote operation.
+type GetWorkingNoteParams struct {
+	GrantId string
+	// Note name without the .md suffix.
+	NoteName string
+	Revision OptInt64 `json:",omitempty,omitzero"`
 }
 
 // GrantProjectProviderConnectionParams is parameters of grantProjectProviderConnection operation.
@@ -436,6 +484,24 @@ type ListMomentsParams struct {
 	Limit     OptInt    `json:",omitempty,omitzero"`
 }
 
+// ListProjectNoteProposalsParams is parameters of listProjectNoteProposals operation.
+type ListProjectNoteProposalsParams struct {
+	ProjectId string
+	Pending   OptBool `json:",omitempty,omitzero"`
+}
+
+// ListProjectNoteRevisionsParams is parameters of listProjectNoteRevisions operation.
+type ListProjectNoteRevisionsParams struct {
+	ProjectId string
+	// Note name without the .md suffix.
+	NoteName string
+}
+
+// ListProjectNotesParams is parameters of listProjectNotes operation.
+type ListProjectNotesParams struct {
+	ProjectId string
+}
+
 // ListProjectRoutinesParams is parameters of listProjectRoutines operation.
 type ListProjectRoutinesParams struct {
 	ProjectId string
@@ -493,6 +559,24 @@ type ListThreadsParams struct {
 	Limit     OptInt    `json:",omitempty,omitzero"`
 }
 
+// ListWorkingNoteRevisionsParams is parameters of listWorkingNoteRevisions operation.
+type ListWorkingNoteRevisionsParams struct {
+	GrantId string
+	// Note name without the .md suffix.
+	NoteName string
+}
+
+// ListWorkingNotesParams is parameters of listWorkingNotes operation.
+type ListWorkingNotesParams struct {
+	GrantId string
+}
+
+// MakeThreadLeadParams is parameters of makeThreadLead operation.
+type MakeThreadLeadParams struct {
+	ThreadId       string
+	IdempotencyKey string
+}
+
 // MutateHarnessSetupParams is parameters of mutateHarnessSetup operation.
 type MutateHarnessSetupParams struct {
 	SetupId        string
@@ -510,9 +594,23 @@ type PauseCapsuleParams struct {
 	IdempotencyKey string
 }
 
+// PinThreadParams is parameters of pinThread operation.
+type PinThreadParams struct {
+	ThreadId       string
+	IdempotencyKey string
+}
+
 // PromoteCapsuleParams is parameters of promoteCapsule operation.
 type PromoteCapsuleParams struct {
 	CapsuleId      string
+	IdempotencyKey string
+}
+
+// PromoteWorkingNoteParams is parameters of promoteWorkingNote operation.
+type PromoteWorkingNoteParams struct {
+	GrantId string
+	// Note name without the .md suffix.
+	NoteName       string
 	IdempotencyKey string
 }
 
@@ -526,10 +624,26 @@ type ProxyProviderInferenceParams struct {
 	AnthropicBeta OptString `json:",omitempty,omitzero"`
 }
 
+// PutProjectNoteParams is parameters of putProjectNote operation.
+type PutProjectNoteParams struct {
+	ProjectId string
+	// Note name without the .md suffix.
+	NoteName       string
+	IdempotencyKey string
+}
+
 // PutSecretParams is parameters of putSecret operation.
 type PutSecretParams struct {
 	IdempotencyKey string
 	SecretName     string
+}
+
+// PutWorkingNoteParams is parameters of putWorkingNote operation.
+type PutWorkingNoteParams struct {
+	GrantId string
+	// Note name without the .md suffix.
+	NoteName       string
+	IdempotencyKey string
 }
 
 // ReadCapsuleFileParams is parameters of readCapsuleFile operation.
@@ -541,6 +655,12 @@ type ReadCapsuleFileParams struct {
 // RejectDeliveryParams is parameters of rejectDelivery operation.
 type RejectDeliveryParams struct {
 	DeliveryId     string
+	IdempotencyKey string
+}
+
+// RejectNoteProposalParams is parameters of rejectNoteProposal operation.
+type RejectNoteProposalParams struct {
+	ProposalId     string
 	IdempotencyKey string
 }
 
@@ -559,6 +679,22 @@ type RenameCapsuleParams struct {
 // RespondThreadParams is parameters of respondThread operation.
 type RespondThreadParams struct {
 	ThreadId       string
+	IdempotencyKey string
+}
+
+// RestoreProjectNoteParams is parameters of restoreProjectNote operation.
+type RestoreProjectNoteParams struct {
+	ProjectId string
+	// Note name without the .md suffix.
+	NoteName       string
+	IdempotencyKey string
+}
+
+// RestoreWorkingNoteParams is parameters of restoreWorkingNote operation.
+type RestoreWorkingNoteParams struct {
+	GrantId string
+	// Note name without the .md suffix.
+	NoteName       string
 	IdempotencyKey string
 }
 
@@ -646,6 +782,12 @@ type SetProjectHarnessSetupParams struct {
 	Harness   string
 }
 
+// SetProjectNotesDeliveryParams is parameters of setProjectNotesDelivery operation.
+type SetProjectNotesDeliveryParams struct {
+	ProjectId      string
+	IdempotencyKey string
+}
+
 // SetThreadEffortParams is parameters of setThreadEffort operation.
 type SetThreadEffortParams struct {
 	ThreadId       string
@@ -655,6 +797,18 @@ type SetThreadEffortParams struct {
 // SetThreadModelParams is parameters of setThreadModel operation.
 type SetThreadModelParams struct {
 	ThreadId       string
+	IdempotencyKey string
+}
+
+// ShredProjectNotesParams is parameters of shredProjectNotes operation.
+type ShredProjectNotesParams struct {
+	ProjectId      string
+	IdempotencyKey string
+}
+
+// ShredWorkingNotesParams is parameters of shredWorkingNotes operation.
+type ShredWorkingNotesParams struct {
+	GrantId        string
 	IdempotencyKey string
 }
 
@@ -703,6 +857,12 @@ type SuggestProjectChecksParams struct {
 // TransferMemberObjectsParams is parameters of transferMemberObjects operation.
 type TransferMemberObjectsParams struct {
 	UserId string
+}
+
+// UnpinThreadParams is parameters of unpinThread operation.
+type UnpinThreadParams struct {
+	ThreadId       string
+	IdempotencyKey string
 }
 
 // UpdateCapsuleProfileParams is parameters of updateCapsuleProfile operation.

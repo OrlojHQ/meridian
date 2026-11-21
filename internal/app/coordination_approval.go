@@ -18,7 +18,7 @@ type grantPatchOutcome struct {
 	MaxLiveCapsules    int                  `json:"maxLiveCapsules,omitempty"`
 	MaxMessagesPerLink int                  `json:"maxMessagesPerLink,omitempty"`
 	AllowedHarnesses   []string             `json:"allowedHarnesses,omitempty"`
-	DeadlineSeconds    int64                `json:"deadlineSeconds,omitempty"`
+	UnattendedSeconds  int64                `json:"unattendedLimitSeconds,omitempty"`
 	OnDeadline         domain.OnDeadline    `json:"onDeadline,omitempty"`
 	ArchiveAfter       int64                `json:"archiveAfterSeconds"`
 	HasArchiveAfter    bool                 `json:"hasArchiveAfter"`
@@ -27,7 +27,7 @@ type grantPatchOutcome struct {
 func (a grantPatchOutcome) equal(b grantPatchOutcome) bool {
 	return a.SpawnApproval == b.SpawnApproval && a.MaxChildren == b.MaxChildren &&
 		a.MaxDescendants == b.MaxDescendants && a.MaxLiveCapsules == b.MaxLiveCapsules &&
-		a.MaxMessagesPerLink == b.MaxMessagesPerLink && a.DeadlineSeconds == b.DeadlineSeconds &&
+		a.MaxMessagesPerLink == b.MaxMessagesPerLink && a.UnattendedSeconds == b.UnattendedSeconds &&
 		a.OnDeadline == b.OnDeadline && a.ArchiveAfter == b.ArchiveAfter &&
 		a.HasArchiveAfter == b.HasArchiveAfter && slices.Equal(a.AllowedHarnesses, b.AllowedHarnesses)
 }
@@ -52,8 +52,8 @@ func patchOutcome(patch domain.CoordinationGrantPatch) grantPatchOutcome {
 	if patch.AllowedHarnesses != nil {
 		out.AllowedHarnesses = slices.Clone(*patch.AllowedHarnesses)
 	}
-	if patch.Deadline != nil {
-		out.DeadlineSeconds = int64(*patch.Deadline / time.Second)
+	if patch.UnattendedLimit != nil {
+		out.UnattendedSeconds = int64(*patch.UnattendedLimit / time.Second)
 	}
 	if patch.OnDeadline != nil {
 		out.OnDeadline = *patch.OnDeadline
@@ -67,7 +67,8 @@ func patchOutcome(patch domain.CoordinationGrantPatch) grantPatchOutcome {
 
 // UpdateCoordinationGrant applies an operator patch to an active grant.
 // Limits may be loosened or tightened. Pending spawns are left queued when
-// spawnApproval becomes auto.
+// spawnApproval becomes auto. The update counts as operator presence, so it
+// renews the unattended limit and reopens a lapsed grant (ADR 0059).
 func (s *Service) UpdateCoordinationGrant(
 	ctx context.Context,
 	id domain.CoordinationGrantID,
@@ -108,9 +109,12 @@ func (s *Service) UpdateCoordinationGrant(
 			return fmt.Errorf("%w: coordination grant is not active", domain.ErrIllegalTransition)
 		}
 		now := s.clock.Now().UTC()
-		updated, err := current.Apply(patch, now)
+		updated, err := current.Apply(patch)
 		if err != nil {
 			return err
+		}
+		if operatorPresent(ctx) {
+			updated = updated.Attended(now)
 		}
 		if err := s.validateGrantHarnesses(ctx, tx, updated); err != nil {
 			return err
@@ -338,6 +342,10 @@ func (s *Service) activateHeldSpawnTx(
 ) error {
 	grant, err := tx.GetCoordinationGrant(ctx, request.GrantID)
 	if err != nil {
+		return err
+	}
+	// Approving a spawn is operator presence (ADR 0059).
+	if grant, err = s.attendGrantTx(ctx, tx, grant, now); err != nil {
 		return err
 	}
 	if !grant.Usable(now) {

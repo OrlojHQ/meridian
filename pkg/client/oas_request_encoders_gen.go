@@ -38,6 +38,20 @@ func encodeApproveDeliveryRequest(
 	return nil
 }
 
+func encodeApproveNoteProposalRequest(
+	req *ApproveNoteProposalRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodeArchiveThreadRequest(
 	req *LifecycleMutationRequest,
 	r *http.Request,
@@ -346,6 +360,20 @@ func encodeDeleteProjectRequest(
 	return nil
 }
 
+func encodeDeleteProjectNoteRequest(
+	req *DeleteNoteRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodeDeleteRoutineRequest(
 	req *LifecycleMutationRequest,
 	r *http.Request,
@@ -376,6 +404,20 @@ func encodeDeleteSecretRequest(
 
 func encodeDeleteThreadRequest(
 	req *DeleteThreadRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeDeleteWorkingNoteRequest(
+	req *DeleteNoteRequest,
 	r *http.Request,
 ) error {
 	const contentType = "application/json"
@@ -472,6 +514,20 @@ func encodeListEndpointModelsRequest(
 	return nil
 }
 
+func encodeMakeThreadLeadRequest(
+	req *MakeThreadLeadRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodeMintPersonalAccessTokenRequest(
 	req *MintPersonalAccessTokenRequest,
 	r *http.Request,
@@ -515,6 +571,20 @@ func encodePatchProjectRequest(
 }
 
 func encodePauseCapsuleRequest(
+	req *LifecycleMutationRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodePinThreadRequest(
 	req *LifecycleMutationRequest,
 	r *http.Request,
 ) error {
@@ -584,8 +654,36 @@ func encodeProxyProviderInferenceRequest(
 	return nil
 }
 
+func encodePutProjectNoteRequest(
+	req *WriteNoteRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodePutSecretRequest(
 	req *PutSecretRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodePutWorkingNoteRequest(
+	req *WriteNoteRequest,
 	r *http.Request,
 ) error {
 	const contentType = "application/json"
@@ -656,6 +754,34 @@ func encodeRenameCapsuleRequest(
 
 func encodeRespondThreadRequest(
 	req *ThreadResponseRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeRestoreProjectNoteRequest(
+	req *RestoreNoteRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeRestoreWorkingNoteRequest(
+	req *RestoreNoteRequest,
 	r *http.Request,
 ) error {
 	const contentType = "application/json"
@@ -808,6 +934,20 @@ func encodeSetProjectHarnessSetupRequest(
 	return nil
 }
 
+func encodeSetProjectNotesDeliveryRequest(
+	req *NotesDeliveryRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodeSetThreadEffortRequest(
 	req *ThreadEffortRequest,
 	r *http.Request,
@@ -880,6 +1020,20 @@ func encodeStartThreadRequest(
 
 func encodeTransferMemberObjectsRequest(
 	req *TransferMemberObjectsReq,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeUnpinThreadRequest(
+	req *LifecycleMutationRequest,
 	r *http.Request,
 ) error {
 	const contentType = "application/json"

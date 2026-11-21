@@ -57,6 +57,18 @@ const (
 	AuditRoutineDelete AuditAction = "routine.delete"
 	AuditRoutineRun    AuditAction = "routine.run"
 	AuditRoutineFire   AuditAction = "routine.fire"
+
+	// Working notes and Project notes (ADR 0060). Records carry ids only,
+	// never note or proposal text.
+	AuditNoteWrite          AuditAction = "note.write"
+	AuditNoteDelete         AuditAction = "note.delete"
+	AuditNotePurge          AuditAction = "note.delete_with_history"
+	AuditNoteRestore        AuditAction = "note.restore"
+	AuditNoteShred          AuditAction = "note.shred"
+	AuditNotePromote        AuditAction = "note.promote"
+	AuditNoteApprove        AuditAction = "note_proposal.approve"
+	AuditNoteReject         AuditAction = "note_proposal.reject"
+	AuditNoteDeliveryUpdate AuditAction = "project.notes_delivery"
 )
 
 // AuditRecord is one append-only audit line. It holds ids only: no secret

@@ -34,6 +34,17 @@ func runCodexFixtureWith(
 	models bool,
 ) (*adapterproto.Decoder, *adapterproto.Encoder, string, chan error) {
 	t.Helper()
+	return runCodexFixtureCaps(t, config, initial, resume, testCapabilities(models, false))
+}
+
+func runCodexFixtureCaps(
+	t *testing.T,
+	config CodexConfig,
+	initial adapterproto.Kind,
+	resume string,
+	capabilities adapterproto.Capabilities,
+) (*adapterproto.Decoder, *adapterproto.Encoder, string, chan error) {
+	t.Helper()
 	directory := t.TempDir()
 	arguments := filepath.Join(directory, "arguments.json")
 	// The adapter places its subcommand right after the executable, which
@@ -52,8 +63,29 @@ func runCodexFixtureWith(
 	go func() {
 		done <- RunCodexAppServer(context.Background(), adapter, adapter, config)
 	}()
-	decoder, encoder := negotiateTestAdapterWith(t, controller, initial, resume, models)
+	decoder, encoder := negotiateTestAdapterCaps(t, controller, initial, resume, capabilities)
 	return decoder, encoder, arguments, done
+}
+
+func TestCodexAppServerReportsContextUsage(t *testing.T) {
+	decoder, encoder, _, _ := runCodexFixtureCaps(t, CodexConfig{ApprovalPolicy: "untrusted"},
+		adapterproto.KindStart, "", testCapabilities(false, true))
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+	// The last call's input fills the window; an update before the window
+	// is known, a repeated one, and another thread's say nothing.
+	sendTestMessage(t, encoder, "message-1", "usage")
+	if usage := readContextUntilIdle(t, decoder); len(usage) != 1 ||
+		usage[0] != (adapterproto.ContextUsage{Tokens: 48210, Window: 272000}) {
+		t.Fatalf("usage = %#v", usage)
+	}
+	// A completed contextCompaction item is a compaction of unknown size,
+	// until Codex reports usage again.
+	sendTestMessage(t, encoder, "message-2", "/compact")
+	usage := readContextUntilIdle(t, decoder)
+	if len(usage) != 2 || usage[0] != (adapterproto.ContextUsage{Window: 272000, Compacted: true}) ||
+		usage[1] != (adapterproto.ContextUsage{Tokens: 5200, Window: 272000}) {
+		t.Fatalf("compaction usage = %#v", usage)
+	}
 }
 
 func TestCodexAppServerReportsAndSwitchesModels(t *testing.T) {
@@ -584,6 +616,7 @@ func TestCodexAppServerHelper(t *testing.T) {
 			compaction := map[string]any{"type": "contextCompaction", "id": "compaction-1"}
 			notify("item/started", map[string]any{"item": compaction, "turnId": turnID})
 			notify("item/completed", map[string]any{"item": compaction, "turnId": turnID})
+			notify("thread/tokenUsage/updated", codexUsage(codexFixtureThread, turnID, 5200, 272000))
 			complete("completed", nil)
 		case "review/start":
 			target, _ := json.Marshal(params["target"])
@@ -624,6 +657,13 @@ func TestCodexAppServerHelper(t *testing.T) {
 			switch input["text"] {
 			case "hello":
 				message("msg_fixture", "hello")
+				complete("completed", nil)
+			case "usage":
+				notify("thread/tokenUsage/updated", codexUsage(codexFixtureThread, turnID, 1000, 0))
+				notify("thread/tokenUsage/updated", codexUsage(codexFixtureThread, turnID, 48210, 272000))
+				notify("thread/tokenUsage/updated", codexUsage(codexFixtureThread, turnID, 48210, 272000))
+				notify("thread/tokenUsage/updated", codexUsage("019a-other-thread", turnID, 9, 100))
+				message("msg_usage", "counted")
 				complete("completed", nil)
 			case "tool":
 				notify("item/started", map[string]any{"item": map[string]any{
@@ -720,4 +760,23 @@ func TestCodexAppServerHelper(t *testing.T) {
 		}
 	}
 	os.Exit(0)
+}
+
+// codexUsage is a thread/tokenUsage/updated notification in the shape of the
+// Codex 0.167.0 schema. A zero window is sent as null, as Codex does when it
+// does not know the window.
+func codexUsage(thread, turn string, input, window int64) map[string]any {
+	breakdown := func(input int64) map[string]any {
+		return map[string]any{
+			"inputTokens": input, "cachedInputTokens": input / 2, "cacheWriteInputTokens": 0,
+			"outputTokens": 310, "reasoningOutputTokens": 128, "totalTokens": input + 310,
+		}
+	}
+	var contextWindow any
+	if window > 0 {
+		contextWindow = window
+	}
+	return map[string]any{"threadId": thread, "turnId": turn, "tokenUsage": map[string]any{
+		"last": breakdown(input), "total": breakdown(input * 7), "modelContextWindow": contextWindow,
+	}}
 }
