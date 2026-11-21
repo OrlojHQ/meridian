@@ -214,31 +214,24 @@ any note that the operator messaged a subagent directly. The line is a group
 labelled with the subagents' names and statuses, and the wake keeps its
 `from_subagents` provenance (ADR 0029).
 
-The per-Project launcher (from the board, the command palette, and Project
-settings) is scoped to its Project and does not ask for one. It starts with an agent
-picker over the Project's applied packs; it can add another installation-known
-pack to the Project in place, again without accepting a free image reference.
-Under the picker the operator chooses between opening the agent's terminal
-(native) and giving it a written task (structured). The choice appears only
-when the provider supports structured sessions and the selected pack might run
-one: a pack whose installation catalog entry, matched by name and image,
-declares `interactionModes` without `structured` shows just the terminal
-launcher with no tab strip, and one that declares `structured` without
-`native` shows just the task form. The official Claude Code, Codex, OpenCode,
-and Pi packs declare both; DeepSeek Harness declares only `structured`, because
-its published package has no terminal UI. The agent picker also offers a
-provider connection only for harnesses whose provider configuration
-`capsuled` writes. A pack outside the catalog, such as a custom image,
-declares nothing, because its profiles come from the repository, so it keeps
-the choice and the Capsule's profiles decide. Native launch lists only harness
-packs applied to that Project, follows provisioning, and opens the first PTY
-Run. Structured launch retains the encrypted Thread intent workflow. When
-the Project has pinned Threads, the task form adds "Send to", which starts a
-new Thread unless the operator picks a pinned one ("API lead (lead)"). The
-options for a new Capsule then disappear and the task goes to that Thread
-through the ordinary Thread message API with its current resource version,
-after resuming it if it is paused. Because it is an operator message, it
-renews a lead's grant and reopens one that paused without the operator.
+Thread or CLI is offered only when the provider supports structured sessions
+and the selected pack might run one: a pack whose installation catalog entry,
+matched by name and image, declares `interactionModes` without `structured`
+offers only CLI, and one that declares `structured` without `native` offers
+only Thread. The official Claude Code, Codex, OpenCode, and Pi packs declare
+both; DeepSeek Harness declares only `structured`, because its published
+package has no terminal UI. A pack outside the catalog, such as a custom
+image, declares nothing, so it keeps the choice and the Capsule's profiles
+decide. Harnesses are added to a Project in its settings, from the packs the
+installation knows, never from a free image reference.
+
+When the Project has pinned Threads, the New Capsule dialog adds "Send to",
+which starts a new Thread unless the operator picks a pinned one ("API lead
+(lead)"). The options for a new Capsule then give way to a message box, and
+the message goes to that Thread through the ordinary Thread message API with
+its current resource version, after resuming it if it is paused. Because it
+is an operator message, it renews a lead's grant and reopens one that paused
+without the operator.
 
 Keyboard shortcuts `n`, Ctrl+N (⌘N on macOS), `/`, `j`/`k`, the arrow keys,
 `g` then `n`, and `?` open Project creation, start a Capsule in the open
