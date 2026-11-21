@@ -115,7 +115,11 @@ func (s *Server) deliveryState(writer http.ResponseWriter, request *http.Request
 	defer cancel()
 	state, err := inspectDeliveryState(ctx, s.config.Workspace)
 	if err != nil {
-		writeProtocolError(writer, http.StatusUnprocessableEntity, "delivery_state_unavailable")
+		code := "delivery_state_unavailable"
+		if s.workspaceHasNoRepository() {
+			code = "git_no_repository"
+		}
+		writeProtocolError(writer, http.StatusUnprocessableEntity, code)
 		return
 	}
 	writeJSON(writer, http.StatusOK, state)

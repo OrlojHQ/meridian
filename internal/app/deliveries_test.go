@@ -4,13 +4,18 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/OrlojHQ/meridian/internal/app"
+	"github.com/OrlojHQ/meridian/internal/capsuleproto"
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/gitgateway"
 	"github.com/OrlojHQ/meridian/internal/ports"
@@ -32,6 +37,7 @@ type deliveryRuntime struct {
 	push       ports.DeliveryPushRequest
 	commit     ports.DeliveryCommitRequest
 	pushErr    error
+	inspectErr error
 }
 
 func (r *deliveryRuntime) InspectDelivery(
@@ -39,7 +45,30 @@ func (r *deliveryRuntime) InspectDelivery(
 ) (ports.DeliveryInspection, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.inspection, nil
+	return r.inspection, r.inspectErr
+}
+
+// supervisorDeliveryRuntime inspects through a real Capsule supervisor and
+// maps its protocol errors as the container providers do.
+type supervisorDeliveryRuntime struct {
+	*deliveryRuntime
+	client *capsuleproto.Client
+}
+
+func (r supervisorDeliveryRuntime) InspectDelivery(
+	ctx context.Context, _ string,
+) (ports.DeliveryInspection, error) {
+	state, err := r.client.DeliveryState(ctx)
+	var protocolError *capsuleproto.Error
+	if errors.As(err, &protocolError) {
+		if mapped := domain.MapCapsuleProtocolError(protocolError.Status, protocolError.Code); mapped != nil {
+			err = fmt.Errorf("%w: %w", mapped, protocolError)
+		}
+	}
+	if err != nil {
+		return ports.DeliveryInspection{}, err
+	}
+	return ports.DeliveryInspection{HEAD: state.HEAD, Tree: state.Tree, Dirty: state.Dirty}, nil
 }
 
 func (r *deliveryRuntime) CommitDelivery(
@@ -249,6 +278,54 @@ func deliveryInput(fixture deliveryFixture, key string) app.CreateDeliveryInput 
 		ExpectedHEAD:           deliveryHead, ExpectedTree: deliveryTree,
 		RemoteBranch: "feature/reviewed", CommitMessage: "Ship reviewed changes",
 		IdempotencyKey: key,
+	}
+}
+
+// A fresh Capsule of a Project created without a repository has a workspace
+// with only the supervisor markers. Inspecting its Delivery state is a
+// no-repository answer the Changes pane already shows, not an internal error.
+func TestInspectDeliveryWithoutRepositoryIsNotAnInternalError(t *testing.T) {
+	workspace := t.TempDir()
+	for name, content := range map[string]string{
+		".meridian-prepared":       "prepared",
+		".meridian-setup-complete": strings.Repeat("a", 64),
+	} {
+		if err := os.WriteFile(filepath.Join(workspace, name), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const token = "meridian-test-token-not-a-secret"
+	supervisor, err := capsuleproto.NewServer(capsuleproto.ServerConfig{Token: token, Workspace: workspace})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(supervisor.Handler())
+	t.Cleanup(server.Close)
+	client, err := capsuleproto.NewClient(server.URL, token, server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture := newDeliveryFixture(t, false)
+	fixture.service.ConfigureDelivery(
+		supervisorDeliveryRuntime{deliveryRuntime: fixture.runtime, client: client}, fixture.github,
+	)
+	_, err = fixture.service.InspectDelivery(operatorContext(), fixture.capsule.ID)
+	if !errors.Is(err, domain.ErrWorkspaceNoRepository) || errors.Is(err, domain.ErrIllegalTransition) {
+		t.Fatalf("inspection without repository = %v, want ErrWorkspaceNoRepository", err)
+	}
+
+	// An older supervisor in a running Capsule reports the same state as
+	// delivery_state_unavailable; it is a workspace Git failure, never a
+	// Station fault.
+	legacy := newDeliveryFixture(t, false)
+	legacy.runtime.inspectErr = fmt.Errorf("%w: %w",
+		domain.MapCapsuleProtocolError(http.StatusUnprocessableEntity, "delivery_state_unavailable"),
+		&capsuleproto.Error{Status: http.StatusUnprocessableEntity, Code: "delivery_state_unavailable"},
+	)
+	_, err = legacy.service.InspectDelivery(operatorContext(), legacy.capsule.ID)
+	if !errors.Is(err, domain.ErrWorkspaceGit) || errors.Is(err, domain.ErrIllegalTransition) ||
+		strings.Contains(err.Error(), "delivery_state_unavailable") {
+		t.Fatalf("legacy inspection failure = %v, want bounded ErrWorkspaceGit", err)
 	}
 }
 
