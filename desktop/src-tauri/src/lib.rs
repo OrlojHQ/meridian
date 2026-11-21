@@ -38,8 +38,8 @@ use notify_text::{attention_tooltip, validate_attention, validate_needs_you};
 use sidecar::Sidecar;
 use tauri_plugin_updater::UpdaterExt;
 use update::{
-    install_source_from_exe, update_action, update_progress_script, updater_signing_configured,
-    DownloadProgress, InstallSource, UpdateAction,
+    install_source_from_exe, update_action, update_check_due, update_progress_script,
+    updater_signing_configured, DownloadProgress, InstallSource, UpdateAction,
 };
 
 const ATTENTION_ICON: &[u8] = include_bytes!("../icons/32x32-attention.png");
@@ -284,6 +284,9 @@ pub fn run() {
 
             let checks = app.handle().clone();
             std::thread::spawn(move || check_loop(checks));
+
+            let updates = app.handle().clone();
+            std::thread::spawn(move || update_loop(updates));
 
             if let Some(choice) = saved {
                 let handle = app.handle().clone();
@@ -1077,6 +1080,42 @@ fn open_external(url: &Url) {
     std::thread::spawn(move || {
         let _ = open::that(target);
     });
+}
+
+/// Asks the Station page for an automatic update check every four hours and
+/// after a wake, while a Station is open. The page's own timer cannot do this
+/// alone: WebKit throttles or suspends a hidden window's timers (closing the
+/// window hides it to the tray), and its clock stops while the Mac sleeps, so
+/// a long-running window only checked when the page was reloaded. The page
+/// checks when it loads, so the first request waits a full interval.
+fn update_loop(app: AppHandle) {
+    let mut last = SystemTime::now();
+    let mut wall = SystemTime::now();
+    let mut tick = Instant::now();
+    loop {
+        std::thread::sleep(Duration::from_secs(60));
+        let now = SystemTime::now();
+        let slept = profile_import::woke(wall, now, tick.elapsed());
+        wall = now;
+        tick = Instant::now();
+        let (open, quitting) = {
+            let state = app.state::<AppState>();
+            let inner = lock(&state);
+            (inner.active.is_some(), inner.quitting)
+        };
+        if quitting {
+            return;
+        }
+        // The picker has no update notice; opening a Station loads a page
+        // that checks on its own.
+        if !open || !update_check_due(last, now, slept) {
+            continue;
+        }
+        last = now;
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.eval(update::UPDATE_DUE_SCRIPT);
+        }
+    }
 }
 
 fn request_update_check(app: &AppHandle) {

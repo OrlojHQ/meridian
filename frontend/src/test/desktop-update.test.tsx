@@ -1,12 +1,14 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DesktopUpdateNotice } from "../shell/DesktopUpdateNotice";
 import {
+  UPDATE_DUE_EVENT,
   UPDATE_LATER_KEY,
   UPDATE_PROGRESS_EVENT,
   applyUpdateProgress,
+  automaticCheckDue,
   laterRecord,
   readUpdateProgress,
   updateBusyLabel,
@@ -40,6 +42,7 @@ function visibleFace(button: HTMLElement) {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   window.localStorage.clear();
   delete window.__MERIDIAN_DESKTOP__;
   matchMedia(false);
@@ -55,6 +58,15 @@ describe("update snooze", () => {
     expect(updateIsSnoozed(raw, "1.2.3", record.until)).toBe(false);
     expect(updateIsSnoozed(raw, "1.2.4", record.until - 1)).toBe(false);
     expect(updateIsSnoozed("not-json", "1.2.3", now)).toBe(false);
+  });
+});
+
+describe("automatic update checks", () => {
+  it("is due on the first check, after the gap, and after a clock change", () => {
+    expect(automaticCheckDue(undefined, 0, 1_000)).toBe(true);
+    expect(automaticCheckDue(5_000, 5_999, 1_000)).toBe(false);
+    expect(automaticCheckDue(5_000, 6_000, 1_000)).toBe(true);
+    expect(automaticCheckDue(5_000, 4_000, 1_000)).toBe(true);
   });
 });
 
@@ -250,5 +262,138 @@ describe("desktop update notice", () => {
   it("does not render in the browser", () => {
     render(<DesktopUpdateNotice />);
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+});
+
+describe("desktop update notice in a running window", () => {
+  const minute = 60 * 1000;
+  const start = 1_700_000_000_000;
+
+  function clock() {
+    let now = start;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    return (ms: number) => {
+      now += ms;
+    };
+  }
+
+  function due() {
+    act(() => {
+      window.dispatchEvent(new CustomEvent(UPDATE_DUE_EVENT));
+    });
+  }
+
+  it("shows a release published after the page loaded, without a reload", async () => {
+    const advance = clock();
+    const checkForUpdates = vi
+      .fn()
+      .mockResolvedValueOnce({ available: false })
+      .mockResolvedValue(status({}));
+    window.__MERIDIAN_DESKTOP__ = {
+      notify: () => undefined,
+      setAttention: () => undefined,
+      checkForUpdates,
+      installUpdate: vi.fn(),
+    };
+    render(<DesktopUpdateNotice />);
+    await waitFor(() => expect(checkForUpdates).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    // A request right after the page's own check is not repeated.
+    advance(minute);
+    due();
+    expect(checkForUpdates).toHaveBeenCalledTimes(1);
+
+    advance(4 * 60 * minute);
+    due();
+    expect(await screen.findByText("Meridian 1.2.3")).toBeInTheDocument();
+    expect(checkForUpdates).toHaveBeenCalledTimes(2);
+  });
+
+  it("checks when the window is shown again after the interval", async () => {
+    const advance = clock();
+    const checkForUpdates = vi
+      .fn()
+      .mockResolvedValueOnce({ available: false })
+      .mockResolvedValue(status({}));
+    window.__MERIDIAN_DESKTOP__ = {
+      notify: () => undefined,
+      setAttention: () => undefined,
+      checkForUpdates,
+    };
+    render(<DesktopUpdateNotice />);
+    await waitFor(() => expect(checkForUpdates).toHaveBeenCalledTimes(1));
+
+    advance(30 * minute);
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    expect(checkForUpdates).toHaveBeenCalledTimes(1);
+
+    advance(4 * 60 * minute);
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    expect(await screen.findByText("Meridian 1.2.3")).toBeInTheDocument();
+  });
+
+  it("keeps Later through automatic checks, and the tray still shows it", async () => {
+    const advance = clock();
+    const checkForUpdates = vi.fn().mockResolvedValue(status({}));
+    window.__MERIDIAN_DESKTOP__ = {
+      notify: () => undefined,
+      setAttention: () => undefined,
+      checkForUpdates,
+      installUpdate: vi.fn(),
+    };
+    const user = userEvent.setup();
+    render(<DesktopUpdateNotice />);
+    await user.click(await screen.findByRole("button", { name: "Remind me later" }));
+    expect(screen.queryByText("Meridian 1.2.3")).not.toBeInTheDocument();
+
+    for (let hours = 0; hours < 20; hours += 5) {
+      advance(5 * 60 * minute);
+      due();
+    }
+    await waitFor(() => expect(checkForUpdates).toHaveBeenCalledTimes(5));
+    expect(screen.queryByText("Meridian 1.2.3")).not.toBeInTheDocument();
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent("meridian-check-updates"));
+    });
+    expect(await screen.findByText("Meridian 1.2.3")).toBeInTheDocument();
+  });
+
+  it("listens for the shell even when the bridge arrives after the page", async () => {
+    clock();
+    render(<DesktopUpdateNotice />);
+    const checkForUpdates = vi.fn().mockResolvedValue(status({}));
+    window.__MERIDIAN_DESKTOP__ = {
+      notify: () => undefined,
+      setAttention: () => undefined,
+      checkForUpdates,
+    };
+    due();
+    expect(await screen.findByText("Meridian 1.2.3")).toBeInTheDocument();
+  });
+
+  it("does not reset an install in flight", async () => {
+    const advance = clock();
+    const checkForUpdates = vi.fn().mockResolvedValue(status({}));
+    window.__MERIDIAN_DESKTOP__ = {
+      notify: () => undefined,
+      setAttention: () => undefined,
+      checkForUpdates,
+      installUpdate: () => new Promise<void>(() => undefined),
+    };
+    const user = userEvent.setup();
+    render(<DesktopUpdateNotice />);
+    await user.click(await screen.findByRole("button", { name: "Update & restart" }));
+    expect(await screen.findByRole("button", { name: "Downloading…" })).toBeDisabled();
+
+    advance(5 * 60 * minute);
+    due();
+    await waitFor(() => expect(checkForUpdates).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole("button", { name: "Downloading…" })).toBeDisabled();
   });
 });

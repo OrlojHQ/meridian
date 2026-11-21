@@ -74,7 +74,9 @@ xattr -dr com.apple.quarantine /Applications/Meridian.app
 
 ### Updates
 
-The window checks for a newer release when it opens and every four hours.
+The window checks for a newer release when it opens, every four hours while
+the app runs, after the computer wakes, and when the window is shown again
+after four hours, so a window left open for days still shows a new release.
 Nothing is installed until you click **Update & restart**. Later hides that
 version for a day. Check for updates… in the tray menu checks again
 immediately. A Homebrew install shows `brew upgrade --cask meridian-desktop`
