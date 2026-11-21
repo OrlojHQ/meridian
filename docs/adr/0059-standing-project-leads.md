@@ -269,7 +269,9 @@ check.
   the grant. Archive and crypto-shred clear it, Project deletion removes the
   row (ADR 0039), and a schema trigger refuses a pin on any other Thread.
 - **Sending to a pinned lead** is the normal operator message to that Thread,
-  after resuming it if it is paused. It therefore updates `lastOperatorAt`
+  after resuming it if it is paused. The choice is a "Send to" select in the
+  New Capsule dialog, which the Project page's New Capsule button and the
+  sidebar's + both open. It therefore updates `lastOperatorAt`
   and reopens a lapsed grant (section 1).
 - **Start fresh** on a pinned plain Thread moves the pin to the new Thread,
   so the Capsule keeps its place.

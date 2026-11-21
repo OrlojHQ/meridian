@@ -58,7 +58,7 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   for one part of a large repository, sits above the Project's other Threads
   in the sidebar, ordered by name rather than recency, and keeps its
   subagent rollup. Pin as many as you like, from the pin on the sidebar row
-  or the Thread's actions menu. The Project's task form offers "Send to" a
+  or the Thread's actions menu. The New Capsule dialog offers "Send to" a
   pinned Thread next to starting a new one, and starts a new Thread unless
   you pick one. Sending is an ordinary message to that Thread, so it resumes
   a paused lead's grant. Plain Threads can be pinned too; subagents cannot
