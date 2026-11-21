@@ -1844,7 +1844,7 @@ teammates until the microVM provider (#86) reports `microvm`.
 
 ## Project notes and working notes
 
-ADR 0060 is proposed and not implemented. It adds two tiers of notes, both
+ADR 0060 adds two tiers of notes, both
 stored by meridiand, encrypted, and delivered to Capsules as files.
 **Working notes** are shared by one lead and its subagents with no review.
 **Project notes** reach every Thread in the Project; the owner writes them,
@@ -1928,6 +1928,13 @@ auto-approve.
   until the next delivery. Project notes are a snapshot per session, never a
   live view. Note text is never put into the system prompt; that channel
   carries only a fixed index of names, sizes and revisions, at most 8 KiB.
+  `capsuled` opens `$HOME/.meridian` as a root only after checking it is a
+  real directory and the same one it opened, so a symlink swap cannot
+  redirect a write into the workspace. A set it cannot write is left out of
+  the session and its index rather than failing the session, so a Capsule
+  process cannot make notes land elsewhere and gains nothing by blocking
+  them. A `fromFile` is read through a root at the private notes directory,
+  as `contextFiles` is.
 - **Size and cost.** 32 KiB per note; 32 notes and 128 KiB per Project and
   per tree; working-note writes limited to 30 per Capsule and 120 per tree
   per rolling hour; 16 pending proposals per Project and 4 per proposing

@@ -28,6 +28,8 @@ Treat repositories, dependencies, agent output, terminal data, and Capsule proce
 A new structured harness driver must deliver the lead/subagent coordination
 brief to its harness (see "Coordination brief" in `docs/harness-adapters.md`)
 and register its channel in `harnessadapter.CoordinationBriefChannels`.
+It must also render the notes index (see "Notes index") and register its
+channel in `harnessadapter.NotesIndexChannels`.
 
 Keep changes within Meridian's product boundary. Add no placeholder behavior
 that could be mistaken for an implemented service. Keep build/version metadata

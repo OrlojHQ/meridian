@@ -9,6 +9,27 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Working notes and Project notes (ADR 0060). A lead and its subagents now
+  share **working notes**: Markdown files any member writes with
+  `write-note` (whole note, against the revision it read) and refreshes with
+  `sync-notes`, which meridiand stores encrypted, so a finished subagent's
+  findings outlive its Capsule. They never leave the lead's tree. You can
+  read, edit, delete, restore and shred them from the lead's Agents panel,
+  and the lead's next report wake lists which changed. **Project notes**
+  reach every Thread of a Project, as files under
+  `$HOME/.meridian/project-notes/`, at each session start. Only you write
+  them: agents propose a change with `propose-note`, or you promote a working
+  note, and you review each proposal as a source diff with hidden characters
+  shown, approving one exact change at a time. `notesDelivery` chooses all
+  Threads (the default), leads only, or none; a new Thread can opt out, and a
+  routine delivers them only with `includeNotes`. Each harness is told about
+  the files through a short index of names and numbers. Notes are bounded
+  (32 KiB per note, 32 notes and 128 KiB per Project or tree), keep 50
+  revisions, and are covered by key rotation, backup verification,
+  crypto-shred, Project deletion and owner transfer. The API, `meridian
+  notes`, `meridian grant notes`, the MCP tools, `meridian-coord` and the Pi
+  skill gain the verbs.
+
 - Leads can attach their notes to a subagent's task instead of retyping
   shared conventions, decisions and findings into every prompt. `spawn`
   takes `contextFiles` (`--context-file` in `meridian-coord`, repeatable):
@@ -140,6 +161,9 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- A failing GitHub CI check that was due for rework could be skipped for a
+  poll: its next poll time was stored in a form that sorts wrongly as text
+  when its fraction of a second ends in zero.
 - A Thread you come back to after a day, or after Meridian restarts, takes
   your next prompt instead of sitting on Working. Before delivering it,
   Meridian resumes the idle harness's session with a fresh provider gateway

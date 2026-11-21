@@ -1,6 +1,6 @@
 # ADR 0060: Working notes and Project notes outlive a lead
 
-- Status: Proposed
+- Status: Accepted; implemented, unreleased
 - Date: 2026-11-20
 - Amends: ADR 0059 section 4 (cross-tree notes are no longer deferred), ADR
   0029 (new mailbox requests), ADR 0057 (what may reach a scheduled Thread
@@ -497,6 +497,53 @@ define a routine (ADR 0057).
   (ADR 0059 section 6) counts the index and whatever the agent actually
   reads, as it counts any file. The limits keep notes a reference shelf, not
   a second transcript.
+
+### 10. Choices made in implementation
+
+Where this decision was silent, the implementation took the smallest safe
+choice:
+
+- **`off` overrides a Thread's choice.** With `notesDelivery` set to `off`,
+  no Thread receives Project notes, including one whose "Include Project
+  notes" choice was on. A Thread's choice can otherwise turn delivery on
+  under `leads_only` or off under `all_threads`. A subagent always follows
+  the Project setting, and a routine's Thread follows `includeNotes` (still
+  subject to `off`). After an owner transfer, then, nothing reaches any
+  Thread until the new owner turns delivery back on.
+- **A revoked tree is read-only, not frozen.** Once the grant is revoked or
+  ended, the operator can still read, promote, delete (with or without
+  history) and shred its working notes, but not edit or restore them.
+- **Only the latest session's set is kept.** The content-free set a session
+  received is stored per Thread for its latest session only; the transcript's
+  "Project notes updated" divider marks each change between sessions. A
+  first session never gets a divider.
+- **A failed delivery is skipped, not fatal.** If `capsuled` cannot write a
+  set, for example because the agent replaced its directory with a symlink,
+  the session starts without that set and the index leaves it out. Refusing
+  the session would let a Capsule process deny its own Thread service for no
+  gain. Leftover files the agent added under an old set are moved aside and
+  removed on a best-effort basis.
+- **Rename keeps the history.** An operator rename is an `operator_write`
+  revision of the same note under the new name, refused if any note,
+  deleted or live, already has that name. Pending proposals for the old name
+  become stale.
+- **Shredded proposals.** A crypto-shred also closes the Project's pending
+  proposals as `rejected` with the closed reason `shredded`, and a working
+  notes shred closes pending promotions from that tree the same way. "Delete
+  with history" closes the note's pending proposals with the reason
+  `purged`. Proposal reasons are a closed set; none is free text.
+- **Conflicts carry content to the mailbox only.** A `write-note` against an
+  old revision is refused with the current revision and who wrote it, and
+  meridiand sends the note's current text to the Capsule's mailbox, which
+  writes the refreshed file and strips the text before it answers the tool.
+- **Rates.** The write limits count agent revisions in the store over the
+  last hour, so they survive a daemon restart; they apply on top of the
+  mailbox's own request rate.
+- **The Inbox list.** `GET /note-proposals` lists every pending proposal of
+  the caller's Projects for "Notes to review", content-free.
+- **No reason field, and approve binds the digest.** The CLI's `approve`
+  requires the digest `meridian notes proposal` printed, so a script cannot
+  approve text it never showed.
 
 ## Not in this decision
 
