@@ -126,6 +126,12 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   shows its current offset and local time, your zone is listed first, and
   the schedule line shows the next run in the routine's zone and in yours
   when they differ.
+- The desktop update button shows a spinner beside "Downloading…" while an
+  update is in flight, and a percentage when the shell reports download
+  progress. Once the download has finished and the app is installing, the
+  same spinner sits beside "Restarting…". The button stays disabled, keeps
+  its width, and is marked busy for assistive technology. With reduced
+  motion, the spinner stays a static indicator.
 
 ### Fixed
 

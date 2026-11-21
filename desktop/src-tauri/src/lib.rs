@@ -38,7 +38,8 @@ use notify_text::{attention_tooltip, validate_attention, validate_needs_you};
 use sidecar::Sidecar;
 use tauri_plugin_updater::UpdaterExt;
 use update::{
-    install_source_from_exe, update_action, updater_signing_configured, InstallSource, UpdateAction,
+    install_source_from_exe, update_action, update_progress_script, updater_signing_configured,
+    DownloadProgress, InstallSource, UpdateAction,
 };
 
 const ATTENTION_ICON: &[u8] = include_bytes!("../icons/32x32-attention.png");
@@ -724,8 +725,18 @@ async fn desktop_update_install(app: AppHandle) -> Result<(), String> {
         .await
         .map_err(|_| "Couldn't check for updates.".to_string())?
         .ok_or_else(|| "Meridian is up to date.".to_string())?;
+    let mut progress = DownloadProgress::new();
+    let chunk_app = app.clone();
+    let done_app = app.clone();
     let bytes = update
-        .download(|_, _| {}, || {})
+        .download(
+            |chunk, total| {
+                if let Some(percent) = progress.observe(chunk, total) {
+                    report_update_progress(&chunk_app, "download", Some(percent));
+                }
+            },
+            || report_update_progress(&done_app, "install", None),
+        )
         .await
         .map_err(|_| "The update could not be downloaded.".to_string())?;
     update
@@ -740,6 +751,16 @@ async fn desktop_update_install(app: AppHandle) -> Result<(), String> {
         sidecar.stop();
     }
     app.restart();
+}
+
+fn report_update_progress(app: &AppHandle, phase: &'static str, percent: Option<u8>) {
+    let Some(script) = update_progress_script(phase, percent) else {
+        return;
+    };
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    let _ = window.eval(script);
 }
 
 fn current_exe_source() -> InstallSource {

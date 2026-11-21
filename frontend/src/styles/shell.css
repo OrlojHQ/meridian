@@ -140,6 +140,7 @@
 }
 
 .update-card .update-card-action {
+  width: 100%;
   min-height: 1.75rem;
   margin-right: 0.2rem;
   padding: 0.25rem 0.6rem;
@@ -147,6 +148,35 @@
   background: var(--surface-raised);
   font-size: var(--text-xs);
   font-weight: 620;
+  font-variant-numeric: tabular-nums;
+}
+
+.update-card-action-faces {
+  display: grid;
+  justify-items: center;
+  align-items: center;
+}
+
+.update-card-action-faces > span {
+  grid-area: 1 / 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+}
+
+.update-card-action-faces > .is-offstage {
+  visibility: hidden;
+}
+
+.update-card-action .spinner {
+  border-color: color-mix(in srgb, currentColor 32%, transparent);
+  border-top-color: currentColor;
+}
+
+.update-card-action-faces > .is-offstage .spinner {
+  animation: none;
 }
 
 .update-card .update-card-action:hover:not(:disabled) {
@@ -163,7 +193,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .update-card {
+  .update-card,
+  .update-card-action .spinner {
     animation: none;
   }
 }

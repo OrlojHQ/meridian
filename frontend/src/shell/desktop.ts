@@ -28,6 +28,9 @@ export type DesktopBridge = {
   setupCheck?: () => Promise<boolean>;
   setSetupCheck?: (enabled: boolean) => Promise<void>;
   checkForUpdates?: () => Promise<DesktopUpdateStatus>;
+  // Downloads, installs, and restarts. While it runs, the shell may dispatch
+  // meridian-update-progress with { phase: "download", percent } or
+  // { phase: "install" }. Percent is absent when the download size is unknown.
   installUpdate?: () => Promise<void>;
   // Opens the desktop app's own import window (ADR 0049). It takes nothing
   // and returns only whether the window opened: the page is never told what
