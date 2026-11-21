@@ -16,6 +16,7 @@ import (
 	"github.com/OrlojHQ/meridian/internal/capsuleproto"
 	"github.com/OrlojHQ/meridian/internal/coordproto"
 	"github.com/OrlojHQ/meridian/internal/domain"
+	"github.com/OrlojHQ/meridian/internal/ports"
 	"github.com/OrlojHQ/meridian/internal/principal"
 	"github.com/OrlojHQ/meridian/internal/transcripts"
 )
@@ -620,5 +621,81 @@ func TestAResumedSessionMarksChangedProjectNotes(t *testing.T) {
 	}
 	if found != 2 {
 		t.Fatalf("divider count = %d", found)
+	}
+}
+
+// notesDividers returns the NotesChanged count of each "Project notes
+// updated" divider in a Thread's transcript, in order.
+func notesDividers(t *testing.T, f *coordFixture, thread domain.ThreadID) []int {
+	t.Helper()
+	page, err := f.service.ThreadBlocks(f.ctx, thread, 0, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found []int
+	for _, block := range page.Items {
+		if block.Event != nil && block.Event.Type == app.KindNotesUpdated {
+			found = append(found, block.Event.NotesChanged)
+		}
+	}
+	return found
+}
+
+// Restart session after a failed Run sends the harness Start, not Resume,
+// but the transcript continues below the earlier session, so a changed
+// Project-note set still gets its divider.
+func TestARestartAfterAFailedRunMarksChangedProjectNotes(t *testing.T) {
+	f := newCoordFixture(t)
+	created, err := f.service.CreateProjectThread(f.ctx, app.CreateProjectThreadInput{
+		ProjectID: notesProject, Harness: "mock", Prompt: "do work", IdempotencyKey: "restart",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.ready(t, created.Intent.CapsuleID)
+	run := created.Intent.RunID
+	f.runtime.finishTurn(run, "m1", "working")
+	if err := f.service.SyncThread(asSystem(f.ctx), created.Intent.ThreadID); err != nil {
+		t.Fatal(err)
+	}
+	// The adapter times out: the Run fails while the Thread is still
+	// active, which is when the transcript offers Restart session.
+	if err := f.store.Transact(f.ctx, func(tx ports.Transaction) error {
+		current, err := tx.GetRun(f.ctx, run)
+		if err != nil {
+			return err
+		}
+		previous := current.ResourceVersion
+		if err := current.Transition(domain.RunFailed, time.Now()); err != nil {
+			return err
+		}
+		current.Failure = "structured adapter timed out"
+		return tx.UpdateRun(f.ctx, current, previous)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := notesDividers(t, f, created.Intent.ThreadID); len(got) != 0 {
+		t.Fatalf("a first session got a divider: %v", got)
+	}
+	putNote(t, f, "tests", "run make test\n", 0)
+	thread, err := f.service.GetThread(f.ctx, created.Intent.ThreadID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored, err := f.service.GetRunStored(f.ctx, run); err != nil || stored.State != domain.RunFailed {
+		t.Fatalf("first run = %+v, %v", stored, err)
+	}
+	restarted, err := f.service.StartThread(f.ctx, thread.ID, thread.ResourceVersion, "restart-session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if frame := f.runtime.starts[restarted.Run.ID]; frame.Type != adapterproto.KindStart {
+		t.Fatalf("restart frame = %s", frame.Type)
+	}
+	if delivery, _ := startNotes(t, f, restarted.Run.ID); delivery == nil || len(delivery.Project) != 1 {
+		t.Fatalf("restart delivery = %+v", delivery)
+	}
+	if got := notesDividers(t, f, thread.ID); len(got) != 1 || got[0] != 1 {
+		t.Fatalf("dividers after the restart = %v", got)
 	}
 }

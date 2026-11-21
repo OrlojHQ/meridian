@@ -300,10 +300,16 @@ Three ways to get notes into a Capsule were compared:
   witness, so the operator chooses per routine.
 - **Record.** Each session records the content-free set of note revisions it
   was given. The Thread's details show it, and the transcript gets a quiet,
-  content-free divider ("Project notes updated: 2 changed") when a resumed
-  session receives a different Project-note set. That divider is stored like
-  the compaction marker in ADR 0059 section 6. Working-note refreshes add no
-  divider, since they change often and the lead's wake already lists them.
+  content-free divider ("Project notes updated: 2 changed") when a later
+  session of the same Thread receives a different Project-note set than the
+  Thread's previous session. That holds whether the harness was sent Start or
+  Resume: Restart session after a failed Run, and a resume that finds no
+  harness state, start a new harness session below the same transcript, and
+  the operator reading on needs the divider as much as after a resume. A
+  Thread's first session, including the new Thread that Start fresh creates,
+  gets none. That divider is stored like the compaction marker in ADR 0059
+  section 6. Working-note refreshes add no divider, since they change often
+  and the lead's wake already lists them.
 
 ### 5. What a note is
 

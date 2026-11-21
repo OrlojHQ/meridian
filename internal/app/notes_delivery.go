@@ -224,16 +224,20 @@ func projectNotesChanged(before, after []domain.DeliveredNote) int {
 	return changed + len(old)
 }
 
-// KindNotesUpdated marks, in a transcript, a resumed session that
-// received a different Project-note set. It is a content-free divider, kept
-// like the compaction marker.
+// KindNotesUpdated marks, in a transcript, a later session of the Thread
+// that received a different Project-note set than its previous session. It
+// is a content-free divider, kept like the compaction marker.
 const KindNotesUpdated adapterproto.Kind = "notes_updated"
 
 // recordSessionNotes stores the content-free set a session received and,
-// for a resumed session whose Project notes differ from the previous
-// session's, appends the divider.
+// when the Thread had an earlier session whose Project notes differ, appends
+// the divider. Whether the harness was sent Start or Resume does not matter:
+// Restart session after a failure, or a resume with no harness state, starts
+// a new harness session below the same transcript, and the operator reading
+// on still needs to see that the notes changed. A Thread's first session,
+// including one Start fresh creates, has no earlier set and no divider.
 func (s *Service) recordSessionNotes(
-	ctx context.Context, thread domain.Thread, capsule domain.Capsule, notes *sessionNotes, resumed bool,
+	ctx context.Context, thread domain.Thread, capsule domain.Capsule, notes *sessionNotes,
 ) {
 	if notes == nil {
 		return
@@ -241,7 +245,7 @@ func (s *Service) recordSessionNotes(
 	ctx = principal.WithSystem(context.WithoutCancel(ctx))
 	now := s.clock.Now().UTC()
 	changed := 0
-	if resumed && notes.hadRecord && !notes.previous.DeliveredAt.IsZero() {
+	if notes.hadRecord && !notes.previous.DeliveredAt.IsZero() {
 		changed = projectNotesChanged(notes.previous.Delivered, notes.delivered)
 	}
 	sort.Slice(notes.delivered, func(i, j int) bool {

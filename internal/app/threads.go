@@ -1667,7 +1667,7 @@ func (s *Service) startStructuredRuntime(
 		return failed, err
 	}
 	s.recordSessionLease(run.ID, connection, role)
-	s.recordSessionNotes(ctx, thread, capsule, notes, frame.Type == adapterproto.KindResume)
+	s.recordSessionNotes(ctx, thread, capsule, notes)
 	run, err = s.applyRuntimeState(ctx, run.ID, runtimeRun)
 	if err != nil {
 		return run, err

@@ -304,7 +304,8 @@ or proposal text appears only on pages that label it:
 - The new-Thread dialog has an **Include Project notes** checkbox that
   follows `notesDelivery` and is hidden when delivery is off; the routine
   form has an Include Project notes switch, off by default.
-- A resumed session that received a different Project-note set gets a quiet
+- A later session of a Thread, resumed or restarted, that received a
+  different Project-note set than the previous one gets a quiet
   "Project notes updated: N changed" divider, drawn like the compaction
   divider. Thread details list the delivered note set and say when the
   harness was not told about the files.
