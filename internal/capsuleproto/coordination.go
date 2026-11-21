@@ -61,6 +61,8 @@ type Mailbox struct {
 	// notes is the directory a spawn's contextFiles are read from; empty
 	// when the Capsule has none.
 	notes string
+	// noteDirs writes working notes; nil when the Capsule has none.
+	noteDirs *noteDirs
 }
 
 type mailboxEntry struct {
@@ -161,6 +163,11 @@ func (m *Mailbox) Handle(ctx context.Context, request coordproto.Request) coordp
 		return m.relay(ctx, request)
 	case coordproto.KindProposeDelivery:
 		return m.relay(ctx, request)
+	case coordproto.KindWriteNote, coordproto.KindSyncNotes, coordproto.KindProposeNote:
+		if role != "lead" && role != "sub" {
+			return coordproto.Fail(coordproto.CodeCoordinationDisabled, "this Thread has no coordination grant")
+		}
+		return m.noteRequest(ctx, request)
 	}
 	if role != "lead" {
 		return coordproto.Fail(coordproto.CodeCoordinationDisabled, "this Thread has no lead coordination grant")
@@ -268,13 +275,15 @@ func (m *Mailbox) wait(ctx context.Context, request coordproto.Request) coordpro
 			m.mu.Unlock()
 			return coordproto.Fail(coordproto.CodeCoordinationDisabled, "this Thread has no coordination grant")
 		}
-		for _, link := range request.Links {
-			if _, ok := m.links[link]; !ok {
+		var targets []string
+		for _, ref := range request.Links {
+			link, ok := m.resolveLinkLocked(ref)
+			if !ok {
 				m.mu.Unlock()
-				return coordproto.Fail(coordproto.CodeNotFound, "unknown link "+link)
+				return coordproto.Fail(coordproto.CodeNotFound, "unknown link "+ref)
 			}
+			targets = append(targets, link)
 		}
-		targets := request.Links
 		if len(targets) == 0 {
 			targets = m.linkOrder
 		}
@@ -320,8 +329,9 @@ func (m *Mailbox) wait(ctx context.Context, request coordproto.Request) coordpro
 
 func (m *Mailbox) result(request coordproto.Request) coordproto.Response {
 	m.mu.Lock()
-	link, ok := m.links[request.Link]
-	report, reported := m.reports[request.Link]
+	id, ok := m.resolveLinkLocked(request.Link)
+	link := m.links[id]
+	report, reported := m.reports[id]
 	files := m.files
 	m.mu.Unlock()
 	if !ok {
@@ -374,23 +384,54 @@ func (m *Mailbox) patch(ctx context.Context, request coordproto.Request) coordpr
 	}
 	m.mu.Lock()
 	files := m.files
-	seq := m.links[request.Link].ReportSeq
 	m.mu.Unlock()
 	if files == nil {
 		return coordproto.Fail(coordproto.CodeUnavailable, "coordination files are not available in this Capsule")
 	}
+	// meridiand resolves a subagent name itself, so the request is relayed
+	// as the lead wrote it and its idempotency digest does not depend on
+	// what this mailbox has been told. The file is named by the link ID
+	// meridiand answers with.
 	request.ToFile = false
 	response := m.relay(ctx, request)
 	if !response.OK || response.Patch == "" {
 		return response
 	}
-	file, err := files.write(request.Link, seq, "patch", []byte(response.Patch))
+	m.mu.Lock()
+	id, ok := m.resolveLinkLocked(request.Link)
+	seq := m.links[id].ReportSeq
+	m.mu.Unlock()
+	if response.Link != nil {
+		id, seq, ok = response.Link.ID, response.Link.ReportSeq, true
+	}
+	if !ok {
+		return coordproto.Fail(coordproto.CodeInternal, "could not name the patch file")
+	}
+	file, err := files.write(id, seq, "patch", []byte(response.Patch))
 	if err != nil {
 		return coordproto.Fail(coordproto.CodeInternal, "could not write the patch file: "+err.Error())
 	}
 	response.File, response.FileBytes = file, len(response.Patch)
 	response.Patch = ""
 	return response
+}
+
+// resolveLinkLocked turns a link ID or a subagent name into the ID of one of
+// this lead's links. A lead's subagent names are unique, so a name names at
+// most one link; an ID wins over a name.
+func (m *Mailbox) resolveLinkLocked(ref string) (string, bool) {
+	if _, ok := m.links[ref]; ok {
+		return ref, true
+	}
+	if !coordproto.ValidName(ref) {
+		return "", false
+	}
+	for _, id := range m.linkOrder {
+		if m.links[id].Name == ref {
+			return id, true
+		}
+	}
+	return "", false
 }
 
 func (m *Mailbox) consumeLocked(reports []coordproto.Report) {

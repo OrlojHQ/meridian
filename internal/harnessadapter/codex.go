@@ -144,7 +144,7 @@ func RunCodexAppServer(
 	if err := stream.Handshake(adapterproto.Capabilities{
 		Resume: true, ToolEvents: true, Permissions: config.ApprovalPolicy != "never",
 		InputRequests: config.ApprovalPolicy != "never", Heartbeat: false, OpaqueMetadata: true,
-		Commands: true, Models: true, Effort: true, Images: true, ContextUsage: true,
+		Commands: true, Models: true, Effort: true, Images: true, ContextUsage: true, Notes: true,
 	}); err != nil {
 		return err
 	}
@@ -172,7 +172,7 @@ func RunCodexAppServer(
 
 	session := &codexSession{
 		stream: stream, rpc: NewJSONLinesLimit(child.stdout, child.stdin, codexRecordLimit),
-		config: config, resume: resumeID, brief: coordinationBrief(initial.Metadata, coordinationMCP),
+		config: config, resume: resumeID, brief: systemBrief(initial.Metadata, coordinationMCP),
 		pending: map[string]string{},
 		started: map[string]bool{}, prompts: map[string]*codexPrompt{}, byFrame: map[string]string{},
 		retired: retiredPrompts{}, skills: map[string]string{},

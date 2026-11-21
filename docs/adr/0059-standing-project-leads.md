@@ -173,10 +173,19 @@ Follow Cursor's file-first pattern. Content is not stored anywhere new; it is
 written into the lead's own Capsule instead of into a tool result.
 
 - **Wakes carry headlines.** A wake lists each pending report's subagent name,
-  status, diffstat and the first 2 KiB of its summary, at most 16 items and
-  16 KiB in total. The lead reads full reports with `result`. Reports are
-  marked delivered only when `result` or `wait` returns them, so a headline is
-  never mistaken for the full report.
+  link ID, status, diffstat and the first 2 KiB of its summary, at most 16
+  items and 16 KiB in total. The lead reads full reports with `result`.
+  Reports are marked delivered only when `result` or `wait` returns them, so a
+  headline is never mistaken for the full report. The web UI renders a wake as
+  one line naming the subagents, with the wake prompt behind a disclosure,
+  and leaves the link IDs out.
+- **Subagents by name.** `send`, `cancel`, `status`, `patch`, `result` and
+  `wait` take a subagent's name wherever they take a link ID. A name resolves
+  only among the requesting lead's own links, where names are unique, open or
+  closed, and an ID wins over a name. meridiand resolves names for the
+  requests it serves and the lead Capsule's mailbox for those it serves
+  itself; a relayed request keeps the name as written, so its idempotency
+  digest does not depend on which links the mailbox has been told about.
 - **Patches and full reports can go to files.** `patch` and `result` accept
   `toFile: true`. `capsuled` in the lead Capsule writes the bytes to
   `$HOME/.meridian/coord/<link>/<seq>.{patch,md}` (mode 0600, outside
@@ -261,7 +270,9 @@ check.
   the grant. Archive and crypto-shred clear it, Project deletion removes the
   row (ADR 0039), and a schema trigger refuses a pin on any other Thread.
 - **Sending to a pinned lead** is the normal operator message to that Thread,
-  after resuming it if it is paused. It therefore updates `lastOperatorAt`
+  after resuming it if it is paused. The choice is a "Send to" select in the
+  New Capsule dialog, which the Project page's New Capsule button and the
+  sidebar's + both open. It therefore updates `lastOperatorAt`
   and reopens a lapsed grant (section 1).
 - **Start fresh** on a pinned plain Thread moves the pin to the new Thread,
   so the Capsule keeps its place.

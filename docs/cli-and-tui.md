@@ -227,6 +227,56 @@ THREAD_ID` clears it. Both read the current version unless you pass
 Capsule can be pinned; a subagent cannot until it is promoted. A pin grants
 nothing, and archiving or crypto-shredding the Thread clears it.
 
+### Notes
+
+Project notes are Markdown files that reach every Thread of a Project as
+files under `$HOME/.meridian/project-notes/` (ADR 0060). Only you write
+them; agents propose changes, which you review one at a time.
+
+```console
+meridian notes list PROJECT_ID
+meridian notes show PROJECT_ID tests [--revision N]
+meridian notes edit PROJECT_ID tests [--file note.md|-]
+meridian notes history PROJECT_ID tests
+meridian notes restore PROJECT_ID tests 3
+meridian notes delete PROJECT_ID tests [--with-history]
+meridian notes delivery PROJECT_ID all_threads|leads_only|off
+meridian notes shred PROJECT_ID --yes
+```
+
+`edit` opens `$EDITOR` without `--file` and is refused if the note changed
+since it was read. A note is at most 32 KiB; a Project holds at most 32 live
+notes and 128 KiB. `delivery` sets which Threads receive them: all Threads
+(the default), lead Threads and their subagents, or none. `thread spawn` and
+`capsule thread` take no flag for the per-Thread choice yet; the web dialog
+has it.
+
+```console
+meridian notes proposals [PROJECT_ID] [--all]
+meridian notes proposal PROPOSAL_ID
+meridian notes approve PROPOSAL_ID --digest DIGEST [--file edited.md]
+meridian notes reject PROPOSAL_ID
+```
+
+`proposal` prints the note's current text and the proposed text with
+control, bidirectional and zero-width characters shown as escapes, a warning
+for credential-shaped content, and the proposal's digest. `approve` takes
+that digest, so it approves exactly the text you read, and the note's current
+revision; a proposal whose note changed since is stale and cannot be
+approved. `--file` approves your edited text instead. There is no approve-all
+and no reason field. A pending proposal expires after 7 days.
+
+`meridian grant notes GRANT_ID` lists a lead tree's working notes, and
+`meridian grant notes GRANT_ID NAME` prints one. `meridian routine create`
+and `update` take `--include-notes` to give scheduled Threads the Project's
+notes (off by default). Every command takes `--json`.
+
+Inside a Capsule, a lead or subagent uses `meridian-coord write-note NAME
+--base REV (--stdin | --content TEXT | --from-file PATH | --delete)`,
+`meridian-coord sync-notes`, and `meridian-coord propose-note NAME --base REV`
+(also `--from-working-note NAME`). `whoami` lists the states of the Thread's
+recent proposals, never their text.
+
 ### Board
 
 `meridian board` lists every Capsule across Projects by status: needs you
@@ -249,7 +299,7 @@ register as an MCP server for Claude Code, Codex, and OpenCode. Pi has no MCP
 client, so the Pi pack loads a skill that teaches it the CLI form:
 `meridian-coord spawn --name NAME --harness H` (prompt on stdin), `send`,
 `wait LINK... | --all`, `result`, `patch`, `status`, `list`, `cancel`, and
-`whoami`. A subagent uses `meridian-coord report --status done|blocked|failed`
+`whoami`. `LINK` is the link ID `spawn` returned or the subagent's name. A subagent uses `meridian-coord report --status done|blocked|failed`
 (summary on stdin). Reports and patches are untrusted data. It talks only to
 the Capsule's local mailbox; it holds no credential. A lead is woken with
 report headlines (the first 2 KiB of each) and reads a full report with

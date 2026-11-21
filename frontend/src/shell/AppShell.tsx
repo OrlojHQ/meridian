@@ -30,7 +30,6 @@ import { GitHubReconnectBanner } from "../components/GitHubConnect";
 import { GatewayIndicator, useDesktopGateway } from "./GatewayIndicator";
 import { NewProjectDialog } from "../components/NewProjectDialog";
 import { NewSessionDialog } from "../components/NewSessionDialog";
-import { NewWorkspaceDialog } from "../components/NewWorkspaceDialog";
 import { ProjectTree } from "./ProjectTree";
 import { HarnessMark } from "../components/ui/HarnessMark";
 import { ListSkeleton } from "../components/ui/loading";
@@ -90,8 +89,9 @@ import {
   type PaletteCommand,
 } from "./paletteCommands";
 import { useNeedsYouAlerts } from "./useNeedsYouAlerts";
+import { NotesToReview } from "../components/NotesToReview";
 import { useWorkingSet, type WorkingSetItem } from "./useWorkingSet";
-import { pinnableThread, pinnedLeads, setThreadPinned } from "./pins";
+import { pinnableThread, setThreadPinned } from "./pins";
 import { requestedTool, WorkspaceContext, type ContextTab } from "./WorkspaceContext";
 import { ContextResizer, contextWidthStyle, readContextWidth } from "./ContextResizer";
 
@@ -149,7 +149,6 @@ function shouldOpenTools(tab: ContextTab | undefined, cliSession: boolean) {
 
 export type ShellOutletContext = {
   openNewProject: () => void;
-  openLauncher: (project: Project) => void;
   openDeleteProject: (project: Project) => void;
   // openNewSession opens the New Capsule dialog, on a Project when given.
   openNewSession: (projectId?: string) => void;
@@ -418,7 +417,6 @@ export function AppShell() {
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [deleteProject, setDeleteProject] = useState<Project>();
   const queryClient = useQueryClient();
-  const [launchProject, setLaunchProject] = useState<Project>();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [pendingStation, setPendingStation] = useState<StationAction | null>(null);
@@ -458,7 +456,6 @@ export function AppShell() {
   }, []);
 
   useEffect(() => {
-    setLaunchProject(undefined);
     setNewSessionOpen(false);
   }, [location.key]);
 
@@ -698,7 +695,6 @@ export function AppShell() {
                 setSidebarOpen(false);
                 setNewSessionOpen(true);
               },
-              openLauncher: setLaunchProject,
               openDeleteProject: setDeleteProject,
               openShortcuts: () => setShortcutsOpen(true),
               openAddStation:
@@ -983,6 +979,7 @@ export function AppShell() {
                   </ul>
                 )}
               </section>
+              <NotesToReview projects={projectItems} />
               <ProjectTree
                 projects={projectItems}
                 items={visibleItems}
@@ -1032,7 +1029,6 @@ export function AppShell() {
             context={
               {
                 openNewProject: () => setNewProjectOpen(true),
-                openLauncher: setLaunchProject,
                 openDeleteProject: setDeleteProject,
                 openNewSession,
               } satisfies ShellOutletContext
@@ -1130,12 +1126,6 @@ export function AppShell() {
           onClose={() => setNewSessionOpen(false)}
         />
       )}
-      <NewWorkspaceDialog
-        open={Boolean(launchProject)}
-        project={launchProject}
-        pinned={launchProject ? pinnedLeads(items, launchProject.id) : []}
-        onClose={() => setLaunchProject(undefined)}
-      />
       {pendingStation && (
         <div className="dialog-backdrop" role="presentation">
           <section

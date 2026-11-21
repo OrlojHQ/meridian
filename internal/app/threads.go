@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/OrlojHQ/meridian/internal/adapterproto"
+	"github.com/OrlojHQ/meridian/internal/coordproto"
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/harnesssetup"
 	"github.com/OrlojHQ/meridian/internal/ports"
@@ -36,6 +37,9 @@ type CreateThreadInput struct {
 	FirstMessage   string
 	Start          bool
 	IdempotencyKey string
+	// NoteChoice is the "Include Project notes" choice (ADR 0060). Empty
+	// follows the Project's notesDelivery.
+	NoteChoice domain.NoteChoice
 }
 
 type ThreadBlockView struct {
@@ -78,6 +82,10 @@ type ThreadAdapterEvent struct {
 	// context_usage event is persisted only for a compaction, and carries
 	// no token counts.
 	Compacted bool `json:"compacted,omitempty"`
+	// NotesChanged marks a resumed session that received a different
+	// Project-note set, and how many notes changed (ADR 0060). It names no
+	// note and carries no content.
+	NotesChanged int `json:"notesChanged,omitempty"`
 }
 
 type ThreadBlockPage struct {
@@ -237,6 +245,19 @@ func (s *Service) CreateThread(ctx context.Context, input CreateThreadInput) (Th
 		}
 		if err := tx.InsertThread(ctx, result.Thread); err != nil {
 			return err
+		}
+		if input.NoteChoice != domain.NoteChoiceDefault {
+			capsule, err := tx.GetCapsule(ctx, input.CapsuleID)
+			if err != nil {
+				return err
+			}
+			project, err := tx.GetProject(ctx, capsule.ProjectID)
+			if err != nil {
+				return err
+			}
+			if err := s.setThreadNoteChoiceTx(ctx, tx, project, threadID, input.NoteChoice, now); err != nil {
+				return err
+			}
 		}
 		if input.FirstMessage != "" {
 			messageID := domain.ThreadMessageID(s.ids.NewID())
@@ -468,6 +489,14 @@ func (s *Service) DeleteThread(
 		}
 		now := s.clock.Now().UTC()
 		if err := tx.CryptoShredThread(ctx, id, expected, now); err != nil {
+			return err
+		}
+		// Shredding a lead also shreds its tree's working notes (ADR 0060).
+		if grant, err := tx.GetCoordinationGrantByRootThread(ctx, id); err == nil {
+			if err := s.shredNoteScopeTx(ctx, tx, grant.ProjectID, grant.ID, now); err != nil {
+				return err
+			}
+		} else if !errors.Is(err, domain.ErrNotFound) {
 			return err
 		}
 		result, err = tx.GetThread(ctx, id)
@@ -1288,9 +1317,11 @@ func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
 	var endStatus adapterproto.Status
 	var reportedModels *adapterproto.ModelSet
 	var reportedUsage *adapterproto.ContextUsage
+	var reportedHello *adapterproto.Capabilities
 	err = s.store.Transact(ctx, func(tx ports.Transaction) error {
 		reportedModels = nil
 		reportedUsage = nil
+		reportedHello = nil
 		currentThread, err := tx.GetThread(ctx, id)
 		if err != nil {
 			return err
@@ -1371,6 +1402,9 @@ func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
 			if event.Frame.Type == adapterproto.KindContextUsage && event.Frame.ContextUsage != nil {
 				reportedUsage = event.Frame.ContextUsage
 			}
+			if event.Frame.Type == adapterproto.KindHello && event.Frame.Capabilities != nil {
+				reportedHello = event.Frame.Capabilities
+			}
 			cursor = event.Sequence
 		}
 		if events.NextCursor > cursor {
@@ -1405,6 +1439,9 @@ func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
 	}
 	if reportedUsage != nil {
 		s.rememberContextUsage(id, run.ID, *reportedUsage)
+	}
+	if reportedHello != nil {
+		s.recordNotesIndexed(ctx, id, reportedHello.Notes)
 	}
 	if endStatus != "" {
 		status := domain.RunFailed
@@ -1588,7 +1625,16 @@ func (s *Service) startStructuredRuntime(
 	if err != nil {
 		return run, err
 	}
-	frame.Metadata = adapterproto.CoordinationMetadata(role)
+	notes, err := s.buildSessionNotes(ctx, thread, capsule)
+	if err != nil {
+		return run, err
+	}
+	var notesDelivery *coordproto.NotesDelivery
+	var notesIndex *adapterproto.NotesIndex
+	if notes != nil {
+		notesDelivery, notesIndex = notes.delivery, notes.index
+	}
+	frame.Metadata = adapterproto.StartMetadata(role, notesIndex)
 	setup, err := s.runtimeHarnessSetup(ctx, capsule.ID, thread.AdapterID)
 	var connection *harnesssetup.Connection
 	if err == nil {
@@ -1603,6 +1649,7 @@ func (s *Service) startStructuredRuntime(
 		runtimeRun, err = s.structured.StartStructured(ctx, ports.RuntimeStructuredStartRequest{
 			RunID: run.ID, ResourceID: capsule.ProviderResourceID, Harness: thread.AdapterID, Frame: frame,
 			Secrets: cloneStringMap(secretValues), Setup: setup, Git: gitIdentity, Connection: connection,
+			Notes: notesDelivery,
 		})
 	}
 	clearStringMap(secretValues)
@@ -1620,6 +1667,7 @@ func (s *Service) startStructuredRuntime(
 		return failed, err
 	}
 	s.recordSessionLease(run.ID, connection, role)
+	s.recordSessionNotes(ctx, thread, capsule, notes)
 	run, err = s.applyRuntimeState(ctx, run.ID, runtimeRun)
 	if err != nil {
 		return run, err

@@ -171,7 +171,22 @@ func (s *Service) TransferDepartedMember(ctx context.Context, from, to domain.Us
 			}
 		}
 
+		// Notes keys bind their owner (ADR 0060). Each readable one is
+		// re-wrapped for the new owner in this transaction; the store turns
+		// Project-note delivery off and rejects pending proposals.
+		noteKeys, err := s.openOwnedNoteKeys(system, tx, from)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			for _, key := range noteKeys {
+				wipe(key.dek)
+			}
+		}()
 		if err := tx.TransferOwnership(system, from, to); err != nil {
+			return err
+		}
+		if err := s.rewrapNoteKeysTx(system, tx, noteKeys); err != nil {
 			return err
 		}
 		for index, secret := range moving {

@@ -423,6 +423,10 @@ func (s *Service) handleCoordinationRequest(
 		s.auditRejection(ctx, domain.CoordinationGrant{}, request.Type, response)
 		return response
 	}
+	switch request.Type {
+	case coordproto.KindWriteNote, coordproto.KindSyncNotes, coordproto.KindProposeNote:
+		return s.handleNoteRequest(ctx, capsule, request)
+	}
 	grant, thread, failure := s.coordinationAuthority(ctx, capsule, request.Mutating())
 	if failure != nil {
 		s.auditRejection(ctx, grant, request.Type, *failure)
@@ -502,12 +506,32 @@ func (s *Service) dispatchCoordinationRequest(
 	return response
 }
 
-func (s *Service) ownedLink(ctx context.Context, parent domain.ThreadID, id string) (domain.ThreadLink, bool) {
-	link, err := s.GetThreadLink(ctx, domain.ThreadLinkID(id))
-	if err != nil || link.ParentThreadID != parent {
+// ownedLink resolves a request's link to one of the parent's own links. The
+// reference is a link ID or a subagent name: a wake headline leads with the
+// name, and a lead's names are unique among all its links, open or closed.
+// An ID wins over a name. Neither ever resolves to another lead's link.
+func (s *Service) ownedLink(ctx context.Context, parent domain.ThreadID, ref string) (domain.ThreadLink, bool) {
+	link, err := s.GetThreadLink(ctx, domain.ThreadLinkID(ref))
+	if err == nil && link.ParentThreadID == parent {
+		return link, true
+	}
+	if !coordproto.ValidName(ref) {
 		return domain.ThreadLink{}, false
 	}
-	return link, true
+	var links []domain.ThreadLink
+	if err := s.store.View(ctx, func(reader ports.Reader) error {
+		var err error
+		links, err = reader.ListThreadLinksByParent(ctx, parent)
+		return err
+	}); err != nil {
+		return domain.ThreadLink{}, false
+	}
+	for _, link := range links {
+		if link.Name == ref {
+			return link, true
+		}
+	}
+	return domain.ThreadLink{}, false
 }
 
 func (s *Service) existingCoordinationRequest(
@@ -1383,7 +1407,9 @@ func (s *Service) configureCoordinationMailbox(ctx context.Context, capsuleID do
 	if grant.RootCapsuleID != capsule.ID {
 		role = domain.CapsuleSub
 	}
-	_ = s.coordination.ConfigureCoordination(ctx, capsule.ProviderResourceID, coordinationConfigFor(grant, role))
+	config := coordinationConfigFor(grant, role)
+	config.Self.NoteProposals = s.noteProposalRefs(ctx, threadID)
+	_ = s.coordination.ConfigureCoordination(ctx, capsule.ProviderResourceID, config)
 }
 
 // lastAssistantMessage returns the sequence of the newest assistant response

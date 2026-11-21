@@ -5,7 +5,6 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vitest";
 import { api } from "../api/client";
 import { HarnessSetupImport } from "../components/HarnessSetupImport";
-import { NativeLauncher } from "../components/NativeLauncher";
 import { selectLocalFiles } from "../import/localSetup";
 
 const timestamp="2026-09-07T12:00:00Z";
@@ -55,25 +54,6 @@ it("preserves nested folder paths and rejects credential files before reading",(
  expect(selected.included.map(item=>item.path)).toEqual([".config/opencode/skills/tool/SKILL.md"]);
  expect(selected.excluded).toHaveLength(1);expect(key.arrayBuffer).not.toHaveBeenCalled();
 });
-it("imports inline and selects the saved setup for Capsule creation",async()=>{
- const project={id:"p",name:"Project",createdAt:timestamp,updatedAt:timestamp,resourceVersion:1,harnessImages:[{name:"opencode",imageReference:"local:dev"}]};
- const capsule={id:"c",projectId:"p",timelineId:"t",name:"work",state:"Creating" as const,desiredState:"Ready" as const,restoreComplete:true,createdAt:timestamp,updatedAt:timestamp,resourceVersion:1};
- const setups=vi.spyOn(api,"harnessSetups").mockResolvedValue({items:[]});
- vi.spyOn(api,"projectHarnessSetup").mockResolvedValue({setup:""});vi.spyOn(api,"projectConnection").mockResolvedValue({connectionId:""});vi.spyOn(api,"providerConnections").mockResolvedValue({items:[],enabled:false});
- vi.spyOn(api,"previewHarnessSetup").mockResolvedValue({bundle,issues:[],digest:"digest"});
- vi.spyOn(api,"importHarnessSetup").mockImplementation(async()=>{setups.mockResolvedValue({items:[saved]});return saved;});
- const create=vi.spyOn(api,"createCapsule").mockResolvedValue(capsule);vi.spyOn(api,"capsule").mockResolvedValue(capsule);vi.spyOn(api,"runs").mockResolvedValue({items:[]});
- show(<NativeLauncher project={project} harness="opencode"/>);
- await userEvent.click(await screen.findByRole("button",{name:"Import my setup"}));
- expect(screen.getByRole("heading",{name:"Import your setup"})).toBeInTheDocument();
- await userEvent.upload(screen.getByLabelText("Choose configuration files"),file("opencode.json",bundle.files[0]!.content));
- await userEvent.click(screen.getByRole("button",{name:"Review import"}));
- await userEvent.click(await screen.findByRole("button",{name:"Save setup"}));
- expect(await screen.findByText(/Using My OpenCode setup/)).toBeInTheDocument();
- await userEvent.click(screen.getByRole("button",{name:"Start OpenCode"}));
- await waitFor(()=>expect(create).toHaveBeenCalledWith("p",expect.any(String),"opencode",undefined,"setup"));
-});
-
 it("skips dependency directories before enumeration and authentication files before access", async () => {
  const {scanSetupDirectory} = await import("../import/localSetup");
  const dependencyEntries = vi.fn(async function* () { throw new Error("must not enumerate dependencies"); });

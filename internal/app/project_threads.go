@@ -23,6 +23,9 @@ type CreateProjectThreadInput struct {
 	// Coordination, when set, makes the new Thread a lead holding a
 	// Coordination Grant with this policy.
 	Coordination *domain.CoordinationPolicy
+	// NoteChoice is the "Include Project notes" choice (ADR 0060). Empty
+	// follows the Project's notesDelivery.
+	NoteChoice domain.NoteChoice
 }
 
 // projectThreadSpec is everything needed to insert a provisioning Project
@@ -37,6 +40,7 @@ type projectThreadSpec struct {
 	LeadThreadID   domain.ThreadID
 	LinkID         domain.ThreadLinkID
 	Origin         *ThreadOrigin
+	NoteChoice     domain.NoteChoice
 }
 
 type ProjectThreadResult struct {
@@ -104,6 +108,7 @@ func (s *Service) CreateProjectThread(
 		result.Intent, err = s.insertProjectThreadTx(ctx, tx, projectThreadSpec{
 			ProjectID: input.ProjectID, Name: input.Name, Harness: input.Harness,
 			Prompt: input.Prompt, IdempotencyKey: input.IdempotencyKey, Role: domain.CapsuleMain,
+			NoteChoice: input.NoteChoice,
 		})
 		if err != nil {
 			return err
@@ -219,6 +224,9 @@ func (s *Service) insertProjectThreadTx(
 		CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
 	}
 	if err := tx.InsertProjectThreadIntent(ctx, intent); err != nil {
+		return domain.ProjectThreadIntent{}, err
+	}
+	if err := s.setThreadNoteChoiceTx(ctx, tx, project, threadID, spec.NoteChoice, now); err != nil {
 		return domain.ProjectThreadIntent{}, err
 	}
 	return intent, s.appendEvent(

@@ -20,6 +20,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/OrlojHQ/meridian/internal/coordproto"
 )
 
 const (
@@ -106,6 +108,10 @@ type ServerConfig struct {
 	// workspace, that a spawn's contextFiles are read from. Empty disables
 	// contextFiles.
 	CoordinationNotes string
+	// NotesBase is $HOME/.meridian, outside the workspace, under which
+	// capsuled writes Project notes and working notes (ADR 0060). Empty
+	// disables note delivery.
+	NotesBase string
 }
 
 type Server struct {
@@ -118,6 +124,7 @@ type Server struct {
 	runs       map[string]*supervisedRun
 	structured map[string]*structuredSession
 	coord      *Mailbox
+	notes      *noteDirs
 	checks     sync.Mutex
 	shell      *shellSession
 	stopped    chan struct{}
@@ -154,6 +161,17 @@ func NewServer(config ServerConfig) (*Server, error) {
 		}
 		if !OutsideWorkspace(config.Workspace, dir) {
 			return nil, errors.New("coordination notes directory must be outside the workspace")
+		}
+	}
+	if config.NotesBase != "" {
+		dir := config.NotesBase
+		if !filepath.IsAbs(dir) || filepath.Clean(dir) != dir {
+			return nil, errors.New("notes directory must be an absolute clean path")
+		}
+		for _, tier := range []string{coordproto.ProjectNotesDirName, coordproto.WorkingNotesDirName} {
+			if !OutsideWorkspace(config.Workspace, filepath.Join(dir, tier)) || !OutsideWorkspace(config.Workspace, dir) {
+				return nil, errors.New("notes directory must be outside the workspace")
+			}
 		}
 	}
 	if config.SetupTimeout <= 0 {
@@ -198,6 +216,10 @@ func NewServer(config ServerConfig) (*Server, error) {
 	}
 	server.coord.SetFileDirectory(config.CoordinationFiles)
 	server.coord.SetNotesDirectory(config.CoordinationNotes)
+	if config.NotesBase != "" {
+		server.notes = &noteDirs{base: config.NotesBase}
+		server.coord.SetNoteDirectories(server.notes)
+	}
 	if err := ensureWorkspace(config.Workspace); err != nil {
 		return nil, err
 	}

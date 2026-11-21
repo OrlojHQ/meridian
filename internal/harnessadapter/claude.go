@@ -129,7 +129,7 @@ func RunClaudeStream(
 		Resume: true, ToolEvents: true, Permissions: config.Permissions,
 		InputRequests: config.Permissions, Heartbeat: false, OpaqueMetadata: true,
 		Commands: true, Models: true, Effort: true, ResolvedModel: true, Images: true,
-		ContextUsage: true,
+		ContextUsage: true, Notes: true,
 	}); err != nil {
 		return err
 	}
@@ -148,7 +148,7 @@ func RunClaudeStream(
 			return err
 		}
 	}
-	command, err := claudeCommand(config, resumeID, coordinationBrief(initial.Metadata, coordinationMCP))
+	command, err := claudeCommand(config, resumeID, systemBrief(initial.Metadata, coordinationMCP))
 	if err != nil {
 		return err
 	}

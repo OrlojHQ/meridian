@@ -100,6 +100,7 @@ func (s *Service) CoordinationTick(ctx context.Context) {
 		s.wakeLead(ctx, grant)
 	}
 	s.reconcileCoordinationPollers(ctx, wanted)
+	s.sweepNoteProposals(ctx)
 }
 
 func mailboxOpen(grant domain.CoordinationGrant) bool {
@@ -576,6 +577,12 @@ func (s *Service) wakeLead(ctx context.Context, grant domain.CoordinationGrant) 
 		}
 		text += section + "\n"
 	}
+	notesSection, notesMark := s.notesWakeSection(ctx, grant)
+	if notesSection != "" && len(text)+len(notesSection) <= coordinationWakeBytes-256 {
+		text += notesSection
+	} else {
+		notesMark = 0
+	}
 	text += "Summarize these results for the user and decide the next step."
 	slices.Sort(ids)
 	keyParts := make([]string, 0, len(ids)+len(noticed))
@@ -584,6 +591,9 @@ func (s *Service) wakeLead(ctx context.Context, grant domain.CoordinationGrant) 
 	}
 	for id, count := range noticed {
 		keyParts = append(keyParts, "operator:"+string(id)+":"+strconv.Itoa(count))
+	}
+	if notesMark > 0 {
+		keyParts = append(keyParts, "notes:"+strconv.FormatInt(notesMark, 10))
 	}
 	slices.Sort(keyParts)
 	key := "wake-" + digestKey(keyParts...)
@@ -610,7 +620,7 @@ func (s *Service) wakeLead(ctx context.Context, grant domain.CoordinationGrant) 
 					return err
 				}
 			}
-			return nil
+			return s.markNotesHeadlinedTx(ctx, tx, grant, notesMark, now)
 		})
 	s.invalidateCoordinationPush(thread.ID)
 }

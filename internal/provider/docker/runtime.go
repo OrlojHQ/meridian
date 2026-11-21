@@ -80,6 +80,7 @@ func (p *Provider) StartStructured(
 	result, err := supervisor.StartStructured(ctx, capsuleproto.StructuredStartRequest{
 		RunID: string(request.RunID), Harness: request.Harness, Frame: request.Frame,
 		Secrets: request.Secrets, Setup: request.Setup, Git: request.Git, Connection: request.Connection,
+		Notes: request.Notes,
 	})
 	return structuredRuntimeRun(result), mapRuntimeError(err)
 }
@@ -493,6 +494,7 @@ func structuredRuntimeRun(value capsuleproto.StructuredStatusResponse) ports.Run
 	result.Structured = true
 	result.Models = value.Capabilities != nil && value.Capabilities.Models
 	result.Effort = result.Models && value.Capabilities.Effort
+	result.Notes = value.Capabilities != nil && value.Capabilities.Notes
 	return result
 }
 

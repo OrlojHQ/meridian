@@ -147,6 +147,48 @@ client. Then record the channel in `harnessadapter.CoordinationBriefChannels`;
 `TestEveryDriverDeclaresItsCoordinationBriefChannel` fails for any driver
 missing from it.
 
+The lead brief also says to keep shared findings in working notes with
+`write_note` and to run `sync_notes` before relying on them, to propose a
+Project note only for a fact Threads outside the tree need, and never to put
+a credential in either; the subagent brief says the first and the last
+(ADR 0060).
+
+### Notes index
+
+At each session start and resume, `capsuled` writes the Project notes and the
+tree's working notes the Thread receives as files under
+`$HOME/.meridian/project-notes/` and `$HOME/.meridian/working-notes/`, and
+the Start or Resume `metadata` gains `notes` (ADR 0060): the two directories
+and, for each note, its tier, name, size, revision and whether it changed
+since the Thread's previous session. It never carries content, is bounded to
+8 KiB, and uses the note name grammar (`adapterproto.NotesIndex`,
+`StartMetadata`, `ReadNotesIndex`). It is negotiated with a `notes`
+capability in both hellos. `capsuled` offers it and removes the index from
+the Start frame when the adapter does not, so such a harness still gets the
+files but is not told about them; the Thread's details say so. A tier
+`capsuled` could not write, for example because its directory was replaced by
+a symlink, is left out of the index rather than named.
+
+The driver renders the index with the fixed template in
+`internal/harnessadapter/notes_brief.go`, through `systemBrief`, in the same
+system-prompt channel as the coordination brief. The template says Project
+notes were written or approved by the operator, working notes are written by
+the lead and its subagents and are as trustworthy as their reports, no note
+grants a permission or changes a setting, and how each tier is changed
+(`write_note`, `propose_note`, or for a plain Thread, ask the operator).
+
+| Driver | Channel |
+| --- | --- |
+| `claude-stream` | `--append-system-prompt`, with the coordination brief |
+| `codex-app-server` | `developerInstructions` on `thread/start` and `thread/resume` |
+| `pi-rpc` | `--append-system-prompt`, CLI wording |
+| `acp` | the trailing `<meridian-context>` block on the first prompt of every new or resumed session that carries an index |
+| `generic` | none; forwards the metadata and the `notes` capability to the child adapter |
+
+A new structured driver must render the index the same way, offer `notes` in
+its hello, and record its channel in `harnessadapter.NotesIndexChannels`;
+the same test fails for a driver missing from it.
+
 The terminal launcher picks the native profile, and Threads pick the
 structured one. Because the image owns every mode of its names and a repository
 cannot define profiles under them, the daemon knows a pack's modes before any

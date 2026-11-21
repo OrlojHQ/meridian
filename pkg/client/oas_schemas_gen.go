@@ -222,6 +222,60 @@ type ApproveDeliveryUnprocessableEntity ErrorEnvelope
 
 func (*ApproveDeliveryUnprocessableEntity) approveDeliveryRes() {}
 
+type ApproveNoteProposalBadRequest ErrorEnvelope
+
+func (*ApproveNoteProposalBadRequest) approveNoteProposalRes() {}
+
+type ApproveNoteProposalConflict ErrorEnvelope
+
+func (*ApproveNoteProposalConflict) approveNoteProposalRes() {}
+
+type ApproveNoteProposalNotFound ErrorEnvelope
+
+func (*ApproveNoteProposalNotFound) approveNoteProposalRes() {}
+
+// Ref: #/components/schemas/ApproveNoteProposalRequest
+type ApproveNoteProposalRequest struct {
+	Digest           string `json:"digest"`
+	ExpectedRevision int64  `json:"expectedRevision"`
+	// The operator's edited text, when it differs from the proposal.
+	Content OptString `json:"content"`
+}
+
+// GetDigest returns the value of Digest.
+func (s *ApproveNoteProposalRequest) GetDigest() string {
+	return s.Digest
+}
+
+// GetExpectedRevision returns the value of ExpectedRevision.
+func (s *ApproveNoteProposalRequest) GetExpectedRevision() int64 {
+	return s.ExpectedRevision
+}
+
+// GetContent returns the value of Content.
+func (s *ApproveNoteProposalRequest) GetContent() OptString {
+	return s.Content
+}
+
+// SetDigest sets the value of Digest.
+func (s *ApproveNoteProposalRequest) SetDigest(val string) {
+	s.Digest = val
+}
+
+// SetExpectedRevision sets the value of ExpectedRevision.
+func (s *ApproveNoteProposalRequest) SetExpectedRevision(val int64) {
+	s.ExpectedRevision = val
+}
+
+// SetContent sets the value of Content.
+func (s *ApproveNoteProposalRequest) SetContent(val OptString) {
+	s.Content = val
+}
+
+type ApproveNoteProposalUnprocessableEntity ErrorEnvelope
+
+func (*ApproveNoteProposalUnprocessableEntity) approveNoteProposalRes() {}
+
 type ArchiveThreadConflict ErrorEnvelope
 
 func (*ArchiveThreadConflict) archiveThreadRes() {}
@@ -5152,8 +5206,11 @@ type CreateProjectThreadRequest struct {
 	// First message, delivered once the session starts. Encrypted as a transcript envelope before SQLite
 	// persistence. Prefer stdin in shells. Omit it to start the harness idle, a lead (`coordination`)
 	// included.
-	Prompt       OptString             `json:"prompt"`
-	Coordination OptCoordinationPolicy `json:"coordination"`
+	Prompt OptString `json:"prompt"`
+	// Include Project notes in this Thread's sessions. Absent follows the Project's notesDelivery; a
+	// Project with notesDelivery off delivers to no Thread.
+	IncludeProjectNotes OptBool               `json:"includeProjectNotes"`
+	Coordination        OptCoordinationPolicy `json:"coordination"`
 }
 
 // GetName returns the value of Name.
@@ -5169,6 +5226,11 @@ func (s *CreateProjectThreadRequest) GetHarness() string {
 // GetPrompt returns the value of Prompt.
 func (s *CreateProjectThreadRequest) GetPrompt() OptString {
 	return s.Prompt
+}
+
+// GetIncludeProjectNotes returns the value of IncludeProjectNotes.
+func (s *CreateProjectThreadRequest) GetIncludeProjectNotes() OptBool {
+	return s.IncludeProjectNotes
 }
 
 // GetCoordination returns the value of Coordination.
@@ -5189,6 +5251,11 @@ func (s *CreateProjectThreadRequest) SetHarness(val string) {
 // SetPrompt sets the value of Prompt.
 func (s *CreateProjectThreadRequest) SetPrompt(val OptString) {
 	s.Prompt = val
+}
+
+// SetIncludeProjectNotes sets the value of IncludeProjectNotes.
+func (s *CreateProjectThreadRequest) SetIncludeProjectNotes(val OptBool) {
+	s.IncludeProjectNotes = val
 }
 
 // SetCoordination sets the value of Coordination.
@@ -5217,6 +5284,8 @@ type CreateRoutineRequest struct {
 	CatchUpSeconds OptInt    `json:"catchUpSeconds"`
 	MaxKept        OptInt    `json:"maxKept"`
 	Enabled        OptBool   `json:"enabled"`
+	// Deliver the Project's notes to each scheduled Thread as files (ADR 0060).
+	IncludeNotes OptBool `json:"includeNotes"`
 }
 
 // GetName returns the value of Name.
@@ -5274,6 +5343,11 @@ func (s *CreateRoutineRequest) GetEnabled() OptBool {
 	return s.Enabled
 }
 
+// GetIncludeNotes returns the value of IncludeNotes.
+func (s *CreateRoutineRequest) GetIncludeNotes() OptBool {
+	return s.IncludeNotes
+}
+
 // SetName sets the value of Name.
 func (s *CreateRoutineRequest) SetName(val string) {
 	s.Name = val
@@ -5329,6 +5403,11 @@ func (s *CreateRoutineRequest) SetEnabled(val OptBool) {
 	s.Enabled = val
 }
 
+// SetIncludeNotes sets the value of IncludeNotes.
+func (s *CreateRoutineRequest) SetIncludeNotes(val OptBool) {
+	s.IncludeNotes = val
+}
+
 type CreateShardBadRequest ErrorEnvelope
 
 func (*CreateShardBadRequest) createShardRes() {}
@@ -5376,6 +5455,9 @@ type CreateThreadRequest struct {
 	FirstMessage OptString `json:"firstMessage"`
 	// Requires firstMessage and atomically creates the initial Run intent before runtime side effects.
 	Start OptBool `json:"start"`
+	// Include Project notes in this Thread's sessions. Absent follows the Project's notesDelivery; a
+	// Project with notesDelivery off delivers to no Thread.
+	IncludeProjectNotes OptBool `json:"includeProjectNotes"`
 }
 
 // GetHarness returns the value of Harness.
@@ -5393,6 +5475,11 @@ func (s *CreateThreadRequest) GetStart() OptBool {
 	return s.Start
 }
 
+// GetIncludeProjectNotes returns the value of IncludeProjectNotes.
+func (s *CreateThreadRequest) GetIncludeProjectNotes() OptBool {
+	return s.IncludeProjectNotes
+}
+
 // SetHarness sets the value of Harness.
 func (s *CreateThreadRequest) SetHarness(val string) {
 	s.Harness = val
@@ -5406,6 +5493,11 @@ func (s *CreateThreadRequest) SetFirstMessage(val OptString) {
 // SetStart sets the value of Start.
 func (s *CreateThreadRequest) SetStart(val OptBool) {
 	s.Start = val
+}
+
+// SetIncludeProjectNotes sets the value of IncludeProjectNotes.
+func (s *CreateThreadRequest) SetIncludeProjectNotes(val OptBool) {
+	s.IncludeProjectNotes = val
 }
 
 type CreateThreadUnprocessableEntity ErrorEnvelope
@@ -5526,6 +5618,32 @@ func (s *DeleteMemberObjectsOK) SetSetups(val int) {
 
 func (*DeleteMemberObjectsOK) deleteMemberObjectsRes() {}
 
+// Ref: #/components/schemas/DeleteNoteRequest
+type DeleteNoteRequest struct {
+	ExpectedRevision int64   `json:"expectedRevision"`
+	WithHistory      OptBool `json:"withHistory"`
+}
+
+// GetExpectedRevision returns the value of ExpectedRevision.
+func (s *DeleteNoteRequest) GetExpectedRevision() int64 {
+	return s.ExpectedRevision
+}
+
+// GetWithHistory returns the value of WithHistory.
+func (s *DeleteNoteRequest) GetWithHistory() OptBool {
+	return s.WithHistory
+}
+
+// SetExpectedRevision sets the value of ExpectedRevision.
+func (s *DeleteNoteRequest) SetExpectedRevision(val int64) {
+	s.ExpectedRevision = val
+}
+
+// SetWithHistory sets the value of WithHistory.
+func (s *DeleteNoteRequest) SetWithHistory(val OptBool) {
+	s.WithHistory = val
+}
+
 type DeleteProjectBadRequest ErrorEnvelope
 
 func (*DeleteProjectBadRequest) deleteProjectRes() {}
@@ -5537,6 +5655,18 @@ func (*DeleteProjectConflict) deleteProjectRes() {}
 type DeleteProjectNotFound ErrorEnvelope
 
 func (*DeleteProjectNotFound) deleteProjectRes() {}
+
+type DeleteProjectNoteConflict ErrorEnvelope
+
+func (*DeleteProjectNoteConflict) deleteProjectNoteRes() {}
+
+type DeleteProjectNoteNotFound ErrorEnvelope
+
+func (*DeleteProjectNoteNotFound) deleteProjectNoteRes() {}
+
+type DeleteProjectNoteUnprocessableEntity ErrorEnvelope
+
+func (*DeleteProjectNoteUnprocessableEntity) deleteProjectNoteRes() {}
 
 type DeleteProjectUnprocessableEntity ErrorEnvelope
 
@@ -5651,6 +5781,118 @@ func (s *DeleteThreadRequestConfirmation) UnmarshalText(data []byte) error {
 	switch DeleteThreadRequestConfirmation(data) {
 	case DeleteThreadRequestConfirmationCryptoShred:
 		*s = DeleteThreadRequestConfirmationCryptoShred
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+type DeleteWorkingNoteConflict ErrorEnvelope
+
+func (*DeleteWorkingNoteConflict) deleteWorkingNoteRes() {}
+
+type DeleteWorkingNoteNotFound ErrorEnvelope
+
+func (*DeleteWorkingNoteNotFound) deleteWorkingNoteRes() {}
+
+type DeleteWorkingNoteUnprocessableEntity ErrorEnvelope
+
+func (*DeleteWorkingNoteUnprocessableEntity) deleteWorkingNoteRes() {}
+
+// Ref: #/components/schemas/DeliveredNote
+type DeliveredNote struct {
+	Tier     DeliveredNoteTier `json:"tier"`
+	Name     string            `json:"name"`
+	Revision int64             `json:"revision"`
+	Size     int               `json:"size"`
+	Digest   string            `json:"digest"`
+}
+
+// GetTier returns the value of Tier.
+func (s *DeliveredNote) GetTier() DeliveredNoteTier {
+	return s.Tier
+}
+
+// GetName returns the value of Name.
+func (s *DeliveredNote) GetName() string {
+	return s.Name
+}
+
+// GetRevision returns the value of Revision.
+func (s *DeliveredNote) GetRevision() int64 {
+	return s.Revision
+}
+
+// GetSize returns the value of Size.
+func (s *DeliveredNote) GetSize() int {
+	return s.Size
+}
+
+// GetDigest returns the value of Digest.
+func (s *DeliveredNote) GetDigest() string {
+	return s.Digest
+}
+
+// SetTier sets the value of Tier.
+func (s *DeliveredNote) SetTier(val DeliveredNoteTier) {
+	s.Tier = val
+}
+
+// SetName sets the value of Name.
+func (s *DeliveredNote) SetName(val string) {
+	s.Name = val
+}
+
+// SetRevision sets the value of Revision.
+func (s *DeliveredNote) SetRevision(val int64) {
+	s.Revision = val
+}
+
+// SetSize sets the value of Size.
+func (s *DeliveredNote) SetSize(val int) {
+	s.Size = val
+}
+
+// SetDigest sets the value of Digest.
+func (s *DeliveredNote) SetDigest(val string) {
+	s.Digest = val
+}
+
+type DeliveredNoteTier string
+
+const (
+	DeliveredNoteTierProject DeliveredNoteTier = "project"
+	DeliveredNoteTierWorking DeliveredNoteTier = "working"
+)
+
+// AllValues returns all DeliveredNoteTier values.
+func (DeliveredNoteTier) AllValues() []DeliveredNoteTier {
+	return []DeliveredNoteTier{
+		DeliveredNoteTierProject,
+		DeliveredNoteTierWorking,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s DeliveredNoteTier) MarshalText() ([]byte, error) {
+	switch s {
+	case DeliveredNoteTierProject:
+		return []byte(s), nil
+	case DeliveredNoteTierWorking:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *DeliveredNoteTier) UnmarshalText(data []byte) error {
+	switch DeliveredNoteTier(data) {
+	case DeliveredNoteTierProject:
+		*s = DeliveredNoteTierProject
+		return nil
+	case DeliveredNoteTierWorking:
+		*s = DeliveredNoteTierWorking
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)
@@ -6756,30 +6998,42 @@ func (*ErrorEnvelope) getCapsuleRes()                  {}
 func (*ErrorEnvelope) getCoordinationGrantRes()        {}
 func (*ErrorEnvelope) getDeliveryRes()                 {}
 func (*ErrorEnvelope) getMomentRes()                   {}
+func (*ErrorEnvelope) getNoteProposalRes()             {}
+func (*ErrorEnvelope) getProjectNoteRes()              {}
 func (*ErrorEnvelope) getProjectRes()                  {}
 func (*ErrorEnvelope) getProjectThreadIntentRes()      {}
 func (*ErrorEnvelope) getReportedModelsRes()           {}
 func (*ErrorEnvelope) getRoutineRes()                  {}
 func (*ErrorEnvelope) getRunRes()                      {}
 func (*ErrorEnvelope) getThreadLinkRes()               {}
+func (*ErrorEnvelope) getThreadNotesRes()              {}
 func (*ErrorEnvelope) getThreadRes()                   {}
 func (*ErrorEnvelope) getTimelineRes()                 {}
+func (*ErrorEnvelope) getWorkingNoteRes()              {}
 func (*ErrorEnvelope) listAuditRecordsRes()            {}
 func (*ErrorEnvelope) listCapsuleDeliveriesRes()       {}
 func (*ErrorEnvelope) listCoordinationRequestsRes()    {}
 func (*ErrorEnvelope) listMembersRes()                 {}
 func (*ErrorEnvelope) listMomentsRes()                 {}
+func (*ErrorEnvelope) listProjectNoteProposalsRes()    {}
+func (*ErrorEnvelope) listProjectNoteRevisionsRes()    {}
+func (*ErrorEnvelope) listProjectNotesRes()            {}
 func (*ErrorEnvelope) listProjectRoutinesRes()         {}
 func (*ErrorEnvelope) listProjectsRes()                {}
 func (*ErrorEnvelope) listRoutineFiresRes()            {}
 func (*ErrorEnvelope) listSecretsRes()                 {}
 func (*ErrorEnvelope) listThreadLinksRes()             {}
 func (*ErrorEnvelope) listThreadsRes()                 {}
+func (*ErrorEnvelope) listWorkingNoteRevisionsRes()    {}
+func (*ErrorEnvelope) listWorkingNotesRes()            {}
 func (*ErrorEnvelope) mintPersonalAccessTokenRes()     {}
 func (*ErrorEnvelope) pollGitHubDeviceRes()            {}
+func (*ErrorEnvelope) promoteWorkingNoteRes()          {}
 func (*ErrorEnvelope) revokePersonalAccessTokenRes()   {}
 func (*ErrorEnvelope) revokeSessionRes()               {}
 func (*ErrorEnvelope) searchGitHubReposRes()           {}
+func (*ErrorEnvelope) shredProjectNotesRes()           {}
+func (*ErrorEnvelope) shredWorkingNotesRes()           {}
 
 type ExportCapsuleWorkspaceConflict ErrorEnvelope
 
@@ -9705,6 +9959,1210 @@ func (s *MutateHarnessSetupRequest) SetExpectedResourceVersion(val int64) {
 	s.ExpectedResourceVersion = val
 }
 
+// Ref: #/components/schemas/NoteContent
+type NoteContent struct {
+	Note     NoteSummary  `json:"note"`
+	Revision NoteRevision `json:"revision"`
+	Content  string       `json:"content"`
+	// The content matches the credential-shaped checks of ADR 0024.
+	CredentialShaped bool `json:"credentialShaped"`
+}
+
+// GetNote returns the value of Note.
+func (s *NoteContent) GetNote() NoteSummary {
+	return s.Note
+}
+
+// GetRevision returns the value of Revision.
+func (s *NoteContent) GetRevision() NoteRevision {
+	return s.Revision
+}
+
+// GetContent returns the value of Content.
+func (s *NoteContent) GetContent() string {
+	return s.Content
+}
+
+// GetCredentialShaped returns the value of CredentialShaped.
+func (s *NoteContent) GetCredentialShaped() bool {
+	return s.CredentialShaped
+}
+
+// SetNote sets the value of Note.
+func (s *NoteContent) SetNote(val NoteSummary) {
+	s.Note = val
+}
+
+// SetRevision sets the value of Revision.
+func (s *NoteContent) SetRevision(val NoteRevision) {
+	s.Revision = val
+}
+
+// SetContent sets the value of Content.
+func (s *NoteContent) SetContent(val string) {
+	s.Content = val
+}
+
+// SetCredentialShaped sets the value of CredentialShaped.
+func (s *NoteContent) SetCredentialShaped(val bool) {
+	s.CredentialShaped = val
+}
+
+func (*NoteContent) getProjectNoteRes() {}
+func (*NoteContent) getWorkingNoteRes() {}
+
+// Ref: #/components/schemas/NoteHistory
+type NoteHistory struct {
+	Note  NoteSummary    `json:"note"`
+	Items []NoteRevision `json:"items"`
+}
+
+// GetNote returns the value of Note.
+func (s *NoteHistory) GetNote() NoteSummary {
+	return s.Note
+}
+
+// GetItems returns the value of Items.
+func (s *NoteHistory) GetItems() []NoteRevision {
+	return s.Items
+}
+
+// SetNote sets the value of Note.
+func (s *NoteHistory) SetNote(val NoteSummary) {
+	s.Note = val
+}
+
+// SetItems sets the value of Items.
+func (s *NoteHistory) SetItems(val []NoteRevision) {
+	s.Items = val
+}
+
+func (*NoteHistory) listProjectNoteRevisionsRes() {}
+func (*NoteHistory) listWorkingNoteRevisionsRes() {}
+
+// Ref: #/components/schemas/NoteList
+type NoteList struct {
+	Items         []NoteSummary `json:"items"`
+	LiveCount     int           `json:"liveCount"`
+	TotalBytes    int           `json:"totalBytes"`
+	MaxNotes      int           `json:"maxNotes"`
+	MaxBytes      int           `json:"maxBytes"`
+	NotesDelivery NotesDelivery `json:"notesDelivery"`
+	// Pass as expectedVersion to change notesDelivery.
+	SettingsVersion  int64 `json:"settingsVersion"`
+	PendingProposals int   `json:"pendingProposals"`
+}
+
+// GetItems returns the value of Items.
+func (s *NoteList) GetItems() []NoteSummary {
+	return s.Items
+}
+
+// GetLiveCount returns the value of LiveCount.
+func (s *NoteList) GetLiveCount() int {
+	return s.LiveCount
+}
+
+// GetTotalBytes returns the value of TotalBytes.
+func (s *NoteList) GetTotalBytes() int {
+	return s.TotalBytes
+}
+
+// GetMaxNotes returns the value of MaxNotes.
+func (s *NoteList) GetMaxNotes() int {
+	return s.MaxNotes
+}
+
+// GetMaxBytes returns the value of MaxBytes.
+func (s *NoteList) GetMaxBytes() int {
+	return s.MaxBytes
+}
+
+// GetNotesDelivery returns the value of NotesDelivery.
+func (s *NoteList) GetNotesDelivery() NotesDelivery {
+	return s.NotesDelivery
+}
+
+// GetSettingsVersion returns the value of SettingsVersion.
+func (s *NoteList) GetSettingsVersion() int64 {
+	return s.SettingsVersion
+}
+
+// GetPendingProposals returns the value of PendingProposals.
+func (s *NoteList) GetPendingProposals() int {
+	return s.PendingProposals
+}
+
+// SetItems sets the value of Items.
+func (s *NoteList) SetItems(val []NoteSummary) {
+	s.Items = val
+}
+
+// SetLiveCount sets the value of LiveCount.
+func (s *NoteList) SetLiveCount(val int) {
+	s.LiveCount = val
+}
+
+// SetTotalBytes sets the value of TotalBytes.
+func (s *NoteList) SetTotalBytes(val int) {
+	s.TotalBytes = val
+}
+
+// SetMaxNotes sets the value of MaxNotes.
+func (s *NoteList) SetMaxNotes(val int) {
+	s.MaxNotes = val
+}
+
+// SetMaxBytes sets the value of MaxBytes.
+func (s *NoteList) SetMaxBytes(val int) {
+	s.MaxBytes = val
+}
+
+// SetNotesDelivery sets the value of NotesDelivery.
+func (s *NoteList) SetNotesDelivery(val NotesDelivery) {
+	s.NotesDelivery = val
+}
+
+// SetSettingsVersion sets the value of SettingsVersion.
+func (s *NoteList) SetSettingsVersion(val int64) {
+	s.SettingsVersion = val
+}
+
+// SetPendingProposals sets the value of PendingProposals.
+func (s *NoteList) SetPendingProposals(val int) {
+	s.PendingProposals = val
+}
+
+func (*NoteList) listProjectNotesRes() {}
+func (*NoteList) listWorkingNotesRes() {}
+
+// Ref: #/components/schemas/NoteProposalList
+type NoteProposalList struct {
+	Items []NoteProposalSummary `json:"items"`
+}
+
+// GetItems returns the value of Items.
+func (s *NoteProposalList) GetItems() []NoteProposalSummary {
+	return s.Items
+}
+
+// SetItems sets the value of Items.
+func (s *NoteProposalList) SetItems(val []NoteProposalSummary) {
+	s.Items = val
+}
+
+func (*NoteProposalList) listPendingNoteProposalsRes() {}
+func (*NoteProposalList) listProjectNoteProposalsRes() {}
+
+// Ref: #/components/schemas/NoteProposalReview
+type NoteProposalReview struct {
+	Proposal NoteProposalSummary `json:"proposal"`
+	// Proposed text. Untrusted agent text.
+	Content          string `json:"content"`
+	CurrentContent   string `json:"currentContent"`
+	CurrentLive      bool   `json:"currentLive"`
+	CredentialShaped bool   `json:"credentialShaped"`
+}
+
+// GetProposal returns the value of Proposal.
+func (s *NoteProposalReview) GetProposal() NoteProposalSummary {
+	return s.Proposal
+}
+
+// GetContent returns the value of Content.
+func (s *NoteProposalReview) GetContent() string {
+	return s.Content
+}
+
+// GetCurrentContent returns the value of CurrentContent.
+func (s *NoteProposalReview) GetCurrentContent() string {
+	return s.CurrentContent
+}
+
+// GetCurrentLive returns the value of CurrentLive.
+func (s *NoteProposalReview) GetCurrentLive() bool {
+	return s.CurrentLive
+}
+
+// GetCredentialShaped returns the value of CredentialShaped.
+func (s *NoteProposalReview) GetCredentialShaped() bool {
+	return s.CredentialShaped
+}
+
+// SetProposal sets the value of Proposal.
+func (s *NoteProposalReview) SetProposal(val NoteProposalSummary) {
+	s.Proposal = val
+}
+
+// SetContent sets the value of Content.
+func (s *NoteProposalReview) SetContent(val string) {
+	s.Content = val
+}
+
+// SetCurrentContent sets the value of CurrentContent.
+func (s *NoteProposalReview) SetCurrentContent(val string) {
+	s.CurrentContent = val
+}
+
+// SetCurrentLive sets the value of CurrentLive.
+func (s *NoteProposalReview) SetCurrentLive(val bool) {
+	s.CurrentLive = val
+}
+
+// SetCredentialShaped sets the value of CredentialShaped.
+func (s *NoteProposalReview) SetCredentialShaped(val bool) {
+	s.CredentialShaped = val
+}
+
+func (*NoteProposalReview) getNoteProposalRes() {}
+
+// Ref: #/components/schemas/NoteProposalState
+type NoteProposalState string
+
+const (
+	NoteProposalStatePending           NoteProposalState = "pending"
+	NoteProposalStateApproved          NoteProposalState = "approved"
+	NoteProposalStateApprovedWithEdits NoteProposalState = "approved_with_edits"
+	NoteProposalStateRejected          NoteProposalState = "rejected"
+	NoteProposalStateStale             NoteProposalState = "stale"
+	NoteProposalStateExpired           NoteProposalState = "expired"
+)
+
+// AllValues returns all NoteProposalState values.
+func (NoteProposalState) AllValues() []NoteProposalState {
+	return []NoteProposalState{
+		NoteProposalStatePending,
+		NoteProposalStateApproved,
+		NoteProposalStateApprovedWithEdits,
+		NoteProposalStateRejected,
+		NoteProposalStateStale,
+		NoteProposalStateExpired,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s NoteProposalState) MarshalText() ([]byte, error) {
+	switch s {
+	case NoteProposalStatePending:
+		return []byte(s), nil
+	case NoteProposalStateApproved:
+		return []byte(s), nil
+	case NoteProposalStateApprovedWithEdits:
+		return []byte(s), nil
+	case NoteProposalStateRejected:
+		return []byte(s), nil
+	case NoteProposalStateStale:
+		return []byte(s), nil
+	case NoteProposalStateExpired:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *NoteProposalState) UnmarshalText(data []byte) error {
+	switch NoteProposalState(data) {
+	case NoteProposalStatePending:
+		*s = NoteProposalStatePending
+		return nil
+	case NoteProposalStateApproved:
+		*s = NoteProposalStateApproved
+		return nil
+	case NoteProposalStateApprovedWithEdits:
+		*s = NoteProposalStateApprovedWithEdits
+		return nil
+	case NoteProposalStateRejected:
+		*s = NoteProposalStateRejected
+		return nil
+	case NoteProposalStateStale:
+		*s = NoteProposalStateStale
+		return nil
+	case NoteProposalStateExpired:
+		*s = NoteProposalStateExpired
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Content-free.
+// Ref: #/components/schemas/NoteProposalSummary
+type NoteProposalSummary struct {
+	ID               string                       `json:"id"`
+	ProjectId        string                       `json:"projectId"`
+	Name             string                       `json:"name"`
+	Delete           bool                         `json:"delete"`
+	BaseRevision     int64                        `json:"baseRevision"`
+	CurrentRevision  int64                        `json:"currentRevision"`
+	State            NoteProposalState            `json:"state"`
+	Reason           OptNoteProposalSummaryReason `json:"reason"`
+	Origin           NoteProposalSummaryOrigin    `json:"origin"`
+	Source           OptNoteSource                `json:"source"`
+	Digest           string                       `json:"digest"`
+	Size             int                          `json:"size"`
+	ResolvedRevision OptInt64                     `json:"resolvedRevision"`
+	CreatedAt        time.Time                    `json:"createdAt"`
+	ExpiresAt        time.Time                    `json:"expiresAt"`
+}
+
+// GetID returns the value of ID.
+func (s *NoteProposalSummary) GetID() string {
+	return s.ID
+}
+
+// GetProjectId returns the value of ProjectId.
+func (s *NoteProposalSummary) GetProjectId() string {
+	return s.ProjectId
+}
+
+// GetName returns the value of Name.
+func (s *NoteProposalSummary) GetName() string {
+	return s.Name
+}
+
+// GetDelete returns the value of Delete.
+func (s *NoteProposalSummary) GetDelete() bool {
+	return s.Delete
+}
+
+// GetBaseRevision returns the value of BaseRevision.
+func (s *NoteProposalSummary) GetBaseRevision() int64 {
+	return s.BaseRevision
+}
+
+// GetCurrentRevision returns the value of CurrentRevision.
+func (s *NoteProposalSummary) GetCurrentRevision() int64 {
+	return s.CurrentRevision
+}
+
+// GetState returns the value of State.
+func (s *NoteProposalSummary) GetState() NoteProposalState {
+	return s.State
+}
+
+// GetReason returns the value of Reason.
+func (s *NoteProposalSummary) GetReason() OptNoteProposalSummaryReason {
+	return s.Reason
+}
+
+// GetOrigin returns the value of Origin.
+func (s *NoteProposalSummary) GetOrigin() NoteProposalSummaryOrigin {
+	return s.Origin
+}
+
+// GetSource returns the value of Source.
+func (s *NoteProposalSummary) GetSource() OptNoteSource {
+	return s.Source
+}
+
+// GetDigest returns the value of Digest.
+func (s *NoteProposalSummary) GetDigest() string {
+	return s.Digest
+}
+
+// GetSize returns the value of Size.
+func (s *NoteProposalSummary) GetSize() int {
+	return s.Size
+}
+
+// GetResolvedRevision returns the value of ResolvedRevision.
+func (s *NoteProposalSummary) GetResolvedRevision() OptInt64 {
+	return s.ResolvedRevision
+}
+
+// GetCreatedAt returns the value of CreatedAt.
+func (s *NoteProposalSummary) GetCreatedAt() time.Time {
+	return s.CreatedAt
+}
+
+// GetExpiresAt returns the value of ExpiresAt.
+func (s *NoteProposalSummary) GetExpiresAt() time.Time {
+	return s.ExpiresAt
+}
+
+// SetID sets the value of ID.
+func (s *NoteProposalSummary) SetID(val string) {
+	s.ID = val
+}
+
+// SetProjectId sets the value of ProjectId.
+func (s *NoteProposalSummary) SetProjectId(val string) {
+	s.ProjectId = val
+}
+
+// SetName sets the value of Name.
+func (s *NoteProposalSummary) SetName(val string) {
+	s.Name = val
+}
+
+// SetDelete sets the value of Delete.
+func (s *NoteProposalSummary) SetDelete(val bool) {
+	s.Delete = val
+}
+
+// SetBaseRevision sets the value of BaseRevision.
+func (s *NoteProposalSummary) SetBaseRevision(val int64) {
+	s.BaseRevision = val
+}
+
+// SetCurrentRevision sets the value of CurrentRevision.
+func (s *NoteProposalSummary) SetCurrentRevision(val int64) {
+	s.CurrentRevision = val
+}
+
+// SetState sets the value of State.
+func (s *NoteProposalSummary) SetState(val NoteProposalState) {
+	s.State = val
+}
+
+// SetReason sets the value of Reason.
+func (s *NoteProposalSummary) SetReason(val OptNoteProposalSummaryReason) {
+	s.Reason = val
+}
+
+// SetOrigin sets the value of Origin.
+func (s *NoteProposalSummary) SetOrigin(val NoteProposalSummaryOrigin) {
+	s.Origin = val
+}
+
+// SetSource sets the value of Source.
+func (s *NoteProposalSummary) SetSource(val OptNoteSource) {
+	s.Source = val
+}
+
+// SetDigest sets the value of Digest.
+func (s *NoteProposalSummary) SetDigest(val string) {
+	s.Digest = val
+}
+
+// SetSize sets the value of Size.
+func (s *NoteProposalSummary) SetSize(val int) {
+	s.Size = val
+}
+
+// SetResolvedRevision sets the value of ResolvedRevision.
+func (s *NoteProposalSummary) SetResolvedRevision(val OptInt64) {
+	s.ResolvedRevision = val
+}
+
+// SetCreatedAt sets the value of CreatedAt.
+func (s *NoteProposalSummary) SetCreatedAt(val time.Time) {
+	s.CreatedAt = val
+}
+
+// SetExpiresAt sets the value of ExpiresAt.
+func (s *NoteProposalSummary) SetExpiresAt(val time.Time) {
+	s.ExpiresAt = val
+}
+
+func (*NoteProposalSummary) approveNoteProposalRes() {}
+func (*NoteProposalSummary) promoteWorkingNoteRes()  {}
+func (*NoteProposalSummary) rejectNoteProposalRes()  {}
+
+type NoteProposalSummaryOrigin string
+
+const (
+	NoteProposalSummaryOriginAgent     NoteProposalSummaryOrigin = "agent"
+	NoteProposalSummaryOriginPromotion NoteProposalSummaryOrigin = "promotion"
+)
+
+// AllValues returns all NoteProposalSummaryOrigin values.
+func (NoteProposalSummaryOrigin) AllValues() []NoteProposalSummaryOrigin {
+	return []NoteProposalSummaryOrigin{
+		NoteProposalSummaryOriginAgent,
+		NoteProposalSummaryOriginPromotion,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s NoteProposalSummaryOrigin) MarshalText() ([]byte, error) {
+	switch s {
+	case NoteProposalSummaryOriginAgent:
+		return []byte(s), nil
+	case NoteProposalSummaryOriginPromotion:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *NoteProposalSummaryOrigin) UnmarshalText(data []byte) error {
+	switch NoteProposalSummaryOrigin(data) {
+	case NoteProposalSummaryOriginAgent:
+		*s = NoteProposalSummaryOriginAgent
+		return nil
+	case NoteProposalSummaryOriginPromotion:
+		*s = NoteProposalSummaryOriginPromotion
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+type NoteProposalSummaryReason string
+
+const (
+	NoteProposalSummaryReasonEmpty        NoteProposalSummaryReason = ""
+	NoteProposalSummaryReasonOperator     NoteProposalSummaryReason = "operator"
+	NoteProposalSummaryReasonOwnerChanged NoteProposalSummaryReason = "owner_changed"
+	NoteProposalSummaryReasonShredded     NoteProposalSummaryReason = "shredded"
+	NoteProposalSummaryReasonPurged       NoteProposalSummaryReason = "purged"
+)
+
+// AllValues returns all NoteProposalSummaryReason values.
+func (NoteProposalSummaryReason) AllValues() []NoteProposalSummaryReason {
+	return []NoteProposalSummaryReason{
+		NoteProposalSummaryReasonEmpty,
+		NoteProposalSummaryReasonOperator,
+		NoteProposalSummaryReasonOwnerChanged,
+		NoteProposalSummaryReasonShredded,
+		NoteProposalSummaryReasonPurged,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s NoteProposalSummaryReason) MarshalText() ([]byte, error) {
+	switch s {
+	case NoteProposalSummaryReasonEmpty:
+		return []byte(s), nil
+	case NoteProposalSummaryReasonOperator:
+		return []byte(s), nil
+	case NoteProposalSummaryReasonOwnerChanged:
+		return []byte(s), nil
+	case NoteProposalSummaryReasonShredded:
+		return []byte(s), nil
+	case NoteProposalSummaryReasonPurged:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *NoteProposalSummaryReason) UnmarshalText(data []byte) error {
+	switch NoteProposalSummaryReason(data) {
+	case NoteProposalSummaryReasonEmpty:
+		*s = NoteProposalSummaryReasonEmpty
+		return nil
+	case NoteProposalSummaryReasonOperator:
+		*s = NoteProposalSummaryReasonOperator
+		return nil
+	case NoteProposalSummaryReasonOwnerChanged:
+		*s = NoteProposalSummaryReasonOwnerChanged
+		return nil
+	case NoteProposalSummaryReasonShredded:
+		*s = NoteProposalSummaryReasonShredded
+		return nil
+	case NoteProposalSummaryReasonPurged:
+		*s = NoteProposalSummaryReasonPurged
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Ref: #/components/schemas/NoteRevision
+type NoteRevision struct {
+	Revision     int64            `json:"revision"`
+	Name         string           `json:"name"`
+	Kind         NoteRevisionKind `json:"kind"`
+	Writer       NoteWriter       `json:"writer"`
+	WriterUserId OptString        `json:"writerUserId"`
+	Source       OptNoteSource    `json:"source"`
+	ProposalId   OptString        `json:"proposalId"`
+	BaseRevision int64            `json:"baseRevision"`
+	RestoredFrom OptInt64         `json:"restoredFrom"`
+	Digest       string           `json:"digest"`
+	Size         int              `json:"size"`
+	Retained     bool             `json:"retained"`
+	CreatedAt    time.Time        `json:"createdAt"`
+}
+
+// GetRevision returns the value of Revision.
+func (s *NoteRevision) GetRevision() int64 {
+	return s.Revision
+}
+
+// GetName returns the value of Name.
+func (s *NoteRevision) GetName() string {
+	return s.Name
+}
+
+// GetKind returns the value of Kind.
+func (s *NoteRevision) GetKind() NoteRevisionKind {
+	return s.Kind
+}
+
+// GetWriter returns the value of Writer.
+func (s *NoteRevision) GetWriter() NoteWriter {
+	return s.Writer
+}
+
+// GetWriterUserId returns the value of WriterUserId.
+func (s *NoteRevision) GetWriterUserId() OptString {
+	return s.WriterUserId
+}
+
+// GetSource returns the value of Source.
+func (s *NoteRevision) GetSource() OptNoteSource {
+	return s.Source
+}
+
+// GetProposalId returns the value of ProposalId.
+func (s *NoteRevision) GetProposalId() OptString {
+	return s.ProposalId
+}
+
+// GetBaseRevision returns the value of BaseRevision.
+func (s *NoteRevision) GetBaseRevision() int64 {
+	return s.BaseRevision
+}
+
+// GetRestoredFrom returns the value of RestoredFrom.
+func (s *NoteRevision) GetRestoredFrom() OptInt64 {
+	return s.RestoredFrom
+}
+
+// GetDigest returns the value of Digest.
+func (s *NoteRevision) GetDigest() string {
+	return s.Digest
+}
+
+// GetSize returns the value of Size.
+func (s *NoteRevision) GetSize() int {
+	return s.Size
+}
+
+// GetRetained returns the value of Retained.
+func (s *NoteRevision) GetRetained() bool {
+	return s.Retained
+}
+
+// GetCreatedAt returns the value of CreatedAt.
+func (s *NoteRevision) GetCreatedAt() time.Time {
+	return s.CreatedAt
+}
+
+// SetRevision sets the value of Revision.
+func (s *NoteRevision) SetRevision(val int64) {
+	s.Revision = val
+}
+
+// SetName sets the value of Name.
+func (s *NoteRevision) SetName(val string) {
+	s.Name = val
+}
+
+// SetKind sets the value of Kind.
+func (s *NoteRevision) SetKind(val NoteRevisionKind) {
+	s.Kind = val
+}
+
+// SetWriter sets the value of Writer.
+func (s *NoteRevision) SetWriter(val NoteWriter) {
+	s.Writer = val
+}
+
+// SetWriterUserId sets the value of WriterUserId.
+func (s *NoteRevision) SetWriterUserId(val OptString) {
+	s.WriterUserId = val
+}
+
+// SetSource sets the value of Source.
+func (s *NoteRevision) SetSource(val OptNoteSource) {
+	s.Source = val
+}
+
+// SetProposalId sets the value of ProposalId.
+func (s *NoteRevision) SetProposalId(val OptString) {
+	s.ProposalId = val
+}
+
+// SetBaseRevision sets the value of BaseRevision.
+func (s *NoteRevision) SetBaseRevision(val int64) {
+	s.BaseRevision = val
+}
+
+// SetRestoredFrom sets the value of RestoredFrom.
+func (s *NoteRevision) SetRestoredFrom(val OptInt64) {
+	s.RestoredFrom = val
+}
+
+// SetDigest sets the value of Digest.
+func (s *NoteRevision) SetDigest(val string) {
+	s.Digest = val
+}
+
+// SetSize sets the value of Size.
+func (s *NoteRevision) SetSize(val int) {
+	s.Size = val
+}
+
+// SetRetained sets the value of Retained.
+func (s *NoteRevision) SetRetained(val bool) {
+	s.Retained = val
+}
+
+// SetCreatedAt sets the value of CreatedAt.
+func (s *NoteRevision) SetCreatedAt(val time.Time) {
+	s.CreatedAt = val
+}
+
+// Ref: #/components/schemas/NoteRevisionKind
+type NoteRevisionKind string
+
+const (
+	NoteRevisionKindOperatorWrite     NoteRevisionKind = "operator_write"
+	NoteRevisionKindAgentWrite        NoteRevisionKind = "agent_write"
+	NoteRevisionKindApprovedProposal  NoteRevisionKind = "approved_proposal"
+	NoteRevisionKindApprovedWithEdits NoteRevisionKind = "approved_with_edits"
+	NoteRevisionKindRestore           NoteRevisionKind = "restore"
+	NoteRevisionKindDelete            NoteRevisionKind = "delete"
+)
+
+// AllValues returns all NoteRevisionKind values.
+func (NoteRevisionKind) AllValues() []NoteRevisionKind {
+	return []NoteRevisionKind{
+		NoteRevisionKindOperatorWrite,
+		NoteRevisionKindAgentWrite,
+		NoteRevisionKindApprovedProposal,
+		NoteRevisionKindApprovedWithEdits,
+		NoteRevisionKindRestore,
+		NoteRevisionKindDelete,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s NoteRevisionKind) MarshalText() ([]byte, error) {
+	switch s {
+	case NoteRevisionKindOperatorWrite:
+		return []byte(s), nil
+	case NoteRevisionKindAgentWrite:
+		return []byte(s), nil
+	case NoteRevisionKindApprovedProposal:
+		return []byte(s), nil
+	case NoteRevisionKindApprovedWithEdits:
+		return []byte(s), nil
+	case NoteRevisionKindRestore:
+		return []byte(s), nil
+	case NoteRevisionKindDelete:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *NoteRevisionKind) UnmarshalText(data []byte) error {
+	switch NoteRevisionKind(data) {
+	case NoteRevisionKindOperatorWrite:
+		*s = NoteRevisionKindOperatorWrite
+		return nil
+	case NoteRevisionKindAgentWrite:
+		*s = NoteRevisionKindAgentWrite
+		return nil
+	case NoteRevisionKindApprovedProposal:
+		*s = NoteRevisionKindApprovedProposal
+		return nil
+	case NoteRevisionKindApprovedWithEdits:
+		*s = NoteRevisionKindApprovedWithEdits
+		return nil
+	case NoteRevisionKindRestore:
+		*s = NoteRevisionKindRestore
+		return nil
+	case NoteRevisionKindDelete:
+		*s = NoteRevisionKindDelete
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Content-free provenance of agent text.
+// Ref: #/components/schemas/NoteSource
+type NoteSource struct {
+	ThreadId            OptString `json:"threadId"`
+	CapsuleId           OptString `json:"capsuleId"`
+	LinkId              OptString `json:"linkId"`
+	LinkName            OptString `json:"linkName"`
+	LeadThreadId        OptString `json:"leadThreadId"`
+	GrantId             OptString `json:"grantId"`
+	WorkingNoteName     OptString `json:"workingNoteName"`
+	WorkingNoteRevision OptInt64  `json:"workingNoteRevision"`
+	WorkingCapsuleId    OptString `json:"workingCapsuleId"`
+}
+
+// GetThreadId returns the value of ThreadId.
+func (s *NoteSource) GetThreadId() OptString {
+	return s.ThreadId
+}
+
+// GetCapsuleId returns the value of CapsuleId.
+func (s *NoteSource) GetCapsuleId() OptString {
+	return s.CapsuleId
+}
+
+// GetLinkId returns the value of LinkId.
+func (s *NoteSource) GetLinkId() OptString {
+	return s.LinkId
+}
+
+// GetLinkName returns the value of LinkName.
+func (s *NoteSource) GetLinkName() OptString {
+	return s.LinkName
+}
+
+// GetLeadThreadId returns the value of LeadThreadId.
+func (s *NoteSource) GetLeadThreadId() OptString {
+	return s.LeadThreadId
+}
+
+// GetGrantId returns the value of GrantId.
+func (s *NoteSource) GetGrantId() OptString {
+	return s.GrantId
+}
+
+// GetWorkingNoteName returns the value of WorkingNoteName.
+func (s *NoteSource) GetWorkingNoteName() OptString {
+	return s.WorkingNoteName
+}
+
+// GetWorkingNoteRevision returns the value of WorkingNoteRevision.
+func (s *NoteSource) GetWorkingNoteRevision() OptInt64 {
+	return s.WorkingNoteRevision
+}
+
+// GetWorkingCapsuleId returns the value of WorkingCapsuleId.
+func (s *NoteSource) GetWorkingCapsuleId() OptString {
+	return s.WorkingCapsuleId
+}
+
+// SetThreadId sets the value of ThreadId.
+func (s *NoteSource) SetThreadId(val OptString) {
+	s.ThreadId = val
+}
+
+// SetCapsuleId sets the value of CapsuleId.
+func (s *NoteSource) SetCapsuleId(val OptString) {
+	s.CapsuleId = val
+}
+
+// SetLinkId sets the value of LinkId.
+func (s *NoteSource) SetLinkId(val OptString) {
+	s.LinkId = val
+}
+
+// SetLinkName sets the value of LinkName.
+func (s *NoteSource) SetLinkName(val OptString) {
+	s.LinkName = val
+}
+
+// SetLeadThreadId sets the value of LeadThreadId.
+func (s *NoteSource) SetLeadThreadId(val OptString) {
+	s.LeadThreadId = val
+}
+
+// SetGrantId sets the value of GrantId.
+func (s *NoteSource) SetGrantId(val OptString) {
+	s.GrantId = val
+}
+
+// SetWorkingNoteName sets the value of WorkingNoteName.
+func (s *NoteSource) SetWorkingNoteName(val OptString) {
+	s.WorkingNoteName = val
+}
+
+// SetWorkingNoteRevision sets the value of WorkingNoteRevision.
+func (s *NoteSource) SetWorkingNoteRevision(val OptInt64) {
+	s.WorkingNoteRevision = val
+}
+
+// SetWorkingCapsuleId sets the value of WorkingCapsuleId.
+func (s *NoteSource) SetWorkingCapsuleId(val OptString) {
+	s.WorkingCapsuleId = val
+}
+
+// Ref: #/components/schemas/NoteSummary
+type NoteSummary struct {
+	Name     string           `json:"name"`
+	Revision int64            `json:"revision"`
+	Live     bool             `json:"live"`
+	Size     int              `json:"size"`
+	Digest   string           `json:"digest"`
+	Kind     NoteRevisionKind `json:"kind"`
+	Writer   NoteWriter       `json:"writer"`
+	// The subagent that wrote the head revision, if any.
+	LinkName OptString `json:"linkName"`
+	// The head revision is agent text, written by a member or approved from a proposal.
+	AgentProposed bool      `json:"agentProposed"`
+	CreatedAt     time.Time `json:"createdAt"`
+	UpdatedAt     time.Time `json:"updatedAt"`
+}
+
+// GetName returns the value of Name.
+func (s *NoteSummary) GetName() string {
+	return s.Name
+}
+
+// GetRevision returns the value of Revision.
+func (s *NoteSummary) GetRevision() int64 {
+	return s.Revision
+}
+
+// GetLive returns the value of Live.
+func (s *NoteSummary) GetLive() bool {
+	return s.Live
+}
+
+// GetSize returns the value of Size.
+func (s *NoteSummary) GetSize() int {
+	return s.Size
+}
+
+// GetDigest returns the value of Digest.
+func (s *NoteSummary) GetDigest() string {
+	return s.Digest
+}
+
+// GetKind returns the value of Kind.
+func (s *NoteSummary) GetKind() NoteRevisionKind {
+	return s.Kind
+}
+
+// GetWriter returns the value of Writer.
+func (s *NoteSummary) GetWriter() NoteWriter {
+	return s.Writer
+}
+
+// GetLinkName returns the value of LinkName.
+func (s *NoteSummary) GetLinkName() OptString {
+	return s.LinkName
+}
+
+// GetAgentProposed returns the value of AgentProposed.
+func (s *NoteSummary) GetAgentProposed() bool {
+	return s.AgentProposed
+}
+
+// GetCreatedAt returns the value of CreatedAt.
+func (s *NoteSummary) GetCreatedAt() time.Time {
+	return s.CreatedAt
+}
+
+// GetUpdatedAt returns the value of UpdatedAt.
+func (s *NoteSummary) GetUpdatedAt() time.Time {
+	return s.UpdatedAt
+}
+
+// SetName sets the value of Name.
+func (s *NoteSummary) SetName(val string) {
+	s.Name = val
+}
+
+// SetRevision sets the value of Revision.
+func (s *NoteSummary) SetRevision(val int64) {
+	s.Revision = val
+}
+
+// SetLive sets the value of Live.
+func (s *NoteSummary) SetLive(val bool) {
+	s.Live = val
+}
+
+// SetSize sets the value of Size.
+func (s *NoteSummary) SetSize(val int) {
+	s.Size = val
+}
+
+// SetDigest sets the value of Digest.
+func (s *NoteSummary) SetDigest(val string) {
+	s.Digest = val
+}
+
+// SetKind sets the value of Kind.
+func (s *NoteSummary) SetKind(val NoteRevisionKind) {
+	s.Kind = val
+}
+
+// SetWriter sets the value of Writer.
+func (s *NoteSummary) SetWriter(val NoteWriter) {
+	s.Writer = val
+}
+
+// SetLinkName sets the value of LinkName.
+func (s *NoteSummary) SetLinkName(val OptString) {
+	s.LinkName = val
+}
+
+// SetAgentProposed sets the value of AgentProposed.
+func (s *NoteSummary) SetAgentProposed(val bool) {
+	s.AgentProposed = val
+}
+
+// SetCreatedAt sets the value of CreatedAt.
+func (s *NoteSummary) SetCreatedAt(val time.Time) {
+	s.CreatedAt = val
+}
+
+// SetUpdatedAt sets the value of UpdatedAt.
+func (s *NoteSummary) SetUpdatedAt(val time.Time) {
+	s.UpdatedAt = val
+}
+
+func (*NoteSummary) deleteProjectNoteRes()  {}
+func (*NoteSummary) deleteWorkingNoteRes()  {}
+func (*NoteSummary) putProjectNoteRes()     {}
+func (*NoteSummary) putWorkingNoteRes()     {}
+func (*NoteSummary) restoreProjectNoteRes() {}
+func (*NoteSummary) restoreWorkingNoteRes() {}
+
+// Ref: #/components/schemas/NoteWriter
+type NoteWriter string
+
+const (
+	NoteWriterAgent    NoteWriter = "agent"
+	NoteWriterOperator NoteWriter = "operator"
+)
+
+// AllValues returns all NoteWriter values.
+func (NoteWriter) AllValues() []NoteWriter {
+	return []NoteWriter{
+		NoteWriterAgent,
+		NoteWriterOperator,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s NoteWriter) MarshalText() ([]byte, error) {
+	switch s {
+	case NoteWriterAgent:
+		return []byte(s), nil
+	case NoteWriterOperator:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *NoteWriter) UnmarshalText(data []byte) error {
+	switch NoteWriter(data) {
+	case NoteWriterAgent:
+		*s = NoteWriterAgent
+		return nil
+	case NoteWriterOperator:
+		*s = NoteWriterOperator
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Ref: #/components/schemas/NotesDelivery
+type NotesDelivery string
+
+const (
+	NotesDeliveryAllThreads NotesDelivery = "all_threads"
+	NotesDeliveryLeadsOnly  NotesDelivery = "leads_only"
+	NotesDeliveryOff        NotesDelivery = "off"
+)
+
+// AllValues returns all NotesDelivery values.
+func (NotesDelivery) AllValues() []NotesDelivery {
+	return []NotesDelivery{
+		NotesDeliveryAllThreads,
+		NotesDeliveryLeadsOnly,
+		NotesDeliveryOff,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s NotesDelivery) MarshalText() ([]byte, error) {
+	switch s {
+	case NotesDeliveryAllThreads:
+		return []byte(s), nil
+	case NotesDeliveryLeadsOnly:
+		return []byte(s), nil
+	case NotesDeliveryOff:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *NotesDelivery) UnmarshalText(data []byte) error {
+	switch NotesDelivery(data) {
+	case NotesDeliveryAllThreads:
+		*s = NotesDeliveryAllThreads
+		return nil
+	case NotesDeliveryLeadsOnly:
+		*s = NotesDeliveryLeadsOnly
+		return nil
+	case NotesDeliveryOff:
+		*s = NotesDeliveryOff
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Ref: #/components/schemas/NotesDeliveryRequest
+type NotesDeliveryRequest struct {
+	NotesDelivery   NotesDelivery `json:"notesDelivery"`
+	ExpectedVersion int64         `json:"expectedVersion"`
+}
+
+// GetNotesDelivery returns the value of NotesDelivery.
+func (s *NotesDeliveryRequest) GetNotesDelivery() NotesDelivery {
+	return s.NotesDelivery
+}
+
+// GetExpectedVersion returns the value of ExpectedVersion.
+func (s *NotesDeliveryRequest) GetExpectedVersion() int64 {
+	return s.ExpectedVersion
+}
+
+// SetNotesDelivery sets the value of NotesDelivery.
+func (s *NotesDeliveryRequest) SetNotesDelivery(val NotesDelivery) {
+	s.NotesDelivery = val
+}
+
+// SetExpectedVersion sets the value of ExpectedVersion.
+func (s *NotesDeliveryRequest) SetExpectedVersion(val int64) {
+	s.ExpectedVersion = val
+}
+
+// Ref: #/components/schemas/NotesDeliverySetting
+type NotesDeliverySetting struct {
+	NotesDelivery   NotesDelivery `json:"notesDelivery"`
+	SettingsVersion int64         `json:"settingsVersion"`
+}
+
+// GetNotesDelivery returns the value of NotesDelivery.
+func (s *NotesDeliverySetting) GetNotesDelivery() NotesDelivery {
+	return s.NotesDelivery
+}
+
+// GetSettingsVersion returns the value of SettingsVersion.
+func (s *NotesDeliverySetting) GetSettingsVersion() int64 {
+	return s.SettingsVersion
+}
+
+// SetNotesDelivery sets the value of NotesDelivery.
+func (s *NotesDeliverySetting) SetNotesDelivery(val NotesDelivery) {
+	s.NotesDelivery = val
+}
+
+// SetSettingsVersion sets the value of SettingsVersion.
+func (s *NotesDeliverySetting) SetSettingsVersion(val int64) {
+	s.SettingsVersion = val
+}
+
+func (*NotesDeliverySetting) setProjectNotesDeliveryRes() {}
+
 // NewOptAnthropicCredentialKind returns new OptAnthropicCredentialKind with value set to v.
 func NewOptAnthropicCredentialKind(v AnthropicCredentialKind) OptAnthropicCredentialKind {
 	return OptAnthropicCredentialKind{
@@ -11125,6 +12583,98 @@ func (o OptIsolationClass) Get() (v IsolationClass, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptIsolationClass) Or(d IsolationClass) IsolationClass {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptNoteProposalSummaryReason returns new OptNoteProposalSummaryReason with value set to v.
+func NewOptNoteProposalSummaryReason(v NoteProposalSummaryReason) OptNoteProposalSummaryReason {
+	return OptNoteProposalSummaryReason{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptNoteProposalSummaryReason is optional NoteProposalSummaryReason.
+type OptNoteProposalSummaryReason struct {
+	Value NoteProposalSummaryReason
+	Set   bool
+}
+
+// IsSet returns true if OptNoteProposalSummaryReason was set.
+func (o OptNoteProposalSummaryReason) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptNoteProposalSummaryReason) Reset() {
+	var v NoteProposalSummaryReason
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptNoteProposalSummaryReason) SetTo(v NoteProposalSummaryReason) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptNoteProposalSummaryReason) Get() (v NoteProposalSummaryReason, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptNoteProposalSummaryReason) Or(d NoteProposalSummaryReason) NoteProposalSummaryReason {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptNoteSource returns new OptNoteSource with value set to v.
+func NewOptNoteSource(v NoteSource) OptNoteSource {
+	return OptNoteSource{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptNoteSource is optional NoteSource.
+type OptNoteSource struct {
+	Value NoteSource
+	Set   bool
+}
+
+// IsSet returns true if OptNoteSource was set.
+func (o OptNoteSource) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptNoteSource) Reset() {
+	var v NoteSource
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptNoteSource) SetTo(v NoteSource) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptNoteSource) Get() (v NoteSource, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptNoteSource) Or(d NoteSource) NoteSource {
 	if v, ok := o.Get(); ok {
 		return v
 	}
@@ -14817,6 +16367,22 @@ func (s *ProxyProviderInferenceReq) init() ProxyProviderInferenceReq {
 	return m
 }
 
+type PutProjectNoteBadRequest ErrorEnvelope
+
+func (*PutProjectNoteBadRequest) putProjectNoteRes() {}
+
+type PutProjectNoteConflict ErrorEnvelope
+
+func (*PutProjectNoteConflict) putProjectNoteRes() {}
+
+type PutProjectNoteNotFound ErrorEnvelope
+
+func (*PutProjectNoteNotFound) putProjectNoteRes() {}
+
+type PutProjectNoteUnprocessableEntity ErrorEnvelope
+
+func (*PutProjectNoteUnprocessableEntity) putProjectNoteRes() {}
+
 type PutSecretBadRequest ErrorEnvelope
 
 func (*PutSecretBadRequest) putSecretRes() {}
@@ -14942,6 +16508,22 @@ func (s *PutSecretRequestPurpose) UnmarshalText(data []byte) error {
 		return errors.Errorf("invalid value: %q", data)
 	}
 }
+
+type PutWorkingNoteBadRequest ErrorEnvelope
+
+func (*PutWorkingNoteBadRequest) putWorkingNoteRes() {}
+
+type PutWorkingNoteConflict ErrorEnvelope
+
+func (*PutWorkingNoteConflict) putWorkingNoteRes() {}
+
+type PutWorkingNoteNotFound ErrorEnvelope
+
+func (*PutWorkingNoteNotFound) putWorkingNoteRes() {}
+
+type PutWorkingNoteUnprocessableEntity ErrorEnvelope
+
+func (*PutWorkingNoteUnprocessableEntity) putWorkingNoteRes() {}
 
 type ReadCapsuleFileBadRequest ErrorEnvelope
 
@@ -15115,6 +16697,14 @@ func (s *RejectDeliveryRequest) SetExpectedResourceVersion(val int64) {
 type RejectDeliveryUnprocessableEntity ErrorEnvelope
 
 func (*RejectDeliveryUnprocessableEntity) rejectDeliveryRes() {}
+
+type RejectNoteProposalNotFound ErrorEnvelope
+
+func (*RejectNoteProposalNotFound) rejectNoteProposalRes() {}
+
+type RejectNoteProposalUnprocessableEntity ErrorEnvelope
+
+func (*RejectNoteProposalUnprocessableEntity) rejectNoteProposalRes() {}
 
 // Ref: #/components/schemas/RemoteCI
 type RemoteCI struct {
@@ -15801,6 +17391,64 @@ type RespondThreadUnprocessableEntity ErrorEnvelope
 
 func (*RespondThreadUnprocessableEntity) respondThreadRes() {}
 
+// Ref: #/components/schemas/RestoreNoteRequest
+type RestoreNoteRequest struct {
+	Revision         int64 `json:"revision"`
+	ExpectedRevision int64 `json:"expectedRevision"`
+}
+
+// GetRevision returns the value of Revision.
+func (s *RestoreNoteRequest) GetRevision() int64 {
+	return s.Revision
+}
+
+// GetExpectedRevision returns the value of ExpectedRevision.
+func (s *RestoreNoteRequest) GetExpectedRevision() int64 {
+	return s.ExpectedRevision
+}
+
+// SetRevision sets the value of Revision.
+func (s *RestoreNoteRequest) SetRevision(val int64) {
+	s.Revision = val
+}
+
+// SetExpectedRevision sets the value of ExpectedRevision.
+func (s *RestoreNoteRequest) SetExpectedRevision(val int64) {
+	s.ExpectedRevision = val
+}
+
+type RestoreProjectNoteBadRequest ErrorEnvelope
+
+func (*RestoreProjectNoteBadRequest) restoreProjectNoteRes() {}
+
+type RestoreProjectNoteConflict ErrorEnvelope
+
+func (*RestoreProjectNoteConflict) restoreProjectNoteRes() {}
+
+type RestoreProjectNoteNotFound ErrorEnvelope
+
+func (*RestoreProjectNoteNotFound) restoreProjectNoteRes() {}
+
+type RestoreProjectNoteUnprocessableEntity ErrorEnvelope
+
+func (*RestoreProjectNoteUnprocessableEntity) restoreProjectNoteRes() {}
+
+type RestoreWorkingNoteBadRequest ErrorEnvelope
+
+func (*RestoreWorkingNoteBadRequest) restoreWorkingNoteRes() {}
+
+type RestoreWorkingNoteConflict ErrorEnvelope
+
+func (*RestoreWorkingNoteConflict) restoreWorkingNoteRes() {}
+
+type RestoreWorkingNoteNotFound ErrorEnvelope
+
+func (*RestoreWorkingNoteNotFound) restoreWorkingNoteRes() {}
+
+type RestoreWorkingNoteUnprocessableEntity ErrorEnvelope
+
+func (*RestoreWorkingNoteUnprocessableEntity) restoreWorkingNoteRes() {}
+
 type ResumeCapsuleBadRequest ErrorEnvelope
 
 func (*ResumeCapsuleBadRequest) resumeCapsuleRes() {}
@@ -15971,6 +17619,8 @@ type Routine struct {
 	CatchUpSeconds int    `json:"catchUpSeconds"`
 	MaxKept        int    `json:"maxKept"`
 	Enabled        bool   `json:"enabled"`
+	// Scheduled Threads receive the Project's notes.
+	IncludeNotes bool `json:"includeNotes"`
 	// Why Meridian turned the routine off, such as start_failures or transferred.
 	DisabledReason OptString   `json:"disabledReason"`
 	NextFireAt     OptDateTime `json:"nextFireAt"`
@@ -16047,6 +17697,11 @@ func (s *Routine) GetMaxKept() int {
 // GetEnabled returns the value of Enabled.
 func (s *Routine) GetEnabled() bool {
 	return s.Enabled
+}
+
+// GetIncludeNotes returns the value of IncludeNotes.
+func (s *Routine) GetIncludeNotes() bool {
+	return s.IncludeNotes
 }
 
 // GetDisabledReason returns the value of DisabledReason.
@@ -16157,6 +17812,11 @@ func (s *Routine) SetMaxKept(val int) {
 // SetEnabled sets the value of Enabled.
 func (s *Routine) SetEnabled(val bool) {
 	s.Enabled = val
+}
+
+// SetIncludeNotes sets the value of IncludeNotes.
+func (s *Routine) SetIncludeNotes(val bool) {
+	s.IncludeNotes = val
 }
 
 // SetDisabledReason sets the value of DisabledReason.
@@ -17469,6 +19129,18 @@ func (s *SetMemberRoleReqRole) UnmarshalText(data []byte) error {
 	}
 }
 
+type SetProjectNotesDeliveryBadRequest ErrorEnvelope
+
+func (*SetProjectNotesDeliveryBadRequest) setProjectNotesDeliveryRes() {}
+
+type SetProjectNotesDeliveryConflict ErrorEnvelope
+
+func (*SetProjectNotesDeliveryConflict) setProjectNotesDeliveryRes() {}
+
+type SetProjectNotesDeliveryNotFound ErrorEnvelope
+
+func (*SetProjectNotesDeliveryNotFound) setProjectNotesDeliveryRes() {}
+
 type SetThreadEffortBadRequest ErrorEnvelope
 
 func (*SetThreadEffortBadRequest) setThreadEffortRes() {}
@@ -17540,6 +19212,16 @@ func (s *SetupRevisionRef) SetRevision(val string) {
 func (s *SetupRevisionRef) SetSavedAt(val time.Time) {
 	s.SavedAt = val
 }
+
+// ShredProjectNotesNoContent is response for ShredProjectNotes operation.
+type ShredProjectNotesNoContent struct{}
+
+func (*ShredProjectNotesNoContent) shredProjectNotesRes() {}
+
+// ShredWorkingNotesNoContent is response for ShredWorkingNotes operation.
+type ShredWorkingNotesNoContent struct{}
+
+func (*ShredWorkingNotesNoContent) shredWorkingNotesRes() {}
 
 // SignOutNoContent is response for SignOut operation.
 type SignOutNoContent struct{}
@@ -17993,6 +19675,9 @@ type ThreadAdapterEvent struct {
 	// On context_usage events, true: the harness compacted (summarized) the conversation at this point.
 	// Only compactions are kept in the transcript, and they carry no token counts.
 	Compacted OptBool `json:"compacted"`
+	// On notes_updated events, how many Project notes a resumed session received that differ from the
+	// previous session's. It names no note and carries no content (ADR 0060).
+	NotesChanged OptInt `json:"notesChanged"`
 }
 
 // GetType returns the value of Type.
@@ -18100,6 +19785,11 @@ func (s *ThreadAdapterEvent) GetCompacted() OptBool {
 	return s.Compacted
 }
 
+// GetNotesChanged returns the value of NotesChanged.
+func (s *ThreadAdapterEvent) GetNotesChanged() OptInt {
+	return s.NotesChanged
+}
+
 // SetType sets the value of Type.
 func (s *ThreadAdapterEvent) SetType(val ThreadAdapterEventType) {
 	s.Type = val
@@ -18205,6 +19895,11 @@ func (s *ThreadAdapterEvent) SetCompacted(val OptBool) {
 	s.Compacted = val
 }
 
+// SetNotesChanged sets the value of NotesChanged.
+func (s *ThreadAdapterEvent) SetNotesChanged(val OptInt) {
+	s.NotesChanged = val
+}
+
 type ThreadAdapterEventStatus string
 
 const (
@@ -18308,6 +20003,7 @@ const (
 	ThreadAdapterEventTypeSetModel           ThreadAdapterEventType = "set_model"
 	ThreadAdapterEventTypeSetEffort          ThreadAdapterEventType = "set_effort"
 	ThreadAdapterEventTypeContextUsage       ThreadAdapterEventType = "context_usage"
+	ThreadAdapterEventTypeNotesUpdated       ThreadAdapterEventType = "notes_updated"
 )
 
 // AllValues returns all ThreadAdapterEventType values.
@@ -18330,6 +20026,7 @@ func (ThreadAdapterEventType) AllValues() []ThreadAdapterEventType {
 		ThreadAdapterEventTypeSetModel,
 		ThreadAdapterEventTypeSetEffort,
 		ThreadAdapterEventTypeContextUsage,
+		ThreadAdapterEventTypeNotesUpdated,
 	}
 }
 
@@ -18369,6 +20066,8 @@ func (s ThreadAdapterEventType) MarshalText() ([]byte, error) {
 	case ThreadAdapterEventTypeSetEffort:
 		return []byte(s), nil
 	case ThreadAdapterEventTypeContextUsage:
+		return []byte(s), nil
+	case ThreadAdapterEventTypeNotesUpdated:
 		return []byte(s), nil
 	default:
 		return nil, errors.Errorf("invalid value: %q", s)
@@ -18428,6 +20127,9 @@ func (s *ThreadAdapterEventType) UnmarshalText(data []byte) error {
 		return nil
 	case ThreadAdapterEventTypeContextUsage:
 		*s = ThreadAdapterEventTypeContextUsage
+		return nil
+	case ThreadAdapterEventTypeNotesUpdated:
+		*s = ThreadAdapterEventTypeNotesUpdated
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)
@@ -20235,6 +21937,107 @@ func (s *ThreadMutationResultHeaders) SetResponse(val ThreadMutationResult) {
 
 func (*ThreadMutationResultHeaders) createThreadRes() {}
 
+// Ref: #/components/schemas/ThreadNotes
+type ThreadNotes struct {
+	// The Thread's Include Project notes choice; empty follows the Project setting.
+	Choice      ThreadNotesChoice `json:"choice"`
+	Delivered   []DeliveredNote   `json:"delivered"`
+	DeliveredAt OptDateTime       `json:"deliveredAt"`
+	// The harness negotiated the notes index. False means it got the files without being told.
+	Indexed bool `json:"indexed"`
+}
+
+// GetChoice returns the value of Choice.
+func (s *ThreadNotes) GetChoice() ThreadNotesChoice {
+	return s.Choice
+}
+
+// GetDelivered returns the value of Delivered.
+func (s *ThreadNotes) GetDelivered() []DeliveredNote {
+	return s.Delivered
+}
+
+// GetDeliveredAt returns the value of DeliveredAt.
+func (s *ThreadNotes) GetDeliveredAt() OptDateTime {
+	return s.DeliveredAt
+}
+
+// GetIndexed returns the value of Indexed.
+func (s *ThreadNotes) GetIndexed() bool {
+	return s.Indexed
+}
+
+// SetChoice sets the value of Choice.
+func (s *ThreadNotes) SetChoice(val ThreadNotesChoice) {
+	s.Choice = val
+}
+
+// SetDelivered sets the value of Delivered.
+func (s *ThreadNotes) SetDelivered(val []DeliveredNote) {
+	s.Delivered = val
+}
+
+// SetDeliveredAt sets the value of DeliveredAt.
+func (s *ThreadNotes) SetDeliveredAt(val OptDateTime) {
+	s.DeliveredAt = val
+}
+
+// SetIndexed sets the value of Indexed.
+func (s *ThreadNotes) SetIndexed(val bool) {
+	s.Indexed = val
+}
+
+func (*ThreadNotes) getThreadNotesRes() {}
+
+// The Thread's Include Project notes choice; empty follows the Project setting.
+type ThreadNotesChoice string
+
+const (
+	ThreadNotesChoiceEmpty   ThreadNotesChoice = ""
+	ThreadNotesChoiceInclude ThreadNotesChoice = "include"
+	ThreadNotesChoiceExclude ThreadNotesChoice = "exclude"
+)
+
+// AllValues returns all ThreadNotesChoice values.
+func (ThreadNotesChoice) AllValues() []ThreadNotesChoice {
+	return []ThreadNotesChoice{
+		ThreadNotesChoiceEmpty,
+		ThreadNotesChoiceInclude,
+		ThreadNotesChoiceExclude,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s ThreadNotesChoice) MarshalText() ([]byte, error) {
+	switch s {
+	case ThreadNotesChoiceEmpty:
+		return []byte(s), nil
+	case ThreadNotesChoiceInclude:
+		return []byte(s), nil
+	case ThreadNotesChoiceExclude:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *ThreadNotesChoice) UnmarshalText(data []byte) error {
+	switch ThreadNotesChoice(data) {
+	case ThreadNotesChoiceEmpty:
+		*s = ThreadNotesChoiceEmpty
+		return nil
+	case ThreadNotesChoiceInclude:
+		*s = ThreadNotesChoiceInclude
+		return nil
+	case ThreadNotesChoiceExclude:
+		*s = ThreadNotesChoiceExclude
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
 // Marks a user-role message Meridian wrote rather than the operator typing it now: from_lead on a
 // subagent, from_subagents on a lead, and from_routine for the prompt a routine saved (ADR 0057).
 // Ref: #/components/schemas/ThreadOrigin
@@ -20857,7 +22660,10 @@ func (*TooManyRequestsHeaders) listThreadLinksRes()            {}
 func (*TooManyRequestsHeaders) makeThreadLeadRes()             {}
 func (*TooManyRequestsHeaders) patchProjectRes()               {}
 func (*TooManyRequestsHeaders) pauseCapsuleRes()               {}
+func (*TooManyRequestsHeaders) promoteWorkingNoteRes()         {}
+func (*TooManyRequestsHeaders) putProjectNoteRes()             {}
 func (*TooManyRequestsHeaders) putSecretRes()                  {}
+func (*TooManyRequestsHeaders) putWorkingNoteRes()             {}
 func (*TooManyRequestsHeaders) removeSubagentRes()             {}
 func (*TooManyRequestsHeaders) resumeCapsuleRes()              {}
 func (*TooManyRequestsHeaders) retryCapsuleRes()               {}
@@ -20932,6 +22738,7 @@ func (*UnauthorizedHeaders) enableMemberRes()                 {}
 func (*UnauthorizedHeaders) getCurrentMemberRes()             {}
 func (*UnauthorizedHeaders) getProfileRes()                   {}
 func (*UnauthorizedHeaders) listMembersRes()                  {}
+func (*UnauthorizedHeaders) listPendingNoteProposalsRes()     {}
 func (*UnauthorizedHeaders) listPersonalAccessTokensRes()     {}
 func (*UnauthorizedHeaders) listRoutinesRes()                 {}
 func (*UnauthorizedHeaders) listSessionsRes()                 {}
@@ -21272,6 +23079,7 @@ type UpdateRoutineRequest struct {
 	CatchUpSeconds          OptInt    `json:"catchUpSeconds"`
 	MaxKept                 OptInt    `json:"maxKept"`
 	Enabled                 OptBool   `json:"enabled"`
+	IncludeNotes            OptBool   `json:"includeNotes"`
 	ExpectedResourceVersion int64     `json:"expectedResourceVersion"`
 }
 
@@ -21328,6 +23136,11 @@ func (s *UpdateRoutineRequest) GetMaxKept() OptInt {
 // GetEnabled returns the value of Enabled.
 func (s *UpdateRoutineRequest) GetEnabled() OptBool {
 	return s.Enabled
+}
+
+// GetIncludeNotes returns the value of IncludeNotes.
+func (s *UpdateRoutineRequest) GetIncludeNotes() OptBool {
+	return s.IncludeNotes
 }
 
 // GetExpectedResourceVersion returns the value of ExpectedResourceVersion.
@@ -21388,6 +23201,11 @@ func (s *UpdateRoutineRequest) SetMaxKept(val OptInt) {
 // SetEnabled sets the value of Enabled.
 func (s *UpdateRoutineRequest) SetEnabled(val OptBool) {
 	s.Enabled = val
+}
+
+// SetIncludeNotes sets the value of IncludeNotes.
+func (s *UpdateRoutineRequest) SetIncludeNotes(val OptBool) {
+	s.IncludeNotes = val
 }
 
 // SetExpectedResourceVersion sets the value of ExpectedResourceVersion.
@@ -21614,3 +23432,53 @@ func (s *WorkspaceFilePage) SetNextAfter(val OptString) {
 }
 
 func (*WorkspaceFilePage) listCapsuleFilesRes() {}
+
+// Ref: #/components/schemas/WriteNoteRequest
+type WriteNoteRequest struct {
+	Content          string `json:"content"`
+	ExpectedRevision int64  `json:"expectedRevision"`
+	// Give the note a new name in the same revision.
+	Rename OptString `json:"rename"`
+	// The Thread a transcript selection came from, recorded as provenance.
+	SourceThreadId OptString `json:"sourceThreadId"`
+}
+
+// GetContent returns the value of Content.
+func (s *WriteNoteRequest) GetContent() string {
+	return s.Content
+}
+
+// GetExpectedRevision returns the value of ExpectedRevision.
+func (s *WriteNoteRequest) GetExpectedRevision() int64 {
+	return s.ExpectedRevision
+}
+
+// GetRename returns the value of Rename.
+func (s *WriteNoteRequest) GetRename() OptString {
+	return s.Rename
+}
+
+// GetSourceThreadId returns the value of SourceThreadId.
+func (s *WriteNoteRequest) GetSourceThreadId() OptString {
+	return s.SourceThreadId
+}
+
+// SetContent sets the value of Content.
+func (s *WriteNoteRequest) SetContent(val string) {
+	s.Content = val
+}
+
+// SetExpectedRevision sets the value of ExpectedRevision.
+func (s *WriteNoteRequest) SetExpectedRevision(val int64) {
+	s.ExpectedRevision = val
+}
+
+// SetRename sets the value of Rename.
+func (s *WriteNoteRequest) SetRename(val OptString) {
+	s.Rename = val
+}
+
+// SetSourceThreadId sets the value of SourceThreadId.
+func (s *WriteNoteRequest) SetSourceThreadId(val OptString) {
+	s.SourceThreadId = val
+}

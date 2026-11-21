@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -28,7 +29,9 @@ func newRootCommand() *cobra.Command {
 		Short: "Coordinate subagent Threads from a Meridian lead Thread",
 		Long: "Coordinate subagent Threads from inside a Meridian Capsule.\n\n" +
 			"Requests go to the Capsule-local mailbox; meridiand pulls them and enforces the\n" +
-			"lead Thread's Coordination Grant. Output is one JSON response per command.",
+			"lead Thread's Coordination Grant. Output is one JSON response per command.\n\n" +
+			"LINK names one of this lead's subagents: the link ID spawn returned, or the\n" +
+			"subagent's name, as a wake headline shows it.",
 		Version:       buildinfo.Current().String(),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -66,6 +69,16 @@ func newRootCommand() *cobra.Command {
 		newPatchCommand(run),
 		newReportCommand(run),
 		newProposeDeliveryCommand(run),
+		newNoteCommand(coordproto.KindWriteNote, run),
+		newNoteCommand(coordproto.KindProposeNote, run),
+		&cobra.Command{
+			Use: "sync-notes", Short: "Refresh this tree's working notes and list what changed", Args: cobra.NoArgs,
+			Long: "Rewrite $HOME/.meridian/working-notes/ with the tree's current working notes and\n" +
+				"list their names, revisions, and which changed. Content stays in the files.",
+			RunE: func(command *cobra.Command, _ []string) error {
+				return run(command, coordproto.Request{Type: coordproto.KindSyncNotes})
+			},
+		},
 		&cobra.Command{
 			Use: "list", Short: "List subagents", Args: cobra.NoArgs,
 			RunE: func(command *cobra.Command, _ []string) error {
@@ -277,6 +290,60 @@ func newProposeDeliveryCommand(run runner) *cobra.Command {
 	command.Flags().StringVar(&key, "key", "", "idempotency key (default random)")
 	_ = command.MarkFlagRequired("title")
 	_ = command.MarkFlagRequired("branch")
+	return command
+}
+
+// newNoteCommand builds write-note and propose-note (ADR 0060). The note's
+// content comes from --content, --stdin, --from-file (a private note under
+// $HOME/.meridian/notes/), or for a proposal --from-working-note.
+func newNoteCommand(kind coordproto.Kind, run runner) *cobra.Command {
+	var content, fromFile, fromWorking, key string
+	var base int64
+	var stdin, remove bool
+	use, short, long := "write-note NAME", "Write a working note shared with the lead's tree",
+		"Replace a working note that the lead and its subagents all read. --base is the\n"+
+			"revision you last read (0 to create); a stale revision is refused as a conflict and\n"+
+			"the file under $HOME/.meridian/working-notes/ is refreshed. Never put a credential\n"+
+			"in a note."
+	if kind == coordproto.KindProposeNote {
+		use, short, long = "propose-note NAME", "Propose a change to a Project note for the operator to review",
+			"Propose a Project note's whole new text, a new note, or its deletion. The operator\n"+
+				"reviews every proposal; nothing reaches other Threads until it is approved. --base is\n"+
+				"the Project note's revision you read, 0 for a new note. whoami shows the states of\n"+
+				"your recent proposals."
+	}
+	command := &cobra.Command{
+		Use: use + " [--base N] (--content TEXT | --stdin | --from-file PATH | --delete)", Short: short, Long: long,
+		Args: cobra.ExactArgs(1),
+		RunE: func(command *cobra.Command, arguments []string) error {
+			if stdin {
+				data, err := io.ReadAll(io.LimitReader(command.InOrStdin(), coordproto.MaxNoteBytes+1))
+				if err != nil {
+					return err
+				}
+				if len(data) > coordproto.MaxNoteBytes {
+					return fmt.Errorf("a note is at most %d bytes", coordproto.MaxNoteBytes)
+				}
+				content = string(data)
+			}
+			return run(command, coordproto.Request{
+				Type: kind, Name: strings.TrimSuffix(arguments[0], ".md"), BaseRevision: base,
+				Content: content, FromFile: fromFile, FromWorkingNote: fromWorking, Delete: remove, Key: key,
+			})
+		},
+	}
+	command.Flags().Int64Var(&base, "base", 0, "revision you last read (0 to create)")
+	command.Flags().StringVar(&content, "content", "", "the note's whole new Markdown text")
+	command.Flags().BoolVar(&stdin, "stdin", false, "read the note's text from standard input")
+	command.Flags().StringVar(&fromFile, "from-file", "", "use a file under $HOME/.meridian/notes/ as the text")
+	command.Flags().BoolVar(&remove, "delete", false, "delete the note")
+	command.Flags().StringVar(&key, "key", "", "idempotency key (default random)")
+	if kind == coordproto.KindProposeNote {
+		command.Flags().StringVar(&fromWorking, "from-working-note", "", "propose this tree's working note of that name")
+		command.MarkFlagsMutuallyExclusive("content", "stdin", "from-file", "from-working-note", "delete")
+	} else {
+		command.MarkFlagsMutuallyExclusive("content", "stdin", "from-file", "delete")
+	}
 	return command
 }
 

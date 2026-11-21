@@ -31,6 +31,7 @@ type coordRuntime struct {
 	events    map[domain.RunID][]ports.RuntimeStructuredEvent
 	sent      map[domain.RunID][]adapterproto.Frame
 	starts    map[domain.RunID]adapterproto.Frame
+	notes     map[domain.RunID]*coordproto.NotesDelivery
 	cancels   map[domain.RunID]int
 	mailboxes map[string]*capsuleproto.Mailbox
 	patches   map[string]ports.GitPatchResult
@@ -98,6 +99,10 @@ func (r *coordRuntime) StartStructured(_ context.Context, request ports.RuntimeS
 	run := ports.RuntimeRun{State: domain.RunRunning, Structured: true}
 	r.runs[request.RunID] = run
 	r.starts[request.RunID] = request.Frame
+	if r.notes == nil {
+		r.notes = make(map[domain.RunID]*coordproto.NotesDelivery)
+	}
+	r.notes[request.RunID] = request.Notes
 	return run, nil
 }
 
@@ -765,6 +770,80 @@ func TestOtherLeadsLinksAreInvisible(t *testing.T) {
 	}
 	if list := tool(t, other, coordproto.Request{Type: coordproto.KindList}); !list.OK || len(list.Links) != 0 {
 		t.Fatalf("list = %+v", list)
+	}
+}
+
+// A wake headline leads with the subagent's name, so every request that
+// takes a link also takes the name, resolved only among the requesting
+// lead's own links.
+func TestLeadNamesSubagentsByName(t *testing.T) {
+	f := newCoordFixture(t)
+	_, first := f.spawnLead(t, domain.CoordinationPolicy{})
+	spawned := tool(t, first, coordproto.Request{Type: coordproto.KindSpawn, Key: "s", Name: "one", Harness: "mock", Prompt: "task"})
+	if !spawned.OK {
+		t.Fatalf("spawn = %+v", spawned)
+	}
+	link, err := f.service.GetThreadLink(f.ctx, domain.ThreadLinkID(spawned.Link.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.ready(t, link.ChildCapsuleID)
+	f.service.CoordinationTick(asSystem(f.ctx))
+
+	policy := domain.CoordinationPolicy{}
+	second, err := f.service.CreateProjectThread(f.ctx, app.CreateProjectThreadInput{
+		ProjectID: "project-coord", Harness: "mock", Prompt: "second lead", IdempotencyKey: "lead-2", Coordination: &policy,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.service.CoordinationTick(asSystem(f.ctx))
+	other := f.runtime.mailbox(f.ready(t, second.Intent.CapsuleID).ProviderResourceID)
+	for _, request := range []coordproto.Request{
+		{Type: coordproto.KindStatus, Link: "one"},
+		{Type: coordproto.KindPatch, Link: "one"},
+		{Type: coordproto.KindResult, Link: "one"},
+		{Type: coordproto.KindSend, Key: "inject", Link: "one", Prompt: "x"},
+		{Type: coordproto.KindCancel, Key: "steal", Link: "one"},
+	} {
+		if response := tool(t, other, request); code(response) != coordproto.CodeNotFound {
+			t.Fatalf("%s by another lead's subagent name = %+v", request.Type, response)
+		}
+	}
+
+	for _, request := range []coordproto.Request{
+		{Type: coordproto.KindStatus, Link: "one"},
+		{Type: coordproto.KindPatch, Link: "one"},
+		{Type: coordproto.KindResult, Link: "one"},
+	} {
+		response := tool(t, first, request)
+		if !response.OK || response.Link == nil || response.Link.ID != spawned.Link.ID {
+			t.Fatalf("%s by name = %+v", request.Type, response)
+		}
+	}
+	if sent := tool(t, first, coordproto.Request{Type: coordproto.KindSend, Key: "follow-up", Link: "one", Prompt: "and the tests"}); !sent.OK || sent.MessageID == "" {
+		t.Fatalf("send by name = %+v", sent)
+	}
+
+	// The second lead's own "one" is a different link.
+	mine := tool(t, other, coordproto.Request{Type: coordproto.KindSpawn, Key: "s2", Name: "one", Harness: "mock", Prompt: "task"})
+	if !mine.OK || mine.Link.ID == spawned.Link.ID {
+		t.Fatalf("second lead's spawn = %+v", mine)
+	}
+	if status := tool(t, other, coordproto.Request{Type: coordproto.KindStatus, Link: "one"}); !status.OK ||
+		status.Link.ID != mine.Link.ID {
+		t.Fatalf("second lead's status by name = %+v", status)
+	}
+
+	if cancelled := tool(t, first, coordproto.Request{Type: coordproto.KindCancel, Key: "stop", Link: "one"}); !cancelled.OK {
+		t.Fatalf("cancel by name = %+v", cancelled)
+	}
+	if current, err := f.service.GetThreadLink(f.ctx, link.ID); err != nil || current.State == domain.LinkActive {
+		t.Fatalf("cancelled link = %+v, %v", current, err)
+	}
+	if theirs, err := f.service.GetThreadLink(f.ctx, domain.ThreadLinkID(mine.Link.ID)); err != nil ||
+		theirs.State != domain.LinkActive {
+		t.Fatalf("cancel by name reached the second lead's link: %+v, %v", theirs, err)
 	}
 }
 

@@ -49,6 +49,7 @@ export function MakeLeadDialog({
     >
       {restarted === undefined ? (
         <form
+          className="launcher-form"
           onSubmit={(event) => {
             event.preventDefault();
             mutation.mutate();
@@ -75,7 +76,7 @@ export function MakeLeadDialog({
               Approve each subagent spawn
             </label>
           </fieldset>
-          <p className="field-hint">
+          <p className="muted-copy">
             The agent restarts its session to pick up the role. A turn in progress finishes first.
           </p>
           {mutation.isError && (

@@ -169,6 +169,70 @@ describe("New Capsule dialog", () => {
     });
   });
 
+  describe("Include Project notes", () => {
+    const notes = (notesDelivery: "all_threads" | "leads_only" | "off") => ({
+      items: [], liveCount: 0, totalBytes: 0, maxNotes: 32, maxBytes: 131072,
+      notesDelivery, settingsVersion: 1, pendingProposals: 0,
+    });
+    const ready = (coordination: boolean) => {
+      if (coordination) {
+        vi.mocked(api.capabilities).mockResolvedValue({
+          ...capabilities,
+          coordination: { supported: true, maxDepth: 1, maxDescendants: 8 },
+        });
+      }
+      vi.mocked(api.providerConnections).mockResolvedValue({
+        enabled: true,
+        items: [{
+          id: "connection-1", name: "OpenAI", provider: "openai", revoked: false,
+          createdAt: project.createdAt, resourceVersion: 1,
+        }],
+      });
+      vi.mocked(api.projectConnection).mockResolvedValue({ connectionId: "connection-1" });
+      return vi.spyOn(api, "createProjectThread").mockResolvedValue({
+        id: "intent-1", projectId: project.id, capsuleId: capsule.id, capsuleName: "new", threadId: "thread-1",
+        runId: "run-1", messageId: "message-1", harness: "opencode", state: "provisioning",
+        createdAt: project.createdAt, updatedAt: project.updatedAt, resourceVersion: 1,
+      });
+    };
+
+    it("defaults on for every Thread and sends nothing when kept", async () => {
+      vi.spyOn(api, "projectNotes").mockResolvedValue(notes("all_threads"));
+      const spawn = ready(false);
+      renderDialog();
+      expect(await screen.findByRole("checkbox", { name: "Include Project notes" })).toBeChecked();
+      await waitFor(() => expect(screen.getByRole("button", { name: "Start" })).toBeEnabled());
+      await userEvent.click(screen.getByRole("button", { name: "Start" }));
+      expect(await screen.findByText("Capsule opened")).toBeInTheDocument();
+      expect(spawn).toHaveBeenCalledWith(project.id, "opencode", "", undefined, undefined);
+    });
+
+    it("follows leads_only for a plain Thread and sends the operator's change", async () => {
+      vi.spyOn(api, "projectNotes").mockResolvedValue(notes("leads_only"));
+      const spawn = ready(true);
+      renderDialog();
+      const include = await screen.findByRole("checkbox", { name: "Include Project notes" });
+      // Leads receive notes under leads_only.
+      expect(include).toBeChecked();
+      await userEvent.click(screen.getByRole("checkbox", { name: "Lead agent with subagents" }));
+      expect(include).not.toBeChecked();
+      await userEvent.click(include);
+      await waitFor(() => expect(screen.getByRole("button", { name: "Start" })).toBeEnabled());
+      await userEvent.click(screen.getByRole("button", { name: "Start" }));
+      expect(await screen.findByText("Capsule opened")).toBeInTheDocument();
+      expect(spawn).toHaveBeenCalledWith(project.id, "opencode", "", undefined, undefined, undefined, true);
+    });
+
+    it("is not offered when the Project delivers notes to no Thread", async () => {
+      const list = vi.spyOn(api, "projectNotes").mockResolvedValue(notes("off"));
+      ready(false);
+      renderDialog();
+      await screen.findByRole("combobox", { name: "Harness" });
+      await waitFor(() => expect(list).toHaveBeenCalled());
+      expect(screen.queryByRole("checkbox", { name: "Include Project notes" })).not.toBeInTheDocument();
+    });
+  });
+
   it("chooses a harness from the dropdown with the keyboard", async () => {
     const packs = [
       { name: "opencode", imageReference: "example.test/opencode:v1" },

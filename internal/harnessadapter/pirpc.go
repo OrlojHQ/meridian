@@ -69,7 +69,7 @@ func RunPiRPC(
 	if err := stream.Handshake(adapterproto.Capabilities{
 		Resume: true, ToolEvents: true, Permissions: true,
 		InputRequests: true, Heartbeat: false, OpaqueMetadata: true,
-		Commands: true, Models: true, Effort: true, Images: true, ContextUsage: true,
+		Commands: true, Models: true, Effort: true, Images: true, ContextUsage: true, Notes: true,
 	}); err != nil {
 		return err
 	}
@@ -81,7 +81,7 @@ func RunPiRPC(
 		return errors.New("Pi adapter requires start or resume")
 	}
 
-	command := piCommand(config, coordinationBrief(initial.Metadata, coordinationCLI))
+	command := piCommand(config, systemBrief(initial.Metadata, coordinationCLI))
 	child, err := startProcess(processConfig{Command: command})
 	if err != nil {
 		return err

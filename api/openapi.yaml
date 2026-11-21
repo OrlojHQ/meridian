@@ -1823,6 +1823,493 @@ paths:
         "422": { $ref: "#/components/responses/Unprocessable" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
         default: { $ref: "#/components/responses/DefaultError" }
+  /projects/{projectId}/notes:
+    get:
+      operationId: listProjectNotes
+      summary: List project notes
+      description: >-
+        Lists notes by name with size, revision, who wrote the head revision
+        and whether it came from agent text (ADR 0060). Content-free. Deleted
+        notes stay listed with live false until purged.
+      tags: [notes]
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: Notes
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NoteList" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /projects/{projectId}/notes/shred:
+    post:
+      operationId: shredProjectNotes
+      summary: Crypto-shred project notes
+      description: >-
+        Clears the notes data key. Every revision and proposal becomes unreadable,
+        the live set is empty, and a new key is made with the next note.
+        Content-free provenance rows stay. Irreversible.
+      tags: [notes]
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "204": { description: Shredded }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /projects/{projectId}/notes/{noteName}:
+    get:
+      operationId: getProjectNote
+      summary: Read a project note
+      description: >-
+        Returns the head revision, or the named retained revision, with its
+        content. Responses carry Cache-Control no-store. A deleted note's head
+        is not found; read a revision from its history instead.
+      tags: [notes]
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/NoteName"
+        - name: revision
+          in: query
+          required: false
+          schema: { type: integer, format: int64, minimum: 1 }
+      responses:
+        "200":
+          description: Note
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NoteContent" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/DefaultError" }
+    put:
+      operationId: putProjectNote
+      summary: Write a project note
+      description: >-
+        Replaces the whole note as an operator revision. expectedRevision is
+        the head the editor opened, 0 to create; a different head is 409.
+        Writes past a size or count limit are refused, never cut.
+      tags: [notes]
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/NoteName"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WriteNoteRequest" }
+      responses:
+        "200":
+          description: Written
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NoteSummary" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /projects/{projectId}/notes/{noteName}/delete:
+    post:
+      operationId: deleteProjectNote
+      summary: Delete a project note
+      description: >-
+        Creates a delete revision; the note stops being delivered at the next
+        session start. withHistory also drops every revision's
+        content and closes its pending proposals. That is a row update, not media erasure.
+      tags: [notes]
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/NoteName"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeleteNoteRequest" }
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NoteSummary" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /projects/{projectId}/notes/{noteName}/restore:
+    post:
+      operationId: restoreProjectNote
+      summary: Restore a retained revision
+      description: Creates a new revision with the content of a retained older one.
+      tags: [notes]
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/NoteName"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RestoreNoteRequest" }
+      responses:
+        "200":
+          description: Restored
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NoteSummary" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /projects/{projectId}/notes/{noteName}/revisions:
+    get:
+      operationId: listProjectNoteRevisions
+      summary: List a note's revisions
+      description: Content-free provenance of every revision, newest first. retained says the content is still kept.
+      tags: [notes]
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/NoteName"
+      responses:
+        "200":
+          description: History
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NoteHistory" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /coordination-grants/{grantId}/notes:
+    get:
+      operationId: listWorkingNotes
+      summary: List working notes
+      description: >-
+        Lists notes by name with size, revision, who wrote the head revision
+        and whether it came from agent text (ADR 0060). Content-free. Deleted
+        notes stay listed with live false until purged.
+      tags: [notes]
+      parameters:
+        - $ref: "#/components/parameters/GrantId"
+      responses:
+        "200":
+          description: Notes
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NoteList" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /coordination-grants/{grantId}/notes/shred:
+    post:
+      operationId: shredWorkingNotes
+      summary: Crypto-shred working notes
+      description: >-
+        Clears the notes data key. Every revision becomes unreadable,
+        the live set is empty, and a new key is made with the next note.
+        Content-free provenance rows stay. Irreversible.
+      tags: [notes]
+      parameters:
+        - $ref: "#/components/parameters/GrantId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "204": { description: Shredded }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /coordination-grants/{grantId}/notes/{noteName}:
+    get:
+      operationId: getWorkingNote
+      summary: Read a working note
+      description: >-
+        Returns the head revision, or the named retained revision, with its
+        content. Responses carry Cache-Control no-store. A deleted note's head
+        is not found; read a revision from its history instead.
+      tags: [notes]
+      parameters:
+        - $ref: "#/components/parameters/GrantId"
+        - $ref: "#/components/parameters/NoteName"
+        - name: revision
+          in: query
+          required: false
+          schema: { type: integer, format: int64, minimum: 1 }
+      responses:
+        "200":
+          description: Note
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NoteContent" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/DefaultError" }
+    put:
+      operationId: putWorkingNote
+      summary: Write a working note
+      description: >-
+        Replaces the whole note as an operator revision. expectedRevision is
+        the head the editor opened, 0 to create; a different head is 409.
+        Writes past a size or count limit are refused, never cut. A revoked lead's working notes are read-only.
+      tags: [notes]
+      parameters:
+        - $ref: "#/components/parameters/GrantId"
+        - $ref: "#/components/parameters/NoteName"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WriteNoteRequest" }
+      responses:
+        "200":
+          description: Written
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NoteSummary" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /coordination-grants/{grantId}/notes/{noteName}/delete:
+    post:
+      operationId: deleteWorkingNote
+      summary: Delete a working note
+      description: >-
+        Creates a delete revision; the note stops being delivered at the next
+        session start or sync-notes. withHistory also drops every revision's
+        content. That is a row update, not media erasure.
+      tags: [notes]
+      parameters:
+        - $ref: "#/components/parameters/GrantId"
+        - $ref: "#/components/parameters/NoteName"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeleteNoteRequest" }
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NoteSummary" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /coordination-grants/{grantId}/notes/{noteName}/restore:
+    post:
+      operationId: restoreWorkingNote
+      summary: Restore a retained revision
+      description: Creates a new revision with the content of a retained older one.
+      tags: [notes]
+      parameters:
+        - $ref: "#/components/parameters/GrantId"
+        - $ref: "#/components/parameters/NoteName"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RestoreNoteRequest" }
+      responses:
+        "200":
+          description: Restored
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NoteSummary" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /coordination-grants/{grantId}/notes/{noteName}/revisions:
+    get:
+      operationId: listWorkingNoteRevisions
+      summary: List a note's revisions
+      description: Content-free provenance of every revision, newest first. retained says the content is still kept.
+      tags: [notes]
+      parameters:
+        - $ref: "#/components/parameters/GrantId"
+        - $ref: "#/components/parameters/NoteName"
+      responses:
+        "200":
+          description: History
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NoteHistory" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /coordination-grants/{grantId}/notes/{noteName}/promote:
+    post:
+      operationId: promoteWorkingNote
+      summary: Promote a working note to Project notes
+      description: >-
+        Opens the review of the working note's current revision as a change
+        to the Project note of the same name, or a new one. It stores a
+        pending proposal; nothing leaves the tree until it is approved.
+        A revoked lead's notes can still be promoted.
+      tags: [notes]
+      parameters:
+        - $ref: "#/components/parameters/GrantId"
+        - $ref: "#/components/parameters/NoteName"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "201":
+          description: Proposal created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NoteProposalSummary" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /projects/{projectId}/notes-delivery:
+    put:
+      operationId: setProjectNotesDelivery
+      summary: Choose which Threads receive Project notes
+      description: >-
+        all_threads (default), leads_only (lead Threads and their subagents),
+        or off. expectedVersion is the note list's settingsVersion, 0 when the
+        Project has no notes yet.
+      tags: [notes]
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NotesDeliveryRequest" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotesDeliverySetting" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /projects/{projectId}/note-proposals:
+    get:
+      operationId: listProjectNoteProposals
+      summary: List a Project's note proposals
+      description: Content-free, newest first, with each proposal's effective state.
+      tags: [notes]
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - name: pending
+          in: query
+          required: false
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: Proposals
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NoteProposalList" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /note-proposals:
+    get:
+      operationId: listPendingNoteProposals
+      summary: List every pending note proposal of the caller's Projects
+      description: >-
+        For the Inbox's Notes to review. Content-free: names the Project, the
+        note and the proposing Thread only, never proposal text.
+      tags: [notes]
+      responses:
+        "200":
+          description: Pending proposals
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NoteProposalList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /note-proposals/{proposalId}:
+    get:
+      operationId: getNoteProposal
+      summary: Review a note proposal
+      description: >-
+        Returns the proposed text and the note's current text for a source
+        diff, and flags credential-shaped content. Both are agent text until
+        the operator approves. Cache-Control no-store.
+      tags: [notes]
+      parameters:
+        - $ref: "#/components/parameters/ProposalId"
+      responses:
+        "200":
+          description: Proposal
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NoteProposalReview" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /note-proposals/{proposalId}/approve:
+    post:
+      operationId: approveNoteProposal
+      summary: Approve one note proposal
+      description: >-
+        Binds one exact change: the proposal's digest and the note's current
+        revision. A proposal whose note moved past its base is stale and
+        cannot be approved; open it in the editor and merge by hand. content,
+        when given and different, is the operator's edit and is recorded as
+        approved_with_edits.
+      tags: [notes]
+      parameters:
+        - $ref: "#/components/parameters/ProposalId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ApproveNoteProposalRequest" }
+      responses:
+        "200":
+          description: Approved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NoteProposalSummary" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /note-proposals/{proposalId}/reject:
+    post:
+      operationId: rejectNoteProposal
+      summary: Reject one note proposal
+      description: There is no reason field; message the proposing Thread to explain.
+      tags: [notes]
+      parameters:
+        - $ref: "#/components/parameters/ProposalId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: Rejected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NoteProposalSummary" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /threads/{threadId}/notes:
+    get:
+      operationId: getThreadNotes
+      summary: Show the note set a Thread's latest session received
+      description: Content-free names, revisions and digests, and whether the harness was told about them.
+      tags: [notes]
+      parameters:
+        - $ref: "#/components/parameters/ThreadId"
+      responses:
+        "200":
+          description: Thread notes
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ThreadNotes" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/DefaultError" }
   /threads/{threadId}/delete:
     post:
       operationId: deleteThread
@@ -4022,6 +4509,22 @@ components:
       schema:
         type: string
         minLength: 1
+    NoteName:
+      name: noteName
+      in: path
+      required: true
+      description: Note name without the .md suffix.
+      schema:
+        type: string
+        pattern: "^[a-z0-9][a-z0-9-]{0,47}$"
+    ProposalId:
+      name: proposalId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
     RequestId:
       name: requestId
       in: path
@@ -4899,7 +5402,7 @@ components:
       type: object
       required:
         [id, projectId, name, harness, prompt, cadence, timeZone, maxRunSeconds, catchUpSeconds,
-         maxKept, enabled, keptCapsules, resourceVersion, createdAt, updatedAt]
+         maxKept, enabled, includeNotes, keptCapsules, resourceVersion, createdAt, updatedAt]
       properties:
         id: { type: string }
         projectId: { type: string }
@@ -4920,6 +5423,7 @@ components:
         catchUpSeconds: { type: integer, minimum: 0, maximum: 86400 }
         maxKept: { type: integer, minimum: 1, maximum: 20 }
         enabled: { type: boolean }
+        includeNotes: { type: boolean, description: Scheduled Threads receive the Project's notes. }
         disabledReason:
           type: string
           description: Why Meridian turned the routine off, such as start_failures or transferred.
@@ -4956,6 +5460,10 @@ components:
         catchUpSeconds: { type: integer, minimum: 0, maximum: 86400, default: 3600 }
         maxKept: { type: integer, minimum: 1, maximum: 20, default: 5 }
         enabled: { type: boolean, default: true }
+        includeNotes:
+          type: boolean
+          default: false
+          description: Deliver the Project's notes to each scheduled Thread as files (ADR 0060).
     UpdateRoutineRequest:
       type: object
       required: [expectedResourceVersion]
@@ -4971,6 +5479,7 @@ components:
         catchUpSeconds: { type: integer, minimum: 0, maximum: 86400 }
         maxKept: { type: integer, minimum: 1, maximum: 20 }
         enabled: { type: boolean }
+        includeNotes: { type: boolean }
         expectedResourceVersion: { type: integer, format: int64, minimum: 1 }
     ReportedModelOption:
       type: object
@@ -4994,6 +5503,216 @@ components:
           items: { $ref: "#/components/schemas/ReportedModelOption" }
         currentEffort: { type: string }
         threadId: { type: string }
+    NoteRevisionKind:
+      type: string
+      enum: [operator_write, agent_write, approved_proposal, approved_with_edits, restore, delete]
+    NoteWriter:
+      type: string
+      enum: [agent, operator]
+    NoteSource:
+      type: object
+      description: Content-free provenance of agent text.
+      properties:
+        threadId: { type: string }
+        capsuleId: { type: string }
+        linkId: { type: string }
+        linkName: { type: string }
+        leadThreadId: { type: string }
+        grantId: { type: string }
+        workingNoteName: { type: string }
+        workingNoteRevision: { type: integer, format: int64 }
+        workingCapsuleId: { type: string }
+    NoteSummary:
+      type: object
+      required: [name, revision, live, size, digest, kind, writer, agentProposed, createdAt, updatedAt]
+      properties:
+        name: { type: string, pattern: "^[a-z0-9][a-z0-9-]{0,47}$" }
+        revision: { type: integer, format: int64, minimum: 1 }
+        live: { type: boolean }
+        size: { type: integer, minimum: 0, maximum: 32768 }
+        digest: { type: string }
+        kind: { $ref: "#/components/schemas/NoteRevisionKind" }
+        writer: { $ref: "#/components/schemas/NoteWriter" }
+        linkName: { type: string, description: "The subagent that wrote the head revision, if any." }
+        agentProposed:
+          type: boolean
+          description: The head revision is agent text, written by a member or approved from a proposal.
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    NoteList:
+      type: object
+      required: [items, liveCount, totalBytes, maxNotes, maxBytes, notesDelivery, settingsVersion, pendingProposals]
+      properties:
+        items:
+          type: array
+          maxItems: 1000
+          items: { $ref: "#/components/schemas/NoteSummary" }
+        liveCount: { type: integer, minimum: 0 }
+        totalBytes: { type: integer, minimum: 0 }
+        maxNotes: { type: integer }
+        maxBytes: { type: integer }
+        notesDelivery: { $ref: "#/components/schemas/NotesDelivery" }
+        settingsVersion:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Pass as expectedVersion to change notesDelivery.
+        pendingProposals: { type: integer, minimum: 0 }
+    NoteRevision:
+      type: object
+      required: [revision, name, kind, writer, baseRevision, digest, size, retained, createdAt]
+      properties:
+        revision: { type: integer, format: int64, minimum: 1 }
+        name: { type: string }
+        kind: { $ref: "#/components/schemas/NoteRevisionKind" }
+        writer: { $ref: "#/components/schemas/NoteWriter" }
+        writerUserId: { type: string }
+        source: { $ref: "#/components/schemas/NoteSource" }
+        proposalId: { type: string }
+        baseRevision: { type: integer, format: int64, minimum: 0 }
+        restoredFrom: { type: integer, format: int64, minimum: 0 }
+        digest: { type: string }
+        size: { type: integer, minimum: 0 }
+        retained: { type: boolean }
+        createdAt: { type: string, format: date-time }
+    NoteHistory:
+      type: object
+      required: [note, items]
+      properties:
+        note: { $ref: "#/components/schemas/NoteSummary" }
+        items:
+          type: array
+          maxItems: 1000
+          items: { $ref: "#/components/schemas/NoteRevision" }
+    NoteContent:
+      type: object
+      required: [note, revision, content, credentialShaped]
+      properties:
+        note: { $ref: "#/components/schemas/NoteSummary" }
+        revision: { $ref: "#/components/schemas/NoteRevision" }
+        content: { type: string, maxLength: 32768 }
+        credentialShaped:
+          type: boolean
+          description: The content matches the credential-shaped checks of ADR 0024.
+    WriteNoteRequest:
+      type: object
+      required: [content, expectedRevision]
+      properties:
+        content: { type: string, maxLength: 32768 }
+        expectedRevision: { type: integer, format: int64, minimum: 0 }
+        rename:
+          type: string
+          pattern: "^[a-z0-9][a-z0-9-]{0,47}$"
+          description: Give the note a new name in the same revision.
+        sourceThreadId:
+          type: string
+          description: The Thread a transcript selection came from, recorded as provenance.
+    DeleteNoteRequest:
+      type: object
+      required: [expectedRevision]
+      properties:
+        expectedRevision: { type: integer, format: int64, minimum: 1 }
+        withHistory: { type: boolean, default: false }
+    RestoreNoteRequest:
+      type: object
+      required: [revision, expectedRevision]
+      properties:
+        revision: { type: integer, format: int64, minimum: 1 }
+        expectedRevision: { type: integer, format: int64, minimum: 0 }
+    NotesDelivery:
+      type: string
+      enum: [all_threads, leads_only, "off"]
+    NotesDeliveryRequest:
+      type: object
+      required: [notesDelivery, expectedVersion]
+      properties:
+        notesDelivery: { $ref: "#/components/schemas/NotesDelivery" }
+        expectedVersion: { type: integer, format: int64, minimum: 0 }
+    NotesDeliverySetting:
+      type: object
+      required: [notesDelivery, settingsVersion]
+      properties:
+        notesDelivery: { $ref: "#/components/schemas/NotesDelivery" }
+        settingsVersion: { type: integer, format: int64, minimum: 1 }
+    NoteProposalState:
+      type: string
+      enum: [pending, approved, approved_with_edits, rejected, stale, expired]
+    NoteProposalSummary:
+      type: object
+      required: [id, projectId, name, delete, baseRevision, currentRevision, state, origin, digest, size, createdAt, expiresAt]
+      description: Content-free.
+      properties:
+        id: { type: string }
+        projectId: { type: string }
+        name: { type: string }
+        delete: { type: boolean }
+        baseRevision: { type: integer, format: int64, minimum: 0 }
+        currentRevision: { type: integer, format: int64, minimum: 0 }
+        state: { $ref: "#/components/schemas/NoteProposalState" }
+        reason:
+          type: string
+          enum: ["", operator, owner_changed, shredded, purged]
+        origin:
+          type: string
+          enum: [agent, promotion]
+        source: { $ref: "#/components/schemas/NoteSource" }
+        digest: { type: string }
+        size: { type: integer, minimum: 0 }
+        resolvedRevision: { type: integer, format: int64, minimum: 0 }
+        createdAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+    NoteProposalList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 500
+          items: { $ref: "#/components/schemas/NoteProposalSummary" }
+    NoteProposalReview:
+      type: object
+      required: [proposal, content, currentContent, currentLive, credentialShaped]
+      properties:
+        proposal: { $ref: "#/components/schemas/NoteProposalSummary" }
+        content: { type: string, maxLength: 32768, description: Proposed text. Untrusted agent text. }
+        currentContent: { type: string, maxLength: 32768 }
+        currentLive: { type: boolean }
+        credentialShaped: { type: boolean }
+    ApproveNoteProposalRequest:
+      type: object
+      required: [digest, expectedRevision]
+      properties:
+        digest: { type: string, minLength: 1 }
+        expectedRevision: { type: integer, format: int64, minimum: 0 }
+        content:
+          type: string
+          maxLength: 32768
+          description: The operator's edited text, when it differs from the proposal.
+    DeliveredNote:
+      type: object
+      required: [tier, name, revision, size, digest]
+      properties:
+        tier: { type: string, enum: [project, working] }
+        name: { type: string }
+        revision: { type: integer, format: int64 }
+        size: { type: integer }
+        digest: { type: string }
+    ThreadNotes:
+      type: object
+      required: [choice, delivered, indexed]
+      properties:
+        choice:
+          type: string
+          enum: ["", include, exclude]
+          description: The Thread's Include Project notes choice; empty follows the Project setting.
+        delivered:
+          type: array
+          maxItems: 64
+          items: { $ref: "#/components/schemas/DeliveredNote" }
+        deliveredAt: { type: string, format: date-time }
+        indexed:
+          type: boolean
+          description: The harness negotiated the notes index. False means it got the files without being told.
     CapsuleRoutine:
       type: object
       required: [routineId, routineName, fireId, state]
@@ -5882,6 +6601,12 @@ components:
             transcript envelope before SQLite persistence. Prefer stdin in
             shells. Omit it to start the harness idle, a lead (`coordination`)
             included.
+        includeProjectNotes:
+          type: boolean
+          description: >-
+            Include Project notes in this Thread's sessions. Absent follows the
+            Project's notesDelivery; a Project with notesDelivery off delivers
+            to no Thread.
         coordination:
           $ref: "#/components/schemas/CoordinationPolicy"
     CoordinationPolicy:
@@ -6243,6 +6968,12 @@ components:
           type: boolean
           default: false
           description: Requires firstMessage and atomically creates the initial Run intent before runtime side effects.
+        includeProjectNotes:
+          type: boolean
+          description: >-
+            Include Project notes in this Thread's sessions. Absent follows the
+            Project's notesDelivery; a Project with notesDelivery off delivers
+            to no Thread.
     DeleteThreadRequest:
       type: object
       required: [expectedResourceVersion, confirmation]
@@ -6472,7 +7203,7 @@ components:
           type: string
           enum: [assistant_delta, assistant_message, tool_start, tool_result, status, error,
                  permission_request, permission_response, input_request, input_response, gap, end,
-                 commands, models, set_model, set_effort, context_usage]
+                 commands, models, set_model, set_effort, context_usage, notes_updated]
         runtimeSequence: { type: integer, format: int64, minimum: 1 }
         messageId: { type: string }
         responseTo:
@@ -6515,6 +7246,14 @@ components:
             On context_usage events, true: the harness compacted (summarized)
             the conversation at this point. Only compactions are kept in the
             transcript, and they carry no token counts.
+        notesChanged:
+          type: integer
+          minimum: 1
+          maximum: 64
+          description: >-
+            On notes_updated events, how many Project notes a resumed session
+            received that differ from the previous session's. It names no note
+            and carries no content (ADR 0060).
     ThreadModels:
       type: object
       required: [options]
@@ -7262,6 +8001,8 @@ tags:
     description: Harness execution, ordered events, and reconnectable PTY attachment.
   - name: threads
     description: Provider-independent encrypted structured harness Threads.
+  - name: notes
+    description: Working notes and Project notes (ADR 0060). Content is encrypted and never quoted in notifications.
   - name: previews
     description: Bounded Capsule-local port discovery and loopback preview tickets.
   - name: files

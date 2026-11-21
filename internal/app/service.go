@@ -19,6 +19,7 @@ import (
 	"github.com/OrlojHQ/meridian/internal/principal"
 	"github.com/OrlojHQ/meridian/internal/providergateway"
 	"github.com/OrlojHQ/meridian/internal/secrets"
+	"github.com/OrlojHQ/meridian/internal/transcripts"
 )
 
 const defaultPageSize = 50
@@ -120,11 +121,16 @@ type Service struct {
 	endpointReasoningMu   sync.Mutex
 	endpointReasoning     map[string]endpointReasoningCache
 	coordination          ports.CoordinationRuntime
-	coordMaxLive          int
-	coordMu               sync.Mutex
-	coordPollers          map[domain.CapsuleID]context.CancelFunc
-	coordPushed           map[domain.ThreadID]string
-	coordStopped          map[domain.ThreadLinkID]bool
+	// notesDirty holds Capsules whose Thread's note proposals changed, so
+	// their mailbox's whoami is refreshed after the change commits.
+	notesMu      sync.Mutex
+	notesDirty   map[domain.CapsuleID]struct{}
+	notesSweptAt time.Time
+	coordMaxLive int
+	coordMu      sync.Mutex
+	coordPollers map[domain.CapsuleID]context.CancelFunc
+	coordPushed  map[domain.ThreadID]string
+	coordStopped map[domain.ThreadLinkID]bool
 	// coordRemoving holds subagents the operator removed whose session was
 	// still stopping; the coordination tick deletes their Capsule once it
 	// has. A restart forgets it, and the cancelled link is paused instead.
@@ -186,6 +192,9 @@ type transcriptKey interface {
 	UnwrapDEK(domain.ThreadID, string, uint32, []byte) ([]byte, error)
 	Matches(string, uint32) bool
 	Metadata() (string, uint32)
+	// Notes keys use the same KEK with their own wrap binding (ADR 0060).
+	WrapNotesDEK(transcripts.NoteKeyScope, []byte) ([]byte, error)
+	UnwrapNotesDEK(transcripts.NoteKeyScope, string, uint32, []byte) ([]byte, error)
 }
 
 func (s *Service) ConfigureObserver(observer ports.Observer, providerName string) {
