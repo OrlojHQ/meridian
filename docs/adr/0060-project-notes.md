@@ -1,6 +1,6 @@
 # ADR 0060: Working notes and Project notes outlive a lead
 
-- Status: Accepted; implemented, unreleased
+- Status: Accepted; implemented in v0.15.0
 - Date: 2026-11-20
 - Amends: ADR 0059 section 4 (cross-tree notes are no longer deferred), ADR
   0029 (new mailbox requests), ADR 0057 (what may reach a scheduled Thread
