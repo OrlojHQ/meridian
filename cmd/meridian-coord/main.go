@@ -29,7 +29,9 @@ func newRootCommand() *cobra.Command {
 		Short: "Coordinate subagent Threads from a Meridian lead Thread",
 		Long: "Coordinate subagent Threads from inside a Meridian Capsule.\n\n" +
 			"Requests go to the Capsule-local mailbox; meridiand pulls them and enforces the\n" +
-			"lead Thread's Coordination Grant. Output is one JSON response per command.",
+			"lead Thread's Coordination Grant. Output is one JSON response per command.\n\n" +
+			"LINK names one of this lead's subagents: the link ID spawn returned, or the\n" +
+			"subagent's name, as a wake headline shows it.",
 		Version:       buildinfo.Current().String(),
 		SilenceUsage:  true,
 		SilenceErrors: true,

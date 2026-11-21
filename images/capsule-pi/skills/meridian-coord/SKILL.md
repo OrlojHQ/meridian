@@ -32,6 +32,7 @@ true.
 
    Names use lowercase letters, digits and hyphens and are unique per lead.
    Use a harness from `allowedHarnesses`. Keep the returned `link.id`.
+   Wherever a command below takes `LINK`, the subagent's name works too.
    Repeating an identical spawn returns the same subagent; reusing a name for a
    different task is rejected.
 3. Wait for reports with `meridian-coord wait --all LINK...`, or

@@ -118,7 +118,7 @@ func leadBrief(v coordinationVocabulary) string {
 		"",
 		"Keep this conversation light; it may run for weeks:",
 		"- Wakes carry report headlines only. Read a full report with " + v.call("result") +
-			" when you need it.",
+			" when you need it. Name a subagent by its link ID or by the name you gave it.",
 		"- Read the diffstat (" + v.call("status") + ") before you fetch a subagent's changes " +
 			"with " + v.call("patch") + " to review or integrate them. Fetch large " +
 			"patches and reports with " + v.toFile() + ": they go to a private file under " +

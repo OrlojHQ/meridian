@@ -73,7 +73,7 @@ func object(properties map[string]any, required ...string) map[string]any {
 }
 
 var (
-	linkProperty   = map[string]any{"type": "string", "description": "Link ID returned by meridian_spawn."}
+	linkProperty   = map[string]any{"type": "string", "description": "The subagent's link ID, returned by meridian_spawn, or its name."}
 	promptProperty = map[string]any{"type": "string", "maxLength": coordproto.MaxPromptBytes}
 	keyProperty    = map[string]any{"type": "string", "maxLength": coordproto.MaxKeyBytes,
 		"description": "Optional idempotency key. Reuse it to retry the same request safely."}

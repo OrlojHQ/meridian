@@ -102,9 +102,12 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   `spawnsInWindow`, adds the `lapsed` grant state, and refuses
   `deadlineSeconds`. Existing leads keep the time they had left (ADR 0059).
 - Subagent reports no longer fill up a lead's conversation. When reports
-  arrive, the lead is woken with short headlines (name, status, diffstat and
-  the first 2 KiB of each report, at most 16 reports and 16 KiB) instead of
-  full reports, and reads a full report with `result` when it needs it. A
+  arrive, the lead is woken with short headlines (name, link ID, status,
+  diffstat and the first 2 KiB of each report, at most 16 reports and 16 KiB)
+  instead of full reports, and reads a full report with `result` when it
+  needs it. `send`, `cancel`, `status`, `patch`, `result` and `wait` take a
+  subagent's name as well as its link ID, resolved only among the lead's own
+  subagents. A
   report counts as read only when the lead reads it, and a headline the lead
   has not read does not wake it again. `patch` and `result` take `toFile`
   (`--to-file` in `meridian-coord`), which writes the patch or report to a
