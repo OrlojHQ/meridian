@@ -144,7 +144,20 @@ describe("Project notes tab", () => {
         { pendingProposals: 1 },
       ),
     );
-    vi.spyOn(api, "projectNoteProposals").mockResolvedValue({ items: [proposal()] });
+    vi.spyOn(api, "projectNoteProposals").mockResolvedValue({
+      items: [
+        proposal(),
+        proposal({
+          id: "proposal-2", name: "conventions",
+          source: { threadId: "thread-lead", capsuleId: "capsule-lead", leadThreadId: "thread-lead" },
+        }),
+      ],
+    });
+    const capsule = vi.spyOn(api, "capsule").mockResolvedValue({
+      id: "capsule-lead", projectId: project.id, timelineId: "timeline", name: "API\u202e lead",
+      state: "Ready", desiredState: "Ready", restoreComplete: true,
+      createdAt: "2026-11-01T00:00:00Z", updatedAt: "2026-11-01T00:00:00Z", resourceVersion: 1,
+    });
     renderWith(<ProjectNotes project={project} />);
     expect(await screen.findByText("staging-db.md")).toBeInTheDocument();
     expect(screen.getAllByText("branch-naming.md")).toHaveLength(2);
@@ -158,7 +171,18 @@ describe("Project notes tab", () => {
       "href",
       "/ui/note-proposals/proposal-1",
     );
-    expect(within(review).getByText("Proposed by subagent scout")).toBeInTheDocument();
+    // The proposing Thread is named with bounded text and linked: a
+    // subagent by its link name, a lead by its Capsule name made inline-safe.
+    expect(within(review).getByRole("link", { name: "Proposed by “scout”" })).toHaveAttribute(
+      "href",
+      "/ui/threads/thread-9",
+    );
+    expect(await within(review).findByRole("link", { name: "Proposed by the lead “API lead”" })).toHaveAttribute(
+      "href",
+      "/ui/threads/thread-lead",
+    );
+    expect(capsule).toHaveBeenCalledTimes(1);
+    expect(capsule.mock.calls[0][0]).toBe("capsule-lead");
   });
 
   it("changes which Threads receive notes against the settings version", async () => {
@@ -238,6 +262,9 @@ describe("working notes in the Agents panel", () => {
     renderWith(<WorkingNotes grantId="grant-1" grant={grant("revoked")} />);
     expect(await screen.findByText("findings.md")).toBeInTheDocument();
     expect(screen.getByText("By api-tests")).toBeInTheDocument();
+    // Agents write working notes directly; nothing was proposed.
+    expect(screen.getByText("Written by an agent")).toBeInTheDocument();
+    expect(screen.queryByText("Agent-proposed")).not.toBeInTheDocument();
     expect(screen.getByText(/working notes are read-only/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit findings.md" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "New note" })).not.toBeInTheDocument();
@@ -291,7 +318,7 @@ describe("proposal review", () => {
     expect(screen.getByText(/hidden or direction-changing characters/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open the proposing Thread" })).toHaveAttribute("href", "/ui/threads/thread-9");
     expect(screen.getByRole("link", { name: "Open its lead" })).toHaveAttribute("href", "/ui/threads/thread-lead");
-    expect(screen.getByText(/Proposed by subagent scout/)).toBeInTheDocument();
+    expect(screen.getByText(/Proposed by “scout”/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /approve all/i })).not.toBeInTheDocument();
   });
 
@@ -361,7 +388,7 @@ describe("Notes to review in the Inbox", () => {
     const section = await screen.findByRole("region", { name: "Notes to review" });
     expect(within(section).getByRole("link")).toHaveAttribute("href", "/ui/note-proposals/proposal-1");
     expect(section).toHaveTextContent("branch-naming.md");
-    expect(section).toHaveTextContent("meridian · from subagent scout");
+    expect(section).toHaveTextContent("meridian · from “scout”");
   });
 
   it("is absent when nothing waits", async () => {

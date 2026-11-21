@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import { Link, Navigate, useOutletContext, useParams, useSearchParams } from "react-router-dom";
 
 import { queries } from "../api/queries";
@@ -26,7 +27,12 @@ export function ProjectSettings() {
   // The Notes tab (ADR 0060) is addressable, so the review page can return
   // to it.
   const [search, setSearch] = useSearchParams();
-  const tab = search.get("tab") === "notes" ? "notes" : "settings";
+  const urlTab = search.get("tab") === "notes" ? "notes" : "settings";
+  // The router applies a search change as a transition, which kept the old
+  // tab selected while the Notes tab rendered. The choice is held here so
+  // the tab moves at once; the URL follows, and back and forward still win.
+  const [tab, setTab] = useState<"settings" | "notes">(urlTab);
+  useEffect(() => setTab(urlTab), [urlTab]);
   if (projects.isPending) return <p role="status">Loading project…</p>;
   if (projects.isError) return <Navigate to="/ui/" replace />;
   const project = projects.data.items.find((item) => item.id === projectId);
@@ -54,7 +60,10 @@ export function ProjectSettings() {
       <Tabs
         label="Project sections"
         value={tab}
-        onChange={(next) => setSearch(next === "notes" ? { tab: "notes" } : {}, { replace: true })}
+        onChange={(next) => {
+          setTab(next === "notes" ? "notes" : "settings");
+          setSearch(next === "notes" ? { tab: "notes" } : {}, { replace: true });
+        }}
         tabs={[
           { id: "settings", label: "Settings" },
           { id: "notes", label: "Notes" },

@@ -8,10 +8,10 @@ import { queries } from "../api/queries";
 import { NoteDiff } from "./NoteDiff";
 import { NoteEditor, type NoteDraft } from "./NoteEditor";
 import { NoteMarkdown } from "./NoteMarkdown";
+import { ProposingThread } from "./ProposingThread";
 import {
   formatBytes,
   hasHiddenCharacters,
-  proposalSourceLabel,
   proposalStateLabels,
   sourceThreadId,
 } from "./notesText";
@@ -117,7 +117,7 @@ export function NoteProposalReview() {
 
       <div className="note-review-source notice">
         <p>
-          <strong>Agent text.</strong> {proposalSourceLabel(proposal.source, proposal.origin)}
+          <strong>Agent text.</strong> <ProposingThread source={proposal.source} origin={proposal.origin} link={false} />
           {threadId && (
             <>
               {" · "}

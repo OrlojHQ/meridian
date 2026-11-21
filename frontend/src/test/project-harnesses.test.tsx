@@ -85,6 +85,19 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("Project page tabs", () => {
+  it("selects the Notes tab at once, before the notes load", async () => {
+    vi.spyOn(api, "projectNotes").mockReturnValue(new Promise(() => undefined));
+    vi.spyOn(api, "projectNoteProposals").mockReturnValue(new Promise(() => undefined));
+    renderView();
+    const notes = await screen.findByRole("tab", { name: "Notes" });
+    expect(screen.getByRole("tab", { name: "Settings" })).toHaveAttribute("aria-selected", "true");
+    await userEvent.click(notes);
+    expect(notes).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Settings" })).toHaveAttribute("aria-selected", "false");
+  });
+});
+
 describe("Project harness management", () => {
   it("adds a second harness in settings and offers both for a new Capsule", async () => {
     const updated = { ...project, resourceVersion: 2, harnessImages: [opencode, pi] };

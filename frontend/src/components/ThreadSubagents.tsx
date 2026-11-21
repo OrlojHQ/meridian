@@ -511,6 +511,7 @@ export function SubagentsPanel({ thread, grantId }: { thread: Thread; grantId: s
               </span>
               <select
                 id={unattendedId}
+                className="subagents-unattended"
                 value={grant.data.unattendedLimitSeconds}
                 disabled={unattended.isPending}
                 onChange={(event) => unattended.mutate(Number(event.currentTarget.value))}

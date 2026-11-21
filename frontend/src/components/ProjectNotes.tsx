@@ -6,11 +6,11 @@ import { api, normalizeAPIError } from "../api/client";
 import type { NotesDelivery, Project } from "../api/generated/types.gen";
 import { queries } from "../api/queries";
 import { NotesWorkspace } from "./NotesWorkspace";
+import { ProposingThread } from "./ProposingThread";
 import { projectNoteScope } from "./noteScope";
 import {
   notesBudget,
   notesDeliveryLabels,
-  proposalSourceLabel,
   proposalStateLabels,
 } from "./notesText";
 import { relativeTime } from "../shell/capsuleActivity";
@@ -102,7 +102,7 @@ export function ProjectNotes({ project }: { project: Project }) {
                   {item.delete ? " (delete)" : ""}
                 </Link>
                 <span className="note-row-meta">
-                  <span>{proposalSourceLabel(item.source, item.origin)}</span>
+                  <span><ProposingThread source={item.source} origin={item.origin} /></span>
                   <span>{proposalStateLabels[item.state]}</span>
                   <span>{relativeTime(item.createdAt)}</span>
                 </span>

@@ -160,7 +160,12 @@ export function NotesWorkspace({
     <li key={note.name} className={`note-row${note.live ? "" : " deleted"}`}>
       <div className="note-row-main">
         <span className="note-row-name mono">{note.name}.md</span>
-        {note.agentProposed && <Badge className="note-agent-label">Agent-proposed</Badge>}
+        {note.agentProposed && (
+          <Badge className="note-agent-label">
+            {/* Agents write working notes directly; only Project notes are proposed. */}
+            {scope.tier === "working" ? "Written by an agent" : "Agent-proposed"}
+          </Badge>
+        )}
         {!note.live && <Badge>Deleted</Badge>}
       </div>
       <p className="note-row-meta">

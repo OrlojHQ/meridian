@@ -10,6 +10,8 @@ import {
   estimateTokens,
   formatBytes,
   hasHiddenCharacters,
+  leadCapsuleId,
+  proposalSourceLabel,
   includeNotesDefault,
   includeNotesRequest,
   lineDiff,
@@ -169,13 +171,29 @@ describe("notes labels", () => {
   });
 });
 
+describe("proposal sources", () => {
+  it("names a subagent once and a lead by its Capsule", () => {
+    const sub = { threadId: "thread-2", linkName: "subagent-2", leadThreadId: "thread-1" };
+    expect(proposalSourceLabel(sub, "promotion")).toBe("Promoted from a working note by “subagent-2”");
+    expect(proposalSourceLabel(sub, "agent")).toBe("Proposed by “subagent-2”");
+    const lead = { threadId: "thread-1", capsuleId: "capsule-1" };
+    expect(proposalSourceLabel(lead, "promotion", "API lead")).toBe(
+      "Promoted from a working note by the lead “API lead”",
+    );
+    expect(proposalSourceLabel(lead, "agent")).toBe("Proposed by a lead Thread");
+    expect(proposalSourceLabel(lead, "agent", `x\u202e${"y".repeat(100)}`)).toMatch(/^Proposed by the lead “xy{62}…”$/);
+    expect(leadCapsuleId(sub)).toBe("");
+    expect(leadCapsuleId({ workingCapsuleId: "capsule-1", leadThreadId: "thread-1" })).toBe("capsule-1");
+  });
+});
+
 describe("notes in the Inbox", () => {
   it("names the note, Project and Thread only", () => {
     const line = pendingProposalLine(
       { name: "branch-naming", delete: false, source: { threadId: "thread-1", linkName: "scout" } },
       "meridian",
     );
-    expect(line).toEqual({ note: "branch-naming.md", detail: "meridian · from subagent scout" });
+    expect(line).toEqual({ note: "branch-naming.md", detail: "meridian · from “scout”" });
     expect(pendingProposalLine({ name: "old", delete: true }, undefined)).toEqual({
       note: "old.md (delete)",
       detail: "A Project · from a lead Thread",

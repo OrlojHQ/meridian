@@ -4,6 +4,7 @@ import { NavLink } from "react-router-dom";
 import type { NoteProposalSummary, Project } from "../api/generated/types.gen";
 import { queries } from "../api/queries";
 import { noteProposalPath } from "./ProjectNotes";
+import { proposerName } from "./notesText";
 
 // pendingProposalLine names the Project, the note and the proposing Thread
 // only. It never quotes proposal or note text, so agent text cannot reach the
@@ -13,7 +14,7 @@ export function pendingProposalLine(
   proposal: Pick<NoteProposalSummary, "name" | "source" | "delete">,
   projectName: string | undefined,
 ) {
-  const thread = proposal.source?.linkName ? `subagent ${proposal.source.linkName}` : "a lead Thread";
+  const thread = proposerName(proposal.source);
   return {
     note: `${proposal.name}.md${proposal.delete ? " (delete)" : ""}`,
     detail: `${projectName ?? "A Project"} · from ${thread}`,

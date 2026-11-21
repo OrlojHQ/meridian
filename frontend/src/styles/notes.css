@@ -202,7 +202,15 @@
   gap: 0.25rem;
 }
 
+/* The field gives up width before the fixed suffix wraps. */
+.note-name-field > :first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .note-suffix {
+  flex: none;
+  white-space: nowrap;
   color: var(--muted);
 }
 

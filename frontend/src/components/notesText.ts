@@ -6,6 +6,7 @@ import type {
   NoteSummary,
   NotesDelivery,
 } from "../api/generated/types.gen";
+import { safeInline } from "./threadText";
 
 // Notes (ADR 0060) are Markdown that agents may have written. Everything
 // here is pure so the review surfaces can be tested without a browser.
@@ -265,12 +266,37 @@ export function sourceThreadId(source: NoteSource | undefined) {
   return source?.threadId ?? source?.leadThreadId;
 }
 
-// proposalSourceLabel names where a proposal came from without any text an
-// agent wrote: a subagent's link name or the lead.
-export function proposalSourceLabel(source: NoteSource | undefined, origin: "agent" | "promotion") {
-  const who = source?.linkName ? `subagent ${source.linkName}` : "a lead Thread";
+const MAX_PROPOSER_NAME = 64;
+
+// leadCapsuleId is the lead Capsule whose name a proposal's label may show:
+// none when a subagent proposed or wrote it, since its link name says who.
+export function leadCapsuleId(source: NoteSource | undefined) {
+  if (!source || source.linkName) return "";
+  return source.capsuleId ?? source.workingCapsuleId ?? "";
+}
+
+// proposerName names the proposing or writing Thread with bounded text only
+// (ADR 0060 section 7): a subagent's link name, which follows the name
+// grammar, or the lead's Capsule name, made inline-safe and cut short. No
+// role word precedes a subagent's name, so a name such as "subagent-2" is
+// not doubled.
+export function proposerName(source: NoteSource | undefined, leadName?: string) {
+  if (source?.linkName) return `“${source.linkName}”`;
+  let name = safeInline(leadName ?? "").trim();
+  if (name.length > MAX_PROPOSER_NAME) name = `${name.slice(0, MAX_PROPOSER_NAME - 1)}…`;
+  return name ? `the lead “${name}”` : "a lead Thread";
+}
+
+// proposalSourceLabel says where a proposal came from without any text an
+// agent wrote.
+export function proposalSourceLabel(
+  source: NoteSource | undefined,
+  origin: "agent" | "promotion",
+  leadName?: string,
+) {
+  const who = proposerName(source, leadName);
   return origin === "promotion"
-    ? `Promoted from a working note of ${who}`
+    ? `Promoted from a working note by ${who}`
     : `Proposed by ${who}`;
 }
 
