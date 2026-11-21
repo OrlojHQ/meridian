@@ -177,7 +177,8 @@ written into the lead's own Capsule instead of into a tool result.
   items and 16 KiB in total. The lead reads full reports with `result`.
   Reports are marked delivered only when `result` or `wait` returns them, so a
   headline is never mistaken for the full report. The web UI renders a wake as
-  report cards and leaves the link IDs out.
+  one line naming the subagents, with the wake prompt behind a disclosure,
+  and leaves the link IDs out.
 - **Subagents by name.** `send`, `cancel`, `status`, `patch`, `result` and
   `wait` take a subagent's name wherever they take a link ID. A name resolves
   only among the requesting lead's own links, where names are unique, open or

@@ -201,6 +201,19 @@ offered only on an active Thread of a main Capsule that has no grant, when
 the provider supports coordination; nothing makes a Thread a lead unless
 the operator asks (ADR 0059).
 
+Where Meridian woke a lead with subagent reports, its transcript shows one
+quiet line, drawn like the compaction divider and never as an operator
+message: "↳ Reports from subagent-1, subagent-2 failed · Wake prompt ▸". Each
+name links to that subagent's Thread; at most three are named, then "+N
+more". A report that ended its turn or said it was done shows just the name,
+and any other status (failed, blocked) follows it. The line repeats no report
+text: the lead's reply summarizes the reports, each subagent's Thread holds
+its full output, and the Agents panel shows each status. **Wake prompt**
+expands the exact text the lead received, with link IDs left out, including
+any note that the operator messaged a subagent directly. The line is a group
+labelled with the subagents' names and statuses, and the wake keeps its
+`from_subagents` provenance (ADR 0029).
+
 The per-Project launcher (from the board, the command palette, and Project
 settings) is scoped to its Project and does not ask for one. It starts with an agent
 picker over the Project's applied packs; it can add another installation-known

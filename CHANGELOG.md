@@ -101,6 +101,12 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   `unattendedLimitSeconds`, `lastOperatorAt`, `lapsesAt`, and
   `spawnsInWindow`, adds the `lapsed` grant state, and refuses
   `deadlineSeconds`. Existing leads keep the time they had left (ADR 0059).
+- A lead's transcript no longer repeats subagent reports in a card. Where
+  Meridian woke the lead, one quiet line names the subagents, each linked
+  to its Thread ("↳ Reports from subagent-1, subagent-2 failed"), shows a
+  status only when a report did not finish normally, and expands to the
+  exact wake prompt the lead received. The lead's reply, the subagent's
+  Thread and the Agents panel already carry the rest.
 - Subagent reports no longer fill up a lead's conversation. When reports
   arrive, the lead is woken with short headlines (name, link ID, status,
   diffstat and the first 2 KiB of each report, at most 16 reports and 16 KiB)

@@ -77,7 +77,7 @@ export function boundedReportText(value = "") {
 }
 
 // Mock (and some real harnesses) echo the wake prompt as assistant text.
-// Drop that duplicate once report cards already cover the same payload.
+// Drop that duplicate once the wake marker already stands for the same payload.
 export function isCoordinationWakeEcho(text = "") {
   const body = sanitizeThreadText(text).replace(/^mock:/i, "").trim();
   return WAKE_INTRO.test(body) && REPORT_MARK.test(body);
