@@ -574,3 +574,51 @@ func TestShreddingALeadShredsItsWorkingNotes(t *testing.T) {
 		t.Fatalf("a shredded lead's working note = %v", err)
 	}
 }
+
+func TestAResumedSessionMarksChangedProjectNotes(t *testing.T) {
+	f := newCoordFixture(t)
+	putNote(t, f, "tests", "run make test\n", 0)
+	created, err := f.service.CreateProjectThread(f.ctx, app.CreateProjectThreadInput{
+		ProjectID: notesProject, Harness: "mock", Prompt: "do work", IdempotencyKey: "divider",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.ready(t, created.Intent.CapsuleID)
+	run := created.Intent.RunID
+	f.runtime.finishTurn(run, "m1", "done")
+	f.runtime.endSession(run)
+	if err := f.service.SyncThread(asSystem(f.ctx), created.Intent.ThreadID); err != nil {
+		t.Fatal(err)
+	}
+	putNote(t, f, "tests", "run make test -race\n", 1)
+	putNote(t, f, "branches", "feature/ prefixes\n", 0)
+	thread, err := f.service.GetThread(f.ctx, created.Intent.ThreadID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resumed, err := f.service.ResumeThread(f.ctx, thread.ID, thread.ResourceVersion, "resume")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, index := startNotes(t, f, resumed.Run.ID); index == nil || len(index.Notes) != 2 ||
+		!index.Notes[0].Changed || !index.Notes[1].Changed {
+		t.Fatalf("resumed index = %+v", index)
+	}
+	page, err := f.service.ThreadBlocks(f.ctx, thread.ID, 0, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := 0
+	for _, block := range page.Items {
+		if block.Event != nil && block.Event.Type == app.KindNotesUpdated {
+			found = block.Event.NotesChanged
+			if block.Content != "" || block.Event.Summary != "" {
+				t.Fatalf("the divider carries text: %+v", block)
+			}
+		}
+	}
+	if found != 2 {
+		t.Fatalf("divider count = %d", found)
+	}
+}
