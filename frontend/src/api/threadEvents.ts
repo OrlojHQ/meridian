@@ -1,5 +1,6 @@
 import { streamThreadBlocks } from "./generated/sdk.gen";
 import type { ThreadBlock } from "./generated/types.gen";
+import { streamFetch } from "./streamFetch";
 
 export type ThreadStreamStatus =
   | "connecting"
@@ -60,6 +61,7 @@ export async function followThreadBlocks(
         query: { after: cursor },
         headers: cursor > 0 ? { "Last-Event-ID": String(cursor) } : undefined,
         signal,
+        fetch: streamFetch(signal),
         sseDefaultRetryDelay: 500,
         sseMaxRetryDelay: 5_000,
         sseMaxRetryAttempts: 3,
