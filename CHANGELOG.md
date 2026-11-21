@@ -7,6 +7,17 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- The desktop app no longer gets stuck showing a Thread as working with the
+  Send button disabled and the terminal stuck loading. The web UI reopened
+  a Thread's live transcript stream for every streamed block, and the
+  desktop webview (WebKit) sometimes kept an aborted stream's connection
+  open. After a few turns those leaked streams used up WebKit's six
+  connections to the Station, so every later request waited forever. The
+  stream now stays open for the whole session, and live streams are
+  fetched in a way WebKit closes when they are aborted.
+
 ## [0.15.0] - 2026-11-20
 
 ### Added

@@ -465,24 +465,16 @@ export function ThreadDetail({
           if (busy !== undefined && next !== busy) void refreshSummaries();
           busy = next;
         }
-        queryClient.setQueryData(
-          ["thread-blocks", threadId],
-          (current: typeof replay.data) =>
-            current
-              ? {
-                  ...current,
-                  items: mergeThreadBlocks(current.items, [block]),
-                  nextCursor: Math.max(current.nextCursor, block.messageSequence),
-                }
-              : current,
-        );
+        // Streamed blocks stay in component state. Writing them into the
+        // thread-blocks query would replace replay.data, re-run this effect,
+        // and abort and reopen the stream for every block.
       },
       setStatus,
       (expected, received) => setGap({ expected, received }),
       () => endedRef.current,
     );
     return () => controller.abort();
-  }, [queryClient, refreshSummaries, replay.data, threadId, sessionLive]);
+  }, [refreshSummaries, replay.data, threadId, sessionLive]);
 
   const session = useMutation({
     mutationFn: (action: "start" | "resume" | "cancel") => {
