@@ -251,7 +251,9 @@ func (s *Service) GetNoteProposal(ctx context.Context, id domain.NoteProposalID)
 		} else if !errors.Is(err, domain.ErrNotFound) {
 			return err
 		}
-		if !proposal.Delete {
+		// A proposal whose content was shredded or purged still shows its
+		// content-free record.
+		if !proposal.Delete && len(proposal.Ciphertext) > 0 {
 			content, err := openProposal(dek, proposal)
 			if err != nil {
 				return err

@@ -31,6 +31,7 @@ type coordRuntime struct {
 	events    map[domain.RunID][]ports.RuntimeStructuredEvent
 	sent      map[domain.RunID][]adapterproto.Frame
 	starts    map[domain.RunID]adapterproto.Frame
+	notes     map[domain.RunID]*coordproto.NotesDelivery
 	cancels   map[domain.RunID]int
 	mailboxes map[string]*capsuleproto.Mailbox
 	patches   map[string]ports.GitPatchResult
@@ -98,6 +99,10 @@ func (r *coordRuntime) StartStructured(_ context.Context, request ports.RuntimeS
 	run := ports.RuntimeRun{State: domain.RunRunning, Structured: true}
 	r.runs[request.RunID] = run
 	r.starts[request.RunID] = request.Frame
+	if r.notes == nil {
+		r.notes = make(map[domain.RunID]*coordproto.NotesDelivery)
+	}
+	r.notes[request.RunID] = request.Notes
 	return run, nil
 }
 

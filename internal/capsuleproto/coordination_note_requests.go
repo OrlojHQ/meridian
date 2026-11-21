@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"time"
 
 	"github.com/OrlojHQ/meridian/internal/coordproto"
 )
@@ -15,8 +16,17 @@ import (
 // working-note files meridiand sends back; a tool never receives note
 // content in a response.
 
-// SetNoteDirectories enables note delivery under base ($HOME/.meridian).
-// An empty base disables it.
+// SetNotesBase enables working notes under base ($HOME/.meridian) for a
+// mailbox that is not part of a Server. An empty base disables them.
+func (m *Mailbox) SetNotesBase(base string) {
+	if base == "" {
+		m.SetNoteDirectories(nil)
+		return
+	}
+	m.SetNoteDirectories(&noteDirs{base: base})
+}
+
+// SetNoteDirectories enables note delivery through dirs; nil disables it.
 func (m *Mailbox) SetNoteDirectories(dirs *noteDirs) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -99,4 +109,12 @@ func readPrivateNote(dir, name string) (string, error) {
 		return "", refuseNotes(coordproto.CodeInvalidRequest, "fromFile %q is empty", name)
 	}
 	return content, nil
+}
+
+// SetClock replaces the clock the mailbox's request rate uses, for tests
+// that drive more requests than a real minute allows.
+func (m *Mailbox) SetClock(now func() time.Time) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.now = now
 }
