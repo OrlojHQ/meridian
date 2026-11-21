@@ -8014,8 +8014,22 @@ func (s *CoordinationGrant) encodeFields(e *jx.Encoder) {
 		e.ArrEnd()
 	}
 	{
-		e.FieldStart("deadlineAt")
-		json.EncodeDateTime(e, s.DeadlineAt)
+		e.FieldStart("lastOperatorAt")
+		json.EncodeDateTime(e, s.LastOperatorAt)
+	}
+	{
+		e.FieldStart("unattendedLimitSeconds")
+		e.Int(s.UnattendedLimitSeconds)
+	}
+	{
+		e.FieldStart("lapsesAt")
+		json.EncodeDateTime(e, s.LapsesAt)
+	}
+	{
+		if s.LapsedAt.Set {
+			e.FieldStart("lapsedAt")
+			s.LapsedAt.Encode(e, json.EncodeDateTime)
+		}
 	}
 	{
 		e.FieldStart("onDeadline")
@@ -8028,6 +8042,10 @@ func (s *CoordinationGrant) encodeFields(e *jx.Encoder) {
 	{
 		e.FieldStart("descendantsCreated")
 		e.Int(s.DescendantsCreated)
+	}
+	{
+		e.FieldStart("spawnsInWindow")
+		e.Int(s.SpawnsInWindow)
 	}
 	{
 		if s.RevokedAt.Set {
@@ -8055,7 +8073,7 @@ func (s *CoordinationGrant) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfCoordinationGrant = [21]string{
+var jsonFieldsNameOfCoordinationGrant = [25]string{
 	0:  "id",
 	1:  "projectId",
 	2:  "rootThreadId",
@@ -8068,15 +8086,19 @@ var jsonFieldsNameOfCoordinationGrant = [21]string{
 	9:  "maxLiveCapsules",
 	10: "maxMessagesPerLink",
 	11: "allowedHarnesses",
-	12: "deadlineAt",
-	13: "onDeadline",
-	14: "archiveAfterSeconds",
-	15: "descendantsCreated",
-	16: "revokedAt",
-	17: "revokeReason",
-	18: "createdAt",
-	19: "updatedAt",
-	20: "resourceVersion",
+	12: "lastOperatorAt",
+	13: "unattendedLimitSeconds",
+	14: "lapsesAt",
+	15: "lapsedAt",
+	16: "onDeadline",
+	17: "archiveAfterSeconds",
+	18: "descendantsCreated",
+	19: "spawnsInWindow",
+	20: "revokedAt",
+	21: "revokeReason",
+	22: "createdAt",
+	23: "updatedAt",
+	24: "resourceVersion",
 }
 
 // Decode decodes CoordinationGrant from json.
@@ -8084,7 +8106,7 @@ func (s *CoordinationGrant) Decode(d *jx.Decoder) error {
 	if s == nil {
 		return errors.New("invalid: unable to decode CoordinationGrant to nil")
 	}
-	var requiredBitSet [3]uint8
+	var requiredBitSet [4]uint8
 
 	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
 		switch string(k) {
@@ -8236,20 +8258,54 @@ func (s *CoordinationGrant) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"allowedHarnesses\"")
 			}
-		case "deadlineAt":
+		case "lastOperatorAt":
 			requiredBitSet[1] |= 1 << 4
 			if err := func() error {
 				v, err := json.DecodeDateTime(d)
-				s.DeadlineAt = v
+				s.LastOperatorAt = v
 				if err != nil {
 					return err
 				}
 				return nil
 			}(); err != nil {
-				return errors.Wrap(err, "decode field \"deadlineAt\"")
+				return errors.Wrap(err, "decode field \"lastOperatorAt\"")
+			}
+		case "unattendedLimitSeconds":
+			requiredBitSet[1] |= 1 << 5
+			if err := func() error {
+				v, err := d.Int()
+				s.UnattendedLimitSeconds = int(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"unattendedLimitSeconds\"")
+			}
+		case "lapsesAt":
+			requiredBitSet[1] |= 1 << 6
+			if err := func() error {
+				v, err := json.DecodeDateTime(d)
+				s.LapsesAt = v
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"lapsesAt\"")
+			}
+		case "lapsedAt":
+			if err := func() error {
+				s.LapsedAt.Reset()
+				if err := s.LapsedAt.Decode(d, json.DecodeDateTime); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"lapsedAt\"")
 			}
 		case "onDeadline":
-			requiredBitSet[1] |= 1 << 5
+			requiredBitSet[2] |= 1 << 0
 			if err := func() error {
 				if err := s.OnDeadline.Decode(d); err != nil {
 					return err
@@ -8259,7 +8315,7 @@ func (s *CoordinationGrant) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"onDeadline\"")
 			}
 		case "archiveAfterSeconds":
-			requiredBitSet[1] |= 1 << 6
+			requiredBitSet[2] |= 1 << 1
 			if err := func() error {
 				v, err := d.Int()
 				s.ArchiveAfterSeconds = int(v)
@@ -8271,7 +8327,7 @@ func (s *CoordinationGrant) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"archiveAfterSeconds\"")
 			}
 		case "descendantsCreated":
-			requiredBitSet[1] |= 1 << 7
+			requiredBitSet[2] |= 1 << 2
 			if err := func() error {
 				v, err := d.Int()
 				s.DescendantsCreated = int(v)
@@ -8281,6 +8337,18 @@ func (s *CoordinationGrant) Decode(d *jx.Decoder) error {
 				return nil
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"descendantsCreated\"")
+			}
+		case "spawnsInWindow":
+			requiredBitSet[2] |= 1 << 3
+			if err := func() error {
+				v, err := d.Int()
+				s.SpawnsInWindow = int(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"spawnsInWindow\"")
 			}
 		case "revokedAt":
 			if err := func() error {
@@ -8303,7 +8371,7 @@ func (s *CoordinationGrant) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"revokeReason\"")
 			}
 		case "createdAt":
-			requiredBitSet[2] |= 1 << 2
+			requiredBitSet[2] |= 1 << 6
 			if err := func() error {
 				v, err := json.DecodeDateTime(d)
 				s.CreatedAt = v
@@ -8315,7 +8383,7 @@ func (s *CoordinationGrant) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"createdAt\"")
 			}
 		case "updatedAt":
-			requiredBitSet[2] |= 1 << 3
+			requiredBitSet[2] |= 1 << 7
 			if err := func() error {
 				v, err := json.DecodeDateTime(d)
 				s.UpdatedAt = v
@@ -8327,7 +8395,7 @@ func (s *CoordinationGrant) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"updatedAt\"")
 			}
 		case "resourceVersion":
-			requiredBitSet[2] |= 1 << 4
+			requiredBitSet[3] |= 1 << 0
 			if err := func() error {
 				v, err := d.Int64()
 				s.ResourceVersion = int64(v)
@@ -8347,10 +8415,11 @@ func (s *CoordinationGrant) Decode(d *jx.Decoder) error {
 	}
 	// Validate required fields.
 	var failures []validate.FieldError
-	for i, mask := range [3]uint8{
+	for i, mask := range [4]uint8{
 		0b11111111,
-		0b11111111,
-		0b00011100,
+		0b01111111,
+		0b11001111,
+		0b00000001,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.
@@ -8536,6 +8605,8 @@ func (s *CoordinationGrantState) Decode(d *jx.Decoder) error {
 	switch CoordinationGrantState(v) {
 	case CoordinationGrantStateActive:
 		*s = CoordinationGrantStateActive
+	case CoordinationGrantStateLapsed:
+		*s = CoordinationGrantStateLapsed
 	case CoordinationGrantStateRevoked:
 		*s = CoordinationGrantStateRevoked
 	case CoordinationGrantStateExpired:
@@ -8610,9 +8681,9 @@ func (s *CoordinationPolicy) encodeFields(e *jx.Encoder) {
 		}
 	}
 	{
-		if s.DeadlineSeconds.Set {
-			e.FieldStart("deadlineSeconds")
-			s.DeadlineSeconds.Encode(e)
+		if s.UnattendedLimitSeconds.Set {
+			e.FieldStart("unattendedLimitSeconds")
+			s.UnattendedLimitSeconds.Encode(e)
 		}
 	}
 	{
@@ -8642,7 +8713,7 @@ var jsonFieldsNameOfCoordinationPolicy = [10]string{
 	3: "maxLiveCapsules",
 	4: "maxMessagesPerLink",
 	5: "allowedHarnesses",
-	6: "deadlineSeconds",
+	6: "unattendedLimitSeconds",
 	7: "archiveAfterSeconds",
 	8: "onDeadline",
 	9: "spawnApproval",
@@ -8726,15 +8797,15 @@ func (s *CoordinationPolicy) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"allowedHarnesses\"")
 			}
-		case "deadlineSeconds":
+		case "unattendedLimitSeconds":
 			if err := func() error {
-				s.DeadlineSeconds.Reset()
-				if err := s.DeadlineSeconds.Decode(d); err != nil {
+				s.UnattendedLimitSeconds.Reset()
+				if err := s.UnattendedLimitSeconds.Decode(d); err != nil {
 					return err
 				}
 				return nil
 			}(); err != nil {
-				return errors.Wrap(err, "decode field \"deadlineSeconds\"")
+				return errors.Wrap(err, "decode field \"unattendedLimitSeconds\"")
 			}
 		case "archiveAfterSeconds":
 			if err := func() error {
@@ -44726,9 +44797,9 @@ func (s *UpdateCoordinationGrantRequest) encodeFields(e *jx.Encoder) {
 		}
 	}
 	{
-		if s.DeadlineSeconds.Set {
-			e.FieldStart("deadlineSeconds")
-			s.DeadlineSeconds.Encode(e)
+		if s.UnattendedLimitSeconds.Set {
+			e.FieldStart("unattendedLimitSeconds")
+			s.UnattendedLimitSeconds.Encode(e)
 		}
 	}
 	{
@@ -44753,7 +44824,7 @@ var jsonFieldsNameOfUpdateCoordinationGrantRequest = [10]string{
 	4: "maxLiveCapsules",
 	5: "maxMessagesPerLink",
 	6: "allowedHarnesses",
-	7: "deadlineSeconds",
+	7: "unattendedLimitSeconds",
 	8: "onDeadline",
 	9: "archiveAfterSeconds",
 }
@@ -44848,15 +44919,15 @@ func (s *UpdateCoordinationGrantRequest) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"allowedHarnesses\"")
 			}
-		case "deadlineSeconds":
+		case "unattendedLimitSeconds":
 			if err := func() error {
-				s.DeadlineSeconds.Reset()
-				if err := s.DeadlineSeconds.Decode(d); err != nil {
+				s.UnattendedLimitSeconds.Reset()
+				if err := s.UnattendedLimitSeconds.Decode(d); err != nil {
 					return err
 				}
 				return nil
 			}(); err != nil {
-				return errors.Wrap(err, "decode field \"deadlineSeconds\"")
+				return errors.Wrap(err, "decode field \"unattendedLimitSeconds\"")
 			}
 		case "onDeadline":
 			if err := func() error {

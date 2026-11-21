@@ -16,11 +16,13 @@ response. A rejected request prints `"ok": false` with `error.code` and
 true.
 
 1. Check your role and limits with `meridian-coord whoami`. The `self` object
-   lists `role`, `allowedHarnesses`, `maxChildren` and `deadlineAt`. If
+   lists `role`, `allowedHarnesses`, `maxChildren` and `deadlineAt` (when
+   coordination pauses if the operator stays away). If
    `role` is `sub`, send your result with `meridian-coord report --status
    done|blocked|failed` (summary on stdin) and do not spawn. The error code
    `coordination_disabled` means this Thread is not a lead, so do the work
-   yourself.
+   yourself. `coordination_lapsed` means the operator has been away too long;
+   tell them and wait for their next message.
 2. Start a subagent, with the task on stdin:
 
    ```sh

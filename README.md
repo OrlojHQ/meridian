@@ -70,8 +70,8 @@ Tick **Lead agent with subagents** when you start a task and the agent can
 split the work: it starts subagents, each in its own Capsule, sends them
 instructions, waits for their reports, and reads their diffs.
 
-- You set the limits: how many subagents, how many at once, a deadline, and
-  whether each spawn needs your approval.
+- You set the limits: how many subagents a day, how many at once, how long the
+  lead keeps going without you, and whether each spawn needs your approval.
 - The **Agents** list in the lead's composer shows every subagent's status and
   model; click one to open it.
 - Subagents ask **you**, never the lead, for permission to use tools.

@@ -482,7 +482,12 @@ export const api = {
     ),
   updateCoordinationGrant: (
     grant: CoordinationGrant,
-    body: { spawnApproval?: "auto" | "operator"; maxLiveCapsules?: number; archiveAfterSeconds?: number },
+    body: {
+      spawnApproval?: "auto" | "operator";
+      maxLiveCapsules?: number;
+      archiveAfterSeconds?: number;
+      unattendedLimitSeconds?: number;
+    },
   ) =>
     call<CoordinationGrant>(
       updateCoordinationGrant({

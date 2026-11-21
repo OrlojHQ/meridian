@@ -13,7 +13,8 @@ import (
 const grantSelect = `
 	SELECT id, project_id, root_thread_id, root_capsule_id, state, spawn_approval,
 		max_depth, max_children, max_descendants, max_live_capsules,
-		max_messages_per_link, allowed_harnesses, deadline_at, on_deadline,
+		max_messages_per_link, allowed_harnesses, last_operator_at,
+		unattended_limit_seconds, lapsed_at, on_deadline,
 		descendants_created, revoked_at, revoke_reason, archive_after_seconds,
 		created_at, updated_at, resource_version
 	FROM coordination_grants`
@@ -28,14 +29,16 @@ func (r *repository) InsertCoordinationGrant(ctx context.Context, grant domain.C
 			owner_user_id,
 			id, project_id, root_thread_id, root_capsule_id, state, spawn_approval,
 			max_depth, max_children, max_descendants, max_live_capsules,
-			max_messages_per_link, allowed_harnesses, deadline_at, on_deadline,
+			max_messages_per_link, allowed_harnesses, last_operator_at,
+			unattended_limit_seconds, lapsed_at, on_deadline,
 			descendants_created, revoked_at, revoke_reason, archive_after_seconds,
 			created_at, updated_at, resource_version
-		) VALUES (COALESCE((SELECT owner_user_id FROM projects WHERE id = ?), ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		) VALUES (COALESCE((SELECT owner_user_id FROM projects WHERE id = ?), ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		grant.ProjectID, grant.ID, grant.ProjectID, grant.RootThreadID, grant.RootCapsuleID, grant.State,
 		grant.SpawnApproval, grant.MaxDepth, grant.MaxChildren, grant.MaxDescendants,
 		grant.MaxLiveCapsules, grant.MaxMessagesPerLink, string(harnesses),
-		formatTime(grant.DeadlineAt), grant.OnDeadline, grant.DescendantsCreated,
+		formatTime(grant.LastOperatorAt), int64(grant.UnattendedLimit/time.Second),
+		nullableTime(grant.LapsedAt), grant.OnDeadline, grant.DescendantsCreated,
 		nullableTime(grant.RevokedAt), grant.RevokeReason, int64(grant.ArchiveAfter/time.Second),
 		formatTime(grant.CreatedAt),
 		formatTime(grant.UpdatedAt), grant.ResourceVersion,
@@ -58,13 +61,15 @@ func (r *repository) UpdateCoordinationGrant(
 	result, err := r.q.ExecContext(ctx, `
 		UPDATE coordination_grants SET state = ?, spawn_approval = ?, max_children = ?,
 			max_descendants = ?, max_live_capsules = ?, max_messages_per_link = ?,
-			allowed_harnesses = ?, deadline_at = ?, on_deadline = ?, descendants_created = ?,
+			allowed_harnesses = ?, last_operator_at = ?, unattended_limit_seconds = ?,
+			lapsed_at = ?, on_deadline = ?, descendants_created = ?,
 			revoked_at = ?, revoke_reason = ?, archive_after_seconds = ?,
 			updated_at = ?, resource_version = ?
 		WHERE id = ? AND resource_version = ?`,
 		grant.State, grant.SpawnApproval, grant.MaxChildren, grant.MaxDescendants,
 		grant.MaxLiveCapsules, grant.MaxMessagesPerLink, string(harnesses),
-		formatTime(grant.DeadlineAt), grant.OnDeadline, grant.DescendantsCreated,
+		formatTime(grant.LastOperatorAt), int64(grant.UnattendedLimit/time.Second),
+		nullableTime(grant.LapsedAt), grant.OnDeadline, grant.DescendantsCreated,
 		nullableTime(grant.RevokedAt), grant.RevokeReason, int64(grant.ArchiveAfter/time.Second),
 		formatTime(grant.UpdatedAt), grant.ResourceVersion,
 		grant.ID, expected,
@@ -126,25 +131,31 @@ func (r *repository) ListActiveCoordinationGrants(
 
 func scanGrant(row scanner) (domain.CoordinationGrant, error) {
 	var grant domain.CoordinationGrant
-	var harnesses, deadline, created, updated string
-	var revoked sql.NullString
-	var archiveAfter int64
+	var harnesses, lastOperator, created, updated string
+	var revoked, lapsed sql.NullString
+	var archiveAfter, unattended int64
 	if err := row.Scan(
 		&grant.ID, &grant.ProjectID, &grant.RootThreadID, &grant.RootCapsuleID, &grant.State,
 		&grant.SpawnApproval, &grant.MaxDepth, &grant.MaxChildren, &grant.MaxDescendants,
-		&grant.MaxLiveCapsules, &grant.MaxMessagesPerLink, &harnesses, &deadline,
-		&grant.OnDeadline, &grant.DescendantsCreated, &revoked, &grant.RevokeReason,
+		&grant.MaxLiveCapsules, &grant.MaxMessagesPerLink, &harnesses, &lastOperator,
+		&unattended, &lapsed, &grant.OnDeadline, &grant.DescendantsCreated, &revoked, &grant.RevokeReason,
 		&archiveAfter, &created, &updated, &grant.ResourceVersion,
 	); err != nil {
 		return domain.CoordinationGrant{}, mapError(err)
 	}
 	grant.ArchiveAfter = time.Duration(archiveAfter) * time.Second
+	grant.UnattendedLimit = time.Duration(unattended) * time.Second
 	if err := json.Unmarshal([]byte(harnesses), &grant.AllowedHarnesses); err != nil {
 		return domain.CoordinationGrant{}, err
 	}
 	var err error
-	if grant.DeadlineAt, err = parseTime(deadline); err != nil {
+	if grant.LastOperatorAt, err = parseTime(lastOperator); err != nil {
 		return domain.CoordinationGrant{}, err
+	}
+	if lapsed.Valid {
+		if grant.LapsedAt, err = parseTime(lapsed.String); err != nil {
+			return domain.CoordinationGrant{}, err
+		}
 	}
 	if revoked.Valid {
 		if grant.RevokedAt, err = parseTime(revoked.String); err != nil {
@@ -237,6 +248,20 @@ func (r *repository) ListThreadLinksByGrant(
 	ctx context.Context, grantID domain.CoordinationGrantID,
 ) ([]domain.ThreadLink, error) {
 	return r.listLinks(ctx, linkSelect+" WHERE grant_id = ? ORDER BY created_at, id LIMIT 1000", grantID)
+}
+
+// CountThreadLinksByGrantSince counts every spawn under the grant created at
+// or after since, whatever its state: denied, closed and removed subagents
+// still used up the window.
+func (r *repository) CountThreadLinksByGrantSince(
+	ctx context.Context, grantID domain.CoordinationGrantID, since time.Time,
+) (int, error) {
+	var count int
+	err := r.q.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM thread_links
+		WHERE grant_id = ? AND julianday(created_at) >= julianday(?)`,
+		grantID, formatTime(since)).Scan(&count)
+	return count, mapError(err)
 }
 
 // ListArchivableThreadLinks returns subagent links the auto-archive sweep should

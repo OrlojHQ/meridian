@@ -167,10 +167,13 @@ when more than one fits. A Thread starts without a first message: the harness
 starts idle and reports its models, so the operator picks the model and effort
 in the Thread before the first turn. When the provider supports coordination,
 a Thread can start as a lead agent with subagents, optionally approving each
-spawn. The dialog asks for no limits: it allows the largest lifetime subagent
-total (16) and leaves the concurrent subagent Capsule limit (4 by default) and
-the deadline (24 hours) at the daemon's defaults. Both can be changed from
-the Agents panel's settings button while the lead runs. A lead also starts idle and is
+spawn. The dialog asks for no limits: it allows 16 subagents in any 24 hours
+and leaves the concurrent subagent Capsule limit (4 by default) and the
+unattended limit (24 hours) at the daemon's defaults. Both can be changed from
+the Agents panel's settings button while the lead runs. The panel shows how
+many subagents started in the last 24 hours and "pauses after N without you".
+A lead left that long without a message from you is shown as Paused: it can
+no longer start or message subagents until you send it a message. A lead also starts idle and is
 told to split the work in its first message.
 
 The per-Project launcher (from the board, the command palette, and Project

@@ -654,7 +654,7 @@ export const getCoordinationGrant = <ThrowOnError extends boolean = false>(optio
 /**
  * Update a Coordination Grant's limits
  *
- * Changes spawn approval, limits, harnesses, deadline, deadline action, or archiveAfter on an active grant. The operator may loosen or tighten limits. Switching spawnApproval to auto does not start spawns already waiting for approval. Deadline is remaining time from now, between 5 minutes and 72 hours, and cannot pass createdAt+72h.
+ * Changes spawn approval, limits, harnesses, unattended limit, lapse action, or archiveAfter on an active grant, including a lapsed one. The operator may loosen or tighten limits. Switching spawnApproval to auto does not start spawns already waiting for approval. Every update counts as the operator being present: it resets lastOperatorAt and reopens a lapsed grant.
  *
  */
 export const updateCoordinationGrant = <ThrowOnError extends boolean = false>(options: Options<UpdateCoordinationGrantData, ThrowOnError>): RequestResult<UpdateCoordinationGrantResponses, UpdateCoordinationGrantErrors, ThrowOnError> => (options.client ?? client).patch<UpdateCoordinationGrantResponses, UpdateCoordinationGrantErrors, ThrowOnError>({
@@ -714,7 +714,7 @@ export const approveCoordinationRequest = <ThrowOnError extends boolean = false>
 /**
  * Deny a queued spawn
  *
- * Refuses a subagent the lead spawned under spawnApproval=operator. The child Capsule is not deleted and still counts toward the grant's descendantsCreated.
+ * Refuses a subagent the lead spawned under spawnApproval=operator. The child Capsule is not deleted and the spawn still counts toward the grant's rolling 24-hour spawn window.
  *
  */
 export const denyCoordinationRequest = <ThrowOnError extends boolean = false>(options: Options<DenyCoordinationRequestData, ThrowOnError>): RequestResult<DenyCoordinationRequestResponses, DenyCoordinationRequestErrors, ThrowOnError> => (options.client ?? client).post<DenyCoordinationRequestResponses, DenyCoordinationRequestErrors, ThrowOnError>({

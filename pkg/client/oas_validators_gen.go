@@ -2617,6 +2617,27 @@ func (s *CoordinationGrant) Validate() error {
 		})
 	}
 	if err := func() error {
+		if err := (validate.Int{
+			MinSet:        true,
+			Min:           300,
+			MaxSet:        true,
+			Max:           259200,
+			MinExclusive:  false,
+			MaxExclusive:  false,
+			MultipleOfSet: false,
+			MultipleOf:    0,
+			Pattern:       nil,
+		}).Validate(int64(s.UnattendedLimitSeconds)); err != nil {
+			return errors.Wrap(err, "int")
+		}
+		return nil
+	}(); err != nil {
+		failures = append(failures, validate.FieldError{
+			Name:  "unattendedLimitSeconds",
+			Error: err,
+		})
+	}
+	if err := func() error {
 		if err := s.OnDeadline.Validate(); err != nil {
 			return err
 		}
@@ -2666,6 +2687,27 @@ func (s *CoordinationGrant) Validate() error {
 	}(); err != nil {
 		failures = append(failures, validate.FieldError{
 			Name:  "descendantsCreated",
+			Error: err,
+		})
+	}
+	if err := func() error {
+		if err := (validate.Int{
+			MinSet:        true,
+			Min:           0,
+			MaxSet:        false,
+			Max:           0,
+			MinExclusive:  false,
+			MaxExclusive:  false,
+			MultipleOfSet: false,
+			MultipleOf:    0,
+			Pattern:       nil,
+		}).Validate(int64(s.SpawnsInWindow)); err != nil {
+			return errors.Wrap(err, "int")
+		}
+		return nil
+	}(); err != nil {
+		failures = append(failures, validate.FieldError{
+			Name:  "spawnsInWindow",
 			Error: err,
 		})
 	}
@@ -2775,6 +2817,8 @@ func (s CoordinationGrantSpawnApproval) Validate() error {
 func (s CoordinationGrantState) Validate() error {
 	switch s {
 	case "active":
+		return nil
+	case "lapsed":
 		return nil
 	case "revoked":
 		return nil
@@ -2980,7 +3024,7 @@ func (s *CoordinationPolicy) Validate() error {
 		})
 	}
 	if err := func() error {
-		if value, ok := s.DeadlineSeconds.Get(); ok {
+		if value, ok := s.UnattendedLimitSeconds.Get(); ok {
 			if err := func() error {
 				if err := (validate.Int{
 					MinSet:        true,
@@ -3003,7 +3047,7 @@ func (s *CoordinationPolicy) Validate() error {
 		return nil
 	}(); err != nil {
 		failures = append(failures, validate.FieldError{
-			Name:  "deadlineSeconds",
+			Name:  "unattendedLimitSeconds",
 			Error: err,
 		})
 	}
@@ -14066,7 +14110,7 @@ func (s *UpdateCoordinationGrantRequest) Validate() error {
 		})
 	}
 	if err := func() error {
-		if value, ok := s.DeadlineSeconds.Get(); ok {
+		if value, ok := s.UnattendedLimitSeconds.Get(); ok {
 			if err := func() error {
 				if err := (validate.Int{
 					MinSet:        true,
@@ -14089,7 +14133,7 @@ func (s *UpdateCoordinationGrantRequest) Validate() error {
 		return nil
 	}(); err != nil {
 		failures = append(failures, validate.FieldError{
-			Name:  "deadlineSeconds",
+			Name:  "unattendedLimitSeconds",
 			Error: err,
 		})
 	}

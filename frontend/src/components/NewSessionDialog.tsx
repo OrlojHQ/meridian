@@ -19,10 +19,10 @@ import { HarnessMark } from "./ui/HarnessMark";
 import { CheckIcon, ChevronIcon, TerminalIcon, ThreadIcon } from "./ui/Icons";
 import type { HarnessImage } from "../api/generated/types.gen";
 
-// A lead started here gets the largest lifetime subagent total the daemon
-// allows. The limits that matter in use are the daemon's own: how many
-// subagent Capsules run at once and the grant deadline, both left at their
-// defaults, so the operator never has to guess a number up front.
+// A lead started here may start 16 subagents in any 24 hours. The limits
+// that matter in use are the daemon's own: how many subagent Capsules run at
+// once and how long the lead keeps going without the operator, both left at
+// their defaults, so the operator never has to guess a number up front.
 const LEAD_POLICY = { maxChildren: 16, maxDescendants: 16 } as const;
 
 function recentProjects(projects: Project[]) {

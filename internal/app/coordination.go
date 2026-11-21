@@ -71,7 +71,7 @@ func (s *Service) insertCoordinationGrantTx(
 		MaxDepth: policy.MaxDepth, MaxChildren: policy.MaxChildren,
 		MaxDescendants: policy.MaxDescendants, MaxLiveCapsules: policy.MaxLiveCapsules,
 		MaxMessagesPerLink: policy.MaxMessagesPerLink, AllowedHarnesses: policy.AllowedHarnesses,
-		DeadlineAt: now.Add(policy.Deadline), OnDeadline: policy.OnDeadline,
+		LastOperatorAt: now, UnattendedLimit: policy.UnattendedLimit, OnDeadline: policy.OnDeadline,
 		ArchiveAfter: *policy.ArchiveAfter, CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
 	}
 	if err := tx.InsertCoordinationGrant(ctx, grant); err != nil {
@@ -109,10 +109,29 @@ func (s *Service) matchCoordinationReplay(
 		policy.MaxMessagesPerLink != stored.MaxMessagesPerLink || policy.OnDeadline != stored.OnDeadline ||
 		policy.SpawnApproval != stored.SpawnApproval || *policy.ArchiveAfter != *stored.ArchiveAfter ||
 		!slices.Equal(policy.AllowedHarnesses, stored.AllowedHarnesses) ||
-		grant.DeadlineAt.Sub(grant.CreatedAt) != policy.Deadline {
+		policy.UnattendedLimit != stored.UnattendedLimit {
 		return fmt.Errorf("%w: Idempotency-Key was used with a different request", domain.ErrConflict)
 	}
 	return nil
+}
+
+// CoordinationGrantWindow counts the grant's spawns in the current rolling
+// window, and returns the time it measured at. It is for display; the spawn
+// path counts again before it enforces anything.
+func (s *Service) CoordinationGrantWindow(
+	ctx context.Context, grant domain.CoordinationGrant,
+) (int, time.Time, error) {
+	if err := requirePrincipal(ctx); err != nil {
+		return 0, time.Time{}, err
+	}
+	now := s.clock.Now().UTC()
+	var count int
+	err := s.store.View(ctx, func(reader ports.Reader) error {
+		var err error
+		count, err = reader.CountThreadLinksByGrantSince(ctx, grant.ID, domain.SpawnWindowStart(now))
+		return err
+	})
+	return count, now, err
 }
 
 func (s *Service) GetCoordinationGrant(
@@ -271,47 +290,38 @@ func (s *Service) endGrantTx(
 	if err := tx.UpdateCoordinationGrant(ctx, grant, previous); err != nil {
 		return grant, err
 	}
-	if closeLinks {
-		links, err := tx.ListThreadLinksByGrant(ctx, grant.ID)
-		if err != nil {
-			return grant, err
-		}
-		for _, link := range links {
-			if link.State != domain.LinkActive && link.State != domain.LinkPendingApproval {
-				continue
-			}
-			if link.State == domain.LinkPendingApproval {
-				if err := s.rejectPendingSpawnTx(ctx, tx, link, now); err != nil {
-					return grant, err
-				}
-			}
-			if err := s.closeLinkTx(ctx, tx, link, domain.LinkRevoked,
-				domain.ReportFailed, domain.ReportRevoked, 0, now); err != nil {
-				return grant, err
-			}
-		}
-	} else {
-		// Pending spawns never started; leaving them queued after revoke would
-		// strand them, so they close even when running children are kept.
-		links, err := tx.ListThreadLinksByGrant(ctx, grant.ID)
-		if err != nil {
-			return grant, err
-		}
-		for _, link := range links {
-			if link.State != domain.LinkPendingApproval {
-				continue
-			}
-			if err := s.rejectPendingSpawnTx(ctx, tx, link, now); err != nil {
-				return grant, err
-			}
-			if err := s.closeLinkTx(ctx, tx, link, domain.LinkRevoked,
-				domain.ReportFailed, domain.ReportRevoked, 0, now); err != nil {
-				return grant, err
-			}
-		}
+	if err := s.closeGrantLinksTx(ctx, tx, grant, closeLinks, now); err != nil {
+		return grant, err
 	}
 	return grant, s.appendEvent(ctx, tx, "coordination_grant", string(grant.ID),
 		"coordination_grant."+string(state), grant.ResourceVersion, []byte(`{"reason":"`+string(reason)+`"}`))
+}
+
+// closeGrantLinksTx closes the grant's open links as revoked when all is
+// set. Pending spawns never started; leaving them queued would strand them,
+// so they close even when running children are kept.
+func (s *Service) closeGrantLinksTx(
+	ctx context.Context, tx ports.Transaction, grant domain.CoordinationGrant, all bool, now time.Time,
+) error {
+	links, err := tx.ListThreadLinksByGrant(ctx, grant.ID)
+	if err != nil {
+		return err
+	}
+	for _, link := range links {
+		switch {
+		case link.State == domain.LinkPendingApproval:
+			if err := s.rejectPendingSpawnTx(ctx, tx, link, now); err != nil {
+				return err
+			}
+		case link.State != domain.LinkActive || !all:
+			continue
+		}
+		if err := s.closeLinkTx(ctx, tx, link, domain.LinkRevoked,
+			domain.ReportFailed, domain.ReportRevoked, 0, now); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Service) closeLinkTx(
@@ -366,9 +376,10 @@ func (s *Service) coordinationAuthority(
 		response := coordproto.Fail(coordproto.CodeGrantInactive, "coordination grant is "+string(grant.State))
 		return grant, thread, &response
 	}
-	if mutating && !grant.Usable(now) {
-		response := coordproto.Fail(coordproto.CodeGrantInactive, "coordination grant deadline has passed")
-		return grant, thread, &response
+	if mutating {
+		if failure := grantRefusal(grant, now); failure != nil {
+			return grant, thread, failure
+		}
 	}
 	if thread.State != domain.ThreadActive || thread.CapsuleID != capsule.ID {
 		response := coordproto.Fail(coordproto.CodeGrantInactive, "lead Thread is not active")
@@ -548,8 +559,10 @@ func (s *Service) coordSpawn(
 			failure = &response
 			return errCoordinationRejected
 		}
-		if !current.Usable(s.clock.Now()) {
-			return reject(coordproto.CodeGrantInactive, "coordination grant is not active")
+		now := s.clock.Now().UTC()
+		if refusal := grantRefusal(current, now); refusal != nil {
+			failure = refusal
+			return errCoordinationRejected
 		}
 		if current.MaxDepth < 1 {
 			return reject(coordproto.CodeLimitExceeded, "depth limit reached")
@@ -558,16 +571,24 @@ func (s *Service) coordSpawn(
 		if err != nil {
 			return err
 		}
-		if len(siblings) >= current.MaxChildren {
-			return reject(coordproto.CodeLimitExceeded, fmt.Sprintf("fan-out limit of %d children reached", current.MaxChildren))
-		}
 		for _, sibling := range siblings {
 			if sibling.Name == request.Name {
 				return reject(coordproto.CodeConflict, "a child with this name already exists")
 			}
 		}
-		if current.DescendantsCreated >= current.MaxDescendants {
-			return reject(coordproto.CodeLimitExceeded, "descendant limit reached")
+		// With depth fixed at one every spawn is the lead's own child, so
+		// fan-out and descendants both count the rolling window (ADR 0059).
+		recent, err := tx.CountThreadLinksByGrantSince(ctx, current.ID, domain.SpawnWindowStart(now))
+		if err != nil {
+			return err
+		}
+		if recent >= current.MaxChildren {
+			return reject(coordproto.CodeLimitExceeded, fmt.Sprintf(
+				"fan-out limit of %d subagents in 24 hours reached; retry later", current.MaxChildren))
+		}
+		if recent >= current.MaxDescendants {
+			return reject(coordproto.CodeLimitExceeded, fmt.Sprintf(
+				"limit of %d spawns in 24 hours reached; retry later", current.MaxDescendants))
 		}
 		live, err := s.liveTreeCapsules(ctx, tx, current.ID)
 		if err != nil {
@@ -585,7 +606,6 @@ func (s *Service) coordSpawn(
 				return reject(coordproto.CodeCapacityExhausted, "installation live Capsule limit reached; retry later")
 			}
 		}
-		now := s.clock.Now().UTC()
 		intent, err = s.insertProjectThreadTx(ctx, tx, projectThreadSpec{
 			ProjectID: current.ProjectID, Name: request.Name, Harness: request.Harness,
 			Prompt: request.Prompt, IdempotencyKey: "coord:" + string(linkID),
@@ -901,8 +921,8 @@ func (s *Service) childCoordinationAuthority(
 	if link.State != domain.LinkActive || !link.ArchivedAt.IsZero() {
 		return fail(coordproto.CodeLinkClosed, "this subagent is no longer reporting")
 	}
-	if !grant.Usable(s.clock.Now()) {
-		return fail(coordproto.CodeGrantInactive, "coordination grant is not active")
+	if refusal := grantRefusal(grant, s.clock.Now()); refusal != nil {
+		return domain.CoordinationGrant{}, domain.ThreadLink{}, domain.Thread{}, refusal
 	}
 	if thread.State != domain.ThreadActive || thread.CapsuleID != capsule.ID {
 		return fail(coordproto.CodeGrantInactive, "subagent Thread is not active")
@@ -1096,6 +1116,14 @@ func (s *Service) countOperatorMessage(ctx context.Context) appendTxHook {
 		if err := s.unarchiveTx(ctx, tx, thread.ID, now); err != nil {
 			return err
 		}
+		// An operator message to a lead renews its grant (ADR 0059).
+		if grant, err := tx.GetCoordinationGrantByRootThread(ctx, thread.ID); err == nil {
+			if _, err := s.attendGrantTx(ctx, tx, grant, now); err != nil {
+				return err
+			}
+		} else if !errors.Is(err, domain.ErrNotFound) {
+			return err
+		}
 		link, err := tx.GetThreadLinkByChildThread(ctx, thread.ID)
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil
@@ -1239,8 +1267,55 @@ func coordinationSelf(grant domain.CoordinationGrant) *coordproto.Self {
 		Role: "lead", Depth: 0, GrantID: string(grant.ID), MaxChildren: grant.MaxChildren,
 		MaxDescendants: grant.MaxDescendants, MaxLiveCapsules: grant.MaxLiveCapsules,
 		MaxMessagesPerLink: grant.MaxMessagesPerLink, AllowedHarnesses: slices.Clone(grant.AllowedHarnesses),
-		DeadlineAt: grant.DeadlineAt,
+		DeadlineAt: grant.LapsesAt(),
 	}
+}
+
+// grantRefusal is the mailbox answer for a mutating request the grant cannot
+// authorize at now, or nil when it can.
+func grantRefusal(grant domain.CoordinationGrant, now time.Time) *coordproto.Response {
+	var response coordproto.Response
+	switch {
+	case grant.Usable(now):
+		return nil
+	case grant.Lapsed(now):
+		response = coordproto.Fail(coordproto.CodeCoordinationLapsed,
+			"coordination is paused because the operator has been away longer than the grant's "+
+				"unattended limit; it resumes when the operator next messages the lead")
+	default:
+		response = coordproto.Fail(coordproto.CodeGrantInactive, "coordination grant is not active")
+	}
+	return &response
+}
+
+// operatorPresent reports whether ctx is an operator API call. Only these
+// renew a grant's unattended time; the system and Capsules never do.
+func operatorPresent(ctx context.Context) bool {
+	caller, ok := principal.From(ctx)
+	return ok && (caller.Kind() == principal.KindUser || caller.Kind() == principal.KindBreakGlass)
+}
+
+// attendGrantTx records operator presence on an active grant and reopens it
+// if it lapsed. It is a no-op for anything but an operator API call.
+func (s *Service) attendGrantTx(
+	ctx context.Context, tx ports.Transaction, grant domain.CoordinationGrant, now time.Time,
+) (domain.CoordinationGrant, error) {
+	if grant.State != domain.GrantActive || !operatorPresent(ctx) {
+		return grant, nil
+	}
+	reopened := grant.Lapsed(now)
+	previous := grant.ResourceVersion
+	grant = grant.Attended(now)
+	grant.UpdatedAt = now
+	grant.ResourceVersion++
+	if err := tx.UpdateCoordinationGrant(ctx, grant, previous); err != nil {
+		return grant, err
+	}
+	if !reopened {
+		return grant, nil
+	}
+	return grant, s.appendEvent(ctx, tx, "coordination_grant", string(grant.ID),
+		"coordination_grant.reopened", grant.ResourceVersion, nil)
 }
 
 func coordinationSelfSub(grant domain.CoordinationGrant) *coordproto.Self {

@@ -556,13 +556,18 @@ func (s *Server) createProjectThread(writer http.ResponseWriter, request *http.R
 	if !decode(writer, request, &input) {
 		return
 	}
+	coordination, err := input.Coordination.policy()
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
 	result, err := s.service.CreateProjectThread(
 		request.Context(),
 		app.CreateProjectThreadInput{
 			ProjectID: domain.ProjectID(request.PathValue("projectId")),
 			Name:      input.Name, Harness: input.Harness, Prompt: input.Prompt,
 			IdempotencyKey: request.Header.Get("Idempotency-Key"),
-			Coordination:   input.Coordination.policy(),
+			Coordination:   coordination,
 		},
 	)
 	if err != nil {

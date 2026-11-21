@@ -1335,11 +1335,12 @@ paths:
       operationId: updateCoordinationGrant
       summary: Update a Coordination Grant's limits
       description: >
-        Changes spawn approval, limits, harnesses, deadline, deadline action,
-        or archiveAfter on an active grant. The operator may loosen or tighten
-        limits. Switching spawnApproval to auto does not start spawns already
-        waiting for approval. Deadline is remaining time from now, between 5
-        minutes and 72 hours, and cannot pass createdAt+72h.
+        Changes spawn approval, limits, harnesses, unattended limit, lapse
+        action, or archiveAfter on an active grant, including a lapsed one.
+        The operator may loosen or tighten limits. Switching spawnApproval to
+        auto does not start spawns already waiting for approval. Every update
+        counts as the operator being present: it resets lastOperatorAt and
+        reopens a lapsed grant.
       tags: [threads]
       parameters:
         - $ref: "#/components/parameters/GrantId"
@@ -1454,8 +1455,8 @@ paths:
       summary: Deny a queued spawn
       description: >
         Refuses a subagent the lead spawned under spawnApproval=operator.
-        The child Capsule is not deleted and still counts toward the grant's
-        descendantsCreated.
+        The child Capsule is not deleted and the spawn still counts toward the
+        grant's rolling 24-hour spawn window.
       tags: [threads]
       parameters:
         - $ref: "#/components/parameters/RequestId"
@@ -5808,6 +5809,9 @@ components:
         Makes the new Thread a lead that may spawn subagent Threads in their own
         sub-Capsules. Omitted limits take their defaults. Subagents answer to the
         operator: the lead never approves permissions or answers input.
+        maxChildren and maxDescendants count spawns in a rolling 24-hour
+        window, not over the grant's lifetime. The grant has no fixed end; it
+        lapses after unattendedLimitSeconds without the operator.
       properties:
         maxDepth: { type: integer, minimum: 1, maximum: 1, default: 1 }
         maxChildren: { type: integer, minimum: 1, maximum: 16, default: 4 }
@@ -5819,7 +5823,19 @@ components:
           maxItems: 16
           description: Structured harnesses subagents may use; each must be on the Project allowlist. Defaults to the lead's harness.
           items: { type: string, minLength: 1, maxLength: 128 }
-        deadlineSeconds: { type: integer, minimum: 300, maximum: 259200, default: 86400 }
+        unattendedLimitSeconds:
+          type: integer
+          minimum: 300
+          maximum: 259200
+          default: 86400
+          description: >
+            How long the grant keeps spending after the operator's last
+            message to the lead, spawn approval, or grant update. Past it the
+            grant lapses: mutating coordination requests are refused as
+            coordination_lapsed, onDeadline applies to running subagents, and
+            the operator's next message to the lead reopens it. Coordination
+            requests, reports, wakes and routines never reset it. Replaces
+            deadlineSeconds, which is refused.
         archiveAfterSeconds:
           type: integer
           minimum: 0
@@ -5836,6 +5852,11 @@ components:
           type: string
           enum: [cancel_and_pause, stop_new_work]
           default: cancel_and_pause
+          description: >
+            What happens to running subagents when the grant lapses.
+            cancel_and_pause closes their links and pauses them;
+            stop_new_work lets them finish. Spawns waiting for approval are
+            refused either way.
         spawnApproval:
           type: string
           enum: [auto, operator]
@@ -5846,14 +5867,20 @@ components:
             bound on how many may be requested.
     CoordinationGrantState:
       type: string
-      enum: [active, revoked, expired]
+      description: >
+        lapsed is an active grant left unattended past its limit; the
+        operator's next message to the lead reopens it. revoked is terminal.
+        expired is terminal and only appears on grants that passed an
+        absolute deadline before unattended limits replaced it.
+      enum: [active, lapsed, revoked, expired]
     CoordinationGrant:
       type: object
       required:
         [id, projectId, rootThreadId, rootCapsuleId, state, spawnApproval, maxDepth,
          maxChildren, maxDescendants, maxLiveCapsules, maxMessagesPerLink,
-         allowedHarnesses, deadlineAt, onDeadline, archiveAfterSeconds,
-         descendantsCreated, createdAt, updatedAt, resourceVersion]
+         allowedHarnesses, lastOperatorAt, unattendedLimitSeconds, lapsesAt,
+         onDeadline, archiveAfterSeconds, descendantsCreated, spawnsInWindow,
+         createdAt, updatedAt, resourceVersion]
       properties:
         id: { type: string }
         projectId: { type: string }
@@ -5869,10 +5896,29 @@ components:
         allowedHarnesses:
           type: array
           items: { type: string }
-        deadlineAt: { type: string, format: date-time }
+        lastOperatorAt:
+          type: string
+          format: date-time
+          description: Last operator message to the lead, spawn approval, or grant update.
+        unattendedLimitSeconds: { type: integer, minimum: 300, maximum: 259200 }
+        lapsesAt:
+          type: string
+          format: date-time
+          description: lastOperatorAt plus the unattended limit.
+        lapsedAt:
+          type: string
+          format: date-time
+          description: When the lapse was applied to running subagents; absent while open.
         onDeadline: { type: string, enum: [cancel_and_pause, stop_new_work] }
         archiveAfterSeconds: { type: integer, minimum: 0, maximum: 2592000 }
-        descendantsCreated: { type: integer, minimum: 0 }
+        descendantsCreated:
+          type: integer
+          minimum: 0
+          description: Spawns over the grant's lifetime, for display only.
+        spawnsInWindow:
+          type: integer
+          minimum: 0
+          description: Spawns in the last 24 hours, which maxChildren and maxDescendants limit.
         revokedAt: { type: string, format: date-time }
         revokeReason: { type: string, enum: [operator, deadline, lead_ended] }
         createdAt: { type: string, format: date-time }
@@ -5892,7 +5938,7 @@ components:
       description: >
         Operator update to an active grant. Omitted fields stay unchanged.
         allowedHarnesses, when present, replaces the allowlist and must not
-        be empty. deadlineSeconds is remaining time from now.
+        be empty. Any update resets lastOperatorAt and reopens a lapsed grant.
       properties:
         expectedResourceVersion: { type: integer, format: int64, minimum: 1 }
         spawnApproval: { type: string, enum: [auto, operator] }
@@ -5905,7 +5951,7 @@ components:
           minItems: 1
           maxItems: 16
           items: { type: string, minLength: 1, maxLength: 128 }
-        deadlineSeconds: { type: integer, minimum: 300, maximum: 259200 }
+        unattendedLimitSeconds: { type: integer, minimum: 300, maximum: 259200 }
         onDeadline: { type: string, enum: [cancel_and_pause, stop_new_work] }
         archiveAfterSeconds: { type: integer, minimum: 0, maximum: 2592000 }
     CoordinationRequestState:

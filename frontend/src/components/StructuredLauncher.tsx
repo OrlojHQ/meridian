@@ -113,7 +113,7 @@ export function StructuredLauncher({
           ? {
               maxChildren,
               maxDescendants: maxChildren,
-              deadlineSeconds: Number(data.get("deadlineHours") ?? 24) * 3600,
+              unattendedLimitSeconds: Number(data.get("unattendedHours") ?? 24) * 3600,
               ...(operatorApproval ? { spawnApproval: "operator" as const } : {}),
             }
           : undefined,
@@ -186,11 +186,11 @@ export function StructuredLauncher({
                     defaultValue={4}
                   />
                 </label>
-                <label htmlFor="spawn-deadline">
-                  Deadline (hours)
+                <label htmlFor="spawn-unattended">
+                  Pause without you (hours)
                   <input
-                    id="spawn-deadline"
-                    name="deadlineHours"
+                    id="spawn-unattended"
+                    name="unattendedHours"
                     type="number"
                     min={1}
                     max={72}

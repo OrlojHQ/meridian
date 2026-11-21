@@ -7,6 +7,25 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- A lead no longer stops coordinating 72 hours after it started. Its grant
+  now pauses after a stretch without you (24 hours by default, 5 minutes to
+  3 days), and your next message to the lead resumes it. While paused, the
+  lead cannot start or message subagents, running subagents are cancelled
+  and paused as at the old deadline (or keep running with `stop_new_work`),
+  and the lead is not woken with reports. Only your own actions count:
+  messaging the lead, approving a spawn, or changing the grant. The subagent
+  limits count spawns in any 24 hours instead of over the lead's lifetime.
+  The lead's Agents panel shows spawns in the last 24 hours and when it
+  pauses, and lets you change how long it runs without you.
+  `meridian thread spawn --lead` and `meridian grant update` take
+  `--unattended-limit`; `--lead-deadline` still works as a deprecated alias.
+  The API replaces `deadlineSeconds` and `deadlineAt` with
+  `unattendedLimitSeconds`, `lastOperatorAt`, `lapsesAt`, and
+  `spawnsInWindow`, adds the `lapsed` grant state, and refuses
+  `deadlineSeconds`. Existing leads keep the time they had left (ADR 0059).
+
 ## [0.14.0] - 2026-11-19
 
 ### Added
