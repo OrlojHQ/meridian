@@ -548,3 +548,29 @@ func TestTransferRewrapsNotesForTheNewOwnerAndTurnsDeliveryOff(t *testing.T) {
 		t.Fatalf("the departed member still reads the note: %v", err)
 	}
 }
+
+func TestShreddingALeadShredsItsWorkingNotes(t *testing.T) {
+	f := newCoordFixture(t)
+	lead, mailbox := f.spawnLead(t, domain.CoordinationPolicy{})
+	notesHome(t, mailbox)
+	if response := tool(t, mailbox, coordproto.Request{
+		Type: coordproto.KindWriteNote, Key: "w", Name: "findings", Content: "found it\n",
+	}); !response.OK {
+		t.Fatalf("write = %+v", response)
+	}
+	grant := f.leadGrant(t, lead)
+	f.runtime.endSession(lead.Intent.RunID)
+	if err := f.service.SyncThread(asSystem(f.ctx), lead.Intent.ThreadID); err != nil {
+		t.Fatal(err)
+	}
+	thread, err := f.service.GetThread(f.ctx, lead.Intent.ThreadID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.service.DeleteThread(f.ctx, thread.ID, thread.ResourceVersion, "shred-lead"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.service.GetWorkingNote(f.ctx, grant.ID, "findings", 0); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("a shredded lead's working note = %v", err)
+	}
+}
