@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import { CapsuleDetail } from "../App";
-import { api } from "../api/client";
+import { MeridianAPIError, api } from "../api/client";
 import type { Capsule, ProfileDiagnostic, Thread } from "../api/generated/types.gen";
 
 const project = {
@@ -397,6 +397,25 @@ describe("Capsule header", () => {
     });
     show();
     expect(await screen.findByRole("button", { name: "Push update" })).toBeInTheDocument();
+  });
+
+  it("stops polling Delivery state for a workspace with no Git repository", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      ready({ turn: "working" });
+      const inspection = vi.mocked(api.deliveryInspection).mockRejectedValue(
+        new MeridianAPIError("this Capsule's workspace has no Git repository", "no_repository", 422),
+      );
+      show();
+      await screen.findByRole("heading", { name: "Fix the header so the title can be read" });
+      await waitFor(() => expect(inspection).toHaveBeenCalledOnce());
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(inspection).toHaveBeenCalledOnce();
+      expect(screen.queryByText("feature/header")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Create PR" })).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("shows Create PR after a turn finishes with something to deliver", async () => {

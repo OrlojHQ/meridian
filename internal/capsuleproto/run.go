@@ -822,10 +822,16 @@ func (s *Server) git(writer http.ResponseWriter, request *http.Request, argument
 // clients can show that state instead of an error.
 func (s *Server) writeGitFailure(writer http.ResponseWriter) {
 	code := "git_failed"
-	if _, err := os.Lstat(filepath.Join(s.config.Workspace, ".git")); errors.Is(err, os.ErrNotExist) {
+	if s.workspaceHasNoRepository() {
 		code = "git_no_repository"
 	}
 	writeProtocolError(writer, http.StatusUnprocessableEntity, code)
+}
+
+// workspaceHasNoRepository reports a workspace with no .git entry at all.
+func (s *Server) workspaceHasNoRepository() bool {
+	_, err := os.Lstat(filepath.Join(s.config.Workspace, ".git"))
+	return errors.Is(err, os.ErrNotExist)
 }
 
 func (s *Server) gitPatch(writer http.ResponseWriter, request *http.Request) {

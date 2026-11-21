@@ -672,6 +672,10 @@ func boundedDeliveryFailure(err error) string {
 		message = "delivery configuration invalid"
 	case errors.Is(err, domain.ErrUnsupported):
 		message = "delivery operation unsupported"
+	case errors.Is(err, domain.ErrWorkspaceNoRepository):
+		message = "workspace has no Git repository"
+	case errors.Is(err, domain.ErrWorkspaceGit):
+		message = "workspace Git state unavailable"
 	case errors.Is(err, context.Canceled):
 		message = "delivery operation canceled"
 	case errors.Is(err, context.DeadlineExceeded):
@@ -692,6 +696,12 @@ func safeDeliveryError(err error) error {
 		return fmt.Errorf("%w: %s", domain.ErrInvalid, message)
 	case errors.Is(err, domain.ErrUnsupported):
 		return fmt.Errorf("%w: %s", domain.ErrUnsupported, message)
+	case errors.Is(err, domain.ErrWorkspaceNoRepository):
+		// A workspace without a repository, such as a Capsule of a Project
+		// created without one, is a state of the Capsule, not a Station fault.
+		return fmt.Errorf("%w: %s", domain.ErrWorkspaceNoRepository, message)
+	case errors.Is(err, domain.ErrWorkspaceGit):
+		return fmt.Errorf("%w: %s", domain.ErrWorkspaceGit, message)
 	case errors.Is(err, context.Canceled):
 		return fmt.Errorf("%w: %s", context.Canceled, message)
 	case errors.Is(err, context.DeadlineExceeded):

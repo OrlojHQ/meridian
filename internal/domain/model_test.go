@@ -259,6 +259,12 @@ func TestMapCapsuleProtocolError(t *testing.T) {
 	if errors.Is(MapCapsuleProtocolError(422, "git_failed"), ErrWorkspaceNoRepository) {
 		t.Fatal("git_failed must not report a missing repository")
 	}
+	// An older supervisor reports a failed delivery inspection, including a
+	// workspace with no repository, as delivery_state_unavailable.
+	deliveryState := MapCapsuleProtocolError(422, "delivery_state_unavailable")
+	if !errors.Is(deliveryState, ErrWorkspaceGit) || errors.Is(deliveryState, ErrIllegalTransition) {
+		t.Fatalf("delivery_state_unavailable = %v", deliveryState)
+	}
 	noRepository := MapCapsuleProtocolError(422, "git_no_repository")
 	if !errors.Is(noRepository, ErrWorkspaceNoRepository) || !errors.Is(noRepository, ErrWorkspaceGit) {
 		t.Fatalf("git_no_repository = %v", noRepository)

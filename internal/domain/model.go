@@ -984,7 +984,7 @@ func MapCapsuleProtocolError(status int, code string) error {
 	switch code {
 	case "harness_dependency_install_failed":
 		return ErrHarnessDependencies
-	case "git_failed":
+	case "git_failed", "delivery_state_unavailable":
 		return ErrWorkspaceGit
 	case "git_no_repository":
 		return ErrWorkspaceNoRepository
