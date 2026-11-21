@@ -1,6 +1,6 @@
 # ADR 0059: Standing leads keep long conversations going
 
-- Status: Proposed
+- Status: Accepted; implemented in v0.15.0
 - Date: 2026-11-20
 - Amends: ADR 0029 (coordination grant lifetime and lead wakes)
 - Extends: ADRs 0016, 0019, 0025, 0028 and 0058

@@ -7,6 +7,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-20
+
 ### Added
 
 - Working notes and Project notes (ADR 0060). A lead and its subagents now
@@ -1778,7 +1780,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - Docker and Agent Sandbox are not claimed as hostile multi-tenant isolation
   boundaries; hardened runtime deployment and external review remain required.
 
-[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/OrlojHQ/meridian/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/OrlojHQ/meridian/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/OrlojHQ/meridian/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/OrlojHQ/meridian/compare/v0.11.5...v0.12.0
