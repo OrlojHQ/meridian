@@ -13,7 +13,6 @@ import type {
   Thread,
   ThreadLink,
 } from "../api/generated/types.gen";
-import { StructuredLauncher } from "../components/StructuredLauncher";
 import { ThreadConversation } from "../components/ThreadConversation";
 import {
   grantLimits,
@@ -139,63 +138,6 @@ function wrapper(node: React.ReactNode) {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
-});
-
-describe("Lead launcher", () => {
-  const intent = {
-    id: "intent-1",
-    projectId: project.id,
-    capsuleId: "capsule-lead",
-    capsuleName: "lead",
-    threadId: leadThread.id,
-    runId: "run-1",
-    messageId: "message-1",
-    harness: "mock",
-    state: "provisioning" as const,
-    createdAt: "2026-11-01T00:00:00Z",
-    updatedAt: "2026-11-01T00:00:00Z",
-    resourceVersion: 1,
-  };
-
-  it("starts a lead with a bounded coordination policy by default", async () => {
-    vi.spyOn(api, "capabilities").mockResolvedValue(capabilities(true));
-    const spawn = vi.spyOn(api, "createProjectThread").mockResolvedValue(intent);
-    wrapper(<StructuredLauncher project={project} harness="mock" />);
-    expect(await screen.findByLabelText("Lead agent with subagents")).toBeChecked();
-    const subagents = screen.getByLabelText("Subagents");
-    await userEvent.clear(subagents);
-    await userEvent.type(subagents, "2");
-    await userEvent.type(screen.getByLabelText("Task"), "split the work");
-    await userEvent.click(screen.getByLabelText("Approve each subagent spawn"));
-    await userEvent.click(screen.getByRole("button", { name: "Start task" }));
-    await waitFor(() =>
-      expect(spawn).toHaveBeenCalledWith(project.id, "mock", "split the work", "split the work", {
-        maxChildren: 2,
-        maxDescendants: 2,
-        unattendedLimitSeconds: 24 * 3600,
-        spawnApproval: "operator",
-      }),
-    );
-  });
-
-  it("starts a plain Thread when the operator opts out of leading", async () => {
-    vi.spyOn(api, "capabilities").mockResolvedValue(capabilities(true));
-    const spawn = vi.spyOn(api, "createProjectThread").mockResolvedValue(intent);
-    wrapper(<StructuredLauncher project={project} harness="mock" />);
-    await userEvent.click(await screen.findByLabelText("Lead agent with subagents"));
-    await userEvent.type(screen.getByLabelText("Task"), "just this");
-    await userEvent.click(screen.getByRole("button", { name: "Start task" }));
-    await waitFor(() =>
-      expect(spawn).toHaveBeenCalledWith(project.id, "mock", "just this", "just this", undefined),
-    );
-  });
-
-  it("hides the lead option when the installation cannot coordinate", async () => {
-    const loaded = vi.spyOn(api, "capabilities").mockResolvedValue(capabilities(false));
-    wrapper(<StructuredLauncher project={project} harness="mock" />);
-    await waitFor(() => expect(loaded).toHaveBeenCalled());
-    expect(screen.queryByLabelText("Lead agent with subagents")).not.toBeInTheDocument();
-  });
 });
 
 describe("Subagents panel", () => {

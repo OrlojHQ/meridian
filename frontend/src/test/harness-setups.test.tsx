@@ -5,8 +5,6 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vitest";
 import { api } from "../api/client";
 import { HarnessSetups } from "../components/HarnessSetups";
-import { NativeLauncher } from "../components/NativeLauncher";
-import { StructuredLauncher } from "../components/StructuredLauncher";
 
 const setup={id:"setup",harness:"codex",name:"My Codex setup",revision:"rev-2",default:true,deleted:false,createdAt:"2026-09-06T00:00:00Z",resourceVersion:2};
 const project={id:"project",name:"Project",createdAt:setup.createdAt,updatedAt:setup.createdAt,resourceVersion:1,harnessImages:[{name:"codex",imageReference:"example/codex:v1"}]};
@@ -23,45 +21,6 @@ it("shows saved revision contents and rolls back only future launches",async()=>
  show(<HarnessSetups/>);await openHarness("Manage Codex");await userEvent.click(await screen.findByRole("button",{name:"Files and history"}));
  await userEvent.click(await screen.findByText(/1 file · Current|1 file$/));expect(screen.getByText(".codex/AGENTS.md")).toBeInTheDocument();
  await userEvent.click(screen.getByRole("button",{name:"Use this revision for new Capsules"}));await waitFor(()=>expect(mutate).toHaveBeenCalledWith("setup",{revision:"rev-1",expectedResourceVersion:2}));
-});
-it("launches with an automatic name and requires a deliberate new connection grant",async()=>{
- vi.spyOn(api,"harnessSetups").mockResolvedValue({items:[setup]});vi.spyOn(api,"projectHarnessSetup").mockResolvedValue({setup:""});vi.spyOn(api,"projectConnection").mockResolvedValue({connectionId:""});
- vi.spyOn(api,"providerConnections").mockResolvedValue({enabled:true,items:[{id:"connection",provider:"openai",name:"My API",createdAt:setup.createdAt,resourceVersion:1,revoked:false}]});
- const grant=vi.spyOn(api,"grantConnection").mockResolvedValue({connectionId:"connection"});const create=vi.spyOn(api,"createCapsule").mockResolvedValue(capsule);vi.spyOn(api,"capsule").mockResolvedValue(capsule);vi.spyOn(api,"runs").mockResolvedValue({items:[]});
- show(<NativeLauncher project={project} harness="codex"/>);
- expect(await screen.findByText(/Using My Codex setup/)).toBeInTheDocument();expect(grant).not.toHaveBeenCalled();
- await userEvent.selectOptions(screen.getByLabelText("Provider connection"),"connection");expect(screen.getByText(/authorizes this API connection/)).toBeInTheDocument();
- await userEvent.click(screen.getByRole("button",{name:"Start Codex"}));await waitFor(()=>expect(create).toHaveBeenCalled());
- expect(grant).toHaveBeenCalledWith("project","codex","connection");expect(create).toHaveBeenCalledWith("project",expect.stringMatching(/^codex-/),"codex",undefined,"");
-});
-it("offers no provider connection to a harness capsuled cannot configure",async()=>{
- vi.spyOn(api,"harnessSetups").mockResolvedValue({items:[]});vi.spyOn(api,"projectHarnessSetup").mockResolvedValue({setup:""});vi.spyOn(api,"projectConnection").mockResolvedValue({connectionId:""});
- vi.spyOn(api,"providerConnections").mockResolvedValue({enabled:true,items:[{id:"connection",provider:"anthropic",name:"My API",createdAt:setup.createdAt,resourceVersion:1,revoked:false}]});
- show(<NativeLauncher project={{...project,harnessImages:[{name:"mock",imageReference:"example/mock:v1"}]}} harness="mock"/>);
- expect(await screen.findByRole("button",{name:"Start mock"})).toBeInTheDocument();
- expect(screen.queryByLabelText("Provider connection")).toBeNull();expect(screen.queryByRole("link",{name:"Connect provider"})).toBeNull();
-});
-it("grants a custom endpoint connection to a DeepSeek Harness task before spawning it",async()=>{
- vi.spyOn(api,"capabilities").mockResolvedValue({providerVersion:"docker/v2",attach:true,run:true,structured:true,git:false,pause:false,snapshot:false,clone:false,browse:false,delivery:false,preview:false,resourceMetrics:false,isolation:"container",harnessImages:[]});
- vi.spyOn(api,"projectConnection").mockResolvedValue({connectionId:""});
- vi.spyOn(api,"providerConnections").mockResolvedValue({enabled:true,items:[
-  {id:"official",provider:"openai",name:"OpenAI",createdAt:setup.createdAt,resourceVersion:1,revoked:false},
-  {id:"nomodel",provider:"openai-compatible",name:"No model",baseUrl:"https://models.example",createdAt:setup.createdAt,resourceVersion:1,revoked:false},
-  {id:"dgx",provider:"openai-compatible",name:"DGX",baseUrl:"https://dgx.example",defaultModel:"deepseek-v4",createdAt:setup.createdAt,resourceVersion:1,revoked:false},
- ]});
- const grant=vi.spyOn(api,"grantConnection").mockResolvedValue({connectionId:"dgx"});
- const intent={id:"intent",projectId:project.id,harness:"dsh",state:"provisioning" as const,capsuleId:"capsule",capsuleName:"dsh-task",threadId:"thread",runId:"run",messageId:"message",createdAt:setup.createdAt,updatedAt:setup.createdAt,resourceVersion:1};
- const spawn=vi.spyOn(api,"createProjectThread").mockResolvedValue(intent);
- vi.spyOn(api,"projectThreadIntent").mockResolvedValue(intent);
- vi.spyOn(api,"capsule").mockResolvedValue(capsule);vi.spyOn(api,"runs").mockResolvedValue({items:[]});
- show(<StructuredLauncher project={{...project,harnessImages:[{name:"dsh",imageReference:"example/dsh:v1"}]}} harness="dsh"/>);
- const select=await screen.findByLabelText("Provider connection");
- await waitFor(()=>expect(screen.getByRole("option",{name:"DGX"})).toBeInTheDocument());
- expect(screen.queryByRole("option",{name:"OpenAI"})).toBeNull();expect(screen.queryByRole("option",{name:"No model"})).toBeNull();
- await userEvent.selectOptions(select,"dgx");await userEvent.type(screen.getByLabelText("Task"),"fix the build");
- await userEvent.click(screen.getByRole("button",{name:"Start task"}));
- await waitFor(()=>expect(spawn).toHaveBeenCalled());
- expect(grant).toHaveBeenCalledWith("project","dsh","dgx");expect(grant.mock.invocationCallOrder[0]).toBeLessThan(spawn.mock.invocationCallOrder[0]);
 });
 it("groups settings under plain section headings without nested disclosures",async()=>{
  vi.spyOn(api,"harnessSetups").mockResolvedValue({items:[setup]});vi.spyOn(api,"providerConnections").mockResolvedValue({items:[],enabled:true});
@@ -182,15 +141,6 @@ it("hides the private HTTP opt-in unless the daemon allows it",async()=>{
  await userEvent.selectOptions(await screen.findByLabelText("Provider"),"anthropic-compatible");
  expect(screen.getByLabelText("Base URL")).toBeRequired();
  expect(screen.queryByLabelText("Use plain HTTP to a private-network server")).toBeNull();
-});
-it("offers only connections the harness can use",async()=>{
- const claudeProject={...project,harnessImages:[{name:"claude",imageReference:"example/claude:v1"}]};
- const item=(id:string,provider:"openai"|"anthropic"|"openai-compatible"|"anthropic-compatible",defaultModel?:string)=>({id,provider,name:id,createdAt:setup.createdAt,resourceVersion:1,revoked:false,...(defaultModel?{defaultModel}:{})});
- vi.spyOn(api,"harnessSetups").mockResolvedValue({items:[]});vi.spyOn(api,"projectHarnessSetup").mockResolvedValue({setup:""});vi.spyOn(api,"projectConnection").mockResolvedValue({connectionId:""});
- vi.spyOn(api,"providerConnections").mockResolvedValue({enabled:true,items:[item("official-openai","openai"),item("vllm","openai-compatible"),item("litellm","anthropic-compatible","qwen")]});
- show(<NativeLauncher project={claudeProject} harness="claude"/>);
- const select=await screen.findByLabelText("Provider connection");
- await waitFor(()=>expect([...select.querySelectorAll("option")].map(option=>option.value)).toEqual(["","litellm"]));
 });
 it("lists each harness with its mark, what a new Capsule uses, and one action",async()=>{
  vi.spyOn(api,"harnessSetups").mockResolvedValue({items:[setup]});

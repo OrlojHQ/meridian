@@ -59,7 +59,6 @@ export type PaletteActions = {
   requestCapsuleAction: (capsuleId: string, action: CapsuleActionRequest) => void;
   openNewProject: () => void;
   openNewSession: (projectId: string) => void;
-  openLauncher: (project: Project) => void;
   openDeleteProject: (project: Project) => void;
   openShortcuts: () => void;
   // Both open the desktop app's own picker. A Station page never receives

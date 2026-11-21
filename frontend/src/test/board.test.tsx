@@ -134,7 +134,7 @@ const shipped: BoardItem = {
 };
 
 function renderBoard(
-  outlet?: { openNewProject: () => void; openLauncher: (value: Project) => void },
+  outlet?: { openNewProject: () => void; openNewSession: (projectId: string) => void },
   extra: { git?: boolean; projects?: Project[] } = {},
 ) {
   vi.spyOn(api, "coordinationRequests").mockResolvedValue({ items: [] });
@@ -392,16 +392,16 @@ describe("Board", () => {
     const files = vi.spyOn(api, "workspaceFiles");
     const moments = vi.spyOn(api, "moments");
     const blocks = vi.spyOn(api, "threadBlocks");
-    const openLauncher = vi.fn();
+    const openNewSession = vi.fn();
     const openNewProject = vi.fn();
-    renderBoard({ openLauncher, openNewProject });
+    renderBoard({ openNewSession, openNewProject });
 
     expect(await screen.findByRole("heading", { name: "All caught up" })).toBeTruthy();
     expect(screen.getByText(/1 agent is still working/)).toBeTruthy();
     expect(screen.queryByRole("region", { name: /Needs you/ })).toBeNull();
     expect(screen.getByRole("region", { name: /Working/ })).toHaveTextContent("release lead");
     await userEvent.click(screen.getByRole("button", { name: "Start work in Meridian" }));
-    expect(openLauncher).toHaveBeenCalledWith(project);
+    expect(openNewSession).toHaveBeenCalledWith(project.id);
     await userEvent.click(screen.getByRole("button", { name: "New project" }));
     expect(openNewProject).toHaveBeenCalled();
     expect(gitStatus).not.toHaveBeenCalled();
@@ -447,7 +447,7 @@ describe("Board", () => {
   it("asks for a Project when the installation has none", async () => {
     vi.spyOn(api, "board").mockResolvedValue({ truncated: false, items: [] });
     const openNewProject = vi.fn();
-    renderBoard({ openLauncher: vi.fn(), openNewProject }, { projects: [] });
+    renderBoard({ openNewSession: vi.fn(), openNewProject }, { projects: [] });
     expect(await screen.findByRole("heading", { name: "No projects yet" })).toBeTruthy();
     await userEvent.click(screen.getByRole("button", { name: "Create your first project" }));
     expect(openNewProject).toHaveBeenCalled();
