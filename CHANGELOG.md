@@ -122,6 +122,10 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   brief now tells leads to check diffstats first, read large output from
   files, hand large reviews to a subagent, and keep running notes in
   `$HOME/.meridian/notes/` (ADR 0059).
+- The Routines editor picks a time zone from a searchable list. Each zone
+  shows its current offset and local time, your zone is listed first, and
+  the schedule line shows the next run in the routine's zone and in yours
+  when they differ.
 
 ### Fixed
 

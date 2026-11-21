@@ -12,6 +12,7 @@ import { Button } from "./ui/Button";
 import { Input, Select, TextArea } from "./ui/Field";
 import { HarnessMark } from "./ui/HarnessMark";
 import { PlusIcon } from "./ui/Icons";
+import { TimeZonePicker } from "./TimeZonePicker";
 import {
   browserTimeZone,
   buildCadence,
@@ -22,6 +23,7 @@ import {
   fireKeptCapsule,
   fireSummary,
   formatWhen,
+  nextRunHint,
   parseCadence,
   triggerLabel,
   weekdayNames,
@@ -74,6 +76,20 @@ function formFrom(routine: Routine | undefined, harness: string): FormState {
     maxKept: String(routine.maxKept),
     includeNotes: routine.includeNotes === true,
   };
+}
+
+function ScheduleHint({ cadence, zone }: { cadence: string; zone: string }) {
+  const next = nextRunHint(cadence, zone);
+  const where = zone || "UTC";
+  const when = next
+    ? ` Next: ${next.there}${next.here ? ` (${next.here} your time)` : ""}.`
+    : "";
+  return (
+    <p className="launch-hint">
+      <span className="mono">{cadence}</span>
+      {` in ${where}.${when} Runs must be at least 15 minutes apart.`}
+    </p>
+  );
 }
 
 function cadenceOf(form: FormState) {
@@ -254,11 +270,9 @@ function RoutineForm({
             onChange={(event) => set({ custom: event.target.value })}
           />
         )}
-        <Input aria-label="Time zone" value={form.timeZone} onChange={(event) => set({ timeZone: event.target.value })} />
+        <TimeZonePicker value={form.timeZone} onChange={(timeZone) => set({ timeZone })} />
       </fieldset>
-      <p className="launch-hint">
-        <span className="mono">{cadence}</span> in {form.timeZone || "UTC"}. Runs must be at least 15 minutes apart.
-      </p>
+      <ScheduleHint cadence={cadence} zone={form.timeZone} />
       <div className="routine-notes">
         <label className="checkbox-label" htmlFor={`routine-notes-${routine?.id ?? "new"}`}>
           <input

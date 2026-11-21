@@ -981,6 +981,9 @@ function route(pathname: string): unknown {
   if (pathname.endsWith("/files") || pathname.endsWith("/previews") || pathname.endsWith("/moments")) {
     return emptyPage;
   }
+  if (pathname.endsWith("/reported-models")) {
+    return { models: [{ id: "opus", label: "Opus" }], efforts: [{ id: "medium", label: "Medium" }] };
+  }
   return emptyPage;
 }
 
